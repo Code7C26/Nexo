@@ -1,5 +1,17 @@
-Nombre del proyecto: Nexö
+Nexö
+🧩 Problema
 
-Problema destacado: Nosotros detectamos un problema común en emprendimientos y PyMEs que está relacionado con la descentralización de la organización (demasiada variedad de archivos y planillas desconectadas entre sí). Esto genera pérdidas innecesarias de tiempo, errores, y decisiones mal tomadas.
+En muchos emprendimientos y PyMEs, la organización suele estar fragmentada en múltiples archivos, planillas y herramientas que no se comunican entre sí.
+Esta descentralización genera ineficiencias importantes: pérdida de tiempo, mayor probabilidad de errores y dificultades a la hora de tomar decisiones informadas.
 
-Solución propuesta: Nuestra propuesta se basa en un sistema integral que centralice en una sola plataforma toda la organización de una PyME o emprendimiento, mediante chats de voz con palabras simples y naturales, para automatizar el control y flujo de productos, precios, clientes y facturas. 
+💡 Solución
+
+Nexö propone un sistema integral que centraliza toda la gestión en una única plataforma.
+A través de una interfaz basada en chats de voz con lenguaje simple y natural, permite automatizar y optimizar procesos clave como:
+
+Control de productos
+Gestión de precios
+Administración de clientes
+Manejo de facturación
+
+El objetivo es simplificar la organización, mejorar la eficiencia operativa y facilitar la toma de decisiones dentro de emprendimientos y PyMEs.
