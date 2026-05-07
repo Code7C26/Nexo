@@ -1,4 +1,5 @@
 Nexö
+
 🧩 Problema
 
 En muchos emprendimientos y PyMEs, la organización suele estar fragmentada en múltiples archivos, planillas y herramientas que no se comunican entre sí.
