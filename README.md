@@ -26,5 +26,5 @@ El objetivo es simplificar la organización, mejorar la eficiencia operativa y f
 
 💼 Público
 
-El público al que apunta el proyecto son PyMEs o emprendimientos recientes los cuáles necesiten modernizarse y centralizar todos los apectos relacionados al stock y dinero reemplazando las planillas y archivos por nuestro sistema integral. 
+El público al que apunta el proyecto son PyMEs o emprendimientos recientes los cuáles necesiten modernizarse y centralizar todos las operaciones relacionados al stock y dinero reemplazando las planillas y archivos por nuestro sistema integral. 
 
