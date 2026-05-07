@@ -19,4 +19,12 @@ Administración de clientes
 Manejo de facturación
 
 
+
 El objetivo es simplificar la organización, mejorar la eficiencia operativa y facilitar la toma de decisiones dentro de emprendimientos y PyMEs.
+
+
+
+💼 Público
+
+El público al que apunta el proyecto son PyMEs o emprendimientos recientes los cuáles necesiten modernizarse y centralizar todos los apectos relacionados al stock y dinero reemplazando las planillas y archivos por nuestro sistema integral. 
+
