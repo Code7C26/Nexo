@@ -3,7 +3,7 @@ Nexö
 🧩 Problema
 
 En muchos emprendimientos y PyMEs, la organización suele estar fragmentada en múltiples archivos, planillas y herramientas que no se comunican entre sí.
-Esta descentralización genera ineficiencias importantes: pérdida de tiempo, mayor probabilidad de errores y dificultades a la hora de tomar decisiones informadas.
+Esta descentralización genera ineficiencias importantes, como pérdida de tiempo, mayor probabilidad de errores y dificultades a la hora de tomar decisiones informadas.
 
 💡 Solución
 
