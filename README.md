@@ -44,7 +44,7 @@ PyMEs y emprendimientos recientes que necesiten modernizarse y centralizar sus o
 ├── /docs      → Documentación técnica y análisis del proyecto
 ├── /design    → Mockups, prototipos y diseño visual
 ├── /assets    → Imágenes, íconos y recursos estáticos
-└── README.md  → Presentación general del proyecto
+└── README.md  → Presentación general del proyect
 ---
 
 ## 👨‍💻 Integrantes y Roles
