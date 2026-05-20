@@ -1,1 +1,4 @@
+HEAD
 Hola este es el archivo de prueba
+putotrolo
+44bf7da (chino)
