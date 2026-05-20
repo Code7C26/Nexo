@@ -39,13 +39,14 @@ PyMEs y emprendimientos recientes que necesiten modernizarse y centralizar sus o
 
 ## 📁 Estructura del Repositorio
 
+```plaintext
 /Nexo
 ├── /src       → Código fuente del sistema
 ├── /docs      → Documentación técnica y análisis del proyecto
 ├── /design    → Mockups, prototipos y diseño visual
 ├── /assets    → Imágenes, íconos y recursos estáticos
-└── README.md  → Presentación general del proyect
----
+└── README.md  → Presentación general del proyecto
+```
 
 ## 👨‍💻 Integrantes y Roles
 
