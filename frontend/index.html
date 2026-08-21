@@ -62,23 +62,18 @@
       <!-- Ledger summary strip: el elemento firma del diseño -->
       <section class="ledger-strip" aria-label="Resumen del día">
         <div class="ledger-item">
-          <span class="ledger-label">Facturado hoy</span>
+          <span class="ledger-label">Facturado</span>
           <span class="ledger-value mono" id="sumFacturado">$0,00</span>
         </div>
         <div class="ledger-divider" aria-hidden="true"></div>
         <div class="ledger-item">
-          <span class="ledger-label">IVA a pagar</span>
-          <span class="ledger-value mono ledger-warn" id="sumIva">$0,00</span>
+          <span class="ledger-label">Cobrado</span>
+          <span class="ledger-value mono ledger-ok" id="sumCobrado">$0,00</span>
         </div>
         <div class="ledger-divider" aria-hidden="true"></div>
         <div class="ledger-item">
-          <span class="ledger-label">Retenido Mercado Pago</span>
-          <span class="ledger-value mono ledger-danger" id="sumRetenciones">$0,00</span>
-        </div>
-        <div class="ledger-divider" aria-hidden="true"></div>
-        <div class="ledger-item">
-          <span class="ledger-label">Neto en cuenta</span>
-          <span class="ledger-value mono ledger-ok" id="sumNeto">$0,00</span>
+          <span class="ledger-label">Pendiente / vencido</span>
+          <span class="ledger-value mono ledger-warn" id="sumPendiente">$0,00</span>
         </div>
       </section>
 
@@ -95,10 +90,8 @@
               <th>N°</th>
               <th>Cliente</th>
               <th>Concepto</th>
-              <th class="align-right">Neto</th>
-              <th class="align-right">IVA</th>
-              <th class="align-right">Ret. MP</th>
               <th class="align-right">Total</th>
+              <th>Condición</th>
               <th>Estado</th>
             </tr>
           </thead>
@@ -135,13 +128,11 @@
             <option value="transferencia">Transferencia</option>
           </select>
         </label>
-        <p class="form-note">El cálculo de IVA (21%) y la retención de Mercado Pago se aplican automáticamente según la condición de venta.</p>
         <button type="submit" class="btn btn-primary btn-full">Registrar factura</button>
       </form>
     </div>
   </div>
 
-  <script src="js/data.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

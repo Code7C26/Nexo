@@ -1,19 +1,13 @@
 /**
  * app.js
  * -----------------------------------------------------------
- * Todo acá trabaja sobre el array FACTURAS de data.js.
- * Cuando exista el backend, el único cambio real es reemplazar
- * `let facturas = FACTURAS.map(calcularFactura);`
- * por algo como:
- *   const res = await fetch('/api/facturas');
- *   let facturas = await res.json();
- * El resto (render, filtro, resumen) sigue funcionando igual
- * porque ya está escrito contra la forma de esos datos.
+ * Trabaja contra la API real del backend (/api/facturas) en vez
+ * de datos estáticos. IVA y retención de Mercado Pago quedan
+ * fuera de V1 (decisión del equipo): las facturas se manejan con
+ * un único monto (`total`), sin impuestos.
  */
 
-let facturas = FACTURAS.map(calcularFactura);
-
-document.getElementById("businessName").textContent = NEGOCIO.nombre;
+let facturas = [];
 
 document.getElementById("todayDate").textContent = new Date().toLocaleDateString("es-AR", {
   weekday: "long",
@@ -25,15 +19,15 @@ const money = (n) =>
   n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
 
 function renderResumen(lista) {
-  const facturado = lista.reduce((acc, f) => acc + f.neto, 0);
-  const iva = lista.reduce((acc, f) => acc + f.iva, 0);
-  const retenido = lista.reduce((acc, f) => acc + f.retencionMp, 0);
-  const neto = facturado + iva - retenido;
+  const facturado = lista.reduce((acc, f) => acc + f.total, 0);
+  const cobrado = lista.filter((f) => f.estado === "cobrado").reduce((acc, f) => acc + f.total, 0);
+  const pendiente = lista
+    .filter((f) => f.estado === "pendiente" || f.estado === "vencido")
+    .reduce((acc, f) => acc + f.total, 0);
 
   document.getElementById("sumFacturado").textContent = money(facturado);
-  document.getElementById("sumIva").textContent = money(iva);
-  document.getElementById("sumRetenciones").textContent = money(retenido);
-  document.getElementById("sumNeto").textContent = money(neto);
+  document.getElementById("sumCobrado").textContent = money(cobrado);
+  document.getElementById("sumPendiente").textContent = money(pendiente);
 }
 
 function renderTabla(lista) {
@@ -41,7 +35,7 @@ function renderTabla(lista) {
   body.innerHTML = "";
 
   if (lista.length === 0) {
-    body.innerHTML = `<tr><td colspan="8" style="text-align:center; color: var(--ink-muted); padding: 24px;">
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--ink-muted); padding: 24px;">
       No hay movimientos que coincidan con la búsqueda.
     </td></tr>`;
     return;
@@ -53,10 +47,8 @@ function renderTabla(lista) {
       <td data-label="N°" class="mono">#${f.id}</td>
       <td data-label="Cliente">${f.cliente}</td>
       <td data-label="Concepto">${f.concepto}</td>
-      <td data-label="Neto" class="align-right mono">${money(f.neto)}</td>
-      <td data-label="IVA" class="align-right mono">${money(f.iva)}</td>
-      <td data-label="Ret. MP" class="align-right mono">${f.retencionMp ? money(f.retencionMp) : "—"}</td>
       <td data-label="Total" class="align-right mono">${money(f.total)}</td>
+      <td data-label="Condición">${f.condicion}</td>
       <td data-label="Estado"><span class="status status-${f.estado}">${f.estado}</span></td>
     `;
     body.appendChild(tr);
@@ -68,14 +60,20 @@ function render(lista = facturas) {
   renderTabla(lista);
 }
 
-render();
+async function cargarFacturas() {
+  const res = await fetch("/api/facturas");
+  facturas = await res.json();
+  render();
+}
+
+cargarFacturas();
 
 /* ---------- Búsqueda ---------- */
 
 document.getElementById("searchInput").addEventListener("input", (e) => {
   const q = e.target.value.trim().toLowerCase();
   const filtradas = facturas.filter(
-    (f) => f.cliente.toLowerCase().includes(q) || f.id.includes(q)
+    (f) => f.cliente.toLowerCase().includes(q) || String(f.id).includes(q)
   );
   render(filtradas);
 });
@@ -96,26 +94,24 @@ modal.addEventListener("click", (e) => {
   if (e.target === modal) modal.hidden = true;
 });
 
-document.getElementById("formFactura").addEventListener("submit", (e) => {
+document.getElementById("formFactura").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
 
-  const nueva = calcularFactura({
-    id: String(facturas.length + 1).padStart(4, "0"),
-    cliente: form.cliente.value,
-    concepto: form.concepto.value,
-    neto: parseFloat(form.neto.value),
-    condicion: form.condicion.value,
-    estado: "pendiente"
+  await fetch("/api/facturas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cliente: form.cliente.value,
+      concepto: form.concepto.value,
+      neto: parseFloat(form.neto.value),
+      condicion: form.condicion.value
+    })
   });
 
-  facturas = [nueva, ...facturas];
-  render();
+  await cargarFacturas();
   form.reset();
   modal.hidden = true;
-
-  // Cuando exista el backend, acá va el fetch POST a /api/facturas
-  // en vez de solo actualizar el array en memoria.
 });
 
 /* ---------- Menú mobile ---------- */
