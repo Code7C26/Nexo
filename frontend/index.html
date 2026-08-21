@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexo — Gestión para tu negocio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
+    <span></span><span></span><span></span>
+  </button>
+
+  <div class="app">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">N</span>
+        <span class="brand-name">Nexo</span>
+      </div>
+
+      <nav class="nav">
+        <a href="#" class="nav-item is-active" data-view="dashboard">
+          <span class="nav-index">01</span> Resumen
+        </a>
+        <a href="#" class="nav-item" data-view="facturas">
+          <span class="nav-index">02</span> Facturas
+        </a>
+        <a href="#" class="nav-item" data-view="clientes">
+          <span class="nav-index">03</span> Clientes
+        </a>
+        <a href="#" class="nav-item" data-view="iva">
+          <span class="nav-index">04</span> IVA &amp; Retenciones
+        </a>
+        <a href="#" class="nav-item" data-view="voz">
+          <span class="nav-index">05</span> Asistente de voz
+        </a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <p>Negocio</p>
+        <strong id="businessName">Tu Pyme</strong>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Hoy</p>
+          <h1 id="todayDate">—</h1>
+        </div>
+        <button class="btn btn-primary" id="btnNuevaFactura">+ Nueva factura</button>
+      </header>
+
+      <!-- Ledger summary strip: el elemento firma del diseño -->
+      <section class="ledger-strip" aria-label="Resumen del día">
+        <div class="ledger-item">
+          <span class="ledger-label">Facturado hoy</span>
+          <span class="ledger-value mono" id="sumFacturado">$0,00</span>
+        </div>
+        <div class="ledger-divider" aria-hidden="true"></div>
+        <div class="ledger-item">
+          <span class="ledger-label">IVA a pagar</span>
+          <span class="ledger-value mono ledger-warn" id="sumIva">$0,00</span>
+        </div>
+        <div class="ledger-divider" aria-hidden="true"></div>
+        <div class="ledger-item">
+          <span class="ledger-label">Retenido Mercado Pago</span>
+          <span class="ledger-value mono ledger-danger" id="sumRetenciones">$0,00</span>
+        </div>
+        <div class="ledger-divider" aria-hidden="true"></div>
+        <div class="ledger-item">
+          <span class="ledger-label">Neto en cuenta</span>
+          <span class="ledger-value mono ledger-ok" id="sumNeto">$0,00</span>
+        </div>
+      </section>
+
+      <!-- Tabla de movimientos -->
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Últimos movimientos</h2>
+          <input type="search" class="search" placeholder="Buscar cliente o N° de factura" id="searchInput" />
+        </div>
+
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Cliente</th>
+              <th>Concepto</th>
+              <th class="align-right">Neto</th>
+              <th class="align-right">IVA</th>
+              <th class="align-right">Ret. MP</th>
+              <th class="align-right">Total</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="movimientosBody">
+            <!-- filas generadas por js/app.js -->
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal nueva factura (placeholder funcional) -->
+  <div class="modal" id="modalFactura" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Nueva factura</h3>
+        <button class="modal-close" id="modalClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formFactura" class="form">
+        <label>Cliente
+          <input type="text" name="cliente" required placeholder="Nombre o razón social" />
+        </label>
+        <label>Concepto
+          <input type="text" name="concepto" required placeholder="Ej: Venta de mercadería" />
+        </label>
+        <label>Monto neto
+          <input type="number" name="neto" required placeholder="0.00" step="0.01" min="0" />
+        </label>
+        <label>Condición de venta
+          <select name="condicion">
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </label>
+        <p class="form-note">El cálculo de IVA (21%) y la retención de Mercado Pago se aplican automáticamente según la condición de venta.</p>
+        <button type="submit" class="btn btn-primary btn-full">Registrar factura</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
