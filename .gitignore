@@ -4,3 +4,5 @@ node_modules/
 nexo-app.zip
 ~$*
 .DS_Store
+# Config local de Claude Code: son permisos por máquina, no del proyecto.
+.claude/

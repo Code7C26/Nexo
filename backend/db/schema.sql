@@ -24,13 +24,21 @@ CREATE TABLE IF NOT EXISTS facturas (
 );
 -- venta_id se agrega por migración en db/index.js (ver ahí el porqué).
 
+-- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
+-- proveedor (costo promedio ponderado, ver POST /api/compras). Es un valor
+-- derivado de las operaciones, no un dato que alguien carga.
+-- stock_minimo / stock_maximo son los umbrales para la alerta de stock:
+-- por debajo del mínimo avisa "bajo", por encima del máximo avisa "alto".
+-- stock_maximo nullable = ese producto no tiene alerta de exceso.
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
   sku TEXT UNIQUE,
   precio_costo REAL NOT NULL DEFAULT 0,
   precio_venta REAL NOT NULL DEFAULT 0,
-  activo INTEGER NOT NULL DEFAULT 1
+  activo INTEGER NOT NULL DEFAULT 1,
+  stock_minimo REAL NOT NULL DEFAULT 0,
+  stock_maximo REAL
 );
 
 CREATE TABLE IF NOT EXISTS proveedores (
@@ -60,22 +68,38 @@ CREATE TABLE IF NOT EXISTS venta_items (
   costo_unitario_historico REAL NOT NULL DEFAULT 0
 );
 
--- estado_envio es informativo: no condiciona cuándo sube el stock (eso
--- sigue pasando al cargar la compra, sin importar el estado de envío).
+-- Ciclo de vida de una compra:
+--   borrador -> se arma sin efecto alguno (ni stock, ni costo, ni deuda).
+--   activa   -> se efectuó el pedido: nace la deuda con el proveedor.
+--   anulada  -> se revirtió (ver papelera).
+-- Y en paralelo, estado_envio va 'pedido' -> 'en_camino' -> 'recibido'.
+-- El stock sube recién al marcar 'recibido', que es cuando la mercadería
+-- está realmente en el depósito.
+-- stock_aplicado evita el doble conteo: marca si esta compra ya sumó su
+-- stock. Es necesario porque las compras viejas (anteriores a esta regla)
+-- sumaban stock al crearse, y si no se distinguieran volverían a sumarlo
+-- al marcarlas como recibidas.
 CREATE TABLE IF NOT EXISTS compras (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
-  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
-  estado_envio TEXT NOT NULL CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido')) DEFAULT 'recibido'
+  estado TEXT NOT NULL CHECK (estado IN ('borrador', 'activa', 'anulada')) DEFAULT 'borrador',
+  estado_envio TEXT NOT NULL CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido')) DEFAULT 'pedido',
+  costo_envio REAL NOT NULL DEFAULT 0,
+  stock_aplicado INTEGER NOT NULL DEFAULT 0
 );
 
+-- costo_real_unitario = precio_unitario + la parte del envío que le toca a
+-- este ítem, prorrateada por su valor dentro de la compra (CLAUDE.md §7).
+-- Es el costo que alimenta el promedio ponderado del producto, no el
+-- precio_unitario pelado: si no, el envío desaparecería del costeo.
 CREATE TABLE IF NOT EXISTS compra_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   compra_id INTEGER NOT NULL REFERENCES compras(id),
   producto_id INTEGER NOT NULL REFERENCES productos(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
-  precio_unitario REAL NOT NULL
+  precio_unitario REAL NOT NULL,
+  costo_real_unitario REAL
 );
 
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
@@ -93,6 +117,10 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   venta_id INTEGER REFERENCES ventas(id),
   compra_id INTEGER REFERENCES compras(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
+  -- Costo real de la unidad que entra (con el envío ya prorrateado).
+  -- Solo tiene sentido en las entradas por compra; en salidas y ajustes
+  -- queda NULL.
+  costo_unitario REAL,
   nota TEXT
 );
 

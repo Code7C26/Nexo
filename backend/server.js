@@ -140,18 +140,179 @@ app.post('/api/facturas', (req, res) => {
 
 /* ---------- Productos ---------- */
 
+const SELECT_PRODUCTO = `
+  SELECT productos.id, productos.nombre, productos.sku, productos.precio_costo,
+         productos.precio_venta, productos.activo,
+         productos.stock_minimo, productos.stock_maximo,
+         COALESCE(stock_actual.cantidad, 0) AS stock
+    FROM productos
+    LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id`;
+
+// Semáforo de stock. El mínimo avisa cuando llegás a ese número (no cuando
+// lo perforás): si configurás 5, con 5 unidades ya querés reponer. El
+// máximo es opcional; sin máximo, un producto nunca marca "alto".
+function estadoStock(stock, stockMinimo, stockMaximo) {
+  if (stock <= 0) return 'sin_stock';
+  if (stockMinimo > 0 && stock <= stockMinimo) return 'bajo';
+  if (stockMaximo !== null && stockMaximo > 0 && stock > stockMaximo) return 'alto';
+  return 'normal';
+}
+
+// Campos calculados que no se guardan (CLAUDE.md §4: la info derivada se
+// calcula, no se persiste). El margen es sobre el precio de venta:
+// (precio - costo) / precio. Sin precio de venta cargado no hay margen que
+// mostrar, por eso null en vez de 0 (0% sería mentira).
+function decorarProducto(p) {
+  return {
+    ...p,
+    valorizado: p.precio_costo * p.stock,
+    margen: p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null,
+    estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo)
+  };
+}
+
 app.get('/api/productos', (req, res) => {
-  const productos = db
+  const productos = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all();
+  res.json(productos.map(decorarProducto));
+});
+
+function normalizarPrecio(valor) {
+  return valor === undefined || valor === null || valor === '' ? 0 : Number(valor);
+}
+
+// stock_maximo es opcional de verdad: vacío significa "sin tope", no 0.
+function normalizarStockMaximo(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
+
+// Validación compartida por POST y PATCH. Devuelve el mensaje de error o
+// null si está todo bien. Notar que precio_costo NO se lee del body en
+// ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
+function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo }) {
+  if (!nombre || !nombre.trim()) {
+    return 'El producto necesita un nombre.';
+  }
+  const venta = normalizarPrecio(precio_venta);
+  if (Number.isNaN(venta) || venta < 0) {
+    return 'El precio de venta debe ser un número mayor o igual a 0.';
+  }
+  const minimo = normalizarPrecio(stock_minimo);
+  const maximo = normalizarStockMaximo(stock_maximo);
+  if (Number.isNaN(minimo) || minimo < 0 || (maximo !== null && (Number.isNaN(maximo) || maximo < 0))) {
+    return 'El stock mínimo y máximo deben ser números mayores o iguales a 0.';
+  }
+  if (maximo !== null && maximo < minimo) {
+    return 'El stock máximo no puede ser menor que el mínimo.';
+  }
+  return null;
+}
+
+app.post('/api/productos', (req, res) => {
+  const error = validarProducto(req.body);
+  if (error) {
+    return res.status(400).json({ error });
+  }
+
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo } = req.body;
+  const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
+
+  let lastInsertRowid;
+  try {
+    // precio_costo arranca en 0 a propósito: un producto recién creado
+    // todavía no se compró, así que no tiene costo real. Lo va a fijar la
+    // primera compra que lo incluya.
+    ({ lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo)
+         VALUES (?, ?, 0, ?, ?, ?, ?)`
+      )
+      .run(
+        nombre.trim(),
+        skuNormalizado,
+        normalizarPrecio(precio_venta),
+        activo === false || activo === 0 ? 0 : 1,
+        normalizarPrecio(stock_minimo),
+        normalizarStockMaximo(stock_maximo)
+      ));
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'Ya existe un producto con ese SKU.' });
+    }
+    throw err;
+  }
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.patch('/api/productos/:id', (req, res) => {
+  const productoId = Number(req.params.id);
+  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
+
+  const error = validarProducto(req.body);
+  if (error) {
+    return res.status(400).json({ error });
+  }
+
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo } = req.body;
+  const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
+
+  try {
+    // precio_costo queda deliberadamente fuera del UPDATE: es el promedio
+    // ponderado que calculan las compras, editarlo a mano acá rompería la
+    // trazabilidad del costo real.
+    db.prepare(
+      `UPDATE productos
+          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?
+        WHERE id = ?`
+    ).run(
+      nombre.trim(),
+      skuNormalizado,
+      normalizarPrecio(precio_venta),
+      activo === false || activo === 0 ? 0 : 1,
+      normalizarPrecio(stock_minimo),
+      normalizarStockMaximo(stock_maximo),
+      productoId
+    );
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'Ya existe un producto con ese SKU.' });
+    }
+    throw err;
+  }
+  res.json({ id: productoId });
+});
+
+// Historial de movimientos de stock de un producto. El stock resultante se
+// calcula acumulando desde el movimiento más viejo (CLAUDE.md §5 pide poder
+// ver el stock anterior y posterior de cada movimiento) y recién ahí se da
+// vuelta la lista, para mostrar lo más reciente primero.
+app.get('/api/productos/:id/movimientos', (req, res) => {
+  const productoId = Number(req.params.id);
+  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
+
+  const movimientos = db
     .prepare(
-      `SELECT productos.id, productos.nombre, productos.sku, productos.precio_costo,
-              productos.precio_venta, productos.activo,
-              COALESCE(stock_actual.cantidad, 0) AS stock
-       FROM productos
-       LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
-       ORDER BY productos.nombre`
+      `SELECT id, tipo, cantidad, origen, venta_id, compra_id, fecha, nota
+         FROM movimientos_stock
+        WHERE producto_id = ?
+        ORDER BY fecha, id`
     )
-    .all();
-  res.json(productos);
+    .all(productoId);
+
+  let acumulado = 0;
+  const conSaldo = movimientos.map((m) => {
+    const delta = m.tipo === 'salida' ? -m.cantidad : m.cantidad;
+    const stockAnterior = acumulado;
+    acumulado += delta;
+    return { ...m, delta, stock_anterior: stockAnterior, stock_posterior: acumulado };
+  });
+
+  res.json(conSaldo.reverse());
 });
 
 /* ---------- Proveedores ---------- */
@@ -171,17 +332,27 @@ app.post('/api/proveedores', (req, res) => {
 
 /* ---------- Stock ---------- */
 
+// Stock no devuelve precio_venta a propósito: esta pantalla es sobre
+// cuánta mercadería hay y cuánto vale, no sobre a cuánto se vende (eso
+// vive en Productos).
 app.get('/api/stock', (req, res) => {
   const stock = db
     .prepare(
-      `SELECT productos.id, productos.nombre, productos.precio_costo, productos.precio_venta,
+      `SELECT productos.id, productos.nombre, productos.precio_costo,
+              productos.stock_minimo, productos.stock_maximo,
               COALESCE(stock_actual.cantidad, 0) AS stock
        FROM productos
        LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
        ORDER BY productos.nombre`
     )
     .all();
-  res.json(stock);
+  res.json(
+    stock.map((p) => ({
+      ...p,
+      valorizado: p.precio_costo * p.stock,
+      estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo)
+    }))
+  );
 });
 
 app.post('/api/stock/ajuste', (req, res) => {
@@ -457,15 +628,72 @@ app.post('/api/ventas/:id/anular', (req, res) => {
   res.json({ id: ventaId, estado: 'anulada' });
 });
 
+// Restaurar desde la papelera: vuelve a aplicar el efecto completo de la
+// venta, o sea descuenta el stock otra vez y regenera la deuda del cliente.
+// Puede fallar si en el medio se vendió el stock que había vuelto.
+app.post('/api/ventas/:id/restaurar', (req, res) => {
+  const ventaId = Number(req.params.id);
+
+  const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  if (!venta) {
+    return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  if (venta.estado !== 'anulada') {
+    return res.status(400).json({ error: 'Esta venta no está en la papelera.' });
+  }
+
+  const items = db
+    .prepare(
+      `SELECT venta_items.producto_id, venta_items.cantidad, venta_items.precio_unitario, productos.nombre
+         FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+        WHERE venta_id = ?`
+    )
+    .all(ventaId);
+
+  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+  for (const item of items) {
+    const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+    if (stockActual - item.cantidad < 0) {
+      return res.status(400).json({
+        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta venta.`
+      });
+    }
+  }
+
+  withTransaction(() => {
+    db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
+
+    const insertMovimiento = db.prepare(
+      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id, nota) VALUES (?, 'salida', ?, 'venta', ?, 'Restaurada desde la papelera')"
+    );
+    let total = 0;
+    for (const item of items) {
+      insertMovimiento.run(item.producto_id, item.cantidad, ventaId);
+      total += item.cantidad * item.precio_unitario;
+    }
+
+    db.prepare(
+      "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+    ).run(venta.cliente_id, total, ventaId);
+  });
+
+  res.json({ id: ventaId, estado: 'activa' });
+});
+
 /* ---------- Compras ---------- */
 
+const ESTADOS_ENVIO = ['pedido', 'en_camino', 'recibido'];
+
+// El total de una compra incluye el envío: es plata que se le debe al
+// proveedor igual que la mercadería (CLAUDE.md §6 lo lista como "costos
+// adicionales" dentro de la cabecera de la compra).
 app.get('/api/compras', (req, res) => {
   const compras = db
     .prepare(
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
-              compras.estado, compras.estado_envio,
+              compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM compra_items WHERE compra_items.compra_id = compras.id) AS total,
+                 FROM compra_items WHERE compra_items.compra_id = compras.id) AS subtotal,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM pagos WHERE pagos.compra_id = compras.id) AS pagado
        FROM compras
@@ -474,19 +702,69 @@ app.get('/api/compras', (req, res) => {
     )
     .all();
   res.json(
-    compras.map((c) => ({
-      ...c,
-      estado_pago: c.pagado <= 0 ? 'pendiente' : c.pagado >= c.total ? 'pagado' : 'parcial'
-    }))
+    compras.map((c) => {
+      const total = c.subtotal + c.costo_envio;
+      return {
+        ...c,
+        total,
+        estado_pago: c.pagado <= 0 ? 'pendiente' : c.pagado >= total ? 'pagado' : 'parcial'
+      };
+    })
   );
 });
 
-app.post('/api/compras', (req, res) => {
-  const { proveedor, items, fecha, estado_envio } = req.body;
+// Prorrateo del costo de envío por valor del ítem (CLAUDE.md §7): si el
+// producto A vale el 80% de la compra, absorbe el 80% del envío. El caso
+// borde de una compra con subtotal 0 (todo a precio cero) se reparte por
+// cantidad, para no perder el costo del envío.
+function prorratearEnvio(items, costoEnvio) {
+  const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
+  const cantidadTotal = items.reduce((acc, i) => acc + i.cantidad, 0);
 
+  return items.map((item) => {
+    const proporcion =
+      subtotal > 0 ? (item.cantidad * item.precio_unitario) / subtotal : item.cantidad / cantidadTotal;
+    const envioAsignado = costoEnvio * proporcion;
+    return { ...item, costo_real_unitario: item.precio_unitario + envioAsignado / item.cantidad };
+  });
+}
+
+// Una compra nace como borrador: no toca stock, ni costo, ni deuda. Es
+// nada más el papel armado. Los efectos aparecen recién al efectuar el
+// pedido (deuda) y al recibir la mercadería (stock y costo).
+app.post('/api/compras', (req, res) => {
+  const { proveedor, items, fecha, costo_envio } = req.body;
+
+  if (!proveedor || !String(proveedor).trim()) {
+    return res.status(400).json({ error: 'La compra necesita un proveedor.' });
+  }
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La compra necesita al menos un item.' });
   }
+  for (const item of items) {
+    if (!item.producto || !String(item.producto).trim()) {
+      return res.status(400).json({ error: 'Todos los items necesitan un producto.' });
+    }
+    if (!(Number(item.cantidad) > 0)) {
+      return res.status(400).json({ error: 'La cantidad de cada item debe ser mayor a 0.' });
+    }
+    if (!(Number(item.precio_unitario) >= 0)) {
+      return res.status(400).json({ error: 'El costo unitario no puede ser negativo.' });
+    }
+  }
+  const costoEnvio = normalizarPrecio(costo_envio);
+  if (Number.isNaN(costoEnvio) || costoEnvio < 0) {
+    return res.status(400).json({ error: 'El costo de envío debe ser un número mayor o igual a 0.' });
+  }
+
+  const itemsProrrateados = prorratearEnvio(
+    items.map((i) => ({
+      producto: String(i.producto).trim(),
+      cantidad: Number(i.cantidad),
+      precio_unitario: Number(i.precio_unitario)
+    })),
+    costoEnvio
+  );
 
   const compraId = withTransaction(() => {
     let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
@@ -497,18 +775,11 @@ app.post('/api/compras', (req, res) => {
       proveedorRow = { id: lastInsertRowid };
     }
 
-    // Columnas opcionales: se arman a mano para que, si no vienen, apliquen
-    // los DEFAULT de la tabla (fecha de hoy, estado_envio 'recibido') en
-    // vez de pisarlos con un valor calculado en JS.
-    const columnas = ['proveedor_id'];
-    const valores = [proveedorRow.id];
+    const columnas = ['proveedor_id', 'costo_envio'];
+    const valores = [proveedorRow.id, costoEnvio];
     if (fecha) {
       columnas.push('fecha');
       valores.push(fecha);
-    }
-    if (estado_envio) {
-      columnas.push('estado_envio');
-      valores.push(estado_envio);
     }
     const { lastInsertRowid: nuevaCompraId } = db
       .prepare(
@@ -516,58 +787,112 @@ app.post('/api/compras', (req, res) => {
       )
       .run(...valores);
 
-    const buscarProducto = db.prepare('SELECT id, precio_costo FROM productos WHERE nombre = ?');
+    const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ?');
+    // Un producto nuevo nace con costo 0: todavía no entró nada al
+    // depósito, su costo lo va a fijar la recepción de esta compra.
     const crearProducto = db.prepare(
-      'INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, ?, 0)'
+      'INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)'
     );
-    const buscarStockActual = db.prepare(
-      'SELECT cantidad FROM stock_actual WHERE producto_id = ?'
-    );
-    const actualizarPrecioCosto = db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?');
     const insertItem = db.prepare(
-      'INSERT INTO compra_items (compra_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)'
-    );
-    const insertMovimiento = db.prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id) VALUES (?, 'entrada', ?, 'compra', ?)"
+      `INSERT INTO compra_items (compra_id, producto_id, cantidad, precio_unitario, costo_real_unitario)
+       VALUES (?, ?, ?, ?, ?)`
     );
 
-    let total = 0;
-    for (const item of items) {
+    for (const item of itemsProrrateados) {
       let productoRow = buscarProducto.get(item.producto);
       if (!productoRow) {
-        const { lastInsertRowid } = crearProducto.run(item.producto, item.precio_unitario);
+        const { lastInsertRowid } = crearProducto.run(item.producto);
         productoRow = { id: lastInsertRowid };
-      } else {
-        // Costo promedio ponderado: el costo nuevo mezcla el stock que ya
-        // tenías (a su costo anterior) con lo que estás comprando ahora,
-        // pesado por cantidad. Si no había stock previo, da exactamente el
-        // precio de esta compra (no hace falta un caso especial aparte).
-        const stockPrevio = buscarStockActual.get(productoRow.id)?.cantidad ?? 0;
-        const costoPromedioNuevo =
-          (stockPrevio * productoRow.precio_costo + item.cantidad * item.precio_unitario) /
-          (stockPrevio + item.cantidad);
-        actualizarPrecioCosto.run(costoPromedioNuevo, productoRow.id);
       }
-
-      insertItem.run(nuevaCompraId, productoRow.id, item.cantidad, item.precio_unitario);
-      insertMovimiento.run(productoRow.id, item.cantidad, nuevaCompraId);
-      total += item.cantidad * item.precio_unitario;
+      insertItem.run(
+        nuevaCompraId,
+        productoRow.id,
+        item.cantidad,
+        item.precio_unitario,
+        item.costo_real_unitario
+      );
     }
-
-    db.prepare(
-      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'compra', ?, ?)"
-    ).run(proveedorRow.id, total, nuevaCompraId);
 
     return nuevaCompraId;
   });
 
-  res.status(201).json({ id: compraId });
+  res.status(201).json({ id: compraId, estado: 'borrador' });
 });
+
+// "Efectuar el pedido": el borrador pasa a ser una compra real y nace la
+// deuda con el proveedor. El stock todavía no se toca — la mercadería no
+// llegó.
+app.post('/api/compras/:id/confirmar', (req, res) => {
+  const compraId = Number(req.params.id);
+
+  const compra = db
+    .prepare('SELECT id, proveedor_id, estado, costo_envio FROM compras WHERE id = ?')
+    .get(compraId);
+  if (!compra) {
+    return res.status(404).json({ error: 'Compra no encontrada.' });
+  }
+  if (compra.estado !== 'borrador') {
+    return res.status(400).json({ error: 'Esta compra ya fue efectuada.' });
+  }
+
+  withTransaction(() => {
+    db.prepare("UPDATE compras SET estado = 'activa' WHERE id = ?").run(compraId);
+
+    const { subtotal } = db
+      .prepare(
+        `SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS subtotal
+           FROM compra_items WHERE compra_id = ?`
+      )
+      .get(compraId);
+
+    db.prepare(
+      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'compra', ?, ?)"
+    ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
+  });
+
+  res.json({ id: compraId, estado: 'activa' });
+});
+
+// Suma el stock de una compra y recalcula el costo promedio ponderado de
+// cada producto. Usa costo_real_unitario (con el envío ya prorrateado), no
+// el precio unitario pelado. Se llama dentro de una transacción.
+function aplicarStockCompra(compraId) {
+  const items = db
+    .prepare(
+      'SELECT producto_id, cantidad, costo_real_unitario, precio_unitario FROM compra_items WHERE compra_id = ?'
+    )
+    .all(compraId);
+
+  const buscarProducto = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
+  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+  const actualizarPrecioCosto = db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?');
+  const insertMovimiento = db.prepare(
+    `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, costo_unitario)
+     VALUES (?, 'entrada', ?, 'compra', ?, ?)`
+  );
+
+  for (const item of items) {
+    const costoReal = item.costo_real_unitario ?? item.precio_unitario;
+    // El stock previo se acota a 0: si quedó negativo por un ajuste, no
+    // tiene sentido que arrastre el promedio hacia valores absurdos.
+    const stockPrevio = Math.max(buscarStockActual.get(item.producto_id)?.cantidad ?? 0, 0);
+    const costoAnterior = buscarProducto.get(item.producto_id).precio_costo;
+    const costoPromedio =
+      (stockPrevio * costoAnterior + item.cantidad * costoReal) / (stockPrevio + item.cantidad);
+
+    actualizarPrecioCosto.run(costoPromedio, item.producto_id);
+    insertMovimiento.run(item.producto_id, item.cantidad, compraId, costoReal);
+  }
+
+  db.prepare('UPDATE compras SET stock_aplicado = 1 WHERE id = ?').run(compraId);
+}
 
 app.post('/api/compras/:id/anular', (req, res) => {
   const compraId = Number(req.params.id);
 
-  const compra = db.prepare('SELECT id, proveedor_id, estado FROM compras WHERE id = ?').get(compraId);
+  const compra = db
+    .prepare('SELECT id, proveedor_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
+    .get(compraId);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -587,46 +912,142 @@ app.post('/api/compras/:id/anular', (req, res) => {
        WHERE compra_id = ?`
     )
     .all(compraId);
-  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
-  for (const item of items) {
-    const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
-    if (stockActual - item.cantidad < 0) {
-      return res.status(400).json({
-        error: `"${item.nombre}" ya se vendió parcial o totalmente, no se puede anular la compra.`
-      });
+
+  // El stock solo hay que devolverlo si esta compra llegó a sumarlo (o sea,
+  // si se marcó recibida). Un borrador o un pedido en camino no tocaron el
+  // depósito, así que no hay nada que revertir ni que validar.
+  if (compra.stock_aplicado) {
+    const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+    for (const item of items) {
+      const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+      if (stockActual - item.cantidad < 0) {
+        return res.status(400).json({
+          error: `"${item.nombre}" ya se vendió parcial o totalmente, no se puede anular la compra.`
+        });
+      }
     }
   }
 
   withTransaction(() => {
     db.prepare("UPDATE compras SET estado = 'anulada' WHERE id = ?").run(compraId);
 
-    const insertMovimiento = db.prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, nota) VALUES (?, 'salida', ?, 'compra', ?, 'Reversión por anulación')"
-    );
-    let total = 0;
-    for (const item of items) {
-      insertMovimiento.run(item.producto_id, item.cantidad, compraId);
-      total += item.cantidad * item.precio_unitario;
+    if (compra.stock_aplicado) {
+      const insertMovimiento = db.prepare(
+        "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, nota) VALUES (?, 'salida', ?, 'compra', ?, 'Reversión por anulación')"
+      );
+      for (const item of items) {
+        insertMovimiento.run(item.producto_id, item.cantidad, compraId);
+      }
+      // Queda en 0 para que, si se restaura desde la papelera, el stock se
+      // vuelva a aplicar en vez de darse por aplicado.
+      db.prepare('UPDATE compras SET stock_aplicado = 0 WHERE id = ?').run(compraId);
     }
 
-    db.prepare(
-      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
-    ).run(compra.proveedor_id, -total, compraId);
+    // La deuda solo existe si el pedido se llegó a efectuar: un borrador
+    // anulado no le debe nada a nadie.
+    if (compra.estado === 'activa') {
+      const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
+      db.prepare(
+        "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+      ).run(compra.proveedor_id, -(subtotal + compra.costo_envio), compraId);
+    }
   });
 
   res.json({ id: compraId, estado: 'anulada' });
 });
 
+// Restaurar desde la papelera. Una compra que se anuló siendo borrador
+// vuelve a ser borrador (nunca tuvo deuda ni stock); una que ya se había
+// efectuado vuelve a estar activa, con su deuda, y si además estaba
+// recibida se le vuelve a sumar el stock.
+app.post('/api/compras/:id/restaurar', (req, res) => {
+  const compraId = Number(req.params.id);
+
+  const compra = db
+    .prepare('SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ?')
+    .get(compraId);
+  if (!compra) {
+    return res.status(404).json({ error: 'Compra no encontrada.' });
+  }
+  if (compra.estado !== 'anulada') {
+    return res.status(400).json({ error: 'Esta compra no está en la papelera.' });
+  }
+
+  // No se guarda el estado previo a la anulación: se deduce de si llegó a
+  // generar deuda. Si nunca hubo un movimiento 'compra' en la cuenta
+  // corriente, era un borrador.
+  const fueEfectuada = db
+    .prepare("SELECT 1 FROM movimientos_cc_proveedores WHERE compra_id = ? AND tipo = 'compra'")
+    .get(compraId);
+
+  if (!fueEfectuada) {
+    db.prepare("UPDATE compras SET estado = 'borrador' WHERE id = ?").run(compraId);
+    return res.json({ id: compraId, estado: 'borrador' });
+  }
+
+  withTransaction(() => {
+    db.prepare("UPDATE compras SET estado = 'activa' WHERE id = ?").run(compraId);
+
+    const { subtotal } = db
+      .prepare(
+        `SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS subtotal
+           FROM compra_items WHERE compra_id = ?`
+      )
+      .get(compraId);
+    db.prepare(
+      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+    ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
+
+    if (compra.estado_envio === 'recibido') {
+      aplicarStockCompra(compraId);
+    }
+  });
+
+  res.json({ id: compraId, estado: 'activa' });
+});
+
+// El estado de envío es el que gobierna el stock: al marcar 'recibido' la
+// mercadería entra al depósito y recién ahí se recalcula el costo.
 app.patch('/api/compras/:id/estado-envio', (req, res) => {
   const compraId = Number(req.params.id);
   const { estado_envio } = req.body;
 
-  const compra = db.prepare('SELECT id FROM compras WHERE id = ?').get(compraId);
+  if (!ESTADOS_ENVIO.includes(estado_envio)) {
+    return res.status(400).json({ error: 'Estado de envío inválido.' });
+  }
+
+  const compra = db
+    .prepare('SELECT id, estado, estado_envio, stock_aplicado FROM compras WHERE id = ?')
+    .get(compraId);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
+  if (compra.estado === 'borrador') {
+    return res
+      .status(400)
+      .json({ error: 'Esta compra todavía es un borrador: primero hay que efectuar el pedido.' });
+  }
+  if (compra.estado === 'anulada') {
+    return res.status(400).json({ error: 'Esta compra está anulada.' });
+  }
+  // Volver atrás desde "recibido" obligaría a deshacer el costo promedio
+  // ponderado, que se sobrescribe de forma destructiva y no tiene historial
+  // para reconstruirlo. Si hay que corregir, se anula la compra.
+  if (compra.estado_envio === 'recibido' && estado_envio !== 'recibido') {
+    return res.status(400).json({
+      error: 'Una compra ya recibida no puede volver atrás. Si te equivocaste, anulá la compra.'
+    });
+  }
 
-  db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estado_envio, compraId);
+  if (estado_envio === 'recibido' && !compra.stock_aplicado) {
+    withTransaction(() => {
+      db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estado_envio, compraId);
+      aplicarStockCompra(compraId);
+    });
+  } else {
+    db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estado_envio, compraId);
+  }
+
   res.json({ id: compraId, estado_envio });
 });
 

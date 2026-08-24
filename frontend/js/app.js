@@ -252,9 +252,11 @@ function totalItems(contenedor) {
   return total;
 }
 
-/* ---------- Productos (sin pantalla propia: alimentan Venta/Compra) ---------- */
+/* ---------- Productos ---------- */
 
 let productos = [];
+let productoEditandoId = null;
+let productoFichaId = null;
 
 function poblarDatalistProductos() {
   const opciones = productos.map((p) => `<option value="${p.nombre}"></option>`).join("");
@@ -262,11 +264,166 @@ function poblarDatalistProductos() {
   document.getElementById("productosVenta").innerHTML = opciones;
 }
 
+const porcentaje = (n) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
+
+function renderProductos(lista) {
+  const body = document.getElementById("productosBody");
+  body.innerHTML = "";
+
+  if (lista.length === 0) {
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center; color: var(--ink-muted); padding: 24px;">
+      Todavía no hay productos cargados.
+    </td></tr>`;
+    return;
+  }
+
+  for (const p of lista) {
+    const tr = document.createElement("tr");
+    tr.className = "fila-clickeable";
+    tr.innerHTML = `
+      <td data-label="Nombre">${p.nombre}</td>
+      <td data-label="SKU">${p.sku || "—"}</td>
+      <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
+      <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
+      <td data-label="Precio" class="align-right mono">${money(p.precio_venta)}</td>
+      <td data-label="Margen" class="align-right mono">${p.margen === null ? "—" : porcentaje(p.margen)}</td>
+      <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
+        p.activo ? "Activo" : "Inactivo"
+      }</span></td>
+    `;
+    tr.addEventListener("click", () => abrirFichaProducto(p.id));
+    body.appendChild(tr);
+  }
+}
+
+// La ficha se arma con la fila que ya está en el array `productos` (la
+// lista trae todo lo que hace falta), así que el único fetch es el del
+// historial de movimientos.
+async function abrirFichaProducto(id) {
+  productoFichaId = id;
+  const producto = productos.find((p) => p.id === id);
+  if (!producto) return;
+
+  document.getElementById("fichaProductoNombre").textContent = producto.nombre;
+  document.getElementById("fichaProductoCosto").textContent = money(producto.precio_costo);
+  document.getElementById("fichaProductoStock").textContent = numero(producto.stock);
+  document.getElementById("fichaProductoValorizado").textContent = money(producto.valorizado);
+
+  const campos = [
+    ["SKU", producto.sku],
+    ["Precio de venta", money(producto.precio_venta)],
+    ["Margen", producto.margen === null ? null : porcentaje(producto.margen)],
+    ["Stock mínimo", numero(producto.stock_minimo)],
+    ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
+    ["Estado de stock", STOCK_LABEL[producto.estado_stock]],
+    ["Activo", producto.activo ? "Sí" : "No"]
+  ];
+  document.getElementById("fichaProductoDatos").innerHTML = campos
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
+    .join("");
+
+  const movimientos = await (await fetch(`/api/productos/${id}/movimientos`)).json();
+  const body = document.getElementById("fichaProductoMovimientos");
+  body.innerHTML =
+    movimientos.length === 0
+      ? `<tr><td colspan="5" style="text-align:center; color: var(--ink-muted); padding: 24px;">
+           Este producto todavía no tiene movimientos de stock.
+         </td></tr>`
+      : movimientos
+          .map((m) => {
+            const origen =
+              m.origen === "venta"
+                ? `Venta #${m.venta_id}`
+                : m.origen === "compra"
+                ? `Compra #${m.compra_id}`
+                : "Ajuste manual";
+            const signo = m.delta > 0 ? "+" : "";
+            return `
+        <tr>
+          <td data-label="Fecha">${m.fecha}</td>
+          <td data-label="Origen">${origen}</td>
+          <td data-label="Cantidad" class="align-right mono">${signo}${numero(m.delta)}</td>
+          <td data-label="Stock resultante" class="align-right mono">${numero(m.stock_posterior)}</td>
+          <td data-label="Nota">${m.nota || "—"}</td>
+        </tr>`;
+          })
+          .join("");
+
+  mostrarVista("producto-detalle");
+}
+
 async function cargarProductos() {
   const res = await fetch("/api/productos");
   productos = await res.json();
   poblarDatalistProductos();
+  renderProductos(productos);
 }
+
+document.getElementById("productosSearch").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  renderProductos(
+    productos.filter((p) => [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q)))
+  );
+});
+
+const modalProducto = document.getElementById("modalProducto");
+
+function abrirModalProducto(producto = null) {
+  productoEditandoId = producto?.id ?? null;
+  const form = document.getElementById("formProducto");
+  document.getElementById("modalProductoTitulo").textContent = producto ? "Editar producto" : "Nuevo producto";
+  form.nombre.value = producto?.nombre ?? "";
+  form.sku.value = producto?.sku ?? "";
+  form.precio_venta.value = producto?.precio_venta ?? "";
+  form.stock_minimo.value = producto?.stock_minimo ?? "";
+  form.stock_maximo.value = producto?.stock_maximo ?? "";
+  form.activo.checked = producto ? !!producto.activo : true;
+  modalProducto.hidden = false;
+}
+
+document.getElementById("btnNuevoProducto").addEventListener("click", () => abrirModalProducto());
+document.getElementById("btnEditarProducto").addEventListener("click", () => {
+  abrirModalProducto(productos.find((p) => p.id === productoFichaId));
+});
+document.getElementById("btnVolverProductos").addEventListener("click", () => mostrarVista("productos"));
+document.getElementById("modalProductoClose").addEventListener("click", () => {
+  modalProducto.hidden = true;
+});
+modalProducto.addEventListener("click", (e) => {
+  if (e.target === modalProducto) modalProducto.hidden = true;
+});
+
+document.getElementById("formProducto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const datos = {
+    nombre: form.nombre.value,
+    sku: form.sku.value || null,
+    precio_venta: form.precio_venta.value,
+    stock_minimo: form.stock_minimo.value,
+    stock_maximo: form.stock_maximo.value,
+    activo: form.activo.checked
+  };
+
+  const res = await fetch(
+    productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos",
+    {
+      method: productoEditandoId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(datos)
+    }
+  );
+  if (!(await manejarError(res, "No se pudo guardar el producto."))) return;
+
+  const eraEdicion = productoEditandoId !== null;
+  await cargarProductos();
+  // Si se editaba desde la ficha, se refresca para que muestre los datos
+  // nuevos en vez de quedar con los viejos detrás del modal.
+  if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
+  form.reset();
+  modalProducto.hidden = true;
+});
 
 /* ---------- Cuentas de tesorería (sin pantalla propia todavía) ---------- */
 
@@ -296,6 +453,21 @@ async function manejarError(res, accionDefault) {
 
 /* ---------- Stock ---------- */
 
+// El "alto" comparte color con el pendiente (naranja): no es un error,
+// pero es plata inmovilizada de más y conviene que salte a la vista.
+const STOCK_CLASE = {
+  sin_stock: "status-vencido",
+  bajo: "status-vencido",
+  normal: "status-cobrado",
+  alto: "status-pendiente"
+};
+const STOCK_LABEL = {
+  sin_stock: "Sin stock",
+  bajo: "Stock bajo",
+  normal: "Normal",
+  alto: "Stock alto"
+};
+
 function renderStock(lista) {
   const body = document.getElementById("stockBody");
   body.innerHTML = "";
@@ -312,8 +484,10 @@ function renderStock(lista) {
     tr.innerHTML = `
       <td data-label="Producto">${p.nombre}</td>
       <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
-      <td data-label="Venta" class="align-right mono">${money(p.precio_venta)}</td>
       <td data-label="Stock actual" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
+        STOCK_LABEL[p.estado_stock]
+      }</span></td>
     `;
     body.appendChild(tr);
   }
@@ -380,8 +554,6 @@ function renderVentas(lista) {
 
   for (const v of lista) {
     const tr = document.createElement("tr");
-    const anulada = v.estado === "anulada";
-    if (anulada) tr.className = "fila-anulada";
 
     const accionFactura = v.facturada
       ? `<span class="status status-cobrado">Facturada</span>`
@@ -398,18 +570,7 @@ function renderVentas(lista) {
         ? `<button type="button" class="btn-icon-danger btn-anular-venta" data-id="${v.id}" title="Anular venta" aria-label="Anular venta">${ICONO_TACHO}</button>`
         : "";
 
-    tr.innerHTML = anulada
-      ? `
-      <td data-label="N°" class="mono">#${v.id}</td>
-      <td data-label="Cliente">${v.cliente}</td>
-      <td data-label="Fecha">${v.fecha}</td>
-      <td data-label="Costo" class="align-right mono">${money(v.costo_total)}</td>
-      <td data-label="Total" class="align-center mono">${money(v.total)}</td>
-      <td data-label="Ganancia" class="align-right mono">${money(v.margen)}</td>
-      <td data-label="Cobro"><span class="status status-vencido">anulada</span></td>
-      <td data-label=""></td>
-    `
-      : `
+    tr.innerHTML = `
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente">${v.cliente}</td>
       <td data-label="Fecha">${v.fecha}</td>
@@ -431,7 +592,7 @@ function renderVentas(lista) {
 
   body.querySelectorAll(".btn-anular-venta").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("¿Anular esta venta? Esta acción revierte el stock y no se puede deshacer.")) return;
+      if (!confirm("¿Anular esta venta? Va a la papelera y el stock vuelve al depósito.")) return;
       const res = await fetch(`/api/ventas/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la venta."))) return;
       await Promise.all([cargarVentas(), cargarStock(), cargarProductos()]);
@@ -443,10 +604,14 @@ function renderVentas(lista) {
   });
 }
 
+// `ventas` guarda todo lo que devuelve la API (incluidas las anuladas)
+// porque la papelera se arma sobre ese mismo array; la tabla de Ventas
+// filtra al renderizar.
 async function cargarVentas() {
   const res = await fetch("/api/ventas");
   ventas = await res.json();
-  renderVentas(ventas);
+  renderVentas(ventas.filter((v) => v.estado !== "anulada"));
+  renderPapelera();
 }
 
 let ventas = [];
@@ -626,18 +791,28 @@ function renderCompras(lista) {
 
   for (const c of lista) {
     const tr = document.createElement("tr");
-    const anulada = c.estado === "anulada";
-    if (anulada) tr.className = "fila-anulada";
+    const borrador = c.estado === "borrador";
 
-    if (anulada) {
+    // Anular solo tiene sentido si no tiene pagos (el backend lo vuelve a
+    // validar, esto es nada más para no invitar a un click que ya sabemos
+    // que va a fallar).
+    const accionAnular =
+      c.estado_pago === "pendiente"
+        ? `<button type="button" class="btn-icon-danger btn-anular-compra" data-id="${c.id}" title="Anular compra" aria-label="Anular compra">${ICONO_TACHO}</button>`
+        : "";
+
+    // Un borrador todavía no le debe nada a nadie, así que no se puede
+    // pagar ni tiene estado de envío que tocar: lo único que ofrece es
+    // efectuar el pedido.
+    if (borrador) {
       tr.innerHTML = `
         <td data-label="N°" class="mono">#${c.id}</td>
         <td data-label="Proveedor">${c.proveedor}</td>
         <td data-label="Fecha">${c.fecha}</td>
         <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-        <td data-label="Pago"><span class="status status-vencido">anulada</span></td>
-        <td data-label="Envío">${ENVIO_LABEL[c.estado_envio]}</td>
-        <td data-label=""></td>
+        <td data-label="Pago"><span class="status status-pendiente">borrador</span></td>
+        <td data-label="Envío">—</td>
+        <td data-label=""><button type="button" class="btn-link btn-confirmar-compra" data-id="${c.id}">Efectuar pedido</button> ${accionAnular}</td>
       `;
       body.appendChild(tr);
       continue;
@@ -647,16 +822,17 @@ function renderCompras(lista) {
       c.estado_pago === "pagado"
         ? ""
         : `<button type="button" class="btn-link btn-pagar-compra" data-id="${c.id}">Pagar</button>`;
-    // Anular solo tiene sentido si no tiene pagos (el backend lo vuelve a
-    // validar, esto es nada más para no invitar a un click que ya sabemos
-    // que va a fallar).
-    const accionAnular =
-      c.estado_pago === "pendiente"
-        ? `<button type="button" class="btn-icon-danger btn-anular-compra" data-id="${c.id}" title="Anular compra" aria-label="Anular compra">${ICONO_TACHO}</button>`
-        : "";
-    const opcionesEnvio = Object.entries(ENVIO_LABEL)
-      .map(([valor, label]) => `<option value="${valor}" ${valor === c.estado_envio ? "selected" : ""}>${label}</option>`)
-      .join("");
+    // Una vez recibida no se puede volver atrás (el costo promedio ya se
+    // recalculó), así que el selector se reemplaza por texto plano.
+    const celdaEnvio =
+      c.estado_envio === "recibido"
+        ? `<span class="status status-cobrado">Recibido</span>`
+        : `<select class="select-inline select-estado-envio" data-id="${c.id}">${Object.entries(ENVIO_LABEL)
+            .map(
+              ([valor, label]) =>
+                `<option value="${valor}" ${valor === c.estado_envio ? "selected" : ""}>${label}</option>`
+            )
+            .join("")}</select>`;
 
     tr.innerHTML = `
       <td data-label="N°" class="mono">#${c.id}</td>
@@ -664,11 +840,20 @@ function renderCompras(lista) {
       <td data-label="Fecha">${c.fecha}</td>
       <td data-label="Total" class="align-right mono">${money(c.total)}</td>
       <td data-label="Pago"><span class="status ${PAGO_CLASE[c.estado_pago]}">${c.estado_pago}</span></td>
-      <td data-label="Envío"><select class="select-inline select-estado-envio" data-id="${c.id}">${opcionesEnvio}</select></td>
+      <td data-label="Envío">${celdaEnvio}</td>
       <td data-label="">${accionPago} ${accionAnular}</td>
     `;
     body.appendChild(tr);
   }
+
+  body.querySelectorAll(".btn-confirmar-compra").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("¿Efectuar el pedido? Se va a registrar la deuda con el proveedor.")) return;
+      const res = await fetch(`/api/compras/${btn.dataset.id}/confirmar`, { method: "POST" });
+      if (!(await manejarError(res, "No se pudo efectuar el pedido."))) return;
+      await cargarCompras();
+    });
+  });
 
   body.querySelectorAll(".btn-pagar-compra").forEach((btn) => {
     btn.addEventListener("click", () => abrirModalPagarCompra(Number(btn.dataset.id)));
@@ -676,7 +861,7 @@ function renderCompras(lista) {
 
   body.querySelectorAll(".btn-anular-compra").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("¿Anular esta compra? Esta acción revierte el stock y no se puede deshacer.")) return;
+      if (!confirm("¿Anular esta compra? Va a la papelera y el stock que sumó se revierte.")) return;
       const res = await fetch(`/api/compras/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la compra."))) return;
       await Promise.all([cargarCompras(), cargarStock(), cargarProductos()]);
@@ -685,12 +870,25 @@ function renderCompras(lista) {
 
   body.querySelectorAll(".select-estado-envio").forEach((select) => {
     select.addEventListener("change", async () => {
-      await fetch(`/api/compras/${select.dataset.id}/estado-envio`, {
+      if (
+        select.value === "recibido" &&
+        !confirm("¿Marcar la compra como recibida? Se va a sumar el stock y recalcular el costo.")
+      ) {
+        await cargarCompras();
+        return;
+      }
+      const res = await fetch(`/api/compras/${select.dataset.id}/estado-envio`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ estado_envio: select.value })
       });
-      await cargarCompras();
+      if (!(await manejarError(res, "No se pudo cambiar el estado de envío."))) {
+        await cargarCompras();
+        return;
+      }
+      // Recibir una compra mueve stock y costo, así que hay que refrescar
+      // esas pantallas también.
+      await Promise.all([cargarCompras(), cargarStock(), cargarProductos()]);
     });
   });
 }
@@ -700,20 +898,27 @@ let compras = [];
 async function cargarCompras() {
   const res = await fetch("/api/compras");
   compras = await res.json();
-  renderCompras(compras);
+  renderCompras(compras.filter((c) => c.estado !== "anulada"));
+  renderPapelera();
 }
 
 const modalCompra = document.getElementById("modalCompra");
 const compraItemsEl = document.getElementById("compraItems");
+const compraCostoEnvioEl = document.getElementById("compraCostoEnvio");
 
+// El envío vive fuera de #compraItems (no es un ítem), así que totalItems()
+// no lo ve y hay que sumarlo aparte.
 function actualizarTotalCompra() {
-  document.getElementById("compraTotal").textContent = money(totalItems(compraItemsEl));
+  const envio = Number(compraCostoEnvioEl.value) || 0;
+  document.getElementById("compraTotal").textContent = money(totalItems(compraItemsEl) + envio);
 }
 compraItemsEl.addEventListener("item-change", actualizarTotalCompra);
+compraCostoEnvioEl.addEventListener("input", actualizarTotalCompra);
 
 document.getElementById("btnNuevaCompra").addEventListener("click", () => {
   compraItemsEl.innerHTML = "";
   agregarFilaItemCompra(compraItemsEl);
+  compraCostoEnvioEl.value = "";
   actualizarTotalCompra();
   document.querySelector('#formCompra input[name="fecha"]').value = hoyISO();
   modalCompra.hidden = false;
@@ -738,16 +943,17 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     return;
   }
 
-  await fetch("/api/compras", {
+  const res = await fetch("/api/compras", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       proveedor: form.proveedor.value,
       fecha: form.fecha.value,
-      estado_envio: form.estado_envio.value,
+      costo_envio: form.costo_envio.value,
       items
     })
   });
+  if (!(await manejarError(res, "No se pudo guardar la compra."))) return;
 
   await Promise.all([cargarCompras(), cargarStock(), cargarProductos()]);
   form.reset();
@@ -962,6 +1168,55 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
 
 /* ---------- Carga inicial de las secciones nuevas ---------- */
 
+/* ---------- Papelera ---------- */
+
+// Se arma sobre los arrays que ya tienen Ventas y Compras (la API devuelve
+// las anuladas junto con el resto), así que no hace falta un fetch propio.
+// La llaman cargarVentas() y cargarCompras() después de refrescarse.
+function renderPapelera() {
+  const body = document.getElementById("papeleraBody");
+  const anulados = [
+    ...ventas
+      .filter((v) => v.estado === "anulada")
+      .map((v) => ({ tipo: "Venta", id: v.id, fecha: v.fecha, quien: v.cliente, total: v.total })),
+    ...compras
+      .filter((c) => c.estado === "anulada")
+      .map((c) => ({ tipo: "Compra", id: c.id, fecha: c.fecha, quien: c.proveedor, total: c.total }))
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id);
+
+  if (anulados.length === 0) {
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--ink-muted); padding: 24px;">
+      La papelera está vacía.
+    </td></tr>`;
+    return;
+  }
+
+  body.innerHTML = anulados
+    .map(
+      (d) => `
+    <tr>
+      <td data-label="Tipo">${d.tipo}</td>
+      <td data-label="N°" class="mono">#${d.id}</td>
+      <td data-label="Fecha">${d.fecha}</td>
+      <td data-label="Cliente / Proveedor">${d.quien}</td>
+      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
+      <td data-label=""><button type="button" class="btn-link btn-restaurar"
+        data-tipo="${d.tipo === "Venta" ? "ventas" : "compras"}" data-id="${d.id}">Restaurar</button></td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-restaurar").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const res = await fetch(`/api/${btn.dataset.tipo}/${btn.dataset.id}/restaurar`, {
+        method: "POST"
+      });
+      if (!(await manejarError(res, "No se pudo restaurar el documento."))) return;
+      await Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarProductos()]);
+    });
+  });
+}
+
 cargarCuentasTesoreria();
 cargarClientes();
 cargarProductos().then(() => {
@@ -976,7 +1231,15 @@ document.getElementById("navToggle").addEventListener("click", () => {
   document.getElementById("sidebar").classList.toggle("is-open");
 });
 
-const VISTAS_CONSTRUIDAS = new Set(["dashboard", "ventas", "compras", "stock", "clientes"]);
+const VISTAS_CONSTRUIDAS = new Set([
+  "dashboard",
+  "ventas",
+  "compras",
+  "stock",
+  "clientes",
+  "productos",
+  "papelera"
+]);
 const btnNuevaFactura = document.getElementById("btnNuevaFactura");
 
 function mostrarVista(viewId) {

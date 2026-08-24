@@ -57,6 +57,73 @@ if (!comprasColumnas.some((col) => col.name === 'estado_envio')) {
   );
 }
 
+// productos.stock_minimo / stock_maximo: umbrales de la alerta de stock.
+// Los productos viejos quedan con mínimo 0 y máximo NULL, o sea sin
+// alerta configurada, que es el comportamiento neutro esperado hasta que
+// alguien defina los umbrales de ese producto desde su ficha.
+const productosColumnas = db.prepare('PRAGMA table_info(productos)').all();
+if (!productosColumnas.some((col) => col.name === 'stock_minimo')) {
+  db.exec('ALTER TABLE productos ADD COLUMN stock_minimo REAL NOT NULL DEFAULT 0');
+  db.exec('ALTER TABLE productos ADD COLUMN stock_maximo REAL');
+}
+
+// compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
+// costo con el envío prorrateado. Nullable porque las filas viejas se
+// cargaron cuando no existía el concepto de costo de envío — para esas,
+// el costo real era exactamente el precio unitario.
+const compraItemsColumnas = db.prepare('PRAGMA table_info(compra_items)').all();
+if (!compraItemsColumnas.some((col) => col.name === 'costo_real_unitario')) {
+  db.exec('ALTER TABLE compra_items ADD COLUMN costo_real_unitario REAL');
+  db.exec('UPDATE compra_items SET costo_real_unitario = precio_unitario');
+}
+if (!movimientosColumnas.some((col) => col.name === 'costo_unitario')) {
+  db.exec('ALTER TABLE movimientos_stock ADD COLUMN costo_unitario REAL');
+}
+
+// compras: agregar 'borrador' al CHECK de estado obliga a reconstruir la
+// tabla, porque SQLite no permite modificar un CHECK con ALTER TABLE. Se
+// hace copiando las filas a una tabla nueva y renombrando. Es seguro
+// porque los id se preservan tal cual, así que las FK que apuntan acá
+// (compra_items, pagos, movimientos_stock, movimientos_cc_proveedores)
+// siguen resolviendo a la misma compra.
+const comprasSql = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'compras'")
+  .get();
+if (comprasSql && !comprasSql.sql.includes('borrador')) {
+  // Las compras que ya existían sumaron su stock al crearse (era la regla
+  // vieja), así que arrancan con stock_aplicado = 1 para que marcarlas
+  // como recibidas no lo vuelva a sumar. Las anuladas quedan en 0 porque
+  // su stock ya fue revertido.
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE compras_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
+        fecha TEXT NOT NULL DEFAULT (date('now')),
+        estado TEXT NOT NULL CHECK (estado IN ('borrador', 'activa', 'anulada')) DEFAULT 'borrador',
+        estado_envio TEXT NOT NULL CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido')) DEFAULT 'pedido',
+        costo_envio REAL NOT NULL DEFAULT 0,
+        stock_aplicado INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    db.exec(`
+      INSERT INTO compras_nueva (id, proveedor_id, fecha, estado, estado_envio, costo_envio, stock_aplicado)
+      SELECT id, proveedor_id, fecha, estado, estado_envio, 0,
+             CASE WHEN estado = 'anulada' THEN 0 ELSE 1 END
+        FROM compras
+    `);
+    db.exec('DROP TABLE compras');
+    db.exec('ALTER TABLE compras_nueva RENAME TO compras');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // clientes: campos de CRM agregados después de que la tabla ya existía.
 // Todos nullable: los clientes creados automáticamente desde una venta
 // solo tienen nombre, y el resto se completa desde su ficha.

@@ -37,17 +37,23 @@
         <a href="#" class="nav-item" data-view="stock">
           <span class="nav-index">04</span> Stock
         </a>
+        <a href="#" class="nav-item" data-view="productos">
+          <span class="nav-index">05</span> Productos
+        </a>
         <a href="#" class="nav-item" data-view="facturas">
-          <span class="nav-index">05</span> Facturas
+          <span class="nav-index">06</span> Facturas
         </a>
         <a href="#" class="nav-item" data-view="clientes">
-          <span class="nav-index">06</span> Clientes
+          <span class="nav-index">07</span> Clientes
         </a>
         <a href="#" class="nav-item" data-view="iva">
-          <span class="nav-index">07</span> IVA &amp; Retenciones
+          <span class="nav-index">08</span> IVA &amp; Retenciones
         </a>
         <a href="#" class="nav-item" data-view="voz">
-          <span class="nav-index">08</span> Asistente de voz
+          <span class="nav-index">09</span> Asistente de voz
+        </a>
+        <a href="#" class="nav-item" data-view="papelera">
+          <span class="nav-index">10</span> Papelera
         </a>
       </nav>
 
@@ -176,11 +182,85 @@
               <tr>
                 <th>Producto</th>
                 <th class="align-right">Costo</th>
-                <th class="align-right">Venta</th>
                 <th class="align-right">Stock actual</th>
+                <th>Estado</th>
               </tr>
             </thead>
             <tbody id="stockBody"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: Productos -->
+      <section class="view" data-view="productos" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos</h2>
+            <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
+          </div>
+          <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>SKU</th>
+                <th class="align-right">Costo</th>
+                <th class="align-right">Valorizado</th>
+                <th class="align-right">Precio</th>
+                <th class="align-right">Margen</th>
+                <th class="align-right">Stock</th>
+                <th>Activo</th>
+              </tr>
+            </thead>
+            <tbody id="productosBody"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de un producto -->
+      <section class="view" data-view="producto-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverProductos">← Volver a productos</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaProductoNombre">—</h2>
+            <button class="btn btn-primary" id="btnEditarProducto">Editar</button>
+          </div>
+          <dl class="ficha-datos" id="fichaProductoDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Resumen del producto">
+          <div class="ledger-item">
+            <span class="ledger-label">Costo promedio</span>
+            <span class="ledger-value mono" id="fichaProductoCosto">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Stock actual</span>
+            <span class="ledger-value mono" id="fichaProductoStock">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Valorizado</span>
+            <span class="ledger-value mono" id="fichaProductoValorizado">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Movimientos de stock</h2>
+          </div>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Origen</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Stock resultante</th>
+                <th>Nota</th>
+              </tr>
+            </thead>
+            <tbody id="fichaProductoMovimientos"></tbody>
           </table>
         </section>
       </section>
@@ -251,6 +331,31 @@
               </tr>
             </thead>
             <tbody id="fichaClienteHistorial"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: Papelera (ventas y compras anuladas) -->
+      <section class="view" data-view="papelera" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Papelera</h2>
+          </div>
+          <p class="form-note">
+            Documentos anulados. Restaurar vuelve a aplicar su efecto sobre el stock y las cuentas corrientes.
+          </p>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>N°</th>
+                <th>Fecha</th>
+                <th>Cliente / Proveedor</th>
+                <th class="align-right">Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="papeleraBody"></tbody>
           </table>
         </section>
       </section>
@@ -355,18 +460,16 @@
         <label>Fecha
           <input type="date" name="fecha" required />
         </label>
-        <label>Estado de envío
-          <select name="estado_envio">
-            <option value="recibido">Recibido</option>
-            <option value="pedido">Pedido</option>
-            <option value="en_camino">En camino</option>
-          </select>
-        </label>
         <div class="item-rows" id="compraItems"></div>
         <datalist id="productosSugeridos"></datalist>
         <button type="button" class="btn-add-item" id="btnAgregarItemCompra">+ agregar producto</button>
+        <label>Costo de envío
+          <input type="number" name="costo_envio" id="compraCostoEnvio" step="0.01" min="0" placeholder="0.00" />
+        </label>
+        <p class="form-note">El envío se reparte entre los productos según cuánto vale cada uno.</p>
         <p class="item-total">Total: <span class="mono" id="compraTotal">$0,00</span></p>
-        <button type="submit" class="btn btn-primary btn-full">Registrar compra</button>
+        <p class="form-note">Se guarda como borrador: no toca stock ni deuda hasta que efectúes el pedido.</p>
+        <button type="submit" class="btn btn-primary btn-full">Guardar borrador</button>
       </form>
     </div>
   </div>
@@ -418,6 +521,38 @@
           <input type="text" name="notas" placeholder="Opcional" />
         </label>
         <button type="submit" class="btn btn-primary btn-full">Guardar cliente</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal producto (alta y edición) -->
+  <div class="modal" id="modalProducto" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalProductoTitulo">Nuevo producto</h3>
+        <button class="modal-close" id="modalProductoClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formProducto" class="form">
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Nombre del producto" />
+        </label>
+        <label>SKU
+          <input type="text" name="sku" placeholder="Opcional" />
+        </label>
+        <label>Precio de venta
+          <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" />
+        </label>
+        <p class="form-note">El costo no se carga acá: lo define la compra al proveedor.</p>
+        <label>Stock mínimo
+          <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
+        </label>
+        <label>Stock máximo
+          <input type="number" name="stock_maximo" step="0.01" min="0" placeholder="Sin tope" />
+        </label>
+        <label class="form-check">
+          <input type="checkbox" name="activo" checked /> Activo
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar producto</button>
       </form>
     </div>
   </div>
