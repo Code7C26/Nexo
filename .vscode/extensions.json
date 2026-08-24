@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ritwickdey.liveserver",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "qwtel.sqlite-viewer",
+    "eamodio.gitlens"
+  ]
+}
