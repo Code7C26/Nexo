@@ -12,11 +12,14 @@
   --bg:            #F0F3EF;   /* papel frío, no crema genérico */
   --surface:       #FFFFFF;
   --surface-sunk:  #E7EBE6;
-  --ink:           #16302B;   /* verde ledger oscuro, texto principal */
+  --ink:           #121212;   /* negro neutro, texto principal y sidebar */
   --ink-muted:     #5C6B65;
   --line:          #D8DED6;
 
-  --accent-ok:     #2F9E6E;   /* verde recibo — positivo */
+  --brand:         #000000;   /* negro — color de marca Nexö */
+  --brand-contrast:#FFFFFF;
+
+  --accent-ok:     #2F9E6E;   /* verde recibo — significa "positivo/cobrado", no es color de marca */
   --accent-ok-bg:  #E4F3EB;
   --accent-warn:   #B5541F;   /* terracota-ladrillo — pendiente */
   --accent-warn-bg:#F6E7DD;
@@ -24,8 +27,8 @@
   --accent-danger-bg: #F5E2E1;
 
   /* Tipografía */
-  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
-  --font-body:    'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  --font-body:    'Plus Jakarta Sans', 'Segoe UI', sans-serif;
   --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
 
   /* Layout */
@@ -81,8 +84,8 @@ button { font-family: inherit; cursor: pointer; }
   height: 34px;
   display: grid;
   place-items: center;
-  background: var(--accent-ok);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--brand);
   font-family: var(--font-mono);
   font-weight: 700;
   border-radius: var(--radius);
@@ -107,7 +110,7 @@ button { font-family: inherit; cursor: pointer; }
   gap: 10px;
   padding: 10px 10px;
   border-radius: var(--radius);
-  color: #C7D3CC;
+  color: #CFCFCF;
   font-size: 14.5px;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -115,7 +118,7 @@ button { font-family: inherit; cursor: pointer; }
 .nav-index {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: #6E8079;
+  color: #7A7A7A;
 }
 
 .nav-item:hover {
@@ -130,7 +133,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .nav-item.is-active .nav-index {
-  color: var(--accent-ok);
+  color: var(--bg);
 }
 
 .sidebar-foot {
@@ -141,7 +144,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .sidebar-foot p {
   margin: 0 0 2px;
-  color: #8A9791;
+  color: #969696;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 11px;
@@ -193,7 +196,7 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--bg);
 }
 
-.btn-primary:hover { background: #0E211C; }
+.btn-primary:hover { background: #000000; }
 
 .btn-full { width: 100%; margin-top: 8px; }
 
@@ -294,6 +297,7 @@ button { font-family: inherit; cursor: pointer; }
 .ledger-table td.mono { font-family: var(--font-mono); }
 
 .align-right { text-align: right; }
+.align-center { text-align: center; }
 
 .ledger-table tbody tr:hover { background: var(--surface-sunk); }
 
@@ -309,12 +313,15 @@ button { font-family: inherit; cursor: pointer; }
 .status-pendiente{ background: var(--accent-warn-bg); color: var(--accent-warn); }
 .status-vencido  { background: var(--accent-danger-bg); color: var(--accent-danger); }
 
+.fila-anulada { opacity: 0.5; }
+.fila-anulada td { text-decoration: line-through; }
+
 /* ---------- Modal ---------- */
 
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 26, 22, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -378,6 +385,189 @@ button { font-family: inherit; cursor: pointer; }
   padding: 10px 12px;
   border-radius: var(--radius);
   margin: 0;
+}
+
+/* ---------- Filas de items (Venta / Compra) ---------- */
+
+.item-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.item-row select {
+  flex: 2;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.item-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.item-row .item-producto {
+  flex: 2;
+}
+
+.item-row .item-precio {
+  flex: 1.4;
+}
+
+.item-row-remove {
+  background: none;
+  border: none;
+  color: var(--accent-danger);
+  font-size: 15px;
+  padding: 4px 6px;
+}
+
+.btn-icon-danger {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--accent-danger);
+  padding: 4px;
+  border-radius: var(--radius);
+  vertical-align: middle;
+}
+
+.btn-icon-danger:hover {
+  background: var(--accent-danger-bg);
+}
+
+/* ---------- Ficha de cliente ---------- */
+
+.search-full {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.ficha-datos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+}
+
+.ficha-datos div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ficha-datos dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+}
+
+.ficha-datos dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+.fila-clickeable { cursor: pointer; }
+
+[data-view="cliente-detalle"] .panel,
+[data-view="cliente-detalle"] .ledger-strip {
+  margin-bottom: 20px;
+}
+
+.item-subtotal {
+  flex: 0 0 92px;
+  text-align: right;
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.btn-link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 0;
+  text-decoration: underline;
+}
+
+.btn-add-item {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-ok-bg);
+  color: var(--accent-ok);
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.btn-add-item:hover {
+  background: var(--accent-ok);
+  color: var(--brand-contrast);
+}
+
+.item-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* ---------- Historial de cobros / pagos ---------- */
+
+.historial-pagos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.historial-pagos-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.select-inline {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
 }
 
 /* ---------- Nav toggle (mobile) ---------- */

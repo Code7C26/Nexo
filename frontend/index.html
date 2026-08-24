@@ -6,7 +6,7 @@
   <title>Nexo — Gestión para tu negocio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -28,17 +28,26 @@
         <a href="#" class="nav-item is-active" data-view="dashboard">
           <span class="nav-index">01</span> Resumen
         </a>
+        <a href="#" class="nav-item" data-view="ventas">
+          <span class="nav-index">02</span> Ventas
+        </a>
+        <a href="#" class="nav-item" data-view="compras">
+          <span class="nav-index">03</span> Compras
+        </a>
+        <a href="#" class="nav-item" data-view="stock">
+          <span class="nav-index">04</span> Stock
+        </a>
         <a href="#" class="nav-item" data-view="facturas">
-          <span class="nav-index">02</span> Facturas
+          <span class="nav-index">05</span> Facturas
         </a>
         <a href="#" class="nav-item" data-view="clientes">
-          <span class="nav-index">03</span> Clientes
+          <span class="nav-index">06</span> Clientes
         </a>
         <a href="#" class="nav-item" data-view="iva">
-          <span class="nav-index">04</span> IVA &amp; Retenciones
+          <span class="nav-index">07</span> IVA &amp; Retenciones
         </a>
         <a href="#" class="nav-item" data-view="voz">
-          <span class="nav-index">05</span> Asistente de voz
+          <span class="nav-index">08</span> Asistente de voz
         </a>
       </nav>
 
@@ -59,46 +68,198 @@
         <button class="btn btn-primary" id="btnNuevaFactura">+ Nueva factura</button>
       </header>
 
-      <!-- Ledger summary strip: el elemento firma del diseño -->
-      <section class="ledger-strip" aria-label="Resumen del día">
-        <div class="ledger-item">
-          <span class="ledger-label">Facturado</span>
-          <span class="ledger-value mono" id="sumFacturado">$0,00</span>
-        </div>
-        <div class="ledger-divider" aria-hidden="true"></div>
-        <div class="ledger-item">
-          <span class="ledger-label">Cobrado</span>
-          <span class="ledger-value mono ledger-ok" id="sumCobrado">$0,00</span>
-        </div>
-        <div class="ledger-divider" aria-hidden="true"></div>
-        <div class="ledger-item">
-          <span class="ledger-label">Pendiente / vencido</span>
-          <span class="ledger-value mono ledger-warn" id="sumPendiente">$0,00</span>
-        </div>
+      <!-- Vista: Resumen -->
+      <section class="view" data-view="dashboard">
+
+        <!-- Ledger summary strip: el elemento firma del diseño -->
+        <section class="ledger-strip" aria-label="Resumen del día">
+          <div class="ledger-item">
+            <span class="ledger-label">Facturado</span>
+            <span class="ledger-value mono" id="sumFacturado">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Cobrado</span>
+            <span class="ledger-value mono ledger-ok" id="sumCobrado">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Pendiente / vencido</span>
+            <span class="ledger-value mono ledger-warn" id="sumPendiente">$0,00</span>
+          </div>
+        </section>
+
+        <!-- Tabla de movimientos -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Últimos movimientos</h2>
+            <input type="search" class="search" placeholder="Buscar cliente o N° de factura" id="searchInput" />
+          </div>
+
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Cliente</th>
+                <th>Concepto</th>
+                <th class="align-right">Total</th>
+                <th>Condición</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="movimientosBody">
+              <!-- filas generadas por js/app.js -->
+            </tbody>
+          </table>
+        </section>
+
       </section>
 
-      <!-- Tabla de movimientos -->
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Últimos movimientos</h2>
-          <input type="search" class="search" placeholder="Buscar cliente o N° de factura" id="searchInput" />
-        </div>
+      <!-- Vista: Ventas -->
+      <section class="view" data-view="ventas" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Ventas</h2>
+            <button class="btn btn-primary" id="btnNuevaVenta">+ Nueva venta</button>
+          </div>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Cliente</th>
+                <th>Fecha</th>
+                <th class="align-right">Costo</th>
+                <th class="align-center">Total</th>
+                <th class="align-right">Ganancia</th>
+                <th>Cobro</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ventasBody"></tbody>
+          </table>
+        </section>
+      </section>
 
-        <table class="ledger-table">
-          <thead>
-            <tr>
-              <th>N°</th>
-              <th>Cliente</th>
-              <th>Concepto</th>
-              <th class="align-right">Total</th>
-              <th>Condición</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody id="movimientosBody">
-            <!-- filas generadas por js/app.js -->
-          </tbody>
-        </table>
+      <!-- Vista: Compras -->
+      <section class="view" data-view="compras" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Compras</h2>
+            <button class="btn btn-primary" id="btnNuevaCompra">+ Nueva compra</button>
+          </div>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Proveedor</th>
+                <th>Fecha</th>
+                <th class="align-right">Total</th>
+                <th>Pago</th>
+                <th>Envío</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="comprasBody"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: Stock -->
+      <section class="view" data-view="stock" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Stock</h2>
+            <button class="btn btn-primary" id="btnAjusteStock">+ Ajustar stock</button>
+          </div>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Costo</th>
+                <th class="align-right">Venta</th>
+                <th class="align-right">Stock actual</th>
+              </tr>
+            </thead>
+            <tbody id="stockBody"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: Clientes (CRM) -->
+      <section class="view" data-view="clientes" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Clientes</h2>
+            <button class="btn btn-primary" id="btnNuevoCliente">+ Nuevo cliente</button>
+          </div>
+          <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="clientesSearch" />
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Contacto</th>
+                <th class="align-right">Compras</th>
+                <th class="align-right">Total gastado</th>
+                <th class="align-right">Deuda</th>
+              </tr>
+            </thead>
+            <tbody id="clientesBody"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de un cliente -->
+      <section class="view" data-view="cliente-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverClientes">← Volver a clientes</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaClienteNombre">—</h2>
+            <button class="btn btn-primary" id="btnEditarCliente">Editar</button>
+          </div>
+          <dl class="ficha-datos" id="fichaClienteDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Resumen del cliente">
+          <div class="ledger-item">
+            <span class="ledger-label">Total gastado</span>
+            <span class="ledger-value mono" id="fichaClienteTotal">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Compras</span>
+            <span class="ledger-value mono" id="fichaClienteCompras">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Deuda actual</span>
+            <span class="ledger-value mono ledger-warn" id="fichaClienteDeuda">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Historial de compras</h2>
+          </div>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Fecha</th>
+                <th class="align-right">Total</th>
+                <th>Cobro</th>
+              </tr>
+            </thead>
+            <tbody id="fichaClienteHistorial"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <!-- Vista: secciones todavía no construidas -->
+      <section class="view" data-view="placeholder" hidden>
+        <section class="panel">
+          <p class="form-note">Esta sección todavía no está construida.</p>
+        </section>
       </section>
 
     </main>
@@ -129,6 +290,186 @@
           </select>
         </label>
         <button type="submit" class="btn btn-primary btn-full">Registrar factura</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal ajuste de stock -->
+  <div class="modal" id="modalAjusteStock" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Ajustar stock</h3>
+        <button class="modal-close" id="modalAjusteStockClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formAjusteStock" class="form">
+        <label>Producto
+          <select name="producto_id" required></select>
+        </label>
+        <label>Cantidad
+          <input type="number" name="cantidad" required placeholder="Ej: 5 o -2" step="0.01" />
+        </label>
+        <p class="form-note">Usá un número positivo para sumar stock y negativo para restarlo.</p>
+        <label>Nota
+          <input type="text" name="nota" placeholder="Motivo del ajuste (opcional)" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar ajuste</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal nueva venta -->
+  <div class="modal" id="modalVenta" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Nueva venta</h3>
+        <button class="modal-close" id="modalVentaClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formVenta" class="form">
+        <label>Cliente
+          <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
+          <datalist id="clientesSugeridos"></datalist>
+        </label>
+        <label>Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <div class="item-rows" id="ventaItems"></div>
+        <button type="button" class="btn-add-item" id="btnAgregarItemVenta">+ agregar producto</button>
+        <datalist id="productosVenta"></datalist>
+        <p class="item-total">Total: <span class="mono" id="ventaTotal">$0,00</span></p>
+        <button type="submit" class="btn btn-primary btn-full">Registrar venta</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal nueva compra -->
+  <div class="modal" id="modalCompra" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Nueva compra</h3>
+        <button class="modal-close" id="modalCompraClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formCompra" class="form">
+        <label>Proveedor
+          <input type="text" name="proveedor" required placeholder="Nombre o razón social" />
+        </label>
+        <label>Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <label>Estado de envío
+          <select name="estado_envio">
+            <option value="recibido">Recibido</option>
+            <option value="pedido">Pedido</option>
+            <option value="en_camino">En camino</option>
+          </select>
+        </label>
+        <div class="item-rows" id="compraItems"></div>
+        <datalist id="productosSugeridos"></datalist>
+        <button type="button" class="btn-add-item" id="btnAgregarItemCompra">+ agregar producto</button>
+        <p class="item-total">Total: <span class="mono" id="compraTotal">$0,00</span></p>
+        <button type="submit" class="btn btn-primary btn-full">Registrar compra</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal facturar venta -->
+  <div class="modal" id="modalFacturarVenta" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Facturar venta</h3>
+        <button class="modal-close" id="modalFacturarVentaClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formFacturarVenta" class="form">
+        <label>Condición de venta
+          <select name="condicion">
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Generar factura</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal cliente (alta y edición) -->
+  <div class="modal" id="modalCliente" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalClienteTitulo">Nuevo cliente</h3>
+        <button class="modal-close" id="modalClienteClose" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="formCliente" class="form">
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Nombre o razón social" />
+        </label>
+        <label>Email
+          <input type="email" name="email" placeholder="Opcional" />
+        </label>
+        <label>Teléfono
+          <input type="text" name="telefono" placeholder="Opcional" />
+        </label>
+        <label>Dirección
+          <input type="text" name="direccion" placeholder="Opcional" />
+        </label>
+        <label>CUIT / DNI
+          <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <label>Notas
+          <input type="text" name="notas" placeholder="Opcional" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar cliente</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal cobrar venta -->
+  <div class="modal" id="modalCobrarVenta" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Registrar cobro</h3>
+        <button class="modal-close" id="modalCobrarVentaClose" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="item-total">Total: <span class="mono" id="cobroVentaTotal">$0,00</span></p>
+      <p class="item-total">Cobrado: <span class="mono" id="cobroVentaCobrado">$0,00</span></p>
+      <p class="item-total">Saldo pendiente: <span class="mono" id="cobroVentaSaldo">$0,00</span></p>
+      <div id="cobroVentaHistorial"></div>
+      <form id="formCobrarVenta" class="form">
+        <label>Importe
+          <input type="number" name="importe" required placeholder="0.00" step="0.01" min="0.01" />
+        </label>
+        <label>Cuenta de tesorería
+          <select name="cuenta_tesoreria_id" required></select>
+        </label>
+        <label>Nota
+          <input type="text" name="nota" placeholder="Observación (opcional)" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Registrar cobro</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal pagar compra -->
+  <div class="modal" id="modalPagarCompra" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Registrar pago</h3>
+        <button class="modal-close" id="modalPagarCompraClose" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="item-total">Total: <span class="mono" id="pagoCompraTotal">$0,00</span></p>
+      <p class="item-total">Pagado: <span class="mono" id="pagoCompraPagado">$0,00</span></p>
+      <p class="item-total">Saldo pendiente: <span class="mono" id="pagoCompraSaldo">$0,00</span></p>
+      <div id="pagoCompraHistorial"></div>
+      <form id="formPagarCompra" class="form">
+        <label>Importe
+          <input type="number" name="importe" required placeholder="0.00" step="0.01" min="0.01" />
+        </label>
+        <label>Cuenta de tesorería
+          <select name="cuenta_tesoreria_id" required></select>
+        </label>
+        <label>Nota
+          <input type="text" name="nota" placeholder="Observación (opcional)" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Registrar pago</button>
       </form>
     </div>
   </div>
