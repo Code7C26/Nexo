@@ -1,0 +1,780 @@
+<title>Manual de Usuario Nexö</title>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:             #F0F3EF;
+    --surface:        #FFFFFF;
+    --surface-sunk:   #E7EBE6;
+    --ink:            #121212;
+    --ink-muted:      #5C6B65;
+    --line:           #D8DED6;
+    --brand:          #000000;
+    --brand-contrast: #FFFFFF;
+    --accent-ok:      #2F9E6E;
+    --accent-ok-bg:   #E4F3EB;
+    --accent-warn:    #B5541F;
+    --accent-warn-bg: #F6E7DD;
+    --shadow: 0 1px 2px rgba(18,18,18,0.04), 0 8px 24px -12px rgba(18,18,18,0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:             #14181A;
+      --surface:        #1C2121;
+      --surface-sunk:   #232928;
+      --ink:            #ECEFEC;
+      --ink-muted:      #9AA8A2;
+      --line:           #333B39;
+      --brand:          #FFFFFF;
+      --brand-contrast: #121212;
+      --accent-ok:      #52C793;
+      --accent-ok-bg:   rgba(82,199,147,0.14);
+      --accent-warn:    #E29466;
+      --accent-warn-bg: rgba(226,148,102,0.14);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:             #14181A;
+    --surface:        #1C2121;
+    --surface-sunk:   #232928;
+    --ink:            #ECEFEC;
+    --ink-muted:      #9AA8A2;
+    --line:           #333B39;
+    --brand:          #FFFFFF;
+    --brand-contrast: #121212;
+    --accent-ok:      #52C793;
+    --accent-ok-bg:   rgba(82,199,147,0.14);
+    --accent-warn:    #E29466;
+    --accent-warn-bg: rgba(226,148,102,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  a { color: inherit; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 272px minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  /* ---------- Sidebar / TOC ---------- */
+
+  .toc {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 20px 40px;
+    border-right: 1px solid var(--line);
+  }
+
+  .toc-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .toc-brand .mark {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    background: var(--brand);
+    color: var(--brand-contrast);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .toc-brand .name {
+    font-weight: 800;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+  }
+  .toc-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 28px;
+  }
+
+  .toc-group-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 20px 0 8px;
+  }
+  .toc-group-label:first-of-type { margin-top: 0; }
+
+  .toc nav { display: flex; flex-direction: column; }
+  .toc a {
+    text-decoration: none;
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 6px 8px;
+    border-radius: 6px;
+    display: flex;
+    gap: 9px;
+    align-items: baseline;
+  }
+  .toc a:hover { background: var(--surface-sunk); }
+  .toc a .idx {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-muted);
+    font-size: 11px;
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  /* ---------- Main content ---------- */
+
+  main { min-width: 0; padding: 56px 56px 120px; }
+
+  .masthead { margin-bottom: 56px; }
+  .masthead .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 14px;
+  }
+  .masthead h1 {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .masthead .lede {
+    font-size: 18px;
+    color: var(--ink-muted);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  section.doc-section {
+    max-width: 720px;
+    margin-bottom: 64px;
+    scroll-margin-top: 24px;
+  }
+  section.doc-section > .head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 6px;
+  }
+  section.doc-section > .head .idx {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    color: var(--ink-muted);
+  }
+  section.doc-section h2 {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  section.doc-section > p.dek {
+    color: var(--ink-muted);
+    font-size: 16px;
+    margin: 10px 0 24px;
+    max-width: 60ch;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 4px 10px 4px 8px;
+    border-radius: 100px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .pill-ok { background: var(--accent-ok-bg); color: var(--accent-ok); }
+  .pill-ok::before { background: var(--accent-ok); }
+  .pill-pending { background: var(--surface-sunk); color: var(--ink-muted); }
+  .pill-pending::before { background: var(--ink-muted); }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 24px;
+    margin: 20px 0;
+    box-shadow: var(--shadow);
+  }
+  .panel h3 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .panel h3 + p { margin-top: 0; }
+
+  .panel-note {
+    background: var(--surface-sunk);
+    border-left: 3px solid var(--ink-muted);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    font-size: 14.5px;
+    color: var(--ink);
+    margin: 20px 0;
+  }
+  .panel-note strong { font-weight: 700; }
+
+  ol.steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+  }
+  ol.steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 16px 34px;
+    margin: 0 0 0 2px;
+    border-left: 1.5px solid var(--line);
+    font-size: 15px;
+  }
+  ol.steps li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  ol.steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: -13px;
+    top: -1px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  ol.steps code, ul.bullets code, p code, .panel-note code {
+    background: var(--surface-sunk);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.88em;
+  }
+
+  ul.bullets { margin: 0; padding: 0 0 0 0; list-style: none; }
+  ul.bullets li {
+    position: relative;
+    padding-left: 18px;
+    margin-bottom: 9px;
+    font-size: 15px;
+  }
+  ul.bullets li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 10px;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--ink-muted);
+  }
+
+  h4.action {
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-muted);
+    margin: 28px 0 12px;
+  }
+
+  .table-wrap { overflow-x: auto; margin: 20px 0; border: 1px solid var(--line); border-radius: 12px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  thead th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-muted);
+    font-weight: 600;
+    background: var(--surface-sunk);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.status { white-space: nowrap; }
+
+  dl.glossary { margin: 0; }
+  dl.glossary dt {
+    font-weight: 700;
+    font-size: 15.5px;
+    margin-top: 20px;
+  }
+  dl.glossary dt:first-child { margin-top: 0; }
+  dl.glossary dd {
+    margin: 4px 0 0;
+    color: var(--ink-muted);
+    font-size: 14.5px;
+    max-width: 58ch;
+  }
+
+  .checklist { margin: 0; padding: 0; list-style: none; }
+  .checklist li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 14.5px;
+    color: var(--ink-muted);
+    margin-bottom: 8px;
+  }
+  .checklist li::before {
+    content: '';
+    width: 14px; height: 14px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--ink-muted);
+    border-radius: 4px;
+  }
+
+  hr.rule {
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 56px 0;
+  }
+
+  .backtotop { display: none; }
+
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; }
+    .toc {
+      position: static;
+      height: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      padding: 20px;
+    }
+    .toc nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    .toc-group-label { width: 100%; }
+    main { padding: 40px 24px 100px; }
+    .masthead h1 { font-size: 32px; }
+  }
+
+  @media print {
+    .toc { display: none; }
+    .layout { display: block; }
+    main { padding: 0; }
+    body { background: #fff; color: #111; }
+    .panel { box-shadow: none; break-inside: avoid; }
+    section.doc-section { break-inside: avoid-page; max-width: none; }
+    a[href^="#top"] { display: none; }
+  }
+</style>
+
+<div class="layout">
+
+  <aside class="toc">
+    <div class="toc-brand"><span class="mark">N</span><span class="name">Nexö</span></div>
+    <p class="toc-sub">Manual de usuario · borrador</p>
+
+    <nav>
+      <a href="#intro"><span class="idx">00</span> Qué es Nexö</a>
+      <a href="#empezar"><span class="idx">·</span> Cómo entrar</a>
+      <a href="#menu"><span class="idx">·</span> Recorrido por el menú</a>
+
+      <p class="toc-group-label">Pantallas activas</p>
+      <a href="#resumen"><span class="idx">01</span> Resumen</a>
+      <a href="#ventas"><span class="idx">02</span> Ventas</a>
+      <a href="#factura-rapida"><span class="idx">·</span> Factura rápida</a>
+      <a href="#compras"><span class="idx">03</span> Compras</a>
+      <a href="#stock"><span class="idx">04</span> Stock</a>
+      <a href="#productos"><span class="idx">05</span> Productos</a>
+      <a href="#clientes"><span class="idx">06</span> Clientes</a>
+      <a href="#papelera"><span class="idx">07</span> Papelera</a>
+
+      <p class="toc-group-label">Referencia</p>
+      <a href="#en-camino"><span class="idx">·</span> Lo que falta</a>
+      <a href="#glosario"><span class="idx">·</span> Glosario</a>
+      <a href="#sobre"><span class="idx">·</span> Sobre este borrador</a>
+    </nav>
+  </aside>
+
+  <main id="top">
+
+    <header class="masthead" id="intro">
+      <p class="eyebrow">Manual de usuario — borrador · 26 ago 2026</p>
+      <h1>Cómo usar Nexö</h1>
+      <p class="lede">
+        Nexö centraliza la gestión de una pyme o emprendimiento: ventas, compras, stock,
+        productos y clientes conectados entre sí, más un espacio para lo que viene después
+        (facturación fiscal, IA por voz). Este documento explica, pantalla por pantalla,
+        qué podés hacer hoy con la versión actual del sistema.
+      </p>
+    </header>
+
+    <section class="doc-section" id="empezar">
+      <div class="head"><h2>Cómo entrar al sistema</h2></div>
+      <p class="dek">
+        Por ahora Nexö es un prototipo que corre en la máquina de quien lo está
+        desarrollando — todavía no hay un servidor compartido.
+      </p>
+      <ol class="steps">
+        <li>Desde la carpeta <code>backend/</code> del repositorio: <code>npm install</code> (solo la primera vez) y después <code>npm run dev</code>.</li>
+        <li>Abrir <code>http://localhost:3000</code> en el navegador. Esa misma dirección sirve tanto la interfaz como los datos.</li>
+      </ol>
+      <div class="panel-note">
+        No sirve abrir <code>index.html</code> suelto con Live Server u otra herramienta: sin el backend
+        corriendo detrás, todas las pantallas fallan al pedir datos. Cuando el equipo tenga un
+        ambiente compartido, esta sección se actualiza con la dirección real.
+      </div>
+    </section>
+
+    <section class="doc-section" id="menu">
+      <div class="head"><h2>Recorrido por el menú</h2></div>
+      <p class="dek">El menú de la izquierda tiene diez secciones. Estado actual de cada una:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Menú</th><th>Estado</th><th>Qué hace</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>01 Resumen</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>Panorama del día y últimas facturas cargadas.</td></tr>
+            <tr><td>02 Ventas</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>Cargar, cobrar, facturar y anular ventas.</td></tr>
+            <tr><td>03 Compras</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>Cargar, efectuar, recibir y pagar compras a proveedores.</td></tr>
+            <tr><td>04 Stock</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>Estado del inventario y ajustes manuales.</td></tr>
+            <tr><td>05 Productos</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>Alta, edición y ficha de cada producto.</td></tr>
+            <tr><td>06 Facturas</td><td class="status"><span class="pill pill-pending">Todavía no construida</span></td><td>Vista dedicada, separada del Resumen. Ver nota en «Lo que falta».</td></tr>
+            <tr><td>07 Clientes</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>CRM básico: contacto, deuda e historial de compras.</td></tr>
+            <tr><td>08 IVA &amp; Retenciones</td><td class="status"><span class="pill pill-pending">Todavía no construida</span></td><td>Fuera del alcance de esta primera versión (V1).</td></tr>
+            <tr><td>09 Asistente de voz</td><td class="status"><span class="pill pill-pending">Todavía no construida</span></td><td>Visión a futuro: cargar operaciones hablando.</td></tr>
+            <tr><td>10 Papelera</td><td class="status"><span class="pill pill-ok">Disponible</span></td><td>Ventas y compras anuladas, con opción de restaurar.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="dek" style="margin-top:20px">
+        Al entrar a una sección todavía no construida, el sistema muestra el aviso
+        <em>«Esta sección todavía no está construida»</em> en vez de romperse.
+      </p>
+    </section>
+
+    <hr class="rule" />
+
+    <!-- RESUMEN -->
+    <section class="doc-section" id="resumen">
+      <div class="head"><span class="idx">01</span><h2>Resumen</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">La pantalla de inicio: un panorama rápido del día y las facturas sueltas cargadas.</p>
+
+      <ul class="bullets">
+        <li>Franja superior con tres números: <strong>Facturado</strong>, <strong>Cobrado</strong> y <strong>Pendiente / vencido</strong>.</li>
+        <li>Tabla de <strong>últimos movimientos</strong>: número, cliente, concepto, total, condición de venta y estado.</li>
+        <li>Buscador por cliente o número de factura.</li>
+      </ul>
+      <div class="panel-note">
+        Esta tabla muestra las facturas sueltas (las que se cargan con el botón <strong>+ Nueva factura</strong>,
+        ver «Factura rápida» más abajo) — no es todavía el listado general de ventas, que vive en su propia
+        pantalla.
+      </div>
+    </section>
+
+    <!-- VENTAS -->
+    <section class="doc-section" id="ventas">
+      <div class="head"><span class="idx">02</span><h2>Ventas</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">
+        Listado de ventas con cliente, fecha, costo, total, ganancia y estado de cobro.
+        Cada venta puede cobrarse, facturarse o anularse.
+      </p>
+
+      <h4 class="action">Registrar una venta nueva</h4>
+      <ol class="steps">
+        <li>Botón <strong>+ Nueva venta</strong>.</li>
+        <li>Cliente: escribí el nombre. Si ya existe, aparece sugerido; si no existe, se crea automáticamente con ese nombre (el resto de sus datos se completa después desde Clientes).</li>
+        <li>Elegí la fecha.</li>
+        <li><strong>+ agregar producto</strong> por cada línea de la venta, con su cantidad. El sistema no deja vender más unidades que las que hay en stock: si te pasás, avisa cuánto queda disponible.</li>
+        <li>El total se arma solo a medida que agregás productos.</li>
+        <li><strong>Registrar venta.</strong></li>
+      </ol>
+      <div class="panel-note">
+        Al confirmar, tres cosas pasan a la vez: se descuenta el stock, se <strong>congela el costo</strong> de
+        cada producto en ese momento (para que la ganancia de esa venta no cambie después aunque el costo
+        del producto suba o baje), y se genera la deuda del cliente en su cuenta corriente.
+      </div>
+
+      <h4 class="action">Cobrar una venta</h4>
+      <ol class="steps">
+        <li>Abrí el cobro desde la fila de la venta. La ventana muestra total, cobrado hasta ahora y saldo pendiente.</li>
+        <li>Cargá el importe (no puede superar el saldo pendiente), la cuenta de tesorería donde entra el dinero y una nota opcional.</li>
+        <li><strong>Registrar cobro.</strong></li>
+      </ol>
+      <p style="font-size:14.5px; color:var(--ink-muted); margin-top:-6px">
+        Una venta puede cobrarse en varias partes — por ejemplo, mitad en efectivo y mitad por transferencia —
+        y cada cobro queda guardado en el historial de esa venta.
+      </p>
+
+      <h4 class="action">Facturar una venta</h4>
+      <ol class="steps">
+        <li>Elegí la condición de venta: Mercado Pago, Efectivo o Transferencia.</li>
+        <li><strong>Generar factura.</strong></li>
+      </ol>
+
+      <h4 class="action">Anular una venta</h4>
+      <p style="font-size:15px">
+        El sistema pide confirmación: <em>«¿Anular esta venta? Va a la papelera y el stock vuelve al depósito.»</em>
+        Una venta anulada se puede restaurar después desde Papelera.
+      </p>
+    </section>
+
+    <!-- FACTURA RAPIDA -->
+    <section class="doc-section" id="factura-rapida">
+      <div class="head"><h2>Factura rápida</h2></div>
+      <p class="dek">
+        El botón <strong>+ Nueva factura</strong>, visible arriba de cualquier pantalla, sirve para
+        cargar una factura suelta que no viene de una venta armada en el sistema — por ejemplo,
+        para dejar registrado algo que ya se facturó por fuera.
+      </p>
+      <ul class="bullets">
+        <li>Pide cliente (se crea si no existe), concepto, monto neto y condición de venta.</li>
+        <li>Queda con estado <strong>pendiente</strong> y aparece en la tabla de Resumen.</li>
+      </ul>
+      <div class="panel-note">
+        Es un registro simple: <code>neto = total</code>, sin impuestos. IVA y retención de Mercado Pago
+        quedan fuera de esta primera versión — decisión ya tomada por el equipo, se retoma más adelante.
+      </div>
+    </section>
+
+    <!-- COMPRAS -->
+    <section class="doc-section" id="compras">
+      <div class="head"><span class="idx">03</span><h2>Compras</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">Listado de compras a proveedores, con su estado de pedido, de envío y de pago.</p>
+
+      <ul class="bullets">
+        <li><strong>Estado del pedido:</strong> Borrador → Activa (al efectuar el pedido, nace la deuda con el proveedor).</li>
+        <li><strong>Estado de envío</strong> (en paralelo): Pedido → En camino → Recibido. El stock recién sube al marcar «Recibido», que es cuando la mercadería está de verdad en el depósito.</li>
+      </ul>
+
+      <h4 class="action">Cargar una compra</h4>
+      <ol class="steps">
+        <li>Botón <strong>+ Nueva compra</strong>.</li>
+        <li>Proveedor (se crea si no existe) y fecha.</li>
+        <li><strong>+ agregar producto</strong> por cada línea, con cantidad y costo unitario.</li>
+        <li>Costo de envío (opcional): se reparte entre los productos de la compra según cuánto vale cada uno — un producto que es el 80 % del valor de la compra absorbe el 80 % del envío.</li>
+        <li><strong>Guardar borrador.</strong> En este punto todavía no toca stock ni genera deuda.</li>
+      </ol>
+
+      <h4 class="action">Efectuar el pedido</h4>
+      <p style="font-size:15px">
+        Confirmar <em>«¿Efectuar el pedido? Se va a registrar la deuda con el proveedor.»</em> — la compra
+        pasa de borrador a activa.
+      </p>
+
+      <h4 class="action">Marcar como recibida</h4>
+      <p style="font-size:15px">
+        Cuando la mercadería llega, confirmar <em>«¿Marcar la compra como recibida? Se va a sumar el
+        stock y recalcular el costo.»</em> El costo del producto se actualiza como
+        <strong>costo promedio ponderado</strong> (ver Glosario), no se pisa con el último precio pagado.
+      </p>
+
+      <h4 class="action">Pagar una compra</h4>
+      <p style="font-size:15px">
+        Igual que cobrar una venta: importe (no puede superar el saldo pendiente), cuenta de tesorería
+        y nota opcional. También puede pagarse en partes.
+      </p>
+
+      <h4 class="action">Anular una compra</h4>
+      <p style="font-size:15px">
+        Confirmar <em>«¿Anular esta compra? Va a la papelera y el stock que sumó se revierte.»</em>
+      </p>
+    </section>
+
+    <!-- STOCK -->
+    <section class="doc-section" id="stock">
+      <div class="head"><span class="idx">04</span><h2>Stock</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">El inventario actual de cada producto, con una alerta automática por nivel.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Estado</th><th>Cuándo aparece</th></tr></thead>
+          <tbody>
+            <tr><td>Sin stock</td><td>El producto está en 0 o menos.</td></tr>
+            <tr><td>Bajo</td><td>Llegó al «stock mínimo» configurado en la ficha del producto.</td></tr>
+            <tr><td>Alto</td><td>Superó el «stock máximo» — solo si el producto tiene uno configurado.</td></tr>
+            <tr><td>Normal</td><td>Ninguno de los casos anteriores.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="action">Hacer un ajuste manual</h4>
+      <ol class="steps">
+        <li>Botón <strong>+ Ajustar stock</strong>.</li>
+        <li>Elegí el producto y la cantidad: un número positivo suma, uno negativo resta.</li>
+        <li>Nota opcional con el motivo (por ejemplo, una rotura o una diferencia de inventario).</li>
+        <li><strong>Guardar ajuste.</strong></li>
+      </ol>
+      <div class="panel-note">
+        El ajuste manual es para diferencias que no vienen de una compra o una venta — esas dos
+        ya mueven el stock solas, no hace falta ajustarlo a mano después.
+      </div>
+    </section>
+
+    <!-- PRODUCTOS -->
+    <section class="doc-section" id="productos">
+      <div class="head"><span class="idx">05</span><h2>Productos</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">Listado con nombre, SKU, costo, valorizado, precio, margen, stock y si está activo.</p>
+
+      <div class="panel-note">
+        El <strong>costo</strong> no se carga a mano en ningún lado de esta pantalla: lo define
+        automáticamente cada compra que se marca como recibida. El <strong>precio de venta</strong> sí
+        se puede escribir acá, pero además se actualiza solo con el último precio que uses al vender
+        ese producto — si lo ves cambiado, probablemente vino de una venta reciente.
+      </div>
+
+      <h4 class="action">Dar de alta o editar un producto</h4>
+      <ol class="steps">
+        <li>Botón <strong>+ Nuevo producto</strong> (o abrir uno existente para editarlo).</li>
+        <li>Nombre (obligatorio), SKU opcional, precio de venta.</li>
+        <li>Stock mínimo y máximo — definen cuándo se dispara la alerta de Stock.</li>
+        <li>Marcar si está activo.</li>
+        <li><strong>Guardar producto.</strong></li>
+      </ol>
+
+      <h4 class="action">Ficha de un producto</h4>
+      <p style="font-size:15px">
+        Al abrir un producto de la lista se ve su costo promedio, stock actual, valorizado
+        (costo × stock) y el <strong>historial de movimientos de stock</strong>: fecha, origen, cantidad
+        y stock resultante de cada movimiento. Sirve para entender por qué el stock quedó en el
+        número que quedó.
+      </p>
+    </section>
+
+    <!-- CLIENTES -->
+    <section class="doc-section" id="clientes">
+      <div class="head"><span class="idx">06</span><h2>Clientes</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">Un CRM simple: contacto, cantidad de compras, total gastado y deuda de cada cliente.</p>
+
+      <h4 class="action">Dar de alta o editar un cliente</h4>
+      <ol class="steps">
+        <li>Botón <strong>+ Nuevo cliente</strong>.</li>
+        <li>Nombre (lo único obligatorio); email, teléfono, dirección, CUIT/DNI y notas son opcionales.</li>
+        <li><strong>Guardar cliente.</strong></li>
+      </ol>
+      <div class="panel-note">
+        No hace falta dar de alta un cliente antes de venderle: si cargás una venta o una factura con
+        un nombre nuevo, Nexö crea el cliente automáticamente con ese nombre. El resto de sus datos
+        se completa después, acá en Clientes.
+      </div>
+
+      <h4 class="action">Ficha de un cliente</h4>
+      <p style="font-size:15px">
+        Muestra el total gastado, la cantidad de compras, la deuda actual y el historial completo
+        de sus ventas (número, fecha, total y estado de cobro).
+      </p>
+    </section>
+
+    <!-- PAPELERA -->
+    <section class="doc-section" id="papelera">
+      <div class="head"><span class="idx">07</span><h2>Papelera</h2><span class="pill pill-ok">Disponible</span></div>
+      <p class="dek">Ventas y compras anuladas. Nada se borra de verdad: queda acá con la opción de restaurar.</p>
+      <div class="panel-note">
+        <strong>Restaurar</strong> vuelve a aplicar el efecto original como si nunca se hubiese anulado:
+        una venta restaurada vuelve a descontar stock y a generar la deuda del cliente; una compra
+        restaurada vuelve a sumar el stock y la deuda con el proveedor.
+      </div>
+    </section>
+
+    <hr class="rule" />
+
+    <section class="doc-section" id="en-camino">
+      <div class="head"><h2>Lo que todavía no está disponible</h2></div>
+      <dl class="glossary">
+        <dt>Facturas (vista dedicada)</dt>
+        <dd>Una pantalla propia para el listado y la gestión de comprobantes, separada de la tabla de Resumen y de la factura rápida.</dd>
+        <dt>IVA &amp; Retenciones</dt>
+        <dd>Fuera del alcance de esta primera versión (V1) — decisión ya tomada por el equipo. Se retoma en una etapa posterior si se decide.</dd>
+        <dt>Asistente de voz</dt>
+        <dd>La visión a futuro del proyecto: registrar operaciones hablando o escribiendo en lenguaje natural (por ejemplo, «vendí tres remeras a Juan por 45 mil, pagó por Mercado Pago»), con la IA como capa de interpretación — nunca modificando los datos directamente sin confirmación.</dd>
+      </dl>
+    </section>
+
+    <section class="doc-section" id="glosario">
+      <div class="head"><h2>Glosario</h2></div>
+      <dl class="glossary">
+        <dt>Costo promedio ponderado</dt>
+        <dd>Cuando comprás el mismo producto a distintos precios a lo largo del tiempo, el costo guardado
+          no es el último precio pagado sino un promedio pesado por cantidad — así una sola compra
+          puntual no hace saltar el costo de golpe.</dd>
+        <dt>Prorrateo por envío</dt>
+        <dd>Repartir el costo de envío de una compra entre sus productos según cuánto vale cada uno,
+          en vez de partirlo en partes iguales.</dd>
+        <dt>Costo histórico</dt>
+        <dd>El costo que tenía un producto en el momento exacto de una venta, congelado en esa venta
+          para que su ganancia no cambie después aunque el costo del producto suba o baje más adelante.</dd>
+        <dt>Cuenta corriente</dt>
+        <dd>El saldo de deuda entre el negocio y un cliente o proveedor. Se reconstruye a partir de los
+          movimientos (ventas o compras menos cobros o pagos) — no es un campo que se edite a mano.</dd>
+        <dt>Borrador (en compras)</dt>
+        <dd>Una compra cargada pero todavía no confirmada: no mueve stock ni genera deuda hasta que se
+          «efectúa el pedido».</dd>
+      </dl>
+    </section>
+
+    <section class="doc-section" id="sobre">
+      <div class="head"><h2>Sobre este borrador</h2></div>
+      <p class="dek">
+        Primer boceto armado a partir del código y la documentación del repositorio (backend, frontend
+        y CLAUDE.md) al 26 de agosto de 2026, mientras el desarrollo sigue en paralelo.
+      </p>
+      <h4 class="action">Antes de darlo por final</h4>
+      <ul class="checklist">
+        <li>Probar cada paso en la app real, pantalla por pantalla.</li>
+        <li>Agregar capturas de pantalla reales en lugar de solo texto.</li>
+        <li>Sumar Facturas, IVA &amp; Retenciones y Asistente de voz a medida que se construyan.</li>
+        <li>Revisarlo junto con tu compañero de desarrollo por si algún flujo cambió.</li>
+      </ul>
+      <div class="panel-note">
+        ¿Necesitás un PDF para entregar? Abrí este documento en el navegador y usá
+        <strong>Imprimir → Guardar como PDF</strong> (Ctrl/Cmd+P) — el diseño se adapta a impresión.
+      </div>
+    </section>
+
+  </main>
+</div>
