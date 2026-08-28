@@ -49,44 +49,50 @@
         <a href="#" class="nav-item is-active" data-view="dashboard">
           <span class="nav-index">01</span> Resumen
         </a>
+        <a href="#" class="nav-item" data-view="reportes-ventas">
+          <span class="nav-index">02</span> Qué se vende
+        </a>
         <a href="#" class="nav-item" data-view="productos">
-          <span class="nav-index">02</span> Productos
+          <span class="nav-index">03</span> Productos
         </a>
         <a href="#" class="nav-item" data-view="clientes">
-          <span class="nav-index">03</span> Clientes
+          <span class="nav-index">04</span> Clientes
         </a>
         <a href="#" class="nav-item" data-view="proveedores">
-          <span class="nav-index">04</span> Proveedores
+          <span class="nav-index">05</span> Proveedores
         </a>
         <a href="#" class="nav-item" data-view="presupuestos">
-          <span class="nav-index">05</span> Presupuestos
+          <span class="nav-index">06</span> Presupuestos
         </a>
         <a href="#" class="nav-item" data-view="ventas">
-          <span class="nav-index">06</span> Ventas
+          <span class="nav-index">07</span> Ventas
         </a>
         <a href="#" class="nav-item" data-view="devoluciones">
-          <span class="nav-index">07</span> Devoluciones
+          <span class="nav-index">08</span> Devoluciones
         </a>
         <a href="#" class="nav-item" data-view="facturas">
-          <span class="nav-index">08</span> Facturas
+          <span class="nav-index">09</span> Facturas
         </a>
         <a href="#" class="nav-item" data-view="compras">
-          <span class="nav-index">09</span> Compras
+          <span class="nav-index">10</span> Compras
         </a>
         <a href="#" class="nav-item" data-view="devoluciones-proveedor">
-          <span class="nav-index">10</span> Dev. a proveedor
+          <span class="nav-index">11</span> Dev. a proveedor
         </a>
         <a href="#" class="nav-item" data-view="stock">
-          <span class="nav-index">11</span> Stock
+          <span class="nav-index">12</span> Stock
+        </a>
+        <a href="#" class="nav-item" data-view="reportes-stock">
+          <span class="nav-index">13</span> Reportes de stock
         </a>
         <a href="#" class="nav-item" data-view="caja">
-          <span class="nav-index">12</span> Caja
+          <span class="nav-index">14</span> Caja
         </a>
         <a href="#" class="nav-item" data-view="cuentas-corrientes">
-          <span class="nav-index">13</span> Cuentas corrientes
+          <span class="nav-index">15</span> Cuentas corrientes
         </a>
         <a href="#" class="nav-item" data-view="gastos">
-          <span class="nav-index">14</span> Gastos
+          <span class="nav-index">16</span> Gastos
         </a>
         <!-- IVA & Retenciones: fuera de V1 (CLAUDE.md), sin pantalla propia
              todavía. Oculto en vez de apuntar a un placeholder vacío, hasta
@@ -94,7 +100,7 @@
              está acá: no es un módulo más, es el widget flotante al final
              de este archivo (ver #asistenteLauncher). -->
         <a href="#" class="nav-item" data-view="papelera">
-          <span class="nav-index">15</span> Papelera
+          <span class="nav-index">17</span> Papelera
         </a>
       </nav>
 
@@ -233,6 +239,80 @@
           </div>
         </section>
 
+      </section>
+
+      <!-- Vista: Qué se vende -->
+      <section class="view" data-view="reportes-ventas" hidden>
+        <div class="filtros" id="filtrosReporteVentas"></div>
+        <p class="form-note" id="reporteVentasRangoNota"></p>
+
+        <section class="ledger-strip" aria-label="Ventas del período">
+          <div class="ledger-item">
+            <span class="ledger-label">Ventas netas</span>
+            <span class="ledger-value mono" id="reporteVentasNetas">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Ticket promedio</span>
+            <span class="ledger-value mono" id="reporteTicketPromedio">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Unidades vendidas</span>
+            <span class="ledger-value mono" id="reporteUnidades">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item ledger-item-total">
+            <span class="ledger-label">Ganancia bruta</span>
+            <span class="ledger-value mono ledger-ok" id="reporteGananciaBruta">$0,00</span>
+          </div>
+        </section>
+
+        <!-- Ranking de productos por ventas netas (ya restadas las
+             devoluciones) — no por unidades, para que un producto caro con
+             pocas unidades no quede subestimado frente a uno barato de
+             mucho volumen. -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos más vendidos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Producto</th>
+                <th class="align-right" data-orden="unidades" data-tipo="numero">Unidades</th>
+                <th class="align-right" data-orden="ventas" data-tipo="numero">Ventas</th>
+                <th class="align-right" data-orden="ganancia" data-tipo="numero">Ganancia</th>
+                <th class="align-right" data-orden="margen_pct" data-tipo="numero">Margen</th>
+                <th class="align-right" data-orden="participacion_pct" data-tipo="numero">% del total</th>
+              </tr>
+            </thead>
+            <tbody id="reporteProductosBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Mejores clientes</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Cliente</th>
+                <th class="align-right" data-orden="cantidad_ventas" data-tipo="numero">Ventas</th>
+                <th class="align-right" data-orden="ventas" data-tipo="numero">Total</th>
+                <th class="align-right" data-orden="ticket_promedio" data-tipo="numero">Ticket promedio</th>
+                <th class="align-right" data-orden="ganancia" data-tipo="numero">Ganancia</th>
+                <th data-orden="ultima_compra" data-tipo="fecha">Última compra</th>
+              </tr>
+            </thead>
+            <tbody id="reporteClientesBody"></tbody>
+          </table>
+          </div>
+        </section>
       </section>
 
       <!-- Vista: Presupuestos -->
@@ -785,6 +865,58 @@
               </tr>
             </thead>
             <tbody id="stockMovimientosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Reportes de stock -->
+      <section class="view" data-view="reportes-stock" hidden>
+        <div class="filtros" id="filtrosReporteStock"></div>
+        <p class="form-note" id="reporteStockRangoNota"></p>
+
+        <section class="ledger-strip" aria-label="Resumen del inventario">
+          <div class="ledger-item">
+            <span class="ledger-label">Valorizado total</span>
+            <span class="ledger-value mono" id="reporteStockValorizado">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Sin stock</span>
+            <span class="ledger-value mono ledger-warn" id="reporteStockSinStock">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Bajo mínimo</span>
+            <span class="ledger-value mono ledger-warn" id="reporteStockBajo">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Productos</span>
+            <span class="ledger-value mono" id="reporteStockCantidad">0</span>
+          </div>
+        </section>
+
+        <!-- Ordenada por días de inventario ascendente por defecto (lo más
+             urgente primero): el filtro de fecha define el ritmo de venta
+             contra el que se mide la rotación, no cambia el stock actual. -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Qué reponer y rotación</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Producto</th>
+                <th class="align-right" data-orden="stock" data-tipo="numero">Stock</th>
+                <th data-orden="estado_stock" data-tipo="texto">Estado</th>
+                <th class="align-right" data-orden="valorizado" data-tipo="numero">Valorizado</th>
+                <th class="align-right" data-orden="unidades_vendidas" data-tipo="numero">Vendidas en el período</th>
+                <th class="align-right" data-orden="dias_inventario" data-tipo="numero">Días de inventario</th>
+              </tr>
+            </thead>
+            <tbody id="reporteStockBody"></tbody>
           </table>
           </div>
         </section>

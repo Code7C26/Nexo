@@ -897,6 +897,158 @@ const filtrosResumen = crearFiltros(
   () => cargarResumen()
 );
 
+/* ---------- Reportes: qué se vende y a quién ---------- */
+//
+// Vista derivada como Resumen y Cuentas corrientes: no guarda estado
+// propio más allá de lo que devuelve GET /api/reportes/ventas (que ya
+// hace el neteo de devoluciones y el cálculo de márgenes), así que acá
+// solo hace falta pintar la respuesta.
+
+const filtrosReporteVentas = crearFiltros(
+  "filtrosReporteVentas",
+  [{ clave: "fecha", etiqueta: "Fecha", tipo: "fecha" }],
+  () => cargarReporteVentas()
+);
+
+function rangoActualReporteVentas() {
+  const filtroFecha = filtrosReporteVentas.filtros.find((f) => f.campo === "fecha");
+  return filtroFecha ? rangoDeFiltroFecha(filtroFecha) : {};
+}
+
+function renderReporteProductos(lista) {
+  const body = document.getElementById("reporteProductosBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(6, "No hay ventas en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (p) => `
+    <tr>
+      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Unidades" class="align-right mono">${numero(p.unidades)}</td>
+      <td data-label="Ventas" class="align-right mono">${money(p.ventas)}</td>
+      <td data-label="Ganancia" class="align-right mono ${p.ganancia < 0 ? "saldo-negativo" : ""}">${money(p.ganancia)}</td>
+      <td data-label="Margen" class="align-right mono">${porcentaje(p.margen_pct)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(p.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+function renderReporteClientes(lista) {
+  const body = document.getElementById("reporteClientesBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(6, "No hay ventas en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (c) => `
+    <tr>
+      <td data-label="Cliente"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${c.nombre}</button></td>
+      <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
+      <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
+      <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
+      <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
+      <td data-label="Última compra">${c.ultima_compra ?? "—"}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".reporte-cliente-ficha").forEach((btn) => {
+    btn.addEventListener("click", () => abrirFichaCliente(Number(btn.dataset.id)));
+  });
+}
+
+async function cargarReporteVentas() {
+  tablaCargando("reporteProductosBody", 6);
+  tablaCargando("reporteClientesBody", 6);
+
+  const rango = rangoActualReporteVentas();
+  const params = new URLSearchParams(rango).toString();
+  const datos = await (await fetch(`/api/reportes/ventas${params ? "?" + params : ""}`)).json();
+
+  document.getElementById("reporteVentasNetas").textContent = money(datos.totales.ventas_netas);
+  document.getElementById("reporteTicketPromedio").textContent = money(datos.totales.ticket_promedio);
+  document.getElementById("reporteUnidades").textContent = numero(datos.totales.unidades);
+  const elGanancia = document.getElementById("reporteGananciaBruta");
+  elGanancia.textContent = money(datos.totales.ganancia_bruta);
+  elGanancia.classList.toggle("saldo-negativo", datos.totales.ganancia_bruta < 0);
+  elGanancia.classList.toggle("ledger-ok", datos.totales.ganancia_bruta >= 0);
+
+  document.getElementById("reporteVentasRangoNota").textContent = datos.rango.acotado
+    ? `Del ${datos.rango.desde} al ${datos.rango.hasta}.`
+    : `Del ${datos.rango.desde} al ${datos.rango.hasta} (todo lo cargado hasta hoy).`;
+
+  renderReporteProductos(ordenReporteProductos.aplicar(datos.productos));
+  renderReporteClientes(ordenReporteClientes.aplicar(datos.clientes));
+}
+
+const ordenReporteProductos = crearOrden("reporteProductosBody", () => cargarReporteVentas());
+const ordenReporteClientes = crearOrden("reporteClientesBody", () => cargarReporteVentas());
+
+/* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
+//
+// El filtro de fecha define el ritmo de venta contra el que se mide la
+// rotación (días de inventario) — no cambia el stock actual, que siempre
+// es "ahora mismo". STOCK_CLASE/STOCK_LABEL se definen más abajo (sección
+// Productos) pero se referencian acá recién al pintar, nunca al cargar el
+// módulo, así que el orden de declaración no importa.
+
+const filtrosReporteStock = crearFiltros(
+  "filtrosReporteStock",
+  [{ clave: "fecha", etiqueta: "Fecha", tipo: "fecha" }],
+  () => cargarReporteStock()
+);
+
+function rangoActualReporteStock() {
+  const filtroFecha = filtrosReporteStock.filtros.find((f) => f.campo === "fecha");
+  return filtroFecha ? rangoDeFiltroFecha(filtroFecha) : {};
+}
+
+function renderReporteStock(lista) {
+  const body = document.getElementById("reporteStockBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(6, "Todavía no hay productos cargados.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (p) => `
+    <tr>
+      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${STOCK_LABEL[p.estado_stock]}</span></td>
+      <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
+      <td data-label="Vendidas en el período" class="align-right mono">${numero(p.unidades_vendidas)}</td>
+      <td data-label="Días de inventario" class="align-right mono">${p.dias_inventario === null ? "—" : numero(p.dias_inventario)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function cargarReporteStock() {
+  tablaCargando("reporteStockBody", 6);
+
+  const rango = rangoActualReporteStock();
+  const params = new URLSearchParams(rango).toString();
+  const datos = await (await fetch(`/api/reportes/stock${params ? "?" + params : ""}`)).json();
+
+  document.getElementById("reporteStockValorizado").textContent = money(datos.resumen.total_valorizado);
+  document.getElementById("reporteStockSinStock").textContent = numero(datos.resumen.cantidad_sin_stock);
+  document.getElementById("reporteStockBajo").textContent = numero(datos.resumen.cantidad_bajo);
+  document.getElementById("reporteStockCantidad").textContent = numero(datos.resumen.cantidad_productos);
+
+  document.getElementById("reporteStockRangoNota").textContent = datos.rango.acotado
+    ? `Rotación medida del ${datos.rango.desde} al ${datos.rango.hasta}.`
+    : `Rotación medida del ${datos.rango.desde} al ${datos.rango.hasta} (todo lo cargado hasta hoy) — para una estimación más realista, probá filtrar por "Últimos 30 días".`;
+
+  renderReporteStock(ordenReporteStock.aplicar(datos.productos));
+}
+
+const ordenReporteStock = crearOrden("reporteStockBody", () => cargarReporteStock());
+
 // El backend ya resuelve comprobante y estado_cobro (derivado de los
 // cobros reales cuando la factura respalda una venta — ver
 // SELECT_FACTURA en server.js). Acá solo se agrega `respalda_venta`, una
@@ -1513,7 +1665,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   if (!(await manejarError(res, "No se pudo guardar el producto."))) return;
 
   const eraEdicion = productoEditandoId !== null;
-  await cargarProductos();
+  await Promise.all([cargarProductos(), cargarReporteStock()]);
   // Si se editaba desde la ficha, se refresca para que muestre los datos
   // nuevos en vez de quedar con los viejos detrás del modal.
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
@@ -1896,7 +2048,7 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
   });
   if (!(await manejarError(res, "No se pudo registrar el ajuste."))) return;
 
-  await Promise.all([cargarStock(), cargarProductos()]);
+  await Promise.all([cargarStock(), cargarProductos(), cargarReporteStock()]);
   form.reset();
   modalAjusteStock.hidden = true;
   avisar("Stock ajustado.", "ok");
@@ -2113,7 +2265,9 @@ async function abrirFichaPresupuesto(id) {
         cargarProductos(),
         cargarClientes(),
         cargarCuentasCorrientes(),
-        cargarResumen()
+        cargarResumen(),
+        cargarReporteVentas(),
+        cargarReporteStock()
       ]);
       await abrirFichaPresupuesto(p.id);
     });
@@ -2312,7 +2466,7 @@ function renderVentas(lista) {
       const res = await fetch(`/api/ventas/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la venta."))) return;
       avisar(`Venta #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes()]);
+      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarReporteVentas(), cargarReporteStock()]);
     });
   });
 
@@ -2484,7 +2638,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, ventaEditandoId ? "No se pudo guardar la venta." : "No se pudo registrar la venta."))) return;
 
   const idEditado = ventaEditandoId;
-  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes()]);
+  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarReporteVentas(), cargarReporteStock()]);
   form.reset();
   modalVenta.hidden = true;
   // Si se estaba editando desde la ficha, volver a esa ficha con los
@@ -2847,7 +3001,9 @@ async function abrirFichaDevolucion(id) {
         cargarClientes(),
         cargarCaja(),
         cargarCuentasCorrientes(),
-        cargarResumen()
+        cargarResumen(),
+        cargarReporteVentas(),
+        cargarReporteStock()
       ]);
       await abrirFichaDevolucion(d.id);
     });
@@ -2991,7 +3147,9 @@ document.getElementById("formDevolucion").addEventListener("submit", async (e) =
     cargarClientes(),
     cargarCaja(),
     cargarCuentasCorrientes(),
-    cargarResumen()
+    cargarResumen(),
+    cargarReporteVentas(),
+    cargarReporteStock()
   ]);
   modalDevolucion.hidden = true;
   await abrirFichaVenta(ventaADevolverId);
@@ -3146,7 +3304,7 @@ function renderCompras(lista) {
       const res = await fetch(`/api/compras/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la compra."))) return;
       avisar(`Compra #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes()]);
+      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes(), cargarReporteStock()]);
     });
   });
 
@@ -3173,7 +3331,7 @@ function renderCompras(lista) {
       }
       // Recibir una compra mueve stock y costo, así que hay que refrescar
       // esas pantallas también.
-      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores()]);
+      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarReporteStock()]);
     });
   });
 }
@@ -3331,7 +3489,7 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, "No se pudo guardar la compra."))) return;
 
   const idEditado = compraEditandoId;
-  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes()]);
+  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes(), cargarReporteStock()]);
   form.reset();
   modalCompra.hidden = true;
   if (idEditado) await abrirFichaCompra(idEditado);
@@ -3650,7 +3808,8 @@ async function abrirFichaDevolucionProveedor(id) {
         cargarProveedores(),
         cargarCaja(),
         cargarCuentasCorrientes(),
-        cargarResumen()
+        cargarResumen(),
+        cargarReporteStock()
       ]);
       await abrirFichaDevolucionProveedor(d.id);
     });
@@ -3787,7 +3946,8 @@ document.getElementById("formDevolucionProveedor").addEventListener("submit", as
     cargarProveedores(),
     cargarCaja(),
     cargarCuentasCorrientes(),
-    cargarResumen()
+    cargarResumen(),
+    cargarReporteStock()
   ]);
   modalDevolucionProveedor.hidden = true;
   await abrirFichaCompra(compraADevolverId);
@@ -5193,7 +5353,9 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     cargarProveedores(),
     cargarCaja(),
     cargarCuentasCorrientes(),
-    cargarResumen()
+    cargarResumen(),
+    cargarReporteVentas(),
+    cargarReporteStock()
   ]);
 }
 
@@ -5634,7 +5796,9 @@ function renderPapelera() {
         cargarProveedores(),
         cargarCaja(),
         cargarCuentasCorrientes(),
-        cargarResumen()
+        cargarResumen(),
+        cargarReporteVentas(),
+        cargarReporteStock()
       ]);
     });
   });
@@ -5643,14 +5807,15 @@ function renderPapelera() {
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último
 // porque su tabla de últimos movimientos se arma con los cachés de
-// ventas, compras y gastos ya cargados. Cuentas corrientes no depende de
-// ningún caché del frontend (trae su propio fetch), así que entra en el
-// mismo último grupo que Resumen.
+// ventas, compras y gastos ya cargados. Cuentas corrientes y los reportes
+// de qué se vende y de stock no dependen de ningún caché del frontend
+// (traen su propio fetch), así que entran en el mismo último grupo que
+// Resumen.
 Promise.all([cargarClientes(), cargarProveedores(), cargarCaja()])
   .then(() => Promise.all([cargarGastos(), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
-  .then(() => Promise.all([cargarResumen(), cargarCuentasCorrientes()]));
+  .then(() => Promise.all([cargarResumen(), cargarCuentasCorrientes(), cargarReporteVentas(), cargarReporteStock()]));
 
 /* ---------- Tema claro / oscuro ---------- */
 
@@ -5737,6 +5902,7 @@ document.getElementById("navToggle").addEventListener("click", () => {
 const VISTAS_CONSTRUIDAS = {
   dashboard: { titulo: "Resumen", dominio: "Resumen" },
   productos: { titulo: "Productos", dominio: "Maestros" },
+  "reportes-ventas": { titulo: "Qué se vende", dominio: "Resumen" },
   clientes: { titulo: "Clientes", dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
@@ -5746,6 +5912,7 @@ const VISTAS_CONSTRUIDAS = {
   compras: { titulo: "Compras", dominio: "Embudo de compra" },
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
   stock: { titulo: "Stock", dominio: "Stock" },
+  "reportes-stock": { titulo: "Reportes de stock", dominio: "Stock" },
   caja: { titulo: "Caja", dominio: "Finanzas" },
   "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
   gastos: { titulo: "Gastos", dominio: "Finanzas" },

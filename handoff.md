@@ -43,32 +43,31 @@ Puntos clave de `CLAUDE.md` para no perder de vista:
 
 ## 3. Estado actual (a la fecha de este handoff)
 
-**Rama activa:** `Tosi`. **Ya está commiteado** (commit `468c01f`, "feat:
-devolución a proveedor, reportes de rentabilidad, asistente IA y rediseño
-de frontend"): consolidó de una sola vez las cuatro etapas que venían
-seguidas sin commitear (Devolución a proveedor, Reportes, Asistente,
-pasada de diseño de frontend), porque para cuando se pidió commitear ya
-estaban todas mezcladas sobre los mismos archivos (`server.js`, `app.js`)
-sin ningún checkpoint intermedio — separarlas en commits distintos hubiera
-significado adivinar a qué etapa pertenecía cada hunk. **Encima de ese
-commit, esta sesión agregó una etapa nueva (Cuentas corrientes, ver §10)
-que todavía NO está commiteada** — confirmar con el usuario antes de la
-próxima si conviene commitearla ahora o seguir construyendo, mismo criterio
-que en sesiones anteriores.
+**Rama activa:** `Tosi`. **Dos commits al tope de `main`**: `468c01f`
+("feat: devolución a proveedor, reportes de rentabilidad, asistente IA y
+rediseño de frontend", de una sesión anterior) y, encima,
+`a13fbd8` ("feat: cuentas corrientes a cobrar y a pagar", la etapa que en
+el handoff anterior había quedado sin commitear — ver §10). Se commiteó al
+arrancar esta sesión, antes de tocar más código, siguiendo el mismo
+criterio que ya se venía repitiendo: no dejar que se acumulen etapas
+sueltas sobre los mismos archivos.
 
-Quedaron fuera del commit, sin tocar, dos archivos sueltos en la raíz que
-no son parte del proyecto Nexo: `install.ps1` (instalador del propio MCP
-`codebase-memory-mcp`, no del sistema de gestión) y `.agents/skills/`
+**Encima de ese commit, esta sesión agregó dos etapas nuevas seguidas sin
+commitear todavía** (bugs de cuenta corriente + reporte "qué se vende",
+§11; reporte de stock, §12) — confirmar con el usuario antes de la próxima
+si conviene commitearlas ahora (juntas o separadas) o seguir construyendo.
+
+Quedaron fuera de los commits, sin tocar, dos archivos sueltos en la raíz
+que no son parte del proyecto Nexo: `install.ps1` (instalador del propio
+MCP `codebase-memory-mcp`, no del sistema de gestión) y `.agents/skills/`
 (carpeta local de skills de Claude Code, reproducible desde
-`skills-lock.json`, que sí se commiteó). Se agregó `backend/*.log` a
-`.gitignore` (el `server-real.log` del proceso real no debe trackearse) y
-se borraron dos archivos de 0 bytes (`0)` y `p.asistente-descartado`,
-restos de un typo de shell de una sesión anterior).
+`skills-lock.json`, que sí se commiteó).
 
 **El servidor real corre en `http://localhost:3000`**, ya con todos los
 cambios de esta sesión aplicados y verificados contra los datos reales
-(pre/post-deploy comparados número a número, sin diferencias). El proceso
-se reinició durante esta sesión para levantar el código nuevo.
+(pre/post-deploy comparados número a número, sin diferencias — ver §11 y
+§12). El proceso se reinició dos veces durante esta sesión, una por cada
+etapa, para levantar el código nuevo.
 
 **`GEMINI_API_KEY` NO está cargada en el proceso real ahora mismo** — el
 asistente por texto responde 503 (`POST /api/asistente/interpretar`).
@@ -115,10 +114,10 @@ verificada antes de pasar a la siguiente:
   que no hizo falta construir notas de débito para eso. Si en el futuro
   hace falta que Nexo emita una nota de débito de verdad (p. ej. hacia un
   cliente), es una etapa nueva, sin molde previo.
-- De las familias de reportes de §20: **cuentas por cobrar y pagar** ya se
-  construyó (§10). Quedan **qué se vende y a quién** (ranking de
-  productos, mejores clientes, ticket promedio) y **stock** (qué reponer,
-  valorizado, rotación) — el usuario no las pidió todavía.
+- Las cuatro familias de reportes de §20 (ventas, compras, stock,
+  finanzas/rentabilidad) están construidas: **cuentas por cobrar y pagar**
+  (§10), **qué se vende y a quién** (§11) y **stock** — qué reponer,
+  valorizado, rotación como días de inventario (§12).
 - Ventas por categoría de producto y por vendedor (dentro de §20): **no
   son construibles hoy sin migrar el esquema primero** — no existe tabla
   de categorías de productos (`productos` no tiene `categoria_id`) ni
@@ -906,8 +905,246 @@ operación sin necesitar imputación FIFO de cobros contra ventas.
 
 - **Nada bloqueado.** El alcance acordado (tres tramos de antigüedad desde
   la fecha de la operación, sin vencimiento pactado) se completó entero.
-- Sin commitear todavía — ver §3.
+- **Actualización: ya se commiteó** al arrancar la sesión siguiente
+  (`a13fbd8`) — ver §3 y §11.
 - Aging por **vencimiento pactado** (en vez de fecha de la operación)
   seguiría requiriendo migrar el esquema (agregar una columna de
   vencimiento a `ventas`/`compras`); quedó fuera a propósito, como estaba
   ya anotado en la sección 3 de handoffs anteriores.
+
+## 11. Última etapa: dos bugs de cuenta corriente + reporte "qué se vende"
+
+Con el MVP de `CLAUDE.md` §25 completo y Cuentas corrientes (§10) ya
+commiteado, se le preguntó al usuario qué construir a continuación entre
+cuatro opciones (reportes de qué-se-vende, reportes de stock, categorías de
+producto, auditoría central); eligió **qué se vende y a quién**, la familia
+de §20 que faltaba y no requiere migrar el esquema. Explorando el código
+con el grafo de `codebase-memory-mcp` antes de construir aparecieron además
+**dos bugs reales encadenados** en la cuenta corriente de clientes (código
+de la etapa anterior, recién commiteado) — se arreglaron primero, porque
+construir el reporte nuevo sin arreglarlos hubiera sido más difícil de
+verificar (los invariantes numéricos no habrían cerrado).
+
+### Bug A: editar una venta cambiando de cliente dejaba una deuda fantasma
+
+`PUT /api/ventas/:id` (`backend/server.js`) permite reemplazar el cliente
+de una venta ya cargada (el input es texto libre con datalist, sin
+bloquear en edición). El código insertaba **un solo** movimiento de
+`'ajuste'` en `movimientos_cc_clientes`, por la diferencia de total, contra
+el cliente **nuevo** — el cliente **viejo** nunca se tocaba. Si el importe
+no cambiaba, el ajuste daba `0`: el cliente viejo se quedaba con la deuda
+original para siempre y el nuevo quedaba en `$0` a pesar de ser el dueño
+real de la venta.
+
+**Verificado contra la base real que el bug nunca se disparó** (0 ventas ni
+compras con movimientos de cuenta corriente de más de una entidad), así
+que no hizo falta ningún script de reparación de datos.
+
+**Fix**: se copió el patrón que `PUT /api/compras/:id` ya tenía bien —
+revertir el importe viejo completo contra la entidad vieja e insertar el
+importe nuevo completo contra la nueva (dos asientos en vez de uno neto).
+Cuando el cliente no cambia, el resultado neto es idéntico al de antes
+(verificado sin regresión).
+
+### Bug B: el saldo por operación de Cuentas corrientes podía mezclar entidades
+
+`saldosPorOperacion` (la función que arma el detalle de Cuentas corrientes,
+§10) agrupaba `GROUP BY venta_id` mientras seleccionaba `cliente_id` como
+columna suelta — una *bare column* bajo SQLite, que devuelve el valor de
+una fila arbitraria del grupo. Con datos normales no se notaba (todos los
+movimientos de una venta eran del mismo cliente), pero **el fix del Bug A
+lo hubiera disparado de verdad**: una venta editada con cambio de cliente
+pasa a tener movimientos de dos clientes distintos, y esta consulta los
+habría sumado y adjudicado al azar a uno de los dos.
+
+**Fix**: `GROUP BY venta_id, cliente_id` (mismo cambio aplicado también al
+lado de proveedores, es la misma función parametrizada).
+
+**Verificado juntos, ejecutado de verdad** (no solo lectura de código)
+sobre la copia de prueba: se creó una venta, se la editó pasándola de un
+cliente a otro sin cambiar el importe, y se confirmó que el cliente viejo
+queda en `$0` y el nuevo con el total completo — tanto en `GET
+/api/clientes` como en `GET /api/cuentas-corrientes`, coincidiendo exacto
+con el invariante ya establecido en §10 (`por_cobrar` = suma de `deuda`
+positivas). Se repitió editando también el importe, y por separado editando
+**sin** cambiar de cliente, para confirmar que no hay regresión.
+
+### Reporte "qué se vende y a quién"
+
+- **`GET /api/reportes/ventas?desde=&hasta=`** (nuevo, `backend/server.js`,
+  sección después de Resumen/evolución) — de solo lectura. Los totales de
+  plata (`ventas_netas`, `ganancia_bruta`) se calculan **llamando
+  literalmente a `calcularResultado(desde, hasta)`** (la misma función que
+  ya usa `/api/resumen`) en vez de reimplementar la resta de devoluciones:
+  así el endpoint nuevo cierra exacto contra `/api/resumen` para el mismo
+  rango por construcción, no por casualidad — verificado con varios rangos
+  (abierto, acotado, sin ventas, y un caso extremo con la fecha manipulada
+  a mano para que una devolución cayera sola en el rango sin su venta
+  original) y siempre coincidió bit a bit.
+- El ranking de productos y el de clientes se calculan aparte
+  (`SQL_REPORTE_VENTAS_POR_PRODUCTO`/`POR_CLIENTE` y sus pares de
+  devoluciones) y se **netean** con una función genérica
+  (`netearPorId`): el costo sale siempre de
+  `venta_items.costo_unitario_historico` (nunca del costo actual del
+  producto, `CLAUDE.md` §8), y una devolución resta en el período en que
+  se hizo, no en el de la venta original — mismo criterio que
+  `calcularResultado`. Un producto vendido y devuelto entero en el mismo
+  rango neta a su valor de antes de la venta (probado de verdad: no
+  encabeza el ranking ni ensucia los totales). Una devolución de una venta
+  de un período anterior, si cae dentro del rango consultado, entra al
+  reporte con neto negativo (producto/cliente "solo con devolución en este
+  rango") en vez de perderse — probado moviendo la fecha de una devolución
+  a mano.
+- **Frontend**: vista nueva `data-view="reportes-ventas"` ("02 — Qué se
+  vende", justo después de Resumen; el resto del nav se renumeró 03→16).
+  Reusa el mismo patrón que Resumen (`crearFiltros` con un campo fecha,
+  `ledger-strip` con los 4 totales) y Cuentas corrientes (`crearOrden` por
+  columna en las dos tablas, nombre de cliente como link a su ficha). No
+  hizo falta CSS nueva.
+- **Detalle de arquitectura frontend descubierto en esta etapa** (no
+  documentado en handoffs anteriores): las vistas de Nexo **no** cargan sus
+  datos al entrar por el nav — `mostrarVista()` solo muestra/oculta
+  secciones. Todo se carga **una vez, al bootear la página**, con una
+  cadena de `Promise.all(...).then(...)` al final de `app.js` (el orden
+  importa: Caja antes que Gastos, Resumen al final), y después cada mutación
+  relevante refresca a mano los cachés que toca. `cargarReporteVentas()` se
+  agregó a esa cadena de arranque (grupo final, junto a Resumen y Cuentas
+  corrientes: no depende de ningún caché del frontend) y a los puntos de
+  mutación que tocan ventas/devoluciones de venta (crear/editar/anular
+  venta, devolución y su anulación, ejecutar el asistente, restaurar desde
+  la papelera) — **no** a los de compras/proveedores/gastos, que no afectan
+  este reporte.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el puerto 3002, proceso del 3000 (que **no estaba corriendo** al
+  empezar esta sesión) sin tocar hasta tener todo verde.
+- Backend por `curl`: los dos bugs (arriba), el reporte nuevo cerrando
+  exacto contra `/api/resumen` en cuatro escenarios distintos, venta
+  devuelta entera, venta vendida a pérdida (margen negativo, `-5,95%` en la
+  prueba) — todos con los invariantes numéricos verificados, no solo con
+  lectura de código.
+- Playwright (dos temas, dos viewports): 7/7 checks — las 16 vistas del nav
+  sin caer a placeholder, deep-link `#/reportes-ventas`, orden asc/desc por
+  columna, tema oscuro, 375px sin scroll horizontal, sin errores de
+  consola. Capturas revisadas a mano en desktop y mobile.
+- **Deploy**: backup `nexo.db.backup-antes-reportes-ventas-20260828-170200`
+  en `backend/db/`, proceso del 3000 arrancado (no había ninguno corriendo),
+  números post-deploy (ventas/compras activas, cantidad de clientes, deuda
+  por cobrar/pagar) comparados 1:1 contra una foto tomada del archivo de la
+  base **antes** de levantar el proceso — sin diferencias. El endpoint
+  nuevo devolvió, contra la base real, `ventas_netas`/`ganancia_bruta`
+  coincidiendo exacto con `/api/resumen`.
+
+### Qué queda pendiente de esta etapa
+
+- **Nada bloqueado.** Los dos bugs y el reporte se completaron y
+  verificaron enteros.
+- Sin commitear todavía — confirmar con el usuario antes de la próxima
+  sesión.
+- **`GEMINI_API_KEY` sigue sin estar cargada** en el proceso real (arrancado
+  en esta sesión sin la variable) — el asistente responde 503, igual que en
+  el handoff anterior. Sigue siendo la primera tarea rápida si el usuario
+  tiene la key.
+- Reportes de **stock** (qué reponer, valorizado, rotación) es la última
+  familia de §20 que queda — candidata natural para la próxima etapa.
+
+## 12. Última etapa: reporte de stock (qué reponer, valorizado, rotación)
+
+Con el reporte "qué se vende" (§11) terminado, se le preguntó al usuario
+qué construir a continuación; eligió la última familia de reportes de §20
+que quedaba: **stock**. Antes de diseñar nada se revisó qué ya existía
+(`CLAUDE.md` §24: revisar modelos existentes antes de proponer) y resultó
+que **"valorizado" y "qué reponer" ya estaban construidos por producto**
+desde etapas anteriores: `decorarProducto` (`backend/server.js`) ya calcula
+`valorizado` (`precio_costo * stock`) y `estado_stock`
+(`sin_stock`/`bajo`/`normal`/`alto`, con `productos.stock_minimo`/
+`stock_maximo`), y `/api/productos` y `/api/stock` ya los devuelven; el
+filtro por `estado_stock` en las vistas Productos y Stock ya permite ver
+"qué reponer" filtrando. Lo único que no existía en ningún lado era
+**rotación** — se le preguntó al usuario la fórmula (dos opciones:
+días de inventario vs. índice de rotación) y eligió **días de
+inventario**, y que fuera una vista nueva de análisis (no ampliar Stock).
+
+### Qué se construyó
+
+- **`GET /api/reportes/stock?desde=&hasta=`** (nuevo, `backend/server.js`,
+  sección después de `/api/reportes/ventas`) — de solo lectura. Reusa
+  `SELECT_PRODUCTO`/`decorarProducto` (la misma fuente que `/api/productos`,
+  para no duplicar el cálculo de `valorizado`/`estado_stock`) y las mismas
+  consultas de ventas/devoluciones por producto que `/api/reportes/ventas`
+  (`SQL_REPORTE_VENTAS_POR_PRODUCTO`, `SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO`,
+  `netearPorId` — mismo neteo, mismo criterio: no duplica "cuánto se vendió
+  de cada producto en el rango", que ya se había resuelto en §11).
+  - **Días de inventario** = `stock / (unidades_netas_del_rango /
+    días_del_rango)`: al ritmo de venta del período, cuántos días dura el
+    stock actual. Reglas explícitas (decisión de negocio, no arbitrarias):
+    con **stock en 0 el resultado siempre es 0 días**, sin importar el
+    ritmo (no queda nada, es urgente sea cual sea el consumo); **sin ventas
+    netas positivas en el rango queda `null`** (no 0 ni infinito, que
+    mentirían para los dos lados) — el frontend lo muestra como "—".
+  - El resumen agregado (`resumen`) trae `total_valorizado` (suma sobre
+    **todos** los productos, no solo los del rango — el valorizado es
+    "ahora mismo", no depende del filtro de fecha) y la cuenta de productos
+    por cada `estado_stock`.
+  - La tabla de productos se ordena por defecto por días de inventario
+    ascendente (lo más urgente primero), con los `null` siempre al final
+    — es una lista de prioridad de reposición, no un listado alfabético.
+- **Frontend**: vista nueva `data-view="reportes-stock"` ("13 — Reportes de
+  stock", entre Stock y Caja — dominio "Stock" del nav, no "Resumen" como
+  "Qué se vende": el resto del nav se renumeró 14→17). Mismo patrón que los
+  otros dos reportes: `crearFiltros` con un campo fecha (el filtro define
+  el ritmo de venta contra el que se mide la rotación, no cambia el stock
+  actual, que siempre es "ahora"), `ledger-strip` de resumen, tabla con
+  `crearOrden`. Reusa `STOCK_CLASE`/`STOCK_LABEL` que ya existían para el
+  badge de estado (mismos colores que Productos y Stock). No hizo falta
+  CSS nueva.
+- **Enganche de refresco más amplio que los otros dos reportes**: a
+  diferencia de "qué se vende" (solo ventas/devoluciones de venta), el
+  stock lo mueve *todo* — ventas, compras, devoluciones de los dos lados,
+  ajustes manuales, el asistente, restaurar desde la papelera — así que
+  `cargarReporteStock()` se agregó en los mismos puntos donde ya se
+  refrescaba `cargarStock()` (14 lugares) más uno adicional: el formulario
+  de alta/edición de producto (`formProducto`), porque cambiar
+  `stock_minimo`/`stock_maximo` recalcula `estado_stock` sin que se mueva
+  ninguna unidad de stock.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad (server.js/index.html
+  /app.js resincronizados sobre la misma copia que ya se usó en §11),
+  servidor de prueba en el puerto 3002.
+- Backend por `curl`: coherencia manual del cálculo (verificado a mano con
+  los números reales de cada producto en la prueba: stock, unidades
+  vendidas y días del rango dan exactamente el `dias_inventario`
+  esperado), caso `null` (rango sin ventas), caso `0` días forzando un
+  producto a stock 0 con un ajuste manual (confirmado también que
+  `resumen.cantidad_sin_stock` sube y `total_valorizado` baja en el mismo
+  movimiento).
+- Playwright (dos temas, dos viewports): 6/6 checks — las 17 vistas del
+  nav sin caer a placeholder, deep-link `#/reportes-stock`, orden
+  interactivo por columna, tema oscuro, 375px sin scroll horizontal, sin
+  errores de consola. Capturas revisadas a mano en los tres escenarios.
+- **Deploy**: backup `nexo.db.backup-antes-reportes-stock-20260828-172546`
+  en `backend/db/`, proceso del 3000 reiniciado, números post-deploy
+  (ventas/compras activas, deuda por cobrar/pagar, y el `valorizado total`
+  calculado con SQL directo contra la base **antes** de levantar el
+  proceso) comparados 1:1 contra la foto pre-deploy — sin diferencias.
+
+### Qué queda pendiente de esta etapa
+
+- **Nada bloqueado.** Las cuatro familias de reportes de §20 quedaron
+  completas con esta etapa (ver §3).
+- Sin commitear todavía, junto con la etapa de §11 (bugs de cuenta
+  corriente + "qué se vende") — confirmar con el usuario antes de la
+  próxima sesión si conviene un commit o dos.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real — sin cambios
+  respecto a §11.
+- Con el MVP y las cuatro familias de reportes completos, las opciones
+  abiertas que quedan (de §3: notas de débito genéricas, ventas por
+  categoría/vendedor —requieren migrar esquema—, aging por vencimiento
+  pactado —requiere migrar esquema—, auditoría central unificada, listas
+  de precios, multidepósito avanzado, índice sobre `ventas(fecha)`,
+  categorías de productos) están todas anotadas en la sección 3 de este
+  handoff. Preguntarle al usuario qué sigue, no asumir.

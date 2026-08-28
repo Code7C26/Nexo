@@ -958,11 +958,20 @@ app.put('/api/ventas/:id', (req, res) => {
       total += item.cantidad * item.precio_unitario;
     }
 
-    // 3) Ajustar la cuenta corriente por la diferencia (no se reemplaza el
-    // movimiento original, se compensa — mismo criterio que anular).
-    db.prepare(
+    // 3) Ajustar la cuenta corriente (no se reemplaza el movimiento
+    // original, se compensa — mismo criterio que anular). Si el cliente
+    // cambió, la deuda vieja tiene que revertirse contra el cliente VIEJO
+    // y la nueva cargarse contra el NUEVO — insertar un solo ajuste neto
+    // contra clienteRow.id (como se hacía antes) le dejaba al cliente
+    // viejo una deuda fantasma y al nuevo la venta sin reflejar. Mismo
+    // patrón de dos asientos que ya usa la edición de compras (dos
+    // proveedores distintos). Cuando el cliente no cambia, los dos caen
+    // sobre la misma entidad y la suma neta es idéntica a un solo ajuste.
+    const insertAjusteCC = db.prepare(
       "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
-    ).run(clienteRow.id, total - totalViejo, ventaId);
+    );
+    insertAjusteCC.run(venta.cliente_id, -totalViejo, ventaId);
+    insertAjusteCC.run(clienteRow.id, total, ventaId);
   });
 
   res.json({ id: ventaId });
@@ -3544,6 +3553,16 @@ function tramoDeAntiguedad(dias) {
 // sería redundante y más frágil si ese criterio cambia en otro lado.
 // `> 0.005` en vez de `<> 0` porque importe es REAL: una operación saldada
 // al centavo puede dejar un residuo de coma flotante.
+//
+// El GROUP BY incluye la entidad además de la operación: si solo
+// agrupara por operación, m.${columnaEntidad} sería una bare column bajo
+// SQLite y devolvería el valor de una fila arbitraria del grupo. Con
+// datos normales todos los movimientos de una operación son de la misma
+// entidad y no se nota, pero editar una venta cambiando de cliente deja
+// dos asientos de 'ajuste' en la misma operación con cliente_id distinto
+// (ver PUT /api/ventas/:id) — sin la entidad en el GROUP BY, esta
+// consulta sumaría los dos juntos y se los adjudicaría a cualquiera de
+// los dos en vez de partirlos correctamente entre ambos.
 function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion) {
   return db
     .prepare(
@@ -3551,7 +3570,7 @@ function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, 
               o.fecha AS fecha, ROUND(SUM(m.importe), 2) AS pendiente
          FROM ${tablaMovimientos} m
          JOIN ${tablaOperacion} o ON o.id = m.${columnaOperacion}
-        GROUP BY m.${columnaOperacion}
+        GROUP BY m.${columnaOperacion}, m.${columnaEntidad}
        HAVING ABS(SUM(m.importe)) > 0.005`
     )
     .all();
@@ -3973,6 +3992,285 @@ app.get('/api/resumen/evolucion', (req, res) => {
   }
 
   res.json({ rango: { desde, hasta, acotado }, granularidad, total, serie, anterior, delta });
+});
+
+/* ---------- Reportes: qué se vende y a quién (CLAUDE.md §20) ---------- */
+//
+// Familia de reportes que faltaba (ranking de productos, mejores clientes,
+// ticket promedio) y no requiere migrar el esquema: todo sale de
+// venta_items, que ya guarda cantidad, precio_unitario y
+// costo_unitario_historico. El costo NUNCA se lee de productos.precio_costo
+// (el costo de HOY) — mismo criterio no negociable que calcularResultado
+// (CLAUDE.md §8: no recalcular rentabilidad histórica con el costo actual).
+//
+// Los totales de plata (ventas_netas, ganancia_bruta) se calculan
+// literalmente llamando a calcularResultado(desde, hasta) — la única
+// fuente de verdad de las reglas contables (ver su comentario más
+// arriba) — en vez de reimplementar la resta de devoluciones: así este
+// endpoint cierra exacto contra GET /api/resumen para el mismo rango por
+// construcción, no por casualidad.
+
+const SQL_REPORTE_UNIDADES_VENTAS = db.prepare(
+  `SELECT COUNT(DISTINCT ventas.id) AS cantidad_ventas,
+          COALESCE(SUM(venta_items.cantidad), 0) AS unidades
+     FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)`
+);
+
+const SQL_REPORTE_UNIDADES_DEVOLUCIONES = db.prepare(
+  `SELECT COALESCE(SUM(devolucion_items.cantidad), 0) AS unidades
+     FROM devoluciones JOIN devolucion_items ON devolucion_items.devolucion_id = devoluciones.id
+    WHERE devoluciones.estado = 'activa'
+      AND (? IS NULL OR devoluciones.fecha >= ?)
+      AND (? IS NULL OR devoluciones.fecha <= ?)`
+);
+
+const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
+  `SELECT venta_items.producto_id AS id, productos.nombre AS nombre,
+          SUM(venta_items.cantidad) AS unidades,
+          SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas,
+          SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo
+     FROM venta_items
+     JOIN ventas ON ventas.id = venta_items.venta_id
+     JOIN productos ON productos.id = venta_items.producto_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+    GROUP BY venta_items.producto_id`
+);
+
+const SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO = db.prepare(
+  `SELECT devolucion_items.producto_id AS id,
+          SUM(devolucion_items.cantidad) AS unidades,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario) AS ventas,
+          SUM(CASE WHEN devolucion_items.vuelve_stock
+                   THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
+                   ELSE 0 END) AS costo
+     FROM devolucion_items
+     JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
+    WHERE devoluciones.estado = 'activa'
+      AND (? IS NULL OR devoluciones.fecha >= ?)
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+    GROUP BY devolucion_items.producto_id`
+);
+
+const SQL_REPORTE_VENTAS_POR_CLIENTE = db.prepare(
+  `SELECT ventas.cliente_id AS id, clientes.nombre AS nombre,
+          COUNT(DISTINCT ventas.id) AS cantidad_ventas,
+          SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas,
+          SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo,
+          MAX(ventas.fecha) AS ultima_compra
+     FROM venta_items
+     JOIN ventas ON ventas.id = venta_items.venta_id
+     JOIN clientes ON clientes.id = ventas.cliente_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+    GROUP BY ventas.cliente_id`
+);
+
+// devolucion_items no guarda cliente_id propio: se atribuye a través de
+// devoluciones.venta_id -> ventas.cliente_id, igual que en cuentas
+// corrientes se atribuye todo movimiento a través de su operación.
+const SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE = db.prepare(
+  `SELECT ventas.cliente_id AS id,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario) AS ventas,
+          SUM(CASE WHEN devolucion_items.vuelve_stock
+                   THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
+                   ELSE 0 END) AS costo
+     FROM devolucion_items
+     JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
+     JOIN ventas ON ventas.id = devoluciones.venta_id
+    WHERE devoluciones.estado = 'activa'
+      AND (? IS NULL OR devoluciones.fecha >= ?)
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+    GROUP BY ventas.cliente_id`
+);
+
+const redondear2 = (n) => Math.round(n * 100) / 100;
+const margenPct = (ganancia, ventas) => (ventas > 0 ? redondear2((ganancia / ventas) * 100) : 0);
+
+// Neteo genérico por id: resta las filas de devoluciones (por producto o
+// por cliente, según se llame) contra las filas de venta correspondientes.
+// Una entidad que solo tiene devolución en este rango (la venta original
+// es de un período anterior, pero se devolvió dentro de este) entra con
+// base en cero para que el neto —negativo— no se pierda del reporte:
+// mismo criterio que calcularResultado, la devolución pesa en el período
+// en que se hizo, no en el de la venta.
+function netearPorId(filasVentas, filasDevoluciones, resolverNombre) {
+  const porId = new Map(filasVentas.map((f) => [f.id, { ...f }]));
+  for (const dev of filasDevoluciones) {
+    let fila = porId.get(dev.id);
+    if (!fila) {
+      fila = {
+        id: dev.id,
+        nombre: resolverNombre(dev.id),
+        unidades: 0,
+        cantidad_ventas: 0,
+        ventas: 0,
+        costo: 0,
+        ultima_compra: null
+      };
+      porId.set(dev.id, fila);
+    }
+    fila.unidades = (fila.unidades ?? 0) - (dev.unidades ?? 0);
+    fila.ventas -= dev.ventas;
+    fila.costo -= dev.costo;
+  }
+  return [...porId.values()];
+}
+
+app.get('/api/reportes/ventas', (req, res) => {
+  const desdeParam = validarFecha(req.query.desde);
+  const hastaParam = validarFecha(req.query.hasta);
+
+  // Mismo tratamiento de rango abierto que /api/resumen/evolucion: sin
+  // desde/hasta, se acota contra la primera/última operación registrada.
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const hoy = SQL_HOY.get().hoy;
+  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
+  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
+  const acotado = Boolean(desdeParam && hastaParam);
+  const rango = [desde, desde, hasta, hasta];
+
+  const resultado = calcularResultado(desde, hasta);
+  const ventasUnid = SQL_REPORTE_UNIDADES_VENTAS.get(...rango);
+  const devolucionesUnid = SQL_REPORTE_UNIDADES_DEVOLUCIONES.get(...rango);
+  const cantidadVentas = ventasUnid.cantidad_ventas;
+
+  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+  const buscarNombreCliente = db.prepare('SELECT nombre FROM clientes WHERE id = ?');
+
+  const productos = netearPorId(
+    SQL_REPORTE_VENTAS_POR_PRODUCTO.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO.all(...rango),
+    (id) => buscarNombreProducto.get(id)?.nombre ?? '(producto eliminado)'
+  )
+    .map((p) => {
+      const ganancia = redondear2(p.ventas - p.costo);
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        unidades: p.unidades,
+        ventas: redondear2(p.ventas),
+        costo: redondear2(p.costo),
+        ganancia,
+        margen_pct: margenPct(ganancia, p.ventas),
+        participacion_pct: resultado.ventas > 0 ? redondear2((p.ventas / resultado.ventas) * 100) : 0
+      };
+    })
+    .sort((a, b) => b.ventas - a.ventas);
+
+  const clientes = netearPorId(
+    SQL_REPORTE_VENTAS_POR_CLIENTE.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE.all(...rango),
+    (id) => buscarNombreCliente.get(id)?.nombre ?? '(cliente eliminado)'
+  )
+    .map((c) => {
+      const ganancia = redondear2(c.ventas - c.costo);
+      return {
+        id: c.id,
+        nombre: c.nombre,
+        cantidad_ventas: c.cantidad_ventas ?? 0,
+        ventas: redondear2(c.ventas),
+        ganancia,
+        margen_pct: margenPct(ganancia, c.ventas),
+        ticket_promedio: c.cantidad_ventas > 0 ? redondear2(c.ventas / c.cantidad_ventas) : 0,
+        ultima_compra: c.ultima_compra
+      };
+    })
+    .sort((a, b) => b.ventas - a.ventas);
+
+  res.json({
+    rango: { desde, hasta, acotado },
+    totales: {
+      ventas_netas: resultado.ventas,
+      cantidad_ventas: cantidadVentas,
+      ticket_promedio: cantidadVentas > 0 ? redondear2(resultado.ventas / cantidadVentas) : 0,
+      unidades: ventasUnid.unidades - devolucionesUnid.unidades,
+      ganancia_bruta: resultado.ganancia_bruta,
+      margen_pct: margenPct(resultado.ganancia_bruta, resultado.ventas)
+    },
+    productos,
+    clientes
+  });
+});
+
+/* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
+//
+// "Valorizado" y "qué reponer" ya existían por producto (decorarProducto,
+// estadoStock, más abajo en la sección Productos) — lo que faltaba era el
+// agregado (total del inventario, cuántos productos hay que reponer) y la
+// rotación, que no existía en ningún lado. Reusa las mismas consultas de
+// ventas/devoluciones por producto que /api/reportes/ventas (mismo
+// neteo, mismo criterio) para no duplicar "cuánto se vendió de cada
+// producto en el rango".
+//
+// Rotación = días de inventario: al ritmo de venta del período, cuántos
+// días dura el stock actual — stock / (unidades_netas / días_del_período).
+// Sin ventas netas positivas en el rango no hay ritmo con el que dividir,
+// así que queda null (no "infinito" ni 0, que mentirían para los dos
+// lados); el frontend lo muestra como "—". Con stock en 0 el resultado es
+// 0 días sin importar el ritmo: no queda nada, sea cual sea el consumo.
+
+app.get('/api/reportes/stock', (req, res) => {
+  const desdeParam = validarFecha(req.query.desde);
+  const hastaParam = validarFecha(req.query.hasta);
+
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const hoy = SQL_HOY.get().hoy;
+  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
+  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
+  const acotado = Boolean(desdeParam && hastaParam);
+  const rango = [desde, desde, hasta, hasta];
+  const diasPeriodo = diffDias(desde, hasta) + 1;
+
+  const unidadesNetasPorProducto = new Map(
+    netearPorId(
+      SQL_REPORTE_VENTAS_POR_PRODUCTO.all(...rango),
+      SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO.all(...rango),
+      () => null
+    ).map((fila) => [fila.id, fila.unidades])
+  );
+
+  const productosBase = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all().map(decorarProducto);
+
+  const productos = productosBase
+    .map((p) => {
+      const unidadesVendidas = unidadesNetasPorProducto.get(p.id) ?? 0;
+      const ritmoDiario = unidadesVendidas / diasPeriodo;
+      const diasInventario = p.stock <= 0 ? 0 : ritmoDiario > 0 ? Math.round(p.stock / ritmoDiario) : null;
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        stock: p.stock,
+        precio_costo: p.precio_costo,
+        valorizado: redondear2(p.valorizado),
+        estado_stock: p.estado_stock,
+        unidades_vendidas: unidadesVendidas,
+        dias_inventario: diasInventario
+      };
+    })
+    .sort((a, b) => {
+      // Sin ventas en el rango (null) queda al final: no es "no urgente",
+      // es "no se puede estimar" — mezclarlo con los calculables mentiría.
+      if (a.dias_inventario === null && b.dias_inventario === null) return a.nombre.localeCompare(b.nombre, 'es');
+      if (a.dias_inventario === null) return 1;
+      if (b.dias_inventario === null) return -1;
+      return a.dias_inventario - b.dias_inventario;
+    });
+
+  const resumen = {
+    total_valorizado: redondear2(productosBase.reduce((acc, p) => acc + p.valorizado, 0)),
+    cantidad_productos: productosBase.length,
+    cantidad_sin_stock: productosBase.filter((p) => p.estado_stock === 'sin_stock').length,
+    cantidad_bajo: productosBase.filter((p) => p.estado_stock === 'bajo').length,
+    cantidad_alto: productosBase.filter((p) => p.estado_stock === 'alto').length
+  };
+
+  res.json({ rango: { desde, hasta, acotado }, resumen, productos });
 });
 
 /* ---------- Asistente (operaciones por texto) ---------- */
