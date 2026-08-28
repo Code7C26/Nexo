@@ -1,4 +1,4 @@
-# Nexö 🔗
+# Nexo 🔗
 
 > Sistema de gestión integral para PyMEs y emprendimientos, con interfaz conversacional por voz.
 
@@ -12,7 +12,7 @@ En chino emprendimientos y PyMEs, la organización está fragmentada en múltipl
 
 ## 💡 Solución
 
-Nexö centraliza toda la gestión en una única plataforma. A través de una interfaz conversacional con lenguaje natural, permite automatizar y optimizar procesos clave como:
+Nexo centraliza toda la gestión en una única plataforma. A través de una interfaz conversacional con lenguaje natural, permite automatizar y optimizar procesos clave como:
 
 - Control de productos e inventario
 - Gestión de precios

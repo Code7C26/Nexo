@@ -4,10 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nexo — Gestión para tu negocio</title>
+  <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    // Se aplica antes de pintar la página (no en app.js, que carga después)
+    // para que no haya un flash de tema claro al entrar con oscuro elegido.
+    try {
+      const guardado = localStorage.getItem("nexo.tema");
+      if (guardado) document.documentElement.setAttribute("data-tema", guardado);
+      const sidebarGuardada = localStorage.getItem("nexo.sidebar");
+      if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
+    } catch {}
+  </script>
 </head>
 <body>
 
@@ -20,46 +31,89 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <span class="brand-mark">N</span>
-        <span class="brand-name">Nexo</span>
+        <div class="brand-id">
+          <img class="brand-mark" src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" width="32" height="32" />
+          <span class="brand-name">Nexo</span>
+        </div>
+        <button type="button" class="btn-tema" id="btnColapsar" title="Ocultar barra lateral" aria-label="Ocultar barra lateral">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
       </div>
 
+      <!-- Orden por dominio, no por cuándo se construyó cada pantalla:
+           Resumen -> maestros (lo que hace falta cargado ANTES de operar)
+           -> embudo de venta -> embudo de compra -> Stock (consecuencia de
+           los dos embudos) -> Finanzas -> Papelera (utilidad, siempre al
+           final). -->
       <nav class="nav">
         <a href="#" class="nav-item is-active" data-view="dashboard">
           <span class="nav-index">01</span> Resumen
         </a>
-        <a href="#" class="nav-item" data-view="ventas">
-          <span class="nav-index">02</span> Ventas
-        </a>
-        <a href="#" class="nav-item" data-view="compras">
-          <span class="nav-index">03</span> Compras
-        </a>
-        <a href="#" class="nav-item" data-view="stock">
-          <span class="nav-index">04</span> Stock
-        </a>
         <a href="#" class="nav-item" data-view="productos">
-          <span class="nav-index">05</span> Productos
-        </a>
-        <a href="#" class="nav-item" data-view="facturas">
-          <span class="nav-index">06</span> Facturas
+          <span class="nav-index">02</span> Productos
         </a>
         <a href="#" class="nav-item" data-view="clientes">
-          <span class="nav-index">07</span> Clientes
+          <span class="nav-index">03</span> Clientes
         </a>
-        <a href="#" class="nav-item" data-view="iva">
-          <span class="nav-index">08</span> IVA &amp; Retenciones
+        <a href="#" class="nav-item" data-view="proveedores">
+          <span class="nav-index">04</span> Proveedores
         </a>
-        <a href="#" class="nav-item" data-view="voz">
-          <span class="nav-index">09</span> Asistente de voz
+        <a href="#" class="nav-item" data-view="presupuestos">
+          <span class="nav-index">05</span> Presupuestos
         </a>
+        <a href="#" class="nav-item" data-view="ventas">
+          <span class="nav-index">06</span> Ventas
+        </a>
+        <a href="#" class="nav-item" data-view="devoluciones">
+          <span class="nav-index">07</span> Devoluciones
+        </a>
+        <a href="#" class="nav-item" data-view="facturas">
+          <span class="nav-index">08</span> Facturas
+        </a>
+        <a href="#" class="nav-item" data-view="compras">
+          <span class="nav-index">09</span> Compras
+        </a>
+        <a href="#" class="nav-item" data-view="devoluciones-proveedor">
+          <span class="nav-index">10</span> Dev. a proveedor
+        </a>
+        <a href="#" class="nav-item" data-view="stock">
+          <span class="nav-index">11</span> Stock
+        </a>
+        <a href="#" class="nav-item" data-view="caja">
+          <span class="nav-index">12</span> Caja
+        </a>
+        <a href="#" class="nav-item" data-view="gastos">
+          <span class="nav-index">13</span> Gastos
+        </a>
+        <!-- IVA & Retenciones: fuera de V1 (CLAUDE.md), sin pantalla propia
+             todavía. Oculto en vez de apuntar a un placeholder vacío, hasta
+             que se retome. El asistente de texto (CLAUDE.md §21) tampoco
+             está acá: no es un módulo más, es el widget flotante al final
+             de este archivo (ver #asistenteLauncher). -->
         <a href="#" class="nav-item" data-view="papelera">
-          <span class="nav-index">10</span> Papelera
+          <span class="nav-index">14</span> Papelera
         </a>
       </nav>
 
       <div class="sidebar-foot">
-        <p>Negocio</p>
-        <strong id="businessName">Tu Pyme</strong>
+        <!-- Círculo de perfil: hoy es un ícono genérico, más adelante
+             (cuando se configure el perfil) va a poder llevar una foto. -->
+        <button type="button" class="perfil-avatar" id="btnPerfil" title="Configurar perfil" aria-label="Configurar perfil">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </button>
+        <div class="sidebar-foot-negocio">
+          <p>Negocio</p>
+          <strong id="businessName">Tu Pyme</strong>
+        </div>
+        <div class="sidebar-foot-botones">
+          <button type="button" class="btn-tema" id="btnConfiguracion" title="Configuración" aria-label="Configuración">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <button type="button" class="btn-tema" id="btnTema" title="Cambiar tema" aria-label="Cambiar tema">
+            <svg class="icono-sol" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+            <svg class="icono-luna" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+          </button>
+        </div>
       </div>
     </aside>
 
@@ -68,30 +122,88 @@
 
       <header class="topbar">
         <div>
-          <p class="eyebrow">Hoy</p>
-          <h1 id="todayDate">—</h1>
+          <p class="eyebrow" id="vistaEyebrow">Resumen</p>
+          <h1 id="vistaTitulo">Resumen</h1>
         </div>
-        <button class="btn btn-primary" id="btnNuevaFactura">+ Nueva factura</button>
+        <p class="topbar-fecha mono" id="todayDate">—</p>
       </header>
 
       <!-- Vista: Resumen -->
       <section class="view" data-view="dashboard">
 
+        <div class="filtros" id="filtrosResumen"></div>
+        <p class="form-note" id="resumenRangoNota"></p>
+
         <!-- Ledger summary strip: el elemento firma del diseño -->
-        <section class="ledger-strip" aria-label="Resumen del día">
+        <section class="ledger-strip" aria-label="Resultado del período">
           <div class="ledger-item">
-            <span class="ledger-label">Facturado</span>
-            <span class="ledger-value mono" id="sumFacturado">$0,00</span>
+            <span class="ledger-label">Ventas</span>
+            <span class="ledger-value mono" id="sumVentas">$0,00</span>
+            <span class="ledger-delta" id="deltaVentas"></span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
-            <span class="ledger-label">Cobrado</span>
-            <span class="ledger-value mono ledger-ok" id="sumCobrado">$0,00</span>
+            <span class="ledger-label">Costo de mercadería</span>
+            <span class="ledger-value mono" id="sumCosto">$0,00</span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
-            <span class="ledger-label">Pendiente / vencido</span>
-            <span class="ledger-value mono ledger-warn" id="sumPendiente">$0,00</span>
+            <span class="ledger-label">Ganancia bruta</span>
+            <span class="ledger-value mono ledger-ok" id="sumGananciaBruta">$0,00</span>
+            <span class="ledger-delta" id="deltaGananciaBruta"></span>
+          </div>
+        </section>
+
+        <section class="ledger-strip" aria-label="Gastos y resultado">
+          <div class="ledger-item">
+            <span class="ledger-label">Gastos operativos</span>
+            <span class="ledger-value mono ledger-warn" id="sumGastosOperativos">$0,00</span>
+            <span class="ledger-delta" id="deltaGastosOperativos"></span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item ledger-item-total">
+            <span class="ledger-label">Resultado</span>
+            <span class="ledger-value mono" id="sumResultado">$0,00</span>
+            <span class="ledger-delta" id="deltaResultado"></span>
+          </div>
+        </section>
+
+        <!-- Inversiones y retiros salieron de la caja pero NO son gasto del
+             período, así que se muestran aparte y no se restan del resultado. -->
+        <section class="panel panel-nota">
+          <p class="form-note">
+            Fuera del resultado — plata que salió de la caja pero no es gasto del negocio:
+            <strong>Inversiones</strong> <span class="mono" id="sumInversiones">$0,00</span> ·
+            <strong>Retiros</strong> <span class="mono" id="sumRetiros">$0,00</span>
+          </p>
+        </section>
+
+        <!-- Evolución del resultado por período, con su comparación contra
+             el período anterior ya reflejada en los deltas de arriba. -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Evolución del resultado</h2>
+            <span class="form-note mono" id="graficoGranularidad"></span>
+          </div>
+          <div class="grafico" id="graficoResultado"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Período</th>
+                <th class="align-right">Ventas</th>
+                <th class="align-right">Costo</th>
+                <th class="align-right">Ganancia bruta</th>
+                <th class="align-right">Margen</th>
+                <th class="align-right">Gastos</th>
+                <th class="align-right">Resultado</th>
+              </tr>
+            </thead>
+            <!-- Sin orden por columna a propósito: las filas son
+                 cronológicas por definición y reordenarlas rompería la
+                 correspondencia visual con el gráfico de arriba. -->
+            <tbody id="evolucionBody"></tbody>
+          </table>
           </div>
         </section>
 
@@ -99,74 +211,532 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Últimos movimientos</h2>
-            <input type="search" class="search" placeholder="Buscar cliente o N° de factura" id="searchInput" />
           </div>
 
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Cliente</th>
-                <th>Concepto</th>
-                <th class="align-right">Total</th>
-                <th>Condición</th>
-                <th>Estado</th>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Detalle</th>
+                <th class="align-right">Importe</th>
               </tr>
             </thead>
             <tbody id="movimientosBody">
               <!-- filas generadas por js/app.js -->
             </tbody>
           </table>
+          </div>
         </section>
 
       </section>
 
+      <!-- Vista: Presupuestos -->
+      <section class="view" data-view="presupuestos" hidden>
+        <section class="ledger-strip" aria-label="Estado del pipeline comercial">
+          <div class="ledger-item">
+            <span class="ledger-label">Presupuestado</span>
+            <span class="ledger-value mono" id="presupuestadoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Aceptado</span>
+            <span class="ledger-value mono ledger-ok" id="presupuestoAceptadoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Convertido en ventas</span>
+            <span class="ledger-value mono" id="presupuestoConvertidoStrip">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Presupuestos</h2>
+            <button class="btn btn-primary" id="btnNuevoPresupuesto">+ Nuevo presupuesto</button>
+          </div>
+          <div class="filtros" id="filtrosPresupuestos"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="id" data-tipo="numero">N°</th>
+                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>Productos</th>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th data-orden="vencimiento" data-tipo="fecha">Vence</th>
+                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
+                <th data-orden="estado_efectivo" data-tipo="texto">Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="presupuestosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de un presupuesto -->
+      <section class="view" data-view="presupuesto-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverPresupuestos">← Volver a presupuestos</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaPresupuestoTitulo">—</h2>
+            <div class="panel-acciones" id="fichaPresupuestoAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaPresupuestoDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Total del presupuesto">
+          <div class="ledger-item">
+            <span class="ledger-label">Total presupuestado</span>
+            <span class="ledger-value mono" id="fichaPresupuestoTotal">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos cotizados</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Precio unit.</th>
+                <th class="align-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody id="fichaPresupuestoItems"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
       <!-- Vista: Ventas -->
       <section class="view" data-view="ventas" hidden>
+        <section class="ledger-strip" aria-label="Totales de lo filtrado">
+          <div class="ledger-item">
+            <span class="ledger-label">Ventas</span>
+            <span class="ledger-value mono" id="ventasTotalStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Costo</span>
+            <span class="ledger-value mono" id="ventasCostoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Ganancia</span>
+            <span class="ledger-value mono ledger-ok" id="ventasGananciaStrip">$0,00</span>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Ventas</h2>
             <button class="btn btn-primary" id="btnNuevaVenta">+ Nueva venta</button>
           </div>
+          <div class="filtros" id="filtrosVentas"></div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Cliente</th>
-                <th>Fecha</th>
-                <th class="align-right">Costo</th>
-                <th class="align-center">Total</th>
-                <th class="align-right">Ganancia</th>
-                <th>Cobro</th>
+                <th data-orden="id" data-tipo="numero">N°</th>
+                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>Productos</th>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th class="align-right" data-orden="costo_total" data-tipo="numero">Costo</th>
+                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
+                <th class="align-right" data-orden="margen" data-tipo="numero">Ganancia</th>
+                <th data-orden="estado_cobro" data-tipo="texto">Cobro</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="ventasBody"></tbody>
           </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de una venta -->
+      <section class="view" data-view="venta-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverVentas">← Volver a ventas</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaVentaTitulo">—</h2>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnDevolverVenta">Devolver</button>
+              <button class="btn btn-primary" id="btnEditarVenta">Editar</button>
+            </div>
+          </div>
+          <dl class="ficha-datos" id="fichaVentaDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Resumen de la venta">
+          <div class="ledger-item">
+            <span class="ledger-label">Costo</span>
+            <span class="ledger-value mono" id="fichaVentaCosto">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Total</span>
+            <span class="ledger-value mono" id="fichaVentaTotal">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Devuelto</span>
+            <span class="ledger-value mono ledger-warn" id="fichaVentaDevuelto">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Neto</span>
+            <span class="ledger-value mono" id="fichaVentaNeto">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Ganancia</span>
+            <span class="ledger-value mono ledger-ok" id="fichaVentaGanancia">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos vendidos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Precio unit.</th>
+                <th class="align-right">Subtotal</th>
+                <th class="align-right">Devuelto</th>
+                <th class="align-right">Ganancia</th>
+              </tr>
+            </thead>
+            <tbody id="fichaVentaItems"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel" id="fichaVentaDevolucionesPanel" hidden>
+          <div class="panel-head">
+            <h2>Devoluciones de esta venta</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Productos</th>
+                <th class="align-right">Total</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="fichaVentaDevolucionesBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Devoluciones -->
+      <section class="view" data-view="devoluciones" hidden>
+        <section class="ledger-strip" aria-label="Estado de las devoluciones">
+          <div class="ledger-item">
+            <span class="ledger-label">Devuelto</span>
+            <span class="ledger-value mono ledger-warn" id="devueltoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Reintegrado</span>
+            <span class="ledger-value mono" id="reintegradoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Crédito a favor</span>
+            <span class="ledger-value mono ledger-ok" id="creditoAFavorStrip">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Devoluciones</h2>
+          </div>
+          <p class="form-note">Una devolución se registra desde la ficha de la venta que revierte.</p>
+          <div class="filtros" id="filtrosDevoluciones"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="id" data-tipo="numero">N°</th>
+                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>Productos</th>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
+                <th data-orden="reintegrada" data-tipo="texto">Plata</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="devolucionesBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de una devolución -->
+      <section class="view" data-view="devolucion-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverDevoluciones">← Volver a devoluciones</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaDevolucionTitulo">—</h2>
+            <div class="panel-acciones" id="fichaDevolucionAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaDevolucionDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Total de la devolución">
+          <div class="ledger-item">
+            <span class="ledger-label">Total devuelto</span>
+            <span class="ledger-value mono" id="fichaDevolucionTotal">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos devueltos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Precio unit.</th>
+                <th class="align-right">Subtotal</th>
+                <th>Vuelve al stock</th>
+              </tr>
+            </thead>
+            <tbody id="fichaDevolucionItems"></tbody>
+          </table>
+          </div>
         </section>
       </section>
 
       <!-- Vista: Compras -->
       <section class="view" data-view="compras" hidden>
+        <section class="ledger-strip" aria-label="Totales de lo filtrado">
+          <div class="ledger-item">
+            <span class="ledger-label">Total</span>
+            <span class="ledger-value mono" id="comprasTotalStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Pagado</span>
+            <span class="ledger-value mono ledger-ok" id="comprasPagadoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Deuda</span>
+            <span class="ledger-value mono ledger-warn" id="comprasDeudaStrip">$0,00</span>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Compras</h2>
             <button class="btn btn-primary" id="btnNuevaCompra">+ Nueva compra</button>
           </div>
+          <div class="filtros" id="filtrosCompras"></div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Proveedor</th>
-                <th>Fecha</th>
-                <th class="align-right">Total</th>
-                <th>Pago</th>
-                <th>Envío</th>
+                <th data-orden="id" data-tipo="numero">N°</th>
+                <th data-orden="proveedor" data-tipo="texto">Proveedor</th>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
+                <th data-orden="estado_pago" data-tipo="texto">Pago</th>
+                <th data-orden="estado_envio" data-tipo="texto">Envío</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="comprasBody"></tbody>
           </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de una compra -->
+      <section class="view" data-view="compra-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverCompras">← Volver a compras</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaCompraTitulo">—</h2>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnDevolverCompra">Devolver</button>
+              <button class="btn btn-primary" id="btnEditarCompra">Editar</button>
+            </div>
+          </div>
+          <dl class="ficha-datos" id="fichaCompraDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Resumen de la compra">
+          <div class="ledger-item">
+            <span class="ledger-label">Subtotal</span>
+            <span class="ledger-value mono" id="fichaCompraSubtotal">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Envío</span>
+            <span class="ledger-value mono" id="fichaCompraEnvio">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Total</span>
+            <span class="ledger-value mono" id="fichaCompraTotal">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Devuelto</span>
+            <span class="ledger-value mono ledger-warn" id="fichaCompraDevuelto">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Neto</span>
+            <span class="ledger-value mono" id="fichaCompraNeto">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos comprados</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Precio unit.</th>
+                <th class="align-right">Costo real (con envío)</th>
+                <th class="align-right">Subtotal</th>
+                <th class="align-right">Devuelto</th>
+              </tr>
+            </thead>
+            <tbody id="fichaCompraItems"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel" id="fichaCompraDevolucionesPanel" hidden>
+          <div class="panel-head">
+            <h2>Devoluciones a este proveedor</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Productos</th>
+                <th class="align-right">Total</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="fichaCompraDevolucionesBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Devoluciones a proveedor -->
+      <section class="view" data-view="devoluciones-proveedor" hidden>
+        <section class="ledger-strip" aria-label="Estado de las devoluciones a proveedor">
+          <div class="ledger-item">
+            <span class="ledger-label">Devuelto a proveedor</span>
+            <span class="ledger-value mono ledger-warn" id="devueltoProveedorStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Reintegrado</span>
+            <span class="ledger-value mono" id="reintegradoProveedorStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Crédito con el proveedor</span>
+            <span class="ledger-value mono ledger-ok" id="creditoProveedorStrip">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Devoluciones a proveedor</h2>
+          </div>
+          <p class="form-note">Una devolución a proveedor se registra desde la ficha de la compra que revierte.</p>
+          <div class="filtros" id="filtrosDevolucionesProveedor"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="id" data-tipo="numero">N°</th>
+                <th data-orden="proveedor" data-tipo="texto">Proveedor</th>
+                <th>Productos</th>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
+                <th data-orden="reintegrada" data-tipo="texto">Plata</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="devolucionesProveedorBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de una devolución a proveedor -->
+      <section class="view" data-view="devolucion-proveedor-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverDevolucionesProveedor">← Volver a devoluciones a proveedor</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaDevolucionProveedorTitulo">—</h2>
+            <div class="panel-acciones" id="fichaDevolucionProveedorAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaDevolucionProveedorDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Total de la devolución">
+          <div class="ledger-item">
+            <span class="ledger-label">Total devuelto</span>
+            <span class="ledger-value mono" id="fichaDevolucionProveedorTotal">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos devueltos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Precio unit.</th>
+                <th class="align-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody id="fichaDevolucionProveedorItems"></tbody>
+          </table>
+          </div>
         </section>
       </section>
 
@@ -177,17 +747,43 @@
             <h2>Stock</h2>
             <button class="btn btn-primary" id="btnAjusteStock">+ Ajustar stock</button>
           </div>
+          <input type="search" class="search search-full" placeholder="Buscar por nombre" id="stockSearch" />
+          <div class="filtros" id="filtrosStock"></div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Costo</th>
-                <th class="align-right">Stock actual</th>
-                <th>Estado</th>
+                <th data-orden="nombre" data-tipo="texto">Producto</th>
+                <th class="align-right" data-orden="precio_costo" data-tipo="numero">Costo</th>
+                <th class="align-right" data-orden="stock" data-tipo="numero">Stock actual</th>
+                <th data-orden="estado_stock" data-tipo="texto">Estado</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="stockBody"></tbody>
           </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Historial de movimientos</h2>
+          </div>
+          <div class="filtros" id="filtrosStockMov"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Producto</th>
+                <th>Origen</th>
+                <th class="align-right">Cantidad</th>
+                <th>Nota</th>
+              </tr>
+            </thead>
+            <tbody id="stockMovimientosBody"></tbody>
+          </table>
+          </div>
         </section>
       </section>
 
@@ -199,21 +795,25 @@
             <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
+          <div class="filtros" id="filtrosProductos"></div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>SKU</th>
-                <th class="align-right">Costo</th>
-                <th class="align-right">Valorizado</th>
-                <th class="align-right">Precio</th>
-                <th class="align-right">Margen</th>
-                <th class="align-right">Stock</th>
-                <th>Activo</th>
+                <th data-orden="nombre" data-tipo="texto">Nombre</th>
+                <th data-orden="sku" data-tipo="texto">SKU</th>
+                <th class="align-right" data-orden="precio_costo" data-tipo="numero">Costo</th>
+                <th class="align-right" data-orden="valorizado" data-tipo="numero">Valorizado</th>
+                <th class="align-right" data-orden="precio_venta" data-tipo="numero">Precio</th>
+                <th class="align-right" data-orden="margen" data-tipo="numero">Margen</th>
+                <th class="align-right" data-orden="stock" data-tipo="numero">Stock</th>
+                <th data-orden="activo" data-tipo="numero">Activo</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="productosBody"></tbody>
           </table>
+          </div>
         </section>
       </section>
 
@@ -250,6 +850,7 @@
           <div class="panel-head">
             <h2>Movimientos de stock</h2>
           </div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
@@ -262,6 +863,7 @@
             </thead>
             <tbody id="fichaProductoMovimientos"></tbody>
           </table>
+          </div>
         </section>
       </section>
 
@@ -273,18 +875,22 @@
             <button class="btn btn-primary" id="btnNuevoCliente">+ Nuevo cliente</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="clientesSearch" />
+          <div class="filtros" id="filtrosClientes"></div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Nombre</th>
+                <th data-orden="nombre" data-tipo="texto">Nombre</th>
                 <th>Contacto</th>
-                <th class="align-right">Compras</th>
-                <th class="align-right">Total gastado</th>
-                <th class="align-right">Deuda</th>
+                <th class="align-right" data-orden="cantidad_compras" data-tipo="numero">Compras</th>
+                <th class="align-right" data-orden="total_gastado" data-tipo="numero">Total gastado</th>
+                <th class="align-right" data-orden="deuda" data-tipo="numero">Deuda</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="clientesBody"></tbody>
           </table>
+          </div>
         </section>
       </section>
 
@@ -321,6 +927,7 @@
           <div class="panel-head">
             <h2>Historial de compras</h2>
           </div>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
@@ -332,6 +939,292 @@
             </thead>
             <tbody id="fichaClienteHistorial"></tbody>
           </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Proveedores -->
+      <section class="view" data-view="proveedores" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Proveedores</h2>
+            <button class="btn btn-primary" id="btnNuevoProveedor">+ Nuevo proveedor</button>
+          </div>
+          <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="proveedoresSearch" />
+          <div class="filtros" id="filtrosProveedores"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Nombre</th>
+                <th>Contacto</th>
+                <th class="align-right" data-orden="cantidad_compras" data-tipo="numero">Compras</th>
+                <th class="align-right" data-orden="total_comprado" data-tipo="numero">Total comprado</th>
+                <th class="align-right" data-orden="deuda" data-tipo="numero">Deuda</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="proveedoresBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de un proveedor -->
+      <section class="view" data-view="proveedor-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverProveedores">← Volver a proveedores</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaProveedorNombre">—</h2>
+            <button class="btn btn-primary" id="btnEditarProveedor">Editar</button>
+          </div>
+          <dl class="ficha-datos" id="fichaProveedorDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Resumen del proveedor">
+          <div class="ledger-item">
+            <span class="ledger-label">Total comprado</span>
+            <span class="ledger-value mono" id="fichaProveedorTotal">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Compras</span>
+            <span class="ledger-value mono" id="fichaProveedorCompras">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Deuda actual</span>
+            <span class="ledger-value mono ledger-warn" id="fichaProveedorDeuda">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Historial de compras</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Fecha</th>
+                <th class="align-right">Total</th>
+                <th>Pago</th>
+              </tr>
+            </thead>
+            <tbody id="fichaProveedorHistorial"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Pagos realizados</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Compra</th>
+                <th>Cuenta</th>
+                <th class="align-right">Importe</th>
+                <th>Nota</th>
+              </tr>
+            </thead>
+            <tbody id="fichaProveedorPagos"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Caja / Tesorería -->
+      <section class="view" data-view="caja" hidden>
+        <section class="ledger-strip" aria-label="Resumen de caja">
+          <div class="ledger-item">
+            <span class="ledger-label">Total en caja</span>
+            <span class="ledger-value mono" id="cajaTotal">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Ingresos</span>
+            <span class="ledger-value mono ledger-ok" id="cajaIngresos">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Egresos</span>
+            <span class="ledger-value mono ledger-warn" id="cajaEgresos">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Cuentas</h2>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnNuevaCuenta">+ Cuenta</button>
+              <button class="btn btn-secundario" id="btnTransferencia">↔ Transferencia</button>
+              <button class="btn btn-primary" id="btnMovimientoTesoreria">+ Movimiento</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Cuenta</th>
+                <th>Tipo</th>
+                <th class="align-right">Saldo inicial</th>
+                <th class="align-right">Saldo actual</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cajaCuentasBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Movimientos</h2>
+          </div>
+          <div class="filtros" id="filtrosCaja"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Cuenta</th>
+                <th>Concepto</th>
+                <th class="align-right">Importe</th>
+              </tr>
+            </thead>
+            <tbody id="cajaMovimientosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Gastos -->
+      <section class="view" data-view="gastos" hidden>
+        <section class="ledger-strip" aria-label="Gastos del período">
+          <div class="ledger-item">
+            <span class="ledger-label">Operativos</span>
+            <span class="ledger-value mono ledger-warn" id="gastosOperativos">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Inversiones</span>
+            <span class="ledger-value mono" id="gastosInversiones">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Retiros</span>
+            <span class="ledger-value mono" id="gastosRetiros">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Gastos</h2>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnCategoriasGasto">Categorías</button>
+              <button class="btn btn-primary" id="btnNuevoGasto">+ Nuevo gasto</button>
+            </div>
+          </div>
+          <div class="filtros" id="filtrosGastos"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th data-orden="categoria" data-tipo="texto">Categoría</th>
+                <th data-orden="tipo" data-tipo="texto">Tipo</th>
+                <th>Descripción</th>
+                <th data-orden="cuenta" data-tipo="texto">Cuenta</th>
+                <th class="align-right" data-orden="importe" data-tipo="numero">Importe</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="gastosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Facturas -->
+      <section class="view" data-view="facturas" hidden>
+        <section class="ledger-strip" aria-label="Totales de lo filtrado">
+          <div class="ledger-item">
+            <span class="ledger-label">Facturado</span>
+            <span class="ledger-value mono" id="facturasFacturadoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Cobrado</span>
+            <span class="ledger-value mono ledger-ok" id="facturasCobradoStrip">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Pendiente</span>
+            <span class="ledger-value mono ledger-warn" id="facturasPendienteStrip">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Facturas</h2>
+            <button class="btn btn-primary" id="btnNuevaFactura">+ Nueva factura</button>
+          </div>
+          <div class="filtros" id="filtrosFacturas"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="comprobante" data-tipo="texto">Comprobante</th>
+                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
+                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>Origen</th>
+                <th class="align-right" data-orden="total" data-tipo="numero">Importe</th>
+                <th>Cobro</th>
+              </tr>
+            </thead>
+            <tbody id="facturasBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de una factura -->
+      <section class="view" data-view="factura-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverFacturas">← Volver a facturas</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaFacturaTitulo">—</h2>
+          </div>
+          <dl class="ficha-datos" id="fichaFacturaDatos"></dl>
+        </section>
+
+        <!-- Solo se muestra cuando la factura respalda una venta: una
+             suelta no tiene items que listar. -->
+        <section class="panel" id="fichaFacturaItemsPanel" hidden>
+          <div class="panel-head">
+            <h2>Productos facturados</h2>
+            <a href="#" class="btn-link" id="fichaFacturaVerVenta">Ver la venta →</a>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Cantidad</th>
+                <th class="align-right">Precio unit.</th>
+                <th class="align-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody id="fichaFacturaItems"></tbody>
+          </table>
+          </div>
         </section>
       </section>
 
@@ -344,6 +1237,7 @@
           <p class="form-note">
             Documentos anulados. Restaurar vuelve a aplicar su efecto sobre el stock y las cuentas corrientes.
           </p>
+          <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
@@ -357,6 +1251,7 @@
             </thead>
             <tbody id="papeleraBody"></tbody>
           </table>
+          </div>
         </section>
       </section>
 
@@ -371,11 +1266,11 @@
   </div>
 
   <!-- Modal nueva factura (placeholder funcional) -->
-  <div class="modal" id="modalFactura" hidden>
+  <div class="modal" id="modalFactura" role="dialog" aria-modal="true" aria-labelledby="modalFacturaTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3>Nueva factura</h3>
-        <button class="modal-close" id="modalClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalFacturaTitulo">Nueva factura</h3>
+        <button class="modal-close" id="modalClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formFactura" class="form">
         <label>Cliente
@@ -387,24 +1282,40 @@
         <label>Monto neto
           <input type="number" name="neto" required placeholder="0.00" step="0.01" min="0" />
         </label>
-        <label>Condición de venta
+        <label>Medio de pago
           <select name="condicion">
             <option value="mercadopago">Mercado Pago</option>
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia</option>
           </select>
         </label>
+        <label>Tipo
+          <select name="tipo">
+            <option value="factura">Factura</option>
+          </select>
+        </label>
+        <label>Letra
+          <select name="letra">
+            <option value="B">B</option>
+            <option value="A">A</option>
+            <option value="C">C</option>
+          </select>
+        </label>
+        <label>Punto de venta
+          <input type="number" name="punto_venta" value="1" min="1" step="1" />
+        </label>
+        <p class="form-note">Esta factura no está asociada a ninguna venta: no descuenta stock, no genera cuenta corriente y no entra en el resultado del negocio.</p>
         <button type="submit" class="btn btn-primary btn-full">Registrar factura</button>
       </form>
     </div>
   </div>
 
   <!-- Modal ajuste de stock -->
-  <div class="modal" id="modalAjusteStock" hidden>
+  <div class="modal" id="modalAjusteStock" role="dialog" aria-modal="true" aria-labelledby="modalAjusteStockTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3>Ajustar stock</h3>
-        <button class="modal-close" id="modalAjusteStockClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalAjusteStockTitulo">Ajustar stock</h3>
+        <button class="modal-close" id="modalAjusteStockClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formAjusteStock" class="form">
         <label>Producto
@@ -422,12 +1333,41 @@
     </div>
   </div>
 
-  <!-- Modal nueva venta -->
-  <div class="modal" id="modalVenta" hidden>
-    <div class="modal-card">
+  <!-- Modal nuevo/editar presupuesto -->
+  <div class="modal" id="modalPresupuesto" role="dialog" aria-modal="true" aria-labelledby="modalPresupuestoTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
       <div class="modal-head">
-        <h3>Nueva venta</h3>
-        <button class="modal-close" id="modalVentaClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalPresupuestoTitulo">Nuevo presupuesto</h3>
+        <button class="modal-close" id="modalPresupuestoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formPresupuesto" class="form">
+        <label>Cliente
+          <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
+        </label>
+        <label>Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <label>Válido hasta
+          <input type="date" name="vencimiento" />
+        </label>
+        <p class="form-note">Si dejás la fecha vacía, el presupuesto no vence. Pasada esa fecha sin respuesta, figura como vencido.</p>
+        <div class="item-rows" id="presupuestoItems"></div>
+        <button type="button" class="btn-add-item" id="btnAgregarItemPresupuesto">+ agregar producto</button>
+        <label>Notas
+          <input type="text" name="notas" placeholder="Condiciones, plazo de entrega…" />
+        </label>
+        <p class="form-note">Un presupuesto no descuenta stock ni genera deuda: podés cotizar algo que todavía no tenés. Eso pasa recién al convertirlo en venta.</p>
+        <p class="item-total">Total: <span class="mono" id="presupuestoTotal">$0,00</span></p>
+        <button type="submit" class="btn btn-primary btn-full" id="formPresupuestoSubmit">Guardar presupuesto</button>
+      </form>
+    </div>
+  </div>
+  <!-- Modal nueva/editar venta -->
+  <div class="modal" id="modalVenta" role="dialog" aria-modal="true" aria-labelledby="modalVentaTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalVentaTitulo">Nueva venta</h3>
+        <button class="modal-close" id="modalVentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formVenta" class="form">
         <label>Cliente
@@ -441,17 +1381,17 @@
         <button type="button" class="btn-add-item" id="btnAgregarItemVenta">+ agregar producto</button>
         <datalist id="productosVenta"></datalist>
         <p class="item-total">Total: <span class="mono" id="ventaTotal">$0,00</span></p>
-        <button type="submit" class="btn btn-primary btn-full">Registrar venta</button>
+        <button type="submit" class="btn btn-primary btn-full" id="formVentaSubmit">Registrar venta</button>
       </form>
     </div>
   </div>
 
-  <!-- Modal nueva compra -->
-  <div class="modal" id="modalCompra" hidden>
-    <div class="modal-card">
+  <!-- Modal nueva/editar compra -->
+  <div class="modal" id="modalCompra" role="dialog" aria-modal="true" aria-labelledby="modalCompraTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
       <div class="modal-head">
-        <h3>Nueva compra</h3>
-        <button class="modal-close" id="modalCompraClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalCompraTitulo">Nueva compra</h3>
+        <button class="modal-close" id="modalCompraClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formCompra" class="form">
         <label>Proveedor
@@ -468,38 +1408,78 @@
         </label>
         <p class="form-note">El envío se reparte entre los productos según cuánto vale cada uno.</p>
         <p class="item-total">Total: <span class="mono" id="compraTotal">$0,00</span></p>
-        <p class="form-note">Se guarda como borrador: no toca stock ni deuda hasta que efectúes el pedido.</p>
-        <button type="submit" class="btn btn-primary btn-full">Guardar borrador</button>
+        <p class="form-note" id="compraFormNota">Se guarda como borrador: no toca stock ni deuda hasta que efectúes el pedido.</p>
+        <button type="submit" class="btn btn-primary btn-full" id="formCompraSubmit">Guardar borrador</button>
       </form>
     </div>
   </div>
 
   <!-- Modal facturar venta -->
-  <div class="modal" id="modalFacturarVenta" hidden>
+  <div class="modal" id="modalFacturarVenta" role="dialog" aria-modal="true" aria-labelledby="modalFacturarVentaTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3>Facturar venta</h3>
-        <button class="modal-close" id="modalFacturarVentaClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalFacturarVentaTitulo">Facturar venta</h3>
+        <button class="modal-close" id="modalFacturarVentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formFacturarVenta" class="form">
-        <label>Condición de venta
+        <label>Medio de pago
           <select name="condicion">
             <option value="mercadopago">Mercado Pago</option>
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia</option>
           </select>
         </label>
+        <label>Letra
+          <select name="letra">
+            <option value="B">B</option>
+            <option value="A">A</option>
+            <option value="C">C</option>
+          </select>
+        </label>
+        <label>Punto de venta
+          <input type="number" name="punto_venta" value="1" min="1" step="1" />
+        </label>
         <button type="submit" class="btn btn-primary btn-full">Generar factura</button>
       </form>
     </div>
   </div>
 
+  <!-- Modal nota de crédito -->
+  <div class="modal" id="modalNotaCredito" role="dialog" aria-modal="true" aria-labelledby="modalNotaCreditoTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalNotaCreditoTitulo">Emitir nota de crédito</h3>
+        <button class="modal-close" id="modalNotaCreditoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formNotaCredito" class="form">
+        <label>Medio de pago
+          <select name="condicion">
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="mercadopago">Mercado Pago</option>
+          </select>
+        </label>
+        <label>Letra
+          <select name="letra">
+            <option value="B">B</option>
+            <option value="A">A</option>
+            <option value="C">C</option>
+          </select>
+        </label>
+        <label>Punto de venta
+          <input type="number" name="punto_venta" value="1" min="1" step="1" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Emitir nota de crédito</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal cliente (alta y edición) -->
-  <div class="modal" id="modalCliente" hidden>
+  <div class="modal" id="modalCliente" role="dialog" aria-modal="true" aria-labelledby="modalClienteTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalClienteTitulo">Nuevo cliente</h3>
-        <button class="modal-close" id="modalClienteClose" aria-label="Cerrar">✕</button>
+        <button class="modal-close" id="modalClienteClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formCliente" class="form">
         <label>Nombre
@@ -525,12 +1505,211 @@
     </div>
   </div>
 
+  <!-- Modal proveedor (alta y edición) -->
+  <div class="modal" id="modalProveedor" role="dialog" aria-modal="true" aria-labelledby="modalProveedorTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalProveedorTitulo">Nuevo proveedor</h3>
+        <button class="modal-close" id="modalProveedorClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formProveedor" class="form">
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Nombre o razón social" />
+        </label>
+        <label>Email
+          <input type="email" name="email" placeholder="Opcional" />
+        </label>
+        <label>Teléfono
+          <input type="text" name="telefono" placeholder="Opcional" />
+        </label>
+        <label>Dirección
+          <input type="text" name="direccion" placeholder="Opcional" />
+        </label>
+        <label>CUIT / DNI
+          <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <label>Notas
+          <input type="text" name="notas" placeholder="Opcional" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar proveedor</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal gasto (alta y edición) -->
+  <div class="modal" id="modalGasto" role="dialog" aria-modal="true" aria-labelledby="modalGastoTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalGastoTitulo">Nuevo gasto</h3>
+        <button class="modal-close" id="modalGastoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formGasto" class="form">
+        <label>Categoría
+          <select name="categoria_id" id="gastoCategoria" required></select>
+        </label>
+        <label>Tipo
+          <select name="tipo" id="gastoTipo" required>
+            <option value="operativo">Operativo — resta del resultado</option>
+            <option value="inversion">Inversión — no resta del resultado</option>
+            <option value="retiro">Retiro — no resta del resultado</option>
+          </select>
+        </label>
+        <p class="form-note">El tipo se completa solo con el de la categoría. Cambialo acá solo si este gasto puntual es una excepción.</p>
+        <label>Importe
+          <input type="number" name="importe" step="0.01" min="0" required placeholder="0.00" />
+        </label>
+        <label>Cuenta de la que sale
+          <select name="cuenta_tesoreria_id" id="gastoCuenta" required></select>
+        </label>
+        <label>Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <label>Descripción
+          <input type="text" name="descripcion" placeholder="Alquiler de agosto, factura de luz…" />
+        </label>
+        <label>Proveedor (opcional)
+          <select name="proveedor_id" id="gastoProveedor"></select>
+        </label>
+        <label>Comprobante (opcional)
+          <input type="text" name="comprobante" placeholder="N° de factura o recibo" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formGastoSubmit">Registrar gasto</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal categorías de gasto -->
+  <div class="modal" id="modalCategorias" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalCategoriasTitulo">Categorías de gasto</h3>
+        <button class="modal-close" id="modalCategoriasClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formCategoria" class="form">
+        <input type="hidden" name="id" />
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Alquiler, Servicios, Sueldos…" />
+        </label>
+        <label>Tipo
+          <select name="tipo" required>
+            <option value="operativo">Operativo — resta del resultado</option>
+            <option value="inversion">Inversión — no resta del resultado</option>
+            <option value="retiro">Retiro — no resta del resultado</option>
+          </select>
+        </label>
+        <p class="form-note">Cambiar el tipo afecta solo a los gastos futuros: los ya cargados conservan el suyo, para no reescribir resultados de meses cerrados.</p>
+        <button type="submit" class="btn btn-primary btn-full" id="formCategoriaSubmit">Agregar categoría</button>
+      </form>
+      <div class="tabla-scroll">
+          <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th>Tipo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="categoriasBody"></tbody>
+      </table>
+          </div>
+    </div>
+  </div>
+
+  <!-- Modal cuenta de tesorería (alta y edición) -->
+  <div class="modal" id="modalCuenta" role="dialog" aria-modal="true" aria-labelledby="modalCuentaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalCuentaTitulo">Nueva cuenta</h3>
+        <button class="modal-close" id="modalCuentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formCuenta" class="form">
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Caja chica, Banco Nación…" />
+        </label>
+        <label>Tipo
+          <select name="tipo" required>
+            <option value="efectivo">Efectivo</option>
+            <option value="banco">Banco</option>
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="otro">Otro</option>
+          </select>
+        </label>
+        <label>Saldo inicial
+          <input type="number" name="saldo_inicial" step="0.01" placeholder="0.00" />
+        </label>
+        <p class="form-note">La plata que ya había en esta cuenta antes de empezar a usar Nexo. No genera un movimiento.</p>
+        <button type="submit" class="btn btn-primary btn-full">Guardar cuenta</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal movimiento manual de caja -->
+  <div class="modal" id="modalMovimientoCaja" role="dialog" aria-modal="true" aria-labelledby="modalMovimientoCajaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalMovimientoCajaTitulo">Movimiento de caja</h3>
+        <button class="modal-close" id="modalMovimientoCajaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formMovimientoCaja" class="form">
+        <label>Tipo
+          <select name="tipo" required>
+            <option value="ingreso">Ingreso</option>
+            <option value="egreso">Egreso</option>
+          </select>
+        </label>
+        <label>Cuenta
+          <select name="cuenta_tesoreria_id" id="movimientoCajaCuenta" required></select>
+        </label>
+        <label>Importe
+          <input type="number" name="importe" step="0.01" min="0" required placeholder="0.00" />
+        </label>
+        <label>Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <label>Concepto
+          <input type="text" name="concepto" placeholder="Aporte del dueño, retiro, alquiler…" />
+        </label>
+        <p class="form-note">Para plata que entra o sale sin una venta ni una compra detrás.</p>
+        <button type="submit" class="btn btn-primary btn-full">Registrar movimiento</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal transferencia entre cuentas -->
+  <div class="modal" id="modalTransferencia" role="dialog" aria-modal="true" aria-labelledby="modalTransferenciaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalTransferenciaTitulo">Transferencia entre cuentas</h3>
+        <button class="modal-close" id="modalTransferenciaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formTransferencia" class="form">
+        <label>Desde
+          <select name="origen_id" id="transferenciaOrigen" required></select>
+        </label>
+        <label>Hacia
+          <select name="destino_id" id="transferenciaDestino" required></select>
+        </label>
+        <label>Importe
+          <input type="number" name="importe" step="0.01" min="0" required placeholder="0.00" />
+        </label>
+        <label>Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <label>Concepto
+          <input type="text" name="concepto" placeholder="Opcional" />
+        </label>
+        <p class="form-note">Mover plata entre cuentas propias no cambia el total: sale de una y entra en la otra.</p>
+        <button type="submit" class="btn btn-primary btn-full">Transferir</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal producto (alta y edición) -->
-  <div class="modal" id="modalProducto" hidden>
+  <div class="modal" id="modalProducto" role="dialog" aria-modal="true" aria-labelledby="modalProductoTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalProductoTitulo">Nuevo producto</h3>
-        <button class="modal-close" id="modalProductoClose" aria-label="Cerrar">✕</button>
+        <button class="modal-close" id="modalProductoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <form id="formProducto" class="form">
         <label>Nombre
@@ -558,11 +1737,11 @@
   </div>
 
   <!-- Modal cobrar venta -->
-  <div class="modal" id="modalCobrarVenta" hidden>
+  <div class="modal" id="modalCobrarVenta" role="dialog" aria-modal="true" aria-labelledby="modalCobrarVentaTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3>Registrar cobro</h3>
-        <button class="modal-close" id="modalCobrarVentaClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalCobrarVentaTitulo">Registrar cobro</h3>
+        <button class="modal-close" id="modalCobrarVentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <p class="item-total">Total: <span class="mono" id="cobroVentaTotal">$0,00</span></p>
       <p class="item-total">Cobrado: <span class="mono" id="cobroVentaCobrado">$0,00</span></p>
@@ -583,12 +1762,80 @@
     </div>
   </div>
 
-  <!-- Modal pagar compra -->
-  <div class="modal" id="modalPagarCompra" hidden>
+  <!-- Modal devolución -->
+  <div class="modal" id="modalDevolucion" role="dialog" aria-modal="true" aria-labelledby="modalDevolucionTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalDevolucionTitulo">Registrar devolución</h3>
+        <button class="modal-close" id="modalDevolucionClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formDevolucion" class="form">
+        <div id="devolucionItems" class="item-rows"></div>
+        <p class="form-note">La cantidad tope es lo que todavía no se devolvió de esa venta. Destildá "vuelve al stock" si la mercadería llegó fallada: no reingresa al depósito y su costo queda como pérdida.</p>
+        <label>Motivo
+          <input type="text" name="motivo" placeholder="Opcional" />
+        </label>
+        <label class="form-check">
+          <input type="checkbox" id="devolucionReintegrar" /> Devolver la plata ahora
+        </label>
+        <label id="devolucionCuentaLabel" hidden>Cuenta de tesorería
+          <select name="cuenta_tesoreria_id"></select>
+        </label>
+        <p class="form-note">Si no la marcás, la devolución queda como crédito a favor del cliente para su próxima compra.</p>
+        <p class="item-total">Total a devolver: <span class="mono" id="devolucionTotal">$0,00</span></p>
+        <button type="submit" class="btn btn-primary btn-full">Registrar devolución</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal devolución a proveedor (alta) -->
+  <div class="modal" id="modalDevolucionProveedor" role="dialog" aria-modal="true" aria-labelledby="modalDevolucionProveedorTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalDevolucionProveedorTitulo">Registrar devolución a proveedor</h3>
+        <button class="modal-close" id="modalDevolucionProveedorClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formDevolucionProveedor" class="form">
+        <div id="devolucionProveedorItems" class="item-rows"></div>
+        <p class="form-note">La cantidad tope es lo que todavía no se devolvió de esta compra, y nunca más de lo que sigue en stock (por si ya se vendió).</p>
+        <label>Motivo
+          <input type="text" name="motivo" placeholder="Opcional" />
+        </label>
+        <label class="form-check">
+          <input type="checkbox" id="devolucionProveedorReintegrar" /> Recibir el reintegro ahora
+        </label>
+        <label id="devolucionProveedorCuentaLabel" hidden>Cuenta de tesorería
+          <select name="cuenta_tesoreria_id"></select>
+        </label>
+        <p class="form-note">Si no lo marcás, la devolución queda como crédito con el proveedor para la próxima compra.</p>
+        <p class="item-total">Total a devolver: <span class="mono" id="devolucionProveedorTotal">$0,00</span></p>
+        <button type="submit" class="btn btn-primary btn-full">Registrar devolución</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal nota de crédito del proveedor (referencia, no se emite) -->
+  <div class="modal" id="modalNotaCreditoProveedor" role="dialog" aria-modal="true" aria-labelledby="modalNotaCreditoProveedorTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3>Registrar pago</h3>
-        <button class="modal-close" id="modalPagarCompraClose" aria-label="Cerrar">✕</button>
+        <h3 id="modalNotaCreditoProveedorTitulo">Nota de crédito del proveedor</h3>
+        <button class="modal-close" id="modalNotaCreditoProveedorClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formNotaCreditoProveedor" class="form">
+        <label>Número de nota de crédito del proveedor
+          <input type="text" name="numero" required placeholder="Ej: 0001-00001234" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal pagar compra -->
+  <div class="modal" id="modalPagarCompra" role="dialog" aria-modal="true" aria-labelledby="modalPagarCompraTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalPagarCompraTitulo">Registrar pago</h3>
+        <button class="modal-close" id="modalPagarCompraClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <p class="item-total">Total: <span class="mono" id="pagoCompraTotal">$0,00</span></p>
       <p class="item-total">Pagado: <span class="mono" id="pagoCompraPagado">$0,00</span></p>
@@ -606,6 +1853,87 @@
         </label>
         <button type="submit" class="btn btn-primary btn-full">Registrar pago</button>
       </form>
+    </div>
+  </div>
+
+  <!-- Asistente flotante — operaciones por texto (CLAUDE.md §21). No es
+       una vista más del nav: está disponible desde cualquier pantalla.
+       El ícono es genérico a propósito (chispa/IA); un personaje propio
+       queda para más adelante. -->
+  <button
+    type="button"
+    id="asistenteLauncher"
+    class="asistente-launcher"
+    aria-label="Abrir asistente"
+    aria-expanded="false"
+    aria-controls="asistentePanel"
+  >
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6L12 3z" />
+      <path d="M19 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" />
+    </svg>
+  </button>
+
+  <div id="asistentePanel" class="asistente-panel" role="dialog" aria-label="Asistente" hidden>
+    <div class="asistente-panel-head">
+      <h2>Asistente</h2>
+      <button type="button" class="modal-close" id="asistentePanelClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+
+    <div class="asistente-hilo" id="asistenteHilo">
+      <p class="asistente-bienvenida">
+        Contame una venta, una compra o un gasto como se lo dirías a alguien — te muestro cómo lo entendí antes de cargar nada.
+      </p>
+    </div>
+
+    <form id="formAsistente" class="asistente-composer">
+      <textarea
+        id="asistenteTexto"
+        name="texto"
+        rows="1"
+        placeholder='Ej: "vendí 3 remeras negras M a Juan por 45 mil y me pagó por Mercado Pago"'
+      ></textarea>
+      <button type="submit" id="btnAsistenteEnviar" class="asistente-enviar" aria-label="Enviar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 2 11 13" />
+          <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <!-- Modal de configuración — todavía sin preferencias reales, es el
+       punto de entrada para cuando se sumen (foto de perfil, datos del
+       negocio, etc.). Lo abren tanto el botón de engranaje como el
+       círculo de perfil del pie de la sidebar. -->
+  <div class="modal" id="modalConfiguracion" role="dialog" aria-modal="true" aria-labelledby="modalConfiguracionTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalConfiguracionTitulo">Configuración</h3>
+        <button class="modal-close" id="modalConfiguracionClose" aria-label="Cerrar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="form-note">Todavía no hay preferencias configurables acá. En una próxima etapa se van a poder ajustar cosas como la foto de perfil y los datos del negocio.</p>
+    </div>
+  </div>
+
+  <!-- Avisos (toasts) — reemplaza alert() nativo. Ver avisar() en app.js. -->
+  <div id="avisos" class="avisos" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Modal de confirmación genérico — reemplaza confirm() nativo. Ver
+       confirmar() en app.js: se completa título/cuerpo/botón según el
+       caso y resuelve una Promise<boolean> con el botón que se apriete. -->
+  <div class="modal" id="modalConfirmar" role="dialog" aria-modal="true" aria-labelledby="modalConfirmarTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalConfirmarTitulo">Confirmar</h3>
+      </div>
+      <p class="form-note" id="modalConfirmarCuerpo"></p>
+      <div class="panel-acciones confirmar-acciones">
+        <button type="button" class="btn btn-secundario" id="modalConfirmarCancelar">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="modalConfirmarAceptar">Confirmar</button>
+      </div>
     </div>
   </div>
 

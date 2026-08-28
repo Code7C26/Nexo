@@ -8,7 +8,7 @@
    ============================================================ */
 
 :root {
-  /* Color */
+  /* Color — tema claro (paleta original, intacta) */
   --bg:            #F0F3EF;   /* papel frío, no crema genérico */
   --surface:       #FFFFFF;
   --surface-sunk:  #E7EBE6;
@@ -16,7 +16,7 @@
   --ink-muted:     #5C6B65;
   --line:          #D8DED6;
 
-  --brand:         #000000;   /* negro — color de marca Nexö */
+  --brand:         #000000;   /* negro — color de marca Nexo */
   --brand-contrast:#FFFFFF;
 
   --accent-ok:     #2F9E6E;   /* verde recibo — significa "positivo/cobrado", no es color de marca */
@@ -26,14 +26,111 @@
   --accent-danger: #B23A3A;   /* rojo — atención / retenido */
   --accent-danger-bg: #F5E2E1;
 
-  /* Tipografía */
-  --font-display: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  /* La sidebar es oscura en los dos temas (es parte de la identidad
+     visual, no del tema), así que sus colores no son tokens de tema: son
+     fijos acá y se usan igual en :root y en data-tema="oscuro". */
+  --sidebar-bg:      #121212;
+  --sidebar-ink:     #F0F3EF;
+  --sidebar-ink-2:   #CFCFCF;
+  --sidebar-ink-3:   #7A7A7A;
+  --sidebar-line:    rgba(255,255,255,0.12);
+  --sidebar-hover:   rgba(255,255,255,0.06);
+  --sidebar-active:  rgba(255,255,255,0.1);
+
+  /* Elevación: dos niveles nada más — panel/popover apenas se despega
+     del fondo, modal flota bien por encima de todo. */
+  --shadow-sm: 0 2px 8px rgba(18, 18, 18, 0.06);
+  --shadow-lg: 0 16px 40px rgba(18, 18, 18, 0.16);
+
+  /* Tipografía. El concepto del sistema es "libro mayor / ticket de
+     caja" (ver el comentario de arriba), pero hasta acá la única voz
+     tipográfica era la sans — el mono solo aparecía en los números. Para
+     que la estructura misma hable en mono (títulos, eyebrows, columnas,
+     badges) --font-display deja de ser un alias de --font-body y pasa a
+     ser la familia monoespaciada, con la sans reservada para texto
+     corrido, celdas y formularios. */
+  --font-display: 'IBM Plex Mono', 'Courier New', monospace;
   --font-body:    'Plus Jakarta Sans', 'Segoe UI', sans-serif;
   --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
 
+  /* Escala tipográfica: reemplaza los ~13 tamaños sueltos (11px, 11.5px,
+     12px, 12.5px, 13px, 13.5px, 14px, 14.5px, 15px, 16px, 20px, 21px,
+     28px) que tenía cada regla elegidos caso por caso. */
+  --txt-2xs: 11px;   /* etiquetas uppercase: eyebrow, dt, th */
+  --txt-xs:  12.5px; /* texto secundario chico: chips, notas, meta */
+  --txt-sm:  13.5px; /* texto de tabla e inputs */
+  --txt-md:  15px;   /* texto de párrafo por defecto */
+  --txt-lg:  17px;   /* títulos de modal/ficha */
+  --txt-xl:  21px;   /* valores destacados (ledger-value) */
+  --txt-2xl: 28px;   /* título de página */
+
+  /* Escala de espaciado: 4 / 8 / 12 / 16 / 24 / 32 / 48px. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* Radios: chico para controles, mediano para paneles/modales, completo
+     para pills y chips. Antes era un único --radius de 6px para todo. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-full: 999px;
+
   /* Layout */
   --sidebar-w: 240px;
-  --radius: 6px;
+}
+
+/* Sin elección explícita, el tema sigue al sistema operativo. El botón
+   fija --data-tema y a partir de ahí gana siempre, en cualquier
+   dirección (aunque el SO diga otra cosa). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --bg:            #17191C;
+    --surface:       #1F2225;
+    --surface-sunk:  #262A2E;
+    --ink:           #ECEDEC;
+    --ink-muted:     #9AA39D;
+    --line:          #33383C;
+
+    --brand-contrast:#121212;
+
+    /* Los tres colores semánticos suben de luminosidad para seguir
+       legibles sobre fondo oscuro: la versión de papel claro (pensada
+       para tinta sobre blanco) se ve apagada y de bajo contraste acá. */
+    --accent-ok:     #4CC490;
+    --accent-ok-bg:  rgba(76, 196, 144, 0.16);
+    --accent-warn:   #E0864B;
+    --accent-warn-bg:rgba(224, 134, 75, 0.16);
+    --accent-danger: #E06767;
+    --accent-danger-bg: rgba(224, 103, 103, 0.16);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-tema="oscuro"] {
+  --bg:            #17191C;
+  --surface:       #1F2225;
+  --surface-sunk:  #262A2E;
+  --ink:           #ECEDEC;
+  --ink-muted:     #9AA39D;
+  --line:          #33383C;
+
+  --brand-contrast:#121212;
+
+  --accent-ok:     #4CC490;
+  --accent-ok-bg:  rgba(76, 196, 144, 0.16);
+  --accent-warn:   #E0864B;
+  --accent-warn-bg:rgba(224, 134, 75, 0.16);
+  --accent-danger: #E06767;
+  --accent-danger-bg: rgba(224, 103, 103, 0.16);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
 }
 
 * { box-sizing: border-box; }
@@ -44,8 +141,27 @@ html, body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: 15px;
+  font-size: var(--txt-md);
   line-height: 1.5;
+}
+
+html { color-scheme: light dark; }
+:root[data-tema="claro"] { color-scheme: light; }
+:root[data-tema="oscuro"] { color-scheme: dark; }
+
+/* Un solo estilo de foco, consistente en toda la app: sin esto no había
+   ninguna señal visible al navegar con teclado. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Transición suave solo para los tokens de color, y no para todo (que
+   arrastraría layout/tamaño): cambiar de tema no debe verse como un
+   parpadeo brusco. */
+body, .panel, .surface, .modal-card, .filtro-chip, .filtro-popover,
+.ledger-strip, .status, .btn, input, select {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -64,35 +180,47 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ---------- Sidebar ---------- */
 
+/* La sidebar es oscura en los dos temas: es identidad de marca, no
+   preferencia de lectura. Por eso usa --sidebar-* (fijos) y no --ink/--bg
+   (que se invierten con el tema) — antes usaba esos por accidente, y con
+   el modo oscuro habría quedado clara justo cuando el resto se oscurece. */
 .sidebar {
-  background: var(--ink);
-  color: var(--bg);
-  padding: 28px 20px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-ink);
+  padding: var(--sp-5) var(--sp-4);
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: var(--sp-6);
+  /* Clavada al viewport: sin esto, al crecer .main en una página larga la
+     fila del grid crece con ella y arrastra el pie de la sidebar
+     ("Negocio / Tu Pyme") cada vez más abajo, fuera de la vista, en vez de
+     quedarse a la vista todo el tiempo que dura el scroll. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+}
+
+.brand-id {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
 .brand-mark {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  background: var(--surface);
-  color: var(--brand);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .brand-name {
-  font-size: 20px;
+  font-size: var(--txt-xl);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -100,94 +228,240 @@ button { font-family: inherit; cursor: pointer; }
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   flex: 1;
 }
 
 .nav-item {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  padding: 10px 10px;
-  border-radius: var(--radius);
-  color: #CFCFCF;
-  font-size: 14.5px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--sidebar-ink-2);
+  font-size: var(--txt-md);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .nav-index {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: #7A7A7A;
+  font-size: var(--txt-2xs);
+  color: var(--sidebar-ink-3);
 }
 
 .nav-item:hover {
-  background: rgba(255,255,255,0.06);
-  color: var(--bg);
+  background: var(--sidebar-hover);
+  color: var(--sidebar-ink);
 }
 
 .nav-item.is-active {
-  background: rgba(255,255,255,0.1);
-  color: var(--bg);
+  background: var(--sidebar-active);
+  color: var(--sidebar-ink);
   font-weight: 600;
 }
 
 .nav-item.is-active .nav-index {
-  color: var(--bg);
+  color: var(--sidebar-ink);
 }
 
 .sidebar-foot {
-  border-top: 1px solid rgba(255,255,255,0.12);
-  padding-top: 16px;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border-top: 1px solid var(--sidebar-line);
+  padding-top: var(--sp-4);
+  font-size: var(--txt-sm);
 }
 
-.sidebar-foot p {
+/* Crece para ocupar el espacio libre entre el avatar y los botones —
+   así los tres conviven sin pisarse aunque "Tu Pyme" tenga un nombre
+   largo (se corta con puntos suspensivos en vez de empujar al resto). */
+.sidebar-foot-negocio {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-foot-negocio p {
   margin: 0 0 2px;
-  color: #969696;
+  color: var(--sidebar-ink-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 11px;
+  font-size: var(--txt-2xs);
 }
 
-.sidebar-foot strong {
-  font-size: 15px;
+.sidebar-foot-negocio strong {
+  display: block;
+  font-size: var(--txt-md);
+  color: var(--sidebar-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-foot-botones {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
+}
+
+/* Círculo de perfil: hoy es un ícono genérico; el lugar donde más
+   adelante se va a poder subir una foto (ver el comentario en
+   index.html). Mismo tratamiento visual que .btn-tema (fijo en los dos
+   temas, es parte de la identidad de la sidebar, no del tema claro/oscuro). */
+.perfil-avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: var(--sidebar-hover);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-full);
+  color: var(--sidebar-ink-2);
+  padding: 0;
+}
+
+.perfil-avatar:hover {
+  background: var(--sidebar-active);
+  color: var(--sidebar-ink);
+}
+
+/* Ocultar la sidebar para ver una vista en pantalla completa (solo
+   desktop: en mobile la sidebar ya es un drawer aparte, con su propio
+   mecanismo de apertura/cierre, sin relación con este). El estado se
+   guarda en localStorage igual que el tema — ver el script en el <head>
+   de index.html que lo aplica antes de pintar, para que no haya un flash
+   de sidebar visible al recargar con la barra ya oculta. El @media evita
+   que este estado (persistido en el mismo localStorage del navegador) se
+   cuele en el layout mobile si la ventana se achica con la barra oculta. */
+@media (min-width: 861px) {
+  :root[data-sidebar="colapsada"] .app {
+    grid-template-columns: 1fr;
+  }
+
+  :root[data-sidebar="colapsada"] .sidebar {
+    display: none;
+  }
+
+  :root[data-sidebar="colapsada"] .nav-toggle {
+    display: flex;
+  }
+}
+
+/* Sol/luna superpuestos con opacidad: rotan al cambiar de tema en vez de
+   sustituirse de golpe. */
+.btn-tema {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-sm);
+  color: var(--sidebar-ink-2);
+}
+
+.btn-tema:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-ink);
+}
+
+.btn-tema svg {
+  position: absolute;
+  transition: opacity 0.15s ease, transform 0.2s ease;
+}
+
+.btn-tema .icono-luna { opacity: 0; transform: rotate(-90deg) scale(0.6); }
+.btn-tema .icono-sol  { opacity: 1; transform: rotate(0) scale(1); }
+
+:root[data-tema="oscuro"] .btn-tema .icono-sol  { opacity: 0; transform: rotate(90deg) scale(0.6); }
+:root[data-tema="oscuro"] .btn-tema .icono-luna { opacity: 1; transform: rotate(0) scale(1); }
+
+/* Sin elección explícita pero con el sistema en oscuro, el ícono también
+   tiene que mostrar luna: el tema ya está oscuro por los tokens de arriba,
+   así que el botón tiene que ofrecer "volver a claro", no "pasar a oscuro". */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) .btn-tema .icono-sol  { opacity: 0; transform: rotate(90deg) scale(0.6); }
+  :root:not([data-tema="claro"]) .btn-tema .icono-luna { opacity: 1; transform: rotate(0) scale(1); }
 }
 
 /* ---------- Main ---------- */
 
 .main {
-  padding: 32px 40px 60px;
-  max-width: 1100px;
+  /* El padding inferior deja lugar de sobra para el círculo flotante del
+     asistente (56px + separación) — si no, la fila de abajo de una tabla
+     larga queda tapada por el botón. El padding derecho reserva ese mismo
+     ancho (56px + separación, misma cuenta que usa .asistente-panel para
+     su "bottom") porque el círculo es fixed al viewport, no al final de la
+     página: en ventanas angostas (.main llega hasta el borde real) tapaba
+     los últimos dígitos de la columna de importe de CUALQUIER fila que
+     pasara por esa esquina al scrollear, no solo la última. Por encima de
+     ~1600px de ventana (ver el @media más abajo) .main ya no llega a ese
+     borde — queda topeado en max-width y el resto es fondo vacío — así
+     que ahí ese padding extra sería puro ancho de tabla regalado sin
+     necesidad. */
+  padding: var(--sp-6) calc(56px + var(--sp-5) + var(--sp-3)) 96px var(--sp-6);
+  max-width: 1280px;
+  /* Sin esto, .main (ítem de la grilla de .app) no puede achicarse por
+     debajo del ancho mínimo de su contenido: una tabla ancha empujaba
+     toda la página en vez de scrollear solo dentro de .tabla-scroll —
+     el clásico problema de CSS Grid con "min-width: auto" implícito. */
+  min-width: 0;
+}
+
+/* Umbral en el que .main (sidebar 240px + max-width 1280px = 1520px de
+   contenido) deja de tocar el borde derecho real de la ventana: el
+   círculo del asistente, fijo al viewport a 24px de ese borde, cae a
+   partir de acá sobre fondo vacío en vez de sobre la tabla. 1600px deja
+   un margen de sobra sobre esos 1520px para el propio ancho del botón. */
+@media (min-width: 1600px) {
+  .main {
+    padding-right: var(--sp-6);
+  }
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 28px;
+  margin-bottom: var(--sp-6);
 }
 
 .eyebrow {
-  margin: 0 0 4px;
+  margin: 0 0 var(--sp-1);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 11.5px;
+  font-size: var(--txt-2xs);
   color: var(--ink-muted);
+  font-family: var(--font-display);
 }
 
 .topbar h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: var(--txt-2xl);
   font-weight: 600;
+  /* El mono se abre más que la sans a este tamaño; un poco de tracking
+     negativo lo compensa sin perder la identidad monoespaciada. */
+  letter-spacing: -0.02em;
+}
+
+/* La fecha de hoy era el <h1> de la topbar; ahora ese lugar lo ocupa el
+   nombre de la pantalla (para orientación) y la fecha pasa a acompañar,
+   chica, en el extremo derecho. */
+.topbar-fecha {
+  margin: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
 }
 
 .btn {
   border: none;
-  border-radius: var(--radius);
-  padding: 11px 18px;
-  font-size: 14px;
+  border-radius: var(--r-sm);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--txt-sm);
   font-weight: 600;
 }
 
@@ -196,9 +470,184 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--bg);
 }
 
-.btn-primary:hover { background: #000000; }
+/* filter en vez de un hex fijo: con --ink/--bg invertidos en oscuro (el
+   botón primario pasa a ser una píldora clara), un #000000 fijo en hover
+   dejaría el texto invisible (negro sobre negro). brightness() oscurece
+   un poco cualquiera de los dos, sin importar qué color tenga debajo. */
+.btn-primary:hover { filter: brightness(0.9); }
 
-.btn-full { width: 100%; margin-top: 8px; }
+.btn-full { width: 100%; margin-top: var(--sp-2); }
+
+/* Acción secundaria: mismo tamaño que .btn-primary pero con el peso
+   visual bajado, para los paneles que tienen más de un botón (Caja). */
+.btn-secundario {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.btn-secundario:hover { background: var(--line); }
+
+/* Varios botones en el encabezado de un panel, sin que se peguen ni
+   desborden en pantallas chicas. */
+.panel-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* Un saldo en rojo avisa que falta cargar algo (la plata real no puede
+   ser negativa), sin llegar a bloquear la carga. */
+.saldo-negativo { color: var(--accent-danger); }
+
+/* ---------- Filtros (chips + popover, estilo Notion) ---------- */
+
+/* La pantalla arranca limpia: solo un botón. Los filtros puestos se ven
+   como chips, y el popover se posiciona respecto de este contenedor. */
+.filtros {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.filtro-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.filtro-chip.is-abierto {
+  border-color: var(--ink);
+}
+
+.filtro-chip-texto {
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  font-size: var(--txt-xs);
+  font-family: inherit;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.filtro-chip-texto strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.filtro-chip-texto:hover { background: var(--line); }
+
+.filtro-chip-x {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--line);
+  color: var(--ink-muted);
+  padding: 6px 9px;
+  font-size: var(--txt-2xs);
+  line-height: 1;
+}
+
+.filtro-chip-x:hover {
+  background: var(--accent-danger-bg);
+  color: var(--accent-danger);
+}
+
+.btn-agregar-filtro,
+.btn-limpiar-filtros {
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-full);
+  color: var(--ink-muted);
+  padding: 6px 12px;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.btn-agregar-filtro:hover,
+.btn-limpiar-filtros:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.btn-limpiar-filtros { border-style: solid; }
+
+/* Se abre debajo del chip o del botón que lo disparó. */
+.filtro-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 230px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.filtro-popover-titulo {
+  margin: 0;
+  font-size: var(--txt-2xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Lista de propiedades del selector "Filtrar por". */
+.filtro-opcion {
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  text-align: left;
+  padding: 7px 8px;
+  font-size: var(--txt-xs);
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.filtro-opcion:hover { background: var(--line); }
+
+.filtro-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 7px 9px;
+  font-size: var(--txt-xs);
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.filtro-eliminar {
+  background: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+  padding: 8px 4px 2px;
+  text-align: left;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--accent-danger);
+}
+
+.filtro-eliminar:hover { text-decoration: underline; }
+
+/* Panel que solo lleva una aclaración, sin encabezado ni tabla. */
+.panel-nota { padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
+.panel-nota .form-note { margin: 0; }
 
 /* ---------- Ledger strip (elemento firma) ---------- */
 
@@ -206,28 +655,30 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  margin-bottom: 28px;
+  border-radius: var(--r-md);
+  margin-bottom: var(--sp-6);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .ledger-item {
   flex: 1;
-  padding: 18px 20px;
+  padding: var(--sp-4) var(--sp-5);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 
 .ledger-label {
-  font-size: 12px;
+  font-size: var(--txt-xs);
   color: var(--ink-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  font-family: var(--font-display);
 }
 
 .ledger-value {
-  font-size: 21px;
+  font-size: var(--txt-xl);
   font-weight: 600;
 }
 
@@ -240,78 +691,211 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--line);
 }
 
+/* El Resultado es la conclusión de la tira, no un insumo más: en un
+   libro mayor real el total de la cuenta se destaca del resto de los
+   renglones. Mismo tratamiento que .topbar h1 (tamaño + tracking), para
+   que se lea como "el número final" y no como una caja más. */
+.ledger-item-total {
+  flex: 1.3;
+}
+
+.ledger-item-total .ledger-value {
+  font-size: var(--txt-2xl);
+  letter-spacing: -0.02em;
+}
+
+.ledger-item-total .ledger-label {
+  font-weight: 700;
+  color: var(--ink);
+}
+
 /* ---------- Panel / tabla ---------- */
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 24px;
+  border-radius: var(--r-md);
+  padding: var(--sp-5);
+  box-shadow: var(--shadow-sm);
 }
 
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-4);
 }
 
 .panel-head h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--txt-lg);
   font-weight: 600;
+  font-family: var(--font-display);
 }
 
 .search {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  font-size: 13.5px;
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--txt-sm);
   font-family: inherit;
   min-width: 240px;
   background: var(--surface-sunk);
 }
 
+/* Contenedor propio de scroll para las tablas anchas (Ventas: 9
+   columnas; Compras: 7): antes se apretaban en pantallas medianas y el
+   texto se cortaba. Así la tabla mantiene su ancho legible y solo ella
+   scrollea, no la página entera. */
+.tabla-scroll {
+  overflow-x: auto;
+}
+
 .ledger-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: var(--txt-sm);
 }
 
 .ledger-table th {
   text-align: left;
-  font-size: 11px;
+  font-size: var(--txt-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-muted);
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  font-family: var(--font-display);
+  /* Encabezado fijo al scrollear una tabla larga: sin esto se pierde de
+     vista qué columna es cuál. .tabla-scroll tiene overflow-x:auto (por
+     las tablas anchas), que en teoría podría capturar el sticky para sí
+     misma en vez de dejarlo pegado al viewport — probado a mano y no pasa,
+     porque .tabla-scroll no tiene overflow vertical propio (su alto es el
+     de su contenido), así que el scroll relevante sigue siendo el de la
+     página. Necesita fondo propio: sin él, las filas de abajo se
+     transparentarían por debajo del encabezado al scrollear. */
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
 }
 
 .ledger-table td {
-  padding: 12px 10px;
+  padding: var(--sp-3) var(--sp-3);
   border-bottom: 1px solid var(--line);
   font-family: var(--font-body);
 }
 
 .ledger-table td.mono { font-family: var(--font-mono); }
 
+/* La regla `.ledger-table th` de arriba fija text-align:left y tiene más
+   especificidad que un `.align-right` suelto, así que los encabezados
+   alineados a la derecha quedaban a la izquierda mientras su columna de
+   datos iba a la derecha. Por eso estas dos reglas nombran el th. */
 .align-right { text-align: right; }
 .align-center { text-align: center; }
+.ledger-table th.align-right { text-align: right; }
+.ledger-table th.align-center { text-align: center; }
 
 .ledger-table tbody tr:hover { background: var(--surface-sunk); }
+
+/* ---------- Orden de tablas (click en el encabezado) ---------- */
+
+.th-ordenable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.th-ordenable:hover { color: var(--ink); }
+
+.th-ordenado { color: var(--ink); }
+
+.th-flecha {
+  display: inline-block;
+  width: 0.9em;
+  font-family: var(--font-mono);
+}
 
 .status {
   display: inline-block;
   padding: 3px 9px;
-  border-radius: 20px;
-  font-size: 11.5px;
+  border-radius: var(--r-full);
+  font-size: var(--txt-2xs);
   font-weight: 600;
+  font-family: var(--font-display);
 }
 
 .status-cobrado  { background: var(--accent-ok-bg); color: var(--accent-ok); }
 .status-pendiente{ background: var(--accent-warn-bg); color: var(--accent-warn); }
 .status-vencido  { background: var(--accent-danger-bg); color: var(--accent-danger); }
+
+/* Estado vacío de una tabla. Reemplaza el style="..." repetido que tenía
+   cada render*(): mismo aspecto, en un solo lugar. */
+.tabla-vacia {
+  text-align: center;
+  color: var(--ink-muted);
+  padding: var(--sp-5);
+}
+
+/* Filas skeleton mientras un cargar*() todavía no resolvió el fetch — ver
+   tablaCargando() en app.js. Sin esto la tabla arrancaba vacía y aparecía
+   de golpe, sobre todo en vistas que hacen 3–4 fetch en paralelo. */
+.fila-cargando td {
+  padding: var(--sp-3);
+}
+
+.skeleton-linea {
+  height: 14px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--surface-sunk) 25%, var(--line) 50%, var(--surface-sunk) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-brillo 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-brillo {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---------- Delta de comparación contra el período anterior (Resumen) ---------- */
+
+.ledger-delta {
+  font-size: var(--txt-2xs);
+  font-family: var(--font-mono);
+}
+
+.ledger-delta-ok     { color: var(--accent-ok); }
+.ledger-delta-mal    { color: var(--accent-danger); }
+.ledger-delta-neutro { color: var(--ink-muted); }
+
+/* ---------- Gráfico de evolución (Resumen) ---------- */
+
+/* SVG dibujado a mano, sin librería (el proyecto no tiene build step). El
+   ancho es fluido vía viewBox + width:100%, así que no hace falta ningún
+   listener de resize. Los colores de las barras y los ejes se resuelven
+   con var(--accent-ok) / var(--accent-danger) / var(--ink-muted) /
+   var(--line) desde el propio SVG inline, así el gráfico sigue el tema
+   claro/oscuro solo — no pasarlos por parámetro ni redibujar al togglear. */
+.grafico {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto var(--sp-4);
+}
+
+.grafico svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Los paneles del Resumen ahora se apilan (Evolución entre "fuera del
+   resultado" y "Últimos movimientos") y por defecto .panel no tiene
+   separación propia — mismo problema y misma solución que ya existe para
+   [data-view="cliente-detalle"] más abajo. */
+[data-view="dashboard"] .panel {
+  margin-bottom: var(--sp-6);
+}
 
 .fila-anulada { opacity: 0.5; }
 .fila-anulada td { text-decoration: line-through; }
@@ -326,53 +910,80 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: var(--sp-4);
 }
 
 .modal[hidden] { display: none; }
 
 .modal-card {
   background: var(--surface);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
   width: min(420px, 90vw);
-  padding: 24px;
+  padding: var(--sp-5);
+  box-shadow: var(--shadow-lg);
+  /* Sin esto, un modal con muchos renglones de items (Venta/Compra) se
+     salía de la pantalla en viewports chicos y no se podía scrollear
+     para llegar al botón de submit. */
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Para los modales con renglones de items (Venta, Compra): 420px les
+   queda muy angosto una vez que cada renglón tiene producto+cantidad+
+   precio+subtotal+borrar. */
+.modal-card-ancha {
+  width: min(720px, 95vw);
 }
 
 .modal-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-4);
 }
 
-.modal-head h3 { margin: 0; font-size: 17px; }
+.modal-head h3 { margin: 0; font-size: var(--txt-lg); font-family: var(--font-display); }
 
 .modal-close {
   background: none;
   border: none;
-  font-size: 15px;
+  font-size: var(--txt-md);
   color: var(--ink-muted);
+  border-radius: var(--r-sm);
+  padding: var(--sp-1);
 }
+
+.modal-close:hover { background: var(--surface-sunk); color: var(--ink); }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--sp-3);
 }
 
 .form label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+  gap: var(--sp-1);
+  font-size: var(--txt-xs);
   color: var(--ink-muted);
+}
+
+/* .form label ya fija display:flex con más especificidad que el [hidden]
+   del navegador (una clase + un elemento le gana a un solo atributo), así
+   que un <label hidden> dentro de un form quedaba visible igual — bug
+   preexistente que afectaba el select de cuenta condicional en los
+   modales de devolución (venta y proveedor). */
+.form label[hidden] {
+  display: none;
 }
 
 .form input,
 .form select {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 9px 10px;
-  font-size: 14px;
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--txt-sm);
   font-family: inherit;
   color: var(--ink);
   background: var(--surface);
@@ -381,7 +992,7 @@ button { font-family: inherit; cursor: pointer; }
 .form label.form-check {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .form label.form-check input[type="checkbox"] {
@@ -391,13 +1002,17 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .form-note {
-  font-size: 12.5px;
+  font-size: var(--txt-xs);
   color: var(--ink-muted);
   background: var(--surface-sunk);
-  padding: 10px 12px;
-  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
   margin: 0;
 }
+
+/* El widget flotante del asistente tiene su propia sección, al final del
+   archivo (busca "Asistente flotante") — junto al resto de sus estilos,
+   no acá suelto. */
 
 /* ---------- Filas de items (Venta / Compra) ---------- */
 
@@ -417,9 +1032,9 @@ button { font-family: inherit; cursor: pointer; }
   flex: 2;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-sm);
   padding: 9px 10px;
-  font-size: 13.5px;
+  font-size: var(--txt-sm);
   font-family: inherit;
   color: var(--ink);
   background: var(--surface);
@@ -429,9 +1044,9 @@ button { font-family: inherit; cursor: pointer; }
   flex: 1;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-sm);
   padding: 9px 10px;
-  font-size: 13.5px;
+  font-size: var(--txt-sm);
   font-family: inherit;
   color: var(--ink);
   background: var(--surface);
@@ -445,11 +1060,28 @@ button { font-family: inherit; cursor: pointer; }
   flex: 1.4;
 }
 
+/* Fila de devolución: producto de solo lectura + cantidad a devolver +
+   check "vuelve al stock", en vez de los campos de alta de item-row. */
+.item-row-devolucion .devolucion-producto {
+  flex: 3;
+  font-size: var(--txt-sm);
+  color: var(--ink);
+}
+
+.item-row-devolucion .devolucion-cantidad {
+  flex: 0 0 80px;
+}
+
+.item-row-devolucion .form-check {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .item-row-remove {
   background: none;
   border: none;
   color: var(--accent-danger);
-  font-size: 15px;
+  font-size: var(--txt-md);
   padding: 4px 6px;
 }
 
@@ -460,12 +1092,30 @@ button { font-family: inherit; cursor: pointer; }
   border: none;
   color: var(--accent-danger);
   padding: 4px;
-  border-radius: var(--radius);
+  border-radius: var(--r-sm);
   vertical-align: middle;
 }
 
 .btn-icon-danger:hover {
   background: var(--accent-danger-bg);
+}
+
+/* Igual que .btn-icon-danger pero neutro: el lápiz de editar no es una
+   acción destructiva, así que no debería gritar en rojo desde cada fila. */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  padding: 4px;
+  border-radius: var(--r-sm);
+  vertical-align: middle;
+}
+
+.btn-icon:hover {
+  background: var(--line);
+  color: var(--ink);
 }
 
 /* ---------- Ficha de cliente ---------- */
@@ -489,15 +1139,16 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .ficha-datos dt {
-  font-size: 11px;
+  font-size: var(--txt-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-muted);
+  font-family: var(--font-display);
 }
 
 .ficha-datos dd {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--txt-sm);
 }
 
 .fila-clickeable { cursor: pointer; }
@@ -510,7 +1161,7 @@ button { font-family: inherit; cursor: pointer; }
 .item-subtotal {
   flex: 0 0 92px;
   text-align: right;
-  font-size: 13.5px;
+  font-size: var(--txt-sm);
   color: var(--ink-muted);
   white-space: nowrap;
 }
@@ -521,9 +1172,48 @@ button { font-family: inherit; cursor: pointer; }
   border: none;
   color: var(--ink);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--txt-xs);
   padding: 4px 0;
   text-decoration: underline;
+}
+
+/* Botón chico de acción sobre una fila de tabla (Cobrar, Facturar, Pagar,
+   Efectuar pedido, Ajustar, Restaurar): antes eran <button class="btn-link">,
+   que se leía como un link de navegación para algo que en realidad ejecuta
+   una acción sobre ese registro. ".btn-link" sigue existiendo para lo que
+   sí es navegación (Ver, "Venta #N", volver, limpiar filtros). */
+.btn-fila {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 10px;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.btn-fila:hover {
+  background: var(--line);
+}
+
+/* Envuelve las acciones de una fila (Cobrar/Facturar/Anular, Pagar/Anular,
+   Editar/Anular...): antes dependían de un espacio de texto suelto entre
+   botones, que se apretaba o se pisaba en columnas angostas o con badges
+   más largos ("Facturada" en vez de "Facturar"). Sin wrap a propósito: la
+   columna de acciones no tiene ancho fijo, así que un flex-wrap las
+   apilaba en varias líneas (fila altísima) apenas la columna quedaba
+   angosta, en vez de darles el ancho que piden. Con nowrap la columna
+   crece lo que haga falta — la tabla ya scrollea horizontal en todos
+   lados (.tabla-scroll), así que ensancharse ahí es seguro. */
+.fila-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: nowrap;
 }
 
 .btn-add-item {
@@ -534,10 +1224,10 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--accent-ok-bg);
   color: var(--accent-ok);
   border: none;
-  border-radius: 20px;
+  border-radius: var(--r-full);
   padding: 8px 16px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--txt-xs);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -549,7 +1239,7 @@ button { font-family: inherit; cursor: pointer; }
 .item-total {
   display: flex;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: var(--txt-sm);
   font-weight: 600;
   margin: 0;
 }
@@ -566,7 +1256,7 @@ button { font-family: inherit; cursor: pointer; }
 .historial-pagos-item {
   display: flex;
   justify-content: space-between;
-  font-size: 12.5px;
+  font-size: var(--txt-xs);
   color: var(--ink-muted);
   padding: 4px 0;
   border-bottom: 1px solid var(--line);
@@ -574,16 +1264,49 @@ button { font-family: inherit; cursor: pointer; }
 
 .select-inline {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-sm);
   padding: 4px 6px;
-  font-size: 12.5px;
+  font-size: var(--txt-xs);
   font-family: inherit;
   color: var(--ink);
   background: var(--surface);
 }
 
+.input-inline {
+  width: 100px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 6px;
+  font-size: var(--txt-xs);
+  font-family: var(--font-mono);
+  color: var(--ink);
+  background: var(--surface);
+  text-align: right;
+}
+
+.precio-sin-configurar {
+  color: var(--accent-danger);
+  font-style: italic;
+}
+
+/* Cuando la clase cae sobre un <input> (precio editable en la lista de
+   Productos): el texto normal queda con el color de siempre, lo que se
+   pone rojo es el placeholder ("Sin precio") y el borde. */
+input.precio-sin-configurar {
+  color: var(--ink);
+  font-style: normal;
+  border-color: var(--accent-danger);
+}
+input.precio-sin-configurar::placeholder {
+  color: var(--accent-danger);
+  font-style: italic;
+  opacity: 1;
+}
+
 /* ---------- Nav toggle (mobile) ---------- */
 
+/* Mismo criterio que la sidebar: siempre oscuro, no sigue el tema (es el
+   botón que abre esa sidebar, tiene que leerse igual que ella). */
 .nav-toggle {
   display: none;
   position: fixed;
@@ -592,9 +1315,9 @@ button { font-family: inherit; cursor: pointer; }
   z-index: 60;
   width: 40px;
   height: 40px;
-  background: var(--ink);
+  background: var(--sidebar-bg);
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--r-sm);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -604,8 +1327,207 @@ button { font-family: inherit; cursor: pointer; }
 .nav-toggle span {
   width: 18px;
   height: 2px;
-  background: var(--bg);
+  background: var(--sidebar-ink);
 }
+
+/* ============================================================
+   Asistente flotante (operaciones por texto, CLAUDE.md §21)
+   Widget disponible desde cualquier vista, no una vista más — un
+   círculo abajo a la derecha que abre un panel de conversación.
+   ============================================================ */
+
+/* El círculo usa --sidebar-* (fijo en los dos temas), no --brand: --brand
+   es negro puro sin variante clara para modo oscuro (pensado para la
+   sidebar, que siempre es oscura), así que un ícono con --brand-contrast
+   quedaría casi invisible sobre --brand en tema oscuro. Mismo criterio ya
+   documentado arriba en .sidebar. */
+.asistente-launcher {
+  position: fixed;
+  right: var(--sp-5);
+  bottom: var(--sp-5);
+  z-index: 45;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: var(--r-full);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.15s ease;
+}
+
+.asistente-launcher:hover { transform: scale(1.06); }
+.asistente-launcher:active { transform: scale(0.94); }
+
+/* z-index 45: por encima del contenido de página, por debajo de .modal
+   (50) — abrir "Nueva venta" con el asistente abierto tiene que tapar el
+   panel, no al revés. */
+.asistente-panel {
+  position: fixed;
+  right: var(--sp-5);
+  bottom: calc(56px + var(--sp-5) + var(--sp-3));
+  z-index: 45;
+  width: min(380px, calc(100vw - var(--sp-5) * 2));
+  max-height: min(620px, 72vh);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.asistente-panel[hidden] { display: none; }
+
+.asistente-panel-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.asistente-panel-head h2 {
+  margin: 0;
+  font-size: var(--txt-lg);
+}
+
+.asistente-hilo {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.asistente-bienvenida {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.asistente-turno { display: flex; flex-direction: column; }
+
+.asistente-turno-usuario { align-items: flex-end; }
+
+.asistente-turno-usuario p {
+  margin: 0;
+  max-width: 88%;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-ink);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  border-bottom-right-radius: var(--r-sm);
+  font-size: var(--txt-sm);
+}
+
+.asistente-turno-respuesta { align-items: stretch; }
+
+.asistente-turno-respuesta > p {
+  margin: 0;
+  background: var(--surface-sunk);
+  color: var(--ink);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  border-bottom-left-radius: var(--r-sm);
+  font-size: var(--txt-sm);
+}
+
+/* Selectores compuestos (no !important) para ganarle en especificidad a
+   la regla de arriba sin pelear con ella. */
+.asistente-turno-respuesta > p.asistente-pensando { color: var(--ink-muted); }
+
+.asistente-pensando::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: var(--sp-1);
+  border-radius: var(--r-full);
+  background: currentColor;
+  animation: asistente-pulso 1.1s ease-in-out infinite;
+}
+
+@keyframes asistente-pulso {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.asistente-turno-respuesta > p.asistente-resuelto { font-size: var(--txt-xs); }
+.asistente-turno-respuesta > p.asistente-confirmado { color: var(--accent-ok); font-weight: 600; }
+.asistente-turno-respuesta > p.asistente-descartado { color: var(--ink-muted); text-decoration: line-through; }
+
+.asistente-propuesta {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+}
+
+.asistente-propuesta-titulo {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--txt-2xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.asistente-problemas {
+  background: var(--accent-warn-bg);
+  color: var(--accent-warn);
+  margin: 0 0 var(--sp-2);
+}
+
+/* La fila de item (producto/cantidad/precio/subtotal/quitar) reusada de
+   los modales de Venta/Compra no entra en una sola línea acá: el panel
+   mide ~350px de contenido contra los ~650px de un modal ancho. Se apila
+   el producto arriba y el resto abajo, en vez de duplicar el componente. */
+.asistente-propuesta .item-row { flex-wrap: wrap; }
+.asistente-propuesta .item-row .item-producto { flex-basis: 100%; }
+
+.asistente-composer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.asistente-composer textarea {
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+  font-size: var(--txt-sm);
+  color: var(--ink);
+  background: var(--surface);
+  line-height: 1.4;
+}
+
+.asistente-enviar {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--r-full);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.asistente-enviar:disabled { opacity: 0.5; cursor: default; }
 
 /* ============================================================
    Responsive — mobile / tablet
@@ -628,8 +1550,46 @@ button { font-family: inherit; cursor: pointer; }
 
   .sidebar.is-open { transform: translateX(0); }
 
+  /* La topbar (nombre de la pantalla + fecha) vivía en el flujo normal
+     de .main, así que al scrollear pasaba por detrás del hamburger —
+     fixed, siempre visible, y no un dato tapando a otro. z-index 50:
+     por debajo del drawer (55) y del hamburger (60), por encima del
+     contenido normal. */
+  .topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--bg);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin: 0;
+    /* padding-left despeja el hamburger (40px de ancho, arranca en 16px). */
+    padding: 14px 20px 14px 64px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* Título con puntos suspensivos en vez de desbordar o envolver a una
+     segunda línea: la topbar es fixed con una altura fija, así que una
+     segunda línea en una vista con nombre largo ("Devoluciones a
+     proveedor") taparía el borde del contenido de abajo. */
+  .topbar h1 {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-fecha {
+    align-self: flex-start;
+  }
+
   .main {
-    padding: 80px 20px 40px;
+    /* El padding-top tiene que despejar la topbar fixed de arriba, no
+       solo el hamburger — mismo motivo que el ajuste de arriba. */
+    padding: 92px 20px 88px;
   }
 
   .ledger-strip {
@@ -671,13 +1631,102 @@ button { font-family: inherit; cursor: pointer; }
     content: attr(data-label);
     display: inline-block;
     width: 110px;
-    font-size: 11px;
+    font-size: var(--txt-2xs);
     color: var(--ink-muted);
     text-transform: uppercase;
   }
+
+  .asistente-launcher {
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+  }
+
+  .avisos {
+    /* En mobile la sidebar es un drawer superpuesto, no un ítem del grid:
+       el toast vuelve a pegarse al borde real de la pantalla. */
+    left: var(--sp-4);
+    bottom: var(--sp-4);
+    max-width: min(360px, calc(100vw - var(--sp-4) * 2));
+  }
+
+  .asistente-panel {
+    right: var(--sp-3);
+    left: var(--sp-3);
+    bottom: var(--sp-3);
+    width: auto;
+    max-height: min(80vh, 640px);
+  }
+}
+
+/* ============================================================
+   Avisos (toasts) — reemplazan alert()/confirm() nativos del
+   navegador: el chrome del navegador ("localhost:3000 dice:")
+   rompía la identidad visual y bloqueaba la página. Ver
+   avisar()/confirmar() en app.js.
+   ============================================================ */
+
+.avisos {
+  position: fixed;
+  /* Arranca después de la sidebar, no en el borde de la ventana: el pie
+     de la sidebar (nombre del negocio + botón de tema) vive justo en esa
+     esquina, y un toast a ras del borde se lo tapaba a medias. */
+  left: calc(var(--sidebar-w) + var(--sp-5));
+  bottom: var(--sp-5);
+  z-index: 65;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--sp-2);
+  max-width: min(360px, calc(100vw - var(--sidebar-w) - var(--sp-5) * 2));
+}
+
+/* Sidebar oculta (pantalla completa en desktop): sin la sidebar, el toast
+   vuelve a pegarse al borde real de la ventana. */
+@media (min-width: 861px) {
+  :root[data-sidebar="colapsada"] .avisos {
+    left: var(--sp-5);
+    max-width: min(360px, calc(100vw - var(--sp-5) * 2));
+  }
+}
+
+.aviso {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-muted);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--txt-sm);
+  color: var(--ink);
+  animation: aviso-entra 0.15s ease;
+}
+
+.aviso-ok       { border-left-color: var(--accent-ok); }
+.aviso-atencion { border-left-color: var(--accent-warn); }
+.aviso-error    { border-left-color: var(--accent-danger); }
+
+@keyframes aviso-entra {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Botón para la acción destructiva del modal de confirmación (anular,
+   eliminar): mismo criterio que .btn-add-item — brand-contrast en vez de
+   un blanco fijo, porque en tema oscuro accent-danger se aclara y un
+   texto blanco fijo perdería contraste. */
+.btn-peligro {
+  background: var(--accent-danger);
+  color: var(--brand-contrast);
+}
+
+.btn-peligro:hover { filter: brightness(0.9); }
+
+.confirmar-acciones {
+  justify-content: flex-end;
+  margin-top: var(--sp-4);
 }
 
 /* Respeta preferencia de menos movimiento */
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  * { transition: none !important; animation: none !important; }
 }

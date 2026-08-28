@@ -13,6 +13,17 @@ CREATE TABLE IF NOT EXISTS clientes (
   notas TEXT
 );
 
+-- estado solo tiene sentido para una factura SUELTA (sin venta_id): no
+-- hay cobros de una venta de los que derivarlo, así que se guarda a mano.
+-- Una factura que sí respalda una venta ignora esta columna en la API: su
+-- estado de cobro se calcula en vivo a partir de los cobros de esa venta
+-- (GET /api/ventas ya hace lo mismo), para no tener dos fuentes de verdad
+-- que puedan desincronizarse.
+-- condicion guarda un medio de pago (efectivo/transferencia/mercadopago),
+-- no una condición de venta fiscal — el nombre de columna quedó así desde
+-- el prototipo y cambiarlo obligaría a tocar todos los endpoints que ya
+-- lo usan sin ganar nada real; se corrige en la UI, que lo etiqueta
+-- "Medio de pago".
 CREATE TABLE IF NOT EXISTS facturas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id INTEGER NOT NULL REFERENCES clientes(id),
@@ -20,7 +31,19 @@ CREATE TABLE IF NOT EXISTS facturas (
   neto REAL NOT NULL,
   condicion TEXT NOT NULL CHECK (condicion IN ('efectivo', 'transferencia', 'mercadopago')),
   estado TEXT NOT NULL CHECK (estado IN ('cobrado', 'pendiente', 'vencido')),
-  fecha TEXT NOT NULL DEFAULT (date('now'))
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  -- Estructura de comprobante fiscal (CLAUDE.md §16), sin IVA todavía
+  -- (fuera de V1) y sin conexión real a ARCA: deja la numeración lista
+  -- para cuando se conecte, sin tener que volver a migrar sobre datos
+  -- ya cargados.
+  tipo TEXT NOT NULL DEFAULT 'factura' CHECK (tipo IN ('factura', 'nota_credito', 'nota_debito')),
+  letra TEXT NOT NULL DEFAULT 'B' CHECK (letra IN ('A', 'B', 'C')),
+  punto_venta INTEGER NOT NULL DEFAULT 1,
+  -- Correlativo por (punto_venta, tipo, letra): cada combinación tiene su
+  -- propia numeración, como en la realidad. NULL en la definición de acá
+  -- porque en una base nueva lo pone la aplicación al emitir, nunca un
+  -- default fijo (no hay forma de que SQLite calcule "el siguiente" solo).
+  numero INTEGER
 );
 -- venta_id se agrega por migración en db/index.js (ver ahí el porqué).
 
@@ -41,11 +64,19 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_maximo REAL
 );
 
+-- Mismo criterio que clientes: un proveedor puede nacer cargado a mano
+-- desde la pantalla de Proveedores, o creado automáticamente al registrar
+-- una compra con un nombre nuevo. En ese segundo caso solo tiene nombre y
+-- el resto se completa después desde su ficha, así que todo el contacto
+-- es opcional.
 CREATE TABLE IF NOT EXISTS proveedores (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
   email TEXT,
-  telefono TEXT
+  telefono TEXT,
+  direccion TEXT,
+  documento TEXT,
+  notas TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ventas (
@@ -66,6 +97,87 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- compras posteriores: es lo que permite calcular márgenes históricos
   -- reales en vez de con el costo actual.
   costo_unitario_historico REAL NOT NULL DEFAULT 0
+);
+
+-- Un presupuesto es una OFERTA, no una operación: no toca stock, no
+-- genera cuenta corriente y no entra en el resultado (CLAUDE.md §15).
+-- Recién al convertirse en venta pasa a mover todo eso.
+--
+-- 'vencido' NO está en este CHECK a propósito: se deriva de comparar
+-- `vencimiento` con la fecha de hoy. Guardarlo como estado obligaría a
+-- que alguien entre a marcarlo, y en cuanto no lo haga la lista miente.
+-- Mismo criterio que el estado de cobro de las facturas y el de pago de
+-- las compras, que también se calculan en vez de guardarse.
+--
+-- `vencimiento` es nullable: un presupuesto sin fecha nunca vence.
+-- `venta_id` se completa solo al convertir, y es lo que deja el rastro
+-- entre la oferta y la operación que salió de ella.
+CREATE TABLE IF NOT EXISTS presupuestos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  vencimiento TEXT,
+  estado TEXT NOT NULL
+    CHECK (estado IN ('borrador', 'enviado', 'aceptado', 'rechazado', 'convertido'))
+    DEFAULT 'borrador',
+  venta_id INTEGER REFERENCES ventas(id),
+  notas TEXT
+);
+
+-- A diferencia de venta_items, acá NO hay costo_unitario_historico: un
+-- presupuesto no compromete costo. El costo se congela recién al
+-- convertir, que es cuando la mercadería realmente sale — así el margen
+-- de la venta es el real del momento de la entrega y no el de cuando se
+-- cotizó.
+CREATE TABLE IF NOT EXISTS presupuesto_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  presupuesto_id INTEGER NOT NULL REFERENCES presupuestos(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  precio_unitario REAL NOT NULL
+);
+
+-- Una devolución revierte parte (o todo) de una venta ya confirmada:
+-- CLAUDE.md §17. A diferencia de una anulación, es parcial por renglón y
+-- puede convivir con cobros y facturas ya emitidas.
+--
+-- No lleva cliente_id: se deriva de la venta (venta_id -> ventas.cliente_id).
+-- Guardarlo acá sería una segunda fuente de verdad que puede
+-- desincronizarse si la venta cambiara de cliente.
+--
+-- cuenta_tesoreria_id es NULLABLE a propósito: si tiene cuenta, la plata
+-- se devolvió en el acto (egreso de tesorería); si es NULL, la devolución
+-- solo generó un crédito a favor del cliente en su cuenta corriente, para
+-- descontar de una próxima venta. Es la misma idea que un renglón de
+-- cobro pero para la salida, sin necesitar una tabla aparte.
+CREATE TABLE IF NOT EXISTS devoluciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  venta_id INTEGER NOT NULL REFERENCES ventas(id),
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
+  cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
+  motivo TEXT
+);
+
+-- venta_item_id (no producto_id solo) apunta al renglón exacto de la
+-- venta: es lo que permite topar "no devolver más de lo que se vendió"
+-- aunque el mismo producto aparezca en más de un renglón de esa venta.
+-- precio_unitario y costo_unitario_historico se copian del renglón de la
+-- venta y quedan congelados ahí: la devolución acredita al precio al que
+-- se vendió, no al precio de lista del día en que se devuelve — mismo
+-- criterio que venta_items.costo_unitario_historico.
+-- vuelve_stock es por renglón: lo devuelto en buen estado reingresa al
+-- depósito; lo que vino fallado no, y su costo queda como pérdida del
+-- período en vez de sumarse de nuevo al inventario.
+CREATE TABLE IF NOT EXISTS devolucion_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  devolucion_id INTEGER NOT NULL REFERENCES devoluciones(id),
+  venta_item_id INTEGER NOT NULL REFERENCES venta_items(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  precio_unitario REAL NOT NULL,
+  costo_unitario_historico REAL NOT NULL DEFAULT 0,
+  vuelve_stock INTEGER NOT NULL DEFAULT 1
 );
 
 -- Ciclo de vida de una compra:
@@ -102,6 +214,52 @@ CREATE TABLE IF NOT EXISTS compra_items (
   costo_real_unitario REAL
 );
 
+-- Espejo de devoluciones/devolucion_items, del lado de compras: revierte
+-- parte (o todo) de una compra ya recibida, devolviéndole mercadería al
+-- proveedor. A diferencia de la devolución de venta, acá no existe un
+-- equivalente de "vuelve_stock": la mercadería siempre SALE del depósito
+-- de vuelta al proveedor, sin importar el motivo (fallada o no).
+--
+-- No lleva proveedor_id: se deriva de la compra (compra_id ->
+-- compras.proveedor_id), mismo criterio que devoluciones con cliente_id.
+--
+-- cuenta_tesoreria_id es NULLABLE a propósito, igual que en devoluciones:
+-- si tiene cuenta, el proveedor reintegró la plata en el acto (ingreso de
+-- tesorería); si es NULL, la devolución solo generó un crédito a favor en
+-- la cuenta corriente del proveedor, para descontar de la próxima compra.
+--
+-- nota_credito_proveedor_numero es una referencia libre (el número que te
+-- dio el proveedor en su propio comprobante) — no se emite desde acá, así
+-- que no tiene letra/punto_venta/numeración propia como sí tiene la nota
+-- de crédito que Nexo emite a un cliente (tabla facturas).
+CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  compra_id INTEGER NOT NULL REFERENCES compras(id),
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
+  cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
+  motivo TEXT,
+  nota_credito_proveedor_numero TEXT
+);
+
+-- compra_item_id (no producto_id solo) apunta al renglón exacto de la
+-- compra: topa "no devolver más de lo que se compró" aunque el mismo
+-- producto aparezca en más de un renglón. precio_unitario y
+-- costo_real_unitario se copian del renglón de la compra y quedan
+-- congelados: precio_unitario es lo que se acredita en la cuenta
+-- corriente del proveedor (lo que le debías por esa unidad);
+-- costo_real_unitario (con el envío prorrateado) es lo que alimenta el
+-- recálculo del costo promedio del producto al sacarla de stock.
+CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  devolucion_proveedor_id INTEGER NOT NULL REFERENCES devoluciones_proveedor(id),
+  compra_item_id INTEGER NOT NULL REFERENCES compra_items(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  precio_unitario REAL NOT NULL,
+  costo_real_unitario REAL NOT NULL DEFAULT 0
+);
+
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
 CREATE TABLE IF NOT EXISTS movimientos_stock (
@@ -109,13 +267,15 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   producto_id INTEGER NOT NULL REFERENCES productos(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
   cantidad REAL NOT NULL,
-  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual')),
+  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor')),
   -- origen_id: deprecado, reemplazado por venta_id/compra_id (con FK real
   -- de verdad). Se conserva sin usar por compatibilidad con filas viejas;
   -- se puede eliminar en una limpieza posterior.
   origen_id INTEGER,
   venta_id INTEGER REFERENCES ventas(id),
   compra_id INTEGER REFERENCES compras(id),
+  devolucion_id INTEGER REFERENCES devoluciones(id),
+  devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   -- Costo real de la unidad que entra (con el envío ya prorrateado).
   -- Solo tiene sentido en las entradas por compra; en salidas y ajustes
@@ -138,10 +298,15 @@ GROUP BY producto_id;
 -- se corresponde 1 a 1 con los medios de pago que ya usa el sistema
 -- (facturas.condicion), así que un cobro/pago tiene una sola cuenta en
 -- vez de un campo "medio_pago" separado y redundante.
+-- saldo_inicial es la plata que ya había en esa cuenta antes de empezar a
+-- usar Nexo. No es un movimiento (nadie la ingresó desde el sistema), así
+-- que vive en la cuenta y el saldo real se calcula como
+-- saldo_inicial + movimientos (ver la vista saldo_tesoreria en db/index.js).
 CREATE TABLE IF NOT EXISTS cuentas_tesoreria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL UNIQUE,
-  tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'banco', 'mercadopago', 'otro'))
+  tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'banco', 'mercadopago', 'otro')),
+  saldo_inicial REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS cobros (
@@ -166,6 +331,52 @@ CREATE TABLE IF NOT EXISTS pagos (
 -- real por columna (cobro_id/pago_id) en vez de una referencia
 -- polimórfica sin integridad como el origen_id que se corrigió en
 -- movimientos_stock (Etapa 4a).
+-- origen dice de dónde salió el movimiento: de un cobro de venta, de un
+-- pago a proveedor, de una carga manual (aporte, retiro, gasto pagado de
+-- la caja) o de una transferencia entre cuentas propias.
+-- transferencia_id agrupa las dos patas de una transferencia: el egreso
+-- Los gastos NO son compras de mercadería (eso vive en compras): son el
+-- alquiler, la luz, los sueldos, la publicidad (CLAUDE.md §14).
+--
+-- El tipo es lo que decide cómo pesa cada gasto en el resultado:
+--   operativo -> resta del resultado del negocio.
+--   inversion -> sale plata pero se convierte en algo que queda
+--                (una máquina, una PC); no es gasto del período.
+--   retiro    -> plata que se lleva el dueño; no es gasto del negocio,
+--                es ganancia ya generada que se reparte.
+-- Los tres bajan la caja; solo el operativo baja el resultado. Si se
+-- mezclaran, un mes con un retiro grande figuraría como mes con pérdida.
+CREATE TABLE IF NOT EXISTS categorias_gasto (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
+  activa INTEGER NOT NULL DEFAULT 1
+);
+
+-- gastos.tipo se copia de la categoría al momento de cargar el gasto y se
+-- queda ahí: es la misma idea que venta_items.costo_unitario_historico.
+-- Si mañana se reclasifica una categoría, los gastos ya cargados no
+-- deben cambiar de naturaleza y reescribir en silencio el resultado de
+-- meses ya cerrados.
+-- proveedor_id es opcional: el alquiler no tiene proveedor, pero el
+-- service de una máquina sí puede tenerlo.
+CREATE TABLE IF NOT EXISTS gastos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria_id INTEGER NOT NULL REFERENCES categorias_gasto(id),
+  cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
+  proveedor_id INTEGER REFERENCES proveedores(id),
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  importe REAL NOT NULL CHECK (importe > 0),
+  tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
+  descripcion TEXT,
+  comprobante TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo'
+);
+
+-- en la cuenta que sale y el ingreso en la que entra comparten el mismo
+-- valor, así se puede mostrar una contra la otra. Es plata que se mueve
+-- de bolsillo, no plata que entra o sale del negocio, por eso son dos
+-- movimientos y no uno.
 CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
@@ -173,7 +384,14 @@ CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   importe REAL NOT NULL,
   fecha TEXT NOT NULL DEFAULT (date('now')),
   cobro_id INTEGER REFERENCES cobros(id),
-  pago_id INTEGER REFERENCES pagos(id)
+  pago_id INTEGER REFERENCES pagos(id),
+  origen TEXT NOT NULL DEFAULT 'cobro'
+    CHECK (origen IN ('cobro', 'pago', 'manual', 'transferencia', 'gasto', 'devolucion', 'devolucion_proveedor')),
+  concepto TEXT,
+  transferencia_id INTEGER,
+  gasto_id INTEGER REFERENCES gastos(id),
+  devolucion_id INTEGER REFERENCES devoluciones(id),
+  devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id)
 );
 
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando
@@ -208,3 +426,22 @@ CREATE VIEW IF NOT EXISTS saldo_cc_proveedores AS
 SELECT proveedor_id, SUM(importe) AS saldo
 FROM movimientos_cc_proveedores
 GROUP BY proveedor_id;
+
+-- Asistente de operaciones por texto (CLAUDE.md §21). Cada mensaje que el
+-- usuario escribe queda registrado junto con lo que la IA interpretó y qué
+-- pasó después: interpretado (propuesto, sin ejecutar), confirmado (el
+-- usuario lo aprobó y se ejecutó como operacion_tipo/operacion_id),
+-- descartado (el usuario lo rechazó) o fallido (la ejecución falló pese a
+-- confirmarse, ver `error`). La IA nunca escribe en ninguna otra tabla
+-- directamente: esta es su única puerta de entrada, y es también el
+-- registro de auditoría de esa puerta (§22).
+CREATE TABLE IF NOT EXISTS asistente_mensajes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  texto TEXT NOT NULL,
+  propuesta_json TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('interpretado', 'confirmado', 'descartado', 'fallido')),
+  operacion_tipo TEXT CHECK (operacion_tipo IN ('venta', 'compra', 'gasto')),
+  operacion_id INTEGER,
+  error TEXT
+);
