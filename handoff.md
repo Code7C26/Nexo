@@ -43,39 +43,44 @@ Puntos clave de `CLAUDE.md` para no perder de vista:
 
 ## 3. Estado actual (a la fecha de este handoff)
 
-**Rama activa:** `Tosi`. **Nada de esta sesión ni de las anteriores está
-commiteado todavía** — son ya varias etapas seguidas (Devolución a
-proveedor, Reportes, y ahora Asistente) verificadas y desplegadas sobre la
-base real sin commitear. Se le preguntó al usuario en sesiones anteriores
-si convenía commitear y prefirió seguir construyendo; no se volvió a
-insistir en esta sesión por la misma razón que ya quedó anotada antes.
-Además de los archivos modificados que ya venía arrastrando
-(`backend/server.js`, `backend/db/schema.sql`, `frontend/css/styles.css`,
-`frontend/index.html`, `frontend/js/app.js`, `.gitignore`), esta etapa
-agrega sin trackear: `backend/interprete.js` (nuevo), `backend/package.json`
-/`backend/package-lock.json` (nueva dependencia `@google/genai`), y un
-backup nuevo `backend/db/nexo.db.backup-antes-asistente-20260827-155621`.
-**El punto 6 de la sección "Cómo seguir" de handoffs anteriores ya se
-resolvió**: `.gitignore` ahora tiene `backend/db/*.backup-*`, así que los
-backups (son muchos, cada etapa deja el suyo) ya no van a aparecer sueltos
-en `git status`. Sigue sin explicarse por qué `CLAUDE.md` aparece
-modificado desde hace varias sesiones — no fue ninguna sesión reciente,
-seguir revisando con el usuario antes de tocarlo.
+**Rama activa:** `Tosi`. **Ya está commiteado** (commit `468c01f`, "feat:
+devolución a proveedor, reportes de rentabilidad, asistente IA y rediseño
+de frontend"): consolidó de una sola vez las cuatro etapas que venían
+seguidas sin commitear (Devolución a proveedor, Reportes, Asistente,
+pasada de diseño de frontend), porque para cuando se pidió commitear ya
+estaban todas mezcladas sobre los mismos archivos (`server.js`, `app.js`)
+sin ningún checkpoint intermedio — separarlas en commits distintos hubiera
+significado adivinar a qué etapa pertenecía cada hunk. **Encima de ese
+commit, esta sesión agregó una etapa nueva (Cuentas corrientes, ver §10)
+que todavía NO está commiteada** — confirmar con el usuario antes de la
+próxima si conviene commitearla ahora o seguir construyendo, mismo criterio
+que en sesiones anteriores.
+
+Quedaron fuera del commit, sin tocar, dos archivos sueltos en la raíz que
+no son parte del proyecto Nexo: `install.ps1` (instalador del propio MCP
+`codebase-memory-mcp`, no del sistema de gestión) y `.agents/skills/`
+(carpeta local de skills de Claude Code, reproducible desde
+`skills-lock.json`, que sí se commiteó). Se agregó `backend/*.log` a
+`.gitignore` (el `server-real.log` del proceso real no debe trackearse) y
+se borraron dos archivos de 0 bytes (`0)` y `p.asistente-descartado`,
+restos de un typo de shell de una sesión anterior).
 
 **El servidor real corre en `http://localhost:3000`**, ya con todos los
-cambios de abajo aplicados y verificados contra los datos reales
-(pre/post-deploy comparados número a número, sin diferencias).
+cambios de esta sesión aplicados y verificados contra los datos reales
+(pre/post-deploy comparados número a número, sin diferencias). El proceso
+se reinició durante esta sesión para levantar el código nuevo.
 
-**Falta configurar `GEMINI_API_KEY`** — sin ella, el asistente por texto
-responde 503 con un mensaje claro (`POST /api/asistente/interpretar`) pero
-el resto de Nexo funciona normal. Es la única pieza de esta etapa que no
-se pudo probar contra el modelo real (todo lo demás sí, con un intérprete
-stub determinista — ver §4). Se consigue gratis en
+**`GEMINI_API_KEY` NO está cargada en el proceso real ahora mismo** — el
+asistente por texto responde 503 (`POST /api/asistente/interpretar`).
+Handoffs anteriores decían que sí estaba cargada y probada contra el modelo
+real; en algún momento entre esa sesión y esta el proceso se reinició sin
+volver a pasarla (la key solo vive como variable de entorno del proceso que
+lo arrancó, nunca se guardó en disco — no hay `.env`). Esta sesión no tiene
+el valor de la key, así que no se pudo restaurar. El resto de Nexo funciona
+normal sin ella. Se consigue gratis en
 [aistudio.google.com](https://aistudio.google.com) (Google AI Studio), sin
-tarjeta. Primera tarea de la próxima sesión si el usuario ya tiene la key:
-cargarla como variable de entorno del proceso real y probar el asistente
-con frases reales, la del propio `CLAUDE.md` §21 incluida ("vendí tres
-remeras negras talle M a Juan por 45 mil y me pagó por Mercado Pago").
+tarjeta. Si el usuario la tiene, cargarla como variable de entorno al
+arrancar el proceso real es la primera tarea rápida de la próxima sesión.
 
 ### Etapas ya completas (los 10 puntos del MVP de `CLAUDE.md` §25)
 
@@ -110,18 +115,17 @@ verificada antes de pasar a la siguiente:
   que no hizo falta construir notas de débito para eso. Si en el futuro
   hace falta que Nexo emita una nota de débito de verdad (p. ej. hacia un
   cliente), es una etapa nueva, sin molde previo.
-- Las otras tres familias de reportes de §20 — **qué se vende y a quién**
-  (ranking de productos, mejores clientes, ticket promedio), **cuentas por
-  cobrar y pagar** (juntar en una vista lo que hoy solo existe disperso en
-  la ficha de cada cliente/proveedor) y **stock** (qué reponer, valorizado,
-  rotación) — el usuario eligió empezar solo por rentabilidad y no volvió
-  a pedir las otras.
+- De las familias de reportes de §20: **cuentas por cobrar y pagar** ya se
+  construyó (§10). Quedan **qué se vende y a quién** (ranking de
+  productos, mejores clientes, ticket promedio) y **stock** (qué reponer,
+  valorizado, rotación) — el usuario no las pidió todavía.
 - Ventas por categoría de producto y por vendedor (dentro de §20): **no
   son construibles hoy sin migrar el esquema primero** — no existe tabla
   de categorías de productos (`productos` no tiene `categoria_id`) ni
   columna de vendedor/usuario en `ventas` (no hay sistema de usuarios).
-- Aging de cuentas por cobrar/pagar por vencimiento pactado: ni `ventas`
-  ni `compras` tienen fecha de vencimiento ni condición de pago.
+- Aging de cuentas por cobrar/pagar por **vencimiento pactado** (§10 lo
+  mide por fecha de la operación, no por vencimiento): ni `ventas` ni
+  `compras` tienen fecha de vencimiento ni condición de pago.
 - Audio (§25 lo deja explícitamente para después de texto) — el asistente
   de esta etapa es solo texto.
 - Auditoría central unificada (§22): con esta etapa hay trazabilidad
@@ -484,16 +488,17 @@ Resumen/antes de Papelera), no pegado a ninguna de las tres en particular.
 ## 7. Cómo seguir trabajando (checklist para la próxima sesión)
 
 1. **Leer `CLAUDE.md` entero** antes de proponer nada.
-2. **`GEMINI_API_KEY` ya está cargada en el proceso real y probada**
-   (ver §4, "Con el modelo real") — el asistente ya funciona de punta a
-   punta con `/interpretar`. Lo único que falta probar es
-   `/api/asistente/ejecutar` (el que sí escribe) contra el modelo real
-   — confirmar una operación de verdad desde la pantalla "Asistente" es
-   la primera prueba pendiente. El proveedor es Gemini, no Anthropic (el
-   usuario lo pidió así por costo — ver §4 si hace falta el porqué o
-   cómo volver a cambiarlo). Ojo: la key vive **solo** como variable de
-   entorno del proceso que lo arrancó — si se reinicia el server sin
-   pasarla nuevamente, vuelve a responder 503.
+2. **`GEMINI_API_KEY` NO está cargada en el proceso real ahora mismo**
+   (ver §3) — el asistente responde 503. Se probó contra el modelo real en
+   una sesión anterior (ver §4, "Con el modelo real") y funcionaba, pero la
+   key vive **solo** como variable de entorno del proceso que lo arrancó:
+   se perdió en algún reinicio posterior y esta sesión no tenía el valor
+   para volver a cargarla. Si el usuario la tiene, cargarla al arrancar el
+   proceso real es rápido. Sigue faltando probar `/api/asistente/ejecutar`
+   (el que sí escribe) contra el modelo real de punta a punta desde la
+   pantalla — con el intérprete stub ya se probó (§4/§10). El proveedor es
+   Gemini, no Anthropic (el usuario lo pidió así por costo — ver §4 si hace
+   falta el porqué o cómo volver a cambiarlo).
 3. Para seguir probando el asistente **sin** key (o sin gastar tokens),
    usar `NEXO_INTERPRETE=stub` como variable de entorno del server de
    prueba: acepta frases con la sintaxis
@@ -519,11 +524,12 @@ Resumen/antes de Papelera), no pegado a ninguna de las tres en particular.
    atomicidad de esta etapa) y no se puede simular con datos válidos, un
    trigger SQL temporal sobre la copia de prueba es una forma limpia de
    hacerlo — eliminarlo después.
-7. Antes de commitear cualquier cosa: son ya varias etapas seguidas sin
-   commitear (Devolución a proveedor, Reportes, Asistente) — si el
-   usuario no lo pide, no hace falta insistir de nuevo, pero si el
-   número de archivos sueltos sigue creciendo puede valer la pena
-   plantearlo con más insistencia que en sesiones anteriores.
+7. **Ya se commiteó** el bloque grande de etapas anteriores (`468c01f`,
+   ver §3) — la etapa de Cuentas corrientes (§10) quedó encima, sin
+   commitear todavía. Confirmar con el usuario si conviene commitearla
+   antes de seguir, mismo criterio de siempre: si no lo pide, no insistir
+   de más, pero no dejar que se acumulen demasiadas etapas sueltas otra
+   vez.
 
 ## 8. Última etapa: sidebar fija + solape del asistente flotante
 
@@ -802,8 +808,106 @@ después de un filtro sin resultados.
   afuera, en realidad: los 6 grupos A–F se cubrieron todos).
 - Sigue sin resolverse lo anotado en §8: `CLAUDE.md` dice mantener
   `docs/handoff.md`, pero este archivo vive en la raíz del repo.
-- Como todas las etapas previas, **nada de esto está commiteado** — son
-  ya varias etapas seguidas sin commitear (Devolución a proveedor,
-  Reportes, Asistente, y ahora esta). El número de archivos sueltos en
-  `git status` sigue creciendo; vale la pena plantearlo con más
-  insistencia la próxima vez que se converse con el usuario.
+- Como todas las etapas previas, en el momento de escribir esto **nada de
+  esto estaba commiteado** — son ya varias etapas seguidas sin commitear
+  (Devolución a proveedor, Reportes, Asistente, y ahora esta). El número de
+  archivos sueltos en `git status` sigue creciendo; vale la pena plantearlo
+  con más insistencia la próxima vez que se converse con el usuario.
+  **Actualización: esto ya se resolvió en la sesión siguiente — ver §3 y
+  §10, todo lo de arriba quedó commiteado en `468c01f`.**
+
+## 10. Última etapa: Cuentas corrientes (a cobrar y a pagar)
+
+Con el MVP de `CLAUDE.md` §25 completo, se le preguntó al usuario qué
+construir a continuación entre cuatro opciones (voz en el asistente,
+cuentas por cobrar y pagar, reportes de qué-se-vende, categorías de
+producto); eligió **cuentas por cobrar y pagar**, la familia de reportes de
+§20 que faltaba y la de mayor valor operativo con menor riesgo (no
+requería migrar el esquema).
+
+**El problema que resuelve**: la deuda ya existía y estaba bien calculada
+(`saldo_cc_clientes`/`saldo_cc_proveedores`), pero solo se podía ver de a
+una entidad por vez, entrando a su ficha. No había ninguna pantalla que
+respondiera "¿quién me debe?" o "¿a quién le debo?" de un vistazo.
+
+**Verificado antes de construir** (con la base real, solo lectura): toda
+fila de `movimientos_cc_clientes` lleva su `venta_id` y toda fila de
+`movimientos_cc_proveedores` lleva su `compra_id` — 0 huérfanas. Por eso
+`SUM(importe) GROUP BY venta_id` da el saldo pendiente exacto de cada
+operación sin necesitar imputación FIFO de cobros contra ventas.
+
+### Qué se construyó
+
+- **`GET /api/cuentas-corrientes`** (nuevo, `backend/server.js`, sección
+  `Cuentas corrientes` entre Gastos y Resumen) — de solo lectura, sin
+  parámetros: arma el saldo pendiente por operación (`saldosPorOperacion`),
+  lo agrupa por entidad (`agruparPorEntidad`), y calcula antigüedad desde
+  la **fecha de la operación** (no hay vencimiento pactado en el esquema:
+  ni `ventas` ni `compras` tienen esa columna, así que la vista lo aclara
+  en su propio texto). Tres tramos (`al_dia`/`atrasado`/`vencido`, cortes
+  en 30 y 60 días) que calzan 1:1 con las clases `.status-*` que ya
+  existían, sin CSS nueva para eso. Un saldo negativo es crédito a favor
+  (lo genera una devolución sin reintegro en efectivo) y se reporta aparte
+  (`a_favor_clientes`/`a_favor_proveedores`), sin sumar a la deuda de nadie
+  ni tener antigüedad. No filtra por estado de la operación a propósito:
+  anular ya inserta el movimiento de reversión que deja el saldo en cero,
+  así que las anuladas se caen solas por el `HAVING ABS(SUM(...)) > 0.005`.
+- **Vista nueva `data-view="cuentas-corrientes"`** (nav "13", entre Caja y
+  Gastos, que pasó a "14"; Papelera a "15"). Dos paneles ("Por cobrar" /
+  "Por pagar") con fila expandible: click en la fila de una entidad
+  despliega el detalle por operación (fecha, pendiente, antigüedad, y un
+  botón "Cobrar"/"Pagar" por renglón). El botón reusa **tal cual**
+  `abrirModalCobrarVenta`/`abrirModalPagarCompra`, los mismos modales que ya
+  usan Ventas y Compras — no se duplicó nada. El nombre de la entidad es un
+  link (`.btn-link`) a su ficha; clickear el nombre no togglea la fila
+  (mismo patrón que ya usan todas las filas clickeables: `e.target.closest("button")`).
+  Filtros y orden (`crearFiltros`/`crearOrden`) sobre nombre/saldo/antigüedad.
+- **`cargarCuentasCorrientes()` se engancha en 14 lugares** — todos los
+  puntos de `server.js`/`app.js` donde una mutación puede cambiar una
+  cuenta corriente (crear/editar/anular venta, cobro, devolución de venta
+  y su anulación, confirmar/editar/anular compra, pago, devolución a
+  proveedor y su anulación, presupuesto convertido en venta, ejecución del
+  asistente, restaurar desde papelera) más el arranque. Se decidió así
+  después de notar que `cargarResumen()` (que es el mismo tipo de vista
+  derivada/reporte) ya sigue exactamente ese patrón en esos mismos 14
+  lugares — no es una convención nueva, es la que el proyecto ya tenía.
+  Los gastos y la caja manual NO enganchan (no tocan cuenta corriente).
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el puerto 3002, proceso del 3000 sin tocar hasta tener todo verde.
+- **Invariante numérico**: el `por_cobrar`/`por_pagar` del endpoint nuevo
+  coincide exactamente con la suma de `deuda` positivos que ya devuelven
+  `GET /api/clientes`/`GET /api/proveedores` — verificado contra la base
+  real antes y después del deploy (Tosi $340.000 en la venta #9; Boysnet
+  $566.000 en las compras #1 y #2; Paraguaya $135.000 en la compra #3).
+- **Casos hostiles, ejecutados de verdad sobre la copia**: cobro parcial
+  (el pendiente baja), cobro total (la fila desaparece), devolución sin
+  reintegro sobre una venta ya cobrada (saldo negativo, aparece como "a
+  favor", sin tramo ni antigüedad), anular una compra con deuda (desaparece
+  sola), y el estado sin ninguna deuda (los dos paneles muestran su mensaje
+  vacío).
+- **Playwright** (dos temas, tres scripts separados, 23 checks en total):
+  carga sin errores de consola vía deep-link `#/cuentas-corrientes`,
+  expandir/colapsar la fila, click en el nombre abre la ficha sin togglear
+  la fila, pagar desde la vista (modal precargado con el saldo real, strip
+  baja y la fila desaparece **sin recargar la página**), ordenar por
+  columna (asc/desc), y 375px sin scroll horizontal.
+- **Deploy**: backup `nexo.db.backup-antes-cuentas-corrientes-20260828-113138`,
+  proceso del 3000 reiniciado (PID viejo 5500 terminado, nuevo arrancado
+  con el mismo comando `node --experimental-sqlite server.js`), números
+  post-deploy comparados 1:1 contra la foto pre-deploy (resumen, deuda
+  total de clientes/proveedores, cantidad de ventas/compras) — sin
+  diferencias. El endpoint nuevo devolvió, contra la base real, exactamente
+  los tres saldos documentados arriba.
+
+### Qué queda pendiente de esta etapa
+
+- **Nada bloqueado.** El alcance acordado (tres tramos de antigüedad desde
+  la fecha de la operación, sin vencimiento pactado) se completó entero.
+- Sin commitear todavía — ver §3.
+- Aging por **vencimiento pactado** (en vez de fecha de la operación)
+  seguiría requiriendo migrar el esquema (agregar una columna de
+  vencimiento a `ventas`/`compras`); quedó fuera a propósito, como estaba
+  ya anotado en la sección 3 de handoffs anteriores.

@@ -82,8 +82,11 @@
         <a href="#" class="nav-item" data-view="caja">
           <span class="nav-index">12</span> Caja
         </a>
+        <a href="#" class="nav-item" data-view="cuentas-corrientes">
+          <span class="nav-index">13</span> Cuentas corrientes
+        </a>
         <a href="#" class="nav-item" data-view="gastos">
-          <span class="nav-index">13</span> Gastos
+          <span class="nav-index">14</span> Gastos
         </a>
         <!-- IVA & Retenciones: fuera de V1 (CLAUDE.md), sin pantalla propia
              todavía. Oculto en vez de apuntar a un placeholder vacío, hasta
@@ -91,7 +94,7 @@
              está acá: no es un módulo más, es el widget flotante al final
              de este archivo (ver #asistenteLauncher). -->
         <a href="#" class="nav-item" data-view="papelera">
-          <span class="nav-index">14</span> Papelera
+          <span class="nav-index">15</span> Papelera
         </a>
       </nav>
 
@@ -1101,6 +1104,74 @@
             <tbody id="cajaMovimientosBody"></tbody>
           </table>
           </div>
+        </section>
+      </section>
+
+      <!-- Vista: Cuentas corrientes -->
+      <section class="view" data-view="cuentas-corrientes" hidden>
+        <section class="ledger-strip" aria-label="Posición de cuentas corrientes">
+          <div class="ledger-item">
+            <span class="ledger-label">Por cobrar</span>
+            <span class="ledger-value mono ledger-ok" id="ccPorCobrar">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Por pagar</span>
+            <span class="ledger-value mono ledger-warn" id="ccPorPagar">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item ledger-item-total">
+            <span class="ledger-label">Posición neta</span>
+            <span class="ledger-value mono" id="ccNeto">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Por cobrar</h2>
+          </div>
+          <p class="form-note" id="ccNotaFavorClientes" hidden></p>
+          <div class="filtros" id="filtrosCcCobrar"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Cliente</th>
+                <th class="align-right" data-orden="saldo" data-tipo="numero">Deuda</th>
+                <th>Operaciones</th>
+                <th>Más vieja</th>
+                <th data-orden="dias_max" data-tipo="numero">Antigüedad</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ccCobrarBody"></tbody>
+          </table>
+          </div>
+          <p class="form-note">La antigüedad se cuenta desde la fecha de la venta: Nexo todavía no maneja vencimientos pactados.</p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Por pagar</h2>
+          </div>
+          <p class="form-note" id="ccNotaFavorProveedores" hidden></p>
+          <div class="filtros" id="filtrosCcPagar"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Proveedor</th>
+                <th class="align-right" data-orden="saldo" data-tipo="numero">Deuda</th>
+                <th>Operaciones</th>
+                <th>Más vieja</th>
+                <th data-orden="dias_max" data-tipo="numero">Antigüedad</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ccPagarBody"></tbody>
+          </table>
+          </div>
+          <p class="form-note">La antigüedad se cuenta desde la fecha de la compra: Nexo todavía no maneja vencimientos pactados.</p>
         </section>
       </section>
 

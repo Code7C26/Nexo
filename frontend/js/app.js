@@ -2112,6 +2112,7 @@ async function abrirFichaPresupuesto(id) {
         cargarStock(),
         cargarProductos(),
         cargarClientes(),
+        cargarCuentasCorrientes(),
         cargarResumen()
       ]);
       await abrirFichaPresupuesto(p.id);
@@ -2311,7 +2312,7 @@ function renderVentas(lista) {
       const res = await fetch(`/api/ventas/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la venta."))) return;
       avisar(`Venta #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes()]);
+      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes()]);
     });
   });
 
@@ -2483,7 +2484,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, ventaEditandoId ? "No se pudo guardar la venta." : "No se pudo registrar la venta."))) return;
 
   const idEditado = ventaEditandoId;
-  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes()]);
+  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes()]);
   form.reset();
   modalVenta.hidden = true;
   // Si se estaba editando desde la ficha, volver a esa ficha con los
@@ -2668,7 +2669,7 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
 
   // Un cobro entra plata en una cuenta y baja la deuda del cliente, así
   // que Caja y Clientes también quedan desactualizados.
-  await Promise.all([cargarVentas(), cargarCaja(), cargarClientes()]);
+  await Promise.all([cargarVentas(), cargarCaja(), cargarClientes(), cargarCuentasCorrientes()]);
   form.reset();
   modalCobrarVenta.hidden = true;
   avisar("Cobro registrado.", "ok");
@@ -2845,6 +2846,7 @@ async function abrirFichaDevolucion(id) {
         cargarProductos(),
         cargarClientes(),
         cargarCaja(),
+        cargarCuentasCorrientes(),
         cargarResumen()
       ]);
       await abrirFichaDevolucion(d.id);
@@ -2988,6 +2990,7 @@ document.getElementById("formDevolucion").addEventListener("submit", async (e) =
     cargarProductos(),
     cargarClientes(),
     cargarCaja(),
+    cargarCuentasCorrientes(),
     cargarResumen()
   ]);
   modalDevolucion.hidden = true;
@@ -3122,7 +3125,7 @@ function renderCompras(lista) {
       const res = await fetch(`/api/compras/${btn.dataset.id}/confirmar`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo efectuar el pedido."))) return;
       avisar(`Compra #${btn.dataset.id} efectuada.`, "ok");
-      await Promise.all([cargarCompras(), cargarProveedores()]);
+      await Promise.all([cargarCompras(), cargarProveedores(), cargarCuentasCorrientes()]);
     });
   });
 
@@ -3143,7 +3146,7 @@ function renderCompras(lista) {
       const res = await fetch(`/api/compras/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la compra."))) return;
       avisar(`Compra #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores()]);
+      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes()]);
     });
   });
 
@@ -3328,7 +3331,7 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, "No se pudo guardar la compra."))) return;
 
   const idEditado = compraEditandoId;
-  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores()]);
+  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes()]);
   form.reset();
   modalCompra.hidden = true;
   if (idEditado) await abrirFichaCompra(idEditado);
@@ -3465,7 +3468,7 @@ document.getElementById("formPagarCompra").addEventListener("submit", async (e) 
   if (!(await manejarError(res, "No se pudo registrar el pago."))) return;
 
   // Un pago saca plata de una cuenta y baja la deuda con el proveedor.
-  await Promise.all([cargarCompras(), cargarCaja(), cargarProveedores()]);
+  await Promise.all([cargarCompras(), cargarCaja(), cargarProveedores(), cargarCuentasCorrientes()]);
   form.reset();
   modalPagarCompra.hidden = true;
   avisar("Pago registrado.", "ok");
@@ -3646,6 +3649,7 @@ async function abrirFichaDevolucionProveedor(id) {
         cargarProductos(),
         cargarProveedores(),
         cargarCaja(),
+        cargarCuentasCorrientes(),
         cargarResumen()
       ]);
       await abrirFichaDevolucionProveedor(d.id);
@@ -3782,6 +3786,7 @@ document.getElementById("formDevolucionProveedor").addEventListener("submit", as
     cargarProductos(),
     cargarProveedores(),
     cargarCaja(),
+    cargarCuentasCorrientes(),
     cargarResumen()
   ]);
   modalDevolucionProveedor.hidden = true;
@@ -4506,6 +4511,187 @@ document.getElementById("formTransferencia").addEventListener("submit", async (e
   avisar("Transferencia registrada.", "ok");
 });
 
+/* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
+
+// Mismo criterio de color que ESTADO_COBRO_CLASE: verde = sin urgencia,
+// amarillo = empieza a atrasarse, rojo = viejo. El backend ya calcula el
+// tramo por operación (server.js, tramoDeAntiguedad) con los mismos
+// cortes — acá solo se traduce a clase/etiqueta visual.
+const CC_TRAMO_CLASE = { al_dia: "status-cobrado", atrasado: "status-pendiente", vencido: "status-vencido" };
+const CC_TRAMO_LABEL = { al_dia: "Al día", atrasado: "Atrasado", vencido: "Vencido" };
+
+// La operación "más vieja" tiene que ser la deuda más vieja, no
+// simplemente operaciones[0]: si una entidad tiene una operación con
+// crédito a favor (pendiente negativo, sin tramo) fechada antes que su
+// deuda real, esa no cuenta para "hace cuánto que me debe".
+function ccMasVieja(entidad) {
+  const conDeuda = entidad.operaciones.filter((o) => o.tramo);
+  return conDeuda.find((o) => o.dias === entidad.dias_max) ?? conDeuda[0] ?? entidad.operaciones[0];
+}
+
+function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLabel, abrirFicha, abrirAccion }) {
+  const body = document.getElementById(bodyId);
+  body.innerHTML = "";
+
+  if (lista.length === 0) {
+    if (filtros.filtros.length > 0) {
+      body.innerHTML = filaVaciaFiltrada(6);
+      body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtros.limpiar());
+    } else {
+      body.innerHTML = filaVacia(
+        6,
+        tipoClave === "cliente" ? "Nadie te debe: todo cobrado." : "No le debés nada a nadie: todo pagado."
+      );
+    }
+    return;
+  }
+
+  for (const e of lista) {
+    const masVieja = ccMasVieja(e);
+    const fila = document.createElement("tr");
+    fila.className = "fila-clickeable";
+    fila.innerHTML = `
+      <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${e.nombre}</button></td>
+      <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
+      <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
+      <td data-label="Más vieja">${masVieja.fecha}</td>
+      <td data-label="Antigüedad"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
+      <td data-label="" class="cc-chevron">▸</td>
+    `;
+
+    const detalle = document.createElement("tr");
+    detalle.className = "cc-detalle-fila";
+    detalle.hidden = true;
+    detalle.innerHTML = `
+      <td colspan="6">
+        <table class="cc-detalle">
+          <tbody>
+            ${e.operaciones
+              .map(
+                (o) => `
+              <tr>
+                <td>${o.fecha}</td>
+                <td class="align-right mono">${money(o.pendiente)}</td>
+                <td>${o.dias !== null ? `${numero(o.dias)} días` : "A favor"}</td>
+                <td><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
+              </tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </td>`;
+
+    fila.addEventListener("click", (ev) => {
+      if (ev.target.closest("button")) return;
+      detalle.hidden = !detalle.hidden;
+      fila.querySelector(".cc-chevron").textContent = detalle.hidden ? "▸" : "▾";
+    });
+    fila.querySelector(".cc-abrir-ficha").addEventListener("click", () => abrirFicha(e.id));
+
+    body.appendChild(fila);
+    body.appendChild(detalle);
+  }
+
+  body.querySelectorAll(".cc-accion").forEach((btn) => {
+    btn.addEventListener("click", () => abrirAccion(Number(btn.dataset.id)));
+  });
+}
+
+function renderCuentasCorrientes(datos) {
+  const { por_cobrar, por_pagar, a_favor_clientes, a_favor_proveedores, totales } = datos;
+
+  document.getElementById("ccPorCobrar").textContent = money(totales.por_cobrar);
+  document.getElementById("ccPorPagar").textContent = money(totales.por_pagar);
+  const neto = document.getElementById("ccNeto");
+  neto.textContent = money(totales.neto);
+  neto.classList.toggle("saldo-negativo", totales.neto < 0);
+  neto.classList.toggle("ledger-ok", totales.neto >= 0);
+
+  const notaFavorClientes = document.getElementById("ccNotaFavorClientes");
+  notaFavorClientes.hidden = a_favor_clientes.length === 0;
+  if (a_favor_clientes.length > 0) {
+    notaFavorClientes.textContent = `A favor de ${a_favor_clientes.length} cliente(s) por ${money(totales.a_favor_clientes)} (crédito de una devolución sin reintegro): no suma a la deuda de nadie más.`;
+  }
+  const notaFavorProveedores = document.getElementById("ccNotaFavorProveedores");
+  notaFavorProveedores.hidden = a_favor_proveedores.length === 0;
+  if (a_favor_proveedores.length > 0) {
+    notaFavorProveedores.textContent = `A favor de ${a_favor_proveedores.length} proveedor(es) por ${money(totales.a_favor_proveedores)}: no compensa la deuda con otro proveedor.`;
+  }
+
+  renderCcTabla(
+    "ccCobrarBody",
+    ordenCcCobrar.aplicar(filtrosCcCobrar.aplicar(por_cobrar)),
+    filtrosCcCobrar,
+    {
+      tipoLabel: "Cliente",
+      tipoClave: "cliente",
+      accionLabel: "Cobrar",
+      abrirFicha: abrirFichaCliente,
+      abrirAccion: abrirModalCobrarVenta
+    }
+  );
+  renderCcTabla(
+    "ccPagarBody",
+    ordenCcPagar.aplicar(filtrosCcPagar.aplicar(por_pagar)),
+    filtrosCcPagar,
+    {
+      tipoLabel: "Proveedor",
+      tipoClave: "proveedor",
+      accionLabel: "Pagar",
+      abrirFicha: abrirFichaProveedor,
+      abrirAccion: abrirModalPagarCompra
+    }
+  );
+}
+
+function filtrarCcCobrar() {
+  renderCuentasCorrientes(ccUltimaRespuesta);
+}
+function filtrarCcPagar() {
+  renderCuentasCorrientes(ccUltimaRespuesta);
+}
+
+const filtrosCcCobrar = crearFiltros(
+  "filtrosCcCobrar",
+  [
+    { clave: "nombre", etiqueta: "Cliente", tipo: "texto" },
+    { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
+    { clave: "dias_max", etiqueta: "Antigüedad (días)", tipo: "numero" }
+  ],
+  filtrarCcCobrar
+);
+const ordenCcCobrar = crearOrden("ccCobrarBody", filtrarCcCobrar);
+
+const filtrosCcPagar = crearFiltros(
+  "filtrosCcPagar",
+  [
+    { clave: "nombre", etiqueta: "Proveedor", tipo: "texto" },
+    { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
+    { clave: "dias_max", etiqueta: "Antigüedad (días)", tipo: "numero" }
+  ],
+  filtrarCcPagar
+);
+const ordenCcPagar = crearOrden("ccPagarBody", filtrarCcPagar);
+
+// Guarda la última respuesta cruda del endpoint para que los filtros y el
+// orden (que solo tocan una de las dos tablas) puedan re-renderizar sin
+// pedir los datos de nuevo — es una foto de hoy, no cambia entre filtros.
+let ccUltimaRespuesta = {
+  por_cobrar: [],
+  por_pagar: [],
+  a_favor_clientes: [],
+  a_favor_proveedores: [],
+  totales: { por_cobrar: 0, por_pagar: 0, a_favor_clientes: 0, a_favor_proveedores: 0, neto: 0 }
+};
+
+async function cargarCuentasCorrientes() {
+  tablaCargando("ccCobrarBody", 6);
+  tablaCargando("ccPagarBody", 6);
+  const datos = await (await fetch("/api/cuentas-corrientes")).json();
+  ccUltimaRespuesta = datos;
+  renderCuentasCorrientes(datos);
+}
+
 /* ---------- Gastos ---------- */
 
 // Los gastos son lo que le falta al sistema para saber si el negocio gana
@@ -5006,6 +5192,7 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     cargarClientes(),
     cargarProveedores(),
     cargarCaja(),
+    cargarCuentasCorrientes(),
     cargarResumen()
   ]);
 }
@@ -5446,6 +5633,7 @@ function renderPapelera() {
         cargarClientes(),
         cargarProveedores(),
         cargarCaja(),
+        cargarCuentasCorrientes(),
         cargarResumen()
       ]);
     });
@@ -5455,12 +5643,14 @@ function renderPapelera() {
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último
 // porque su tabla de últimos movimientos se arma con los cachés de
-// ventas, compras y gastos ya cargados.
+// ventas, compras y gastos ya cargados. Cuentas corrientes no depende de
+// ningún caché del frontend (trae su propio fetch), así que entra en el
+// mismo último grupo que Resumen.
 Promise.all([cargarClientes(), cargarProveedores(), cargarCaja()])
   .then(() => Promise.all([cargarGastos(), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
-  .then(() => cargarResumen());
+  .then(() => Promise.all([cargarResumen(), cargarCuentasCorrientes()]));
 
 /* ---------- Tema claro / oscuro ---------- */
 
@@ -5557,6 +5747,7 @@ const VISTAS_CONSTRUIDAS = {
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
   stock: { titulo: "Stock", dominio: "Stock" },
   caja: { titulo: "Caja", dominio: "Finanzas" },
+  "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
   papelera: { titulo: "Papelera", dominio: "Papelera" },
 

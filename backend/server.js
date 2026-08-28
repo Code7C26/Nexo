@@ -3523,6 +3523,126 @@ app.post('/api/gastos/:id/restaurar', (req, res) => {
   res.json({ id: gastoId, estado: 'activo' });
 });
 
+/* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
+
+// Antigüedad medida desde la fecha de la operación, no desde un
+// vencimiento pactado: ni ventas ni compras tienen ese dato en el
+// esquema (ver CLAUDE.md). Los tres tramos calzan con las clases
+// .status-* que ya existen en el frontend, para no agregar CSS nueva.
+function tramoDeAntiguedad(dias) {
+  if (dias <= 30) return 'al_dia';
+  if (dias <= 60) return 'atrasado';
+  return 'vencido';
+}
+
+// Saldo pendiente por operación (venta o compra), no por entidad: es la
+// base para poder mostrar el detalle y para calcular la antigüedad desde
+// la operación impaga más vieja. No se filtra por estado de la operación
+// a propósito: anular una venta o una compra ya inserta el movimiento de
+// reversión que deja el saldo en cero (ver los endpoints .../anular), así
+// que las anuladas se caen solas acá por el HAVING — filtrar por estado
+// sería redundante y más frágil si ese criterio cambia en otro lado.
+// `> 0.005` en vez de `<> 0` porque importe es REAL: una operación saldada
+// al centavo puede dejar un residuo de coma flotante.
+function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion) {
+  return db
+    .prepare(
+      `SELECT m.${columnaOperacion} AS operacion_id, m.${columnaEntidad} AS entidad_id,
+              o.fecha AS fecha, ROUND(SUM(m.importe), 2) AS pendiente
+         FROM ${tablaMovimientos} m
+         JOIN ${tablaOperacion} o ON o.id = m.${columnaOperacion}
+        GROUP BY m.${columnaOperacion}
+       HAVING ABS(SUM(m.importe)) > 0.005`
+    )
+    .all();
+}
+
+// Agrupa los saldos por operación (arriba) en uno por entidad: saldo total,
+// antigüedad de la deuda más vieja (solo entre las operaciones que SÍ son
+// deuda: un saldo negativo es crédito a favor, no tiene "antigüedad
+// vencida"), y el detalle ordenado por fecha para la fila expandible.
+function agruparPorEntidad(saldos, tablaEntidad, hoy) {
+  const porEntidad = new Map();
+  for (const s of saldos) {
+    if (!porEntidad.has(s.entidad_id)) porEntidad.set(s.entidad_id, []);
+    porEntidad.get(s.entidad_id).push(s);
+  }
+
+  const resultado = [];
+  for (const [entidadId, operacionesRaw] of porEntidad) {
+    const entidad = db.prepare(`SELECT id, nombre, telefono, email FROM ${tablaEntidad} WHERE id = ?`).get(entidadId);
+    if (!entidad) continue; // defensivo: no debería pasar, la FK lo garantiza
+
+    const operaciones = operacionesRaw
+      .map((o) => {
+        const dias = diffDias(o.fecha, hoy);
+        return {
+          id: o.operacion_id,
+          fecha: o.fecha,
+          pendiente: o.pendiente,
+          dias: o.pendiente > 0 ? dias : null,
+          tramo: o.pendiente > 0 ? tramoDeAntiguedad(dias) : null
+        };
+      })
+      .sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : a.id - b.id));
+
+    const saldo = Math.round(operaciones.reduce((acc, o) => acc + o.pendiente, 0) * 100) / 100;
+    const diasDeuda = operaciones.filter((o) => o.pendiente > 0).map((o) => o.dias);
+
+    resultado.push({
+      id: entidad.id,
+      nombre: entidad.nombre,
+      telefono: entidad.telefono,
+      email: entidad.email,
+      saldo,
+      dias_max: diasDeuda.length ? Math.max(...diasDeuda) : null,
+      operaciones
+    });
+  }
+
+  return resultado.sort((a, b) => (b.dias_max ?? -1) - (a.dias_max ?? -1));
+}
+
+app.get('/api/cuentas-corrientes', (req, res) => {
+  const hoy = fechaDeHoy();
+
+  const entidadesClientes = agruparPorEntidad(
+    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas'),
+    'clientes',
+    hoy
+  );
+  const entidadesProveedores = agruparPorEntidad(
+    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras'),
+    'proveedores',
+    hoy
+  );
+
+  // Los totales solo suman deuda real (saldo > 0); un saldo a favor va
+  // aparte y no compensa la deuda de otra entidad.
+  const porCobrar = entidadesClientes.filter((e) => e.saldo > 0);
+  const porPagar = entidadesProveedores.filter((e) => e.saldo > 0);
+  const aFavorClientes = entidadesClientes.filter((e) => e.saldo < 0);
+  const aFavorProveedores = entidadesProveedores.filter((e) => e.saldo < 0);
+
+  const sumaSaldo = (lista) => Math.round(lista.reduce((acc, e) => acc + e.saldo, 0) * 100) / 100;
+  const totalPorCobrar = sumaSaldo(porCobrar);
+  const totalPorPagar = sumaSaldo(porPagar);
+
+  res.json({
+    por_cobrar: porCobrar,
+    por_pagar: porPagar,
+    a_favor_clientes: aFavorClientes,
+    a_favor_proveedores: aFavorProveedores,
+    totales: {
+      por_cobrar: totalPorCobrar,
+      por_pagar: totalPorPagar,
+      a_favor_clientes: Math.abs(sumaSaldo(aFavorClientes)),
+      a_favor_proveedores: Math.abs(sumaSaldo(aFavorProveedores)),
+      neto: Math.round((totalPorCobrar - totalPorPagar) * 100) / 100
+    }
+  });
+});
+
 /* ---------- Resumen (resultado del negocio) ---------- */
 
 // El resultado real del negocio. La distinción importante está en qué se

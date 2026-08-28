@@ -800,6 +800,17 @@ button { font-family: inherit; cursor: pointer; }
 
 .ledger-table tbody tr:hover { background: var(--surface-sunk); }
 
+/* Fila expandible de Cuentas corrientes: el detalle por operación vive en
+   una <tr> propia, oculta hasta que se hace click en la fila de la
+   entidad. Reusa .ledger-table para no inventar un estilo de tabla nuevo,
+   solo se le saca el padding para que se sienta "adentro" de la fila que
+   la abrió. */
+.cc-chevron { color: var(--ink-muted); text-align: center; }
+.cc-detalle-fila td { padding: 0; background: var(--surface-sunk); }
+.cc-detalle { width: 100%; border-collapse: collapse; }
+.cc-detalle td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: var(--txt-sm); }
+.cc-detalle tr:last-child td { border-bottom: none; }
+
 /* ---------- Orden de tablas (click en el encabezado) ---------- */
 
 .th-ordenable {
