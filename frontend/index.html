@@ -293,6 +293,30 @@
           </div>
         </section>
 
+        <!-- Un producto sin categoría cae en el balde "Sin categoría"
+             (el backend lo arma con GROUP BY sobre categoria_id, que es
+             NULL para esos productos) en vez de perderse del reporte. -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Ventas por categoría</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="nombre" data-tipo="texto">Categoría</th>
+                <th class="align-right" data-orden="unidades" data-tipo="numero">Unidades</th>
+                <th class="align-right" data-orden="ventas" data-tipo="numero">Ventas</th>
+                <th class="align-right" data-orden="ganancia" data-tipo="numero">Ganancia</th>
+                <th class="align-right" data-orden="margen_pct" data-tipo="numero">Margen</th>
+                <th class="align-right" data-orden="participacion_pct" data-tipo="numero">% del total</th>
+              </tr>
+            </thead>
+            <tbody id="reporteCategoriasBody"></tbody>
+          </table>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Mejores clientes</h2>
@@ -927,7 +951,10 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Productos</h2>
-            <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnCategoriasProductos">Categorías</button>
+              <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
+            </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
           <div class="filtros" id="filtrosProductos"></div>
@@ -937,6 +964,7 @@
               <tr>
                 <th data-orden="nombre" data-tipo="texto">Nombre</th>
                 <th data-orden="sku" data-tipo="texto">SKU</th>
+                <th data-orden="categoria" data-tipo="texto">Categoría</th>
                 <th class="align-right" data-orden="precio_costo" data-tipo="numero">Costo</th>
                 <th class="align-right" data-orden="valorizado" data-tipo="numero">Valorizado</th>
                 <th class="align-right" data-orden="precio_venta" data-tipo="numero">Precio</th>
@@ -1818,6 +1846,36 @@
     </div>
   </div>
 
+  <!-- Modal categorías de productos (alta y edición) — calcado del de
+       categorías de gasto de arriba, sin el campo Tipo (acá no hay una
+       razón contable que lo justifique). -->
+  <div class="modal" id="modalCategoriasProductos" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasProductosTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalCategoriasProductosTitulo">Categorías de productos</h3>
+        <button class="modal-close" id="modalCategoriasProductosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formCategoriaProducto" class="form">
+        <input type="hidden" name="id" />
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Perfumes, Accesorios, Repuestos…" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formCategoriaProductoSubmit">Agregar categoría</button>
+      </form>
+      <div class="tabla-scroll">
+          <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="categoriasProductosBody"></tbody>
+      </table>
+          </div>
+    </div>
+  </div>
+
   <!-- Modal cuenta de tesorería (alta y edición) -->
   <div class="modal" id="modalCuenta" role="dialog" aria-modal="true" aria-labelledby="modalCuentaTitulo" hidden>
     <div class="modal-card">
@@ -1920,6 +1978,14 @@
         </label>
         <label>SKU
           <input type="text" name="sku" placeholder="Opcional" />
+        </label>
+        <!-- Las opciones se llenan en runtime (poblarSelectCategorias en
+             app.js) con las categorías activas — igual que el select de
+             categoría de gasto. -->
+        <label>Categoría
+          <select name="categoria_id">
+            <option value="">Sin categoría</option>
+          </select>
         </label>
         <label>Precio de venta
           <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" />

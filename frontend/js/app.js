@@ -936,6 +936,30 @@ function renderReporteProductos(lista) {
     .join("");
 }
 
+// Un producto sin categoría cae en el balde "Sin categoría" que ya arma
+// el backend (GROUP BY sobre categoria_id, que es NULL para esos
+// productos) — no se filtra ni se distingue especialmente acá.
+function renderReporteCategorias(lista) {
+  const body = document.getElementById("reporteCategoriasBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(6, "No hay ventas en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (c) => `
+    <tr>
+      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Unidades" class="align-right mono">${numero(c.unidades)}</td>
+      <td data-label="Ventas" class="align-right mono">${money(c.ventas)}</td>
+      <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
+      <td data-label="Margen" class="align-right mono">${porcentaje(c.margen_pct)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
 function renderReporteClientes(lista) {
   const body = document.getElementById("reporteClientesBody");
   if (lista.length === 0) {
@@ -963,6 +987,7 @@ function renderReporteClientes(lista) {
 
 async function cargarReporteVentas() {
   tablaCargando("reporteProductosBody", 6);
+  tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
 
   const rango = rangoActualReporteVentas();
@@ -982,10 +1007,12 @@ async function cargarReporteVentas() {
     : `Del ${datos.rango.desde} al ${datos.rango.hasta} (todo lo cargado hasta hoy).`;
 
   renderReporteProductos(ordenReporteProductos.aplicar(datos.productos));
+  renderReporteCategorias(ordenReporteCategorias.aplicar(datos.categorias));
   renderReporteClientes(ordenReporteClientes.aplicar(datos.clientes));
 }
 
 const ordenReporteProductos = crearOrden("reporteProductosBody", () => cargarReporteVentas());
+const ordenReporteCategorias = crearOrden("reporteCategoriasBody", () => cargarReporteVentas());
 const ordenReporteClientes = crearOrden("reporteClientesBody", () => cargarReporteVentas());
 
 /* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
@@ -1419,6 +1446,7 @@ function totalItems(contenedor) {
 /* ---------- Productos ---------- */
 
 let productos = [];
+let categorias = [];
 let productoEditandoId = null;
 let productoFichaId = null;
 
@@ -1436,10 +1464,10 @@ function renderProductos(lista) {
 
   if (lista.length === 0) {
     if (filtrosProductos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(8);
+      body.innerHTML = filaVaciaFiltrada(9);
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProductos.limpiar());
     } else {
-      body.innerHTML = filaVacia(8, "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(9, "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -1457,6 +1485,7 @@ function renderProductos(lista) {
     tr.innerHTML = `
       <td data-label="Nombre">${p.nombre}</td>
       <td data-label="SKU">${p.sku || "—"}</td>
+      <td data-label="Categoría">${p.categoria || "—"}</td>
       <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
       <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right">${precioCelda}</td>
@@ -1519,6 +1548,7 @@ async function abrirFichaProducto(id) {
 
   const campos = [
     ["SKU", producto.sku],
+    ["Categoría", producto.categoria],
     [
       "Precio de venta",
       producto.precio_venta > 0
@@ -1566,11 +1596,38 @@ async function abrirFichaProducto(id) {
 }
 
 async function cargarProductos() {
-  tablaCargando("productosBody", 8);
-  const res = await fetch("/api/productos");
-  productos = await res.json();
+  tablaCargando("productosBody", 9);
+  const [listaProductos, listaCategorias] = await Promise.all([
+    fetch("/api/productos").then((r) => r.json()),
+    fetch("/api/categorias").then((r) => r.json())
+  ]);
+  productos = listaProductos;
+  categorias = listaCategorias;
   poblarDatalistProductos();
+  poblarSelectCategorias();
+
+  filtrosProductos.setOpciones(
+    "categoria_id",
+    categorias.filter((c) => c.activa).map((c) => ({ valor: String(c.id), texto: c.nombre }))
+  );
+
   filtrarProductos();
+}
+
+// Llena el <select> de categoría del formulario de alta/edición de
+// producto — mismo criterio que poblarSelectCuentas (Ventas/Compras): las
+// opciones dependen de datos que llegan por fetch, así que se arman en
+// runtime en vez de quedar fijas en el HTML.
+function poblarSelectCategorias() {
+  const select = document.querySelector('#formProducto [name="categoria_id"]');
+  const actual = select.value;
+  select.innerHTML =
+    '<option value="">Sin categoría</option>' +
+    categorias
+      .filter((c) => c.activa)
+      .map((c) => `<option value="${c.id}">${c.nombre}</option>`)
+      .join("");
+  select.value = actual;
 }
 
 function filtrarProductos() {
@@ -1593,6 +1650,7 @@ const filtrosProductos = crearFiltros(
   [
     { clave: "nombre", etiqueta: "Nombre", tipo: "texto" },
     { clave: "sku", etiqueta: "SKU", tipo: "texto" },
+    { clave: "categoria_id", etiqueta: "Categoría", tipo: "select", opciones: [] },
     {
       clave: "activo",
       etiqueta: "Activo",
@@ -1623,6 +1681,7 @@ function abrirModalProducto(producto = null) {
   document.getElementById("modalProductoTitulo").textContent = producto ? "Editar producto" : "Nuevo producto";
   form.nombre.value = producto?.nombre ?? "";
   form.sku.value = producto?.sku ?? "";
+  form.categoria_id.value = producto?.categoria_id ?? "";
   form.precio_venta.value = producto?.precio_venta ?? "";
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
@@ -1648,6 +1707,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   const datos = {
     nombre: form.nombre.value,
     sku: form.sku.value || null,
+    categoria_id: form.categoria_id.value || null,
     precio_venta: form.precio_venta.value,
     stock_minimo: form.stock_minimo.value,
     stock_maximo: form.stock_maximo.value,
@@ -1665,13 +1725,90 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   if (!(await manejarError(res, "No se pudo guardar el producto."))) return;
 
   const eraEdicion = productoEditandoId !== null;
-  await Promise.all([cargarProductos(), cargarReporteStock()]);
+  // categoria_id también puede cambiar acá, y "Ventas por categoría" (en
+  // Qué se vende) agrupa por la categoría ACTUAL del producto, no por una
+  // foto histórica — así que también hay que refrescarlo.
+  await Promise.all([cargarProductos(), cargarReporteStock(), cargarReporteVentas()]);
   // Si se editaba desde la ficha, se refresca para que muestre los datos
   // nuevos en vez de quedar con los viejos detrás del modal.
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
   form.reset();
   modalProducto.hidden = true;
   avisar(eraEdicion ? "Producto actualizado." : "Producto creado.", "ok");
+});
+
+/* ---------- Categorías de productos ---------- */
+//
+// Calcado del modal de categorías de gasto (Gastos, más abajo): mismo
+// patrón de formulario inline + tabla editable, sin campo Tipo. La baja es
+// lógica (activa = 0) desde el mismo PATCH que edita, nunca DELETE — un
+// producto con esa categoría no puede quedar apuntando a una fila borrada.
+
+const modalCategoriasProductos = document.getElementById("modalCategoriasProductos");
+
+function renderCategoriasProductos() {
+  const body = document.getElementById("categoriasProductosBody");
+  if (categorias.length === 0) {
+    body.innerHTML = filaVacia(2, "Todavía no hay categorías.");
+    return;
+  }
+
+  body.innerHTML = categorias
+    .map(
+      (c) => `
+    <tr class="${c.activa ? "" : "fila-anulada"}">
+      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="">${botonEditarFila("btn-editar-categoria-producto", c.id, "categoría")}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-editar-categoria-producto").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const categoria = categorias.find((c) => c.id === Number(btn.dataset.id));
+      const form = document.getElementById("formCategoriaProducto");
+      form.id.value = categoria.id;
+      form.nombre.value = categoria.nombre;
+      document.getElementById("formCategoriaProductoSubmit").textContent = "Guardar cambios";
+    });
+  });
+}
+
+document.getElementById("btnCategoriasProductos").addEventListener("click", () => {
+  document.getElementById("formCategoriaProducto").reset();
+  document.getElementById("formCategoriaProducto").id.value = "";
+  document.getElementById("formCategoriaProductoSubmit").textContent = "Agregar categoría";
+  renderCategoriasProductos();
+  modalCategoriasProductos.hidden = false;
+});
+document.getElementById("modalCategoriasProductosClose").addEventListener("click", () => {
+  modalCategoriasProductos.hidden = true;
+});
+modalCategoriasProductos.addEventListener("click", (e) => {
+  if (e.target === modalCategoriasProductos) modalCategoriasProductos.hidden = true;
+});
+
+document.getElementById("formCategoriaProducto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const editandoId = form.id.value;
+
+  const res = await fetch(editandoId ? `/api/categorias/${editandoId}` : "/api/categorias", {
+    method: editandoId ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: form.nombre.value, activa: 1 })
+  });
+  if (!(await manejarError(res, "No se pudo guardar la categoría."))) return;
+
+  const eraEdicion = Boolean(editandoId);
+  // Una categoría nueva o renombrada cambia el select del formulario de
+  // producto y el agrupamiento de "Ventas por categoría".
+  await Promise.all([cargarProductos(), cargarReporteVentas()]);
+  renderCategoriasProductos();
+  form.reset();
+  form.id.value = "";
+  document.getElementById("formCategoriaProductoSubmit").textContent = "Agregar categoría";
+  avisar(eraEdicion ? "Categoría actualizada." : "Categoría creada.", "ok");
 });
 
 /* ---------- Cuentas de tesorería ---------- */

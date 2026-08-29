@@ -47,12 +47,25 @@ CREATE TABLE IF NOT EXISTS facturas (
 );
 -- venta_id se agrega por migración en db/index.js (ver ahí el porqué).
 
+-- Solo un nivel por ahora (sin subcategoría): CLAUDE.md §3/§4 las
+-- mencionan como entidades separadas, pero con el catálogo actual un
+-- segundo nivel sería estructura vacía. Agregar subcategoría después es
+-- aditivo (una columna parent_id acá mismo), no obliga a rehacer nada.
+CREATE TABLE IF NOT EXISTS categorias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  activa INTEGER NOT NULL DEFAULT 1
+);
+
 -- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
 -- proveedor (costo promedio ponderado, ver POST /api/compras). Es un valor
 -- derivado de las operaciones, no un dato que alguien carga.
 -- stock_minimo / stock_maximo son los umbrales para la alerta de stock:
 -- por debajo del mínimo avisa "bajo", por encima del máximo avisa "alto".
 -- stock_maximo nullable = ese producto no tiene alerta de exceso.
+-- categoria_id es nullable a propósito, no por comodidad: un producto se
+-- autocrea por nombre desde una compra (ver crearCompra en server.js) sin
+-- pasar nunca por este formulario, así que un NOT NULL rompería esa alta.
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -61,7 +74,8 @@ CREATE TABLE IF NOT EXISTS productos (
   precio_venta REAL NOT NULL DEFAULT 0,
   activo INTEGER NOT NULL DEFAULT 1,
   stock_minimo REAL NOT NULL DEFAULT 0,
-  stock_maximo REAL
+  stock_maximo REAL,
+  categoria_id INTEGER REFERENCES categorias(id)
 );
 
 -- Mismo criterio que clientes: un proveedor puede nacer cargado a mano

@@ -228,15 +228,72 @@ app.post('/api/facturas', (req, res) => {
   res.status(201).json({ id: facturaId });
 });
 
+/* ---------- Categorías de productos ---------- */
+//
+// Calcado de categorías de gasto (ver más abajo, sección Gastos): mismas
+// tres validaciones (nombre vacío, nombre duplicado, baja lógica vía
+// `activa` en vez de DELETE, para no dejar productos apuntando a una FK
+// borrada). Sin `tipo`: acá no hay una razón contable que lo justifique.
+
+app.get('/api/categorias', (req, res) => {
+  const categorias = db.prepare('SELECT * FROM categorias ORDER BY nombre').all();
+  res.json(categorias);
+});
+
+app.post('/api/categorias', (req, res) => {
+  const { nombre } = req.body;
+
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'La categoría necesita un nombre.' });
+  }
+  const yaExiste = db.prepare('SELECT 1 FROM categorias WHERE nombre = ?').get(String(nombre).trim());
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
+  }
+
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO categorias (nombre) VALUES (?)')
+    .run(String(nombre).trim());
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.patch('/api/categorias/:id', (req, res) => {
+  const categoriaId = Number(req.params.id);
+  const { nombre, activa } = req.body;
+
+  const categoria = db.prepare('SELECT id FROM categorias WHERE id = ?').get(categoriaId);
+  if (!categoria) {
+    return res.status(404).json({ error: 'Categoría no encontrada.' });
+  }
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'La categoría necesita un nombre.' });
+  }
+  const yaExiste = db
+    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND id <> ?')
+    .get(String(nombre).trim(), categoriaId);
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
+  }
+
+  db.prepare('UPDATE categorias SET nombre = ?, activa = ? WHERE id = ?').run(
+    String(nombre).trim(),
+    activa === undefined ? 1 : Number(Boolean(activa)),
+    categoriaId
+  );
+  res.json({ id: categoriaId });
+});
+
 /* ---------- Productos ---------- */
 
 const SELECT_PRODUCTO = `
   SELECT productos.id, productos.nombre, productos.sku, productos.precio_costo,
          productos.precio_venta, productos.activo,
          productos.stock_minimo, productos.stock_maximo,
+         productos.categoria_id, categorias.nombre AS categoria,
          COALESCE(stock_actual.cantidad, 0) AS stock
     FROM productos
-    LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id`;
+    LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+    LEFT JOIN categorias ON categorias.id = productos.categoria_id`;
 
 // Semáforo de stock. El mínimo avisa cuando llegás a ese número (no cuando
 // lo perforás): si configurás 5, con 5 unidades ya querés reponer. El
@@ -275,10 +332,16 @@ function normalizarStockMaximo(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
 }
 
+// categoria_id es opcional de verdad (ver schema.sql): vacío significa
+// "sin categoría", no un error.
+function normalizarCategoriaId(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
+
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo }) {
+function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id }) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
@@ -294,6 +357,13 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo }) {
   if (maximo !== null && maximo < minimo) {
     return 'El stock máximo no puede ser menor que el mínimo.';
   }
+  // Mismo criterio que categoria_id en gastos (validarGasto, más abajo):
+  // si viene, tiene que existir de verdad — nunca se confía ciegamente en
+  // un id que llega del cliente.
+  const categoriaId = normalizarCategoriaId(categoria_id);
+  if (categoriaId !== null && !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(categoriaId)) {
+    return 'La categoría seleccionada no existe.';
+  }
   return null;
 }
 
@@ -303,7 +373,7 @@ app.post('/api/productos', (req, res) => {
     return res.status(400).json({ error });
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo } = req.body;
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id } = req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
 
   let lastInsertRowid;
@@ -313,8 +383,8 @@ app.post('/api/productos', (req, res) => {
     // primera compra que lo incluya.
     ({ lastInsertRowid } = db
       .prepare(
-        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo)
-         VALUES (?, ?, 0, ?, ?, ?, ?)`
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -322,7 +392,8 @@ app.post('/api/productos', (req, res) => {
         normalizarPrecio(precio_venta),
         activo === false || activo === 0 ? 0 : 1,
         normalizarPrecio(stock_minimo),
-        normalizarStockMaximo(stock_maximo)
+        normalizarStockMaximo(stock_maximo),
+        normalizarCategoriaId(categoria_id)
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -345,7 +416,7 @@ app.patch('/api/productos/:id', (req, res) => {
     return res.status(400).json({ error });
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo } = req.body;
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id } = req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
 
   try {
@@ -354,7 +425,7 @@ app.patch('/api/productos/:id', (req, res) => {
     // trazabilidad del costo real.
     db.prepare(
       `UPDATE productos
-          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?
+          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?
         WHERE id = ?`
     ).run(
       nombre.trim(),
@@ -363,6 +434,7 @@ app.patch('/api/productos/:id', (req, res) => {
       activo === false || activo === 0 ? 0 : 1,
       normalizarPrecio(stock_minimo),
       normalizarStockMaximo(stock_maximo),
+      normalizarCategoriaId(categoria_id),
       productoId
     );
   } catch (err) {
@@ -4056,6 +4128,42 @@ const SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO = db.prepare(
     GROUP BY devolucion_items.producto_id`
 );
 
+// Agrupa por categoria_id, no por producto. Un producto sin categoría
+// tiene categoria_id NULL, y SQLite agrupa todos los NULL de un GROUP BY
+// en un solo grupo — es justo el balde "Sin categoría" que se necesita,
+// sin tener que armarlo a mano. COALESCE le pone nombre a ese grupo.
+const SQL_REPORTE_VENTAS_POR_CATEGORIA = db.prepare(
+  `SELECT productos.categoria_id AS id,
+          COALESCE(categorias.nombre, 'Sin categoría') AS nombre,
+          SUM(venta_items.cantidad) AS unidades,
+          SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas,
+          SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo
+     FROM venta_items
+     JOIN ventas ON ventas.id = venta_items.venta_id
+     JOIN productos ON productos.id = venta_items.producto_id
+     LEFT JOIN categorias ON categorias.id = productos.categoria_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+    GROUP BY productos.categoria_id`
+);
+
+const SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA = db.prepare(
+  `SELECT productos.categoria_id AS id,
+          SUM(devolucion_items.cantidad) AS unidades,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario) AS ventas,
+          SUM(CASE WHEN devolucion_items.vuelve_stock
+                   THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
+                   ELSE 0 END) AS costo
+     FROM devolucion_items
+     JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
+     JOIN productos ON productos.id = devolucion_items.producto_id
+    WHERE devoluciones.estado = 'activa'
+      AND (? IS NULL OR devoluciones.fecha >= ?)
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+    GROUP BY productos.categoria_id`
+);
+
 const SQL_REPORTE_VENTAS_POR_CLIENTE = db.prepare(
   `SELECT ventas.cliente_id AS id, clientes.nombre AS nombre,
           COUNT(DISTINCT ventas.id) AS cantidad_ventas,
@@ -4163,6 +4271,30 @@ app.get('/api/reportes/ventas', (req, res) => {
     })
     .sort((a, b) => b.ventas - a.ventas);
 
+  // resolverNombre recibe id === null para el balde "Sin categoría" (ver
+  // el comentario del GROUP BY arriba) — no es "categoría eliminada", así
+  // que se lo distingue explícitamente antes de ir a buscar el nombre.
+  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
+  const categorias = netearPorId(
+    SQL_REPORTE_VENTAS_POR_CATEGORIA.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA.all(...rango),
+    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id)?.nombre ?? '(categoría eliminada)')
+  )
+    .map((c) => {
+      const ganancia = redondear2(c.ventas - c.costo);
+      return {
+        id: c.id,
+        nombre: c.nombre,
+        unidades: c.unidades,
+        ventas: redondear2(c.ventas),
+        costo: redondear2(c.costo),
+        ganancia,
+        margen_pct: margenPct(ganancia, c.ventas),
+        participacion_pct: resultado.ventas > 0 ? redondear2((c.ventas / resultado.ventas) * 100) : 0
+      };
+    })
+    .sort((a, b) => b.ventas - a.ventas);
+
   const clientes = netearPorId(
     SQL_REPORTE_VENTAS_POR_CLIENTE.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE.all(...rango),
@@ -4194,6 +4326,7 @@ app.get('/api/reportes/ventas', (req, res) => {
       margen_pct: margenPct(resultado.ganancia_bruta, resultado.ventas)
     },
     productos,
+    categorias,
     clientes
   });
 });

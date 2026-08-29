@@ -43,19 +43,21 @@ Puntos clave de `CLAUDE.md` para no perder de vista:
 
 ## 3. Estado actual (a la fecha de este handoff)
 
-**Rama activa:** `Tosi`. **Dos commits al tope de `main`**: `468c01f`
+**Rama activa:** `Tosi`. **Tres commits al tope de `main`**: `468c01f`
 ("feat: devolución a proveedor, reportes de rentabilidad, asistente IA y
-rediseño de frontend", de una sesión anterior) y, encima,
-`a13fbd8` ("feat: cuentas corrientes a cobrar y a pagar", la etapa que en
-el handoff anterior había quedado sin commitear — ver §10). Se commiteó al
-arrancar esta sesión, antes de tocar más código, siguiendo el mismo
-criterio que ya se venía repitiendo: no dejar que se acumulen etapas
-sueltas sobre los mismos archivos.
+rediseño de frontend", de una sesión anterior), `a13fbd8` ("feat: cuentas
+corrientes a cobrar y a pagar", la etapa que en el handoff anterior había
+quedado sin commitear — ver §10) y `4a33a5e` ("feat: fix bugs de cuenta
+corriente y agrega reportes de ventas y stock", §11 + §12 juntas en un
+commit — no se pudieron separar en dos porque las dos etapas terminaron
+entrelazadas línea por línea dentro de los mismos arrays de refresco de
+`app.js`, algo que git no puede stagear parcialmente). Los tres se
+commitearon al arrancar esta sesión, antes de tocar más código.
 
-**Encima de ese commit, esta sesión agregó dos etapas nuevas seguidas sin
-commitear todavía** (bugs de cuenta corriente + reporte "qué se vende",
-§11; reporte de stock, §12) — confirmar con el usuario antes de la próxima
-si conviene commitearlas ahora (juntas o separadas) o seguir construyendo.
+**Encima de esos tres commits, esta sesión agregó una etapa nueva
+(categorías de productos + ventas por categoría, §13) que todavía NO está
+commiteada** — confirmar con el usuario antes de la próxima si conviene
+commitearla ahora o seguir construyendo.
 
 Quedaron fuera de los commits, sin tocar, dos archivos sueltos en la raíz
 que no son parte del proyecto Nexo: `install.ps1` (instalador del propio
@@ -65,9 +67,9 @@ MCP `codebase-memory-mcp`, no del sistema de gestión) y `.agents/skills/`
 
 **El servidor real corre en `http://localhost:3000`**, ya con todos los
 cambios de esta sesión aplicados y verificados contra los datos reales
-(pre/post-deploy comparados número a número, sin diferencias — ver §11 y
-§12). El proceso se reinició dos veces durante esta sesión, una por cada
-etapa, para levantar el código nuevo.
+(pre/post-deploy comparados número a número, sin diferencias — ver §11,
+§12 y §13). El proceso se reinició tres veces durante esta sesión, una por
+cada etapa, para levantar el código nuevo.
 
 **`GEMINI_API_KEY` NO está cargada en el proceso real ahora mismo** — el
 asistente por texto responde 503 (`POST /api/asistente/interpretar`).
@@ -118,10 +120,10 @@ verificada antes de pasar a la siguiente:
   finanzas/rentabilidad) están construidas: **cuentas por cobrar y pagar**
   (§10), **qué se vende y a quién** (§11) y **stock** — qué reponer,
   valorizado, rotación como días de inventario (§12).
-- Ventas por categoría de producto y por vendedor (dentro de §20): **no
-  son construibles hoy sin migrar el esquema primero** — no existe tabla
-  de categorías de productos (`productos` no tiene `categoria_id`) ni
-  columna de vendedor/usuario en `ventas` (no hay sistema de usuarios).
+- **Ventas por categoría de producto ya se construyó (§13)**. Ventas por
+  **vendedor** sigue sin ser construible: no hay columna de vendedor/usuario
+  en `ventas` (no hay sistema de usuarios), y esta migración no lo
+  desbloquea.
 - Aging de cuentas por cobrar/pagar por **vencimiento pactado** (§10 lo
   mide por fecha de la operación, no por vencimiento): ni `ventas` ni
   `compras` tienen fecha de vencimiento ni condición de pago.
@@ -135,10 +137,9 @@ verificada antes de pasar a la siguiente:
 - Listas de precios (§18) y multidepósito avanzado (§19).
 - Índice sobre `ventas(fecha)`: correcto a escala pero sigue sin agregarse
   (con el volumen actual es ruido y tocaría el esquema).
-- Categorías de productos (§4 de `CLAUDE.md`, el documento de reglas):
-  desbloquearía ventas-por-categoría de §20 y ordenaría el listado de
-  productos. Es la migración más chica que queda pendiente si se quiere
-  retomar reportes.
+- **Categorías de productos ya se construyó (§13)**, un solo nivel (sin
+  subcategoría — decisión explícita, ver §13). Marca y unidad de medida
+  (§3/§4 de `CLAUDE.md`) siguen sin construirse.
 - Una entrada de menú ("IVA & Retenciones") sigue oculta del nav por
   apuntar a una pantalla vacía — no se borró nada, solo se sacó el link.
   ("Asistente de voz" ya NO está en esta lista: el asistente de **texto**
@@ -1148,3 +1149,126 @@ inventario**, y que fuera una vista nueva de análisis (no ampliar Stock).
   de precios, multidepósito avanzado, índice sobre `ventas(fecha)`,
   categorías de productos) están todas anotadas en la sección 3 de este
   handoff. Preguntarle al usuario qué sigue, no asumir.
+
+## 13. Última etapa: categorías de productos + ventas por categoría
+
+Con el MVP y las cuatro familias de reportes de §20 completas, se le
+preguntó al usuario qué construir a continuación entre cuatro opciones
+(categorías de productos, notas de débito/crédito manuales, listas de
+precios, auditoría central); eligió **categorías de productos** — la
+migración de esquema más chica que quedaba pendiente, y la única que
+desbloqueaba algo concreto (ventas por categoría, la última dimensión de
+§20 que faltaba).
+
+Dos decisiones tomadas con el usuario antes de construir:
+- **Solo categoría, sin subcategoría** por ahora (`CLAUDE.md` §25: estar en
+  el documento no significa construirlo ya). Agregar un segundo nivel
+  después es aditivo (`ALTER TABLE categorias ADD COLUMN parent_id`), no
+  obliga a rehacer nada.
+- **El reporte de ventas por categoría entra en la misma etapa** — es la
+  razón por la que la migración vale la pena hacerla ahora.
+
+### La migración (lo único que toca el esquema)
+
+Puramente aditiva: **no reescribe ni borra ninguna fila, no reconstruye
+ninguna tabla, no cambia ningún `CHECK`** — a diferencia de otras
+migraciones del proyecto (ver el comentario sobre `compras`/`estado` en
+`db/index.js`), esta no necesitó el procedimiento de copiar-y-renombrar.
+
+- **`backend/db/schema.sql`**: tabla nueva `categorias` (`id`, `nombre`
+  UNIQUE, `activa`) — copia deliberada de `categorias_gasto` sin su
+  columna `tipo`, que allá existe por una razón contable que acá no aplica.
+  `productos` suma `categoria_id INTEGER REFERENCES categorias(id)`.
+- **`backend/db/index.js`**: `ALTER TABLE productos ADD COLUMN
+  categoria_id` con el mismo patrón idempotente (`PRAGMA table_info` +
+  chequeo) que ya usan `stock_minimo`/`stock_maximo`.
+- **`categoria_id` es nullable a propósito, no por comodidad**: los
+  productos se autocrean por nombre desde una compra
+  (`crearCompra`/`confirmarCompra` en `server.js`) sin pasar nunca por el
+  formulario, así que un `NOT NULL` habría roto esa alta — **se verificó
+  ejecutándolo de verdad** (compra con un producto nuevo por nombre) que
+  sigue funcionando y el producto queda con `categoria_id` en `NULL`, el
+  estado neutro correcto.
+- **Sin categorías de ejemplo sembradas**: mismo criterio ya documentado en
+  `db/index.js` para clientes/productos/proveedores — los seeds de ejemplo
+  se sacaron a pedido del usuario cuando el proyecto pasó a prueba real.
+
+### Qué se construyó
+
+- **ABM de categorías** (`GET`/`POST`/`PATCH /api/categorias`) — calcado
+  del de categorías de gasto: mismas tres validaciones (nombre vacío,
+  nombre duplicado, baja lógica vía `activa` en vez de `DELETE`, para no
+  dejar productos apuntando a una fila borrada).
+- **`SELECT_PRODUCTO`** ahora hace `LEFT JOIN categorias` (el `LEFT` es lo
+  que importa: un producto sin categoría sigue apareciendo) y devuelve
+  `categoria_id` + `categoria` (el nombre). `validarProducto` valida que,
+  si viene un `categoria_id`, exista de verdad — mismo criterio que ya
+  usaba `validarGasto` para su propia categoría.
+- **`GET /api/reportes/ventas`** suma un array `categorias` más, hermano de
+  `productos`. Reusa toda la maquinaria de la etapa anterior sin
+  reimplementar nada: dos consultas SQL nuevas agrupando por
+  `productos.categoria_id` en vez de por producto, el mismo `netearPorId`
+  para restar devoluciones, mismo criterio de costo histórico y de en qué
+  período pesa una devolución. **Un producto sin categoría no se pierde**:
+  SQLite agrupa todos los `categoria_id NULL` de un `GROUP BY` en un solo
+  balde, así que ahí mismo cae el "Sin categoría" sin tener que armarlo a
+  mano — se le pone nombre con `COALESCE(categorias.nombre, 'Sin
+  categoría')`.
+- **Frontend**: botón "Categorías" al lado de "+ Nuevo producto" (mismo
+  patrón `.panel-acciones` que ya usa Gastos) que abre un modal calcado del
+  de categorías de gasto, sin el campo Tipo. Select de categoría en el
+  formulario de producto (opciones en runtime vía `poblarSelectCategorias`,
+  mismo criterio que `poblarSelectCuentas`). Columna "Categoría" nueva en
+  el listado de Productos, con su propio filtro (`filtros.setOpciones`,
+  el método que ya existía justo para esto). Panel nuevo "Ventas por
+  categoría" en "Qué se vende", entre "Productos más vendidos" y "Mejores
+  clientes", mismas columnas que el ranking de productos.
+- **Refresco**: cambiar la categoría de un **producto** también refresca
+  "Qué se vende" — el reporte agrupa por la categoría *actual* del
+  producto (join en vivo, no una foto histórica por venta), así que
+  reasignar categoría cambia cómo se ven ventas ya hechas, y por eso
+  también hay que refrescar el reporte en ese momento, no solo al crear o
+  renombrar una categoría en sí.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el puerto 3003 (3000 y 3002 estaban ocupados por trabajo anterior de
+  la misma sesión).
+- **Migración**: diff completo de `PRAGMA table_info` de **todas** las
+  tablas, antes vs. después — lo único que cambió fue la tabla `categorias`
+  nueva y `productos.categoria_id`, nada más se tocó. Arrancar el server
+  dos veces seguidas no rompe nada (idempotencia).
+- **El caso que obligaba a nullable, probado de verdad**: compra con un
+  producto nuevo por nombre sigue funcionando después de migrar, y el
+  producto nuevo queda con `categoria_id: null`.
+- **Invariante del reporte**: con productos de dos categorías distintas
+  más uno sin categoría, la suma de `categorias[].ventas` (incluido el
+  balde "Sin categoría") dio **exactamente** `totales.ventas_netas` en
+  todos los casos probados.
+- **Casos hostiles, ejecutados de verdad**: nombre de categoría duplicado
+  y vacío (rechazados con mensaje claro), `categoria_id` inexistente al
+  guardar un producto (rechazado), y **desactivar una categoría con
+  productos asignados** — el producto sigue existiendo con su categoría
+  intacta y el reporte la sigue sumando sin romperse.
+- **Playwright** (dos temas, dos viewports): 7/7 checks — alta de
+  categoría y de producto-con-categoría con clicks reales (no solo
+  lectura de código), panel "Ventas por categoría" con datos, las 17
+  vistas del nav sin caer a placeholder, tema oscuro, 375px sin scroll
+  horizontal, sin errores de consola. Capturas revisadas a mano.
+- **Deploy**: backup `nexo.db.backup-antes-categorias-20260828-175601` en
+  `backend/db/`, proceso del 3000 reiniciado, números post-deploy
+  (ventas/compras activas, valorizado total, deuda por cobrar/pagar)
+  comparados 1:1 contra la foto pre-deploy — sin diferencias. Los 3
+  productos reales quedaron con `categoria_id: null`, sin romper nada.
+
+### Qué queda pendiente de esta etapa
+
+- **Nada bloqueado.** Migración, ABM, listado, filtro y reporte se
+  completaron y verificaron enteros.
+- Sin commitear todavía — confirmar con el usuario antes de la próxima
+  sesión.
+- **Subcategorías** — decisión explícita de dejarlas afuera por ahora (ver
+  arriba). Marca y unidad de medida (§3/§4 de `CLAUDE.md`) tampoco se
+  construyeron: son otras entidades maestras, cada una su propia etapa.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real — sin cambios.

@@ -233,6 +233,15 @@ if (!productosColumnas.some((col) => col.name === 'stock_minimo')) {
   db.exec('ALTER TABLE productos ADD COLUMN stock_maximo REAL');
 }
 
+// productos.categoria_id: la tabla `categorias` la crea sola el
+// CREATE TABLE IF NOT EXISTS de arriba (es una tabla nueva, no hace falta
+// migrarla), pero la columna en `productos` sí, porque esa tabla ya
+// existía. Nullable: los productos ya cargados quedan sin categoría, que
+// es el estado neutro hasta que alguien la asigne desde la ficha.
+if (!productosColumnas.some((col) => col.name === 'categoria_id')) {
+  db.exec('ALTER TABLE productos ADD COLUMN categoria_id INTEGER REFERENCES categorias(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
