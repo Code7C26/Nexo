@@ -49,50 +49,47 @@
         <a href="#" class="nav-item is-active" data-view="dashboard">
           <span class="nav-index">01</span> Resumen
         </a>
-        <a href="#" class="nav-item" data-view="reportes-ventas">
-          <span class="nav-index">02</span> Qué se vende
-        </a>
         <a href="#" class="nav-item" data-view="productos">
-          <span class="nav-index">03</span> Productos
+          <span class="nav-index">02</span> Productos
         </a>
         <a href="#" class="nav-item" data-view="clientes">
-          <span class="nav-index">04</span> Clientes
+          <span class="nav-index">03</span> Clientes
         </a>
         <a href="#" class="nav-item" data-view="proveedores">
-          <span class="nav-index">05</span> Proveedores
+          <span class="nav-index">04</span> Proveedores
         </a>
         <a href="#" class="nav-item" data-view="presupuestos">
-          <span class="nav-index">06</span> Presupuestos
+          <span class="nav-index">05</span> Presupuestos
         </a>
         <a href="#" class="nav-item" data-view="ventas">
-          <span class="nav-index">07</span> Ventas
+          <span class="nav-index">06</span> Ventas
         </a>
         <a href="#" class="nav-item" data-view="devoluciones">
-          <span class="nav-index">08</span> Devoluciones
+          <span class="nav-index">07</span> Devoluciones
         </a>
         <a href="#" class="nav-item" data-view="facturas">
-          <span class="nav-index">09</span> Facturas
+          <span class="nav-index">08</span> Facturas
         </a>
         <a href="#" class="nav-item" data-view="compras">
-          <span class="nav-index">10</span> Compras
+          <span class="nav-index">09</span> Compras
         </a>
         <a href="#" class="nav-item" data-view="devoluciones-proveedor">
-          <span class="nav-index">11</span> Dev. a proveedor
+          <span class="nav-index">10</span> Dev. a proveedor
         </a>
         <a href="#" class="nav-item" data-view="stock">
-          <span class="nav-index">12</span> Stock
+          <span class="nav-index">11</span> Stock
         </a>
         <a href="#" class="nav-item" data-view="reportes-stock">
-          <span class="nav-index">13</span> Reportes de stock
+          <span class="nav-index">12</span> Reportes de stock
         </a>
         <a href="#" class="nav-item" data-view="caja">
-          <span class="nav-index">14</span> Caja
+          <span class="nav-index">13</span> Caja
         </a>
         <a href="#" class="nav-item" data-view="cuentas-corrientes">
-          <span class="nav-index">15</span> Cuentas corrientes
+          <span class="nav-index">14</span> Cuentas corrientes
         </a>
         <a href="#" class="nav-item" data-view="gastos">
-          <span class="nav-index">16</span> Gastos
+          <span class="nav-index">15</span> Gastos
         </a>
         <!-- IVA & Retenciones: fuera de V1 (CLAUDE.md), sin pantalla propia
              todavía. Oculto en vez de apuntar a un placeholder vacío, hasta
@@ -100,13 +97,13 @@
              está acá: no es un módulo más, es el widget flotante al final
              de este archivo (ver #asistenteLauncher). -->
         <a href="#" class="nav-item" data-view="papelera">
-          <span class="nav-index">17</span> Papelera
+          <span class="nav-index">16</span> Papelera
         </a>
         <!-- Auditoría (CLAUDE.md §22): vista de revisión, no de operación
              diaria, por eso va al final y no se mezcla con el resto del
              nav por dominio. -->
         <a href="#" class="nav-item" data-view="auditoria">
-          <span class="nav-index">18</span> Auditoría
+          <span class="nav-index">17</span> Auditoría
         </a>
       </nav>
 
@@ -245,12 +242,9 @@
           </div>
         </section>
 
-      </section>
-
-      <!-- Vista: Qué se vende -->
-      <section class="view" data-view="reportes-ventas" hidden>
-        <div class="filtros" id="filtrosReporteVentas"></div>
-        <p class="form-note" id="reporteVentasRangoNota"></p>
+        <!-- Qué se vende: fusionado acá (antes vista aparte "reportes-ventas").
+             Comparte el mismo filtro de fecha de arriba (#filtrosResumen). -->
+        <h2>Qué se vende</h2>
 
         <section class="ledger-strip" aria-label="Ventas del período">
           <div class="ledger-item">
@@ -343,6 +337,7 @@
           </table>
           </div>
         </section>
+
       </section>
 
       <!-- Vista: Presupuestos -->

@@ -894,26 +894,23 @@ function renderUltimosMovimientos(rango = {}) {
 const filtrosResumen = crearFiltros(
   "filtrosResumen",
   [{ clave: "fecha", etiqueta: "Fecha", tipo: "fecha" }],
-  () => cargarResumen()
+  () => cargarPanelResumen()
 );
+
+// Único punto de entrada para refrescar la vista Resumen completa: las dos
+// mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
+// que se cargan juntas para que ningún call site deje una mitad desactualizada.
+async function cargarPanelResumen() {
+  await Promise.all([cargarResumen(), cargarReporteVentas()]);
+}
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
 //
 // Vista derivada como Resumen y Cuentas corrientes: no guarda estado
 // propio más allá de lo que devuelve GET /api/reportes/ventas (que ya
 // hace el neteo de devoluciones y el cálculo de márgenes), así que acá
-// solo hace falta pintar la respuesta.
-
-const filtrosReporteVentas = crearFiltros(
-  "filtrosReporteVentas",
-  [{ clave: "fecha", etiqueta: "Fecha", tipo: "fecha" }],
-  () => cargarReporteVentas()
-);
-
-function rangoActualReporteVentas() {
-  const filtroFecha = filtrosReporteVentas.filtros.find((f) => f.campo === "fecha");
-  return filtroFecha ? rangoDeFiltroFecha(filtroFecha) : {};
-}
+// solo hace falta pintar la respuesta. Fusionada dentro de Resumen: usa
+// el mismo filtro de fecha (rangoActualResumen), no uno propio.
 
 function renderReporteProductos(lista) {
   const body = document.getElementById("reporteProductosBody");
@@ -990,7 +987,7 @@ async function cargarReporteVentas() {
   tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
 
-  const rango = rangoActualReporteVentas();
+  const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
   const datos = await (await fetch(`/api/reportes/ventas${params ? "?" + params : ""}`)).json();
 
@@ -1001,10 +998,6 @@ async function cargarReporteVentas() {
   elGanancia.textContent = money(datos.totales.ganancia_bruta);
   elGanancia.classList.toggle("saldo-negativo", datos.totales.ganancia_bruta < 0);
   elGanancia.classList.toggle("ledger-ok", datos.totales.ganancia_bruta >= 0);
-
-  document.getElementById("reporteVentasRangoNota").textContent = datos.rango.acotado
-    ? `Del ${datos.rango.desde} al ${datos.rango.hasta}.`
-    : `Del ${datos.rango.desde} al ${datos.rango.hasta} (todo lo cargado hasta hoy).`;
 
   renderReporteProductos(ordenReporteProductos.aplicar(datos.productos));
   renderReporteCategorias(ordenReporteCategorias.aplicar(datos.categorias));
@@ -1728,7 +1721,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   // categoria_id también puede cambiar acá, y "Ventas por categoría" (en
   // Qué se vende) agrupa por la categoría ACTUAL del producto, no por una
   // foto histórica — así que también hay que refrescarlo.
-  await Promise.all([cargarProductos(), cargarReporteStock(), cargarReporteVentas()]);
+  await Promise.all([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
   // Si se editaba desde la ficha, se refresca para que muestre los datos
   // nuevos en vez de quedar con los viejos detrás del modal.
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
@@ -1803,7 +1796,7 @@ document.getElementById("formCategoriaProducto").addEventListener("submit", asyn
   const eraEdicion = Boolean(editandoId);
   // Una categoría nueva o renombrada cambia el select del formulario de
   // producto y el agrupamiento de "Ventas por categoría".
-  await Promise.all([cargarProductos(), cargarReporteVentas()]);
+  await Promise.all([cargarProductos(), cargarPanelResumen()]);
   renderCategoriasProductos();
   form.reset();
   form.id.value = "";
@@ -2402,8 +2395,7 @@ async function abrirFichaPresupuesto(id) {
         cargarProductos(),
         cargarClientes(),
         cargarCuentasCorrientes(),
-        cargarResumen(),
-        cargarReporteVentas(),
+        cargarPanelResumen(),
         cargarReporteStock()
       ]);
       await abrirFichaPresupuesto(p.id);
@@ -2603,7 +2595,7 @@ function renderVentas(lista) {
       const res = await fetch(`/api/ventas/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la venta."))) return;
       avisar(`Venta #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarReporteVentas(), cargarReporteStock()]);
+      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarPanelResumen(), cargarReporteStock()]);
     });
   });
 
@@ -2775,7 +2767,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, ventaEditandoId ? "No se pudo guardar la venta." : "No se pudo registrar la venta."))) return;
 
   const idEditado = ventaEditandoId;
-  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarReporteVentas(), cargarReporteStock()]);
+  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarPanelResumen(), cargarReporteStock()]);
   form.reset();
   modalVenta.hidden = true;
   // Si se estaba editando desde la ficha, volver a esa ficha con los
@@ -3138,8 +3130,7 @@ async function abrirFichaDevolucion(id) {
         cargarClientes(),
         cargarCaja(),
         cargarCuentasCorrientes(),
-        cargarResumen(),
-        cargarReporteVentas(),
+        cargarPanelResumen(),
         cargarReporteStock()
       ]);
       await abrirFichaDevolucion(d.id);
@@ -3284,8 +3275,7 @@ document.getElementById("formDevolucion").addEventListener("submit", async (e) =
     cargarClientes(),
     cargarCaja(),
     cargarCuentasCorrientes(),
-    cargarResumen(),
-    cargarReporteVentas(),
+    cargarPanelResumen(),
     cargarReporteStock()
   ]);
   modalDevolucion.hidden = true;
@@ -3945,7 +3935,7 @@ async function abrirFichaDevolucionProveedor(id) {
         cargarProveedores(),
         cargarCaja(),
         cargarCuentasCorrientes(),
-        cargarResumen(),
+        cargarPanelResumen(),
         cargarReporteStock()
       ]);
       await abrirFichaDevolucionProveedor(d.id);
@@ -4083,7 +4073,7 @@ document.getElementById("formDevolucionProveedor").addEventListener("submit", as
     cargarProveedores(),
     cargarCaja(),
     cargarCuentasCorrientes(),
-    cargarResumen(),
+    cargarPanelResumen(),
     cargarReporteStock()
   ]);
   modalDevolucionProveedor.hidden = true;
@@ -5068,7 +5058,7 @@ function renderGastos(lista) {
       const res = await fetch(`/api/gastos/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular el gasto."))) return;
       avisar(`Gasto #${btn.dataset.id} anulado.`, "ok");
-      await Promise.all([cargarGastos(), cargarCaja(), cargarResumen()]);
+      await Promise.all([cargarGastos(), cargarCaja(), cargarPanelResumen()]);
     });
   });
 }
@@ -5203,7 +5193,7 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
 
   const eraEdicion = gastoEditandoId !== null;
   // Un gasto mueve plata y cambia el resultado: hay que refrescar las tres.
-  await Promise.all([cargarGastos(), cargarCaja(), cargarResumen()]);
+  await Promise.all([cargarGastos(), cargarCaja(), cargarPanelResumen()]);
   form.reset();
   modalGasto.hidden = true;
   avisar(eraEdicion ? "Gasto actualizado." : "Gasto registrado.", "ok");
@@ -5490,8 +5480,7 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     cargarProveedores(),
     cargarCaja(),
     cargarCuentasCorrientes(),
-    cargarResumen(),
-    cargarReporteVentas(),
+    cargarPanelResumen(),
     cargarReporteStock()
   ]);
 }
@@ -6184,8 +6173,7 @@ function renderPapelera() {
         cargarProveedores(),
         cargarCaja(),
         cargarCuentasCorrientes(),
-        cargarResumen(),
-        cargarReporteVentas(),
+        cargarPanelResumen(),
         cargarReporteStock()
       ]);
     });
@@ -6195,15 +6183,14 @@ function renderPapelera() {
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último
 // porque su tabla de últimos movimientos se arma con los cachés de
-// ventas, compras y gastos ya cargados. Cuentas corrientes y los reportes
-// de qué se vende y de stock no dependen de ningún caché del frontend
-// (traen su propio fetch), así que entran en el mismo último grupo que
-// Resumen.
+// ventas, compras y gastos ya cargados. Cuentas corrientes y el reporte
+// de stock no dependen de ningún caché del frontend (traen su propio
+// fetch), así que entran en el mismo último grupo que Resumen.
 Promise.all([cargarClientes(), cargarProveedores(), cargarCaja()])
   .then(() => Promise.all([cargarGastos(), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
-  .then(() => Promise.all([cargarResumen(), cargarCuentasCorrientes(), cargarReporteVentas(), cargarReporteStock()]));
+  .then(() => Promise.all([cargarPanelResumen(), cargarCuentasCorrientes(), cargarReporteStock()]));
 
 /* ---------- Tema claro / oscuro ---------- */
 
@@ -6290,7 +6277,6 @@ document.getElementById("navToggle").addEventListener("click", () => {
 const VISTAS_CONSTRUIDAS = {
   dashboard: { titulo: "Resumen", dominio: "Resumen" },
   productos: { titulo: "Productos", dominio: "Maestros" },
-  "reportes-ventas": { titulo: "Qué se vende", dominio: "Resumen" },
   clientes: { titulo: "Clientes", dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
@@ -6370,11 +6356,17 @@ function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
   }
 }
 
+// Vistas que existieron con otro nombre y se fusionaron/renombraron: un
+// bookmark o un link viejo a "reportes-ventas" debe abrir Resumen en vez
+// de quedar muerto.
+const VISTAS_RENOMBRADAS = { "reportes-ventas": "dashboard" };
+
 // Vuelve del hash a una vista válida (no de ficha, que no alcanza para
 // reconstruir cuál registro mostrar), o null si no hay nada aprovechable.
 function vistaDesdeHash() {
   const id = (location.hash || "").replace(/^#\/?/, "");
-  return VISTAS_CONSTRUIDAS[id] && !VISTAS_CONSTRUIDAS[id].esFicha ? id : null;
+  const idResuelto = VISTAS_RENOMBRADAS[id] ?? id;
+  return VISTAS_CONSTRUIDAS[idResuelto] && !VISTAS_CONSTRUIDAS[idResuelto].esFicha ? idResuelto : null;
 }
 
 // Botón Atrás/Adelante del navegador entre vistas del nav.

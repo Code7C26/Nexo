@@ -54,10 +54,16 @@ entrelazadas línea por línea dentro de los mismos arrays de refresco de
 categorías de productos y ventas por categoría", §13, commiteado al
 arrancar esta sesión antes de tocar más código).
 
-**Encima de esos cuatro commits, esta sesión agregó una etapa nueva
-(auditoría central unificada, §22 de `CLAUDE.md` — ver §14 de este
-handoff) que todavía NO está commiteada** — confirmar con el usuario antes
-de la próxima si conviene commitearla ahora o seguir construyendo.
+**Encima de esos cuatro commits, `Tosi` tiene ahora un quinto commit**:
+`156e919` ("feat: auditoría central unificada", §14 de este handoff),
+commiteado al arrancar esta sesión (venía desplegado pero sin commitear
+de la sesión anterior).
+
+**Rama nueva de esta sesión: `feature/fusion-resumen`**, creada desde ese
+commit para la Etapa A del plan de usuarios/login/roles (fusión de "Qué
+se vende" en Resumen — ver §15). Sin PR abierto todavía. La Etapa B
+(usuarios, login y roles) del mismo plan queda para una rama y un PR
+propios, después de que este se mergee.
 
 Quedaron fuera de los commits, sin tocar, dos archivos sueltos en la raíz
 que no son parte del proyecto Nexo: `install.ps1` (instalador del propio
@@ -1466,8 +1472,10 @@ cobro que los generó.
 
 - **Nada bloqueado.** Migración, helper, los ~42 puntos de las dos fases,
   el endpoint y la vista se completaron y verificaron enteros.
-- Sin commitear todavía — confirmar con el usuario antes de la próxima
-  sesión.
+- Commiteada en `Tosi` (`156e919`, "feat: auditoría central unificada
+  (CLAUDE.md §22)") al arrancar la sesión siguiente, antes de empezar la
+  Etapa A de §15 — ver ahí el motivo (dejar el trabajo a salvo antes de
+  ramificar).
 - `GEMINI_API_KEY` sigue sin cargar en el proceso real — sin cambios.
 - El panel "Movimientos contables" solo une stock y tesorería (los dos
   cachés ya disponibles en memoria al bootear) — cuentas corrientes de
@@ -1476,3 +1484,103 @@ cobro que los generó.
   quedaron fuera del panel derivado. Si en el futuro hace falta sumarlos,
   es agregar un fetch a `movimientos_cc_clientes`/`_proveedores` (no
   expuestos hoy como endpoint propio) y unirlos al mismo array.
+
+## 15. Última etapa: fusión de "Qué se vende" en Resumen (Etapa A de
+    `usuarios-login-roles`)
+
+Primera de dos etapas de un plan más grande (usuarios/login/roles, ver
+`.claude/plans/usar-mcp-codebase-memory-calm-pony.md` si sigue disponible
+en el entorno de la sesión). El usuario pidió que "Qué se vende" dejara de
+ser una vista aparte del nav y pasara a vivir dentro de Resumen, como un
+panel de estadísticas del negocio. Se hizo deliberadamente **antes** que
+la etapa de usuarios porque es chica, autocontenida, no toca backend, y
+así el nav queda numerado 01..17 antes de que Usuarios agregue el ítem 18
+(sin tener que renumerar dos veces).
+
+**Rama:** `feature/fusion-resumen`, partiendo del commit de auditoría
+(`156e919`) en `Tosi`. Pendiente de PR hacia `main` (o hacia `Tosi`, a
+confirmar con el usuario el destino real del merge, dado que `main` está
+varios commits atrás de `Tosi` en este repo).
+
+### Qué se hizo
+
+- **`frontend/index.html`**: el bloque de la vista `data-view="reportes-ventas"`
+  (ledger-strip de 4 totales + paneles "Productos más vendidos" / "Ventas
+  por categoría" / "Mejores clientes") se movió al final de
+  `data-view="dashboard"`, con un `<h2>Qué se vende</h2>` separándolo
+  visualmente de la primera mitad (resultado del negocio). La sección
+  `reportes-ventas` (ahora vacía) y su nav item se borraron. El nav se
+  renumeró de 01..18 a 01..17 en las 17 entradas restantes (texto literal
+  en `<span class="nav-index">`, no un contador CSS).
+- Los ids `reporteProductosBody` / `reporteCategoriasBody` /
+  `reporteClientesBody` **no se tocaron**: son la clave de `localStorage`
+  que recuerda el orden de columna elegido por el usuario
+  (`nexo.orden.${idBody}`), y renombrarlos lo habría perdido. Se verificó
+  con Playwright que el orden sobrevive a un F5.
+- **`frontend/js/app.js`**: se borraron `filtrosReporteVentas` (el segundo
+  filtro de fecha, redundante) y `rangoActualReporteVentas()` (idéntica a
+  `rangoActualResumen()`). `cargarReporteVentas()` ahora usa
+  `rangoActualResumen()` y ya no escribe una nota de rango propia (la
+  nota de `#resumenRangoNota`, escrita por `cargarResumen()`, cubre las
+  dos mitades).
+- **`cargarPanelResumen()`** (función nueva): hace
+  `Promise.all([cargarResumen(), cargarReporteVentas()])` y es ahora el
+  único callback de `filtrosResumen`. **Los 21 call sites** que antes
+  llamaban a `cargarResumen()` y/o `cargarReporteVentas()` por separado se
+  reemplazaron por esta única función — incluidos los 13 sitios que antes
+  llamaban solo una de las dos (p. ej. anular un gasto solo refrescaba
+  `cargarResumen()`, dejando "Qué se vende" desactualizado hasta el
+  próximo F5). Se confirmó con el usuario antes de tocar esos 13: la
+  lectura literal del plan es unificarlos todos, a costa de un fetch extra
+  por mutación, para que no quede ninguna mitad de Resumen desactualizada.
+  Los 3 `crearOrden(...)` de las tablas de reportes se dejaron llamando
+  solo a `cargarReporteVentas()` (reordenar una columna no cambia el rango
+  de fechas, no hace falta recargar el resultado).
+- **`VISTAS_CONSTRUIDAS`**: se borró la entrada `"reportes-ventas"`.
+- **`VISTAS_RENOMBRADAS`** (mapa nuevo): `{ "reportes-ventas": "dashboard" }`,
+  resuelto dentro de `vistaDesdeHash()` antes de buscar en
+  `VISTAS_CONSTRUIDAS`. Un bookmark o link viejo a `#/reportes-ventas`
+  abre Resumen en vez de quedar muerto (el hash de la URL no se reescribe
+  en ese caso — es cosmético, la vista mostrada sí es la correcta).
+- **Backend: cero cambios**, tal como preveía el plan. `/api/reportes/ventas`
+  y `/api/resumen` ya existían sin tocar.
+
+### Cómo se verificó
+
+Sin servidor de prueba en 3002 con una copia del proyecto en el scratchpad
+(incluida la base real, por ser una copia aislada) + Playwright instalado
+puntualmente en un entorno npm aparte (no quedó como dependencia del
+proyecto). Verificado:
+- Nav con exactamente 17 `nav-index`, sin saltos ni duplicados.
+- El `<h2>Qué se vende</h2>` aparece dentro de `[data-view="dashboard"]`,
+  separando las dos mitades.
+- **`#sumVentas` === `#reporteVentasNetas`** y
+  **`#sumGananciaBruta` === `#reporteGananciaBruta`**, antes y después de
+  cambiar el filtro de fecha (de "hoy" a "últimos 30 días") — el check
+  central que prueba que la fusión comparte un solo rango.
+- El orden de columna guardado en "Productos más vendidos" sobrevive a un
+  F5.
+- El deep-link viejo `#/reportes-ventas` abre Resumen (título "Resumen",
+  `dashboard` visible).
+- Un 404 de un ícono de logo (`/assets/logo/...`) apareció en consola
+  durante la prueba, pero es preexistente y no relacionado — no se tocó.
+- **No verificado por Playwright en esta sesión**: crear una venta con
+  clicks reales de punta a punta (el combobox de cliente usa una
+  estructura con varios `<input>` superpuestos entre modales que
+  complicó el selector automático dentro del tiempo de la sesión). La
+  actualización tras mutación sí quedó cubierta indirectamente: los 21
+  call sites unificados a `cargarPanelResumen()` son el mismo código que
+  ya se ejercitó al cambiar el filtro de fecha.
+
+### Qué queda pendiente
+
+- **Etapa B (usuarios, login y roles)** — ver el plan original. Es la
+  etapa que motivó hacer esta fusión primero (para que el nav quede
+  01..17 antes de que Usuarios agregue el 18).
+- Playwright quedó instalado solo en un entorno npm temporal del
+  scratchpad de la sesión, no como dependencia del proyecto ni en
+  `node_modules` de `backend/` — si una sesión futura quiere reusar la
+  misma verificación automatizada, hay que reinstalarlo (o formalizarlo
+  como dependencia si el equipo decide adoptar Playwright de verdad).
+- PR de `feature/fusion-resumen` sin abrir todavía — falta decidir con el
+  usuario la rama destino (`main` vs. `Tosi`) antes de abrirlo.
