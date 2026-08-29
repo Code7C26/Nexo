@@ -1,6 +1,10 @@
 node_modules/
 *.db
+backend/db/*.backup-*
 .env
 nexo-app.zip
 ~$*
 .DS_Store
+# Config local de Claude Code: son permisos por máquina, no del proyecto.
+.claude/
+backend/*.log

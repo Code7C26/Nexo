@@ -1,7 +1,7 @@
-# Nexö — Instrucciones para Claude Code
+# Nexo — Instrucciones para Claude Code
 
 ## Contexto
-Nexö es un sistema de gestión integral para PyMEs y emprendimientos, con
+Nexo es un sistema de gestión integral para PyMEs y emprendimientos, con
 visión a futuro de interfaz conversacional por voz. Es un proyecto de
 escuela desarrollado por dos integrantes: Santino Solla y Joaquin Tosi.
 Centraliza inventario, precios, clientes y facturación.
@@ -33,6 +33,15 @@ Centraliza inventario, precios, clientes y facturación.
 /assets     → imágenes, íconos y recursos estáticos
 ```
 
+## Herramientas disponibles
+- El proyecto está indexado en el MCP `codebase-memory-mcp` (grafo de
+  código: funciones, tablas, endpoints y sus relaciones). Usarlo para
+  explorar la arquitectura real del código en vez de re-leer archivos o
+  pedirle contexto al usuario. Visualizador del grafo corriendo en
+  `http://127.0.0.1:9749`. Sigue vigente mantener `docs/handoff.md`: el
+  grafo cubre la estructura del código, no las decisiones de negocio ni
+  el estado narrativo de la sesión anterior.
+
 ## Reglas de desarrollo
 - No inventar reglas de negocio ambiguas: preguntar.
 - Trabajar por etapas chicas y testeables.
@@ -42,6 +51,14 @@ Centraliza inventario, precios, clientes y facturación.
   Pull Request. `main` siempre debe quedar en estado funcional.
 - Antes de cambiar el esquema de la base de datos, explicar la migración y
   su impacto.
+- **Es obligatorio mantener `docs/handoff.md` actualizado al terminar
+  cada sesión de trabajo** (o cada etapa importante dentro de una sesión
+  larga): qué se hizo, en qué archivos, qué se intentó y no funcionó, y
+  qué sigue. El objetivo es que la próxima sesión pueda retomar el
+  proyecto leyendo ese único archivo, con el contexto necesario y sin
+  tener que re-explorar el código ni volver a gastar tokens re-derivando
+  algo que ya se sabía. Que sea conciso: información necesaria para
+  retomar, no un registro exhaustivo de todo lo que pasó.
 
 # NEXO — CONTEXTO Y REGLAS DEL PROYECTO
 
