@@ -102,6 +102,12 @@
         <a href="#" class="nav-item" data-view="papelera">
           <span class="nav-index">17</span> Papelera
         </a>
+        <!-- Auditoría (CLAUDE.md §22): vista de revisión, no de operación
+             diaria, por eso va al final y no se mezcla con el resto del
+             nav por dominio. -->
+        <a href="#" class="nav-item" data-view="auditoria">
+          <span class="nav-index">18</span> Auditoría
+        </a>
       </nav>
 
       <div class="sidebar-foot">
@@ -1481,6 +1487,64 @@
               </tr>
             </thead>
             <tbody id="papeleraBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Auditoría (CLAUDE.md §22). Dos paneles: "Registro de
+           actividad" es la tabla auditoria (arranca vacía, empieza a
+           llenarse desde esta etapa) y "Movimientos contables" es
+           derivado de las tablas que ya tenían historia (movimientos_
+           stock/cc/tesorería) — juntos dan cobertura desde el día uno. -->
+      <section class="view" data-view="auditoria" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Registro de actividad</h2>
+            <button type="button" class="btn btn-secundario" id="btnActualizarAuditoria">Actualizar</button>
+          </div>
+          <p class="form-note">
+            Qué se hizo y cuándo, en orden de más reciente a más antiguo. Este registro empieza en esta etapa: no
+            incluye lo que pasó antes — para eso está el panel de movimientos contables, más abajo.
+          </p>
+          <div class="filtros" id="filtrosAuditoria"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="fecha" data-tipo="texto">Fecha</th>
+                <th data-orden="accion" data-tipo="texto">Acción</th>
+                <th data-orden="entidad" data-tipo="texto">Entidad</th>
+                <th>N°</th>
+                <th>Detalle</th>
+                <th data-orden="actor" data-tipo="texto">Origen</th>
+              </tr>
+            </thead>
+            <tbody id="auditoriaBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Movimientos contables</h2>
+          </div>
+          <p class="form-note">
+            Efectos sobre stock, tesorería y cuentas corrientes. A diferencia del registro de arriba, esto sí tiene
+            historia previa a esta etapa.
+          </p>
+          <div class="filtros" id="filtrosAuditoriaMov"></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th data-orden="fecha" data-tipo="texto">Fecha</th>
+                <th data-orden="tipo" data-tipo="texto">Tipo</th>
+                <th data-orden="concepto" data-tipo="texto">Concepto</th>
+                <th class="align-right" data-orden="importe" data-tipo="numero">Importe</th>
+              </tr>
+            </thead>
+            <tbody id="auditoriaMovBody"></tbody>
           </table>
           </div>
         </section>

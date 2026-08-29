@@ -524,6 +524,47 @@ export function withTransaction(fn) {
   }
 }
 
+// Auditoría central (CLAUDE.md §22). Un INSERT pelado, SIN BEGIN/COMMIT
+// propio a propósito: withTransaction no es reentrante (db.exec('BEGIN')
+// dentro de una transacción ya abierta tira error), así que este helper
+// se llama SIEMPRE desde adentro de un withTransaction ya en curso, como
+// última línea antes del return. Al no abrir su propia transacción,
+// hereda la de quien lo llama: si la operación falla después, el
+// ROLLBACK se lleva la fila de auditoría con todo lo demás (§23).
+//
+// No envuelve withTransaction en sí (un wrapper automático no puede
+// saber qué entidad/id se tocó: la mitad de los 33 call sites no
+// devuelven nada, y el id de un alta recién existe DESPUÉS de correr la
+// función) — por eso se llama explícitamente en cada punto, con el id ya
+// en mano.
+export function registrarAuditoria({
+  accion,
+  entidad,
+  entidad_id = null,
+  actor = 'operador',
+  valor_anterior = null,
+  valor_nuevo = null,
+  operacion_tipo = null,
+  operacion_id = null,
+  detalle = null
+}) {
+  db.prepare(
+    `INSERT INTO auditoria
+       (actor, accion, entidad, entidad_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    actor,
+    accion,
+    entidad,
+    entidad_id,
+    valor_anterior,
+    valor_nuevo,
+    operacion_tipo,
+    operacion_id,
+    detalle
+  );
+}
+
 // Nota: los seeds de clientes/facturas/productos/proveedores de ejemplo
 // que existían acá (para que el prototipo no arrancara vacío) se sacaron
 // a pedido del usuario, ya en etapa de prueba real de las funciones —

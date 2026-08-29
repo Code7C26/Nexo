@@ -459,3 +459,50 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   operacion_id INTEGER,
   error TEXT
 );
+
+-- Auditoría central unificada (CLAUDE.md §22). Registra el ACTO del
+-- operador (crear/editar/anular/...), no el efecto contable: eso ya lo
+-- cubren movimientos_stock/movimientos_tesoreria/movimientos_cc_* (que
+-- son libros mayores, no una bitácora) y asistente_mensajes (que ya
+-- audita su propia puerta de entrada). Una venta de 3 productos escribe
+-- UNA sola fila acá y tres en movimientos_stock: la granularidad es
+-- distinta a propósito, no hay duplicación.
+--
+-- Sin sistema de usuarios (un solo operador, decisión ya tomada), así que
+-- en vez de "quién" se registra "por qué vía" entró la operación (actor):
+-- operador (a mano) / asistente (por la IA, ver §21) / sistema (reservado
+-- para automatizaciones futuras). Cuando exista un sistema de usuarios de
+-- verdad, se agrega una columna usuario_id aparte (migración aditiva);
+-- actor sigue teniendo sentido igual, porque responde algo distinto.
+--
+-- entidad_id es nullable y sin FK a propósito: es la única columna del
+-- proyecto que apunta a tablas distintas según el valor de `entidad`, y el
+-- registro debe sobrevivir aunque la fila referida deje de existir.
+CREATE TABLE IF NOT EXISTS auditoria (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  actor TEXT NOT NULL DEFAULT 'operador'
+    CHECK (actor IN ('operador', 'asistente', 'sistema')),
+  accion TEXT NOT NULL
+    CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+  entidad TEXT NOT NULL
+    CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                       'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                       'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria')),
+  entidad_id INTEGER,
+  -- JSON con solo los campos que cambiaron, no la fila entera. Ej.:
+  -- {"precio_venta":1000} -> {"precio_venta":1200}. NULL en 'crear' (no
+  -- hay anterior) y en 'anular' (el nuevo estado es obvio).
+  valor_anterior TEXT,
+  valor_nuevo TEXT,
+  -- La "operación relacionada" de §22: ej. el cobro #4 apunta a venta #12.
+  operacion_tipo TEXT,
+  operacion_id INTEGER,
+  -- Frase legible ya armada en el backend ("Venta #12 anulada, stock
+  -- devuelto"): sin esto el frontend tendría que reimplementar la
+  -- narración de cada uno de los ~20 casos distintos.
+  detalle TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria(fecha DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_id);

@@ -5859,6 +5859,257 @@ function activarAsistenteGasto(raiz, propuesta, mensajeId, turnoEl) {
   });
 }
 
+/* ---------- Auditoría (CLAUDE.md §22) ---------- */
+
+const AUDITORIA_ACCION_CLASE = {
+  crear: "status-cobrado",
+  confirmar: "status-cobrado",
+  restaurar: "status-cobrado",
+  editar: "status-pendiente",
+  cambiar_estado: "status-pendiente",
+  anular: "status-vencido"
+};
+// Una sola palabra cada una: el badge .status no tiene white-space:nowrap
+// (mismo comportamiento que el resto de los badges de la app), así que
+// dos palabras envuelven feo dentro de la píldora.
+const AUDITORIA_ACCION_LABEL = {
+  crear: "Creó",
+  editar: "Editó",
+  anular: "Anuló",
+  restaurar: "Restauró",
+  cambiar_estado: "Actualizó",
+  confirmar: "Confirmó"
+};
+const AUDITORIA_ENTIDAD_LABEL = {
+  venta: "Venta",
+  compra: "Compra",
+  presupuesto: "Presupuesto",
+  devolucion: "Devolución",
+  devolucion_proveedor: "Devolución a proveedor",
+  factura: "Factura",
+  cobro: "Cobro",
+  pago: "Pago",
+  gasto: "Gasto",
+  producto: "Producto",
+  cliente: "Cliente",
+  proveedor: "Proveedor",
+  stock: "Stock",
+  tesoreria: "Tesorería",
+  categoria: "Categoría",
+  categoria_gasto: "Categoría de gasto",
+  cuenta_tesoreria: "Cuenta de tesorería"
+};
+const AUDITORIA_ACTOR_LABEL = { operador: "Operador", asistente: "Asistente IA", sistema: "Sistema" };
+
+// "20 → 15" en vez del JSON crudo: valor_anterior/valor_nuevo llegan como
+// texto JSON (ver registrarAuditoria en db/index.js), y acá se muestran
+// como parte del Detalle en vez de en columnas propias, porque cada
+// entidad cambia campos distintos. El parse va en try/catch: un JSON
+// roto no puede tirar abajo toda la fila.
+function auditoriaDiffTexto(anteriorJson, nuevoJson) {
+  if (!anteriorJson || !nuevoJson) return "";
+  try {
+    const anterior = JSON.parse(anteriorJson);
+    const nuevo = JSON.parse(nuevoJson);
+    const partes = Object.keys(nuevo).map((campo) => {
+      const val = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+      return `${campo}: ${val(anterior[campo])} → ${val(nuevo[campo])}`;
+    });
+    return partes.length > 0 ? ` (${partes.join(", ")})` : "";
+  } catch {
+    return "";
+  }
+}
+
+function renderAuditoria(registros) {
+  const body = document.getElementById("auditoriaBody");
+
+  if (registros.length === 0) {
+    if (filtrosAuditoria.filtros.length > 0) {
+      body.innerHTML = filaVaciaFiltrada(6);
+      body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosAuditoria.limpiar());
+    } else {
+      body.innerHTML = filaVacia(6, "Todavía no hay actividad registrada en esta etapa.");
+    }
+    return;
+  }
+
+  body.innerHTML = registros
+    .map((r) => {
+      const [fecha, hora] = (r.fecha || "").split(" ");
+      const detalle = `${r.detalle || "—"}${auditoriaDiffTexto(r.valor_anterior, r.valor_nuevo)}`;
+      return `
+        <tr>
+          <td data-label="Fecha">${fecha || "—"}${hora ? ` <span class="mono">${hora}</span>` : ""}</td>
+          <td data-label="Acción"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${
+            AUDITORIA_ACCION_LABEL[r.accion] || r.accion
+          }</span></td>
+          <td data-label="Entidad">${AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad}</td>
+          <td data-label="N°">${r.entidad_id ?? "—"}</td>
+          <td data-label="Detalle">${detalle}</td>
+          <td data-label="Origen" class="mono">${AUDITORIA_ACTOR_LABEL[r.actor] || r.actor}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+let auditoriaCache = [];
+
+const filtrosAuditoria = crearFiltros(
+  "filtrosAuditoria",
+  [
+    { clave: "fecha", etiqueta: "Fecha", tipo: "fecha" },
+    {
+      clave: "accion",
+      etiqueta: "Acción",
+      tipo: "select",
+      opciones: Object.entries(AUDITORIA_ACCION_LABEL).map(([valor, texto]) => ({ valor, texto }))
+    },
+    {
+      clave: "entidad",
+      etiqueta: "Entidad",
+      tipo: "select",
+      opciones: Object.entries(AUDITORIA_ENTIDAD_LABEL).map(([valor, texto]) => ({ valor, texto }))
+    },
+    {
+      clave: "actor",
+      etiqueta: "Origen",
+      tipo: "select",
+      opciones: Object.entries(AUDITORIA_ACTOR_LABEL).map(([valor, texto]) => ({ valor, texto }))
+    },
+    { clave: "detalle", etiqueta: "Detalle", tipo: "texto" }
+  ],
+  () => renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
+);
+const ordenAuditoria = crearOrden("auditoriaBody", () =>
+  renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
+);
+
+// Panel "Movimientos contables": derivado, sin tabla ni endpoint propio
+// (mismo espíritu que Papelera, más abajo) — junta lo que ya tienen
+// historia previa a esta etapa: stock (movimientosStockCache, poblado por
+// cargarStock) y tesorería (movimientosCajaCache, poblado por cargarCaja).
+// Si esos módulos todavía no cargaron en esta sesión (poco probable, son
+// parte del boot), se piden acá mismo para no dejar el panel vacío.
+function renderAuditoriaMovimientos(movimientos) {
+  const body = document.getElementById("auditoriaMovBody");
+
+  if (movimientos.length === 0) {
+    if (filtrosAuditoriaMov.filtros.length > 0) {
+      body.innerHTML = filaVaciaFiltrada(4);
+      body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosAuditoriaMov.limpiar());
+    } else {
+      body.innerHTML = filaVacia(4, "Todavía no hay movimientos registrados.");
+    }
+    return;
+  }
+
+  body.innerHTML = movimientos
+    .map((m) => {
+      // Stock mueve unidades, tesorería mueve plata: son magnitudes
+      // distintas y cada una necesita su propio formato, no los dos con
+      // money() (una cantidad de 1 unidad no es "$ 1,00").
+      const importeFmt = m.tipoLabel === "Stock" ? numero(Math.abs(m.importe)) : money(Math.abs(m.importe));
+      return `
+        <tr>
+          <td data-label="Fecha">${m.fecha}</td>
+          <td data-label="Tipo">${m.tipoLabel}</td>
+          <td data-label="Concepto">${m.concepto}</td>
+          <td data-label="Importe" class="align-right mono">${m.signo}${importeFmt}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+let auditoriaMovCache = [];
+
+function armarAuditoriaMovimientos() {
+  const deStock = movimientosStockCache.map((m) => {
+    const origen =
+      m.origen === "venta"
+        ? `Venta #${m.venta_id}`
+        : m.origen === "compra"
+        ? `Compra #${m.compra_id}`
+        : m.origen === "devolucion"
+        ? `Devolución #${m.devolucion_id}`
+        : "Ajuste manual";
+    const salida = m.tipo === "salida" || (m.tipo === "ajuste" && m.cantidad < 0);
+    return {
+      fecha: m.fecha,
+      tipoLabel: "Stock",
+      concepto: `${origen} · ${m.producto}`,
+      importe: Math.abs(m.cantidad),
+      signo: salida ? "-" : "+"
+    };
+  });
+
+  const deTesoreria = movimientosCajaCache.map((m) => {
+    let concepto;
+    if (m.origen === "cobro") concepto = `Cobro de venta #${m.venta_id}`;
+    else if (m.origen === "pago") concepto = `Pago de compra #${m.compra_id}`;
+    else if (m.origen === "transferencia") concepto = `Transferencia ${m.tipo === "egreso" ? "a" : "desde"} ${m.contraparte ?? "—"}`;
+    else concepto = m.concepto || "Movimiento manual";
+    return {
+      fecha: m.fecha,
+      tipoLabel: "Tesorería",
+      concepto,
+      importe: m.importe,
+      signo: m.tipo === "ingreso" ? "+" : "-"
+    };
+  });
+
+  return [...deStock, ...deTesoreria].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+}
+
+const filtrosAuditoriaMov = crearFiltros(
+  "filtrosAuditoriaMov",
+  [
+    { clave: "fecha", etiqueta: "Fecha", tipo: "fecha" },
+    {
+      clave: "tipoLabel",
+      etiqueta: "Tipo",
+      tipo: "select",
+      opciones: [
+        { valor: "Stock", texto: "Stock" },
+        { valor: "Tesorería", texto: "Tesorería" }
+      ]
+    },
+    { clave: "concepto", etiqueta: "Concepto", tipo: "texto" }
+  ],
+  () => renderAuditoriaMovimientos(filtrosAuditoriaMov.aplicar(auditoriaMovCache))
+);
+
+async function cargarAuditoria() {
+  tablaCargando("auditoriaBody", 6);
+  tablaCargando("auditoriaMovBody", 4);
+
+  const peticiones = [fetch("/api/auditoria").then((r) => r.json())];
+  // Solo se piden si todavía no están en memoria: Stock y Caja ya los
+  // cargan al bootear la página (ver la cadena de Promise.all al final de
+  // este archivo), así que lo normal es no volver a pedirlos acá.
+  if (movimientosStockCache.length === 0) {
+    peticiones.push(fetch("/api/movimientos-stock").then((r) => r.json()));
+  }
+  if (movimientosCajaCache.length === 0) {
+    peticiones.push(fetch("/api/tesoreria/movimientos").then((r) => r.json()));
+  }
+  const [auditoria, stockExtra, cajaExtra] = await Promise.all(peticiones);
+
+  auditoriaCache = auditoria;
+  if (stockExtra) movimientosStockCache = stockExtra;
+  if (cajaExtra) movimientosCajaCache = cajaExtra;
+
+  renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)));
+
+  auditoriaMovCache = armarAuditoriaMovimientos();
+  renderAuditoriaMovimientos(filtrosAuditoriaMov.aplicar(auditoriaMovCache));
+}
+
+document.getElementById("btnActualizarAuditoria").addEventListener("click", () => {
+  cargarAuditoria();
+  avisar("Auditoría actualizada.", "ok");
+});
+
 /* ---------- Papelera ---------- */
 
 // Se arma sobre los arrays que ya tienen Ventas, Compras, Gastos y
@@ -6054,6 +6305,7 @@ const VISTAS_CONSTRUIDAS = {
   "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
   papelera: { titulo: "Papelera", dominio: "Papelera" },
+  auditoria: { titulo: "Auditoría", dominio: "Auditoría" },
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
@@ -6077,6 +6329,17 @@ function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
   document.querySelectorAll(".view").forEach((sec) => {
     sec.hidden = sec.dataset.view !== viewId;
   });
+
+  // Excepción deliberada al patrón "todo se carga una vez al bootear"
+  // (ver la cadena de Promise.all al final de este archivo): Auditoría
+  // cambia con CUALQUIER mutación del sistema (~40 puntos distintos), así
+  // que engancharla a cada una ensuciaría demasiado. Al ser una vista de
+  // consulta ocasional (no un panel que se mira mientras se opera), se
+  // carga al entrar en vez de al bootear — cubre nav click, deep-link
+  // (F5) y el botón Atrás/Adelante porque los tres pasan por acá. El
+  // botón "Actualizar" del panel (ver activarAuditoria) cubre lo que
+  // cambió mientras la vista ya estaba abierta.
+  if (viewId === "auditoria") cargarAuditoria();
 
   const info = VISTAS_CONSTRUIDAS[viewId];
   const tituloFinal = titulo ?? info?.titulo;

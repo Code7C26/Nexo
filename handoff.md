@@ -43,21 +43,21 @@ Puntos clave de `CLAUDE.md` para no perder de vista:
 
 ## 3. Estado actual (a la fecha de este handoff)
 
-**Rama activa:** `Tosi`. **Tres commits al tope de `main`**: `468c01f`
+**Rama activa:** `Tosi`. **Cuatro commits al tope de `main`**: `468c01f`
 ("feat: devolución a proveedor, reportes de rentabilidad, asistente IA y
 rediseño de frontend", de una sesión anterior), `a13fbd8` ("feat: cuentas
-corrientes a cobrar y a pagar", la etapa que en el handoff anterior había
-quedado sin commitear — ver §10) y `4a33a5e` ("feat: fix bugs de cuenta
+corrientes a cobrar y a pagar", §10), `4a33a5e` ("feat: fix bugs de cuenta
 corriente y agrega reportes de ventas y stock", §11 + §12 juntas en un
 commit — no se pudieron separar en dos porque las dos etapas terminaron
 entrelazadas línea por línea dentro de los mismos arrays de refresco de
-`app.js`, algo que git no puede stagear parcialmente). Los tres se
-commitearon al arrancar esta sesión, antes de tocar más código.
+`app.js`, algo que git no puede stagear parcialmente) y `5ffb749` ("feat:
+categorías de productos y ventas por categoría", §13, commiteado al
+arrancar esta sesión antes de tocar más código).
 
-**Encima de esos tres commits, esta sesión agregó una etapa nueva
-(categorías de productos + ventas por categoría, §13) que todavía NO está
-commiteada** — confirmar con el usuario antes de la próxima si conviene
-commitearla ahora o seguir construyendo.
+**Encima de esos cuatro commits, esta sesión agregó una etapa nueva
+(auditoría central unificada, §22 de `CLAUDE.md` — ver §14 de este
+handoff) que todavía NO está commiteada** — confirmar con el usuario antes
+de la próxima si conviene commitearla ahora o seguir construyendo.
 
 Quedaron fuera de los commits, sin tocar, dos archivos sueltos en la raíz
 que no son parte del proyecto Nexo: `install.ps1` (instalador del propio
@@ -129,11 +129,10 @@ verificada antes de pasar a la siguiente:
   `compras` tienen fecha de vencimiento ni condición de pago.
 - Audio (§25 lo deja explícitamente para después de texto) — el asistente
   de esta etapa es solo texto.
-- Auditoría central unificada (§22): con esta etapa hay trazabilidad
-  parcial nueva (`asistente_mensajes` audita todo lo que pasa por el
-  asistente — ver §4) sumada a la que ya existía (movimientos de stock y
-  caja dicen qué operación los causó), pero sigue sin haber un log
-  unificado que junte todas las fuentes en un solo lugar.
+- **Auditoría central unificada (§22): construida en esta sesión — ver
+  §14.** Tabla `auditoria` nueva (bitácora del acto del operador, distinta
+  de los libros mayores `movimientos_*`), ~42 puntos de inserción, vista
+  con dos paneles.
 - Listas de precios (§18) y multidepósito avanzado (§19).
 - Índice sobre `ventas(fecha)`: correcto a escala pero sigue sin agregarse
   (con el volumen actual es ruido y tocaría el esquema).
@@ -1272,3 +1271,208 @@ migraciones del proyecto (ver el comentario sobre `compras`/`estado` en
   arriba). Marca y unidad de medida (§3/§4 de `CLAUDE.md`) tampoco se
   construyeron: son otras entidades maestras, cada una su propia etapa.
 - `GEMINI_API_KEY` sigue sin cargar en el proceso real — sin cambios.
+
+## 14. Última etapa: Auditoría central unificada (CLAUDE.md §22)
+
+Con el MVP y las cuatro familias de reportes completas, y la etapa de
+categorías (§13) ya commiteada al arrancar esta sesión, se le preguntó al
+usuario qué construir a continuación entre cuatro opciones (auditoría
+central, listas de precios, notas de débito/crédito manuales, marca y
+unidad de medida); eligió **auditoría central**, lo único de §22 que
+seguía sin construirse.
+
+**El problema que resuelve**: la trazabilidad estaba dispersa y parcial.
+`movimientos_stock`/`movimientos_tesoreria`/`movimientos_cc_*` son libros
+mayores contables (responden "cuánto hay y por qué"), y `asistente_mensajes`
+solo cubre lo que entra por la IA. No había ningún lugar que respondiera
+"qué hizo el operador y cuándo" — y algunas cosas se perdían para siempre:
+cambiar el `precio_costo` de un producto, un ajuste manual de stock (se
+guardaba el delta pero no el "de 20 a 15" que pide §22 como ejemplo),
+editar un cliente/proveedor/cuenta de tesorería, o si una venta la creó el
+formulario o el asistente.
+
+### Decisiones tomadas con el usuario antes de construir
+
+1. **Campo `actor` (`operador`/`asistente`/`sistema`), no `usuario`.** Sin
+   sistema de usuarios (decisión ya tomada, un solo operador), inventar un
+   "admin" falso hubiera sido peor que no tener el dato. `actor` registra
+   *por qué vía* entró la operación en vez de *quién* la hizo — es
+   información real, disponible hoy, y hoy se perdía (`crearVenta` no
+   sabía si la llamaba el formulario o el asistente). Cuando exista auth
+   de verdad, se agrega `usuario_id` al lado (migración aditiva) sin tirar
+   `actor`, que sigue respondiendo algo distinto.
+2. **Tabla nueva + panel derivado, no una sola cosa.** La tabla `auditoria`
+   arranca vacía (no cubre nada de lo ya ocurrido); el panel derivado de
+   `movimientos_stock`/`movimientos_tesoreria` sí tiene historia previa.
+   Juntos dan cobertura desde el primer día.
+3. **Alcance completo**: los 9 puntos que hoy no dejaban rastro en ningún
+   lado (Fase A) más los 33 `withTransaction` existentes (Fase B), no solo
+   uno de los dos grupos.
+4. **Envolver en `withTransaction`** los dos endpoints que hacían un
+   `INSERT` suelto (ajuste manual de stock, movimiento manual de caja) —
+   necesario para auditarlos de forma atómica.
+
+### La distinción de fondo: bitácora vs. libro mayor
+
+> **`movimientos_*` son libros mayores: "cuánto hay y por qué".**
+> **`auditoria` es una bitácora: "qué hizo el operador y cuándo".**
+
+No son la misma información con distinto formato: la granularidad es
+distinta a propósito. Una venta de 3 productos escribe **1** fila en
+`auditoria` (el acto) y **3** en `movimientos_stock` + 1 en
+`movimientos_cc_clientes` (el efecto) — verificado de verdad, no solo
+argumentado (ver Verificación). Los movimientos en cascada (la tesorería
+que mueve un cobro) no llevan fila propia en `auditoria`: la lleva el
+cobro que los generó.
+
+### Qué se construyó
+
+- **`backend/db/schema.sql`, tabla nueva `auditoria`** (al final, después
+  de `asistente_mensajes`) — **puramente aditiva**, sin `ALTER TABLE`, sin
+  tocar ninguna tabla ni vista existente: no hizo falta migración manual en
+  `db/index.js`, mismo caso que `categorias` en §13.
+  `id, fecha (datetime, no date — el resto del proyecto usa date, pero un
+  log necesita hora), actor, accion, entidad, entidad_id (nullable, SIN FK
+  a propósito: es la única columna que apunta a tablas distintas según
+  `entidad`), valor_anterior/valor_nuevo (JSON como TEXT, solo los campos
+  que cambiaron), operacion_tipo/operacion_id (la "operación relacionada"
+  de §22, ej. el cobro #4 apunta a la venta #12), detalle (frase legible
+  ya armada en el backend)`. `accion` y `entidad` con CHECK cerrado, mismo
+  criterio que `movimientos_stock.origen`. Dos índices
+  (`fecha DESC, id DESC` y `entidad, entidad_id`).
+- **`backend/db/index.js`, `registrarAuditoria()`** — exportada junto a
+  `withTransaction`. Un `INSERT` pelado, **sin `BEGIN`/`COMMIT` propio a
+  propósito**: `withTransaction` no es reentrante (abrir una transacción
+  dentro de otra ya abierta tira error en SQLite), así que este helper se
+  llama SIEMPRE desde adentro de un `withTransaction` en curso, como
+  última línea antes del `return`. Al no abrir transacción propia, hereda
+  la del llamador: si la operación falla después, el `ROLLBACK` se lleva
+  la fila de auditoría con todo lo demás (§23) — **probado de verdad, no
+  solo por lectura de código** (ver Verificación). Se descartó envolver
+  `withTransaction` con un wrapper automático: no funciona, porque de los
+  33 call sites la mitad no devuelve nada y el id de un alta recién existe
+  después de correr la función — el wrapper no podría saber qué entidad ni
+  qué id auditar.
+- **`backend/server.js`, ~42 puntos de inserción**:
+  - **Fase A** (9 puntos, lo que hoy no dejaba rastro en ningún lado):
+    editar producto (`precio_costo` queda fuera del diff a propósito: lo
+    recalculan las compras, auditarlo ahí duplicaría el acto de la
+    compra), ajuste manual de stock (el ejemplo literal de §22, "de 20 a
+    15" — ahora envuelto en `withTransaction`), movimiento manual de
+    tesorería (ídem), editar cliente/proveedor/cuenta de tesorería,
+    cambiar estado de presupuesto, cambiar estado de envío de compra, baja
+    de categoría/categoría de gasto. Se agregó un helper genérico
+    `diffCampos(anterior, nuevo, campos)` (junto a los otros helpers de
+    negocio, antes de la sección Clientes) que compara solo los campos
+    pedidos y devuelve `null` si no cambió nada — así un `PATCH` que no
+    modifica nada no genera ruido en el log.
+  - **Fase B** (los 33 `withTransaction` existentes): una fila por acto en
+    ventas (crear/editar/anular/restaurar/cobrar/facturar), compras
+    (crear/editar/confirmar/anular/restaurar/pagar), devoluciones de los
+    dos lados (crear/anular/restaurar/nota de crédito), presupuestos
+    (crear/editar/convertir), gastos (crear/editar/anular/restaurar),
+    transferencia entre cuentas, factura suelta, y el asistente (los tres
+    tipos, con `actor: 'asistente'` + `operacion_tipo: 'asistente_mensaje'`
+    + `operacion_id` apuntando al mensaje — cierra el paso 9 del flujo de
+    §21). **Regla seguida en todo el archivo: se audita en el llamador,
+    no adentro de las funciones extraídas** (`crearVenta`, `registrarCobro`,
+    `crearCompra`, `crearGasto`) — esas las llaman varios sitios distintos
+    (formulario, conversión de presupuesto, asistente) y cada uno necesita
+    su propio `actor`/`detalle`.
+  - **`GET /api/auditoria?limit=`** (sección nueva, al final, después del
+    asistente) — solo lectura, **sin POST** a propósito: la auditoría se
+    escribe únicamente desde adentro de las transacciones, exponer un POST
+    sería una puerta para falsificarla. Mismo patrón que
+    `/api/movimientos-stock` (reusa `TOPE_MOVIMIENTOS`).
+- **Frontend**: vista nueva `data-view="auditoria"` (nav "18 — Auditoría",
+  al final, después de Papelera — es una vista de revisión, no de
+  operación diaria, no renumera nada). Dos paneles:
+  1. **"Registro de actividad"** — la tabla `auditoria`, con filtros
+     (`crearFiltros`, calcado de `filtrosStockMov`) y orden por columna.
+     `valor_anterior`/`valor_nuevo` se muestran como "campo: antes → después"
+     dentro de Detalle (parseo en `try/catch`, nunca JSON crudo).
+  2. **"Movimientos contables"** — panel derivado, **sin tabla ni endpoint
+     propio** (mismo espíritu que Papelera), uniendo `movimientosStockCache`
+     y `movimientosCajaCache` (los cachés que ya pueblan Stock y Caja al
+     bootear) — da contenido con historia previa desde el primer día. Si
+     esos módulos no cargaron todavía en la sesión, se piden aparte.
+  - **Excepción deliberada al patrón "todo se carga al bootear"**: como
+    *cualquier* mutación del sistema audita (~42 puntos), enganchar
+    `cargarAuditoria()` a cada una ensuciaría demasiado. En su lugar se
+    carga **al entrar a la vista** (un solo `if` dentro de `mostrarVista`,
+    cubre nav click, deep-link F5 y el botón Atrás/Adelante porque los tres
+    pasan por ahí) más un botón "Actualizar" en el panel para lo que
+    cambió mientras la vista ya estaba abierta. Es la única vista con esta
+    excepción — anotado acá para que no se lea como un olvido en el futuro.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad (con una copia de
+  `nexo.db` **real**, no vacía, para probar la migración contra datos
+  reales), servidor de prueba en el puerto 3002 (el proceso del 3000 **no
+  estaba corriendo** al empezar esta sesión, así que no hubo conflicto).
+- **Migración**: `PRAGMA table_info` de las 26 tablas, antes vs. después —
+  la única diferencia fue la tabla `auditoria` nueva, nada más se tocó.
+- **Anti-duplicación, probada de verdad**: una venta de 2 productos generó
+  exactamente **1** fila en `/api/auditoria` y **2** en
+  `/api/movimientos-stock`.
+- **`valor_anterior`/`valor_nuevo`**: editar `precio_venta` de un producto
+  dejó `{"precio_venta":60000}` → `{"precio_venta":65000}`; repetir la
+  misma edición sin cambios reales no generó ninguna fila nueva.
+- **Ajuste de stock**: el caso literal de §22, verificado con datos reales
+  — "Ajuste de stock de 'Khamrah': 1 → 0".
+- **Rollback, forzado de verdad (no solo lectura de código)**: facturar dos
+  veces la misma venta — la primera vez generó su fila de auditoría
+  normalmente, la segunda disparó la violación de `idx_facturas_venta_id`
+  (409) y el conteo de `auditoria` quedó **exactamente igual** al de antes
+  del segundo intento. Sin errores de transacción anidada en el log del
+  servidor.
+- **`actor: 'asistente'`**, con `NEXO_INTERPRETE=stub`: un gasto y una
+  venta+cobro ejecutados vía `/api/asistente/ejecutar` quedaron con
+  `actor: "asistente"` y `operacion_id` apuntando al `asistente_mensajes.id`
+  correcto; la venta+cobro generó sus **2** filas (una por cada acto) en
+  la misma transacción.
+- **Casos hostiles, ejecutados de verdad con SQL directo**: `entidad`
+  inválida rechazada por el CHECK; `entidad_id` apuntando a una fila
+  inexistente aceptado (sin FK, es intencional) y el frontend lo mostró
+  sin romperse; JSON con comillas/acentos/€ insertado y renderizado bien;
+  `entidad_id NULL` mostrado como "—". Filas de prueba borradas después.
+- **Dos bugs cosméticos encontrados y corregidos en esta misma etapa** (no
+  en el diseño, en la primera pasada de implementación): el importe de
+  stock en "Movimientos contables" usaba `money()` en vez de `numero()`
+  (mostraba "$ 1,00" para una cantidad de una unidad); el label "Cambió
+  estado" partía en dos líneas dentro del badge `.status` (que no tiene
+  `white-space: nowrap`, mismo comportamiento que el resto de los badges
+  de la app) — se acortó a "Actualizó".
+- **Playwright** (dos temas, dos viewports): **35/35 checks** — las 18
+  vistas del nav sin caer a placeholder, deep-link `#/auditoria`, orden
+  por columna, botón "Actualizar", **crear una venta con clicks reales
+  desde el formulario y verificar que aparece en Auditoría** (no solo
+  lectura de código), tema oscuro, 375px sin scroll horizontal, sin
+  errores de consola en ningún escenario. Capturas revisadas a mano en
+  claro y oscuro.
+- **Deploy**: backup `nexo.db.backup-antes-auditoria-20260829-110343` en
+  `backend/db/`, foto pre-deploy tomada con SQL directo contra el archivo
+  de la base **antes** de levantar el proceso (ventas activas, deuda por
+  cobrar/pagar, valorizado total, conteo de clientes/proveedores/productos),
+  proceso del 3000 arrancado (no había ninguno corriendo), foto post-deploy
+  comparada 1:1 — **la única diferencia fue la tabla `auditoria` nueva**,
+  ningún número de negocio cambió. Verificado también con Playwright de
+  solo lectura contra el proceso real: la vista carga, los dos paneles
+  están, el registro arranca vacío como se diseñó, el panel de movimientos
+  ya tiene historia previa, sin errores de consola.
+
+### Qué queda pendiente de esta etapa
+
+- **Nada bloqueado.** Migración, helper, los ~42 puntos de las dos fases,
+  el endpoint y la vista se completaron y verificaron enteros.
+- Sin commitear todavía — confirmar con el usuario antes de la próxima
+  sesión.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real — sin cambios.
+- El panel "Movimientos contables" solo une stock y tesorería (los dos
+  cachés ya disponibles en memoria al bootear) — cuentas corrientes de
+  clientes/proveedores no tienen un caché de movimientos crudos en el
+  frontend (solo el reporte agregado de Cuentas corrientes), así que
+  quedaron fuera del panel derivado. Si en el futuro hace falta sumarlos,
+  es agregar un fetch a `movimientos_cc_clientes`/`_proveedores` (no
+  expuestos hoy como endpoint propio) y unirlos al mismo array.

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import db, { withTransaction } from './db/index.js';
+import db, { withTransaction, registrarAuditoria } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +15,29 @@ app.use(express.static(path.join(__dirname, '..', 'frontend')));
 // favicon no serían alcanzables por HTTP. Es una ruta estática de solo
 // lectura, no toca lógica ni datos.
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
+
+// Compara la fila de antes de un UPDATE contra los campos nuevos y
+// devuelve solo lo que cambió, listo para valor_anterior/valor_nuevo de
+// registrarAuditoria (CLAUDE.md §22) — así una edición que no tocó nada
+// no genera ruido en el log, y una que sí, muestra exactamente el campo
+// que cambió en vez de la fila entera. `campos` es la lista de claves a
+// comparar (no todo lo que trae `nuevo`, para no arrastrar campos que el
+// endpoint recibe pero no persiste).
+function diffCampos(anterior, nuevo, campos) {
+  const previo = {};
+  const actual = {};
+  for (const campo of campos) {
+    const valorAnterior = anterior?.[campo] ?? null;
+    const valorNuevo = nuevo?.[campo] ?? null;
+    if (valorAnterior !== valorNuevo) {
+      previo[campo] = valorAnterior;
+      actual[campo] = valorNuevo;
+    }
+  }
+  return Object.keys(actual).length > 0
+    ? { anterior: JSON.stringify(previo), nuevo: JSON.stringify(actual) }
+    : null;
+}
 
 /* ---------- Clientes (CRM) ---------- */
 
@@ -89,7 +112,7 @@ app.post('/api/clientes', (req, res) => {
 
 app.patch('/api/clientes/:id', (req, res) => {
   const clienteId = Number(req.params.id);
-  const cliente = db.prepare('SELECT id FROM clientes WHERE id = ?').get(clienteId);
+  const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
   if (!cliente) {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
@@ -99,17 +122,31 @@ app.patch('/api/clientes/:id', (req, res) => {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
 
-  db.prepare(
-    'UPDATE clientes SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ? WHERE id = ?'
-  ).run(
-    nombre.trim(),
-    email ?? null,
-    telefono ?? null,
-    direccion ?? null,
-    documento ?? null,
-    notas ?? null,
-    clienteId
-  );
+  const nuevo = {
+    nombre: nombre.trim(),
+    email: email ?? null,
+    telefono: telefono ?? null,
+    direccion: direccion ?? null,
+    documento: documento ?? null,
+    notas: notas ?? null
+  };
+  const cambios = diffCampos(cliente, nuevo, ['nombre', 'email', 'telefono', 'direccion', 'documento', 'notas']);
+
+  withTransaction(() => {
+    db.prepare(
+      'UPDATE clientes SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ? WHERE id = ?'
+    ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, clienteId);
+    if (cambios) {
+      registrarAuditoria({
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: clienteId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Cliente "${nuevo.nombre}" editado`
+      });
+    }
+  });
   res.json({ id: clienteId });
 });
 
@@ -222,6 +259,13 @@ app.post('/api/facturas', (req, res) => {
       )
       .run(clienteRow.id, concepto, neto, condicion, tipoFinal, letraFinal, puntoVentaFinal, numero);
 
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'factura',
+      entidad_id: lastInsertRowid,
+      detalle: `Factura suelta #${lastInsertRowid} creada`
+    });
+
     return lastInsertRowid;
   });
 
@@ -261,7 +305,7 @@ app.patch('/api/categorias/:id', (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, activa } = req.body;
 
-  const categoria = db.prepare('SELECT id FROM categorias WHERE id = ?').get(categoriaId);
+  const categoria = db.prepare('SELECT * FROM categorias WHERE id = ?').get(categoriaId);
   if (!categoria) {
     return res.status(404).json({ error: 'Categoría no encontrada.' });
   }
@@ -275,11 +319,29 @@ app.patch('/api/categorias/:id', (req, res) => {
     return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
   }
 
-  db.prepare('UPDATE categorias SET nombre = ?, activa = ? WHERE id = ?').run(
-    String(nombre).trim(),
-    activa === undefined ? 1 : Number(Boolean(activa)),
-    categoriaId
-  );
+  const nuevo = {
+    nombre: String(nombre).trim(),
+    activa: activa === undefined ? 1 : Number(Boolean(activa))
+  };
+  const cambios = diffCampos(categoria, nuevo, ['nombre', 'activa']);
+
+  withTransaction(() => {
+    db.prepare('UPDATE categorias SET nombre = ?, activa = ? WHERE id = ?').run(
+      nuevo.nombre,
+      nuevo.activa,
+      categoriaId
+    );
+    if (cambios) {
+      registrarAuditoria({
+        accion: 'editar',
+        entidad: 'categoria',
+        entidad_id: categoriaId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Categoría "${nuevo.nombre}" editada`
+      });
+    }
+  });
   res.json({ id: categoriaId });
 });
 
@@ -406,7 +468,7 @@ app.post('/api/productos', (req, res) => {
 
 app.patch('/api/productos/:id', (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  const producto = db.prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id FROM productos WHERE id = ?').get(productoId);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -418,25 +480,53 @@ app.patch('/api/productos/:id', (req, res) => {
 
   const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id } = req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
+  const nuevo = {
+    nombre: nombre.trim(),
+    sku: skuNormalizado,
+    precio_venta: normalizarPrecio(precio_venta),
+    activo: activo === false || activo === 0 ? 0 : 1,
+    stock_minimo: normalizarPrecio(stock_minimo),
+    stock_maximo: normalizarStockMaximo(stock_maximo),
+    categoria_id: normalizarCategoriaId(categoria_id)
+  };
+  // precio_costo no entra en este diff: es el promedio ponderado que
+  // recalculan las compras (recalcularCostoProducto), no algo que este
+  // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
+  // ya audita su propio "crear/confirmar" en la Fase B.
+  const cambios = diffCampos(producto, nuevo, [
+    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id'
+  ]);
 
   try {
-    // precio_costo queda deliberadamente fuera del UPDATE: es el promedio
-    // ponderado que calculan las compras, editarlo a mano acá rompería la
-    // trazabilidad del costo real.
-    db.prepare(
-      `UPDATE productos
-          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?
-        WHERE id = ?`
-    ).run(
-      nombre.trim(),
-      skuNormalizado,
-      normalizarPrecio(precio_venta),
-      activo === false || activo === 0 ? 0 : 1,
-      normalizarPrecio(stock_minimo),
-      normalizarStockMaximo(stock_maximo),
-      normalizarCategoriaId(categoria_id),
-      productoId
-    );
+    withTransaction(() => {
+      // precio_costo queda deliberadamente fuera del UPDATE: es el promedio
+      // ponderado que calculan las compras, editarlo a mano acá rompería la
+      // trazabilidad del costo real.
+      db.prepare(
+        `UPDATE productos
+            SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?
+          WHERE id = ?`
+      ).run(
+        nuevo.nombre,
+        nuevo.sku,
+        nuevo.precio_venta,
+        nuevo.activo,
+        nuevo.stock_minimo,
+        nuevo.stock_maximo,
+        nuevo.categoria_id,
+        productoId
+      );
+      if (cambios) {
+        registrarAuditoria({
+          accion: 'editar',
+          entidad: 'producto',
+          entidad_id: productoId,
+          valor_anterior: cambios.anterior,
+          valor_nuevo: cambios.nuevo,
+          detalle: `Producto "${nuevo.nombre}" editado`
+        });
+      }
+    });
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
       return res.status(400).json({ error: 'Ya existe un producto con ese SKU.' });
@@ -574,7 +664,7 @@ app.patch('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
   const { nombre, email, telefono, direccion, documento, notas } = req.body;
 
-  const proveedor = db.prepare('SELECT id FROM proveedores WHERE id = ?').get(proveedorId);
+  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ?').get(proveedorId);
   if (!proveedor) {
     return res.status(404).json({ error: 'Proveedor no encontrado.' });
   }
@@ -582,19 +672,33 @@ app.patch('/api/proveedores/:id', (req, res) => {
     return res.status(400).json({ error: 'El proveedor necesita un nombre.' });
   }
 
-  db.prepare(
-    `UPDATE proveedores
-        SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?
-      WHERE id = ?`
-  ).run(
-    String(nombre).trim(),
-    email ?? null,
-    telefono ?? null,
-    direccion ?? null,
-    documento ?? null,
-    notas ?? null,
-    proveedorId
-  );
+  const nuevo = {
+    nombre: String(nombre).trim(),
+    email: email ?? null,
+    telefono: telefono ?? null,
+    direccion: direccion ?? null,
+    documento: documento ?? null,
+    notas: notas ?? null
+  };
+  const cambios = diffCampos(proveedor, nuevo, ['nombre', 'email', 'telefono', 'direccion', 'documento', 'notas']);
+
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE proveedores
+          SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?
+        WHERE id = ?`
+    ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, proveedorId);
+    if (cambios) {
+      registrarAuditoria({
+        accion: 'editar',
+        entidad: 'proveedor',
+        entidad_id: proveedorId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Proveedor "${nuevo.nombre}" editado`
+      });
+    }
+  });
   res.json({ id: proveedorId });
 });
 
@@ -626,7 +730,7 @@ app.get('/api/stock', (req, res) => {
 app.post('/api/stock/ajuste', (req, res) => {
   const { producto_id, cantidad, nota } = req.body;
 
-  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(producto_id);
+  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
   }
@@ -634,11 +738,28 @@ app.post('/api/stock/ajuste', (req, res) => {
     return res.status(400).json({ error: 'La cantidad del ajuste no puede ser 0.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, nota) VALUES (?, 'ajuste', ?, 'ajuste_manual', ?)"
-    )
-    .run(producto_id, Number(cantidad), nota ?? null);
+  // El ejemplo literal de CLAUDE.md §22 ("de 20 a 15"): hace falta el
+  // stock ANTES del ajuste, que movimientos_stock por sí solo no guarda
+  // (solo guarda el delta) — se lee acá, antes de insertar el movimiento.
+  const stockAnterior = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?').get(producto_id)?.cantidad ?? 0;
+  const stockNuevo = stockAnterior + Number(cantidad);
+
+  let lastInsertRowid;
+  withTransaction(() => {
+    ({ lastInsertRowid } = db
+      .prepare(
+        "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, nota) VALUES (?, 'ajuste', ?, 'ajuste_manual', ?)"
+      )
+      .run(producto_id, Number(cantidad), nota ?? null));
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'stock',
+      entidad_id: Number(producto_id),
+      valor_anterior: JSON.stringify({ stock: stockAnterior }),
+      valor_nuevo: JSON.stringify({ stock: stockNuevo }),
+      detalle: `Ajuste de stock de "${producto.nombre}": ${stockAnterior} → ${stockNuevo}`
+    });
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -887,7 +1008,11 @@ app.post('/api/ventas', (req, res) => {
     return res.status(400).json({ error: errorStock });
   }
 
-  const ventaId = withTransaction(() => crearVenta({ cliente, cliente_id, items, fecha }));
+  const ventaId = withTransaction(() => {
+    const id = crearVenta({ cliente, cliente_id, items, fecha });
+    registrarAuditoria({ accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
+    return id;
+  });
 
   res.status(201).json({ id: ventaId });
 });
@@ -1044,6 +1169,15 @@ app.put('/api/ventas/:id', (req, res) => {
     );
     insertAjusteCC.run(venta.cliente_id, -totalViejo, ventaId);
     insertAjusteCC.run(clienteRow.id, total, ventaId);
+
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      valor_anterior: JSON.stringify({ total: totalViejo, cliente_id: venta.cliente_id }),
+      valor_nuevo: JSON.stringify({ total, cliente_id: clienteRow.id }),
+      detalle: `Venta #${ventaId} editada`
+    });
   });
 
   res.json({ id: ventaId });
@@ -1093,9 +1227,18 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
     });
   }
 
-  const cobroId = withTransaction(() =>
-    registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota)
-  );
+  const cobroId = withTransaction(() => {
+    const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota);
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'cobro',
+      entidad_id: id,
+      operacion_tipo: 'venta',
+      operacion_id: ventaId,
+      detalle: `Cobro #${id} de $${importe} sobre la venta #${ventaId}`
+    });
+    return id;
+  });
 
   res.status(201).json({ id: cobroId });
 });
@@ -1155,6 +1298,15 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
            VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`
         )
         .run(venta.cliente_id, `Venta #${ventaId}`, total, condicion, ventaId, tipoFinal, letraFinal, puntoVentaFinal, numero);
+
+      registrarAuditoria({
+        accion: 'crear',
+        entidad: 'factura',
+        entidad_id: lastInsertRowid,
+        operacion_tipo: 'venta',
+        operacion_id: ventaId,
+        detalle: `Factura #${lastInsertRowid} para la venta #${ventaId}`
+      });
 
       return lastInsertRowid;
     });
@@ -1224,6 +1376,13 @@ app.post('/api/ventas/:id/anular', (req, res) => {
     db.prepare(
       "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
     ).run(venta.cliente_id, -total, ventaId);
+
+    registrarAuditoria({
+      accion: 'anular',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      detalle: `Venta #${ventaId} anulada, stock devuelto`
+    });
   });
 
   res.json({ id: ventaId, estado: 'anulada' });
@@ -1276,6 +1435,13 @@ app.post('/api/ventas/:id/restaurar', (req, res) => {
     db.prepare(
       "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
     ).run(venta.cliente_id, total, ventaId);
+
+    registrarAuditoria({
+      accion: 'restaurar',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      detalle: `Venta #${ventaId} restaurada desde la papelera`
+    });
   });
 
   res.json({ id: ventaId, estado: 'activa' });
@@ -1430,6 +1596,12 @@ app.post('/api/presupuestos', (req, res) => {
       .run(...valores);
 
     guardarItemsPresupuesto(nuevoId, items);
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'presupuesto',
+      entidad_id: nuevoId,
+      detalle: `Presupuesto #${nuevoId} creado`
+    });
     return nuevoId;
   });
 
@@ -1473,6 +1645,13 @@ app.put('/api/presupuestos/:id', (req, res) => {
     // no hace falta el revertir-y-reaplicar de ventas y compras.
     db.prepare('DELETE FROM presupuesto_items WHERE presupuesto_id = ?').run(presupuestoId);
     guardarItemsPresupuesto(presupuestoId, items);
+
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'presupuesto',
+      entidad_id: presupuestoId,
+      detalle: `Presupuesto #${presupuestoId} editado`
+    });
   });
 
   res.json({ id: presupuestoId });
@@ -1500,7 +1679,19 @@ app.patch('/api/presupuestos/:id/estado', (req, res) => {
     return res.status(400).json({ error: 'El estado no es válido.' });
   }
 
-  db.prepare('UPDATE presupuestos SET estado = ? WHERE id = ?').run(estado, presupuestoId);
+  withTransaction(() => {
+    db.prepare('UPDATE presupuestos SET estado = ? WHERE id = ?').run(estado, presupuestoId);
+    if (estado !== presupuesto.estado) {
+      registrarAuditoria({
+        accion: 'cambiar_estado',
+        entidad: 'presupuesto',
+        entidad_id: presupuestoId,
+        valor_anterior: JSON.stringify({ estado: presupuesto.estado }),
+        valor_nuevo: JSON.stringify({ estado }),
+        detalle: `Presupuesto #${presupuestoId}: ${presupuesto.estado} → ${estado}`
+      });
+    }
+  });
   res.json({ id: presupuestoId, estado });
 });
 
@@ -1551,6 +1742,24 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       nuevaVentaId,
       presupuestoId
     );
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'venta',
+      entidad_id: nuevaVentaId,
+      operacion_tipo: 'presupuesto',
+      operacion_id: presupuestoId,
+      detalle: `Venta #${nuevaVentaId} creada al convertir el presupuesto #${presupuestoId}`
+    });
+    registrarAuditoria({
+      accion: 'cambiar_estado',
+      entidad: 'presupuesto',
+      entidad_id: presupuestoId,
+      valor_anterior: JSON.stringify({ estado: presupuesto.estado }),
+      valor_nuevo: JSON.stringify({ estado: 'convertido' }),
+      operacion_tipo: 'venta',
+      operacion_id: nuevaVentaId,
+      detalle: `Presupuesto #${presupuestoId} convertido en la venta #${nuevaVentaId}`
+    });
     return nuevaVentaId;
   });
 
@@ -1822,6 +2031,14 @@ app.post('/api/devoluciones', (req, res) => {
     }
 
     aplicarDevolucion(nuevaId);
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'devolucion',
+      entidad_id: nuevaId,
+      operacion_tipo: 'venta',
+      operacion_id: ventaId,
+      detalle: `Devolución #${nuevaId} sobre la venta #${ventaId}`
+    });
     return nuevaId;
   });
 
@@ -1870,6 +2087,14 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
            VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?)`
         )
         .run(devolucion.cliente_id, `Devolución #${devolucionId}`, total, condicion || 'efectivo', devolucionId, letraFinal, puntoVentaFinal, numero);
+      registrarAuditoria({
+        accion: 'crear',
+        entidad: 'factura',
+        entidad_id: lastInsertRowid,
+        operacion_tipo: 'devolucion',
+        operacion_id: devolucionId,
+        detalle: `Nota de crédito #${lastInsertRowid} para la devolución #${devolucionId}`
+      });
       return lastInsertRowid;
     });
   } catch (err) {
@@ -1906,6 +2131,12 @@ app.post('/api/devoluciones/:id/anular', (req, res) => {
   withTransaction(() => {
     revertirDevolucion(devolucionId);
     db.prepare("UPDATE devoluciones SET estado = 'anulada' WHERE id = ?").run(devolucionId);
+    registrarAuditoria({
+      accion: 'anular',
+      entidad: 'devolucion',
+      entidad_id: devolucionId,
+      detalle: `Devolución #${devolucionId} anulada`
+    });
   });
 
   res.json({ id: devolucionId, estado: 'anulada' });
@@ -1949,6 +2180,12 @@ app.post('/api/devoluciones/:id/restaurar', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE devoluciones SET estado = 'activa' WHERE id = ?").run(devolucionId);
     aplicarDevolucion(devolucionId);
+    registrarAuditoria({
+      accion: 'restaurar',
+      entidad: 'devolucion',
+      entidad_id: devolucionId,
+      detalle: `Devolución #${devolucionId} restaurada desde la papelera`
+    });
   });
 
   res.json({ id: devolucionId, estado: 'activa' });
@@ -2163,7 +2400,16 @@ app.post('/api/compras', (req, res) => {
     return res.status(400).json({ error: 'El costo de envío debe ser un número mayor o igual a 0.' });
   }
 
-  const compraId = withTransaction(() => crearCompra({ proveedor, items, costoEnvio, fecha }));
+  const compraId = withTransaction(() => {
+    const id = crearCompra({ proveedor, items, costoEnvio, fecha });
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'compra',
+      entidad_id: id,
+      detalle: `Compra #${id} creada (borrador)`
+    });
+    return id;
+  });
 
   res.status(201).json({ id: compraId, estado: 'borrador' });
 });
@@ -2351,6 +2597,13 @@ app.put('/api/compras/:id', (req, res) => {
         recalcularCostoProducto(productoId);
       }
     }
+
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'compra',
+      entidad_id: compraId,
+      detalle: `Compra #${compraId} editada`
+    });
   });
 
   res.json({ id: compraId });
@@ -2388,7 +2641,17 @@ app.post('/api/compras/:id/confirmar', (req, res) => {
     return res.status(400).json({ error: 'Esta compra ya fue efectuada.' });
   }
 
-  withTransaction(() => confirmarCompra(compraId));
+  withTransaction(() => {
+    confirmarCompra(compraId);
+    registrarAuditoria({
+      accion: 'confirmar',
+      entidad: 'compra',
+      entidad_id: compraId,
+      valor_anterior: JSON.stringify({ estado: 'borrador' }),
+      valor_nuevo: JSON.stringify({ estado: 'activa' }),
+      detalle: `Compra #${compraId} confirmada (pedido efectuado)`
+    });
+  });
 
   res.json({ id: compraId, estado: 'activa' });
 });
@@ -2550,6 +2813,13 @@ app.post('/api/compras/:id/anular', (req, res) => {
         "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
       ).run(compra.proveedor_id, -(subtotal + compra.costo_envio), compraId);
     }
+
+    registrarAuditoria({
+      accion: 'anular',
+      entidad: 'compra',
+      entidad_id: compraId,
+      detalle: `Compra #${compraId} anulada`
+    });
   });
 
   res.json({ id: compraId, estado: 'anulada' });
@@ -2580,7 +2850,15 @@ app.post('/api/compras/:id/restaurar', (req, res) => {
     .get(compraId);
 
   if (!fueEfectuada) {
-    db.prepare("UPDATE compras SET estado = 'borrador' WHERE id = ?").run(compraId);
+    withTransaction(() => {
+      db.prepare("UPDATE compras SET estado = 'borrador' WHERE id = ?").run(compraId);
+      registrarAuditoria({
+        accion: 'restaurar',
+        entidad: 'compra',
+        entidad_id: compraId,
+        detalle: `Compra #${compraId} restaurada desde la papelera (borrador)`
+      });
+    });
     return res.json({ id: compraId, estado: 'borrador' });
   }
 
@@ -2600,6 +2878,13 @@ app.post('/api/compras/:id/restaurar', (req, res) => {
     if (compra.estado_envio === 'recibido') {
       aplicarStockCompra(compraId);
     }
+
+    registrarAuditoria({
+      accion: 'restaurar',
+      entidad: 'compra',
+      entidad_id: compraId,
+      detalle: `Compra #${compraId} restaurada desde la papelera`
+    });
   });
 
   res.json({ id: compraId, estado: 'activa' });
@@ -2638,14 +2923,22 @@ app.patch('/api/compras/:id/estado-envio', (req, res) => {
     });
   }
 
-  if (estado_envio === 'recibido' && !compra.stock_aplicado) {
-    withTransaction(() => {
-      db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estado_envio, compraId);
-      aplicarStockCompra(compraId);
-    });
-  } else {
+  withTransaction(() => {
     db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estado_envio, compraId);
-  }
+    if (estado_envio === 'recibido' && !compra.stock_aplicado) {
+      aplicarStockCompra(compraId);
+    }
+    if (estado_envio !== compra.estado_envio) {
+      registrarAuditoria({
+        accion: 'cambiar_estado',
+        entidad: 'compra',
+        entidad_id: compraId,
+        valor_anterior: JSON.stringify({ estado_envio: compra.estado_envio }),
+        valor_nuevo: JSON.stringify({ estado_envio }),
+        detalle: `Compra #${compraId}, estado de envío: ${compra.estado_envio} → ${estado_envio}`
+      });
+    }
+  });
 
   res.json({ id: compraId, estado_envio });
 });
@@ -2705,6 +2998,15 @@ app.post('/api/compras/:id/pagos', (req, res) => {
     db.prepare(
       "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, pago_id) VALUES (?, 'pago', ?, ?, ?)"
     ).run(compra.proveedor_id, -importe, compraId, nuevoPagoId);
+
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'pago',
+      entidad_id: nuevoPagoId,
+      operacion_tipo: 'compra',
+      operacion_id: compraId,
+      detalle: `Pago #${nuevoPagoId} de $${importe} sobre la compra #${compraId}`
+    });
 
     return nuevoPagoId;
   });
@@ -3005,6 +3307,14 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
     }
 
     aplicarDevolucionProveedor(nuevaId);
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'devolucion_proveedor',
+      entidad_id: nuevaId,
+      operacion_tipo: 'compra',
+      operacion_id: compraId,
+      detalle: `Devolución a proveedor #${nuevaId} sobre la compra #${compraId}`
+    });
     return nuevaId;
   });
 
@@ -3066,6 +3376,12 @@ app.post('/api/devoluciones-proveedor/:id/anular', (req, res) => {
   withTransaction(() => {
     revertirDevolucionProveedor(id);
     db.prepare("UPDATE devoluciones_proveedor SET estado = 'anulada' WHERE id = ?").run(id);
+    registrarAuditoria({
+      accion: 'anular',
+      entidad: 'devolucion_proveedor',
+      entidad_id: id,
+      detalle: `Devolución a proveedor #${id} anulada`
+    });
   });
 
   res.json({ id, estado: 'anulada' });
@@ -3107,6 +3423,12 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE devoluciones_proveedor SET estado = 'activa' WHERE id = ?").run(id);
     aplicarDevolucionProveedor(id);
+    registrarAuditoria({
+      accion: 'restaurar',
+      entidad: 'devolucion_proveedor',
+      entidad_id: id,
+      detalle: `Devolución a proveedor #${id} restaurada desde la papelera`
+    });
   });
 
   res.json({ id, estado: 'activa' });
@@ -3151,7 +3473,7 @@ app.patch('/api/cuentas-tesoreria/:id', (req, res) => {
   const cuentaId = Number(req.params.id);
   const { nombre, tipo, saldo_inicial } = req.body;
 
-  const cuenta = db.prepare('SELECT id FROM cuentas_tesoreria WHERE id = ?').get(cuentaId);
+  const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(cuentaId);
   if (!cuenta) {
     return res.status(404).json({ error: 'Cuenta no encontrada.' });
   }
@@ -3172,12 +3494,30 @@ app.patch('/api/cuentas-tesoreria/:id', (req, res) => {
     return res.status(400).json({ error: 'Ya existe otra cuenta con ese nombre.' });
   }
 
-  db.prepare('UPDATE cuentas_tesoreria SET nombre = ?, tipo = ?, saldo_inicial = ? WHERE id = ?').run(
-    String(nombre).trim(),
-    tipo,
-    saldoInicial,
-    cuentaId
-  );
+  const nuevo = { nombre: String(nombre).trim(), tipo, saldo_inicial: saldoInicial };
+  // saldo_inicial es el campo más sensible acá: tocarlo mueve el saldo de
+  // toda la cuenta sin generar un solo movimiento_tesoreria (§22, "editar
+  // cuenta de tesorería" está en Fase A justo por esto).
+  const cambios = diffCampos(cuenta, nuevo, ['nombre', 'tipo', 'saldo_inicial']);
+
+  withTransaction(() => {
+    db.prepare('UPDATE cuentas_tesoreria SET nombre = ?, tipo = ?, saldo_inicial = ? WHERE id = ?').run(
+      nuevo.nombre,
+      nuevo.tipo,
+      nuevo.saldo_inicial,
+      cuentaId
+    );
+    if (cambios) {
+      registrarAuditoria({
+        accion: 'editar',
+        entidad: 'cuenta_tesoreria',
+        entidad_id: cuentaId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Cuenta de tesorería "${nuevo.nombre}" editada`
+      });
+    }
+  });
   res.json({ id: cuentaId });
 });
 
@@ -3263,7 +3603,7 @@ app.post('/api/tesoreria/movimientos', (req, res) => {
   if (!(monto > 0)) {
     return res.status(400).json({ error: 'El importe tiene que ser mayor a 0.' });
   }
-  const cuenta = db.prepare('SELECT id FROM cuentas_tesoreria WHERE id = ?').get(Number(cuenta_tesoreria_id));
+  const cuenta = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(cuenta_tesoreria_id));
   if (!cuenta) {
     return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
   }
@@ -3274,13 +3614,23 @@ app.post('/api/tesoreria/movimientos', (req, res) => {
     columnas.push('fecha');
     valores.push(fecha);
   }
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO movimientos_tesoreria (${columnas.join(', ')}) VALUES (${columnas
-        .map(() => '?')
-        .join(', ')})`
-    )
-    .run(...valores);
+
+  let lastInsertRowid;
+  withTransaction(() => {
+    ({ lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO movimientos_tesoreria (${columnas.join(', ')}) VALUES (${columnas
+          .map(() => '?')
+          .join(', ')})`
+      )
+      .run(...valores));
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'tesoreria',
+      entidad_id: lastInsertRowid,
+      detalle: `${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} manual de $${monto} en "${cuenta.nombre}"`
+    });
+  });
 
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -3332,6 +3682,13 @@ app.post('/api/tesoreria/transferencias', (req, res) => {
     db.prepare('UPDATE movimientos_tesoreria SET transferencia_id = ? WHERE id = ?').run(egresoId, egresoId);
     insertMovimiento(cuentaDestino.id, 'ingreso', egresoId);
 
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'tesoreria',
+      entidad_id: egresoId,
+      detalle: `Transferencia de $${monto} de "${cuentaOrigen.nombre}" a "${cuentaDestino.nombre}"`
+    });
+
     return egresoId;
   });
 
@@ -3378,7 +3735,7 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, tipo, activa } = req.body;
 
-  const categoria = db.prepare('SELECT id FROM categorias_gasto WHERE id = ?').get(categoriaId);
+  const categoria = db.prepare('SELECT * FROM categorias_gasto WHERE id = ?').get(categoriaId);
   if (!categoria) {
     return res.status(404).json({ error: 'Categoría no encontrada.' });
   }
@@ -3395,12 +3752,31 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
     return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
   }
 
-  db.prepare('UPDATE categorias_gasto SET nombre = ?, tipo = ?, activa = ? WHERE id = ?').run(
-    String(nombre).trim(),
+  const nuevo = {
+    nombre: String(nombre).trim(),
     tipo,
-    activa === undefined ? 1 : Number(Boolean(activa)),
-    categoriaId
-  );
+    activa: activa === undefined ? 1 : Number(Boolean(activa))
+  };
+  const cambios = diffCampos(categoria, nuevo, ['nombre', 'tipo', 'activa']);
+
+  withTransaction(() => {
+    db.prepare('UPDATE categorias_gasto SET nombre = ?, tipo = ?, activa = ? WHERE id = ?').run(
+      nuevo.nombre,
+      nuevo.tipo,
+      nuevo.activa,
+      categoriaId
+    );
+    if (cambios) {
+      registrarAuditoria({
+        accion: 'editar',
+        entidad: 'categoria_gasto',
+        entidad_id: categoriaId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Categoría de gasto "${nuevo.nombre}" editada`
+      });
+    }
+  });
   res.json({ id: categoriaId });
 });
 
@@ -3471,9 +3847,11 @@ app.post('/api/gastos', (req, res) => {
   }
   const { categoriaId, cuentaId, proveedorId, monto, tipo } = validacion;
 
-  const gastoId = withTransaction(() =>
-    crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante })
-  );
+  const gastoId = withTransaction(() => {
+    const id = crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante });
+    registrarAuditoria({ accion: 'crear', entidad: 'gasto', entidad_id: id, detalle: `Gasto #${id} creado` });
+    return id;
+  });
 
   res.status(201).json({ id: gastoId });
 });
@@ -3554,6 +3932,13 @@ app.put('/api/gastos/:id', (req, res) => {
 
     db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
     insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion);
+
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'gasto',
+      entidad_id: gastoId,
+      detalle: `Gasto #${gastoId} editado`
+    });
   });
 
   res.json({ id: gastoId });
@@ -3573,6 +3958,12 @@ app.post('/api/gastos/:id/anular', (req, res) => {
     db.prepare("UPDATE gastos SET estado = 'anulado' WHERE id = ?").run(gastoId);
     // La plata vuelve a la cuenta: se saca el egreso que lo había bajado.
     db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
+    registrarAuditoria({
+      accion: 'anular',
+      entidad: 'gasto',
+      entidad_id: gastoId,
+      detalle: `Gasto #${gastoId} anulado`
+    });
   });
 
   res.json({ id: gastoId, estado: 'anulado' });
@@ -3599,6 +3990,12 @@ app.post('/api/gastos/:id/restaurar', (req, res) => {
       gasto.fecha,
       gasto.descripcion
     );
+    registrarAuditoria({
+      accion: 'restaurar',
+      entidad: 'gasto',
+      entidad_id: gastoId,
+      detalle: `Gasto #${gastoId} restaurado desde la papelera`
+    });
   });
 
   res.json({ id: gastoId, estado: 'activo' });
@@ -4717,11 +5114,29 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           items,
           fecha: propuesta.fecha
         });
+        registrarAuditoria({
+          accion: 'crear',
+          entidad: 'venta',
+          entidad_id: nuevaVentaId,
+          actor: 'asistente',
+          operacion_tipo: 'asistente_mensaje',
+          operacion_id: mensaje.id,
+          detalle: `Venta #${nuevaVentaId} creada por el asistente`
+        });
         if (cuentaCobroId) {
           const { cliente_id: clienteIdCreado } = db
             .prepare('SELECT cliente_id FROM ventas WHERE id = ?')
             .get(nuevaVentaId);
-          registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente');
+          const nuevoCobroId = registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente');
+          registrarAuditoria({
+            accion: 'crear',
+            entidad: 'cobro',
+            entidad_id: nuevoCobroId,
+            actor: 'asistente',
+            operacion_tipo: 'asistente_mensaje',
+            operacion_id: mensaje.id,
+            detalle: `Cobro #${nuevoCobroId} cargado por el asistente sobre la venta #${nuevaVentaId}`
+          });
         }
         return nuevaVentaId;
       });
@@ -4764,6 +5179,15 @@ app.post('/api/asistente/ejecutar', (req, res) => {
         const nuevaCompraId = crearCompra({ proveedor: proveedorNombre, items, costoEnvio, fecha: propuesta.fecha });
         confirmarCompra(nuevaCompraId);
         aplicarStockCompra(nuevaCompraId);
+        registrarAuditoria({
+          accion: 'crear',
+          entidad: 'compra',
+          entidad_id: nuevaCompraId,
+          actor: 'asistente',
+          operacion_tipo: 'asistente_mensaje',
+          operacion_id: mensaje.id,
+          detalle: `Compra #${nuevaCompraId} creada y confirmada por el asistente`
+        });
         return nuevaCompraId;
       });
     } catch (err) {
@@ -4798,8 +5222,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 
     let gastoId;
     try {
-      gastoId = withTransaction(() =>
-        crearGasto({
+      gastoId = withTransaction(() => {
+        const nuevoGastoId = crearGasto({
           categoriaId,
           cuentaId,
           proveedorId: proveedorIdValidado,
@@ -4808,8 +5232,18 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           fecha: propuesta.fecha,
           descripcion: propuesta.descripcion,
           comprobante: null
-        })
-      );
+        });
+        registrarAuditoria({
+          accion: 'crear',
+          entidad: 'gasto',
+          entidad_id: nuevoGastoId,
+          actor: 'asistente',
+          operacion_tipo: 'asistente_mensaje',
+          operacion_id: mensaje.id,
+          detalle: `Gasto #${nuevoGastoId} creado por el asistente`
+        });
+        return nuevoGastoId;
+      });
     } catch (err) {
       marcarFallido(err.message);
       return res.status(500).json({ error: 'No se pudo registrar el gasto.' });
@@ -4820,6 +5254,27 @@ app.post('/api/asistente/ejecutar', (req, res) => {
   }
 
   return res.status(400).json({ error: 'Tipo de operación desconocido.' });
+});
+
+/* ---------- Auditoría (CLAUDE.md §22) ---------- */
+
+// Solo lectura, sin POST: la auditoría se escribe únicamente desde adentro
+// de las transacciones (ver registrarAuditoria en db/index.js), nunca
+// directo desde un endpoint — exponer un POST acá sería una puerta para
+// falsificar el log. Mismo patrón que /api/movimientos-stock: trae todo
+// hasta TOPE_MOVIMIENTOS y el filtrado fino lo hace el navegador.
+app.get('/api/auditoria', (req, res) => {
+  const limite = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
+  const registros = db
+    .prepare(
+      `SELECT id, fecha, actor, accion, entidad, entidad_id,
+              valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+         FROM auditoria
+        ORDER BY fecha DESC, id DESC
+        LIMIT ?`
+    )
+    .all(limite);
+  res.json(registros);
 });
 
 app.listen(PORT, () => {
