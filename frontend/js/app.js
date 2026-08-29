@@ -5915,10 +5915,10 @@ function renderAuditoria(registros) {
 
   if (registros.length === 0) {
     if (filtrosAuditoria.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
+      body.innerHTML = filaVaciaFiltrada(7);
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosAuditoria.limpiar());
     } else {
-      body.innerHTML = filaVacia(6, "Todavía no hay actividad registrada en esta etapa.");
+      body.innerHTML = filaVacia(7, "Todavía no hay actividad registrada en esta etapa.");
     }
     return;
   }
@@ -5937,6 +5937,7 @@ function renderAuditoria(registros) {
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
           <td data-label="Detalle">${detalle}</td>
           <td data-label="Origen" class="mono">${AUDITORIA_ACTOR_LABEL[r.actor] || r.actor}</td>
+          <td data-label="Usuario">${r.usuario_nombre ?? "—"}</td>
         </tr>`;
     })
     .join("");
@@ -5966,7 +5967,8 @@ const filtrosAuditoria = crearFiltros(
       tipo: "select",
       opciones: Object.entries(AUDITORIA_ACTOR_LABEL).map(([valor, texto]) => ({ valor, texto }))
     },
-    { clave: "detalle", etiqueta: "Detalle", tipo: "texto" }
+    { clave: "detalle", etiqueta: "Detalle", tipo: "texto" },
+    { clave: "usuario_nombre", etiqueta: "Usuario", tipo: "texto" }
   ],
   () => renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
 );
@@ -6069,7 +6071,7 @@ const filtrosAuditoriaMov = crearFiltros(
 );
 
 async function cargarAuditoria() {
-  tablaCargando("auditoriaBody", 6);
+  tablaCargando("auditoriaBody", 7);
   tablaCargando("auditoriaMovBody", 4);
 
   const peticiones = [fetch("/api/auditoria").then((r) => r.json())];
@@ -6098,6 +6100,189 @@ document.getElementById("btnActualizarAuditoria").addEventListener("click", () =
   cargarAuditoria();
   avisar("Auditoría actualizada.", "ok");
 });
+
+/* ---------- Usuarios (solo admin) ---------- */
+// Calcada del ABM de Cuentas de tesorería (arriba, misma estructura:
+// render + modal de alta/edición con listeners atados después del
+// innerHTML, no delegación, misma convención del resto del archivo) y de
+// Categorías (baja lógica en vez de DELETE).
+
+let usuariosCache = [];
+
+const ROL_LABEL = { admin: "Administrador", empleado: "Empleado" };
+const ROL_CLASE = { admin: "status-cobrado", empleado: "status-pendiente" };
+
+function renderUsuarios(lista) {
+  const body = document.getElementById("usuariosBody");
+
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(7, "Todavía no hay otros usuarios cargados.", {
+      accionTexto: "+ Usuario",
+      accionId: "btnNuevoUsuario"
+    });
+    return;
+  }
+
+  body.innerHTML = lista
+    .map((u) => {
+      const acciones = [`<button type="button" class="btn-editar-usuario" data-id="${u.id}">Editar</button>`];
+      if (u.activo) {
+        acciones.push(
+          `<button type="button" class="btn-resetear-usuario" data-id="${u.id}">Resetear contraseña</button>`,
+          `<button type="button" class="btn-baja-usuario" data-id="${u.id}">Dar de baja</button>`
+        );
+      } else {
+        acciones.push(`<button type="button" class="btn-reactivar-usuario" data-id="${u.id}">Reactivar</button>`);
+      }
+      return `
+        <tr class="${u.activo ? "" : "fila-anulada"}">
+          <td data-label="Usuario" class="mono">${u.usuario}</td>
+          <td data-label="Nombre">${u.nombre}</td>
+          <td data-label="Rol"><span class="status ${ROL_CLASE[u.rol] || ""}">${ROL_LABEL[u.rol] || u.rol}</span></td>
+          <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : "status-pendiente"}">${
+            u.activo ? "Activo" : "Dado de baja"
+          }</span></td>
+          <td data-label="Alta">${u.fecha_alta ? u.fecha_alta.split(" ")[0] : "—"}</td>
+          <td data-label="Último acceso">${u.ultimo_acceso ? u.ultimo_acceso.split(" ")[0] : "—"}</td>
+          <td data-label="">${acciones.join(" ")}</td>
+        </tr>`;
+    })
+    .join("");
+
+  body.querySelectorAll(".btn-editar-usuario").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      abrirModalUsuario(usuariosCache.find((u) => u.id === Number(btn.dataset.id)));
+    });
+  });
+  body.querySelectorAll(".btn-baja-usuario").forEach((btn) => {
+    btn.addEventListener("click", () => darDeBajaUsuario(Number(btn.dataset.id)));
+  });
+  body.querySelectorAll(".btn-reactivar-usuario").forEach((btn) => {
+    btn.addEventListener("click", () => reactivarUsuario(Number(btn.dataset.id)));
+  });
+  body.querySelectorAll(".btn-resetear-usuario").forEach((btn) => {
+    btn.addEventListener("click", () => resetearPasswordUsuario(Number(btn.dataset.id)));
+  });
+}
+
+async function cargarUsuarios() {
+  tablaCargando("usuariosBody", 7);
+  // A diferencia del resto de las lecturas del archivo, este endpoint
+  // puede dar 403 (si por algún motivo lo llama un empleado): chequear
+  // res.ok antes de asumir que el cuerpo es la lista.
+  const res = await fetch("/api/usuarios");
+  if (!res.ok) return;
+  usuariosCache = await res.json();
+  renderUsuarios(usuariosCache);
+}
+
+/* --- Modal de usuario (alta y edición) --- */
+
+const modalUsuario = document.getElementById("modalUsuario");
+let usuarioEditandoId = null;
+
+function abrirModalUsuario(usuario = null) {
+  usuarioEditandoId = usuario?.id ?? null;
+  const form = document.getElementById("formUsuario");
+  document.getElementById("modalUsuarioTitulo").textContent = usuario ? "Editar usuario" : "Nuevo usuario";
+  form.usuarioUsuario.value = usuario?.usuario ?? "";
+  form.usuarioNombre.value = usuario?.nombre ?? "";
+  form.usuarioRol.value = usuario?.rol ?? "empleado";
+  form.usuarioPassword.value = "";
+  // El usuario de login no se cambia en edición (es la clave con la que
+  // inicia sesión); la contraseña tampoco se toca acá, para eso está el
+  // botón "Resetear contraseña" en la fila.
+  form.usuarioUsuario.disabled = !!usuario;
+  document.getElementById("usuarioPasswordLabel").hidden = !!usuario;
+  modalUsuario.hidden = false;
+}
+
+document.getElementById("btnNuevoUsuario").addEventListener("click", () => abrirModalUsuario());
+document.getElementById("modalUsuarioClose").addEventListener("click", () => {
+  modalUsuario.hidden = true;
+});
+modalUsuario.addEventListener("click", (e) => {
+  if (e.target === modalUsuario) modalUsuario.hidden = true;
+});
+
+document.getElementById("formUsuario").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const eraEdicion = usuarioEditandoId !== null;
+
+  const res = await fetch(eraEdicion ? `/api/usuarios/${usuarioEditandoId}` : "/api/usuarios", {
+    method: eraEdicion ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      eraEdicion
+        ? { nombre: form.usuarioNombre.value, rol: form.usuarioRol.value }
+        : {
+            usuario: form.usuarioUsuario.value,
+            nombre: form.usuarioNombre.value,
+            password: form.usuarioPassword.value,
+            rol: form.usuarioRol.value
+          }
+    )
+  });
+  if (!(await manejarError(res, "No se pudo guardar el usuario."))) return;
+
+  await cargarUsuarios();
+  form.reset();
+  modalUsuario.hidden = true;
+  avisar(eraEdicion ? "Usuario actualizado." : "Usuario creado.", "ok");
+});
+
+async function darDeBajaUsuario(id) {
+  const usuario = usuariosCache.find((u) => u.id === id);
+  const ok = await confirmar({
+    titulo: "Dar de baja usuario",
+    cuerpo: `"${usuario?.nombre}" no va a poder ingresar a Nexo. Se va a cerrar su sesión en el acto si la tiene abierta.`,
+    aceptar: "Dar de baja",
+    destructivo: true
+  });
+  if (!ok) return;
+
+  const res = await fetch(`/api/usuarios/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ activo: false })
+  });
+  if (!(await manejarError(res, "No se pudo dar de baja al usuario."))) return;
+
+  await cargarUsuarios();
+  avisar("Usuario dado de baja.", "ok");
+}
+
+async function reactivarUsuario(id) {
+  const res = await fetch(`/api/usuarios/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ activo: true })
+  });
+  if (!(await manejarError(res, "No se pudo reactivar al usuario."))) return;
+
+  await cargarUsuarios();
+  avisar("Usuario reactivado.", "ok");
+}
+
+async function resetearPasswordUsuario(id) {
+  const usuario = usuariosCache.find((u) => u.id === id);
+  const nueva = prompt(`Nueva contraseña temporal para "${usuario?.nombre}" (mínimo 8 caracteres):`);
+  if (!nueva) return;
+  if (nueva.length < 8) {
+    avisar("La contraseña tiene que tener al menos 8 caracteres.", "error");
+    return;
+  }
+
+  const res = await fetch(`/api/usuarios/${id}/resetear-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: nueva })
+  });
+  if (!(await manejarError(res, "No se pudo resetear la contraseña."))) return;
+
+  avisar(`Contraseña reseteada. Se le va a pedir que la cambie en su próximo ingreso.`, "ok");
+}
 
 /* ---------- Papelera ---------- */
 
@@ -6218,14 +6403,11 @@ btnTema.addEventListener("click", () => {
 
 /* ---------- Configuración (todavía sin preferencias reales) ---------- */
 
-// El botón de engranaje y el círculo de perfil abren el mismo modal por
-// ahora: cuando haya preferencias de verdad (foto de perfil, datos del
-// negocio), cada uno puede llevar directo a su sección correspondiente.
+// El engranaje sigue abriendo el modal vacío de Configuración. El
+// círculo de perfil (#btnPerfil) dejó de compartirlo: desde la etapa de
+// usuarios abre #modalPerfil, con el menú de cuenta real (ver más abajo).
 const modalConfiguracion = document.getElementById("modalConfiguracion");
 document.getElementById("btnConfiguracion").addEventListener("click", () => {
-  modalConfiguracion.hidden = false;
-});
-document.getElementById("btnPerfil").addEventListener("click", () => {
   modalConfiguracion.hidden = false;
 });
 document.getElementById("modalConfiguracionClose").addEventListener("click", () => {
@@ -6233,6 +6415,62 @@ document.getElementById("modalConfiguracionClose").addEventListener("click", () 
 });
 modalConfiguracion.addEventListener("click", (e) => {
   if (e.target === modalConfiguracion) modalConfiguracion.hidden = true;
+});
+
+/* ---------- Menú de perfil (mi cuenta) ---------- */
+
+const modalPerfil = document.getElementById("modalPerfil");
+document.getElementById("btnPerfil").addEventListener("click", () => {
+  // Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
+  // data-usuario-nombre/data-usuario-rol en el pie de la sidebar) —
+  // leerlos de ahí evita un fetch propio solo para mostrar el modal.
+  document.getElementById("perfilNombre").textContent =
+    document.querySelector("[data-usuario-nombre]")?.textContent ?? "—";
+  const rol = document.documentElement.dataset.rol;
+  const perfilRolEl = document.getElementById("perfilRol");
+  perfilRolEl.textContent = rol === "admin" ? "Administrador" : "Empleado";
+  perfilRolEl.className = `status ${rol === "admin" ? "status-cobrado" : "status-pendiente"}`;
+  modalPerfil.hidden = false;
+});
+document.getElementById("modalPerfilClose").addEventListener("click", () => {
+  modalPerfil.hidden = true;
+});
+modalPerfil.addEventListener("click", (e) => {
+  if (e.target === modalPerfil) modalPerfil.hidden = true;
+});
+
+document.getElementById("formCambioPassword").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const errorEl = document.getElementById("cambioPasswordError");
+  errorEl.hidden = true;
+
+  const res = await fetch("/api/auth/cambiar-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actual: form.perfilPasswordActual.value,
+      nueva: form.perfilPasswordNueva.value
+    })
+  });
+  if (!res.ok) {
+    const datos = await res.json().catch(() => ({}));
+    errorEl.textContent = datos.error || "No se pudo cambiar la contraseña.";
+    errorEl.hidden = false;
+    return;
+  }
+
+  form.reset();
+  modalPerfil.hidden = true;
+  avisar("Contraseña actualizada.", "ok");
+});
+
+document.getElementById("btnCerrarSesion").addEventListener("click", () => {
+  // nexoCerrarSesion la expone sesion.js (que cargó antes que este
+  // archivo): hace el POST de logout y recarga la página — más simple y
+  // más seguro que intentar desmontar los listeners de este archivo a
+  // mano.
+  window.nexoCerrarSesion?.();
 });
 
 /* ---------- Colapsar sidebar (pantalla completa en desktop) ---------- */
@@ -6292,6 +6530,7 @@ const VISTAS_CONSTRUIDAS = {
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
   papelera: { titulo: "Papelera", dominio: "Papelera" },
   auditoria: { titulo: "Auditoría", dominio: "Auditoría" },
+  usuarios: { titulo: "Usuarios", dominio: "Administración" },
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
@@ -6312,6 +6551,14 @@ const VISTAS_CONSTRUIDAS = {
 };
 
 function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
+  // Un deep-link #/usuarios escrito a mano por un empleado cae a
+  // dashboard, igual que un click de nav (el ítem está oculto por CSS,
+  // pero el hash igual se puede tipear). Es solo UI: el servidor
+  // responde 403 igual si se llama a /api/usuarios directo.
+  if (viewId === "usuarios" && document.documentElement.dataset.rol !== "admin") {
+    viewId = "dashboard";
+  }
+
   document.querySelectorAll(".view").forEach((sec) => {
     sec.hidden = sec.dataset.view !== viewId;
   });
@@ -6326,6 +6573,12 @@ function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
   // botón "Actualizar" del panel (ver activarAuditoria) cubre lo que
   // cambió mientras la vista ya estaba abierta.
   if (viewId === "auditoria") cargarAuditoria();
+  // Misma excepción y mismo motivo que Auditoría arriba: es
+  // administración ocasional, no un panel que se mira mientras se opera.
+  // No entra en la cadena de Promise.all del boot (más abajo en este
+  // archivo) a propósito — un empleado recibiría 403 en cada arranque si
+  // estuviera ahí.
+  if (viewId === "usuarios") cargarUsuarios();
 
   const info = VISTAS_CONSTRUIDAS[viewId];
   const tituloFinal = titulo ?? info?.titulo;

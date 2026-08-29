@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 
@@ -15,6 +16,353 @@ app.use(express.static(path.join(__dirname, '..', 'frontend')));
 // favicon no serían alcanzables por HTTP. Es una ruta estática de solo
 // lectura, no toca lógica ni datos.
 app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
+
+/* ---------- Usuarios, sesión y roles ---------- */
+
+// Parámetros de scrypt. N=16384/r=8/p=1 mide ~15-16 MB reales de memoria
+// (medido en la práctica), por debajo del límite default de Node (32 MB)
+// — así que en teoría alcanzaría sin más, pero se pasa maxmem explícito
+// igual: es gratis, documenta la intención, y protege si en el futuro
+// alguien sube N sin revisar el límite default. Se elige scrypt sobre
+// pbkdf2 por ser memory-hard (mucho más caro de atacar con GPU al mismo
+// costo de CPU). Es la variante SYNC (no hay scrypt async simple sin
+// pasar un callback) y bloquea el event loop ~100 ms por login — es real,
+// medido, y por eso el rate limit de abajo NO es opcional: 5 intentos
+// fallidos seguidos ya son medio segundo de servidor congelado. No migrar
+// a una versión async sin motivo: rompería la simetría con el resto del
+// archivo, que es sync de punta a punta porque node:sqlite lo es.
+const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64, maxmem: 64 * 1024 * 1024 };
+
+function hashPassword(password) {
+  const salt = randomBytes(16);
+  // NFKC: una contraseña con acentos puede llegar en NFC o NFD según el
+  // teclado/SO de quien tipea, y sin normalizar no matchearía consigo
+  // misma entre el alta y un login posterior.
+  const hash = scryptSync(password.normalize('NFKC'), salt, SCRYPT.keylen, SCRYPT);
+  return { hash: hash.toString('hex'), salt: salt.toString('hex') };
+}
+
+function verificarPassword(password, hashHex, saltHex) {
+  const salt = Buffer.from(saltHex, 'hex');
+  const calculado = scryptSync(password.normalize('NFKC'), salt, SCRYPT.keylen, SCRYPT);
+  const esperado = Buffer.from(hashHex, 'hex');
+  // timingSafeEqual tira si los buffers difieren en longitud, así que hay
+  // que chequear eso antes en vez de dejar que lance.
+  if (calculado.length !== esperado.length) return false;
+  return timingSafeEqual(calculado, esperado);
+}
+
+// Hash de un password que nunca es real, calculado una sola vez al
+// bootear. Sin esto, el login respondería instantáneo para un usuario
+// que no existe (nunca llega a calcular un scrypt) y ~100ms más lento
+// para uno que sí existe, revelando por temporización qué usuarios hay
+// dados de alta. Con esto, ambos casos hacen el mismo trabajo.
+const HASH_DUMMY = hashPassword('nexo-usuario-inexistente-' + randomBytes(8).toString('hex'));
+
+// Parser mínimo de la cookie de sesión, en vez de instalar el paquete
+// `cookie-parser` para un solo campo. `indexOf` (no `split('=')`) porque
+// un valor de cookie podría contener '=' (no es el caso acá, pero es más
+// robusto no asumirlo).
+function leerCookie(req, nombre) {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  for (const parte of header.split(';')) {
+    const trimmed = parte.trim();
+    const igual = trimmed.indexOf('=');
+    if (igual === -1) continue;
+    if (trimmed.slice(0, igual) === nombre) return trimmed.slice(igual + 1);
+  }
+  return null;
+}
+
+const COOKIE_SESION = 'nexo_sesion';
+const SESION_HORAS = 12;
+
+function ponerCookieSesion(res, token) {
+  // httpOnly: inalcanzable desde JS — importa porque varias tablas del
+  // frontend interpolan texto sin escapar, así que una cookie legible
+  // por JS sería un vector de XSS más grave de lo habitual. sameSite:lax
+  // cubre CSRF sin necesitar un token aparte en same-origin. secure debe
+  // ser false en http://localhost (si no, el navegador la descarta
+  // directamente) y solo se activa en producción real con HTTPS.
+  res.cookie(COOKIE_SESION, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESION_HORAS * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+  });
+}
+
+function borrarCookieSesion(res) {
+  res.clearCookie(COOKIE_SESION, { path: '/' });
+}
+
+function crearSesion(usuarioId) {
+  const token = randomBytes(32).toString('hex');
+  db.prepare(
+    `INSERT INTO sesiones (token, usuario_id, expira)
+     VALUES (?, ?, datetime('now', '+${SESION_HORAS} hours'))`
+  ).run(token, usuarioId);
+  return token;
+}
+
+// Tabla de sesiones en vez de token firmado (JWT): dar de baja a un
+// empleado o resetearle la contraseña borra sus filas de `sesiones`, y
+// eso lo saca del sistema en el próximo request — con un JWT seguiría
+// operando hasta que el token expirara por su cuenta. En un sistema que
+// maneja plata y audita todo, esa demora no es aceptable.
+function sesionValida(token) {
+  if (!token) return null;
+  const fila = db
+    .prepare(
+      `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.rol,
+              usuarios.debe_cambiar_password
+         FROM sesiones
+         JOIN usuarios ON usuarios.id = sesiones.usuario_id
+        WHERE sesiones.token = ?
+          AND sesiones.expira > datetime('now')
+          AND usuarios.activo = 1`
+    )
+    .get(token);
+  return fila ?? null;
+}
+
+function renovarSesion(token) {
+  db.prepare(`UPDATE sesiones SET expira = datetime('now', '+${SESION_HORAS} hours') WHERE token = ?`).run(
+    token
+  );
+}
+
+// Wrapper de registrarAuditoria que agrega automáticamente quién operó.
+// Explícito, no AsyncLocalStorage: como `req` ya está en scope en los ~44
+// sitios que auditan (todos viven dentro de un handler `(req, res) => {`),
+// alcanza con este helper de una línea y un reemplazo mecánico de
+// `registrarAuditoria({` a `auditar(req, {` en cada uno. AsyncLocalStorage
+// sería magia implícita en un proyecto que tiene todo el SQL a la vista, y
+// además código que corriera fuera de su contexto auditaría con
+// usuario_id NULL en silencio, sin ningún error que lo delate.
+//
+// Se descarta de plano una variable de módulo con "el usuario en curso":
+// los handlers del asistente hacen `await` sobre una llamada de red a
+// Gemini, así que dos requests concurrentes (dos usuarios distintos
+// operando al mismo tiempo) se pisarían esa variable entre sí y
+// auditarían la operación de uno a nombre del otro — corrupción de datos
+// en el sistema que existe justamente para evitar corrupción de datos.
+//
+// Los 4 sitios del asistente conservan actor:'asistente' Y ADEMÁS llevan
+// usuario_id: fue el asistente la vía de entrada, pero fue esa persona
+// quien confirmó la operación propuesta. Es exactamente la distinción que
+// justifica tener las dos columnas en vez de una sola.
+function auditar(req, datos) {
+  return registrarAuditoria({ ...datos, usuario_id: req.usuario?.id ?? null });
+}
+
+function autenticar(req, res, next) {
+  const token = leerCookie(req, COOKIE_SESION);
+  const sesion = sesionValida(token);
+  if (!sesion) {
+    // 401 JSON, nunca HTML ni redirect: quien llama acá es siempre
+    // fetch() desde el frontend, no una navegación de browser.
+    return res.status(401).json({ error: 'Sesión no válida. Iniciá sesión de nuevo.' });
+  }
+  req.usuario = sesion;
+  renovarSesion(token);
+  next();
+}
+
+function soloAdmin(req, res, next) {
+  // 403, no 401: distinción a propósito. El frontend trata 401 como
+  // "mostrar la pantalla de login" y 403 como "estás logueado pero no
+  // tenés permiso para esto".
+  if (req.usuario?.rol !== 'admin') {
+    return res.status(403).json({ error: 'Necesitás ser administrador para esto.' });
+  }
+  next();
+}
+
+// Rate limit del login en memoria (no en base: es efímero a propósito).
+// No es defensa contra un atacante determinado — es para que un script
+// tonto no pueda bloquear el event loop corriendo scryptSync cientos de
+// veces por segundo contra el mismo usuario.
+const INTENTOS_MAX = 5;
+const INTENTOS_VENTANA_MS = 15 * 60 * 1000;
+const intentosLogin = new Map();
+
+function bloqueado(usuario) {
+  const registro = intentosLogin.get(usuario.toLowerCase());
+  if (!registro) return false;
+  if (Date.now() - registro.desde > INTENTOS_VENTANA_MS) {
+    intentosLogin.delete(usuario.toLowerCase());
+    return false;
+  }
+  return registro.fallos >= INTENTOS_MAX;
+}
+
+function registrarIntentoFallido(usuario) {
+  const clave = usuario.toLowerCase();
+  const registro = intentosLogin.get(clave);
+  if (!registro || Date.now() - registro.desde > INTENTOS_VENTANA_MS) {
+    intentosLogin.set(clave, { fallos: 1, desde: Date.now() });
+  } else {
+    registro.fallos += 1;
+  }
+}
+
+function limpiarIntentos(usuario) {
+  intentosLogin.delete(usuario.toLowerCase());
+}
+
+function contarAdminsActivos() {
+  return db.prepare("SELECT COUNT(*) AS count FROM usuarios WHERE rol = 'admin' AND activo = 1").get()
+    .count;
+}
+
+function organizacionUnica() {
+  return db.prepare('SELECT id FROM organizaciones ORDER BY id LIMIT 1').get().id;
+}
+
+/* ---------- Auth: endpoints públicos (sin sesión) ---------- */
+// Declarados ANTES de app.use('/api', autenticar) más abajo — por eso
+// quedan fuera de la protección. Son los únicos tres que un cliente sin
+// cookie puede llamar.
+
+app.get('/api/auth/estado', (req, res) => {
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+  if (count === 0) {
+    return res.json({ requiere_bootstrap: true, autenticado: false, usuario: null });
+  }
+  const token = leerCookie(req, COOKIE_SESION);
+  const sesion = sesionValida(token);
+  if (!sesion) {
+    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null });
+  }
+  renovarSesion(token);
+  res.json({
+    requiere_bootstrap: false,
+    autenticado: true,
+    usuario: {
+      id: sesion.id,
+      usuario: sesion.usuario,
+      nombre: sesion.nombre,
+      rol: sesion.rol,
+      debe_cambiar_password: !!sesion.debe_cambiar_password
+    }
+  });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { usuario, password } = req.body ?? {};
+  if (!usuario || !password) {
+    return res.status(400).json({ error: 'Usuario y contraseña son obligatorios.' });
+  }
+  if (bloqueado(usuario)) {
+    return res.status(429).json({ error: 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.' });
+  }
+
+  const fila = db
+    .prepare(
+      `SELECT id, nombre, rol, password_hash, password_salt, debe_cambiar_password
+         FROM usuarios
+        WHERE LOWER(usuario) = LOWER(?) AND activo = 1`
+    )
+    .get(usuario);
+
+  // Mensaje idéntico para "no existe" y "contraseña mala" — no hay que
+  // darle a quien intenta loguearse ninguna pista de cuál de las dos fue.
+  // Se verifica igual contra HASH_DUMMY cuando no existe, para que el
+  // tiempo de respuesta tampoco lo revele.
+  const MENSAJE_ERROR = 'Usuario o contraseña incorrectos.';
+
+  if (!fila) {
+    verificarPassword(password, HASH_DUMMY.hash, HASH_DUMMY.salt);
+    registrarIntentoFallido(usuario);
+    return res.status(401).json({ error: MENSAJE_ERROR });
+  }
+
+  const ok = verificarPassword(password, fila.password_hash, fila.password_salt);
+  if (!ok) {
+    registrarIntentoFallido(usuario);
+    return res.status(401).json({ error: MENSAJE_ERROR });
+  }
+
+  limpiarIntentos(usuario);
+  const token = crearSesion(fila.id);
+  ponerCookieSesion(res, token);
+  db.prepare("UPDATE usuarios SET ultimo_acceso = datetime('now') WHERE id = ?").run(fila.id);
+
+  res.json({
+    usuario: {
+      id: fila.id,
+      usuario: usuario,
+      nombre: fila.nombre,
+      rol: fila.rol,
+      debe_cambiar_password: !!fila.debe_cambiar_password
+    }
+  });
+});
+
+// Riesgo aceptado y documentado acá para que no se lea como un olvido:
+// entre el primer arranque del sistema y el primer alta de admin,
+// cualquiera con acceso a localhost:3000 puede llamar a este endpoint y
+// crearse como administrador. En un sistema que corre en la máquina del
+// negocio, sin exposición a internet, se considera aceptable — la
+// alternativa (contraseña por defecto tipo admin/admin, o una variable de
+// entorno) es peor: el proyecto ya tiene el precedente de GEMINI_API_KEY,
+// que se pierde entre reinicios porque nunca se guarda en disco.
+app.post('/api/auth/bootstrap', (req, res) => {
+  const { usuario, nombre, password } = req.body ?? {};
+  if (!usuario || !nombre || !password) {
+    return res.status(400).json({ error: 'Usuario, nombre y contraseña son obligatorios.' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
+  }
+
+  // Revalida en el servidor la misma condición que /api/auth/estado
+  // reportó — nunca confiar en que el frontend la respetó.
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+  if (count > 0) {
+    return res.status(409).json({ error: 'Ya existe un administrador. El bootstrap no está disponible.' });
+  }
+
+  let usuarioId;
+  withTransaction(() => {
+    const orgId = organizacionUnica();
+    const { hash, salt } = hashPassword(password);
+    const info = db
+      .prepare(
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, rol, debe_cambiar_password)
+         VALUES (?, ?, ?, ?, ?, 'admin', 0)`
+      )
+      .run(orgId, usuario, nombre, hash, salt);
+    usuarioId = Number(info.lastInsertRowid);
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'usuario',
+      entidad_id: usuarioId,
+      usuario_id: usuarioId,
+      detalle: `Primer administrador creado: ${nombre} (${usuario})`
+    });
+  });
+
+  const token = crearSesion(usuarioId);
+  ponerCookieSesion(res, token);
+  res.status(201).json({ usuario: { id: usuarioId, usuario, nombre, rol: 'admin', debe_cambiar_password: false } });
+});
+
+// A partir de acá, TODO /api/* requiere sesión — los únicos tres
+// endpoints que no la necesitan son los de arriba (estado/login/
+// bootstrap), declarados antes de este montaje. Los 82 endpoints de
+// negocio son app.METHOD planos bajo /api, así que este único middleware
+// los cubre a todos, y cualquier ruta nueva que se agregue en el futuro
+// nace protegida por default sin tener que acordarse de nada.
+//
+// Lo estático (index.html, css/, js/, /assets) queda deliberadamente
+// público — no contiene datos del negocio, y protegerlo obligaría a
+// servir la pantalla de login por una vía separada del resto de la app.
+// Todos los datos reales están detrás de /api.
+app.use('/api', autenticar);
 
 // Compara la fila de antes de un UPDATE contra los campos nuevos y
 // devuelve solo lo que cambió, listo para valor_anterior/valor_nuevo de
@@ -137,7 +485,7 @@ app.patch('/api/clientes/:id', (req, res) => {
       'UPDATE clientes SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ? WHERE id = ?'
     ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, clienteId);
     if (cambios) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'editar',
         entidad: 'cliente',
         entidad_id: clienteId,
@@ -259,7 +607,7 @@ app.post('/api/facturas', (req, res) => {
       )
       .run(clienteRow.id, concepto, neto, condicion, tipoFinal, letraFinal, puntoVentaFinal, numero);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'factura',
       entidad_id: lastInsertRowid,
@@ -332,7 +680,7 @@ app.patch('/api/categorias/:id', (req, res) => {
       categoriaId
     );
     if (cambios) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'editar',
         entidad: 'categoria',
         entidad_id: categoriaId,
@@ -517,7 +865,7 @@ app.patch('/api/productos/:id', (req, res) => {
         productoId
       );
       if (cambios) {
-        registrarAuditoria({
+        auditar(req, {
           accion: 'editar',
           entidad: 'producto',
           entidad_id: productoId,
@@ -689,7 +1037,7 @@ app.patch('/api/proveedores/:id', (req, res) => {
         WHERE id = ?`
     ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, proveedorId);
     if (cambios) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'editar',
         entidad: 'proveedor',
         entidad_id: proveedorId,
@@ -751,7 +1099,7 @@ app.post('/api/stock/ajuste', (req, res) => {
         "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, nota) VALUES (?, 'ajuste', ?, 'ajuste_manual', ?)"
       )
       .run(producto_id, Number(cantidad), nota ?? null));
-    registrarAuditoria({
+    auditar(req, {
       accion: 'editar',
       entidad: 'stock',
       entidad_id: Number(producto_id),
@@ -1010,7 +1358,7 @@ app.post('/api/ventas', (req, res) => {
 
   const ventaId = withTransaction(() => {
     const id = crearVenta({ cliente, cliente_id, items, fecha });
-    registrarAuditoria({ accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
+    auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
     return id;
   });
 
@@ -1170,7 +1518,7 @@ app.put('/api/ventas/:id', (req, res) => {
     insertAjusteCC.run(venta.cliente_id, -totalViejo, ventaId);
     insertAjusteCC.run(clienteRow.id, total, ventaId);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'editar',
       entidad: 'venta',
       entidad_id: ventaId,
@@ -1229,7 +1577,7 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
 
   const cobroId = withTransaction(() => {
     const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'cobro',
       entidad_id: id,
@@ -1299,7 +1647,7 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
         )
         .run(venta.cliente_id, `Venta #${ventaId}`, total, condicion, ventaId, tipoFinal, letraFinal, puntoVentaFinal, numero);
 
-      registrarAuditoria({
+      auditar(req, {
         accion: 'crear',
         entidad: 'factura',
         entidad_id: lastInsertRowid,
@@ -1377,7 +1725,7 @@ app.post('/api/ventas/:id/anular', (req, res) => {
       "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
     ).run(venta.cliente_id, -total, ventaId);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'anular',
       entidad: 'venta',
       entidad_id: ventaId,
@@ -1436,7 +1784,7 @@ app.post('/api/ventas/:id/restaurar', (req, res) => {
       "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
     ).run(venta.cliente_id, total, ventaId);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'restaurar',
       entidad: 'venta',
       entidad_id: ventaId,
@@ -1596,7 +1944,7 @@ app.post('/api/presupuestos', (req, res) => {
       .run(...valores);
 
     guardarItemsPresupuesto(nuevoId, items);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'presupuesto',
       entidad_id: nuevoId,
@@ -1646,7 +1994,7 @@ app.put('/api/presupuestos/:id', (req, res) => {
     db.prepare('DELETE FROM presupuesto_items WHERE presupuesto_id = ?').run(presupuestoId);
     guardarItemsPresupuesto(presupuestoId, items);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'editar',
       entidad: 'presupuesto',
       entidad_id: presupuestoId,
@@ -1682,7 +2030,7 @@ app.patch('/api/presupuestos/:id/estado', (req, res) => {
   withTransaction(() => {
     db.prepare('UPDATE presupuestos SET estado = ? WHERE id = ?').run(estado, presupuestoId);
     if (estado !== presupuesto.estado) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'cambiar_estado',
         entidad: 'presupuesto',
         entidad_id: presupuestoId,
@@ -1742,7 +2090,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       nuevaVentaId,
       presupuestoId
     );
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'venta',
       entidad_id: nuevaVentaId,
@@ -1750,7 +2098,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       operacion_id: presupuestoId,
       detalle: `Venta #${nuevaVentaId} creada al convertir el presupuesto #${presupuestoId}`
     });
-    registrarAuditoria({
+    auditar(req, {
       accion: 'cambiar_estado',
       entidad: 'presupuesto',
       entidad_id: presupuestoId,
@@ -2031,7 +2379,7 @@ app.post('/api/devoluciones', (req, res) => {
     }
 
     aplicarDevolucion(nuevaId);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'devolucion',
       entidad_id: nuevaId,
@@ -2087,7 +2435,7 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
            VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?)`
         )
         .run(devolucion.cliente_id, `Devolución #${devolucionId}`, total, condicion || 'efectivo', devolucionId, letraFinal, puntoVentaFinal, numero);
-      registrarAuditoria({
+      auditar(req, {
         accion: 'crear',
         entidad: 'factura',
         entidad_id: lastInsertRowid,
@@ -2131,7 +2479,7 @@ app.post('/api/devoluciones/:id/anular', (req, res) => {
   withTransaction(() => {
     revertirDevolucion(devolucionId);
     db.prepare("UPDATE devoluciones SET estado = 'anulada' WHERE id = ?").run(devolucionId);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'anular',
       entidad: 'devolucion',
       entidad_id: devolucionId,
@@ -2180,7 +2528,7 @@ app.post('/api/devoluciones/:id/restaurar', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE devoluciones SET estado = 'activa' WHERE id = ?").run(devolucionId);
     aplicarDevolucion(devolucionId);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'restaurar',
       entidad: 'devolucion',
       entidad_id: devolucionId,
@@ -2402,7 +2750,7 @@ app.post('/api/compras', (req, res) => {
 
   const compraId = withTransaction(() => {
     const id = crearCompra({ proveedor, items, costoEnvio, fecha });
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'compra',
       entidad_id: id,
@@ -2598,7 +2946,7 @@ app.put('/api/compras/:id', (req, res) => {
       }
     }
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'editar',
       entidad: 'compra',
       entidad_id: compraId,
@@ -2643,7 +2991,7 @@ app.post('/api/compras/:id/confirmar', (req, res) => {
 
   withTransaction(() => {
     confirmarCompra(compraId);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'confirmar',
       entidad: 'compra',
       entidad_id: compraId,
@@ -2814,7 +3162,7 @@ app.post('/api/compras/:id/anular', (req, res) => {
       ).run(compra.proveedor_id, -(subtotal + compra.costo_envio), compraId);
     }
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'anular',
       entidad: 'compra',
       entidad_id: compraId,
@@ -2852,7 +3200,7 @@ app.post('/api/compras/:id/restaurar', (req, res) => {
   if (!fueEfectuada) {
     withTransaction(() => {
       db.prepare("UPDATE compras SET estado = 'borrador' WHERE id = ?").run(compraId);
-      registrarAuditoria({
+      auditar(req, {
         accion: 'restaurar',
         entidad: 'compra',
         entidad_id: compraId,
@@ -2879,7 +3227,7 @@ app.post('/api/compras/:id/restaurar', (req, res) => {
       aplicarStockCompra(compraId);
     }
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'restaurar',
       entidad: 'compra',
       entidad_id: compraId,
@@ -2929,7 +3277,7 @@ app.patch('/api/compras/:id/estado-envio', (req, res) => {
       aplicarStockCompra(compraId);
     }
     if (estado_envio !== compra.estado_envio) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'cambiar_estado',
         entidad: 'compra',
         entidad_id: compraId,
@@ -2999,7 +3347,7 @@ app.post('/api/compras/:id/pagos', (req, res) => {
       "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, pago_id) VALUES (?, 'pago', ?, ?, ?)"
     ).run(compra.proveedor_id, -importe, compraId, nuevoPagoId);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'pago',
       entidad_id: nuevoPagoId,
@@ -3307,7 +3655,7 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
     }
 
     aplicarDevolucionProveedor(nuevaId);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'devolucion_proveedor',
       entidad_id: nuevaId,
@@ -3376,7 +3724,7 @@ app.post('/api/devoluciones-proveedor/:id/anular', (req, res) => {
   withTransaction(() => {
     revertirDevolucionProveedor(id);
     db.prepare("UPDATE devoluciones_proveedor SET estado = 'anulada' WHERE id = ?").run(id);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'anular',
       entidad: 'devolucion_proveedor',
       entidad_id: id,
@@ -3423,7 +3771,7 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE devoluciones_proveedor SET estado = 'activa' WHERE id = ?").run(id);
     aplicarDevolucionProveedor(id);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'restaurar',
       entidad: 'devolucion_proveedor',
       entidad_id: id,
@@ -3508,7 +3856,7 @@ app.patch('/api/cuentas-tesoreria/:id', (req, res) => {
       cuentaId
     );
     if (cambios) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'editar',
         entidad: 'cuenta_tesoreria',
         entidad_id: cuentaId,
@@ -3624,7 +3972,7 @@ app.post('/api/tesoreria/movimientos', (req, res) => {
           .join(', ')})`
       )
       .run(...valores));
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'tesoreria',
       entidad_id: lastInsertRowid,
@@ -3682,7 +4030,7 @@ app.post('/api/tesoreria/transferencias', (req, res) => {
     db.prepare('UPDATE movimientos_tesoreria SET transferencia_id = ? WHERE id = ?').run(egresoId, egresoId);
     insertMovimiento(cuentaDestino.id, 'ingreso', egresoId);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'crear',
       entidad: 'tesoreria',
       entidad_id: egresoId,
@@ -3767,7 +4115,7 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
       categoriaId
     );
     if (cambios) {
-      registrarAuditoria({
+      auditar(req, {
         accion: 'editar',
         entidad: 'categoria_gasto',
         entidad_id: categoriaId,
@@ -3849,7 +4197,7 @@ app.post('/api/gastos', (req, res) => {
 
   const gastoId = withTransaction(() => {
     const id = crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante });
-    registrarAuditoria({ accion: 'crear', entidad: 'gasto', entidad_id: id, detalle: `Gasto #${id} creado` });
+    auditar(req, { accion: 'crear', entidad: 'gasto', entidad_id: id, detalle: `Gasto #${id} creado` });
     return id;
   });
 
@@ -3933,7 +4281,7 @@ app.put('/api/gastos/:id', (req, res) => {
     db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
     insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion);
 
-    registrarAuditoria({
+    auditar(req, {
       accion: 'editar',
       entidad: 'gasto',
       entidad_id: gastoId,
@@ -3958,7 +4306,7 @@ app.post('/api/gastos/:id/anular', (req, res) => {
     db.prepare("UPDATE gastos SET estado = 'anulado' WHERE id = ?").run(gastoId);
     // La plata vuelve a la cuenta: se saca el egreso que lo había bajado.
     db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
-    registrarAuditoria({
+    auditar(req, {
       accion: 'anular',
       entidad: 'gasto',
       entidad_id: gastoId,
@@ -3990,7 +4338,7 @@ app.post('/api/gastos/:id/restaurar', (req, res) => {
       gasto.fecha,
       gasto.descripcion
     );
-    registrarAuditoria({
+    auditar(req, {
       accion: 'restaurar',
       entidad: 'gasto',
       entidad_id: gastoId,
@@ -5114,7 +5462,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           items,
           fecha: propuesta.fecha
         });
-        registrarAuditoria({
+        auditar(req, {
           accion: 'crear',
           entidad: 'venta',
           entidad_id: nuevaVentaId,
@@ -5128,7 +5476,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
             .prepare('SELECT cliente_id FROM ventas WHERE id = ?')
             .get(nuevaVentaId);
           const nuevoCobroId = registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente');
-          registrarAuditoria({
+          auditar(req, {
             accion: 'crear',
             entidad: 'cobro',
             entidad_id: nuevoCobroId,
@@ -5179,7 +5527,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
         const nuevaCompraId = crearCompra({ proveedor: proveedorNombre, items, costoEnvio, fecha: propuesta.fecha });
         confirmarCompra(nuevaCompraId);
         aplicarStockCompra(nuevaCompraId);
-        registrarAuditoria({
+        auditar(req, {
           accion: 'crear',
           entidad: 'compra',
           entidad_id: nuevaCompraId,
@@ -5233,7 +5581,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           descripcion: propuesta.descripcion,
           comprobante: null
         });
-        registrarAuditoria({
+        auditar(req, {
           accion: 'crear',
           entidad: 'gasto',
           entidad_id: nuevoGastoId,
@@ -5263,18 +5611,212 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 // directo desde un endpoint — exponer un POST acá sería una puerta para
 // falsificar el log. Mismo patrón que /api/movimientos-stock: trae todo
 // hasta TOPE_MOVIMIENTOS y el filtrado fino lo hace el navegador.
+// LEFT JOIN (no INNER): las filas de auditoría anteriores a la etapa de
+// usuarios tienen usuario_id NULL, y con INNER desaparecerían del
+// listado en vez de mostrar "—". Columnas calificadas con auditoria.*
+// porque las dos tablas comparten la columna id — sin calificar, el id
+// que llega al frontend podría terminar siendo el del usuario, no el de
+// la fila de auditoría.
 app.get('/api/auditoria', (req, res) => {
   const limite = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
   const registros = db
     .prepare(
-      `SELECT id, fecha, actor, accion, entidad, entidad_id,
-              valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+      `SELECT auditoria.id, auditoria.fecha, auditoria.actor, auditoria.accion,
+              auditoria.entidad, auditoria.entidad_id, auditoria.usuario_id,
+              usuarios.nombre AS usuario_nombre,
+              auditoria.valor_anterior, auditoria.valor_nuevo,
+              auditoria.operacion_tipo, auditoria.operacion_id, auditoria.detalle
          FROM auditoria
-        ORDER BY fecha DESC, id DESC
+         LEFT JOIN usuarios ON usuarios.id = auditoria.usuario_id
+        ORDER BY auditoria.fecha DESC, auditoria.id DESC
         LIMIT ?`
     )
     .all(limite);
   res.json(registros);
+});
+
+/* ---------- Auth: sesión en curso (requieren estar logueado) ---------- */
+// Van después de app.use('/api', autenticar) más abajo, así que req.usuario
+// ya está garantizado acá.
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = leerCookie(req, COOKIE_SESION);
+  if (token) db.prepare('DELETE FROM sesiones WHERE token = ?').run(token);
+  borrarCookieSesion(res);
+  res.status(204).end();
+});
+
+app.post('/api/auth/cambiar-password', (req, res) => {
+  const { actual, nueva } = req.body ?? {};
+  if (!actual || !nueva) {
+    return res.status(400).json({ error: 'La contraseña actual y la nueva son obligatorias.' });
+  }
+  if (nueva.length < 8) {
+    return res.status(400).json({ error: 'La nueva contraseña tiene que tener al menos 8 caracteres.' });
+  }
+  const fila = db
+    .prepare('SELECT password_hash, password_salt FROM usuarios WHERE id = ?')
+    .get(req.usuario.id);
+  if (!verificarPassword(actual, fila.password_hash, fila.password_salt)) {
+    return res.status(401).json({ error: 'La contraseña actual no es correcta.' });
+  }
+
+  const token = leerCookie(req, COOKIE_SESION);
+  withTransaction(() => {
+    const { hash, salt } = hashPassword(nueva);
+    db.prepare(
+      'UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 0 WHERE id = ?'
+    ).run(hash, salt, req.usuario.id);
+    // Cierra las demás sesiones abiertas de este usuario (otro dispositivo,
+    // otra pestaña) pero conserva la actual, para no desloguear a quien
+    // acaba de cambiar su propia contraseña.
+    db.prepare('DELETE FROM sesiones WHERE usuario_id = ? AND token != ?').run(req.usuario.id, token);
+    // La contraseña nunca entra en la auditoría, ni en valor_anterior/
+    // valor_nuevo ni en detalle.
+    auditar(req, { accion: 'editar', entidad: 'usuario', entidad_id: req.usuario.id, detalle: 'Cambió su contraseña' });
+  });
+
+  res.status(204).end();
+});
+
+/* ---------- Usuarios (ABM, solo admin) ---------- */
+
+app.get('/api/usuarios', soloAdmin, (req, res) => {
+  // Nunca SELECT *: password_hash/password_salt no deben salir del backend.
+  const usuarios = db
+    .prepare(
+      `SELECT id, usuario, nombre, rol, activo, debe_cambiar_password, fecha_alta, ultimo_acceso
+         FROM usuarios
+        ORDER BY nombre`
+    )
+    .all();
+  res.json(usuarios);
+});
+
+app.post('/api/usuarios', soloAdmin, (req, res) => {
+  const { usuario, nombre, password, rol } = req.body ?? {};
+  if (!usuario || !nombre || !password) {
+    return res.status(400).json({ error: 'Usuario, nombre y contraseña son obligatorios.' });
+  }
+  if (/\s/.test(usuario)) {
+    return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
+  }
+  const rolFinal = rol === 'admin' ? 'admin' : 'empleado';
+
+  const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
+  if (existe) {
+    return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
+  }
+
+  let usuarioId;
+  withTransaction(() => {
+    const orgId = organizacionUnica();
+    const { hash, salt } = hashPassword(password);
+    // debe_cambiar_password: 1 porque la eligió el admin, no el dueño de
+    // la cuenta — se lo obliga a elegir la suya en el primer login.
+    const info = db
+      .prepare(
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, rol, debe_cambiar_password)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`
+      )
+      .run(orgId, usuario, nombre, hash, salt, rolFinal);
+    usuarioId = Number(info.lastInsertRowid);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'usuario',
+      entidad_id: usuarioId,
+      detalle: `Usuario "${nombre}" (${usuario}) creado con rol ${rolFinal}`
+    });
+  });
+
+  res.status(201).json({ id: usuarioId });
+});
+
+app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const anterior = db.prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ?').get(id);
+  if (!anterior) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+  const nuevo = {
+    nombre: req.body?.nombre ?? anterior.nombre,
+    rol: req.body?.rol ?? anterior.rol,
+    activo: req.body?.activo !== undefined ? (req.body.activo ? 1 : 0) : anterior.activo
+  };
+  if (nuevo.rol !== 'admin' && nuevo.rol !== 'empleado') {
+    return res.status(400).json({ error: 'Rol inválido.' });
+  }
+
+  // Salvaguardas en el servidor, no solo en la UI: sin esto el sistema
+  // podría quedar sin ningún admin que lo administre, y no hay registro
+  // público para recuperarse solo.
+  const eraUltimoAdmin = anterior.rol === 'admin' && anterior.activo === 1 && contarAdminsActivos() === 1;
+  const dejaDeSerAdminActivo = nuevo.rol !== 'admin' || nuevo.activo === 0;
+  if (eraUltimoAdmin && dejaDeSerAdminActivo) {
+    return res.status(409).json({ error: 'No se puede dar de baja ni degradar al último administrador activo.' });
+  }
+  if (id === req.usuario.id && nuevo.activo === 0) {
+    return res.status(409).json({ error: 'No podés darte de baja a vos mismo.' });
+  }
+
+  withTransaction(() => {
+    db.prepare('UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ?').run(
+      nuevo.nombre,
+      nuevo.rol,
+      nuevo.activo,
+      id
+    );
+    // Dar de baja echa al usuario en el acto: sin esto seguiría operando
+    // con su sesión actual hasta que expirara sola (hasta 12hs).
+    if (nuevo.activo === 0) {
+      db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(id);
+    }
+    const diff = diffCampos(anterior, nuevo, ['nombre', 'rol', 'activo']);
+    if (diff) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'usuario',
+        entidad_id: id,
+        valor_anterior: diff.anterior,
+        valor_nuevo: diff.nuevo,
+        detalle: `Usuario "${anterior.nombre}" actualizado`
+      });
+    }
+  });
+
+  res.status(204).end();
+});
+
+app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const { password } = req.body ?? {};
+  if (!password || password.length < 8) {
+    return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
+  }
+  const usuario = db.prepare('SELECT id, nombre FROM usuarios WHERE id = ?').get(id);
+  if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
+
+  withTransaction(() => {
+    const { hash, salt } = hashPassword(password);
+    db.prepare(
+      'UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1 WHERE id = ?'
+    ).run(hash, salt, id);
+    // Igual que la baja: resetear la contraseña echa al usuario en el
+    // acto, para que la sesión vieja no siga viva con la contraseña
+    // anterior todavía en la cabeza de quien la tenía.
+    db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(id);
+    // La contraseña nueva nunca entra en la auditoría.
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: id,
+      detalle: `Contraseña de "${usuario.nombre}" reseteada por el administrador`
+    });
+  });
+
+  res.status(204).end();
 });
 
 app.listen(PORT, () => {

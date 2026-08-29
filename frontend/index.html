@@ -17,6 +17,15 @@
       if (guardado) document.documentElement.setAttribute("data-tema", guardado);
       const sidebarGuardada = localStorage.getItem("nexo.sidebar");
       if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
+      // Marca cosmética para evitar el flash de la app antes de que
+      // sesion.js confirme con el servidor si hay sesión de verdad. Esto
+      // NO es seguridad: el servidor decide con la cookie httpOnly, que
+      // este script ni siquiera puede leer. Si alguien borra esta marca a
+      // mano, lo único que pasa es que ve un parpadeo — sesion.js igual
+      // pide /api/auth/estado y muestra el login si corresponde.
+      if (localStorage.getItem("nexo.sesion") !== "activa") {
+        document.documentElement.setAttribute("data-sesion", "cerrada");
+      }
     } catch {}
   </script>
 </head>
@@ -105,19 +114,34 @@
         <a href="#" class="nav-item" data-view="auditoria">
           <span class="nav-index">17</span> Auditoría
         </a>
+        <!-- Usuarios: administración, solo admin. Oculta por CSS con
+             data-rol (ver styles.css) — el servidor igual responde 403
+             si un empleado llama a /api/usuarios directo. -->
+        <a href="#" class="nav-item" data-view="usuarios">
+          <span class="nav-index">18</span> Usuarios
+        </a>
       </nav>
 
       <div class="sidebar-foot">
         <!-- Círculo de perfil: hoy es un ícono genérico, más adelante
-             (cuando se configure el perfil) va a poder llevar una foto. -->
-        <button type="button" class="perfil-avatar" id="btnPerfil" title="Configurar perfil" aria-label="Configurar perfil">
+             podría llevar una foto. Abre el menú de perfil real (nombre,
+             rol, cambiar contraseña, cerrar sesión) — antes de la etapa
+             de usuarios abría el mismo modal vacío que el engranaje de
+             al lado; ahora tienen roles distintos. -->
+        <button type="button" class="perfil-avatar" id="btnPerfil" title="Mi cuenta" aria-label="Mi cuenta">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </button>
         <div class="sidebar-foot-negocio">
-          <p>Negocio</p>
-          <strong id="businessName">Tu Pyme</strong>
+          <p data-usuario-rol>Usuario</p>
+          <strong id="businessName" data-usuario-nombre>Tu Pyme</strong>
         </div>
         <div class="sidebar-foot-botones">
+          <!-- El engranaje sigue abriendo el modal de Configuración, sin
+               ocultarlo por rol: no protege nada (está vacío, sin datos
+               del negocio), así que ocultarlo sería ruido sin beneficio.
+               La regla "el empleado no ve administración" se cumple
+               ocultando la vista Usuarios, no este botón. Cuando este
+               modal tenga preferencias reales, ahí se decide su gating. -->
           <button type="button" class="btn-tema" id="btnConfiguracion" title="Configuración" aria-label="Configuración">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
@@ -1513,6 +1537,7 @@
                 <th>N°</th>
                 <th>Detalle</th>
                 <th data-orden="actor" data-tipo="texto">Origen</th>
+                <th data-orden="usuario_nombre" data-tipo="texto">Usuario</th>
               </tr>
             </thead>
             <tbody id="auditoriaBody"></tbody>
@@ -1545,6 +1570,36 @@
         </section>
       </section>
 
+      <!-- Usuarios (solo admin): quién puede entrar a Nexo y con qué rol.
+           Oculta del nav por CSS para un empleado (ver styles.css), y el
+           servidor responde 403 igual si se llama a mano. -->
+      <section class="view" data-view="usuarios" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Usuarios</h2>
+            <div class="panel-acciones">
+              <button type="button" class="btn btn-primary" id="btnNuevoUsuario">+ Usuario</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Nombre</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                <th>Alta</th>
+                <th>Último acceso</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="usuariosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
       <!-- Vista: secciones todavía no construidas -->
       <section class="view" data-view="placeholder" hidden>
         <section class="panel">
@@ -1553,6 +1608,60 @@
       </section>
 
     </main>
+  </div>
+
+  <!-- Pantalla de sesión: login / primer arranque / cambio forzado de
+       contraseña. Hermana de .app (no adentro): .app es un grid de
+       240px 1fr, así que cualquier cosa metida ahí caería con la sidebar
+       al lado. No reusa .modal a propósito: .modal trae Escape-cierra y
+       click-afuera-cierra, que juegan en contra de una pantalla
+       bloqueante, y el observer de accesibilidad de modales se instala
+       sobre los .modal que ya existen al cargar app.js — que con este
+       gate carga después. Los tres formularios son hermanos, y
+       sesion.js alterna cuál se muestra con hidden. -->
+  <div class="sesion-pantalla" id="sesionPantalla" hidden>
+    <div class="sesion-card">
+      <img src="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" alt="" class="sesion-logo" />
+      <h1>Nexo</h1>
+
+      <form id="formLogin" class="form">
+        <p class="form-note" id="loginError" hidden></p>
+        <label>Usuario
+          <input type="text" id="loginUsuario" autocomplete="username" required />
+        </label>
+        <label>Contraseña
+          <input type="password" id="loginPassword" autocomplete="current-password" required />
+        </label>
+        <button type="submit" class="btn btn-primary">Ingresar</button>
+      </form>
+
+      <form id="formBootstrap" class="form" hidden>
+        <p class="form-note">Es la primera vez que se usa Nexo acá. Creá el primer administrador.</p>
+        <p class="form-note" id="bootstrapError" hidden></p>
+        <label>Usuario
+          <input type="text" id="bootstrapUsuario" autocomplete="username" required />
+        </label>
+        <label>Nombre
+          <input type="text" id="bootstrapNombre" autocomplete="name" required />
+        </label>
+        <label>Contraseña
+          <input type="password" id="bootstrapPassword" autocomplete="new-password" minlength="8" required />
+        </label>
+        <button type="submit" class="btn btn-primary">Crear administrador</button>
+      </form>
+
+      <form id="formCambioForzado" class="form" hidden>
+        <p class="form-note">Tenés que elegir una contraseña propia antes de seguir.</p>
+        <p class="form-note" id="cambioForzadoError" hidden></p>
+        <label>Contraseña actual
+          <input type="password" id="cambioForzadoActual" autocomplete="current-password" required />
+        </label>
+        <label>Contraseña nueva
+          <input type="password" id="cambioForzadoNueva" autocomplete="new-password" minlength="8" required />
+        </label>
+        <button type="submit" class="btn btn-primary">Cambiar contraseña</button>
+      </form>
+    </div>
   </div>
 
   <!-- Modal nueva factura (placeholder funcional) -->
@@ -2232,8 +2341,9 @@
 
   <!-- Modal de configuración — todavía sin preferencias reales, es el
        punto de entrada para cuando se sumen (foto de perfil, datos del
-       negocio, etc.). Lo abren tanto el botón de engranaje como el
-       círculo de perfil del pie de la sidebar. -->
+       negocio, etc.). Desde la etapa de usuarios lo abre solo el botón de
+       engranaje: el círculo de perfil pasó a abrir #modalPerfil, que sí
+       tiene contenido real (ver más abajo). -->
   <div class="modal" id="modalConfiguracion" role="dialog" aria-modal="true" aria-labelledby="modalConfiguracionTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
@@ -2243,6 +2353,70 @@
         </button>
       </div>
       <p class="form-note">Todavía no hay preferencias configurables acá. En una próxima etapa se van a poder ajustar cosas como la foto de perfil y los datos del negocio.</p>
+    </div>
+  </div>
+
+  <!-- Menú de perfil: quién sos, tu rol, cambiar tu propia contraseña y
+       cerrar sesión. Reemplaza el uso que #btnPerfil le daba antes a
+       #modalConfiguracion (ver comentario ahí arriba). -->
+  <div class="modal" id="modalPerfil" role="dialog" aria-modal="true" aria-labelledby="modalPerfilTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalPerfilTitulo">Mi cuenta</h3>
+        <button class="modal-close" id="modalPerfilClose" aria-label="Cerrar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="form-note">
+        <strong id="perfilNombre">—</strong>
+        <span class="status" id="perfilRol">—</span>
+      </p>
+      <form id="formCambioPassword" class="form">
+        <p class="form-note" id="cambioPasswordError" hidden></p>
+        <label>Contraseña actual
+          <input type="password" id="perfilPasswordActual" autocomplete="current-password" required />
+        </label>
+        <label>Contraseña nueva
+          <input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" required />
+        </label>
+        <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
+      </form>
+      <div class="panel-acciones">
+        <button type="button" class="btn btn-secundario" id="btnCerrarSesion">Cerrar sesión</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de alta/edición de usuario (solo admin). -->
+  <div class="modal" id="modalUsuario" role="dialog" aria-modal="true" aria-labelledby="modalUsuarioTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalUsuarioTitulo">Nuevo usuario</h3>
+        <button class="modal-close" id="modalUsuarioClose" aria-label="Cerrar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="formUsuario" class="form">
+        <input type="hidden" id="usuarioId" />
+        <label>Usuario (para el login, sin espacios)
+          <input type="text" id="usuarioUsuario" required />
+        </label>
+        <label>Nombre
+          <input type="text" id="usuarioNombre" required />
+        </label>
+        <!-- Solo en alta: en edición no se cambia la contraseña acá, para
+             eso está "Resetear contraseña" en la fila de la tabla. -->
+        <label id="usuarioPasswordLabel">Contraseña
+          <input type="password" id="usuarioPassword" minlength="8" />
+        </label>
+        <label>Rol
+          <select id="usuarioRol">
+            <option value="empleado">Empleado</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </form>
     </div>
   </div>
 
@@ -2265,6 +2439,11 @@
     </div>
   </div>
 
-  <script src="js/app.js"></script>
+  <!-- app.js NO se carga acá: sesion.js lo inyecta recién cuando confirma
+       que hay una sesión válida (ver frontend/js/sesion.js). Es el gate
+       completo del sistema — app.js no tiene ninguna guarda propia de
+       arranque, así que la única forma de garantizar que no dispare sus
+       fetches sin sesión es no cargarlo hasta tener una. -->
+  <script src="js/sesion.js"></script>
 </body>
 </html>

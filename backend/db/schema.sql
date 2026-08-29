@@ -468,12 +468,14 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
 -- UNA sola fila acá y tres en movimientos_stock: la granularidad es
 -- distinta a propósito, no hay duplicación.
 --
--- Sin sistema de usuarios (un solo operador, decisión ya tomada), así que
--- en vez de "quién" se registra "por qué vía" entró la operación (actor):
--- operador (a mano) / asistente (por la IA, ver §21) / sistema (reservado
--- para automatizaciones futuras). Cuando exista un sistema de usuarios de
--- verdad, se agrega una columna usuario_id aparte (migración aditiva);
--- actor sigue teniendo sentido igual, porque responde algo distinto.
+-- Registra "por qué vía" entró la operación (actor): operador (a mano) /
+-- asistente (por la IA, ver §21) / sistema (reservado para
+-- automatizaciones futuras). Desde la etapa de usuarios/login/roles,
+-- usuario_id registra además "quién" fue el operador humano (columna
+-- aparte, agregada por migración aditiva) — actor y usuario_id responden
+-- preguntas distintas, así que ninguno reemplaza al otro: el asistente
+-- sigue quedando con actor='asistente' Y usuario_id apuntando a quien
+-- confirmó la operación propuesta.
 --
 -- entidad_id es nullable y sin FK a propósito: es la única columna del
 -- proyecto que apunta a tablas distintas según el valor de `entidad`, y el
@@ -488,8 +490,15 @@ CREATE TABLE IF NOT EXISTS auditoria (
   entidad TEXT NOT NULL
     CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
                        'factura','cobro','pago','gasto','producto','cliente','proveedor',
-                       'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria')),
+                       'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario')),
   entidad_id INTEGER,
+  -- Quién operó, más allá de por qué vía (actor). Nullable a propósito:
+  -- las filas de antes de esta etapa no tienen a quién atribuirse, y
+  -- NULL es honesto (se muestra "—"); inventarles un admin sería
+  -- falsificar la auditoría. Sin FK con ON DELETE: un usuario dado de
+  -- baja se marca activo=0 pero nunca se borra, así que la referencia
+  -- sigue resolviendo el nombre para siempre.
+  usuario_id INTEGER REFERENCES usuarios(id),
   -- JSON con solo los campos que cambiaron, no la fila entera. Ej.:
   -- {"precio_venta":1000} -> {"precio_venta":1200}. NULL en 'crear' (no
   -- hay anterior) y en 'anular' (el nuevo estado es obvio).
@@ -506,3 +515,61 @@ CREATE TABLE IF NOT EXISTS auditoria (
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria(fecha DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_id);
+
+-- Usuarios, login y roles. Nexo pasa de "un solo operador sin identidad"
+-- a admin/empleado con sesión propia.
+--
+-- organizaciones arranca con UNA sola fila: es la preparación para vender
+-- Nexo a más de un negocio (usuarios.organizacion_id ya apunta acá), pero
+-- las ~30 tablas de datos del sistema (ventas, clientes, stock...) NO se
+-- tocan en esta etapa. El día que exista un segundo negocio, alcanza con
+-- agregar organizacion_id a esas tablas y filtrar por ella — usuarios y
+-- login no necesitan rehacerse.
+CREATE TABLE IF NOT EXISTS organizaciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  fecha_alta TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- nombre queda separado de usuario (el de login) porque la columna
+-- Usuario de la vista Auditoría tiene que mostrar "Joaquín Tosi", no
+-- "jtosi". password_hash/password_salt van en columnas propias en vez de
+-- un único string con formato PHC: el proyecto no tiene parser para ese
+-- formato, y dos columnas es más explícito e inspeccionable con SQL
+-- directo. activo es baja lógica, nunca DELETE: auditoria.usuario_id
+-- tiene que poder seguir resolviendo el nombre de un usuario dado de
+-- baja. debe_cambiar_password se usa cuando el admin resetea la
+-- contraseña de otro usuario, para forzar que la cambie en el próximo
+-- login antes de dejarlo operar.
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  usuario TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  rol TEXT NOT NULL DEFAULT 'empleado' CHECK (rol IN ('admin','empleado')),
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
+  debe_cambiar_password INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar_password IN (0,1)),
+  fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
+  ultimo_acceso TEXT
+);
+-- SQLite compara texto case-sensitive por default: sin este índice sobre
+-- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas
+-- distintas.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_usuario ON usuarios(LOWER(usuario));
+
+-- Tabla de sesiones en vez de un token firmado (JWT). Con JWT, dar de
+-- baja a un empleado no lo echa del sistema hasta que el token expire
+-- por su cuenta. Con esta tabla, DELETE FROM sesiones WHERE usuario_id=?
+-- lo saca en el próximo request — en un sistema que maneja plata y
+-- audita todo, eso no es negociable. También evita elegir un algoritmo
+-- de firma y gestionar un secreto. Las sesiones sobreviven al reinicio
+-- del proceso porque están en disco, que es lo correcto con `--watch`.
+CREATE TABLE IF NOT EXISTS sesiones (
+  token TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  creada TEXT NOT NULL DEFAULT (datetime('now')),
+  expira TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id);

@@ -1610,3 +1610,295 @@ proyecto). Verificado:
   como dependencia si el equipo decide adoptar Playwright de verdad).
 - PR de `feature/fusion-resumen` sin abrir todavía — falta decidir con el
   usuario la rama destino (`main` vs. `Tosi`) antes de abrirlo.
+
+## 16. Última etapa: Usuarios, login y roles (Etapa B de
+    `usuarios-login-roles`)
+
+Segunda y última etapa del plan de dos partes (Etapa A = fusión de "Qué se
+vende", §15). Nexo pasó de "un solo operador sin identidad" a tener login,
+un admin y empleados. **Es el cambio más grande hecho en una sola etapa
+hasta ahora**: toca esquema, ~50 puntos de `server.js`, y el boot completo
+del frontend.
+
+**Rama:** `feature/usuarios-login-roles`, partiendo de
+`feature/fusion-resumen` (que sigue sin PR abierto — ver §15). Sin PR
+propio todavía: falta decidir con el usuario la rama destino de las dos
+etapas juntas.
+
+### Decisiones tomadas con el usuario antes de construir
+
+Heredadas del plan original (`.claude/plans/usar-mcp-codebase-memory-calm-pony.md`,
+que sigue disponible como referencia de diseño completa — este handoff no
+lo duplica, solo cuenta qué se construyó y qué cambió respecto de lo
+planeado):
+
+1. Roles `admin`/`empleado`. Admin ve todo y gestiona usuarios; empleado
+   opera pero no ve Usuarios. **Auditoría es visible para los dos roles**
+   (es consulta, no configuración). Sin registro público: el admin da de
+   alta a los empleados.
+2. La auditoría suma `usuario_id` (columna nueva) sin sacar `actor`: son
+   dos preguntas distintas (`actor` = por qué vía entró la operación,
+   `usuario_id` = quién la hizo). El asistente sigue quedando con
+   `actor: 'asistente'` **y además** `usuario_id` del usuario que
+   confirmó — es la razón concreta de tener las dos columnas.
+3. Login con usuario corto, no email (no hay recuperación por mail).
+4. **Multi-negocio: preparar el camino, no construirlo.** Tabla
+   `organizaciones` con UNA fila y `usuarios.organizacion_id`, pero las
+   ~30 tablas de datos del sistema no se tocaron.
+5. Pantalla de "primer uso" para crear el primer admin. Nunca existe una
+   contraseña por defecto.
+6. Tabla de sesiones (no JWT): dar de baja a un empleado o resetearle la
+   contraseña lo saca del sistema en el próximo request, no cuando
+   expire un token por su cuenta.
+
+### Correcciones al diseño original, encontradas mirando el código real
+antes de construir (documentadas también en el plan de ejecución de esta
+sesión, `seguir-con-la-siguiente-gleaming-moonbeam.md`, que sigue
+disponible como historial completo de la verificación):
+
+- **"Configuración" no era una vista del nav** como asumía el diseño
+  original: es un modal (`#modalConfiguracion`) que antes abrían **dos**
+  botones (`#btnConfiguracion` y `#btnPerfil`) con el mismo handler.
+  Resuelto así: `#btnPerfil` pasó a abrir `#modalPerfil` (nombre, rol,
+  cambiar contraseña, cerrar sesión), visible para los **dos** roles —
+  un empleado también necesita cerrar sesión. `#btnConfiguracion` sigue
+  abriendo el modal vacío, **sin gating por rol**: ocultar un modal sin
+  contenido no protege nada: la regla "el empleado no ve administración"
+  se cumple ocultando la vista Usuarios, no este botón.
+- El rebuild de `auditoria` (necesario para agregar `'usuario'` a su
+  CHECK — SQLite no permite `ALTER` sobre un CHECK) se llevaba sus dos
+  índices propios (`idx_auditoria_fecha`, `idx_auditoria_entidad`) con el
+  `DROP TABLE`, y como `schema.sql` corre **antes** del bloque de
+  migraciones en `db/index.js`, nada los recreaba — quedarían perdidos en
+  silencio. Los 5 rebuilds anteriores del archivo no enseñaban a evitar
+  esto porque ninguna de esas tablas tenía índices propios. Se recrean a
+  mano dentro de la misma transacción del rebuild.
+- `scryptSync` con los parámetros elegidos (`N=16384,r=8,p=1`) mide
+  ~15-16 MB reales, por debajo del límite default de Node (32 MB) —
+  funciona igual sin pasar `maxmem` explícito. Se pasa igual por
+  claridad/a prueba de futuro, pero deja de ser el riesgo principal de la
+  etapa que el diseño original suponía.
+
+### Qué se construyó
+
+**Esquema** (`backend/db/schema.sql`) — tres tablas nuevas, aditivas:
+`organizaciones` (una fila), `usuarios` (con `usuario`/`nombre`
+separados, `password_hash`/`password_salt` en columnas propias porque el
+proyecto no tiene parser de formato PHC, `activo` como baja lógica,
+`debe_cambiar_password`), `sesiones` (token como PK, `expira`). Índice
+`UNIQUE` sobre `LOWER(usuario)` (SQLite compara case-sensitive por
+default). `'usuario'` sumado al CHECK de `auditoria.entidad`.
+
+**Migración** (`backend/db/index.js`) — reconstrucción de `auditoria` con
+el patrón copiar-renombrar ya establecido (agrega `usuario_id`, recrea
+sus 2 índices — ver corrección arriba), seed de la organización única
+(mismo criterio que `cuentas_tesoreria`: no es dato de ejemplo, es
+infraestructura), limpieza de sesiones vencidas al bootear (sin cron:
+corre en cada arranque, alcanza), `registrarAuditoria` suma
+`usuario_id = null` con default (ningún call site viejo rompe).
+
+**Backend** (`backend/server.js`) — sección nueva `Usuarios, sesión y
+roles` justo después del mount de `/assets`:
+- Hash con `scryptSync` (`node:crypto`, sin dependencias nuevas),
+  `timingSafeEqual` para comparar, `.normalize('NFKC')` en alta y login
+  (acentos en NFC vs NFD según el teclado), hash dummy calculado una vez
+  al bootear (para que el tiempo de respuesta no revele qué usuarios
+  existen — verificado con un test de timing real, ver Verificación).
+- Cookie de sesión httpOnly (`sameSite: 'lax'`, `secure` solo en
+  producción — en `localhost` tiene que ser `false`), parseada a mano con
+  `leerCookie()` (4 líneas, sin instalar `cookie-parser`).
+- **`auditar(req, datos)`** — wrapper de `registrarAuditoria` que agrega
+  automáticamente `usuario_id: req.usuario?.id ?? null`. Explícito, no
+  AsyncLocalStorage (verificado que los 44 call sites tienen `req` en
+  scope, ninguno dentro de las funciones extraídas que no auditan
+  internamente). **Reemplazo mecánico de los 44 `registrarAuditoria({` a
+  `auditar(req, {`**, verificado por conteo exacto (`grep -c`) antes y
+  después, y `node --check` para confirmar que no rompió sintaxis.
+- `autenticar` (401 JSON) y `soloAdmin` (403) como middlewares. Rate
+  limit del login en un `Map` en memoria (5 fallidos / 15 min) — no es
+  defensa seria, evita que un script bloquee el event loop con
+  `scryptSync` a repetición.
+- **`app.use('/api', autenticar)`** — un solo montaje después de los 3
+  endpoints públicos (`estado`/`login`/`bootstrap`) cubre los 82
+  endpoints de negocio. Lo estático (`frontend/`, `/assets`) queda
+  público a propósito: no tiene datos del negocio.
+- Endpoints nuevos: `GET /api/auth/estado`, `POST /api/auth/login`,
+  `POST /api/auth/bootstrap` (revalida en el servidor que no haya
+  usuarios, 409 si los hay), `POST /api/auth/logout`,
+  `POST /api/auth/cambiar-password` (borra las demás sesiones del
+  usuario, conserva la actual), y bajo `soloAdmin`:
+  `GET/POST /api/usuarios`, `PATCH /api/usuarios/:id` (con salvaguardas:
+  no se puede dar de baja ni degradar al último admin activo, ni uno
+  darse de baja a sí mismo — dar de baja borra sus sesiones, lo echa en
+  el acto), `POST /api/usuarios/:id/resetear-password` (ídem, fuerza
+  `debe_cambiar_password`). **La contraseña nunca entra en la
+  auditoría.**
+- `GET /api/auditoria` suma `usuario_id` y `usuarios.nombre AS
+  usuario_nombre` con `LEFT JOIN` (obligatorio: con INNER las filas
+  históricas con `usuario_id NULL` desaparecerían), columnas calificadas
+  con `auditoria.` (las dos tablas comparten `id`).
+
+**Frontend, el gate** (`frontend/js/sesion.js`, archivo nuevo) — `app.js`
+no tiene `init()` ni guarda de sesión propia (toca el DOM desde su
+primera línea), así que en vez de reescribirlo se sacó
+`<script src="js/app.js">` de `index.html` y lo reemplazó
+`<script src="js/sesion.js">`, que **inyecta `app.js` recién cuando
+`GET /api/auth/estado` confirma sesión válida** — es imposible que
+dispare un fetch sin sesión. Intercepta `window.fetch` (instalado ANTES
+de inyectar `app.js`, si no los fetches del boot quedarían sin cubrir):
+ante un 401 (fuera de `/api/auth/*`) muestra el login; el 403 no se
+intercepta, es específico de cada call site. Pre-paint cosmético en
+`index.html` (`data-sesion="cerrada"`) para evitar el flash antes de la
+respuesta real del servidor. Pantalla `.sesion-pantalla` con tres
+formularios hermanos (login/bootstrap/cambio forzado), **no reusa
+`.modal`** (traería Escape-cierra y click-afuera-cierra, y el observer de
+accesibilidad de modales se instala al cargar `app.js`, que ahora carga
+después). Cerrar sesión hace `location.reload()` en vez de intentar
+desmontar `app.js` a mano (evita duplicar sus ~90 listeners si alguien
+inicia sesión de nuevo sin recargar).
+
+**Frontend, UI de usuarios** (`index.html` + `app.js`) — nav 18
+"Usuarios" (oculto por CSS con `data-rol`, el servidor igual responde
+403), vista con ABM calcado del de Cuentas de tesorería (mismo patrón:
+listeners atados después del `innerHTML`, no delegación). `#modalPerfil`
+nuevo (nombre, rol, cambiar mi contraseña, cerrar sesión) reemplaza el
+uso que `#btnPerfil` le daba a `#modalConfiguracion`. Columna Usuario en
+Auditoría (`usuario_nombre ?? "—"` para las filas históricas), colspan de
+sus `filaVacia`/`filaVaciaFiltrada` actualizado de 6 a 7. Guarda de rol en
+`mostrarVista`: un deep-link `#/usuarios` tecleado por un empleado cae a
+dashboard.
+
+### Bug real encontrado y corregido durante la verificación
+
+**`.form[hidden]` no colapsaba** — `.form { display: flex }` (regla
+existente, usada en todos los modales) le gana en especificidad al
+`[hidden]` nativo del navegador, mismo problema que el proyecto ya había
+documentado para `.form label[hidden]` en una etapa anterior, pero nadie
+lo había cubierto para el propio `.form`. No importaba mientras cada
+`.form` vivía solo en su modal — pero `.sesion-pantalla` pone tres
+formularios hermanos alternados con `hidden`, y sin la regla los dos
+ocultos seguían ocupando espacio en el flex de `.sesion-card`,
+estirándola a 1041px de alto en un viewport de 720px (el botón de submit
+quedaba fuera de la pantalla). Se reprodujo con Playwright real
+(`getBoundingClientRect`, no solo lectura de código) antes de escribir el
+fix: `card.height` bajó de 1041px a 422px al agregar `.form[hidden] {
+display: none }` junto a la regla `.form` en `styles.css`.
+
+### Verificación hecha antes de desplegar
+
+Metodología de siempre, escalada por el tamaño de la etapa: copia aislada
+al scratchpad con la base real, servidor de prueba en el **3002**, y un
+**3003 con base vacía** para probar el bootstrap sin contaminar la copia
+con datos. Playwright instalado puntualmente en un entorno npm aparte del
+scratchpad (mismo criterio que la etapa de fusión, §15 — Chromium ya
+estaba cacheado localmente, solo hizo falta bajar la build exacta que la
+versión de `playwright` instalada esperaba).
+
+- **Migración**: 27→30 tablas (`organizaciones`/`usuarios`/`sesiones`
+  nuevas), `auditoria` con `usuario_id` y sus 2 índices intactos
+  (`PRAGMA index_list`), `PRAGMA foreign_key_check` vacío, arrancar dos
+  veces sin re-entrar al rebuild, datos de negocio preexistentes
+  (9 ventas, 4 clientes en la copia de prueba) sin tocar.
+- **Los 44 call sites**: verificado por conteo exacto en cada momento del
+  proceso — al terminar el reemplazo mecánico, `grep -c
+  "registrarAuditoria({"` daba 2 (la definición de `auditar` + el
+  bootstrap, que audita con `usuario_id` explícito porque no hay sesión
+  previa) y `grep -c "auditar(req, {"` daba exactamente 44. **Un primer
+  intento del reemplazo automático rompió `auditar` con recursión
+  infinita** (el `gsub` se aplicó también sobre su propio cuerpo, línea
+  158) — detectado antes de aplicar el archivo, con `node --check` y una
+  relectura manual del resultado, corregido excluyendo esa línea
+  explícitamente del reemplazo.
+- **Login**: contraseña mala y usuario inexistente dan el mismo mensaje;
+  case-insensitive (`ADMIN` = `admin`); rate limit exacto al 6º intento
+  fallido (`HTTP 429`); **test de timing real** (20 intentos contra
+  usuario inexistente vs. 4 contra uno real con contraseña mala, mismo
+  orden de magnitud — ~85ms vs ~80ms, valida el hash dummy).
+- **`app.use('/api', autenticar)`**: 401 sin cookie / cookie inventada /
+  cookie vencida (forzada por SQL) / cookie de usuario dado de baja,
+  sobre 5 secciones distintas (`clientes`, `ventas`, `tesoreria`,
+  `resumen`, `auditoria`). `POST /api/usuarios` con cookie de empleado →
+  403 y `COUNT(*)` sin cambios. Logout → la misma cookie da 401 después.
+- **La prueba central**: dos usuarios reales (admin id=1, empleado id=4)
+  cada uno crea un gasto → cada fila de auditoría con su `usuario_id`
+  correcto. **Concurrencia real** con `Promise.all` de dos requests
+  simultáneos a `/api/asistente/ejecutar` (uno por usuario, con
+  `NEXO_INTERPRETE=stub`) → cada fila de auditoría con su usuario sin
+  cruzarse — la prueba que fallaría con una variable de módulo en vez de
+  leer `req.usuario`.
+- **Cobertura de los 44**: mutación de 6 tipos distintos (producto,
+  cliente, stock, tesorería, presupuesto, gasto) → `SUM(usuario_id IS
+  NULL) = 0` en las filas nuevas. (Nota: alta de proveedor/categoría no
+  generan fila de auditoría — comportamiento **preexistente** de la
+  etapa anterior, no introducido acá; solo su edición audita.)
+- **Rollback**: facturar dos veces la misma venta → segunda da 409,
+  `COUNT(*)` de auditoría sin cambios en ninguno de los dos intentos.
+  (De paso, se encontró que el endpoint de facturar exige `condicion` ∈
+  `efectivo/transferencia/mercadopago` — detalle preexistente sin
+  documentar, no un bug de esta etapa, solo hizo falta para armar el
+  payload de prueba correcto.)
+- **Playwright, dos temas × 1280/375**: nav 18 sin saltos; sin sesión
+  entra a `/` y **solo llama a `/api/auth/estado`** (interceptando
+  `page.on('request')`, prueba de que `app.js` no se cargó); login exitoso
+  arranca la app; F5 con sesión entra sin flash de login; **bootstrap con
+  base vacía** en el 3003 crea el admin y loguea de una; **sesión
+  vencida a mitad de uso** (forzada por SQL) + entrar a una vista con
+  fetch fresco (Auditoría — un simple click de nav a una vista ya
+  cacheada en memoria, como Clientes, no dispara ningún request nuevo, así
+  que no sirve para este caso) → reaparece el login sin pantalla rota;
+  **rol empleado**: nav Usuarios oculto, Auditoría visible, `#/usuarios`
+  a mano cae a dashboard; **ABM completo** de usuarios con clicks reales
+  (alta, ver fila nueva); **baja echa al usuario en el acto**, probado
+  con **dos navegadores reales** (contextos de Playwright separados, no
+  simulado); menú de perfil con nombre/rol correctos; 375px sin scroll
+  horizontal; sin errores de consola en ningún escenario.
+- **Deploy real**: backup `nexo.db.backup-antes-usuarios-20260829-162204`
+  en `backend/db/`. Foto pre-deploy con SQL directo contra el archivo real
+  **antes** de levantar el proceso (6 ventas activas, 4 clientes, 3
+  productos, 2 proveedores, 3 compras activas, 0 filas de auditoría).
+  Proceso del 3000 arrancado (no había ninguno corriendo al empezar esta
+  sesión) — migración corrida contra la base real, foto post-deploy
+  comparada 1:1: **la única diferencia fueron las 3 tablas nuevas**,
+  ningún número de negocio cambió. **Primer admin creado con el usuario
+  presente** (usuario `Solla_FAT`, nombre Santino Gonzalo Solla) vía
+  `POST /api/auth/bootstrap` contra el proceso real — confirmado con
+  `GET /api/auth/estado` (`requiere_bootstrap: false`) y la fila de
+  auditoría correspondiente (`accion: crear, entidad: usuario,
+  usuario_id: 1`).
+
+### Qué queda pendiente de esta etapa
+
+- **Nada bloqueado.** Las 9 partes del plan (esquema, migración, helpers
+  de auth, los 44 call sites, endpoints, middleware, gate del frontend,
+  UI de usuarios, deploy) se completaron y verificaron enteras, incluido
+  el deploy real con el primer admin ya creado.
+- **El sistema ya exige login** para entrar a `http://localhost:3000` —
+  la próxima sesión (o cualquiera que abra el navegador) va a ver la
+  pantalla de login, no el dashboard directo. Usuario admin:
+  `Solla_FAT` (la contraseña la eligió el usuario, no queda escrita acá).
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real — sin cambios
+  respecto a etapas anteriores (ver §3/§4).
+- Sin commitear todavía — confirmar con el usuario antes de la próxima
+  sesión. Con esto se acumulan **dos etapas sin commit** en la rama
+  actual (`feature/usuarios-login-roles`, que ya incluye el trabajo de
+  fusión de `feature/fusion-resumen` por venir de ahí): conviene
+  commitear pronto para no perder el hilo.
+- **Fuera de alcance a propósito** (documentado también en el código):
+  recuperación de contraseña por email (no hay SMTP), 2FA, permisos
+  granulares por módulo, aislamiento multi-organización real (solo se
+  preparó la tabla), registro público, backfill de `usuario_id` en las
+  filas de auditoría anteriores a esta etapa (inventarles un usuario
+  sería falsificar el registro), `usuario_id` en `ventas`/`compras`/
+  `gastos` (el "vendedor" de `CLAUDE.md` §8 — otra etapa, distinta de
+  quién auditó el acto), HTTPS real.
+- **Deuda técnica anotada, no resuelta esta etapa**: el proyecto no activa
+  `PRAGMA foreign_keys` en ningún punto del arranque normal (solo
+  alrededor de los rebuilds de esquema) — las FK de
+  `usuarios.organizacion_id` y `sesiones.usuario_id` son documentación,
+  no una garantía real de integridad referencial. Las salvaguardas de
+  negocio (no dar de baja al último admin, etc.) están en el código de
+  todas formas, así que no es un riesgo inmediato, pero conviene saberlo
+  antes de asumir que una FK del esquema protege algo en runtime.
+- Playwright, igual que en la etapa de fusión (§15), quedó instalado solo
+  en un entorno npm temporal del scratchpad — no como dependencia del
+  proyecto.

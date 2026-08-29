@@ -512,6 +512,71 @@ db.exec(`
    GROUP BY cuentas_tesoreria.id
 `);
 
+// auditoria: agregar 'usuario' al CHECK de entidad y la columna
+// usuario_id obliga a reconstruir la tabla (SQLite no permite modificar
+// un CHECK con ALTER TABLE) — mismo procedimiento que los rebuilds de
+// movimientos_stock/compras/movimientos_tesoreria más arriba. A
+// diferencia de esos, acá no hay ninguna vista que apunte a auditoria
+// (no hace falta DROP VIEW antes del rename), pero SÍ hay dos índices
+// propios (idx_auditoria_fecha, idx_auditoria_entidad) que el DROP TABLE
+// se lleva puestos y que schema.sql ya no vuelve a crear en este arranque
+// (corrió al principio del archivo, antes de este bloque) — hay que
+// recrearlos a mano dentro de la misma transacción o quedan perdidos en
+// silencio. Es una reconstrucción sin datos que preservar: la tabla
+// auditoria se agregó recién en la etapa anterior y todavía no tiene
+// ninguna fila en la base real, pero igual se hace con el mismo cuidado
+// que si tuviera.
+const auditoriaSql = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql && !auditoriaSql.sql.includes("'usuario'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// Limpieza de sesiones vencidas al bootear, sin cron ni timer: con
+// `--watch` esto corre en cada reinicio del proceso, que alcanza para un
+// sistema de este tamaño.
+db.exec("DELETE FROM sesiones WHERE expira <= datetime('now')");
+
 export function withTransaction(fn) {
   db.exec('BEGIN');
   try {
@@ -542,6 +607,7 @@ export function registrarAuditoria({
   entidad,
   entidad_id = null,
   actor = 'operador',
+  usuario_id = null,
   valor_anterior = null,
   valor_nuevo = null,
   operacion_tipo = null,
@@ -550,13 +616,14 @@ export function registrarAuditoria({
 }) {
   db.prepare(
     `INSERT INTO auditoria
-       (actor, accion, entidad, entidad_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     actor,
     accion,
     entidad,
     entidad_id,
+    usuario_id,
     valor_anterior,
     valor_nuevo,
     operacion_tipo,
@@ -579,6 +646,14 @@ if (cuentasCount === 0) {
   insertCuenta.run('Efectivo', 'efectivo');
   insertCuenta.run('Banco', 'banco');
   insertCuenta.run('Mercado Pago', 'mercadopago');
+}
+
+// organizaciones: mismo criterio que cuentas_tesoreria arriba — no es un
+// dato de ejemplo, es infraestructura real que usuarios.organizacion_id
+// necesita para existir (preparación para multi-negocio, ver schema.sql).
+const { count: orgCount } = db.prepare('SELECT COUNT(*) AS count FROM organizaciones').get();
+if (orgCount === 0) {
+  db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
 }
 
 export default db;

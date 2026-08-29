@@ -972,6 +972,17 @@ button { font-family: inherit; cursor: pointer; }
   gap: var(--sp-3);
 }
 
+/* Mismo caso que .form label[hidden] más abajo: el display:flex de arriba
+   le gana en especificidad al [hidden] del navegador. No importaba
+   mientras cada .form vivía solo en su propio modal (nunca dos .form
+   hidden/visible compartiendo padre) — pero la pantalla de sesión pone
+   tres formularios hermanos (login/bootstrap/cambio forzado) alternados
+   con hidden, y sin esta regla los dos ocultos seguían ocupando espacio
+   en el flex de .sesion-card, estirándola muy por fuera del viewport. */
+.form[hidden] {
+  display: none;
+}
+
 .form label {
   display: flex;
   flex-direction: column;
@@ -1740,4 +1751,76 @@ input.precio-sin-configurar::placeholder {
 /* Respeta preferencia de menos movimiento */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* ---------- Sesión (login, primer arranque, cambio forzado) ---------- */
+
+/* No reusa .modal a propósito (ver el comentario en index.html): esta
+   pantalla tiene que ser bloqueante de verdad, sin Escape ni
+   click-afuera. z-index:100 queda por encima de .modal (50) — si la
+   sesión vence con un modal abierto, el login tiene que taparlo. Fondo
+   opaco (no semitransparente como .modal), porque atrás no hay nada que
+   deba seguir siendo visible: la app ni se cargó todavía. */
+.sesion-pantalla {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+
+/* [hidden] explícito: el display:flex de arriba le gana en especificidad
+   al [hidden] del user-agent stylesheet (mismo caso ya documentado para
+   .form label[hidden] más arriba en este archivo) — sin esto la pantalla
+   de sesión quedaría visible encima de la app aun con el atributo puesto. */
+.sesion-pantalla[hidden] {
+  display: none;
+}
+
+.sesion-card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  width: min(400px, 90vw);
+  padding: var(--sp-5);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+
+.sesion-logo {
+  width: 48px;
+  height: 48px;
+}
+
+.sesion-card h1 {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+}
+
+.sesion-card .form {
+  width: 100%;
+  text-align: left;
+}
+
+/* Ocultar la app entera (no solo .app: #navToggle vive fuera de .app en
+   el HTML, como botón hermano para el drawer mobile — si no se incluye
+   acá, la hamburguesa queda flotando sola encima del login). Es UI nada
+   más: el servidor decide de verdad con la cookie httpOnly. */
+:root[data-sesion="cerrada"] .app,
+:root[data-sesion="cerrada"] .nav-toggle {
+  display: none;
+}
+
+/* Ocultamiento por rol de la vista Usuarios: es UI, no seguridad — el
+   servidor igual responde 403 si un empleado llama a los endpoints de
+   /api/usuarios directo. */
+:root:not([data-rol="admin"]) .nav-item[data-view="usuarios"] {
+  display: none;
 }
