@@ -61,9 +61,35 @@ de la sesión anterior).
 
 **Rama nueva de esta sesión: `feature/fusion-resumen`**, creada desde ese
 commit para la Etapa A del plan de usuarios/login/roles (fusión de "Qué
-se vende" en Resumen — ver §15). Sin PR abierto todavía. La Etapa B
-(usuarios, login y roles) del mismo plan queda para una rama y un PR
-propios, después de que este se mergee.
+se vende" en Resumen — ver §15). Sin PR abierto todavía — el link para
+crearlo quedó en la salida del `git push`
+(`https://github.com/Code7C26/Nexo/pull/new/feature/fusion-resumen`). La
+Etapa B (usuarios, login y roles) del mismo plan queda para una rama y un
+PR propios, después de que este se mergee.
+
+**Estado de ramas en GitHub, a confirmar con el usuario en la próxima
+sesión (no decidido del todo, ver por qué abajo):** `Tosi` y `solla`
+apuntan ahora al mismo commit (`50cd520`) — se hizo así porque `solla`
+estaba 7 commits atrás y sin ningún commit propio que `Tosi` no tuviera
+(divergencia 0/7, verificado con `git rev-list --left-right --count`), y
+el usuario confirmó llevar `solla` al día de `Tosi` en vez de dejarla
+atrasada. **`Tosi` en el remoto tenía un commit que esta sesión no tenía
+localmente** (`c3531c2`, "docs: boceto de manual de usuario y variantes
+del logo", de `joacotosi68`, con `docs/manual-usuario.html` +
+`assets/logo/` + `logo.png`) — se mergeó sin perder nada de ningún lado.
+Ese commit traía **"Nexö" con diéresis en 8 lugares** (el título del
+manual, la marca en el sidebar del manual, y `assets/logo/README.md`) —
+se corrigió a "Nexo" antes de pushear nada (ver memoria del proyecto:
+"Nexo" nunca lleva diéresis). El único conflicto real del merge fue ese
+mismo README (agregado distinto en cada rama), resuelto quedándose con el
+texto sin diéresis. `feature/fusion-resumen` después mergeó `Tosi` ya
+actualizado, así que también tiene el manual y los assets de logo.
+**`main` no se tocó** — sigue muy atrás (`f5547e9`), no se movió por no
+ser lo que se pidió explícitamente. **Sin explorar todavía**: por qué
+`origin/Tosi` tenía ese commit que la copia local de esta sesión no
+tenía (probablemente un push desde el dispositivo de Joaquín entre
+sesiones) — si vuelve a pasar, conviene `git fetch` antes de empezar a
+trabajar, no solo al pushear al final.
 
 Quedaron fuera de los commits, sin tocar, dos archivos sueltos en la raíz
 que no son parte del proyecto Nexo: `install.ps1` (instalador del propio
