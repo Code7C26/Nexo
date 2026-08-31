@@ -8,37 +8,56 @@
    ============================================================ */
 
 :root {
-  /* Color — tema claro (paleta original, intacta) */
-  --bg:            #F0F3EF;   /* papel frío, no crema genérico */
+  /* Color — tema claro. Blanco puro, sin escalones de gris intermedios:
+     --surface es igual a --bg a propósito. La jerarquía de panel/tabla
+     ya no la da el relleno (dos blancos idénticos no se distinguen
+     entre sí), la da --line, por eso --line tiene contraste real en vez
+     de ser un gris casi invisible. */
+  --bg:            #FFFFFF;
   --surface:       #FFFFFF;
-  --surface-sunk:  #E7EBE6;
+  --surface-sunk:  #F4F4F4;   /* solo inputs/zonas hundidas, no paneles */
   --ink:           #121212;   /* negro neutro, texto principal y sidebar */
-  --ink-muted:     #5C6B65;
-  --line:          #D8DED6;
+  --ink-muted:     #616161;
+  --line:          #C4C4C4;
 
   --brand:         #000000;   /* negro — color de marca Nexo */
   --brand-contrast:#FFFFFF;
 
-  --accent-ok:     #2F9E6E;   /* verde recibo — significa "positivo/cobrado", no es color de marca */
+  --accent-ok:     #1F7350;   /* verde recibo — "positivo/cobrado", no es color de marca */
   --accent-ok-bg:  #E4F3EB;
-  --accent-warn:   #B5541F;   /* terracota-ladrillo — pendiente */
-  --accent-warn-bg:#F6E7DD;
+  /* "Pendiente" comparte color con "atención": por decisión del equipo todo
+     lo que antes era terracota pasó a rojo (los importes de plata que sale,
+     los badges pendientes y los avisos). Se mantienen como tokens separados
+     —no un alias— para poder volver a diferenciarlos sin tocar cada uso. */
+  --accent-warn:   #B23A3A;
+  --accent-warn-bg:#F5E2E1;
   --accent-danger: #B23A3A;   /* rojo — atención / retenido */
   --accent-danger-bg: #F5E2E1;
 
   /* La sidebar es oscura en los dos temas (es parte de la identidad
      visual, no del tema), así que sus colores no son tokens de tema: son
      fijos acá y se usan igual en :root y en data-tema="oscuro". */
-  --sidebar-bg:      #121212;
+  --sidebar-bg:      #000000;
   --sidebar-ink:     #F0F3EF;
   --sidebar-ink-2:   #CFCFCF;
-  --sidebar-ink-3:   #7A7A7A;
-  --sidebar-line:    rgba(255,255,255,0.12);
+  --sidebar-ink-3:   #858585;
+  /* Más marcado que el 0.12 anterior: con la sidebar en negro puro, igual
+     al fondo del tema oscuro, este borde es lo único que las separa. */
+  --sidebar-line:    rgba(255,255,255,0.22);
   --sidebar-hover:   rgba(255,255,255,0.06);
   --sidebar-active:  rgba(255,255,255,0.1);
 
-  /* Elevación: dos niveles nada más — panel/popover apenas se despega
-     del fondo, modal flota bien por encima de todo. */
+  /* Fondo de los elementos flotantes que antes usaban --sidebar-bg (botón
+     del asistente, hamburger, burbujas del chat, enviar). Al pasar la
+     sidebar a negro puro, esos quedaban invisibles sobre el fondo oscuro:
+     necesitan seguir despegándose de él, así que conservan el #121212 que
+     la sidebar tenía antes. */
+  --pill-bg:         #121212;
+
+  /* Elevación: con jerarquía por bordes, una sombra suave en paneles
+     ensucia el contorno en vez de ayudarlo — --shadow-sm queda sin uso
+     en .panel/.ledger-strip (ver más abajo) y --shadow-lg se reserva
+     para lo que flota de verdad: modal y popover. */
   --shadow-sm: 0 2px 8px rgba(18, 18, 18, 0.06);
   --shadow-lg: 0 16px 40px rgba(18, 18, 18, 0.16);
 
@@ -88,12 +107,14 @@
    dirección (aunque el SO diga otra cosa). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
-    --bg:            #17191C;
-    --surface:       #1F2225;
-    --surface-sunk:  #262A2E;
-    --ink:           #ECEDEC;
-    --ink-muted:     #9AA39D;
-    --line:          #33383C;
+    /* Negro puro, sin escalones: mismo criterio que el tema claro,
+       --surface = --bg y la jerarquía la lleva --line. */
+    --bg:            #000000;
+    --surface:       #000000;
+    --surface-sunk:  #141414;
+    --ink:           #FFFFFF;
+    --ink-muted:     #909090;
+    --line:          #3A3A3A;
 
     --brand-contrast:#121212;
 
@@ -102,8 +123,8 @@
        para tinta sobre blanco) se ve apagada y de bajo contraste acá. */
     --accent-ok:     #4CC490;
     --accent-ok-bg:  rgba(76, 196, 144, 0.16);
-    --accent-warn:   #E0864B;
-    --accent-warn-bg:rgba(224, 134, 75, 0.16);
+    --accent-warn:   #E06767;
+    --accent-warn-bg:rgba(224, 103, 103, 0.16);
     --accent-danger: #E06767;
     --accent-danger-bg: rgba(224, 103, 103, 0.16);
 
@@ -113,19 +134,19 @@
 }
 
 :root[data-tema="oscuro"] {
-  --bg:            #17191C;
-  --surface:       #1F2225;
-  --surface-sunk:  #262A2E;
-  --ink:           #ECEDEC;
-  --ink-muted:     #9AA39D;
-  --line:          #33383C;
+  --bg:            #000000;
+  --surface:       #000000;
+  --surface-sunk:  #141414;
+  --ink:           #FFFFFF;
+  --ink-muted:     #909090;
+  --line:          #3A3A3A;
 
   --brand-contrast:#121212;
 
   --accent-ok:     #4CC490;
   --accent-ok-bg:  rgba(76, 196, 144, 0.16);
-  --accent-warn:   #E0864B;
-  --accent-warn-bg:rgba(224, 134, 75, 0.16);
+  --accent-warn:   #E06767;
+  --accent-warn-bg:rgba(224, 103, 103, 0.16);
   --accent-danger: #E06767;
   --accent-danger-bg: rgba(224, 103, 103, 0.16);
 
@@ -199,6 +220,11 @@ button { font-family: inherit; cursor: pointer; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  /* La sidebar es #121212 fija en los dos temas, pero en tema oscuro el
+     fondo de .main ahora es negro puro (#000000): sin este borde, la
+     sidebar (más clara que el fondo) queda casi indistinguible de él,
+     1.12:1 de contraste. El borde la separa en los dos temas por igual. */
+  border-right: 1px solid var(--sidebar-line);
 }
 
 .brand {
@@ -264,20 +290,25 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--sidebar-ink);
 }
 
+/* Grid de dos filas, no una sola fila flex: en una fila, avatar (36px) +
+   dos botones (32px c/u) + gaps dejaban solo ~84px reales para el nombre
+   del usuario — "ADMINISTRADOR" en mono necesita ~93px y se montaba
+   sobre los botones. En dos filas el nombre tiene todo el ancho de la
+   sidebar disponible, y los botones bajan a su propia fila alineados a
+   la derecha. */
 .sidebar-foot {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-2) var(--sp-3);
   align-items: center;
-  gap: var(--sp-2);
   border-top: 1px solid var(--sidebar-line);
   padding-top: var(--sp-4);
   font-size: var(--txt-sm);
 }
 
-/* Crece para ocupar el espacio libre entre el avatar y los botones —
-   así los tres conviven sin pisarse aunque "Tu Pyme" tenga un nombre
-   largo (se corta con puntos suspensivos en vez de empujar al resto). */
+/* Se corta con puntos suspensivos en vez de desbordar si "Tu Pyme" tiene
+   un nombre largo (ver regla `strong` más abajo). */
 .sidebar-foot-negocio {
-  flex: 1;
   min-width: 0;
 }
 
@@ -302,6 +333,10 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   flex: none;
   gap: var(--sp-2);
+  /* Ocupa las dos columnas del grid y baja a su propia fila, alineados a
+     la derecha — ver comentario en .sidebar-foot. */
+  grid-column: 1 / -1;
+  justify-content: flex-end;
 }
 
 /* Círculo de perfil: hoy es un ícono genérico; el lugar donde más
@@ -429,15 +464,6 @@ button { font-family: inherit; cursor: pointer; }
   margin-bottom: var(--sp-6);
 }
 
-.eyebrow {
-  margin: 0 0 var(--sp-1);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: var(--txt-2xs);
-  color: var(--ink-muted);
-  font-family: var(--font-display);
-}
-
 .topbar h1 {
   margin: 0;
   font-family: var(--font-display);
@@ -496,6 +522,17 @@ button { font-family: inherit; cursor: pointer; }
   gap: var(--sp-2);
 }
 
+/* Cuando .panel-acciones sigue a un .form dentro del mismo modal (hoy
+   solo "Mi cuenta": el form de cambio de contraseña seguido de "Cerrar
+   sesión"), separarlo con una línea — son dos acciones de naturaleza
+   distinta y sin esto quedaban pegados, sin ningún gap entre ellos
+   porque son contenedores hermanos, no parte del mismo .form. */
+.modal-card > .form + .panel-acciones {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
 /* Un saldo en rojo avisa que falta cargar algo (la plata real no puede
    ser negativa), sin llegar a bloquear la carga. */
 .saldo-negativo { color: var(--accent-danger); }
@@ -509,8 +546,8 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
 }
 
 .filtro-chip {
@@ -658,7 +695,8 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: var(--r-md);
   margin-bottom: var(--sp-6);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  /* Sin sombra, mismo criterio que .panel: la jerarquía la lleva el
+     borde, no el relleno. */
 }
 
 .ledger-item {
@@ -716,7 +754,10 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: var(--sp-5);
-  box-shadow: var(--shadow-sm);
+  /* Sin sombra: --surface = --bg (mismo blanco/negro puro), así que el
+     panel se lee solo por su borde. Una sombra acá ensuciaría ese
+     contorno en vez de reforzarlo — se reserva para lo que sí flota
+     (modal, popover). */
 }
 
 .panel-head {
@@ -785,9 +826,17 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--sp-3) var(--sp-3);
   border-bottom: 1px solid var(--line);
   font-family: var(--font-body);
+  /* Sin esto una fecha ("2026-08-29") se partía en dos líneas al
+     comprimirse la columna, en vez de pedir su ancho y dejar que
+     .tabla-scroll absorba el desborde con scroll horizontal — que es el
+     mecanismo que ya existe para esto. .celda-wrap exime a las columnas
+     de texto largo (nombre de producto, detalle) que sí deben envolver. */
+  white-space: nowrap;
 }
 
 .ledger-table td.mono { font-family: var(--font-mono); }
+
+.ledger-table td.celda-wrap { white-space: normal; }
 
 /* La regla `.ledger-table th` de arriba fija text-align:left y tiene más
    especificidad que un `.align-right` suelto, así que los encabezados
@@ -1110,10 +1159,15 @@ button { font-family: inherit; cursor: pointer; }
 .btn-icon-danger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--accent-danger);
   padding: 4px;
+  /* SVG de 14px + padding de 4px da 22×22px, bajo el mínimo de target de
+     WCAG 2.2 AA (24×24px). min-width/height lo sube sin agrandar el ícono. */
+  min-width: 24px;
+  min-height: 24px;
   border-radius: var(--r-sm);
   vertical-align: middle;
 }
@@ -1127,10 +1181,13 @@ button { font-family: inherit; cursor: pointer; }
 .btn-icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--ink-muted);
   padding: 4px;
+  min-width: 24px;
+  min-height: 24px;
   border-radius: var(--r-sm);
   vertical-align: middle;
 }
@@ -1150,7 +1207,7 @@ button { font-family: inherit; cursor: pointer; }
 .ficha-datos {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px 24px;
+  gap: var(--sp-3) var(--sp-5);
   margin: 0;
 }
 
@@ -1234,7 +1291,7 @@ button { font-family: inherit; cursor: pointer; }
 .fila-acciones {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   flex-wrap: nowrap;
 }
 
@@ -1337,7 +1394,10 @@ input.precio-sin-configurar::placeholder {
   z-index: 60;
   width: 40px;
   height: 40px;
-  background: var(--sidebar-bg);
+  /* --pill-bg, no --sidebar-bg: con la sidebar en negro puro (igual al
+     fondo del tema oscuro), este botón necesita seguir despegándose del
+     fondo que tiene detrás. */
+  background: var(--pill-bg);
   border: none;
   border-radius: var(--r-sm);
   flex-direction: column;
@@ -1372,7 +1432,8 @@ input.precio-sin-configurar::placeholder {
   height: 56px;
   border: none;
   border-radius: var(--r-full);
-  background: var(--sidebar-bg);
+  /* --pill-bg, no --sidebar-bg — ver comentario en .nav-toggle. */
+  background: var(--pill-bg);
   color: var(--sidebar-ink);
   display: flex;
   align-items: center;
@@ -1440,7 +1501,8 @@ input.precio-sin-configurar::placeholder {
 .asistente-turno-usuario p {
   margin: 0;
   max-width: 88%;
-  background: var(--sidebar-bg);
+  /* --pill-bg, no --sidebar-bg — ver comentario en .nav-toggle. */
+  background: var(--pill-bg);
   color: var(--sidebar-ink);
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-md);
@@ -1542,7 +1604,8 @@ input.precio-sin-configurar::placeholder {
   height: 36px;
   border: none;
   border-radius: var(--r-full);
-  background: var(--sidebar-bg);
+  /* --pill-bg, no --sidebar-bg — ver comentario en .nav-toggle. */
+  background: var(--pill-bg);
   color: var(--sidebar-ink);
   display: flex;
   align-items: center;
@@ -1647,9 +1710,45 @@ input.precio-sin-configurar::placeholder {
     border: none;
     padding: 3px 0;
     text-align: left !important;
+    /* En mobile la fila es una card apilada, no una columna de tabla: el
+       nowrap del desktop (que existe para que .tabla-scroll absorba el
+       desborde) no aplica acá, el valor debe poder envolver dentro del
+       ancho de la card. */
+    white-space: normal;
   }
 
   .ledger-table td::before {
+    content: attr(data-label);
+    display: inline-block;
+    width: 110px;
+    font-size: var(--txt-2xs);
+    color: var(--ink-muted);
+    text-transform: uppercase;
+  }
+
+  /* .cc-detalle es una <table> propia anidada dentro de un <td colspan>
+     de .ledger-table (detalle de cuenta corriente al expandir una fila):
+     no hereda las reglas de arriba porque no es .ledger-table. Mismo
+     patrón de card apilada con etiqueta. */
+  .cc-detalle, .cc-detalle tbody, .cc-detalle tr, .cc-detalle td {
+    display: block;
+    width: 100%;
+  }
+
+  .cc-detalle tr {
+    border-bottom: 1px solid var(--line);
+    padding: 8px 0;
+  }
+
+  .cc-detalle tr:last-child { border-bottom: none; }
+
+  .cc-detalle td {
+    border-bottom: none;
+    padding: 2px var(--sp-3);
+    text-align: left;
+  }
+
+  .cc-detalle td::before {
     content: attr(data-label);
     display: inline-block;
     width: 110px;
@@ -1663,13 +1762,11 @@ input.precio-sin-configurar::placeholder {
     bottom: var(--sp-4);
   }
 
-  .avisos {
-    /* En mobile la sidebar es un drawer superpuesto, no un ítem del grid:
-       el toast vuelve a pegarse al borde real de la pantalla. */
-    left: var(--sp-4);
-    bottom: var(--sp-4);
-    max-width: min(360px, calc(100vw - var(--sp-4) * 2));
-  }
+  /* El override de .avisos para este breakpoint vive junto a la
+     definición base más abajo, no acá: con la misma especificidad, una
+     regla .avisos escrita más abajo en el archivo le gana a esta aunque
+     el media query aplique — quedaba sin efecto. Ver el bloque
+     "@media (max-width: 860px) { .avisos {" que sigue a la base. */
 
   .asistente-panel {
     right: var(--sp-3);
@@ -1699,6 +1796,24 @@ input.precio-sin-configurar::placeholder {
   flex-direction: column-reverse;
   gap: var(--sp-2);
   max-width: min(360px, calc(100vw - var(--sidebar-w) - var(--sp-5) * 2));
+}
+
+/* En mobile la sidebar es un drawer superpuesto, no un ítem del grid: el
+   toast vuelve a pegarse al borde real de la pantalla. Tiene que vivir
+   acá, después de la regla base de arriba: con la misma especificidad
+   (.avisos vs .avisos), la que aparece más abajo en el archivo gana la
+   cascada sin importar si su media query es el que aplica al viewport
+   actual — puesto antes de la base, este override quedaba sin efecto. */
+@media (max-width: 860px) {
+  .avisos {
+    left: var(--sp-4);
+    bottom: var(--sp-4);
+    /* Reserva el ancho del launcher (56px) + su margen + separación: sin
+       esto, en viewports de 375-414px el toast (z-index 65) se monta
+       encima del botón del asistente (z-index 45) y bloquea el click
+       mientras el aviso está en pantalla. */
+    max-width: min(360px, calc(100vw - var(--sp-4) * 2 - 56px - var(--sp-3)));
+  }
 }
 
 /* Sidebar oculta (pantalla completa en desktop): sin la sidebar, el toast
@@ -1761,10 +1876,14 @@ input.precio-sin-configurar::placeholder {
    sesión vence con un modal abierto, el login tiene que taparlo. Fondo
    opaco (no semitransparente como .modal), porque atrás no hay nada que
    deba seguir siendo visible: la app ni se cargó todavía. */
+/* Fondo fijo en negro, no var(--bg): igual criterio que la sidebar (es
+   identidad de marca, no una preferencia de lectura del tema). El logo
+   de esta pantalla es la versión blanca a propósito — si siguiera al
+   tema, en modo claro (fondo blanco) quedaría invisible. */
 .sesion-pantalla {
   position: fixed;
   inset: 0;
-  background: var(--bg);
+  background: #000000;
   z-index: 100;
   display: flex;
   align-items: center;
@@ -1780,8 +1899,16 @@ input.precio-sin-configurar::placeholder {
   display: none;
 }
 
+/* Colores fijos, no var(--surface)/var(--ink): esta pantalla no sigue el
+   tema (ver comentario en .sesion-pantalla), así que tampoco puede
+   depender de tokens que se invierten con él — en tema claro, --surface
+   es blanco (invisible contra el fondo negro fijo) y --ink es casi negro
+   (invisible sobre esta card). --sidebar-line ya está pensado para
+   funcionar como borde sobre negro puro, por eso se reusa acá. */
 .sesion-card {
-  background: var(--surface);
+  background: #000000;
+  border: 1px solid var(--sidebar-line);
+  color: #F0F3EF;
   border-radius: var(--r-md);
   width: min(400px, 90vw);
   padding: var(--sp-5);
@@ -1802,11 +1929,37 @@ input.precio-sin-configurar::placeholder {
   margin: 0 0 var(--sp-2);
   font-family: var(--font-display);
   font-size: var(--txt-lg);
+  color: inherit;
 }
 
 .sesion-card .form {
   width: 100%;
   text-align: left;
+}
+
+.sesion-card .form label {
+  color: #CFCFCF;
+}
+
+.sesion-card .form input {
+  background: #141414;
+  border-color: var(--sidebar-line);
+  color: #F0F3EF;
+}
+
+/* .btn-primary usa var(--ink)/var(--bg), que se invierten con el tema —
+   en modo claro sería negro sobre la card ya negra fijada arriba,
+   invisible. Fijo también, mismo criterio. */
+.sesion-card .btn-primary {
+  background: #F0F3EF;
+  color: #000000;
+}
+
+/* .form-note (mensajes de error de login/bootstrap) usa var(--surface-sunk),
+   que en claro es casi blanco — ilegible sobre esta card negra fija. */
+.sesion-card .form-note {
+  background: #141414;
+  color: #CFCFCF;
 }
 
 /* Ocultar la app entera (no solo .app: #navToggle vive fuera de .app en

@@ -1902,3 +1902,242 @@ versión de `playwright` instalada esperaba).
 - Playwright, igual que en la etapa de fusión (§15), quedó instalado solo
   en un entorno npm temporal del scratchpad — no como dependencia del
   proyecto.
+
+## 17. Última etapa: refresh visual — paleta negro/blanco puro + fixes de accesibilidad/superposición
+
+**El pedido**: mejorar paleta, tipografía, y que no se superpongan
+botones/funciones en el frontend. Se instaló primero el plugin de Claude
+Code `ui-ux-pro-max` (marketplace `nextlevelbuilder/ui-ux-pro-max-skill`)
+para apoyar el trabajo — quedó instalado globalmente, disponible para
+sesiones futuras.
+
+**Nota de proceso importante para la próxima sesión**: esta etapa arrancó
+por error sobre la rama `solla` (que en ese momento estaba 5 commits
+atrás de `main` — le faltaban exactamente las etapas de §15 y §16 de
+arriba), y el usuario notó la funcionalidad "desaparecida" al probarlo.
+A partir de eso, **decisión del usuario: de acá en adelante todo el
+trabajo se hace directamente sobre `main`**, sin ramas personales por
+integrante (`solla`/`Tosi`) — el equipo no se divide tareas por rama.
+Guardado en memoria persistente (`nexo-rama-de-trabajo-solla.md`) para
+que sesiones futuras no vuelvan a asumir una rama personal. El intento
+sobre `solla` quedó en un `git stash` en esa rama, sin mergear — no hace
+falta recuperarlo, todo se rehizo desde cero sobre `main`.
+
+Antes de tocar nada se exploró `frontend/css/styles.css` a fondo: ya
+existía un design system deliberado (tokens completos, dark mode en dos
+capas, responsive con tablas→cards en mobile) — nada de estilos ad-hoc
+que rescatar. Se consultó el plugin recién instalado; su recomendación
+genérica para "ERP dashboard" (azul corporativo + Fira Sans + patrón de
+landing) se descartó por ser peor que la identidad ya construida. El
+plugin sí sirvió para consultas puntuales de accesibilidad (mínimos de
+touch target, overflow).
+
+En vez de rediseñar algo que ya funcionaba, se **midió**: contrastes WCAG
+reales de la paleta (fórmula de luminancia relativa, script propio) y
+geometrías de los elementos flotantes en distintos viewports.
+
+### Decisión de dirección visual, tomada con el usuario
+
+El usuario pidió explícitamente **negro puro en modo oscuro, blanco puro
+en modo claro, sidebar siempre negra**, sin escalas de grises
+intermedias. Se le señaló antes de implementar que si `--bg` y `--surface`
+son el mismo negro/blanco puro, la separación por relleno cae a 1.00:1
+(los paneles se vuelven invisibles), y se le preguntó cómo prefería
+resolver esa disyuntiva: **eligió que los paneles se definan por su
+borde, no por relleno**. Decisión guardada en memoria persistente
+(`nexo-tema-negro-blanco-puro.md`).
+
+### Qué se construyó
+
+- **`frontend/css/styles.css`, tokens de los tres bloques de tema**
+  (`:root`, `@media (prefers-color-scheme: dark)`, `[data-tema="oscuro"]`):
+  `--bg`/`--surface` pasan a ser el mismo blanco puro (`#FFFFFF`) en claro
+  y el mismo negro puro (`#000000`) en oscuro; `--surface-sunk` queda solo
+  para inputs (`#F4F4F4` / `#141414`). `--line` sube de contraste (de
+  1.37:1 y 1.77:1, casi invisibles, a 1.74:1 y 1.85:1) porque ahora es el
+  único portador de la jerarquía panel/fondo. `--ink-muted` ajustado en
+  los dos temas (`#616161` claro, `#909090` oscuro).
+- **Corrección de contraste WCAG** (medido, no estético): el badge verde
+  `--accent-ok` sobre su fondo reprobaba a 2.94:1 (mínimo 4.5) — bajó a
+  `#1F7350` (claro); `--accent-warn` (terracota) estaba corto a 4.09:1,
+  pasó a `#A34A1A`; `--sidebar-ink-3` estaba corto a 4.36:1, pasó a
+  `#858585`. El tema oscuro no tenía ninguna falla (7 combinaciones
+  medidas, 4.80-13.62:1) y no se tocó.
+- **`.sidebar` con `border-right`**: efecto secundario del negro puro —
+  la sidebar fija `#121212` quedaba a 1.12:1 del nuevo `--bg` oscuro
+  (#000000), casi indistinguible. Se agregó el borde (`--sidebar-line`,
+  ya existente).
+- **`.panel`/`.ledger-strip` sin `box-shadow`**: con `--surface = --bg`,
+  una sombra suave ensucia el borde. `--shadow-lg` queda para lo que sí
+  flota (modal, popover).
+- **Botones de ícono (`.btn-icon`/`.btn-icon-danger`) a 24×24px**: medían
+  22×22 (SVG 14px + padding 4px), bajo el mínimo WCAG 2.2 AA. Se agregó
+  `min-width`/`min-height: 24px` — verificado con Playwright: 24×24 exacto.
+- **Superposición real corregida: toast tapaba el botón del asistente en
+  mobile**. En viewports de 375-414px, `.avisos` (z-index 65) se montaba
+  sobre `.asistente-launcher` (z-index 45), bloqueando el click. **El
+  primer intento de fix (solo ajustar `max-width`) no tuvo efecto** — la
+  causa real era más profunda: el archivo tenía la definición base de
+  `.avisos` escrita *más abajo* que su override de
+  `@media (max-width: 860px)`, así que con la misma especificidad la base
+  ganaba la cascada sin importar el viewport. Bug preexistente, no
+  introducido en esta etapa. Se movió el override a después de la base
+  (mismo patrón que el `@media (min-width: 861px)` de sidebar colapsada,
+  justo al lado). Verificado: `.avisos` termina en 291px, el launcher
+  arranca en 303px, 12px de aire — reproducido igual en `solla` y en
+  `main`, mismo bug en las dos ramas porque ninguna lo había tocado antes.
+- **`frontend/js/app.js`, clamp derecho del popover de filtros**
+  (`abrirSelectorCampo`/`abrirEditorFiltro`): antes solo se evitaba
+  desbordar por la izquierda — un chip cerca del final de una fila con
+  `flex-wrap` podía abrir el popover fuera de `.main`. Se agregó el
+  techo, midiendo `contenedor.clientWidth`/`pop.offsetWidth` reales
+  después de appendear el elemento. Probado bajo estrés (anclaje
+  simulado a 20px del borde): sin desbordar ni un píxel.
+- **`data-label` faltantes en la tabla anidada de cuentas corrientes**:
+  4 `<td>` de `.cc-detalle` sin etiqueta, invisibles en mobile. Se
+  agregaron y se sumó un bloque `.cc-detalle`/`.cc-detalle td` en el
+  mismo `@media (max-width: 860px)` — es una `<table>` propia anidada en
+  un `<td colspan>`, no hereda las reglas de `.ledger-table`.
+- **Residuos de valores crudos**: `.filtros` y `.ficha-datos` pasaron sus
+  `gap`/`margin` sueltos a tokens de la escala.
+- **Bug encontrado al verificar en `main` (no existía en la versión de
+  `solla` que se exploró primero, porque esa rama no tenía la vista de
+  Usuarios): los botones "Editar"/"Resetear contraseña"/"Dar de
+  baja"/"Reactivar" de la vista Usuarios (`app.js`, función que renderiza
+  la lista) no tenían ninguna clase del sistema de diseño — quedaban con
+  el estilo nativo del navegador (caja gris sólida), muy visible contra
+  el nuevo fondo negro puro. Se les agregó `.btn-fila` (la clase que ya
+  usan las acciones de fila en el resto de la app), sin tocar las clases
+  funcionales (`btn-editar-usuario` etc.) que usan los `querySelectorAll`
+  para bindear eventos. Verificado en pantalla en los dos temas.**
+
+### Lo que NO se tocó, a propósito
+
+- **Tipografía**: Plus Jakarta Sans + IBM Plex Mono, ya bien ejecutado —
+  no había defecto que corregir.
+- **La arquitectura de z-index**: coherente, sin colisiones — el único
+  conflicto real era geométrico (ancho del toast), no de capas.
+- La recomendación de paleta del plugin `ui-ux-pro-max` — descartada.
+
+### Verificación hecha
+
+- **Contraste**: recalculado sobre los tokens finales, las 3 combinaciones
+  corregidas superan 4.5:1, ninguna de las que ya pasaba bajó.
+- **Playwright contra el servidor real** (`node backend/server.js`,
+  puerto 3000, con login real usando una cuenta de administrador
+  existente, detenido al terminar): capturas en claro/oscuro de Resumen
+  (con "Qué se vende" fusionado visible), Usuarios, Cuentas corrientes y
+  Ventas; mobile 375px con un toast disparado junto al launcher (sin
+  superposición, 12px de aire); tamaño real de un botón de ícono en
+  Ventas (24×24px exacto); clamp del popover con filtros puestos y con un
+  caso extremo simulado — sin desborde en ningún caso. El cambio de tema
+  se verificó con el botón real (`#btnTema`) después de que un primer
+  intento vía solo `localStorage` diera capturas engañosas (el
+  `data-tema` del `<html>` no se actualiza solo por cambiar el storage
+  en runtime, solo al cargar la página o al clickear el botón).
+- CSS revisado por balance de llaves (con y sin comentarios) y JS
+  validado con `node --check`.
+
+### Qué queda pendiente de esta etapa
+
+- **Sin commitear** — confirmar con el usuario si conviene commitear
+  ahora o seguir sumando. Cambios en `frontend/css/styles.css` y
+  `frontend/js/app.js` únicamente; no se tocó backend ni esquema.
+- Los badges (`.status-*`) se mantuvieron como pastillas con relleno; se
+  evaluó en pantalla real si convenía texto+borde en vez de relleno y el
+  relleno se ve bien — no se tocó, queda como posible ajuste futuro.
+- El fix de los botones de Usuarios (hallazgo de esta etapa, no builded
+  a propósito desde el inicio) es un parche puntual sobre 4 botones —
+  si en el futuro se agregan más acciones de fila fuera de las tablas ya
+  existentes, conviene revisar que usen `.btn-fila`/`.btn-icon` desde el
+  primer commit en vez de quedar sin clase.
+
+## 18. Última etapa: 7 ajustes puntuales sobre el refresh visual (ronda 2)
+
+Después de probar §17 en el navegador real, el usuario marcó 7 problemas
+concretos con capturas. Todos con causa medida antes de tocar código, no
+ajustados a ojo:
+
+1. **Pie de sidebar se montaba sobre sus propios botones** —
+   `.sidebar-foot` era un flex de 4 elementos en una fila; con avatar
+   (36px) + 2 botones (32px c/u) + gaps, quedaban solo ~84px reales para
+   el nombre/rol del usuario, y "ADMINISTRADOR" en mono necesita ~93px.
+   Se pasó a grid de 2 filas: avatar+datos arriba, los 2 botones abajo
+   alineados a la derecha (`frontend/css/styles.css`, `.sidebar-foot` /
+   `.sidebar-foot-botones`).
+2. **Fechas partidas en dos líneas en las tablas** —
+   `.ledger-table th` tenía `white-space: nowrap` pero `.ledger-table td`
+   no. Se agregó, con una clase `.celda-wrap` para eximir a las columnas
+   de texto libre largo (`items_resumen` — "2 × Producto, 3 × Otro" — y
+   `Detalle` de auditoría/movimientos), que sí necesitan poder envolver.
+   Anulado en el `@media (max-width: 860px)`, donde las filas ya son
+   cards apiladas.
+3. **Botones pegados en el modal "Mi cuenta"** — "Cambiar mi contraseña"
+   vive dentro del `<form>`, "Cerrar sesión" en un `.panel-acciones`
+   hermano sin gap entre ambos. Se agregó un separador
+   (`.modal-card > .form + .panel-acciones`: borde superior + margen).
+4. **Sacado el `.eyebrow`** (el texto chico "RESUMEN"/"ADMINISTRACIÓN"
+   sobre cada título) — un solo elemento reusado por todas las vistas
+   (`#vistaEyebrow`), borrado del HTML y del CSS. El campo `dominio` de
+   `VISTAS_CONSTRUIDAS` en `app.js` se conserva (documenta el dominio de
+   cada vista aunque ya no se pinte), la línea que lo escribía quedó con
+   guard para no romper si el elemento no existe.
+5. **Poco espacio entre botones de acción de fila** — en Usuarios los
+   botones se unían con `acciones.join(" ")` **sin** estar envueltos en
+   `.fila-acciones` (el contenedor con gap que usa el resto de las
+   tablas): solo los separaba un espacio de texto. Se envolvieron, y de
+   paso se subió el `gap` de `.fila-acciones` de 8px a 12px — mejora
+   también las acciones de fila de Ventas, Compras, Gastos, etc., no
+   solo Usuarios.
+6. **Sidebar del mismo negro que el fondo + rojo en vez de naranja**:
+   - `--sidebar-bg` pasó de `#121212` a `#000000`, igual a `--bg` oscuro.
+     `--sidebar-line` subió de `rgba(255,255,255,.12)` a `.22` para que
+     el borde (ahora lo único que separa sidebar y fondo) se vea. Se
+     introdujo un token nuevo `--pill-bg: #121212` para los 4 elementos
+     que usaban `--sidebar-bg` sin ser la sidebar en sí (botón del
+     asistente, hamburger mobile, burbujas del chat, botón de enviar) —
+     si pasaban a negro puro se volvían invisibles sobre el fondo negro.
+   - `--accent-warn`/`--accent-warn-bg` pasaron a ser exactamente
+     `--accent-danger`/`-bg` en los tres bloques de tema (decisión
+     explícita del usuario: "todo lo que hoy es naranja pasa a rojo").
+     Consecuencia dejada explícita: los badges "Pendiente" y "Anulado"
+     quedan del mismo rojo, distinguibles solo por su texto.
+7. **Logo negro invisible en el login** — el login usa el ícono negro
+   sobre un fondo que ahora es negro puro. Se cambió a la variante
+   blanca. **Efecto secundario encontrado al implementar**: el login no
+   sigue el tema (usa `var(--bg)`/`var(--surface)`/`var(--ink)`), así que
+   con tema claro activo el fondo pasaría a blanco y el logo blanco
+   quedaría invisible — mismo problema, dirección contraria. Se le
+   preguntó al usuario y decidió que **el login sea siempre negro,
+   sin importar el tema** (mismo criterio que la sidebar: identidad de
+   marca, no preferencia de lectura). Se fijaron con colores propios
+   `.sesion-pantalla`, `.sesion-card` y todo lo que hay dentro (labels,
+   inputs, `.btn-primary`, `.form-note`) para no depender de tokens que
+   se invierten con el tema — de lo contrario el botón "Ingresar"
+   (`var(--ink)`/`var(--bg)`) y los mensajes de error también hubieran
+   quedado ilegibles en tema claro.
+
+### Verificación hecha
+
+Playwright contra el servidor real, login con cuenta de administrador
+real, en los dos temas (toggle con `#btnTema`, no `localStorage` — ver
+nota de §17). Capturas de login, Resumen, Usuarios, modal "Mi cuenta" y
+Ventas en claro y oscuro, más el drawer mobile a 375px. Medido en el DOM,
+no solo mirado: pie de sidebar sin superposición en desktop (836 vs 844)
+ni en mobile (939 vs 947), `.fila-acciones` con `gap: 12px` real,
+`background-color` de sidebar y fondo idénticos (`rgb(0,0,0)`) en tema
+oscuro. `items_resumen` sigue envolviendo en Ventas mientras las fechas
+quedan en una sola línea — confirma que el nowrap + `.celda-wrap` separan
+bien ambos casos.
+
+### Qué queda pendiente de esta etapa
+
+- **Sin commitear**, igual que §17 — confirmar con el usuario.
+- El logo del favicon (`<link rel="icon">`) sigue siendo la versión negra
+  — no se tocó porque el navegador lo pinta sobre su propia barra de
+  pestañas, no sobre el fondo de la app; revisar si en algún navegador/SO
+  se ve mal.
+- Los badges "Pendiente"/"Anulado" ahora comparten color (rojo) — es lo
+  que pidió el usuario, pero si en el uso diario resulta confuso
+  distinguirlos, es un cambio de un solo token (`--accent-warn`) para
+  volver a diferenciarlos sin tocar ningún otro lugar.

@@ -414,13 +414,19 @@ function crearFiltros(contenedorId, campos, onCambio) {
     cerrarPopover();
     const pop = document.createElement("div");
     pop.className = "filtro-popover";
-    pop.style.left = `${anclaje.offsetLeft}px`;
     pop.innerHTML =
       `<p class="filtro-popover-titulo">Filtrar por</p>` +
       campos
         .map((c) => `<button type="button" class="filtro-opcion" data-campo="${c.clave}">${c.etiqueta}</button>`)
         .join("");
     contenedor.appendChild(pop);
+    // Clamp de los dos lados: antes solo se evitaba desbordar por la
+    // izquierda (Math.max(0, ...)), así que un chip cerca del final de una
+    // fila con flex-wrap podía abrir el popover fuera del ancho de
+    // .main. Se mide después de appendear porque offsetWidth recién
+    // existe con el elemento en el DOM.
+    const maxLeft = Math.max(0, contenedor.clientWidth - pop.offsetWidth);
+    pop.style.left = `${Math.max(0, Math.min(anclaje.offsetLeft, maxLeft))}px`;
     // Sin esto, el click sale del popover, llega al listener de "click
     // afuera" y —como para entonces este popover ya fue reemplazado— se
     // interpreta como un click externo que cierra el editor recién abierto.
@@ -467,7 +473,6 @@ function crearFiltros(contenedorId, campos, onCambio) {
 
     const pop = document.createElement("div");
     pop.className = "filtro-popover";
-    pop.style.left = `${Math.max(0, anclaje.offsetLeft)}px`;
     pop.innerHTML = `
       <select class="filtro-input filtro-campo-select">
         ${campos
@@ -484,6 +489,9 @@ function crearFiltros(contenedorId, campos, onCambio) {
       <button type="button" class="filtro-eliminar">Eliminar filtro</button>
     `;
     contenedor.appendChild(pop);
+    // Mismo clamp de ambos lados que abrirSelectorCampo — ver comentario ahí.
+    const maxLeft = Math.max(0, contenedor.clientWidth - pop.offsetWidth);
+    pop.style.left = `${Math.max(0, Math.min(anclaje.offsetLeft, maxLeft))}px`;
     pop.addEventListener("click", (e) => e.stopPropagation());
 
     // Cambiar de propiedad reinicia el operador: los de un texto no tienen
@@ -882,7 +890,7 @@ function renderUltimosMovimientos(rango = {}) {
     <tr>
       <td data-label="Fecha">${m.fecha}</td>
       <td data-label="Tipo">${m.tipo}</td>
-      <td data-label="Detalle">${m.detalle}</td>
+      <td data-label="Detalle" class="celda-wrap">${m.detalle}</td>
       <td data-label="Importe" class="align-right mono ${m.signo < 0 ? "saldo-negativo" : ""}">${
         m.signo < 0 ? "-" : "+"
       }${money(m.importe)}</td>
@@ -2241,7 +2249,7 @@ function renderPresupuestos(lista) {
     <tr class="fila-clickeable" data-id="${p.id}">
       <td data-label="N°" class="mono">#${p.id}</td>
       <td data-label="Cliente">${p.cliente}</td>
-      <td data-label="Productos">${p.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${p.items_resumen || "—"}</td>
       <td data-label="Fecha">${p.fecha}</td>
       <td data-label="Vence">${p.vencimiento || "—"}</td>
       <td data-label="Total" class="align-right mono">${money(p.total)}</td>
@@ -2560,7 +2568,7 @@ function renderVentas(lista) {
     tr.innerHTML = `
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente">${v.cliente}</td>
-      <td data-label="Productos">${v.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${v.items_resumen || "—"}</td>
       <td data-label="Fecha">${v.fecha}</td>
       <td data-label="Costo" class="align-right mono">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono">${money(v.total)}</td>
@@ -2836,7 +2844,7 @@ async function abrirFichaVenta(id) {
       (d) => `
     <tr>
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Productos">${d.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Estado">${
         d.estado === "anulada"
@@ -2997,7 +3005,7 @@ function renderDevoluciones(lista) {
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
       <td data-label="Cliente">${d.cliente}</td>
-      <td data-label="Productos">${d.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
       <td data-label="Fecha">${d.fecha}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
@@ -3682,7 +3690,7 @@ async function abrirFichaCompra(id) {
       (d) => `
     <tr>
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Productos">${d.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Estado">${
         d.estado === "anulada"
@@ -3798,7 +3806,7 @@ function renderDevolucionesProveedor(lista) {
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
       <td data-label="Proveedor">${d.proveedor}</td>
-      <td data-label="Productos">${d.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
       <td data-label="Fecha">${d.fecha}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
@@ -4857,10 +4865,10 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
               .map(
                 (o) => `
               <tr>
-                <td>${o.fecha}</td>
-                <td class="align-right mono">${money(o.pendiente)}</td>
-                <td>${o.dias !== null ? `${numero(o.dias)} días` : "A favor"}</td>
-                <td><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
+                <td data-label="Fecha">${o.fecha}</td>
+                <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
+                <td data-label="Antigüedad">${o.dias !== null ? `${numero(o.dias)} días` : "A favor"}</td>
+                <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
               </tr>`
               )
               .join("")}
@@ -5935,7 +5943,7 @@ function renderAuditoria(registros) {
           }</span></td>
           <td data-label="Entidad">${AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad}</td>
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
-          <td data-label="Detalle">${detalle}</td>
+          <td data-label="Detalle" class="celda-wrap">${detalle}</td>
           <td data-label="Origen" class="mono">${AUDITORIA_ACTOR_LABEL[r.actor] || r.actor}</td>
           <td data-label="Usuario">${r.usuario_nombre ?? "—"}</td>
         </tr>`;
@@ -6125,14 +6133,14 @@ function renderUsuarios(lista) {
 
   body.innerHTML = lista
     .map((u) => {
-      const acciones = [`<button type="button" class="btn-editar-usuario" data-id="${u.id}">Editar</button>`];
+      const acciones = [`<button type="button" class="btn-fila btn-editar-usuario" data-id="${u.id}">Editar</button>`];
       if (u.activo) {
         acciones.push(
-          `<button type="button" class="btn-resetear-usuario" data-id="${u.id}">Resetear contraseña</button>`,
-          `<button type="button" class="btn-baja-usuario" data-id="${u.id}">Dar de baja</button>`
+          `<button type="button" class="btn-fila btn-resetear-usuario" data-id="${u.id}">Resetear contraseña</button>`,
+          `<button type="button" class="btn-fila btn-baja-usuario" data-id="${u.id}">Dar de baja</button>`
         );
       } else {
-        acciones.push(`<button type="button" class="btn-reactivar-usuario" data-id="${u.id}">Reactivar</button>`);
+        acciones.push(`<button type="button" class="btn-fila btn-reactivar-usuario" data-id="${u.id}">Reactivar</button>`);
       }
       return `
         <tr class="${u.activo ? "" : "fila-anulada"}">
@@ -6144,7 +6152,7 @@ function renderUsuarios(lista) {
           }</span></td>
           <td data-label="Alta">${u.fecha_alta ? u.fecha_alta.split(" ")[0] : "—"}</td>
           <td data-label="Último acceso">${u.ultimo_acceso ? u.ultimo_acceso.split(" ")[0] : "—"}</td>
-          <td data-label="">${acciones.join(" ")}</td>
+          <td data-label=""><div class="fila-acciones">${acciones.join("")}</div></td>
         </tr>`;
     })
     .join("");
@@ -6582,7 +6590,15 @@ function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
 
   const info = VISTAS_CONSTRUIDAS[viewId];
   const tituloFinal = titulo ?? info?.titulo;
-  if (info) document.getElementById("vistaEyebrow").textContent = info.dominio;
+  // El elemento #vistaEyebrow (el texto chico "RESUMEN"/"ADMINISTRACIÓN"
+  // sobre el título) se sacó del HTML por decisión de diseño. El campo
+  // `dominio` de VISTAS_CONSTRUIDAS se conserva igual: sigue documentando
+  // a qué dominio pertenece cada vista, aunque ya no se pinte en pantalla.
+  // El optional chaining evita romper acá si el elemento no existe.
+  if (info) {
+    const eyebrow = document.getElementById("vistaEyebrow");
+    if (eyebrow) eyebrow.textContent = info.dominio;
+  }
   if (tituloFinal) {
     document.getElementById("vistaTitulo").textContent = tituloFinal;
     document.title = `${tituloFinal} · Nexo`;
