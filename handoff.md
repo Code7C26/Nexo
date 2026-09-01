@@ -32,8 +32,11 @@ Puntos clave de `CLAUDE.md` para no perder de vista:
   SQL crudo con `db.prepare(...).run()/get()/all()`.
 - Frontend: HTML, CSS y JS vanilla, sin build step
   (`frontend/index.html`, `frontend/js/app.js`, `frontend/css/styles.css`).
-- Sin autenticación ni usuarios: el sistema lo usa un solo operador por
-  ahora (decisión explícita, no agregar auth sin que se pida).
+- **Con autenticación y usuarios desde §16**: login con cookie httpOnly,
+  sesiones en base, y dos roles (`admin` / `empleado`). Esta línea decía
+  lo contrario hasta esta etapa; quedó sin actualizar cuando se construyó
+  el módulo. Ver §16 para el detalle y §19 para el agujero de permisos que
+  todavía sigue abierto.
 - **Nuevo en esta etapa**: `@google/genai` (dependencia de
   `backend/interprete.js`, el asistente por texto — ver §4). Se probó
   primero con `@anthropic-ai/sdk`/Claude y se cambió a Gemini en la misma
@@ -153,9 +156,10 @@ verificada antes de pasar a la siguiente:
   (§10), **qué se vende y a quién** (§11) y **stock** — qué reponer,
   valorizado, rotación como días de inventario (§12).
 - **Ventas por categoría de producto ya se construyó (§13)**. Ventas por
-  **vendedor** sigue sin ser construible: no hay columna de vendedor/usuario
-  en `ventas` (no hay sistema de usuarios), y esta migración no lo
-  desbloquea.
+  **vendedor** sigue sin construirse, pero **ya dejó de estar bloqueado**:
+  desde §16 hay sistema de usuarios, así que solo falta agregar
+  `usuario_id` a `ventas` (migración aditiva). Hoy se sabe quién auditó una
+  operación, no quién la vendió.
 - Aging de cuentas por cobrar/pagar por **vencimiento pactado** (§10 lo
   mide por fecha de la operación, no por vencimiento): ni `ventas` ni
   `compras` tienen fecha de vencimiento ni condición de pago.
@@ -2132,7 +2136,8 @@ bien ambos casos.
 
 ### Qué queda pendiente de esta etapa
 
-- **Sin commitear**, igual que §17 — confirmar con el usuario.
+- ~~Sin commitear~~ — ya commiteado: §17 y §18 viajan juntas en `5a03436`
+  ("feat: refresh visual negro/blanco puro…"), que hoy está en `main`.
 - El logo del favicon (`<link rel="icon">`) sigue siendo la versión negra
   — no se tocó porque el navegador lo pinta sobre su propia barra de
   pestañas, no sobre el fondo de la app; revisar si en algún navegador/SO
@@ -2141,3 +2146,149 @@ bien ambos casos.
   que pidió el usuario, pero si en el uso diario resulta confuso
   distinguirlos, es un cambio de un solo token (`--accent-warn`) para
   volver a diferenciarlos sin tocar ningún otro lugar.
+
+## 19. Última etapa: 6 correcciones de UI + auditoría de permisos por rol
+
+Commit: `7bc15ee` ("fix: correcciones de UI en tablas, filtros y modales +
+probador de tipografías"), sobre `Tosi`.
+
+### Lo que se hizo
+
+El usuario marcó seis problemas con capturas. Todos con la causa medida en
+el código antes de tocar nada:
+
+1. **Se eliminó el orden de tablas por click en el encabezado.** La
+   función existía (`crearOrden`, 18 usos, 98 `data-orden` en el HTML) pero
+   no se anunciaba de ninguna forma: el usuario tocaba una columna,
+   aparecía una flecha y la tabla cambiaba sin explicación. Se le ofreció
+   mantenerla haciéndola descubrible o sacarla, y **eligió sacarla**. Antes
+   de borrarla se verificó que todos los endpoints ya traen un `ORDER BY`
+   sensato (`nombre` en los maestros, `id`/`fecha DESC` en las
+   operaciones), así que ninguna tabla quedó desordenada.
+2. **Desalineación entre encabezados y datos** — era el mismo bug: la
+   flecha de orden reservaba `0.9em` fijos al final de cada `th` aunque
+   estuviera vacía, y en las columnas `align-right` eso corría el texto del
+   encabezado mientras el dato iba a ras del padding. Se arregló solo al
+   sacar el orden.
+3. **Carteles pegados a los filtros** — `.form-note` es `margin: 0` y
+   `.filtros` no tenía `margin-top`: el gap real era 0px.
+4. **Celda de precio de Productos** — era un `<input>` de 100px fijos con
+   borde permanente. Pasó a campo fantasma (sin caja en reposo, aparece en
+   hover/foco), con `mono` + `tabular-nums` para alinear con Costo y Margen.
+5. **El botón de menú tapaba el título** con la sidebar colapsada: faltaba
+   en desktop la compensación de padding que ya existía en mobile.
+6. **Modal "Mi cuenta"**: el nombre del usuario y el formulario de
+   contraseña estaban pegados sin ningún margen.
+
+### Probador de tipografías — el usuario rechazó las cuatro opciones
+
+Se agregó un probador temporal en el modal de Configuración (que hasta acá
+estaba vacío): cuatro combinaciones vía `data-fuente` en `<html>` +
+`localStorage`, aprovechando que todo el CSS ya lee
+`--font-display`/`--font-body`/`--font-mono`, así que cambiar de tipografía
+es redefinir tres variables y no tocar ninguna regla.
+
+**El usuario probó las cuatro y no le gustó ninguna.** Sus dos objeciones,
+textuales: no le gusta **"que tenga el estilo de una caja registradora"** y
+no le gusta **"que los 0 tengan puntos o tachas en el medio"**.
+
+Esto es importante porque **invalida el concepto tipográfico con el que se
+construyó el frontend**: el sistema actual está montado sobre una idea de
+"libro mayor / ticket de caja" (IBM Plex Mono para encabezados, títulos,
+badges y números), documentada en los comentarios de `styles.css` alrededor
+de `--font-display`. La segunda objeción además descarta de plano a casi
+todas las monoespaciadas para programadores (IBM Plex Mono, JetBrains Mono,
+DM Mono, Roboto Mono, Space Mono usan cero con punto o barra por diseño).
+
+Camino para la próxima tanda: proponer sans (no mono) para encabezados y
+títulos, verificando el dibujo del cero antes de proponer, y mantener las
+columnas de números alineadas con `font-variant-numeric: tabular-nums`
+sobre una sans con cifras tabulares — que es lo que ya hace la clase
+`.mono` y funciona igual sin ser monoespaciada. **El probador sigue en el
+código con las cuatro opciones viejas**: hay que reemplazarlas, no solo
+elegir una.
+
+### Auditoría de permisos por rol — diagnóstico hecho, implementación NO
+
+Se auditó el módulo de usuarios de §16 y apareció un agujero grande:
+
+**El rol "empleado" hoy no protege casi nada.** `soloAdmin`
+(`backend/server.js:174`) está aplicado a exactamente **4 endpoints**, los
+cuatro de `/api/usuarios` (líneas 5684, 5696, 5738, 5792). Los otros ~88
+endpoints de negocio solo pasan por `autenticar`, o sea que solo exigen
+"tener sesión". Un empleado, con su cookie normal y sin ninguna barrera,
+puede llamar por API a `POST /api/ventas/:id/anular`,
+`POST /api/tesoreria/transferencias`, `PATCH /api/productos/:id` (precios),
+`POST /api/stock/ajuste`, `GET /api/resumen` y `GET /api/reportes/ventas`
+(toda la rentabilidad y los márgenes del negocio). La UI le esconde la
+pantalla de Usuarios y nada más.
+
+**Segundo hueco: `debe_cambiar_password` no se enforza en el servidor.**
+`autenticar` (`server.js:161-172`) no lo mira, y el login ya devuelve una
+cookie plenamente operativa antes de que aparezca la pantalla de cambio
+forzado (`sesion.js:148-152`). Un usuario con la contraseña reseteada por
+el admin puede cerrar el modal, o llamar la API directo, y operar igual.
+
+**Tercer hueco: login y logout no auditan nada.** `auditoria.entidad` ya
+acepta `'usuario'` (`schema.sql:493`), pero hoy no queda registro de quién
+entró ni cuándo. Los intentos fallidos solo viven en un `Map` en memoria
+que se pierde en cada reinicio (`server.js:184-214`), y el rate limit es
+por nombre de usuario, no por IP.
+
+### Reglas de negocio ya decididas por el usuario (no volver a preguntar)
+
+Se le preguntó explícitamente y definió el reparto. **Estas decisiones
+están tomadas, falta implementarlas:**
+
+**Acciones que pasan a ser solo-admin:**
+- Anular y restaurar todo: ventas, compras, gastos, devoluciones y
+  devoluciones a proveedor (10 endpoints `POST /api/*/:id/anular` y
+  `/restaurar`). Como consecuencia, la Papelera queda solo para admin.
+- Tesorería: transferencias, movimientos manuales y el ABM de cuentas.
+  **Pero los cobros de venta (`POST /api/ventas/:id/cobros`) y los pagos de
+  compra (`POST /api/compras/:id/pagos`) siguen siendo del empleado** — es
+  su trabajo diario, no configuración.
+- Alta y edición de productos y de categorías (incluye el precio de venta,
+  o sea que el campo editable de la tabla de Productos se apaga para el
+  empleado).
+- Ajuste manual de stock.
+
+**El empleado NO debe ver costos ni ganancias.** El usuario eligió
+explícitamente la opción más costosa ("si el dato viaja al navegador, el
+empleado puede leerlo"), o sea que no alcanza con esconder columnas en el
+frontend: hay que **filtrar los campos en el backend**. Debe dejar de ver
+Costo/Valorizado/Margen en Productos, la ganancia y la rentabilidad del
+Resumen, el margen y la ganancia de los reportes de ventas, y el costo
+histórico y margen de cada línea en la ficha de una venta. Sigue viendo
+precio de venta, stock, sus ventas, clientes y cuentas corrientes.
+
+**Auditoría sigue visible para los dos roles** — decisión previa de §16 que
+el usuario mantuvo ("es consulta, no configuración").
+
+### Dónde tocar cuando se implemente
+
+Los puntos calientes ya localizados: `SELECT_PRODUCTO`
+(`server.js:698-706`) incluye `precio_costo` y lo usan tanto
+`GET /api/productos` como el reporte de stock; `decorarProducto`
+(`server.js:722`) calcula el margen; `GET /api/resumen` (4562),
+`GET /api/resumen/evolucion` (4769), `GET /api/reportes/ventas` (4978) y
+`GET /api/ventas/:id` (1198) son los otros portadores de datos sensibles.
+En el frontend, `sesion.js:87-93` ya escribe `data-rol` en `<html>` y hay
+**una sola** regla CSS que lo usa (`styles.css:2109`, esconde el nav de
+Usuarios): ese es el mecanismo a extender. Ojo con un detalle: `sesion.js`
+intercepta 401 pero **deliberadamente no intercepta 403**, así que cada
+llamada que pueda recibir 403 tiene que manejarlo por su cuenta.
+
+Quedó sin escribir el plan de implementación detallado (se cortó por límite
+de sesión). El diagnóstico y las decisiones de arriba son lo que hay que
+retomar.
+
+### Qué queda pendiente
+
+- **Implementar los permisos por rol** con las reglas de arriba.
+- **Reemplazar las cuatro opciones del probador de tipografías** por
+  alternativas que respeten las objeciones del usuario, y una vez elegida
+  una, fijarla como default y sacar del `<link>` de Google Fonts las
+  familias que sobren (hoy carga 5 de más).
+- `GEMINI_API_KEY` sigue sin estar cargada en el proceso: el asistente por
+  texto responde 503. Se consigue gratis en Google AI Studio.
