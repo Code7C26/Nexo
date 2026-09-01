@@ -102,6 +102,31 @@
   --sidebar-w: 240px;
 }
 
+/* ---------- Probador de tipografías (Configuración) ----------
+   Temporal a propósito: mientras se compara, hay cuatro combinaciones
+   posibles vía data-fuente en <html> (ver el selector en el modal de
+   Configuración). "plex" es la de hoy y es el default de :root de
+   arriba, no necesita bloque propio. Cuando se elija una definitiva, se
+   fija como default, se borran los otros tres bloques y las familias que
+   sobren del <link> de Google Fonts en index.html. */
+:root[data-fuente="jetbrains"] {
+  --font-display: 'JetBrains Mono', 'Courier New', monospace;
+  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+  --font-body:    'Inter', 'Segoe UI', sans-serif;
+}
+
+:root[data-fuente="plex-full"] {
+  --font-display: 'IBM Plex Mono', 'Courier New', monospace;
+  --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
+  --font-body:    'IBM Plex Sans', 'Segoe UI', sans-serif;
+}
+
+:root[data-fuente="dm"] {
+  --font-display: 'DM Mono', 'Courier New', monospace;
+  --font-mono:    'DM Mono', 'Courier New', monospace;
+  --font-body:    'DM Sans', 'Segoe UI', sans-serif;
+}
+
 /* Sin elección explícita, el tema sigue al sistema operativo. El botón
    fija --data-tema y a partir de ahí gana siempre, en cualquier
    dirección (aunque el SO diga otra cosa). */
@@ -380,6 +405,13 @@ button { font-family: inherit; cursor: pointer; }
 
   :root[data-sidebar="colapsada"] .nav-toggle {
     display: flex;
+  }
+
+  /* Con la sidebar colapsada el hamburger flota fijo sobre la esquina
+     superior izquierda, justo encima de #vistaTitulo — mismo criterio que
+     el padding-left que .topbar ya usa en mobile para despejarlo. */
+  :root[data-sidebar="colapsada"] .topbar {
+    padding-left: var(--sp-6);
   }
 }
 
@@ -841,11 +873,9 @@ button { font-family: inherit; cursor: pointer; }
 /* La regla `.ledger-table th` de arriba fija text-align:left y tiene más
    especificidad que un `.align-right` suelto, así que los encabezados
    alineados a la derecha quedaban a la izquierda mientras su columna de
-   datos iba a la derecha. Por eso estas dos reglas nombran el th. */
+   datos iba a la derecha. Por eso esta regla nombra el th. */
 .align-right { text-align: right; }
-.align-center { text-align: center; }
 .ledger-table th.align-right { text-align: right; }
-.ledger-table th.align-center { text-align: center; }
 
 .ledger-table tbody tr:hover { background: var(--surface-sunk); }
 
@@ -859,23 +889,6 @@ button { font-family: inherit; cursor: pointer; }
 .cc-detalle { width: 100%; border-collapse: collapse; }
 .cc-detalle td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: var(--txt-sm); }
 .cc-detalle tr:last-child td { border-bottom: none; }
-
-/* ---------- Orden de tablas (click en el encabezado) ---------- */
-
-.th-ordenable {
-  cursor: pointer;
-  user-select: none;
-}
-
-.th-ordenable:hover { color: var(--ink); }
-
-.th-ordenado { color: var(--ink); }
-
-.th-flecha {
-  display: inline-block;
-  width: 0.9em;
-  font-family: var(--font-mono);
-}
 
 .status {
   display: inline-block;
@@ -1015,6 +1028,89 @@ button { font-family: inherit; cursor: pointer; }
 
 .modal-close:hover { background: var(--surface-sunk); color: var(--ink); }
 
+/* Identidad de quien está logueado, en el modal "Mi cuenta": no es una
+   nota aclaratoria como .form-note (que es margin:0), es el encabezado
+   de la sección de cuenta, así que necesita su propio aire respecto del
+   formulario de cambio de contraseña que le sigue. */
+.perfil-identidad {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+}
+
+.perfil-identidad strong {
+  font-family: var(--font-display);
+  font-size: var(--txt-md);
+}
+
+/* Probador de tipografías (modal Configuración). Cada muestra fija su
+   propia font-family inline (ver index.html) en vez de leer
+   --font-display/--font-body, porque las cuatro tienen que verse a la
+   vez sin importar cuál esté aplicada al resto de la app ahora mismo. */
+.fuente-selector {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.fuente-selector legend {
+  padding: 0;
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+}
+
+.fuente-selector .form-note { margin-bottom: var(--sp-2); }
+
+.fuente-opcion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.fuente-opcion:has(input:checked) {
+  border-color: var(--ink);
+}
+
+.fuente-opcion input { margin-top: 3px; }
+
+.fuente-opcion-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--txt-sm);
+}
+
+.fuente-opcion-muestra {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ink-muted);
+}
+
+.fuente-opcion-muestra span:first-child {
+  font-size: var(--txt-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fuente-opcion-muestra span:last-child {
+  font-size: var(--txt-md);
+  color: var(--ink);
+}
+
 .form {
   display: flex;
   flex-direction: column;
@@ -1079,6 +1175,15 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
   margin: 0;
+}
+
+/* La nota explicativa de una vista y el bloque de filtros (o la tabla,
+   cuando no hay filtros) que le sigue no tenían margen entre sí
+   (.form-note es margin:0 y .filtros solo lleva margin-bottom), así que
+   el botón "+ Filtro" quedaba pegado al borde del cartel. */
+.form-note + .filtros,
+.form-note + .tabla-scroll {
+  margin-top: var(--sp-3);
 }
 
 /* El widget flotante del asistente tiene su propia sección, al final del
@@ -1351,16 +1456,46 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--surface);
 }
 
+/* En reposo se lee como texto plano (mismo tamaño y tracking numérico que
+   las celdas .mono vecinas de Costo/Margen), sin borde ni fondo propio —
+   la caja de edición solo aparece al pasar el mouse o enfocar, así no
+   compite visualmente con el dato en sí. */
 .input-inline {
-  width: 100px;
-  border: 1px solid var(--line);
+  width: 96px;
+  border: 1px solid transparent;
+  background: transparent;
   border-radius: var(--r-sm);
   padding: 4px 6px;
-  font-size: var(--txt-xs);
+  font-size: var(--txt-sm);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
-  background: var(--surface);
   text-align: right;
+  /* Sin esto, Chromium reserva el ancho de las flechas de incremento
+     aunque no se vean (solo aparecen en hover/foco de un <input
+     type="number">) — ese hueco fantasma era lo que cortaba el
+     placeholder "Sin precio". De paso saca el control nativo, que no
+     hace falta acá: no hay caso de uso para incrementar un precio de a
+     uno con las flechitas. */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input-inline::-webkit-outer-spin-button,
+.input-inline::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input-inline:hover {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.input-inline:focus {
+  border-color: var(--ink);
+  background: var(--surface);
+  outline: none;
 }
 
 .precio-sin-configurar {
