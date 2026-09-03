@@ -572,6 +572,78 @@ if (auditoriaSql && !auditoriaSql.sql.includes("'usuario'")) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Datos del negocio para el membrete de los comprobantes impresos. Aditivas y
+// nullable, mismo criterio que facturas.venta_id/devolucion_id más arriba: una
+// base que ya existía las gana vacías y el negocio las completa desde
+// Configuración. Ninguna fila se reescribe. Se chequea columna por columna
+// (y no "si falta una, agregar todas") para que el bloque sea idempotente
+// incluso si una corrida anterior se cortó a la mitad.
+const organizacionesColumnas = db.prepare('PRAGMA table_info(organizaciones)').all();
+for (const columna of ['documento', 'direccion', 'telefono', 'email', 'condicion_iva', 'pie_comprobante']) {
+  if (!organizacionesColumnas.some((col) => col.name === columna)) {
+    db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna} TEXT`);
+  }
+}
+
+// Segundo rebuild de auditoria: sumar 'organizacion' al CHECK de entidad, para
+// poder auditar quién cambió los datos del negocio. Cambiar el CUIT que sale
+// impreso en TODOS los comprobantes no puede pasar sin dejar rastro (§22), y
+// reusar otra entidad para esquivar el rebuild sería mentir en el registro que
+// existe justamente para no mentir.
+//
+// Mismo procedimiento que el rebuild de arriba, con una diferencia que importa:
+// a esta altura la tabla YA TIENE FILAS y ya tiene usuario_id, así que el
+// INSERT..SELECT copia también esa columna. Los id se preservan explícitamente
+// (una fila de auditoría se referencia por id) y los dos índices se recrean a
+// mano: el DROP TABLE se los lleva y schema.sql ya corrió al principio del
+// archivo, así que nadie más los va a volver a crear en este arranque.
+const auditoriaSql2 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql2 && !auditoriaSql2.sql.includes("'organizacion'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Limpieza de sesiones vencidas al bootear, sin cron ni timer: con
 // `--watch` esto corre en cada reinicio del proceso, que alcanza para un
 // sistema de este tamaño.

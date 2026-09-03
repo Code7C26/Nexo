@@ -349,6 +349,334 @@ function crearOrden(idBody, onCambio) {
   };
 }
 
+/* ---------- Selección múltiple ---------- */
+
+// A partir de esta cantidad de seleccionados, las acciones en lote que
+// tardan (imprimir varias páginas, generar varios PDF) piden confirmación
+// antes de arrancar: no para bloquear, sino para avisar que puede demorar
+// (y, para descargas, que el navegador va a pedir permiso para bajar varios
+// archivos — Chrome bloquea descargas múltiples automáticas por defecto).
+const CONFIRMAR_LOTE_DESDE = 25;
+
+// Tope duro, no una regla de negocio: guardarraíl contra un "seleccionar
+// todo" accidental sobre una tabla con miles de filas, no un límite que
+// alguien vaya a pedir subir. Ninguna acción en lote de esta etapa debería
+// necesitar más.
+const LIMITE_LOTE = 500;
+
+// Utilitario transversal de tablas, hermano de crearFiltros y crearOrden:
+// agrega una columna de checkbox a una tabla y lleva el set de ids
+// tildados. idBody es el id del <tbody> (mismo criterio que crearOrden: la
+// única marca que ya llevan las tablas, sin agregar un id nuevo a la
+// <table>). idDe saca el id de una fila de la lista (default (x) => x.id;
+// hace falta pasarlo distinto en tablas donde la fila no es la entidad en
+// sí, como Stock, que es producto×depósito).
+//
+// La columna del <th> se inyecta acá por JS (insertAdjacentHTML), igual que
+// crearOrden ya inyecta su <span class="th-flecha"> en cada <th> — así la
+// columna existe SI Y SOLO SI la selección está montada, y colspan(n) puede
+// resolver solo el ancho de la fila vacía sin tocar cada vista a mano.
+//
+// El <th> de checkbox NO lleva data-orden a propósito: crearOrden lee
+// thead th[data-orden], y una columna de selección ordenada no tiene
+// sentido. No agregárselo si se toca este código después.
+//
+// El binding de los checkboxes de fila es la ÚNICA delegación real del
+// archivo (el resto re-bindea en cada render): los checkboxes se destruyen
+// en cada innerHTML =, y re-bindear un listener por fila en cada render
+// sería el único costo evitable de esta función.
+function crearSeleccion(idBody, { idDe = (x) => x.id } = {}) {
+  const body = document.getElementById(idBody);
+  const tabla = body.closest("table");
+  const filaHead = tabla.querySelector("thead tr");
+
+  const seleccionados = new Set();
+  let visibles = []; // ids de la lista visible en el último sincronizar()
+  // Quien quiera enterarse de cada cambio de selección (típicamente
+  // montarBarraSeleccion) se suscribe con sel.escuchar(fn) en vez de pasar
+  // un único callback por el constructor — así crearSeleccion() no necesita
+  // saber nada de la barra ni del orden en que se arma cada vista.
+  const escuchas = [];
+
+  filaHead.insertAdjacentHTML(
+    "afterbegin",
+    `<th class="col-sel"><input type="checkbox" class="sel-todo" aria-label="Seleccionar todo"></th>`
+  );
+  const checkTodo = filaHead.querySelector(".sel-todo");
+
+  // En mobile el <thead> completo pasa a display:none (las filas se vuelven
+  // cards apiladas), así que checkTodo deja de ser alcanzable — no hay forma
+  // de seleccionar todo salvo tildar card por card. Se inyecta un botón de
+  // texto, visible SOLO en ese breakpoint (.btn-sel-todo-mobile en CSS),
+  // antes de .tabla-scroll. Va acá y no a mano en cada vista de index.html
+  // por el mismo motivo que el <th>: nace y muere con la selección montada.
+  const scrollWrap = tabla.closest(".tabla-scroll") ?? tabla;
+  scrollWrap.insertAdjacentHTML(
+    "beforebegin",
+    `<button type="button" class="btn-link btn-sel-todo-mobile">Seleccionar todo</button>`
+  );
+  const btnTodoMobile = scrollWrap.previousElementSibling;
+
+  function notificar() {
+    for (const fn of escuchas) fn(seleccionados.size);
+  }
+
+  function actualizarCheckTodo() {
+    const totalVisibles = visibles.length;
+    const marcados = visibles.filter((id) => seleccionados.has(id)).length;
+    checkTodo.checked = totalVisibles > 0 && marcados === totalVisibles;
+    checkTodo.indeterminate = marcados > 0 && marcados < totalVisibles;
+    // El botón de mobile hace las veces de checkTodo ahí: mismo texto que
+    // comunica el estado, alternando entre marcar y desmarcar.
+    btnTodoMobile.textContent = checkTodo.checked ? "Ninguno" : "Seleccionar todo";
+  }
+
+  // Comparte lógica entre el checkbox del header (desktop) y el botón de
+  // texto de mobile (el thead con checkTodo queda oculto en ese breakpoint).
+  function marcarTodosVisibles(marcar) {
+    for (const id of visibles) {
+      if (marcar) seleccionados.add(id);
+      else seleccionados.delete(id);
+    }
+    body.querySelectorAll(".sel-fila").forEach((cb) => {
+      cb.checked = seleccionados.has(Number(cb.dataset.selId));
+    });
+    actualizarCheckTodo();
+    notificar();
+  }
+
+  checkTodo.addEventListener("change", () => marcarTodosVisibles(checkTodo.checked));
+  btnTodoMobile.addEventListener("click", () => marcarTodosVisibles(!checkTodo.checked));
+
+  // Delegado una sola vez: sobrevive a que el tbody se reescriba entero en
+  // cada render.
+  body.addEventListener("change", (e) => {
+    const cb = e.target.closest(".sel-fila");
+    if (!cb) return;
+    const id = Number(cb.dataset.selId);
+    if (cb.checked) seleccionados.add(id);
+    else seleccionados.delete(id);
+    actualizarCheckTodo();
+    notificar();
+  });
+
+  // El checkbox nativo mide 13px: un click en el resto de la celda (que la
+  // guarda de la fila ya excluye vía .col-sel, así que nunca abre la ficha)
+  // no debería quedar "sin efecto" — clickear la celda entera tildaría o
+  // destildaría igual, en vez de exigirle al usuario acertarle al cuadrito.
+  body.addEventListener("click", (e) => {
+    const celda = e.target.closest("td.col-sel");
+    if (!celda || e.target.closest(".sel-fila")) return; // el click directo en el input ya dispara su propio change
+    celda.querySelector(".sel-fila")?.click();
+  });
+
+  return {
+    get ids() {
+      // En el orden de la lista visible, no el orden de inserción del Set.
+      return visibles.filter((id) => seleccionados.has(id));
+    },
+    get cantidad() {
+      return seleccionados.size;
+    },
+    tiene(id) {
+      return seleccionados.has(id);
+    },
+    // fn(cantidad) se llama con cada cambio de selección. Usado por
+    // montarBarraSeleccion para mantener la barra sincronizada sin que
+    // crearSeleccion necesite conocerla.
+    escuchar(fn) {
+      escuchas.push(fn);
+    },
+    limpiar() {
+      seleccionados.clear();
+      body.querySelectorAll(".sel-fila").forEach((cb) => (cb.checked = false));
+      actualizarCheckTodo();
+      notificar();
+    },
+    // Se llama desde render*(), con la lista YA filtrada/ordenada, ANTES de
+    // pintar el tbody. Poda del set lo que ya no está visible: "todo" solo
+    // puede significar "todo lo que se está viendo", igual que ya significa
+    // para los botones de Exportar CSV (ver comentario de descargarCSV más
+    // abajo). Si no se podara, el contador de la barra podría no coincidir
+    // con lo que hay tildado en pantalla.
+    sincronizar(lista) {
+      visibles = lista.map(idDe);
+      const visiblesSet = new Set(visibles);
+      for (const id of [...seleccionados]) {
+        if (!visiblesSet.has(id)) seleccionados.delete(id);
+      }
+      actualizarCheckTodo();
+      notificar();
+    },
+    // n = cantidad de columnas de datos reales de la tabla (lo que ya se le
+    // pasaba a filaVacia/filaVaciaFiltrada/tablaCargando antes de esta
+    // función existir). +1 por la columna de checkbox.
+    colspan(n) {
+      return n + 1;
+    },
+    // Celda de checkbox para anteponer al template de la fila. Sirve para
+    // los dos estilos de render del archivo (innerHTML+.map().join("") y
+    // createElement("tr")+tr.innerHTML=...): los dos arman la fila con un
+    // template string, así que un solo helper que devuelva string alcanza.
+    celda(id) {
+      return `<td class="col-sel" data-label=""><input type="checkbox" class="sel-fila" data-sel-id="${id}" ${
+        seleccionados.has(id) ? "checked" : ""
+      } aria-label="Seleccionar fila"></td>`;
+    }
+  };
+}
+
+// Conecta un crearSeleccion() con la barra flotante #barraSeleccion (única,
+// compartida por todas las tablas — ver el comentario en index.html). Se
+// suscribe a sel.escuchar(...), así que no hace falta pasarle nada al
+// construir crearSeleccion(): se llama después, una vez por tabla.
+//
+// acciones: [{ etiqueta, onClick(ids, btn) }] — los botones que aparecen
+// para ESTA tabla en particular. onClick recibe también el propio <button>
+// por si la acción necesita deshabilitarlo / cambiarle el texto mientras
+// corre (ver "Descargar PDF" en la sub-etapa 4, que tarda varios segundos).
+//
+// Solo puede haber una vista visible a la vez, así que un único juego de
+// elementos alcanza: cada vista que se activa vuelve a llenar la barra con
+// sus propios botones apenas cambia su propia selección, sobreescribiendo
+// los que hubiera dejado la tabla anterior.
+function montarBarraSeleccion(sel, acciones) {
+  const barra = document.getElementById("barraSeleccion");
+  const conteo = document.getElementById("barraSeleccionConteo");
+  const contenedorAcciones = document.getElementById("barraSeleccionAcciones");
+  const btnLimpiar = document.getElementById("barraSeleccionLimpiar");
+
+  sel.escuchar((cantidad) => {
+    if (cantidad === 0) {
+      barra.hidden = true;
+      return;
+    }
+    barra.hidden = false;
+    conteo.textContent = `${cantidad} ${cantidad === 1 ? "seleccionada" : "seleccionadas"}`;
+    contenedorAcciones.innerHTML = "";
+    for (const accion of acciones) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-secundario";
+      btn.textContent = accion.etiqueta;
+      btn.addEventListener("click", () => accion.onClick(sel.ids, btn));
+      contenedorAcciones.appendChild(btn);
+    }
+    btnLimpiar.onclick = () => sel.limpiar();
+    // Registra cuál sel es "la de la barra" en este momento: Escape (bindeado
+    // una sola vez, más abajo) necesita saber a cuál de las 8 selecciones
+    // limpiarle sin que cada montarBarraSeleccion() agregue su propio
+    // listener global (serían 8 handlers de keydown apilados en el documento
+    // para siempre, uno por tabla ya visitada en la sesión).
+    seleccionActivaEnBarra = sel;
+  });
+}
+
+// Sale del "modo selección" con Escape, sin importar en qué tabla se esté:
+// limpia la selección que tiene la barra abierta ahora mismo. Un solo
+// listener global (no uno por tabla) porque solo puede haber una barra
+// visible a la vez.
+let seleccionActivaEnBarra = null;
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!seleccionActivaEnBarra || seleccionActivaEnBarra.cantidad === 0) return;
+  seleccionActivaEnBarra.limpiar();
+});
+
+// Corre fn(id) para cada id de la lista, con como máximo `limite` en vuelo a
+// la vez (Chrome ya limita a ~6 conexiones por host, esto lo hace explícito
+// y evita 200 promesas coleccionándose de una si el usuario seleccionó
+// medio libro mayor). Devuelve los resultados EN EL MISMO ORDEN que ids,
+// no en el orden en que terminaron — necesario para que "Imprimir en lote"
+// pagine en el orden que el usuario ve en la tabla, no en el orden de
+// respuesta de la red.
+async function traerConcurrencia(ids, fn, limite = 6) {
+  const resultados = new Array(ids.length);
+  let siguiente = 0;
+  async function trabajador() {
+    while (siguiente < ids.length) {
+      const i = siguiente++;
+      resultados[i] = await fn(ids[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, ids.length) }, trabajador));
+  return resultados;
+}
+
+/* ---------- Exportar a CSV ---------- */
+
+// Utilitario transversal de tablas, hermano de crearFiltros y crearOrden: las
+// tres responden a "cosas que le pasan a una tabla". Va acá arriba, antes de
+// las secciones de vista que lo usan.
+//
+// Se genera en el navegador y no en el servidor a propósito: lo que hay que
+// exportar es lo que el usuario ESTÁ VIENDO, y sus filtros y su orden viven
+// solo acá. Un endpoint tendría que reimplementar en SQL los operadores de
+// crearFiltros (incluidos los relativos, "este mes", "últimos 7 días") y los
+// campos que el frontend calcula por su cuenta — el mismo motor duplicado en
+// dos lenguajes, que es justo lo que el proyecto ya evitó para el filtrado.
+
+// Excel no lee el separador del archivo: usa el "separador de listas" de la
+// configuración regional de Windows. En español es ';', porque la coma es el
+// separador decimal — un CSV con comas mete toda la fila en la columna A.
+const SEPARADOR_CSV = ";";
+
+// Sin BOM, Excel abre el archivo con el codepage ANSI y todo acento se rompe
+// ("Devolución" → "DevoluciÃ³n"). Con "N°" y "×" en casi todas las tablas, el
+// archivo sería ilegible. Va en el CONTENIDO, no alcanza con el MIME type.
+const BOM_UTF8 = "﻿";
+
+// Escapado RFC 4180: se entrecomilla si el valor trae el separador, comillas,
+// saltos de línea o espacios en los bordes; las comillas internas se DUPLICAN
+// (no se escapan con backslash). El caso real que esto resuelve es
+// items_resumen, que viene del backend como "2 × Remera, 3 × Pantalón" — con
+// comas adentro: sin comillas, cada venta se partiría en columnas de más.
+function celdaCSV(valor) {
+  if (valor === null || valor === undefined) return "";
+  const texto = String(valor);
+  const necesitaComillas =
+    texto.includes(SEPARADOR_CSV) ||
+    texto.includes('"') ||
+    texto.includes("\n") ||
+    texto.includes("\r") ||
+    texto.trim() !== texto;
+  return necesitaComillas ? `"${texto.replaceAll('"', '""')}"` : texto;
+}
+
+// columnas: [{ titulo, valor: (fila) => any }]
+// filas: la lista YA filtrada y ordenada que la vista le pasó a su render*().
+//
+// Los números se exportan CRUDOS (1234.5), nunca por money(): un "$ 1.234,50"
+// llega a Excel como texto y no se puede sumar, que es exactamente para lo que
+// alguien exporta. El formato se aplica después, en la planilla.
+function descargarCSV(nombreArchivo, columnas, filas) {
+  if (!filas.length) {
+    avisar("No hay filas para exportar.", "atencion");
+    return;
+  }
+
+  const lineas = [
+    columnas.map((c) => celdaCSV(c.titulo)).join(SEPARADOR_CSV),
+    ...filas.map((fila) => columnas.map((c) => celdaCSV(c.valor(fila))).join(SEPARADOR_CSV))
+  ];
+  // CRLF: lo que manda RFC 4180 y lo que espera Excel en Windows.
+  const contenido = BOM_UTF8 + lineas.join("\r\n") + "\r\n";
+
+  const url = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8;" }));
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = `${nombreArchivo}-${hoyISO()}.csv`;
+  // Firefox exige que el <a> esté en el documento para que el click descargue.
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  // Sin esto el Blob queda retenido hasta cerrar la pestaña: exportar veinte
+  // veces en una sesión larga sería una fuga real.
+  URL.revokeObjectURL(url);
+
+  avisar(`Exportadas ${filas.length} ${filas.length === 1 ? "fila" : "filas"} a CSV.`, "ok");
+}
+
 function crearFiltros(contenedorId, campos, onCambio) {
   const contenedor = document.getElementById(contenedorId);
   const claveGuardado = `nexo.filtros.${contenedorId}`;
@@ -909,7 +1237,7 @@ const filtrosResumen = crearFiltros(
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
 async function cargarPanelResumen() {
-  await Promise.all([cargarResumen(), cargarReporteVentas()]);
+  await Promise.all([cargarResumen(), cargarReporteVentas(), cargarReporteCompras()]);
 }
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
@@ -1016,6 +1344,100 @@ const ordenReporteProductos = crearOrden("reporteProductosBody", () => cargarRep
 const ordenReporteCategorias = crearOrden("reporteCategoriasBody", () => cargarReporteVentas());
 const ordenReporteClientes = crearOrden("reporteClientesBody", () => cargarReporteVentas());
 
+/* ---------- Reportes: qué se compra ---------- */
+//
+// Espejo exacto de "Reportes: qué se vende y a quién" de arriba, del lado
+// de compras. Mismo criterio: fusionado dentro de Estadísticas (antes
+// "Resumen"), usa el mismo filtro de fecha (rangoActualResumen), no uno
+// propio.
+
+function renderReporteComprasProveedores(lista) {
+  const body = document.getElementById("reporteComprasProveedoresBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(5, "No hay compras en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (p) => `
+    <tr>
+      <td data-label="Proveedor"><button type="button" class="btn-link reporte-proveedor-ficha" data-id="${p.id}">${p.nombre}</button></td>
+      <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
+      <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
+      <td data-label="Ticket promedio" class="align-right mono">${money(p.ticket_promedio)}</td>
+      <td data-label="Última compra">${p.ultima_compra ?? "—"}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".reporte-proveedor-ficha").forEach((btn) => {
+    btn.addEventListener("click", () => abrirFichaProveedor(Number(btn.dataset.id)));
+  });
+}
+
+function renderReporteComprasProductos(lista) {
+  const body = document.getElementById("reporteComprasProductosBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(4, "No hay compras en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (p) => `
+    <tr>
+      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Unidades" class="align-right mono">${numero(p.unidades)}</td>
+      <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(p.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+// Un producto sin categoría cae en el balde "Sin categoría" que ya arma el
+// backend (GROUP BY sobre categoria_id, NULL para esos productos).
+function renderReporteComprasCategorias(lista) {
+  const body = document.getElementById("reporteComprasCategoriasBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(4, "No hay compras en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (c) => `
+    <tr>
+      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Unidades" class="align-right mono">${numero(c.unidades)}</td>
+      <td data-label="Total" class="align-right mono">${money(c.compras)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function cargarReporteCompras() {
+  tablaCargando("reporteComprasProveedoresBody", 5);
+  tablaCargando("reporteComprasProductosBody", 4);
+  tablaCargando("reporteComprasCategoriasBody", 4);
+
+  const rango = rangoActualResumen();
+  const params = new URLSearchParams(rango).toString();
+  const datos = await (await fetch(`/api/reportes/compras${params ? "?" + params : ""}`)).json();
+
+  document.getElementById("reporteComprasNetas").textContent = money(datos.totales.compras_netas);
+  document.getElementById("reporteComprasTicketPromedio").textContent = money(datos.totales.ticket_promedio);
+  document.getElementById("reporteComprasUnidades").textContent = numero(datos.totales.unidades);
+  document.getElementById("reporteComprasCantidad").textContent = numero(datos.totales.cantidad_compras);
+
+  renderReporteComprasProveedores(ordenReporteComprasProveedores.aplicar(datos.proveedores));
+  renderReporteComprasProductos(ordenReporteComprasProductos.aplicar(datos.productos));
+  renderReporteComprasCategorias(ordenReporteComprasCategorias.aplicar(datos.categorias));
+}
+
+const ordenReporteComprasProveedores = crearOrden("reporteComprasProveedoresBody", () => cargarReporteCompras());
+const ordenReporteComprasProductos = crearOrden("reporteComprasProductosBody", () => cargarReporteCompras());
+const ordenReporteComprasCategorias = crearOrden("reporteComprasCategoriasBody", () => cargarReporteCompras());
+
 /* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
 //
 // El filtro de fecha define el ritmo de venta contra el que se mide la
@@ -1109,15 +1531,76 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 // mismo criterio. Reusado por Facturas, Ventas y el historial de Clientes.
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
 
+// Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
+// se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
+// —lo primero que hace— ya necesita selFacturas.colspan(). Con `const`, si
+// esta línea quedara más abajo que la invocación caería en TDZ.
+const selFacturas = crearSeleccion("facturasBody");
+montarBarraSeleccion(selFacturas, [
+  { etiqueta: "Imprimir", onClick: (ids) => imprimirFacturasSeleccionadas(ids) },
+  { etiqueta: "Descargar PDF", onClick: (ids, btn) => descargarPDFFacturasSeleccionadas(ids, btn) },
+  { etiqueta: "Exportar CSV", onClick: (ids) => exportarFacturasSeleccionadas(ids) }
+]);
+
+// GET /api/facturas (el listado) no trae items ni el contacto completo del
+// cliente para el membrete: hace falta el detalle de cada una, igual que
+// abrirFichaFactura. Se pide con concurrencia acotada (traerConcurrencia) en
+// vez de agregar un endpoint bulk nuevo — ver la sub-etapa 3 del plan: el
+// cuello de botella de imprimir/descargar en lote no es la red (SQLite en el
+// mismo proceso, milisegundos por consulta), así que duplicar el query del
+// backend en una segunda ruta no acorta nada.
+async function imprimirFacturasSeleccionadas(ids) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Imprimir en lote",
+      cuerpo: `Se va a abrir el diálogo de impresión con ${ids.length} páginas, una por factura. ¿Continuar?`,
+      aceptar: "Imprimir"
+    }))
+  )
+    return;
+
+  const facturasDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/facturas/${id}`).then((r) => r.json()));
+  imprimirHojas(facturasDetalle.map(hojaDeFactura));
+}
+
+async function descargarPDFFacturasSeleccionadas(ids, btn) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Descargar PDF en lote",
+      cuerpo: `Se van a generar ${ids.length} archivos PDF, uno por factura. Puede tardar varios minutos y el navegador va a pedirte permiso para descargar varios archivos: aceptalo para que se descarguen todos. ¿Continuar?`,
+      aceptar: "Descargar"
+    }))
+  )
+    return;
+
+  const facturasDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/facturas/${id}`).then((r) => r.json()));
+  const items = facturasDetalle.map((f) => ({
+    html: hojaDeFactura(f),
+    nombreArchivo: nombreArchivoPdf("factura", f.comprobante)
+  }));
+  await descargarPDFsEnLote(items, btn);
+}
+
 function renderFacturas(lista) {
   const body = document.getElementById("facturasBody");
+  selFacturas.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosFacturas.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
+      body.innerHTML = filaVaciaFiltrada(selFacturas.colspan(6));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosFacturas.limpiar());
     } else {
-      body.innerHTML = filaVacia(6, "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
+      body.innerHTML = filaVacia(selFacturas.colspan(6), "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
     }
     return;
   }
@@ -1126,6 +1609,7 @@ function renderFacturas(lista) {
     .map(
       (f) => `
     <tr class="fila-clickeable" data-id="${f.id}">
+      ${selFacturas.celda(f.id)}
       <td data-label="Comprobante" class="mono">${f.comprobante}</td>
       <td data-label="Fecha">${f.fecha}</td>
       <td data-label="Cliente">${f.cliente}</td>
@@ -1142,7 +1626,7 @@ function renderFacturas(lista) {
 
   body.querySelectorAll("tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("a, button")) return;
+      if (e.target.closest("a, button, input, label, select, textarea, .col-sel")) return;
       abrirFichaFactura(Number(tr.dataset.id));
     });
   });
@@ -1217,8 +1701,29 @@ const filtrosFacturas = crearFiltros(
 );
 const ordenFacturas = crearOrden("facturasBody", filtrarFacturas);
 
+// Mismas columnas que tendría un CSV completo de Facturas (no existe un
+// botón "Exportar CSV" de lo visible para esta tabla todavía — solo el de
+// lo seleccionado, desde la barra). Números crudos, nunca money(): ver el
+// comentario junto a descargarCSV.
+const COLUMNAS_CSV_FACTURAS = [
+  { titulo: "Comprobante", valor: (f) => f.comprobante },
+  { titulo: "Fecha", valor: (f) => f.fecha },
+  { titulo: "Cliente", valor: (f) => f.cliente },
+  { titulo: "Origen", valor: (f) => (f.venta_id ? `Venta #${f.venta_id}` : "Suelta") },
+  { titulo: "Importe", valor: (f) => f.total },
+  { titulo: "Cobro", valor: (f) => ESTADO_COBRO_LABEL[f.estado_cobro] ?? f.estado_cobro }
+];
+
+function exportarFacturasSeleccionadas(ids) {
+  const idsSet = new Set(ids);
+  const seleccion = filtrosFacturas
+    .aplicar(ordenFacturas.aplicar(facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" }))))
+    .filter((f) => idsSet.has(f.id));
+  descargarCSV("nexo-facturas-seleccion", COLUMNAS_CSV_FACTURAS, seleccion);
+}
+
 async function cargarFacturas() {
-  tablaCargando("facturasBody", 6);
+  tablaCargando("facturasBody", selFacturas.colspan(6));
   const res = await fetch("/api/facturas");
   facturas = await res.json();
   filtrarFacturas();
@@ -1226,10 +1731,15 @@ async function cargarFacturas() {
 
 cargarFacturas();
 
+// La factura que se está mirando, para que el botón Imprimir (estático en el
+// HTML, bindeado una sola vez más abajo) sepa qué imprimir.
+let facturaFichaDatos = null;
+
 async function abrirFichaFactura(id) {
   const res = await fetch(`/api/facturas/${id}`);
   if (!(await manejarError(res, "No se pudo cargar la factura."))) return;
   const factura = await res.json();
+  facturaFichaDatos = factura;
 
   document.getElementById("fichaFacturaTitulo").textContent = factura.comprobante;
 
@@ -1272,6 +1782,41 @@ async function abrirFichaFactura(id) {
 }
 
 document.getElementById("btnVolverFacturas").addEventListener("click", () => mostrarVista("facturas"));
+
+// Arma el HTML de una hoja de factura. Extraída del botón de abajo para
+// reusarla también en la impresión/descarga en lote desde el listado
+// (varias facturas a la vez, ver crearSeleccion) sin duplicar la lógica del
+// caso "factura suelta".
+function hojaDeFactura(f) {
+  return armarHojaComprobante({
+    rotulo: f.tipo === "nota_credito" ? "Nota de crédito" : f.tipo === "nota_debito" ? "Nota de débito" : "Factura",
+    comprobanteNro: f.comprobante,
+    fecha: f.fecha,
+    // NO van el estado de cobro ni "Origen: Venta #N": son gestión interna.
+    campos: [],
+    cliente: {
+      nombre: f.cliente,
+      documento: f.cliente_documento,
+      direccion: f.cliente_direccion,
+      telefono: f.cliente_telefono,
+      email: f.cliente_email
+    },
+    // Una factura suelta no tiene renglones: se imprime su concepto como
+    // único ítem, que es exactamente lo que la factura dice que se cobró.
+    items: f.items?.length
+      ? f.items
+      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total }],
+    total: f.total
+  });
+}
+
+// El botón vive en el HTML (no se re-renderiza como el de presupuesto), así
+// que se bindea una sola vez y lee la factura de la variable de módulo.
+document.getElementById("btnImprimirFactura").addEventListener("click", () => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  imprimirComprobante(hojaDeFactura(f));
+});
 
 /* ---------- Modal nueva factura ---------- */
 
@@ -1459,16 +2004,19 @@ function poblarDatalistProductos() {
 
 const porcentaje = (n) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 
+const selProductos = crearSeleccion("productosBody");
+
 function renderProductos(lista) {
   const body = document.getElementById("productosBody");
   body.innerHTML = "";
+  selProductos.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosProductos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(9);
+      body.innerHTML = filaVaciaFiltrada(selProductos.colspan(9));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProductos.limpiar());
     } else {
-      body.innerHTML = filaVacia(9, "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selProductos.colspan(9), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -1484,6 +2032,7 @@ function renderProductos(lista) {
       p.precio_venta > 0 ? "" : " precio-sin-configurar"
     }" data-id="${p.id}" value="${p.precio_venta > 0 ? p.precio_venta : ""}" placeholder="Sin precio" step="0.01" min="0" />`;
     tr.innerHTML = `
+      ${selProductos.celda(p.id)}
       <td data-label="Nombre">${p.nombre}</td>
       <td data-label="SKU">${p.sku || "—"}</td>
       <td data-label="Categoría">${p.categoria || "—"}</td>
@@ -1498,7 +2047,7 @@ function renderProductos(lista) {
       <td data-label="">${botonEditarFila("btn-editar-producto", p.id, "producto")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, input")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaProducto(p.id);
     });
     body.appendChild(tr);
@@ -1597,7 +2146,7 @@ async function abrirFichaProducto(id) {
 }
 
 async function cargarProductos() {
-  tablaCargando("productosBody", 9);
+  tablaCargando("productosBody", selProductos.colspan(9));
   const [listaProductos, listaCategorias] = await Promise.all([
     fetch("/api/productos").then((r) => r.json()),
     fetch("/api/categorias").then((r) => r.json())
@@ -1619,8 +2168,12 @@ async function cargarProductos() {
 // producto — mismo criterio que poblarSelectCuentas (Ventas/Compras): las
 // opciones dependen de datos que llegan por fetch, así que se arman en
 // runtime en vez de quedar fijas en el HTML.
-function poblarSelectCategorias() {
-  const select = document.querySelector('#formProducto [name="categoria_id"]');
+//
+// Generalizada (con default al select de siempre) para poder llenar
+// también el select de categoría del modal de edición en lote, que
+// necesita exactamente las mismas opciones.
+function poblarSelectCategorias(selector = '#formProducto [name="categoria_id"]') {
+  const select = document.querySelector(selector);
   const actual = select.value;
   select.innerHTML =
     '<option value="">Sin categoría</option>' +
@@ -1638,6 +2191,166 @@ function filtrarProductos() {
   );
   renderProductos(ordenProductos.aplicar(filtrosProductos.aplicar(porTexto)));
 }
+
+// Misma expresión que filtrarProductos (búsqueda + filtros + orden), para
+// que el CSV coincida con lo que la tabla muestra.
+function listaProductosVisible() {
+  const q = document.getElementById("productosSearch").value.trim().toLowerCase();
+  const porTexto = productos.filter((p) =>
+    [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  );
+  return ordenProductos.aplicar(filtrosProductos.aplicar(porTexto));
+}
+
+const COLUMNAS_CSV_PRODUCTOS = [
+  { titulo: "Nombre", valor: (p) => p.nombre },
+  { titulo: "SKU", valor: (p) => p.sku },
+  { titulo: "Categoría", valor: (p) => p.categoria },
+  { titulo: "Costo", valor: (p) => p.precio_costo },
+  { titulo: "Valorizado", valor: (p) => p.valorizado },
+  { titulo: "Precio", valor: (p) => p.precio_venta },
+  { titulo: "Margen", valor: (p) => p.margen },
+  { titulo: "Stock", valor: (p) => p.stock },
+  { titulo: "Activo", valor: (p) => (p.activo ? "sí" : "no") }
+];
+
+montarBarraSeleccion(selProductos, [
+  {
+    etiqueta: "Editar en lote",
+    onClick: (ids) => abrirModalBulkProductos(ids)
+  },
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-productos-seleccion", COLUMNAS_CSV_PRODUCTOS, listaProductosVisible().filter((p) => idsSet.has(p.id)));
+    }
+  }
+]);
+
+/* ---------- Edición en lote de productos ---------- */
+//
+// bulkProductosIds guarda una COPIA de los ids con los que se abrió el
+// modal — no se lee selProductos.ids de nuevo al hacer submit. Si el
+// usuario deja el modal abierto y algo dispara un re-render de la tabla,
+// sincronizar() podría podar la selección, y el lote cambiaría bajo los
+// pies del usuario entre "vio el número" y "apretó aplicar".
+let bulkProductosIds = [];
+
+const modalBulkProductos = document.getElementById("modalBulkProductos");
+const formBulkProductos = document.getElementById("formBulkProductos");
+const bulkProductosResultado = document.getElementById("bulkProductosResultado");
+const bulkProductosResultadoTitulo = document.getElementById("bulkProductosResultadoTitulo");
+const bulkProductosResultadoLista = document.getElementById("bulkProductosResultadoLista");
+
+// Habilita/deshabilita el o los inputs de un .bulk-campo según su checkbox
+// de activación — un solo listener delegado, no uno por campo.
+formBulkProductos.addEventListener("change", (e) => {
+  if (!e.target.classList.contains("bulk-activar")) return;
+  const campo = e.target.closest(".bulk-campo");
+  campo.querySelectorAll("select, input:not(.bulk-activar)").forEach((el) => {
+    el.disabled = !e.target.checked;
+  });
+});
+
+function abrirModalBulkProductos(ids) {
+  bulkProductosIds = ids;
+  formBulkProductos.reset();
+  formBulkProductos.querySelectorAll(".bulk-activar").forEach((cb) => {
+    cb.checked = false;
+    cb.dispatchEvent(new Event("change"));
+  });
+  poblarSelectCategorias('#formBulkProductos [name="categoria_id"]');
+  bulkProductosResultado.hidden = true;
+  document.getElementById("modalBulkProductosConteo").textContent =
+    `${ids.length} producto${ids.length === 1 ? "" : "s"} seleccionado${ids.length === 1 ? "" : "s"}`;
+  document.getElementById("bulkProductosSubmit").textContent = `Aplicar a ${ids.length} producto${ids.length === 1 ? "" : "s"}`;
+  modalBulkProductos.hidden = false;
+}
+
+document.getElementById("modalBulkProductosClose").addEventListener("click", () => {
+  modalBulkProductos.hidden = true;
+});
+modalBulkProductos.addEventListener("click", (e) => {
+  if (e.target === modalBulkProductos) modalBulkProductos.hidden = true;
+});
+
+// Arma el `cambios` parcial a partir de los checkboxes tildados: solo un
+// campo con su checkbox activo termina viajando en el request. Es la
+// implementación concreta de "ausencia de la clave = no tocar este campo".
+function armarCambiosBulk(form) {
+  const cambios = {};
+  if (form.querySelector('[data-campo="activo"]').checked) {
+    cambios.activo = form.activo.value === "1";
+  }
+  if (form.querySelector('[data-campo="categoria_id"]').checked) {
+    cambios.categoria_id = form.categoria_id.value || null;
+  }
+  if (form.querySelector('[data-campo="stock_minimo"]').checked) {
+    cambios.stock_minimo = form.stock_minimo.value;
+  }
+  if (form.querySelector('[data-campo="precio_venta"]').checked) {
+    cambios.precio_venta =
+      form.precio_modo.value === "porcentaje"
+        ? { modo: "porcentaje", valor: form.precio_valor.value }
+        : Number(form.precio_valor.value);
+  }
+  return cambios;
+}
+
+formBulkProductos.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cambios = armarCambiosBulk(e.target);
+  if (Object.keys(cambios).length === 0) {
+    avisar("No indicaste ningún cambio.", "atencion");
+    return;
+  }
+
+  if (cambios.activo === false || bulkProductosIds.length > 20) {
+    const ok = await confirmar({
+      titulo: "Editar en lote",
+      cuerpo: `Se va a aplicar este cambio a ${bulkProductosIds.length} productos. ¿Confirmás?`,
+      aceptar: "Aplicar",
+      destructivo: cambios.activo === false
+    });
+    if (!ok) return;
+  }
+
+  const res = await fetch("/api/productos/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: bulkProductosIds, cambios })
+  });
+  if (!(await manejarError(res, "No se pudo aplicar la edición en lote."))) return;
+  const resultado = await res.json();
+
+  await Promise.all([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+
+  const huboFallos = mostrarResultadoBulk(resultado, {
+    bloque: bulkProductosResultado,
+    titulo: bulkProductosResultadoTitulo,
+    lista: bulkProductosResultadoLista,
+    etiquetar: (id) => {
+      const p = productos.find((prod) => prod.id === id);
+      return p ? p.nombre : `#${id}`;
+    }
+  });
+
+  if (huboFallos) {
+    // El modal queda abierto y bulkProductosIds pasa a ser solo los que
+    // fallaron: si el usuario corrige un campo y vuelve a apretar el
+    // mismo botón, el próximo submit reintenta justo sobre ese
+    // subconjunto, sin tener que volver a seleccionarlos a mano en la
+    // tabla. El texto del botón lo deja explícito (no dice "Cerrar": el
+    // submit vuelve a aplicar, no cierra el modal).
+    bulkProductosIds = resultado.fallidos.map((f) => f.id);
+    document.getElementById("bulkProductosSubmit").textContent =
+      `Reintentar con ${bulkProductosIds.length} producto${bulkProductosIds.length === 1 ? "" : "s"}`;
+  } else {
+    selProductos.limpiar();
+    modalBulkProductos.hidden = true;
+  }
+});
 
 const OPCIONES_ESTADO_STOCK = [
   { valor: "sin_stock", texto: "Sin stock" },
@@ -1954,6 +2667,40 @@ async function manejarError(res, accionDefault) {
   return false;
 }
 
+/* ---------- Resultado de una edición en lote ---------- */
+//
+// Compartida entre el bulk de Productos y el de Compras (mismo shape de
+// response: {aplicados, fallidos, resumen}). Devuelve true si hubo algún
+// fallo (así el caller sabe si debe dejar el modal abierto en vez de
+// cerrarlo) y false si el lote entero salió bien.
+//
+// `etiquetar(id)` arma el texto legible de un id fallido (ej. el nombre
+// del producto en vez de un número pelado) buscando en el array que el
+// caller ya tiene en memoria — mostrarResultadoBulk no conoce la entidad.
+function mostrarResultadoBulk(resultado, { bloque, titulo, lista, etiquetar = (id) => `#${id}` } = {}) {
+  const { aplicados, fallidos, resumen } = resultado;
+
+  if (fallidos.length === 0) {
+    bloque.hidden = true;
+    lista.innerHTML = "";
+    const partes = [`${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"}`];
+    if (resumen.sin_cambios > 0) partes.push(`${resumen.sin_cambios} ya estaba${resumen.sin_cambios === 1 ? "" : "n"} así`);
+    avisar(partes.join(", ") + ".", "ok");
+    return false;
+  }
+
+  titulo.textContent =
+    aplicados.length === 0
+      ? "Ninguno se pudo aplicar."
+      : `${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"} · ${resumen.fallidos} falló${resumen.fallidos === 1 ? "" : "aron"}.`;
+  lista.innerHTML = fallidos
+    .map((f) => `<li>${etiquetar(f.id)} — ${f.error}</li>`)
+    .join("");
+  bloque.hidden = false;
+  avisar(titulo.textContent, "atencion");
+  return true;
+}
+
 /* ---------- Estado de tablas: carga y vacío ---------- */
 
 // Fila de estado vacío. Con accionTexto+accionId agrega un botón que
@@ -2006,16 +2753,22 @@ const STOCK_LABEL = {
   alto: "Stock alto"
 };
 
+// idDe por defecto ((x) => x.id) alcanza: /api/stock hoy trae una fila por
+// producto (productos.id), sin desglose por depósito todavía —
+// multidepósito queda para una etapa aparte (CLAUDE.md §19/§25).
+const selStock = crearSeleccion("stockBody");
+
 function renderStock(lista) {
   const body = document.getElementById("stockBody");
   body.innerHTML = "";
+  selStock.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosStock.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(5);
+      body.innerHTML = filaVaciaFiltrada(selStock.colspan(5));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosStock.limpiar());
     } else {
-      body.innerHTML = filaVacia(5, "Todavía no hay productos con stock.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selStock.colspan(5), "Todavía no hay productos con stock.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -2023,6 +2776,7 @@ function renderStock(lista) {
   for (const p of lista) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
+      ${selStock.celda(p.id)}
       <td data-label="Producto">${p.nombre}</td>
       <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
       <td data-label="Stock actual" class="align-right mono">${numero(p.stock)}</td>
@@ -2088,6 +2842,39 @@ function filtrarStock() {
   renderStock(ordenStock.aplicar(filtrosStock.aplicar(porTexto)));
 }
 
+// Stock combina el motor de filtros CON su propio <input type="search">: el
+// CSV tiene que respetar los dos, o exportaría filas que la tabla esconde.
+function listaStockVisible() {
+  const texto = document.getElementById("stockSearch").value.trim().toLowerCase();
+  const porTexto = stockCache.filter((p) => p.nombre.toLowerCase().includes(texto));
+  return ordenStock.aplicar(filtrosStock.aplicar(porTexto));
+}
+
+// /api/stock no devuelve sku (es la vista de existencias, no el catálogo).
+const COLUMNAS_CSV_STOCK = [
+  { titulo: "Producto", valor: (p) => p.nombre },
+  { titulo: "Costo", valor: (p) => p.precio_costo },
+  { titulo: "Stock actual", valor: (p) => p.stock },
+  { titulo: "Stock mínimo", valor: (p) => p.stock_minimo },
+  { titulo: "Stock máximo", valor: (p) => p.stock_maximo },
+  { titulo: "Valorizado", valor: (p) => p.valorizado },
+  { titulo: "Estado", valor: (p) => STOCK_LABEL[p.estado_stock] ?? p.estado_stock }
+];
+
+document.getElementById("btnExportarStock").addEventListener("click", () => {
+  descargarCSV("nexo-stock", COLUMNAS_CSV_STOCK, listaStockVisible());
+});
+
+montarBarraSeleccion(selStock, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-stock-seleccion", COLUMNAS_CSV_STOCK, listaStockVisible().filter((p) => idsSet.has(p.id)));
+    }
+  }
+]);
+
 const filtrosStock = crearFiltros(
   "filtrosStock",
   [
@@ -2135,7 +2922,7 @@ async function cargarMovimientosStock() {
 }
 
 async function cargarStock() {
-  tablaCargando("stockBody", 5);
+  tablaCargando("stockBody", selStock.colspan(5));
   const stockRes = await fetch("/api/stock");
   stockCache = await stockRes.json();
   filtrosStockMov.setOpciones(
@@ -2192,6 +2979,289 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
   avisar("Stock ajustado.", "ok");
 });
 
+/* ---------- Comprobante imprimible ---------- */
+
+// El papel que se le entrega al cliente: presupuesto o factura. Se arma en un
+// contenedor propio (#hojaImpresion) y NO reusando la ficha con @media print,
+// porque la ficha muestra costo, margen y ganancia — datos internos que no
+// pueden salir impresos. Acá solo aparece lo que se pone explícitamente.
+//
+// El PDF lo hace el navegador: su diálogo de impresión ya trae "Guardar como
+// PDF", así que no hace falta ninguna librería (el proyecto no tiene build
+// step y no queremos sumar dependencias solo para esto).
+
+const hojaImpresionEl = document.getElementById("hojaImpresion");
+
+// Escapa lo que va al HTML de la hoja. Los datos vienen de la base (nombres de
+// cliente, productos, notas del negocio), así que un nombre con "<" rompería
+// el markup si se interpolara crudo.
+function esc(valor) {
+  return String(valor ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+// Línea del membrete que solo aparece si el dato existe: un monotributista sin
+// local no debería ver un renglón "Dirección: —" en su comprobante.
+const lineaSiHay = (etiqueta, valor) =>
+  valor ? `<p><span class="hoja-etiqueta">${esc(etiqueta)}</span> ${esc(valor)}</p>` : "";
+
+// Arma el HTML del comprobante. Un solo molde para los dos tipos: cambian el
+// rótulo, el número y algún campo, no la estructura.
+// OJO con los nombres: el parámetro del número de comprobante NO puede
+// llamarse `numero`, porque sombrearía al helper de formato numero() que esta
+// misma función usa para las cantidades (y tirar "numero is not a function").
+function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra }) {
+  const filas = items
+    .map(
+      (i) => `
+        <tr>
+          <td>${esc(i.producto)}</td>
+          <td class="num">${numero(i.cantidad)}</td>
+          <td class="num">${money(i.precio_unitario)}</td>
+          <td class="num">${money(i.cantidad * i.precio_unitario)}</td>
+        </tr>`
+    )
+    .join("");
+
+  return `
+    <div class="hoja">
+      <header class="hoja-encabezado">
+        <div class="hoja-negocio">
+          <h1>${esc(negocio.nombre || "—")}</h1>
+          ${lineaSiHay("CUIT:", negocio.documento)}
+          ${lineaSiHay("", negocio.condicion_iva)}
+          ${lineaSiHay("", negocio.direccion)}
+          ${lineaSiHay("Tel:", negocio.telefono)}
+          ${lineaSiHay("", negocio.email)}
+        </div>
+        <div class="hoja-comprobante">
+          <p class="hoja-rotulo">${esc(rotulo)}</p>
+          <p class="hoja-numero">${esc(comprobanteNro)}</p>
+          <p>${esc(fecha)}</p>
+          ${campos.map(([e, v]) => (v ? `<p><span class="hoja-etiqueta">${esc(e)}</span> ${esc(v)}</p>` : "")).join("")}
+        </div>
+      </header>
+
+      <section class="hoja-cliente">
+        <p class="hoja-etiqueta">Cliente</p>
+        <p class="hoja-cliente-nombre">${esc(cliente.nombre)}</p>
+        ${lineaSiHay("CUIT/DNI:", cliente.documento)}
+        ${lineaSiHay("", cliente.direccion)}
+        ${lineaSiHay("Tel:", cliente.telefono)}
+        ${lineaSiHay("", cliente.email)}
+      </section>
+
+      <table class="hoja-items">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th class="num">Cantidad</th>
+            <th class="num">Precio unit.</th>
+            <th class="num">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+
+      <p class="hoja-total"><span>Total</span> <strong>${money(total)}</strong></p>
+
+      ${notas ? `<section class="hoja-notas"><p class="hoja-etiqueta">Notas</p><p>${esc(notas)}</p></section>` : ""}
+
+      <footer class="hoja-pie">
+        ${pieExtra ? `<p>${esc(pieExtra)}</p>` : ""}
+        ${negocio.pie_comprobante ? `<p>${esc(negocio.pie_comprobante)}</p>` : ""}
+        <!-- Nexo no está conectado a ARCA y no emite CAE: lo impreso es un
+             documento interno, no un comprobante fiscal. Decirlo es
+             obligatorio para no inducir a error a quien lo recibe. -->
+        <p class="hoja-legal">Documento no válido como comprobante fiscal.</p>
+      </footer>
+    </div>
+  `;
+}
+
+// Imprime UNA O VARIAS hojas juntas: htmls.join("") las concatena en el
+// mismo contenedor y un único window.print() las manda todas al mismo
+// diálogo (una página impresa por hoja — ver el break-after en styles.css).
+// Así "imprimir 5 facturas seleccionadas" desde el listado es un solo
+// diálogo con 5 páginas, no 5 diálogos separados.
+function imprimirHojas(htmls) {
+  hojaImpresionEl.innerHTML = htmls.join("");
+
+  // El PDF sale del mismo diálogo (destino "Guardar como PDF"), pero eso no es
+  // obvio para quien busca descargar un archivo. Se avisa UNA sola vez por
+  // navegador: repetirlo en cada impresión sería ruido para quien ya lo sabe.
+  try {
+    if (!localStorage.getItem("nexo.avisoPdf")) {
+      avisar('Para guardarlo como PDF, elegí "Guardar como PDF" en el destino de impresión.', "ok");
+      localStorage.setItem("nexo.avisoPdf", "1");
+    }
+  } catch {
+    // Sin storage disponible (modo privado) el aviso simplemente no se muestra:
+    // no vale la pena bloquear una impresión por un mensaje de ayuda.
+  }
+
+  window.print();
+  // Se vacía después de imprimir para no dejar datos de un cliente colgando
+  // en el DOM mientras se navega a otra pantalla.
+  hojaImpresionEl.innerHTML = "";
+}
+
+// Caso de un solo comprobante: los dos botones de ficha (factura y
+// presupuesto) siguen llamando a esta función tal cual, sin enterarse de
+// que por dentro ahora es un array de uno.
+function imprimirComprobante(html) {
+  imprimirHojas([html]);
+}
+
+/* ---------- Descargar PDF (jsPDF + html2canvas) ---------- */
+
+// "Imprimir" (arriba) ya cubre el caso de guardar un PDF: es lo que hace el
+// destino "Guardar como PDF" del diálogo del navegador, con texto real y
+// seleccionable, sin sumar ninguna dependencia. Esto es otra cosa: el
+// usuario pidió poder seleccionar varios comprobantes y que se descarguen
+// como archivos separados, uno por comprobante, con nombre propio — el
+// navegador no permite eso sin intervención humana (no hay forma de
+// disparar N diálogos de impresión ni de nombrar el archivo por JS), así
+// que hace falta generar el PDF nosotros. jsPDF arma el archivo, html2canvas
+// convierte el HTML de la hoja en una imagen para meter adentro.
+//
+// Contrapartida que hay que tener presente: el PDF resultante es una
+// IMAGEN, no texto seleccionable ni buscable — es la limitación real de
+// fotografiar el HTML en vez de redibujar el comprobante en la API de
+// jsPDF (que implicaría mantener dos versiones del diseño sincronizadas).
+// Por eso conviven los dos botones en vez de reemplazar uno por el otro.
+
+// Vendorizadas en frontend/js/vendor/, servidas por el mismo express.static
+// que ya sirve el resto del frontend — sin dependencia de npm ni build step.
+const VENDOR_JSPDF = "js/vendor/jspdf.umd.min.js";
+const VENDOR_HTML2CANVAS = "js/vendor/html2canvas.min.js";
+
+// No se cargan con <script> en index.html: son ~500KB combinados y solo
+// hacen falta si alguien aprieta "Descargar PDF". Memoizada para no volver
+// a inyectar los <script> en cada descarga; si la carga falla, se limpia la
+// memoización para permitir un reintento (una mala red no debería dejar el
+// botón roto para siempre en esa misma sesión de página).
+let libsPdfPromesa = null;
+function cargarLibsPdf() {
+  if (libsPdfPromesa) return libsPdfPromesa;
+  const cargarScript = (src) =>
+    new Promise((ok, mal) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = ok;
+      s.onerror = () => mal(new Error(`No se pudo cargar ${src}`));
+      document.body.appendChild(s);
+    });
+  libsPdfPromesa = Promise.all([cargarScript(VENDOR_JSPDF), cargarScript(VENDOR_HTML2CANVAS)]).catch((err) => {
+    libsPdfPromesa = null;
+    throw err;
+  });
+  return libsPdfPromesa;
+}
+
+// Crea un contenedor .hoja-render con el HTML de una hoja, lo deja en el DOM
+// el tiempo que dure fn(), y lo saca pase lo que pase. Ver el comentario de
+// .hoja-render en styles.css: display:none (como #hojaImpresion) no sirve
+// acá, html2canvas necesita medir un nodo realmente presente.
+async function conHojaVisible(html, fn) {
+  const caja = document.createElement("div");
+  caja.className = "hoja-render";
+  caja.innerHTML = html;
+  document.body.appendChild(caja);
+  try {
+    return await fn(caja.firstElementChild);
+  } finally {
+    caja.remove();
+  }
+}
+
+// Sanitiza un nombre de comprobante para usarlo como nombre de archivo:
+// Windows prohíbe \ / : * ? " < > | y el comprobante puede traer espacios
+// ("B 0001-00000123") que sin normalizar quedarían igual pero es más
+// prolijo unificarlos.
+function nombreArchivoPdf(prefijo, identificador) {
+  const limpio = String(identificador)
+    .toLowerCase()
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${prefijo}-${limpio}.pdf`;
+}
+
+// Convierte UNA hoja (el HTML que arma armarHojaComprobante) en un archivo
+// PDF y lo descarga. Si la hoja mide más que una página A4 útil (una
+// factura con muchos ítems), se reparte en varias páginas del mismo PDF en
+// vez de achicar la imagen — una factura larga escalada a una sola página
+// quedaría ilegible.
+async function descargarPDFDeHoja(html, nombreArchivo) {
+  await cargarLibsPdf();
+  await conHojaVisible(html, async (hoja) => {
+    const canvas = await html2canvas(hoja, { scale: 2, backgroundColor: "#FFFFFF", useCORS: true });
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
+    const MARGEN = 14; // mismo margen que @page en el CSS de impresión
+    const anchoUtil = 210 - MARGEN * 2;
+    const altoUtil = 297 - MARGEN * 2;
+    const altoImg = (canvas.height / canvas.width) * anchoUtil;
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92); // JPEG: una A4 a scale 2 en PNG pesa 1-3MB, en JPEG ~200KB
+
+    if (altoImg <= altoUtil) {
+      pdf.addImage(dataUrl, "JPEG", MARGEN, MARGEN, anchoUtil, altoImg);
+    } else {
+      // Reparte la misma imagen en N páginas, desplazando hacia arriba en
+      // cada una (el resto de la imagen queda recortado por los bordes de
+      // la página, que es exactamente lo que hace una impresión paginada).
+      let restante = altoImg;
+      let offsetY = 0;
+      while (restante > 0) {
+        pdf.addImage(dataUrl, "JPEG", MARGEN, MARGEN - offsetY, anchoUtil, altoImg);
+        restante -= altoUtil;
+        offsetY += altoUtil;
+        if (restante > 0) pdf.addPage();
+      }
+    }
+
+    pdf.save(nombreArchivo);
+  });
+}
+
+// Genera y descarga un PDF por cada hoja, EN SERIE (no en paralelo): varios
+// html2canvas corriendo a la vez saturan memoria y el hilo principal del
+// navegador. El setTimeout(0) entre iteraciones le da un respiro al
+// navegador para repintar el contador del botón — sin eso, con el hilo
+// principal ocupado generando canvases, "Generando 3/20…" no llegaría a
+// verse hasta que todo terminó.
+// items: [{ html, nombreArchivo }]. btn: el <button> que disparó la acción,
+// para deshabilitarlo y mostrar el progreso mientras dura (puede ser largo:
+// unos 0.5-1.5s por hoja).
+async function descargarPDFsEnLote(items, btn) {
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  let fallidos = 0;
+  try {
+    for (let i = 0; i < items.length; i++) {
+      btn.textContent = `Generando ${i + 1}/${items.length}…`;
+      await new Promise((r) => setTimeout(r, 0));
+      try {
+        await descargarPDFDeHoja(items[i].html, items[i].nombreArchivo);
+      } catch {
+        fallidos++;
+      }
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+
+  if (fallidos === 0) {
+    avisar(`Se descargaron ${items.length} PDF.`, "ok");
+  } else {
+    avisar(`Se descargaron ${items.length - fallidos} PDF. ${fallidos} fallaron.`, "atencion");
+  }
+}
+
 /* ---------- Presupuestos ---------- */
 
 // Un presupuesto es una oferta, no una operación: no descuenta stock ni
@@ -2218,8 +3288,63 @@ const PRESUPUESTO_CLASE = {
   convertido: "status-cobrado"
 };
 
+// Declarada arriba de renderPresupuestos: cargarPresupuestos() (más abajo)
+// llama tablaCargando() antes del await, y esa llamada ya necesita
+// selPresupuestos.colspan() — mismo criterio que selFacturas.
+const selPresupuestos = crearSeleccion("presupuestosBody");
+montarBarraSeleccion(selPresupuestos, [
+  { etiqueta: "Imprimir", onClick: (ids) => imprimirPresupuestosSeleccionados(ids) },
+  { etiqueta: "Descargar PDF", onClick: (ids, btn) => descargarPDFPresupuestosSeleccionados(ids, btn) },
+  { etiqueta: "Exportar CSV", onClick: (ids) => exportarPresupuestosSeleccionados(ids) }
+]);
+
+// Mismo criterio que imprimirFacturasSeleccionadas: GET /api/presupuestos
+// tampoco trae items, hace falta el detalle de cada uno.
+async function imprimirPresupuestosSeleccionados(ids) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} presupuestos.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Imprimir en lote",
+      cuerpo: `Se va a abrir el diálogo de impresión con ${ids.length} páginas, una por presupuesto. ¿Continuar?`,
+      aceptar: "Imprimir"
+    }))
+  )
+    return;
+
+  const presupuestosDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/presupuestos/${id}`).then((r) => r.json()));
+  imprimirHojas(presupuestosDetalle.map(hojaDePresupuesto));
+}
+
+async function descargarPDFPresupuestosSeleccionados(ids, btn) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} presupuestos.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Descargar PDF en lote",
+      cuerpo: `Se van a generar ${ids.length} archivos PDF, uno por presupuesto. Puede tardar varios minutos y el navegador va a pedirte permiso para descargar varios archivos: aceptalo para que se descarguen todos. ¿Continuar?`,
+      aceptar: "Descargar"
+    }))
+  )
+    return;
+
+  const presupuestosDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/presupuestos/${id}`).then((r) => r.json()));
+  const items = presupuestosDetalle.map((p) => ({
+    html: hojaDePresupuesto(p),
+    nombreArchivo: nombreArchivoPdf("presupuesto", p.id)
+  }));
+  await descargarPDFsEnLote(items, btn);
+}
+
 function renderPresupuestos(lista) {
   const body = document.getElementById("presupuestosBody");
+  selPresupuestos.sincronizar(lista);
 
   // Los totales acompañan al filtro, igual que en Ventas y Compras.
   const sumar = (fn) => lista.filter(fn).reduce((acc, p) => acc + p.total, 0);
@@ -2235,10 +3360,10 @@ function renderPresupuestos(lista) {
 
   if (lista.length === 0) {
     if (filtrosPresupuestos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(8);
+      body.innerHTML = filaVaciaFiltrada(selPresupuestos.colspan(8));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosPresupuestos.limpiar());
     } else {
-      body.innerHTML = filaVacia(8, "Todavía no hay presupuestos cargados.", { accionTexto: "+ Nuevo presupuesto", accionId: "btnNuevoPresupuesto" });
+      body.innerHTML = filaVacia(selPresupuestos.colspan(8), "Todavía no hay presupuestos cargados.", { accionTexto: "+ Nuevo presupuesto", accionId: "btnNuevoPresupuesto" });
     }
     return;
   }
@@ -2247,6 +3372,7 @@ function renderPresupuestos(lista) {
     .map(
       (p) => `
     <tr class="fila-clickeable" data-id="${p.id}">
+      ${selPresupuestos.celda(p.id)}
       <td data-label="N°" class="mono">#${p.id}</td>
       <td data-label="Cliente">${p.cliente}</td>
       <td data-label="Productos" class="celda-wrap">${p.items_resumen || "—"}</td>
@@ -2267,7 +3393,7 @@ function renderPresupuestos(lista) {
 
   body.querySelectorAll("tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, a")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaPresupuesto(Number(tr.dataset.id));
     });
   });
@@ -2316,14 +3442,58 @@ const filtrosPresupuestos = crearFiltros(
 );
 const ordenPresupuestos = crearOrden("presupuestosBody", filtrarPresupuestos);
 
+// Mismas columnas de datos que muestra la tabla. Números crudos (nunca
+// money()) — ver el comentario junto a descargarCSV.
+const COLUMNAS_CSV_PRESUPUESTOS = [
+  { titulo: "N°", valor: (p) => p.id },
+  { titulo: "Cliente", valor: (p) => p.cliente },
+  { titulo: "Productos", valor: (p) => p.items_resumen },
+  { titulo: "Fecha", valor: (p) => p.fecha },
+  { titulo: "Vence", valor: (p) => p.vencimiento },
+  { titulo: "Total", valor: (p) => p.total },
+  { titulo: "Estado", valor: (p) => PRESUPUESTO_LABEL[p.estado_efectivo] ?? p.estado_efectivo }
+];
+
+function exportarPresupuestosSeleccionados(ids) {
+  const idsSet = new Set(ids);
+  const seleccion = ordenPresupuestos
+    .aplicar(filtrosPresupuestos.aplicar(presupuestos))
+    .filter((p) => idsSet.has(p.id));
+  descargarCSV("nexo-presupuestos-seleccion", COLUMNAS_CSV_PRESUPUESTOS, seleccion);
+}
+
 async function cargarPresupuestos() {
-  tablaCargando("presupuestosBody", 8);
+  tablaCargando("presupuestosBody", selPresupuestos.colspan(8));
   const res = await fetch("/api/presupuestos");
   presupuestos = await res.json();
   filtrarPresupuestos();
 }
 
 /* --- Ficha --- */
+
+// Arma el HTML de una hoja de presupuesto. Extraída del botón de abajo
+// (dentro de abrirFichaPresupuesto) para reusarla también en la
+// impresión/descarga en lote desde el listado — ver crearSeleccion.
+function hojaDePresupuesto(p) {
+  return armarHojaComprobante({
+    rotulo: "Presupuesto",
+    comprobanteNro: `N° ${p.id}`,
+    fecha: p.fecha,
+    // El estado (borrador/enviado/aceptado) NO va: es gestión interna y no
+    // le dice nada a quien recibe el papel.
+    campos: [["Válido hasta:", p.vencimiento]],
+    cliente: {
+      nombre: p.cliente,
+      documento: p.cliente_documento,
+      direccion: p.cliente_direccion,
+      telefono: p.cliente_telefono,
+      email: p.cliente_email
+    },
+    items: p.items,
+    total: p.total,
+    notas: p.notas
+  });
+}
 
 async function abrirFichaPresupuesto(id) {
   presupuestoFichaId = id;
@@ -2409,6 +3579,19 @@ async function abrirFichaPresupuesto(id) {
       await abrirFichaPresupuesto(p.id);
     });
   }
+
+  // Imprimir se agrega DESPUÉS del if/else y con insertAdjacentHTML, no dentro
+  // de cada rama: las dos reescriben acciones.innerHTML entero, así que un
+  // botón puesto en una sola rama desaparecería en la otra, y ponerlo en el
+  // innerHTML de ambas duplicaría el markup. Un presupuesto convertido también
+  // se puede imprimir: sigue siendo el papel que se le entregó al cliente.
+  acciones.insertAdjacentHTML(
+    "beforeend",
+    '<button type="button" class="btn btn-secundario" id="btnImprimirPresupuesto">Imprimir / PDF</button>'
+  );
+  acciones.querySelector("#btnImprimirPresupuesto").addEventListener("click", () => {
+    imprimirComprobante(hojaDePresupuesto(p));
+  });
 
   document.getElementById("fichaPresupuestoItems").innerHTML = p.items
     .map(
@@ -2532,16 +3715,19 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
 
 /* ---------- Ventas ---------- */
 
+const selVentas = crearSeleccion("ventasBody");
+
 function renderVentas(lista) {
   const body = document.getElementById("ventasBody");
   body.innerHTML = "";
+  selVentas.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosVentas.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(8);
+      body.innerHTML = filaVaciaFiltrada(selVentas.colspan(8));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosVentas.limpiar());
     } else {
-      body.innerHTML = filaVacia(8, "Todavía no hay ventas registradas.", { accionTexto: "+ Nueva venta", accionId: "btnNuevaVenta" });
+      body.innerHTML = filaVacia(selVentas.colspan(8), "Todavía no hay ventas registradas.", { accionTexto: "+ Nueva venta", accionId: "btnNuevaVenta" });
     }
     return;
   }
@@ -2566,6 +3752,7 @@ function renderVentas(lista) {
         : "";
 
     tr.innerHTML = `
+      ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente">${v.cliente}</td>
       <td data-label="Productos" class="celda-wrap">${v.items_resumen || "—"}</td>
@@ -2577,7 +3764,7 @@ function renderVentas(lista) {
       <td data-label=""><div class="fila-acciones">${accionFactura} ${accionCobro} ${accionAnular}</div></td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, a")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaVenta(v.id);
     });
     body.appendChild(tr);
@@ -2615,6 +3802,48 @@ function renderVentas(lista) {
 // Los totales acompañan al filtro: si mirás julio, el strip muestra julio.
 // Un resumen que se quedara con el acumulado histórico mientras la tabla
 // muestra un mes se prestaría a leer mal el número.
+// Cada vista compone filtros y orden a su manera (algunas descartan anuladas
+// primero, otras invierten el orden de aplicación), así que el botón de
+// exportar de cada una recalcula con SU MISMA expresión en vez de leer una
+// lista guardada: un caché podría quedar desincronizado y exportar algo
+// distinto de lo que se ve en pantalla, que es el único bug que esta función
+// no se puede permitir.
+function listaVentasVisible() {
+  const activas = ventas.filter((v) => v.estado !== "anulada");
+  return ordenVentas.aplicar(filtrosVentas.aplicar(activas));
+}
+
+// Las columnas se declaran acá y no se derivan del <thead>: hay columnas sin
+// data-orden (Productos, la de acciones) y el CSV tiene que llevar el valor
+// crudo, no el HTML de la celda con sus badges y botones.
+const COLUMNAS_CSV_VENTAS = [
+  { titulo: "N°", valor: (v) => v.id },
+  { titulo: "Fecha", valor: (v) => v.fecha },
+  { titulo: "Cliente", valor: (v) => v.cliente },
+  { titulo: "Productos", valor: (v) => v.items_resumen },
+  { titulo: "Costo", valor: (v) => v.costo_total },
+  { titulo: "Total", valor: (v) => v.total },
+  { titulo: "Devuelto", valor: (v) => v.devuelto },
+  { titulo: "Neto", valor: (v) => v.neto },
+  { titulo: "Ganancia", valor: (v) => v.margen },
+  { titulo: "Cobro", valor: (v) => ESTADO_COBRO_LABEL[v.estado_cobro] ?? v.estado_cobro },
+  { titulo: "Facturada", valor: (v) => (v.facturada ? "sí" : "no") }
+];
+
+document.getElementById("btnExportarVentas").addEventListener("click", () => {
+  descargarCSV("nexo-ventas", COLUMNAS_CSV_VENTAS, listaVentasVisible());
+});
+
+montarBarraSeleccion(selVentas, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-ventas-seleccion", COLUMNAS_CSV_VENTAS, listaVentasVisible().filter((v) => idsSet.has(v.id)));
+    }
+  }
+]);
+
 function filtrarVentas() {
   const activas = ventas.filter((v) => v.estado !== "anulada");
   const lista = filtrosVentas.aplicar(activas);
@@ -2657,7 +3886,7 @@ const ordenVentas = crearOrden("ventasBody", filtrarVentas);
 // porque la papelera se arma sobre ese mismo array; la tabla de Ventas
 // filtra al renderizar.
 async function cargarVentas() {
-  tablaCargando("ventasBody", 8);
+  tablaCargando("ventasBody", selVentas.colspan(8));
   const res = await fetch("/api/ventas");
   ventas = await res.json();
   filtrarVentas();
@@ -3330,16 +4559,19 @@ const ENVIO_LABEL = { pedido: "Pedido", en_camino: "En camino", recibido: "Recib
 const ESTADO_PAGO_CLASE = { pendiente: "status-vencido", parcial: "status-pendiente", pagado: "status-cobrado" };
 const ESTADO_PAGO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", pagado: "Pagado" };
 
+const selCompras = crearSeleccion("comprasBody");
+
 function renderCompras(lista) {
   const body = document.getElementById("comprasBody");
   body.innerHTML = "";
+  selCompras.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosCompras.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(7);
+      body.innerHTML = filaVaciaFiltrada(selCompras.colspan(7));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosCompras.limpiar());
     } else {
-      body.innerHTML = filaVacia(7, "Todavía no hay compras registradas.", { accionTexto: "+ Nueva compra", accionId: "btnNuevaCompra" });
+      body.innerHTML = filaVacia(selCompras.colspan(7), "Todavía no hay compras registradas.", { accionTexto: "+ Nueva compra", accionId: "btnNuevaCompra" });
     }
     return;
   }
@@ -3348,7 +4580,7 @@ function renderCompras(lista) {
     const tr = document.createElement("tr");
     tr.className = "fila-clickeable";
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, select, a")) return;
+      if (e.target.closest("button, select, a, input, label, textarea, .col-sel")) return;
       abrirFichaCompra(c.id);
     });
     const borrador = c.estado === "borrador";
@@ -3366,6 +4598,7 @@ function renderCompras(lista) {
     // efectuar el pedido.
     if (borrador) {
       tr.innerHTML = `
+        ${selCompras.celda(c.id)}
         <td data-label="N°" class="mono">#${c.id}</td>
         <td data-label="Proveedor">${c.proveedor}</td>
         <td data-label="Fecha">${c.fecha}</td>
@@ -3395,6 +4628,7 @@ function renderCompras(lista) {
             .join("")}</select>`;
 
     tr.innerHTML = `
+      ${selCompras.celda(c.id)}
       <td data-label="N°" class="mono">#${c.id}</td>
       <td data-label="Proveedor">${c.proveedor}</td>
       <td data-label="Fecha">${c.fecha}</td>
@@ -3530,8 +4764,117 @@ const filtrosCompras = crearFiltros(
 );
 const ordenCompras = crearOrden("comprasBody", filtrarCompras);
 
+// Mismos criterios que filtrarCompras: descarta anuladas, aplica filtros y
+// orden con la misma expresión — así lo que se exporta coincide con lo que
+// se ve en pantalla.
+function listaComprasVisible() {
+  const activas = compras.filter((c) => c.estado !== "anulada");
+  return ordenCompras.aplicar(filtrosCompras.aplicar(activas));
+}
+
+const COLUMNAS_CSV_COMPRAS = [
+  { titulo: "N°", valor: (c) => c.id },
+  { titulo: "Proveedor", valor: (c) => c.proveedor },
+  { titulo: "Fecha", valor: (c) => c.fecha },
+  { titulo: "Total", valor: (c) => c.total },
+  { titulo: "Pagado", valor: (c) => c.pagado },
+  { titulo: "Estado de pago", valor: (c) => ESTADO_PAGO_LABEL[c.estado_pago] ?? c.estado_pago },
+  { titulo: "Envío", valor: (c) => ENVIO_LABEL[c.estado_envio] ?? c.estado_envio }
+];
+
+montarBarraSeleccion(selCompras, [
+  {
+    etiqueta: "Cambiar estado de envío",
+    onClick: (ids) => abrirModalBulkEstadoEnvio(ids)
+  },
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-compras-seleccion", COLUMNAS_CSV_COMPRAS, listaComprasVisible().filter((c) => idsSet.has(c.id)));
+    }
+  }
+]);
+
+/* ---------- Edición en lote de estado de envío (Compras) ---------- */
+//
+// Mismo criterio que bulkProductosIds: copia propia de los ids, no se
+// relee selCompras.ids al hacer submit.
+let bulkComprasIds = [];
+
+const modalBulkEstadoEnvio = document.getElementById("modalBulkEstadoEnvio");
+const formBulkEstadoEnvio = document.getElementById("formBulkEstadoEnvio");
+const bulkEstadoEnvioResultado = document.getElementById("bulkEstadoEnvioResultado");
+const bulkEstadoEnvioResultadoTitulo = document.getElementById("bulkEstadoEnvioResultadoTitulo");
+const bulkEstadoEnvioResultadoLista = document.getElementById("bulkEstadoEnvioResultadoLista");
+
+function abrirModalBulkEstadoEnvio(ids) {
+  bulkComprasIds = ids;
+  formBulkEstadoEnvio.reset();
+  formBulkEstadoEnvio.estado_envio.innerHTML = Object.entries(ENVIO_LABEL)
+    .map(([valor, texto]) => `<option value="${valor}">${texto}</option>`)
+    .join("");
+  bulkEstadoEnvioResultado.hidden = true;
+  document.getElementById("modalBulkEstadoEnvioConteo").textContent =
+    `${ids.length} compra${ids.length === 1 ? "" : "s"} seleccionada${ids.length === 1 ? "" : "s"}`;
+  document.getElementById("bulkEstadoEnvioSubmit").textContent = `Aplicar a ${ids.length} compra${ids.length === 1 ? "" : "s"}`;
+  modalBulkEstadoEnvio.hidden = false;
+}
+
+document.getElementById("modalBulkEstadoEnvioClose").addEventListener("click", () => {
+  modalBulkEstadoEnvio.hidden = true;
+});
+modalBulkEstadoEnvio.addEventListener("click", (e) => {
+  if (e.target === modalBulkEstadoEnvio) modalBulkEstadoEnvio.hidden = true;
+});
+
+formBulkEstadoEnvio.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const estadoEnvio = e.target.estado_envio.value;
+
+  // Marcar como "recibido" suma stock al depósito y recalcula el costo
+  // promedio ponderado de cada producto — es irreversible por diseño
+  // (una vez recibida, una compra no puede volver atrás). Confirmación
+  // obligatoria, no condicional como en Productos.
+  if (estadoEnvio === "recibido") {
+    const ok = await confirmar({
+      titulo: "Marcar como recibidas",
+      cuerpo: `Vas a marcar ${bulkComprasIds.length} compras como recibidas. Esto suma el stock correspondiente y recalcula el costo de cada producto. No se puede deshacer.`,
+      aceptar: "Marcar como recibidas",
+      destructivo: true
+    });
+    if (!ok) return;
+  }
+
+  const res = await fetch("/api/compras/bulk/estado-envio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: bulkComprasIds, estado_envio: estadoEnvio })
+  });
+  if (!(await manejarError(res, "No se pudo aplicar el cambio de estado en lote."))) return;
+  const resultado = await res.json();
+
+  await Promise.all([cargarCompras(), cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+
+  const huboFallos = mostrarResultadoBulk(resultado, {
+    bloque: bulkEstadoEnvioResultado,
+    titulo: bulkEstadoEnvioResultadoTitulo,
+    lista: bulkEstadoEnvioResultadoLista,
+    etiquetar: (id) => `Compra #${id}`
+  });
+
+  if (huboFallos) {
+    bulkComprasIds = resultado.fallidos.map((f) => f.id);
+    document.getElementById("bulkEstadoEnvioSubmit").textContent =
+      `Reintentar con ${bulkComprasIds.length} compra${bulkComprasIds.length === 1 ? "" : "s"}`;
+  } else {
+    selCompras.limpiar();
+    modalBulkEstadoEnvio.hidden = true;
+  }
+});
+
 async function cargarCompras() {
-  tablaCargando("comprasBody", 7);
+  tablaCargando("comprasBody", selCompras.colspan(7));
   const res = await fetch("/api/compras");
   compras = await res.json();
   filtrarCompras();
@@ -4123,16 +5466,19 @@ let clientes = [];
 let clienteEditandoId = null;
 let clienteFichaId = null;
 
+const selClientes = crearSeleccion("clientesBody");
+
 function renderClientes(lista) {
   const body = document.getElementById("clientesBody");
   body.innerHTML = "";
+  selClientes.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosClientes.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(5);
+      body.innerHTML = filaVaciaFiltrada(selClientes.colspan(5));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosClientes.limpiar());
     } else {
-      body.innerHTML = filaVacia(5, "Todavía no hay clientes cargados.", { accionTexto: "+ Nuevo cliente", accionId: "btnNuevoCliente" });
+      body.innerHTML = filaVacia(selClientes.colspan(5), "Todavía no hay clientes cargados.", { accionTexto: "+ Nuevo cliente", accionId: "btnNuevoCliente" });
     }
     return;
   }
@@ -4142,6 +5488,7 @@ function renderClientes(lista) {
     tr.className = "fila-clickeable";
     const contacto = [c.telefono, c.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
+      ${selClientes.celda(c.id)}
       <td data-label="Nombre">${c.nombre}</td>
       <td data-label="Contacto">${contacto}</td>
       <td data-label="Compras" class="align-right mono">${numero(c.cantidad_compras)}</td>
@@ -4150,7 +5497,7 @@ function renderClientes(lista) {
       <td data-label="">${botonEditarFila("btn-editar-cliente", c.id, "cliente")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaCliente(c.id);
     });
     body.appendChild(tr);
@@ -4172,7 +5519,7 @@ function poblarDatalistClientes() {
 }
 
 async function cargarClientes() {
-  tablaCargando("clientesBody", 5);
+  tablaCargando("clientesBody", selClientes.colspan(5));
   const res = await fetch("/api/clientes");
   clientes = await res.json();
   filtrarClientes();
@@ -4186,6 +5533,34 @@ function filtrarClientes() {
   );
   renderClientes(ordenClientes.aplicar(filtrosClientes.aplicar(porTexto)));
 }
+
+// Misma expresión que filtrarClientes (búsqueda + filtros + orden).
+function listaClientesVisible() {
+  const q = document.getElementById("clientesSearch").value.trim().toLowerCase();
+  const porTexto = clientes.filter((c) =>
+    [c.nombre, c.email, c.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  );
+  return ordenClientes.aplicar(filtrosClientes.aplicar(porTexto));
+}
+
+const COLUMNAS_CSV_CLIENTES = [
+  { titulo: "Nombre", valor: (c) => c.nombre },
+  { titulo: "Teléfono", valor: (c) => c.telefono },
+  { titulo: "Email", valor: (c) => c.email },
+  { titulo: "Compras", valor: (c) => c.cantidad_compras },
+  { titulo: "Total gastado", valor: (c) => c.total_gastado },
+  { titulo: "Deuda", valor: (c) => c.deuda }
+];
+
+montarBarraSeleccion(selClientes, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-clientes-seleccion", COLUMNAS_CSV_CLIENTES, listaClientesVisible().filter((c) => idsSet.has(c.id)));
+    }
+  }
+]);
 
 // "Deuda mayor que 0" reemplaza al viejo select de sí/no: el mismo campo
 // ahora sirve para pedir quién debe, quién debe más de cierto monto, o
@@ -4318,16 +5693,19 @@ let proveedores = [];
 let proveedorEditandoId = null;
 let proveedorFichaId = null;
 
+const selProveedores = crearSeleccion("proveedoresBody");
+
 function renderProveedores(lista) {
   const body = document.getElementById("proveedoresBody");
   body.innerHTML = "";
+  selProveedores.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosProveedores.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
+      body.innerHTML = filaVaciaFiltrada(selProveedores.colspan(6));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProveedores.limpiar());
     } else {
-      body.innerHTML = filaVacia(6, "Todavía no hay proveedores cargados.", { accionTexto: "+ Nuevo proveedor", accionId: "btnNuevoProveedor" });
+      body.innerHTML = filaVacia(selProveedores.colspan(6), "Todavía no hay proveedores cargados.", { accionTexto: "+ Nuevo proveedor", accionId: "btnNuevoProveedor" });
     }
     return;
   }
@@ -4337,6 +5715,7 @@ function renderProveedores(lista) {
     tr.className = "fila-clickeable";
     const contacto = [p.telefono, p.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
+      ${selProveedores.celda(p.id)}
       <td data-label="Nombre">${p.nombre}</td>
       <td data-label="Contacto">${contacto}</td>
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
@@ -4345,7 +5724,7 @@ function renderProveedores(lista) {
       <td data-label="">${botonEditarFila("btn-editar-proveedor", p.id, "proveedor")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaProveedor(p.id);
     });
     body.appendChild(tr);
@@ -4359,7 +5738,7 @@ function renderProveedores(lista) {
 }
 
 async function cargarProveedores() {
-  tablaCargando("proveedoresBody", 6);
+  tablaCargando("proveedoresBody", selProveedores.colspan(6));
   const res = await fetch("/api/proveedores");
   proveedores = await res.json();
   filtrarProveedores();
@@ -4372,6 +5751,34 @@ function filtrarProveedores() {
   );
   renderProveedores(ordenProveedores.aplicar(filtrosProveedores.aplicar(porTexto)));
 }
+
+// Misma expresión que filtrarProveedores.
+function listaProveedoresVisible() {
+  const q = document.getElementById("proveedoresSearch").value.trim().toLowerCase();
+  const porTexto = proveedores.filter((p) =>
+    [p.nombre, p.email, p.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  );
+  return ordenProveedores.aplicar(filtrosProveedores.aplicar(porTexto));
+}
+
+const COLUMNAS_CSV_PROVEEDORES = [
+  { titulo: "Nombre", valor: (p) => p.nombre },
+  { titulo: "Teléfono", valor: (p) => p.telefono },
+  { titulo: "Email", valor: (p) => p.email },
+  { titulo: "Compras", valor: (p) => p.cantidad_compras },
+  { titulo: "Total comprado", valor: (p) => p.total_comprado },
+  { titulo: "Deuda", valor: (p) => p.deuda }
+];
+
+montarBarraSeleccion(selProveedores, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-proveedores-seleccion", COLUMNAS_CSV_PROVEEDORES, listaProveedoresVisible().filter((p) => idsSet.has(p.id)));
+    }
+  }
+]);
 
 const filtrosProveedores = crearFiltros(
   "filtrosProveedores",
@@ -4987,6 +6394,37 @@ async function cargarCuentasCorrientes() {
   renderCuentasCorrientes(datos);
 }
 
+// Cuentas corrientes tiene dos tablas independientes (a cobrar y a pagar), así
+// que lleva un botón por panel y no uno por vista. Cada lista es plana: las
+// filas expandibles (.cc-detalle) son un detalle del render, no de los datos.
+const COLUMNAS_CSV_CC = (tipoLabel) => [
+  { titulo: tipoLabel, valor: (e) => e.nombre },
+  { titulo: "Teléfono", valor: (e) => e.telefono },
+  { titulo: "Email", valor: (e) => e.email },
+  { titulo: "Saldo", valor: (e) => e.saldo },
+  { titulo: "Operaciones pendientes", valor: (e) => e.operaciones?.filter((o) => o.pendiente > 0).length ?? 0 },
+  // La operación pendiente más antigua: las operaciones vienen ordenadas por
+  // fecha ascendente desde el backend.
+  { titulo: "Más vieja", valor: (e) => e.operaciones?.find((o) => o.pendiente > 0)?.fecha ?? "" },
+  { titulo: "Días de antigüedad", valor: (e) => e.dias_max }
+];
+
+document.getElementById("btnExportarCcCobrar").addEventListener("click", () => {
+  descargarCSV(
+    "nexo-cuentas-por-cobrar",
+    COLUMNAS_CSV_CC("Cliente"),
+    ordenCcCobrar.aplicar(filtrosCcCobrar.aplicar(ccUltimaRespuesta?.por_cobrar ?? []))
+  );
+});
+
+document.getElementById("btnExportarCcPagar").addEventListener("click", () => {
+  descargarCSV(
+    "nexo-cuentas-por-pagar",
+    COLUMNAS_CSV_CC("Proveedor"),
+    ordenCcPagar.aplicar(filtrosCcPagar.aplicar(ccUltimaRespuesta?.por_pagar ?? []))
+  );
+});
+
 /* ---------- Gastos ---------- */
 
 // Los gastos son lo que le falta al sistema para saber si el negocio gana
@@ -5075,6 +6513,29 @@ function filtrarGastos() {
   const activos = gastos.filter((g) => g.estado === "activo");
   renderGastos(ordenGastos.aplicar(filtrosGastos.aplicar(activos)));
 }
+
+// Misma composición que filtrarGastos, para que el CSV traiga exactamente las
+// filas que muestra la tabla.
+function listaGastosVisible() {
+  const activos = gastos.filter((g) => g.estado === "activo");
+  return ordenGastos.aplicar(filtrosGastos.aplicar(activos));
+}
+
+const COLUMNAS_CSV_GASTOS = [
+  { titulo: "N°", valor: (g) => g.id },
+  { titulo: "Fecha", valor: (g) => g.fecha },
+  { titulo: "Categoría", valor: (g) => g.categoria },
+  { titulo: "Tipo", valor: (g) => TIPO_GASTO_LABEL[g.tipo] ?? g.tipo },
+  { titulo: "Descripción", valor: (g) => g.descripcion },
+  { titulo: "Proveedor", valor: (g) => g.proveedor },
+  { titulo: "Cuenta", valor: (g) => g.cuenta },
+  { titulo: "Comprobante", valor: (g) => g.comprobante },
+  { titulo: "Importe", valor: (g) => g.importe }
+];
+
+document.getElementById("btnExportarGastos").addEventListener("click", () => {
+  descargarCSV("nexo-gastos", COLUMNAS_CSV_GASTOS, listaGastosVisible());
+});
 
 const filtrosGastos = crearFiltros(
   "filtrosGastos",
@@ -6373,13 +7834,80 @@ function renderPapelera() {
   });
 }
 
+/* ---------- Configuración (datos del negocio) ---------- */
+
+// El engranaje abre Configuración, que desde esta etapa tiene contenido real:
+// los datos que encabezan los comprobantes impresos. El círculo de perfil
+// (#btnPerfil) no lo comparte: abre #modalPerfil, el menú de cuenta.
+//
+// `negocio` queda en memoria para que armarHojaComprobante() no tenga que
+// hacer un fetch cada vez que se imprime — mismo criterio que `cuentasTesoreria`
+// y los demás cachés que llena el boot.
+let negocio = {};
+
+const modalConfiguracion = document.getElementById("modalConfiguracion");
+const formNegocio = document.getElementById("formNegocio");
+
+function pintarFormNegocio() {
+  for (const campo of ["nombre", "documento", "condicion_iva", "direccion", "telefono", "email", "pie_comprobante"]) {
+    if (formNegocio[campo]) formNegocio[campo].value = negocio[campo] ?? "";
+  }
+  // Gating por rol: es UI, no seguridad — el servidor responde 403 igual si un
+  // empleado llama al endpoint directo (mismo criterio que la vista Usuarios).
+  const esAdmin = document.documentElement.dataset.rol === "admin";
+  document.getElementById("negocioSoloLectura").hidden = esAdmin;
+  for (const control of formNegocio.querySelectorAll("input, textarea, button")) {
+    control.disabled = !esAdmin;
+  }
+}
+
+async function cargarNegocio() {
+  const res = await fetch("/api/negocio");
+  if (!res.ok) return;
+  negocio = await res.json();
+  pintarFormNegocio();
+}
+
+formNegocio.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const datos = Object.fromEntries(new FormData(formNegocio).entries());
+  if (!datos.nombre?.trim()) {
+    avisar("El negocio necesita un nombre.", "atencion");
+    return;
+  }
+  const res = await fetch("/api/negocio", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(datos)
+  });
+  if (!(await manejarError(res, "No se pudieron guardar los datos del negocio."))) return;
+  await cargarNegocio();
+  modalConfiguracion.hidden = true;
+  avisar("Datos del negocio actualizados.", "ok");
+});
+
+document.getElementById("btnConfiguracion").addEventListener("click", () => {
+  // Se repinta al abrir: así el formulario nunca muestra un valor viejo si el
+  // usuario editó, cerró sin guardar y volvió a abrir.
+  pintarFormNegocio();
+  modalConfiguracion.hidden = false;
+});
+document.getElementById("modalConfiguracionClose").addEventListener("click", () => {
+  modalConfiguracion.hidden = true;
+});
+modalConfiguracion.addEventListener("click", (e) => {
+  if (e.target === modalConfiguracion) modalConfiguracion.hidden = true;
+});
+
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último
 // porque su tabla de últimos movimientos se arma con los cachés de
 // ventas, compras y gastos ya cargados. Cuentas corrientes y el reporte
 // de stock no dependen de ningún caché del frontend (traen su propio
 // fetch), así que entran en el mismo último grupo que Resumen.
-Promise.all([cargarClientes(), cargarProveedores(), cargarCaja()])
+// cargarNegocio va en la primera ola: no depende de nada y la impresión de
+// comprobantes necesita el membrete listo antes del primer click en Imprimir.
+Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), cargarNegocio()])
   .then(() => Promise.all([cargarGastos(), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
@@ -6407,22 +7935,6 @@ btnTema.addEventListener("click", () => {
     // Sin storage disponible, el tema sigue cambiado para esta sesión,
     // solo no se recuerda la próxima vez.
   }
-});
-
-/* ---------- Configuración (todavía sin preferencias reales) ---------- */
-
-// El engranaje sigue abriendo el modal vacío de Configuración. El
-// círculo de perfil (#btnPerfil) dejó de compartirlo: desde la etapa de
-// usuarios abre #modalPerfil, con el menú de cuenta real (ver más abajo).
-const modalConfiguracion = document.getElementById("modalConfiguracion");
-document.getElementById("btnConfiguracion").addEventListener("click", () => {
-  modalConfiguracion.hidden = false;
-});
-document.getElementById("modalConfiguracionClose").addEventListener("click", () => {
-  modalConfiguracion.hidden = true;
-});
-modalConfiguracion.addEventListener("click", (e) => {
-  if (e.target === modalConfiguracion) modalConfiguracion.hidden = true;
 });
 
 /* ---------- Menú de perfil (mi cuenta) ---------- */

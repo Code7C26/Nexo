@@ -1049,6 +1049,55 @@ button { font-family: inherit; cursor: pointer; }
   display: none;
 }
 
+/* ---------- Edición en lote (modales bulk) ----------
+   .bulk-campo agrupa el checkbox de activación y el/los input(s) de un
+   campo del formulario de bulk edit. Se le da display:flex (mismo criterio
+   que .form label arriba), así que necesita su propia regla [hidden] por
+   el mismo motivo ya documentado dos veces en este archivo: una clase con
+   display propio le gana en especificidad al [hidden] del navegador. */
+.bulk-campo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.bulk-campo:last-of-type { border-bottom: none; }
+
+.bulk-campo select,
+.bulk-campo input {
+  margin-left: var(--sp-5);
+}
+
+.bulk-campo select:disabled,
+.bulk-campo input:disabled {
+  opacity: 0.5;
+}
+
+/* Bloque de resultado parcial (aplicados/fallidos) dentro del modal de
+   bulk edit. Mismo motivo que .bulk-campo: display propio, necesita su
+   [hidden] explícito. */
+.bulk-resultado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+}
+
+.bulk-resultado[hidden] {
+  display: none;
+}
+
+.bulk-resultado ul {
+  margin: 0;
+  padding-left: var(--sp-4);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
 .form input,
 .form select {
   border: 1px solid var(--line);
@@ -1413,6 +1462,79 @@ input.precio-sin-configurar::placeholder {
 }
 
 /* ============================================================
+   Selección múltiple (crearSeleccion en app.js)
+   ============================================================ */
+
+.col-sel {
+  width: 32px;
+  text-align: center;
+  /* Toda la celda cuenta como "zona de checkbox" para la guarda de click de
+     la fila (ver el .closest(".col-sel") en cada render*() de app.js): un
+     click que caiga en el padding de la celda, no exactamente sobre los
+     13px del input, ya no debe abrir la ficha. */
+  cursor: pointer;
+}
+
+.col-sel input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  /* Hitbox más grande que el checkbox nativo (13px es angosto para tocar a
+     ojo, sobre todo en mobile), sin agrandar el dibujo del control. */
+  padding: 10px;
+}
+
+/* Barra flotante, única y compartida por todas las tablas — ver el
+   comentario de #barraSeleccion en index.html. z-index por debajo de
+   .modal (50) y de .asistente-panel (45 también, pero el panel se cierra
+   solo mientras se opera una tabla) y por encima del contenido normal. */
+.barra-seleccion {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-4);
+  transform: translateX(-50%);
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+}
+
+/* El "display: flex" de arriba tiene la misma especificidad que la regla
+   [hidden] del user-agent stylesheet, y por venir después en la cascada le
+   gana: montarBarraSeleccion() pone barra.hidden = true al vaciarse la
+   selección, pero sin esta regla la barra seguía viéndose igual. Mismo
+   bug que ya se había resuelto para .hoja-impresion (ver más abajo). */
+.barra-seleccion[hidden] {
+  display: none;
+}
+
+.barra-seleccion-conteo {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.barra-seleccion-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Botón "Seleccionar todo" que crearSeleccion() inyecta antes de cada
+   .tabla-scroll (ver app.js). Solo tiene sentido en mobile: en desktop el
+   checkbox del <thead> ya cumple ese rol y este botón queda oculto. Vive
+   junto a la tabla y no dentro de .barra-seleccion porque tiene que estar
+   disponible aunque todavía no haya ninguna fila tildada (la barra recién
+   aparece con selección > 0). */
+.btn-sel-todo-mobile {
+  display: none;
+  margin-bottom: var(--sp-2);
+}
+
+/* ============================================================
    Asistente flotante (operaciones por texto, CLAUDE.md §21)
    Widget disponible desde cualquier vista, no una vista más — un
    círculo abajo a la derecha que abre un panel de conversación.
@@ -1726,6 +1848,17 @@ input.precio-sin-configurar::placeholder {
     text-transform: uppercase;
   }
 
+  /* El <td> de checkbox lleva data-label="" (no hay una etiqueta que tenga
+     sentido mostrar): sin esto, la regla de arriba igual reserva 110px de
+     hueco vacío antes de cada checkbox en la card apilada. */
+  .ledger-table td.col-sel::before {
+    display: none;
+  }
+
+  .ledger-table td.col-sel {
+    padding-bottom: 8px;
+  }
+
   /* .cc-detalle es una <table> propia anidada dentro de un <td colspan>
      de .ledger-table (detalle de cuenta corriente al expandir una fila):
      no hereda las reglas de arriba porque no es .ledger-table. Mismo
@@ -1760,6 +1893,21 @@ input.precio-sin-configurar::placeholder {
   .asistente-launcher {
     right: var(--sp-4);
     bottom: var(--sp-4);
+  }
+
+  .barra-seleccion {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    transform: none;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* thead pasa a display:none arriba, así que el checkbox "seleccionar
+     todo" del header deja de estar disponible: este botón lo reemplaza. */
+  .btn-sel-todo-mobile {
+    display: inline;
   }
 
   /* El override de .avisos para este breakpoint vive junto a la
@@ -1976,4 +2124,251 @@ input.precio-sin-configurar::placeholder {
    /api/usuarios directo. */
 :root:not([data-rol="admin"]) .nav-item[data-view="usuarios"] {
   display: none;
+}
+
+/* ============================================================
+   Hoja de impresión (comprobantes)
+   ============================================================
+
+   Va al FINAL del archivo a propósito: el bloque @media print de abajo
+   redefine los tokens de color, y para ganarle a los dos bloques de tema
+   oscuro (el @media prefers-color-scheme y el [data-tema="oscuro"]) tiene
+   que venir después que ellos en la cascada.
+
+   En pantalla la hoja no se ve nunca. Se oculta con esta clase y no con el
+   atributo [hidden] para que @media print pueda revelarla con una regla
+   normal, sin necesitar !important para vencer al user-agent stylesheet. */
+.hoja-impresion {
+  display: none;
+}
+
+/* Contenedor de render para "Descargar PDF" (html2canvas) — ver
+   descargarPDFDeHoja() en app.js. html2canvas fotografía lo que puede
+   MEDIR: un nodo en display:none da un canvas 0×0, así que la hoja tiene
+   que estar realmente visible durante la captura. Se saca de la vista con
+   position:fixed + left negativo, NO con visibility:hidden ni opacity:0 —
+   html2canvas SÍ respeta esas dos propiedades y capturaría un canvas en
+   blanco. Ancho fijo en mm (A4 menos los 14mm de margen de @page a cada
+   lado) para que la hoja se maquete al ancho de página real sin importar
+   el ancho de la ventana del usuario. Nunca convive con #hojaImpresion: es
+   un contenedor aparte, creado y destruido por cada descarga. */
+.hoja-render {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 182mm;
+  background: #FFFFFF;
+  color: #000000;
+  z-index: -1;
+}
+
+@media print {
+  /* --- Capa 1: neutralizar los tokens de tema ---
+     Los tres selectores explícitos, no solo :root: [data-tema="oscuro"] tiene
+     más especificidad, así que sin nombrarlo seguiría ganando su negro. */
+  :root,
+  :root[data-tema="oscuro"],
+  :root[data-tema="claro"] {
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-sunk: #FFFFFF;
+    --ink: #000000;
+    --ink-muted: #333333;
+    --line: #000000;
+    --shadow-sm: none;
+    --shadow-lg: none;
+
+    /* --- Capa 2: color-scheme ---
+       Sin esto el navegador pinta el canvas de oscuro POR SU CUENTA cuando el
+       tema activo es oscuro, aunque el CSS diga background: #fff. Es el
+       detalle que convierte una impresión en un cartucho entero de tinta. */
+    color-scheme: light !important;
+  }
+
+  html,
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  /* Todo lo que es aplicación, fuera del papel: no solo .app — el hamburger,
+     el asistente flotante, los toasts y los modales viven fuera de ella. */
+  .app,
+  .nav-toggle,
+  .avisos,
+  .asistente-launcher,
+  .asistente-panel,
+  .modal,
+  .sesion-pantalla,
+  .barra-seleccion {
+    display: none !important;
+  }
+
+  .hoja-impresion {
+    display: block;
+  }
+
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+}
+
+/* Estilos de la hoja. Colores literales (#000/#fff), NO tokens: los tokens se
+   invierten con el tema y acá el papel siempre es blanco con tinta negra. Es
+   el mismo criterio que ya usa .sesion-card, que fija sus colores por no poder
+   depender de variables que cambian — sólo que en el sentido contrario. */
+.hoja {
+  background: #FFFFFF;
+  color: #000000;
+  font-family: var(--font-body);
+  font-size: 11pt;
+  line-height: 1.45;
+  /* Imprimir varias hojas juntas (ver imprimirHojas en app.js) las concatena
+     en el mismo #hojaImpresion: sin esto todas saldrían pegadas en una sola
+     página. break-after es el estándar actual; page-break-after es el
+     fallback para motores que todavía no lo entienden. */
+  break-after: page;
+  page-break-after: always;
+}
+
+/* La ÚLTIMA hoja no debe forzar un salto: si lo hiciera, la impresión
+   terminaría con una página extra en blanco después del último
+   comprobante. */
+.hoja-impresion > .hoja:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.hoja p {
+  margin: 0 0 2px;
+}
+
+.hoja-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16pt;
+  border-bottom: 1.5pt solid #000000;
+  padding-bottom: 8pt;
+  margin-bottom: 12pt;
+}
+
+.hoja-negocio h1 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 15pt;
+  letter-spacing: -0.02em;
+}
+
+.hoja-comprobante {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.hoja-rotulo {
+  font-family: var(--font-display);
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hoja-numero {
+  font-family: var(--font-mono);
+  font-size: 12pt;
+}
+
+.hoja-etiqueta {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 8pt;
+  color: #333333;
+}
+
+.hoja-cliente {
+  margin-bottom: 12pt;
+}
+
+.hoja-cliente-nombre {
+  font-weight: 600;
+  font-size: 12pt;
+}
+
+.hoja-items {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10pt;
+}
+
+.hoja-items th {
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1pt solid #000000;
+  padding: 4pt 6pt;
+}
+
+.hoja-items td {
+  padding: 4pt 6pt;
+  border-bottom: 0.5pt solid #999999;
+  vertical-align: top;
+}
+
+.hoja-items .num {
+  text-align: right;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.hoja-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12pt;
+  align-items: baseline;
+  border-top: 1.5pt solid #000000;
+  padding-top: 6pt;
+  font-size: 13pt;
+}
+
+.hoja-total strong {
+  font-family: var(--font-mono);
+}
+
+.hoja-notas {
+  margin-top: 12pt;
+}
+
+.hoja-pie {
+  margin-top: 18pt;
+  padding-top: 6pt;
+  border-top: 0.5pt solid #999999;
+  font-size: 9pt;
+  color: #333333;
+}
+
+.hoja-legal {
+  margin-top: 4pt;
+  font-style: italic;
+}
+
+/* Paginación: en un presupuesto largo el encabezado de columnas se repite en
+   cada hoja (sin esto, la página 2 es una lista de números sin título) y
+   ninguna fila se parte al medio entre dos páginas. */
+@media print {
+  .hoja-items thead {
+    display: table-header-group;
+  }
+
+  .hoja-items tr {
+    page-break-inside: avoid;
+  }
+
+  .hoja-total,
+  .hoja-pie,
+  .hoja-encabezado {
+    page-break-inside: avoid;
+  }
 }

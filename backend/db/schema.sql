@@ -487,10 +487,14 @@ CREATE TABLE IF NOT EXISTS auditoria (
     CHECK (actor IN ('operador', 'asistente', 'sistema')),
   accion TEXT NOT NULL
     CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+  -- 'organizacion' cubre los datos del negocio (nombre, CUIT, dirección) que
+  -- salen impresos en el membrete de todo comprobante: cambiarlos no es un
+  -- ajuste cosmético, así que queda registrado como cualquier otra mutación.
   entidad TEXT NOT NULL
     CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
                        'factura','cobro','pago','gasto','producto','cliente','proveedor',
-                       'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario')),
+                       'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                       'organizacion')),
   entidad_id INTEGER,
   -- Quién operó, más allá de por qué vía (actor). Nullable a propósito:
   -- las filas de antes de esta etapa no tienen a quién atribuirse, y
@@ -525,10 +529,26 @@ CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_i
 -- tocan en esta etapa. El día que exista un segundo negocio, alcanza con
 -- agregar organizacion_id a esas tablas y filtrar por ella — usuarios y
 -- login no necesitan rehacerse.
+-- Los campos de contacto/fiscales son los datos que van en el membrete de un
+-- comprobante impreso (presupuesto, factura). Viven acá y no en una tabla
+-- aparte porque "la organización" YA es el negocio: una tabla paralela
+-- duplicaría el concepto. Todos nullable: una instalación nueva arranca sin
+-- ellos y el negocio los completa desde Configuración cuando los necesita.
+-- En bases que ya existían se agregan por migración aditiva (ver db/index.js).
+--
+-- condicion_iva es texto libre ("Monotributo", "Responsable Inscripto") y NO
+-- tiene lógica detrás: IVA está fuera de V1 (CLAUDE.md), esto es una línea
+-- del membrete, no un dato que se calcule.
 CREATE TABLE IF NOT EXISTS organizaciones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
-  fecha_alta TEXT NOT NULL DEFAULT (datetime('now'))
+  fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
+  documento TEXT,         -- CUIT
+  direccion TEXT,
+  telefono TEXT,
+  email TEXT,
+  condicion_iva TEXT,
+  pie_comprobante TEXT    -- condiciones/validez al pie del comprobante
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

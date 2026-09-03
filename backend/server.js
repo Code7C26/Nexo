@@ -387,6 +387,101 @@ function diffCampos(anterior, nuevo, campos) {
     : null;
 }
 
+/* ---------- Edición en lote (bulk) ---------- */
+
+// Tope de seguridad de cualquier endpoint /bulk. node:sqlite es síncrono:
+// el loop que aplica el lote bloquea el event loop de punta a punta, así
+// que un `ids` de 100k colgaría el servidor para todos los demás. 500 es
+// más de lo que cualquier tabla real muestra filtrada — no es una regla de
+// negocio, es un guardarraíl.
+const LIMITE_BULK = 500;
+
+// Error de negocio con su status HTTP al lado. Existe para que las
+// funciones internas (aplicarEdicionProducto, aplicarEstadoEnvioCompra)
+// puedan lanzar EXACTAMENTE el mismo mensaje que devolvía el endpoint
+// singular, y que los dos consumidores lo usen distinto sin duplicar los
+// textos: el handler singular lo traduce a res.status().json(), y el bulk
+// lo acumula como un renglón de `fallidos`.
+class ErrorBulk extends Error {
+  constructor(mensaje, status = 400) {
+    super(mensaje);
+    this.status = status;
+  }
+}
+
+// Traduce un error lanzado durante un item del lote al texto que ve el
+// usuario. El `throw err` del final es deliberado: un error que no sabemos
+// traducir es un bug, y tiene que romper el request y quedar en el log —
+// disfrazarlo de "falló el producto 13" haría imposible depurarlo.
+function mensajeDeError(err) {
+  if (err instanceof ErrorBulk) return err.message;
+  if (String(err.message).includes('UNIQUE constraint failed')) {
+    return 'Ya existe un producto con ese SKU.';
+  }
+  throw err;
+}
+
+// Normaliza el `ids` que llega del cliente, o lanza ErrorBulk si no sirve.
+// Deduplica a propósito: el mismo id dos veces generaría dos filas de
+// auditoría para la misma entidad, y la segunda con un diff vacío.
+function idsDeLote(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new ErrorBulk('Seleccioná al menos un registro.');
+  }
+  if (ids.length > LIMITE_BULK) {
+    throw new ErrorBulk(`No se pueden editar más de ${LIMITE_BULK} registros a la vez.`);
+  }
+  const unicos = [...new Set(ids.map(Number))].filter(Number.isInteger);
+  if (unicos.length === 0) {
+    throw new ErrorBulk('Ninguno de los registros seleccionados es válido.');
+  }
+  return unicos;
+}
+
+// El corazón de todo endpoint /bulk: corre `aplicar(id)` para cada id y
+// acumula el resultado, SIN cortar cuando uno falla.
+//
+// Una transacción POR ITEM, nunca una envolvente. Es una consecuencia
+// directa de la semántica acordada con el usuario ("si 3 de 20 fallan, se
+// aplican los otros 17"): un ROLLBACK que abarcara el lote entero se
+// llevaría puestos los items que YA habían pasado. Además withTransaction
+// no es reentrante (ver db/index.js), así que anidar no es una opción.
+//
+// La atomicidad que sí importa se preserva igual: la unidad atómica real
+// es UNA entidad (su UPDATE + su fila de auditoría), y eso vive adentro de
+// un withTransaction. Nada tiene que cumplirse *entre* dos productos
+// distintos, así que no hace falta un SAVEPOINT por item.
+//
+// Que el loop pueda seguir después de un fallo depende de que
+// withTransaction haga ROLLBACK y re-lance (lo hace): el item fallido no
+// deja una transacción abierta detrás.
+function aplicarLote(ids, aplicar) {
+  const aplicados = [];
+  const fallidos = [];
+  let sinCambios = 0;
+
+  for (const id of ids) {
+    try {
+      const resultado = aplicar(id);
+      if (resultado?.sinCambios) sinCambios++;
+      aplicados.push(id);
+    } catch (err) {
+      fallidos.push({ id, error: mensajeDeError(err) });
+    }
+  }
+
+  return {
+    aplicados,
+    fallidos,
+    resumen: {
+      total: ids.length,
+      aplicados: aplicados.length,
+      fallidos: fallidos.length,
+      sin_cambios: sinCambios
+    }
+  };
+}
+
 /* ---------- Clientes (CRM) ---------- */
 
 // Las ventas anuladas no cuentan para el total gastado ni la cantidad de
@@ -533,7 +628,12 @@ const SUBQUERY_DEVUELTO_DE_VENTA_FACTURA = `
   ), 0)`;
 
 const SELECT_FACTURA = `
-  SELECT facturas.id, facturas.cliente_id, clientes.nombre AS cliente, facturas.concepto,
+  SELECT facturas.id, facturas.cliente_id, clientes.nombre AS cliente,
+         -- Contacto del cliente: lo necesita el membrete del comprobante
+         -- impreso (a quién se le emite). Aditivo: quien no lo use lo ignora.
+         clientes.documento AS cliente_documento, clientes.direccion AS cliente_direccion,
+         clientes.email AS cliente_email, clientes.telefono AS cliente_telefono,
+         facturas.concepto,
          facturas.neto, facturas.neto AS total, facturas.condicion, facturas.fecha,
          facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero, facturas.venta_id,
          facturas.devolucion_id,
@@ -814,74 +914,153 @@ app.post('/api/productos', (req, res) => {
   res.status(201).json({ id: lastInsertRowid });
 });
 
-app.patch('/api/productos/:id', (req, res) => {
-  const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id FROM productos WHERE id = ?').get(productoId);
+// Campos que la edición EN LOTE puede tocar. Deliberadamente más chico que
+// las 7 columnas del PATCH singular: nombre y sku quedan afuera porque
+// ponerle el mismo nombre a 20 productos no tiene sentido, y el mismo SKU
+// haría fallar con UNIQUE a partir del segundo item del lote.
+const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo'];
+
+// `cambios.precio_venta` puede venir como número (valor fijo) o como
+// { modo: 'porcentaje', valor: N } (ajuste sobre el precio actual DE ESE
+// producto). Se resuelve acá, en el backend, y no en el frontend: si lo
+// calculara el cliente usaría su copia en memoria de `productos`, que
+// puede estar desactualizada respecto de la fila real.
+function esAjustePorcentaje(valor) {
+  return typeof valor === 'object' && valor !== null && valor.modo === 'porcentaje';
+}
+
+// Punto único de edición de un producto, usado tanto por el PATCH singular
+// como por el bulk. Recibe `cambios` PARCIAL: cualquier clave de
+// producto ausente significa "no tocar ese campo" (se detecta con
+// hasOwnProperty, nunca con !== undefined, porque `null` es un valor
+// legítimo acá: categoria_id: null = sin categoría, stock_maximo: null =
+// sin tope).
+//
+// Válida el objeto FUSIONADO (fila actual + cambios encima), no solo los
+// campos presentes: es lo único que permite detectar invariantes cruzadas
+// como "stock_máximo no puede ser menor que el mínimo" cuando el pedido
+// solo toca uno de los dos. Reusa validarProducto tal cual, sin duplicar
+// ninguna regla.
+//
+// Lleva `req` como primer parámetro (no AsyncLocalStorage ni variable de
+// módulo) por la misma razón que auditar(req, ...) lo exige: dos requests
+// concurrentes no deben poder pisarse el usuario que audita.
+function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
+  const producto = db
+    .prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id FROM productos WHERE id = ?')
+    .get(productoId);
   if (!producto) {
-    return res.status(404).json({ error: 'Producto no encontrado.' });
+    throw new ErrorBulk('Producto no encontrado.', 404);
   }
 
-  const error = validarProducto(req.body);
+  const fusionado = { ...producto };
+  for (const campo of Object.keys(cambios)) {
+    if (Object.prototype.hasOwnProperty.call(cambios, campo)) fusionado[campo] = cambios[campo];
+  }
+  if (esAjustePorcentaje(fusionado.precio_venta)) {
+    const ajuste = Number(fusionado.precio_venta.valor) / 100;
+    fusionado.precio_venta = Math.round(producto.precio_venta * (1 + ajuste) * 100) / 100;
+  }
+
+  const error = validarProducto(fusionado);
   if (error) {
-    return res.status(400).json({ error });
+    throw new ErrorBulk(error);
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id } = req.body;
-  const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
+  const skuNormalizado = fusionado.sku && fusionado.sku.trim ? (fusionado.sku.trim() || null) : fusionado.sku;
   const nuevo = {
-    nombre: nombre.trim(),
+    nombre: fusionado.nombre.trim ? fusionado.nombre.trim() : fusionado.nombre,
     sku: skuNormalizado,
-    precio_venta: normalizarPrecio(precio_venta),
-    activo: activo === false || activo === 0 ? 0 : 1,
-    stock_minimo: normalizarPrecio(stock_minimo),
-    stock_maximo: normalizarStockMaximo(stock_maximo),
-    categoria_id: normalizarCategoriaId(categoria_id)
+    precio_venta: normalizarPrecio(fusionado.precio_venta),
+    activo: fusionado.activo === false || fusionado.activo === 0 ? 0 : 1,
+    stock_minimo: normalizarPrecio(fusionado.stock_minimo),
+    stock_maximo: normalizarStockMaximo(fusionado.stock_maximo),
+    categoria_id: normalizarCategoriaId(fusionado.categoria_id)
   };
   // precio_costo no entra en este diff: es el promedio ponderado que
   // recalculan las compras (recalcularCostoProducto), no algo que este
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
   // ya audita su propio "crear/confirmar" en la Fase B.
-  const cambios = diffCampos(producto, nuevo, [
+  const diff = diffCampos(producto, nuevo, [
     'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id'
   ]);
 
-  try {
-    withTransaction(() => {
-      // precio_costo queda deliberadamente fuera del UPDATE: es el promedio
-      // ponderado que calculan las compras, editarlo a mano acá rompería la
-      // trazabilidad del costo real.
-      db.prepare(
-        `UPDATE productos
-            SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?
-          WHERE id = ?`
-      ).run(
-        nuevo.nombre,
-        nuevo.sku,
-        nuevo.precio_venta,
-        nuevo.activo,
-        nuevo.stock_minimo,
-        nuevo.stock_maximo,
-        nuevo.categoria_id,
-        productoId
-      );
-      if (cambios) {
-        auditar(req, {
-          accion: 'editar',
-          entidad: 'producto',
-          entidad_id: productoId,
-          valor_anterior: cambios.anterior,
-          valor_nuevo: cambios.nuevo,
-          detalle: `Producto "${nuevo.nombre}" editado`
-        });
-      }
-    });
-  } catch (err) {
-    if (String(err.message).includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ error: 'Ya existe un producto con ese SKU.' });
+  withTransaction(() => {
+    // precio_costo queda deliberadamente fuera del UPDATE: es el promedio
+    // ponderado que calculan las compras, editarlo a mano acá rompería la
+    // trazabilidad del costo real.
+    db.prepare(
+      `UPDATE productos
+          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?
+        WHERE id = ?`
+    ).run(
+      nuevo.nombre,
+      nuevo.sku,
+      nuevo.precio_venta,
+      nuevo.activo,
+      nuevo.stock_minimo,
+      nuevo.stock_maximo,
+      nuevo.categoria_id,
+      productoId
+    );
+    if (diff) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'producto',
+        entidad_id: productoId,
+        valor_anterior: diff.anterior,
+        valor_nuevo: diff.nuevo,
+        detalle: totalLote > 1
+          ? `Producto "${nuevo.nombre}" editado (edición en lote de ${totalLote})`
+          : `Producto "${nuevo.nombre}" editado`
+      });
     }
-    throw err;
+  });
+
+  return { sinCambios: diff === null };
+}
+
+app.patch('/api/productos/:id', (req, res) => {
+  const productoId = Number(req.params.id);
+  try {
+    aplicarEdicionProducto(req, productoId, req.body, 1);
+  } catch (err) {
+    if (err instanceof ErrorBulk) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    return res.status(400).json({ error: mensajeDeError(err) });
   }
   res.json({ id: productoId });
+});
+
+// Edición en lote: aplica los mismos `cambios` a varios productos. No
+// todo-o-nada — cada id se intenta de forma independiente (ver
+// aplicarLote) y el response detalla cuáles se aplicaron y cuáles no,
+// con el mismo mensaje de error que devolvería el PATCH singular.
+app.post('/api/productos/bulk', (req, res) => {
+  let ids;
+  try {
+    ids = idsDeLote(req.body?.ids);
+  } catch (err) {
+    return res.status(err.status).json({ error: err.message });
+  }
+
+  const cambios = req.body?.cambios;
+  if (!cambios || typeof cambios !== 'object' || Array.isArray(cambios)) {
+    return res.status(400).json({ error: 'No indicaste ningún cambio.' });
+  }
+  const cambiosValidos = {};
+  for (const campo of CAMPOS_BULK_PRODUCTO) {
+    if (Object.prototype.hasOwnProperty.call(cambios, campo)) cambiosValidos[campo] = cambios[campo];
+  }
+  if (Object.keys(cambiosValidos).length === 0) {
+    return res.status(400).json({ error: 'No indicaste ningún cambio.' });
+  }
+
+  const resultado = aplicarLote(ids, (id) =>
+    aplicarEdicionProducto(req, id, cambiosValidos, ids.length)
+  );
+  res.json(resultado);
 });
 
 // Historial de movimientos de stock de un producto. El stock resultante se
@@ -1802,6 +1981,10 @@ app.post('/api/ventas/:id/restaurar', (req, res) => {
 
 const SELECT_PRESUPUESTO = `
   SELECT presupuestos.id, presupuestos.cliente_id, clientes.nombre AS cliente,
+         -- Contacto del cliente: lo necesita el membrete del comprobante
+         -- impreso (a quién se le cotiza). Aditivo: quien no lo use lo ignora.
+         clientes.documento AS cliente_documento, clientes.direccion AS cliente_direccion,
+         clientes.email AS cliente_email, clientes.telefono AS cliente_telefono,
          presupuestos.fecha, presupuestos.vencimiento, presupuestos.estado,
          presupuestos.venta_id, presupuestos.notas,
          (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
@@ -3240,55 +3423,100 @@ app.post('/api/compras/:id/restaurar', (req, res) => {
 
 // El estado de envío es el que gobierna el stock: al marcar 'recibido' la
 // mercadería entra al depósito y recién ahí se recalcula el costo.
-app.patch('/api/compras/:id/estado-envio', (req, res) => {
-  const compraId = Number(req.params.id);
-  const { estado_envio } = req.body;
-
-  if (!ESTADOS_ENVIO.includes(estado_envio)) {
-    return res.status(400).json({ error: 'Estado de envío inválido.' });
+// Punto único de cambio de estado de envío, usado por el PATCH singular y
+// por el bulk. Las 4 guardas de negocio van ANTES de abrir la transacción
+// (lanzan con throw, no hay nada que deshacer) — así el catch del loop de
+// aplicarLote nunca tiene que preocuparse por una transacción a medio
+// abrir.
+//
+// Efecto colateral a tener presente: marcar varias compras como
+// "recibido" en un mismo lote dispara aplicarStockCompra() una vez por
+// compra, y esa función recalcula el costo promedio ponderado. Si dos
+// compras del MISMO producto caen en el mismo lote, el resultado depende
+// del orden en que se procesan — acá se usa el orden de `ids` tal como
+// llega, que en el caso de uso real (selección de la tabla) es el orden
+// visible que ve el usuario (crearSeleccion.ids, en el frontend).
+function aplicarEstadoEnvioCompra(req, compraId, estadoEnvio, totalLote = 1) {
+  if (!ESTADOS_ENVIO.includes(estadoEnvio)) {
+    throw new ErrorBulk('Estado de envío inválido.');
   }
 
   const compra = db
     .prepare('SELECT id, estado, estado_envio, stock_aplicado FROM compras WHERE id = ?')
     .get(compraId);
   if (!compra) {
-    return res.status(404).json({ error: 'Compra no encontrada.' });
+    throw new ErrorBulk('Compra no encontrada.', 404);
   }
   if (compra.estado === 'borrador') {
-    return res
-      .status(400)
-      .json({ error: 'Esta compra todavía es un borrador: primero hay que efectuar el pedido.' });
+    throw new ErrorBulk('Esta compra todavía es un borrador: primero hay que efectuar el pedido.');
   }
   if (compra.estado === 'anulada') {
-    return res.status(400).json({ error: 'Esta compra está anulada.' });
+    throw new ErrorBulk('Esta compra está anulada.');
   }
   // Volver atrás desde "recibido" obligaría a deshacer el costo promedio
   // ponderado, que se sobrescribe de forma destructiva y no tiene historial
   // para reconstruirlo. Si hay que corregir, se anula la compra.
-  if (compra.estado_envio === 'recibido' && estado_envio !== 'recibido') {
-    return res.status(400).json({
-      error: 'Una compra ya recibida no puede volver atrás. Si te equivocaste, anulá la compra.'
-    });
+  if (compra.estado_envio === 'recibido' && estadoEnvio !== 'recibido') {
+    throw new ErrorBulk('Una compra ya recibida no puede volver atrás. Si te equivocaste, anulá la compra.');
   }
 
+  let sinCambios = true;
   withTransaction(() => {
-    db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estado_envio, compraId);
-    if (estado_envio === 'recibido' && !compra.stock_aplicado) {
+    db.prepare('UPDATE compras SET estado_envio = ? WHERE id = ?').run(estadoEnvio, compraId);
+    if (estadoEnvio === 'recibido' && !compra.stock_aplicado) {
       aplicarStockCompra(compraId);
     }
-    if (estado_envio !== compra.estado_envio) {
+    if (estadoEnvio !== compra.estado_envio) {
+      sinCambios = false;
       auditar(req, {
         accion: 'cambiar_estado',
         entidad: 'compra',
         entidad_id: compraId,
         valor_anterior: JSON.stringify({ estado_envio: compra.estado_envio }),
-        valor_nuevo: JSON.stringify({ estado_envio }),
-        detalle: `Compra #${compraId}, estado de envío: ${compra.estado_envio} → ${estado_envio}`
+        valor_nuevo: JSON.stringify({ estado_envio: estadoEnvio }),
+        detalle: totalLote > 1
+          ? `Compra #${compraId}, estado de envío: ${compra.estado_envio} → ${estadoEnvio} (edición en lote de ${totalLote})`
+          : `Compra #${compraId}, estado de envío: ${compra.estado_envio} → ${estadoEnvio}`
       });
     }
   });
 
-  res.json({ id: compraId, estado_envio });
+  return { sinCambios };
+}
+
+app.patch('/api/compras/:id/estado-envio', (req, res) => {
+  const compraId = Number(req.params.id);
+  let resultado;
+  try {
+    resultado = aplicarEstadoEnvioCompra(req, compraId, req.body.estado_envio, 1);
+  } catch (err) {
+    if (err instanceof ErrorBulk) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    throw err;
+  }
+  res.json({ id: compraId, estado_envio: req.body.estado_envio, sinCambios: resultado.sinCambios });
+});
+
+// Edición en lote del estado de envío. Mismo criterio de éxito parcial que
+// /api/productos/bulk: cada compra se intenta de forma independiente.
+app.post('/api/compras/bulk/estado-envio', (req, res) => {
+  let ids;
+  try {
+    ids = idsDeLote(req.body?.ids);
+  } catch (err) {
+    return res.status(err.status).json({ error: err.message });
+  }
+
+  const estadoEnvio = req.body?.estado_envio;
+  if (!ESTADOS_ENVIO.includes(estadoEnvio)) {
+    return res.status(400).json({ error: 'Estado de envío inválido.' });
+  }
+
+  const resultado = aplicarLote(ids, (id) =>
+    aplicarEstadoEnvioCompra(req, id, estadoEnvio, ids.length)
+  );
+  res.json(resultado);
 });
 
 app.get('/api/compras/:id/pagos', (req, res) => {
@@ -4585,11 +4813,20 @@ const MAX_BUCKETS = 40;
 // Cuánto abarca el período pedido, para no traer más operaciones ni
 // menos ventas/gastos/devoluciones de las que corresponden (mismas tres
 // tablas que calcularResultado — compras y pagos no entran acá tampoco).
+// Ampliada para incluir compras y devoluciones a proveedor (Reportes:
+// compras, CLAUDE.md §20): antes solo miraba ventas/gastos/devoluciones de
+// venta, así que un negocio con compras anteriores a su primera venta
+// hubiera visto el "rango abierto" arrancar tarde y perder esas compras en
+// silencio. También amplía (correctamente) el rango por defecto de
+// /api/resumen/evolucion y /api/reportes/ventas, que ya usaban esta misma
+// query preparada.
 const SQL_LIMITES_OPERACIONES = db.prepare(
   `SELECT MIN(fecha) AS primera, MAX(fecha) AS ultima FROM (
      SELECT fecha FROM ventas WHERE estado = 'activa'
      UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo'
      UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa'
+     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa'
+     UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa'
    )`
 );
 // "Hoy" se pide a SQLite (no a `new Date()` de JS) para quedar consistente
@@ -5073,6 +5310,237 @@ app.get('/api/reportes/ventas', (req, res) => {
     productos,
     categorias,
     clientes
+  });
+});
+
+/* ---------- Reportes: compras (CLAUDE.md §20) ---------- */
+//
+// Espejo exacto de "Reportes: qué se vende y a quién" de arriba, del lado
+// de compras. compra_items.costo_real_unitario YA trae el envío
+// prorrateado (prorratearEnvio, al crear la compra) — se suma directo con
+// SUM(), sin recalcular nada, mismo criterio que venta_items.
+// costo_unitario_historico en el reporte de ventas.
+//
+// No hay equivalente a calcularResultado() del lado de compras (esa
+// función existe para el resultado del NEGOCIO, no tiene sentido "costo de
+// comprar"), así que los totales salen directo de estas queries, netaados
+// contra devoluciones a proveedor con la misma netearPorId() de arriba.
+//
+// Toda devolución a proveedor saca stock siempre (a diferencia de
+// devolucion_items del lado de venta, que tiene un flag vuelve_stock
+// condicional) — confirmado en aplicarDevolucionProveedor: no hay CASE
+// WHEN acá, se resta directo.
+
+const SQL_REPORTE_UNIDADES_COMPRAS = db.prepare(
+  `SELECT COUNT(DISTINCT compras.id) AS cantidad_compras,
+          COALESCE(SUM(compra_items.cantidad), 0) AS unidades
+     FROM compras JOIN compra_items ON compra_items.compra_id = compras.id
+    WHERE compras.estado = 'activa'
+      AND (? IS NULL OR compras.fecha >= ?)
+      AND (? IS NULL OR compras.fecha <= ?)`
+);
+
+const SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR = db.prepare(
+  `SELECT COALESCE(SUM(devolucion_proveedor_items.cantidad), 0) AS unidades
+     FROM devoluciones_proveedor
+     JOIN devolucion_proveedor_items ON devolucion_proveedor_items.devolucion_proveedor_id = devoluciones_proveedor.id
+    WHERE devoluciones_proveedor.estado = 'activa'
+      AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)`
+);
+
+const SQL_REPORTE_COMPRAS_POR_PROVEEDOR = db.prepare(
+  `SELECT compras.proveedor_id AS id, proveedores.nombre AS nombre,
+          COUNT(DISTINCT compras.id) AS cantidad_compras,
+          SUM(compra_items.cantidad * COALESCE(compra_items.costo_real_unitario, compra_items.precio_unitario)) AS compras,
+          MAX(compras.fecha) AS ultima_compra
+     FROM compra_items
+     JOIN compras ON compras.id = compra_items.compra_id
+     JOIN proveedores ON proveedores.id = compras.proveedor_id
+    WHERE compras.estado = 'activa'
+      AND (? IS NULL OR compras.fecha >= ?)
+      AND (? IS NULL OR compras.fecha <= ?)
+    GROUP BY compras.proveedor_id`
+);
+
+// devolucion_proveedor_items no tiene cantidad_compras propio (una
+// devolución no es "una compra"): se resta solo el monto, cantidad_compras
+// se conserva tal cual venía del lado de compras en netearPorId.
+const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR = db.prepare(
+  `SELECT compras.proveedor_id AS id,
+          SUM(devolucion_proveedor_items.cantidad * devolucion_proveedor_items.precio_unitario) AS compras
+     FROM devolucion_proveedor_items
+     JOIN devoluciones_proveedor ON devoluciones_proveedor.id = devolucion_proveedor_items.devolucion_proveedor_id
+     JOIN compras ON compras.id = devoluciones_proveedor.compra_id
+    WHERE devoluciones_proveedor.estado = 'activa'
+      AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+    GROUP BY compras.proveedor_id`
+);
+
+const SQL_REPORTE_COMPRAS_POR_PRODUCTO = db.prepare(
+  `SELECT compra_items.producto_id AS id, productos.nombre AS nombre,
+          SUM(compra_items.cantidad) AS unidades,
+          SUM(compra_items.cantidad * COALESCE(compra_items.costo_real_unitario, compra_items.precio_unitario)) AS compras
+     FROM compra_items
+     JOIN compras ON compras.id = compra_items.compra_id
+     JOIN productos ON productos.id = compra_items.producto_id
+    WHERE compras.estado = 'activa'
+      AND (? IS NULL OR compras.fecha >= ?)
+      AND (? IS NULL OR compras.fecha <= ?)
+    GROUP BY compra_items.producto_id`
+);
+
+const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PRODUCTO = db.prepare(
+  `SELECT devolucion_proveedor_items.producto_id AS id,
+          SUM(devolucion_proveedor_items.cantidad) AS unidades,
+          SUM(devolucion_proveedor_items.cantidad * devolucion_proveedor_items.precio_unitario) AS compras
+     FROM devolucion_proveedor_items
+     JOIN devoluciones_proveedor ON devoluciones_proveedor.id = devolucion_proveedor_items.devolucion_proveedor_id
+    WHERE devoluciones_proveedor.estado = 'activa'
+      AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+    GROUP BY devolucion_proveedor_items.producto_id`
+);
+
+// Igual que en ventas: agrupa por categoria_id (no por producto), un
+// producto sin categoría cae en el balde NULL, que SQLite ya agrupa solo.
+const SQL_REPORTE_COMPRAS_POR_CATEGORIA = db.prepare(
+  `SELECT productos.categoria_id AS id,
+          COALESCE(categorias.nombre, 'Sin categoría') AS nombre,
+          SUM(compra_items.cantidad) AS unidades,
+          SUM(compra_items.cantidad * COALESCE(compra_items.costo_real_unitario, compra_items.precio_unitario)) AS compras
+     FROM compra_items
+     JOIN compras ON compras.id = compra_items.compra_id
+     JOIN productos ON productos.id = compra_items.producto_id
+     LEFT JOIN categorias ON categorias.id = productos.categoria_id
+    WHERE compras.estado = 'activa'
+      AND (? IS NULL OR compras.fecha >= ?)
+      AND (? IS NULL OR compras.fecha <= ?)
+    GROUP BY productos.categoria_id`
+);
+
+const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_CATEGORIA = db.prepare(
+  `SELECT productos.categoria_id AS id,
+          SUM(devolucion_proveedor_items.cantidad) AS unidades,
+          SUM(devolucion_proveedor_items.cantidad * devolucion_proveedor_items.precio_unitario) AS compras
+     FROM devolucion_proveedor_items
+     JOIN devoluciones_proveedor ON devoluciones_proveedor.id = devolucion_proveedor_items.devolucion_proveedor_id
+     JOIN productos ON productos.id = devolucion_proveedor_items.producto_id
+    WHERE devoluciones_proveedor.estado = 'activa'
+      AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+    GROUP BY productos.categoria_id`
+);
+
+// netearPorId (definida arriba, en Reportes: qué se vende) espera filas con
+// {id, ventas, costo, unidades, ...} y resta "ventas"/"costo". Acá las
+// queries de compras usan la clave "compras" en vez de "ventas", así que se
+// arma un adaptador chico en vez de tocar netearPorId (que ya es genérica y
+// la usa el reporte de ventas: mejor no acoplarla a un nombre de campo
+// nuevo).
+function netearComprasPorId(filasCompras, filasDevoluciones, resolverNombre) {
+  const porId = new Map(filasCompras.map((f) => [f.id, { ...f }]));
+  for (const dev of filasDevoluciones) {
+    let fila = porId.get(dev.id);
+    if (!fila) {
+      fila = {
+        id: dev.id,
+        nombre: resolverNombre(dev.id),
+        unidades: 0,
+        cantidad_compras: 0,
+        compras: 0,
+        ultima_compra: null
+      };
+      porId.set(dev.id, fila);
+    }
+    fila.unidades = (fila.unidades ?? 0) - (dev.unidades ?? 0);
+    fila.compras -= dev.compras;
+  }
+  return [...porId.values()];
+}
+
+app.get('/api/reportes/compras', (req, res) => {
+  const desdeParam = validarFecha(req.query.desde);
+  const hastaParam = validarFecha(req.query.hasta);
+
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const hoy = SQL_HOY.get().hoy;
+  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
+  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
+  const acotado = Boolean(desdeParam && hastaParam);
+  const rango = [desde, desde, hasta, hasta];
+
+  const comprasUnid = SQL_REPORTE_UNIDADES_COMPRAS.get(...rango);
+  const devolucionesUnid = SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR.get(...rango);
+  const cantidadCompras = comprasUnid.cantidad_compras;
+
+  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+  const buscarNombreProveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ?');
+  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
+
+  // Los totales de plata (compras_netas) se recalculan sumando las mismas
+  // filas por-proveedor ya neteadas, en vez de una query aparte: así el
+  // total y el desglose por proveedor cierran exacto por construcción.
+  const proveedoresNeteados = netearComprasPorId(
+    SQL_REPORTE_COMPRAS_POR_PROVEEDOR.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR.all(...rango),
+    (id) => buscarNombreProveedor.get(id)?.nombre ?? '(proveedor eliminado)'
+  );
+  const comprasNetas = redondear2(proveedoresNeteados.reduce((acc, p) => acc + p.compras, 0));
+
+  const proveedores = proveedoresNeteados
+    .map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      cantidad_compras: p.cantidad_compras ?? 0,
+      compras: redondear2(p.compras),
+      ticket_promedio: p.cantidad_compras > 0 ? redondear2(p.compras / p.cantidad_compras) : 0,
+      ultima_compra: p.ultima_compra
+    }))
+    .sort((a, b) => b.compras - a.compras);
+
+  const productos = netearComprasPorId(
+    SQL_REPORTE_COMPRAS_POR_PRODUCTO.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PRODUCTO.all(...rango),
+    (id) => buscarNombreProducto.get(id)?.nombre ?? '(producto eliminado)'
+  )
+    .map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      unidades: p.unidades,
+      compras: redondear2(p.compras),
+      participacion_pct: comprasNetas > 0 ? redondear2((p.compras / comprasNetas) * 100) : 0
+    }))
+    .sort((a, b) => b.compras - a.compras);
+
+  // id === null es el balde "Sin categoría" del GROUP BY, no una categoría
+  // eliminada — mismo tratamiento explícito que el reporte de ventas.
+  const categorias = netearComprasPorId(
+    SQL_REPORTE_COMPRAS_POR_CATEGORIA.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_CATEGORIA.all(...rango),
+    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id)?.nombre ?? '(categoría eliminada)')
+  )
+    .map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+      unidades: c.unidades,
+      compras: redondear2(c.compras),
+      participacion_pct: comprasNetas > 0 ? redondear2((c.compras / comprasNetas) * 100) : 0
+    }))
+    .sort((a, b) => b.compras - a.compras);
+
+  res.json({
+    rango: { desde, hasta, acotado },
+    totales: {
+      compras_netas: comprasNetas,
+      cantidad_compras: cantidadCompras,
+      ticket_promedio: cantidadCompras > 0 ? redondear2(comprasNetas / cantidadCompras) : 0,
+      unidades: comprasUnid.unidades - devolucionesUnid.unidades
+    },
+    proveedores,
+    productos,
+    categorias
   });
 });
 
@@ -5817,6 +6285,117 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   });
 
   res.status(204).end();
+});
+
+/* ---------- Datos del negocio (membrete de los comprobantes) ---------- */
+
+// Quién es el negocio: lo que va impreso en el encabezado de un presupuesto o
+// una factura. Vive en `organizaciones` (la tabla que ya representaba al
+// negocio) y no en una tabla nueva, para no duplicar el concepto.
+//
+// GET es para cualquier usuario autenticado: el frontend lo necesita al
+// bootear para poder armar un comprobante, y no es información sensible (es
+// literalmente lo que se imprime y se entrega). PUT es soloAdmin: el CUIT y el
+// nombre fiscal que salen en todos los comprobantes no los cambia un empleado.
+const CAMPOS_NEGOCIO = [
+  'nombre',
+  'documento',
+  'direccion',
+  'telefono',
+  'email',
+  'condicion_iva',
+  'pie_comprobante'
+];
+
+app.get('/api/negocio', (req, res) => {
+  const negocio = db
+    .prepare(
+      `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
+         FROM organizaciones
+        ORDER BY id
+        LIMIT 1`
+    )
+    .get();
+  if (!negocio) {
+    // No debería pasar: db/index.js siembra la fila al arrancar.
+    return res.status(404).json({ error: 'No hay datos de negocio cargados.' });
+  }
+  res.json(negocio);
+});
+
+app.put('/api/negocio', soloAdmin, (req, res) => {
+  const id = organizacionUnica();
+  const anterior = db
+    .prepare(
+      `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
+         FROM organizaciones WHERE id = ?`
+    )
+    .get(id);
+
+  // nombre es el único obligatorio: es lo que encabeza el comprobante, y un
+  // papel sin nombre de quien lo emite no sirve para nada. El resto puede
+  // quedar vacío (un monotributista sin local no tiene dirección que poner).
+  const nombre = String(req.body?.nombre ?? '').trim();
+  if (!nombre) {
+    return res.status(400).json({ error: 'El negocio necesita un nombre.' });
+  }
+
+  // Los opcionales se normalizan a NULL cuando vienen vacíos, para no guardar
+  // cadenas vacías que después el membrete tendría que distinguir de "no hay
+  // dato" al decidir si imprime la línea o no.
+  const opcional = (v) => {
+    const texto = String(v ?? '').trim();
+    return texto === '' ? null : texto;
+  };
+  const nuevo = {
+    nombre,
+    documento: opcional(req.body?.documento),
+    direccion: opcional(req.body?.direccion),
+    telefono: opcional(req.body?.telefono),
+    email: opcional(req.body?.email),
+    condicion_iva: opcional(req.body?.condicion_iva),
+    pie_comprobante: opcional(req.body?.pie_comprobante)
+  };
+
+  const cambios = diffCampos(anterior, nuevo, CAMPOS_NEGOCIO);
+  // diffCampos devuelve los valores YA serializados a JSON (string), así que
+  // para nombrar los campos que cambiaron hay que calcularlos aparte: un
+  // Object.keys() sobre el string devolvería los índices de cada carácter.
+  const camposCambiados = CAMPOS_NEGOCIO.filter(
+    (campo) => (anterior?.[campo] ?? null) !== nuevo[campo]
+  );
+
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE organizaciones
+          SET nombre = ?, documento = ?, direccion = ?, telefono = ?,
+              email = ?, condicion_iva = ?, pie_comprobante = ?
+        WHERE id = ?`
+    ).run(
+      nuevo.nombre,
+      nuevo.documento,
+      nuevo.direccion,
+      nuevo.telefono,
+      nuevo.email,
+      nuevo.condicion_iva,
+      nuevo.pie_comprobante,
+      id
+    );
+    // Se audita solo si algo cambió de verdad (diffCampos devuelve null si
+    // no): abrir Configuración y guardar sin tocar nada no es un evento.
+    if (cambios) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: id,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Datos del negocio actualizados: ${camposCambiados.join(', ')}`
+      });
+    }
+  });
+
+  res.json({ id });
 });
 
 app.listen(PORT, () => {
