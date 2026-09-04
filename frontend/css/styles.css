@@ -1130,6 +1130,16 @@ button { font-family: inherit; cursor: pointer; }
   margin: 0;
 }
 
+/* Un aviso suelto dentro de un .panel (fuera de un .form, que ya separa
+   con su propio gap) quedaba pegado contra los filtros de abajo — sin
+   margen entre los dos, se leía como si el cartel tapara el botón "+
+   Filtro". General para cualquier vista con este patrón (Devoluciones,
+   Devolución a proveedor, Cuentas por cobrar/pagar y las que se agreguen
+   después), no un parche por pantalla. */
+.form-note + .filtros {
+  margin-top: var(--sp-4);
+}
+
 /* El widget flotante del asistente tiene su propia sección, al final del
    archivo (busca "Asistente flotante") — junto al resto de sus estilos,
    no acá suelto. */
@@ -1415,6 +1425,21 @@ button { font-family: inherit; cursor: pointer; }
 .precio-sin-configurar {
   color: var(--accent-danger);
   font-style: italic;
+}
+
+/* Precio en la tabla de Productos: texto plano hasta que se hace click
+   (ver activarEdicionPrecio en app.js) — nunca se ve como una "cajita" de
+   formulario dentro de la tabla, solo mientras se está editando de verdad. */
+.precio-venta-texto {
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.precio-venta-texto:hover,
+.precio-venta-texto:focus-visible {
+  background: var(--surface-sunk);
+  outline: none;
 }
 
 /* Cuando la clase cae sobre un <input> (precio editable en la lista de

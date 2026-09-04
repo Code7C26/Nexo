@@ -1868,6 +1868,16 @@ function actualizarSubtotalFila(fila) {
   fila.querySelector(".item-subtotal").textContent = money(cantidad * precio);
 }
 
+// Lista de precios elegida en el formulario que contiene este contenedor de
+// items (Venta o Presupuesto) — se busca en vez de recibirla por parámetro
+// para no tener que tocar los 9 sitios que llaman agregarFilaItemVenta.
+// Sin formulario o sin selector (ej. la ficha del asistente, que no tiene
+// selector de lista), cae a "" y precioProductoEnLista usa precio_venta.
+function listaPrecioDelFormulario(contenedor) {
+  const select = contenedor.closest("form")?.querySelector('[name="lista_precio_id"]');
+  return select?.value ?? "";
+}
+
 // limitarStock: en una venta la cantidad no puede superar el stock actual,
 // pero en un presupuesto sí — se puede cotizar algo que todavía no está en
 // el depósito (CLAUDE.md §15). El tope se valida igual al convertir.
@@ -1879,7 +1889,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     <input type="text" class="item-producto" list="productosVenta" placeholder="Buscar producto…" />
     <input type="hidden" class="item-producto-id" />
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
-    <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" />
+    <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
     <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
   `;
@@ -1898,10 +1908,12 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
     if (producto) {
       productoIdInput.value = producto.id;
-      // Si el producto todavía no tiene precio de venta configurado, se
-      // deja el campo vacío en vez de rellenarlo con el costo — así queda
-      // claro que hay que ponerle un precio, no un número que parece uno.
-      precio.value = producto.precio_venta > 0 ? producto.precio_venta : "";
+      // Si el producto todavía no tiene precio configurado en la lista
+      // elegida (ni propio ni el fallback de precio_venta), se deja el
+      // campo vacío en vez de rellenarlo con el costo — así queda claro que
+      // hay que ponerle un precio, no un número que parece uno.
+      const precioSugerido = precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor));
+      precio.value = precioSugerido > 0 ? precioSugerido : "";
       if (limitarStock) cantidad.max = producto.stock;
     } else {
       productoIdInput.value = "";
@@ -1933,7 +1945,7 @@ function agregarFilaItemCompra(contenedor) {
   fila.innerHTML = `
     <input type="text" class="item-producto" list="productosSugeridos" placeholder="Producto…" />
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
-    <input type="number" class="item-precio" placeholder="Costo unit." step="0.01" min="0" />
+    <input type="number" class="item-precio" placeholder="Costo unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
     <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
   `;
@@ -1951,6 +1963,42 @@ function agregarFilaItemCompra(contenedor) {
   });
 
   contenedor.appendChild(fila);
+}
+
+// Al cambiar la lista de precios de una Venta/Presupuesto con ítems ya
+// cargados, se repropone el precio de cada renglón con producto resuelto —
+// avisando, nunca en silencio (CLAUDE.md §18: el precio SUGERIDO cambia
+// con la lista, la operación no pierde datos sin que el usuario se entere).
+// Un
+// renglón cuyo precio ya fue tocado a mano por el usuario (distinto del que
+// tenía la lista anterior) queda afuera del reproponer, para no pisar un
+// descuento negociado a propósito.
+function reproponerPreciosPorLista(contenedor, listaProductos) {
+  const listaId = listaPrecioDelFormulario(contenedor);
+  let cambios = 0;
+  contenedor.querySelectorAll(".item-row").forEach((fila) => {
+    const productoId = Number(fila.querySelector(".item-producto-id").value);
+    if (!productoId) return;
+    const producto = listaProductos.find((p) => p.id === productoId);
+    if (!producto) return;
+    const precioInput = fila.querySelector(".item-precio");
+    const precioActual = Number(precioInput.value) || 0;
+    // Si el precio actual coincide con alguno de los precios conocidos del
+    // producto (el de cualquier lista, o el fallback), se asume que nadie
+    // lo tocó a mano todavía y es seguro reproponerlo.
+    const preciosConocidos = [producto.precio_venta, ...Object.values(producto.precios || {})];
+    if (!preciosConocidos.includes(precioActual)) return;
+    const precioNuevo = precioProductoEnLista(producto, listaId);
+    if (precioNuevo !== precioActual) {
+      precioInput.value = precioNuevo > 0 ? precioNuevo : "";
+      actualizarSubtotalFila(fila);
+      cambios++;
+    }
+  });
+  if (cambios > 0) {
+    contenedor.dispatchEvent(new Event("item-change"));
+    avisar(`Se actualizaron ${cambios} precio${cambios === 1 ? "" : "s"} según la lista elegida.`, "atencion");
+  }
 }
 
 function leerItemsVenta(contenedor) {
@@ -1993,8 +2041,30 @@ function totalItems(contenedor) {
 
 let productos = [];
 let categorias = [];
+let listasPrecios = [];
 let productoEditandoId = null;
 let productoFichaId = null;
+
+// La predeterminada es el fallback de todo el sistema (CLAUDE.md §18): si
+// un producto no tiene precio propio en la lista elegida, o si una
+// venta/presupuesto no especifica lista, se asume esta.
+function listaPrecioPredeterminada() {
+  return listasPrecios.find((l) => l.es_predeterminada) ?? null;
+}
+
+// Precio de UN producto en UNA lista puntual, con el mismo fallback que ya
+// aplica el backend: si el producto no tiene precio propio cargado ahí,
+// cae a precio_venta (que es, por construcción, el precio de la
+// predeterminada). listaId puede venir vacío (string del <select>, "" o
+// undefined) — en ese caso también se usa precio_venta.
+function precioProductoEnLista(producto, listaId) {
+  if (!producto) return 0;
+  const id = Number(listaId) || null;
+  if (id && producto.precios && producto.precios[id] !== undefined) {
+    return producto.precios[id];
+  }
+  return producto.precio_venta;
+}
 
 function poblarDatalistProductos() {
   const opciones = productos.map((p) => `<option value="${p.nombre}"></option>`).join("");
@@ -2024,13 +2094,16 @@ function renderProductos(lista) {
   for (const p of lista) {
     const tr = document.createElement("tr");
     tr.className = "fila-clickeable";
-    // Editable directo desde la lista: no hace falta entrar a la ficha
-    // solo para cambiar el precio. Sin precio configurado (0) se muestra
-    // vacío con placeholder en rojo, no "$0,00" (que da a entender que de
-    // verdad vale cero).
-    const precioCelda = `<input type="number" class="input-inline precio-venta-inline${
-      p.precio_venta > 0 ? "" : " precio-sin-configurar"
-    }" data-id="${p.id}" value="${p.precio_venta > 0 ? p.precio_venta : ""}" placeholder="Sin precio" step="0.01" min="0" />`;
+    // La celda de Precio se ve como texto plano, igual que Costo o
+    // Valorizado — el <input> real no existe hasta que se hace click
+    // (ver activarEdicionPrecio), así que no hay una "cajita" de formulario
+    // visible en la tabla, solo al editar. Sin precio configurado (0) se
+    // muestra en rojo con el texto "Sin precio", no "$0,00" (que da a
+    // entender que de verdad vale cero).
+    const precioCelda =
+      p.precio_venta > 0
+        ? `<span class="precio-venta-texto mono" data-id="${p.id}" tabindex="0">${money(p.precio_venta)}</span>`
+        : `<span class="precio-venta-texto precio-sin-configurar" data-id="${p.id}" tabindex="0">Sin precio</span>`;
     tr.innerHTML = `
       ${selProductos.celda(p.id)}
       <td data-label="Nombre">${p.nombre}</td>
@@ -2047,7 +2120,7 @@ function renderProductos(lista) {
       <td data-label="">${botonEditarFila("btn-editar-producto", p.id, "producto")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel, .precio-venta-texto")) return;
       abrirFichaProducto(p.id);
     });
     body.appendChild(tr);
@@ -2059,28 +2132,72 @@ function renderProductos(lista) {
     });
   });
 
-  body.querySelectorAll(".precio-venta-inline").forEach((input) => {
-    input.addEventListener("change", async () => {
-      const producto = productos.find((p) => p.id === Number(input.dataset.id));
-      if (!producto) return;
-      // El PATCH espera el producto completo (no solo el precio): se arma
-      // con los datos que ya están en caché, cambiando nada más el precio.
-      const res = await fetch(`/api/productos/${producto.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: producto.nombre,
-          sku: producto.sku,
-          precio_venta: input.value === "" ? 0 : Number(input.value),
-          activo: !!producto.activo,
-          stock_minimo: producto.stock_minimo,
-          stock_maximo: producto.stock_maximo
-        })
-      });
-      await manejarError(res, "No se pudo actualizar el precio.");
-      await cargarProductos();
+  body.querySelectorAll(".precio-venta-texto").forEach((span) => {
+    span.addEventListener("click", () => activarEdicionPrecio(span));
+    // Mismo gesto por teclado que un botón: el span es tabulable
+    // (tabindex="0") justamente para que Enter/Espacio también sirvan.
+    span.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activarEdicionPrecio(span);
+      }
     });
   });
+}
+
+// Reemplaza el <span> de precio por el <input> editable de siempre, ya
+// enfocado. Al confirmar (blur o Enter) guarda y vuelve a redibujar la fila
+// completa (cargarProductos ya lo hace), así que no hace falta reconstruir
+// el <span> a mano acá — simplemente no se vuelve a tocar este nodo.
+function activarEdicionPrecio(span) {
+  const productoId = Number(span.dataset.id);
+  const producto = productos.find((p) => p.id === productoId);
+  if (!producto) return;
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = `input-inline precio-venta-inline${producto.precio_venta > 0 ? "" : " precio-sin-configurar"}`;
+  input.dataset.id = String(productoId);
+  input.value = producto.precio_venta > 0 ? producto.precio_venta : "";
+  input.placeholder = "Sin precio";
+  input.step = "0.01";
+  input.min = "0";
+  input.autocomplete = "off";
+
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let guardado = false;
+  const confirmar = async () => {
+    if (guardado) return;
+    guardado = true;
+    // El PATCH espera el producto completo (no solo el precio): se arma
+    // con los datos que ya están en caché, cambiando nada más el precio.
+    const res = await fetch(`/api/productos/${productoId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nombre: producto.nombre,
+        sku: producto.sku,
+        precio_venta: input.value === "" ? 0 : Number(input.value),
+        activo: !!producto.activo,
+        stock_minimo: producto.stock_minimo,
+        stock_maximo: producto.stock_maximo
+      })
+    });
+    await manejarError(res, "No se pudo actualizar el precio.");
+    await cargarProductos();
+  };
+
+  input.addEventListener("blur", confirmar);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      input.blur();
+    }
+  });
+  input.addEventListener("click", (e) => e.stopPropagation());
 }
 
 // La ficha se arma con la fila que ya está en el array `productos` (la
@@ -2147,12 +2264,14 @@ async function abrirFichaProducto(id) {
 
 async function cargarProductos() {
   tablaCargando("productosBody", selProductos.colspan(9));
-  const [listaProductos, listaCategorias] = await Promise.all([
+  const [listaProductos, listaCategorias, listaListasPrecios] = await Promise.all([
     fetch("/api/productos").then((r) => r.json()),
-    fetch("/api/categorias").then((r) => r.json())
+    fetch("/api/categorias").then((r) => r.json()),
+    fetch("/api/listas-precios").then((r) => r.json())
   ]);
   productos = listaProductos;
   categorias = listaCategorias;
+  listasPrecios = listaListasPrecios;
   poblarDatalistProductos();
   poblarSelectCategorias();
 
@@ -2162,6 +2281,30 @@ async function cargarProductos() {
   );
 
   filtrarProductos();
+}
+
+// Llena un <select> de lista de precios con las listas activas. Genérica
+// (con default al select de cliente) para poder llenar también los de
+// Venta, Presupuesto y el bulk de productos, que necesitan las mismas
+// opciones. `conPredeterminada` agrega una opción explícita "Usar la
+// predeterminada" con value="" (para cliente, donde NULL es válido);
+// Venta/Presupuesto en cambio siempre mandan un id concreto, así que la
+// opción de la predeterminada se llama por su nombre real.
+function poblarSelectListasPrecios(selector, { conPredeterminada = false } = {}) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  const actual = select.value;
+  const activas = listasPrecios.filter((l) => l.activa);
+  const predeterminada = listaPrecioPredeterminada();
+  select.innerHTML =
+    (conPredeterminada ? '<option value="">Usar la predeterminada</option>' : "") +
+    activas
+      .map(
+        (l) =>
+          `<option value="${l.id}">${l.nombre}${l.es_predeterminada ? " (predeterminada)" : ""}</option>`
+      )
+      .join("");
+  select.value = actual || (conPredeterminada ? "" : String(predeterminada?.id ?? ""));
 }
 
 // Llena el <select> de categoría del formulario de alta/edición de
@@ -2261,6 +2404,7 @@ function abrirModalBulkProductos(ids) {
     cb.dispatchEvent(new Event("change"));
   });
   poblarSelectCategorias('#formBulkProductos [name="categoria_id"]');
+  poblarSelectListasPrecios('#formBulkProductos [name="precio_lista_id"]');
   bulkProductosResultado.hidden = true;
   document.getElementById("modalBulkProductosConteo").textContent =
     `${ids.length} producto${ids.length === 1 ? "" : "s"} seleccionado${ids.length === 1 ? "" : "s"}`;
@@ -2290,10 +2434,20 @@ function armarCambiosBulk(form) {
     cambios.stock_minimo = form.stock_minimo.value;
   }
   if (form.querySelector('[data-campo="precio_venta"]').checked) {
-    cambios.precio_venta =
+    const ajuste =
       form.precio_modo.value === "porcentaje"
         ? { modo: "porcentaje", valor: form.precio_valor.value }
         : Number(form.precio_valor.value);
+    // La lista predeterminada usa precio_venta (columna del producto); una
+    // lista distinta se manda como precios[id] — ver aplicarEdicionProducto
+    // en server.js, que trata a las dos por separado.
+    const predeterminada = listaPrecioPredeterminada();
+    const listaElegidaId = Number(form.precio_lista_id.value);
+    if (!predeterminada || listaElegidaId === predeterminada.id) {
+      cambios.precio_venta = ajuste;
+    } else {
+      cambios.precios = { [listaElegidaId]: ajuste };
+    }
   }
   return cambios;
 }
@@ -2389,6 +2543,34 @@ const ordenProductos = crearOrden("productosBody", filtrarProductos);
 
 const modalProducto = document.getElementById("modalProducto");
 
+// Precios por lista (todas menos la predeterminada, que ya se carga en el
+// campo precio_venta de arriba): solo tiene sentido en EDICIÓN. Un producto
+// recién creado todavía no existe en la base, así que no hay id contra el
+// cual guardar filas de producto_precios — se completan después, editando,
+// igual que ya pasa con el costo ("el costo no se carga acá").
+function poblarPreciosPorLista(producto) {
+  const contenedor = document.getElementById("preciosPorListaProducto");
+  const predeterminada = listaPrecioPredeterminada();
+  const otras = listasPrecios.filter((l) => l.activa && l.id !== predeterminada?.id);
+
+  if (!producto || otras.length === 0) {
+    contenedor.innerHTML = "";
+    return;
+  }
+
+  contenedor.innerHTML = otras
+    .map((l) => {
+      const precioActual = producto.precios?.[l.id];
+      return `
+        <label>Precio (${l.nombre})
+          <input type="number" class="precio-lista-input" data-lista-id="${l.id}"
+                 step="0.01" min="0" placeholder="Sin precio propio: usa ${money(producto.precio_venta)}"
+                 value="${precioActual !== undefined ? precioActual : ""}" autocomplete="off" />
+        </label>`;
+    })
+    .join("");
+}
+
 function abrirModalProducto(producto = null) {
   productoEditandoId = producto?.id ?? null;
   const form = document.getElementById("formProducto");
@@ -2400,6 +2582,7 @@ function abrirModalProducto(producto = null) {
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
   form.activo.checked = producto ? !!producto.activo : true;
+  poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
 }
 
@@ -2427,6 +2610,16 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     stock_maximo: form.stock_maximo.value,
     activo: form.activo.checked
   };
+  // precios por lista: solo en edición (ver poblarPreciosPorLista). Un
+  // input vacío significa "sin precio propio en esa lista", no se manda —
+  // así no se pisa un precio existente con 0 por accidente.
+  if (productoEditandoId) {
+    const precios = {};
+    document.querySelectorAll("#preciosPorListaProducto .precio-lista-input").forEach((input) => {
+      if (input.value !== "") precios[input.dataset.listaId] = Number(input.value);
+    });
+    if (Object.keys(precios).length > 0) datos.precios = precios;
+  }
 
   const res = await fetch(
     productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos",
@@ -2523,6 +2716,100 @@ document.getElementById("formCategoriaProducto").addEventListener("submit", asyn
   form.id.value = "";
   document.getElementById("formCategoriaProductoSubmit").textContent = "Agregar categoría";
   avisar(eraEdicion ? "Categoría actualizada." : "Categoría creada.", "ok");
+});
+
+/* ---------- Listas de precios (CLAUDE.md §18) ---------- */
+//
+// Calcado del modal de categorías de productos de arriba: mismo patrón de
+// formulario inline + tabla editable. Columna propia "Predeterminada": un
+// botón "Marcar" por cada lista que no lo es, en vez de un radio — evita
+// mandar un PATCH por cada fila al cambiar la predeterminada.
+
+const modalListasPrecios = document.getElementById("modalListasPrecios");
+
+function renderListasPrecios() {
+  const body = document.getElementById("listasPreciosBody");
+  if (listasPrecios.length === 0) {
+    body.innerHTML = filaVacia(3, "Todavía no hay listas de precios.");
+    return;
+  }
+
+  body.innerHTML = listasPrecios
+    .map(
+      (l) => `
+    <tr class="${l.activa ? "" : "fila-anulada"}">
+      <td data-label="Lista">${l.nombre}</td>
+      <td data-label="Predeterminada">${
+        l.es_predeterminada
+          ? `<span class="status status-cobrado">Predeterminada</span>`
+          : `<button type="button" class="btn-link btn-marcar-predeterminada" data-id="${l.id}">Marcar</button>`
+      }</td>
+      <td data-label="">${botonEditarFila("btn-editar-lista-precio", l.id, "lista de precios")}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-editar-lista-precio").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const lista = listasPrecios.find((l) => l.id === Number(btn.dataset.id));
+      const form = document.getElementById("formListaPrecio");
+      form.id.value = lista.id;
+      form.nombre.value = lista.nombre;
+      document.getElementById("formListaPrecioSubmit").textContent = "Guardar cambios";
+    });
+  });
+
+  body.querySelectorAll(".btn-marcar-predeterminada").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lista = listasPrecios.find((l) => l.id === Number(btn.dataset.id));
+      const res = await fetch(`/api/listas-precios/${lista.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: lista.nombre, activa: true, es_predeterminada: true })
+      });
+      if (!(await manejarError(res, "No se pudo marcar la lista como predeterminada."))) return;
+      await cargarProductos();
+      renderListasPrecios();
+      avisar(`"${lista.nombre}" es ahora la lista predeterminada.`, "ok");
+    });
+  });
+}
+
+document.getElementById("btnListasPrecios").addEventListener("click", () => {
+  document.getElementById("formListaPrecio").reset();
+  document.getElementById("formListaPrecio").id.value = "";
+  document.getElementById("formListaPrecioSubmit").textContent = "Agregar lista";
+  renderListasPrecios();
+  modalListasPrecios.hidden = false;
+});
+document.getElementById("modalListasPreciosClose").addEventListener("click", () => {
+  modalListasPrecios.hidden = true;
+});
+modalListasPrecios.addEventListener("click", (e) => {
+  if (e.target === modalListasPrecios) modalListasPrecios.hidden = true;
+});
+
+document.getElementById("formListaPrecio").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const editandoId = form.id.value;
+
+  const res = await fetch(editandoId ? `/api/listas-precios/${editandoId}` : "/api/listas-precios", {
+    method: editandoId ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: form.nombre.value })
+  });
+  if (!(await manejarError(res, "No se pudo guardar la lista de precios."))) return;
+
+  const eraEdicion = Boolean(editandoId);
+  // Una lista nueva o renombrada cambia el select del modal de producto y
+  // los de Venta/Presupuesto.
+  await cargarProductos();
+  renderListasPrecios();
+  form.reset();
+  form.id.value = "";
+  document.getElementById("formListaPrecioSubmit").textContent = "Agregar lista";
+  avisar(eraEdicion ? "Lista de precios actualizada." : "Lista de precios creada.", "ok");
 });
 
 /* ---------- Cuentas de tesorería ---------- */
@@ -3637,6 +3924,16 @@ function abrirModalPresupuesto(presupuesto = null) {
   form.vencimiento.value = presupuesto?.vencimiento ?? "";
   form.notas.value = presupuesto?.notas ?? "";
 
+  poblarSelectListasPrecios("#presupuestoListaPrecio");
+  if (presupuesto?.lista_precio_id) {
+    form.lista_precio_id.value = presupuesto.lista_precio_id;
+  } else if (!presupuesto) {
+    const clienteExistente = clientes.find(
+      (c) => c.nombre.trim().toLowerCase() === (form.cliente.value || "").trim().toLowerCase()
+    );
+    if (clienteExistente?.lista_precio_id) form.lista_precio_id.value = clienteExistente.lista_precio_id;
+  }
+
   presupuestoItemsEl.innerHTML = "";
   if (presupuesto) {
     for (const item of presupuesto.items) {
@@ -3669,6 +3966,19 @@ document.getElementById("modalPresupuestoClose").addEventListener("click", () =>
 modalPresupuesto.addEventListener("click", (e) => {
   if (e.target === modalPresupuesto) modalPresupuesto.hidden = true;
 });
+document.getElementById("presupuestoListaPrecio").addEventListener("change", () => {
+  reproponerPreciosPorLista(presupuestoItemsEl, productos);
+});
+document.getElementById("formPresupuesto").cliente.addEventListener("change", (e) => {
+  const clienteExistente = clientes.find(
+    (c) => c.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
+  );
+  if (clienteExistente?.lista_precio_id && !presupuestoEditandoId) {
+    const select = document.getElementById("presupuestoListaPrecio");
+    select.value = clienteExistente.lista_precio_id;
+    reproponerPreciosPorLista(presupuestoItemsEl, productos);
+  }
+});
 
 document.getElementById("formPresupuesto").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -3691,7 +4001,8 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
     fecha: form.fecha.value,
     vencimiento: form.vencimiento.value || null,
     notas: form.notas.value || null,
-    items
+    items,
+    lista_precio_id: form.lista_precio_id.value || null
   });
 
   const res = await fetch(
@@ -3918,6 +4229,19 @@ function abrirModalVenta(venta = null) {
   form.cliente.value = venta?.cliente ?? "";
   form.fecha.value = venta?.fecha ?? hoyISO();
 
+  poblarSelectListasPrecios("#ventaListaPrecio");
+  // Al editar, respeta la lista con la que se hizo la venta; al crear, si
+  // el cliente tipeado ya existe y tiene una lista habitual, se propone
+  // sola (CLAUDE.md §18) — se puede cambiar igual antes de guardar.
+  if (venta?.lista_precio_id) {
+    form.lista_precio_id.value = venta.lista_precio_id;
+  } else if (!venta) {
+    const clienteExistente = clientes.find(
+      (c) => c.nombre.trim().toLowerCase() === (form.cliente.value || "").trim().toLowerCase()
+    );
+    if (clienteExistente?.lista_precio_id) form.lista_precio_id.value = clienteExistente.lista_precio_id;
+  }
+
   ventaItemsEl.innerHTML = "";
   if (venta) {
     for (const item of venta.items) {
@@ -3954,6 +4278,22 @@ document.getElementById("modalVentaClose").addEventListener("click", () => {
 modalVenta.addEventListener("click", (e) => {
   if (e.target === modalVenta) modalVenta.hidden = true;
 });
+document.getElementById("ventaListaPrecio").addEventListener("change", () => {
+  reproponerPreciosPorLista(ventaItemsEl, productos);
+});
+// Elegir (o tipear) un cliente que ya existe y tiene lista habitual la
+// propone sola — solo si el usuario todavía no eligió una lista distinta a
+// mano para esta venta puntual (no se le pisa una elección ya hecha).
+document.getElementById("formVenta").cliente.addEventListener("change", (e) => {
+  const clienteExistente = clientes.find(
+    (c) => c.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
+  );
+  if (clienteExistente?.lista_precio_id && !ventaEditandoId) {
+    const select = document.getElementById("ventaListaPrecio");
+    select.value = clienteExistente.lista_precio_id;
+    reproponerPreciosPorLista(ventaItemsEl, productos);
+  }
+});
 
 document.getElementById("formVenta").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -3987,7 +4327,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     cliente: nombreCliente,
     cliente_id: clienteExistente?.id ?? null,
     fecha: form.fecha.value,
-    items
+    items,
+    lista_precio_id: form.lista_precio_id.value || null
   });
 
   const res = ventaEditandoId
@@ -5638,6 +5979,8 @@ function abrirModalCliente(cliente = null) {
   form.direccion.value = cliente?.direccion ?? "";
   form.documento.value = cliente?.documento ?? "";
   form.notas.value = cliente?.notas ?? "";
+  poblarSelectListasPrecios('#formCliente [name="lista_precio_id"]', { conPredeterminada: true });
+  form.lista_precio_id.value = cliente?.lista_precio_id ?? "";
   modalCliente.hidden = false;
 }
 
@@ -5663,7 +6006,8 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
     telefono: form.telefono.value || null,
     direccion: form.direccion.value || null,
     documento: form.documento.value || null,
-    notas: form.notas.value || null
+    notas: form.notas.value || null,
+    lista_precio_id: form.lista_precio_id.value || null
   };
 
   const res = await fetch(

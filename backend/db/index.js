@@ -309,6 +309,31 @@ for (const columna of ['direccion', 'documento', 'notas']) {
   }
 }
 
+// clientes.lista_precio_id: la lista de precios habitual de ese cliente
+// (CLAUDE.md §18). Nullable, y NULL significa "la predeterminada" en vez
+// de copiar el id de la predeterminada acá: si el día de mañana cambia
+// cuál lista es la predeterminada, los clientes sin lista propia deben
+// seguirla sola, no quedar pegados a la que era predeterminada cuando se
+// cargaron.
+if (!clientesColumnas.some((col) => col.name === 'lista_precio_id')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
+}
+
+// ventas.lista_precio_id / presupuestos.lista_precio_id: con qué lista se
+// hizo la operación (trazabilidad, CLAUDE.md §8 y §22) — explica por qué
+// esa venta tuvo esos precios y habilita reportar por canal más adelante.
+// Nullable por el mismo motivo que en clientes: las ventas/presupuestos ya
+// registrados no tienen lista, y NULL ahí también se interpreta como "se
+// hizo con la predeterminada de ese momento", no con una lista fija.
+const ventasColumnas = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnas.some((col) => col.name === 'lista_precio_id')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
+}
+const presupuestosColumnas = db.prepare('PRAGMA table_info(presupuestos)').all();
+if (!presupuestosColumnas.some((col) => col.name === 'lista_precio_id')) {
+  db.exec('ALTER TABLE presupuestos ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
+}
+
 // proveedores: mismos campos de contacto que clientes, agregados cuando la
 // tabla ya existía. Todos nullable, porque los proveedores creados
 // automáticamente desde una compra solo tienen nombre.
@@ -644,6 +669,58 @@ if (auditoriaSql2 && !auditoriaSql2.sql.includes("'organizacion'")) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Tercer rebuild de auditoria: sumar 'lista_precio' al CHECK de entidad, para
+// poder auditar altas/ediciones de listas de precios (CLAUDE.md §18) con el
+// mismo registro central que el resto de los maestros. Mismo procedimiento
+// que los dos rebuilds de arriba: los índices se recrean a mano porque el
+// DROP TABLE se los lleva y schema.sql ya corrió al principio del archivo.
+const auditoriaSql3 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql3 && !auditoriaSql3.sql.includes("'lista_precio'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion','lista_precio')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Limpieza de sesiones vencidas al bootear, sin cron ni timer: con
 // `--watch` esto corre en cada reinicio del proceso, que alcanza para un
 // sistema de este tamaño.
@@ -726,6 +803,25 @@ if (cuentasCount === 0) {
 const { count: orgCount } = db.prepare('SELECT COUNT(*) AS count FROM organizaciones').get();
 if (orgCount === 0) {
   db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
+}
+
+// listas_precios: mismo criterio que cuentas_tesoreria/organizaciones arriba
+// — no es un dato de ejemplo, es infraestructura real que el sistema entero
+// necesita para tener una lista predeterminada (CLAUDE.md §18). Se crea una
+// única vez, la primera vez que la base no tiene ninguna lista todavía.
+// El backfill copia el precio_venta de cada producto a esa lista, así que
+// el número que el negocio ya venía usando no cambia ni un peso — solo pasa
+// a vivir también como fila de producto_precios, en vez de únicamente como
+// columna suelta en productos.
+const { count: listasCount } = db.prepare('SELECT COUNT(*) AS count FROM listas_precios').get();
+if (listasCount === 0) {
+  const { lastInsertRowid: listaPredeterminadaId } = db
+    .prepare('INSERT INTO listas_precios (nombre, es_predeterminada) VALUES (?, 1)')
+    .run('Minorista');
+  db.exec(`
+    INSERT INTO producto_precios (producto_id, lista_precio_id, precio)
+    SELECT id, ${listaPredeterminadaId}, precio_venta FROM productos
+  `);
 }
 
 export default db;

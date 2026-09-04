@@ -3034,3 +3034,234 @@ el neteo de punta a punta.
   el molde ya está probado dos veces (ventas, ahora compras).
 - `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
   arrastra de varias etapas atrás).
+
+## 23. Última etapa: listas de precios (CLAUDE.md §18)
+
+**Etapa 0 de esta sesión**: antes de tocar código nuevo se commitearon las
+cuatro etapas que venían acumuladas sin commitear (§19–§22: comprobantes
+imprimibles, selección múltiple en lote, edición masiva, reportes de
+compras + rename a "Estadísticas") en una rama nueva
+`feature/reportes-compras-estadisticas` (commit `0e984df`), y se reinició
+el proceso real del 3000 con ese código antes de empezar. `main` no se
+tocó — sigue en `5a03436`, no era parte de lo pedido.
+
+**El pedido**: seguir sumando funciones. Se preguntó con `AskUserQuestion`
+entre cuatro opciones (listas de precios, marca/unidad de medida,
+consolidar reportes de stock, vencimientos/aging de CC) y el usuario
+eligió **listas de precios** — la pieza de negocio más grande que faltaba
+de §18: hoy un producto tenía un único `precio_venta`, sin poder vender lo
+mismo a precio minorista/mayorista/tarjeta.
+
+**Bug de comportamiento arreglado de paso, a propósito**: antes de esta
+etapa, registrar o editar una venta hacía `UPDATE productos SET
+precio_venta = ?` con el precio de esa venta puntual (`crearVenta` y el
+`PUT /api/ventas/:id`, en `server.js`). Con una sola lista ya era
+discutible; con varias hubiera sido un bug real — venderle a un mayorista
+a un precio más bajo habría pisado en silencio el precio minorista de
+todo el catálogo. Confirmado con el usuario (`AskUserQuestion`) y sacado:
+**una venta ya NO modifica el precio de ningún producto**, en ningún
+punto. Verificado explícitamente por curl: vender a un precio distinto al
+de la ficha deja `precio_venta` intacto.
+
+Decisiones de negocio confirmadas con el usuario antes de programar
+(cuatro rondas de `AskUserQuestion`, todas con la opción recomendada
+elegida):
+- Precio **fijo por producto y lista** (no porcentajes globales por
+  lista). Sin precio propio cargado, cae al precio base del producto.
+- El **cliente tiene una lista habitual** en su ficha; Venta/Presupuesto
+  la proponen sola al elegirlo, editable para esa operación puntual.
+- **Se guarda `lista_precio_id`** en `ventas` y `presupuestos`
+  (trazabilidad, §8/§22 — de dónde salió el precio de esa operación).
+- El precio que ya tenía cada producto **pasó a ser el de la lista
+  predeterminada** (creada como "Minorista" en la migración) — no cambió
+  ningún número.
+- Remarcación masiva **incluida**, reusando el modal de edición en lote
+  de Productos que ya sabía ajustar por porcentaje.
+
+### Migración (aditiva, sin tocar ningún dato existente)
+
+- `backend/db/schema.sql` — dos tablas nuevas: `listas_precios` (`nombre`
+  UNIQUE, `activa`, `es_predeterminada` — la consistencia de "exactamente
+  una marcada" la garantiza el backend, no un constraint SQL) y
+  `producto_precios` (`producto_id`, `lista_precio_id`, `precio`, con
+  índice único `idx_producto_precios_unico` sobre el par). Ubicadas entre
+  `categorias` y `productos`/`proveedores` en el archivo, por relación.
+- `backend/db/index.js` — tres columnas nuevas nullable (mismo patrón
+  `PRAGMA table_info` + `ALTER TABLE` de siempre): `clientes.lista_precio_id`,
+  `ventas.lista_precio_id`, `presupuestos.lista_precio_id`. NULL significa
+  "la predeterminada de ese momento", no un id fijo — así si el día de
+  mañana cambia cuál lista es la predeterminada, lo que dependía de NULL
+  la sigue sola.
+- **Tercer rebuild de la tabla `auditoria`** (mismo procedimiento ya usado
+  dos veces antes, para `usuario` y `organizacion`): se sumó `'lista_precio'`
+  al `CHECK` de `entidad`, porque SQLite no permite alterar un `CHECK` con
+  `ALTER TABLE`. Índices recreados a mano dentro de la misma transacción.
+- **Seed + backfill**, junto al de `cuentas_tesoreria`/`organizaciones`: si
+  `listas_precios` está vacía, se crea "Minorista" como predeterminada y
+  se copia el `precio_venta` de cada producto a `producto_precios` en esa
+  lista — así el número que el negocio ya tenía queda exactamente igual,
+  solo que ahora también vive como fila de la tabla nueva.
+  `productos.precio_venta` **se conserva** (no se borró): sigue siendo el
+  precio de la lista predeterminada y el fallback para cualquier lista sin
+  precio propio cargado.
+- Verificado (copia de scratchpad, puerto 3002): diff de todas las tablas
+  pre/post sin diferencias salvo lo nuevo; idempotencia probada
+  reimportando `db/index.js` en un proceso fresco dos veces seguidas, sin
+  duplicar filas ni romper nada; aplicada después también contra la base
+  real, con el mismo resultado (ver "Deploy" más abajo).
+
+### Backend (`backend/server.js`)
+
+- **Maestro de listas**, sección nueva junto a "Categorías de productos":
+  `GET/POST/PATCH /api/listas-precios`, calcado de categorías (nombre
+  vacío, nombre duplicado, baja lógica vía `activa`), más dos reglas
+  propias: la predeterminada no se puede desactivar ni desmarcar
+  directamente (400 con mensaje claro), y marcar una lista distinta como
+  predeterminada desmarca la anterior dentro de la misma transacción —
+  nunca hay un instante con dos marcadas o con cero.
+- **Precios por producto**: `obtenerPreciosPorProducto()` arma un mapa
+  `producto_id -> {lista_precio_id: precio}` con un segundo query (no un
+  pivot SQL dinámico), y `decorarProducto` lo adjunta como `precios` en
+  cada producto de `GET /api/productos`.
+- `aplicarEdicionProducto` (el punto único de edición, usado por PATCH
+  singular y por bulk) acepta un campo `precios` opcional —
+  `{lista_id: valor}`, cada valor un número fijo o
+  `{modo:'porcentaje', valor:N}` calculado sobre el precio ACTUAL de esa
+  lista puntual (con fallback a `precio_venta` si el producto todavía no
+  tiene precio propio ahí) — y hace un
+  `INSERT ... ON CONFLICT(producto_id, lista_precio_id) DO UPDATE`. Si el
+  pedido tocó el precio de la lista **predeterminada**, también sincroniza
+  `productos.precio_venta` — son la misma cosa vista desde dos lugares y
+  no pueden desincronizarse. `CAMPOS_BULK_PRODUCTO` suma `precios`.
+- **Ventas y presupuestos**: `crearVenta`, `PUT /api/ventas/:id`,
+  `POST/PUT /api/presupuestos` validan y persisten `lista_precio_id`
+  (nullable, valida que exista si viene). Al convertir un presupuesto, la
+  venta hereda su `lista_precio_id`. Los dos `UPDATE productos SET
+  precio_venta` de crear/editar venta se **eliminaron** (ver el bug de
+  arriba).
+- **Clientes**: `POST/PATCH /api/clientes` aceptan `lista_precio_id`
+  (nullable, valida existencia). `GET` ya lo expone gratis vía
+  `clientes.*`.
+- **Lección de esta etapa** (bug propio, encontrado y arreglado antes de
+  desplegar): la validación de `lista_precio_id` en `crearVenta` al
+  principio lanzaba `new Error(...)` en vez de `new ErrorBulk(...)` — como
+  `mensajeDeError` (el traductor de errores a JSON) **relanza** cualquier
+  error que no reconoce, ese `Error` genérico escapaba del `try/catch` de
+  `POST /api/ventas` y llegaba crudo al handler default de Express (HTML
+  de stack trace en vez de un 400 limpio). El status code igual salía bien
+  (400), así que el bug solo se notó mirando el *body* de la respuesta, no
+  el código. Corregido usando `ErrorBulk`, la clase que ya existe
+  justamente para esto. **Para la próxima vez**: cualquier `throw` nuevo
+  dentro de una función que pueda llamarse desde un endpoint que pasa por
+  `mensajeDeError` tiene que ser `ErrorBulk`, nunca `Error` a secas.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **Modal de gestión de listas** (`#modalListasPrecios`), calcado del de
+  categorías de productos: form inline con `id` oculto (alta y edición en
+  el mismo formulario) + tabla con columna "Predeterminada" (un botón
+  "Marcar" en vez de un radio, para no tener que mandar un PATCH por fila
+  al cambiar cuál es la predeterminada). Botón "Listas de precios" en el
+  header de Productos, al lado de "Categorías".
+- **Desviación decidida durante la implementación, confirmada con el
+  usuario (`AskUserQuestion`)**: el plan original pedía una columna por
+  lista en la tabla de Productos. Se encontró que `crearOrden` (el
+  ordenamiento de columnas, compartido por todas las tablas del sistema)
+  engancha sus listeners a los `<th>` **una sola vez**, al bootear la
+  página — antes de que `/api/listas-precios` termine de responder.
+  Generar ahí columnas dinámicas de verdad hubiera obligado a reescribir
+  el arranque de esa infraestructura compartida, con riesgo sobre el
+  orden guardado de columnas de otras pantallas. Se optó por: la tabla de
+  Productos **sigue con una sola columna "Precio"** (la de la lista
+  predeterminada, sin cambios visuales), y el **modal de producto** es
+  donde se cargan/editan los precios de TODAS las listas — un input por
+  cada lista activa que no sea la predeterminada, generado en runtime
+  (`poblarPreciosPorLista`) solo en edición (un producto recién creado
+  todavía no tiene id contra el cual guardar `producto_precios`, mismo
+  criterio que ya usa el costo: "se completa después").
+- **Modal de edición en lote de Productos**: el bloque de precio suma un
+  `<select name="precio_lista_id">` ("sobre qué lista aplicar"). Si es la
+  predeterminada, el ajuste viaja como `cambios.precio_venta` (como
+  siempre); si es otra lista, viaja como `cambios.precios[id]` — misma
+  distinción que ya hace el backend.
+- **Venta y Presupuesto**: selector `<select name="lista_precio_id">` en
+  cada modal. Se propone sola al elegir un cliente con lista habitual
+  (o queda en la predeterminada); cambiarla con ítems ya cargados
+  **repropone** sus precios (`reproponerPreciosPorLista`) — pero solo en
+  los renglones cuyo precio actual coincide con algún precio conocido del
+  producto, para no pisar un descuento negociado a mano. Avisa cuántos
+  precios cambió (`avisar(...)`), nunca en silencio.
+  `agregarFilaItemVenta` (los 9 sitios que la llaman no se tocaron: la
+  función busca la lista elegida sola, vía `listaPrecioDelFormulario`,
+  buscando el `<select>` dentro del mismo `<form>` que su contenedor de
+  ítems) sugiere `precioProductoEnLista(producto, listaId)` en vez de
+  `producto.precio_venta` directo.
+- **Ficha de cliente**: campo "Lista de precios habitual"
+  (`poblarSelectListasPrecios` con opción explícita "Usar la
+  predeterminada" = NULL).
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el **3002** (usuario de prueba con password reseteada directo en la
+  copia — la real no se tocó), proceso del 3000 sin tocar hasta tener todo
+  verde.
+- **Backend por curl, número a número**: alta/edición de listas; intentar
+  quitarle `es_predeterminada` a la única marcada (400); intentar
+  desactivarla (400); marcar otra como predeterminada (la vieja se
+  desmarca sola, siempre exactamente una marcada en ambos sentidos);
+  cargar un precio en una lista no predeterminada (no toca `precio_venta`
+  ni la otra lista); cargar el precio de la predeterminada vía `precios`
+  (sí sincroniza `precio_venta`); ajuste porcentual sobre una lista
+  puntual (75000 +10% = 82500, verificado exacto); **venta a un precio
+  distinto del de la ficha — `precio_venta` quedó intacto** (la regresión
+  que esta etapa vino a arreglar); presupuesto convertido a venta hereda
+  la lista; bulk +20% sobre una lista puntual en 2 productos (valores
+  exactos verificados, el resto del catálogo sin tocar); precio negativo
+  rechazado (400); `lista_precio_id` inexistente en venta/cliente
+  rechazado con JSON limpio (400, después de arreglar el bug de
+  `ErrorBulk` de arriba).
+- **Idempotencia**: reimportar `db/index.js` en un proceso nuevo, dos
+  veces, sobre una base que ya tenía datos de negocio cargados durante la
+  prueba (no solo la base vacía inicial) — sin duplicar ninguna fila.
+- **Frontend con Playwright** (headless, claro y oscuro, 1280px y mobile
+  375px): **32/32 checks en verde**. Modal de listas abre/lista/crea;
+  modal de producto muestra los campos de precio por lista; guardar un
+  precio de lista no rompe nada; selector de lista en Venta con las 3
+  listas activas; el precio sugerido de un ítem cambia al cambiar de
+  lista (55000 → 66000, verificado con el valor real); selector de lista
+  habitual en el modal de Cliente; regresión de la etapa anterior
+  (Estadísticas + "Qué se compra" siguen poblando); sin scroll horizontal
+  en mobile. El único "error de consola" capturado fue un 400 esperado
+  (el test de tema oscuro repitió el nombre de una lista ya creada por el
+  test de tema claro — la validación de duplicados funcionando, no un
+  bug).
+- Sintaxis (`node --check`) limpia en `server.js` y `app.js` después de
+  cada cambio.
+- **Deploy**: Etapa 0 primero (ver arriba). Backup
+  `nexo.db.backup-antes-listas-precios-20260903-082559` en `backend/db/`,
+  proceso identificado y detenido por **PID exacto**
+  (`Get-NetTCPConnection -LocalPort 3000`), reiniciado con
+  `node --experimental-sqlite server.js`. **Row counts de las 6 tablas
+  principales comparados 1:1 pre/post-migración: sin diferencias**, y los
+  tres `precio_venta` de los productos reales quedaron con el mismo valor
+  exacto que tenían antes. `producto_precios` quedó con una fila por
+  producto en la lista Minorista, con esos mismos valores. El endpoint
+  nuevo (`/api/listas-precios`) respondió 401 contra el proceso real (no
+  404: la ruta existe, solo falta sesión) y el HTML sirve el botón "Listas
+  de precios" nuevo.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama activa sigue siendo
+  `feature/reportes-compras-estadisticas` (con el commit `0e984df` de la
+  Etapa 0). Falta decidir con el usuario si esta etapa va a esa misma
+  rama/PR o a una propia, y commitear.
+- El **alta de producto nuevo** (`POST /api/productos`) no acepta
+  `precios` todavía — nace solo con el precio de la lista predeterminada
+  (`precio_venta`), igual que ya pasa con el costo. Cargar precios de
+  otras listas es una edición posterior, una vez que el producto ya tiene
+  id. No se consideró una limitación real (mismo patrón que costo), pero
+  vale mencionarlo si en el futuro se pide poder cargar todo de una.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
+  arrastra de varias etapas atrás).

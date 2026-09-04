@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS categorias (
   activa INTEGER NOT NULL DEFAULT 1
 );
 
+-- Listas de precios (CLAUDE.md §18): un mismo producto puede tener precios
+-- distintos según el canal (minorista/mayorista/tarjeta). Exactamente una
+-- lista es la predeterminada en todo momento — es el fallback cuando un
+-- producto no tiene precio cargado en la lista elegida, y la que asumen
+-- clientes/ventas/presupuestos sin lista propia asignada. La consistencia
+-- de "una sola marcada" la garantiza el backend (ver /api/listas-precios en
+-- server.js), no un constraint de SQL: SQLite no tiene forma declarativa de
+-- expresar "a lo sumo una fila con es_predeterminada = 1".
+CREATE TABLE IF NOT EXISTS listas_precios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  activa INTEGER NOT NULL DEFAULT 1,
+  es_predeterminada INTEGER NOT NULL DEFAULT 0
+);
+
 -- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
 -- proveedor (costo promedio ponderado, ver POST /api/compras). Es un valor
 -- derivado de las operaciones, no un dato que alguien carga.
@@ -77,6 +92,20 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_maximo REAL,
   categoria_id INTEGER REFERENCES categorias(id)
 );
+
+-- Precio de un producto en una lista puntual. No todo producto tiene fila
+-- acá para toda lista: si falta, el precio de esa combinación cae al
+-- precio_venta del producto (que representa la lista predeterminada). El
+-- índice único de abajo es la garantía real de "un producto, un precio por
+-- lista" — mismo criterio que idx_facturas_numeracion.
+CREATE TABLE IF NOT EXISTS producto_precios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  lista_precio_id INTEGER NOT NULL REFERENCES listas_precios(id),
+  precio REAL NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_precios_unico
+  ON producto_precios(producto_id, lista_precio_id);
 
 -- Mismo criterio que clientes: un proveedor puede nacer cargado a mano
 -- desde la pantalla de Proveedores, o creado automáticamente al registrar

@@ -532,15 +532,28 @@ app.get('/api/clientes/:id', (req, res) => {
   });
 });
 
+// lista_precio_id: NULL = "usa la predeterminada", igual que en
+// ventas/presupuestos (CLAUDE.md §18). Si viene un id, tiene que existir.
+function normalizarListaPrecioId(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
+function listaPrecioValida(listaPrecioId) {
+  return listaPrecioId === null || Boolean(db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId));
+}
+
 app.post('/api/clientes', (req, res) => {
-  const { nombre, email, telefono, direccion, documento, notas } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
+  }
+  const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
+  if (!listaPrecioValida(listaPrecioId)) {
+    return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
   const { lastInsertRowid } = db
     .prepare(
-      'INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       nombre.trim(),
@@ -548,7 +561,8 @@ app.post('/api/clientes', (req, res) => {
       telefono ?? null,
       direccion ?? null,
       documento ?? null,
-      notas ?? null
+      notas ?? null,
+      listaPrecioId
     );
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -560,9 +574,13 @@ app.patch('/api/clientes/:id', (req, res) => {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
 
-  const { nombre, email, telefono, direccion, documento, notas } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
+  }
+  const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
+  if (!listaPrecioValida(listaPrecioId)) {
+    return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
   const nuevo = {
@@ -571,14 +589,15 @@ app.patch('/api/clientes/:id', (req, res) => {
     telefono: telefono ?? null,
     direccion: direccion ?? null,
     documento: documento ?? null,
-    notas: notas ?? null
+    notas: notas ?? null,
+    lista_precio_id: listaPrecioId
   };
-  const cambios = diffCampos(cliente, nuevo, ['nombre', 'email', 'telefono', 'direccion', 'documento', 'notas']);
+  const cambios = diffCampos(cliente, nuevo, ['nombre', 'email', 'telefono', 'direccion', 'documento', 'notas', 'lista_precio_id']);
 
   withTransaction(() => {
     db.prepare(
-      'UPDATE clientes SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ? WHERE id = ?'
-    ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, clienteId);
+      'UPDATE clientes SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, lista_precio_id = ? WHERE id = ?'
+    ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, nuevo.lista_precio_id, clienteId);
     if (cambios) {
       auditar(req, {
         accion: 'editar',
@@ -793,6 +812,106 @@ app.patch('/api/categorias/:id', (req, res) => {
   res.json({ id: categoriaId });
 });
 
+/* ---------- Listas de precios (CLAUDE.md §18) ---------- */
+//
+// Calcado de categorías de productos (arriba): mismas dos validaciones
+// (nombre vacío, nombre duplicado) y baja lógica vía `activa`. Dos reglas
+// propias que categorías no tiene: (1) exactamente una lista puede ser la
+// predeterminada a la vez — es el fallback de todo el sistema cuando un
+// producto no tiene precio cargado en la lista elegida, así que nunca puede
+// quedar sin ninguna marcada; (2) por eso mismo, la predeterminada no se
+// puede desactivar ni desmarcar directamente.
+
+app.get('/api/listas-precios', (req, res) => {
+  const listas = db.prepare('SELECT * FROM listas_precios ORDER BY nombre').all();
+  res.json(listas);
+});
+
+app.post('/api/listas-precios', (req, res) => {
+  const { nombre } = req.body;
+
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'La lista necesita un nombre.' });
+  }
+  const yaExiste = db.prepare('SELECT 1 FROM listas_precios WHERE nombre = ?').get(String(nombre).trim());
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ya existe una lista con ese nombre.' });
+  }
+
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO listas_precios (nombre) VALUES (?)')
+    .run(String(nombre).trim());
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.patch('/api/listas-precios/:id', (req, res) => {
+  const listaId = Number(req.params.id);
+  const { nombre, activa, es_predeterminada } = req.body;
+
+  const lista = db.prepare('SELECT * FROM listas_precios WHERE id = ?').get(listaId);
+  if (!lista) {
+    return res.status(404).json({ error: 'Lista de precios no encontrada.' });
+  }
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'La lista necesita un nombre.' });
+  }
+  const yaExiste = db
+    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND id <> ?')
+    .get(String(nombre).trim(), listaId);
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ya existe otra lista con ese nombre.' });
+  }
+
+  const nuevaEsPredeterminada = es_predeterminada === undefined
+    ? Boolean(lista.es_predeterminada)
+    : Boolean(es_predeterminada);
+
+  // La predeterminada es el fallback de todo el sistema: no puede dejar de
+  // serlo sin que otra tome su lugar, ni puede quedar inactiva (una lista
+  // inactiva no debería poder proponerse en una venta nueva).
+  if (lista.es_predeterminada && !nuevaEsPredeterminada) {
+    return res.status(400).json({
+      error: 'No se puede quitar la lista predeterminada: marcá otra como predeterminada en su lugar.'
+    });
+  }
+  if (nuevaEsPredeterminada && activa === false) {
+    return res.status(400).json({ error: 'La lista predeterminada no se puede desactivar.' });
+  }
+
+  const nuevo = {
+    nombre: String(nombre).trim(),
+    activa: activa === undefined ? Number(Boolean(lista.activa)) : Number(Boolean(activa)),
+    es_predeterminada: Number(nuevaEsPredeterminada)
+  };
+  const cambios = diffCampos(lista, nuevo, ['nombre', 'activa', 'es_predeterminada']);
+
+  withTransaction(() => {
+    // Si esta lista pasa a ser la predeterminada, desmarcar cualquier otra
+    // primero — dentro de la misma transacción, así nunca hay un instante
+    // (ni una falla a mitad de camino) con dos marcadas o con cero.
+    if (nuevaEsPredeterminada && !lista.es_predeterminada) {
+      db.prepare('UPDATE listas_precios SET es_predeterminada = 0 WHERE id <> ?').run(listaId);
+    }
+    db.prepare('UPDATE listas_precios SET nombre = ?, activa = ?, es_predeterminada = ? WHERE id = ?').run(
+      nuevo.nombre,
+      nuevo.activa,
+      nuevo.es_predeterminada,
+      listaId
+    );
+    if (cambios) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'lista_precio',
+        entidad_id: listaId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Lista de precios "${nuevo.nombre}" editada`
+      });
+    }
+  });
+  res.json({ id: listaId });
+});
+
 /* ---------- Productos ---------- */
 
 const SELECT_PRODUCTO = `
@@ -804,6 +923,21 @@ const SELECT_PRODUCTO = `
     FROM productos
     LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
     LEFT JOIN categorias ON categorias.id = productos.categoria_id`;
+
+// Precios de todos los productos en todas las listas, indexados por
+// producto_id -> { lista_precio_id: precio }. Se resuelve con un segundo
+// query en vez de un pivot en SQL: evita tener que generar una columna por
+// lista de forma dinámica, y el número de listas es chico (típicamente unas
+// pocas), así que el costo de armar el mapa en JS es despreciable.
+function obtenerPreciosPorProducto() {
+  const filas = db.prepare('SELECT producto_id, lista_precio_id, precio FROM producto_precios').all();
+  const mapa = {};
+  for (const fila of filas) {
+    if (!mapa[fila.producto_id]) mapa[fila.producto_id] = {};
+    mapa[fila.producto_id][fila.lista_precio_id] = fila.precio;
+  }
+  return mapa;
+}
 
 // Semáforo de stock. El mínimo avisa cuando llegás a ese número (no cuando
 // lo perforás): si configurás 5, con 5 unidades ya querés reponer. El
@@ -819,9 +953,14 @@ function estadoStock(stock, stockMinimo, stockMaximo) {
 // calcula, no se persiste). El margen es sobre el precio de venta:
 // (precio - costo) / precio. Sin precio de venta cargado no hay margen que
 // mostrar, por eso null en vez de 0 (0% sería mentira).
-function decorarProducto(p) {
+// `precios` es el mapa lista_precio_id -> precio de ESE producto puntual
+// (viene de obtenerPreciosPorProducto, ya resuelto por producto_id antes de
+// llamar acá); un objeto vacío significa que el producto todavía no tiene
+// ningún precio propio cargado y todo cae al fallback de precio_venta.
+function decorarProducto(p, precios = {}) {
   return {
     ...p,
+    precios,
     valorizado: p.precio_costo * p.stock,
     margen: p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null,
     estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo)
@@ -830,7 +969,8 @@ function decorarProducto(p) {
 
 app.get('/api/productos', (req, res) => {
   const productos = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all();
-  res.json(productos.map(decorarProducto));
+  const preciosPorProducto = obtenerPreciosPorProducto();
+  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id])));
 });
 
 function normalizarPrecio(valor) {
@@ -917,8 +1057,12 @@ app.post('/api/productos', (req, res) => {
 // Campos que la edición EN LOTE puede tocar. Deliberadamente más chico que
 // las 7 columnas del PATCH singular: nombre y sku quedan afuera porque
 // ponerle el mismo nombre a 20 productos no tiene sentido, y el mismo SKU
-// haría fallar con UNIQUE a partir del segundo item del lote.
-const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo'];
+// haría fallar con UNIQUE a partir del segundo item del lote. `precios` es
+// el mismo mapa por-lista que acepta el PATCH singular — remarcar por
+// porcentaje una lista puntual (ej. "+10% en Mayorista") sobre todo el
+// catálogo filtrado es exactamente el caso de uso que el bulk existe para
+// cubrir.
+const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'precios'];
 
 // `cambios.precio_venta` puede venir como número (valor fijo) o como
 // { modo: 'porcentaje', valor: N } (ajuste sobre el precio actual DE ESE
@@ -945,6 +1089,16 @@ function esAjustePorcentaje(valor) {
 // Lleva `req` como primer parámetro (no AsyncLocalStorage ni variable de
 // módulo) por la misma razón que auditar(req, ...) lo exige: dos requests
 // concurrentes no deben poder pisarse el usuario que audita.
+//
+// `cambios.precios`, si viene, es un mapa { lista_precio_id: precio } —
+// separado de `precio_venta` a propósito: precio_venta sigue siendo LA
+// columna de la lista predeterminada (ver más abajo, dentro de la
+// transacción), pero el resto de las listas no tienen columna propia en
+// `productos`, viven en `producto_precios`. Igual que `precio_venta`, cada
+// entrada de `precios` admite el ajuste porcentual { modo:'porcentaje',
+// valor:N }, calculado sobre el precio ACTUAL de ese producto en esa lista
+// puntual (o sobre precio_venta como fallback si el producto todavía no
+// tiene precio propio en esa lista).
 function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
     .prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id FROM productos WHERE id = ?')
@@ -953,9 +1107,12 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     throw new ErrorBulk('Producto no encontrado.', 404);
   }
 
+  const cambiosProducto = { ...cambios };
+  delete cambiosProducto.precios;
+
   const fusionado = { ...producto };
-  for (const campo of Object.keys(cambios)) {
-    if (Object.prototype.hasOwnProperty.call(cambios, campo)) fusionado[campo] = cambios[campo];
+  for (const campo of Object.keys(cambiosProducto)) {
+    if (Object.prototype.hasOwnProperty.call(cambiosProducto, campo)) fusionado[campo] = cambiosProducto[campo];
   }
   if (esAjustePorcentaje(fusionado.precio_venta)) {
     const ajuste = Number(fusionado.precio_venta.valor) / 100;
@@ -965,6 +1122,38 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const error = validarProducto(fusionado);
   if (error) {
     throw new ErrorBulk(error);
+  }
+
+  // Precios por lista: se resuelven ACÁ (antes de la transacción) para que
+  // un ajuste porcentual lea el precio real que tiene el producto en esa
+  // lista en este momento, no un valor ya modificado por este mismo pedido.
+  let preciosPorLista = null;
+  if (cambios.precios && typeof cambios.precios === 'object') {
+    const preciosActuales = db
+      .prepare('SELECT lista_precio_id, precio FROM producto_precios WHERE producto_id = ?')
+      .all(productoId)
+      .reduce((acc, fila) => ({ ...acc, [fila.lista_precio_id]: fila.precio }), {});
+
+    preciosPorLista = {};
+    for (const [listaIdStr, valor] of Object.entries(cambios.precios)) {
+      const listaId = Number(listaIdStr);
+      const listaExiste = db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaId);
+      if (!listaExiste) {
+        throw new ErrorBulk('La lista de precios seleccionada no existe.');
+      }
+      const precioBase = preciosActuales[listaId] ?? producto.precio_venta;
+      let precioNuevo;
+      if (esAjustePorcentaje(valor)) {
+        const ajuste = Number(valor.valor) / 100;
+        precioNuevo = Math.round(precioBase * (1 + ajuste) * 100) / 100;
+      } else {
+        precioNuevo = normalizarPrecio(valor);
+      }
+      if (Number.isNaN(precioNuevo) || precioNuevo < 0) {
+        throw new ErrorBulk('El precio debe ser un número mayor o igual a 0.');
+      }
+      preciosPorLista[listaId] = precioNuevo;
+    }
   }
 
   const skuNormalizado = fusionado.sku && fusionado.sku.trim ? (fusionado.sku.trim() || null) : fusionado.sku;
@@ -977,6 +1166,16 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     stock_maximo: normalizarStockMaximo(fusionado.stock_maximo),
     categoria_id: normalizarCategoriaId(fusionado.categoria_id)
   };
+  // Si el pedido tocó el precio de la lista PREDETERMINADA vía `precios`,
+  // ese valor también pisa precio_venta — son la misma cosa vista desde dos
+  // lugares (columna suelta vs. fila de producto_precios), y no deben poder
+  // desincronizarse. Se resuelve acá, antes del diff, para que quede
+  // reflejado en la auditoría del producto como cualquier otro cambio de
+  // precio_venta.
+  const listaPredeterminada = db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1').get();
+  if (preciosPorLista && listaPredeterminada && preciosPorLista[listaPredeterminada.id] !== undefined) {
+    nuevo.precio_venta = preciosPorLista[listaPredeterminada.id];
+  }
   // precio_costo no entra en este diff: es el promedio ponderado que
   // recalculan las compras (recalcularCostoProducto), no algo que este
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
@@ -1003,6 +1202,16 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.categoria_id,
       productoId
     );
+    if (preciosPorLista) {
+      const upsertPrecio = db.prepare(`
+        INSERT INTO producto_precios (producto_id, lista_precio_id, precio)
+        VALUES (?, ?, ?)
+        ON CONFLICT(producto_id, lista_precio_id) DO UPDATE SET precio = excluded.precio
+      `);
+      for (const [listaId, precio] of Object.entries(preciosPorLista)) {
+        upsertPrecio.run(productoId, Number(listaId), precio);
+      }
+    }
     if (diff) {
       auditar(req, {
         accion: 'editar',
@@ -1472,7 +1681,7 @@ function validarStockDisponible(items) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
-function crearVenta({ cliente, cliente_id, items, fecha }) {
+function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id }) {
   // Si el frontend ya sabe qué cliente es (lo eligió de la lista), usa
   // su id directamente: evita crear un duplicado por una diferencia de
   // tipeo. Si no, se resuelve por nombre y se crea si no existe.
@@ -1484,11 +1693,24 @@ function crearVenta({ cliente, cliente_id, items, fecha }) {
     clienteRow = { id: lastInsertRowid };
   }
 
+  // lista_precio_id es NULLABLE a propósito (CLAUDE.md §18 y §8): NULL
+  // significa "se hizo con la predeterminada de ese momento", no una lista
+  // fija. Si viene un id, tiene que existir de verdad — nunca se confía
+  // ciegamente en un id que llega del cliente.
+  // ErrorBulk (no Error genérico): es la clase que mensajeDeError sabe
+  // traducir a un mensaje de usuario sin relanzar — un Error a secas
+  // escapa del catch de POST /api/ventas y termina en el handler default
+  // de Express (HTML de stack trace en vez de un 400 con JSON).
+  const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
+  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+    throw new ErrorBulk('La lista de precios seleccionada no existe.');
+  }
+
   // Si no viene fecha, se omite la columna para que aplique el
   // DEFAULT date('now') de la tabla en vez de pisarlo con un valor JS.
   const { lastInsertRowid: nuevaVentaId } = fecha
-    ? db.prepare('INSERT INTO ventas (cliente_id, fecha) VALUES (?, ?)').run(clienteRow.id, fecha)
-    : db.prepare('INSERT INTO ventas (cliente_id) VALUES (?)').run(clienteRow.id);
+    ? db.prepare('INSERT INTO ventas (cliente_id, fecha, lista_precio_id) VALUES (?, ?, ?)').run(clienteRow.id, fecha, listaPrecioId)
+    : db.prepare('INSERT INTO ventas (cliente_id, lista_precio_id) VALUES (?, ?)').run(clienteRow.id, listaPrecioId);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const insertItem = db.prepare(
@@ -1498,7 +1720,6 @@ function crearVenta({ cliente, cliente_id, items, fecha }) {
   const insertMovimiento = db.prepare(
     "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id) VALUES (?, 'salida', ?, 'venta', ?)"
   );
-  const actualizarPrecioVenta = db.prepare('UPDATE productos SET precio_venta = ? WHERE id = ?');
 
   let total = 0;
   for (const item of items) {
@@ -1507,7 +1728,12 @@ function crearVenta({ cliente, cliente_id, items, fecha }) {
     const { precio_costo: costoActual } = buscarCostoActual.get(item.producto_id);
     insertItem.run(nuevaVentaId, item.producto_id, item.cantidad, item.precio_unitario, costoActual);
     insertMovimiento.run(item.producto_id, item.cantidad, nuevaVentaId);
-    actualizarPrecioVenta.run(item.precio_unitario, item.producto_id);
+    // Ya NO se pisa productos.precio_venta con el precio de esta venta
+    // (CLAUDE.md §18): con varias listas de precios, una venta con un
+    // precio puntual (descuento, negociación) bajaría en silencio el
+    // precio de TODAS las listas. Los precios se administran solo desde
+    // Productos; el precio de este item queda congelado acá, en
+    // venta_items, como siempre.
     total += item.cantidad * item.precio_unitario;
   }
 
@@ -1522,7 +1748,7 @@ function crearVenta({ cliente, cliente_id, items, fecha }) {
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha } = req.body;
+  const { cliente, cliente_id, items, fecha, lista_precio_id } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La venta necesita al menos un item.' });
@@ -1535,11 +1761,16 @@ app.post('/api/ventas', (req, res) => {
     return res.status(400).json({ error: errorStock });
   }
 
-  const ventaId = withTransaction(() => {
-    const id = crearVenta({ cliente, cliente_id, items, fecha });
-    auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
-    return id;
-  });
+  let ventaId;
+  try {
+    ventaId = withTransaction(() => {
+      const id = crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id });
+      auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
+      return id;
+    });
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
+  }
 
   res.status(201).json({ id: ventaId });
 });
@@ -1551,7 +1782,12 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha } = req.body;
+  const { cliente, cliente_id, items, fecha, lista_precio_id } = req.body;
+
+  const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
+  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+    return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
+  }
 
   const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ?').get(ventaId);
   if (!venta) {
@@ -1653,9 +1889,10 @@ app.put('/api/ventas/:id', (req, res) => {
       const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
       clienteRow = { id: lastInsertRowid };
     }
-    db.prepare('UPDATE ventas SET cliente_id = ?, fecha = COALESCE(?, fecha) WHERE id = ?').run(
+    db.prepare('UPDATE ventas SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ? WHERE id = ?').run(
       clienteRow.id,
       fecha || null,
+      listaPrecioId,
       ventaId
     );
 
@@ -1669,7 +1906,6 @@ app.put('/api/ventas/:id', (req, res) => {
     const insertSalida = db.prepare(
       "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id) VALUES (?, 'salida', ?, 'venta', ?)"
     );
-    const actualizarPrecioVenta = db.prepare('UPDATE productos SET precio_venta = ? WHERE id = ?');
 
     let total = 0;
     for (const item of items) {
@@ -1678,7 +1914,8 @@ app.put('/api/ventas/:id', (req, res) => {
       const { precio_costo: costoActual } = buscarCostoActual.get(item.producto_id);
       insertItem.run(ventaId, item.producto_id, item.cantidad, item.precio_unitario, costoActual);
       insertSalida.run(item.producto_id, item.cantidad, ventaId);
-      actualizarPrecioVenta.run(item.precio_unitario, item.producto_id);
+      // Ya NO se pisa productos.precio_venta acá tampoco — mismo motivo que
+      // en crearVenta (CLAUDE.md §18).
       total += item.cantidad * item.precio_unitario;
     }
 
@@ -2102,18 +2339,22 @@ function resolverCliente(cliente, cliente_id) {
 }
 
 app.post('/api/presupuestos', (req, res) => {
-  const { cliente, cliente_id, items, fecha, vencimiento, notas } = req.body;
+  const { cliente, cliente_id, items, fecha, vencimiento, notas, lista_precio_id } = req.body;
 
   const error = validarPresupuesto(req.body);
   if (error) {
     return res.status(400).json({ error });
   }
+  const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
+  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+    return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
+  }
 
   const presupuestoId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, cliente_id);
 
-    const columnas = ['cliente_id', 'vencimiento', 'notas'];
-    const valores = [clienteRow.id, vencimiento || null, notas?.trim() || null];
+    const columnas = ['cliente_id', 'vencimiento', 'notas', 'lista_precio_id'];
+    const valores = [clienteRow.id, vencimiento || null, notas?.trim() || null, listaPrecioId];
     if (fecha) {
       columnas.push('fecha');
       valores.push(fecha);
@@ -2143,7 +2384,7 @@ app.post('/api/presupuestos', (req, res) => {
 // que manda, y el presupuesto queda como registro de lo que se ofreció.
 app.put('/api/presupuestos/:id', (req, res) => {
   const presupuestoId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, vencimiento, notas } = req.body;
+  const { cliente, cliente_id, items, fecha, vencimiento, notas, lista_precio_id } = req.body;
 
   const presupuesto = db
     .prepare('SELECT id, estado FROM presupuestos WHERE id = ?')
@@ -2161,15 +2402,19 @@ app.put('/api/presupuestos/:id', (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
+  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+    return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
+  }
 
   withTransaction(() => {
     const clienteRow = resolverCliente(cliente, cliente_id);
 
     db.prepare(
       `UPDATE presupuestos
-          SET cliente_id = ?, vencimiento = ?, notas = ?, fecha = COALESCE(?, fecha)
+          SET cliente_id = ?, vencimiento = ?, notas = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?
         WHERE id = ?`
-    ).run(clienteRow.id, vencimiento || null, notas?.trim() || null, fecha || null, presupuestoId);
+    ).run(clienteRow.id, vencimiento || null, notas?.trim() || null, fecha || null, listaPrecioId, presupuestoId);
 
     // Un presupuesto no tiene efectos que revertir (no movió stock ni
     // cuenta corriente), así que sus items se reemplazan directamente —
@@ -2233,7 +2478,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
   const presupuestoId = Number(req.params.id);
 
   const presupuesto = db
-    .prepare('SELECT id, cliente_id, estado FROM presupuestos WHERE id = ?')
+    .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ?')
     .get(presupuestoId);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
@@ -2267,7 +2512,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
     const nuevaVentaId = crearVenta({
       cliente_id: presupuesto.cliente_id,
       items,
-      fecha: null
+      fecha: null,
+      lista_precio_id: presupuesto.lista_precio_id
     });
     db.prepare("UPDATE presupuestos SET estado = 'convertido', venta_id = ? WHERE id = ?").run(
       nuevaVentaId,

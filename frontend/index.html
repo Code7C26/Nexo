@@ -1072,6 +1072,7 @@
             <h2>Productos</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario" id="btnCategoriasProductos">Categorías</button>
+              <button class="btn btn-secundario" id="btnListasPrecios">Listas de precios</button>
               <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
             </div>
           </div>
@@ -1848,6 +1849,12 @@
         <label>Cliente
           <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
         </label>
+        <!-- Opciones en runtime (poblarSelectListasPrecios). Al elegir un
+             cliente con lista propia se propone sola (CLAUDE.md §18); se
+             puede cambiar acá para esta operación puntual. -->
+        <label>Lista de precios
+          <select name="lista_precio_id" id="presupuestoListaPrecio"></select>
+        </label>
         <label>Fecha
           <input type="date" name="fecha" required />
         </label>
@@ -1877,6 +1884,13 @@
         <label>Cliente
           <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
           <datalist id="clientesSugeridos"></datalist>
+        </label>
+        <!-- Opciones en runtime (poblarSelectListasPrecios). Al elegir un
+             cliente con lista propia se propone sola (CLAUDE.md §18); se
+             puede cambiar acá para esta operación puntual. Cambiarla con
+             ítems ya cargados repropone sus precios (ver app.js). -->
+        <label>Lista de precios
+          <select name="lista_precio_id" id="ventaListaPrecio"></select>
         </label>
         <label>Fecha
           <input type="date" name="fecha" required />
@@ -2000,6 +2014,14 @@
         </label>
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <!-- Opciones en runtime (poblarSelectListasPrecios en app.js). Sin
+             elegir nada = usa la predeterminada del negocio (CLAUDE.md §18);
+             Venta/Presupuesto la proponen sola al elegir este cliente. -->
+        <label>Lista de precios habitual
+          <select name="lista_precio_id">
+            <option value="">Usar la predeterminada</option>
+          </select>
         </label>
         <label>Notas
           <input type="text" name="notas" placeholder="Opcional" />
@@ -2149,6 +2171,37 @@
     </div>
   </div>
 
+  <!-- Modal listas de precios (CLAUDE.md §18): calcado del de categorías de
+       productos de arriba, con dos columnas propias (Predeterminada, Activa)
+       que categorías no necesita. -->
+  <div class="modal" id="modalListasPrecios" role="dialog" aria-modal="true" aria-labelledby="modalListasPreciosTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalListasPreciosTitulo">Listas de precios</h3>
+        <button class="modal-close" id="modalListasPreciosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formListaPrecio" class="form">
+        <input type="hidden" name="id" />
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Minorista, Mayorista, Tarjeta…" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formListaPrecioSubmit">Agregar lista</button>
+      </form>
+      <div class="tabla-scroll">
+          <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Lista</th>
+            <th>Predeterminada</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="listasPreciosBody"></tbody>
+      </table>
+          </div>
+    </div>
+  </div>
+
   <!-- Modal cuenta de tesorería (alta y edición) -->
   <div class="modal" id="modalCuenta" role="dialog" aria-modal="true" aria-labelledby="modalCuentaTitulo" hidden>
     <div class="modal-card">
@@ -2260,9 +2313,16 @@
             <option value="">Sin categoría</option>
           </select>
         </label>
-        <label>Precio de venta
-          <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" />
+        <label>Precio de venta (lista predeterminada)
+          <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
         </label>
+        <!-- Un campo por cada lista de precios activa que NO sea la
+             predeterminada (esa ya se carga arriba, en precio_venta) — se
+             genera en runtime (poblarPreciosPorLista en app.js) porque
+             depende de qué listas existan. Sin precio propio cargado, el
+             input queda vacío y ese producto cae al fallback de
+             precio_venta en esa lista (CLAUDE.md §18). -->
+        <div id="preciosPorListaProducto" class="form-precios-lista"></div>
         <p class="form-note">El costo no se carga acá: lo define la compra al proveedor.</p>
         <label>Stock mínimo
           <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
@@ -2319,12 +2379,19 @@
           <label class="form-check">
             <input type="checkbox" class="bulk-activar" data-campo="precio_venta" /> Ajustar precio de venta
           </label>
+          <!-- Las opciones se llenan en runtime con las listas de precios
+               activas (CLAUDE.md §18) — la predeterminada se manda como
+               precio_venta (columna del producto), cualquier otra se manda
+               como precios[id] (ver armarCambiosBulk en app.js). -->
+          <label>Sobre qué lista
+            <select name="precio_lista_id" disabled></select>
+          </label>
           <select name="precio_modo" disabled>
             <option value="porcentaje">Ajustar un %</option>
             <option value="fijo">Fijar en un valor</option>
           </select>
-          <input type="number" name="precio_valor" step="0.01" placeholder="0" disabled />
-          <p class="form-note">Con "Ajustar un %": 10 sube 10%, −10 baja 10%. Se calcula sobre el precio actual de cada producto.</p>
+          <input type="number" name="precio_valor" step="0.01" placeholder="0" disabled autocomplete="off" />
+          <p class="form-note">Con "Ajustar un %": 10 sube 10%, −10 baja 10%. Se calcula sobre el precio actual de cada producto en esa lista.</p>
         </div>
         <div class="bulk-resultado" id="bulkProductosResultado" hidden>
           <p class="form-note" id="bulkProductosResultadoTitulo"></p>
