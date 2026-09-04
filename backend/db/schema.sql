@@ -72,6 +72,21 @@ CREATE TABLE IF NOT EXISTS listas_precios (
   es_predeterminada INTEGER NOT NULL DEFAULT 0
 );
 
+-- Depósitos (CLAUDE.md §5/§19): el stock se maneja por producto Y
+-- depósito, no como un único total global. Exactamente uno es el
+-- predeterminado en todo momento — es el que asumen las operaciones
+-- (venta/compra/devolución) sin depósito elegido a mano, mismo criterio
+-- que listas_precios.es_predeterminada. La consistencia de "una sola
+-- marcada" la garantiza el backend (ver /api/depositos en server.js), no
+-- un constraint de SQL, por el mismo motivo que esa tabla.
+CREATE TABLE IF NOT EXISTS depositos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL UNIQUE,
+  direccion TEXT,
+  activo INTEGER NOT NULL DEFAULT 1,
+  es_predeterminado INTEGER NOT NULL DEFAULT 0
+);
+
 -- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
 -- proveedor (costo promedio ponderado, ver POST /api/compras). Es un valor
 -- derivado de las operaciones, no un dato que alguien carga.
@@ -303,14 +318,33 @@ CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
   costo_real_unitario REAL NOT NULL DEFAULT 0
 );
 
+-- Una transferencia mueve mercadería entre dos depósitos (CLAUDE.md §19).
+-- Se modela como operación propia (no como dos ajustes sueltos) para que
+-- sea auditable y anulable como cualquier otra: genera exactamente dos
+-- movimientos de stock (salida en origen + entrada en destino) que la
+-- referencian por transferencia_id, igual que una venta referencia sus
+-- movimientos por venta_id. anulada revierte con el par contrario, nunca
+-- borra filas — mismo criterio que el resto del sistema.
+CREATE TABLE IF NOT EXISTS transferencias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deposito_origen_id INTEGER NOT NULL REFERENCES depositos(id),
+  deposito_destino_id INTEGER NOT NULL REFERENCES depositos(id),
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
+  nota TEXT
+);
+
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
+-- deposito_id es NOT NULL: toda unidad de stock vive en algún depósito
+-- físico concreto, nunca "en general" (CLAUDE.md §5/§19).
 CREATE TABLE IF NOT EXISTS movimientos_stock (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  deposito_id INTEGER NOT NULL REFERENCES depositos(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
   cantidad REAL NOT NULL,
-  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor')),
+  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia')),
   -- origen_id: deprecado, reemplazado por venta_id/compra_id (con FK real
   -- de verdad). Se conserva sin usar por compatibilidad con filas viejas;
   -- se puede eliminar en una limpieza posterior.
@@ -319,6 +353,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   compra_id INTEGER REFERENCES compras(id),
   devolucion_id INTEGER REFERENCES devoluciones(id),
   devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
+  transferencia_id INTEGER REFERENCES transferencias(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   -- Costo real de la unidad que entra (con el envío ya prorrateado).
   -- Solo tiene sentido en las entradas por compra; en salidas y ajustes
@@ -327,6 +362,15 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   nota TEXT
 );
 
+-- El índice sobre (producto_id, deposito_id) se crea en db/index.js, no
+-- acá: en una base que todavía no pasó por el rebuild de movimientos_stock
+-- (ver ahí el porqué), esta tabla la crea este mismo archivo sin
+-- deposito_id.
+--
+-- Stock total por producto, sumando todos los depósitos. Es el que usa el
+-- costo promedio ponderado (el costo es del producto, no de dónde está
+-- guardado físicamente) y el semáforo de stock_minimo/stock_maximo, que
+-- CLAUDE.md §5 mantiene global por decisión explícita.
 CREATE VIEW IF NOT EXISTS stock_actual AS
 SELECT producto_id,
        SUM(CASE tipo
@@ -336,6 +380,14 @@ SELECT producto_id,
            END) AS cantidad
 FROM movimientos_stock
 GROUP BY producto_id;
+
+-- stock_por_deposito (stock por producto Y depósito) NO vive en este
+-- archivo: su cuerpo referencia movimientos_stock.deposito_id, una columna
+-- que en una base existente todavía no está la primera vez que este
+-- archivo corre (se agrega recién en el rebuild de db/index.js). Crearla
+-- acá rompería ese primer arranque con "no such column" — mismo motivo por
+-- el que saldo_tesoreria tampoco vive en este archivo. Se crea en
+-- db/index.js, inmediatamente después del rebuild que agrega la columna.
 
 -- Una "cuenta de tesorería" es dónde está la plata (caja, banco, MP). Hoy
 -- se corresponde 1 a 1 con los medios de pago que ya usa el sistema

@@ -969,7 +969,9 @@
           <div class="panel-head">
             <h2>Stock</h2>
             <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnDepositos">Depósitos</button>
               <button class="btn btn-secundario" id="btnExportarStock">Exportar CSV</button>
+              <button class="btn btn-secundario" id="btnTransferirStock">Transferir</button>
               <button class="btn btn-primary" id="btnAjusteStock">+ Ajustar stock</button>
             </div>
           </div>
@@ -980,13 +982,37 @@
             <thead>
               <tr>
                 <th data-orden="nombre" data-tipo="texto">Producto</th>
+                <th data-orden="deposito" data-tipo="texto">Depósito</th>
                 <th class="align-right" data-orden="precio_costo" data-tipo="numero">Costo</th>
-                <th class="align-right" data-orden="stock" data-tipo="numero">Stock actual</th>
+                <th class="align-right" data-orden="stock" data-tipo="numero">Stock en depósito</th>
+                <th class="align-right" data-orden="stock_total" data-tipo="numero">Stock total</th>
                 <th data-orden="estado_stock" data-tipo="texto">Estado</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="stockBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Transferencias entre depósitos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Producto</th>
+                <th>Desde</th>
+                <th>Hacia</th>
+                <th class="align-right">Cantidad</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="transferenciasBody"></tbody>
           </table>
           </div>
         </section>
@@ -1002,6 +1028,7 @@
               <tr>
                 <th>Fecha</th>
                 <th>Producto</th>
+                <th>Depósito</th>
                 <th>Origen</th>
                 <th class="align-right">Cantidad</th>
                 <th>Nota</th>
@@ -1826,6 +1853,12 @@
         <label>Producto
           <select name="producto_id" required></select>
         </label>
+        <!-- Opciones en runtime (poblarSelectDepositos en app.js), arranca
+             en el depósito predeterminado — mismo criterio que el select de
+             lista de precios en Venta. -->
+        <label>Depósito
+          <select name="deposito_id" required></select>
+        </label>
         <label>Cantidad
           <input type="number" name="cantidad" required placeholder="Ej: 5 o -2" step="0.01" />
         </label>
@@ -1834,6 +1867,68 @@
           <input type="text" name="nota" placeholder="Motivo del ajuste (opcional)" />
         </label>
         <button type="submit" class="btn btn-primary btn-full">Guardar ajuste</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal gestión de depósitos (CLAUDE.md §19): calcado del de listas de
+       precios, con la misma regla de "exactamente uno predeterminado". -->
+  <div class="modal" id="modalDepositos" role="dialog" aria-modal="true" aria-labelledby="modalDepositosTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalDepositosTitulo">Depósitos</h3>
+        <button class="modal-close" id="modalDepositosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formDeposito" class="form">
+        <input type="hidden" name="id" />
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Depósito principal, Sucursal Centro…" />
+        </label>
+        <label>Dirección
+          <input type="text" name="direccion" placeholder="Opcional" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formDepositoSubmit">Agregar depósito</button>
+      </form>
+      <div class="tabla-scroll">
+          <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Depósito</th>
+            <th>Predeterminado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="depositosBody"></tbody>
+      </table>
+          </div>
+    </div>
+  </div>
+
+  <!-- Modal transferencia entre depósitos (CLAUDE.md §19) -->
+  <div class="modal" id="modalTransferenciaDeposito" role="dialog" aria-modal="true" aria-labelledby="modalTransferenciaDepositoTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalTransferenciaDepositoTitulo">Transferir entre depósitos</h3>
+        <button class="modal-close" id="modalTransferenciaDepositoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formTransferenciaDeposito" class="form">
+        <label>Producto
+          <select name="producto_id" required></select>
+        </label>
+        <label>Desde
+          <select name="deposito_origen_id" id="transferenciaDepositoOrigen" required></select>
+        </label>
+        <label>Hacia
+          <select name="deposito_destino_id" id="transferenciaDepositoDestino" required></select>
+        </label>
+        <label>Cantidad
+          <input type="number" name="cantidad" required min="0.01" step="0.01" placeholder="0" />
+        </label>
+        <label>Nota
+          <input type="text" name="nota" placeholder="Opcional" />
+        </label>
+        <p class="form-note">Mueve stock real entre depósitos. No cambia el costo del producto ni el stock total.</p>
+        <button type="submit" class="btn btn-primary btn-full">Transferir</button>
       </form>
     </div>
   </div>
@@ -1892,6 +1987,12 @@
         <label>Lista de precios
           <select name="lista_precio_id" id="ventaListaPrecio"></select>
         </label>
+        <!-- Opciones en runtime (poblarSelectDepositos), arranca en el
+             depósito predeterminado (CLAUDE.md §19). De acá sale toda la
+             mercadería de esta venta. -->
+        <label>Depósito
+          <select name="deposito_id" id="ventaDeposito"></select>
+        </label>
         <label>Fecha
           <input type="date" name="fecha" required />
         </label>
@@ -1914,6 +2015,12 @@
       <form id="formCompra" class="form">
         <label>Proveedor
           <input type="text" name="proveedor" required placeholder="Nombre o razón social" />
+        </label>
+        <!-- Opciones en runtime (poblarSelectDepositos), arranca en el
+             depósito predeterminado (CLAUDE.md §19). A ese depósito entra
+             la mercadería cuando la compra se marca recibida. -->
+        <label>Depósito
+          <select name="deposito_id" id="compraDeposito"></select>
         </label>
         <label>Fecha
           <input type="date" name="fecha" required />

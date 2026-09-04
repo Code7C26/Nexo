@@ -912,6 +912,130 @@ app.patch('/api/listas-precios/:id', (req, res) => {
   res.json({ id: listaId });
 });
 
+/* ---------- Depósitos (CLAUDE.md §5/§19) ---------- */
+//
+// Calcado de listas de precios (arriba): mismas dos validaciones (nombre
+// vacío, nombre duplicado), baja lógica vía `activo`, y la misma regla de
+// "exactamente uno predeterminado" (no se puede desmarcar ni desactivar
+// directamente). Regla propia que ni categorías ni listas tienen: un
+// depósito con stock cargado no se puede desactivar — quedaría mercadería
+// real escondida de cualquier pantalla que solo liste depósitos activos.
+
+app.get('/api/depositos', (req, res) => {
+  const depositos = db.prepare('SELECT * FROM depositos ORDER BY nombre').all();
+  res.json(depositos);
+});
+
+app.post('/api/depositos', (req, res) => {
+  const { nombre, direccion } = req.body;
+
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'El depósito necesita un nombre.' });
+  }
+  const yaExiste = db.prepare('SELECT 1 FROM depositos WHERE nombre = ?').get(String(nombre).trim());
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ya existe un depósito con ese nombre.' });
+  }
+
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO depositos (nombre, direccion) VALUES (?, ?)')
+    .run(String(nombre).trim(), direccion ? String(direccion).trim() : null);
+  auditar(req, {
+    accion: 'crear',
+    entidad: 'deposito',
+    entidad_id: lastInsertRowid,
+    detalle: `Depósito "${String(nombre).trim()}" creado`
+  });
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.patch('/api/depositos/:id', (req, res) => {
+  const depositoId = Number(req.params.id);
+  const { nombre, direccion, activo, es_predeterminado } = req.body;
+
+  const deposito = db.prepare('SELECT * FROM depositos WHERE id = ?').get(depositoId);
+  if (!deposito) {
+    return res.status(404).json({ error: 'Depósito no encontrado.' });
+  }
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'El depósito necesita un nombre.' });
+  }
+  const yaExiste = db
+    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND id <> ?')
+    .get(String(nombre).trim(), depositoId);
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ya existe otro depósito con ese nombre.' });
+  }
+
+  const nuevoEsPredeterminado = es_predeterminado === undefined
+    ? Boolean(deposito.es_predeterminado)
+    : Boolean(es_predeterminado);
+
+  if (deposito.es_predeterminado && !nuevoEsPredeterminado) {
+    return res.status(400).json({
+      error: 'No se puede quitar el depósito predeterminado: marcá otro como predeterminado en su lugar.'
+    });
+  }
+  if (nuevoEsPredeterminado && activo === false) {
+    return res.status(400).json({ error: 'El depósito predeterminado no se puede desactivar.' });
+  }
+
+  const nuevoActivo = activo === undefined ? Number(Boolean(deposito.activo)) : Number(Boolean(activo));
+  if (deposito.activo && !nuevoActivo) {
+    const { cantidad } = db
+      .prepare('SELECT COALESCE(SUM(cantidad), 0) AS cantidad FROM stock_por_deposito WHERE deposito_id = ?')
+      .get(depositoId);
+    if (cantidad > 0) {
+      return res.status(400).json({
+        error: `No se puede desactivar: todavía hay stock en este depósito (${cantidad} unidades en total). Transferí el stock a otro depósito primero.`
+      });
+    }
+  }
+
+  const nuevo = {
+    nombre: String(nombre).trim(),
+    direccion: direccion === undefined ? deposito.direccion : (direccion ? String(direccion).trim() : null),
+    activo: nuevoActivo,
+    es_predeterminado: Number(nuevoEsPredeterminado)
+  };
+  const cambios = diffCampos(deposito, nuevo, ['nombre', 'direccion', 'activo', 'es_predeterminado']);
+
+  withTransaction(() => {
+    // Mismo criterio que listas de precios: si este depósito pasa a ser el
+    // predeterminado, desmarcar cualquier otro primero, dentro de la misma
+    // transacción, para que nunca haya un instante con dos marcados o cero.
+    if (nuevoEsPredeterminado && !deposito.es_predeterminado) {
+      db.prepare('UPDATE depositos SET es_predeterminado = 0 WHERE id <> ?').run(depositoId);
+    }
+    db.prepare('UPDATE depositos SET nombre = ?, direccion = ?, activo = ?, es_predeterminado = ? WHERE id = ?').run(
+      nuevo.nombre,
+      nuevo.direccion,
+      nuevo.activo,
+      nuevo.es_predeterminado,
+      depositoId
+    );
+    if (cambios) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'deposito',
+        entidad_id: depositoId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Depósito "${nuevo.nombre}" editado`
+      });
+    }
+  });
+  res.json({ id: depositoId });
+});
+
+// El depósito predeterminado, resuelto una sola vez y reusado por todas las
+// operaciones que necesitan "el depósito de esta operación, si no se
+// especificó uno". Mismo criterio que NULL en ventas.lista_precio_id: nunca
+// se guarda el id copiado, siempre se resuelve en el momento.
+function depositoPredeterminadoId() {
+  return db.prepare('SELECT id FROM depositos WHERE es_predeterminado = 1').get()?.id ?? null;
+}
+
 /* ---------- Productos ---------- */
 
 const SELECT_PRODUCTO = `
@@ -1440,31 +1564,128 @@ app.patch('/api/proveedores/:id', (req, res) => {
 
 /* ---------- Stock ---------- */
 
+// Punto único de inserción a movimientos_stock (CLAUDE.md §5/§19): antes
+// de esta etapa cada operación armaba su propio INSERT literal (14 sitios
+// distintos), lo que hacía fácil olvidarse de una columna nueva en alguno.
+// Con deposito_id sumándose al ledger, centralizar acá es lo que garantiza
+// que ningún movimiento pueda insertarse sin saber de qué depósito es.
+// Recibe siempre deposito_id explícito (nunca lo resuelve solo): quien
+// llama ya tiene que haber decidido "el predeterminado" o uno puntual
+// antes de esto, para que la decisión quede en un solo lugar por operación
+// y no repetida acá adentro.
+function registrarMovimientoStock({
+  producto_id,
+  deposito_id,
+  tipo,
+  cantidad,
+  origen,
+  venta_id = null,
+  compra_id = null,
+  devolucion_id = null,
+  devolucion_proveedor_id = null,
+  transferencia_id = null,
+  costo_unitario = null,
+  nota = null
+}) {
+  return db
+    .prepare(
+      `INSERT INTO movimientos_stock
+         (producto_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
+          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      producto_id,
+      deposito_id,
+      tipo,
+      cantidad,
+      origen,
+      venta_id,
+      compra_id,
+      devolucion_id,
+      devolucion_proveedor_id,
+      transferencia_id,
+      costo_unitario,
+      nota
+    );
+}
+
 // Stock no devuelve precio_venta a propósito: esta pantalla es sobre
 // cuánta mercadería hay y cuánto vale, no sobre a cuánto se vende (eso
 // vive en Productos).
+// Una fila por producto Y depósito (CLAUDE.md §19), más el total del
+// producto (stock/valorizado/estado_stock siguen siendo sobre el total:
+// CLAUDE.md §5 mantiene el mínimo/máximo global, no por depósito) — así la
+// tabla puede mostrar el desglose sin perder el semáforo de siempre.
 app.get('/api/stock', (req, res) => {
-  const stock = db
+  const productos = db
     .prepare(
       `SELECT productos.id, productos.nombre, productos.precio_costo,
               productos.stock_minimo, productos.stock_maximo,
-              COALESCE(stock_actual.cantidad, 0) AS stock
+              COALESCE(stock_actual.cantidad, 0) AS stock_total
        FROM productos
        LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
        ORDER BY productos.nombre`
     )
     .all();
-  res.json(
-    stock.map((p) => ({
-      ...p,
-      valorizado: p.precio_costo * p.stock,
-      estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo)
-    }))
-  );
+  const porDeposito = db
+    .prepare(
+      `SELECT stock_por_deposito.producto_id, stock_por_deposito.deposito_id,
+              depositos.nombre AS deposito, stock_por_deposito.cantidad AS stock
+         FROM stock_por_deposito
+         JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
+        WHERE depositos.activo = 1`
+    )
+    .all();
+  const filasPorProducto = new Map();
+  for (const fila of porDeposito) {
+    if (!filasPorProducto.has(fila.producto_id)) filasPorProducto.set(fila.producto_id, []);
+    filasPorProducto.get(fila.producto_id).push(fila);
+  }
+
+  const resultado = [];
+  for (const p of productos) {
+    const estado_stock = estadoStock(p.stock_total, p.stock_minimo, p.stock_maximo);
+    const filas = filasPorProducto.get(p.id) ?? [];
+    if (filas.length === 0) {
+      // Producto sin ningún movimiento todavía en ningún depósito activo:
+      // igual tiene que aparecer (en 0), para no esconderlo de la pantalla.
+      resultado.push({
+        producto_id: p.id,
+        nombre: p.nombre,
+        precio_costo: p.precio_costo,
+        stock_minimo: p.stock_minimo,
+        stock_maximo: p.stock_maximo,
+        deposito_id: null,
+        deposito: null,
+        stock: 0,
+        stock_total: p.stock_total,
+        valorizado: p.precio_costo * p.stock_total,
+        estado_stock
+      });
+      continue;
+    }
+    for (const fila of filas) {
+      resultado.push({
+        producto_id: p.id,
+        nombre: p.nombre,
+        precio_costo: p.precio_costo,
+        stock_minimo: p.stock_minimo,
+        stock_maximo: p.stock_maximo,
+        deposito_id: fila.deposito_id,
+        deposito: fila.deposito,
+        stock: fila.stock,
+        stock_total: p.stock_total,
+        valorizado: p.precio_costo * p.stock_total,
+        estado_stock
+      });
+    }
+  }
+  res.json(resultado);
 });
 
 app.post('/api/stock/ajuste', (req, res) => {
-  const { producto_id, cantidad, nota } = req.body;
+  const { producto_id, deposito_id, cantidad, nota } = req.body;
 
   const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
   if (!producto) {
@@ -1473,27 +1694,39 @@ app.post('/api/stock/ajuste', (req, res) => {
   if (!Number(cantidad) || Number(cantidad) === 0) {
     return res.status(400).json({ error: 'La cantidad del ajuste no puede ser 0.' });
   }
+  const depositoIdResuelto = deposito_id ? Number(deposito_id) : depositoPredeterminadoId();
+  const deposito = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(depositoIdResuelto);
+  if (!deposito) {
+    return res.status(400).json({ error: 'El depósito no existe o está inactivo.' });
+  }
 
   // El ejemplo literal de CLAUDE.md §22 ("de 20 a 15"): hace falta el
   // stock ANTES del ajuste, que movimientos_stock por sí solo no guarda
   // (solo guarda el delta) — se lee acá, antes de insertar el movimiento.
-  const stockAnterior = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?').get(producto_id)?.cantidad ?? 0;
+  // Es el stock de ESE depósito puntual, no el total del producto: es lo
+  // que el ajuste está corrigiendo.
+  const stockAnterior = db
+    .prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?')
+    .get(producto_id, depositoIdResuelto)?.cantidad ?? 0;
   const stockNuevo = stockAnterior + Number(cantidad);
 
   let lastInsertRowid;
   withTransaction(() => {
-    ({ lastInsertRowid } = db
-      .prepare(
-        "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, nota) VALUES (?, 'ajuste', ?, 'ajuste_manual', ?)"
-      )
-      .run(producto_id, Number(cantidad), nota ?? null));
+    ({ lastInsertRowid } = registrarMovimientoStock({
+      producto_id: Number(producto_id),
+      deposito_id: depositoIdResuelto,
+      tipo: 'ajuste',
+      cantidad: Number(cantidad),
+      origen: 'ajuste_manual',
+      nota: nota ?? null
+    }));
     auditar(req, {
       accion: 'editar',
       entidad: 'stock',
       entidad_id: Number(producto_id),
-      valor_anterior: JSON.stringify({ stock: stockAnterior }),
-      valor_nuevo: JSON.stringify({ stock: stockNuevo }),
-      detalle: `Ajuste de stock de "${producto.nombre}": ${stockAnterior} → ${stockNuevo}`
+      valor_anterior: JSON.stringify({ stock: stockAnterior, deposito: deposito.nombre }),
+      valor_nuevo: JSON.stringify({ stock: stockNuevo, deposito: deposito.nombre }),
+      detalle: `Ajuste de stock de "${producto.nombre}" en "${deposito.nombre}": ${stockAnterior} → ${stockNuevo}`
     });
   });
   res.status(201).json({ id: lastInsertRowid });
@@ -1518,15 +1751,159 @@ app.get('/api/movimientos-stock', (req, res) => {
       `SELECT movimientos_stock.id, movimientos_stock.fecha, movimientos_stock.tipo,
               movimientos_stock.cantidad, movimientos_stock.origen, movimientos_stock.nota,
               movimientos_stock.venta_id, movimientos_stock.compra_id, movimientos_stock.devolucion_id,
-              movimientos_stock.producto_id,
-              productos.nombre AS producto
+              movimientos_stock.devolucion_proveedor_id, movimientos_stock.transferencia_id,
+              movimientos_stock.producto_id, movimientos_stock.deposito_id,
+              productos.nombre AS producto, depositos.nombre AS deposito
          FROM movimientos_stock
          JOIN productos ON productos.id = movimientos_stock.producto_id
+         LEFT JOIN depositos ON depositos.id = movimientos_stock.deposito_id
         ORDER BY movimientos_stock.fecha DESC, movimientos_stock.id DESC
         LIMIT ?`
     )
     .all(limite);
   res.json(movimientos);
+});
+
+/* ---------- Transferencias entre depósitos (CLAUDE.md §19) ---------- */
+//
+// Una transferencia mueve mercadería entre dos depósitos y se modela como
+// operación propia (no como dos ajustes sueltos) para que sea auditable y
+// anulable como cualquier otra: genera exactamente dos movimientos de
+// stock (salida en origen + entrada en destino) que la referencian por
+// transferencia_id. Nexo NO transfiere solo desde ningún otro endpoint
+// (una venta sin stock en su depósito se rechaza, no se resuelve moviendo
+// mercadería sin que nadie la haya movido físicamente) — esta es la única
+// vía por la que el stock cambia de depósito.
+
+app.get('/api/transferencias', (req, res) => {
+  const transferencias = db
+    .prepare(
+      `SELECT transferencias.id, transferencias.fecha, transferencias.estado, transferencias.nota,
+              transferencias.deposito_origen_id, origen.nombre AS deposito_origen,
+              transferencias.deposito_destino_id, destino.nombre AS deposito_destino,
+              mov.producto_id, productos.nombre AS producto, mov.cantidad
+         FROM transferencias
+         JOIN depositos AS origen ON origen.id = transferencias.deposito_origen_id
+         JOIN depositos AS destino ON destino.id = transferencias.deposito_destino_id
+         -- Solo el movimiento ORIGINAL de la transferencia (el primero, por
+         -- id): anular agrega un segundo movimiento 'salida' de reversión
+         -- (la entrada original se revierte con una salida), así que sin
+         -- este MIN() una transferencia anulada aparecería dos veces.
+         JOIN movimientos_stock AS mov ON mov.id = (
+           SELECT MIN(id) FROM movimientos_stock
+            WHERE transferencia_id = transferencias.id AND tipo = 'salida'
+         )
+         JOIN productos ON productos.id = mov.producto_id
+        ORDER BY transferencias.fecha DESC, transferencias.id DESC`
+    )
+    .all();
+  res.json(transferencias);
+});
+
+app.post('/api/transferencias', (req, res) => {
+  const { deposito_origen_id, deposito_destino_id, producto_id, cantidad, nota } = req.body;
+
+  if (!deposito_origen_id || !deposito_destino_id) {
+    return res.status(400).json({ error: 'Elegí depósito de origen y de destino.' });
+  }
+  if (Number(deposito_origen_id) === Number(deposito_destino_id)) {
+    return res.status(400).json({ error: 'El depósito de origen y de destino no pueden ser el mismo.' });
+  }
+  const origen = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(deposito_origen_id);
+  if (!origen) {
+    return res.status(400).json({ error: 'El depósito de origen no existe o está inactivo.' });
+  }
+  const destino = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(deposito_destino_id);
+  if (!destino) {
+    return res.status(400).json({ error: 'El depósito de destino no existe o está inactivo.' });
+  }
+  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
+  if (!producto) {
+    return res.status(400).json({ error: 'El producto no existe.' });
+  }
+  if (!Number(cantidad) || Number(cantidad) <= 0) {
+    return res.status(400).json({ error: 'La cantidad a transferir tiene que ser mayor a 0.' });
+  }
+  const stockOrigen = db
+    .prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?')
+    .get(producto_id, deposito_origen_id)?.cantidad ?? 0;
+  if (Number(cantidad) > stockOrigen) {
+    return res.status(400).json({
+      error: `No hay suficiente stock de "${producto.nombre}" en "${origen.nombre}" (disponible: ${stockOrigen}).`
+    });
+  }
+
+  let lastInsertRowid;
+  withTransaction(() => {
+    ({ lastInsertRowid } = db
+      .prepare(
+        'INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota) VALUES (?, ?, ?)'
+      )
+      .run(Number(deposito_origen_id), Number(deposito_destino_id), nota ?? null));
+    registrarMovimientoStock({
+      producto_id: Number(producto_id),
+      deposito_id: Number(deposito_origen_id),
+      tipo: 'salida',
+      cantidad: Number(cantidad),
+      origen: 'transferencia',
+      transferencia_id: lastInsertRowid
+    });
+    registrarMovimientoStock({
+      producto_id: Number(producto_id),
+      deposito_id: Number(deposito_destino_id),
+      tipo: 'entrada',
+      cantidad: Number(cantidad),
+      origen: 'transferencia',
+      transferencia_id: lastInsertRowid
+    });
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'transferencia',
+      entidad_id: lastInsertRowid,
+      detalle: `Transferencia de ${cantidad} "${producto.nombre}" de "${origen.nombre}" a "${destino.nombre}"`
+    });
+  });
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.post('/api/transferencias/:id/anular', (req, res) => {
+  const transferenciaId = Number(req.params.id);
+  const transferencia = db.prepare('SELECT * FROM transferencias WHERE id = ?').get(transferenciaId);
+  if (!transferencia) {
+    return res.status(404).json({ error: 'Transferencia no encontrada.' });
+  }
+  if (transferencia.estado === 'anulada') {
+    return res.status(400).json({ error: 'Esta transferencia ya está anulada.' });
+  }
+
+  const movimientos = db
+    .prepare('SELECT producto_id, deposito_id, tipo, cantidad FROM movimientos_stock WHERE transferencia_id = ?')
+    .all(transferenciaId);
+
+  withTransaction(() => {
+    // Revierte con el par contrario, nunca borra filas — mismo criterio
+    // que revertirDevolucion: la salida original se revierte con una
+    // entrada en ese mismo depósito, y viceversa.
+    for (const mov of movimientos) {
+      registrarMovimientoStock({
+        producto_id: mov.producto_id,
+        deposito_id: mov.deposito_id,
+        tipo: mov.tipo === 'salida' ? 'entrada' : 'salida',
+        cantidad: mov.cantidad,
+        origen: 'transferencia',
+        transferencia_id: transferenciaId,
+        nota: 'Reversión por anulación'
+      });
+    }
+    db.prepare("UPDATE transferencias SET estado = 'anulada' WHERE id = ?").run(transferenciaId);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'transferencia',
+      entidad_id: transferenciaId,
+      detalle: `Transferencia #${transferenciaId} anulada`
+    });
+  });
+  res.json({ id: transferenciaId });
 });
 
 /* ---------- Ventas ---------- */
@@ -1588,9 +1965,12 @@ app.get('/api/ventas/:id', (req, res) => {
   const venta = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
+              ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
               EXISTS (SELECT 1 FROM devoluciones
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
-         FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+         FROM ventas
+         JOIN clientes ON clientes.id = ventas.cliente_id
+         LEFT JOIN depositos ON depositos.id = ventas.deposito_id
         WHERE ventas.id = ?`
     )
     .get(ventaId);
@@ -1645,15 +2025,37 @@ app.get('/api/ventas/:id', (req, res) => {
   });
 });
 
-// Valida que haya stock para todos los items pedidos. Devuelve un mensaje
-// de error o null si está todo bien. Se suman las cantidades por producto
-// primero, por si el mismo producto aparece en más de un renglón.
-// La usan el alta de venta y la conversión de un presupuesto: las dos
-// tienen que rechazar por el mismo motivo y con el mismo texto.
-function validarStockDisponible(items) {
+// Dónde más hay stock de un producto, para el mensaje de error de una
+// venta que no puede completarse en el depósito elegido (CLAUDE.md §19,
+// decisión del usuario: bloquear y avisar dónde sí hay, nunca transferir
+// solo). Devuelve algo como "Depósito Central: 8" o "" si no hay en
+// ningún otro lado.
+function dondeHayStock(productoId, excluirDepositoId) {
+  const filas = db
+    .prepare(
+      `SELECT depositos.nombre, stock_por_deposito.cantidad
+         FROM stock_por_deposito
+         JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
+        WHERE stock_por_deposito.producto_id = ? AND stock_por_deposito.deposito_id <> ?
+          AND depositos.activo = 1 AND stock_por_deposito.cantidad > 0
+        ORDER BY stock_por_deposito.cantidad DESC`
+    )
+    .all(productoId, excluirDepositoId);
+  if (filas.length === 0) return '';
+  return ` Hay stock en: ${filas.map((f) => `${f.nombre} (${f.cantidad})`).join(', ')}.`;
+}
+
+// Valida que haya stock para todos los items pedidos, EN EL DEPÓSITO
+// ELEGIDO. Devuelve un mensaje de error o null si está todo bien. Se suman
+// las cantidades por producto primero, por si el mismo producto aparece en
+// más de un renglón. La usan el alta de venta y la conversión de un
+// presupuesto: las dos tienen que rechazar por el mismo motivo y con el
+// mismo texto.
+function validarStockDisponible(items, depositoId) {
   const buscarStockDisponible = db.prepare(
-    `SELECT productos.nombre, COALESCE(stock_actual.cantidad, 0) AS stock
-     FROM productos LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+    `SELECT productos.nombre, COALESCE(stock_por_deposito.cantidad, 0) AS stock
+     FROM productos LEFT JOIN stock_por_deposito
+       ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
      WHERE productos.id = ?`
   );
   const cantidadPorProducto = new Map();
@@ -1664,12 +2066,12 @@ function validarStockDisponible(items) {
     );
   }
   for (const [producto_id, cantidadPedida] of cantidadPorProducto) {
-    const producto = buscarStockDisponible.get(producto_id);
+    const producto = buscarStockDisponible.get(depositoId, producto_id);
     if (!producto) {
       return 'Uno de los productos de la venta no existe.';
     }
     if (cantidadPedida > producto.stock) {
-      return `No hay suficiente stock de "${producto.nombre}" (disponible: ${producto.stock}).`;
+      return `No hay suficiente stock de "${producto.nombre}" (disponible: ${producto.stock}).${dondeHayStock(producto_id, depositoId)}`;
     }
   }
   return null;
@@ -1681,7 +2083,7 @@ function validarStockDisponible(items) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
-function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id }) {
+function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id }) {
   // Si el frontend ya sabe qué cliente es (lo eligió de la lista), usa
   // su id directamente: evita crear un duplicado por una diferencia de
   // tipeo. Si no, se resuelve por nombre y se crea si no existe.
@@ -1706,19 +2108,29 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id }) {
     throw new ErrorBulk('La lista de precios seleccionada no existe.');
   }
 
+  // Mismo criterio que lista_precio_id: nullable, NULL = "el predeterminado
+  // de ese momento" (CLAUDE.md §19). Si viene un id, tiene que existir y
+  // estar activo.
+  const depositoId = deposito_id ? Number(deposito_id) : null;
+  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+    throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
+  }
+  const depositoResuelto = depositoId ?? depositoPredeterminadoId();
+
   // Si no viene fecha, se omite la columna para que aplique el
   // DEFAULT date('now') de la tabla en vez de pisarlo con un valor JS.
   const { lastInsertRowid: nuevaVentaId } = fecha
-    ? db.prepare('INSERT INTO ventas (cliente_id, fecha, lista_precio_id) VALUES (?, ?, ?)').run(clienteRow.id, fecha, listaPrecioId)
-    : db.prepare('INSERT INTO ventas (cliente_id, lista_precio_id) VALUES (?, ?)').run(clienteRow.id, listaPrecioId);
+    ? db
+        .prepare('INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id) VALUES (?, ?, ?, ?)')
+        .run(clienteRow.id, fecha, listaPrecioId, depositoId)
+    : db
+        .prepare('INSERT INTO ventas (cliente_id, lista_precio_id, deposito_id) VALUES (?, ?, ?)')
+        .run(clienteRow.id, listaPrecioId, depositoId);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const insertItem = db.prepare(
     `INSERT INTO venta_items (venta_id, producto_id, cantidad, precio_unitario, costo_unitario_historico)
      VALUES (?, ?, ?, ?, ?)`
-  );
-  const insertMovimiento = db.prepare(
-    "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id) VALUES (?, 'salida', ?, 'venta', ?)"
   );
 
   let total = 0;
@@ -1727,7 +2139,14 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id }) {
     // la foto del momento de la venta, no se vuelve a recalcular después.
     const { precio_costo: costoActual } = buscarCostoActual.get(item.producto_id);
     insertItem.run(nuevaVentaId, item.producto_id, item.cantidad, item.precio_unitario, costoActual);
-    insertMovimiento.run(item.producto_id, item.cantidad, nuevaVentaId);
+    registrarMovimientoStock({
+      producto_id: item.producto_id,
+      deposito_id: depositoResuelto,
+      tipo: 'salida',
+      cantidad: item.cantidad,
+      origen: 'venta',
+      venta_id: nuevaVentaId
+    });
     // Ya NO se pisa productos.precio_venta con el precio de esta venta
     // (CLAUDE.md §18): con varias listas de precios, una venta con un
     // precio puntual (descuento, negociación) bajaría en silencio el
@@ -1748,15 +2167,19 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id }) {
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha, lista_precio_id } = req.body;
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La venta necesita al menos un item.' });
   }
+  const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId();
+  if (deposito_id && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+    return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
+  }
 
-  // No se puede vender más de lo que hay: se valida antes de tocar nada,
-  // así una venta que falla no deja nada a mitad de camino.
-  const errorStock = validarStockDisponible(items);
+  // No se puede vender más de lo que hay EN ESE DEPÓSITO: se valida antes
+  // de tocar nada, así una venta que falla no deja nada a mitad de camino.
+  const errorStock = validarStockDisponible(items, depositoId);
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
@@ -1764,7 +2187,7 @@ app.post('/api/ventas', (req, res) => {
   let ventaId;
   try {
     ventaId = withTransaction(() => {
-      const id = crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id });
+      const id = crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
       return id;
     });
@@ -1782,16 +2205,26 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, lista_precio_id } = req.body;
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id } = req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
   if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
-  const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  // Editar mantiene el depósito original si no se manda uno nuevo — no se
+  // recalcula al predeterminado ACTUAL en silencio, porque el predeterminado
+  // pudo haber cambiado desde que se cargó la venta.
+  const depositoId = deposito_id !== undefined
+    ? (deposito_id ? Number(deposito_id) : null)
+    : venta.deposito_id;
+  const depositoResuelto = depositoId ?? depositoPredeterminadoId();
+  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+    return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
   if (venta.estado === 'anulada') {
     return res
@@ -1848,20 +2281,28 @@ app.put('/api/ventas/:id', (req, res) => {
       (pedidoPorProducto.get(item.producto_id) ?? 0) + Number(item.cantidad)
     );
   }
+  // El stock liberado por los items viejos solo cuenta si eran del MISMO
+  // depósito que se va a usar ahora: si la venta cambia de depósito al
+  // editarse, lo que libera en el depósito viejo no está disponible en el
+  // nuevo.
+  const liberadoEnDepositoResuelto = venta.deposito_id === depositoResuelto || (!venta.deposito_id && depositoResuelto === depositoPredeterminadoId())
+    ? liberadoPorProducto
+    : new Map();
   const buscarStockDisponible = db.prepare(
-    `SELECT productos.nombre, COALESCE(stock_actual.cantidad, 0) AS stock
-       FROM productos LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+    `SELECT productos.nombre, COALESCE(stock_por_deposito.cantidad, 0) AS stock
+       FROM productos LEFT JOIN stock_por_deposito
+         ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
       WHERE productos.id = ?`
   );
   for (const [productoId, cantidadPedida] of pedidoPorProducto) {
-    const producto = buscarStockDisponible.get(productoId);
+    const producto = buscarStockDisponible.get(depositoResuelto, productoId);
     if (!producto) {
       return res.status(400).json({ error: 'Uno de los productos de la venta no existe.' });
     }
-    const disponible = producto.stock + (liberadoPorProducto.get(productoId) ?? 0);
+    const disponible = producto.stock + (liberadoEnDepositoResuelto.get(productoId) ?? 0);
     if (cantidadPedida > disponible) {
       return res.status(400).json({
-        error: `No hay suficiente stock de "${producto.nombre}" (disponible: ${disponible}).`
+        error: `No hay suficiente stock de "${producto.nombre}" (disponible: ${disponible}).${dondeHayStock(productoId, depositoResuelto)}`
       });
     }
   }
@@ -1873,12 +2314,19 @@ app.put('/api/ventas/:id', (req, res) => {
       )
       .get(ventaId);
 
-    // 1) Revertir el stock que se había descontado.
-    const insertEntrada = db.prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id, nota) VALUES (?, 'entrada', ?, 'venta', ?, 'Reversión por edición')"
-    );
+    // 1) Revertir el stock que se había descontado, en el depósito ORIGINAL
+    // de la venta (no en el nuevo, si cambió al editar).
+    const depositoOriginal = venta.deposito_id ?? depositoPredeterminadoId();
     for (const item of itemsViejos) {
-      insertEntrada.run(item.producto_id, item.cantidad, ventaId);
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        deposito_id: depositoOriginal,
+        tipo: 'entrada',
+        cantidad: item.cantidad,
+        origen: 'venta',
+        venta_id: ventaId,
+        nota: 'Reversión por edición'
+      });
     }
 
     // 2) Reemplazar cliente, fecha e items.
@@ -1889,10 +2337,11 @@ app.put('/api/ventas/:id', (req, res) => {
       const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
       clienteRow = { id: lastInsertRowid };
     }
-    db.prepare('UPDATE ventas SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ? WHERE id = ?').run(
+    db.prepare('UPDATE ventas SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ? WHERE id = ?').run(
       clienteRow.id,
       fecha || null,
       listaPrecioId,
+      depositoId,
       ventaId
     );
 
@@ -1903,9 +2352,6 @@ app.put('/api/ventas/:id', (req, res) => {
       `INSERT INTO venta_items (venta_id, producto_id, cantidad, precio_unitario, costo_unitario_historico)
        VALUES (?, ?, ?, ?, ?)`
     );
-    const insertSalida = db.prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id) VALUES (?, 'salida', ?, 'venta', ?)"
-    );
 
     let total = 0;
     for (const item of items) {
@@ -1913,7 +2359,14 @@ app.put('/api/ventas/:id', (req, res) => {
       // costo actual del producto en este momento, no el que tenía antes.
       const { precio_costo: costoActual } = buscarCostoActual.get(item.producto_id);
       insertItem.run(ventaId, item.producto_id, item.cantidad, item.precio_unitario, costoActual);
-      insertSalida.run(item.producto_id, item.cantidad, ventaId);
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        deposito_id: depositoResuelto,
+        tipo: 'salida',
+        cantidad: item.cantidad,
+        origen: 'venta',
+        venta_id: ventaId
+      });
       // Ya NO se pisa productos.precio_venta acá tampoco — mismo motivo que
       // en crearVenta (CLAUDE.md §18).
       total += item.cantidad * item.precio_unitario;
@@ -2095,7 +2548,7 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
 app.post('/api/ventas/:id/anular', (req, res) => {
   const ventaId = Number(req.params.id);
 
-  const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -2125,15 +2578,21 @@ app.post('/api/ventas/:id/anular', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(ventaId);
 
+    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
     const items = db
       .prepare('SELECT producto_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
       .all(ventaId);
-    const insertMovimiento = db.prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id, nota) VALUES (?, 'entrada', ?, 'venta', ?, 'Reversión por anulación')"
-    );
     let total = 0;
     for (const item of items) {
-      insertMovimiento.run(item.producto_id, item.cantidad, ventaId);
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        deposito_id: depositoVenta,
+        tipo: 'entrada',
+        cantidad: item.cantidad,
+        origen: 'venta',
+        venta_id: ventaId,
+        nota: 'Reversión por anulación'
+      });
       total += item.cantidad * item.precio_unitario;
     }
 
@@ -2158,13 +2617,14 @@ app.post('/api/ventas/:id/anular', (req, res) => {
 app.post('/api/ventas/:id/restaurar', (req, res) => {
   const ventaId = Number(req.params.id);
 
-  const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
   if (venta.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta venta no está en la papelera.' });
   }
+  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
 
   const items = db
     .prepare(
@@ -2174,12 +2634,14 @@ app.post('/api/ventas/:id/restaurar', (req, res) => {
     )
     .all(ventaId);
 
-  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+  const buscarStockDeposito = db.prepare(
+    'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
+  );
   for (const item of items) {
-    const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+    const stockActual = buscarStockDeposito.get(item.producto_id, depositoVenta)?.cantidad ?? 0;
     if (stockActual - item.cantidad < 0) {
       return res.status(400).json({
-        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta venta.`
+        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta venta.${dondeHayStock(item.producto_id, depositoVenta)}`
       });
     }
   }
@@ -2187,12 +2649,17 @@ app.post('/api/ventas/:id/restaurar', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
 
-    const insertMovimiento = db.prepare(
-      "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, venta_id, nota) VALUES (?, 'salida', ?, 'venta', ?, 'Restaurada desde la papelera')"
-    );
     let total = 0;
     for (const item of items) {
-      insertMovimiento.run(item.producto_id, item.cantidad, ventaId);
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        deposito_id: depositoVenta,
+        tipo: 'salida',
+        cantidad: item.cantidad,
+        origen: 'venta',
+        venta_id: ventaId,
+        nota: 'Restaurada desde la papelera'
+      });
       total += item.cantidad * item.precio_unitario;
     }
 
@@ -2501,7 +2968,12 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
     return res.status(400).json({ error: 'El presupuesto no tiene items para convertir.' });
   }
 
-  const errorStock = validarStockDisponible(items);
+  // Los presupuestos no llevan depósito propio (son una oferta, no
+  // comprometen mercadería de un lugar concreto): al convertir se usa el
+  // predeterminado del momento, igual que cualquier venta sin depósito
+  // elegido a mano.
+  const depositoConversion = depositoPredeterminadoId();
+  const errorStock = validarStockDisponible(items, depositoConversion);
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
@@ -2513,6 +2985,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       cliente_id: presupuesto.cliente_id,
       items,
       fecha: null,
+      deposito_id: depositoConversion,
       lista_precio_id: presupuesto.lista_precio_id
     });
     db.prepare("UPDATE presupuestos SET estado = 'convertido', venta_id = ? WHERE id = ?").run(
@@ -2640,7 +3113,8 @@ function itemsDevolviblesDeVenta(ventaId) {
 function aplicarDevolucion(devolucionId) {
   const devolucion = db
     .prepare(
-      `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, ventas.cliente_id
+      `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, devoluciones.deposito_id,
+              ventas.cliente_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ?`
     )
@@ -2652,14 +3126,20 @@ function aplicarDevolucion(devolucionId) {
     )
     .all(devolucionId);
 
-  const insertEntrada = db.prepare(
-    "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, devolucion_id, nota) VALUES (?, 'entrada', ?, 'devolucion', ?, 'Devolución de venta')"
-  );
-
   let total = 0;
   for (const item of items) {
     if (item.vuelve_stock) {
-      insertEntrada.run(item.producto_id, item.cantidad, devolucionId);
+      // Reingresa al mismo depósito de donde salió con la venta original:
+      // es la mercadería físicamente volviendo al lugar del que se fue.
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        deposito_id: devolucion.deposito_id,
+        tipo: 'entrada',
+        cantidad: item.cantidad,
+        origen: 'devolucion',
+        devolucion_id: devolucionId,
+        nota: 'Devolución de venta'
+      });
     }
     total += item.cantidad * item.precio_unitario;
   }
@@ -2690,7 +3170,8 @@ function aplicarDevolucion(devolucionId) {
 function revertirDevolucion(devolucionId) {
   const devolucion = db
     .prepare(
-      `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, ventas.cliente_id
+      `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, devoluciones.deposito_id,
+              ventas.cliente_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ?`
     )
@@ -2702,14 +3183,18 @@ function revertirDevolucion(devolucionId) {
     )
     .all(devolucionId);
 
-  const insertSalida = db.prepare(
-    "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, devolucion_id, nota) VALUES (?, 'salida', ?, 'devolucion', ?, 'Reversión por anulación')"
-  );
-
   let total = 0;
   for (const item of items) {
     if (item.vuelve_stock) {
-      insertSalida.run(item.producto_id, item.cantidad, devolucionId);
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        deposito_id: devolucion.deposito_id,
+        tipo: 'salida',
+        cantidad: item.cantidad,
+        origen: 'devolucion',
+        devolucion_id: devolucionId,
+        nota: 'Reversión por anulación'
+      });
     }
     total += item.cantidad * item.precio_unitario;
   }
@@ -2736,7 +3221,7 @@ app.post('/api/devoluciones', (req, res) => {
   const { venta_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const ventaId = Number(venta_id);
 
-  const venta = db.prepare('SELECT id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db.prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -2748,6 +3233,9 @@ app.post('/api/devoluciones', (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La devolución necesita al menos un item.' });
   }
+  // La devolución reingresa al MISMO depósito de la venta original: no es
+  // una elección del operador, es de dónde salió físicamente la mercadería.
+  const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId();
 
   const vistos = new Set();
   for (const item of items) {
@@ -2785,8 +3273,8 @@ app.post('/api/devoluciones', (req, res) => {
 
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
-      .prepare('INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo) VALUES (?, ?, ?)')
-      .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null);
+      .prepare('INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id) VALUES (?, ?, ?, ?)')
+      .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucion);
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_items
@@ -2926,13 +3414,14 @@ app.post('/api/devoluciones/:id/anular', (req, res) => {
 app.post('/api/devoluciones/:id/restaurar', (req, res) => {
   const devolucionId = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado FROM devoluciones WHERE id = ?').get(devolucionId);
+  const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones WHERE id = ?').get(devolucionId);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
   if (devolucion.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta devolución no está en la papelera.' });
   }
+  const depositoDevolucionVentaRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId();
 
   const items = db
     .prepare(
@@ -2943,13 +3432,15 @@ app.post('/api/devoluciones/:id/restaurar', (req, res) => {
     )
     .all(devolucionId);
 
-  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+  const buscarStockDeposito = db.prepare(
+    'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
+  );
   for (const item of items) {
     if (!item.vuelve_stock) continue;
-    const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+    const stockActual = buscarStockDeposito.get(item.producto_id, depositoDevolucionVentaRestaurar)?.cantidad ?? 0;
     if (stockActual - item.cantidad < 0) {
       return res.status(400).json({
-        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta devolución.`
+        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta devolución.${dondeHayStock(item.producto_id, depositoDevolucionVentaRestaurar)}`
       });
     }
   }
@@ -3026,9 +3517,12 @@ app.get('/api/compras/:id', (req, res) => {
     .prepare(
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
               compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
+              compras.deposito_id, depositos.nombre AS deposito,
               EXISTS (SELECT 1 FROM devoluciones_proveedor
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
-         FROM compras JOIN proveedores ON proveedores.id = compras.proveedor_id
+         FROM compras
+         JOIN proveedores ON proveedores.id = compras.proveedor_id
+         LEFT JOIN depositos ON depositos.id = compras.deposito_id
         WHERE compras.id = ?`
     )
     .get(compraId);
@@ -3105,15 +3599,22 @@ function prorratearEnvio(items, costoEnvio) {
 // que crearVenta, asume que ya se validó todo y que se la llama DENTRO de
 // una transacción — así el asistente por texto (§21) puede encadenar
 // crear+confirmar+recibir en una sola transacción atómica.
-function crearCompra({ proveedor, items, costoEnvio, fecha }) {
+function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id }) {
   let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
   if (!proveedorRow) {
     const { lastInsertRowid } = db.prepare('INSERT INTO proveedores (nombre) VALUES (?)').run(proveedor);
     proveedorRow = { id: lastInsertRowid };
   }
 
-  const columnas = ['proveedor_id', 'costo_envio'];
-  const valores = [proveedorRow.id, costoEnvio];
+  // Mismo criterio que en ventas: nullable, NULL = "el predeterminado de
+  // ese momento" (CLAUDE.md §19).
+  const depositoId = deposito_id ? Number(deposito_id) : null;
+  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+    throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
+  }
+
+  const columnas = ['proveedor_id', 'costo_envio', 'deposito_id'];
+  const valores = [proveedorRow.id, costoEnvio, depositoId];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -3153,7 +3654,7 @@ function crearCompra({ proveedor, items, costoEnvio, fecha }) {
 }
 
 app.post('/api/compras', (req, res) => {
-  const { proveedor, items, fecha, costo_envio } = req.body;
+  const { proveedor, items, fecha, costo_envio, deposito_id } = req.body;
 
   if (!proveedor || !String(proveedor).trim()) {
     return res.status(400).json({ error: 'La compra necesita un proveedor.' });
@@ -3177,16 +3678,21 @@ app.post('/api/compras', (req, res) => {
     return res.status(400).json({ error: 'El costo de envío debe ser un número mayor o igual a 0.' });
   }
 
-  const compraId = withTransaction(() => {
-    const id = crearCompra({ proveedor, items, costoEnvio, fecha });
-    auditar(req, {
-      accion: 'crear',
-      entidad: 'compra',
-      entidad_id: id,
-      detalle: `Compra #${id} creada (borrador)`
+  let compraId;
+  try {
+    compraId = withTransaction(() => {
+      const id = crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id });
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'compra',
+        entidad_id: id,
+        detalle: `Compra #${id} creada (borrador)`
+      });
+      return id;
     });
-    return id;
-  });
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
+  }
 
   res.status(201).json({ id: compraId, estado: 'borrador' });
 });
@@ -3200,13 +3706,22 @@ app.post('/api/compras', (req, res) => {
 // promedio ponderado no se puede "restar" de forma exacta.
 app.put('/api/compras/:id', (req, res) => {
   const compraId = Number(req.params.id);
-  const { proveedor, items, fecha, costo_envio } = req.body;
+  const { proveedor, items, fecha, costo_envio, deposito_id } = req.body;
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
+    .prepare('SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
     .get(compraId);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
+  }
+  // Mismo criterio que ventas: mantiene el depósito original si no se
+  // manda uno nuevo, nunca recalcula al predeterminado actual en silencio.
+  const depositoIdNuevo = deposito_id !== undefined
+    ? (deposito_id ? Number(deposito_id) : null)
+    : compra.deposito_id;
+  const depositoResueltoCompra = depositoIdNuevo ?? depositoPredeterminadoId();
+  if (depositoIdNuevo && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoIdNuevo)) {
+    return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
   if (compra.estado === 'anulada') {
     return res
@@ -3257,11 +3772,16 @@ app.put('/api/compras/:id', (req, res) => {
     .all(compraId);
 
   // Si esta compra ya sumó stock, hay que poder sacarlo antes de aplicar
-  // los items nuevos — mismo chequeo que ya usa anular.
+  // los items nuevos — mismo chequeo que ya usa anular. Se valida contra el
+  // depósito ORIGINAL de la compra (de ahí es de donde va a salir la
+  // reversión), no contra el nuevo si cambió de depósito al editar.
   if (compra.stock_aplicado) {
-    const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId();
+    const buscarStockDeposito = db.prepare(
+      'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
+    );
     for (const item of itemsViejos) {
-      const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+      const stockActual = buscarStockDeposito.get(item.producto_id, depositoCompraOriginal)?.cantidad ?? 0;
       if (stockActual - item.cantidad < 0) {
         return res.status(400).json({
           error: `"${item.nombre}" ya se vendió parcial o totalmente, no se puede editar esta compra.`
@@ -3280,13 +3800,19 @@ app.put('/api/compras/:id', (req, res) => {
   );
 
   withTransaction(() => {
-    // 1) Revertir los efectos actuales.
+    // 1) Revertir los efectos actuales, en el depósito ORIGINAL de la compra.
+    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId();
     if (compra.stock_aplicado) {
-      const insertSalida = db.prepare(
-        "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, nota) VALUES (?, 'salida', ?, 'compra', ?, 'Reversión por edición')"
-      );
       for (const item of itemsViejos) {
-        insertSalida.run(item.producto_id, item.cantidad, compraId);
+        registrarMovimientoStock({
+          producto_id: item.producto_id,
+          deposito_id: depositoCompraOriginal,
+          tipo: 'salida',
+          cantidad: item.cantidad,
+          origen: 'compra',
+          compra_id: compraId,
+          nota: 'Reversión por edición'
+        });
       }
     }
     if (compra.estado === 'activa') {
@@ -3308,10 +3834,11 @@ app.put('/api/compras/:id', (req, res) => {
         .run(proveedor);
       proveedorRow = { id: lastInsertRowid };
     }
-    db.prepare('UPDATE compras SET proveedor_id = ?, costo_envio = ?, fecha = COALESCE(?, fecha) WHERE id = ?').run(
+    db.prepare('UPDATE compras SET proveedor_id = ?, costo_envio = ?, fecha = COALESCE(?, fecha), deposito_id = ? WHERE id = ?').run(
       proveedorRow.id,
       costoEnvio,
       fecha || null,
+      depositoIdNuevo,
       compraId
     );
 
@@ -3356,15 +3883,19 @@ app.put('/api/compras/:id', (req, res) => {
     }
 
     if (compra.stock_aplicado) {
-      const insertEntrada = db.prepare(
-        `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, costo_unitario)
-         VALUES (?, 'entrada', ?, 'compra', ?, ?)`
-      );
       const nuevos = db
         .prepare('SELECT producto_id, cantidad, costo_real_unitario FROM compra_items WHERE compra_id = ?')
         .all(compraId);
       for (const item of nuevos) {
-        insertEntrada.run(item.producto_id, item.cantidad, compraId, item.costo_real_unitario);
+        registrarMovimientoStock({
+          producto_id: item.producto_id,
+          deposito_id: depositoResueltoCompra,
+          tipo: 'entrada',
+          cantidad: item.cantidad,
+          origen: 'compra',
+          compra_id: compraId,
+          costo_unitario: item.costo_real_unitario
+        });
       }
 
       // Recalcular el costo de todos los productos tocados: los que salían
@@ -3436,20 +3967,24 @@ app.post('/api/compras/:id/confirmar', (req, res) => {
 // Suma el stock de una compra y recalcula el costo promedio ponderado de
 // cada producto. Usa costo_real_unitario (con el envío ya prorrateado), no
 // el precio unitario pelado. Se llama dentro de una transacción.
+//
+// El costo promedio ponderado sigue siendo GLOBAL a propósito (lee
+// stock_actual, no stock_por_deposito): el costo es un atributo del
+// producto, no de en qué depósito está guardado físicamente — un mismo
+// producto no vale distinto según el estante (CLAUDE.md §5/§19, decisión
+// del usuario). El movimiento de stock en sí sí va al depósito de la compra.
 function aplicarStockCompra(compraId) {
   const items = db
     .prepare(
       'SELECT producto_id, cantidad, costo_real_unitario, precio_unitario FROM compra_items WHERE compra_id = ?'
     )
     .all(compraId);
+  const { deposito_id: depositoCompra } = db.prepare('SELECT deposito_id FROM compras WHERE id = ?').get(compraId);
+  const depositoResuelto = depositoCompra ?? depositoPredeterminadoId();
 
   const buscarProducto = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
   const actualizarPrecioCosto = db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?');
-  const insertMovimiento = db.prepare(
-    `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, costo_unitario)
-     VALUES (?, 'entrada', ?, 'compra', ?, ?)`
-  );
 
   for (const item of items) {
     const costoReal = item.costo_real_unitario ?? item.precio_unitario;
@@ -3461,7 +3996,15 @@ function aplicarStockCompra(compraId) {
       (stockPrevio * costoAnterior + item.cantidad * costoReal) / (stockPrevio + item.cantidad);
 
     actualizarPrecioCosto.run(costoPromedio, item.producto_id);
-    insertMovimiento.run(item.producto_id, item.cantidad, compraId, costoReal);
+    registrarMovimientoStock({
+      producto_id: item.producto_id,
+      deposito_id: depositoResuelto,
+      tipo: 'entrada',
+      cantidad: item.cantidad,
+      origen: 'compra',
+      compra_id: compraId,
+      costo_unitario: costoReal
+    });
   }
 
   db.prepare('UPDATE compras SET stock_aplicado = 1 WHERE id = ?').run(compraId);
@@ -3521,7 +4064,7 @@ app.post('/api/compras/:id/anular', (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
+    .prepare('SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
     .get(compraId);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
@@ -3551,14 +4094,17 @@ app.post('/api/compras/:id/anular', (req, res) => {
        WHERE compra_id = ?`
     )
     .all(compraId);
+  const depositoCompraAnular = compra.deposito_id ?? depositoPredeterminadoId();
 
   // El stock solo hay que devolverlo si esta compra llegó a sumarlo (o sea,
   // si se marcó recibida). Un borrador o un pedido en camino no tocaron el
   // depósito, así que no hay nada que revertir ni que validar.
   if (compra.stock_aplicado) {
-    const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+    const buscarStockDeposito = db.prepare(
+      'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
+    );
     for (const item of items) {
-      const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+      const stockActual = buscarStockDeposito.get(item.producto_id, depositoCompraAnular)?.cantidad ?? 0;
       if (stockActual - item.cantidad < 0) {
         return res.status(400).json({
           error: `"${item.nombre}" ya se vendió parcial o totalmente, no se puede anular la compra.`
@@ -3571,11 +4117,16 @@ app.post('/api/compras/:id/anular', (req, res) => {
     db.prepare("UPDATE compras SET estado = 'anulada' WHERE id = ?").run(compraId);
 
     if (compra.stock_aplicado) {
-      const insertMovimiento = db.prepare(
-        "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, compra_id, nota) VALUES (?, 'salida', ?, 'compra', ?, 'Reversión por anulación')"
-      );
       for (const item of items) {
-        insertMovimiento.run(item.producto_id, item.cantidad, compraId);
+        registrarMovimientoStock({
+          producto_id: item.producto_id,
+          deposito_id: depositoCompraAnular,
+          tipo: 'salida',
+          cantidad: item.cantidad,
+          origen: 'compra',
+          compra_id: compraId,
+          nota: 'Reversión por anulación'
+        });
       }
       // Queda en 0 para que, si se restaura desde la papelera, el stock se
       // vuelva a aplicar en vez de darse por aplicado.
@@ -3943,7 +4494,8 @@ function itemsDevolviblesDeCompra(compraId) {
 function aplicarDevolucionProveedor(devolucionProveedorId) {
   const devolucion = db
     .prepare(
-      `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id, compras.proveedor_id
+      `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id,
+              devoluciones_proveedor.deposito_id, compras.proveedor_id
          FROM devoluciones_proveedor JOIN compras ON compras.id = devoluciones_proveedor.compra_id
         WHERE devoluciones_proveedor.id = ?`
     )
@@ -3955,14 +4507,20 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
     )
     .all(devolucionProveedorId);
 
-  const insertSalida = db.prepare(
-    "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, devolucion_proveedor_id, nota) VALUES (?, 'salida', ?, 'devolucion_proveedor', ?, 'Devolución a proveedor')"
-  );
-
   let total = 0;
   const productosTocados = new Set();
   for (const item of items) {
-    insertSalida.run(item.producto_id, item.cantidad, devolucionProveedorId);
+    // Sale del mismo depósito donde entró con la compra original: es la
+    // mercadería físicamente volviendo al proveedor desde ahí.
+    registrarMovimientoStock({
+      producto_id: item.producto_id,
+      deposito_id: devolucion.deposito_id,
+      tipo: 'salida',
+      cantidad: item.cantidad,
+      origen: 'devolucion_proveedor',
+      devolucion_proveedor_id: devolucionProveedorId,
+      nota: 'Devolución a proveedor'
+    });
     productosTocados.add(item.producto_id);
     total += item.cantidad * item.precio_unitario;
   }
@@ -3997,7 +4555,8 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
 function revertirDevolucionProveedor(devolucionProveedorId) {
   const devolucion = db
     .prepare(
-      `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id, compras.proveedor_id
+      `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id,
+              devoluciones_proveedor.deposito_id, compras.proveedor_id
          FROM devoluciones_proveedor JOIN compras ON compras.id = devoluciones_proveedor.compra_id
         WHERE devoluciones_proveedor.id = ?`
     )
@@ -4009,14 +4568,18 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
     )
     .all(devolucionProveedorId);
 
-  const insertEntrada = db.prepare(
-    "INSERT INTO movimientos_stock (producto_id, tipo, cantidad, origen, devolucion_proveedor_id, nota) VALUES (?, 'entrada', ?, 'devolucion_proveedor', ?, 'Reversión por anulación')"
-  );
-
   let total = 0;
   const productosTocados = new Set();
   for (const item of items) {
-    insertEntrada.run(item.producto_id, item.cantidad, devolucionProveedorId);
+    registrarMovimientoStock({
+      producto_id: item.producto_id,
+      deposito_id: devolucion.deposito_id,
+      tipo: 'entrada',
+      cantidad: item.cantidad,
+      origen: 'devolucion_proveedor',
+      devolucion_proveedor_id: devolucionProveedorId,
+      nota: 'Reversión por anulación'
+    });
     productosTocados.add(item.producto_id);
     total += item.cantidad * item.precio_unitario;
   }
@@ -4046,10 +4609,11 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
   const { compra_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const compraId = Number(compra_id);
 
-  const compra = db.prepare('SELECT id, estado, stock_aplicado FROM compras WHERE id = ?').get(compraId);
+  const compra = db.prepare('SELECT id, estado, stock_aplicado, deposito_id FROM compras WHERE id = ?').get(compraId);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
+  const depositoDevolucionProveedor = compra.deposito_id ?? depositoPredeterminadoId();
   if (compra.estado === 'anulada') {
     return res
       .status(400)
@@ -4086,8 +4650,10 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
   const disponibles = new Map(itemsDevolviblesDeCompra(compraId).map((r) => [r.compra_item_id, r]));
   // A diferencia de una devolución de venta (que solo agrega stock), acá se
   // saca stock: si parte de esta mercadería ya se vendió, no se puede sacar
-  // más de lo que efectivamente sigue en el depósito.
-  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+  // más de lo que efectivamente sigue en el depósito de la compra original.
+  const buscarStockDeposito = db.prepare(
+    'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
+  );
   for (const item of items) {
     const renglon = disponibles.get(Number(item.compra_item_id));
     if (!renglon) {
@@ -4098,7 +4664,7 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
         error: `No se puede devolver más de lo comprado de "${renglon.nombre}" (disponible: ${renglon.disponible}).`
       });
     }
-    const stockActual = buscarStockActual.get(renglon.producto_id)?.cantidad ?? 0;
+    const stockActual = buscarStockDeposito.get(renglon.producto_id, depositoDevolucionProveedor)?.cantidad ?? 0;
     if (Number(item.cantidad) > stockActual) {
       return res.status(400).json({
         error: `No hay stock suficiente de "${renglon.nombre}" para devolver (stock actual: ${stockActual}).`
@@ -4108,8 +4674,8 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
 
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
-      .prepare('INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo) VALUES (?, ?, ?)')
-      .run(compraId, cuenta_tesoreria_id || null, motivo?.trim() || null);
+      .prepare('INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id) VALUES (?, ?, ?, ?)')
+      .run(compraId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucionProveedor);
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_proveedor_items
@@ -4217,13 +4783,14 @@ app.post('/api/devoluciones-proveedor/:id/anular', (req, res) => {
 app.post('/api/devoluciones-proveedor/:id/restaurar', (req, res) => {
   const id = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado FROM devoluciones_proveedor WHERE id = ?').get(id);
+  const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones_proveedor WHERE id = ?').get(id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
   if (devolucion.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta devolución no está en la papelera.' });
   }
+  const depositoDevolucionRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId();
 
   const items = db
     .prepare(
@@ -4232,12 +4799,14 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', (req, res) => {
         WHERE devolucion_proveedor_id = ?`
     )
     .all(id);
-  const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
+  const buscarStockDeposito = db.prepare(
+    'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
+  );
   for (const item of items) {
-    const stockActual = buscarStockActual.get(item.producto_id)?.cantidad ?? 0;
+    const stockActual = buscarStockDeposito.get(item.producto_id, depositoDevolucionRestaurar)?.cantidad ?? 0;
     if (stockActual - item.cantidad < 0) {
       return res.status(400).json({
-        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta devolución.`
+        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta devolución.${dondeHayStock(item.producto_id, depositoDevolucionRestaurar)}`
       });
     }
   }
@@ -6143,7 +6712,11 @@ app.post('/api/asistente/ejecutar', (req, res) => {
       return res.status(400).json({ error: 'La venta necesita un cliente.' });
     }
 
-    const errorStock = validarStockDisponible(items);
+    // El asistente todavía no interpreta depósito desde el texto (CLAUDE.md
+    // §19 y §21 son etapas separadas): usa el predeterminado, igual que la
+    // conversión de un presupuesto.
+    const depositoAsistente = depositoPredeterminadoId();
+    const errorStock = validarStockDisponible(items, depositoAsistente);
     if (errorStock) {
       return res.status(400).json({ error: errorStock });
     }
@@ -6174,7 +6747,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           cliente: clienteNombre,
           cliente_id: clienteId,
           items,
-          fecha: propuesta.fecha
+          fecha: propuesta.fecha,
+          deposito_id: depositoAsistente
         });
         auditar(req, {
           accion: 'crear',

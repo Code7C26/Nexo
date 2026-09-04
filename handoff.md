@@ -3265,3 +3265,245 @@ elegida):
   vale mencionarlo si en el futuro se pide poder cargar todo de una.
 - `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
   arrastra de varias etapas atrás).
+
+## 24. Última etapa: multidepósito (CLAUDE.md §19)
+
+**El pedido**: seguir sumando funciones. Se preguntó con `AskUserQuestion`
+entre cuatro opciones (multidepósito, vencimientos/aging de CC, marca y
+unidad de medida, notas de débito) y el usuario eligió **multidepósito** —
+la brecha arquitectónica más grande que quedaba de `CLAUDE.md`: §5 dice
+textualmente "el stock debe manejarse por producto y depósito, no asumir
+que un producto tiene un único stock global", y hasta esta etapa Nexo lo
+asumía.
+
+**Etapa 0**: se commiteó primero la etapa de listas de precios (§23) que
+venía desplegada sin commitear desde la sesión anterior (commit `0802c2d`,
+en la misma rama `feature/reportes-compras-estadisticas`), para que el
+diff de esta etapa viniera limpio.
+
+**Lo que hizo la etapa viable**: el stock ya era un *ledger append-only* —
+no existe `productos.stock_actual`, todo se deriva de `movimientos_stock`
+vía la VIEW `stock_actual`, y las reversiones (anular/editar/restaurar)
+insertan movimientos contrarios en vez de borrar filas. Agregar
+`deposito_id` al ledger y agrupar por `(producto_id, deposito_id)` dio
+stock por depósito sin reescribir la lógica de ninguna operación.
+
+**Decisiones de negocio confirmadas con el usuario antes de programar**
+(tres rondas de `AskUserQuestion`, las tres con la opción recomendada):
+- `stock_minimo`/`stock_maximo` siguen siendo **globales por producto**
+  (no por depósito); el semáforo compara contra el stock **total**.
+- **Un depósito por operación**, no por renglón: Venta, Compra, Devolución
+  y Dev. a proveedor llevan un único `deposito_id` en la cabecera.
+- Si falta stock en el depósito elegido, Nexo **bloquea y avisa dónde sí
+  hay** stock — nunca transfiere solo (moverlo sin que nadie lo haya
+  movido físicamente haría que el sistema mienta sobre dónde están las
+  cosas).
+
+### Migración (aditiva)
+
+- `backend/db/schema.sql`: tabla nueva `depositos` (junto a
+  `listas_precios`, mismo molde — "exactamente uno predeterminado"
+  garantizado por el backend); tabla nueva `transferencias` (cabecera de
+  una transferencia entre depósitos); `movimientos_stock` gana
+  `deposito_id` NOT NULL y `transferencia_id`, más `'transferencia'` en el
+  CHECK de `origen`. **`stock_actual` se conserva tal cual** (total por
+  producto) y se agregó una vista nueva `stock_por_deposito` — a
+  propósito, no se le cambió el `GROUP BY` a `stock_actual`: hay 7 sitios
+  en `server.js` que hacen `SELECT ... FROM stock_actual WHERE producto_id
+  = ?` esperando una sola fila (costo promedio, semáforo); agruparla por
+  dos columnas los habría roto en silencio (`.get()` tomando una fila al
+  azar entre varias).
+- **Bug propio encontrado y corregido durante la verificación**: el índice
+  sobre `(producto_id, deposito_id)` y la vista `stock_por_deposito`
+  **no pueden vivir en `schema.sql`** — en una base existente ese archivo
+  corre primero, antes de que el rebuild de `index.js` agregue
+  `deposito_id`, así que fallarían con "no such column". Se crean en
+  `db/index.js`, **incondicionales con `IF NOT EXISTS`** después del
+  bloque de rebuild (no solo adentro): en una base **fresca**,
+  `schema.sql` ya crea `movimientos_stock` CON `deposito_id` desde el
+  arranque, así que el guard del rebuild (`!sql.includes('deposito_id')`)
+  da `false` y el bloque entero se saltea — sin el `IF NOT EXISTS` de
+  afuera, una base nueva se hubiera quedado sin el índice ni la vista.
+  Mismo motivo por el que `saldo_tesoreria` tampoco vive en `schema.sql`.
+- `backend/db/index.js`: seed de `depositos` (crea "Depósito principal"
+  como predeterminado si la tabla está vacía) ubicado **antes** del
+  rebuild de `movimientos_stock` porque el backfill necesita su id; quinto
+  rebuild de tabla del archivo (`movimientos_stock`, con
+  `deposito_id`/`transferencia_id`/CHECK nuevo) — backfillea todo el
+  historial al depósito principal, así el stock de cada producto queda
+  exactamente igual que antes; `deposito_id` nullable agregado por ALTER a
+  `ventas`, `compras`, `devoluciones`, `devoluciones_proveedor` (mismo
+  criterio que `lista_precio_id`: NULL = "el predeterminado de ese
+  momento", nunca un id copiado); **cuarto rebuild de `auditoria`**
+  (`'deposito'` y `'transferencia'` sumados al CHECK de `entidad`).
+
+### Backend (`backend/server.js`)
+
+- **Refactor previo, antes de tocar nada de negocio**: los **14 INSERT
+  literales** a `movimientos_stock` que había repartidos por el archivo
+  (uno por cada operación que toca stock) se centralizaron en
+  `registrarMovimientoStock({...})`. Es lo que evita tener que repetir
+  esta cirugía la próxima vez que el ledger cambie, y hace que
+  `deposito_id` sea imposible de olvidar en un sitio.
+- **Maestro `/api/depositos`** (GET/POST/PATCH), calcado de
+  `/api/listas-precios`: mismas dos reglas de "exactamente un
+  predeterminado" (no se puede desmarcar ni desactivar directamente) más
+  una propia — un depósito con stock cargado **no se puede desactivar**
+  (400 explicando cuánto stock tiene), para no dejar mercadería escondida
+  en un depósito invisible.
+- **`/api/transferencias`** (GET, POST, `POST /:id/anular`): una
+  transferencia es una operación propia (fila en `transferencias` + dos
+  movimientos de stock que la referencian por `transferencia_id`), no dos
+  ajustes sueltos — así es auditable y anulable. Anular inserta el par
+  contrario, nunca borra filas.
+- **`validarStockDisponible(items, depositoId)`** ahora recibe el depósito
+  y valida contra `stock_por_deposito`; su mensaje de error suma **dónde sí
+  hay stock** (`dondeHayStock`, nuevo helper) consultando las otras filas
+  de esa vista para el mismo producto.
+- **`crearVenta`/`crearCompra`** aceptan `deposito_id` (nullable, resuelto
+  al predeterminado si no viene). Se tocaron también: editar/anular/
+  restaurar venta, editar/anular/restaurar compra, `aplicarDevolucion`/
+  `revertirDevolucion` (reingresan al depósito **de la venta original**,
+  no a uno elegido), `aplicarDevolucionProveedor`/
+  `revertirDevolucionProveedor` (salen del depósito **de la compra
+  original**), conversión de presupuesto (usa el predeterminado, los
+  presupuestos no llevan depósito propio) y `/api/asistente/ejecutar` (usa
+  el predeterminado — el asistente todavía no interpreta depósito desde el
+  texto, es una etapa aparte).
+- **El costo promedio ponderado se dejó GLOBAL a propósito**
+  (`aplicarStockCompra` sigue leyendo `stock_actual`, no
+  `stock_por_deposito`): el costo es un atributo del producto, no de dónde
+  está guardado físicamente — transferir mercadería entre depósitos no le
+  cambia el costo. Verificado explícitamente por curl: transferir no mueve
+  `precio_costo`.
+- `GET /api/ventas/:id` y `GET /api/compras/:id` ahora exponen
+  `deposito_id`/`deposito` (antes no lo hacían, hacía falta para que el
+  frontend supiera qué preseleccionar al editar).
+- `/api/stock` pasa a devolver **una fila por producto y depósito** (más
+  `stock_total`, para el semáforo que sigue siendo global).
+  `/api/movimientos-stock` suma `deposito_id`/`deposito` y ya no le faltan
+  los movimientos de `devolucion_proveedor` (bug preexistente: antes cualquier
+  origen sin mapear caía en "Ajuste manual" — con `transferencia` sumado
+  ahora también, se corrigieron los dos casos de una).
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **Modal `#modalDepositos`**, calcado de `#modalListasPrecios`: form
+  inline con `id` oculto (alta/edición), tabla con columna
+  "Predeterminado" y botón "Marcar". Botón "Depósitos" en el header de
+  Stock.
+- **Modal `#modalTransferenciaDeposito`** (producto/origen/destino/
+  cantidad/nota) — nombre distinto de `#modalTransferencia`, que ya
+  existía para transferencias **entre cuentas de tesorería** (cosas
+  distintas, mismo concepto de nombre).
+- **Vista Stock**: la tabla pasa de una fila por producto a una fila por
+  producto+depósito, con columnas nuevas "Depósito" y "Stock total"; panel
+  nuevo "Transferencias entre depósitos" (con acción Anular) entre la
+  tabla de Stock y el Historial de movimientos.
+- **`selStock` (la selección múltiple de la tabla) necesitó un `idDe`
+  custom**: toma `producto_id` y `deposito_id` concatenados — con una fila
+  por producto+depósito, `producto_id` solo dejó de ser único. El
+  comentario que ya estaba en el código antes de esta etapa anticipaba
+  exactamente este cambio.
+- Selector de depósito nuevo en los modales de Venta, Compra y Ajuste de
+  stock (`poblarSelectDepositos`, molde: `poblarSelectListasPrecios`),
+  arrancando en el predeterminado; al editar una venta/compra respeta el
+  depósito que ya tenía.
+- `filtrosStock`/`filtrosStockMov` suman el filtro por depósito;
+  `COLUMNAS_CSV_STOCK` suma depósito y stock total.
+
+### Bug encontrado durante la verificación (de las pruebas, no del código)
+
+El primer despliegue de prueba mostró "Dep?sito principal" en vez de
+"Depósito principal" en el frontend. **No era un bug del código**: los 5
+archivos tocados se verificaron como UTF-8 válido de punta a punta: el
+problema era que un comando de bash de esta sesión (un `node -e` con el
+nombre del depósito embebido en un heredoc, usado solo para poblar datos
+de prueba) corrompió la tilde al pasar por Git Bash en Windows. Se
+corrigió el dato de prueba a mano y se repitió la migración completa desde
+cero contra una copia recién sacada de la base real (con `Copy-Item` de
+PowerShell en vez de `cp`, que en este entorno no copió el archivo de
+forma confiable en un intento — dio un archivo con `sqlite_master` vacío
+sin ningún error) — el resultado, con la migración corriendo limpia desde
+el archivo fuente real, ya tenía la tilde bien. **Lección para la próxima
+sesión que necesite poblar datos de prueba con texto acentuado por un
+one-liner de Node vía Bash**: preferir escribir el string en un archivo
+`.mjs` con Write y ejecutarlo, no embeberlo en un `node -e "..."` dentro de
+un heredoc de bash — es donde se corrompió acá. Y para copiar un `.db` en
+este entorno, `Copy-Item` (PowerShell) resultó más confiable que `cp`
+(bash) al menos una vez.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el **3002**, proceso del 3000 sin tocar hasta tener todo verde.
+- **Migración**: corrida contra una copia fresca de la base **real** de
+  producción (no solo la de prueba acumulada de la sesión) — stock
+  idéntico pre/post, 17 tablas de negocio comparadas 1:1 en row count, cero
+  movimientos con `deposito_id` NULL tras el backfill. Probada también
+  sobre una base completamente vacía (camino "fresca") y con la migración
+  corrida tres veces seguidas sobre una base con datos (idempotencia, sin
+  duplicar filas).
+- **Backend por curl, número a número**: alta/edición de depósitos; no
+  poder desmarcar ni desactivar el predeterminado (400); no poder
+  desactivar uno con stock (400, con la cantidad); marcar otro como
+  predeterminado (siempre exactamente uno marcado); transferir y ver el
+  saldo bajar en origen y subir en destino con el **stock total del
+  producto sin cambios ni cambio de costo**; anular la transferencia y ver
+  los dos saldos volver; vender desde un depósito sin stock teniendo stock
+  en otro (400 con el mensaje "Hay stock en: X (n)"); comprar y devolver
+  contra un depósito no predeterminado; anular/restaurar venta y compra
+  (el stock vuelve al depósito **original** de la operación, no al
+  predeterminado actual); devolución de venta y devolución a proveedor
+  reingresan/salen del depósito correcto; asistente (stub) usando el
+  predeterminado.
+- **Atomicidad, probada de verdad**: un trigger SQL temporal que hace
+  fallar a propósito el segundo movimiento (la entrada) de una
+  transferencia — el primero (la salida) no quedó escrito, el servidor
+  siguió respondiendo (no se colgó), y el stock quedó exactamente como
+  antes del intento. Trigger eliminado después.
+- **Bug propio encontrado y corregido en la misma verificación**:
+  `GET /api/transferencias` mostraba una transferencia anulada **dos
+  veces** — el `JOIN` tomaba cualquier movimiento `salida` asociado, y
+  anular agrega un segundo `salida` (la reversión de la entrada original).
+  Se corrigió acotando el JOIN al `MIN(id)` de esos movimientos (el
+  original, no la reversión).
+- **Frontend con Playwright** (headless, claro/oscuro, 1280px y 375px),
+  corrido dos veces — contra la copia de prueba de la sesión y de nuevo
+  contra una migración fresca de la base real: **31/31 checks en verde,
+  sin errores de consola** las dos veces. Modal de depósitos abre/lista/
+  marca; columna y filtro de depósito en Stock; modal de transferencia con
+  selects poblados; selects de depósito en Venta y Compra; panel de
+  transferencias visible; sin scroll horizontal en mobile.
+- `node --check` en los tres archivos (`server.js`, `db/index.js`,
+  `app.js`) después de cada tanda.
+- **Deploy**: el proceso real **no estaba corriendo** al empezar esta
+  etapa (sin PID que matar). Backup
+  `nexo.db.backup-antes-multideposito-20260904-091043` en `backend/db/`,
+  migración aplicada directo sobre la base real (mismo resultado 1:1 que
+  la prueba), proceso arrancado con `node --experimental-sqlite
+  server.js`. Los endpoints nuevos (`/api/depositos`,
+  `/api/transferencias`) respondieron 401 (no 404: la ruta existe, solo
+  falta sesión) contra el proceso real.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama activa sigue siendo
+  `feature/reportes-compras-estadisticas`. Esta etapa (multidepósito) es
+  un commit propio encima del de listas de precios; falta decidir con el
+  usuario si van al mismo PR o a uno separado.
+- El **reporte de stock** (`/api/reportes/stock`, "qué reponer") sigue
+  mostrando solo el total global por producto, sin desglose por depósito
+  — quedó fuera a propósito de esta etapa (no se pidió explícitamente) pero
+  es una extensión barata si hace falta después, mismo patrón que
+  `/api/stock`.
+- El **asistente de operaciones por texto** no interpreta depósito desde
+  el texto todavía — usa siempre el predeterminado. Enseñarle a reconocer
+  "vendí ... desde la sucursal" es una etapa aparte.
+- `stock_minimo`/`stock_maximo` siguen siendo del producto (global), por
+  decisión explícita de esta etapa — si en el futuro hace falta un mínimo
+  por depósito (ej. una sucursal chica que necesita reponer antes), es una
+  migración nueva sobre `producto_precios`-como-molde, no algo que esta
+  etapa dejó a mitad de camino.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
+  arrastra de varias etapas atrás).

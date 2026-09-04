@@ -213,6 +213,138 @@ if (movimientosStockSql2 && !movimientosStockSql2.sql.includes("'devolucion_prov
   }
   db.exec('PRAGMA foreign_keys = ON');
 }
+// depositos: infraestructura real, mismo criterio que cuentas_tesoreria /
+// organizaciones / listas_precios más abajo — se siembra acá arriba (y no
+// junto a esos otros seeds, al final del archivo) porque el rebuild de
+// movimientos_stock que sigue necesita que ya exista al menos un depósito
+// para poder backfillear deposito_id en los movimientos históricos.
+const { count: depositosCount } = db.prepare('SELECT COUNT(*) AS count FROM depositos').get();
+let depositoPrincipalId;
+if (depositosCount === 0) {
+  ({ lastInsertRowid: depositoPrincipalId } = db
+    .prepare('INSERT INTO depositos (nombre, es_predeterminado) VALUES (?, 1)')
+    .run('Depósito principal'));
+} else {
+  depositoPrincipalId = db
+    .prepare('SELECT id FROM depositos WHERE es_predeterminado = 1')
+    .get()?.id;
+}
+
+// movimientos_stock: agregar deposito_id (CLAUDE.md §5/§19 — el stock se
+// maneja por producto Y depósito, no como un total global único) y
+// transferencia_id, más 'transferencia' al CHECK de origen. Mismo motivo y
+// procedimiento que los dos rebuilds de arriba. Todo el historial existente
+// se backfillea al depósito principal recién creado (o al que ya era
+// predeterminado, si esta migración corre sobre una base que ya tenía
+// depósitos de una corrida anterior cortada a la mitad) — así el stock
+// actual de cada producto, sumado entre depósitos, da exactamente el mismo
+// número que daba antes de esta etapa: no se mueve ni una unidad, solo se
+// le pone nombre a dónde ya estaba.
+const movimientosStockSql3 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_stock'")
+  .get();
+if (movimientosStockSql3 && !movimientosStockSql3.sql.includes('deposito_id')) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec('DROP VIEW IF EXISTS stock_actual');
+    db.exec('DROP VIEW IF EXISTS stock_por_deposito');
+    db.exec(`
+      CREATE TABLE movimientos_stock_nueva3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        producto_id INTEGER NOT NULL REFERENCES productos(id),
+        deposito_id INTEGER NOT NULL REFERENCES depositos(id),
+        tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
+        cantidad REAL NOT NULL,
+        origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia')),
+        origen_id INTEGER,
+        venta_id INTEGER REFERENCES ventas(id),
+        compra_id INTEGER REFERENCES compras(id),
+        devolucion_id INTEGER REFERENCES devoluciones(id),
+        devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
+        transferencia_id INTEGER REFERENCES transferencias(id),
+        fecha TEXT NOT NULL DEFAULT (date('now')),
+        costo_unitario REAL,
+        nota TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO movimientos_stock_nueva3
+             (id, producto_id, deposito_id, tipo, cantidad, origen, origen_id, venta_id, compra_id, devolucion_id, devolucion_proveedor_id, fecha, costo_unitario, nota)
+      SELECT  id, producto_id, ${depositoPrincipalId}, tipo, cantidad, origen, origen_id, venta_id, compra_id, devolucion_id, devolucion_proveedor_id, fecha, costo_unitario, nota
+        FROM movimientos_stock
+    `);
+    db.exec('DROP TABLE movimientos_stock');
+    db.exec('ALTER TABLE movimientos_stock_nueva3 RENAME TO movimientos_stock');
+    db.exec(`
+      CREATE VIEW stock_actual AS
+      SELECT producto_id,
+             SUM(CASE tipo
+                   WHEN 'entrada' THEN cantidad
+                   WHEN 'salida' THEN -cantidad
+                   ELSE cantidad
+                 END) AS cantidad
+      FROM movimientos_stock
+      GROUP BY producto_id
+    `);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// El índice y stock_por_deposito se crean acá, incondicionales con
+// IF NOT EXISTS, en vez de adentro del bloque de arriba: en una base
+// FRESCA, schema.sql ya creó movimientos_stock CON deposito_id desde el
+// vamos (el guard de arriba da false y el rebuild entero se saltea), así
+// que si estas dos líneas vivieran solo adentro del rebuild, una base
+// nueva se quedaría sin índice y sin la vista. stock_por_deposito no puede
+// vivir en schema.sql: su cuerpo referencia deposito_id, columna que en
+// una base existente todavía no está la primera vez que schema.sql corre
+// (falla con "no such column") — mismo motivo por el que saldo_tesoreria
+// tampoco vive ahí.
+db.exec(
+  'CREATE INDEX IF NOT EXISTS idx_movimientos_stock_producto_deposito ON movimientos_stock(producto_id, deposito_id)'
+);
+db.exec(`
+  CREATE VIEW IF NOT EXISTS stock_por_deposito AS
+  SELECT producto_id,
+         deposito_id,
+         SUM(CASE tipo
+               WHEN 'entrada' THEN cantidad
+               WHEN 'salida' THEN -cantidad
+               ELSE cantidad
+             END) AS cantidad
+  FROM movimientos_stock
+  GROUP BY producto_id, deposito_id
+`);
+
+// deposito_id en las operaciones que mueven stock (venta, compra,
+// devolución, devolución a proveedor): de qué depósito salió o a cuál
+// entró la mercadería de esa operación puntual (CLAUDE.md §19). Nullable,
+// mismo criterio que lista_precio_id en ventas/presupuestos: NULL significa
+// "el predeterminado de ese momento", no un id fijo copiado — si el día de
+// mañana cambia cuál depósito es el predeterminado, las operaciones viejas
+// sin depósito propio lo siguen solas.
+const ventasColumnasDeposito = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+const comprasColumnasDeposito = db.prepare('PRAGMA table_info(compras)').all();
+if (!comprasColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE compras ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+const devolucionesColumnasDeposito = db.prepare('PRAGMA table_info(devoluciones)').all();
+if (!devolucionesColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE devoluciones ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+const devolucionesProveedorColumnasDeposito = db.prepare('PRAGMA table_info(devoluciones_proveedor)').all();
+if (!devolucionesProveedorColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE devoluciones_proveedor ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+
 // compras.estado_envio: informativo, no afecta el stock. Las compras
 // viejas quedan en 'recibido' (el default), que es lo correcto: ya
 // habían sumado su stock, así que conceptualmente ya estaban recibidas.
@@ -694,6 +826,58 @@ if (auditoriaSql3 && !auditoriaSql3.sql.includes("'lista_precio'")) {
                              'factura','cobro','pago','gasto','producto','cliente','proveedor',
                              'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
                              'organizacion','lista_precio')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// Cuarto rebuild de auditoria: sumar 'deposito' y 'transferencia' al CHECK
+// de entidad, para poder auditar altas/ediciones de depósitos y
+// transferencias (CLAUDE.md §19) con el mismo registro central que el
+// resto de los maestros y operaciones. Mismo procedimiento que los tres
+// rebuilds de arriba.
+const auditoriaSql4 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql4 && !auditoriaSql4.sql.includes("'deposito'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion','lista_precio','deposito','transferencia')),
         entidad_id INTEGER,
         usuario_id INTEGER REFERENCES usuarios(id),
         valor_anterior TEXT,

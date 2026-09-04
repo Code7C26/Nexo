@@ -2042,6 +2042,10 @@ function totalItems(contenedor) {
 let productos = [];
 let categorias = [];
 let listasPrecios = [];
+// Depósitos (CLAUDE.md §19): se cargan junto con productos, igual que
+// listasPrecios — Venta, Compra y el modal de ajuste de stock necesitan la
+// lista completa para poblar sus selects.
+let depositos = [];
 let productoEditandoId = null;
 let productoFichaId = null;
 
@@ -2050,6 +2054,12 @@ let productoFichaId = null;
 // venta/presupuesto no especifica lista, se asume esta.
 function listaPrecioPredeterminada() {
   return listasPrecios.find((l) => l.es_predeterminada) ?? null;
+}
+
+// Mismo criterio que listaPrecioPredeterminada (CLAUDE.md §19): el
+// depósito que asumen Venta/Compra/Ajuste cuando no se elige uno propio.
+function depositoPredeterminado() {
+  return depositos.find((d) => d.es_predeterminado) ?? null;
 }
 
 // Precio de UN producto en UNA lista puntual, con el mismo fallback que ya
@@ -2264,14 +2274,16 @@ async function abrirFichaProducto(id) {
 
 async function cargarProductos() {
   tablaCargando("productosBody", selProductos.colspan(9));
-  const [listaProductos, listaCategorias, listaListasPrecios] = await Promise.all([
+  const [listaProductos, listaCategorias, listaListasPrecios, listaDepositos] = await Promise.all([
     fetch("/api/productos").then((r) => r.json()),
     fetch("/api/categorias").then((r) => r.json()),
-    fetch("/api/listas-precios").then((r) => r.json())
+    fetch("/api/listas-precios").then((r) => r.json()),
+    fetch("/api/depositos").then((r) => r.json())
   ]);
   productos = listaProductos;
   categorias = listaCategorias;
   listasPrecios = listaListasPrecios;
+  depositos = listaDepositos;
   poblarDatalistProductos();
   poblarSelectCategorias();
 
@@ -2305,6 +2317,23 @@ function poblarSelectListasPrecios(selector, { conPredeterminada = false } = {})
       )
       .join("");
   select.value = actual || (conPredeterminada ? "" : String(predeterminada?.id ?? ""));
+}
+
+// Llena un <select> de depósito con los activos (CLAUDE.md §19) — mismo
+// patrón que poblarSelectListasPrecios: arranca en el predeterminado, sin
+// opción "usar la predeterminada" porque Venta/Compra/Ajuste siempre mandan
+// un id concreto (el backend interpreta NULL como "el predeterminado de
+// ese momento", pero el frontend no necesita mandar NULL a propósito).
+function poblarSelectDepositos(selector) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  const actual = select.value;
+  const activos = depositos.filter((d) => d.activo);
+  const predeterminado = depositoPredeterminado();
+  select.innerHTML = activos
+    .map((d) => `<option value="${d.id}">${d.nombre}${d.es_predeterminado ? " (predeterminado)" : ""}</option>`)
+    .join("");
+  select.value = actual || String(predeterminado?.id ?? "");
 }
 
 // Llena el <select> de categoría del formulario de alta/edición de
@@ -2812,6 +2841,100 @@ document.getElementById("formListaPrecio").addEventListener("submit", async (e) 
   avisar(eraEdicion ? "Lista de precios actualizada." : "Lista de precios creada.", "ok");
 });
 
+/* ---------- Depósitos (CLAUDE.md §5/§19) ---------- */
+//
+// Calcado del modal de listas de precios de arriba: mismo patrón de
+// formulario inline + tabla editable + "exactamente uno predeterminado"
+// con botón "Marcar" en vez de radio.
+
+const modalDepositos = document.getElementById("modalDepositos");
+
+function renderDepositos() {
+  const body = document.getElementById("depositosBody");
+  if (depositos.length === 0) {
+    body.innerHTML = filaVacia(3, "Todavía no hay depósitos.");
+    return;
+  }
+
+  body.innerHTML = depositos
+    .map(
+      (d) => `
+    <tr class="${d.activo ? "" : "fila-anulada"}">
+      <td data-label="Depósito">${d.nombre}</td>
+      <td data-label="Predeterminado">${
+        d.es_predeterminado
+          ? `<span class="status status-cobrado">Predeterminado</span>`
+          : `<button type="button" class="btn-link btn-marcar-deposito-predeterminado" data-id="${d.id}">Marcar</button>`
+      }</td>
+      <td data-label="">${botonEditarFila("btn-editar-deposito", d.id, "depósito")}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-editar-deposito").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const deposito = depositos.find((d) => d.id === Number(btn.dataset.id));
+      const form = document.getElementById("formDeposito");
+      form.id.value = deposito.id;
+      form.nombre.value = deposito.nombre;
+      form.direccion.value = deposito.direccion ?? "";
+      document.getElementById("formDepositoSubmit").textContent = "Guardar cambios";
+    });
+  });
+
+  body.querySelectorAll(".btn-marcar-deposito-predeterminado").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const deposito = depositos.find((d) => d.id === Number(btn.dataset.id));
+      const res = await fetch(`/api/depositos/${deposito.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: deposito.nombre, direccion: deposito.direccion, activo: true, es_predeterminado: true })
+      });
+      if (!(await manejarError(res, "No se pudo marcar el depósito como predeterminado."))) return;
+      await cargarProductos();
+      renderDepositos();
+      avisar(`"${deposito.nombre}" es ahora el depósito predeterminado.`, "ok");
+    });
+  });
+}
+
+document.getElementById("btnDepositos").addEventListener("click", () => {
+  document.getElementById("formDeposito").reset();
+  document.getElementById("formDeposito").id.value = "";
+  document.getElementById("formDepositoSubmit").textContent = "Agregar depósito";
+  renderDepositos();
+  modalDepositos.hidden = false;
+});
+document.getElementById("modalDepositosClose").addEventListener("click", () => {
+  modalDepositos.hidden = true;
+});
+modalDepositos.addEventListener("click", (e) => {
+  if (e.target === modalDepositos) modalDepositos.hidden = true;
+});
+
+document.getElementById("formDeposito").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const editandoId = form.id.value;
+
+  const res = await fetch(editandoId ? `/api/depositos/${editandoId}` : "/api/depositos", {
+    method: editandoId ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: form.nombre.value, direccion: form.direccion.value || null })
+  });
+  if (!(await manejarError(res, "No se pudo guardar el depósito."))) return;
+
+  const eraEdicion = Boolean(editandoId);
+  // Un depósito nuevo o renombrado cambia los selects de Venta, Compra,
+  // Ajuste de stock y Transferencia.
+  await Promise.all([cargarProductos(), cargarStock()]);
+  renderDepositos();
+  form.reset();
+  form.id.value = "";
+  document.getElementById("formDepositoSubmit").textContent = "Agregar depósito";
+  avisar(eraEdicion ? "Depósito actualizado." : "Depósito creado.", "ok");
+});
+
 /* ---------- Cuentas de tesorería ---------- */
 
 // Las llena cargarCaja() (más abajo, en la sección de Caja): ese endpoint
@@ -3040,10 +3163,11 @@ const STOCK_LABEL = {
   alto: "Stock alto"
 };
 
-// idDe por defecto ((x) => x.id) alcanza: /api/stock hoy trae una fila por
-// producto (productos.id), sin desglose por depósito todavía —
-// multidepósito queda para una etapa aparte (CLAUDE.md §19/§25).
-const selStock = crearSeleccion("stockBody");
+// idDe custom (CLAUDE.md §19): /api/stock ahora trae una fila por producto
+// Y depósito, así que producto_id solo ya no identifica una fila única —
+// el comentario que estaba acá antes de esta etapa ya anticipaba
+// exactamente este cambio.
+const selStock = crearSeleccion("stockBody", { idDe: (p) => `${p.producto_id}-${p.deposito_id}` });
 
 function renderStock(lista) {
   const body = document.getElementById("stockBody");
@@ -3052,10 +3176,10 @@ function renderStock(lista) {
 
   if (lista.length === 0) {
     if (filtrosStock.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(selStock.colspan(5));
+      body.innerHTML = filaVaciaFiltrada(selStock.colspan(7));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosStock.limpiar());
     } else {
-      body.innerHTML = filaVacia(selStock.colspan(5), "Todavía no hay productos con stock.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selStock.colspan(7), "Todavía no hay productos con stock.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -3063,20 +3187,24 @@ function renderStock(lista) {
   for (const p of lista) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      ${selStock.celda(p.id)}
+      ${selStock.celda(`${p.producto_id}-${p.deposito_id}`)}
       <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Depósito">${p.deposito ?? "—"}</td>
       <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
-      <td data-label="Stock actual" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Stock en depósito" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Stock total" class="align-right mono">${numero(p.stock_total)}</td>
       <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
         STOCK_LABEL[p.estado_stock]
       }</span></td>
-      <td data-label=""><button type="button" class="btn-fila btn-ajustar-stock" data-id="${p.id}">Ajustar</button></td>
+      <td data-label=""><button type="button" class="btn-fila btn-ajustar-stock" data-producto="${p.producto_id}" data-deposito="${p.deposito_id ?? ""}">Ajustar</button></td>
     `;
     body.appendChild(tr);
   }
 
   body.querySelectorAll(".btn-ajustar-stock").forEach((btn) => {
-    btn.addEventListener("click", () => abrirModalAjusteStock(Number(btn.dataset.id)));
+    btn.addEventListener("click", () =>
+      abrirModalAjusteStock(Number(btn.dataset.producto), btn.dataset.deposito || null)
+    );
   });
 }
 
@@ -3088,10 +3216,10 @@ function renderMovimientosStock(movimientos) {
   const body = document.getElementById("stockMovimientosBody");
   if (movimientos.length === 0) {
     if (filtrosStockMov.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(5);
+      body.innerHTML = filaVaciaFiltrada(6);
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosStockMov.limpiar());
     } else {
-      body.innerHTML = filaVacia(5, "Todavía no hay movimientos de stock.");
+      body.innerHTML = filaVacia(6, "Todavía no hay movimientos de stock.");
     }
     return;
   }
@@ -3104,12 +3232,17 @@ function renderMovimientosStock(movimientos) {
           ? `Compra #${m.compra_id}`
           : m.origen === "devolucion"
           ? `Devolución #${m.devolucion_id}`
+          : m.origen === "devolucion_proveedor"
+          ? `Devolución a proveedor #${m.devolucion_proveedor_id}`
+          : m.origen === "transferencia"
+          ? `Transferencia #${m.transferencia_id}`
           : "Ajuste manual";
       const signo = m.tipo === "salida" ? "-" : m.tipo === "entrada" ? "+" : m.cantidad >= 0 ? "+" : "-";
       return `
     <tr>
       <td data-label="Fecha">${m.fecha}</td>
       <td data-label="Producto">${m.producto}</td>
+      <td data-label="Depósito">${m.deposito ?? "—"}</td>
       <td data-label="Origen">${origen}</td>
       <td data-label="Cantidad" class="align-right mono">${signo}${numero(Math.abs(m.cantidad))}</td>
       <td data-label="Nota">${m.nota || "—"}</td>
@@ -3138,10 +3271,14 @@ function listaStockVisible() {
 }
 
 // /api/stock no devuelve sku (es la vista de existencias, no el catálogo).
+// "Valorizado" y "Estado" siguen siendo del TOTAL del producto (CLAUDE.md
+// §5: el mínimo/máximo es global, no por depósito), no de esta fila puntual.
 const COLUMNAS_CSV_STOCK = [
   { titulo: "Producto", valor: (p) => p.nombre },
+  { titulo: "Depósito", valor: (p) => p.deposito ?? "" },
   { titulo: "Costo", valor: (p) => p.precio_costo },
-  { titulo: "Stock actual", valor: (p) => p.stock },
+  { titulo: "Stock en depósito", valor: (p) => p.stock },
+  { titulo: "Stock total", valor: (p) => p.stock_total },
   { titulo: "Stock mínimo", valor: (p) => p.stock_minimo },
   { titulo: "Stock máximo", valor: (p) => p.stock_maximo },
   { titulo: "Valorizado", valor: (p) => p.valorizado },
@@ -3156,8 +3293,14 @@ montarBarraSeleccion(selStock, [
   {
     etiqueta: "Exportar CSV",
     onClick: (ids) => {
+      // ids acá son las claves compuestas "producto_id-deposito_id" (ver el
+      // idDe de selStock, más arriba).
       const idsSet = new Set(ids);
-      descargarCSV("nexo-stock-seleccion", COLUMNAS_CSV_STOCK, listaStockVisible().filter((p) => idsSet.has(p.id)));
+      descargarCSV(
+        "nexo-stock-seleccion",
+        COLUMNAS_CSV_STOCK,
+        listaStockVisible().filter((p) => idsSet.has(`${p.producto_id}-${p.deposito_id}`))
+      );
     }
   }
 ]);
@@ -3166,8 +3309,9 @@ const filtrosStock = crearFiltros(
   "filtrosStock",
   [
     { clave: "nombre", etiqueta: "Producto", tipo: "texto" },
+    { clave: "deposito_id", etiqueta: "Depósito", tipo: "select", opciones: [] },
     { clave: "estado_stock", etiqueta: "Estado", tipo: "select", opciones: OPCIONES_ESTADO_STOCK },
-    { clave: "stock", etiqueta: "Stock actual", tipo: "numero" },
+    { clave: "stock", etiqueta: "Stock en depósito", tipo: "numero" },
     { clave: "stock_minimo", etiqueta: "Stock mínimo", tipo: "numero" },
     { clave: "precio_costo", etiqueta: "Costo", tipo: "numero" },
     { clave: "valorizado", etiqueta: "Valorizado", tipo: "numero" }
@@ -3181,6 +3325,7 @@ const filtrosStockMov = crearFiltros(
   [
     { clave: "fecha", etiqueta: "Fecha", tipo: "fecha" },
     { clave: "producto_id", etiqueta: "Producto", tipo: "select", opciones: [] },
+    { clave: "deposito_id", etiqueta: "Depósito", tipo: "select", opciones: [] },
     {
       clave: "origen",
       etiqueta: "Origen",
@@ -3189,6 +3334,8 @@ const filtrosStockMov = crearFiltros(
         { valor: "venta", texto: "Venta" },
         { valor: "compra", texto: "Compra" },
         { valor: "devolucion", texto: "Devolución" },
+        { valor: "devolucion_proveedor", texto: "Devolución a proveedor" },
+        { valor: "transferencia", texto: "Transferencia" },
         { valor: "ajuste_manual", texto: "Ajuste manual" }
       ]
     },
@@ -3209,15 +3356,25 @@ async function cargarMovimientosStock() {
 }
 
 async function cargarStock() {
-  tablaCargando("stockBody", selStock.colspan(5));
+  tablaCargando("stockBody", selStock.colspan(7));
   const stockRes = await fetch("/api/stock");
   stockCache = await stockRes.json();
+  const opcionesDeposito = depositos
+    .filter((d) => d.activo)
+    .map((d) => ({ valor: String(d.id), texto: d.nombre }));
+  filtrosStock.setOpciones("deposito_id", opcionesDeposito);
   filtrosStockMov.setOpciones(
     "producto_id",
-    stockCache.map((p) => ({ valor: p.id, texto: p.nombre }))
+    // Un producto por fila (no por producto+depósito): stockCache trae una
+    // fila por depósito, así que se deduplica por producto_id.
+    [...new Map(stockCache.map((p) => [p.producto_id, p])).values()].map((p) => ({
+      valor: p.producto_id,
+      texto: p.nombre
+    }))
   );
+  filtrosStockMov.setOpciones("deposito_id", opcionesDeposito);
   filtrarStock();
-  await cargarMovimientosStock();
+  await Promise.all([cargarMovimientosStock(), cargarTransferencias()]);
 }
 
 document.getElementById("stockSearch").addEventListener("input", filtrarStock);
@@ -3230,10 +3387,14 @@ function poblarSelectProductos(select) {
     productos.map((p) => `<option value="${p.id}">${p.nombre}</option>`).join("");
 }
 
-function abrirModalAjusteStock(productoIdPreseleccionado = null) {
+function abrirModalAjusteStock(productoIdPreseleccionado = null, depositoIdPreseleccionado = null) {
   const select = document.querySelector('#formAjusteStock select[name="producto_id"]');
   poblarSelectProductos(select);
   if (productoIdPreseleccionado) select.value = productoIdPreseleccionado;
+  poblarSelectDepositos('#formAjusteStock [name="deposito_id"]');
+  if (depositoIdPreseleccionado) {
+    document.querySelector('#formAjusteStock [name="deposito_id"]').value = depositoIdPreseleccionado;
+  }
   modalAjusteStock.hidden = false;
 }
 
@@ -3254,6 +3415,7 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       producto_id: Number(form.producto_id.value),
+      deposito_id: Number(form.deposito_id.value),
       cantidad: parseFloat(form.cantidad.value),
       nota: form.nota.value || null
     })
@@ -3264,6 +3426,99 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
   form.reset();
   modalAjusteStock.hidden = true;
   avisar("Stock ajustado.", "ok");
+});
+
+/* ---------- Transferencias entre depósitos (CLAUDE.md §19) ---------- */
+
+let transferenciasCache = [];
+
+function renderTransferencias(lista) {
+  const body = document.getElementById("transferenciasBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(7, "Todavía no hay transferencias entre depósitos.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (t) => `
+    <tr class="${t.estado === "anulada" ? "fila-anulada" : ""}">
+      <td data-label="Fecha">${t.fecha}</td>
+      <td data-label="Producto">${t.producto}</td>
+      <td data-label="Desde">${t.deposito_origen}</td>
+      <td data-label="Hacia">${t.deposito_destino}</td>
+      <td data-label="Cantidad" class="align-right mono">${numero(t.cantidad)}</td>
+      <td data-label="Estado"><span class="status ${t.estado === "anulada" ? "status-vencido" : "status-cobrado"}">${
+        t.estado === "anulada" ? "Anulada" : "Activa"
+      }</span></td>
+      <td data-label="">${
+        t.estado === "activa"
+          ? `<button type="button" class="btn-fila btn-anular-transferencia" data-id="${t.id}">Anular</button>`
+          : ""
+      }</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-anular-transferencia").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ok = await confirmar({
+        titulo: "Anular transferencia",
+        cuerpo: "El stock vuelve al depósito de origen.",
+        aceptar: "Anular",
+        destructivo: true
+      });
+      if (!ok) return;
+      const res = await fetch(`/api/transferencias/${btn.dataset.id}/anular`, { method: "POST" });
+      if (!(await manejarError(res, "No se pudo anular la transferencia."))) return;
+      await cargarStock();
+      avisar("Transferencia anulada.", "ok");
+    });
+  });
+}
+
+async function cargarTransferencias() {
+  transferenciasCache = await (await fetch("/api/transferencias")).json();
+  renderTransferencias(transferenciasCache);
+}
+
+const modalTransferenciaDeposito = document.getElementById("modalTransferenciaDeposito");
+
+document.getElementById("btnTransferirStock").addEventListener("click", () => {
+  const form = document.getElementById("formTransferenciaDeposito");
+  form.reset();
+  poblarSelectProductos(form.producto_id);
+  poblarSelectDepositos("#transferenciaDepositoOrigen");
+  poblarSelectDepositos("#transferenciaDepositoDestino");
+  modalTransferenciaDeposito.hidden = false;
+});
+document.getElementById("modalTransferenciaDepositoClose").addEventListener("click", () => {
+  modalTransferenciaDeposito.hidden = true;
+});
+modalTransferenciaDeposito.addEventListener("click", (e) => {
+  if (e.target === modalTransferenciaDeposito) modalTransferenciaDeposito.hidden = true;
+});
+
+document.getElementById("formTransferenciaDeposito").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+
+  const res = await fetch("/api/transferencias", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      producto_id: Number(form.producto_id.value),
+      deposito_origen_id: Number(form.deposito_origen_id.value),
+      deposito_destino_id: Number(form.deposito_destino_id.value),
+      cantidad: parseFloat(form.cantidad.value),
+      nota: form.nota.value || null
+    })
+  });
+  if (!(await manejarError(res, "No se pudo registrar la transferencia."))) return;
+
+  await cargarStock();
+  form.reset();
+  modalTransferenciaDeposito.hidden = true;
+  avisar("Transferencia registrada.", "ok");
 });
 
 /* ---------- Comprobante imprimible ---------- */
@@ -4242,6 +4497,12 @@ function abrirModalVenta(venta = null) {
     if (clienteExistente?.lista_precio_id) form.lista_precio_id.value = clienteExistente.lista_precio_id;
   }
 
+  // Depósito de esta venta (CLAUDE.md §19): al editar respeta el que ya
+  // tenía; al crear arranca en el predeterminado (poblarSelectDepositos ya
+  // hace eso solo).
+  poblarSelectDepositos("#ventaDeposito");
+  if (venta?.deposito_id) form.deposito_id.value = venta.deposito_id;
+
   ventaItemsEl.innerHTML = "";
   if (venta) {
     for (const item of venta.items) {
@@ -4328,7 +4589,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     cliente_id: clienteExistente?.id ?? null,
     fecha: form.fecha.value,
     items,
-    lista_precio_id: form.lista_precio_id.value || null
+    lista_precio_id: form.lista_precio_id.value || null,
+    deposito_id: form.deposito_id.value || null
   });
 
   const res = ventaEditandoId
@@ -5249,6 +5511,12 @@ function abrirModalCompra(compra = null) {
   form.fecha.value = compra?.fecha ?? hoyISO();
   compraCostoEnvioEl.value = compra?.costo_envio ?? "";
 
+  // Depósito de esta compra (CLAUDE.md §19): a ese depósito entra la
+  // mercadería cuando se marca recibida. Al editar respeta el que ya
+  // tenía; al crear arranca en el predeterminado.
+  poblarSelectDepositos("#compraDeposito");
+  if (compra?.deposito_id) form.deposito_id.value = compra.deposito_id;
+
   compraItemsEl.innerHTML = "";
   if (compra) {
     for (const item of compra.items) {
@@ -5291,7 +5559,8 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     proveedor: form.proveedor.value,
     fecha: form.fecha.value,
     costo_envio: form.costo_envio.value,
-    items
+    items,
+    deposito_id: form.deposito_id.value || null
   });
 
   const res = compraEditandoId
