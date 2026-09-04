@@ -1966,6 +1966,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
               ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
+              ventas.condicion_pago, ventas.fecha_vencimiento,
               EXISTS (SELECT 1 FROM devoluciones
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
          FROM ventas
@@ -2083,7 +2084,7 @@ function validarStockDisponible(items, depositoId) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
-function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id }) {
+function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento }) {
   // Si el frontend ya sabe qué cliente es (lo eligió de la lista), usa
   // su id directamente: evita crear un duplicado por una diferencia de
   // tipeo. Si no, se resuelve por nombre y se crea si no existe.
@@ -2117,15 +2118,19 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
   }
   const depositoResuelto = depositoId ?? depositoPredeterminadoId();
 
-  // Si no viene fecha, se omite la columna para que aplique el
-  // DEFAULT date('now') de la tabla en vez de pisarlo con un valor JS.
-  const { lastInsertRowid: nuevaVentaId } = fecha
-    ? db
-        .prepare('INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id) VALUES (?, ?, ?, ?)')
-        .run(clienteRow.id, fecha, listaPrecioId, depositoId)
-    : db
-        .prepare('INSERT INTO ventas (cliente_id, lista_precio_id, deposito_id) VALUES (?, ?, ?)')
-        .run(clienteRow.id, listaPrecioId, depositoId);
+  // El vencimiento se calcula sobre la fecha real de la venta, así que hay
+  // que resolverla antes del INSERT: sin fecha explícita la columna usaría
+  // el DEFAULT date('now') de la tabla, y el vencimiento tiene que salir de
+  // esa misma fecha y no de otra.
+  const fechaVenta = fecha ?? db.prepare("SELECT date('now') AS hoy").get().hoy;
+  const venc = calcularVencimiento(fechaVenta, condicion_pago, fecha_vencimiento);
+
+  const { lastInsertRowid: nuevaVentaId } = db
+    .prepare(
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const insertItem = db.prepare(
@@ -2167,7 +2172,8 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id } = req.body;
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
+    req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La venta necesita al menos un item.' });
@@ -2187,7 +2193,16 @@ app.post('/api/ventas', (req, res) => {
   let ventaId;
   try {
     ventaId = withTransaction(() => {
-      const id = crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id });
+      const id = crearVenta({
+        cliente,
+        cliente_id,
+        items,
+        fecha,
+        lista_precio_id,
+        deposito_id,
+        condicion_pago,
+        fecha_vencimiento
+      });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
       return id;
     });
@@ -2205,16 +2220,37 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id } = req.body;
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
+    req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
   if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
-  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare(
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ?'
+    )
+    .get(ventaId);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+
+  // El vencimiento se recalcula porque depende de la fecha de la venta y
+  // editar puede haberla movido: dejar el vencimiento viejo con una fecha de
+  // operación nueva daría un plazo distinto al pactado. Si el request no
+  // manda condición, se conserva la que ya tenía la venta — y en el caso
+  // 'manual' se conserva también la fecha guardada, porque una fecha suelta
+  // no se puede derivar de ninguna condición.
+  const condicionEdicion = condicion_pago === undefined ? venta.condicion_pago : condicion_pago;
+  const fechaManualEdicion =
+    fecha_vencimiento === undefined && condicionEdicion === 'manual' ? venta.fecha_vencimiento : fecha_vencimiento;
+  let vencEdicion;
+  try {
+    vencEdicion = calcularVencimiento(fecha || venta.fecha, condicionEdicion, fechaManualEdicion);
+  } catch (err) {
+    return res.status(err.status ?? 400).json({ error: mensajeDeError(err) });
   }
   // Editar mantiene el depósito original si no se manda uno nuevo — no se
   // recalcula al predeterminado ACTUAL en silencio, porque el predeterminado
@@ -2337,11 +2373,18 @@ app.put('/api/ventas/:id', (req, res) => {
       const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
       clienteRow = { id: lastInsertRowid };
     }
-    db.prepare('UPDATE ventas SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ? WHERE id = ?').run(
+    db.prepare(
+      `UPDATE ventas
+          SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ?,
+              condicion_pago = ?, fecha_vencimiento = ?
+        WHERE id = ?`
+    ).run(
       clienteRow.id,
       fecha || null,
       listaPrecioId,
       depositoId,
+      vencEdicion.condicion,
+      vencEdicion.vencimiento,
       ventaId
     );
 
@@ -3518,6 +3561,7 @@ app.get('/api/compras/:id', (req, res) => {
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
               compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
               compras.deposito_id, depositos.nombre AS deposito,
+              compras.condicion_pago, compras.fecha_vencimiento,
               EXISTS (SELECT 1 FROM devoluciones_proveedor
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
          FROM compras
@@ -3599,7 +3643,7 @@ function prorratearEnvio(items, costoEnvio) {
 // que crearVenta, asume que ya se validó todo y que se la llama DENTRO de
 // una transacción — así el asistente por texto (§21) puede encadenar
 // crear+confirmar+recibir en una sola transacción atómica.
-function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id }) {
+function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condicion_pago, fecha_vencimiento }) {
   let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
   if (!proveedorRow) {
     const { lastInsertRowid } = db.prepare('INSERT INTO proveedores (nombre) VALUES (?)').run(proveedor);
@@ -3613,15 +3657,17 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id }) {
     throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
   }
 
-  const columnas = ['proveedor_id', 'costo_envio', 'deposito_id'];
-  const valores = [proveedorRow.id, costoEnvio, depositoId];
-  if (fecha) {
-    columnas.push('fecha');
-    valores.push(fecha);
-  }
+  // Igual que en crearVenta: la fecha se resuelve antes del INSERT porque el
+  // vencimiento tiene que calcularse sobre la fecha real de esta compra.
+  const fechaCompra = fecha ?? db.prepare("SELECT date('now') AS hoy").get().hoy;
+  const venc = calcularVencimiento(fechaCompra, condicion_pago, fecha_vencimiento);
+
   const { lastInsertRowid: nuevaCompraId } = db
-    .prepare(`INSERT INTO compras (${columnas.join(', ')}) VALUES (${columnas.map(() => '?').join(', ')})`)
-    .run(...valores);
+    .prepare(
+      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento);
 
   const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ?');
   // Un producto nuevo nace con costo 0: todavía no entró nada al
@@ -3654,7 +3700,7 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id }) {
 }
 
 app.post('/api/compras', (req, res) => {
-  const { proveedor, items, fecha, costo_envio, deposito_id } = req.body;
+  const { proveedor, items, fecha, costo_envio, deposito_id, condicion_pago, fecha_vencimiento } = req.body;
 
   if (!proveedor || !String(proveedor).trim()) {
     return res.status(400).json({ error: 'La compra necesita un proveedor.' });
@@ -3681,7 +3727,15 @@ app.post('/api/compras', (req, res) => {
   let compraId;
   try {
     compraId = withTransaction(() => {
-      const id = crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id });
+      const id = crearCompra({
+        proveedor,
+        items,
+        costoEnvio,
+        fecha,
+        deposito_id,
+        condicion_pago,
+        fecha_vencimiento
+      });
       auditar(req, {
         accion: 'crear',
         entidad: 'compra',
@@ -3706,13 +3760,30 @@ app.post('/api/compras', (req, res) => {
 // promedio ponderado no se puede "restar" de forma exacta.
 app.put('/api/compras/:id', (req, res) => {
   const compraId = Number(req.params.id);
-  const { proveedor, items, fecha, costo_envio, deposito_id } = req.body;
+  const { proveedor, items, fecha, costo_envio, deposito_id, condicion_pago, fecha_vencimiento } = req.body;
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
+    .prepare(
+      `SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, fecha, condicion_pago,
+              fecha_vencimiento
+         FROM compras WHERE id = ?`
+    )
     .get(compraId);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
+  }
+
+  // Mismo criterio que en la edición de ventas (ver ahí el porqué).
+  const condicionEdicionCompra = condicion_pago === undefined ? compra.condicion_pago : condicion_pago;
+  const fechaManualEdicionCompra =
+    fecha_vencimiento === undefined && condicionEdicionCompra === 'manual'
+      ? compra.fecha_vencimiento
+      : fecha_vencimiento;
+  let vencEdicionCompra;
+  try {
+    vencEdicionCompra = calcularVencimiento(fecha || compra.fecha, condicionEdicionCompra, fechaManualEdicionCompra);
+  } catch (err) {
+    return res.status(err.status ?? 400).json({ error: mensajeDeError(err) });
   }
   // Mismo criterio que ventas: mantiene el depósito original si no se
   // manda uno nuevo, nunca recalcula al predeterminado actual en silencio.
@@ -3834,11 +3905,18 @@ app.put('/api/compras/:id', (req, res) => {
         .run(proveedor);
       proveedorRow = { id: lastInsertRowid };
     }
-    db.prepare('UPDATE compras SET proveedor_id = ?, costo_envio = ?, fecha = COALESCE(?, fecha), deposito_id = ? WHERE id = ?').run(
+    db.prepare(
+      `UPDATE compras
+          SET proveedor_id = ?, costo_envio = ?, fecha = COALESCE(?, fecha), deposito_id = ?,
+              condicion_pago = ?, fecha_vencimiento = ?
+        WHERE id = ?`
+    ).run(
       proveedorRow.id,
       costoEnvio,
       fecha || null,
       depositoIdNuevo,
+      vencEdicionCompra.condicion,
+      vencEdicionCompra.vencimiento,
       compraId
     );
 
@@ -5394,14 +5472,17 @@ app.post('/api/gastos/:id/restaurar', (req, res) => {
 
 /* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
 
-// Antigüedad medida desde la fecha de la operación, no desde un
-// vencimiento pactado: ni ventas ni compras tienen ese dato en el
-// esquema (ver CLAUDE.md). Los tres tramos calzan con las clases
-// .status-* que ya existen en el frontend, para no agregar CSS nueva.
-function tramoDeAntiguedad(dias) {
-  if (dias <= 30) return 'al_dia';
-  if (dias <= 60) return 'atrasado';
-  return 'vencido';
+// Aging medido contra el vencimiento pactado de cada operación, no contra su
+// fecha: una venta a 30 días hecha ayer no está atrasada, y una de contado
+// impaga hace 20 días sí. `dias` es la distancia desde el vencimiento hasta
+// hoy, así que un número negativo significa que todavía no venció.
+// Los cuatro tramos se mapean a las clases .status-* que ya existen en el
+// frontend (verde/amarillo/rojo), para no agregar CSS nueva.
+function tramoDeVencimiento(dias) {
+  if (dias < 0) return 'a_vencer';
+  if (dias <= 30) return 'vencido_30';
+  if (dias <= 60) return 'vencido_60';
+  return 'vencido_mas';
 }
 
 // Saldo pendiente por operación (venta o compra), no por entidad: es la
@@ -5427,7 +5508,8 @@ function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, 
   return db
     .prepare(
       `SELECT m.${columnaOperacion} AS operacion_id, m.${columnaEntidad} AS entidad_id,
-              o.fecha AS fecha, ROUND(SUM(m.importe), 2) AS pendiente
+              o.fecha AS fecha, COALESCE(o.fecha_vencimiento, o.fecha) AS vencimiento,
+              ROUND(SUM(m.importe), 2) AS pendiente
          FROM ${tablaMovimientos} m
          JOIN ${tablaOperacion} o ON o.id = m.${columnaOperacion}
         GROUP BY m.${columnaOperacion}, m.${columnaEntidad}
@@ -5437,9 +5519,9 @@ function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, 
 }
 
 // Agrupa los saldos por operación (arriba) en uno por entidad: saldo total,
-// antigüedad de la deuda más vieja (solo entre las operaciones que SÍ son
-// deuda: un saldo negativo es crédito a favor, no tiene "antigüedad
-// vencida"), y el detalle ordenado por fecha para la fila expandible.
+// los días vencidos de la deuda más atrasada (solo entre las operaciones que
+// SÍ son deuda: un saldo negativo es crédito a favor, no vence), y el detalle
+// ordenado por vencimiento para la fila expandible.
 function agruparPorEntidad(saldos, tablaEntidad, hoy) {
   const porEntidad = new Map();
   for (const s of saldos) {
@@ -5454,16 +5536,20 @@ function agruparPorEntidad(saldos, tablaEntidad, hoy) {
 
     const operaciones = operacionesRaw
       .map((o) => {
-        const dias = diffDias(o.fecha, hoy);
+        // Negativo = todavía no venció (le faltan N días).
+        const dias = diffDias(o.vencimiento, hoy);
         return {
           id: o.operacion_id,
           fecha: o.fecha,
+          vencimiento: o.vencimiento,
           pendiente: o.pendiente,
           dias: o.pendiente > 0 ? dias : null,
-          tramo: o.pendiente > 0 ? tramoDeAntiguedad(dias) : null
+          tramo: o.pendiente > 0 ? tramoDeVencimiento(dias) : null
         };
       })
-      .sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : a.id - b.id));
+      .sort((a, b) =>
+        a.vencimiento < b.vencimiento ? -1 : a.vencimiento > b.vencimiento ? 1 : a.id - b.id
+      );
 
     const saldo = Math.round(operaciones.reduce((acc, o) => acc + o.pendiente, 0) * 100) / 100;
     const diasDeuda = operaciones.filter((o) => o.pendiente > 0).map((o) => o.dias);
@@ -5652,6 +5738,39 @@ const SQL_HOY = db.prepare("SELECT date('now') AS hoy");
 const FECHA_VALIDA = /^\d{4}-\d{2}-\d{2}$/;
 function validarFecha(valor) {
   return typeof valor === 'string' && FECHA_VALIDA.test(valor) ? valor : null;
+}
+
+// Condiciones de pago aceptadas en ventas y compras. El valor guardado es
+// lo que se pactó ("30 días"); la fecha de vencimiento que sale de acá es su
+// resultado sobre la fecha de esa operación puntual. 'manual' existe para el
+// caso en que el plazo no cae en ninguno de los redondos.
+const CONDICIONES_PAGO = { contado: 0, 15: 15, 30: 30, 60: 60 };
+
+// Devuelve la fecha ISO en que vence una operación con esta condición.
+// Lanza ErrorBulk (nunca Error a secas) porque se llama desde crearVenta /
+// crearCompra, que están dentro del try/catch que pasa por mensajeDeError:
+// un Error genérico se relanza y termina como HTML de stack trace de Express
+// en vez de un 400 con JSON.
+function calcularVencimiento(fecha, condicion, fechaManual) {
+  const cond = condicion == null || condicion === '' ? 'contado' : String(condicion);
+
+  if (cond === 'manual') {
+    const manual = validarFecha(fechaManual);
+    if (!manual) {
+      throw new ErrorBulk('La fecha de vencimiento no es válida (formato AAAA-MM-DD).');
+    }
+    // Un vencimiento anterior a la operación no describe ningún acuerdo
+    // real y ensuciaría el aging con deuda "vencida" desde antes de existir.
+    if (manual < fecha) {
+      throw new ErrorBulk('La fecha de vencimiento no puede ser anterior a la fecha de la operación.');
+    }
+    return { condicion: 'manual', vencimiento: manual };
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(CONDICIONES_PAGO, cond)) {
+    throw new ErrorBulk('La condición de pago no es válida.');
+  }
+  return { condicion: cond, vencimiento: sumarDias(fecha, CONDICIONES_PAGO[cond]) };
 }
 
 const maxISO = (a, b) => (a > b ? a : b);

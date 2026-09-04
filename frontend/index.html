@@ -1447,8 +1447,8 @@
                 <th data-orden="nombre" data-tipo="texto">Cliente</th>
                 <th class="align-right" data-orden="saldo" data-tipo="numero">Deuda</th>
                 <th>Operaciones</th>
-                <th>Más vieja</th>
-                <th data-orden="dias_max" data-tipo="numero">Antigüedad</th>
+                <th>Vence</th>
+                <th data-orden="dias_max" data-tipo="numero">Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -1472,8 +1472,8 @@
                 <th data-orden="nombre" data-tipo="texto">Proveedor</th>
                 <th class="align-right" data-orden="saldo" data-tipo="numero">Deuda</th>
                 <th>Operaciones</th>
-                <th>Más vieja</th>
-                <th data-orden="dias_max" data-tipo="numero">Antigüedad</th>
+                <th>Vence</th>
+                <th data-orden="dias_max" data-tipo="numero">Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -1996,6 +1996,23 @@
         <label>Fecha
           <input type="date" name="fecha" required />
         </label>
+        <!-- El plazo pactado. Nexo calcula la fecha de vencimiento sola sobre
+             la fecha de arriba; "Fecha puntual" muestra el input de al lado
+             para los plazos que no son redondos. Es lo que hace que Cuentas
+             corrientes mida el atraso contra lo pactado y no contra la fecha
+             de la venta. -->
+        <label>Condición de pago
+          <select name="condicion_pago" id="ventaCondicionPago">
+            <option value="contado">Contado</option>
+            <option value="15">15 días</option>
+            <option value="30">30 días</option>
+            <option value="60">60 días</option>
+            <option value="manual">Fecha puntual…</option>
+          </select>
+        </label>
+        <label id="ventaVencimientoWrap" hidden>Vence el
+          <input type="date" name="fecha_vencimiento" id="ventaVencimiento" />
+        </label>
         <div class="item-rows" id="ventaItems"></div>
         <button type="button" class="btn-add-item" id="btnAgregarItemVenta">+ agregar producto</button>
         <datalist id="productosVenta"></datalist>
@@ -2024,6 +2041,19 @@
         </label>
         <label>Fecha
           <input type="date" name="fecha" required />
+        </label>
+        <!-- Mismo par que en Venta, del lado de la deuda con el proveedor. -->
+        <label>Condición de pago
+          <select name="condicion_pago" id="compraCondicionPago">
+            <option value="contado">Contado</option>
+            <option value="15">15 días</option>
+            <option value="30">30 días</option>
+            <option value="60">60 días</option>
+            <option value="manual">Fecha puntual…</option>
+          </select>
+        </label>
+        <label id="compraVencimientoWrap" hidden>Vence el
+          <input type="date" name="fecha_vencimiento" id="compraVencimiento" />
         </label>
         <div class="item-rows" id="compraItems"></div>
         <datalist id="productosSugeridos"></datalist>

@@ -345,6 +345,42 @@ if (!devolucionesProveedorColumnasDeposito.some((col) => col.name === 'deposito_
   db.exec('ALTER TABLE devoluciones_proveedor ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
 }
 
+// condicion_pago / fecha_vencimiento en ventas y compras: el plazo pactado
+// y la fecha en que la deuda vence, para que el aging de cuentas corrientes
+// mida contra el vencimiento real y no contra la fecha de la operación (que
+// era la limitación explícita que tenía el reporte hasta ahora).
+//
+// El backfill deja las operaciones existentes como si hubieran sido de
+// contado (vencimiento = su propia fecha). No es una suposición sobre lo que
+// se pactó de verdad en cada una: es el único valor que hace que el reporte
+// siga dando exactamente los mismos días y el mismo orden que daba antes de
+// esta migración, así que nada cambia de lugar retroactivamente y el
+// resultado se puede comparar 1:1 pre/post. El WHERE ... IS NULL lo hace
+// idempotente y, de paso, evita pisar una operación que ya tenga vencimiento
+// propio si esta migración vuelve a correr.
+const ventasColumnasVenc = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnasVenc.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN condicion_pago TEXT');
+}
+if (!ventasColumnasVenc.some((col) => col.name === 'fecha_vencimiento')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN fecha_vencimiento TEXT');
+}
+const comprasColumnasVenc = db.prepare('PRAGMA table_info(compras)').all();
+if (!comprasColumnasVenc.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE compras ADD COLUMN condicion_pago TEXT');
+}
+if (!comprasColumnasVenc.some((col) => col.name === 'fecha_vencimiento')) {
+  db.exec('ALTER TABLE compras ADD COLUMN fecha_vencimiento TEXT');
+}
+db.exec(`
+  UPDATE ventas
+     SET fecha_vencimiento = fecha, condicion_pago = COALESCE(condicion_pago, 'contado')
+   WHERE fecha_vencimiento IS NULL;
+  UPDATE compras
+     SET fecha_vencimiento = fecha, condicion_pago = COALESCE(condicion_pago, 'contado')
+   WHERE fecha_vencimiento IS NULL;
+`);
+
 // compras.estado_envio: informativo, no afecta el stock. Las compras
 // viejas quedan en 'recibido' (el default), que es lo correcto: ya
 // habían sumado su stock, así que conceptualmente ya estaban recibidas.

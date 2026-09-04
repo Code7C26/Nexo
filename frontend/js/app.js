@@ -4475,6 +4475,33 @@ ventaItemsEl.addEventListener("item-change", actualizarTotalVenta);
 // Modo alta y modo edición comparten el mismo modal: sin venta se arranca
 // en blanco, con venta se precargan cliente/fecha/items y el submit más
 // abajo decide POST o PUT según `ventaEditandoId`.
+/* ---------- Condición de pago y vencimiento (venta y compra) ---------- */
+
+// El input de fecha solo tiene sentido con la condición "manual": para los
+// plazos redondos la fecha la calcula el backend sobre la fecha de la
+// operación, y mostrarla acá invitaría a editarla sin que eso cambie nada.
+function sincronizarVencimiento(selectId, wrapId) {
+  const select = document.getElementById(selectId);
+  document.getElementById(wrapId).hidden = select.value !== "manual";
+}
+
+// Deja el par condición/vencimiento como lo tenía la operación que se está
+// editando, o en "contado" para una nueva.
+function poblarCondicionPago(form, operacion, selectId, wrapId) {
+  form.condicion_pago.value = operacion?.condicion_pago ?? "contado";
+  form.fecha_vencimiento.value = operacion?.condicion_pago === "manual" ? operacion.fecha_vencimiento ?? "" : "";
+  sincronizarVencimiento(selectId, wrapId);
+}
+
+// Lo que viaja al backend: la fecha suelta solo se manda con "manual", para
+// no ensuciar el request con un valor que el backend va a ignorar igual.
+function datosCondicionPago(form) {
+  return {
+    condicion_pago: form.condicion_pago.value,
+    fecha_vencimiento: form.condicion_pago.value === "manual" ? form.fecha_vencimiento.value || null : null
+  };
+}
+
 function abrirModalVenta(venta = null) {
   ventaEditandoId = venta?.id ?? null;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
@@ -4502,6 +4529,8 @@ function abrirModalVenta(venta = null) {
   // hace eso solo).
   poblarSelectDepositos("#ventaDeposito");
   if (venta?.deposito_id) form.deposito_id.value = venta.deposito_id;
+
+  poblarCondicionPago(form, venta, "ventaCondicionPago", "ventaVencimientoWrap");
 
   ventaItemsEl.innerHTML = "";
   if (venta) {
@@ -4541,6 +4570,9 @@ modalVenta.addEventListener("click", (e) => {
 });
 document.getElementById("ventaListaPrecio").addEventListener("change", () => {
   reproponerPreciosPorLista(ventaItemsEl, productos);
+});
+document.getElementById("ventaCondicionPago").addEventListener("change", () => {
+  sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
 });
 // Elegir (o tipear) un cliente que ya existe y tiene lista habitual la
 // propone sola — solo si el usuario todavía no eligió una lista distinta a
@@ -4590,7 +4622,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     fecha: form.fecha.value,
     items,
     lista_precio_id: form.lista_precio_id.value || null,
-    deposito_id: form.deposito_id.value || null
+    deposito_id: form.deposito_id.value || null,
+    ...datosCondicionPago(form)
   });
 
   const res = ventaEditandoId
@@ -5517,6 +5550,8 @@ function abrirModalCompra(compra = null) {
   poblarSelectDepositos("#compraDeposito");
   if (compra?.deposito_id) form.deposito_id.value = compra.deposito_id;
 
+  poblarCondicionPago(form, compra, "compraCondicionPago", "compraVencimientoWrap");
+
   compraItemsEl.innerHTML = "";
   if (compra) {
     for (const item of compra.items) {
@@ -5537,6 +5572,9 @@ function abrirModalCompra(compra = null) {
 document.getElementById("btnNuevaCompra").addEventListener("click", () => abrirModalCompra());
 document.getElementById("btnAgregarItemCompra").addEventListener("click", () => {
   agregarFilaItemCompra(compraItemsEl);
+});
+document.getElementById("compraCondicionPago").addEventListener("change", () => {
+  sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
 });
 document.getElementById("modalCompraClose").addEventListener("click", () => {
   modalCompra.hidden = true;
@@ -5560,7 +5598,8 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     fecha: form.fecha.value,
     costo_envio: form.costo_envio.value,
     items,
-    deposito_id: form.deposito_id.value || null
+    deposito_id: form.deposito_id.value || null,
+    ...datosCondicionPago(form)
   });
 
   const res = compraEditandoId
@@ -6830,10 +6869,30 @@ document.getElementById("formTransferencia").addEventListener("submit", async (e
 
 // Mismo criterio de color que ESTADO_COBRO_CLASE: verde = sin urgencia,
 // amarillo = empieza a atrasarse, rojo = viejo. El backend ya calcula el
-// tramo por operación (server.js, tramoDeAntiguedad) con los mismos
-// cortes — acá solo se traduce a clase/etiqueta visual.
-const CC_TRAMO_CLASE = { al_dia: "status-cobrado", atrasado: "status-pendiente", vencido: "status-vencido" };
-const CC_TRAMO_LABEL = { al_dia: "Al día", atrasado: "Atrasado", vencido: "Vencido" };
+// tramo por operación (server.js, tramoDeVencimiento) midiendo contra el
+// vencimiento pactado — acá solo se traduce a clase/etiqueta visual. Los dos
+// tramos más viejos comparten el rojo: ya son deuda vencida, la diferencia
+// de cuánto la da la columna de días.
+const CC_TRAMO_CLASE = {
+  a_vencer: "status-cobrado",
+  vencido_30: "status-pendiente",
+  vencido_60: "status-vencido",
+  vencido_mas: "status-vencido"
+};
+const CC_TRAMO_LABEL = {
+  a_vencer: "A vencer",
+  vencido_30: "Vencido 1-30",
+  vencido_60: "Vencido 31-60",
+  vencido_mas: "Vencido +60"
+};
+
+// "Vence en 5 días" / "Vencido hace 5 días" / "Vence hoy", según el signo.
+// `dias` viene del backend como distancia desde el vencimiento hasta hoy.
+function ccTextoDias(dias) {
+  if (dias === null) return "A favor";
+  if (dias === 0) return "Vence hoy";
+  return dias < 0 ? `Vence en ${numero(-dias)} días` : `Vencido hace ${numero(dias)} días`;
+}
 
 // La operación "más vieja" tiene que ser la deuda más vieja, no
 // simplemente operaciones[0]: si una entidad tiene una operación con
@@ -6869,8 +6928,8 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
       <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${e.nombre}</button></td>
       <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
       <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
-      <td data-label="Más vieja">${masVieja.fecha}</td>
-      <td data-label="Antigüedad"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
+      <td data-label="Vence">${masVieja.vencimiento}</td>
+      <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
       <td data-label="" class="cc-chevron">▸</td>
     `;
 
@@ -6886,8 +6945,9 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
                 (o) => `
               <tr>
                 <td data-label="Fecha">${o.fecha}</td>
+                <td data-label="Vence">${o.vencimiento}</td>
                 <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
-                <td data-label="Antigüedad">${o.dias !== null ? `${numero(o.dias)} días` : "A favor"}</td>
+                <td data-label="Estado">${ccTextoDias(o.dias)}</td>
                 <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
               </tr>`
               )
@@ -6971,7 +7031,7 @@ const filtrosCcCobrar = crearFiltros(
   [
     { clave: "nombre", etiqueta: "Cliente", tipo: "texto" },
     { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
-    { clave: "dias_max", etiqueta: "Antigüedad (días)", tipo: "numero" }
+    { clave: "dias_max", etiqueta: "Días vencido", tipo: "numero" }
   ],
   filtrarCcCobrar
 );
@@ -6982,7 +7042,7 @@ const filtrosCcPagar = crearFiltros(
   [
     { clave: "nombre", etiqueta: "Proveedor", tipo: "texto" },
     { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
-    { clave: "dias_max", etiqueta: "Antigüedad (días)", tipo: "numero" }
+    { clave: "dias_max", etiqueta: "Días vencido", tipo: "numero" }
   ],
   filtrarCcPagar
 );
@@ -7016,10 +7076,10 @@ const COLUMNAS_CSV_CC = (tipoLabel) => [
   { titulo: "Email", valor: (e) => e.email },
   { titulo: "Saldo", valor: (e) => e.saldo },
   { titulo: "Operaciones pendientes", valor: (e) => e.operaciones?.filter((o) => o.pendiente > 0).length ?? 0 },
-  // La operación pendiente más antigua: las operaciones vienen ordenadas por
-  // fecha ascendente desde el backend.
-  { titulo: "Más vieja", valor: (e) => e.operaciones?.find((o) => o.pendiente > 0)?.fecha ?? "" },
-  { titulo: "Días de antigüedad", valor: (e) => e.dias_max }
+  // La operación pendiente que vence primero: las operaciones vienen
+  // ordenadas por vencimiento ascendente desde el backend.
+  { titulo: "Vence", valor: (e) => e.operaciones?.find((o) => o.pendiente > 0)?.vencimiento ?? "" },
+  { titulo: "Días vencido", valor: (e) => e.dias_max }
 ];
 
 document.getElementById("btnExportarCcCobrar").addEventListener("click", () => {

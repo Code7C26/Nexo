@@ -3488,10 +3488,10 @@ este entorno, `Copy-Item` (PowerShell) resultó más confiable que `cp`
 
 ### Qué queda pendiente
 
-- **Sin commitear** — la rama activa sigue siendo
-  `feature/reportes-compras-estadisticas`. Esta etapa (multidepósito) es
-  un commit propio encima del de listas de precios; falta decidir con el
-  usuario si van al mismo PR o a uno separado.
+- ~~Sin commitear~~ — **ya está commiteada**: `37acd16` ("feat:
+  multidepósito"), encima de `0802c2d` (listas de precios), las dos en
+  `feature/reportes-compras-estadisticas`. Sigue sin decidirse si esa rama
+  va a un PR único o a varios.
 - El **reporte de stock** (`/api/reportes/stock`, "qué reponer") sigue
   mostrando solo el total global por producto, sin desglose por depósito
   — quedó fuera a propósito de esta etapa (no se pidió explícitamente) pero
@@ -3507,3 +3507,157 @@ este entorno, `Copy-Item` (PowerShell) resultó más confiable que `cp`
   etapa dejó a mitad de camino.
 - `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
   arrastra de varias etapas atrás).
+
+## 25. Última etapa: vencimientos y aging de cuentas corrientes
+
+**El pedido**: seguir sumando funciones. Se preguntó con `AskUserQuestion`
+entre cuatro opciones (vencimientos/aging, marca y unidad de medida, notas de
+débito, reporte de stock por depósito) y el usuario eligió **vencimientos** —
+era la brecha que este mismo handoff venía marcando desde §3.
+
+**El problema que resuelve**: `GET /api/cuentas-corrientes` medía la
+antigüedad de la deuda **desde la fecha de la operación**, porque no existía
+fecha de vencimiento en el esquema (el propio código lo documentaba como
+limitación consciente). Con eso el reporte mentía: una venta pactada a 30 días
+hecha ayer figuraba "Al día" por casualidad y seguía figurando así hasta el
+día 30, sin importar lo pactado; una de contado impaga hace 20 días figuraba
+igual que una a 60 días recién emitida. No servía para decidir a quién
+reclamar.
+
+**Decisiones de negocio confirmadas con el usuario antes de programar** (tres
+rondas de `AskUserQuestion`, las tres con la opción recomendada):
+- Se carga eligiendo una **condición de pago** (Contado / 15 / 30 / 60 días /
+  fecha puntual); Nexo calcula la fecha sola. Se guardan **las dos cosas**: la
+  condición pactada y la fecha resultante.
+- **Tramos nuevos** medidos desde el vencimiento: `a_vencer`, `vencido_30`,
+  `vencido_60`, `vencido_mas` (antes: `al_dia`/`atrasado`/`vencido` medidos
+  desde la fecha de la operación).
+- Las operaciones existentes se backfillean con **vencimiento = su propia
+  fecha** (equivalente a "fueron de contado"). No es una suposición sobre lo
+  que se pactó de verdad: es el único valor que hace que el reporte siga dando
+  exactamente los mismos días y el mismo orden que antes, así que nada cambia
+  de lugar retroactivamente y el resultado se puede comparar 1:1 pre/post.
+
+### Migración (aditiva, dos columnas por tabla)
+
+- `backend/db/schema.sql`: `condicion_pago` TEXT y `fecha_vencimiento` TEXT en
+  `ventas` y en `compras`, para que una base **fresca** nazca con ellas.
+- `backend/db/index.js`: mismo patrón `PRAGMA table_info` + `ALTER TABLE` que
+  ya usaba `deposito_id`, más el backfill
+  (`UPDATE ... SET fecha_vencimiento = fecha, condicion_pago = 'contado'
+  WHERE fecha_vencimiento IS NULL`). El `WHERE ... IS NULL` lo hace idempotente
+  y evita pisar una operación que ya tenga vencimiento propio.
+- **Sin rebuild de `auditoria`**: no se agregó ninguna entidad nueva al CHECK,
+  solo columnas a tablas ya auditadas.
+
+### Backend (`backend/server.js`)
+
+- **`calcularVencimiento(fecha, condicion, fechaManual)`**, junto a los helpers
+  de fecha: reusa `sumarDias` (no reimplementa aritmética de fechas). Lanza
+  **`ErrorBulk`, nunca `Error` a secas** — la lección ya pagada en la etapa de
+  listas de precios: un `Error` genérico escapa del `try/catch` y termina como
+  HTML de stack trace de Express en vez de un 400 con JSON.
+- **Ojo con el orden de declaración**: `sumarDias`/`diffDias` son *function
+  declarations* (hoisted), por eso `calcularVencimiento` puede usarlas aunque
+  estén más abajo en el archivo. `fechaDeHoy` y `SQL_HOY`, en cambio, son
+  `const` — NO están hoisted, así que `crearVenta`/`crearCompra` (que están
+  antes en el archivo) resuelven la fecha con un `SELECT date('now')` inline en
+  vez de llamarlas. Si alguien "limpia" eso llamando a `fechaDeHoy()`, rompe.
+- `crearVenta` y `crearCompra` aceptan `condicion_pago` + `fecha_vencimiento`
+  (opcionales; sin ellos → `'contado'`, que preserva el comportamiento
+  anterior). Las dos ahora **resuelven la fecha antes del INSERT** en vez de
+  omitir la columna para que aplique el DEFAULT: el vencimiento tiene que
+  calcularse sobre esa misma fecha y no sobre otra.
+- `PUT /api/ventas/:id` y `PUT /api/compras/:id` **recalculan** el vencimiento,
+  porque editar puede haber movido la fecha de la operación. Si el request no
+  manda condición, se conserva la guardada; y con condición `'manual'` se
+  conserva también la fecha guardada (una fecha suelta no se puede derivar de
+  ninguna condición).
+- **El cambio que da sentido a la etapa**: `saldosPorOperacion` ahora trae
+  `COALESCE(o.fecha_vencimiento, o.fecha) AS vencimiento`, y `agruparPorEntidad`
+  mide `diffDias(o.vencimiento, hoy)` — negativo = todavía no venció. Las
+  operaciones se ordenan por vencimiento y `dias_max` pasa a ser "días
+  vencido". `tramoDeAntiguedad` → `tramoDeVencimiento` con los cuatro tramos.
+- `GET /api/ventas/:id` y `GET /api/compras/:id` exponen los dos campos nuevos
+  (el frontend los necesita para preseleccionar al editar).
+- Los otros llamadores de `crearVenta`/`crearCompra` (conversión de
+  presupuesto, `/api/asistente/ejecutar`) no pasan condición, así que caen en
+  `'contado'` — correcto y sin cambios de comportamiento.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- Tres helpers chicos compartidos por Venta y Compra: `sincronizarVencimiento`
+  (muestra el input de fecha solo con "manual"), `poblarCondicionPago` (deja el
+  par como lo tenía la operación editada) y `datosCondicionPago` (lo que viaja
+  al backend).
+- `<select name="condicion_pago">` + input date condicional en los modales de
+  Venta y Compra, después de Fecha.
+- **Cuentas corrientes**: `CC_TRAMO_CLASE`/`CC_TRAMO_LABEL` pasan a las cuatro
+  claves nuevas **sin CSS nueva** — `a_vencer` verde (`status-cobrado`),
+  `vencido_30` amarillo (`status-pendiente`), `vencido_60` y `vencido_mas`
+  rojo (`status-vencido`). Las columnas "Más vieja"/"Antigüedad" pasan a
+  "Vence"/"Estado"; el detalle expandible suma la columna Vence y usa
+  `ccTextoDias` ("Vence en N días" / "Vencido hace N días" / "Vence hoy" /
+  "A favor"). Filtros y CSV: la etiqueta de `dias_max` pasa a "Días vencido".
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad (con `Copy-Item` de
+  PowerShell), servidor de prueba en el **3002**, proceso del 3000 sin tocar
+  hasta tener todo verde.
+- **La prueba clave de esta etapa**: se guardó la respuesta de
+  `/api/cuentas-corrientes` **antes** de migrar y se comparó campo por campo
+  con la de después (script `comparar-cc.mjs`). Con el backfill a contado, los
+  saldos, los días, el orden de las entidades y los totales dieron
+  **exactamente lo mismo** — solo cambió el nombre del tramo. Cualquier
+  diferencia numérica ahí habría sido un bug.
+- **Migración**: row counts de las 33 tablas comparados 1:1 (sin diferencias);
+  cero filas sin `fecha_vencimiento` tras el backfill; idempotencia probada
+  reimportando `db/index.js` tres veces seguidas sobre una base con datos (sin
+  cambiar ninguna fila); y camino "base fresca" probado aparte, confirmando que
+  las dos columnas nacen de `schema.sql`.
+- **Por curl, 8/8**: venta a 30 días (fecha + 30, exacto); contado; fecha
+  manual anterior a la operación rechazada con **JSON limpio** (se verificó el
+  *body*, no solo el status — es exactamente el bug de `ErrorBulk` que se coló
+  en una etapa anterior); condición inválida (400); fecha manual válida;
+  editar la fecha recalcula el vencimiento conservando la condición; compra a
+  60 días.
+- **Bordes de los tramos, 7/7**: se creó una venta impaga por cada caso y se
+  leyó qué tramo le asignó el endpoint — día -5 (`a_vencer`), 0, 1 y 30
+  (`vencido_30`), 31 y 60 (`vencido_60`), 61 (`vencido_mas`). Los cortes caen
+  donde tienen que caer.
+- **Frontend con Playwright, 20/20 y sin errores de consola** (claro, oscuro,
+  1280px y 375px): las 5 opciones del select, el input de fecha que
+  aparece/desaparece con "manual", una venta creada de punta a punta desde la
+  UI, los encabezados nuevos, todos los badges con las etiquetas nuevas, el
+  detalle expandible con el texto de vencimiento, y sin scroll horizontal en
+  mobile. Capturas revisadas a mano en los tres escenarios.
+- **Ojo con las pruebas, no con el código**: la primera corrida por curl falló
+  4 de 8 porque el producto de prueba tenía stock 0 y las ventas se rechazaban
+  antes de llegar al código nuevo — dos de las pruebas de error incluso pasaban
+  *por el motivo equivocado* (el mensaje era de stock, no de vencimiento). Se
+  cargó stock y recién ahí las pruebas midieron lo que decían medir. Vale la
+  pena mirar el mensaje de error y no solo el status code.
+- **Deploy**: backup `nexo.db.backup-antes-vencimientos-20260904-140037`,
+  proceso detenido por **PID exacto** (`Get-NetTCPConnection -LocalPort 3000`),
+  reiniciado con `node --experimental-sqlite server.js`. Row counts post-deploy
+  idénticos a la foto previa, backfill completo (0 filas sin vencimiento, 0 con
+  vencimiento distinto de la fecha), `/api/cuentas-corrientes` respondió 401
+  (no 404: la ruta existe, falta sesión) y el HTML sirve los dos selects
+  nuevos.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama sigue siendo
+  `feature/reportes-compras-estadisticas` (esta etapa va encima de `37acd16`).
+- **El cliente y el proveedor no tienen condición de pago habitual en su
+  ficha**: se eligió la opción sin eso a propósito (el usuario descartó esa
+  tercera alternativa), así que hay que elegir el plazo en cada operación. Si
+  más adelante molesta, el molde exacto ya existe: `clientes.lista_precio_id`
+  con `poblarSelectListasPrecios`, que se propone solo al elegir el cliente.
+- **El asistente por texto no interpreta el plazo** desde la frase ("a 30
+  días") — todas sus operaciones son de contado. Misma situación que depósito.
+- Los tres archivos basura de la raíz (`0`, `0)`, `col.name`, los tres vacíos)
+  **se borraron** esta etapa, con confirmación del usuario.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios, arrastra
+  de varias etapas atrás).

@@ -137,11 +137,22 @@ CREATE TABLE IF NOT EXISTS proveedores (
   notas TEXT
 );
 
+-- condicion_pago / fecha_vencimiento: el plazo pactado con el cliente y la
+-- fecha en que esa deuda vence. Se guardan las dos cosas a propósito:
+-- condicion_pago es lo que se acordó ("30 días") y fecha_vencimiento es su
+-- resultado ya calculado sobre la fecha de esta venta puntual. Persistir la
+-- fecha en vez de recalcularla al vuelo sigue el criterio de §8: el
+-- vencimiento es un dato histórico de la operación, y cambiar la fecha de la
+-- venta más adelante no debería mover en silencio un vencimiento ya pactado.
+-- Es lo que permite que el aging de cuentas corrientes mida contra el
+-- vencimiento real y no contra la fecha de la operación.
 CREATE TABLE IF NOT EXISTS ventas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id INTEGER NOT NULL REFERENCES clientes(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
-  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa'
+  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
+  condicion_pago TEXT,
+  fecha_vencimiento TEXT
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -256,7 +267,10 @@ CREATE TABLE IF NOT EXISTS compras (
   estado TEXT NOT NULL CHECK (estado IN ('borrador', 'activa', 'anulada')) DEFAULT 'borrador',
   estado_envio TEXT NOT NULL CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido')) DEFAULT 'pedido',
   costo_envio REAL NOT NULL DEFAULT 0,
-  stock_aplicado INTEGER NOT NULL DEFAULT 0
+  stock_aplicado INTEGER NOT NULL DEFAULT 0,
+  -- Mismo par que en ventas, del lado de la deuda con el proveedor.
+  condicion_pago TEXT,
+  fecha_vencimiento TEXT
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a
