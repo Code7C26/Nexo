@@ -487,6 +487,19 @@ if (!clientesColumnas.some((col) => col.name === 'lista_precio_id')) {
   db.exec('ALTER TABLE clientes ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
 }
 
+// clientes.condicion_pago / proveedores.condicion_pago: el plazo de pago
+// habitual de esa entidad ("30 días", "contado"), propuesto solo por
+// Venta/Compra al elegirla (mismo criterio que lista_precio_id arriba). NULL
+// significa "no tiene un plazo habitual definido" — a propósito SIN backfill
+// para las entidades existentes: no sabemos qué plazo usaban de verdad, y
+// dejarlas en NULL en vez de en 'contado' conserva la diferencia entre
+// "nunca se definió" y "se definió que es de contado". Sus operaciones
+// siguen arrancando en Contado como hasta ahora hasta que alguien cargue el
+// plazo.
+if (!clientesColumnas.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN condicion_pago TEXT');
+}
+
 // ventas.lista_precio_id / presupuestos.lista_precio_id: con qué lista se
 // hizo la operación (trazabilidad, CLAUDE.md §8 y §22) — explica por qué
 // esa venta tuvo esos precios y habilita reportar por canal más adelante.
@@ -510,6 +523,12 @@ for (const columna of ['direccion', 'documento', 'notas']) {
   if (!proveedoresColumnas.some((col) => col.name === columna)) {
     db.exec(`ALTER TABLE proveedores ADD COLUMN ${columna} TEXT`);
   }
+}
+
+// proveedores.condicion_pago: mismo campo y mismo criterio que
+// clientes.condicion_pago de arriba, del lado de la deuda con el proveedor.
+if (!proveedoresColumnas.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE proveedores ADD COLUMN condicion_pago TEXT');
 }
 
 // cuentas_tesoreria.saldo_inicial: la plata que ya había antes de usar el

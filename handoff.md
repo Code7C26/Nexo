@@ -3661,3 +3661,133 @@ rondas de `AskUserQuestion`, las tres con la opción recomendada):
   **se borraron** esta etapa, con confirmación del usuario.
 - `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios, arrastra
   de varias etapas atrás).
+
+## 26. Última etapa: condición de pago habitual por cliente y proveedor
+
+**El pedido**: seguir sumando funciones. El usuario eligió esta opción entre
+cuatro (marca/unidad de medida, reporte de stock por depósito, notas de
+débito, condición de pago habitual) porque era el cabo suelto que la propia
+etapa anterior (§25) había dejado anotado: hoy hay que elegir el plazo de
+pago a mano en cada venta/compra, y olvidarse mete esa operación al reporte
+de Cuentas Corrientes como si fuera de contado.
+
+**El molde**: `clientes.lista_precio_id` (§18/§23) — un plazo/lista
+"habitual" en la ficha, que Venta/Compra proponen solo al elegir esa entidad,
+sin pisar una elección que el usuario ya haya hecho a mano para esa operación
+puntual.
+
+**Decisiones confirmadas con el usuario** (dos rondas de `AskUserQuestion`,
+las dos con la opción recomendada):
+- Elegir un cliente/proveedor **no pisa** una condición que el usuario ya
+  cambió a mano — mismo criterio que la lista de precios habitual.
+- Los clientes/proveedores existentes quedan **sin plazo habitual (NULL)**,
+  sin backfill: nada cambia de comportamiento hasta que alguien cargue el
+  plazo, y queda distinguible "nunca se definió" de "se definió que es de
+  contado".
+
+### Migración (aditiva, una columna por tabla, sin tocar `schema.sql`)
+
+`backend/db/index.js`: `clientes.condicion_pago` TEXT y
+`proveedores.condicion_pago` TEXT, mismo patrón `PRAGMA table_info` +
+`ALTER TABLE` que ya usa `clientes.lista_precio_id`. **Sin backfill** (NULL a
+propósito). **Sin rebuild de `auditoria`** (ninguna entidad nueva en el CHECK).
+
+**Nota de arquitectura descubierta en esta etapa**: a diferencia de
+`ventas`/`compras` (que sí declaran `condicion_pago`/`fecha_vencimiento` en
+`schema.sql` desde §25), `clientes.lista_precio_id` **nunca se agregó a
+`schema.sql`** — vive solo en la migración de `db/index.js`, incluso para una
+base fresca. La razón es el orden de las tablas en el archivo: `clientes` se
+declara antes que `listas_precios`, así que una FK directa en el `CREATE
+TABLE` sería una referencia hacia adelante. Se siguió ese mismo precedente
+para `clientes.condicion_pago`/`proveedores.condicion_pago` (agregarlas
+solo por migración, no en `schema.sql`) para no romper la consistencia del
+patrón ya establecido — un intento inicial de sumarlas a `schema.sql` se
+revirtió al notar esto.
+
+### Backend (`backend/server.js`)
+
+- **`normalizarCondicionPagoHabitual`/`condicionPagoHabitualValida`**, junto
+  a `normalizarListaPrecioId`/`listaPrecioValida`: NULL = sin plazo definido;
+  **`'manual'` se rechaza** (una fecha puntual de una operación concreta no
+  es un plazo habitual reutilizable). Validan contra `CONDICIONES_PAGO`
+  (definida más abajo en el archivo junto a `calcularVencimiento` de la etapa
+  anterior) — es un lookup dentro de una función, así que no importa que la
+  declaración esté más abajo: para cuando la función se llama de verdad
+  (una request), el módulo ya cargó entero.
+- `POST/PATCH /api/clientes` y `POST/PATCH /api/proveedores` suman
+  `condicion_pago` en los mismos cuatro puntos donde ya está
+  `lista_precio_id` (clientes) o los campos de contacto (proveedores):
+  destructuring, validación, INSERT/UPDATE, y la lista de `diffCampos` para
+  que el cambio quede auditado.
+- **Nada más cambia**: `crearVenta`/`crearCompra` ya aceptaban
+  `condicion_pago` desde §25; quién decide el valor sigue siendo el
+  frontend. La conversión de presupuestos y el asistente por texto siguen
+  siendo de contado, sin cambios de comportamiento.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **`poblarSelectCondicionPago(selector)`**, junto a los helpers de §25: las
+  mismas opciones que Venta/Compra pero **sin "Fecha puntual"** y con "Sin
+  definir" (= NULL) en vez de arrancar en "Contado".
+- `<select name="condicion_pago">` nuevo en `#formCliente` (al lado de lista
+  de precios habitual) y en `#formProveedor` (después de CUIT/DNI, primer
+  campo de preferencia que tiene el lado proveedor — antes no tenía ninguno).
+- **Propuesta automática, la parte que le da sentido a la etapa**: el
+  listener de `change` del input de cliente en Venta (ya existía para la
+  lista de precios) ahora también propone `condicion_pago`; se agregó el
+  mismo listener **nuevo** para el input de proveedor en Compra (no existía
+  ninguno — es lo único net-new de esta etapa, porque el lado proveedor no
+  tenía precedente). Dos banderas de módulo nuevas,
+  `ventaCondicionTocada`/`compraCondicionTocada` (reseteadas al abrir el
+  modal, puestas en `true` por el `change` del propio select): a diferencia
+  de la lista de precios, acá mirar el valor actual del select no alcanza
+  para saber si el usuario ya eligió algo a mano, porque "contado" es a la
+  vez el valor inicial y una elección válida.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba en
+  el **3002**, proceso del 3000 sin tocar hasta tener todo verde.
+- **Migración**: row counts de las 32 tablas sin diferencias; confirmado que
+  las columnas nacen NULL en todos los clientes/proveedores existentes (sin
+  backfill); idempotencia con tres corridas seguidas de `db/index.js` sobre
+  una base con datos; camino "base fresca" probado aparte.
+- **Por curl, 8/8**: cliente con `condicion_pago=30` guardado y leído;
+  cliente sin mandar el campo queda NULL; **`'manual'` rechazado en la ficha
+  de cliente** con **JSON limpio** (se verificó el *body*, no solo el
+  status); condición inválida (`99`) rechazada en proveedor; proveedor con
+  `condicion_pago=60`; `PATCH` de cliente actualiza el campo y queda en
+  `auditoria`; una venta con el plazo del cliente (15 días) da
+  `fecha_vencimiento` = fecha + 15 exacto.
+- **Frontend con Playwright** (claro, oscuro, 1280px y 375px): los selects
+  nuevos en las dos fichas con las 5 opciones correctas (sin "Fecha
+  puntual"); Venta arranca en Contado y **propone sola 30 días** al elegir un
+  cliente con ese plazo habitual; **no pisa** una condición que el usuario ya
+  cambió a mano después de elegir el cliente; Compra propone sola 60 días al
+  elegir un proveedor con ese plazo; sin scroll horizontal en mobile; sin
+  errores de consola. Confirmado también a mano con capturas de las dos
+  fichas.
+- **Ojo con las pruebas, no con el código**: una corrida del script combinado
+  marcó como "falla" que el modal de cliente (o, en otra corrida, el de
+  proveedor) no se cerraba al guardar — pero el create sí llegaba a
+  buen puerto (confirmado con `waitForResponse` aislado: 201 y el modal
+  cerrado las dos veces) y las pruebas que dependían de ese registro
+  (la propuesta automática leyendo su `condicion_pago`) seguían pasando, algo
+  imposible si el alta hubiera fallado de verdad. Era una carrera de tiempos
+  del script de prueba (varias altas seguidas con `waitForTimeout` fijo en
+  la misma sesión), no un bug de la función.
+- **Deploy**: backup `nexo.db.backup-antes-condicion-habitual-20260906-122414`,
+  proceso detenido por **PID exacto**, reiniciado con
+  `node --experimental-sqlite server.js`. Row counts post-deploy idénticos a
+  la foto previa, las dos columnas nuevas en NULL para todas las filas
+  existentes, y el HTML sirve el campo nuevo en las dos fichas.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama sigue siendo
+  `feature/reportes-compras-estadisticas` (esta etapa va encima de `e8858f4`).
+- El **asistente por texto** sigue sin leer el plazo habitual del cliente al
+  interpretar una venta por lenguaje natural — todas sus operaciones siguen
+  siendo de contado, igual que antes de esta etapa.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios, arrastra
+  de varias etapas atrás).

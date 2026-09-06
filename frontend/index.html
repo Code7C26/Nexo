@@ -2160,6 +2160,12 @@
             <option value="">Usar la predeterminada</option>
           </select>
         </label>
+        <!-- Opciones en runtime (poblarSelectCondicionPago en app.js). Sin
+             definir = la venta arranca en Contado como siempre; con un plazo
+             cargado, Venta lo propone sola al elegir este cliente. -->
+        <label>Condición de pago habitual
+          <select name="condicion_pago"></select>
+        </label>
         <label>Notas
           <input type="text" name="notas" placeholder="Opcional" />
         </label>
@@ -2190,6 +2196,12 @@
         </label>
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <!-- Opciones en runtime (poblarSelectCondicionPago en app.js). Sin
+             definir = la compra arranca en Contado como siempre; con un plazo
+             cargado, Compra lo propone solo al elegir este proveedor. -->
+        <label>Condición de pago habitual
+          <select name="condicion_pago"></select>
         </label>
         <label>Notas
           <input type="text" name="notas" placeholder="Opcional" />

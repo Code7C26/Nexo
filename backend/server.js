@@ -541,8 +541,23 @@ function listaPrecioValida(listaPrecioId) {
   return listaPrecioId === null || Boolean(db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId));
 }
 
+// condicion_pago habitual de un cliente/proveedor: NULL = "no tiene un plazo
+// definido", no un valor por defecto. CONDICIONES_PAGO se define más abajo en
+// el archivo (junto a calcularVencimiento), pero como es un lookup dentro de
+// una función y no algo que se evalúe al cargar el módulo, no hace falta que
+// esté declarado antes de este punto: para cuando esta función se llama de
+// verdad (una request), el módulo ya terminó de cargar entero.
+// 'manual' se rechaza a propósito: es una fecha puntual de una operación
+// concreta, no algo reutilizable como plazo habitual de la entidad.
+function normalizarCondicionPagoHabitual(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : String(valor);
+}
+function condicionPagoHabitualValida(condicion) {
+  return condicion === null || Object.prototype.hasOwnProperty.call(CONDICIONES_PAGO, condicion);
+}
+
 app.post('/api/clientes', (req, res) => {
-  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
@@ -550,10 +565,15 @@ app.post('/api/clientes', (req, res) => {
   if (!listaPrecioValida(listaPrecioId)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
+  const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
+  if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
+    return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
+  }
 
   const { lastInsertRowid } = db
     .prepare(
-      'INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       nombre.trim(),
@@ -562,7 +582,8 @@ app.post('/api/clientes', (req, res) => {
       direccion ?? null,
       documento ?? null,
       notas ?? null,
-      listaPrecioId
+      listaPrecioId,
+      condicionPagoHabitual
     );
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -574,13 +595,17 @@ app.patch('/api/clientes/:id', (req, res) => {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
 
-  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
   const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
   if (!listaPrecioValida(listaPrecioId)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
+  }
+  const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
+  if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
+    return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
 
   const nuevo = {
@@ -590,14 +615,37 @@ app.patch('/api/clientes/:id', (req, res) => {
     direccion: direccion ?? null,
     documento: documento ?? null,
     notas: notas ?? null,
-    lista_precio_id: listaPrecioId
+    lista_precio_id: listaPrecioId,
+    condicion_pago: condicionPagoHabitual
   };
-  const cambios = diffCampos(cliente, nuevo, ['nombre', 'email', 'telefono', 'direccion', 'documento', 'notas', 'lista_precio_id']);
+  const cambios = diffCampos(cliente, nuevo, [
+    'nombre',
+    'email',
+    'telefono',
+    'direccion',
+    'documento',
+    'notas',
+    'lista_precio_id',
+    'condicion_pago'
+  ]);
 
   withTransaction(() => {
     db.prepare(
-      'UPDATE clientes SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, lista_precio_id = ? WHERE id = ?'
-    ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, nuevo.lista_precio_id, clienteId);
+      `UPDATE clientes
+          SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, lista_precio_id = ?,
+              condicion_pago = ?
+        WHERE id = ?`
+    ).run(
+      nuevo.nombre,
+      nuevo.email,
+      nuevo.telefono,
+      nuevo.direccion,
+      nuevo.documento,
+      nuevo.notas,
+      nuevo.lista_precio_id,
+      nuevo.condicion_pago,
+      clienteId
+    );
     if (cambios) {
       auditar(req, {
         accion: 'editar',
@@ -1498,16 +1546,20 @@ app.get('/api/proveedores/:id', (req, res) => {
 });
 
 app.post('/api/proveedores', (req, res) => {
-  const { nombre, email, telefono, direccion, documento, notas } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, condicion_pago } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El proveedor necesita un nombre.' });
   }
+  const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
+  if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
+    return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
+  }
 
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       String(nombre).trim(),
@@ -1515,14 +1567,15 @@ app.post('/api/proveedores', (req, res) => {
       telefono ?? null,
       direccion ?? null,
       documento ?? null,
-      notas ?? null
+      notas ?? null,
+      condicionPagoHabitual
     );
   res.status(201).json({ id: lastInsertRowid });
 });
 
 app.patch('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
-  const { nombre, email, telefono, direccion, documento, notas } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, condicion_pago } = req.body;
 
   const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ?').get(proveedorId);
   if (!proveedor) {
@@ -1531,6 +1584,10 @@ app.patch('/api/proveedores/:id', (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El proveedor necesita un nombre.' });
   }
+  const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
+  if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
+    return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
+  }
 
   const nuevo = {
     nombre: String(nombre).trim(),
@@ -1538,16 +1595,34 @@ app.patch('/api/proveedores/:id', (req, res) => {
     telefono: telefono ?? null,
     direccion: direccion ?? null,
     documento: documento ?? null,
-    notas: notas ?? null
+    notas: notas ?? null,
+    condicion_pago: condicionPagoHabitual
   };
-  const cambios = diffCampos(proveedor, nuevo, ['nombre', 'email', 'telefono', 'direccion', 'documento', 'notas']);
+  const cambios = diffCampos(proveedor, nuevo, [
+    'nombre',
+    'email',
+    'telefono',
+    'direccion',
+    'documento',
+    'notas',
+    'condicion_pago'
+  ]);
 
   withTransaction(() => {
     db.prepare(
       `UPDATE proveedores
-          SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?
+          SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, condicion_pago = ?
         WHERE id = ?`
-    ).run(nuevo.nombre, nuevo.email, nuevo.telefono, nuevo.direccion, nuevo.documento, nuevo.notas, proveedorId);
+    ).run(
+      nuevo.nombre,
+      nuevo.email,
+      nuevo.telefono,
+      nuevo.direccion,
+      nuevo.documento,
+      nuevo.notas,
+      nuevo.condicion_pago,
+      proveedorId
+    );
     if (cambios) {
       auditar(req, {
         accion: 'editar',

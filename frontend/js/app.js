@@ -4502,8 +4502,35 @@ function datosCondicionPago(form) {
   };
 }
 
+// Select de condición de pago para la FICHA de cliente/proveedor (el plazo
+// habitual de esa entidad, no el de una operación puntual): sin "Fecha
+// puntual" (un plazo habitual reutilizable no puede ser una fecha suelta de
+// una venta concreta) y con una opción explícita "Sin definir" = NULL, mismo
+// criterio que "Usar la predeterminada" en poblarSelectListasPrecios.
+function poblarSelectCondicionPago(selector) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  select.innerHTML = `
+    <option value="">Sin definir</option>
+    <option value="contado">Contado</option>
+    <option value="15">15 días</option>
+    <option value="30">30 días</option>
+    <option value="60">60 días</option>
+  `;
+}
+
+// Marca si el usuario ya tocó el select de condición de pago a mano para
+// esta venta puntual — mientras siga en false, elegir un cliente con plazo
+// habitual puede proponerlo solo; una vez en true (el usuario lo cambió),
+// elegir otro cliente ya no se lo pisa (a diferencia de la lista de precios,
+// acá "contado" es a la vez el valor inicial y una elección válida del
+// usuario, así que mirar el valor actual no alcanza para distinguir los dos
+// casos — hace falta esta bandera aparte).
+let ventaCondicionTocada = false;
+
 function abrirModalVenta(venta = null) {
   ventaEditandoId = venta?.id ?? null;
+  ventaCondicionTocada = false;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
   document.getElementById("formVentaSubmit").textContent = venta ? "Guardar cambios" : "Registrar venta";
 
@@ -4531,6 +4558,17 @@ function abrirModalVenta(venta = null) {
   if (venta?.deposito_id) form.deposito_id.value = venta.deposito_id;
 
   poblarCondicionPago(form, venta, "ventaCondicionPago", "ventaVencimientoWrap");
+  // Mismo criterio que la lista de precios: al crear, si el cliente tipeado
+  // ya existe y tiene un plazo habitual, se propone solo.
+  if (!venta) {
+    const clienteExistente = clientes.find(
+      (c) => c.nombre.trim().toLowerCase() === (form.cliente.value || "").trim().toLowerCase()
+    );
+    if (clienteExistente?.condicion_pago) {
+      form.condicion_pago.value = clienteExistente.condicion_pago;
+      sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
+    }
+  }
 
   ventaItemsEl.innerHTML = "";
   if (venta) {
@@ -4572,11 +4610,16 @@ document.getElementById("ventaListaPrecio").addEventListener("change", () => {
   reproponerPreciosPorLista(ventaItemsEl, productos);
 });
 document.getElementById("ventaCondicionPago").addEventListener("change", () => {
+  ventaCondicionTocada = true;
   sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
 });
-// Elegir (o tipear) un cliente que ya existe y tiene lista habitual la
-// propone sola — solo si el usuario todavía no eligió una lista distinta a
-// mano para esta venta puntual (no se le pisa una elección ya hecha).
+// Elegir (o tipear) un cliente que ya existe y tiene lista/condición
+// habitual las propone solas — solo si el usuario todavía no eligió una
+// distinta a mano para esta venta puntual (no se le pisa una elección ya
+// hecha). Los dos campos usan criterios distintos para detectar "ya elegido
+// a mano" porque lista_precio_id arranca vacío (fácil de distinguir) pero
+// condicion_pago arranca en "contado", que es también una elección válida —
+// de ahí la bandera ventaCondicionTocada.
 document.getElementById("formVenta").cliente.addEventListener("change", (e) => {
   const clienteExistente = clientes.find(
     (c) => c.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
@@ -4585,6 +4628,10 @@ document.getElementById("formVenta").cliente.addEventListener("change", (e) => {
     const select = document.getElementById("ventaListaPrecio");
     select.value = clienteExistente.lista_precio_id;
     reproponerPreciosPorLista(ventaItemsEl, productos);
+  }
+  if (clienteExistente?.condicion_pago && !ventaEditandoId && !ventaCondicionTocada) {
+    document.getElementById("ventaCondicionPago").value = clienteExistente.condicion_pago;
+    sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
   }
 });
 
@@ -5533,8 +5580,12 @@ compraCostoEnvioEl.addEventListener("input", actualizarTotalCompra);
 // Igual que con ventas: el mismo modal sirve para alta y edición. La nota
 // de "se guarda como borrador" solo tiene sentido al crear, así que se
 // oculta al editar (una compra editada nunca cambia de estado).
+// Mismo criterio que ventaCondicionTocada (ver ahí el porqué).
+let compraCondicionTocada = false;
+
 function abrirModalCompra(compra = null) {
   compraEditandoId = compra?.id ?? null;
+  compraCondicionTocada = false;
   document.getElementById("modalCompraTitulo").textContent = compra ? "Editar compra" : "Nueva compra";
   document.getElementById("formCompraSubmit").textContent = compra ? "Guardar cambios" : "Guardar borrador";
   document.getElementById("compraFormNota").hidden = Boolean(compra);
@@ -5551,6 +5602,17 @@ function abrirModalCompra(compra = null) {
   if (compra?.deposito_id) form.deposito_id.value = compra.deposito_id;
 
   poblarCondicionPago(form, compra, "compraCondicionPago", "compraVencimientoWrap");
+  // Al crear, si el proveedor tipeado ya existe y tiene un plazo habitual,
+  // se propone solo (mismo criterio que el cliente en Venta).
+  if (!compra) {
+    const proveedorExistente = proveedores.find(
+      (p) => p.nombre.trim().toLowerCase() === (form.proveedor.value || "").trim().toLowerCase()
+    );
+    if (proveedorExistente?.condicion_pago) {
+      form.condicion_pago.value = proveedorExistente.condicion_pago;
+      sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
+    }
+  }
 
   compraItemsEl.innerHTML = "";
   if (compra) {
@@ -5574,7 +5636,20 @@ document.getElementById("btnAgregarItemCompra").addEventListener("click", () => 
   agregarFilaItemCompra(compraItemsEl);
 });
 document.getElementById("compraCondicionPago").addEventListener("change", () => {
+  compraCondicionTocada = true;
   sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
+});
+// Elegir (o tipear) un proveedor que ya existe y tiene plazo habitual lo
+// propone solo — mismo criterio que el cliente en Venta (no se le pisa una
+// elección ya hecha a mano).
+document.getElementById("formCompra").proveedor.addEventListener("change", (e) => {
+  const proveedorExistente = proveedores.find(
+    (p) => p.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
+  );
+  if (proveedorExistente?.condicion_pago && !compraEditandoId && !compraCondicionTocada) {
+    document.getElementById("compraCondicionPago").value = proveedorExistente.condicion_pago;
+    sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
+  }
 });
 document.getElementById("modalCompraClose").addEventListener("click", () => {
   modalCompra.hidden = true;
@@ -6289,6 +6364,8 @@ function abrirModalCliente(cliente = null) {
   form.notas.value = cliente?.notas ?? "";
   poblarSelectListasPrecios('#formCliente [name="lista_precio_id"]', { conPredeterminada: true });
   form.lista_precio_id.value = cliente?.lista_precio_id ?? "";
+  poblarSelectCondicionPago('#formCliente [name="condicion_pago"]');
+  form.condicion_pago.value = cliente?.condicion_pago ?? "";
   modalCliente.hidden = false;
 }
 
@@ -6315,7 +6392,8 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
     direccion: form.direccion.value || null,
     documento: form.documento.value || null,
     notas: form.notas.value || null,
-    lista_precio_id: form.lista_precio_id.value || null
+    lista_precio_id: form.lista_precio_id.value || null,
+    condicion_pago: form.condicion_pago.value || null
   };
 
   const res = await fetch(
@@ -6531,6 +6609,8 @@ function abrirModalProveedor(proveedor = null) {
   form.direccion.value = proveedor?.direccion ?? "";
   form.documento.value = proveedor?.documento ?? "";
   form.notas.value = proveedor?.notas ?? "";
+  poblarSelectCondicionPago('#formProveedor [name="condicion_pago"]');
+  form.condicion_pago.value = proveedor?.condicion_pago ?? "";
   modalProveedor.hidden = false;
 }
 
@@ -6557,7 +6637,8 @@ document.getElementById("formProveedor").addEventListener("submit", async (e) =>
     telefono: form.telefono.value || null,
     direccion: form.direccion.value || null,
     documento: form.documento.value || null,
-    notas: form.notas.value || null
+    notas: form.notas.value || null,
+    condicion_pago: form.condicion_pago.value || null
   };
 
   const res = await fetch(
