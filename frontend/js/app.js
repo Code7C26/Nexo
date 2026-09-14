@@ -242,112 +242,6 @@ function aplicarFiltros(lista, filtros, campos) {
   );
 }
 
-/* ---------- Orden de tablas (click en el encabezado) ---------- */
-
-// Mismo espíritu que crearFiltros: la tabla ya tiene su <thead> fijo en el
-// HTML (los <th data-orden="campo" data-tipo="texto|numero|fecha"> marcan
-// qué columnas se pueden ordenar), así que alcanza con engancharle los
-// listeners una vez al arrancar. El estado se guarda por tabla y
-// sobrevive a recargar, igual que los filtros.
-// idBody es el id del <tbody> (la única marca que ya llevan estas tablas
-// en el HTML); el <thead> se busca subiendo a la <table> que lo contiene,
-// para no tener que agregarle un id nuevo a cada <table>.
-function crearOrden(idBody, onCambio) {
-  const tabla = document.getElementById(idBody).closest("table");
-  const claveGuardado = `nexo.orden.${idBody}`;
-  const ths = [...tabla.querySelectorAll("thead th[data-orden]")];
-
-  let orden = null; // { campo, tipo, dir: "asc" | "desc" }
-  try {
-    const guardado = JSON.parse(localStorage.getItem(claveGuardado) ?? "null");
-    // Se descarta si apunta a una columna que ya no existe (cambió el
-    // markup): un orden fantasma no debería esconder filas en silencio.
-    if (guardado?.campo && ths.some((th) => th.dataset.orden === guardado.campo)) {
-      orden = guardado;
-    }
-  } catch {
-    orden = null;
-  }
-
-  function guardar() {
-    try {
-      localStorage.setItem(claveGuardado, JSON.stringify(orden));
-    } catch {
-      // Modo privado o storage lleno: el orden sigue andando en esta
-      // sesión, solo no se recuerda.
-    }
-  }
-
-  function actualizar() {
-    for (const th of ths) {
-      const activo = orden && th.dataset.orden === orden.campo;
-      th.classList.toggle("th-ordenado", Boolean(activo));
-      const flecha = th.querySelector(".th-flecha");
-      if (flecha) flecha.textContent = activo ? (orden.dir === "asc" ? "↑" : "↓") : "";
-    }
-  }
-
-  for (const th of ths) {
-    th.classList.add("th-ordenable");
-    th.setAttribute("tabindex", "0");
-    th.setAttribute("role", "button");
-    th.insertAdjacentHTML("beforeend", ` <span class="th-flecha"></span>`);
-
-    const alternar = () => {
-      const campo = th.dataset.orden;
-      const tipo = th.dataset.tipo || "texto";
-      orden =
-        orden && orden.campo === campo
-          ? { campo, tipo, dir: orden.dir === "asc" ? "desc" : "asc" }
-          : { campo, tipo, dir: "asc" };
-      guardar();
-      actualizar();
-      onCambio(orden);
-    };
-
-    th.addEventListener("click", alternar);
-    // El th también actúa como botón: el teclado tiene que poder
-    // disparar el mismo alternar() que el mouse.
-    th.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        alternar();
-      }
-    });
-  }
-
-  actualizar();
-
-  return {
-    get orden() {
-      return orden;
-    },
-    aplicar(lista) {
-      if (!orden) return lista;
-      const { campo, tipo, dir } = orden;
-      const signo = dir === "asc" ? 1 : -1;
-      // Los vacíos van al final sea cual sea el sentido: un campo sin
-      // cargar (SKU, descripción, margen sin calcular) no debería
-      // aparecer primero solo porque el orden es descendente.
-      return [...lista].sort((a, b) => {
-        const av = a[campo];
-        const bv = b[campo];
-        const aVacio = av === null || av === undefined || av === "";
-        const bVacio = bv === null || bv === undefined || bv === "";
-        if (aVacio && bVacio) return 0;
-        if (aVacio) return 1;
-        if (bVacio) return -1;
-
-        if (tipo === "numero") {
-          return (Number(av) - Number(bv)) * signo;
-        }
-        // "fecha" son strings ISO (AAAA-MM-DD): el orden lexicográfico ya
-        // es el orden cronológico, así que comparten la rama de texto.
-        return String(av).localeCompare(String(bv), "es") * signo;
-      });
-    }
-  };
-}
 
 /* ---------- Selección múltiple ---------- */
 
@@ -364,22 +258,16 @@ const CONFIRMAR_LOTE_DESDE = 25;
 // necesitar más.
 const LIMITE_LOTE = 500;
 
-// Utilitario transversal de tablas, hermano de crearFiltros y crearOrden:
-// agrega una columna de checkbox a una tabla y lleva el set de ids
-// tildados. idBody es el id del <tbody> (mismo criterio que crearOrden: la
-// única marca que ya llevan las tablas, sin agregar un id nuevo a la
-// <table>). idDe saca el id de una fila de la lista (default (x) => x.id;
-// hace falta pasarlo distinto en tablas donde la fila no es la entidad en
-// sí, como Stock, que es producto×depósito).
+// Utilitario transversal de tablas, hermano de crearFiltros: agrega una
+// columna de checkbox a una tabla y lleva el set de ids tildados. idBody
+// es el id del <tbody> (la única marca que ya llevan las tablas, sin
+// agregar un id nuevo a la <table>). idDe saca el id de una fila de la
+// lista (default (x) => x.id; hace falta pasarlo distinto en tablas donde
+// la fila no es la entidad en sí, como Stock, que es producto×depósito).
 //
-// La columna del <th> se inyecta acá por JS (insertAdjacentHTML), igual que
-// crearOrden ya inyecta su <span class="th-flecha"> en cada <th> — así la
+// La columna del <th> se inyecta acá por JS (insertAdjacentHTML), así la
 // columna existe SI Y SOLO SI la selección está montada, y colspan(n) puede
 // resolver solo el ancho de la fila vacía sin tocar cada vista a mano.
-//
-// El <th> de checkbox NO lleva data-orden a propósito: crearOrden lee
-// thead th[data-orden], y una columna de selección ordenada no tiene
-// sentido. No agregárselo si se toca este código después.
 //
 // El binding de los checkboxes de fila es la ÚNICA delegación real del
 // archivo (el resto re-bindea en cada render): los checkboxes se destruyen
@@ -605,13 +493,13 @@ async function traerConcurrencia(ids, fn, limite = 6) {
 
 /* ---------- Exportar a CSV ---------- */
 
-// Utilitario transversal de tablas, hermano de crearFiltros y crearOrden: las
-// tres responden a "cosas que le pasan a una tabla". Va acá arriba, antes de
+// Utilitario transversal de tablas, hermano de crearFiltros: las dos
+// responden a "cosas que le pasan a una tabla". Va acá arriba, antes de
 // las secciones de vista que lo usan.
 //
 // Se genera en el navegador y no en el servidor a propósito: lo que hay que
-// exportar es lo que el usuario ESTÁ VIENDO, y sus filtros y su orden viven
-// solo acá. Un endpoint tendría que reimplementar en SQL los operadores de
+// exportar es lo que el usuario ESTÁ VIENDO, y sus filtros viven solo acá.
+// Un endpoint tendría que reimplementar en SQL los operadores de
 // crearFiltros (incluidos los relativos, "este mes", "últimos 7 días") y los
 // campos que el frontend calcula por su cuenta — el mismo motor duplicado en
 // dos lenguajes, que es justo lo que el proyecto ya evitó para el filtrado.
@@ -1335,14 +1223,10 @@ async function cargarReporteVentas() {
   elGanancia.classList.toggle("saldo-negativo", datos.totales.ganancia_bruta < 0);
   elGanancia.classList.toggle("ledger-ok", datos.totales.ganancia_bruta >= 0);
 
-  renderReporteProductos(ordenReporteProductos.aplicar(datos.productos));
-  renderReporteCategorias(ordenReporteCategorias.aplicar(datos.categorias));
-  renderReporteClientes(ordenReporteClientes.aplicar(datos.clientes));
+  renderReporteProductos(datos.productos);
+  renderReporteCategorias(datos.categorias);
+  renderReporteClientes(datos.clientes);
 }
-
-const ordenReporteProductos = crearOrden("reporteProductosBody", () => cargarReporteVentas());
-const ordenReporteCategorias = crearOrden("reporteCategoriasBody", () => cargarReporteVentas());
-const ordenReporteClientes = crearOrden("reporteClientesBody", () => cargarReporteVentas());
 
 /* ---------- Reportes: qué se compra ---------- */
 //
@@ -1429,14 +1313,10 @@ async function cargarReporteCompras() {
   document.getElementById("reporteComprasUnidades").textContent = numero(datos.totales.unidades);
   document.getElementById("reporteComprasCantidad").textContent = numero(datos.totales.cantidad_compras);
 
-  renderReporteComprasProveedores(ordenReporteComprasProveedores.aplicar(datos.proveedores));
-  renderReporteComprasProductos(ordenReporteComprasProductos.aplicar(datos.productos));
-  renderReporteComprasCategorias(ordenReporteComprasCategorias.aplicar(datos.categorias));
+  renderReporteComprasProveedores(datos.proveedores);
+  renderReporteComprasProductos(datos.productos);
+  renderReporteComprasCategorias(datos.categorias);
 }
-
-const ordenReporteComprasProveedores = crearOrden("reporteComprasProveedoresBody", () => cargarReporteCompras());
-const ordenReporteComprasProductos = crearOrden("reporteComprasProductosBody", () => cargarReporteCompras());
-const ordenReporteComprasCategorias = crearOrden("reporteComprasCategoriasBody", () => cargarReporteCompras());
 
 /* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
 //
@@ -1494,10 +1374,8 @@ async function cargarReporteStock() {
     ? `Rotación medida del ${datos.rango.desde} al ${datos.rango.hasta}.`
     : `Rotación medida del ${datos.rango.desde} al ${datos.rango.hasta} (todo lo cargado hasta hoy) — para una estimación más realista, probá filtrar por "Últimos 30 días".`;
 
-  renderReporteStock(ordenReporteStock.aplicar(datos.productos));
+  renderReporteStock(datos.productos);
 }
-
-const ordenReporteStock = crearOrden("reporteStockBody", () => cargarReporteStock());
 
 // El backend ya resuelve comprobante y estado_cobro (derivado de los
 // cobros reales cuando la factura respalda una venta — ver
@@ -1507,7 +1385,7 @@ const ordenReporteStock = crearOrden("reporteStockBody", () => cargarReporteStoc
 // especial.
 function filtrarFacturas() {
   const lista = filtrosFacturas.aplicar(
-    ordenFacturas.aplicar(facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" })))
+    facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" }))
   );
 
   const facturado = lista.reduce((acc, f) => acc + f.total, 0);
@@ -1699,7 +1577,6 @@ const filtrosFacturas = crearFiltros(
   ],
   filtrarFacturas
 );
-const ordenFacturas = crearOrden("facturasBody", filtrarFacturas);
 
 // Mismas columnas que tendría un CSV completo de Facturas (no existe un
 // botón "Exportar CSV" de lo visible para esta tabla todavía — solo el de
@@ -1717,7 +1594,7 @@ const COLUMNAS_CSV_FACTURAS = [
 function exportarFacturasSeleccionadas(ids) {
   const idsSet = new Set(ids);
   const seleccion = filtrosFacturas
-    .aplicar(ordenFacturas.aplicar(facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" }))))
+    .aplicar(facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" })))
     .filter((f) => idsSet.has(f.id));
   descargarCSV("nexo-facturas-seleccion", COLUMNAS_CSV_FACTURAS, seleccion);
 }
@@ -2121,7 +1998,7 @@ function renderProductos(lista) {
       <td data-label="Categoría">${p.categoria || "—"}</td>
       <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
       <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
-      <td data-label="Precio" class="align-right">${precioCelda}</td>
+      <td data-label="Precio" class="align-right mono">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono">${p.margen === null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
@@ -2361,7 +2238,7 @@ function filtrarProductos() {
   const porTexto = productos.filter((p) =>
     [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  renderProductos(ordenProductos.aplicar(filtrosProductos.aplicar(porTexto)));
+  renderProductos(filtrosProductos.aplicar(porTexto));
 }
 
 // Misma expresión que filtrarProductos (búsqueda + filtros + orden), para
@@ -2371,7 +2248,7 @@ function listaProductosVisible() {
   const porTexto = productos.filter((p) =>
     [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  return ordenProductos.aplicar(filtrosProductos.aplicar(porTexto));
+  return filtrosProductos.aplicar(porTexto);
 }
 
 const COLUMNAS_CSV_PRODUCTOS = [
@@ -2568,7 +2445,6 @@ const filtrosProductos = crearFiltros(
 );
 
 document.getElementById("productosSearch").addEventListener("input", filtrarProductos);
-const ordenProductos = crearOrden("productosBody", filtrarProductos);
 
 const modalProducto = document.getElementById("modalProducto");
 
@@ -3259,7 +3135,7 @@ let stockCache = [];
 function filtrarStock() {
   const texto = document.getElementById("stockSearch").value.trim().toLowerCase();
   const porTexto = stockCache.filter((p) => p.nombre.toLowerCase().includes(texto));
-  renderStock(ordenStock.aplicar(filtrosStock.aplicar(porTexto)));
+  renderStock(filtrosStock.aplicar(porTexto));
 }
 
 // Stock combina el motor de filtros CON su propio <input type="search">: el
@@ -3267,7 +3143,7 @@ function filtrarStock() {
 function listaStockVisible() {
   const texto = document.getElementById("stockSearch").value.trim().toLowerCase();
   const porTexto = stockCache.filter((p) => p.nombre.toLowerCase().includes(texto));
-  return ordenStock.aplicar(filtrosStock.aplicar(porTexto));
+  return filtrosStock.aplicar(porTexto);
 }
 
 // /api/stock no devuelve sku (es la vista de existencias, no el catálogo).
@@ -3318,8 +3194,6 @@ const filtrosStock = crearFiltros(
   ],
   filtrarStock
 );
-const ordenStock = crearOrden("stockBody", filtrarStock);
-
 const filtrosStockMov = crearFiltros(
   "filtrosStockMov",
   [
@@ -3954,7 +3828,7 @@ function renderPresupuestos(lista) {
 }
 
 function filtrarPresupuestos() {
-  renderPresupuestos(ordenPresupuestos.aplicar(filtrosPresupuestos.aplicar(presupuestos)));
+  renderPresupuestos(filtrosPresupuestos.aplicar(presupuestos));
 }
 
 const filtrosPresupuestos = crearFiltros(
@@ -3982,7 +3856,6 @@ const filtrosPresupuestos = crearFiltros(
   ],
   filtrarPresupuestos
 );
-const ordenPresupuestos = crearOrden("presupuestosBody", filtrarPresupuestos);
 
 // Mismas columnas de datos que muestra la tabla. Números crudos (nunca
 // money()) — ver el comentario junto a descargarCSV.
@@ -3998,8 +3871,8 @@ const COLUMNAS_CSV_PRESUPUESTOS = [
 
 function exportarPresupuestosSeleccionados(ids) {
   const idsSet = new Set(ids);
-  const seleccion = ordenPresupuestos
-    .aplicar(filtrosPresupuestos.aplicar(presupuestos))
+  const seleccion = filtrosPresupuestos
+    .aplicar(presupuestos)
     .filter((p) => idsSet.has(p.id));
   descargarCSV("nexo-presupuestos-seleccion", COLUMNAS_CSV_PRESUPUESTOS, seleccion);
 }
@@ -4376,12 +4249,12 @@ function renderVentas(lista) {
 // no se puede permitir.
 function listaVentasVisible() {
   const activas = ventas.filter((v) => v.estado !== "anulada");
-  return ordenVentas.aplicar(filtrosVentas.aplicar(activas));
+  return filtrosVentas.aplicar(activas);
 }
 
-// Las columnas se declaran acá y no se derivan del <thead>: hay columnas sin
-// data-orden (Productos, la de acciones) y el CSV tiene que llevar el valor
-// crudo, no el HTML de la celda con sus badges y botones.
+// Las columnas se declaran acá y no se derivan del <thead>: el CSV tiene
+// que llevar el valor crudo, no el HTML de la celda con sus badges y
+// botones.
 const COLUMNAS_CSV_VENTAS = [
   { titulo: "N°", valor: (v) => v.id },
   { titulo: "Fecha", valor: (v) => v.fecha },
@@ -4420,7 +4293,7 @@ function filtrarVentas() {
   document.getElementById("ventasCostoStrip").textContent = money(costo);
   document.getElementById("ventasGananciaStrip").textContent = money(total - costo);
 
-  renderVentas(ordenVentas.aplicar(lista));
+  renderVentas(lista);
 }
 
 const filtrosVentas = crearFiltros(
@@ -4446,7 +4319,6 @@ const filtrosVentas = crearFiltros(
   ],
   filtrarVentas
 );
-const ordenVentas = crearOrden("ventasBody", filtrarVentas);
 
 // `ventas` guarda todo lo que devuelve la API (incluidas las anuladas)
 // porque la papelera se arma sobre ese mismo array; la tabla de Ventas
@@ -4941,7 +4813,7 @@ function filtrarDevoluciones() {
   const activas = devoluciones
     .filter((d) => d.estado !== "anulada")
     .map((d) => ({ ...d, reintegrada_txt: d.reintegrada ? "si" : "no" }));
-  renderDevoluciones(ordenDevoluciones.aplicar(filtrosDevoluciones.aplicar(activas)));
+  renderDevoluciones(filtrosDevoluciones.aplicar(activas));
 }
 
 const filtrosDevoluciones = crearFiltros(
@@ -4964,7 +4836,6 @@ const filtrosDevoluciones = crearFiltros(
   ],
   filtrarDevoluciones
 );
-const ordenDevoluciones = crearOrden("devolucionesBody", filtrarDevoluciones);
 
 async function cargarDevoluciones() {
   tablaCargando("devolucionesBody", 7);
@@ -5402,7 +5273,7 @@ function filtrarCompras() {
   document.getElementById("comprasPagadoStrip").textContent = money(pagado);
   document.getElementById("comprasDeudaStrip").textContent = money(total - pagado);
 
-  renderCompras(ordenCompras.aplicar(lista));
+  renderCompras(lista);
 }
 
 const filtrosCompras = crearFiltros(
@@ -5445,14 +5316,13 @@ const filtrosCompras = crearFiltros(
   ],
   filtrarCompras
 );
-const ordenCompras = crearOrden("comprasBody", filtrarCompras);
 
 // Mismos criterios que filtrarCompras: descarta anuladas, aplica filtros y
 // orden con la misma expresión — así lo que se exporta coincide con lo que
 // se ve en pantalla.
 function listaComprasVisible() {
   const activas = compras.filter((c) => c.estado !== "anulada");
-  return ordenCompras.aplicar(filtrosCompras.aplicar(activas));
+  return filtrosCompras.aplicar(activas);
 }
 
 const COLUMNAS_CSV_COMPRAS = [
@@ -5899,7 +5769,7 @@ function filtrarDevolucionesProveedor() {
     .filter((d) => d.estado !== "anulada")
     .map((d) => ({ ...d, reintegrada_txt: d.reintegrada ? "si" : "no" }));
   renderDevolucionesProveedor(
-    ordenDevolucionesProveedor.aplicar(filtrosDevolucionesProveedor.aplicar(activas))
+    filtrosDevolucionesProveedor.aplicar(activas)
   );
 }
 
@@ -5923,7 +5793,6 @@ const filtrosDevolucionesProveedor = crearFiltros(
   ],
   filtrarDevolucionesProveedor
 );
-const ordenDevolucionesProveedor = crearOrden("devolucionesProveedorBody", filtrarDevolucionesProveedor);
 
 async function cargarDevolucionesProveedor() {
   tablaCargando("devolucionesProveedorBody", 7);
@@ -6255,7 +6124,7 @@ function filtrarClientes() {
   const porTexto = clientes.filter((c) =>
     [c.nombre, c.email, c.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  renderClientes(ordenClientes.aplicar(filtrosClientes.aplicar(porTexto)));
+  renderClientes(filtrosClientes.aplicar(porTexto));
 }
 
 // Misma expresión que filtrarClientes (búsqueda + filtros + orden).
@@ -6264,7 +6133,7 @@ function listaClientesVisible() {
   const porTexto = clientes.filter((c) =>
     [c.nombre, c.email, c.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  return ordenClientes.aplicar(filtrosClientes.aplicar(porTexto));
+  return filtrosClientes.aplicar(porTexto);
 }
 
 const COLUMNAS_CSV_CLIENTES = [
@@ -6305,7 +6174,6 @@ const filtrosClientes = crearFiltros(
 );
 
 document.getElementById("clientesSearch").addEventListener("input", filtrarClientes);
-const ordenClientes = crearOrden("clientesBody", filtrarClientes);
 
 async function abrirFichaCliente(id) {
   clienteFichaId = id;
@@ -6479,7 +6347,7 @@ function filtrarProveedores() {
   const porTexto = proveedores.filter((p) =>
     [p.nombre, p.email, p.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  renderProveedores(ordenProveedores.aplicar(filtrosProveedores.aplicar(porTexto)));
+  renderProveedores(filtrosProveedores.aplicar(porTexto));
 }
 
 // Misma expresión que filtrarProveedores.
@@ -6488,7 +6356,7 @@ function listaProveedoresVisible() {
   const porTexto = proveedores.filter((p) =>
     [p.nombre, p.email, p.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  return ordenProveedores.aplicar(filtrosProveedores.aplicar(porTexto));
+  return filtrosProveedores.aplicar(porTexto);
 }
 
 const COLUMNAS_CSV_PROVEEDORES = [
@@ -6526,7 +6394,6 @@ const filtrosProveedores = crearFiltros(
 );
 
 document.getElementById("proveedoresSearch").addEventListener("input", filtrarProveedores);
-const ordenProveedores = crearOrden("proveedoresBody", filtrarProveedores);
 
 async function abrirFichaProveedor(id) {
   proveedorFichaId = id;
@@ -7076,7 +6943,7 @@ function renderCuentasCorrientes(datos) {
 
   renderCcTabla(
     "ccCobrarBody",
-    ordenCcCobrar.aplicar(filtrosCcCobrar.aplicar(por_cobrar)),
+    filtrosCcCobrar.aplicar(por_cobrar),
     filtrosCcCobrar,
     {
       tipoLabel: "Cliente",
@@ -7088,7 +6955,7 @@ function renderCuentasCorrientes(datos) {
   );
   renderCcTabla(
     "ccPagarBody",
-    ordenCcPagar.aplicar(filtrosCcPagar.aplicar(por_pagar)),
+    filtrosCcPagar.aplicar(por_pagar),
     filtrosCcPagar,
     {
       tipoLabel: "Proveedor",
@@ -7116,7 +6983,6 @@ const filtrosCcCobrar = crearFiltros(
   ],
   filtrarCcCobrar
 );
-const ordenCcCobrar = crearOrden("ccCobrarBody", filtrarCcCobrar);
 
 const filtrosCcPagar = crearFiltros(
   "filtrosCcPagar",
@@ -7127,7 +6993,6 @@ const filtrosCcPagar = crearFiltros(
   ],
   filtrarCcPagar
 );
-const ordenCcPagar = crearOrden("ccPagarBody", filtrarCcPagar);
 
 // Guarda la última respuesta cruda del endpoint para que los filtros y el
 // orden (que solo tocan una de las dos tablas) puedan re-renderizar sin
@@ -7167,7 +7032,7 @@ document.getElementById("btnExportarCcCobrar").addEventListener("click", () => {
   descargarCSV(
     "nexo-cuentas-por-cobrar",
     COLUMNAS_CSV_CC("Cliente"),
-    ordenCcCobrar.aplicar(filtrosCcCobrar.aplicar(ccUltimaRespuesta?.por_cobrar ?? []))
+    filtrosCcCobrar.aplicar(ccUltimaRespuesta?.por_cobrar ?? [])
   );
 });
 
@@ -7175,7 +7040,7 @@ document.getElementById("btnExportarCcPagar").addEventListener("click", () => {
   descargarCSV(
     "nexo-cuentas-por-pagar",
     COLUMNAS_CSV_CC("Proveedor"),
-    ordenCcPagar.aplicar(filtrosCcPagar.aplicar(ccUltimaRespuesta?.por_pagar ?? []))
+    filtrosCcPagar.aplicar(ccUltimaRespuesta?.por_pagar ?? [])
   );
 });
 
@@ -7265,14 +7130,14 @@ function renderGastos(lista) {
 
 function filtrarGastos() {
   const activos = gastos.filter((g) => g.estado === "activo");
-  renderGastos(ordenGastos.aplicar(filtrosGastos.aplicar(activos)));
+  renderGastos(filtrosGastos.aplicar(activos));
 }
 
 // Misma composición que filtrarGastos, para que el CSV traiga exactamente las
 // filas que muestra la tabla.
 function listaGastosVisible() {
   const activos = gastos.filter((g) => g.estado === "activo");
-  return ordenGastos.aplicar(filtrosGastos.aplicar(activos));
+  return filtrosGastos.aplicar(activos);
 }
 
 const COLUMNAS_CSV_GASTOS = [
@@ -7314,7 +7179,6 @@ const filtrosGastos = crearFiltros(
   ],
   filtrarGastos
 );
-const ordenGastos = crearOrden("gastosBody", filtrarGastos);
 
 async function cargarGastos() {
   tablaCargando("gastosBody", 7);
@@ -8193,10 +8057,7 @@ const filtrosAuditoria = crearFiltros(
     { clave: "detalle", etiqueta: "Detalle", tipo: "texto" },
     { clave: "usuario_nombre", etiqueta: "Usuario", tipo: "texto" }
   ],
-  () => renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
-);
-const ordenAuditoria = crearOrden("auditoriaBody", () =>
-  renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
+  () => renderAuditoria(filtrosAuditoria.aplicar(auditoriaCache))
 );
 
 // Panel "Movimientos contables": derivado, sin tabla ni endpoint propio
@@ -8313,7 +8174,7 @@ async function cargarAuditoria() {
   if (stockExtra) movimientosStockCache = stockExtra;
   if (cajaExtra) movimientosCajaCache = cajaExtra;
 
-  renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)));
+  renderAuditoria(filtrosAuditoria.aplicar(auditoriaCache));
 
   auditoriaMovCache = armarAuditoriaMovimientos();
   renderAuditoriaMovimientos(filtrosAuditoriaMov.aplicar(auditoriaMovCache));
