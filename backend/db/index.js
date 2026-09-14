@@ -960,6 +960,59 @@ if (auditoriaSql4 && !auditoriaSql4.sql.includes("'deposito'")) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Quinto rebuild de auditoria: sumar 'login', 'logout' y 'login_fallido' al
+// CHECK de accion, para poder auditar el ingreso y la salida de sesión
+// (CLAUDE.md §22 y la auditoría de permisos por rol). Hasta acá el login no
+// dejaba ningún rastro. Mismo procedimiento que los cuatro rebuilds de
+// arriba, esta vez sobre accion en vez de entidad.
+const auditoriaSql5 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql5 && !auditoriaSql5.sql.includes("'login'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar',
+                            'login', 'logout', 'login_fallido')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion','lista_precio','deposito','transferencia')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Limpieza de sesiones vencidas al bootear, sin cron ni timer: con
 // `--watch` esto corre en cada reinicio del proceso, que alcanza para un
 // sistema de este tamaño.

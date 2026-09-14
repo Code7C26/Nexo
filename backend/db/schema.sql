@@ -581,7 +581,8 @@ CREATE TABLE IF NOT EXISTS auditoria (
   actor TEXT NOT NULL DEFAULT 'operador'
     CHECK (actor IN ('operador', 'asistente', 'sistema')),
   accion TEXT NOT NULL
-    CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+    CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar',
+                      'login', 'logout', 'login_fallido')),
   -- 'organizacion' cubre los datos del negocio (nombre, CUIT, dirección) que
   -- salen impresos en el membrete de todo comprobante: cambiarlos no es un
   -- ajuste cosmético, así que queda registrado como cualquier otra mutación.

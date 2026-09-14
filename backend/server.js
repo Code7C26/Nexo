@@ -168,6 +168,15 @@ function autenticar(req, res, next) {
   }
   req.usuario = sesion;
   renovarSesion(token);
+  // La cookie tiene que seguir siendo válida (por eso no es un 401: eso lo
+  // agarraría el interceptor de sesion.js y mandaría de nuevo a login, que
+  // vuelve a entrar bien y cae otra vez acá — loop infinito) pero mientras
+  // el cambio de contraseña forzado siga pendiente, no puede operar nada
+  // más que cambiarla o salir. req.path ya viene sin el prefijo /api acá
+  // adentro (es el remanente después del mount de app.use('/api', ...)).
+  if (sesion.debe_cambiar_password && req.path !== '/auth/cambiar-password' && req.path !== '/auth/logout') {
+    return res.status(403).json({ error: 'Tenés que cambiar tu contraseña antes de seguir.' });
+  }
   next();
 }
 
@@ -277,12 +286,29 @@ app.post('/api/auth/login', (req, res) => {
   if (!fila) {
     verificarPassword(password, HASH_DUMMY.hash, HASH_DUMMY.salt);
     registrarIntentoFallido(usuario);
+    // Sin usuario_id: no hay a quién atribuírselo, no existe ese usuario.
+    // En detalle va solo el nombre tecleado, nunca el body entero — aunque
+    // si alguien escribió su contraseña en el campo de usuario por error,
+    // quedaría igual en texto plano acá; riesgo aceptado, no hay forma de
+    // distinguir ese caso del de un usuario tipeado mal.
+    registrarAuditoria({
+      accion: 'login_fallido',
+      entidad: 'usuario',
+      detalle: `Intento de inicio de sesión con usuario "${usuario}" (no existe)`
+    });
     return res.status(401).json({ error: MENSAJE_ERROR });
   }
 
   const ok = verificarPassword(password, fila.password_hash, fila.password_salt);
   if (!ok) {
     registrarIntentoFallido(usuario);
+    registrarAuditoria({
+      accion: 'login_fallido',
+      entidad: 'usuario',
+      entidad_id: fila.id,
+      usuario_id: fila.id,
+      detalle: 'Intento de inicio de sesión con contraseña incorrecta'
+    });
     return res.status(401).json({ error: MENSAJE_ERROR });
   }
 
@@ -290,6 +316,7 @@ app.post('/api/auth/login', (req, res) => {
   const token = crearSesion(fila.id);
   ponerCookieSesion(res, token);
   db.prepare("UPDATE usuarios SET ultimo_acceso = datetime('now') WHERE id = ?").run(fila.id);
+  registrarAuditoria({ accion: 'login', entidad: 'usuario', entidad_id: fila.id, usuario_id: fila.id, detalle: 'Inició sesión' });
 
   res.json({
     usuario: {
@@ -7123,7 +7150,12 @@ app.get('/api/auditoria', (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   const token = leerCookie(req, COOKIE_SESION);
-  if (token) db.prepare('DELETE FROM sesiones WHERE token = ?').run(token);
+  if (token) {
+    withTransaction(() => {
+      db.prepare('DELETE FROM sesiones WHERE token = ?').run(token);
+      auditar(req, { accion: 'logout', entidad: 'usuario', entidad_id: req.usuario.id, detalle: 'Cerró sesión' });
+    });
+  }
   borrarCookieSesion(res);
   res.status(204).end();
 });
