@@ -213,6 +213,174 @@ if (movimientosStockSql2 && !movimientosStockSql2.sql.includes("'devolucion_prov
   }
   db.exec('PRAGMA foreign_keys = ON');
 }
+// depositos: infraestructura real, mismo criterio que cuentas_tesoreria /
+// organizaciones / listas_precios más abajo — se siembra acá arriba (y no
+// junto a esos otros seeds, al final del archivo) porque el rebuild de
+// movimientos_stock que sigue necesita que ya exista al menos un depósito
+// para poder backfillear deposito_id en los movimientos históricos.
+const { count: depositosCount } = db.prepare('SELECT COUNT(*) AS count FROM depositos').get();
+let depositoPrincipalId;
+if (depositosCount === 0) {
+  ({ lastInsertRowid: depositoPrincipalId } = db
+    .prepare('INSERT INTO depositos (nombre, es_predeterminado) VALUES (?, 1)')
+    .run('Depósito principal'));
+} else {
+  depositoPrincipalId = db
+    .prepare('SELECT id FROM depositos WHERE es_predeterminado = 1')
+    .get()?.id;
+}
+
+// movimientos_stock: agregar deposito_id (CLAUDE.md §5/§19 — el stock se
+// maneja por producto Y depósito, no como un total global único) y
+// transferencia_id, más 'transferencia' al CHECK de origen. Mismo motivo y
+// procedimiento que los dos rebuilds de arriba. Todo el historial existente
+// se backfillea al depósito principal recién creado (o al que ya era
+// predeterminado, si esta migración corre sobre una base que ya tenía
+// depósitos de una corrida anterior cortada a la mitad) — así el stock
+// actual de cada producto, sumado entre depósitos, da exactamente el mismo
+// número que daba antes de esta etapa: no se mueve ni una unidad, solo se
+// le pone nombre a dónde ya estaba.
+const movimientosStockSql3 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_stock'")
+  .get();
+if (movimientosStockSql3 && !movimientosStockSql3.sql.includes('deposito_id')) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec('DROP VIEW IF EXISTS stock_actual');
+    db.exec('DROP VIEW IF EXISTS stock_por_deposito');
+    db.exec(`
+      CREATE TABLE movimientos_stock_nueva3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        producto_id INTEGER NOT NULL REFERENCES productos(id),
+        deposito_id INTEGER NOT NULL REFERENCES depositos(id),
+        tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
+        cantidad REAL NOT NULL,
+        origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia')),
+        origen_id INTEGER,
+        venta_id INTEGER REFERENCES ventas(id),
+        compra_id INTEGER REFERENCES compras(id),
+        devolucion_id INTEGER REFERENCES devoluciones(id),
+        devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
+        transferencia_id INTEGER REFERENCES transferencias(id),
+        fecha TEXT NOT NULL DEFAULT (date('now')),
+        costo_unitario REAL,
+        nota TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO movimientos_stock_nueva3
+             (id, producto_id, deposito_id, tipo, cantidad, origen, origen_id, venta_id, compra_id, devolucion_id, devolucion_proveedor_id, fecha, costo_unitario, nota)
+      SELECT  id, producto_id, ${depositoPrincipalId}, tipo, cantidad, origen, origen_id, venta_id, compra_id, devolucion_id, devolucion_proveedor_id, fecha, costo_unitario, nota
+        FROM movimientos_stock
+    `);
+    db.exec('DROP TABLE movimientos_stock');
+    db.exec('ALTER TABLE movimientos_stock_nueva3 RENAME TO movimientos_stock');
+    db.exec(`
+      CREATE VIEW stock_actual AS
+      SELECT producto_id,
+             SUM(CASE tipo
+                   WHEN 'entrada' THEN cantidad
+                   WHEN 'salida' THEN -cantidad
+                   ELSE cantidad
+                 END) AS cantidad
+      FROM movimientos_stock
+      GROUP BY producto_id
+    `);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// El índice y stock_por_deposito se crean acá, incondicionales con
+// IF NOT EXISTS, en vez de adentro del bloque de arriba: en una base
+// FRESCA, schema.sql ya creó movimientos_stock CON deposito_id desde el
+// vamos (el guard de arriba da false y el rebuild entero se saltea), así
+// que si estas dos líneas vivieran solo adentro del rebuild, una base
+// nueva se quedaría sin índice y sin la vista. stock_por_deposito no puede
+// vivir en schema.sql: su cuerpo referencia deposito_id, columna que en
+// una base existente todavía no está la primera vez que schema.sql corre
+// (falla con "no such column") — mismo motivo por el que saldo_tesoreria
+// tampoco vive ahí.
+db.exec(
+  'CREATE INDEX IF NOT EXISTS idx_movimientos_stock_producto_deposito ON movimientos_stock(producto_id, deposito_id)'
+);
+db.exec(`
+  CREATE VIEW IF NOT EXISTS stock_por_deposito AS
+  SELECT producto_id,
+         deposito_id,
+         SUM(CASE tipo
+               WHEN 'entrada' THEN cantidad
+               WHEN 'salida' THEN -cantidad
+               ELSE cantidad
+             END) AS cantidad
+  FROM movimientos_stock
+  GROUP BY producto_id, deposito_id
+`);
+
+// deposito_id en las operaciones que mueven stock (venta, compra,
+// devolución, devolución a proveedor): de qué depósito salió o a cuál
+// entró la mercadería de esa operación puntual (CLAUDE.md §19). Nullable,
+// mismo criterio que lista_precio_id en ventas/presupuestos: NULL significa
+// "el predeterminado de ese momento", no un id fijo copiado — si el día de
+// mañana cambia cuál depósito es el predeterminado, las operaciones viejas
+// sin depósito propio lo siguen solas.
+const ventasColumnasDeposito = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+const comprasColumnasDeposito = db.prepare('PRAGMA table_info(compras)').all();
+if (!comprasColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE compras ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+const devolucionesColumnasDeposito = db.prepare('PRAGMA table_info(devoluciones)').all();
+if (!devolucionesColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE devoluciones ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+const devolucionesProveedorColumnasDeposito = db.prepare('PRAGMA table_info(devoluciones_proveedor)').all();
+if (!devolucionesProveedorColumnasDeposito.some((col) => col.name === 'deposito_id')) {
+  db.exec('ALTER TABLE devoluciones_proveedor ADD COLUMN deposito_id INTEGER REFERENCES depositos(id)');
+}
+
+// condicion_pago / fecha_vencimiento en ventas y compras: el plazo pactado
+// y la fecha en que la deuda vence, para que el aging de cuentas corrientes
+// mida contra el vencimiento real y no contra la fecha de la operación (que
+// era la limitación explícita que tenía el reporte hasta ahora).
+//
+// El backfill deja las operaciones existentes como si hubieran sido de
+// contado (vencimiento = su propia fecha). No es una suposición sobre lo que
+// se pactó de verdad en cada una: es el único valor que hace que el reporte
+// siga dando exactamente los mismos días y el mismo orden que daba antes de
+// esta migración, así que nada cambia de lugar retroactivamente y el
+// resultado se puede comparar 1:1 pre/post. El WHERE ... IS NULL lo hace
+// idempotente y, de paso, evita pisar una operación que ya tenga vencimiento
+// propio si esta migración vuelve a correr.
+const ventasColumnasVenc = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnasVenc.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN condicion_pago TEXT');
+}
+if (!ventasColumnasVenc.some((col) => col.name === 'fecha_vencimiento')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN fecha_vencimiento TEXT');
+}
+const comprasColumnasVenc = db.prepare('PRAGMA table_info(compras)').all();
+if (!comprasColumnasVenc.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE compras ADD COLUMN condicion_pago TEXT');
+}
+if (!comprasColumnasVenc.some((col) => col.name === 'fecha_vencimiento')) {
+  db.exec('ALTER TABLE compras ADD COLUMN fecha_vencimiento TEXT');
+}
+db.exec(`
+  UPDATE ventas
+     SET fecha_vencimiento = fecha, condicion_pago = COALESCE(condicion_pago, 'contado')
+   WHERE fecha_vencimiento IS NULL;
+  UPDATE compras
+     SET fecha_vencimiento = fecha, condicion_pago = COALESCE(condicion_pago, 'contado')
+   WHERE fecha_vencimiento IS NULL;
+`);
+
 // compras.estado_envio: informativo, no afecta el stock. Las compras
 // viejas quedan en 'recibido' (el default), que es lo correcto: ya
 // habían sumado su stock, así que conceptualmente ya estaban recibidas.
@@ -309,6 +477,44 @@ for (const columna of ['direccion', 'documento', 'notas']) {
   }
 }
 
+// clientes.lista_precio_id: la lista de precios habitual de ese cliente
+// (CLAUDE.md §18). Nullable, y NULL significa "la predeterminada" en vez
+// de copiar el id de la predeterminada acá: si el día de mañana cambia
+// cuál lista es la predeterminada, los clientes sin lista propia deben
+// seguirla sola, no quedar pegados a la que era predeterminada cuando se
+// cargaron.
+if (!clientesColumnas.some((col) => col.name === 'lista_precio_id')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
+}
+
+// clientes.condicion_pago / proveedores.condicion_pago: el plazo de pago
+// habitual de esa entidad ("30 días", "contado"), propuesto solo por
+// Venta/Compra al elegirla (mismo criterio que lista_precio_id arriba). NULL
+// significa "no tiene un plazo habitual definido" — a propósito SIN backfill
+// para las entidades existentes: no sabemos qué plazo usaban de verdad, y
+// dejarlas en NULL en vez de en 'contado' conserva la diferencia entre
+// "nunca se definió" y "se definió que es de contado". Sus operaciones
+// siguen arrancando en Contado como hasta ahora hasta que alguien cargue el
+// plazo.
+if (!clientesColumnas.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN condicion_pago TEXT');
+}
+
+// ventas.lista_precio_id / presupuestos.lista_precio_id: con qué lista se
+// hizo la operación (trazabilidad, CLAUDE.md §8 y §22) — explica por qué
+// esa venta tuvo esos precios y habilita reportar por canal más adelante.
+// Nullable por el mismo motivo que en clientes: las ventas/presupuestos ya
+// registrados no tienen lista, y NULL ahí también se interpreta como "se
+// hizo con la predeterminada de ese momento", no con una lista fija.
+const ventasColumnas = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnas.some((col) => col.name === 'lista_precio_id')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
+}
+const presupuestosColumnas = db.prepare('PRAGMA table_info(presupuestos)').all();
+if (!presupuestosColumnas.some((col) => col.name === 'lista_precio_id')) {
+  db.exec('ALTER TABLE presupuestos ADD COLUMN lista_precio_id INTEGER REFERENCES listas_precios(id)');
+}
+
 // proveedores: mismos campos de contacto que clientes, agregados cuando la
 // tabla ya existía. Todos nullable, porque los proveedores creados
 // automáticamente desde una compra solo tienen nombre.
@@ -317,6 +523,12 @@ for (const columna of ['direccion', 'documento', 'notas']) {
   if (!proveedoresColumnas.some((col) => col.name === columna)) {
     db.exec(`ALTER TABLE proveedores ADD COLUMN ${columna} TEXT`);
   }
+}
+
+// proveedores.condicion_pago: mismo campo y mismo criterio que
+// clientes.condicion_pago de arriba, del lado de la deuda con el proveedor.
+if (!proveedoresColumnas.some((col) => col.name === 'condicion_pago')) {
+  db.exec('ALTER TABLE proveedores ADD COLUMN condicion_pago TEXT');
 }
 
 // cuentas_tesoreria.saldo_inicial: la plata que ya había antes de usar el
@@ -572,6 +784,235 @@ if (auditoriaSql && !auditoriaSql.sql.includes("'usuario'")) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Datos del negocio para el membrete de los comprobantes impresos. Aditivas y
+// nullable, mismo criterio que facturas.venta_id/devolucion_id más arriba: una
+// base que ya existía las gana vacías y el negocio las completa desde
+// Configuración. Ninguna fila se reescribe. Se chequea columna por columna
+// (y no "si falta una, agregar todas") para que el bloque sea idempotente
+// incluso si una corrida anterior se cortó a la mitad.
+const organizacionesColumnas = db.prepare('PRAGMA table_info(organizaciones)').all();
+for (const columna of ['documento', 'direccion', 'telefono', 'email', 'condicion_iva', 'pie_comprobante']) {
+  if (!organizacionesColumnas.some((col) => col.name === columna)) {
+    db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna} TEXT`);
+  }
+}
+
+// Segundo rebuild de auditoria: sumar 'organizacion' al CHECK de entidad, para
+// poder auditar quién cambió los datos del negocio. Cambiar el CUIT que sale
+// impreso en TODOS los comprobantes no puede pasar sin dejar rastro (§22), y
+// reusar otra entidad para esquivar el rebuild sería mentir en el registro que
+// existe justamente para no mentir.
+//
+// Mismo procedimiento que el rebuild de arriba, con una diferencia que importa:
+// a esta altura la tabla YA TIENE FILAS y ya tiene usuario_id, así que el
+// INSERT..SELECT copia también esa columna. Los id se preservan explícitamente
+// (una fila de auditoría se referencia por id) y los dos índices se recrean a
+// mano: el DROP TABLE se los lleva y schema.sql ya corrió al principio del
+// archivo, así que nadie más los va a volver a crear en este arranque.
+const auditoriaSql2 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql2 && !auditoriaSql2.sql.includes("'organizacion'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// Tercer rebuild de auditoria: sumar 'lista_precio' al CHECK de entidad, para
+// poder auditar altas/ediciones de listas de precios (CLAUDE.md §18) con el
+// mismo registro central que el resto de los maestros. Mismo procedimiento
+// que los dos rebuilds de arriba: los índices se recrean a mano porque el
+// DROP TABLE se los lleva y schema.sql ya corrió al principio del archivo.
+const auditoriaSql3 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql3 && !auditoriaSql3.sql.includes("'lista_precio'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion','lista_precio')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// Cuarto rebuild de auditoria: sumar 'deposito' y 'transferencia' al CHECK
+// de entidad, para poder auditar altas/ediciones de depósitos y
+// transferencias (CLAUDE.md §19) con el mismo registro central que el
+// resto de los maestros y operaciones. Mismo procedimiento que los tres
+// rebuilds de arriba.
+const auditoriaSql4 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql4 && !auditoriaSql4.sql.includes("'deposito'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion','lista_precio','deposito','transferencia')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+// Quinto rebuild de auditoria: sumar 'login', 'logout' y 'login_fallido' al
+// CHECK de accion, para poder auditar el ingreso y la salida de sesión
+// (CLAUDE.md §22 y la auditoría de permisos por rol). Hasta acá el login no
+// dejaba ningún rastro. Mismo procedimiento que los cuatro rebuilds de
+// arriba, esta vez sobre accion en vez de entidad.
+const auditoriaSql5 = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria'")
+  .get();
+if (auditoriaSql5 && !auditoriaSql5.sql.includes("'login'")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE auditoria_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL DEFAULT (datetime('now')),
+        actor TEXT NOT NULL DEFAULT 'operador'
+          CHECK (actor IN ('operador', 'asistente', 'sistema')),
+        accion TEXT NOT NULL
+          CHECK (accion IN ('crear', 'editar', 'anular', 'restaurar', 'cambiar_estado', 'confirmar',
+                            'login', 'logout', 'login_fallido')),
+        entidad TEXT NOT NULL
+          CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
+                             'factura','cobro','pago','gasto','producto','cliente','proveedor',
+                             'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
+                             'organizacion','lista_precio','deposito','transferencia')),
+        entidad_id INTEGER,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        valor_anterior TEXT,
+        valor_nuevo TEXT,
+        operacion_tipo TEXT,
+        operacion_id INTEGER,
+        detalle TEXT
+      )
+    `);
+    db.exec(`
+      INSERT INTO auditoria_nueva
+             (id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
+      SELECT  id, fecha, actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle
+        FROM auditoria
+    `);
+    db.exec('DROP TABLE auditoria');
+    db.exec('ALTER TABLE auditoria_nueva RENAME TO auditoria');
+    db.exec('CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id DESC)');
+    db.exec('CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, entidad_id)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Limpieza de sesiones vencidas al bootear, sin cron ni timer: con
 // `--watch` esto corre en cada reinicio del proceso, que alcanza para un
 // sistema de este tamaño.
@@ -654,6 +1095,25 @@ if (cuentasCount === 0) {
 const { count: orgCount } = db.prepare('SELECT COUNT(*) AS count FROM organizaciones').get();
 if (orgCount === 0) {
   db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
+}
+
+// listas_precios: mismo criterio que cuentas_tesoreria/organizaciones arriba
+// — no es un dato de ejemplo, es infraestructura real que el sistema entero
+// necesita para tener una lista predeterminada (CLAUDE.md §18). Se crea una
+// única vez, la primera vez que la base no tiene ninguna lista todavía.
+// El backfill copia el precio_venta de cada producto a esa lista, así que
+// el número que el negocio ya venía usando no cambia ni un peso — solo pasa
+// a vivir también como fila de producto_precios, en vez de únicamente como
+// columna suelta en productos.
+const { count: listasCount } = db.prepare('SELECT COUNT(*) AS count FROM listas_precios').get();
+if (listasCount === 0) {
+  const { lastInsertRowid: listaPredeterminadaId } = db
+    .prepare('INSERT INTO listas_precios (nombre, es_predeterminada) VALUES (?, 1)')
+    .run('Minorista');
+  db.exec(`
+    INSERT INTO producto_precios (producto_id, lista_precio_id, precio)
+    SELECT id, ${listaPredeterminadaId}, precio_venta FROM productos
+  `);
 }
 
 export default db;

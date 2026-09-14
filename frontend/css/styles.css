@@ -102,6 +102,31 @@
   --sidebar-w: 240px;
 }
 
+/* ---------- Probador de tipografías (Configuración) ----------
+   Temporal a propósito: mientras se compara, hay cuatro combinaciones
+   posibles vía data-fuente en <html> (ver el selector en el modal de
+   Configuración). "plex" es la de hoy y es el default de :root de
+   arriba, no necesita bloque propio. Cuando se elija una definitiva, se
+   fija como default, se borran los otros tres bloques y las familias que
+   sobren del <link> de Google Fonts en index.html. */
+:root[data-fuente="jetbrains"] {
+  --font-display: 'JetBrains Mono', 'Courier New', monospace;
+  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+  --font-body:    'Inter', 'Segoe UI', sans-serif;
+}
+
+:root[data-fuente="plex-full"] {
+  --font-display: 'IBM Plex Mono', 'Courier New', monospace;
+  --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
+  --font-body:    'IBM Plex Sans', 'Segoe UI', sans-serif;
+}
+
+:root[data-fuente="dm"] {
+  --font-display: 'DM Mono', 'Courier New', monospace;
+  --font-mono:    'DM Mono', 'Courier New', monospace;
+  --font-body:    'DM Sans', 'Segoe UI', sans-serif;
+}
+
 /* Sin elección explícita, el tema sigue al sistema operativo. El botón
    fija --data-tema y a partir de ahí gana siempre, en cualquier
    dirección (aunque el SO diga otra cosa). */
@@ -380,6 +405,13 @@ button { font-family: inherit; cursor: pointer; }
 
   :root[data-sidebar="colapsada"] .nav-toggle {
     display: flex;
+  }
+
+  /* Con la sidebar colapsada el hamburger flota fijo sobre la esquina
+     superior izquierda, justo encima de #vistaTitulo — mismo criterio que
+     el padding-left que .topbar ya usa en mobile para despejarlo. */
+  :root[data-sidebar="colapsada"] .topbar {
+    padding-left: var(--sp-6);
   }
 }
 
@@ -841,11 +873,9 @@ button { font-family: inherit; cursor: pointer; }
 /* La regla `.ledger-table th` de arriba fija text-align:left y tiene más
    especificidad que un `.align-right` suelto, así que los encabezados
    alineados a la derecha quedaban a la izquierda mientras su columna de
-   datos iba a la derecha. Por eso estas dos reglas nombran el th. */
+   datos iba a la derecha. Por eso esta regla nombra el th. */
 .align-right { text-align: right; }
-.align-center { text-align: center; }
 .ledger-table th.align-right { text-align: right; }
-.ledger-table th.align-center { text-align: center; }
 
 .ledger-table tbody tr:hover { background: var(--surface-sunk); }
 
@@ -859,23 +889,6 @@ button { font-family: inherit; cursor: pointer; }
 .cc-detalle { width: 100%; border-collapse: collapse; }
 .cc-detalle td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: var(--txt-sm); }
 .cc-detalle tr:last-child td { border-bottom: none; }
-
-/* ---------- Orden de tablas (click en el encabezado) ---------- */
-
-.th-ordenable {
-  cursor: pointer;
-  user-select: none;
-}
-
-.th-ordenable:hover { color: var(--ink); }
-
-.th-ordenado { color: var(--ink); }
-
-.th-flecha {
-  display: inline-block;
-  width: 0.9em;
-  font-family: var(--font-mono);
-}
 
 .status {
   display: inline-block;
@@ -1015,6 +1028,89 @@ button { font-family: inherit; cursor: pointer; }
 
 .modal-close:hover { background: var(--surface-sunk); color: var(--ink); }
 
+/* Identidad de quien está logueado, en el modal "Mi cuenta": no es una
+   nota aclaratoria como .form-note (que es margin:0), es el encabezado
+   de la sección de cuenta, así que necesita su propio aire respecto del
+   formulario de cambio de contraseña que le sigue. */
+.perfil-identidad {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+}
+
+.perfil-identidad strong {
+  font-family: var(--font-display);
+  font-size: var(--txt-md);
+}
+
+/* Probador de tipografías (modal Configuración). Cada muestra fija su
+   propia font-family inline (ver index.html) en vez de leer
+   --font-display/--font-body, porque las cuatro tienen que verse a la
+   vez sin importar cuál esté aplicada al resto de la app ahora mismo. */
+.fuente-selector {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.fuente-selector legend {
+  padding: 0;
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+}
+
+.fuente-selector .form-note { margin-bottom: var(--sp-2); }
+
+.fuente-opcion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.fuente-opcion:has(input:checked) {
+  border-color: var(--ink);
+}
+
+.fuente-opcion input { margin-top: 3px; }
+
+.fuente-opcion-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--txt-sm);
+}
+
+.fuente-opcion-muestra {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ink-muted);
+}
+
+.fuente-opcion-muestra span:first-child {
+  font-size: var(--txt-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fuente-opcion-muestra span:last-child {
+  font-size: var(--txt-md);
+  color: var(--ink);
+}
+
 .form {
   display: flex;
   flex-direction: column;
@@ -1049,6 +1145,55 @@ button { font-family: inherit; cursor: pointer; }
   display: none;
 }
 
+/* ---------- Edición en lote (modales bulk) ----------
+   .bulk-campo agrupa el checkbox de activación y el/los input(s) de un
+   campo del formulario de bulk edit. Se le da display:flex (mismo criterio
+   que .form label arriba), así que necesita su propia regla [hidden] por
+   el mismo motivo ya documentado dos veces en este archivo: una clase con
+   display propio le gana en especificidad al [hidden] del navegador. */
+.bulk-campo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.bulk-campo:last-of-type { border-bottom: none; }
+
+.bulk-campo select,
+.bulk-campo input {
+  margin-left: var(--sp-5);
+}
+
+.bulk-campo select:disabled,
+.bulk-campo input:disabled {
+  opacity: 0.5;
+}
+
+/* Bloque de resultado parcial (aplicados/fallidos) dentro del modal de
+   bulk edit. Mismo motivo que .bulk-campo: display propio, necesita su
+   [hidden] explícito. */
+.bulk-resultado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+}
+
+.bulk-resultado[hidden] {
+  display: none;
+}
+
+.bulk-resultado ul {
+  margin: 0;
+  padding-left: var(--sp-4);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
 .form input,
 .form select {
   border: 1px solid var(--line);
@@ -1079,6 +1224,15 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
   margin: 0;
+}
+
+/* La nota explicativa de una vista y el bloque de filtros (o la tabla,
+   cuando no hay filtros) que le sigue no tenían margen entre sí
+   (.form-note es margin:0 y .filtros solo lleva margin-bottom), así que
+   el botón "+ Filtro" quedaba pegado al borde del cartel. */
+.form-note + .filtros,
+.form-note + .tabla-scroll {
+  margin-top: var(--sp-3);
 }
 
 /* El widget flotante del asistente tiene su propia sección, al final del
@@ -1351,21 +1505,66 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--surface);
 }
 
+/* En reposo se lee como texto plano (mismo tamaño y tracking numérico que
+   las celdas .mono vecinas de Costo/Margen), sin borde ni fondo propio —
+   la caja de edición solo aparece al pasar el mouse o enfocar, así no
+   compite visualmente con el dato en sí. */
 .input-inline {
-  width: 100px;
-  border: 1px solid var(--line);
+  width: 96px;
+  border: 1px solid transparent;
+  background: transparent;
   border-radius: var(--r-sm);
   padding: 4px 6px;
-  font-size: var(--txt-xs);
+  font-size: var(--txt-sm);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
-  background: var(--surface);
   text-align: right;
+  /* Sin esto, Chromium reserva el ancho de las flechas de incremento
+     aunque no se vean (solo aparecen en hover/foco de un <input
+     type="number">) — ese hueco fantasma era lo que cortaba el
+     placeholder "Sin precio". De paso saca el control nativo, que no
+     hace falta acá: no hay caso de uso para incrementar un precio de a
+     uno con las flechitas. */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input-inline::-webkit-outer-spin-button,
+.input-inline::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input-inline:hover {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.input-inline:focus {
+  border-color: var(--ink);
+  background: var(--surface);
+  outline: none;
 }
 
 .precio-sin-configurar {
   color: var(--accent-danger);
   font-style: italic;
+}
+
+/* Precio en la tabla de Productos: texto plano hasta que se hace click
+   (ver activarEdicionPrecio en app.js) — nunca se ve como una "cajita" de
+   formulario dentro de la tabla, solo mientras se está editando de verdad. */
+.precio-venta-texto {
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.precio-venta-texto:hover,
+.precio-venta-texto:focus-visible {
+  background: var(--surface-sunk);
+  outline: none;
 }
 
 /* Cuando la clase cae sobre un <input> (precio editable en la lista de
@@ -1410,6 +1609,79 @@ input.precio-sin-configurar::placeholder {
   width: 18px;
   height: 2px;
   background: var(--sidebar-ink);
+}
+
+/* ============================================================
+   Selección múltiple (crearSeleccion en app.js)
+   ============================================================ */
+
+.col-sel {
+  width: 32px;
+  text-align: center;
+  /* Toda la celda cuenta como "zona de checkbox" para la guarda de click de
+     la fila (ver el .closest(".col-sel") en cada render*() de app.js): un
+     click que caiga en el padding de la celda, no exactamente sobre los
+     13px del input, ya no debe abrir la ficha. */
+  cursor: pointer;
+}
+
+.col-sel input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  /* Hitbox más grande que el checkbox nativo (13px es angosto para tocar a
+     ojo, sobre todo en mobile), sin agrandar el dibujo del control. */
+  padding: 10px;
+}
+
+/* Barra flotante, única y compartida por todas las tablas — ver el
+   comentario de #barraSeleccion en index.html. z-index por debajo de
+   .modal (50) y de .asistente-panel (45 también, pero el panel se cierra
+   solo mientras se opera una tabla) y por encima del contenido normal. */
+.barra-seleccion {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-4);
+  transform: translateX(-50%);
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+}
+
+/* El "display: flex" de arriba tiene la misma especificidad que la regla
+   [hidden] del user-agent stylesheet, y por venir después en la cascada le
+   gana: montarBarraSeleccion() pone barra.hidden = true al vaciarse la
+   selección, pero sin esta regla la barra seguía viéndose igual. Mismo
+   bug que ya se había resuelto para .hoja-impresion (ver más abajo). */
+.barra-seleccion[hidden] {
+  display: none;
+}
+
+.barra-seleccion-conteo {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.barra-seleccion-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Botón "Seleccionar todo" que crearSeleccion() inyecta antes de cada
+   .tabla-scroll (ver app.js). Solo tiene sentido en mobile: en desktop el
+   checkbox del <thead> ya cumple ese rol y este botón queda oculto. Vive
+   junto a la tabla y no dentro de .barra-seleccion porque tiene que estar
+   disponible aunque todavía no haya ninguna fila tildada (la barra recién
+   aparece con selección > 0). */
+.btn-sel-todo-mobile {
+  display: none;
+  margin-bottom: var(--sp-2);
 }
 
 /* ============================================================
@@ -1726,6 +1998,17 @@ input.precio-sin-configurar::placeholder {
     text-transform: uppercase;
   }
 
+  /* El <td> de checkbox lleva data-label="" (no hay una etiqueta que tenga
+     sentido mostrar): sin esto, la regla de arriba igual reserva 110px de
+     hueco vacío antes de cada checkbox en la card apilada. */
+  .ledger-table td.col-sel::before {
+    display: none;
+  }
+
+  .ledger-table td.col-sel {
+    padding-bottom: 8px;
+  }
+
   /* .cc-detalle es una <table> propia anidada dentro de un <td colspan>
      de .ledger-table (detalle de cuenta corriente al expandir una fila):
      no hereda las reglas de arriba porque no es .ledger-table. Mismo
@@ -1760,6 +2043,21 @@ input.precio-sin-configurar::placeholder {
   .asistente-launcher {
     right: var(--sp-4);
     bottom: var(--sp-4);
+  }
+
+  .barra-seleccion {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    transform: none;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* thead pasa a display:none arriba, así que el checkbox "seleccionar
+     todo" del header deja de estar disponible: este botón lo reemplaza. */
+  .btn-sel-todo-mobile {
+    display: inline;
   }
 
   /* El override de .avisos para este breakpoint vive junto a la
@@ -1971,9 +2269,276 @@ input.precio-sin-configurar::placeholder {
   display: none;
 }
 
-/* Ocultamiento por rol de la vista Usuarios: es UI, no seguridad — el
-   servidor igual responde 403 si un empleado llama a los endpoints de
-   /api/usuarios directo. */
-:root:not([data-rol="admin"]) .nav-item[data-view="usuarios"] {
+/* Ocultamiento por rol de las vistas que en el servidor son admin-only
+   (permisos.js): Usuarios, Estadísticas (vista "dashboard"), Reportes de
+   stock, Papelera (mezcla ventas/gastos con compras y devoluciones a
+   proveedor, que ya son admin), Compras y Devoluciones a proveedor (el
+   circuito de compras entero, valorizado al costo). Es UI, no seguridad —
+   el servidor igual responde 403 si un empleado llama a esos endpoints
+   directo; esto solo evita que entre a una vista que va a quedar vacía o
+   rota porque sus loaders ya cortan antes del fetch (ver esAdmin() en
+   app.js). */
+:root:not([data-rol="admin"]) .nav-item[data-view="usuarios"],
+:root:not([data-rol="admin"]) .nav-item[data-view="dashboard"],
+:root:not([data-rol="admin"]) .nav-item[data-view="reportes-stock"],
+:root:not([data-rol="admin"]) .nav-item[data-view="papelera"],
+:root:not([data-rol="admin"]) .nav-item[data-view="compras"],
+:root:not([data-rol="admin"]) .nav-item[data-view="devoluciones-proveedor"] {
   display: none;
+}
+
+/* Marcador genérico para columnas, botones y tiras de ledger que solo
+   tienen sentido para admin (costos, márgenes, ganancias, acciones de
+   anular/restaurar y administración de tesorería). Se aplica con clase,
+   nunca con nth-child, porque el número de columna varía entre tablas y
+   un futuro cambio de orden rompería una regla posicional en silencio. */
+:root:not([data-rol="admin"]) .col-admin {
+  display: none;
+}
+
+/* ============================================================
+   Hoja de impresión (comprobantes)
+   ============================================================
+
+   Va al FINAL del archivo a propósito: el bloque @media print de abajo
+   redefine los tokens de color, y para ganarle a los dos bloques de tema
+   oscuro (el @media prefers-color-scheme y el [data-tema="oscuro"]) tiene
+   que venir después que ellos en la cascada.
+
+   En pantalla la hoja no se ve nunca. Se oculta con esta clase y no con el
+   atributo [hidden] para que @media print pueda revelarla con una regla
+   normal, sin necesitar !important para vencer al user-agent stylesheet. */
+.hoja-impresion {
+  display: none;
+}
+
+/* Contenedor de render para "Descargar PDF" (html2canvas) — ver
+   descargarPDFDeHoja() en app.js. html2canvas fotografía lo que puede
+   MEDIR: un nodo en display:none da un canvas 0×0, así que la hoja tiene
+   que estar realmente visible durante la captura. Se saca de la vista con
+   position:fixed + left negativo, NO con visibility:hidden ni opacity:0 —
+   html2canvas SÍ respeta esas dos propiedades y capturaría un canvas en
+   blanco. Ancho fijo en mm (A4 menos los 14mm de margen de @page a cada
+   lado) para que la hoja se maquete al ancho de página real sin importar
+   el ancho de la ventana del usuario. Nunca convive con #hojaImpresion: es
+   un contenedor aparte, creado y destruido por cada descarga. */
+.hoja-render {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 182mm;
+  background: #FFFFFF;
+  color: #000000;
+  z-index: -1;
+}
+
+@media print {
+  /* --- Capa 1: neutralizar los tokens de tema ---
+     Los tres selectores explícitos, no solo :root: [data-tema="oscuro"] tiene
+     más especificidad, así que sin nombrarlo seguiría ganando su negro. */
+  :root,
+  :root[data-tema="oscuro"],
+  :root[data-tema="claro"] {
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-sunk: #FFFFFF;
+    --ink: #000000;
+    --ink-muted: #333333;
+    --line: #000000;
+    --shadow-sm: none;
+    --shadow-lg: none;
+
+    /* --- Capa 2: color-scheme ---
+       Sin esto el navegador pinta el canvas de oscuro POR SU CUENTA cuando el
+       tema activo es oscuro, aunque el CSS diga background: #fff. Es el
+       detalle que convierte una impresión en un cartucho entero de tinta. */
+    color-scheme: light !important;
+  }
+
+  html,
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  /* Todo lo que es aplicación, fuera del papel: no solo .app — el hamburger,
+     el asistente flotante, los toasts y los modales viven fuera de ella. */
+  .app,
+  .nav-toggle,
+  .avisos,
+  .asistente-launcher,
+  .asistente-panel,
+  .modal,
+  .sesion-pantalla,
+  .barra-seleccion {
+    display: none !important;
+  }
+
+  .hoja-impresion {
+    display: block;
+  }
+
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+}
+
+/* Estilos de la hoja. Colores literales (#000/#fff), NO tokens: los tokens se
+   invierten con el tema y acá el papel siempre es blanco con tinta negra. Es
+   el mismo criterio que ya usa .sesion-card, que fija sus colores por no poder
+   depender de variables que cambian — sólo que en el sentido contrario. */
+.hoja {
+  background: #FFFFFF;
+  color: #000000;
+  font-family: var(--font-body);
+  font-size: 11pt;
+  line-height: 1.45;
+  /* Imprimir varias hojas juntas (ver imprimirHojas en app.js) las concatena
+     en el mismo #hojaImpresion: sin esto todas saldrían pegadas en una sola
+     página. break-after es el estándar actual; page-break-after es el
+     fallback para motores que todavía no lo entienden. */
+  break-after: page;
+  page-break-after: always;
+}
+
+/* La ÚLTIMA hoja no debe forzar un salto: si lo hiciera, la impresión
+   terminaría con una página extra en blanco después del último
+   comprobante. */
+.hoja-impresion > .hoja:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.hoja p {
+  margin: 0 0 2px;
+}
+
+.hoja-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16pt;
+  border-bottom: 1.5pt solid #000000;
+  padding-bottom: 8pt;
+  margin-bottom: 12pt;
+}
+
+.hoja-negocio h1 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 15pt;
+  letter-spacing: -0.02em;
+}
+
+.hoja-comprobante {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.hoja-rotulo {
+  font-family: var(--font-display);
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hoja-numero {
+  font-family: var(--font-mono);
+  font-size: 12pt;
+}
+
+.hoja-etiqueta {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 8pt;
+  color: #333333;
+}
+
+.hoja-cliente {
+  margin-bottom: 12pt;
+}
+
+.hoja-cliente-nombre {
+  font-weight: 600;
+  font-size: 12pt;
+}
+
+.hoja-items {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10pt;
+}
+
+.hoja-items th {
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1pt solid #000000;
+  padding: 4pt 6pt;
+}
+
+.hoja-items td {
+  padding: 4pt 6pt;
+  border-bottom: 0.5pt solid #999999;
+  vertical-align: top;
+}
+
+.hoja-items .num {
+  text-align: right;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.hoja-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12pt;
+  align-items: baseline;
+  border-top: 1.5pt solid #000000;
+  padding-top: 6pt;
+  font-size: 13pt;
+}
+
+.hoja-total strong {
+  font-family: var(--font-mono);
+}
+
+.hoja-notas {
+  margin-top: 12pt;
+}
+
+.hoja-pie {
+  margin-top: 18pt;
+  padding-top: 6pt;
+  border-top: 0.5pt solid #999999;
+  font-size: 9pt;
+  color: #333333;
+}
+
+.hoja-legal {
+  margin-top: 4pt;
+  font-style: italic;
+}
+
+/* Paginación: en un presupuesto largo el encabezado de columnas se repite en
+   cada hoja (sin esto, la página 2 es una lista de números sin título) y
+   ninguna fila se parte al medio entre dos páginas. */
+@media print {
+  .hoja-items thead {
+    display: table-header-group;
+  }
+
+  .hoja-items tr {
+    page-break-inside: avoid;
+  }
+
+  .hoja-total,
+  .hoja-pie,
+  .hoja-encabezado {
+    page-break-inside: avoid;
+  }
 }

@@ -32,8 +32,11 @@ Puntos clave de `CLAUDE.md` para no perder de vista:
   SQL crudo con `db.prepare(...).run()/get()/all()`.
 - Frontend: HTML, CSS y JS vanilla, sin build step
   (`frontend/index.html`, `frontend/js/app.js`, `frontend/css/styles.css`).
-- Sin autenticación ni usuarios: el sistema lo usa un solo operador por
-  ahora (decisión explícita, no agregar auth sin que se pida).
+- **Con autenticación y usuarios desde §16**: login con cookie httpOnly,
+  sesiones en base, y dos roles (`admin` / `empleado`). Esta línea decía
+  lo contrario hasta esta etapa; quedó sin actualizar cuando se construyó
+  el módulo. Ver §16 para el detalle y §19 para el agujero de permisos que
+  todavía sigue abierto.
 - **Nuevo en esta etapa**: `@google/genai` (dependencia de
   `backend/interprete.js`, el asistente por texto — ver §4). Se probó
   primero con `@anthropic-ai/sdk`/Claude y se cambió a Gemini en la misma
@@ -153,9 +156,10 @@ verificada antes de pasar a la siguiente:
   (§10), **qué se vende y a quién** (§11) y **stock** — qué reponer,
   valorizado, rotación como días de inventario (§12).
 - **Ventas por categoría de producto ya se construyó (§13)**. Ventas por
-  **vendedor** sigue sin ser construible: no hay columna de vendedor/usuario
-  en `ventas` (no hay sistema de usuarios), y esta migración no lo
-  desbloquea.
+  **vendedor** sigue sin construirse, pero **ya dejó de estar bloqueado**:
+  desde §16 hay sistema de usuarios, así que solo falta agregar
+  `usuario_id` a `ventas` (migración aditiva). Hoy se sabe quién auditó una
+  operación, no quién la vendió.
 - Aging de cuentas por cobrar/pagar por **vencimiento pactado** (§10 lo
   mide por fecha de la operación, no por vencimiento): ni `ventas` ni
   `compras` tienen fecha de vencimiento ni condición de pago.
@@ -2132,7 +2136,8 @@ bien ambos casos.
 
 ### Qué queda pendiente de esta etapa
 
-- **Sin commitear**, igual que §17 — confirmar con el usuario.
+- ~~Sin commitear~~ — ya commiteado: §17 y §18 viajan juntas en `5a03436`
+  ("feat: refresh visual negro/blanco puro…"), que hoy está en `main`.
 - El logo del favicon (`<link rel="icon">`) sigue siendo la versión negra
   — no se tocó porque el navegador lo pinta sobre su propia barra de
   pestañas, no sobre el fondo de la app; revisar si en algún navegador/SO
@@ -2141,3 +2146,1799 @@ bien ambos casos.
   que pidió el usuario, pero si en el uso diario resulta confuso
   distinguirlos, es un cambio de un solo token (`--accent-warn`) para
   volver a diferenciarlos sin tocar ningún otro lugar.
+
+## 19. Última etapa: comprobantes imprimibles + exportación a CSV
+
+**El pedido**: seguir sumando funciones. Con el MVP completo, se relevaron los
+huecos reales del sistema y el usuario eligió, entre cuatro opciones
+(imprimir/exportar, descuentos, reportes de compras, multidepósito), la
+primera: **no se podía sacar nada del sistema**. Cero `@media print`, cero
+exportación, cero forma de entregarle un papel a un cliente.
+
+Se hizo en tres etapas chicas y verificables (A → B → C).
+
+### Etapa A — Datos del negocio (toca esquema)
+
+Los comprobantes necesitan un membrete: quién emite el papel.
+
+- **Migración aditiva sobre `organizaciones`**: 6 columnas nullable
+  (`documento` = CUIT, `direccion`, `telefono`, `email`, `condicion_iva`,
+  `pie_comprobante`), cada una guardada con `PRAGMA table_info` para ser
+  idempotente. Ninguna fila se reescribe.
+- **Se decidió NO crear una tabla `datos_negocio` nueva** (era la alternativa
+  obvia): `organizaciones` ya ES el negocio, y una tabla paralela duplicaría
+  el concepto. Pero el motivo decisivo fue de auditoría — ver abajo.
+- **Segundo rebuild de `auditoria`** para sumar `'organizacion'` al CHECK de
+  `entidad`. SQLite no permite alterar un CHECK, así que hay que reconstruir la
+  tabla entera (patrón ya usado dos veces, `db/index.js:112-215`). Se hizo a
+  propósito, **decidido con el usuario**: cambiar el CUIT que sale impreso en
+  todos los comprobantes tiene que quedar registrado (§22), y las dos
+  alternativas para esquivar el rebuild eran no auditar o mentir reusando otra
+  entidad. A diferencia del primer rebuild, este corre sobre una tabla **con
+  filas y con `usuario_id`**, así que el INSERT..SELECT los copia y preserva
+  los `id`; los dos índices se recrean a mano (el DROP TABLE se los lleva).
+- `GET /api/negocio` (cualquier usuario autenticado, el frontend lo necesita en
+  el boot) y `PUT /api/negocio` (**soloAdmin**).
+- **Modal de Configuración**, que estaba vacío desde siempre con un texto que
+  decía "en una próxima etapa": ahora tiene el formulario real, deshabilitado
+  por rol para un empleado (el 403 del servidor es la garantía; esto es UI).
+
+### Etapa B — Comprobante imprimible
+
+Presupuesto y factura. El PDF lo hace el navegador ("Guardar como PDF" ya está
+en su diálogo de impresión), así que **no se sumó ninguna dependencia**.
+
+- **`#hojaImpresion`, un contenedor dedicado, NO `@media print` sobre la
+  ficha.** Es la decisión central de la etapa: la ficha de venta muestra
+  **costo, margen y ganancia por renglón**, y la de factura muestra estado de
+  cobro y "Origen: Venta #N". Peor: esos campos se renderizan desde un array
+  `campos` sin clase ni id propio, así que ocultarlos por CSS exigiría
+  selectores posicionales (`div:nth-child(6)`) que se rompen en silencio la
+  próxima vez que alguien reordene el array. El contenedor invierte el default:
+  solo sale lo que se pone explícitamente.
+- **Venta y compra NO se imprimen, a propósito**: la venta es un documento
+  interno (mostraría el margen al cliente; si hace falta papel, se factura), y
+  el comprobante de una compra lo emite el proveedor.
+- **El papel dice "Documento no válido como comprobante fiscal"**, siempre.
+  Nexo no está conectado a ARCA ni emite CAE: un papel con forma de factura y
+  sin CAE no es válido, y no decirlo sería inducir a error.
+- **Los datos de contacto del cliente no llegaban al frontend**:
+  `SELECT_PRESUPUESTO` y `SELECT_FACTURA` traían solo `clientes.nombre`. Se
+  agregaron `documento`/`direccion`/`email`/`telefono` (aditivo sobre el JSON).
+- **Blanco y negro forzado, en tres capas y las tres hacen falta**: redefinir
+  los tokens dentro de `@media print` (nombrando los tres selectores de tema,
+  porque `[data-tema="oscuro"]` tiene más especificidad que `:root`),
+  **`color-scheme: light`** (sin esto el navegador pinta el canvas oscuro por su
+  cuenta aunque el CSS diga blanco — es el detalle que convierte una impresión
+  en un cartucho entero), y colores literales en la hoja en vez de tokens
+  (mismo criterio que `.sesion-card`, con el signo invertido).
+- El botón de presupuesto se agrega con `insertAdjacentHTML` **después** del
+  `if/else` que decide las acciones: las dos ramas reescriben
+  `acciones.innerHTML` entero, así que ponerlo dentro de una sola lo haría
+  desaparecer en la otra.
+- **El botón dice "Imprimir / PDF", no "Imprimir"**, y la primera vez que se
+  usa (una sola vez por navegador, con una marca en `localStorage`
+  `nexo.avisoPdf`) aparece un toast que explica que hay que elegir "Guardar
+  como PDF" en el destino de impresión. El usuario preguntó si podía haber una
+  descarga de PDF aparte del imprimir; se le explicó que **el diálogo del
+  navegador YA es la descarga de PDF** y que un botón separado no puede
+  preseleccionar el destino (el navegador no lo permite por JS), así que sería
+  el mismo botón prometiendo algo que no cumple. **Eligió el renombre.** Un PDF
+  descargado de verdad requeriría una dependencia: una librería en el frontend
+  (jsPDF/pdfmake, y habría que redibujar el comprobante en su API en vez de
+  reusar el HTML, quedando dos versiones que mantener sincronizadas) o
+  generarlo en el backend (Puppeteer reusa el HTML pero pesa ~300MB; PDFKit es
+  liviano pero también obliga a redibujar). **La razón que lo va a justificar
+  es mandar el comprobante por email o WhatsApp**, donde hace falta el archivo
+  sin intervención del usuario — ahí la dependencia se paga sola.
+
+### Etapa C — Exportación a CSV
+
+Ventas, Gastos, Stock y Cuentas por cobrar/pagar (6 botones: tres vistas tienen
+dos tablas independientes).
+
+- **Se genera en el cliente**, no en el servidor: hay que exportar lo que el
+  usuario ESTÁ VIENDO, y sus filtros y su orden viven solo en el frontend. Un
+  endpoint tendría que reimplementar en SQL los operadores de `crearFiltros`
+  (incluidos los relativos) — el mismo motor duplicado en dos lenguajes, que es
+  justo lo que el proyecto ya evitó para el filtrado de movimientos.
+- **Separador `;` y BOM UTF-8**, los dos necesarios: Excel usa el separador de
+  listas regional (en español es `;`, porque la coma es el separador decimal) y
+  sin BOM abre el archivo en ANSI y rompe todo acento. El BOM va en el
+  contenido del Blob, no alcanza con el MIME type.
+- **Números crudos**, nunca por `money()`: un "$ 1.234,50" llega a Excel como
+  texto y no se puede sumar, que es exactamente para lo que se exporta.
+- **Cada botón recalcula la lista con la expresión de SU vista**, copiada
+  textualmente. No es un detalle: la composición difiere entre vistas
+  (`filtrarPresupuestos` hace `orden(filtros(x))` y `filtrarFacturas` al revés),
+  Ventas descarta las anuladas primero, Gastos filtra por activo, y Stock
+  combina el motor de filtros con su propio `<input type="search">`. Copiar mal
+  la expresión daría un CSV que no coincide con la pantalla.
+
+### Bugs reales encontrados (por las pruebas, no por lectura)
+
+1. **`numero is not a function`** al imprimir: el parámetro `numero` de
+   `armarHojaComprobante` (el número de comprobante) sombreaba al helper global
+   `numero()` que la misma función usa para las cantidades. Renombrado a
+   `comprobanteNro`. Lo detectó el `pageerror` de Playwright — la hoja quedaba
+   vacía sin ningún síntoma visible.
+2. **El detalle de auditoría listaba índices en vez de campos**
+   (`"actualizados: 0, 1, 2, ... 285"`): `diffCampos` devuelve los valores **ya
+   serializados a JSON (string)**, así que `Object.keys()` sobre eso da los
+   índices de cada carácter. Se calculan los campos cambiados aparte.
+3. Al hidratar el formulario del negocio, `cargarNegocio()` se llamaba desde la
+   cadena de arranque **antes** de que se declarara el `const formNegocio`. Se
+   movió la sección entera antes del boot (con un script que verifica conteos
+   exactos y aborta si algo no cuadra).
+
+### Verificación hecha
+
+Metodología de siempre: copia aislada al scratchpad, servidor de prueba en el
+**3002** (nunca el 3000), Playwright.
+
+- **Migración**: comparador propio (`foto.mjs` + `comparar.mjs` en el
+  scratchpad) que verifica `COUNT(*)` de las 29 tablas, columnas de cada una,
+  índices, vistas, `foreign_key_check` y una huella de `auditoria` (filas, min,
+  max y suma de ids). Corrido pre y post en la copia **y** en la base real.
+  Arrancar dos veces seguidas no re-entra al rebuild.
+  - Única diferencia esperada y verificada a mano: `sesiones` 14 → 0. Es la
+    limpieza de sesiones vencidas que `db/index.js` ya hacía en cada arranque
+    desde antes de esta etapa; se comprobó contra el backup que **las 14 estaban
+    vencidas** (la más nueva expiró el día anterior).
+- **Endpoints** (`probar-negocio.mjs`): 401 sin cookie, 403 con cuenta de
+  empleado (y el nombre sin cambiar después del 403), 400 con nombre vacío,
+  persistencia de los 7 campos, opcionales vacíos → NULL (no cadena vacía),
+  fila de auditoría con el `usuario_id` correcto, y **un PUT sin cambios reales
+  no genera fila de auditoría**.
+- **Impresión** (`etapaB.mjs`): medido en el DOM bajo `emulateMedia({media:
+  'print'})`, **en tema oscuro**: fondo `rgb(255,255,255)` y tinta `rgb(0,0,0)`;
+  `.app` con `display:none` y la hoja visible. Más un **PDF real** con
+  `page.pdf()` (`emulateMedia` no pagina). Y la aserción que justifica todo el
+  diseño: **"Costo", "Ganancia", "Margen" y "Estado de cobro" no aparecen en
+  ningún lado de la hoja**.
+- **CSV** (`etapaC.mjs`): BOM verificado a nivel byte (`EF BB BF`), separador
+  `;`, CRLF, importes sin signo de moneda. La aserción central: con un filtro
+  real aplicado por la UI, el archivo tiene **exactamente las filas que muestra
+  la tabla** (6 → 3 al filtrar). Escapado probado directo contra el helper
+  (separador, comillas duplicadas, saltos de línea, espacios en los bordes).
+  Con la tabla vacía: avisa y **no descarga** nada.
+- 375px sin scroll horizontal, botones sin superposición (medido con
+  `getBoundingClientRect`), sin errores de consola en ningún escenario.
+- **Deploy**: backup `nexo.db.backup-antes-datos-negocio-20260901-094043`, foto
+  pre-deploy, copia de los 6 archivos de código (**nunca `nexo.db`**: la copia
+  de prueba tenía usuarios de prueba), arranque del 3000 y comparación 1:1 —
+  todos los números de negocio idénticos. Verificado además que la base real
+  quedó **sin usuarios de prueba** y con la fila de auditoría original intacta.
+
+### Qué queda pendiente
+
+- **Los datos del negocio están vacíos en la base real**: el membrete va a salir
+  con "Mi negocio" hasta que el usuario los cargue desde el engranaje →
+  Configuración. Es lo primero que conviene hacer al abrir la app.
+- **Sin commitear.** Los 6 archivos modificados están en `main` sin commit.
+- **Logo del negocio en el membrete**: decisión explícita del usuario — el
+  negocio va a poder **subir su propio logo** desde las preferencias, y por eso
+  NO se usó el logo de Nexo (el papel es del negocio, no del software). Es la
+  próxima etapa natural del modal de Configuración, y necesita manejo de
+  archivos subidos.
+- Extender el CSV a las otras 12 tablas: con el helper hecho son ~8 líneas cada
+  una. Se acotó a 4 para validar el helper contra formas de tabla distintas.
+- Imprimir devoluciones/notas de crédito: el molde ya está, pero el encabezado y
+  el pie necesitan texto propio.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios respecto a
+  etapas anteriores).
+
+## 20. Última etapa: selección múltiple en tablas + imprimir/descargar/CSV en lote
+
+**El pedido**: seguir sumando funciones, con el caso concreto de poder
+seleccionar varios comprobantes y descargar sus PDF de una. Se decidió con el
+usuario (`AskUserQuestion`, dos rondas) el alcance real: selección en las 8
+tablas de listado que tenían sentido (no las 14 del sistema — ver el porqué
+más abajo), con tres acciones que **no escriben en la base**: imprimir en
+lote, descargar PDF en lote, y CSV de lo seleccionado. La **edición masiva
+tipo Notion** (cambiar estados/campos de varios registros a la vez) quedó
+**explícitamente para una etapa aparte**, ya con esta infraestructura probada
+— necesita endpoints bulk nuevos y una regla de negocio que hay que
+preguntar (qué pasa si algunos de los N registros fallan la validación: ¿se
+aplica el resto o se revierte todo?).
+
+**Solo frontend — el backend y el esquema no se tocaron.** Las tres acciones
+son de lectura, así que no hizo falta migración ni auditoría nueva.
+
+### Decisión que revierte parcialmente la etapa 19
+
+En §19 se le había explicado al usuario que el diálogo "Guardar como PDF"
+del navegador YA es la descarga de PDF, y había elegido un solo botón
+"Imprimir / PDF" para no sumar dependencias. Al preguntarle de nuevo en el
+contexto de selección múltiple, **pidió las dos cosas separadas**: un botón
+"Imprimir" (un solo diálogo, todos los comprobantes seleccionados, uno por
+página) y un botón "Descargar PDF" (N archivos separados, con nombre
+propio) — el navegador no permite eso último sin intervención humana, así
+que hizo falta sumar una dependencia: **jsPDF + html2canvas**, vendorizadas
+en `frontend/js/vendor/` (primera dependencia frontend del proyecto, cargada
+bajo demanda, sin build step). Queda memoria de esto para no repetir la
+pregunta en una sesión futura.
+
+### `crearSeleccion` — el helper nuevo, en `frontend/js/app.js`
+
+Cuarto miembro de la familia de utilitarios de tabla (`crearFiltros`,
+`crearOrden`, `descargarCSV`), ubicado justo después de `crearOrden`. Agrega
+una columna de checkbox a una tabla:
+
+- **La columna se inyecta por JS** (`insertAdjacentHTML`), igual que
+  `crearOrden` ya inyecta su flecha de orden — así la columna existe *si y
+  solo si* la selección está montada, y `sel.colspan(n)` puede devolver
+  `n + 1` sin tener que tocar el `<thead>` de cada vista a mano en
+  `index.html`. El `<th>` de checkbox NO lleva `data-orden` a propósito.
+- **Un solo `sel.celda(id)`** (devuelve string) sirve para los dos estilos
+  de render que coexisten en el archivo (`innerHTML + .map().join("")` y
+  `createElement("tr") + tr.innerHTML =`): las dos arman la fila con un
+  template string.
+- **"Seleccionar todo" = lo visible con los filtros puestos** — misma
+  semántica que ya tenían los botones de "Exportar CSV" existentes.
+  `sel.sincronizar(lista)` se llama desde cada `render*()` con la lista ya
+  filtrada/ordenada; poda del set cualquier id que haya dejado de estar
+  visible (si filtrás y algo seleccionado queda afuera, se destilda solo —
+  necesario para que el contador de la barra nunca mienta sobre lo que hay
+  tildado en pantalla).
+- **Único punto de delegación real del archivo**: los checkboxes de fila se
+  bindean una sola vez con `body.addEventListener("change", ...)`, no en
+  cada render (el resto del archivo re-bindea siempre) — evitar N listeners
+  nuevos por render era el único costo real de la feature.
+- **Mobile**: el `<thead>` (y con él el checkbox "seleccionar todo") queda
+  `display:none` en ese breakpoint. `crearSeleccion` inyecta un botón de
+  texto propio (`.btn-sel-todo-mobile`) antes de `.tabla-scroll`, oculto en
+  desktop, que hace de "seleccionar todo / ninguno" ahí. Decisión tomada con
+  `AskUserQuestion`: se descartó ponerlo dentro de la barra flotante porque
+  esa barra solo aparece con selección > 0, y hacía falta un control
+  disponible aunque no hubiera nada tildado todavía.
+- **Guarda de click de fila ampliada**: los ~8 sitios con
+  `if (e.target.closest("button, a")) return;` (variantes inconsistentes
+  entre vistas) pasaron a `"button, a, input, label, select, textarea"`. De
+  paso corrige un bug preexistente en Productos (el input inline de precio
+  podía disparar la apertura de la ficha).
+
+### `montarBarraSeleccion` — la barra de acciones, única y flotante
+
+Un solo `#barraSeleccion` (`index.html`, hermano de `#hojaImpresion`),
+`position: fixed` centrada abajo, llenada con los botones de la vista activa
+vía `sel.escuchar(fn)` (un mini pub/sub que `crearSeleccion` expone). En
+mobile ocupa el ancho con `flex-wrap`. **Se agregó `.barra-seleccion` a la
+lista de `display:none !important` del `@media print`** — si no, la barra
+saldría impresa en el papel; es el detalle más fácil de olvidar de toda la
+etapa y se hizo en la misma sub-etapa en que se creó la barra, no después.
+
+### Las 8 tablas equipadas y las que quedaron afuera
+
+| Tabla | Acciones |
+|---|---|
+| Facturas, Presupuestos | Imprimir · Descargar PDF · CSV |
+| Ventas, Compras, Productos, Stock, Clientes, Proveedores | CSV |
+
+Solo Facturas y Presupuestos imprimen: son las dos únicas entidades con
+`armarHojaComprobante` (Ventas y Compras no imprimen a propósito desde §19 —
+la venta mostraría el margen, el comprobante de compra lo emite el
+proveedor). Quedaron **afuera** de esta etapa: Cuentas corrientes (dos
+`<tr>` por registro — fila + detalle expandible — el helper tendría que
+aprender "fila secundaria"), Papelera (el lote ahí sí tendría sentido pero
+*escribe* en la base, es la próxima etapa), y Auditoría/Devoluciones/Dev.
+proveedor/Gastos/Caja/Usuarios (sin acción de lote que aportara hoy — con el
+helper ya hecho, sumar cualquiera cuesta ~6 líneas si se pide).
+
+Compras tiene **dos ramas** de `tr.innerHTML` (borrador / no-borrador) y las
+dos llevan `selCompras.celda(c.id)` — verificado por lectura de código (los
+datos de prueba no traían ninguna compra en borrador para probarlo en vivo).
+
+### Imprimir en lote
+
+`imprimirComprobante(html)` se partió en `imprimirHojas(htmls)` (acepta un
+array, concatena y hace un solo `window.print()`) + `imprimirComprobante`
+como envoltorio de compatibilidad (`imprimirHojas([html])`) — **los dos call
+sites viejos** (botón de la ficha de factura, botón inyectado de la ficha de
+presupuesto) **quedan sin tocar un carácter**. Se extrajeron
+`hojaDeFactura(f)` / `hojaDePresupuesto(p)` de esos dos botones para
+reusarlas también desde el lote sin duplicar la lógica del caso "factura
+suelta".
+
+CSS nuevo en `styles.css`: `.hoja { break-after: page; page-break-after:
+always; }` + `.hoja-impresion > .hoja:last-child { break-after: auto; }` —
+sin la segunda regla, imprimir 3 hojas dejaría una 4ª página en blanco al
+final (bug clásico de paginación por CSS).
+
+### Descargar PDF (jsPDF + html2canvas)
+
+- **Vendorizadas** en `frontend/js/vendor/jspdf.umd.min.js` (365KB, build
+  2.5.2) y `html2canvas.min.js` (198KB, build 1.4.1), bajadas de jsdelivr y
+  servidas por el `express.static` que ya existía — no hizo falta tocar el
+  backend. **Cargadas bajo demanda** (`cargarLibsPdf()`, memoizada, inyecta
+  `<script>` al vuelo con el mismo patrón que ya usa `sesion.js` para
+  inyectar `app.js`): quien nunca aprieta "Descargar PDF" no baja ni un
+  byte de las ~560KB combinadas.
+- **El problema central**: html2canvas no puede fotografiar algo en
+  `display:none` (que es como vive `#hojaImpresion` en pantalla) — mide con
+  `getBoundingClientRect` y da un canvas 0×0. Se resolvió con un contenedor
+  aparte, `.hoja-render` (creado y destruido por cada descarga vía
+  `conHojaVisible()`), sacado de la vista con `position:fixed; left:
+  -10000px` — **no** con `visibility:hidden` ni `opacity:0`, que html2canvas
+  sí respeta y hubieran dado una captura en blanco. Ancho fijo en `mm`
+  (182mm = A4 menos los 2×14mm de margen del `@page`) para que la hoja se
+  maquete al ancho de página real sin importar el ancho de la ventana del
+  usuario.
+- **Verificado con Playwright que el PDF sale blanco aun con el tema oscuro
+  activo** (pixel `(5,5)` del canvas: `[255,255,255,255]`) — funciona porque
+  `.hoja` ya fijaba colores literales desde §19 y `.hoja-render` no hereda
+  nada del tema; fue el riesgo más probable de toda la etapa y se descartó
+  con una prueba real, no por lectura de código.
+- **Pipeline**: `html2canvas(hoja, {scale:2, backgroundColor:"#FFFFFF"})` →
+  `toDataURL("image/jpeg", 0.92)` (JPEG, no PNG: una A4 a scale 2 en PNG
+  pesa 1-3MB, en JPEG ~200KB — con 50 facturas es la diferencia entre 10MB
+  y 150MB de descargas) → `jsPDF({unit:"mm", format:"a4"})` → si la hoja
+  mide más que una página útil (factura con muchos ítems), se reparte en
+  varias páginas del mismo PDF en vez de achicar la imagen (escalarla la
+  volvería ilegible).
+- **Limitación que hay que poder explicarle al usuario si pregunta**: el PDF
+  descargado es una IMAGEN, sin texto seleccionable — el botón "Imprimir" →
+  "Guardar como PDF" del navegador sí da texto real. Los dos botones se
+  complementan, no hay que proponer sacar uno de los dos.
+- **Generación en serie**, no en paralelo (evita saturar memoria/hilo
+  principal con N `html2canvas` a la vez), con el botón mostrando
+  `Generando 3/20…` mientras dura — verificado en vivo con Playwright que el
+  contador realmente se ve moverse paso a paso (1/3 → 2/3 → 3/3), no solo
+  que el resultado final es correcto.
+- **Umbrales**: sin selección > 25 no pide nada; entre 25 y 500 pide
+  `confirmar()` avisando que puede tardar y que **Chrome va a pedir permiso
+  para descargar varios archivos** (lo bloquea por defecto — es el problema
+  de UX más probable si alguien selecciona muchos sin el aviso); por encima
+  de 500, `avisar()` y no arranca (guardarraíl contra un "seleccionar todo"
+  accidental, no una regla de negocio).
+- Nombres: `factura-{comprobante-sanitizado}.pdf` / `presupuesto-{id}.pdf`,
+  sin fecha (a diferencia de `descargarCSV`, el comprobante ya es único).
+
+### CSV en lote
+
+Los 6 botones "Exportar CSV" existentes (Ventas, Gastos, Stock, CC
+cobrar/pagar) **no se tocaron** — siguen exportando todo lo visible. El CSV
+en lote es un botón nuevo en la barra, con semántica distinta ("lo que
+marcaste" vs. "lo que estás viendo"), reusando `descargarCSV` y filtrando
+sobre la lista visible de cada vista (para preservar el orden y el filtro
+activo). Se declararon `COLUMNAS_CSV_*` nuevas para las 4 tablas que no
+tenían export previo (Facturas, Presupuestos, Compras, Proveedores) — mismo
+criterio ya establecido: números crudos, nunca `money()`.
+
+### Dos bugs reales que el usuario encontró probando a mano (después de la
+### verificación con Playwright de abajo — quedaron afuera de esos scripts)
+
+Ninguno de los dos apareció en las 91 verificaciones automatizadas de la
+sub-etapa correspondiente porque las pruebas comprobaban el `hidden` del
+DOM y el `.closest()` de forma aislada, no el resultado visual completo con
+clicks reales del navegador. Lección para la próxima etapa: cuando algo
+depende de CSS que puede ganarle a un atributo (como acá), verificar con
+`isVisible()`/captura, no solo leyendo el atributo por `evaluate()`.
+
+1. **Tildar el checkbox a veces abría la ficha igual.** La guarda de click de
+   fila se había normalizado a `"button, a, input, label, select, textarea"`
+   en 7 de los 8 sitios, pero **Facturas** (`"a, button, input, ..."`) y
+   **Compras** (`"button, select, a, input, ..."`) tienen el mismo conjunto
+   en **otro orden**, y el primer `sed` de reemplazo buscaba el texto
+   literal exacto — se saltó esas dos variantes sin avisar. Como esas dos
+   celdas de checkbox además son angostas (32px, con el `<input>` real de
+   solo 13px), un click que cayera en el padding de la celda en vez de sobre
+   el input daba `e.target = TD.col-sel`, que no matcheaba ninguna de las
+   palabras de la guarda vieja → abría la ficha. Fix: se agregó `.col-sel` a
+   las 7 guardas (cubre la celda entera, no solo el input) y se sumó un
+   listener de `click` delegado en el `tbody` que togglea el checkbox si el
+   click cae en cualquier parte de `td.col-sel` que no sea el input mismo —
+   así el hitbox agrandado también sirve para algo, no solo para no romper.
+   **Al normalizar las variantes de guarda, verificar con `grep` que el
+   reemplazo realmente cubrió cada una — el orden de las palabras en el
+   selector CSS varía entre sitios que se escribieron en sesiones distintas.**
+2. **El cartel de selección no desaparecía al destildar todo, ni con
+   "Limpiar" ni con Escape** (el usuario lo reportó dos veces: primero
+   "se me traba", después "esc destilda el ítem pero no se va el cartel").
+   La causa no era JavaScript — `sel.limpiar()` y el nuevo listener de
+   `Escape` (agregado en el mismo arreglo, ver abajo) sí ponían
+   `barra.hidden = true` correctamente. El problema era CSS puro:
+   `.barra-seleccion { display: flex; }` tiene la misma especificidad que la
+   regla `[hidden]` del user-agent stylesheet, y por venir después en la
+   cascada le ganaba — la barra seguía viéndose con el conteo viejo aunque
+   el atributo `hidden` estuviera puesto. Es el **mismo bug que el propio
+   `styles.css` ya documentaba haber resuelto para `.hoja-impresion`**
+   (comentario explícito ahí sobre por qué se usa una clase y no `[hidden]`
+   para esa), pero no se replicó el patrón al escribir `.barra-seleccion`.
+   Fix: `.barra-seleccion[hidden] { display: none; }`. **Cualquier elemento
+   nuevo que se oculte con `el.hidden = true` en este proyecto necesita esa
+   regla explícita si también tiene un `display` propio en CSS — no alcanza
+   con el atributo solo.**
+3. **De paso, mejora pedida por el usuario**: Escape ahora limpia la
+   selección activa (antes no existía ninguna forma de "salir del modo
+   selección" sin clickear "Limpiar" o destildar a mano). Implementado con
+   una variable de módulo `seleccionActivaEnBarra` que `montarBarraSeleccion`
+   actualiza cada vez que su `sel` pasa a tener selección > 0 — un solo
+   listener global de `keydown`, no uno por tabla (evita apilar 8 handlers
+   permanentes en `document`).
+
+Los tres fixes están verificados con Playwright end-to-end (`isVisible()`
+real, no solo el atributo) y sin regresión en las 49 verificaciones de las 8
+tablas — ver el detalle en Verificación hecha, más abajo.
+
+### Bugs reales encontrados en scripts de verificación (por las pruebas con
+### Playwright, no por lectura)
+
+Ninguno en el código de la app — los tres "fallos" que aparecieron al
+principio de las corridas eran problemas de los propios scripts de
+verificación, documentados acá para no repetirlos:
+
+1. **`page.goto()` con el mismo hash no dispara `hashchange`** cuando ya se
+   está en esa URL (ej. `#/facturas` → abrir ficha → `page.goto("#/facturas")`
+   de nuevo): la vista queda con `hidden` mal aplicado y sus elementos con
+   `getBoundingClientRect() = {0,0,0,0}`. Fix: navegar con el botón real
+   ("← Volver a...") en vez de `page.goto` al mismo hash — es exactamente lo
+   que haría un usuario real, y evita este falso negativo.
+2. **`page.goto()` con `waitUntil: "load"` (el default) puede colgarse**
+   contra este servidor si algún recurso enlazado nunca dispara su evento
+   `load` — cambiar a `waitUntil: "domcontentloaded"` lo resolvió en todos
+   los scripts. No se investigó la causa raíz (no bloqueaba el uso real de
+   la app, solo la automatización de pruebas), pero si un futuro script de
+   verificación se cuelga en un `goto`, probar esto primero.
+3. Un `Stop-Process` de PowerShell demasiado amplio (`-Name node`) mató
+   también el servidor de prueba real en medio de una tanda de verificación
+   — hay que apuntar `Stop-Process` al PID exacto (`Get-NetTCPConnection
+   -LocalPort 3002 | ... OwningProcess`), nunca por nombre de proceso
+   genérico como `node`, porque mata cualquier otro Node corriendo en la
+   máquina (incluido el servidor real si estuviera en otro puerto).
+
+### Verificación hecha
+
+Metodología de siempre: copia aislada al scratchpad, servidor de prueba en
+el **3002**, Playwright. Usuario de prueba propio (`test_qa` / rol admin)
+insertado a mano en la copia de `nexo.db` con el mismo `scryptSync` que usa
+`server.js` — la copia no traía la contraseña del admin real (`Solla_FAT`).
+
+- **Sub-etapa 1** (helper sobre Facturas sola): 17/17 checks — columna en
+  thead/tbody, guarda de click, checkbox indeterminate con selección
+  parcial, "Limpiar" destilda todo y oculta la barra, CSV descarga con el
+  sufijo `-seleccion`, colspan correcto contra el `<thead>` real (verificado
+  con `renderFacturas([])` forzado), mobile 375px sin scroll horizontal, sin
+  el hueco de 110px del `::before` en la celda de checkbox, botón
+  "Seleccionar todo" de mobile funcional.
+- **Sub-etapa 2** (las 7 tablas restantes): 49/49 checks — mismo set por
+  tabla (thead, tbody, barra, CSV, limpiar) × 8 tablas, sin errores de
+  consola. Confirmado con `evaluate()` directo (no XPath, que dio falsos
+  negativos en la primera pasada) que cada `<thead>` tiene exactamente un
+  `th.col-sel`. Regresión mobile en 4 tablas más (Ventas, Productos,
+  Clientes, Stock): sin scroll horizontal.
+- **Sub-etapa 3** (imprimir en lote): 12/12 checks — **los dos botones
+  viejos de imprimir individual (factura y presupuesto) siguen funcionando
+  sin cambios**, imprimir 2 facturas seleccionadas genera exactamente 2
+  `.hoja` en `#hojaImpresion` con un solo `window.print()`, el contenedor
+  queda vacío después, `break-after` correcto (page/page/auto en 3 hojas de
+  prueba), la barra de selección se confirma oculta en `@media print`
+  (`getComputedStyle().display === "none"`).
+- **Sub-etapa 4** (descargar PDF): verificado en varias pasadas — 1 PDF
+  individual (73KB, cabecera `%PDF-` válida, nombre `factura-b-0001-...pdf`),
+  3 PDFs en lote con nombres distintos y el contador de progreso visible
+  paso a paso, toast final "Se descargaron 3 PDF.", **canvas confirmado
+  blanco puro con tema oscuro activo** (el riesgo más probable de la etapa),
+  sin errores de consola.
+- **Regresión final**: re-corridas las 49 verificaciones de las 8 tablas
+  después de sumar imprimir/descargar — sin diferencias.
+- CSS revisado con llaves balanceadas (317/317, excluyendo comentarios).
+- **No se reinició el proceso real** (`localhost:3000`): todo el cambio es
+  frontend puro sin build step, así que ya está viviendo ahí apenas se
+  guardaron los archivos. Los dos archivos vendorizados nuevos también se
+  sirven solos por el `express.static` existente.
+- **Sesión siguiente (continuación, tras los 3 fixes de arriba)**: la sesión
+  anterior se había cortado sin dejar ningún servidor corriendo — se
+  relevantó el de prueba (**3002**) desde la copia ya sincronizada del
+  scratchpad y se re-corrió **toda** la batería existente antes de tocar
+  nada más, para partir de un estado confirmado y no de memoria: 49/49 (las
+  8 tablas), 13/13 (imprimir en lote, con los dos botones individuales
+  viejos incluidos) y la descarga de 3 PDF en lote con nombres distintos y
+  contador de progreso visible paso a paso — las tres baterías en verde. Fue
+  después de esa foto limpia que se aplicaron y verificaron los 3 fixes de
+  arriba.
+
+### Qué queda pendiente
+
+- **Sin commitear.** Junto con los cambios de §19 (backend, sin commit
+  todavía), esta etapa suma `frontend/index.html`, `frontend/js/app.js`,
+  `frontend/css/styles.css` y los dos archivos nuevos en
+  `frontend/js/vendor/`.
+- **Edición masiva (tipo Notion)**: la razón original del pedido, queda
+  para la próxima etapa. Necesita: endpoints bulk nuevos (`withTransaction`
+  + `auditar()` **por registro individual**, no uno por lote — la regla de
+  trazabilidad de `CLAUDE.md` pide poder reconstruir qué cambió en cada
+  entidad), y una decisión de negocio que hay que preguntarle al usuario
+  antes de construir nada: si al editar 20 registros 3 fallan la
+  validación, ¿se aplican los 17 restantes o se revierte todo el lote?
+- **Solo Facturas y Presupuestos imprimen/descargan** — si el usuario pide
+  extender a otra entidad (por ejemplo, un comprobante para devoluciones),
+  el molde de `armarHojaComprobante` ya está, falta el encabezado/pie
+  propio (mismo pendiente que ya señalaba §19).
+- ~~Hay un archivo suelto y vacío en la raíz del repo, `String(o.valor)`~~ —
+  **borrado en la sesión siguiente**: confirmado 0 bytes y consistente con
+  una redirección de shell mal ejecutada (probablemente un heredoc/`sed` que
+  interpoló mal una variable y creó un archivo con ese nombre literal), no
+  con trabajo del usuario.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios).
+
+## 21. Última etapa: edición en lote (bulk edit) — Productos y Compras
+
+**El pedido**: era la razón original por la que se había construido la selección
+múltiple de §20, diferida en ese momento porque faltaban dos cosas: endpoints
+bulk en el backend (hasta esta etapa, **cero** — todas las rutas de mutación
+eran `/:id`) y una decisión de negocio sobre qué pasa cuando parte del lote
+falla. Se le preguntó al usuario con `AskUserQuestion` (3 preguntas): qué
+función construir (eligió edición en lote sobre listas de precios, reportes de
+compras o marca/unidad de medida), la semántica de fallo parcial (**se
+aplican los que pasan la validación, se informa el resto con su motivo — no
+todo-o-nada**), y si commitear primero lo pendiente de §19/§20 (**no**, sigue
+sin commitear, se acumula con esta etapa).
+
+Alcance: **Productos** (activar/desactivar, categoría, precio de venta por
+% o valor fijo, stock mínimo) y **Compras → estado de envío**. Ninguna otra
+entidad tenía columnas enum que justificaran bulk edit (clientes/proveedores
+son todo texto libre; ventas solo tendría sentido para anular, que arrastra
+efectos colaterales de otra magnitud — quedó fuera a propósito).
+
+**Cero migración de esquema**: verificado antes de tocar nada que el CHECK de
+`auditoria.accion` ya incluía `'editar'`/`'cambiar_estado'` y el de `entidad`
+ya incluía `'producto'`/`'compra'` (de etapas anteriores). `schema.sql` y
+`db/index.js` no se tocaron.
+
+### Backend (`backend/server.js`)
+
+Helpers transversales nuevos, junto a `diffCampos` (~línea 374): `ErrorBulk`
+(error de negocio con status HTTP asociado), `mensajeDeError` (traduce un
+error de un ítem del lote al string que ve el usuario; un error que no sabe
+traducir hace `throw` en vez de enmascararse como "falló el ítem X"),
+`idsDeLote` (dedupe + `LIMITE_BULK = 500`, guardarraíl contra bloquear el
+event loop — node:sqlite es síncrono) y `aplicarLote(ids, fn)` — el corazón
+del patrón: **una transacción POR ÍTEM dentro del loop, nunca una
+envolvente**. Es la única estructura compatible con "aplicar los que pasan":
+un `ROLLBACK` que abarcara el lote entero se llevaría puestos los ítems ya
+aplicados, y `withTransaction` (`db/index.js`) no es reentrante — anidar no
+era una opción. Verificado en vivo (no solo por lectura) que tras un ítem
+fallido el loop sigue vivo: un `PATCH` singular normal corrido justo después
+de un fallo del bulk funciona sin problema.
+
+- **`aplicarEdicionProducto(req, id, cambios, totalLote)`** — extraída del
+  `PATCH /api/productos/:id` (mismo patrón ya usado con `crearCompra`,
+  `registrarCobro`, `crearGasto`). Recibe `cambios` **parcial**: una clave
+  ausente significa "no tocar ese campo" (detectado con `hasOwnProperty`,
+  nunca `!== undefined`, porque `null` es un valor legítimo acá —
+  `categoria_id: null` = sin categoría, `stock_maximo: null` = sin tope).
+  **Fusiona** la fila actual con `cambios` y valida el objeto fusionado con
+  `validarProducto` sin duplicar ninguna regla — es lo que permite detectar
+  invariantes cruzadas (pedir `stock_minimo` mayor al `stock_maximo` ya
+  guardado, aunque el bulk no toque ese segundo campo). `precio_venta` puede
+  venir como número (fijo) o `{modo:'porcentaje', valor:N}` (resuelto en el
+  backend contra el precio actual de cada fila, con
+  `Math.round(x*100)/100`). `CAMPOS_BULK_PRODUCTO` excluye `nombre`/`sku`
+  (sin sentido en lote, y el SKU violaría UNIQUE) y `precio_costo` (promedio
+  ponderado de compras, igual que ya excluía el singular).
+  `POST /api/productos/bulk` valida el request, filtra `cambios` contra
+  `CAMPOS_BULK_PRODUCTO` y corre `aplicarLote`.
+- **`aplicarEstadoEnvioCompra(req, id, estadoEnvio, totalLote)`** — mismo
+  molde, extraída de `PATCH /api/compras/:id/estado-envio`. Las 4 guardas de
+  negocio (no existe, borrador, anulada, no retroceder desde recibido) van
+  **antes** de abrir la transacción — lanzan sin nada que deshacer.
+  Verificado que `aplicarStockCompra` **no abre transacción propia** (son
+  `db.prepare().run()` pelados), así que el bulk puede envolverla con
+  seguridad dentro de su transacción por-ítem.
+  `POST /api/compras/bulk/estado-envio` recibe `{ids, estado_envio}` (sin
+  `cambios`: es un único campo con enum cerrado).
+- **Response, siempre 200 si el request es válido**:
+  `{aplicados, fallidos:[{id,error}], resumen}`. Nunca 207 (es de WebDAV con
+  cuerpo XML, y `res.ok` en el frontend ya es `true` para cualquier 2xx, así
+  que no cambiaría nada). Nunca un 4xx para éxito parcial: `manejarError`
+  abortaría el flujo mostrando error aunque la mayoría se haya aplicado bien.
+  Los mensajes de `fallidos` son los mismos strings que devolvería el
+  endpoint singular.
+- **Auditoría**: una fila por entidad afectada (nunca una por lote — si no,
+  sería imposible responder "¿qué le pasó al producto 45?" desde el índice
+  `idx_auditoria_entidad`). Si no hubo cambio real (`diffCampos` devuelve
+  `null`), no se escribe fila — mismo criterio que el singular, alimenta el
+  contador `resumen.sin_cambios`. El `detalle` menciona el lote
+  (`"... (edición en lote de N)"`) cuando `totalLote > 1`.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`, `frontend/css/styles.css`)
+
+Dos modales nuevos, **HTML estático** junto a `#modalProducto` (tienen que
+estar en el DOM al cargar el script: el `MutationObserver` de accesibilidad
+de foco/Escape/Tab hace `querySelectorAll(".modal")` una sola vez al
+arrancar, y un modal inyectado en runtime no quedaría enganchado).
+
+- **`#modalBulkProductos`** — la sutileza central de un bulk edit es
+  distinguir "no tocar este campo" de "ponerlo en un valor", y en este
+  dominio el vacío ya significa algo (`stock_maximo` vacío = sin tope). Se
+  resolvió con **un checkbox de activación por campo**: cada input arranca
+  `disabled` de verdad (no solo visual — así no viaja en el form ni engaña a
+  un lector de pantalla) y se habilita al tildar su checkbox
+  (`armarCambiosBulk` solo agrega al request las claves con el checkbox
+  tildado). Precio de venta con `<select>` de modo (porcentaje/fijo).
+- **`#modalBulkEstadoEnvio`** — un solo `<select>` con `ESTADOS_ENVIO`
+  (reusa `ENVIO_LABEL` que ya existía). Confirmación **obligatoria**
+  (`destructivo: true`) al marcar como "recibido": suma stock y recalcula
+  costo, es irreversible por diseño.
+- **`mostrarResultadoBulk(resultado, {bloque, titulo, lista, etiquetar})`**
+  — compartida entre los dos modales (mismo shape de response). Sin fallos:
+  cierra el modal, limpia la selección de la tabla, toast "ok". **Con
+  fallos: el modal NO se cierra** — un toast de 4200ms es el vehículo
+  equivocado para "estos 3 fallaron y por qué". Se revela un bloque
+  `#bulkXResultado` con el conteo y un `<li>` por fallo con el motivo real
+  (nombre del producto/número de compra, no el id pelado). **Los ids que
+  fallaron quedan en la variable de estado del modal, y el botón pasa a
+  "Reintentar con N..."** — la selección real de la tabla (`selProductos`/
+  `selCompras`) no se toca, así que la barra sigue mostrando el total
+  original; el usuario puede corregir el campo y volver a apretar el mismo
+  botón para reintentar solo sobre el subconjunto que falló, sin tener que
+  volver a seleccionar nada a mano. Verificado en vivo con Playwright — es
+  la propiedad de UX más importante del diseño y no era evidente por
+  lectura de código que iba a salir bien.
+- **`poblarSelectCategorias` generalizada** (aceptaba un selector
+  hardcodeado a `#formProducto`) para poder llenar también el select de
+  categoría del modal bulk — si se hubiera olvidado, ese select habría
+  quedado vacío en silencio.
+- Guardado de una copia propia de los ids al abrir cada modal
+  (`bulkProductosIds`/`bulkComprasIds`), no releída de `sel.ids` en el
+  submit: si el usuario deja el modal abierto y algo re-renderiza la tabla,
+  `sincronizar()` podría podar la selección bajo sus pies.
+- **CSS**: `#modalBulkProductos`/`#modalBulkEstadoEnvio` usan `class="modal"`
+  y heredan `.modal[hidden]` ya existente, sin regla propia. Pero
+  `.bulk-campo` y `.bulk-resultado` sí necesitaron su propio
+  `[hidden] { display: none }` explícito — mismo bug documentado ya dos
+  veces en el archivo (una clase con `display` propio le gana en
+  especificidad al `[hidden]` del navegador).
+
+### Verificación hecha
+
+Metodología de siempre: copia aislada al scratchpad (puerto **3002**, nunca
+el 3000 real), usuario de prueba propio (`test_qa`/admin) insertado a mano
+con el mismo `scryptSync` de `server.js` (la copia no tenía la contraseña
+real). Datos sembrados a mano para cubrir los casos límite: un producto con
+`stock_maximo` bajo (para la invariante cruzada), uno con precio decimal
+(para el redondeo), una compra en borrador, una anulada, y dos compras
+activas del mismo producto (para el caso de costo promedio dependiente del
+orden).
+
+- **Regresión de los endpoints singulares, antes y después del refactor**:
+  los 4 mensajes de error de `PATCH /api/productos/:id` y los 5 caminos de
+  `PATCH /api/compras/:id/estado-envio` comparados carácter a carácter — sin
+  diferencias.
+- **~20 casos hostiles por `curl`** contra `/api/productos/bulk`: `ids`
+  vacío/ausente/mal tipado (siempre 400 claro, nunca 500), 600 ids (400 por
+  `LIMITE_BULK`), ids duplicados `[7,7,7]` (una sola fila de auditoría, no
+  tres), id inexistente (fallido con "Producto no encontrado."), `cambios`
+  vacío o solo con campos fuera de scope (`nombre`, `precio_costo` — 400 "No
+  indicaste ningún cambio.", y **confirmado en la base que `precio_costo` no
+  cambió**), **el caso central**: `stock_minimo` sobre 3 ids donde uno tiene
+  `stock_maximo` más bajo — los otros dos se aplicaron, ese falló con el
+  mensaje exacto, y **la base confirma que el que falló quedó sin tocar**;
+  justo después, un `PATCH` singular normal funcionó (sin transacción
+  colgada). `categoria_id`/`stock_maximo` en `null` aplican y dejan NULL.
+  Ajuste porcentual del 10% sobre 1234.56 dio exactamente 1358.02 (no
+  1358.0160000000001). Porcentaje de -200% falló con el mensaje de
+  `validarProducto`. Reaplicar un valor ya vigente dio `sin_cambios` **sin
+  sumar fila de auditoría**. Sin cookie de sesión → 401.
+- **Compras por `curl`**: lote mixto de 4 (una válida en `en_camino`, una
+  borrador, una anulada, una válida en `pedido`) → `recibido` dio
+  exactamente 2 aplicados y 2 fallidos con motivos distintos. Dos compras
+  del mismo producto en un lote → ambas recibidas, **2 movimientos de stock
+  sin duplicar**, `precio_costo` final coincidente con recibirlas de a una
+  en el mismo orden ($500×10 + $600×5 ⁄ 15 = $533,33). Reenviar el mismo
+  lote → todo `sin_cambios`, sin sumar movimientos. Estado inválido → 400
+  antes de tocar la base.
+- **Frontend con Playwright** (tres scripts, 30 checks en verde, cero
+  errores de consola en cualquier corrida): inputs que arrancan `disabled`
+  y solo se habilitan al tildar su checkbox (y vuelven a deshabilitarse al
+  destildar); submit sin ningún checkbox no dispara request de red;
+  intercepción del body real confirmando que solo viaja la clave tildada;
+  `getComputedStyle(...).display === "none"` real con `hidden` puesto (no
+  solo el atributo) para el modal y para el bloque de resultado; **el caso
+  mixto real**: 2 productos seleccionados, uno falla — el modal no se
+  cierra, "1 aplicado · 1 falló" con el nombre del producto y el motivo
+  legible, la barra de selección sigue en "2 seleccionadas", el botón pasa a
+  "Reintentar con 1 producto"; Compras: confirmación destructiva obligatoria
+  con el texto de irreversibilidad antes de marcar como recibido, modal se
+  cierra tras éxito limpio; regresión de alta/edición individual de
+  productos sin cambios de comportamiento.
+- Sintaxis (`node --check`) limpia en `server.js` y `app.js`. HTML sin ids
+  duplicados (412 ids, todos únicos). CSS con llaves balanceadas (325/325).
+- **No se reinició el proceso real del 3000** — a diferencia de §19/§20,
+  esta etapa sí toca el backend, así que **hace falta reiniciarlo** para que
+  los cambios vivan ahí (a diferencia de las últimas dos etapas, que eran
+  frontend puro sin build step). Pendiente para cuando el usuario lo pida.
+
+### Qué queda pendiente
+
+- **Sin commitear**, junto con §19 y §20 (backend y frontend). Confirmar con
+  el usuario cuándo conviene cortar el commit — se acumulan tres etapas
+  seguidas sin commitear.
+- Ninguna otra entidad tiene bulk edit todavía. Si se pide extender, el
+  patrón (`ErrorBulk`, `idsDeLote`, `aplicarLote`) ya está listo para
+  reusarse — lo específico de cada entidad es la función `aplicarEdicionX`
+  y el modal.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios, arrastra
+  de etapas anteriores).
+
+**Actualización**: el proceso real del 3000 **ya se reinició** con este
+código, a pedido del usuario ("sii reincialo asi lo verifico desde
+localhost") — ver §22 más abajo para el detalle de esa operación (backup,
+verificación de conteo de filas, confirmación de la ruta nueva respondiendo
+ahí). No quedó pendiente.
+
+## 22. Última etapa: reportes de compras + "Resumen" → "Estadísticas"
+
+**El pedido**: seguir sumando funciones (mismo patrón de sesión que las
+etapas anteriores). Se le preguntó al usuario con `AskUserQuestion` entre
+cuatro opciones (listas de precios, reportes de compras, más edición
+masiva, marca/unidad de medida) y eligió **reportes de compras** —
+CLAUDE.md §20 pide cuatro familias de reportes (ventas, compras, stock,
+finanzas) y compras era la única que faltaba.
+
+Al preguntar dónde debía vivir en el nav, el usuario pidió algo más amplio:
+**renombrar "Resumen" a "Estadísticas"**, con el resultado del negocio
+arriba y reportes debajo a medida que se baja la página. Acotado con una
+segunda ronda de `AskUserQuestion`: **solo compras entra a esa pantalla por
+ahora** (Reportes de stock queda como vista de nav propia, sin tocar —
+consolidarla también es una decisión para otra sesión), compartiendo el
+**mismo filtro de fecha** que ya usaba "Qué se vende"
+(`#filtrosResumen`/`rangoActualResumen()`), no uno propio.
+
+Es una etapa **de solo lectura, sin migración**: no se tocó `schema.sql` ni
+`db/index.js`. `compra_items.costo_real_unitario` ya trae el envío
+prorrateado (se resuelve al crear la compra), así que el reporte suma
+directo sin recalcular nada — mismo criterio no negociable que
+`venta_items.costo_unitario_historico` en el reporte de ventas.
+
+### Backend (`backend/server.js`)
+
+Sección nueva `/* ---------- Reportes: compras (CLAUDE.md §20) ---------- */`,
+espejo exacto de "Reportes: qué se vende y a quién" (misma sesión de trabajo
+que la construyó, etapa anterior a §19), del lado de compras:
+
+- Queries `SQL_REPORTE_COMPRAS_POR_PROVEEDOR/PRODUCTO/CATEGORIA` — mismo
+  patrón que las de ventas (`compras.estado = 'activa'`, agrupado por
+  `compras.proveedor_id` / `compra_items.producto_id` /
+  `productos.categoria_id` vía `LEFT JOIN` + `COALESCE(..., 'Sin
+  categoría')`).
+- **Devoluciones a proveedor netean el reporte**, igual que las devoluciones
+  de venta netean el de ventas: `SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_*`
+  contra `devoluciones_proveedor`/`devolucion_proveedor_items`. A
+  diferencia de las devoluciones de venta (que tienen un flag
+  `vuelve_stock` condicional), **toda devolución a proveedor saca stock
+  siempre** — confirmado leyendo `aplicarDevolucionProveedor`, sin
+  `CASE WHEN` en la resta.
+- `netearComprasPorId` — adaptador propio en vez de reusar `netearPorId` tal
+  cual: esta última resta las claves `ventas`/`costo`, y las queries de
+  compras usan la clave `compras` (no hay "costo de comprar" del lado de
+  compras, es la ganancia la que no aplica acá). Se prefirió un adaptador
+  chico antes que acoplar `netearPorId` a un nombre de campo distinto — esa
+  función ya la usa el reporte de ventas tal cual.
+- **Sin equivalente a `calcularResultado`**: los totales de plata
+  (`compras_netas`) se recalculan sumando las filas por-proveedor ya
+  neteadas, no con una query aparte — así el total y el desglose por
+  proveedor cierran exacto por construcción (verificado con curl: suma de
+  `productos`/`categorias`/`proveedores` da exactamente `compras_netas` en
+  los tres casos).
+- `GET /api/reportes/compras`, mismo tratamiento de rango que
+  `/api/reportes/ventas` (`validarFecha`, rango abierto acotado a la
+  primera/última operación real). Response:
+  `{rango, totales:{compras_netas, cantidad_compras, ticket_promedio,
+  unidades}, proveedores, productos, categorias}` — sin `ganancia`/
+  `margen_pct` en `productos`/`categorias` (no aplica del lado de compras).
+
+**Cambio compartido, confirmado con el usuario antes de tocarlo**
+(`AskUserQuestion`): `SQL_LIMITES_OPERACIONES` (`server.js`, cerca de línea
+4816) hacía `UNION ALL` de `ventas`/`gastos`/`devoluciones` para calcular el
+"rango abierto por defecto" — **no incluía `compras` ni
+`devoluciones_proveedor`**. Un negocio con compras anteriores a su primera
+venta hubiera visto el reporte de compras arrancar el rango tarde y
+perderlas en silencio. Se amplió con esas dos tablas. **Efecto colateral
+correcto y esperado**: también amplía el rango por defecto de
+`/api/resumen/evolucion` y `/api/reportes/ventas`, que ya usaban la misma
+query preparada — verificado con curl que sus responses siguen bien
+formados después del cambio (sin diferencia visible con los datos de
+prueba, que ya tenían ventas más tempranas que las compras).
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **Nav**: la entrada 01 pasó de "Resumen" a "Estadísticas"
+  (`index.html:58-60`). Se dejó **sin tocar** el atributo interno
+  `data-view="dashboard"` — renombrarlo hubiera obligado a tocar cada
+  `mostrarVista("dashboard")` del código sin ganar nada; solo cambia la
+  etiqueta visible del nav. Confirmado que no hay otro lugar del HTML/JS que
+  mostrara el texto "Resumen" (ni un `<h1>` propio dentro de la sección, ni
+  referencias en `app.js` más allá del id interno).
+- Bloque `<h2>Qué se compra</h2>` agregado **después** de "Mejores
+  clientes" (dentro de la misma `<section class="view"
+  data-view="dashboard">`), mismo molde exacto que "Qué se vende": un
+  `ledger-strip` de 4 KPIs (compras netas, ticket promedio, unidades
+  compradas, cantidad de compras) + 3 `<section class="panel">` con
+  `<table class="ledger-table">` (proveedores, productos, categorías), cada
+  `<th>` con `data-orden`/`data-tipo` para que `crearOrden` funcione gratis
+  sin código adicional.
+- `renderReporteComprasProveedores/Productos/Categorias` +
+  `cargarReporteCompras()` — mismo patrón que sus pares de ventas
+  (`filaVacia`, `data-label` por columna para mobile, `tablaCargando` antes
+  del fetch). El link de proveedor reusa `abrirFichaProveedor` (ya existía,
+  usado por la ficha manual de Proveedores) — mismo patrón que
+  `abrirFichaCliente` en "Mejores clientes".
+- Tres `crearOrden` nuevas (`ordenReporteComprasProveedores/Productos/Categorias`).
+- **`cargarPanelResumen()` pasó a disparar los tres fetch en paralelo**:
+  `Promise.all([cargarResumen(), cargarReporteVentas(), cargarReporteCompras()])`
+  — único punto de enganche real, ya cuelga de `#filtrosResumen`, así que
+  cambiar el filtro de fecha refresca ventas y compras a la vez sin código
+  adicional.
+- No hizo falta tocar `crearFiltros`, `rangoDeFiltroFecha`, `crearOrden`,
+  `tablaCargando` ni `filaVacia`: se reusaron tal cual, ya eran genéricos.
+
+### Verificación hecha
+
+Metodología de siempre: copia aislada al scratchpad, servidor de prueba en
+el **3002**, usuario de prueba propio (`test_qa`/admin, ya existía de la
+etapa anterior). Se sembró además una **devolución a proveedor real**
+(vía `POST /api/devoluciones-proveedor`, no SQL directo) para poder probar
+el neteo de punta a punta.
+
+- **Backend por curl**: sin rango (acota bien a la compra más vieja real,
+  `acotado:false`); rango explícito; rango sin compras (fecha futura, arrays
+  vacíos y totales en 0, **sin error**); **sumas cruzadas exactas**: suma de
+  `productos.compras`, `categorias.compras` y `proveedores.compras` dan
+  las tres, por separado, el mismo número que `totales.compras_netas`
+  ($709.000 antes de la devolución de prueba); suma de `participacion_pct`
+  de todas las categorías da exactamente 100. Tras registrar la devolución
+  de 1 unidad de "Asad bourbon" (compra #3, proveedor Paraguaya): el total
+  bajó de $709.000 a $689.000, las unidades de 37 a 36, el producto y el
+  proveedor correctos bajaron su monto exacto — verificado número a número,
+  no solo que "algo cambió".
+- **Regresión de `SQL_LIMITES_OPERACIONES` ampliada**: `/api/resumen` y
+  `/api/reportes/ventas` siguen respondiendo bien formados después del
+  cambio compartido.
+- **Frontend con Playwright** (dos scripts, 14 checks en verde, 0 errores de
+  consola): nav dice "Estadísticas" y ya no dice "Resumen"; el bloque "Qué
+  se compra" aparece con sus KPIs poblados; la tabla de proveedores tiene
+  filas y el link de proveedor navega a la ficha real
+  (`data-view="proveedor-detalle"`, con el nombre correcto cargado);
+  ordenar por la columna "Unidades" cambia el orden de las filas sin
+  vaciarlas; **regresión de "Qué se vende"**: sigue con su KPI poblado y su
+  tabla de productos con filas, confirmando que agregar el tercer fetch al
+  `Promise.all` de `cargarPanelResumen` no rompió nada; mobile 375px sin
+  desborde horizontal (`scrollWidth === clientWidth`) con el bloque de
+  compras sumado a la página.
+- Sintaxis (`node --check`) limpia en `server.js` y `app.js`. HTML sin ids
+  duplicados (419 ids, todos únicos).
+- **Deploy al proceso real del 3000**: a pedido explícito del usuario
+  ("sii reincialo asi lo verifico desde localhost"). Backup
+  `nexo.db.backup-antes-bulk-edit-20260902-161157` (nombre heredado de
+  cuando se armó el backup, que fue antes de esta etapa de reportes
+  también — cubre ambas). Proceso identificado y detenido por PID exacto
+  (`Get-NetTCPConnection -LocalPort 3000`, nunca por nombre `node`
+  genérico), reiniciado con el mismo comando de siempre
+  (`node --experimental-sqlite server.js`). **Conteo de filas de las 12
+  tablas principales comparado 1:1 pre/post-reinicio: sin diferencias.**
+  Confirmado que `POST /api/productos/bulk` (de §21, la etapa anterior)
+  responde 401 en el proceso real (no 404) — la ruta existe, solo falta
+  sesión. Esta etapa de reportes de compras se implementó y verificó
+  **después** de ese reinicio, contra la copia de scratchpad como siempre
+  — el código de reportes de compras todavía no está en el proceso real,
+  ver pendientes.
+
+### Qué queda pendiente
+
+- **Sin commitear**, se sigue acumulando con §19/§20/§21.
+- **El proceso real del 3000 todavía no tiene el código de esta etapa**
+  (reportes de compras + rename a "Estadísticas") — sí tiene ya el de §21
+  (bulk edit), reiniciado durante esta misma sesión. Falta un segundo
+  reinicio (con backup nuevo) para que `/api/reportes/compras` responda ahí
+  y el nav muestre "Estadísticas".
+- **Reportes de stock sigue siendo una vista de nav aparte** — la
+  consolidación completa (moverla también a Estadísticas) quedó
+  explícitamente fuera de esta etapa, a decisión del usuario. Si se retoma,
+  el molde ya está probado dos veces (ventas, ahora compras).
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
+  arrastra de varias etapas atrás).
+
+## 23. Última etapa: listas de precios (CLAUDE.md §18)
+
+**Etapa 0 de esta sesión**: antes de tocar código nuevo se commitearon las
+cuatro etapas que venían acumuladas sin commitear (§19–§22: comprobantes
+imprimibles, selección múltiple en lote, edición masiva, reportes de
+compras + rename a "Estadísticas") en una rama nueva
+`feature/reportes-compras-estadisticas` (commit `0e984df`), y se reinició
+el proceso real del 3000 con ese código antes de empezar. `main` no se
+tocó — sigue en `5a03436`, no era parte de lo pedido.
+
+**El pedido**: seguir sumando funciones. Se preguntó con `AskUserQuestion`
+entre cuatro opciones (listas de precios, marca/unidad de medida,
+consolidar reportes de stock, vencimientos/aging de CC) y el usuario
+eligió **listas de precios** — la pieza de negocio más grande que faltaba
+de §18: hoy un producto tenía un único `precio_venta`, sin poder vender lo
+mismo a precio minorista/mayorista/tarjeta.
+
+**Bug de comportamiento arreglado de paso, a propósito**: antes de esta
+etapa, registrar o editar una venta hacía `UPDATE productos SET
+precio_venta = ?` con el precio de esa venta puntual (`crearVenta` y el
+`PUT /api/ventas/:id`, en `server.js`). Con una sola lista ya era
+discutible; con varias hubiera sido un bug real — venderle a un mayorista
+a un precio más bajo habría pisado en silencio el precio minorista de
+todo el catálogo. Confirmado con el usuario (`AskUserQuestion`) y sacado:
+**una venta ya NO modifica el precio de ningún producto**, en ningún
+punto. Verificado explícitamente por curl: vender a un precio distinto al
+de la ficha deja `precio_venta` intacto.
+
+Decisiones de negocio confirmadas con el usuario antes de programar
+(cuatro rondas de `AskUserQuestion`, todas con la opción recomendada
+elegida):
+- Precio **fijo por producto y lista** (no porcentajes globales por
+  lista). Sin precio propio cargado, cae al precio base del producto.
+- El **cliente tiene una lista habitual** en su ficha; Venta/Presupuesto
+  la proponen sola al elegirlo, editable para esa operación puntual.
+- **Se guarda `lista_precio_id`** en `ventas` y `presupuestos`
+  (trazabilidad, §8/§22 — de dónde salió el precio de esa operación).
+- El precio que ya tenía cada producto **pasó a ser el de la lista
+  predeterminada** (creada como "Minorista" en la migración) — no cambió
+  ningún número.
+- Remarcación masiva **incluida**, reusando el modal de edición en lote
+  de Productos que ya sabía ajustar por porcentaje.
+
+### Migración (aditiva, sin tocar ningún dato existente)
+
+- `backend/db/schema.sql` — dos tablas nuevas: `listas_precios` (`nombre`
+  UNIQUE, `activa`, `es_predeterminada` — la consistencia de "exactamente
+  una marcada" la garantiza el backend, no un constraint SQL) y
+  `producto_precios` (`producto_id`, `lista_precio_id`, `precio`, con
+  índice único `idx_producto_precios_unico` sobre el par). Ubicadas entre
+  `categorias` y `productos`/`proveedores` en el archivo, por relación.
+- `backend/db/index.js` — tres columnas nuevas nullable (mismo patrón
+  `PRAGMA table_info` + `ALTER TABLE` de siempre): `clientes.lista_precio_id`,
+  `ventas.lista_precio_id`, `presupuestos.lista_precio_id`. NULL significa
+  "la predeterminada de ese momento", no un id fijo — así si el día de
+  mañana cambia cuál lista es la predeterminada, lo que dependía de NULL
+  la sigue sola.
+- **Tercer rebuild de la tabla `auditoria`** (mismo procedimiento ya usado
+  dos veces antes, para `usuario` y `organizacion`): se sumó `'lista_precio'`
+  al `CHECK` de `entidad`, porque SQLite no permite alterar un `CHECK` con
+  `ALTER TABLE`. Índices recreados a mano dentro de la misma transacción.
+- **Seed + backfill**, junto al de `cuentas_tesoreria`/`organizaciones`: si
+  `listas_precios` está vacía, se crea "Minorista" como predeterminada y
+  se copia el `precio_venta` de cada producto a `producto_precios` en esa
+  lista — así el número que el negocio ya tenía queda exactamente igual,
+  solo que ahora también vive como fila de la tabla nueva.
+  `productos.precio_venta` **se conserva** (no se borró): sigue siendo el
+  precio de la lista predeterminada y el fallback para cualquier lista sin
+  precio propio cargado.
+- Verificado (copia de scratchpad, puerto 3002): diff de todas las tablas
+  pre/post sin diferencias salvo lo nuevo; idempotencia probada
+  reimportando `db/index.js` en un proceso fresco dos veces seguidas, sin
+  duplicar filas ni romper nada; aplicada después también contra la base
+  real, con el mismo resultado (ver "Deploy" más abajo).
+
+### Backend (`backend/server.js`)
+
+- **Maestro de listas**, sección nueva junto a "Categorías de productos":
+  `GET/POST/PATCH /api/listas-precios`, calcado de categorías (nombre
+  vacío, nombre duplicado, baja lógica vía `activa`), más dos reglas
+  propias: la predeterminada no se puede desactivar ni desmarcar
+  directamente (400 con mensaje claro), y marcar una lista distinta como
+  predeterminada desmarca la anterior dentro de la misma transacción —
+  nunca hay un instante con dos marcadas o con cero.
+- **Precios por producto**: `obtenerPreciosPorProducto()` arma un mapa
+  `producto_id -> {lista_precio_id: precio}` con un segundo query (no un
+  pivot SQL dinámico), y `decorarProducto` lo adjunta como `precios` en
+  cada producto de `GET /api/productos`.
+- `aplicarEdicionProducto` (el punto único de edición, usado por PATCH
+  singular y por bulk) acepta un campo `precios` opcional —
+  `{lista_id: valor}`, cada valor un número fijo o
+  `{modo:'porcentaje', valor:N}` calculado sobre el precio ACTUAL de esa
+  lista puntual (con fallback a `precio_venta` si el producto todavía no
+  tiene precio propio ahí) — y hace un
+  `INSERT ... ON CONFLICT(producto_id, lista_precio_id) DO UPDATE`. Si el
+  pedido tocó el precio de la lista **predeterminada**, también sincroniza
+  `productos.precio_venta` — son la misma cosa vista desde dos lugares y
+  no pueden desincronizarse. `CAMPOS_BULK_PRODUCTO` suma `precios`.
+- **Ventas y presupuestos**: `crearVenta`, `PUT /api/ventas/:id`,
+  `POST/PUT /api/presupuestos` validan y persisten `lista_precio_id`
+  (nullable, valida que exista si viene). Al convertir un presupuesto, la
+  venta hereda su `lista_precio_id`. Los dos `UPDATE productos SET
+  precio_venta` de crear/editar venta se **eliminaron** (ver el bug de
+  arriba).
+- **Clientes**: `POST/PATCH /api/clientes` aceptan `lista_precio_id`
+  (nullable, valida existencia). `GET` ya lo expone gratis vía
+  `clientes.*`.
+- **Lección de esta etapa** (bug propio, encontrado y arreglado antes de
+  desplegar): la validación de `lista_precio_id` en `crearVenta` al
+  principio lanzaba `new Error(...)` en vez de `new ErrorBulk(...)` — como
+  `mensajeDeError` (el traductor de errores a JSON) **relanza** cualquier
+  error que no reconoce, ese `Error` genérico escapaba del `try/catch` de
+  `POST /api/ventas` y llegaba crudo al handler default de Express (HTML
+  de stack trace en vez de un 400 limpio). El status code igual salía bien
+  (400), así que el bug solo se notó mirando el *body* de la respuesta, no
+  el código. Corregido usando `ErrorBulk`, la clase que ya existe
+  justamente para esto. **Para la próxima vez**: cualquier `throw` nuevo
+  dentro de una función que pueda llamarse desde un endpoint que pasa por
+  `mensajeDeError` tiene que ser `ErrorBulk`, nunca `Error` a secas.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **Modal de gestión de listas** (`#modalListasPrecios`), calcado del de
+  categorías de productos: form inline con `id` oculto (alta y edición en
+  el mismo formulario) + tabla con columna "Predeterminada" (un botón
+  "Marcar" en vez de un radio, para no tener que mandar un PATCH por fila
+  al cambiar cuál es la predeterminada). Botón "Listas de precios" en el
+  header de Productos, al lado de "Categorías".
+- **Desviación decidida durante la implementación, confirmada con el
+  usuario (`AskUserQuestion`)**: el plan original pedía una columna por
+  lista en la tabla de Productos. Se encontró que `crearOrden` (el
+  ordenamiento de columnas, compartido por todas las tablas del sistema)
+  engancha sus listeners a los `<th>` **una sola vez**, al bootear la
+  página — antes de que `/api/listas-precios` termine de responder.
+  Generar ahí columnas dinámicas de verdad hubiera obligado a reescribir
+  el arranque de esa infraestructura compartida, con riesgo sobre el
+  orden guardado de columnas de otras pantallas. Se optó por: la tabla de
+  Productos **sigue con una sola columna "Precio"** (la de la lista
+  predeterminada, sin cambios visuales), y el **modal de producto** es
+  donde se cargan/editan los precios de TODAS las listas — un input por
+  cada lista activa que no sea la predeterminada, generado en runtime
+  (`poblarPreciosPorLista`) solo en edición (un producto recién creado
+  todavía no tiene id contra el cual guardar `producto_precios`, mismo
+  criterio que ya usa el costo: "se completa después").
+- **Modal de edición en lote de Productos**: el bloque de precio suma un
+  `<select name="precio_lista_id">` ("sobre qué lista aplicar"). Si es la
+  predeterminada, el ajuste viaja como `cambios.precio_venta` (como
+  siempre); si es otra lista, viaja como `cambios.precios[id]` — misma
+  distinción que ya hace el backend.
+- **Venta y Presupuesto**: selector `<select name="lista_precio_id">` en
+  cada modal. Se propone sola al elegir un cliente con lista habitual
+  (o queda en la predeterminada); cambiarla con ítems ya cargados
+  **repropone** sus precios (`reproponerPreciosPorLista`) — pero solo en
+  los renglones cuyo precio actual coincide con algún precio conocido del
+  producto, para no pisar un descuento negociado a mano. Avisa cuántos
+  precios cambió (`avisar(...)`), nunca en silencio.
+  `agregarFilaItemVenta` (los 9 sitios que la llaman no se tocaron: la
+  función busca la lista elegida sola, vía `listaPrecioDelFormulario`,
+  buscando el `<select>` dentro del mismo `<form>` que su contenedor de
+  ítems) sugiere `precioProductoEnLista(producto, listaId)` en vez de
+  `producto.precio_venta` directo.
+- **Ficha de cliente**: campo "Lista de precios habitual"
+  (`poblarSelectListasPrecios` con opción explícita "Usar la
+  predeterminada" = NULL).
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el **3002** (usuario de prueba con password reseteada directo en la
+  copia — la real no se tocó), proceso del 3000 sin tocar hasta tener todo
+  verde.
+- **Backend por curl, número a número**: alta/edición de listas; intentar
+  quitarle `es_predeterminada` a la única marcada (400); intentar
+  desactivarla (400); marcar otra como predeterminada (la vieja se
+  desmarca sola, siempre exactamente una marcada en ambos sentidos);
+  cargar un precio en una lista no predeterminada (no toca `precio_venta`
+  ni la otra lista); cargar el precio de la predeterminada vía `precios`
+  (sí sincroniza `precio_venta`); ajuste porcentual sobre una lista
+  puntual (75000 +10% = 82500, verificado exacto); **venta a un precio
+  distinto del de la ficha — `precio_venta` quedó intacto** (la regresión
+  que esta etapa vino a arreglar); presupuesto convertido a venta hereda
+  la lista; bulk +20% sobre una lista puntual en 2 productos (valores
+  exactos verificados, el resto del catálogo sin tocar); precio negativo
+  rechazado (400); `lista_precio_id` inexistente en venta/cliente
+  rechazado con JSON limpio (400, después de arreglar el bug de
+  `ErrorBulk` de arriba).
+- **Idempotencia**: reimportar `db/index.js` en un proceso nuevo, dos
+  veces, sobre una base que ya tenía datos de negocio cargados durante la
+  prueba (no solo la base vacía inicial) — sin duplicar ninguna fila.
+- **Frontend con Playwright** (headless, claro y oscuro, 1280px y mobile
+  375px): **32/32 checks en verde**. Modal de listas abre/lista/crea;
+  modal de producto muestra los campos de precio por lista; guardar un
+  precio de lista no rompe nada; selector de lista en Venta con las 3
+  listas activas; el precio sugerido de un ítem cambia al cambiar de
+  lista (55000 → 66000, verificado con el valor real); selector de lista
+  habitual en el modal de Cliente; regresión de la etapa anterior
+  (Estadísticas + "Qué se compra" siguen poblando); sin scroll horizontal
+  en mobile. El único "error de consola" capturado fue un 400 esperado
+  (el test de tema oscuro repitió el nombre de una lista ya creada por el
+  test de tema claro — la validación de duplicados funcionando, no un
+  bug).
+- Sintaxis (`node --check`) limpia en `server.js` y `app.js` después de
+  cada cambio.
+- **Deploy**: Etapa 0 primero (ver arriba). Backup
+  `nexo.db.backup-antes-listas-precios-20260903-082559` en `backend/db/`,
+  proceso identificado y detenido por **PID exacto**
+  (`Get-NetTCPConnection -LocalPort 3000`), reiniciado con
+  `node --experimental-sqlite server.js`. **Row counts de las 6 tablas
+  principales comparados 1:1 pre/post-migración: sin diferencias**, y los
+  tres `precio_venta` de los productos reales quedaron con el mismo valor
+  exacto que tenían antes. `producto_precios` quedó con una fila por
+  producto en la lista Minorista, con esos mismos valores. El endpoint
+  nuevo (`/api/listas-precios`) respondió 401 contra el proceso real (no
+  404: la ruta existe, solo falta sesión) y el HTML sirve el botón "Listas
+  de precios" nuevo.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama activa sigue siendo
+  `feature/reportes-compras-estadisticas` (con el commit `0e984df` de la
+  Etapa 0). Falta decidir con el usuario si esta etapa va a esa misma
+  rama/PR o a una propia, y commitear.
+- El **alta de producto nuevo** (`POST /api/productos`) no acepta
+  `precios` todavía — nace solo con el precio de la lista predeterminada
+  (`precio_venta`), igual que ya pasa con el costo. Cargar precios de
+  otras listas es una edición posterior, una vez que el producto ya tiene
+  id. No se consideró una limitación real (mismo patrón que costo), pero
+  vale mencionarlo si en el futuro se pide poder cargar todo de una.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
+  arrastra de varias etapas atrás).
+
+## 24. Última etapa: multidepósito (CLAUDE.md §19)
+
+**El pedido**: seguir sumando funciones. Se preguntó con `AskUserQuestion`
+entre cuatro opciones (multidepósito, vencimientos/aging de CC, marca y
+unidad de medida, notas de débito) y el usuario eligió **multidepósito** —
+la brecha arquitectónica más grande que quedaba de `CLAUDE.md`: §5 dice
+textualmente "el stock debe manejarse por producto y depósito, no asumir
+que un producto tiene un único stock global", y hasta esta etapa Nexo lo
+asumía.
+
+**Etapa 0**: se commiteó primero la etapa de listas de precios (§23) que
+venía desplegada sin commitear desde la sesión anterior (commit `0802c2d`,
+en la misma rama `feature/reportes-compras-estadisticas`), para que el
+diff de esta etapa viniera limpio.
+
+**Lo que hizo la etapa viable**: el stock ya era un *ledger append-only* —
+no existe `productos.stock_actual`, todo se deriva de `movimientos_stock`
+vía la VIEW `stock_actual`, y las reversiones (anular/editar/restaurar)
+insertan movimientos contrarios en vez de borrar filas. Agregar
+`deposito_id` al ledger y agrupar por `(producto_id, deposito_id)` dio
+stock por depósito sin reescribir la lógica de ninguna operación.
+
+**Decisiones de negocio confirmadas con el usuario antes de programar**
+(tres rondas de `AskUserQuestion`, las tres con la opción recomendada):
+- `stock_minimo`/`stock_maximo` siguen siendo **globales por producto**
+  (no por depósito); el semáforo compara contra el stock **total**.
+- **Un depósito por operación**, no por renglón: Venta, Compra, Devolución
+  y Dev. a proveedor llevan un único `deposito_id` en la cabecera.
+- Si falta stock en el depósito elegido, Nexo **bloquea y avisa dónde sí
+  hay** stock — nunca transfiere solo (moverlo sin que nadie lo haya
+  movido físicamente haría que el sistema mienta sobre dónde están las
+  cosas).
+
+### Migración (aditiva)
+
+- `backend/db/schema.sql`: tabla nueva `depositos` (junto a
+  `listas_precios`, mismo molde — "exactamente uno predeterminado"
+  garantizado por el backend); tabla nueva `transferencias` (cabecera de
+  una transferencia entre depósitos); `movimientos_stock` gana
+  `deposito_id` NOT NULL y `transferencia_id`, más `'transferencia'` en el
+  CHECK de `origen`. **`stock_actual` se conserva tal cual** (total por
+  producto) y se agregó una vista nueva `stock_por_deposito` — a
+  propósito, no se le cambió el `GROUP BY` a `stock_actual`: hay 7 sitios
+  en `server.js` que hacen `SELECT ... FROM stock_actual WHERE producto_id
+  = ?` esperando una sola fila (costo promedio, semáforo); agruparla por
+  dos columnas los habría roto en silencio (`.get()` tomando una fila al
+  azar entre varias).
+- **Bug propio encontrado y corregido durante la verificación**: el índice
+  sobre `(producto_id, deposito_id)` y la vista `stock_por_deposito`
+  **no pueden vivir en `schema.sql`** — en una base existente ese archivo
+  corre primero, antes de que el rebuild de `index.js` agregue
+  `deposito_id`, así que fallarían con "no such column". Se crean en
+  `db/index.js`, **incondicionales con `IF NOT EXISTS`** después del
+  bloque de rebuild (no solo adentro): en una base **fresca**,
+  `schema.sql` ya crea `movimientos_stock` CON `deposito_id` desde el
+  arranque, así que el guard del rebuild (`!sql.includes('deposito_id')`)
+  da `false` y el bloque entero se saltea — sin el `IF NOT EXISTS` de
+  afuera, una base nueva se hubiera quedado sin el índice ni la vista.
+  Mismo motivo por el que `saldo_tesoreria` tampoco vive en `schema.sql`.
+- `backend/db/index.js`: seed de `depositos` (crea "Depósito principal"
+  como predeterminado si la tabla está vacía) ubicado **antes** del
+  rebuild de `movimientos_stock` porque el backfill necesita su id; quinto
+  rebuild de tabla del archivo (`movimientos_stock`, con
+  `deposito_id`/`transferencia_id`/CHECK nuevo) — backfillea todo el
+  historial al depósito principal, así el stock de cada producto queda
+  exactamente igual que antes; `deposito_id` nullable agregado por ALTER a
+  `ventas`, `compras`, `devoluciones`, `devoluciones_proveedor` (mismo
+  criterio que `lista_precio_id`: NULL = "el predeterminado de ese
+  momento", nunca un id copiado); **cuarto rebuild de `auditoria`**
+  (`'deposito'` y `'transferencia'` sumados al CHECK de `entidad`).
+
+### Backend (`backend/server.js`)
+
+- **Refactor previo, antes de tocar nada de negocio**: los **14 INSERT
+  literales** a `movimientos_stock` que había repartidos por el archivo
+  (uno por cada operación que toca stock) se centralizaron en
+  `registrarMovimientoStock({...})`. Es lo que evita tener que repetir
+  esta cirugía la próxima vez que el ledger cambie, y hace que
+  `deposito_id` sea imposible de olvidar en un sitio.
+- **Maestro `/api/depositos`** (GET/POST/PATCH), calcado de
+  `/api/listas-precios`: mismas dos reglas de "exactamente un
+  predeterminado" (no se puede desmarcar ni desactivar directamente) más
+  una propia — un depósito con stock cargado **no se puede desactivar**
+  (400 explicando cuánto stock tiene), para no dejar mercadería escondida
+  en un depósito invisible.
+- **`/api/transferencias`** (GET, POST, `POST /:id/anular`): una
+  transferencia es una operación propia (fila en `transferencias` + dos
+  movimientos de stock que la referencian por `transferencia_id`), no dos
+  ajustes sueltos — así es auditable y anulable. Anular inserta el par
+  contrario, nunca borra filas.
+- **`validarStockDisponible(items, depositoId)`** ahora recibe el depósito
+  y valida contra `stock_por_deposito`; su mensaje de error suma **dónde sí
+  hay stock** (`dondeHayStock`, nuevo helper) consultando las otras filas
+  de esa vista para el mismo producto.
+- **`crearVenta`/`crearCompra`** aceptan `deposito_id` (nullable, resuelto
+  al predeterminado si no viene). Se tocaron también: editar/anular/
+  restaurar venta, editar/anular/restaurar compra, `aplicarDevolucion`/
+  `revertirDevolucion` (reingresan al depósito **de la venta original**,
+  no a uno elegido), `aplicarDevolucionProveedor`/
+  `revertirDevolucionProveedor` (salen del depósito **de la compra
+  original**), conversión de presupuesto (usa el predeterminado, los
+  presupuestos no llevan depósito propio) y `/api/asistente/ejecutar` (usa
+  el predeterminado — el asistente todavía no interpreta depósito desde el
+  texto, es una etapa aparte).
+- **El costo promedio ponderado se dejó GLOBAL a propósito**
+  (`aplicarStockCompra` sigue leyendo `stock_actual`, no
+  `stock_por_deposito`): el costo es un atributo del producto, no de dónde
+  está guardado físicamente — transferir mercadería entre depósitos no le
+  cambia el costo. Verificado explícitamente por curl: transferir no mueve
+  `precio_costo`.
+- `GET /api/ventas/:id` y `GET /api/compras/:id` ahora exponen
+  `deposito_id`/`deposito` (antes no lo hacían, hacía falta para que el
+  frontend supiera qué preseleccionar al editar).
+- `/api/stock` pasa a devolver **una fila por producto y depósito** (más
+  `stock_total`, para el semáforo que sigue siendo global).
+  `/api/movimientos-stock` suma `deposito_id`/`deposito` y ya no le faltan
+  los movimientos de `devolucion_proveedor` (bug preexistente: antes cualquier
+  origen sin mapear caía en "Ajuste manual" — con `transferencia` sumado
+  ahora también, se corrigieron los dos casos de una).
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **Modal `#modalDepositos`**, calcado de `#modalListasPrecios`: form
+  inline con `id` oculto (alta/edición), tabla con columna
+  "Predeterminado" y botón "Marcar". Botón "Depósitos" en el header de
+  Stock.
+- **Modal `#modalTransferenciaDeposito`** (producto/origen/destino/
+  cantidad/nota) — nombre distinto de `#modalTransferencia`, que ya
+  existía para transferencias **entre cuentas de tesorería** (cosas
+  distintas, mismo concepto de nombre).
+- **Vista Stock**: la tabla pasa de una fila por producto a una fila por
+  producto+depósito, con columnas nuevas "Depósito" y "Stock total"; panel
+  nuevo "Transferencias entre depósitos" (con acción Anular) entre la
+  tabla de Stock y el Historial de movimientos.
+- **`selStock` (la selección múltiple de la tabla) necesitó un `idDe`
+  custom**: toma `producto_id` y `deposito_id` concatenados — con una fila
+  por producto+depósito, `producto_id` solo dejó de ser único. El
+  comentario que ya estaba en el código antes de esta etapa anticipaba
+  exactamente este cambio.
+- Selector de depósito nuevo en los modales de Venta, Compra y Ajuste de
+  stock (`poblarSelectDepositos`, molde: `poblarSelectListasPrecios`),
+  arrancando en el predeterminado; al editar una venta/compra respeta el
+  depósito que ya tenía.
+- `filtrosStock`/`filtrosStockMov` suman el filtro por depósito;
+  `COLUMNAS_CSV_STOCK` suma depósito y stock total.
+
+### Bug encontrado durante la verificación (de las pruebas, no del código)
+
+El primer despliegue de prueba mostró "Dep?sito principal" en vez de
+"Depósito principal" en el frontend. **No era un bug del código**: los 5
+archivos tocados se verificaron como UTF-8 válido de punta a punta: el
+problema era que un comando de bash de esta sesión (un `node -e` con el
+nombre del depósito embebido en un heredoc, usado solo para poblar datos
+de prueba) corrompió la tilde al pasar por Git Bash en Windows. Se
+corrigió el dato de prueba a mano y se repitió la migración completa desde
+cero contra una copia recién sacada de la base real (con `Copy-Item` de
+PowerShell en vez de `cp`, que en este entorno no copió el archivo de
+forma confiable en un intento — dio un archivo con `sqlite_master` vacío
+sin ningún error) — el resultado, con la migración corriendo limpia desde
+el archivo fuente real, ya tenía la tilde bien. **Lección para la próxima
+sesión que necesite poblar datos de prueba con texto acentuado por un
+one-liner de Node vía Bash**: preferir escribir el string en un archivo
+`.mjs` con Write y ejecutarlo, no embeberlo en un `node -e "..."` dentro de
+un heredoc de bash — es donde se corrompió acá. Y para copiar un `.db` en
+este entorno, `Copy-Item` (PowerShell) resultó más confiable que `cp`
+(bash) al menos una vez.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba
+  en el **3002**, proceso del 3000 sin tocar hasta tener todo verde.
+- **Migración**: corrida contra una copia fresca de la base **real** de
+  producción (no solo la de prueba acumulada de la sesión) — stock
+  idéntico pre/post, 17 tablas de negocio comparadas 1:1 en row count, cero
+  movimientos con `deposito_id` NULL tras el backfill. Probada también
+  sobre una base completamente vacía (camino "fresca") y con la migración
+  corrida tres veces seguidas sobre una base con datos (idempotencia, sin
+  duplicar filas).
+- **Backend por curl, número a número**: alta/edición de depósitos; no
+  poder desmarcar ni desactivar el predeterminado (400); no poder
+  desactivar uno con stock (400, con la cantidad); marcar otro como
+  predeterminado (siempre exactamente uno marcado); transferir y ver el
+  saldo bajar en origen y subir en destino con el **stock total del
+  producto sin cambios ni cambio de costo**; anular la transferencia y ver
+  los dos saldos volver; vender desde un depósito sin stock teniendo stock
+  en otro (400 con el mensaje "Hay stock en: X (n)"); comprar y devolver
+  contra un depósito no predeterminado; anular/restaurar venta y compra
+  (el stock vuelve al depósito **original** de la operación, no al
+  predeterminado actual); devolución de venta y devolución a proveedor
+  reingresan/salen del depósito correcto; asistente (stub) usando el
+  predeterminado.
+- **Atomicidad, probada de verdad**: un trigger SQL temporal que hace
+  fallar a propósito el segundo movimiento (la entrada) de una
+  transferencia — el primero (la salida) no quedó escrito, el servidor
+  siguió respondiendo (no se colgó), y el stock quedó exactamente como
+  antes del intento. Trigger eliminado después.
+- **Bug propio encontrado y corregido en la misma verificación**:
+  `GET /api/transferencias` mostraba una transferencia anulada **dos
+  veces** — el `JOIN` tomaba cualquier movimiento `salida` asociado, y
+  anular agrega un segundo `salida` (la reversión de la entrada original).
+  Se corrigió acotando el JOIN al `MIN(id)` de esos movimientos (el
+  original, no la reversión).
+- **Frontend con Playwright** (headless, claro/oscuro, 1280px y 375px),
+  corrido dos veces — contra la copia de prueba de la sesión y de nuevo
+  contra una migración fresca de la base real: **31/31 checks en verde,
+  sin errores de consola** las dos veces. Modal de depósitos abre/lista/
+  marca; columna y filtro de depósito en Stock; modal de transferencia con
+  selects poblados; selects de depósito en Venta y Compra; panel de
+  transferencias visible; sin scroll horizontal en mobile.
+- `node --check` en los tres archivos (`server.js`, `db/index.js`,
+  `app.js`) después de cada tanda.
+- **Deploy**: el proceso real **no estaba corriendo** al empezar esta
+  etapa (sin PID que matar). Backup
+  `nexo.db.backup-antes-multideposito-20260904-091043` en `backend/db/`,
+  migración aplicada directo sobre la base real (mismo resultado 1:1 que
+  la prueba), proceso arrancado con `node --experimental-sqlite
+  server.js`. Los endpoints nuevos (`/api/depositos`,
+  `/api/transferencias`) respondieron 401 (no 404: la ruta existe, solo
+  falta sesión) contra el proceso real.
+
+### Qué queda pendiente
+
+- ~~Sin commitear~~ — **ya está commiteada**: `37acd16` ("feat:
+  multidepósito"), encima de `0802c2d` (listas de precios), las dos en
+  `feature/reportes-compras-estadisticas`. Sigue sin decidirse si esa rama
+  va a un PR único o a varios.
+- El **reporte de stock** (`/api/reportes/stock`, "qué reponer") sigue
+  mostrando solo el total global por producto, sin desglose por depósito
+  — quedó fuera a propósito de esta etapa (no se pidió explícitamente) pero
+  es una extensión barata si hace falta después, mismo patrón que
+  `/api/stock`.
+- El **asistente de operaciones por texto** no interpreta depósito desde
+  el texto todavía — usa siempre el predeterminado. Enseñarle a reconocer
+  "vendí ... desde la sucursal" es una etapa aparte.
+- `stock_minimo`/`stock_maximo` siguen siendo del producto (global), por
+  decisión explícita de esta etapa — si en el futuro hace falta un mínimo
+  por depósito (ej. una sucursal chica que necesita reponer antes), es una
+  migración nueva sobre `producto_precios`-como-molde, no algo que esta
+  etapa dejó a mitad de camino.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios,
+  arrastra de varias etapas atrás).
+
+## 25. Última etapa: vencimientos y aging de cuentas corrientes
+
+**El pedido**: seguir sumando funciones. Se preguntó con `AskUserQuestion`
+entre cuatro opciones (vencimientos/aging, marca y unidad de medida, notas de
+débito, reporte de stock por depósito) y el usuario eligió **vencimientos** —
+era la brecha que este mismo handoff venía marcando desde §3.
+
+**El problema que resuelve**: `GET /api/cuentas-corrientes` medía la
+antigüedad de la deuda **desde la fecha de la operación**, porque no existía
+fecha de vencimiento en el esquema (el propio código lo documentaba como
+limitación consciente). Con eso el reporte mentía: una venta pactada a 30 días
+hecha ayer figuraba "Al día" por casualidad y seguía figurando así hasta el
+día 30, sin importar lo pactado; una de contado impaga hace 20 días figuraba
+igual que una a 60 días recién emitida. No servía para decidir a quién
+reclamar.
+
+**Decisiones de negocio confirmadas con el usuario antes de programar** (tres
+rondas de `AskUserQuestion`, las tres con la opción recomendada):
+- Se carga eligiendo una **condición de pago** (Contado / 15 / 30 / 60 días /
+  fecha puntual); Nexo calcula la fecha sola. Se guardan **las dos cosas**: la
+  condición pactada y la fecha resultante.
+- **Tramos nuevos** medidos desde el vencimiento: `a_vencer`, `vencido_30`,
+  `vencido_60`, `vencido_mas` (antes: `al_dia`/`atrasado`/`vencido` medidos
+  desde la fecha de la operación).
+- Las operaciones existentes se backfillean con **vencimiento = su propia
+  fecha** (equivalente a "fueron de contado"). No es una suposición sobre lo
+  que se pactó de verdad: es el único valor que hace que el reporte siga dando
+  exactamente los mismos días y el mismo orden que antes, así que nada cambia
+  de lugar retroactivamente y el resultado se puede comparar 1:1 pre/post.
+
+### Migración (aditiva, dos columnas por tabla)
+
+- `backend/db/schema.sql`: `condicion_pago` TEXT y `fecha_vencimiento` TEXT en
+  `ventas` y en `compras`, para que una base **fresca** nazca con ellas.
+- `backend/db/index.js`: mismo patrón `PRAGMA table_info` + `ALTER TABLE` que
+  ya usaba `deposito_id`, más el backfill
+  (`UPDATE ... SET fecha_vencimiento = fecha, condicion_pago = 'contado'
+  WHERE fecha_vencimiento IS NULL`). El `WHERE ... IS NULL` lo hace idempotente
+  y evita pisar una operación que ya tenga vencimiento propio.
+- **Sin rebuild de `auditoria`**: no se agregó ninguna entidad nueva al CHECK,
+  solo columnas a tablas ya auditadas.
+
+### Backend (`backend/server.js`)
+
+- **`calcularVencimiento(fecha, condicion, fechaManual)`**, junto a los helpers
+  de fecha: reusa `sumarDias` (no reimplementa aritmética de fechas). Lanza
+  **`ErrorBulk`, nunca `Error` a secas** — la lección ya pagada en la etapa de
+  listas de precios: un `Error` genérico escapa del `try/catch` y termina como
+  HTML de stack trace de Express en vez de un 400 con JSON.
+- **Ojo con el orden de declaración**: `sumarDias`/`diffDias` son *function
+  declarations* (hoisted), por eso `calcularVencimiento` puede usarlas aunque
+  estén más abajo en el archivo. `fechaDeHoy` y `SQL_HOY`, en cambio, son
+  `const` — NO están hoisted, así que `crearVenta`/`crearCompra` (que están
+  antes en el archivo) resuelven la fecha con un `SELECT date('now')` inline en
+  vez de llamarlas. Si alguien "limpia" eso llamando a `fechaDeHoy()`, rompe.
+- `crearVenta` y `crearCompra` aceptan `condicion_pago` + `fecha_vencimiento`
+  (opcionales; sin ellos → `'contado'`, que preserva el comportamiento
+  anterior). Las dos ahora **resuelven la fecha antes del INSERT** en vez de
+  omitir la columna para que aplique el DEFAULT: el vencimiento tiene que
+  calcularse sobre esa misma fecha y no sobre otra.
+- `PUT /api/ventas/:id` y `PUT /api/compras/:id` **recalculan** el vencimiento,
+  porque editar puede haber movido la fecha de la operación. Si el request no
+  manda condición, se conserva la guardada; y con condición `'manual'` se
+  conserva también la fecha guardada (una fecha suelta no se puede derivar de
+  ninguna condición).
+- **El cambio que da sentido a la etapa**: `saldosPorOperacion` ahora trae
+  `COALESCE(o.fecha_vencimiento, o.fecha) AS vencimiento`, y `agruparPorEntidad`
+  mide `diffDias(o.vencimiento, hoy)` — negativo = todavía no venció. Las
+  operaciones se ordenan por vencimiento y `dias_max` pasa a ser "días
+  vencido". `tramoDeAntiguedad` → `tramoDeVencimiento` con los cuatro tramos.
+- `GET /api/ventas/:id` y `GET /api/compras/:id` exponen los dos campos nuevos
+  (el frontend los necesita para preseleccionar al editar).
+- Los otros llamadores de `crearVenta`/`crearCompra` (conversión de
+  presupuesto, `/api/asistente/ejecutar`) no pasan condición, así que caen en
+  `'contado'` — correcto y sin cambios de comportamiento.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- Tres helpers chicos compartidos por Venta y Compra: `sincronizarVencimiento`
+  (muestra el input de fecha solo con "manual"), `poblarCondicionPago` (deja el
+  par como lo tenía la operación editada) y `datosCondicionPago` (lo que viaja
+  al backend).
+- `<select name="condicion_pago">` + input date condicional en los modales de
+  Venta y Compra, después de Fecha.
+- **Cuentas corrientes**: `CC_TRAMO_CLASE`/`CC_TRAMO_LABEL` pasan a las cuatro
+  claves nuevas **sin CSS nueva** — `a_vencer` verde (`status-cobrado`),
+  `vencido_30` amarillo (`status-pendiente`), `vencido_60` y `vencido_mas`
+  rojo (`status-vencido`). Las columnas "Más vieja"/"Antigüedad" pasan a
+  "Vence"/"Estado"; el detalle expandible suma la columna Vence y usa
+  `ccTextoDias` ("Vence en N días" / "Vencido hace N días" / "Vence hoy" /
+  "A favor"). Filtros y CSV: la etiqueta de `dias_max` pasa a "Días vencido".
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad (con `Copy-Item` de
+  PowerShell), servidor de prueba en el **3002**, proceso del 3000 sin tocar
+  hasta tener todo verde.
+- **La prueba clave de esta etapa**: se guardó la respuesta de
+  `/api/cuentas-corrientes` **antes** de migrar y se comparó campo por campo
+  con la de después (script `comparar-cc.mjs`). Con el backfill a contado, los
+  saldos, los días, el orden de las entidades y los totales dieron
+  **exactamente lo mismo** — solo cambió el nombre del tramo. Cualquier
+  diferencia numérica ahí habría sido un bug.
+- **Migración**: row counts de las 33 tablas comparados 1:1 (sin diferencias);
+  cero filas sin `fecha_vencimiento` tras el backfill; idempotencia probada
+  reimportando `db/index.js` tres veces seguidas sobre una base con datos (sin
+  cambiar ninguna fila); y camino "base fresca" probado aparte, confirmando que
+  las dos columnas nacen de `schema.sql`.
+- **Por curl, 8/8**: venta a 30 días (fecha + 30, exacto); contado; fecha
+  manual anterior a la operación rechazada con **JSON limpio** (se verificó el
+  *body*, no solo el status — es exactamente el bug de `ErrorBulk` que se coló
+  en una etapa anterior); condición inválida (400); fecha manual válida;
+  editar la fecha recalcula el vencimiento conservando la condición; compra a
+  60 días.
+- **Bordes de los tramos, 7/7**: se creó una venta impaga por cada caso y se
+  leyó qué tramo le asignó el endpoint — día -5 (`a_vencer`), 0, 1 y 30
+  (`vencido_30`), 31 y 60 (`vencido_60`), 61 (`vencido_mas`). Los cortes caen
+  donde tienen que caer.
+- **Frontend con Playwright, 20/20 y sin errores de consola** (claro, oscuro,
+  1280px y 375px): las 5 opciones del select, el input de fecha que
+  aparece/desaparece con "manual", una venta creada de punta a punta desde la
+  UI, los encabezados nuevos, todos los badges con las etiquetas nuevas, el
+  detalle expandible con el texto de vencimiento, y sin scroll horizontal en
+  mobile. Capturas revisadas a mano en los tres escenarios.
+- **Ojo con las pruebas, no con el código**: la primera corrida por curl falló
+  4 de 8 porque el producto de prueba tenía stock 0 y las ventas se rechazaban
+  antes de llegar al código nuevo — dos de las pruebas de error incluso pasaban
+  *por el motivo equivocado* (el mensaje era de stock, no de vencimiento). Se
+  cargó stock y recién ahí las pruebas midieron lo que decían medir. Vale la
+  pena mirar el mensaje de error y no solo el status code.
+- **Deploy**: backup `nexo.db.backup-antes-vencimientos-20260904-140037`,
+  proceso detenido por **PID exacto** (`Get-NetTCPConnection -LocalPort 3000`),
+  reiniciado con `node --experimental-sqlite server.js`. Row counts post-deploy
+  idénticos a la foto previa, backfill completo (0 filas sin vencimiento, 0 con
+  vencimiento distinto de la fecha), `/api/cuentas-corrientes` respondió 401
+  (no 404: la ruta existe, falta sesión) y el HTML sirve los dos selects
+  nuevos.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama sigue siendo
+  `feature/reportes-compras-estadisticas` (esta etapa va encima de `37acd16`).
+- **El cliente y el proveedor no tienen condición de pago habitual en su
+  ficha**: se eligió la opción sin eso a propósito (el usuario descartó esa
+  tercera alternativa), así que hay que elegir el plazo en cada operación. Si
+  más adelante molesta, el molde exacto ya existe: `clientes.lista_precio_id`
+  con `poblarSelectListasPrecios`, que se propone solo al elegir el cliente.
+- **El asistente por texto no interpreta el plazo** desde la frase ("a 30
+  días") — todas sus operaciones son de contado. Misma situación que depósito.
+- Los tres archivos basura de la raíz (`0`, `0)`, `col.name`, los tres vacíos)
+  **se borraron** esta etapa, con confirmación del usuario.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios, arrastra
+  de varias etapas atrás).
+
+## 26. Última etapa: condición de pago habitual por cliente y proveedor
+
+**El pedido**: seguir sumando funciones. El usuario eligió esta opción entre
+cuatro (marca/unidad de medida, reporte de stock por depósito, notas de
+débito, condición de pago habitual) porque era el cabo suelto que la propia
+etapa anterior (§25) había dejado anotado: hoy hay que elegir el plazo de
+pago a mano en cada venta/compra, y olvidarse mete esa operación al reporte
+de Cuentas Corrientes como si fuera de contado.
+
+**El molde**: `clientes.lista_precio_id` (§18/§23) — un plazo/lista
+"habitual" en la ficha, que Venta/Compra proponen solo al elegir esa entidad,
+sin pisar una elección que el usuario ya haya hecho a mano para esa operación
+puntual.
+
+**Decisiones confirmadas con el usuario** (dos rondas de `AskUserQuestion`,
+las dos con la opción recomendada):
+- Elegir un cliente/proveedor **no pisa** una condición que el usuario ya
+  cambió a mano — mismo criterio que la lista de precios habitual.
+- Los clientes/proveedores existentes quedan **sin plazo habitual (NULL)**,
+  sin backfill: nada cambia de comportamiento hasta que alguien cargue el
+  plazo, y queda distinguible "nunca se definió" de "se definió que es de
+  contado".
+
+### Migración (aditiva, una columna por tabla, sin tocar `schema.sql`)
+
+`backend/db/index.js`: `clientes.condicion_pago` TEXT y
+`proveedores.condicion_pago` TEXT, mismo patrón `PRAGMA table_info` +
+`ALTER TABLE` que ya usa `clientes.lista_precio_id`. **Sin backfill** (NULL a
+propósito). **Sin rebuild de `auditoria`** (ninguna entidad nueva en el CHECK).
+
+**Nota de arquitectura descubierta en esta etapa**: a diferencia de
+`ventas`/`compras` (que sí declaran `condicion_pago`/`fecha_vencimiento` en
+`schema.sql` desde §25), `clientes.lista_precio_id` **nunca se agregó a
+`schema.sql`** — vive solo en la migración de `db/index.js`, incluso para una
+base fresca. La razón es el orden de las tablas en el archivo: `clientes` se
+declara antes que `listas_precios`, así que una FK directa en el `CREATE
+TABLE` sería una referencia hacia adelante. Se siguió ese mismo precedente
+para `clientes.condicion_pago`/`proveedores.condicion_pago` (agregarlas
+solo por migración, no en `schema.sql`) para no romper la consistencia del
+patrón ya establecido — un intento inicial de sumarlas a `schema.sql` se
+revirtió al notar esto.
+
+### Backend (`backend/server.js`)
+
+- **`normalizarCondicionPagoHabitual`/`condicionPagoHabitualValida`**, junto
+  a `normalizarListaPrecioId`/`listaPrecioValida`: NULL = sin plazo definido;
+  **`'manual'` se rechaza** (una fecha puntual de una operación concreta no
+  es un plazo habitual reutilizable). Validan contra `CONDICIONES_PAGO`
+  (definida más abajo en el archivo junto a `calcularVencimiento` de la etapa
+  anterior) — es un lookup dentro de una función, así que no importa que la
+  declaración esté más abajo: para cuando la función se llama de verdad
+  (una request), el módulo ya cargó entero.
+- `POST/PATCH /api/clientes` y `POST/PATCH /api/proveedores` suman
+  `condicion_pago` en los mismos cuatro puntos donde ya está
+  `lista_precio_id` (clientes) o los campos de contacto (proveedores):
+  destructuring, validación, INSERT/UPDATE, y la lista de `diffCampos` para
+  que el cambio quede auditado.
+- **Nada más cambia**: `crearVenta`/`crearCompra` ya aceptaban
+  `condicion_pago` desde §25; quién decide el valor sigue siendo el
+  frontend. La conversión de presupuestos y el asistente por texto siguen
+  siendo de contado, sin cambios de comportamiento.
+
+### Frontend (`frontend/index.html`, `frontend/js/app.js`)
+
+- **`poblarSelectCondicionPago(selector)`**, junto a los helpers de §25: las
+  mismas opciones que Venta/Compra pero **sin "Fecha puntual"** y con "Sin
+  definir" (= NULL) en vez de arrancar en "Contado".
+- `<select name="condicion_pago">` nuevo en `#formCliente` (al lado de lista
+  de precios habitual) y en `#formProveedor` (después de CUIT/DNI, primer
+  campo de preferencia que tiene el lado proveedor — antes no tenía ninguno).
+- **Propuesta automática, la parte que le da sentido a la etapa**: el
+  listener de `change` del input de cliente en Venta (ya existía para la
+  lista de precios) ahora también propone `condicion_pago`; se agregó el
+  mismo listener **nuevo** para el input de proveedor en Compra (no existía
+  ninguno — es lo único net-new de esta etapa, porque el lado proveedor no
+  tenía precedente). Dos banderas de módulo nuevas,
+  `ventaCondicionTocada`/`compraCondicionTocada` (reseteadas al abrir el
+  modal, puestas en `true` por el `change` del propio select): a diferencia
+  de la lista de precios, acá mirar el valor actual del select no alcanza
+  para saber si el usuario ya eligió algo a mano, porque "contado" es a la
+  vez el valor inicial y una elección válida.
+
+### Verificación hecha antes de desplegar
+
+- Metodología de siempre: copia aislada al scratchpad, servidor de prueba en
+  el **3002**, proceso del 3000 sin tocar hasta tener todo verde.
+- **Migración**: row counts de las 32 tablas sin diferencias; confirmado que
+  las columnas nacen NULL en todos los clientes/proveedores existentes (sin
+  backfill); idempotencia con tres corridas seguidas de `db/index.js` sobre
+  una base con datos; camino "base fresca" probado aparte.
+- **Por curl, 8/8**: cliente con `condicion_pago=30` guardado y leído;
+  cliente sin mandar el campo queda NULL; **`'manual'` rechazado en la ficha
+  de cliente** con **JSON limpio** (se verificó el *body*, no solo el
+  status); condición inválida (`99`) rechazada en proveedor; proveedor con
+  `condicion_pago=60`; `PATCH` de cliente actualiza el campo y queda en
+  `auditoria`; una venta con el plazo del cliente (15 días) da
+  `fecha_vencimiento` = fecha + 15 exacto.
+- **Frontend con Playwright** (claro, oscuro, 1280px y 375px): los selects
+  nuevos en las dos fichas con las 5 opciones correctas (sin "Fecha
+  puntual"); Venta arranca en Contado y **propone sola 30 días** al elegir un
+  cliente con ese plazo habitual; **no pisa** una condición que el usuario ya
+  cambió a mano después de elegir el cliente; Compra propone sola 60 días al
+  elegir un proveedor con ese plazo; sin scroll horizontal en mobile; sin
+  errores de consola. Confirmado también a mano con capturas de las dos
+  fichas.
+- **Ojo con las pruebas, no con el código**: una corrida del script combinado
+  marcó como "falla" que el modal de cliente (o, en otra corrida, el de
+  proveedor) no se cerraba al guardar — pero el create sí llegaba a
+  buen puerto (confirmado con `waitForResponse` aislado: 201 y el modal
+  cerrado las dos veces) y las pruebas que dependían de ese registro
+  (la propuesta automática leyendo su `condicion_pago`) seguían pasando, algo
+  imposible si el alta hubiera fallado de verdad. Era una carrera de tiempos
+  del script de prueba (varias altas seguidas con `waitForTimeout` fijo en
+  la misma sesión), no un bug de la función.
+- **Deploy**: backup `nexo.db.backup-antes-condicion-habitual-20260906-122414`,
+  proceso detenido por **PID exacto**, reiniciado con
+  `node --experimental-sqlite server.js`. Row counts post-deploy idénticos a
+  la foto previa, las dos columnas nuevas en NULL para todas las filas
+  existentes, y el HTML sirve el campo nuevo en las dos fichas.
+
+### Qué queda pendiente
+
+- **Sin commitear** — la rama sigue siendo
+  `feature/reportes-compras-estadisticas` (esta etapa va encima de `e8858f4`).
+- El **asistente por texto** sigue sin leer el plazo habitual del cliente al
+  interpretar una venta por lenguaje natural — todas sus operaciones siguen
+  siendo de contado, igual que antes de esta etapa.
+- `GEMINI_API_KEY` sigue sin cargar en el proceso real (sin cambios, arrastra
+  de varias etapas atrás).
+
+## 27. Última etapa: 6 correcciones de UI + auditoría de permisos por rol
+
+Commit: `7bc15ee` ("fix: correcciones de UI en tablas, filtros y modales +
+probador de tipografías"), sobre `Tosi`.
+
+### Lo que se hizo
+
+El usuario marcó seis problemas con capturas. Todos con la causa medida en
+el código antes de tocar nada:
+
+1. **Se eliminó el orden de tablas por click en el encabezado.** La
+   función existía (`crearOrden`, 18 usos, 98 `data-orden` en el HTML) pero
+   no se anunciaba de ninguna forma: el usuario tocaba una columna,
+   aparecía una flecha y la tabla cambiaba sin explicación. Se le ofreció
+   mantenerla haciéndola descubrible o sacarla, y **eligió sacarla**. Antes
+   de borrarla se verificó que todos los endpoints ya traen un `ORDER BY`
+   sensato (`nombre` en los maestros, `id`/`fecha DESC` en las
+   operaciones), así que ninguna tabla quedó desordenada.
+2. **Desalineación entre encabezados y datos** — era el mismo bug: la
+   flecha de orden reservaba `0.9em` fijos al final de cada `th` aunque
+   estuviera vacía, y en las columnas `align-right` eso corría el texto del
+   encabezado mientras el dato iba a ras del padding. Se arregló solo al
+   sacar el orden.
+3. **Carteles pegados a los filtros** — `.form-note` es `margin: 0` y
+   `.filtros` no tenía `margin-top`: el gap real era 0px.
+4. **Celda de precio de Productos** — era un `<input>` de 100px fijos con
+   borde permanente. Pasó a campo fantasma (sin caja en reposo, aparece en
+   hover/foco), con `mono` + `tabular-nums` para alinear con Costo y Margen.
+5. **El botón de menú tapaba el título** con la sidebar colapsada: faltaba
+   en desktop la compensación de padding que ya existía en mobile.
+6. **Modal "Mi cuenta"**: el nombre del usuario y el formulario de
+   contraseña estaban pegados sin ningún margen.
+
+### Probador de tipografías — el usuario rechazó las cuatro opciones
+
+Se agregó un probador temporal en el modal de Configuración (que hasta acá
+estaba vacío): cuatro combinaciones vía `data-fuente` en `<html>` +
+`localStorage`, aprovechando que todo el CSS ya lee
+`--font-display`/`--font-body`/`--font-mono`, así que cambiar de tipografía
+es redefinir tres variables y no tocar ninguna regla.
+
+**El usuario probó las cuatro y no le gustó ninguna.** Sus dos objeciones,
+textuales: no le gusta **"que tenga el estilo de una caja registradora"** y
+no le gusta **"que los 0 tengan puntos o tachas en el medio"**.
+
+Esto es importante porque **invalida el concepto tipográfico con el que se
+construyó el frontend**: el sistema actual está montado sobre una idea de
+"libro mayor / ticket de caja" (IBM Plex Mono para encabezados, títulos,
+badges y números), documentada en los comentarios de `styles.css` alrededor
+de `--font-display`. La segunda objeción además descarta de plano a casi
+todas las monoespaciadas para programadores (IBM Plex Mono, JetBrains Mono,
+DM Mono, Roboto Mono, Space Mono usan cero con punto o barra por diseño).
+
+Camino para la próxima tanda: proponer sans (no mono) para encabezados y
+títulos, verificando el dibujo del cero antes de proponer, y mantener las
+columnas de números alineadas con `font-variant-numeric: tabular-nums`
+sobre una sans con cifras tabulares — que es lo que ya hace la clase
+`.mono` y funciona igual sin ser monoespaciada. **El probador sigue en el
+código con las cuatro opciones viejas**: hay que reemplazarlas, no solo
+elegir una.
+
+### Auditoría de permisos por rol — diagnóstico hecho, implementación NO
+
+Se auditó el módulo de usuarios de §16 y apareció un agujero grande:
+
+**El rol "empleado" hoy no protege casi nada.** `soloAdmin`
+(`backend/server.js:174`) está aplicado a exactamente **4 endpoints**, los
+cuatro de `/api/usuarios` (líneas 5684, 5696, 5738, 5792). Los otros ~88
+endpoints de negocio solo pasan por `autenticar`, o sea que solo exigen
+"tener sesión". Un empleado, con su cookie normal y sin ninguna barrera,
+puede llamar por API a `POST /api/ventas/:id/anular`,
+`POST /api/tesoreria/transferencias`, `PATCH /api/productos/:id` (precios),
+`POST /api/stock/ajuste`, `GET /api/resumen` y `GET /api/reportes/ventas`
+(toda la rentabilidad y los márgenes del negocio). La UI le esconde la
+pantalla de Usuarios y nada más.
+
+**Segundo hueco: `debe_cambiar_password` no se enforza en el servidor.**
+`autenticar` (`server.js:161-172`) no lo mira, y el login ya devuelve una
+cookie plenamente operativa antes de que aparezca la pantalla de cambio
+forzado (`sesion.js:148-152`). Un usuario con la contraseña reseteada por
+el admin puede cerrar el modal, o llamar la API directo, y operar igual.
+
+**Tercer hueco: login y logout no auditan nada.** `auditoria.entidad` ya
+acepta `'usuario'` (`schema.sql:493`), pero hoy no queda registro de quién
+entró ni cuándo. Los intentos fallidos solo viven en un `Map` en memoria
+que se pierde en cada reinicio (`server.js:184-214`), y el rate limit es
+por nombre de usuario, no por IP.
+
+### Reglas de negocio ya decididas por el usuario (no volver a preguntar)
+
+Se le preguntó explícitamente y definió el reparto. **Estas decisiones
+están tomadas, falta implementarlas:**
+
+**Acciones que pasan a ser solo-admin:**
+- Anular y restaurar todo: ventas, compras, gastos, devoluciones y
+  devoluciones a proveedor (10 endpoints `POST /api/*/:id/anular` y
+  `/restaurar`). Como consecuencia, la Papelera queda solo para admin.
+- Tesorería: transferencias, movimientos manuales y el ABM de cuentas.
+  **Pero los cobros de venta (`POST /api/ventas/:id/cobros`) y los pagos de
+  compra (`POST /api/compras/:id/pagos`) siguen siendo del empleado** — es
+  su trabajo diario, no configuración.
+- Alta y edición de productos y de categorías (incluye el precio de venta,
+  o sea que el campo editable de la tabla de Productos se apaga para el
+  empleado).
+- Ajuste manual de stock.
+
+**El empleado NO debe ver costos ni ganancias.** El usuario eligió
+explícitamente la opción más costosa ("si el dato viaja al navegador, el
+empleado puede leerlo"), o sea que no alcanza con esconder columnas en el
+frontend: hay que **filtrar los campos en el backend**. Debe dejar de ver
+Costo/Valorizado/Margen en Productos, la ganancia y la rentabilidad del
+Resumen, el margen y la ganancia de los reportes de ventas, y el costo
+histórico y margen de cada línea en la ficha de una venta. Sigue viendo
+precio de venta, stock, sus ventas, clientes y cuentas corrientes.
+
+**Auditoría sigue visible para los dos roles** — decisión previa de §16 que
+el usuario mantuvo ("es consulta, no configuración").
+
+### Dónde tocar cuando se implemente
+
+Los puntos calientes ya localizados: `SELECT_PRODUCTO`
+(`server.js:698-706`) incluye `precio_costo` y lo usan tanto
+`GET /api/productos` como el reporte de stock; `decorarProducto`
+(`server.js:722`) calcula el margen; `GET /api/resumen` (4562),
+`GET /api/resumen/evolucion` (4769), `GET /api/reportes/ventas` (4978) y
+`GET /api/ventas/:id` (1198) son los otros portadores de datos sensibles.
+En el frontend, `sesion.js:87-93` ya escribe `data-rol` en `<html>` y hay
+**una sola** regla CSS que lo usa (`styles.css:2109`, esconde el nav de
+Usuarios): ese es el mecanismo a extender. Ojo con un detalle: `sesion.js`
+intercepta 401 pero **deliberadamente no intercepta 403**, así que cada
+llamada que pueda recibir 403 tiene que manejarlo por su cuenta.
+
+Quedó sin escribir el plan de implementación detallado (se cortó por límite
+de sesión). El diagnóstico y las decisiones de arriba son lo que hay que
+retomar.
+
+### Qué queda pendiente
+
+- **Implementar los permisos por rol** con las reglas de arriba.
+- **Reemplazar las cuatro opciones del probador de tipografías** por
+  alternativas que respeten las objeciones del usuario, y una vez elegida
+  una, fijarla como default y sacar del `<link>` de Google Fonts las
+  familias que sobren (hoy carga 5 de más).
+- `GEMINI_API_KEY` sigue sin estar cargada en el proceso: el asistente por
+  texto responde 503. Se consigue gratis en Google AI Studio.

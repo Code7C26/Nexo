@@ -15,10 +15,36 @@ document.getElementById("todayDate").textContent = new Date().toLocaleDateString
   month: "long"
 });
 
+// Guarda contra `null`/`undefined`: con el filtrado de campos sensibles por
+// rol (permisos por rol, backend/server.js) un empleado puede recibir un
+// producto sin `precio_costo` o una venta sin `margen` — sin este chequeo
+// `n.toLocaleString` explota adentro del template literal que arma la fila
+// de la tabla, y la excepción se lleva puesto el render entero (no queda
+// "vacío", no se dibuja nada). Con la guarda degrada a un guion.
 const money = (n) =>
-  n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
+  n == null
+    ? "—"
+    : n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
 
-const numero = (n) => n.toLocaleString("es-AR");
+const numero = (n) => (n == null ? "—" : n.toLocaleString("es-AR"));
+
+// sesion.js escribe data-rol en <html> antes de inyectar este archivo (ver
+// escribirDatosUsuario en sesion.js), así que ya está disponible en la
+// primera línea que corre acá. Es la misma fuente que ya usa styles.css
+// (:root:not([data-rol="admin"])) para esconder por CSS — esta función es
+// el equivalente en JS, para las decisiones que no se pueden resolver con
+// una regla de CSS (no hacer el fetch, no emitir el link, elegir la vista
+// de fallback).
+const esAdmin = () => document.documentElement.dataset.rol === "admin";
+
+// Los CSV son datos armados en JS, no DOM: `.col-admin` no les sirve. Las
+// columnas de costo/margen de un array COLUMNAS_CSV_X se marcan con
+// `admin: true`, y esto filtra esa marca al momento de exportar (no antes:
+// el rol puede no estar listo todavía si se evaluara al definir el array a
+// nivel de módulo). Sin este filtro un empleado se exporta una columna con
+// el valor real igual — el filtrado del backend (permisos por rol) no
+// interviene acá porque el array ya vive en el objeto que llegó por fetch.
+const columnasVisibles = (columnas) => (esAdmin() ? columnas : columnas.filter((c) => !c.admin));
 
 const hoyISO = () => new Date().toLocaleDateString("sv-SE"); // formato AAAA-MM-DD, para <input type="date">
 
@@ -242,111 +268,327 @@ function aplicarFiltros(lista, filtros, campos) {
   );
 }
 
-/* ---------- Orden de tablas (click en el encabezado) ---------- */
 
-// Mismo espíritu que crearFiltros: la tabla ya tiene su <thead> fijo en el
-// HTML (los <th data-orden="campo" data-tipo="texto|numero|fecha"> marcan
-// qué columnas se pueden ordenar), así que alcanza con engancharle los
-// listeners una vez al arrancar. El estado se guarda por tabla y
-// sobrevive a recargar, igual que los filtros.
-// idBody es el id del <tbody> (la única marca que ya llevan estas tablas
-// en el HTML); el <thead> se busca subiendo a la <table> que lo contiene,
-// para no tener que agregarle un id nuevo a cada <table>.
-function crearOrden(idBody, onCambio) {
-  const tabla = document.getElementById(idBody).closest("table");
-  const claveGuardado = `nexo.orden.${idBody}`;
-  const ths = [...tabla.querySelectorAll("thead th[data-orden]")];
+/* ---------- Selección múltiple ---------- */
 
-  let orden = null; // { campo, tipo, dir: "asc" | "desc" }
-  try {
-    const guardado = JSON.parse(localStorage.getItem(claveGuardado) ?? "null");
-    // Se descarta si apunta a una columna que ya no existe (cambió el
-    // markup): un orden fantasma no debería esconder filas en silencio.
-    if (guardado?.campo && ths.some((th) => th.dataset.orden === guardado.campo)) {
-      orden = guardado;
-    }
-  } catch {
-    orden = null;
+// A partir de esta cantidad de seleccionados, las acciones en lote que
+// tardan (imprimir varias páginas, generar varios PDF) piden confirmación
+// antes de arrancar: no para bloquear, sino para avisar que puede demorar
+// (y, para descargas, que el navegador va a pedir permiso para bajar varios
+// archivos — Chrome bloquea descargas múltiples automáticas por defecto).
+const CONFIRMAR_LOTE_DESDE = 25;
+
+// Tope duro, no una regla de negocio: guardarraíl contra un "seleccionar
+// todo" accidental sobre una tabla con miles de filas, no un límite que
+// alguien vaya a pedir subir. Ninguna acción en lote de esta etapa debería
+// necesitar más.
+const LIMITE_LOTE = 500;
+
+// Utilitario transversal de tablas, hermano de crearFiltros: agrega una
+// columna de checkbox a una tabla y lleva el set de ids tildados. idBody
+// es el id del <tbody> (la única marca que ya llevan las tablas, sin
+// agregar un id nuevo a la <table>). idDe saca el id de una fila de la
+// lista (default (x) => x.id; hace falta pasarlo distinto en tablas donde
+// la fila no es la entidad en sí, como Stock, que es producto×depósito).
+//
+// La columna del <th> se inyecta acá por JS (insertAdjacentHTML), así la
+// columna existe SI Y SOLO SI la selección está montada, y colspan(n) puede
+// resolver solo el ancho de la fila vacía sin tocar cada vista a mano.
+//
+// El binding de los checkboxes de fila es la ÚNICA delegación real del
+// archivo (el resto re-bindea en cada render): los checkboxes se destruyen
+// en cada innerHTML =, y re-bindear un listener por fila en cada render
+// sería el único costo evitable de esta función.
+function crearSeleccion(idBody, { idDe = (x) => x.id } = {}) {
+  const body = document.getElementById(idBody);
+  const tabla = body.closest("table");
+  const filaHead = tabla.querySelector("thead tr");
+
+  const seleccionados = new Set();
+  let visibles = []; // ids de la lista visible en el último sincronizar()
+  // Quien quiera enterarse de cada cambio de selección (típicamente
+  // montarBarraSeleccion) se suscribe con sel.escuchar(fn) en vez de pasar
+  // un único callback por el constructor — así crearSeleccion() no necesita
+  // saber nada de la barra ni del orden en que se arma cada vista.
+  const escuchas = [];
+
+  filaHead.insertAdjacentHTML(
+    "afterbegin",
+    `<th class="col-sel"><input type="checkbox" class="sel-todo" aria-label="Seleccionar todo"></th>`
+  );
+  const checkTodo = filaHead.querySelector(".sel-todo");
+
+  // En mobile el <thead> completo pasa a display:none (las filas se vuelven
+  // cards apiladas), así que checkTodo deja de ser alcanzable — no hay forma
+  // de seleccionar todo salvo tildar card por card. Se inyecta un botón de
+  // texto, visible SOLO en ese breakpoint (.btn-sel-todo-mobile en CSS),
+  // antes de .tabla-scroll. Va acá y no a mano en cada vista de index.html
+  // por el mismo motivo que el <th>: nace y muere con la selección montada.
+  const scrollWrap = tabla.closest(".tabla-scroll") ?? tabla;
+  scrollWrap.insertAdjacentHTML(
+    "beforebegin",
+    `<button type="button" class="btn-link btn-sel-todo-mobile">Seleccionar todo</button>`
+  );
+  const btnTodoMobile = scrollWrap.previousElementSibling;
+
+  function notificar() {
+    for (const fn of escuchas) fn(seleccionados.size);
   }
 
-  function guardar() {
-    try {
-      localStorage.setItem(claveGuardado, JSON.stringify(orden));
-    } catch {
-      // Modo privado o storage lleno: el orden sigue andando en esta
-      // sesión, solo no se recuerda.
-    }
+  function actualizarCheckTodo() {
+    const totalVisibles = visibles.length;
+    const marcados = visibles.filter((id) => seleccionados.has(id)).length;
+    checkTodo.checked = totalVisibles > 0 && marcados === totalVisibles;
+    checkTodo.indeterminate = marcados > 0 && marcados < totalVisibles;
+    // El botón de mobile hace las veces de checkTodo ahí: mismo texto que
+    // comunica el estado, alternando entre marcar y desmarcar.
+    btnTodoMobile.textContent = checkTodo.checked ? "Ninguno" : "Seleccionar todo";
   }
 
-  function actualizar() {
-    for (const th of ths) {
-      const activo = orden && th.dataset.orden === orden.campo;
-      th.classList.toggle("th-ordenado", Boolean(activo));
-      const flecha = th.querySelector(".th-flecha");
-      if (flecha) flecha.textContent = activo ? (orden.dir === "asc" ? "↑" : "↓") : "";
+  // Comparte lógica entre el checkbox del header (desktop) y el botón de
+  // texto de mobile (el thead con checkTodo queda oculto en ese breakpoint).
+  function marcarTodosVisibles(marcar) {
+    for (const id of visibles) {
+      if (marcar) seleccionados.add(id);
+      else seleccionados.delete(id);
     }
-  }
-
-  for (const th of ths) {
-    th.classList.add("th-ordenable");
-    th.setAttribute("tabindex", "0");
-    th.setAttribute("role", "button");
-    th.insertAdjacentHTML("beforeend", ` <span class="th-flecha"></span>`);
-
-    const alternar = () => {
-      const campo = th.dataset.orden;
-      const tipo = th.dataset.tipo || "texto";
-      orden =
-        orden && orden.campo === campo
-          ? { campo, tipo, dir: orden.dir === "asc" ? "desc" : "asc" }
-          : { campo, tipo, dir: "asc" };
-      guardar();
-      actualizar();
-      onCambio(orden);
-    };
-
-    th.addEventListener("click", alternar);
-    // El th también actúa como botón: el teclado tiene que poder
-    // disparar el mismo alternar() que el mouse.
-    th.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        alternar();
-      }
+    body.querySelectorAll(".sel-fila").forEach((cb) => {
+      cb.checked = seleccionados.has(Number(cb.dataset.selId));
     });
+    actualizarCheckTodo();
+    notificar();
   }
 
-  actualizar();
+  checkTodo.addEventListener("change", () => marcarTodosVisibles(checkTodo.checked));
+  btnTodoMobile.addEventListener("click", () => marcarTodosVisibles(!checkTodo.checked));
+
+  // Delegado una sola vez: sobrevive a que el tbody se reescriba entero en
+  // cada render.
+  body.addEventListener("change", (e) => {
+    const cb = e.target.closest(".sel-fila");
+    if (!cb) return;
+    const id = Number(cb.dataset.selId);
+    if (cb.checked) seleccionados.add(id);
+    else seleccionados.delete(id);
+    actualizarCheckTodo();
+    notificar();
+  });
+
+  // El checkbox nativo mide 13px: un click en el resto de la celda (que la
+  // guarda de la fila ya excluye vía .col-sel, así que nunca abre la ficha)
+  // no debería quedar "sin efecto" — clickear la celda entera tildaría o
+  // destildaría igual, en vez de exigirle al usuario acertarle al cuadrito.
+  body.addEventListener("click", (e) => {
+    const celda = e.target.closest("td.col-sel");
+    if (!celda || e.target.closest(".sel-fila")) return; // el click directo en el input ya dispara su propio change
+    celda.querySelector(".sel-fila")?.click();
+  });
 
   return {
-    get orden() {
-      return orden;
+    get ids() {
+      // En el orden de la lista visible, no el orden de inserción del Set.
+      return visibles.filter((id) => seleccionados.has(id));
     },
-    aplicar(lista) {
-      if (!orden) return lista;
-      const { campo, tipo, dir } = orden;
-      const signo = dir === "asc" ? 1 : -1;
-      // Los vacíos van al final sea cual sea el sentido: un campo sin
-      // cargar (SKU, descripción, margen sin calcular) no debería
-      // aparecer primero solo porque el orden es descendente.
-      return [...lista].sort((a, b) => {
-        const av = a[campo];
-        const bv = b[campo];
-        const aVacio = av === null || av === undefined || av === "";
-        const bVacio = bv === null || bv === undefined || bv === "";
-        if (aVacio && bVacio) return 0;
-        if (aVacio) return 1;
-        if (bVacio) return -1;
-
-        if (tipo === "numero") {
-          return (Number(av) - Number(bv)) * signo;
-        }
-        // "fecha" son strings ISO (AAAA-MM-DD): el orden lexicográfico ya
-        // es el orden cronológico, así que comparten la rama de texto.
-        return String(av).localeCompare(String(bv), "es") * signo;
-      });
+    get cantidad() {
+      return seleccionados.size;
+    },
+    tiene(id) {
+      return seleccionados.has(id);
+    },
+    // fn(cantidad) se llama con cada cambio de selección. Usado por
+    // montarBarraSeleccion para mantener la barra sincronizada sin que
+    // crearSeleccion necesite conocerla.
+    escuchar(fn) {
+      escuchas.push(fn);
+    },
+    limpiar() {
+      seleccionados.clear();
+      body.querySelectorAll(".sel-fila").forEach((cb) => (cb.checked = false));
+      actualizarCheckTodo();
+      notificar();
+    },
+    // Se llama desde render*(), con la lista YA filtrada/ordenada, ANTES de
+    // pintar el tbody. Poda del set lo que ya no está visible: "todo" solo
+    // puede significar "todo lo que se está viendo", igual que ya significa
+    // para los botones de Exportar CSV (ver comentario de descargarCSV más
+    // abajo). Si no se podara, el contador de la barra podría no coincidir
+    // con lo que hay tildado en pantalla.
+    sincronizar(lista) {
+      visibles = lista.map(idDe);
+      const visiblesSet = new Set(visibles);
+      for (const id of [...seleccionados]) {
+        if (!visiblesSet.has(id)) seleccionados.delete(id);
+      }
+      actualizarCheckTodo();
+      notificar();
+    },
+    // n = cantidad de columnas de datos reales de la tabla (lo que ya se le
+    // pasaba a filaVacia/filaVaciaFiltrada/tablaCargando antes de esta
+    // función existir). +1 por la columna de checkbox.
+    colspan(n) {
+      return n + 1;
+    },
+    // Celda de checkbox para anteponer al template de la fila. Sirve para
+    // los dos estilos de render del archivo (innerHTML+.map().join("") y
+    // createElement("tr")+tr.innerHTML=...): los dos arman la fila con un
+    // template string, así que un solo helper que devuelva string alcanza.
+    celda(id) {
+      return `<td class="col-sel" data-label=""><input type="checkbox" class="sel-fila" data-sel-id="${id}" ${
+        seleccionados.has(id) ? "checked" : ""
+      } aria-label="Seleccionar fila"></td>`;
     }
   };
+}
+
+// Conecta un crearSeleccion() con la barra flotante #barraSeleccion (única,
+// compartida por todas las tablas — ver el comentario en index.html). Se
+// suscribe a sel.escuchar(...), así que no hace falta pasarle nada al
+// construir crearSeleccion(): se llama después, una vez por tabla.
+//
+// acciones: [{ etiqueta, onClick(ids, btn) }] — los botones que aparecen
+// para ESTA tabla en particular. onClick recibe también el propio <button>
+// por si la acción necesita deshabilitarlo / cambiarle el texto mientras
+// corre (ver "Descargar PDF" en la sub-etapa 4, que tarda varios segundos).
+//
+// Solo puede haber una vista visible a la vez, así que un único juego de
+// elementos alcanza: cada vista que se activa vuelve a llenar la barra con
+// sus propios botones apenas cambia su propia selección, sobreescribiendo
+// los que hubiera dejado la tabla anterior.
+function montarBarraSeleccion(sel, acciones) {
+  const barra = document.getElementById("barraSeleccion");
+  const conteo = document.getElementById("barraSeleccionConteo");
+  const contenedorAcciones = document.getElementById("barraSeleccionAcciones");
+  const btnLimpiar = document.getElementById("barraSeleccionLimpiar");
+
+  sel.escuchar((cantidad) => {
+    if (cantidad === 0) {
+      barra.hidden = true;
+      return;
+    }
+    barra.hidden = false;
+    conteo.textContent = `${cantidad} ${cantidad === 1 ? "seleccionada" : "seleccionadas"}`;
+    contenedorAcciones.innerHTML = "";
+    for (const accion of acciones) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-secundario";
+      btn.textContent = accion.etiqueta;
+      btn.addEventListener("click", () => accion.onClick(sel.ids, btn));
+      contenedorAcciones.appendChild(btn);
+    }
+    btnLimpiar.onclick = () => sel.limpiar();
+    // Registra cuál sel es "la de la barra" en este momento: Escape (bindeado
+    // una sola vez, más abajo) necesita saber a cuál de las 8 selecciones
+    // limpiarle sin que cada montarBarraSeleccion() agregue su propio
+    // listener global (serían 8 handlers de keydown apilados en el documento
+    // para siempre, uno por tabla ya visitada en la sesión).
+    seleccionActivaEnBarra = sel;
+  });
+}
+
+// Sale del "modo selección" con Escape, sin importar en qué tabla se esté:
+// limpia la selección que tiene la barra abierta ahora mismo. Un solo
+// listener global (no uno por tabla) porque solo puede haber una barra
+// visible a la vez.
+let seleccionActivaEnBarra = null;
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!seleccionActivaEnBarra || seleccionActivaEnBarra.cantidad === 0) return;
+  seleccionActivaEnBarra.limpiar();
+});
+
+// Corre fn(id) para cada id de la lista, con como máximo `limite` en vuelo a
+// la vez (Chrome ya limita a ~6 conexiones por host, esto lo hace explícito
+// y evita 200 promesas coleccionándose de una si el usuario seleccionó
+// medio libro mayor). Devuelve los resultados EN EL MISMO ORDEN que ids,
+// no en el orden en que terminaron — necesario para que "Imprimir en lote"
+// pagine en el orden que el usuario ve en la tabla, no en el orden de
+// respuesta de la red.
+async function traerConcurrencia(ids, fn, limite = 6) {
+  const resultados = new Array(ids.length);
+  let siguiente = 0;
+  async function trabajador() {
+    while (siguiente < ids.length) {
+      const i = siguiente++;
+      resultados[i] = await fn(ids[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, ids.length) }, trabajador));
+  return resultados;
+}
+
+/* ---------- Exportar a CSV ---------- */
+
+// Utilitario transversal de tablas, hermano de crearFiltros: las dos
+// responden a "cosas que le pasan a una tabla". Va acá arriba, antes de
+// las secciones de vista que lo usan.
+//
+// Se genera en el navegador y no en el servidor a propósito: lo que hay que
+// exportar es lo que el usuario ESTÁ VIENDO, y sus filtros viven solo acá.
+// Un endpoint tendría que reimplementar en SQL los operadores de
+// crearFiltros (incluidos los relativos, "este mes", "últimos 7 días") y los
+// campos que el frontend calcula por su cuenta — el mismo motor duplicado en
+// dos lenguajes, que es justo lo que el proyecto ya evitó para el filtrado.
+
+// Excel no lee el separador del archivo: usa el "separador de listas" de la
+// configuración regional de Windows. En español es ';', porque la coma es el
+// separador decimal — un CSV con comas mete toda la fila en la columna A.
+const SEPARADOR_CSV = ";";
+
+// Sin BOM, Excel abre el archivo con el codepage ANSI y todo acento se rompe
+// ("Devolución" → "DevoluciÃ³n"). Con "N°" y "×" en casi todas las tablas, el
+// archivo sería ilegible. Va en el CONTENIDO, no alcanza con el MIME type.
+const BOM_UTF8 = "﻿";
+
+// Escapado RFC 4180: se entrecomilla si el valor trae el separador, comillas,
+// saltos de línea o espacios en los bordes; las comillas internas se DUPLICAN
+// (no se escapan con backslash). El caso real que esto resuelve es
+// items_resumen, que viene del backend como "2 × Remera, 3 × Pantalón" — con
+// comas adentro: sin comillas, cada venta se partiría en columnas de más.
+function celdaCSV(valor) {
+  if (valor === null || valor === undefined) return "";
+  const texto = String(valor);
+  const necesitaComillas =
+    texto.includes(SEPARADOR_CSV) ||
+    texto.includes('"') ||
+    texto.includes("\n") ||
+    texto.includes("\r") ||
+    texto.trim() !== texto;
+  return necesitaComillas ? `"${texto.replaceAll('"', '""')}"` : texto;
+}
+
+// columnas: [{ titulo, valor: (fila) => any }]
+// filas: la lista YA filtrada y ordenada que la vista le pasó a su render*().
+//
+// Los números se exportan CRUDOS (1234.5), nunca por money(): un "$ 1.234,50"
+// llega a Excel como texto y no se puede sumar, que es exactamente para lo que
+// alguien exporta. El formato se aplica después, en la planilla.
+function descargarCSV(nombreArchivo, columnas, filas) {
+  if (!filas.length) {
+    avisar("No hay filas para exportar.", "atencion");
+    return;
+  }
+
+  const lineas = [
+    columnas.map((c) => celdaCSV(c.titulo)).join(SEPARADOR_CSV),
+    ...filas.map((fila) => columnas.map((c) => celdaCSV(c.valor(fila))).join(SEPARADOR_CSV))
+  ];
+  // CRLF: lo que manda RFC 4180 y lo que espera Excel en Windows.
+  const contenido = BOM_UTF8 + lineas.join("\r\n") + "\r\n";
+
+  const url = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8;" }));
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = `${nombreArchivo}-${hoyISO()}.csv`;
+  // Firefox exige que el <a> esté en el documento para que el click descargue.
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  // Sin esto el Blob queda retenido hasta cerrar la pestaña: exportar veinte
+  // veces en una sesión larga sería una fuga real.
+  URL.revokeObjectURL(url);
+
+  avisar(`Exportadas ${filas.length} ${filas.length === 1 ? "fila" : "filas"} a CSV.`, "ok");
 }
 
 function crearFiltros(contenedorId, campos, onCambio) {
@@ -630,6 +872,12 @@ function rangoActualResumen() {
 }
 
 async function cargarResumen() {
+  // Es rentabilidad (venta, costo y ganancia bruta juntos): admin-only en
+  // el servidor (GET /api/resumen), y esta función se llama tras casi toda
+  // mutación del sistema, no solo al entrar a la vista Resumen — por eso el
+  // corte va acá adentro y no en cada uno de esos call sites. Sin esto, un
+  // empleado dispara un 403 en segundo plano cada vez que carga una venta.
+  if (!esAdmin()) return;
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
   const resumen = await (await fetch(`/api/resumen${params ? "?" + params : ""}`)).json();
@@ -832,6 +1080,11 @@ function renderGraficoResultado(serie) {
 let tokenEvolucion = 0;
 
 async function cargarEvolucion() {
+  // Mismo corte que cargarResumen (GET /api/resumen/evolucion es admin-only
+  // en el servidor). Hoy el único llamador es cargarResumen, que ya corta
+  // antes de esta línea — se repite acá también por si en el futuro alguien
+  // la llama sola, para no depender de que quien la use se acuerde del rol.
+  if (!esAdmin()) return;
   const mio = ++tokenEvolucion;
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
@@ -909,7 +1162,7 @@ const filtrosResumen = crearFiltros(
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
 async function cargarPanelResumen() {
-  await Promise.all([cargarResumen(), cargarReporteVentas()]);
+  await Promise.all([cargarResumen(), cargarReporteVentas(), cargarReporteCompras()]);
 }
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
@@ -991,6 +1244,10 @@ function renderReporteClientes(lista) {
 }
 
 async function cargarReporteVentas() {
+  // GET /api/reportes/ventas es admin-only (rentabilidad por producto,
+  // categoría y cliente); se llama tras mutaciones de venta igual que
+  // cargarResumen, no solo al entrar a la vista.
+  if (!esAdmin()) return;
   tablaCargando("reporteProductosBody", 6);
   tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
@@ -1007,14 +1264,103 @@ async function cargarReporteVentas() {
   elGanancia.classList.toggle("saldo-negativo", datos.totales.ganancia_bruta < 0);
   elGanancia.classList.toggle("ledger-ok", datos.totales.ganancia_bruta >= 0);
 
-  renderReporteProductos(ordenReporteProductos.aplicar(datos.productos));
-  renderReporteCategorias(ordenReporteCategorias.aplicar(datos.categorias));
-  renderReporteClientes(ordenReporteClientes.aplicar(datos.clientes));
+  renderReporteProductos(datos.productos);
+  renderReporteCategorias(datos.categorias);
+  renderReporteClientes(datos.clientes);
 }
 
-const ordenReporteProductos = crearOrden("reporteProductosBody", () => cargarReporteVentas());
-const ordenReporteCategorias = crearOrden("reporteCategoriasBody", () => cargarReporteVentas());
-const ordenReporteClientes = crearOrden("reporteClientesBody", () => cargarReporteVentas());
+/* ---------- Reportes: qué se compra ---------- */
+//
+// Espejo exacto de "Reportes: qué se vende y a quién" de arriba, del lado
+// de compras. Mismo criterio: fusionado dentro de Estadísticas (antes
+// "Resumen"), usa el mismo filtro de fecha (rangoActualResumen), no uno
+// propio.
+
+function renderReporteComprasProveedores(lista) {
+  const body = document.getElementById("reporteComprasProveedoresBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(5, "No hay compras en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (p) => `
+    <tr>
+      <td data-label="Proveedor"><button type="button" class="btn-link reporte-proveedor-ficha" data-id="${p.id}">${p.nombre}</button></td>
+      <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
+      <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
+      <td data-label="Ticket promedio" class="align-right mono">${money(p.ticket_promedio)}</td>
+      <td data-label="Última compra">${p.ultima_compra ?? "—"}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".reporte-proveedor-ficha").forEach((btn) => {
+    btn.addEventListener("click", () => abrirFichaProveedor(Number(btn.dataset.id)));
+  });
+}
+
+function renderReporteComprasProductos(lista) {
+  const body = document.getElementById("reporteComprasProductosBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(4, "No hay compras en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (p) => `
+    <tr>
+      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Unidades" class="align-right mono">${numero(p.unidades)}</td>
+      <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(p.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+// Un producto sin categoría cae en el balde "Sin categoría" que ya arma el
+// backend (GROUP BY sobre categoria_id, NULL para esos productos).
+function renderReporteComprasCategorias(lista) {
+  const body = document.getElementById("reporteComprasCategoriasBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(4, "No hay compras en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (c) => `
+    <tr>
+      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Unidades" class="align-right mono">${numero(c.unidades)}</td>
+      <td data-label="Total" class="align-right mono">${money(c.compras)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function cargarReporteCompras() {
+  // GET /api/reportes/compras es admin-only, igual que todo el circuito de
+  // compras (ver permisos.js): valorizado al costo por definición.
+  if (!esAdmin()) return;
+  tablaCargando("reporteComprasProveedoresBody", 5);
+  tablaCargando("reporteComprasProductosBody", 4);
+  tablaCargando("reporteComprasCategoriasBody", 4);
+
+  const rango = rangoActualResumen();
+  const params = new URLSearchParams(rango).toString();
+  const datos = await (await fetch(`/api/reportes/compras${params ? "?" + params : ""}`)).json();
+
+  document.getElementById("reporteComprasNetas").textContent = money(datos.totales.compras_netas);
+  document.getElementById("reporteComprasTicketPromedio").textContent = money(datos.totales.ticket_promedio);
+  document.getElementById("reporteComprasUnidades").textContent = numero(datos.totales.unidades);
+  document.getElementById("reporteComprasCantidad").textContent = numero(datos.totales.cantidad_compras);
+
+  renderReporteComprasProveedores(datos.proveedores);
+  renderReporteComprasProductos(datos.productos);
+  renderReporteComprasCategorias(datos.categorias);
+}
 
 /* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
 //
@@ -1057,6 +1403,11 @@ function renderReporteStock(lista) {
 }
 
 async function cargarReporteStock() {
+  // GET /api/reportes/stock es admin-only (valorizado a costo). Se llama
+  // desde decenas de Promise.all repartidos por casi todas las vistas
+  // (refresco tras cada mutación de stock/venta/compra), así que el corte
+  // tiene que vivir acá y no en cada call site.
+  if (!esAdmin()) return;
   tablaCargando("reporteStockBody", 6);
 
   const rango = rangoActualReporteStock();
@@ -1072,10 +1423,8 @@ async function cargarReporteStock() {
     ? `Rotación medida del ${datos.rango.desde} al ${datos.rango.hasta}.`
     : `Rotación medida del ${datos.rango.desde} al ${datos.rango.hasta} (todo lo cargado hasta hoy) — para una estimación más realista, probá filtrar por "Últimos 30 días".`;
 
-  renderReporteStock(ordenReporteStock.aplicar(datos.productos));
+  renderReporteStock(datos.productos);
 }
-
-const ordenReporteStock = crearOrden("reporteStockBody", () => cargarReporteStock());
 
 // El backend ya resuelve comprobante y estado_cobro (derivado de los
 // cobros reales cuando la factura respalda una venta — ver
@@ -1085,7 +1434,7 @@ const ordenReporteStock = crearOrden("reporteStockBody", () => cargarReporteStoc
 // especial.
 function filtrarFacturas() {
   const lista = filtrosFacturas.aplicar(
-    ordenFacturas.aplicar(facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" })))
+    facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" }))
   );
 
   const facturado = lista.reduce((acc, f) => acc + f.total, 0);
@@ -1109,15 +1458,76 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 // mismo criterio. Reusado por Facturas, Ventas y el historial de Clientes.
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
 
+// Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
+// se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
+// —lo primero que hace— ya necesita selFacturas.colspan(). Con `const`, si
+// esta línea quedara más abajo que la invocación caería en TDZ.
+const selFacturas = crearSeleccion("facturasBody");
+montarBarraSeleccion(selFacturas, [
+  { etiqueta: "Imprimir", onClick: (ids) => imprimirFacturasSeleccionadas(ids) },
+  { etiqueta: "Descargar PDF", onClick: (ids, btn) => descargarPDFFacturasSeleccionadas(ids, btn) },
+  { etiqueta: "Exportar CSV", onClick: (ids) => exportarFacturasSeleccionadas(ids) }
+]);
+
+// GET /api/facturas (el listado) no trae items ni el contacto completo del
+// cliente para el membrete: hace falta el detalle de cada una, igual que
+// abrirFichaFactura. Se pide con concurrencia acotada (traerConcurrencia) en
+// vez de agregar un endpoint bulk nuevo — ver la sub-etapa 3 del plan: el
+// cuello de botella de imprimir/descargar en lote no es la red (SQLite en el
+// mismo proceso, milisegundos por consulta), así que duplicar el query del
+// backend en una segunda ruta no acorta nada.
+async function imprimirFacturasSeleccionadas(ids) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Imprimir en lote",
+      cuerpo: `Se va a abrir el diálogo de impresión con ${ids.length} páginas, una por factura. ¿Continuar?`,
+      aceptar: "Imprimir"
+    }))
+  )
+    return;
+
+  const facturasDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/facturas/${id}`).then((r) => r.json()));
+  imprimirHojas(facturasDetalle.map(hojaDeFactura));
+}
+
+async function descargarPDFFacturasSeleccionadas(ids, btn) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Descargar PDF en lote",
+      cuerpo: `Se van a generar ${ids.length} archivos PDF, uno por factura. Puede tardar varios minutos y el navegador va a pedirte permiso para descargar varios archivos: aceptalo para que se descarguen todos. ¿Continuar?`,
+      aceptar: "Descargar"
+    }))
+  )
+    return;
+
+  const facturasDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/facturas/${id}`).then((r) => r.json()));
+  const items = facturasDetalle.map((f) => ({
+    html: hojaDeFactura(f),
+    nombreArchivo: nombreArchivoPdf("factura", f.comprobante)
+  }));
+  await descargarPDFsEnLote(items, btn);
+}
+
 function renderFacturas(lista) {
   const body = document.getElementById("facturasBody");
+  selFacturas.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosFacturas.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
+      body.innerHTML = filaVaciaFiltrada(selFacturas.colspan(6));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosFacturas.limpiar());
     } else {
-      body.innerHTML = filaVacia(6, "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
+      body.innerHTML = filaVacia(selFacturas.colspan(6), "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
     }
     return;
   }
@@ -1126,6 +1536,7 @@ function renderFacturas(lista) {
     .map(
       (f) => `
     <tr class="fila-clickeable" data-id="${f.id}">
+      ${selFacturas.celda(f.id)}
       <td data-label="Comprobante" class="mono">${f.comprobante}</td>
       <td data-label="Fecha">${f.fecha}</td>
       <td data-label="Cliente">${f.cliente}</td>
@@ -1142,7 +1553,7 @@ function renderFacturas(lista) {
 
   body.querySelectorAll("tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("a, button")) return;
+      if (e.target.closest("a, button, input, label, select, textarea, .col-sel")) return;
       abrirFichaFactura(Number(tr.dataset.id));
     });
   });
@@ -1215,10 +1626,30 @@ const filtrosFacturas = crearFiltros(
   ],
   filtrarFacturas
 );
-const ordenFacturas = crearOrden("facturasBody", filtrarFacturas);
+
+// Mismas columnas que tendría un CSV completo de Facturas (no existe un
+// botón "Exportar CSV" de lo visible para esta tabla todavía — solo el de
+// lo seleccionado, desde la barra). Números crudos, nunca money(): ver el
+// comentario junto a descargarCSV.
+const COLUMNAS_CSV_FACTURAS = [
+  { titulo: "Comprobante", valor: (f) => f.comprobante },
+  { titulo: "Fecha", valor: (f) => f.fecha },
+  { titulo: "Cliente", valor: (f) => f.cliente },
+  { titulo: "Origen", valor: (f) => (f.venta_id ? `Venta #${f.venta_id}` : "Suelta") },
+  { titulo: "Importe", valor: (f) => f.total },
+  { titulo: "Cobro", valor: (f) => ESTADO_COBRO_LABEL[f.estado_cobro] ?? f.estado_cobro }
+];
+
+function exportarFacturasSeleccionadas(ids) {
+  const idsSet = new Set(ids);
+  const seleccion = filtrosFacturas
+    .aplicar(facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" })))
+    .filter((f) => idsSet.has(f.id));
+  descargarCSV("nexo-facturas-seleccion", COLUMNAS_CSV_FACTURAS, seleccion);
+}
 
 async function cargarFacturas() {
-  tablaCargando("facturasBody", 6);
+  tablaCargando("facturasBody", selFacturas.colspan(6));
   const res = await fetch("/api/facturas");
   facturas = await res.json();
   filtrarFacturas();
@@ -1226,10 +1657,15 @@ async function cargarFacturas() {
 
 cargarFacturas();
 
+// La factura que se está mirando, para que el botón Imprimir (estático en el
+// HTML, bindeado una sola vez más abajo) sepa qué imprimir.
+let facturaFichaDatos = null;
+
 async function abrirFichaFactura(id) {
   const res = await fetch(`/api/facturas/${id}`);
   if (!(await manejarError(res, "No se pudo cargar la factura."))) return;
   const factura = await res.json();
+  facturaFichaDatos = factura;
 
   document.getElementById("fichaFacturaTitulo").textContent = factura.comprobante;
 
@@ -1272,6 +1708,41 @@ async function abrirFichaFactura(id) {
 }
 
 document.getElementById("btnVolverFacturas").addEventListener("click", () => mostrarVista("facturas"));
+
+// Arma el HTML de una hoja de factura. Extraída del botón de abajo para
+// reusarla también en la impresión/descarga en lote desde el listado
+// (varias facturas a la vez, ver crearSeleccion) sin duplicar la lógica del
+// caso "factura suelta".
+function hojaDeFactura(f) {
+  return armarHojaComprobante({
+    rotulo: f.tipo === "nota_credito" ? "Nota de crédito" : f.tipo === "nota_debito" ? "Nota de débito" : "Factura",
+    comprobanteNro: f.comprobante,
+    fecha: f.fecha,
+    // NO van el estado de cobro ni "Origen: Venta #N": son gestión interna.
+    campos: [],
+    cliente: {
+      nombre: f.cliente,
+      documento: f.cliente_documento,
+      direccion: f.cliente_direccion,
+      telefono: f.cliente_telefono,
+      email: f.cliente_email
+    },
+    // Una factura suelta no tiene renglones: se imprime su concepto como
+    // único ítem, que es exactamente lo que la factura dice que se cobró.
+    items: f.items?.length
+      ? f.items
+      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total }],
+    total: f.total
+  });
+}
+
+// El botón vive en el HTML (no se re-renderiza como el de presupuesto), así
+// que se bindea una sola vez y lee la factura de la variable de módulo.
+document.getElementById("btnImprimirFactura").addEventListener("click", () => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  imprimirComprobante(hojaDeFactura(f));
+});
 
 /* ---------- Modal nueva factura ---------- */
 
@@ -1323,6 +1794,16 @@ function actualizarSubtotalFila(fila) {
   fila.querySelector(".item-subtotal").textContent = money(cantidad * precio);
 }
 
+// Lista de precios elegida en el formulario que contiene este contenedor de
+// items (Venta o Presupuesto) — se busca en vez de recibirla por parámetro
+// para no tener que tocar los 9 sitios que llaman agregarFilaItemVenta.
+// Sin formulario o sin selector (ej. la ficha del asistente, que no tiene
+// selector de lista), cae a "" y precioProductoEnLista usa precio_venta.
+function listaPrecioDelFormulario(contenedor) {
+  const select = contenedor.closest("form")?.querySelector('[name="lista_precio_id"]');
+  return select?.value ?? "";
+}
+
 // limitarStock: en una venta la cantidad no puede superar el stock actual,
 // pero en un presupuesto sí — se puede cotizar algo que todavía no está en
 // el depósito (CLAUDE.md §15). El tope se valida igual al convertir.
@@ -1334,7 +1815,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     <input type="text" class="item-producto" list="productosVenta" placeholder="Buscar producto…" />
     <input type="hidden" class="item-producto-id" />
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
-    <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" />
+    <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
     <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
   `;
@@ -1353,10 +1834,12 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
     if (producto) {
       productoIdInput.value = producto.id;
-      // Si el producto todavía no tiene precio de venta configurado, se
-      // deja el campo vacío en vez de rellenarlo con el costo — así queda
-      // claro que hay que ponerle un precio, no un número que parece uno.
-      precio.value = producto.precio_venta > 0 ? producto.precio_venta : "";
+      // Si el producto todavía no tiene precio configurado en la lista
+      // elegida (ni propio ni el fallback de precio_venta), se deja el
+      // campo vacío en vez de rellenarlo con el costo — así queda claro que
+      // hay que ponerle un precio, no un número que parece uno.
+      const precioSugerido = precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor));
+      precio.value = precioSugerido > 0 ? precioSugerido : "";
       if (limitarStock) cantidad.max = producto.stock;
     } else {
       productoIdInput.value = "";
@@ -1388,7 +1871,7 @@ function agregarFilaItemCompra(contenedor) {
   fila.innerHTML = `
     <input type="text" class="item-producto" list="productosSugeridos" placeholder="Producto…" />
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
-    <input type="number" class="item-precio" placeholder="Costo unit." step="0.01" min="0" />
+    <input type="number" class="item-precio" placeholder="Costo unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
     <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
   `;
@@ -1406,6 +1889,42 @@ function agregarFilaItemCompra(contenedor) {
   });
 
   contenedor.appendChild(fila);
+}
+
+// Al cambiar la lista de precios de una Venta/Presupuesto con ítems ya
+// cargados, se repropone el precio de cada renglón con producto resuelto —
+// avisando, nunca en silencio (CLAUDE.md §18: el precio SUGERIDO cambia
+// con la lista, la operación no pierde datos sin que el usuario se entere).
+// Un
+// renglón cuyo precio ya fue tocado a mano por el usuario (distinto del que
+// tenía la lista anterior) queda afuera del reproponer, para no pisar un
+// descuento negociado a propósito.
+function reproponerPreciosPorLista(contenedor, listaProductos) {
+  const listaId = listaPrecioDelFormulario(contenedor);
+  let cambios = 0;
+  contenedor.querySelectorAll(".item-row").forEach((fila) => {
+    const productoId = Number(fila.querySelector(".item-producto-id").value);
+    if (!productoId) return;
+    const producto = listaProductos.find((p) => p.id === productoId);
+    if (!producto) return;
+    const precioInput = fila.querySelector(".item-precio");
+    const precioActual = Number(precioInput.value) || 0;
+    // Si el precio actual coincide con alguno de los precios conocidos del
+    // producto (el de cualquier lista, o el fallback), se asume que nadie
+    // lo tocó a mano todavía y es seguro reproponerlo.
+    const preciosConocidos = [producto.precio_venta, ...Object.values(producto.precios || {})];
+    if (!preciosConocidos.includes(precioActual)) return;
+    const precioNuevo = precioProductoEnLista(producto, listaId);
+    if (precioNuevo !== precioActual) {
+      precioInput.value = precioNuevo > 0 ? precioNuevo : "";
+      actualizarSubtotalFila(fila);
+      cambios++;
+    }
+  });
+  if (cambios > 0) {
+    contenedor.dispatchEvent(new Event("item-change"));
+    avisar(`Se actualizaron ${cambios} precio${cambios === 1 ? "" : "s"} según la lista elegida.`, "atencion");
+  }
 }
 
 function leerItemsVenta(contenedor) {
@@ -1448,8 +1967,40 @@ function totalItems(contenedor) {
 
 let productos = [];
 let categorias = [];
+let listasPrecios = [];
+// Depósitos (CLAUDE.md §19): se cargan junto con productos, igual que
+// listasPrecios — Venta, Compra y el modal de ajuste de stock necesitan la
+// lista completa para poblar sus selects.
+let depositos = [];
 let productoEditandoId = null;
 let productoFichaId = null;
+
+// La predeterminada es el fallback de todo el sistema (CLAUDE.md §18): si
+// un producto no tiene precio propio en la lista elegida, o si una
+// venta/presupuesto no especifica lista, se asume esta.
+function listaPrecioPredeterminada() {
+  return listasPrecios.find((l) => l.es_predeterminada) ?? null;
+}
+
+// Mismo criterio que listaPrecioPredeterminada (CLAUDE.md §19): el
+// depósito que asumen Venta/Compra/Ajuste cuando no se elige uno propio.
+function depositoPredeterminado() {
+  return depositos.find((d) => d.es_predeterminado) ?? null;
+}
+
+// Precio de UN producto en UNA lista puntual, con el mismo fallback que ya
+// aplica el backend: si el producto no tiene precio propio cargado ahí,
+// cae a precio_venta (que es, por construcción, el precio de la
+// predeterminada). listaId puede venir vacío (string del <select>, "" o
+// undefined) — en ese caso también se usa precio_venta.
+function precioProductoEnLista(producto, listaId) {
+  if (!producto) return 0;
+  const id = Number(listaId) || null;
+  if (id && producto.precios && producto.precios[id] !== undefined) {
+    return producto.precios[id];
+  }
+  return producto.precio_venta;
+}
 
 function poblarDatalistProductos() {
   const opciones = productos.map((p) => `<option value="${p.nombre}"></option>`).join("");
@@ -1457,18 +2008,21 @@ function poblarDatalistProductos() {
   document.getElementById("productosVenta").innerHTML = opciones;
 }
 
-const porcentaje = (n) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
+const porcentaje = (n) => (n == null ? "—" : `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`);
+
+const selProductos = crearSeleccion("productosBody");
 
 function renderProductos(lista) {
   const body = document.getElementById("productosBody");
   body.innerHTML = "";
+  selProductos.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosProductos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(9);
+      body.innerHTML = filaVaciaFiltrada(selProductos.colspan(9));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProductos.limpiar());
     } else {
-      body.innerHTML = filaVacia(9, "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selProductos.colspan(9), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -1476,21 +2030,31 @@ function renderProductos(lista) {
   for (const p of lista) {
     const tr = document.createElement("tr");
     tr.className = "fila-clickeable";
-    // Editable directo desde la lista: no hace falta entrar a la ficha
-    // solo para cambiar el precio. Sin precio configurado (0) se muestra
-    // vacío con placeholder en rojo, no "$0,00" (que da a entender que de
-    // verdad vale cero).
-    const precioCelda = `<input type="number" class="input-inline precio-venta-inline${
-      p.precio_venta > 0 ? "" : " precio-sin-configurar"
-    }" data-id="${p.id}" value="${p.precio_venta > 0 ? p.precio_venta : ""}" placeholder="Sin precio" step="0.01" min="0" />`;
+    // La celda de Precio se ve como texto plano, igual que Costo o
+    // Valorizado — el <input> real no existe hasta que se hace click
+    // (ver activarEdicionPrecio), así que no hay una "cajita" de formulario
+    // visible en la tabla, solo al editar. Sin precio configurado (0) se
+    // muestra en rojo con el texto "Sin precio", no "$0,00" (que da a
+    // entender que de verdad vale cero).
+    // Editar el precio es PATCH /api/productos/:id, admin-only en el
+    // servidor. `pointer-events: none` no alcanza para bloquear esto en el
+    // frontend porque además del click hay un handler de teclado
+    // (Enter/Espacio, más abajo) — para no-admin se emite un <span> plano
+    // sin `tabindex` ni la clase que dispara los listeners, así que ni el
+    // mouse ni el teclado lo activan.
+    const precioTexto = p.precio_venta > 0 ? money(p.precio_venta) : "Sin precio";
+    const precioCelda = esAdmin()
+      ? `<span class="precio-venta-texto mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}" data-id="${p.id}" tabindex="0">${precioTexto}</span>`
+      : `<span class="mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}">${precioTexto}</span>`;
     tr.innerHTML = `
+      ${selProductos.celda(p.id)}
       <td data-label="Nombre">${p.nombre}</td>
       <td data-label="SKU">${p.sku || "—"}</td>
       <td data-label="Categoría">${p.categoria || "—"}</td>
-      <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
-      <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
-      <td data-label="Precio" class="align-right">${precioCelda}</td>
-      <td data-label="Margen" class="align-right mono">${p.margen === null ? "—" : porcentaje(p.margen)}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
+      <td data-label="Valorizado" class="align-right mono col-admin">${money(p.valorizado)}</td>
+      <td data-label="Precio" class="align-right mono">${precioCelda}</td>
+      <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
@@ -1498,7 +2062,7 @@ function renderProductos(lista) {
       <td data-label="">${botonEditarFila("btn-editar-producto", p.id, "producto")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, input")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel, .precio-venta-texto")) return;
       abrirFichaProducto(p.id);
     });
     body.appendChild(tr);
@@ -1510,28 +2074,72 @@ function renderProductos(lista) {
     });
   });
 
-  body.querySelectorAll(".precio-venta-inline").forEach((input) => {
-    input.addEventListener("change", async () => {
-      const producto = productos.find((p) => p.id === Number(input.dataset.id));
-      if (!producto) return;
-      // El PATCH espera el producto completo (no solo el precio): se arma
-      // con los datos que ya están en caché, cambiando nada más el precio.
-      const res = await fetch(`/api/productos/${producto.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: producto.nombre,
-          sku: producto.sku,
-          precio_venta: input.value === "" ? 0 : Number(input.value),
-          activo: !!producto.activo,
-          stock_minimo: producto.stock_minimo,
-          stock_maximo: producto.stock_maximo
-        })
-      });
-      await manejarError(res, "No se pudo actualizar el precio.");
-      await cargarProductos();
+  body.querySelectorAll(".precio-venta-texto").forEach((span) => {
+    span.addEventListener("click", () => activarEdicionPrecio(span));
+    // Mismo gesto por teclado que un botón: el span es tabulable
+    // (tabindex="0") justamente para que Enter/Espacio también sirvan.
+    span.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activarEdicionPrecio(span);
+      }
     });
   });
+}
+
+// Reemplaza el <span> de precio por el <input> editable de siempre, ya
+// enfocado. Al confirmar (blur o Enter) guarda y vuelve a redibujar la fila
+// completa (cargarProductos ya lo hace), así que no hace falta reconstruir
+// el <span> a mano acá — simplemente no se vuelve a tocar este nodo.
+function activarEdicionPrecio(span) {
+  const productoId = Number(span.dataset.id);
+  const producto = productos.find((p) => p.id === productoId);
+  if (!producto) return;
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = `input-inline precio-venta-inline${producto.precio_venta > 0 ? "" : " precio-sin-configurar"}`;
+  input.dataset.id = String(productoId);
+  input.value = producto.precio_venta > 0 ? producto.precio_venta : "";
+  input.placeholder = "Sin precio";
+  input.step = "0.01";
+  input.min = "0";
+  input.autocomplete = "off";
+
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let guardado = false;
+  const confirmar = async () => {
+    if (guardado) return;
+    guardado = true;
+    // El PATCH espera el producto completo (no solo el precio): se arma
+    // con los datos que ya están en caché, cambiando nada más el precio.
+    const res = await fetch(`/api/productos/${productoId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nombre: producto.nombre,
+        sku: producto.sku,
+        precio_venta: input.value === "" ? 0 : Number(input.value),
+        activo: !!producto.activo,
+        stock_minimo: producto.stock_minimo,
+        stock_maximo: producto.stock_maximo
+      })
+    });
+    await manejarError(res, "No se pudo actualizar el precio.");
+    await cargarProductos();
+  };
+
+  input.addEventListener("blur", confirmar);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      input.blur();
+    }
+  });
+  input.addEventListener("click", (e) => e.stopPropagation());
 }
 
 // La ficha se arma con la fila que ya está en el array `productos` (la
@@ -1556,7 +2164,11 @@ async function abrirFichaProducto(id) {
         ? money(producto.precio_venta)
         : '<span class="precio-sin-configurar">Sin precio</span>'
     ],
-    ["Margen", producto.margen === null ? null : porcentaje(producto.margen)],
+    // Margen es a la vez costo y ganancia: se saca del todo para no-admin
+    // en vez de dejarlo en la lista (esta ficha se arma con un array de
+    // pares, no columnas fijas de tabla, así que acá no aplica `.col-admin`
+    // — se filtra el dato en JS antes de mapearlo a <dt>/<dd>).
+    ...(esAdmin() ? [["Margen", producto.margen == null ? null : porcentaje(producto.margen)]] : []),
     ["Stock mínimo", numero(producto.stock_minimo)],
     ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
     ["Estado de stock", STOCK_LABEL[producto.estado_stock]],
@@ -1597,13 +2209,17 @@ async function abrirFichaProducto(id) {
 }
 
 async function cargarProductos() {
-  tablaCargando("productosBody", 9);
-  const [listaProductos, listaCategorias] = await Promise.all([
+  tablaCargando("productosBody", selProductos.colspan(9));
+  const [listaProductos, listaCategorias, listaListasPrecios, listaDepositos] = await Promise.all([
     fetch("/api/productos").then((r) => r.json()),
-    fetch("/api/categorias").then((r) => r.json())
+    fetch("/api/categorias").then((r) => r.json()),
+    fetch("/api/listas-precios").then((r) => r.json()),
+    fetch("/api/depositos").then((r) => r.json())
   ]);
   productos = listaProductos;
   categorias = listaCategorias;
+  listasPrecios = listaListasPrecios;
+  depositos = listaDepositos;
   poblarDatalistProductos();
   poblarSelectCategorias();
 
@@ -1615,12 +2231,57 @@ async function cargarProductos() {
   filtrarProductos();
 }
 
+// Llena un <select> de lista de precios con las listas activas. Genérica
+// (con default al select de cliente) para poder llenar también los de
+// Venta, Presupuesto y el bulk de productos, que necesitan las mismas
+// opciones. `conPredeterminada` agrega una opción explícita "Usar la
+// predeterminada" con value="" (para cliente, donde NULL es válido);
+// Venta/Presupuesto en cambio siempre mandan un id concreto, así que la
+// opción de la predeterminada se llama por su nombre real.
+function poblarSelectListasPrecios(selector, { conPredeterminada = false } = {}) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  const actual = select.value;
+  const activas = listasPrecios.filter((l) => l.activa);
+  const predeterminada = listaPrecioPredeterminada();
+  select.innerHTML =
+    (conPredeterminada ? '<option value="">Usar la predeterminada</option>' : "") +
+    activas
+      .map(
+        (l) =>
+          `<option value="${l.id}">${l.nombre}${l.es_predeterminada ? " (predeterminada)" : ""}</option>`
+      )
+      .join("");
+  select.value = actual || (conPredeterminada ? "" : String(predeterminada?.id ?? ""));
+}
+
+// Llena un <select> de depósito con los activos (CLAUDE.md §19) — mismo
+// patrón que poblarSelectListasPrecios: arranca en el predeterminado, sin
+// opción "usar la predeterminada" porque Venta/Compra/Ajuste siempre mandan
+// un id concreto (el backend interpreta NULL como "el predeterminado de
+// ese momento", pero el frontend no necesita mandar NULL a propósito).
+function poblarSelectDepositos(selector) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  const actual = select.value;
+  const activos = depositos.filter((d) => d.activo);
+  const predeterminado = depositoPredeterminado();
+  select.innerHTML = activos
+    .map((d) => `<option value="${d.id}">${d.nombre}${d.es_predeterminado ? " (predeterminado)" : ""}</option>`)
+    .join("");
+  select.value = actual || String(predeterminado?.id ?? "");
+}
+
 // Llena el <select> de categoría del formulario de alta/edición de
 // producto — mismo criterio que poblarSelectCuentas (Ventas/Compras): las
 // opciones dependen de datos que llegan por fetch, así que se arman en
 // runtime en vez de quedar fijas en el HTML.
-function poblarSelectCategorias() {
-  const select = document.querySelector('#formProducto [name="categoria_id"]');
+//
+// Generalizada (con default al select de siempre) para poder llenar
+// también el select de categoría del modal de edición en lote, que
+// necesita exactamente las mismas opciones.
+function poblarSelectCategorias(selector = '#formProducto [name="categoria_id"]') {
+  const select = document.querySelector(selector);
   const actual = select.value;
   select.innerHTML =
     '<option value="">Sin categoría</option>' +
@@ -1636,8 +2297,179 @@ function filtrarProductos() {
   const porTexto = productos.filter((p) =>
     [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  renderProductos(ordenProductos.aplicar(filtrosProductos.aplicar(porTexto)));
+  renderProductos(filtrosProductos.aplicar(porTexto));
 }
+
+// Misma expresión que filtrarProductos (búsqueda + filtros + orden), para
+// que el CSV coincida con lo que la tabla muestra.
+function listaProductosVisible() {
+  const q = document.getElementById("productosSearch").value.trim().toLowerCase();
+  const porTexto = productos.filter((p) =>
+    [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  );
+  return filtrosProductos.aplicar(porTexto);
+}
+
+const COLUMNAS_CSV_PRODUCTOS = [
+  { titulo: "Nombre", valor: (p) => p.nombre },
+  { titulo: "SKU", valor: (p) => p.sku },
+  { titulo: "Categoría", valor: (p) => p.categoria },
+  { titulo: "Costo", valor: (p) => p.precio_costo, admin: true },
+  { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
+  { titulo: "Precio", valor: (p) => p.precio_venta },
+  { titulo: "Margen", valor: (p) => p.margen, admin: true },
+  { titulo: "Stock", valor: (p) => p.stock },
+  { titulo: "Activo", valor: (p) => (p.activo ? "sí" : "no") }
+];
+
+montarBarraSeleccion(selProductos, [
+  {
+    etiqueta: "Editar en lote",
+    onClick: (ids) => abrirModalBulkProductos(ids)
+  },
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-productos-seleccion", columnasVisibles(COLUMNAS_CSV_PRODUCTOS), listaProductosVisible().filter((p) => idsSet.has(p.id)));
+    }
+  }
+]);
+
+/* ---------- Edición en lote de productos ---------- */
+//
+// bulkProductosIds guarda una COPIA de los ids con los que se abrió el
+// modal — no se lee selProductos.ids de nuevo al hacer submit. Si el
+// usuario deja el modal abierto y algo dispara un re-render de la tabla,
+// sincronizar() podría podar la selección, y el lote cambiaría bajo los
+// pies del usuario entre "vio el número" y "apretó aplicar".
+let bulkProductosIds = [];
+
+const modalBulkProductos = document.getElementById("modalBulkProductos");
+const formBulkProductos = document.getElementById("formBulkProductos");
+const bulkProductosResultado = document.getElementById("bulkProductosResultado");
+const bulkProductosResultadoTitulo = document.getElementById("bulkProductosResultadoTitulo");
+const bulkProductosResultadoLista = document.getElementById("bulkProductosResultadoLista");
+
+// Habilita/deshabilita el o los inputs de un .bulk-campo según su checkbox
+// de activación — un solo listener delegado, no uno por campo.
+formBulkProductos.addEventListener("change", (e) => {
+  if (!e.target.classList.contains("bulk-activar")) return;
+  const campo = e.target.closest(".bulk-campo");
+  campo.querySelectorAll("select, input:not(.bulk-activar)").forEach((el) => {
+    el.disabled = !e.target.checked;
+  });
+});
+
+function abrirModalBulkProductos(ids) {
+  bulkProductosIds = ids;
+  formBulkProductos.reset();
+  formBulkProductos.querySelectorAll(".bulk-activar").forEach((cb) => {
+    cb.checked = false;
+    cb.dispatchEvent(new Event("change"));
+  });
+  poblarSelectCategorias('#formBulkProductos [name="categoria_id"]');
+  poblarSelectListasPrecios('#formBulkProductos [name="precio_lista_id"]');
+  bulkProductosResultado.hidden = true;
+  document.getElementById("modalBulkProductosConteo").textContent =
+    `${ids.length} producto${ids.length === 1 ? "" : "s"} seleccionado${ids.length === 1 ? "" : "s"}`;
+  document.getElementById("bulkProductosSubmit").textContent = `Aplicar a ${ids.length} producto${ids.length === 1 ? "" : "s"}`;
+  modalBulkProductos.hidden = false;
+}
+
+document.getElementById("modalBulkProductosClose").addEventListener("click", () => {
+  modalBulkProductos.hidden = true;
+});
+modalBulkProductos.addEventListener("click", (e) => {
+  if (e.target === modalBulkProductos) modalBulkProductos.hidden = true;
+});
+
+// Arma el `cambios` parcial a partir de los checkboxes tildados: solo un
+// campo con su checkbox activo termina viajando en el request. Es la
+// implementación concreta de "ausencia de la clave = no tocar este campo".
+function armarCambiosBulk(form) {
+  const cambios = {};
+  if (form.querySelector('[data-campo="activo"]').checked) {
+    cambios.activo = form.activo.value === "1";
+  }
+  if (form.querySelector('[data-campo="categoria_id"]').checked) {
+    cambios.categoria_id = form.categoria_id.value || null;
+  }
+  if (form.querySelector('[data-campo="stock_minimo"]').checked) {
+    cambios.stock_minimo = form.stock_minimo.value;
+  }
+  if (form.querySelector('[data-campo="precio_venta"]').checked) {
+    const ajuste =
+      form.precio_modo.value === "porcentaje"
+        ? { modo: "porcentaje", valor: form.precio_valor.value }
+        : Number(form.precio_valor.value);
+    // La lista predeterminada usa precio_venta (columna del producto); una
+    // lista distinta se manda como precios[id] — ver aplicarEdicionProducto
+    // en server.js, que trata a las dos por separado.
+    const predeterminada = listaPrecioPredeterminada();
+    const listaElegidaId = Number(form.precio_lista_id.value);
+    if (!predeterminada || listaElegidaId === predeterminada.id) {
+      cambios.precio_venta = ajuste;
+    } else {
+      cambios.precios = { [listaElegidaId]: ajuste };
+    }
+  }
+  return cambios;
+}
+
+formBulkProductos.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cambios = armarCambiosBulk(e.target);
+  if (Object.keys(cambios).length === 0) {
+    avisar("No indicaste ningún cambio.", "atencion");
+    return;
+  }
+
+  if (cambios.activo === false || bulkProductosIds.length > 20) {
+    const ok = await confirmar({
+      titulo: "Editar en lote",
+      cuerpo: `Se va a aplicar este cambio a ${bulkProductosIds.length} productos. ¿Confirmás?`,
+      aceptar: "Aplicar",
+      destructivo: cambios.activo === false
+    });
+    if (!ok) return;
+  }
+
+  const res = await fetch("/api/productos/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: bulkProductosIds, cambios })
+  });
+  if (!(await manejarError(res, "No se pudo aplicar la edición en lote."))) return;
+  const resultado = await res.json();
+
+  await Promise.all([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+
+  const huboFallos = mostrarResultadoBulk(resultado, {
+    bloque: bulkProductosResultado,
+    titulo: bulkProductosResultadoTitulo,
+    lista: bulkProductosResultadoLista,
+    etiquetar: (id) => {
+      const p = productos.find((prod) => prod.id === id);
+      return p ? p.nombre : `#${id}`;
+    }
+  });
+
+  if (huboFallos) {
+    // El modal queda abierto y bulkProductosIds pasa a ser solo los que
+    // fallaron: si el usuario corrige un campo y vuelve a apretar el
+    // mismo botón, el próximo submit reintenta justo sobre ese
+    // subconjunto, sin tener que volver a seleccionarlos a mano en la
+    // tabla. El texto del botón lo deja explícito (no dice "Cerrar": el
+    // submit vuelve a aplicar, no cierra el modal).
+    bulkProductosIds = resultado.fallidos.map((f) => f.id);
+    document.getElementById("bulkProductosSubmit").textContent =
+      `Reintentar con ${bulkProductosIds.length} producto${bulkProductosIds.length === 1 ? "" : "s"}`;
+  } else {
+    selProductos.limpiar();
+    modalBulkProductos.hidden = true;
+  }
+});
 
 const OPCIONES_ESTADO_STOCK = [
   { valor: "sin_stock", texto: "Sin stock" },
@@ -1672,9 +2504,36 @@ const filtrosProductos = crearFiltros(
 );
 
 document.getElementById("productosSearch").addEventListener("input", filtrarProductos);
-const ordenProductos = crearOrden("productosBody", filtrarProductos);
 
 const modalProducto = document.getElementById("modalProducto");
+
+// Precios por lista (todas menos la predeterminada, que ya se carga en el
+// campo precio_venta de arriba): solo tiene sentido en EDICIÓN. Un producto
+// recién creado todavía no existe en la base, así que no hay id contra el
+// cual guardar filas de producto_precios — se completan después, editando,
+// igual que ya pasa con el costo ("el costo no se carga acá").
+function poblarPreciosPorLista(producto) {
+  const contenedor = document.getElementById("preciosPorListaProducto");
+  const predeterminada = listaPrecioPredeterminada();
+  const otras = listasPrecios.filter((l) => l.activa && l.id !== predeterminada?.id);
+
+  if (!producto || otras.length === 0) {
+    contenedor.innerHTML = "";
+    return;
+  }
+
+  contenedor.innerHTML = otras
+    .map((l) => {
+      const precioActual = producto.precios?.[l.id];
+      return `
+        <label>Precio (${l.nombre})
+          <input type="number" class="precio-lista-input" data-lista-id="${l.id}"
+                 step="0.01" min="0" placeholder="Sin precio propio: usa ${money(producto.precio_venta)}"
+                 value="${precioActual !== undefined ? precioActual : ""}" autocomplete="off" />
+        </label>`;
+    })
+    .join("");
+}
 
 function abrirModalProducto(producto = null) {
   productoEditandoId = producto?.id ?? null;
@@ -1687,6 +2546,7 @@ function abrirModalProducto(producto = null) {
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
   form.activo.checked = producto ? !!producto.activo : true;
+  poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
 }
 
@@ -1714,6 +2574,16 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     stock_maximo: form.stock_maximo.value,
     activo: form.activo.checked
   };
+  // precios por lista: solo en edición (ver poblarPreciosPorLista). Un
+  // input vacío significa "sin precio propio en esa lista", no se manda —
+  // así no se pisa un precio existente con 0 por accidente.
+  if (productoEditandoId) {
+    const precios = {};
+    document.querySelectorAll("#preciosPorListaProducto .precio-lista-input").forEach((input) => {
+      if (input.value !== "") precios[input.dataset.listaId] = Number(input.value);
+    });
+    if (Object.keys(precios).length > 0) datos.precios = precios;
+  }
 
   const res = await fetch(
     productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos",
@@ -1810,6 +2680,194 @@ document.getElementById("formCategoriaProducto").addEventListener("submit", asyn
   form.id.value = "";
   document.getElementById("formCategoriaProductoSubmit").textContent = "Agregar categoría";
   avisar(eraEdicion ? "Categoría actualizada." : "Categoría creada.", "ok");
+});
+
+/* ---------- Listas de precios (CLAUDE.md §18) ---------- */
+//
+// Calcado del modal de categorías de productos de arriba: mismo patrón de
+// formulario inline + tabla editable. Columna propia "Predeterminada": un
+// botón "Marcar" por cada lista que no lo es, en vez de un radio — evita
+// mandar un PATCH por cada fila al cambiar la predeterminada.
+
+const modalListasPrecios = document.getElementById("modalListasPrecios");
+
+function renderListasPrecios() {
+  const body = document.getElementById("listasPreciosBody");
+  if (listasPrecios.length === 0) {
+    body.innerHTML = filaVacia(3, "Todavía no hay listas de precios.");
+    return;
+  }
+
+  body.innerHTML = listasPrecios
+    .map(
+      (l) => `
+    <tr class="${l.activa ? "" : "fila-anulada"}">
+      <td data-label="Lista">${l.nombre}</td>
+      <td data-label="Predeterminada">${
+        l.es_predeterminada
+          ? `<span class="status status-cobrado">Predeterminada</span>`
+          : `<button type="button" class="btn-link btn-marcar-predeterminada" data-id="${l.id}">Marcar</button>`
+      }</td>
+      <td data-label="">${botonEditarFila("btn-editar-lista-precio", l.id, "lista de precios")}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-editar-lista-precio").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const lista = listasPrecios.find((l) => l.id === Number(btn.dataset.id));
+      const form = document.getElementById("formListaPrecio");
+      form.id.value = lista.id;
+      form.nombre.value = lista.nombre;
+      document.getElementById("formListaPrecioSubmit").textContent = "Guardar cambios";
+    });
+  });
+
+  body.querySelectorAll(".btn-marcar-predeterminada").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lista = listasPrecios.find((l) => l.id === Number(btn.dataset.id));
+      const res = await fetch(`/api/listas-precios/${lista.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: lista.nombre, activa: true, es_predeterminada: true })
+      });
+      if (!(await manejarError(res, "No se pudo marcar la lista como predeterminada."))) return;
+      await cargarProductos();
+      renderListasPrecios();
+      avisar(`"${lista.nombre}" es ahora la lista predeterminada.`, "ok");
+    });
+  });
+}
+
+document.getElementById("btnListasPrecios").addEventListener("click", () => {
+  document.getElementById("formListaPrecio").reset();
+  document.getElementById("formListaPrecio").id.value = "";
+  document.getElementById("formListaPrecioSubmit").textContent = "Agregar lista";
+  renderListasPrecios();
+  modalListasPrecios.hidden = false;
+});
+document.getElementById("modalListasPreciosClose").addEventListener("click", () => {
+  modalListasPrecios.hidden = true;
+});
+modalListasPrecios.addEventListener("click", (e) => {
+  if (e.target === modalListasPrecios) modalListasPrecios.hidden = true;
+});
+
+document.getElementById("formListaPrecio").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const editandoId = form.id.value;
+
+  const res = await fetch(editandoId ? `/api/listas-precios/${editandoId}` : "/api/listas-precios", {
+    method: editandoId ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: form.nombre.value })
+  });
+  if (!(await manejarError(res, "No se pudo guardar la lista de precios."))) return;
+
+  const eraEdicion = Boolean(editandoId);
+  // Una lista nueva o renombrada cambia el select del modal de producto y
+  // los de Venta/Presupuesto.
+  await cargarProductos();
+  renderListasPrecios();
+  form.reset();
+  form.id.value = "";
+  document.getElementById("formListaPrecioSubmit").textContent = "Agregar lista";
+  avisar(eraEdicion ? "Lista de precios actualizada." : "Lista de precios creada.", "ok");
+});
+
+/* ---------- Depósitos (CLAUDE.md §5/§19) ---------- */
+//
+// Calcado del modal de listas de precios de arriba: mismo patrón de
+// formulario inline + tabla editable + "exactamente uno predeterminado"
+// con botón "Marcar" en vez de radio.
+
+const modalDepositos = document.getElementById("modalDepositos");
+
+function renderDepositos() {
+  const body = document.getElementById("depositosBody");
+  if (depositos.length === 0) {
+    body.innerHTML = filaVacia(3, "Todavía no hay depósitos.");
+    return;
+  }
+
+  body.innerHTML = depositos
+    .map(
+      (d) => `
+    <tr class="${d.activo ? "" : "fila-anulada"}">
+      <td data-label="Depósito">${d.nombre}</td>
+      <td data-label="Predeterminado">${
+        d.es_predeterminado
+          ? `<span class="status status-cobrado">Predeterminado</span>`
+          : `<button type="button" class="btn-link btn-marcar-deposito-predeterminado" data-id="${d.id}">Marcar</button>`
+      }</td>
+      <td data-label="">${botonEditarFila("btn-editar-deposito", d.id, "depósito")}</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-editar-deposito").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const deposito = depositos.find((d) => d.id === Number(btn.dataset.id));
+      const form = document.getElementById("formDeposito");
+      form.id.value = deposito.id;
+      form.nombre.value = deposito.nombre;
+      form.direccion.value = deposito.direccion ?? "";
+      document.getElementById("formDepositoSubmit").textContent = "Guardar cambios";
+    });
+  });
+
+  body.querySelectorAll(".btn-marcar-deposito-predeterminado").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const deposito = depositos.find((d) => d.id === Number(btn.dataset.id));
+      const res = await fetch(`/api/depositos/${deposito.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: deposito.nombre, direccion: deposito.direccion, activo: true, es_predeterminado: true })
+      });
+      if (!(await manejarError(res, "No se pudo marcar el depósito como predeterminado."))) return;
+      await cargarProductos();
+      renderDepositos();
+      avisar(`"${deposito.nombre}" es ahora el depósito predeterminado.`, "ok");
+    });
+  });
+}
+
+document.getElementById("btnDepositos").addEventListener("click", () => {
+  document.getElementById("formDeposito").reset();
+  document.getElementById("formDeposito").id.value = "";
+  document.getElementById("formDepositoSubmit").textContent = "Agregar depósito";
+  renderDepositos();
+  modalDepositos.hidden = false;
+});
+document.getElementById("modalDepositosClose").addEventListener("click", () => {
+  modalDepositos.hidden = true;
+});
+modalDepositos.addEventListener("click", (e) => {
+  if (e.target === modalDepositos) modalDepositos.hidden = true;
+});
+
+document.getElementById("formDeposito").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const editandoId = form.id.value;
+
+  const res = await fetch(editandoId ? `/api/depositos/${editandoId}` : "/api/depositos", {
+    method: editandoId ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: form.nombre.value, direccion: form.direccion.value || null })
+  });
+  if (!(await manejarError(res, "No se pudo guardar el depósito."))) return;
+
+  const eraEdicion = Boolean(editandoId);
+  // Un depósito nuevo o renombrado cambia los selects de Venta, Compra,
+  // Ajuste de stock y Transferencia.
+  await Promise.all([cargarProductos(), cargarStock()]);
+  renderDepositos();
+  form.reset();
+  form.id.value = "";
+  document.getElementById("formDepositoSubmit").textContent = "Agregar depósito";
+  avisar(eraEdicion ? "Depósito actualizado." : "Depósito creado.", "ok");
 });
 
 /* ---------- Cuentas de tesorería ---------- */
@@ -1954,6 +3012,40 @@ async function manejarError(res, accionDefault) {
   return false;
 }
 
+/* ---------- Resultado de una edición en lote ---------- */
+//
+// Compartida entre el bulk de Productos y el de Compras (mismo shape de
+// response: {aplicados, fallidos, resumen}). Devuelve true si hubo algún
+// fallo (así el caller sabe si debe dejar el modal abierto en vez de
+// cerrarlo) y false si el lote entero salió bien.
+//
+// `etiquetar(id)` arma el texto legible de un id fallido (ej. el nombre
+// del producto en vez de un número pelado) buscando en el array que el
+// caller ya tiene en memoria — mostrarResultadoBulk no conoce la entidad.
+function mostrarResultadoBulk(resultado, { bloque, titulo, lista, etiquetar = (id) => `#${id}` } = {}) {
+  const { aplicados, fallidos, resumen } = resultado;
+
+  if (fallidos.length === 0) {
+    bloque.hidden = true;
+    lista.innerHTML = "";
+    const partes = [`${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"}`];
+    if (resumen.sin_cambios > 0) partes.push(`${resumen.sin_cambios} ya estaba${resumen.sin_cambios === 1 ? "" : "n"} así`);
+    avisar(partes.join(", ") + ".", "ok");
+    return false;
+  }
+
+  titulo.textContent =
+    aplicados.length === 0
+      ? "Ninguno se pudo aplicar."
+      : `${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"} · ${resumen.fallidos} falló${resumen.fallidos === 1 ? "" : "aron"}.`;
+  lista.innerHTML = fallidos
+    .map((f) => `<li>${etiquetar(f.id)} — ${f.error}</li>`)
+    .join("");
+  bloque.hidden = false;
+  avisar(titulo.textContent, "atencion");
+  return true;
+}
+
 /* ---------- Estado de tablas: carga y vacío ---------- */
 
 // Fila de estado vacío. Con accionTexto+accionId agrega un botón que
@@ -2006,16 +3098,23 @@ const STOCK_LABEL = {
   alto: "Stock alto"
 };
 
+// idDe custom (CLAUDE.md §19): /api/stock ahora trae una fila por producto
+// Y depósito, así que producto_id solo ya no identifica una fila única —
+// el comentario que estaba acá antes de esta etapa ya anticipaba
+// exactamente este cambio.
+const selStock = crearSeleccion("stockBody", { idDe: (p) => `${p.producto_id}-${p.deposito_id}` });
+
 function renderStock(lista) {
   const body = document.getElementById("stockBody");
   body.innerHTML = "";
+  selStock.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosStock.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(5);
+      body.innerHTML = filaVaciaFiltrada(selStock.colspan(7));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosStock.limpiar());
     } else {
-      body.innerHTML = filaVacia(5, "Todavía no hay productos con stock.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selStock.colspan(7), "Todavía no hay productos con stock.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -2023,19 +3122,24 @@ function renderStock(lista) {
   for (const p of lista) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
+      ${selStock.celda(`${p.producto_id}-${p.deposito_id}`)}
       <td data-label="Producto">${p.nombre}</td>
-      <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
-      <td data-label="Stock actual" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Depósito">${p.deposito ?? "—"}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
+      <td data-label="Stock en depósito" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Stock total" class="align-right mono">${numero(p.stock_total)}</td>
       <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
         STOCK_LABEL[p.estado_stock]
       }</span></td>
-      <td data-label=""><button type="button" class="btn-fila btn-ajustar-stock" data-id="${p.id}">Ajustar</button></td>
+      <td data-label=""><button type="button" class="btn-fila btn-ajustar-stock" data-producto="${p.producto_id}" data-deposito="${p.deposito_id ?? ""}">Ajustar</button></td>
     `;
     body.appendChild(tr);
   }
 
   body.querySelectorAll(".btn-ajustar-stock").forEach((btn) => {
-    btn.addEventListener("click", () => abrirModalAjusteStock(Number(btn.dataset.id)));
+    btn.addEventListener("click", () =>
+      abrirModalAjusteStock(Number(btn.dataset.producto), btn.dataset.deposito || null)
+    );
   });
 }
 
@@ -2047,10 +3151,10 @@ function renderMovimientosStock(movimientos) {
   const body = document.getElementById("stockMovimientosBody");
   if (movimientos.length === 0) {
     if (filtrosStockMov.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(5);
+      body.innerHTML = filaVaciaFiltrada(6);
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosStockMov.limpiar());
     } else {
-      body.innerHTML = filaVacia(5, "Todavía no hay movimientos de stock.");
+      body.innerHTML = filaVacia(6, "Todavía no hay movimientos de stock.");
     }
     return;
   }
@@ -2063,12 +3167,17 @@ function renderMovimientosStock(movimientos) {
           ? `Compra #${m.compra_id}`
           : m.origen === "devolucion"
           ? `Devolución #${m.devolucion_id}`
+          : m.origen === "devolucion_proveedor"
+          ? `Devolución a proveedor #${m.devolucion_proveedor_id}`
+          : m.origen === "transferencia"
+          ? `Transferencia #${m.transferencia_id}`
           : "Ajuste manual";
       const signo = m.tipo === "salida" ? "-" : m.tipo === "entrada" ? "+" : m.cantidad >= 0 ? "+" : "-";
       return `
     <tr>
       <td data-label="Fecha">${m.fecha}</td>
       <td data-label="Producto">${m.producto}</td>
+      <td data-label="Depósito">${m.deposito ?? "—"}</td>
       <td data-label="Origen">${origen}</td>
       <td data-label="Cantidad" class="align-right mono">${signo}${numero(Math.abs(m.cantidad))}</td>
       <td data-label="Nota">${m.nota || "—"}</td>
@@ -2085,28 +3194,71 @@ let stockCache = [];
 function filtrarStock() {
   const texto = document.getElementById("stockSearch").value.trim().toLowerCase();
   const porTexto = stockCache.filter((p) => p.nombre.toLowerCase().includes(texto));
-  renderStock(ordenStock.aplicar(filtrosStock.aplicar(porTexto)));
+  renderStock(filtrosStock.aplicar(porTexto));
 }
+
+// Stock combina el motor de filtros CON su propio <input type="search">: el
+// CSV tiene que respetar los dos, o exportaría filas que la tabla esconde.
+function listaStockVisible() {
+  const texto = document.getElementById("stockSearch").value.trim().toLowerCase();
+  const porTexto = stockCache.filter((p) => p.nombre.toLowerCase().includes(texto));
+  return filtrosStock.aplicar(porTexto);
+}
+
+// /api/stock no devuelve sku (es la vista de existencias, no el catálogo).
+// "Valorizado" y "Estado" siguen siendo del TOTAL del producto (CLAUDE.md
+// §5: el mínimo/máximo es global, no por depósito), no de esta fila puntual.
+const COLUMNAS_CSV_STOCK = [
+  { titulo: "Producto", valor: (p) => p.nombre },
+  { titulo: "Depósito", valor: (p) => p.deposito ?? "" },
+  { titulo: "Costo", valor: (p) => p.precio_costo, admin: true },
+  { titulo: "Stock en depósito", valor: (p) => p.stock },
+  { titulo: "Stock total", valor: (p) => p.stock_total },
+  { titulo: "Stock mínimo", valor: (p) => p.stock_minimo },
+  { titulo: "Stock máximo", valor: (p) => p.stock_maximo },
+  { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
+  { titulo: "Estado", valor: (p) => STOCK_LABEL[p.estado_stock] ?? p.estado_stock }
+];
+
+document.getElementById("btnExportarStock").addEventListener("click", () => {
+  descargarCSV("nexo-stock", columnasVisibles(COLUMNAS_CSV_STOCK), listaStockVisible());
+});
+
+montarBarraSeleccion(selStock, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      // ids acá son las claves compuestas "producto_id-deposito_id" (ver el
+      // idDe de selStock, más arriba).
+      const idsSet = new Set(ids);
+      descargarCSV(
+        "nexo-stock-seleccion",
+        columnasVisibles(COLUMNAS_CSV_STOCK),
+        listaStockVisible().filter((p) => idsSet.has(`${p.producto_id}-${p.deposito_id}`))
+      );
+    }
+  }
+]);
 
 const filtrosStock = crearFiltros(
   "filtrosStock",
   [
     { clave: "nombre", etiqueta: "Producto", tipo: "texto" },
+    { clave: "deposito_id", etiqueta: "Depósito", tipo: "select", opciones: [] },
     { clave: "estado_stock", etiqueta: "Estado", tipo: "select", opciones: OPCIONES_ESTADO_STOCK },
-    { clave: "stock", etiqueta: "Stock actual", tipo: "numero" },
+    { clave: "stock", etiqueta: "Stock en depósito", tipo: "numero" },
     { clave: "stock_minimo", etiqueta: "Stock mínimo", tipo: "numero" },
     { clave: "precio_costo", etiqueta: "Costo", tipo: "numero" },
     { clave: "valorizado", etiqueta: "Valorizado", tipo: "numero" }
   ],
   filtrarStock
 );
-const ordenStock = crearOrden("stockBody", filtrarStock);
-
 const filtrosStockMov = crearFiltros(
   "filtrosStockMov",
   [
     { clave: "fecha", etiqueta: "Fecha", tipo: "fecha" },
     { clave: "producto_id", etiqueta: "Producto", tipo: "select", opciones: [] },
+    { clave: "deposito_id", etiqueta: "Depósito", tipo: "select", opciones: [] },
     {
       clave: "origen",
       etiqueta: "Origen",
@@ -2115,6 +3267,8 @@ const filtrosStockMov = crearFiltros(
         { valor: "venta", texto: "Venta" },
         { valor: "compra", texto: "Compra" },
         { valor: "devolucion", texto: "Devolución" },
+        { valor: "devolucion_proveedor", texto: "Devolución a proveedor" },
+        { valor: "transferencia", texto: "Transferencia" },
         { valor: "ajuste_manual", texto: "Ajuste manual" }
       ]
     },
@@ -2135,15 +3289,25 @@ async function cargarMovimientosStock() {
 }
 
 async function cargarStock() {
-  tablaCargando("stockBody", 5);
+  tablaCargando("stockBody", selStock.colspan(7));
   const stockRes = await fetch("/api/stock");
   stockCache = await stockRes.json();
+  const opcionesDeposito = depositos
+    .filter((d) => d.activo)
+    .map((d) => ({ valor: String(d.id), texto: d.nombre }));
+  filtrosStock.setOpciones("deposito_id", opcionesDeposito);
   filtrosStockMov.setOpciones(
     "producto_id",
-    stockCache.map((p) => ({ valor: p.id, texto: p.nombre }))
+    // Un producto por fila (no por producto+depósito): stockCache trae una
+    // fila por depósito, así que se deduplica por producto_id.
+    [...new Map(stockCache.map((p) => [p.producto_id, p])).values()].map((p) => ({
+      valor: p.producto_id,
+      texto: p.nombre
+    }))
   );
+  filtrosStockMov.setOpciones("deposito_id", opcionesDeposito);
   filtrarStock();
-  await cargarMovimientosStock();
+  await Promise.all([cargarMovimientosStock(), cargarTransferencias()]);
 }
 
 document.getElementById("stockSearch").addEventListener("input", filtrarStock);
@@ -2156,10 +3320,14 @@ function poblarSelectProductos(select) {
     productos.map((p) => `<option value="${p.id}">${p.nombre}</option>`).join("");
 }
 
-function abrirModalAjusteStock(productoIdPreseleccionado = null) {
+function abrirModalAjusteStock(productoIdPreseleccionado = null, depositoIdPreseleccionado = null) {
   const select = document.querySelector('#formAjusteStock select[name="producto_id"]');
   poblarSelectProductos(select);
   if (productoIdPreseleccionado) select.value = productoIdPreseleccionado;
+  poblarSelectDepositos('#formAjusteStock [name="deposito_id"]');
+  if (depositoIdPreseleccionado) {
+    document.querySelector('#formAjusteStock [name="deposito_id"]').value = depositoIdPreseleccionado;
+  }
   modalAjusteStock.hidden = false;
 }
 
@@ -2180,6 +3348,7 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       producto_id: Number(form.producto_id.value),
+      deposito_id: Number(form.deposito_id.value),
       cantidad: parseFloat(form.cantidad.value),
       nota: form.nota.value || null
     })
@@ -2191,6 +3360,382 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
   modalAjusteStock.hidden = true;
   avisar("Stock ajustado.", "ok");
 });
+
+/* ---------- Transferencias entre depósitos (CLAUDE.md §19) ---------- */
+
+let transferenciasCache = [];
+
+function renderTransferencias(lista) {
+  const body = document.getElementById("transferenciasBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(7, "Todavía no hay transferencias entre depósitos.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (t) => `
+    <tr class="${t.estado === "anulada" ? "fila-anulada" : ""}">
+      <td data-label="Fecha">${t.fecha}</td>
+      <td data-label="Producto">${t.producto}</td>
+      <td data-label="Desde">${t.deposito_origen}</td>
+      <td data-label="Hacia">${t.deposito_destino}</td>
+      <td data-label="Cantidad" class="align-right mono">${numero(t.cantidad)}</td>
+      <td data-label="Estado"><span class="status ${t.estado === "anulada" ? "status-vencido" : "status-cobrado"}">${
+        t.estado === "anulada" ? "Anulada" : "Activa"
+      }</span></td>
+      <td data-label="">${
+        t.estado === "activa" && esAdmin()
+          ? `<button type="button" class="btn-fila btn-anular-transferencia" data-id="${t.id}">Anular</button>`
+          : ""
+      }</td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-anular-transferencia").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ok = await confirmar({
+        titulo: "Anular transferencia",
+        cuerpo: "El stock vuelve al depósito de origen.",
+        aceptar: "Anular",
+        destructivo: true
+      });
+      if (!ok) return;
+      const res = await fetch(`/api/transferencias/${btn.dataset.id}/anular`, { method: "POST" });
+      if (!(await manejarError(res, "No se pudo anular la transferencia."))) return;
+      await cargarStock();
+      avisar("Transferencia anulada.", "ok");
+    });
+  });
+}
+
+async function cargarTransferencias() {
+  transferenciasCache = await (await fetch("/api/transferencias")).json();
+  renderTransferencias(transferenciasCache);
+}
+
+const modalTransferenciaDeposito = document.getElementById("modalTransferenciaDeposito");
+
+document.getElementById("btnTransferirStock").addEventListener("click", () => {
+  const form = document.getElementById("formTransferenciaDeposito");
+  form.reset();
+  poblarSelectProductos(form.producto_id);
+  poblarSelectDepositos("#transferenciaDepositoOrigen");
+  poblarSelectDepositos("#transferenciaDepositoDestino");
+  modalTransferenciaDeposito.hidden = false;
+});
+document.getElementById("modalTransferenciaDepositoClose").addEventListener("click", () => {
+  modalTransferenciaDeposito.hidden = true;
+});
+modalTransferenciaDeposito.addEventListener("click", (e) => {
+  if (e.target === modalTransferenciaDeposito) modalTransferenciaDeposito.hidden = true;
+});
+
+document.getElementById("formTransferenciaDeposito").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+
+  const res = await fetch("/api/transferencias", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      producto_id: Number(form.producto_id.value),
+      deposito_origen_id: Number(form.deposito_origen_id.value),
+      deposito_destino_id: Number(form.deposito_destino_id.value),
+      cantidad: parseFloat(form.cantidad.value),
+      nota: form.nota.value || null
+    })
+  });
+  if (!(await manejarError(res, "No se pudo registrar la transferencia."))) return;
+
+  await cargarStock();
+  form.reset();
+  modalTransferenciaDeposito.hidden = true;
+  avisar("Transferencia registrada.", "ok");
+});
+
+/* ---------- Comprobante imprimible ---------- */
+
+// El papel que se le entrega al cliente: presupuesto o factura. Se arma en un
+// contenedor propio (#hojaImpresion) y NO reusando la ficha con @media print,
+// porque la ficha muestra costo, margen y ganancia — datos internos que no
+// pueden salir impresos. Acá solo aparece lo que se pone explícitamente.
+//
+// El PDF lo hace el navegador: su diálogo de impresión ya trae "Guardar como
+// PDF", así que no hace falta ninguna librería (el proyecto no tiene build
+// step y no queremos sumar dependencias solo para esto).
+
+const hojaImpresionEl = document.getElementById("hojaImpresion");
+
+// Escapa lo que va al HTML de la hoja. Los datos vienen de la base (nombres de
+// cliente, productos, notas del negocio), así que un nombre con "<" rompería
+// el markup si se interpolara crudo.
+function esc(valor) {
+  return String(valor ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+// Línea del membrete que solo aparece si el dato existe: un monotributista sin
+// local no debería ver un renglón "Dirección: —" en su comprobante.
+const lineaSiHay = (etiqueta, valor) =>
+  valor ? `<p><span class="hoja-etiqueta">${esc(etiqueta)}</span> ${esc(valor)}</p>` : "";
+
+// Arma el HTML del comprobante. Un solo molde para los dos tipos: cambian el
+// rótulo, el número y algún campo, no la estructura.
+// OJO con los nombres: el parámetro del número de comprobante NO puede
+// llamarse `numero`, porque sombrearía al helper de formato numero() que esta
+// misma función usa para las cantidades (y tirar "numero is not a function").
+function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra }) {
+  const filas = items
+    .map(
+      (i) => `
+        <tr>
+          <td>${esc(i.producto)}</td>
+          <td class="num">${numero(i.cantidad)}</td>
+          <td class="num">${money(i.precio_unitario)}</td>
+          <td class="num">${money(i.cantidad * i.precio_unitario)}</td>
+        </tr>`
+    )
+    .join("");
+
+  return `
+    <div class="hoja">
+      <header class="hoja-encabezado">
+        <div class="hoja-negocio">
+          <h1>${esc(negocio.nombre || "—")}</h1>
+          ${lineaSiHay("CUIT:", negocio.documento)}
+          ${lineaSiHay("", negocio.condicion_iva)}
+          ${lineaSiHay("", negocio.direccion)}
+          ${lineaSiHay("Tel:", negocio.telefono)}
+          ${lineaSiHay("", negocio.email)}
+        </div>
+        <div class="hoja-comprobante">
+          <p class="hoja-rotulo">${esc(rotulo)}</p>
+          <p class="hoja-numero">${esc(comprobanteNro)}</p>
+          <p>${esc(fecha)}</p>
+          ${campos.map(([e, v]) => (v ? `<p><span class="hoja-etiqueta">${esc(e)}</span> ${esc(v)}</p>` : "")).join("")}
+        </div>
+      </header>
+
+      <section class="hoja-cliente">
+        <p class="hoja-etiqueta">Cliente</p>
+        <p class="hoja-cliente-nombre">${esc(cliente.nombre)}</p>
+        ${lineaSiHay("CUIT/DNI:", cliente.documento)}
+        ${lineaSiHay("", cliente.direccion)}
+        ${lineaSiHay("Tel:", cliente.telefono)}
+        ${lineaSiHay("", cliente.email)}
+      </section>
+
+      <table class="hoja-items">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th class="num">Cantidad</th>
+            <th class="num">Precio unit.</th>
+            <th class="num">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+
+      <p class="hoja-total"><span>Total</span> <strong>${money(total)}</strong></p>
+
+      ${notas ? `<section class="hoja-notas"><p class="hoja-etiqueta">Notas</p><p>${esc(notas)}</p></section>` : ""}
+
+      <footer class="hoja-pie">
+        ${pieExtra ? `<p>${esc(pieExtra)}</p>` : ""}
+        ${negocio.pie_comprobante ? `<p>${esc(negocio.pie_comprobante)}</p>` : ""}
+        <!-- Nexo no está conectado a ARCA y no emite CAE: lo impreso es un
+             documento interno, no un comprobante fiscal. Decirlo es
+             obligatorio para no inducir a error a quien lo recibe. -->
+        <p class="hoja-legal">Documento no válido como comprobante fiscal.</p>
+      </footer>
+    </div>
+  `;
+}
+
+// Imprime UNA O VARIAS hojas juntas: htmls.join("") las concatena en el
+// mismo contenedor y un único window.print() las manda todas al mismo
+// diálogo (una página impresa por hoja — ver el break-after en styles.css).
+// Así "imprimir 5 facturas seleccionadas" desde el listado es un solo
+// diálogo con 5 páginas, no 5 diálogos separados.
+function imprimirHojas(htmls) {
+  hojaImpresionEl.innerHTML = htmls.join("");
+
+  // El PDF sale del mismo diálogo (destino "Guardar como PDF"), pero eso no es
+  // obvio para quien busca descargar un archivo. Se avisa UNA sola vez por
+  // navegador: repetirlo en cada impresión sería ruido para quien ya lo sabe.
+  try {
+    if (!localStorage.getItem("nexo.avisoPdf")) {
+      avisar('Para guardarlo como PDF, elegí "Guardar como PDF" en el destino de impresión.', "ok");
+      localStorage.setItem("nexo.avisoPdf", "1");
+    }
+  } catch {
+    // Sin storage disponible (modo privado) el aviso simplemente no se muestra:
+    // no vale la pena bloquear una impresión por un mensaje de ayuda.
+  }
+
+  window.print();
+  // Se vacía después de imprimir para no dejar datos de un cliente colgando
+  // en el DOM mientras se navega a otra pantalla.
+  hojaImpresionEl.innerHTML = "";
+}
+
+// Caso de un solo comprobante: los dos botones de ficha (factura y
+// presupuesto) siguen llamando a esta función tal cual, sin enterarse de
+// que por dentro ahora es un array de uno.
+function imprimirComprobante(html) {
+  imprimirHojas([html]);
+}
+
+/* ---------- Descargar PDF (jsPDF + html2canvas) ---------- */
+
+// "Imprimir" (arriba) ya cubre el caso de guardar un PDF: es lo que hace el
+// destino "Guardar como PDF" del diálogo del navegador, con texto real y
+// seleccionable, sin sumar ninguna dependencia. Esto es otra cosa: el
+// usuario pidió poder seleccionar varios comprobantes y que se descarguen
+// como archivos separados, uno por comprobante, con nombre propio — el
+// navegador no permite eso sin intervención humana (no hay forma de
+// disparar N diálogos de impresión ni de nombrar el archivo por JS), así
+// que hace falta generar el PDF nosotros. jsPDF arma el archivo, html2canvas
+// convierte el HTML de la hoja en una imagen para meter adentro.
+//
+// Contrapartida que hay que tener presente: el PDF resultante es una
+// IMAGEN, no texto seleccionable ni buscable — es la limitación real de
+// fotografiar el HTML en vez de redibujar el comprobante en la API de
+// jsPDF (que implicaría mantener dos versiones del diseño sincronizadas).
+// Por eso conviven los dos botones en vez de reemplazar uno por el otro.
+
+// Vendorizadas en frontend/js/vendor/, servidas por el mismo express.static
+// que ya sirve el resto del frontend — sin dependencia de npm ni build step.
+const VENDOR_JSPDF = "js/vendor/jspdf.umd.min.js";
+const VENDOR_HTML2CANVAS = "js/vendor/html2canvas.min.js";
+
+// No se cargan con <script> en index.html: son ~500KB combinados y solo
+// hacen falta si alguien aprieta "Descargar PDF". Memoizada para no volver
+// a inyectar los <script> en cada descarga; si la carga falla, se limpia la
+// memoización para permitir un reintento (una mala red no debería dejar el
+// botón roto para siempre en esa misma sesión de página).
+let libsPdfPromesa = null;
+function cargarLibsPdf() {
+  if (libsPdfPromesa) return libsPdfPromesa;
+  const cargarScript = (src) =>
+    new Promise((ok, mal) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = ok;
+      s.onerror = () => mal(new Error(`No se pudo cargar ${src}`));
+      document.body.appendChild(s);
+    });
+  libsPdfPromesa = Promise.all([cargarScript(VENDOR_JSPDF), cargarScript(VENDOR_HTML2CANVAS)]).catch((err) => {
+    libsPdfPromesa = null;
+    throw err;
+  });
+  return libsPdfPromesa;
+}
+
+// Crea un contenedor .hoja-render con el HTML de una hoja, lo deja en el DOM
+// el tiempo que dure fn(), y lo saca pase lo que pase. Ver el comentario de
+// .hoja-render en styles.css: display:none (como #hojaImpresion) no sirve
+// acá, html2canvas necesita medir un nodo realmente presente.
+async function conHojaVisible(html, fn) {
+  const caja = document.createElement("div");
+  caja.className = "hoja-render";
+  caja.innerHTML = html;
+  document.body.appendChild(caja);
+  try {
+    return await fn(caja.firstElementChild);
+  } finally {
+    caja.remove();
+  }
+}
+
+// Sanitiza un nombre de comprobante para usarlo como nombre de archivo:
+// Windows prohíbe \ / : * ? " < > | y el comprobante puede traer espacios
+// ("B 0001-00000123") que sin normalizar quedarían igual pero es más
+// prolijo unificarlos.
+function nombreArchivoPdf(prefijo, identificador) {
+  const limpio = String(identificador)
+    .toLowerCase()
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${prefijo}-${limpio}.pdf`;
+}
+
+// Convierte UNA hoja (el HTML que arma armarHojaComprobante) en un archivo
+// PDF y lo descarga. Si la hoja mide más que una página A4 útil (una
+// factura con muchos ítems), se reparte en varias páginas del mismo PDF en
+// vez de achicar la imagen — una factura larga escalada a una sola página
+// quedaría ilegible.
+async function descargarPDFDeHoja(html, nombreArchivo) {
+  await cargarLibsPdf();
+  await conHojaVisible(html, async (hoja) => {
+    const canvas = await html2canvas(hoja, { scale: 2, backgroundColor: "#FFFFFF", useCORS: true });
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
+    const MARGEN = 14; // mismo margen que @page en el CSS de impresión
+    const anchoUtil = 210 - MARGEN * 2;
+    const altoUtil = 297 - MARGEN * 2;
+    const altoImg = (canvas.height / canvas.width) * anchoUtil;
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92); // JPEG: una A4 a scale 2 en PNG pesa 1-3MB, en JPEG ~200KB
+
+    if (altoImg <= altoUtil) {
+      pdf.addImage(dataUrl, "JPEG", MARGEN, MARGEN, anchoUtil, altoImg);
+    } else {
+      // Reparte la misma imagen en N páginas, desplazando hacia arriba en
+      // cada una (el resto de la imagen queda recortado por los bordes de
+      // la página, que es exactamente lo que hace una impresión paginada).
+      let restante = altoImg;
+      let offsetY = 0;
+      while (restante > 0) {
+        pdf.addImage(dataUrl, "JPEG", MARGEN, MARGEN - offsetY, anchoUtil, altoImg);
+        restante -= altoUtil;
+        offsetY += altoUtil;
+        if (restante > 0) pdf.addPage();
+      }
+    }
+
+    pdf.save(nombreArchivo);
+  });
+}
+
+// Genera y descarga un PDF por cada hoja, EN SERIE (no en paralelo): varios
+// html2canvas corriendo a la vez saturan memoria y el hilo principal del
+// navegador. El setTimeout(0) entre iteraciones le da un respiro al
+// navegador para repintar el contador del botón — sin eso, con el hilo
+// principal ocupado generando canvases, "Generando 3/20…" no llegaría a
+// verse hasta que todo terminó.
+// items: [{ html, nombreArchivo }]. btn: el <button> que disparó la acción,
+// para deshabilitarlo y mostrar el progreso mientras dura (puede ser largo:
+// unos 0.5-1.5s por hoja).
+async function descargarPDFsEnLote(items, btn) {
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  let fallidos = 0;
+  try {
+    for (let i = 0; i < items.length; i++) {
+      btn.textContent = `Generando ${i + 1}/${items.length}…`;
+      await new Promise((r) => setTimeout(r, 0));
+      try {
+        await descargarPDFDeHoja(items[i].html, items[i].nombreArchivo);
+      } catch {
+        fallidos++;
+      }
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+
+  if (fallidos === 0) {
+    avisar(`Se descargaron ${items.length} PDF.`, "ok");
+  } else {
+    avisar(`Se descargaron ${items.length - fallidos} PDF. ${fallidos} fallaron.`, "atencion");
+  }
+}
 
 /* ---------- Presupuestos ---------- */
 
@@ -2218,8 +3763,63 @@ const PRESUPUESTO_CLASE = {
   convertido: "status-cobrado"
 };
 
+// Declarada arriba de renderPresupuestos: cargarPresupuestos() (más abajo)
+// llama tablaCargando() antes del await, y esa llamada ya necesita
+// selPresupuestos.colspan() — mismo criterio que selFacturas.
+const selPresupuestos = crearSeleccion("presupuestosBody");
+montarBarraSeleccion(selPresupuestos, [
+  { etiqueta: "Imprimir", onClick: (ids) => imprimirPresupuestosSeleccionados(ids) },
+  { etiqueta: "Descargar PDF", onClick: (ids, btn) => descargarPDFPresupuestosSeleccionados(ids, btn) },
+  { etiqueta: "Exportar CSV", onClick: (ids) => exportarPresupuestosSeleccionados(ids) }
+]);
+
+// Mismo criterio que imprimirFacturasSeleccionadas: GET /api/presupuestos
+// tampoco trae items, hace falta el detalle de cada uno.
+async function imprimirPresupuestosSeleccionados(ids) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} presupuestos.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Imprimir en lote",
+      cuerpo: `Se va a abrir el diálogo de impresión con ${ids.length} páginas, una por presupuesto. ¿Continuar?`,
+      aceptar: "Imprimir"
+    }))
+  )
+    return;
+
+  const presupuestosDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/presupuestos/${id}`).then((r) => r.json()));
+  imprimirHojas(presupuestosDetalle.map(hojaDePresupuesto));
+}
+
+async function descargarPDFPresupuestosSeleccionados(ids, btn) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} presupuestos.`, "atencion");
+    return;
+  }
+  if (
+    ids.length > CONFIRMAR_LOTE_DESDE &&
+    !(await confirmar({
+      titulo: "Descargar PDF en lote",
+      cuerpo: `Se van a generar ${ids.length} archivos PDF, uno por presupuesto. Puede tardar varios minutos y el navegador va a pedirte permiso para descargar varios archivos: aceptalo para que se descarguen todos. ¿Continuar?`,
+      aceptar: "Descargar"
+    }))
+  )
+    return;
+
+  const presupuestosDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/presupuestos/${id}`).then((r) => r.json()));
+  const items = presupuestosDetalle.map((p) => ({
+    html: hojaDePresupuesto(p),
+    nombreArchivo: nombreArchivoPdf("presupuesto", p.id)
+  }));
+  await descargarPDFsEnLote(items, btn);
+}
+
 function renderPresupuestos(lista) {
   const body = document.getElementById("presupuestosBody");
+  selPresupuestos.sincronizar(lista);
 
   // Los totales acompañan al filtro, igual que en Ventas y Compras.
   const sumar = (fn) => lista.filter(fn).reduce((acc, p) => acc + p.total, 0);
@@ -2235,10 +3835,10 @@ function renderPresupuestos(lista) {
 
   if (lista.length === 0) {
     if (filtrosPresupuestos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(8);
+      body.innerHTML = filaVaciaFiltrada(selPresupuestos.colspan(8));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosPresupuestos.limpiar());
     } else {
-      body.innerHTML = filaVacia(8, "Todavía no hay presupuestos cargados.", { accionTexto: "+ Nuevo presupuesto", accionId: "btnNuevoPresupuesto" });
+      body.innerHTML = filaVacia(selPresupuestos.colspan(8), "Todavía no hay presupuestos cargados.", { accionTexto: "+ Nuevo presupuesto", accionId: "btnNuevoPresupuesto" });
     }
     return;
   }
@@ -2247,6 +3847,7 @@ function renderPresupuestos(lista) {
     .map(
       (p) => `
     <tr class="fila-clickeable" data-id="${p.id}">
+      ${selPresupuestos.celda(p.id)}
       <td data-label="N°" class="mono">#${p.id}</td>
       <td data-label="Cliente">${p.cliente}</td>
       <td data-label="Productos" class="celda-wrap">${p.items_resumen || "—"}</td>
@@ -2267,7 +3868,7 @@ function renderPresupuestos(lista) {
 
   body.querySelectorAll("tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, a")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaPresupuesto(Number(tr.dataset.id));
     });
   });
@@ -2286,7 +3887,7 @@ function renderPresupuestos(lista) {
 }
 
 function filtrarPresupuestos() {
-  renderPresupuestos(ordenPresupuestos.aplicar(filtrosPresupuestos.aplicar(presupuestos)));
+  renderPresupuestos(filtrosPresupuestos.aplicar(presupuestos));
 }
 
 const filtrosPresupuestos = crearFiltros(
@@ -2314,16 +3915,59 @@ const filtrosPresupuestos = crearFiltros(
   ],
   filtrarPresupuestos
 );
-const ordenPresupuestos = crearOrden("presupuestosBody", filtrarPresupuestos);
+
+// Mismas columnas de datos que muestra la tabla. Números crudos (nunca
+// money()) — ver el comentario junto a descargarCSV.
+const COLUMNAS_CSV_PRESUPUESTOS = [
+  { titulo: "N°", valor: (p) => p.id },
+  { titulo: "Cliente", valor: (p) => p.cliente },
+  { titulo: "Productos", valor: (p) => p.items_resumen },
+  { titulo: "Fecha", valor: (p) => p.fecha },
+  { titulo: "Vence", valor: (p) => p.vencimiento },
+  { titulo: "Total", valor: (p) => p.total },
+  { titulo: "Estado", valor: (p) => PRESUPUESTO_LABEL[p.estado_efectivo] ?? p.estado_efectivo }
+];
+
+function exportarPresupuestosSeleccionados(ids) {
+  const idsSet = new Set(ids);
+  const seleccion = filtrosPresupuestos
+    .aplicar(presupuestos)
+    .filter((p) => idsSet.has(p.id));
+  descargarCSV("nexo-presupuestos-seleccion", COLUMNAS_CSV_PRESUPUESTOS, seleccion);
+}
 
 async function cargarPresupuestos() {
-  tablaCargando("presupuestosBody", 8);
+  tablaCargando("presupuestosBody", selPresupuestos.colspan(8));
   const res = await fetch("/api/presupuestos");
   presupuestos = await res.json();
   filtrarPresupuestos();
 }
 
 /* --- Ficha --- */
+
+// Arma el HTML de una hoja de presupuesto. Extraída del botón de abajo
+// (dentro de abrirFichaPresupuesto) para reusarla también en la
+// impresión/descarga en lote desde el listado — ver crearSeleccion.
+function hojaDePresupuesto(p) {
+  return armarHojaComprobante({
+    rotulo: "Presupuesto",
+    comprobanteNro: `N° ${p.id}`,
+    fecha: p.fecha,
+    // El estado (borrador/enviado/aceptado) NO va: es gestión interna y no
+    // le dice nada a quien recibe el papel.
+    campos: [["Válido hasta:", p.vencimiento]],
+    cliente: {
+      nombre: p.cliente,
+      documento: p.cliente_documento,
+      direccion: p.cliente_direccion,
+      telefono: p.cliente_telefono,
+      email: p.cliente_email
+    },
+    items: p.items,
+    total: p.total,
+    notas: p.notas
+  });
+}
 
 async function abrirFichaPresupuesto(id) {
   presupuestoFichaId = id;
@@ -2410,6 +4054,19 @@ async function abrirFichaPresupuesto(id) {
     });
   }
 
+  // Imprimir se agrega DESPUÉS del if/else y con insertAdjacentHTML, no dentro
+  // de cada rama: las dos reescriben acciones.innerHTML entero, así que un
+  // botón puesto en una sola rama desaparecería en la otra, y ponerlo en el
+  // innerHTML de ambas duplicaría el markup. Un presupuesto convertido también
+  // se puede imprimir: sigue siendo el papel que se le entregó al cliente.
+  acciones.insertAdjacentHTML(
+    "beforeend",
+    '<button type="button" class="btn btn-secundario" id="btnImprimirPresupuesto">Imprimir / PDF</button>'
+  );
+  acciones.querySelector("#btnImprimirPresupuesto").addEventListener("click", () => {
+    imprimirComprobante(hojaDePresupuesto(p));
+  });
+
   document.getElementById("fichaPresupuestoItems").innerHTML = p.items
     .map(
       (i) => `
@@ -2454,6 +4111,16 @@ function abrirModalPresupuesto(presupuesto = null) {
   form.vencimiento.value = presupuesto?.vencimiento ?? "";
   form.notas.value = presupuesto?.notas ?? "";
 
+  poblarSelectListasPrecios("#presupuestoListaPrecio");
+  if (presupuesto?.lista_precio_id) {
+    form.lista_precio_id.value = presupuesto.lista_precio_id;
+  } else if (!presupuesto) {
+    const clienteExistente = clientes.find(
+      (c) => c.nombre.trim().toLowerCase() === (form.cliente.value || "").trim().toLowerCase()
+    );
+    if (clienteExistente?.lista_precio_id) form.lista_precio_id.value = clienteExistente.lista_precio_id;
+  }
+
   presupuestoItemsEl.innerHTML = "";
   if (presupuesto) {
     for (const item of presupuesto.items) {
@@ -2486,6 +4153,19 @@ document.getElementById("modalPresupuestoClose").addEventListener("click", () =>
 modalPresupuesto.addEventListener("click", (e) => {
   if (e.target === modalPresupuesto) modalPresupuesto.hidden = true;
 });
+document.getElementById("presupuestoListaPrecio").addEventListener("change", () => {
+  reproponerPreciosPorLista(presupuestoItemsEl, productos);
+});
+document.getElementById("formPresupuesto").cliente.addEventListener("change", (e) => {
+  const clienteExistente = clientes.find(
+    (c) => c.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
+  );
+  if (clienteExistente?.lista_precio_id && !presupuestoEditandoId) {
+    const select = document.getElementById("presupuestoListaPrecio");
+    select.value = clienteExistente.lista_precio_id;
+    reproponerPreciosPorLista(presupuestoItemsEl, productos);
+  }
+});
 
 document.getElementById("formPresupuesto").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2508,7 +4188,8 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
     fecha: form.fecha.value,
     vencimiento: form.vencimiento.value || null,
     notas: form.notas.value || null,
-    items
+    items,
+    lista_precio_id: form.lista_precio_id.value || null
   });
 
   const res = await fetch(
@@ -2532,16 +4213,19 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
 
 /* ---------- Ventas ---------- */
 
+const selVentas = crearSeleccion("ventasBody");
+
 function renderVentas(lista) {
   const body = document.getElementById("ventasBody");
   body.innerHTML = "";
+  selVentas.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosVentas.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(8);
+      body.innerHTML = filaVaciaFiltrada(selVentas.colspan(8));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosVentas.limpiar());
     } else {
-      body.innerHTML = filaVacia(8, "Todavía no hay ventas registradas.", { accionTexto: "+ Nueva venta", accionId: "btnNuevaVenta" });
+      body.innerHTML = filaVacia(selVentas.colspan(8), "Todavía no hay ventas registradas.", { accionTexto: "+ Nueva venta", accionId: "btnNuevaVenta" });
     }
     return;
   }
@@ -2561,23 +4245,24 @@ function renderVentas(lista) {
     // devoluciones asociadas (el backend lo vuelve a validar, esto es
     // nada más para no invitar a un click que ya sabemos que va a fallar).
     const accionAnular =
-      !v.facturada && !v.tiene_devolucion && v.estado_cobro === "pendiente"
+      !v.facturada && !v.tiene_devolucion && v.estado_cobro === "pendiente" && esAdmin()
         ? `<button type="button" class="btn-icon-danger btn-anular-venta" data-id="${v.id}" title="Anular venta" aria-label="Anular venta">${ICONO_TACHO}</button>`
         : "";
 
     tr.innerHTML = `
+      ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente">${v.cliente}</td>
       <td data-label="Productos" class="celda-wrap">${v.items_resumen || "—"}</td>
       <td data-label="Fecha">${v.fecha}</td>
-      <td data-label="Costo" class="align-right mono">${money(v.costo_total)}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono">${money(v.total)}</td>
-      <td data-label="Ganancia" class="align-right mono">${money(v.margen)}</td>
+      <td data-label="Ganancia" class="align-right mono col-admin">${money(v.margen)}</td>
       <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[v.estado_cobro]}">${ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
       <td data-label=""><div class="fila-acciones">${accionFactura} ${accionCobro} ${accionAnular}</div></td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, a")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaVenta(v.id);
     });
     body.appendChild(tr);
@@ -2615,17 +4300,59 @@ function renderVentas(lista) {
 // Los totales acompañan al filtro: si mirás julio, el strip muestra julio.
 // Un resumen que se quedara con el acumulado histórico mientras la tabla
 // muestra un mes se prestaría a leer mal el número.
+// Cada vista compone filtros y orden a su manera (algunas descartan anuladas
+// primero, otras invierten el orden de aplicación), así que el botón de
+// exportar de cada una recalcula con SU MISMA expresión en vez de leer una
+// lista guardada: un caché podría quedar desincronizado y exportar algo
+// distinto de lo que se ve en pantalla, que es el único bug que esta función
+// no se puede permitir.
+function listaVentasVisible() {
+  const activas = ventas.filter((v) => v.estado !== "anulada");
+  return filtrosVentas.aplicar(activas);
+}
+
+// Las columnas se declaran acá y no se derivan del <thead>: el CSV tiene
+// que llevar el valor crudo, no el HTML de la celda con sus badges y
+// botones.
+const COLUMNAS_CSV_VENTAS = [
+  { titulo: "N°", valor: (v) => v.id },
+  { titulo: "Fecha", valor: (v) => v.fecha },
+  { titulo: "Cliente", valor: (v) => v.cliente },
+  { titulo: "Productos", valor: (v) => v.items_resumen },
+  { titulo: "Costo", valor: (v) => v.costo_total, admin: true },
+  { titulo: "Total", valor: (v) => v.total },
+  { titulo: "Devuelto", valor: (v) => v.devuelto },
+  { titulo: "Neto", valor: (v) => v.neto },
+  { titulo: "Ganancia", valor: (v) => v.margen, admin: true },
+  { titulo: "Cobro", valor: (v) => ESTADO_COBRO_LABEL[v.estado_cobro] ?? v.estado_cobro },
+  { titulo: "Facturada", valor: (v) => (v.facturada ? "sí" : "no") }
+];
+
+document.getElementById("btnExportarVentas").addEventListener("click", () => {
+  descargarCSV("nexo-ventas", columnasVisibles(COLUMNAS_CSV_VENTAS), listaVentasVisible());
+});
+
+montarBarraSeleccion(selVentas, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-ventas-seleccion", columnasVisibles(COLUMNAS_CSV_VENTAS), listaVentasVisible().filter((v) => idsSet.has(v.id)));
+    }
+  }
+]);
+
 function filtrarVentas() {
   const activas = ventas.filter((v) => v.estado !== "anulada");
   const lista = filtrosVentas.aplicar(activas);
 
   const total = lista.reduce((acc, v) => acc + v.total, 0);
-  const costo = lista.reduce((acc, v) => acc + v.costo_total, 0);
+  const costo = lista.reduce((acc, v) => acc + (v.costo_total ?? 0), 0);
   document.getElementById("ventasTotalStrip").textContent = money(total);
   document.getElementById("ventasCostoStrip").textContent = money(costo);
   document.getElementById("ventasGananciaStrip").textContent = money(total - costo);
 
-  renderVentas(ordenVentas.aplicar(lista));
+  renderVentas(lista);
 }
 
 const filtrosVentas = crearFiltros(
@@ -2651,13 +4378,12 @@ const filtrosVentas = crearFiltros(
   ],
   filtrarVentas
 );
-const ordenVentas = crearOrden("ventasBody", filtrarVentas);
 
 // `ventas` guarda todo lo que devuelve la API (incluidas las anuladas)
 // porque la papelera se arma sobre ese mismo array; la tabla de Ventas
 // filtra al renderizar.
 async function cargarVentas() {
-  tablaCargando("ventasBody", 8);
+  tablaCargando("ventasBody", selVentas.colspan(8));
   const res = await fetch("/api/ventas");
   ventas = await res.json();
   filtrarVentas();
@@ -2680,14 +4406,100 @@ ventaItemsEl.addEventListener("item-change", actualizarTotalVenta);
 // Modo alta y modo edición comparten el mismo modal: sin venta se arranca
 // en blanco, con venta se precargan cliente/fecha/items y el submit más
 // abajo decide POST o PUT según `ventaEditandoId`.
+/* ---------- Condición de pago y vencimiento (venta y compra) ---------- */
+
+// El input de fecha solo tiene sentido con la condición "manual": para los
+// plazos redondos la fecha la calcula el backend sobre la fecha de la
+// operación, y mostrarla acá invitaría a editarla sin que eso cambie nada.
+function sincronizarVencimiento(selectId, wrapId) {
+  const select = document.getElementById(selectId);
+  document.getElementById(wrapId).hidden = select.value !== "manual";
+}
+
+// Deja el par condición/vencimiento como lo tenía la operación que se está
+// editando, o en "contado" para una nueva.
+function poblarCondicionPago(form, operacion, selectId, wrapId) {
+  form.condicion_pago.value = operacion?.condicion_pago ?? "contado";
+  form.fecha_vencimiento.value = operacion?.condicion_pago === "manual" ? operacion.fecha_vencimiento ?? "" : "";
+  sincronizarVencimiento(selectId, wrapId);
+}
+
+// Lo que viaja al backend: la fecha suelta solo se manda con "manual", para
+// no ensuciar el request con un valor que el backend va a ignorar igual.
+function datosCondicionPago(form) {
+  return {
+    condicion_pago: form.condicion_pago.value,
+    fecha_vencimiento: form.condicion_pago.value === "manual" ? form.fecha_vencimiento.value || null : null
+  };
+}
+
+// Select de condición de pago para la FICHA de cliente/proveedor (el plazo
+// habitual de esa entidad, no el de una operación puntual): sin "Fecha
+// puntual" (un plazo habitual reutilizable no puede ser una fecha suelta de
+// una venta concreta) y con una opción explícita "Sin definir" = NULL, mismo
+// criterio que "Usar la predeterminada" en poblarSelectListasPrecios.
+function poblarSelectCondicionPago(selector) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  select.innerHTML = `
+    <option value="">Sin definir</option>
+    <option value="contado">Contado</option>
+    <option value="15">15 días</option>
+    <option value="30">30 días</option>
+    <option value="60">60 días</option>
+  `;
+}
+
+// Marca si el usuario ya tocó el select de condición de pago a mano para
+// esta venta puntual — mientras siga en false, elegir un cliente con plazo
+// habitual puede proponerlo solo; una vez en true (el usuario lo cambió),
+// elegir otro cliente ya no se lo pisa (a diferencia de la lista de precios,
+// acá "contado" es a la vez el valor inicial y una elección válida del
+// usuario, así que mirar el valor actual no alcanza para distinguir los dos
+// casos — hace falta esta bandera aparte).
+let ventaCondicionTocada = false;
+
 function abrirModalVenta(venta = null) {
   ventaEditandoId = venta?.id ?? null;
+  ventaCondicionTocada = false;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
   document.getElementById("formVentaSubmit").textContent = venta ? "Guardar cambios" : "Registrar venta";
 
   const form = document.getElementById("formVenta");
   form.cliente.value = venta?.cliente ?? "";
   form.fecha.value = venta?.fecha ?? hoyISO();
+
+  poblarSelectListasPrecios("#ventaListaPrecio");
+  // Al editar, respeta la lista con la que se hizo la venta; al crear, si
+  // el cliente tipeado ya existe y tiene una lista habitual, se propone
+  // sola (CLAUDE.md §18) — se puede cambiar igual antes de guardar.
+  if (venta?.lista_precio_id) {
+    form.lista_precio_id.value = venta.lista_precio_id;
+  } else if (!venta) {
+    const clienteExistente = clientes.find(
+      (c) => c.nombre.trim().toLowerCase() === (form.cliente.value || "").trim().toLowerCase()
+    );
+    if (clienteExistente?.lista_precio_id) form.lista_precio_id.value = clienteExistente.lista_precio_id;
+  }
+
+  // Depósito de esta venta (CLAUDE.md §19): al editar respeta el que ya
+  // tenía; al crear arranca en el predeterminado (poblarSelectDepositos ya
+  // hace eso solo).
+  poblarSelectDepositos("#ventaDeposito");
+  if (venta?.deposito_id) form.deposito_id.value = venta.deposito_id;
+
+  poblarCondicionPago(form, venta, "ventaCondicionPago", "ventaVencimientoWrap");
+  // Mismo criterio que la lista de precios: al crear, si el cliente tipeado
+  // ya existe y tiene un plazo habitual, se propone solo.
+  if (!venta) {
+    const clienteExistente = clientes.find(
+      (c) => c.nombre.trim().toLowerCase() === (form.cliente.value || "").trim().toLowerCase()
+    );
+    if (clienteExistente?.condicion_pago) {
+      form.condicion_pago.value = clienteExistente.condicion_pago;
+      sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
+    }
+  }
 
   ventaItemsEl.innerHTML = "";
   if (venta) {
@@ -2725,6 +4537,34 @@ document.getElementById("modalVentaClose").addEventListener("click", () => {
 modalVenta.addEventListener("click", (e) => {
   if (e.target === modalVenta) modalVenta.hidden = true;
 });
+document.getElementById("ventaListaPrecio").addEventListener("change", () => {
+  reproponerPreciosPorLista(ventaItemsEl, productos);
+});
+document.getElementById("ventaCondicionPago").addEventListener("change", () => {
+  ventaCondicionTocada = true;
+  sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
+});
+// Elegir (o tipear) un cliente que ya existe y tiene lista/condición
+// habitual las propone solas — solo si el usuario todavía no eligió una
+// distinta a mano para esta venta puntual (no se le pisa una elección ya
+// hecha). Los dos campos usan criterios distintos para detectar "ya elegido
+// a mano" porque lista_precio_id arranca vacío (fácil de distinguir) pero
+// condicion_pago arranca en "contado", que es también una elección válida —
+// de ahí la bandera ventaCondicionTocada.
+document.getElementById("formVenta").cliente.addEventListener("change", (e) => {
+  const clienteExistente = clientes.find(
+    (c) => c.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
+  );
+  if (clienteExistente?.lista_precio_id && !ventaEditandoId) {
+    const select = document.getElementById("ventaListaPrecio");
+    select.value = clienteExistente.lista_precio_id;
+    reproponerPreciosPorLista(ventaItemsEl, productos);
+  }
+  if (clienteExistente?.condicion_pago && !ventaEditandoId && !ventaCondicionTocada) {
+    document.getElementById("ventaCondicionPago").value = clienteExistente.condicion_pago;
+    sincronizarVencimiento("ventaCondicionPago", "ventaVencimientoWrap");
+  }
+});
 
 document.getElementById("formVenta").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2758,7 +4598,10 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     cliente: nombreCliente,
     cliente_id: clienteExistente?.id ?? null,
     fecha: form.fecha.value,
-    items
+    items,
+    lista_precio_id: form.lista_precio_id.value || null,
+    deposito_id: form.deposito_id.value || null,
+    ...datosCondicionPago(form)
   });
 
   const res = ventaEditandoId
@@ -2828,7 +4671,7 @@ async function abrirFichaVenta(id) {
           <td data-label="Devuelto" class="align-right mono">${
             i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : "—"
           }</td>
-          <td data-label="Ganancia" class="align-right mono">${money(i.ganancia)}</td>
+          <td data-label="Ganancia" class="align-right mono col-admin">${money(i.ganancia)}</td>
         </tr>`
     )
     .join("");
@@ -3029,7 +4872,7 @@ function filtrarDevoluciones() {
   const activas = devoluciones
     .filter((d) => d.estado !== "anulada")
     .map((d) => ({ ...d, reintegrada_txt: d.reintegrada ? "si" : "no" }));
-  renderDevoluciones(ordenDevoluciones.aplicar(filtrosDevoluciones.aplicar(activas)));
+  renderDevoluciones(filtrosDevoluciones.aplicar(activas));
 }
 
 const filtrosDevoluciones = crearFiltros(
@@ -3052,7 +4895,6 @@ const filtrosDevoluciones = crearFiltros(
   ],
   filtrarDevoluciones
 );
-const ordenDevoluciones = crearOrden("devolucionesBody", filtrarDevoluciones);
 
 async function cargarDevoluciones() {
   tablaCargando("devolucionesBody", 7);
@@ -3099,9 +4941,11 @@ async function abrirFichaDevolucion(id) {
       botones.push(
         `<button type="button" class="btn btn-secundario" id="btnNotaCreditoDevolucion">Emitir nota de crédito</button>`
       );
-      botones.push(
-        `<button type="button" class="btn-icon-danger" id="btnAnularDevolucion" title="Anular devolución" aria-label="Anular devolución">${ICONO_TACHO}</button>`
-      );
+      if (esAdmin()) {
+        botones.push(
+          `<button type="button" class="btn-icon-danger" id="btnAnularDevolucion" title="Anular devolución" aria-label="Anular devolución">${ICONO_TACHO}</button>`
+        );
+      }
     }
   }
   acciones.innerHTML = botones.join(" ");
@@ -3330,16 +5174,19 @@ const ENVIO_LABEL = { pedido: "Pedido", en_camino: "En camino", recibido: "Recib
 const ESTADO_PAGO_CLASE = { pendiente: "status-vencido", parcial: "status-pendiente", pagado: "status-cobrado" };
 const ESTADO_PAGO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", pagado: "Pagado" };
 
+const selCompras = crearSeleccion("comprasBody");
+
 function renderCompras(lista) {
   const body = document.getElementById("comprasBody");
   body.innerHTML = "";
+  selCompras.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosCompras.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(7);
+      body.innerHTML = filaVaciaFiltrada(selCompras.colspan(7));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosCompras.limpiar());
     } else {
-      body.innerHTML = filaVacia(7, "Todavía no hay compras registradas.", { accionTexto: "+ Nueva compra", accionId: "btnNuevaCompra" });
+      body.innerHTML = filaVacia(selCompras.colspan(7), "Todavía no hay compras registradas.", { accionTexto: "+ Nueva compra", accionId: "btnNuevaCompra" });
     }
     return;
   }
@@ -3348,7 +5195,7 @@ function renderCompras(lista) {
     const tr = document.createElement("tr");
     tr.className = "fila-clickeable";
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button, select, a")) return;
+      if (e.target.closest("button, select, a, input, label, textarea, .col-sel")) return;
       abrirFichaCompra(c.id);
     });
     const borrador = c.estado === "borrador";
@@ -3366,6 +5213,7 @@ function renderCompras(lista) {
     // efectuar el pedido.
     if (borrador) {
       tr.innerHTML = `
+        ${selCompras.celda(c.id)}
         <td data-label="N°" class="mono">#${c.id}</td>
         <td data-label="Proveedor">${c.proveedor}</td>
         <td data-label="Fecha">${c.fecha}</td>
@@ -3395,6 +5243,7 @@ function renderCompras(lista) {
             .join("")}</select>`;
 
     tr.innerHTML = `
+      ${selCompras.celda(c.id)}
       <td data-label="N°" class="mono">#${c.id}</td>
       <td data-label="Proveedor">${c.proveedor}</td>
       <td data-label="Fecha">${c.fecha}</td>
@@ -3485,7 +5334,7 @@ function filtrarCompras() {
   document.getElementById("comprasPagadoStrip").textContent = money(pagado);
   document.getElementById("comprasDeudaStrip").textContent = money(total - pagado);
 
-  renderCompras(ordenCompras.aplicar(lista));
+  renderCompras(lista);
 }
 
 const filtrosCompras = crearFiltros(
@@ -3528,10 +5377,124 @@ const filtrosCompras = crearFiltros(
   ],
   filtrarCompras
 );
-const ordenCompras = crearOrden("comprasBody", filtrarCompras);
+
+// Mismos criterios que filtrarCompras: descarta anuladas, aplica filtros y
+// orden con la misma expresión — así lo que se exporta coincide con lo que
+// se ve en pantalla.
+function listaComprasVisible() {
+  const activas = compras.filter((c) => c.estado !== "anulada");
+  return filtrosCompras.aplicar(activas);
+}
+
+const COLUMNAS_CSV_COMPRAS = [
+  { titulo: "N°", valor: (c) => c.id },
+  { titulo: "Proveedor", valor: (c) => c.proveedor },
+  { titulo: "Fecha", valor: (c) => c.fecha },
+  { titulo: "Total", valor: (c) => c.total },
+  { titulo: "Pagado", valor: (c) => c.pagado },
+  { titulo: "Estado de pago", valor: (c) => ESTADO_PAGO_LABEL[c.estado_pago] ?? c.estado_pago },
+  { titulo: "Envío", valor: (c) => ENVIO_LABEL[c.estado_envio] ?? c.estado_envio }
+];
+
+montarBarraSeleccion(selCompras, [
+  {
+    etiqueta: "Cambiar estado de envío",
+    onClick: (ids) => abrirModalBulkEstadoEnvio(ids)
+  },
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-compras-seleccion", COLUMNAS_CSV_COMPRAS, listaComprasVisible().filter((c) => idsSet.has(c.id)));
+    }
+  }
+]);
+
+/* ---------- Edición en lote de estado de envío (Compras) ---------- */
+//
+// Mismo criterio que bulkProductosIds: copia propia de los ids, no se
+// relee selCompras.ids al hacer submit.
+let bulkComprasIds = [];
+
+const modalBulkEstadoEnvio = document.getElementById("modalBulkEstadoEnvio");
+const formBulkEstadoEnvio = document.getElementById("formBulkEstadoEnvio");
+const bulkEstadoEnvioResultado = document.getElementById("bulkEstadoEnvioResultado");
+const bulkEstadoEnvioResultadoTitulo = document.getElementById("bulkEstadoEnvioResultadoTitulo");
+const bulkEstadoEnvioResultadoLista = document.getElementById("bulkEstadoEnvioResultadoLista");
+
+function abrirModalBulkEstadoEnvio(ids) {
+  bulkComprasIds = ids;
+  formBulkEstadoEnvio.reset();
+  formBulkEstadoEnvio.estado_envio.innerHTML = Object.entries(ENVIO_LABEL)
+    .map(([valor, texto]) => `<option value="${valor}">${texto}</option>`)
+    .join("");
+  bulkEstadoEnvioResultado.hidden = true;
+  document.getElementById("modalBulkEstadoEnvioConteo").textContent =
+    `${ids.length} compra${ids.length === 1 ? "" : "s"} seleccionada${ids.length === 1 ? "" : "s"}`;
+  document.getElementById("bulkEstadoEnvioSubmit").textContent = `Aplicar a ${ids.length} compra${ids.length === 1 ? "" : "s"}`;
+  modalBulkEstadoEnvio.hidden = false;
+}
+
+document.getElementById("modalBulkEstadoEnvioClose").addEventListener("click", () => {
+  modalBulkEstadoEnvio.hidden = true;
+});
+modalBulkEstadoEnvio.addEventListener("click", (e) => {
+  if (e.target === modalBulkEstadoEnvio) modalBulkEstadoEnvio.hidden = true;
+});
+
+formBulkEstadoEnvio.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const estadoEnvio = e.target.estado_envio.value;
+
+  // Marcar como "recibido" suma stock al depósito y recalcula el costo
+  // promedio ponderado de cada producto — es irreversible por diseño
+  // (una vez recibida, una compra no puede volver atrás). Confirmación
+  // obligatoria, no condicional como en Productos.
+  if (estadoEnvio === "recibido") {
+    const ok = await confirmar({
+      titulo: "Marcar como recibidas",
+      cuerpo: `Vas a marcar ${bulkComprasIds.length} compras como recibidas. Esto suma el stock correspondiente y recalcula el costo de cada producto. No se puede deshacer.`,
+      aceptar: "Marcar como recibidas",
+      destructivo: true
+    });
+    if (!ok) return;
+  }
+
+  const res = await fetch("/api/compras/bulk/estado-envio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: bulkComprasIds, estado_envio: estadoEnvio })
+  });
+  if (!(await manejarError(res, "No se pudo aplicar el cambio de estado en lote."))) return;
+  const resultado = await res.json();
+
+  await Promise.all([cargarCompras(), cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+
+  const huboFallos = mostrarResultadoBulk(resultado, {
+    bloque: bulkEstadoEnvioResultado,
+    titulo: bulkEstadoEnvioResultadoTitulo,
+    lista: bulkEstadoEnvioResultadoLista,
+    etiquetar: (id) => `Compra #${id}`
+  });
+
+  if (huboFallos) {
+    bulkComprasIds = resultado.fallidos.map((f) => f.id);
+    document.getElementById("bulkEstadoEnvioSubmit").textContent =
+      `Reintentar con ${bulkComprasIds.length} compra${bulkComprasIds.length === 1 ? "" : "s"}`;
+  } else {
+    selCompras.limpiar();
+    modalBulkEstadoEnvio.hidden = true;
+  }
+});
 
 async function cargarCompras() {
-  tablaCargando("comprasBody", 7);
+  // Todo el circuito de compras es admin-only en el servidor (se valoriza
+  // al costo por definición — ver permisos.js), y esta función corre en el
+  // boot para cualquier usuario logueado. Sin este corte un empleado recibe
+  // el cuerpo del 403 (`{error: "..."}`) donde se espera un array, y
+  // filtrarCompras()/renderPapelera() explotan tratando de iterarlo.
+  if (!esAdmin()) return;
+  tablaCargando("comprasBody", selCompras.colspan(7));
   const res = await fetch("/api/compras");
   compras = await res.json();
   filtrarCompras();
@@ -3554,8 +5517,12 @@ compraCostoEnvioEl.addEventListener("input", actualizarTotalCompra);
 // Igual que con ventas: el mismo modal sirve para alta y edición. La nota
 // de "se guarda como borrador" solo tiene sentido al crear, así que se
 // oculta al editar (una compra editada nunca cambia de estado).
+// Mismo criterio que ventaCondicionTocada (ver ahí el porqué).
+let compraCondicionTocada = false;
+
 function abrirModalCompra(compra = null) {
   compraEditandoId = compra?.id ?? null;
+  compraCondicionTocada = false;
   document.getElementById("modalCompraTitulo").textContent = compra ? "Editar compra" : "Nueva compra";
   document.getElementById("formCompraSubmit").textContent = compra ? "Guardar cambios" : "Guardar borrador";
   document.getElementById("compraFormNota").hidden = Boolean(compra);
@@ -3564,6 +5531,25 @@ function abrirModalCompra(compra = null) {
   form.proveedor.value = compra?.proveedor ?? "";
   form.fecha.value = compra?.fecha ?? hoyISO();
   compraCostoEnvioEl.value = compra?.costo_envio ?? "";
+
+  // Depósito de esta compra (CLAUDE.md §19): a ese depósito entra la
+  // mercadería cuando se marca recibida. Al editar respeta el que ya
+  // tenía; al crear arranca en el predeterminado.
+  poblarSelectDepositos("#compraDeposito");
+  if (compra?.deposito_id) form.deposito_id.value = compra.deposito_id;
+
+  poblarCondicionPago(form, compra, "compraCondicionPago", "compraVencimientoWrap");
+  // Al crear, si el proveedor tipeado ya existe y tiene un plazo habitual,
+  // se propone solo (mismo criterio que el cliente en Venta).
+  if (!compra) {
+    const proveedorExistente = proveedores.find(
+      (p) => p.nombre.trim().toLowerCase() === (form.proveedor.value || "").trim().toLowerCase()
+    );
+    if (proveedorExistente?.condicion_pago) {
+      form.condicion_pago.value = proveedorExistente.condicion_pago;
+      sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
+    }
+  }
 
   compraItemsEl.innerHTML = "";
   if (compra) {
@@ -3586,6 +5572,22 @@ document.getElementById("btnNuevaCompra").addEventListener("click", () => abrirM
 document.getElementById("btnAgregarItemCompra").addEventListener("click", () => {
   agregarFilaItemCompra(compraItemsEl);
 });
+document.getElementById("compraCondicionPago").addEventListener("change", () => {
+  compraCondicionTocada = true;
+  sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
+});
+// Elegir (o tipear) un proveedor que ya existe y tiene plazo habitual lo
+// propone solo — mismo criterio que el cliente en Venta (no se le pisa una
+// elección ya hecha a mano).
+document.getElementById("formCompra").proveedor.addEventListener("change", (e) => {
+  const proveedorExistente = proveedores.find(
+    (p) => p.nombre.trim().toLowerCase() === e.target.value.trim().toLowerCase()
+  );
+  if (proveedorExistente?.condicion_pago && !compraEditandoId && !compraCondicionTocada) {
+    document.getElementById("compraCondicionPago").value = proveedorExistente.condicion_pago;
+    sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
+  }
+});
 document.getElementById("modalCompraClose").addEventListener("click", () => {
   modalCompra.hidden = true;
 });
@@ -3607,7 +5609,9 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     proveedor: form.proveedor.value,
     fecha: form.fecha.value,
     costo_envio: form.costo_envio.value,
-    items
+    items,
+    deposito_id: form.deposito_id.value || null,
+    ...datosCondicionPago(form)
   });
 
   const res = compraEditandoId
@@ -3832,7 +5836,7 @@ function filtrarDevolucionesProveedor() {
     .filter((d) => d.estado !== "anulada")
     .map((d) => ({ ...d, reintegrada_txt: d.reintegrada ? "si" : "no" }));
   renderDevolucionesProveedor(
-    ordenDevolucionesProveedor.aplicar(filtrosDevolucionesProveedor.aplicar(activas))
+    filtrosDevolucionesProveedor.aplicar(activas)
   );
 }
 
@@ -3856,9 +5860,11 @@ const filtrosDevolucionesProveedor = crearFiltros(
   ],
   filtrarDevolucionesProveedor
 );
-const ordenDevolucionesProveedor = crearOrden("devolucionesProveedorBody", filtrarDevolucionesProveedor);
 
 async function cargarDevolucionesProveedor() {
+  // Mismo motivo que cargarCompras(): es el reverso de una compra, se
+  // valoriza al costo, admin-only en el servidor, y corre en el boot.
+  if (!esAdmin()) return;
   tablaCargando("devolucionesProveedorBody", 7);
   const res = await fetch("/api/devoluciones-proveedor");
   devolucionesProveedor = await res.json();
@@ -4123,16 +6129,19 @@ let clientes = [];
 let clienteEditandoId = null;
 let clienteFichaId = null;
 
+const selClientes = crearSeleccion("clientesBody");
+
 function renderClientes(lista) {
   const body = document.getElementById("clientesBody");
   body.innerHTML = "";
+  selClientes.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosClientes.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(5);
+      body.innerHTML = filaVaciaFiltrada(selClientes.colspan(5));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosClientes.limpiar());
     } else {
-      body.innerHTML = filaVacia(5, "Todavía no hay clientes cargados.", { accionTexto: "+ Nuevo cliente", accionId: "btnNuevoCliente" });
+      body.innerHTML = filaVacia(selClientes.colspan(5), "Todavía no hay clientes cargados.", { accionTexto: "+ Nuevo cliente", accionId: "btnNuevoCliente" });
     }
     return;
   }
@@ -4142,6 +6151,7 @@ function renderClientes(lista) {
     tr.className = "fila-clickeable";
     const contacto = [c.telefono, c.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
+      ${selClientes.celda(c.id)}
       <td data-label="Nombre">${c.nombre}</td>
       <td data-label="Contacto">${contacto}</td>
       <td data-label="Compras" class="align-right mono">${numero(c.cantidad_compras)}</td>
@@ -4150,7 +6160,7 @@ function renderClientes(lista) {
       <td data-label="">${botonEditarFila("btn-editar-cliente", c.id, "cliente")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaCliente(c.id);
     });
     body.appendChild(tr);
@@ -4172,7 +6182,7 @@ function poblarDatalistClientes() {
 }
 
 async function cargarClientes() {
-  tablaCargando("clientesBody", 5);
+  tablaCargando("clientesBody", selClientes.colspan(5));
   const res = await fetch("/api/clientes");
   clientes = await res.json();
   filtrarClientes();
@@ -4184,8 +6194,36 @@ function filtrarClientes() {
   const porTexto = clientes.filter((c) =>
     [c.nombre, c.email, c.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  renderClientes(ordenClientes.aplicar(filtrosClientes.aplicar(porTexto)));
+  renderClientes(filtrosClientes.aplicar(porTexto));
 }
+
+// Misma expresión que filtrarClientes (búsqueda + filtros + orden).
+function listaClientesVisible() {
+  const q = document.getElementById("clientesSearch").value.trim().toLowerCase();
+  const porTexto = clientes.filter((c) =>
+    [c.nombre, c.email, c.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  );
+  return filtrosClientes.aplicar(porTexto);
+}
+
+const COLUMNAS_CSV_CLIENTES = [
+  { titulo: "Nombre", valor: (c) => c.nombre },
+  { titulo: "Teléfono", valor: (c) => c.telefono },
+  { titulo: "Email", valor: (c) => c.email },
+  { titulo: "Compras", valor: (c) => c.cantidad_compras },
+  { titulo: "Total gastado", valor: (c) => c.total_gastado },
+  { titulo: "Deuda", valor: (c) => c.deuda }
+];
+
+montarBarraSeleccion(selClientes, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-clientes-seleccion", COLUMNAS_CSV_CLIENTES, listaClientesVisible().filter((c) => idsSet.has(c.id)));
+    }
+  }
+]);
 
 // "Deuda mayor que 0" reemplaza al viejo select de sí/no: el mismo campo
 // ahora sirve para pedir quién debe, quién debe más de cierto monto, o
@@ -4206,7 +6244,6 @@ const filtrosClientes = crearFiltros(
 );
 
 document.getElementById("clientesSearch").addEventListener("input", filtrarClientes);
-const ordenClientes = crearOrden("clientesBody", filtrarClientes);
 
 async function abrirFichaCliente(id) {
   clienteFichaId = id;
@@ -4263,6 +6300,10 @@ function abrirModalCliente(cliente = null) {
   form.direccion.value = cliente?.direccion ?? "";
   form.documento.value = cliente?.documento ?? "";
   form.notas.value = cliente?.notas ?? "";
+  poblarSelectListasPrecios('#formCliente [name="lista_precio_id"]', { conPredeterminada: true });
+  form.lista_precio_id.value = cliente?.lista_precio_id ?? "";
+  poblarSelectCondicionPago('#formCliente [name="condicion_pago"]');
+  form.condicion_pago.value = cliente?.condicion_pago ?? "";
   modalCliente.hidden = false;
 }
 
@@ -4288,7 +6329,9 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
     telefono: form.telefono.value || null,
     direccion: form.direccion.value || null,
     documento: form.documento.value || null,
-    notas: form.notas.value || null
+    notas: form.notas.value || null,
+    lista_precio_id: form.lista_precio_id.value || null,
+    condicion_pago: form.condicion_pago.value || null
   };
 
   const res = await fetch(
@@ -4318,16 +6361,19 @@ let proveedores = [];
 let proveedorEditandoId = null;
 let proveedorFichaId = null;
 
+const selProveedores = crearSeleccion("proveedoresBody");
+
 function renderProveedores(lista) {
   const body = document.getElementById("proveedoresBody");
   body.innerHTML = "";
+  selProveedores.sincronizar(lista);
 
   if (lista.length === 0) {
     if (filtrosProveedores.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
+      body.innerHTML = filaVaciaFiltrada(selProveedores.colspan(6));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProveedores.limpiar());
     } else {
-      body.innerHTML = filaVacia(6, "Todavía no hay proveedores cargados.", { accionTexto: "+ Nuevo proveedor", accionId: "btnNuevoProveedor" });
+      body.innerHTML = filaVacia(selProveedores.colspan(6), "Todavía no hay proveedores cargados.", { accionTexto: "+ Nuevo proveedor", accionId: "btnNuevoProveedor" });
     }
     return;
   }
@@ -4337,6 +6383,7 @@ function renderProveedores(lista) {
     tr.className = "fila-clickeable";
     const contacto = [p.telefono, p.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
+      ${selProveedores.celda(p.id)}
       <td data-label="Nombre">${p.nombre}</td>
       <td data-label="Contacto">${contacto}</td>
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
@@ -4345,7 +6392,7 @@ function renderProveedores(lista) {
       <td data-label="">${botonEditarFila("btn-editar-proveedor", p.id, "proveedor")}</td>
     `;
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button")) return;
+      if (e.target.closest("button, a, input, label, select, textarea, .col-sel")) return;
       abrirFichaProveedor(p.id);
     });
     body.appendChild(tr);
@@ -4359,7 +6406,7 @@ function renderProveedores(lista) {
 }
 
 async function cargarProveedores() {
-  tablaCargando("proveedoresBody", 6);
+  tablaCargando("proveedoresBody", selProveedores.colspan(6));
   const res = await fetch("/api/proveedores");
   proveedores = await res.json();
   filtrarProveedores();
@@ -4370,8 +6417,36 @@ function filtrarProveedores() {
   const porTexto = proveedores.filter((p) =>
     [p.nombre, p.email, p.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
-  renderProveedores(ordenProveedores.aplicar(filtrosProveedores.aplicar(porTexto)));
+  renderProveedores(filtrosProveedores.aplicar(porTexto));
 }
+
+// Misma expresión que filtrarProveedores.
+function listaProveedoresVisible() {
+  const q = document.getElementById("proveedoresSearch").value.trim().toLowerCase();
+  const porTexto = proveedores.filter((p) =>
+    [p.nombre, p.email, p.telefono].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  );
+  return filtrosProveedores.aplicar(porTexto);
+}
+
+const COLUMNAS_CSV_PROVEEDORES = [
+  { titulo: "Nombre", valor: (p) => p.nombre },
+  { titulo: "Teléfono", valor: (p) => p.telefono },
+  { titulo: "Email", valor: (p) => p.email },
+  { titulo: "Compras", valor: (p) => p.cantidad_compras },
+  { titulo: "Total comprado", valor: (p) => p.total_comprado },
+  { titulo: "Deuda", valor: (p) => p.deuda }
+];
+
+montarBarraSeleccion(selProveedores, [
+  {
+    etiqueta: "Exportar CSV",
+    onClick: (ids) => {
+      const idsSet = new Set(ids);
+      descargarCSV("nexo-proveedores-seleccion", COLUMNAS_CSV_PROVEEDORES, listaProveedoresVisible().filter((p) => idsSet.has(p.id)));
+    }
+  }
+]);
 
 const filtrosProveedores = crearFiltros(
   "filtrosProveedores",
@@ -4389,7 +6464,6 @@ const filtrosProveedores = crearFiltros(
 );
 
 document.getElementById("proveedoresSearch").addEventListener("input", filtrarProveedores);
-const ordenProveedores = crearOrden("proveedoresBody", filtrarProveedores);
 
 async function abrirFichaProveedor(id) {
   proveedorFichaId = id;
@@ -4472,6 +6546,8 @@ function abrirModalProveedor(proveedor = null) {
   form.direccion.value = proveedor?.direccion ?? "";
   form.documento.value = proveedor?.documento ?? "";
   form.notas.value = proveedor?.notas ?? "";
+  poblarSelectCondicionPago('#formProveedor [name="condicion_pago"]');
+  form.condicion_pago.value = proveedor?.condicion_pago ?? "";
   modalProveedor.hidden = false;
 }
 
@@ -4498,7 +6574,8 @@ document.getElementById("formProveedor").addEventListener("submit", async (e) =>
     telefono: form.telefono.value || null,
     direccion: form.direccion.value || null,
     documento: form.documento.value || null,
-    notas: form.notas.value || null
+    notas: form.notas.value || null,
+    condicion_pago: form.condicion_pago.value || null
   };
 
   const res = await fetch(
@@ -4810,10 +6887,30 @@ document.getElementById("formTransferencia").addEventListener("submit", async (e
 
 // Mismo criterio de color que ESTADO_COBRO_CLASE: verde = sin urgencia,
 // amarillo = empieza a atrasarse, rojo = viejo. El backend ya calcula el
-// tramo por operación (server.js, tramoDeAntiguedad) con los mismos
-// cortes — acá solo se traduce a clase/etiqueta visual.
-const CC_TRAMO_CLASE = { al_dia: "status-cobrado", atrasado: "status-pendiente", vencido: "status-vencido" };
-const CC_TRAMO_LABEL = { al_dia: "Al día", atrasado: "Atrasado", vencido: "Vencido" };
+// tramo por operación (server.js, tramoDeVencimiento) midiendo contra el
+// vencimiento pactado — acá solo se traduce a clase/etiqueta visual. Los dos
+// tramos más viejos comparten el rojo: ya son deuda vencida, la diferencia
+// de cuánto la da la columna de días.
+const CC_TRAMO_CLASE = {
+  a_vencer: "status-cobrado",
+  vencido_30: "status-pendiente",
+  vencido_60: "status-vencido",
+  vencido_mas: "status-vencido"
+};
+const CC_TRAMO_LABEL = {
+  a_vencer: "A vencer",
+  vencido_30: "Vencido 1-30",
+  vencido_60: "Vencido 31-60",
+  vencido_mas: "Vencido +60"
+};
+
+// "Vence en 5 días" / "Vencido hace 5 días" / "Vence hoy", según el signo.
+// `dias` viene del backend como distancia desde el vencimiento hasta hoy.
+function ccTextoDias(dias) {
+  if (dias === null) return "A favor";
+  if (dias === 0) return "Vence hoy";
+  return dias < 0 ? `Vence en ${numero(-dias)} días` : `Vencido hace ${numero(dias)} días`;
+}
 
 // La operación "más vieja" tiene que ser la deuda más vieja, no
 // simplemente operaciones[0]: si una entidad tiene una operación con
@@ -4849,8 +6946,8 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
       <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${e.nombre}</button></td>
       <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
       <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
-      <td data-label="Más vieja">${masVieja.fecha}</td>
-      <td data-label="Antigüedad"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
+      <td data-label="Vence">${masVieja.vencimiento}</td>
+      <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
       <td data-label="" class="cc-chevron">▸</td>
     `;
 
@@ -4866,8 +6963,9 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
                 (o) => `
               <tr>
                 <td data-label="Fecha">${o.fecha}</td>
+                <td data-label="Vence">${o.vencimiento}</td>
                 <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
-                <td data-label="Antigüedad">${o.dias !== null ? `${numero(o.dias)} días` : "A favor"}</td>
+                <td data-label="Estado">${ccTextoDias(o.dias)}</td>
                 <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
               </tr>`
               )
@@ -4915,7 +7013,7 @@ function renderCuentasCorrientes(datos) {
 
   renderCcTabla(
     "ccCobrarBody",
-    ordenCcCobrar.aplicar(filtrosCcCobrar.aplicar(por_cobrar)),
+    filtrosCcCobrar.aplicar(por_cobrar),
     filtrosCcCobrar,
     {
       tipoLabel: "Cliente",
@@ -4927,7 +7025,7 @@ function renderCuentasCorrientes(datos) {
   );
   renderCcTabla(
     "ccPagarBody",
-    ordenCcPagar.aplicar(filtrosCcPagar.aplicar(por_pagar)),
+    filtrosCcPagar.aplicar(por_pagar),
     filtrosCcPagar,
     {
       tipoLabel: "Proveedor",
@@ -4951,22 +7049,20 @@ const filtrosCcCobrar = crearFiltros(
   [
     { clave: "nombre", etiqueta: "Cliente", tipo: "texto" },
     { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
-    { clave: "dias_max", etiqueta: "Antigüedad (días)", tipo: "numero" }
+    { clave: "dias_max", etiqueta: "Días vencido", tipo: "numero" }
   ],
   filtrarCcCobrar
 );
-const ordenCcCobrar = crearOrden("ccCobrarBody", filtrarCcCobrar);
 
 const filtrosCcPagar = crearFiltros(
   "filtrosCcPagar",
   [
     { clave: "nombre", etiqueta: "Proveedor", tipo: "texto" },
     { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
-    { clave: "dias_max", etiqueta: "Antigüedad (días)", tipo: "numero" }
+    { clave: "dias_max", etiqueta: "Días vencido", tipo: "numero" }
   ],
   filtrarCcPagar
 );
-const ordenCcPagar = crearOrden("ccPagarBody", filtrarCcPagar);
 
 // Guarda la última respuesta cruda del endpoint para que los filtros y el
 // orden (que solo tocan una de las dos tablas) puedan re-renderizar sin
@@ -4986,6 +7082,37 @@ async function cargarCuentasCorrientes() {
   ccUltimaRespuesta = datos;
   renderCuentasCorrientes(datos);
 }
+
+// Cuentas corrientes tiene dos tablas independientes (a cobrar y a pagar), así
+// que lleva un botón por panel y no uno por vista. Cada lista es plana: las
+// filas expandibles (.cc-detalle) son un detalle del render, no de los datos.
+const COLUMNAS_CSV_CC = (tipoLabel) => [
+  { titulo: tipoLabel, valor: (e) => e.nombre },
+  { titulo: "Teléfono", valor: (e) => e.telefono },
+  { titulo: "Email", valor: (e) => e.email },
+  { titulo: "Saldo", valor: (e) => e.saldo },
+  { titulo: "Operaciones pendientes", valor: (e) => e.operaciones?.filter((o) => o.pendiente > 0).length ?? 0 },
+  // La operación pendiente que vence primero: las operaciones vienen
+  // ordenadas por vencimiento ascendente desde el backend.
+  { titulo: "Vence", valor: (e) => e.operaciones?.find((o) => o.pendiente > 0)?.vencimiento ?? "" },
+  { titulo: "Días vencido", valor: (e) => e.dias_max }
+];
+
+document.getElementById("btnExportarCcCobrar").addEventListener("click", () => {
+  descargarCSV(
+    "nexo-cuentas-por-cobrar",
+    COLUMNAS_CSV_CC("Cliente"),
+    filtrosCcCobrar.aplicar(ccUltimaRespuesta?.por_cobrar ?? [])
+  );
+});
+
+document.getElementById("btnExportarCcPagar").addEventListener("click", () => {
+  descargarCSV(
+    "nexo-cuentas-por-pagar",
+    COLUMNAS_CSV_CC("Proveedor"),
+    filtrosCcPagar.aplicar(ccUltimaRespuesta?.por_pagar ?? [])
+  );
+});
 
 /* ---------- Gastos ---------- */
 
@@ -5043,7 +7170,11 @@ function renderGastos(lista) {
       <td data-label="Importe" class="align-right mono">${money(g.importe)}</td>
       <td data-label=""><div class="fila-acciones">
         ${botonEditarFila("btn-editar-gasto", g.id, "gasto")}
-        <button type="button" class="btn-icon-danger btn-anular-gasto" data-id="${g.id}" title="Anular gasto" aria-label="Anular gasto">${ICONO_TACHO}</button>
+        ${
+          esAdmin()
+            ? `<button type="button" class="btn-icon-danger btn-anular-gasto" data-id="${g.id}" title="Anular gasto" aria-label="Anular gasto">${ICONO_TACHO}</button>`
+            : ""
+        }
       </div></td>
     </tr>`
     )
@@ -5073,8 +7204,31 @@ function renderGastos(lista) {
 
 function filtrarGastos() {
   const activos = gastos.filter((g) => g.estado === "activo");
-  renderGastos(ordenGastos.aplicar(filtrosGastos.aplicar(activos)));
+  renderGastos(filtrosGastos.aplicar(activos));
 }
+
+// Misma composición que filtrarGastos, para que el CSV traiga exactamente las
+// filas que muestra la tabla.
+function listaGastosVisible() {
+  const activos = gastos.filter((g) => g.estado === "activo");
+  return filtrosGastos.aplicar(activos);
+}
+
+const COLUMNAS_CSV_GASTOS = [
+  { titulo: "N°", valor: (g) => g.id },
+  { titulo: "Fecha", valor: (g) => g.fecha },
+  { titulo: "Categoría", valor: (g) => g.categoria },
+  { titulo: "Tipo", valor: (g) => TIPO_GASTO_LABEL[g.tipo] ?? g.tipo },
+  { titulo: "Descripción", valor: (g) => g.descripcion },
+  { titulo: "Proveedor", valor: (g) => g.proveedor },
+  { titulo: "Cuenta", valor: (g) => g.cuenta },
+  { titulo: "Comprobante", valor: (g) => g.comprobante },
+  { titulo: "Importe", valor: (g) => g.importe }
+];
+
+document.getElementById("btnExportarGastos").addEventListener("click", () => {
+  descargarCSV("nexo-gastos", COLUMNAS_CSV_GASTOS, listaGastosVisible());
+});
 
 const filtrosGastos = crearFiltros(
   "filtrosGastos",
@@ -5099,7 +7253,6 @@ const filtrosGastos = crearFiltros(
   ],
   filtrarGastos
 );
-const ordenGastos = crearOrden("gastosBody", filtrarGastos);
 
 async function cargarGastos() {
   tablaCargando("gastosBody", 7);
@@ -5875,7 +8028,10 @@ const AUDITORIA_ACCION_LABEL = {
   anular: "Anuló",
   restaurar: "Restauró",
   cambiar_estado: "Actualizó",
-  confirmar: "Confirmó"
+  confirmar: "Confirmó",
+  login: "Inició sesión",
+  logout: "Cerró sesión",
+  login_fallido: "Intento de inicio de sesión fallido"
 };
 const AUDITORIA_ENTIDAD_LABEL = {
   venta: "Venta",
@@ -5978,10 +8134,7 @@ const filtrosAuditoria = crearFiltros(
     { clave: "detalle", etiqueta: "Detalle", tipo: "texto" },
     { clave: "usuario_nombre", etiqueta: "Usuario", tipo: "texto" }
   ],
-  () => renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
-);
-const ordenAuditoria = crearOrden("auditoriaBody", () =>
-  renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)))
+  () => renderAuditoria(filtrosAuditoria.aplicar(auditoriaCache))
 );
 
 // Panel "Movimientos contables": derivado, sin tabla ni endpoint propio
@@ -6098,7 +8251,7 @@ async function cargarAuditoria() {
   if (stockExtra) movimientosStockCache = stockExtra;
   if (cajaExtra) movimientosCajaCache = cajaExtra;
 
-  renderAuditoria(ordenAuditoria.aplicar(filtrosAuditoria.aplicar(auditoriaCache)));
+  renderAuditoria(filtrosAuditoria.aplicar(auditoriaCache));
 
   auditoriaMovCache = armarAuditoriaMovimientos();
   renderAuditoriaMovimientos(filtrosAuditoriaMov.aplicar(auditoriaMovCache));
@@ -6373,13 +8526,80 @@ function renderPapelera() {
   });
 }
 
+/* ---------- Configuración (datos del negocio) ---------- */
+
+// El engranaje abre Configuración, que desde esta etapa tiene contenido real:
+// los datos que encabezan los comprobantes impresos. El círculo de perfil
+// (#btnPerfil) no lo comparte: abre #modalPerfil, el menú de cuenta.
+//
+// `negocio` queda en memoria para que armarHojaComprobante() no tenga que
+// hacer un fetch cada vez que se imprime — mismo criterio que `cuentasTesoreria`
+// y los demás cachés que llena el boot.
+let negocio = {};
+
+const modalConfiguracion = document.getElementById("modalConfiguracion");
+const formNegocio = document.getElementById("formNegocio");
+
+function pintarFormNegocio() {
+  for (const campo of ["nombre", "documento", "condicion_iva", "direccion", "telefono", "email", "pie_comprobante"]) {
+    if (formNegocio[campo]) formNegocio[campo].value = negocio[campo] ?? "";
+  }
+  // Gating por rol: es UI, no seguridad — el servidor responde 403 igual si un
+  // empleado llama al endpoint directo (mismo criterio que la vista Usuarios).
+  const esAdmin = document.documentElement.dataset.rol === "admin";
+  document.getElementById("negocioSoloLectura").hidden = esAdmin;
+  for (const control of formNegocio.querySelectorAll("input, textarea, button")) {
+    control.disabled = !esAdmin;
+  }
+}
+
+async function cargarNegocio() {
+  const res = await fetch("/api/negocio");
+  if (!res.ok) return;
+  negocio = await res.json();
+  pintarFormNegocio();
+}
+
+formNegocio.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const datos = Object.fromEntries(new FormData(formNegocio).entries());
+  if (!datos.nombre?.trim()) {
+    avisar("El negocio necesita un nombre.", "atencion");
+    return;
+  }
+  const res = await fetch("/api/negocio", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(datos)
+  });
+  if (!(await manejarError(res, "No se pudieron guardar los datos del negocio."))) return;
+  await cargarNegocio();
+  modalConfiguracion.hidden = true;
+  avisar("Datos del negocio actualizados.", "ok");
+});
+
+document.getElementById("btnConfiguracion").addEventListener("click", () => {
+  // Se repinta al abrir: así el formulario nunca muestra un valor viejo si el
+  // usuario editó, cerró sin guardar y volvió a abrir.
+  pintarFormNegocio();
+  modalConfiguracion.hidden = false;
+});
+document.getElementById("modalConfiguracionClose").addEventListener("click", () => {
+  modalConfiguracion.hidden = true;
+});
+modalConfiguracion.addEventListener("click", (e) => {
+  if (e.target === modalConfiguracion) modalConfiguracion.hidden = true;
+});
+
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último
 // porque su tabla de últimos movimientos se arma con los cachés de
 // ventas, compras y gastos ya cargados. Cuentas corrientes y el reporte
 // de stock no dependen de ningún caché del frontend (traen su propio
 // fetch), así que entran en el mismo último grupo que Resumen.
-Promise.all([cargarClientes(), cargarProveedores(), cargarCaja()])
+// cargarNegocio va en la primera ola: no depende de nada y la impresión de
+// comprobantes necesita el membrete listo antes del primer click en Imprimir.
+Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), cargarNegocio()])
   .then(() => Promise.all([cargarGastos(), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
@@ -6407,22 +8627,6 @@ btnTema.addEventListener("click", () => {
     // Sin storage disponible, el tema sigue cambiado para esta sesión,
     // solo no se recuerda la próxima vez.
   }
-});
-
-/* ---------- Configuración (todavía sin preferencias reales) ---------- */
-
-// El engranaje sigue abriendo el modal vacío de Configuración. El
-// círculo de perfil (#btnPerfil) dejó de compartirlo: desde la etapa de
-// usuarios abre #modalPerfil, con el menú de cuenta real (ver más abajo).
-const modalConfiguracion = document.getElementById("modalConfiguracion");
-document.getElementById("btnConfiguracion").addEventListener("click", () => {
-  modalConfiguracion.hidden = false;
-});
-document.getElementById("modalConfiguracionClose").addEventListener("click", () => {
-  modalConfiguracion.hidden = true;
-});
-modalConfiguracion.addEventListener("click", (e) => {
-  if (e.target === modalConfiguracion) modalConfiguracion.hidden = true;
 });
 
 /* ---------- Menú de perfil (mi cuenta) ---------- */
@@ -6558,13 +8762,32 @@ const VISTAS_CONSTRUIDAS = {
   placeholder: { titulo: "Próximamente", dominio: "Nexo", esFicha: true }
 };
 
+// Vistas cuyo contenido depende de al menos un endpoint admin-only
+// (permisos.js): Usuarios (administración), dashboard (Estadísticas:
+// GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
+// (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
+// y todo el circuito de compras y sus devoluciones a proveedor, fichas
+// incluidas. Un deep-link escrito a mano por un empleado (el nav-item ya
+// está oculto por CSS, pero el hash se puede tipear igual) cae al mismo
+// destino que un click normal — es solo UI, el servidor responde 403 igual
+// si se llama al endpoint directo.
+const VISTAS_SOLO_ADMIN = new Set([
+  "usuarios",
+  "dashboard",
+  "reportes-stock",
+  "papelera",
+  "compras",
+  "compra-detalle",
+  "devoluciones-proveedor",
+  "devolucion-proveedor-detalle"
+]);
+
 function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
-  // Un deep-link #/usuarios escrito a mano por un empleado cae a
-  // dashboard, igual que un click de nav (el ítem está oculto por CSS,
-  // pero el hash igual se puede tipear). Es solo UI: el servidor
-  // responde 403 igual si se llama a /api/usuarios directo.
-  if (viewId === "usuarios" && document.documentElement.dataset.rol !== "admin") {
-    viewId = "dashboard";
+  // El fallback ya no puede ser "dashboard": pasó a ser admin-only (arriba).
+  // "ventas" es donde arranca un empleado al loguearse (ver el boot, más
+  // abajo), así que es el destino natural también acá.
+  if (VISTAS_SOLO_ADMIN.has(viewId) && !esAdmin()) {
+    viewId = "ventas";
   }
 
   document.querySelectorAll(".view").forEach((sec) => {

@@ -7,7 +7,11 @@
   <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Las cinco familias extra (JetBrains Mono, Inter, IBM Plex Sans, DM
+       Mono, DM Sans) son solo para el probador de tipografías de
+       Configuración (ver data-fuente en styles.css) — cuando se elija una
+       combinación definitiva, sacar las que no se usen de esta línea. -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
     // Se aplica antes de pintar la página (no en app.js, que carga después)
@@ -17,6 +21,11 @@
       if (guardado) document.documentElement.setAttribute("data-tema", guardado);
       const sidebarGuardada = localStorage.getItem("nexo.sidebar");
       if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
+      // Mismo criterio que el tema: sin esto, elegir una tipografía en el
+      // probador de Configuración se ve un instante en Plex (el default de
+      // :root) antes de saltar a la elegida en cada recarga.
+      const fuenteGuardada = localStorage.getItem("nexo.fuente");
+      if (fuenteGuardada) document.documentElement.setAttribute("data-fuente", fuenteGuardada);
       // Marca cosmética para evitar el flash de la app antes de que
       // sesion.js confirme con el servidor si hay sesión de verdad. Esto
       // NO es seguridad: el servidor decide con la cookie httpOnly, que
@@ -56,7 +65,7 @@
            final). -->
       <nav class="nav">
         <a href="#" class="nav-item is-active" data-view="dashboard">
-          <span class="nav-index">01</span> Resumen
+          <span class="nav-index">01</span> Estadísticas
         </a>
         <a href="#" class="nav-item" data-view="productos">
           <span class="nav-index">02</span> Productos
@@ -303,12 +312,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Producto</th>
-                <th class="align-right" data-orden="unidades" data-tipo="numero">Unidades</th>
-                <th class="align-right" data-orden="ventas" data-tipo="numero">Ventas</th>
-                <th class="align-right" data-orden="ganancia" data-tipo="numero">Ganancia</th>
-                <th class="align-right" data-orden="margen_pct" data-tipo="numero">Margen</th>
-                <th class="align-right" data-orden="participacion_pct" data-tipo="numero">% del total</th>
+                <th>Producto</th>
+                <th class="align-right">Unidades</th>
+                <th class="align-right">Ventas</th>
+                <th class="align-right">Ganancia</th>
+                <th class="align-right">Margen</th>
+                <th class="align-right">% del total</th>
               </tr>
             </thead>
             <tbody id="reporteProductosBody"></tbody>
@@ -327,12 +336,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Categoría</th>
-                <th class="align-right" data-orden="unidades" data-tipo="numero">Unidades</th>
-                <th class="align-right" data-orden="ventas" data-tipo="numero">Ventas</th>
-                <th class="align-right" data-orden="ganancia" data-tipo="numero">Ganancia</th>
-                <th class="align-right" data-orden="margen_pct" data-tipo="numero">Margen</th>
-                <th class="align-right" data-orden="participacion_pct" data-tipo="numero">% del total</th>
+                <th>Categoría</th>
+                <th class="align-right">Unidades</th>
+                <th class="align-right">Ventas</th>
+                <th class="align-right">Ganancia</th>
+                <th class="align-right">Margen</th>
+                <th class="align-right">% del total</th>
               </tr>
             </thead>
             <tbody id="reporteCategoriasBody"></tbody>
@@ -348,15 +357,102 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Cliente</th>
-                <th class="align-right" data-orden="cantidad_ventas" data-tipo="numero">Ventas</th>
-                <th class="align-right" data-orden="ventas" data-tipo="numero">Total</th>
-                <th class="align-right" data-orden="ticket_promedio" data-tipo="numero">Ticket promedio</th>
-                <th class="align-right" data-orden="ganancia" data-tipo="numero">Ganancia</th>
-                <th data-orden="ultima_compra" data-tipo="fecha">Última compra</th>
+                <th>Cliente</th>
+                <th class="align-right">Ventas</th>
+                <th class="align-right">Total</th>
+                <th class="align-right">Ticket promedio</th>
+                <th class="align-right">Ganancia</th>
+                <th>Última compra</th>
               </tr>
             </thead>
             <tbody id="reporteClientesBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <!-- Qué se compra: espejo de "Qué se vende" del lado de compras.
+             Comparte el mismo filtro de fecha de arriba (#filtrosResumen),
+             no uno propio. -->
+        <h2>Qué se compra</h2>
+
+        <section class="ledger-strip" aria-label="Compras del período">
+          <div class="ledger-item">
+            <span class="ledger-label">Compras netas</span>
+            <span class="ledger-value mono" id="reporteComprasNetas">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Ticket promedio</span>
+            <span class="ledger-value mono" id="reporteComprasTicketPromedio">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Unidades compradas</span>
+            <span class="ledger-value mono" id="reporteComprasUnidades">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Cantidad de compras</span>
+            <span class="ledger-value mono" id="reporteComprasCantidad">0</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Principales proveedores</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th class="align-right">Compras</th>
+                <th class="align-right">Total</th>
+                <th class="align-right">Ticket promedio</th>
+                <th>Última compra</th>
+              </tr>
+            </thead>
+            <tbody id="reporteComprasProveedoresBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Productos más comprados</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="align-right">Unidades</th>
+                <th class="align-right">Total</th>
+                <th class="align-right">% del total</th>
+              </tr>
+            </thead>
+            <tbody id="reporteComprasProductosBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <!-- Un producto sin categoría cae en el balde "Sin categoría"
+             (mismo GROUP BY que Ventas por categoría, arriba). -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Compras por categoría</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th class="align-right">Unidades</th>
+                <th class="align-right">Total</th>
+                <th class="align-right">% del total</th>
+              </tr>
+            </thead>
+            <tbody id="reporteComprasCategoriasBody"></tbody>
           </table>
           </div>
         </section>
@@ -392,13 +488,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="id" data-tipo="numero">N°</th>
-                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>N°</th>
+                <th>Cliente</th>
                 <th>Productos</th>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th data-orden="vencimiento" data-tipo="fecha">Vence</th>
-                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
-                <th data-orden="estado_efectivo" data-tipo="texto">Estado</th>
+                <th>Fecha</th>
+                <th>Vence</th>
+                <th class="align-right">Total</th>
+                <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -453,13 +549,13 @@
             <span class="ledger-label">Ventas</span>
             <span class="ledger-value mono" id="ventasTotalStrip">$0,00</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
+          <div class="ledger-divider col-admin" aria-hidden="true"></div>
+          <div class="ledger-item col-admin">
             <span class="ledger-label">Costo</span>
             <span class="ledger-value mono" id="ventasCostoStrip">$0,00</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
+          <div class="ledger-divider col-admin" aria-hidden="true"></div>
+          <div class="ledger-item col-admin">
             <span class="ledger-label">Ganancia</span>
             <span class="ledger-value mono ledger-ok" id="ventasGananciaStrip">$0,00</span>
           </div>
@@ -468,21 +564,26 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Ventas</h2>
-            <button class="btn btn-primary" id="btnNuevaVenta">+ Nueva venta</button>
+            <!-- .panel-acciones y no dos botones sueltos: sin el contenedor
+                 quedan pegados sin separación (ver el gap de .fila-acciones). -->
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnExportarVentas">Exportar CSV</button>
+              <button class="btn btn-primary" id="btnNuevaVenta">+ Nueva venta</button>
+            </div>
           </div>
           <div class="filtros" id="filtrosVentas"></div>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="id" data-tipo="numero">N°</th>
-                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>N°</th>
+                <th>Cliente</th>
                 <th>Productos</th>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th class="align-right" data-orden="costo_total" data-tipo="numero">Costo</th>
-                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
-                <th class="align-right" data-orden="margen" data-tipo="numero">Ganancia</th>
-                <th data-orden="estado_cobro" data-tipo="texto">Cobro</th>
+                <th>Fecha</th>
+                <th class="align-right col-admin">Costo</th>
+                <th class="align-right">Total</th>
+                <th class="align-right col-admin">Ganancia</th>
+                <th>Cobro</th>
                 <th></th>
               </tr>
             </thead>
@@ -508,11 +609,11 @@
         </section>
 
         <section class="ledger-strip" aria-label="Resumen de la venta">
-          <div class="ledger-item">
+          <div class="ledger-item col-admin">
             <span class="ledger-label">Costo</span>
             <span class="ledger-value mono" id="fichaVentaCosto">$0,00</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-divider col-admin" aria-hidden="true"></div>
           <div class="ledger-item">
             <span class="ledger-label">Total</span>
             <span class="ledger-value mono" id="fichaVentaTotal">$0,00</span>
@@ -527,8 +628,8 @@
             <span class="ledger-label">Neto</span>
             <span class="ledger-value mono" id="fichaVentaNeto">$0,00</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
+          <div class="ledger-divider col-admin" aria-hidden="true"></div>
+          <div class="ledger-item col-admin">
             <span class="ledger-label">Ganancia</span>
             <span class="ledger-value mono ledger-ok" id="fichaVentaGanancia">$0,00</span>
           </div>
@@ -547,7 +648,7 @@
                 <th class="align-right">Precio unit.</th>
                 <th class="align-right">Subtotal</th>
                 <th class="align-right">Devuelto</th>
-                <th class="align-right">Ganancia</th>
+                <th class="align-right col-admin">Ganancia</th>
               </tr>
             </thead>
             <tbody id="fichaVentaItems"></tbody>
@@ -605,12 +706,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="id" data-tipo="numero">N°</th>
-                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>N°</th>
+                <th>Cliente</th>
                 <th>Productos</th>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
-                <th data-orden="reintegrada" data-tipo="texto">Plata</th>
+                <th>Fecha</th>
+                <th class="align-right">Total</th>
+                <th>Plata</th>
                 <th></th>
               </tr>
             </thead>
@@ -689,12 +790,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="id" data-tipo="numero">N°</th>
-                <th data-orden="proveedor" data-tipo="texto">Proveedor</th>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
-                <th data-orden="estado_pago" data-tipo="texto">Pago</th>
-                <th data-orden="estado_envio" data-tipo="texto">Envío</th>
+                <th>N°</th>
+                <th>Proveedor</th>
+                <th>Fecha</th>
+                <th class="align-right">Total</th>
+                <th>Pago</th>
+                <th>Envío</th>
                 <th></th>
               </tr>
             </thead>
@@ -817,12 +918,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="id" data-tipo="numero">N°</th>
-                <th data-orden="proveedor" data-tipo="texto">Proveedor</th>
+                <th>N°</th>
+                <th>Proveedor</th>
                 <th>Productos</th>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th class="align-right" data-orden="total" data-tipo="numero">Total</th>
-                <th data-orden="reintegrada" data-tipo="texto">Plata</th>
+                <th>Fecha</th>
+                <th class="align-right">Total</th>
+                <th>Plata</th>
                 <th></th>
               </tr>
             </thead>
@@ -876,7 +977,12 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Stock</h2>
-            <button class="btn btn-primary" id="btnAjusteStock">+ Ajustar stock</button>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnDepositos">Depósitos</button>
+              <button class="btn btn-secundario" id="btnExportarStock">Exportar CSV</button>
+              <button class="btn btn-secundario" id="btnTransferirStock">Transferir</button>
+              <button class="btn btn-primary" id="btnAjusteStock">+ Ajustar stock</button>
+            </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre" id="stockSearch" />
           <div class="filtros" id="filtrosStock"></div>
@@ -884,14 +990,38 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Producto</th>
-                <th class="align-right" data-orden="precio_costo" data-tipo="numero">Costo</th>
-                <th class="align-right" data-orden="stock" data-tipo="numero">Stock actual</th>
-                <th data-orden="estado_stock" data-tipo="texto">Estado</th>
+                <th>Producto</th>
+                <th>Depósito</th>
+                <th class="align-right col-admin">Costo</th>
+                <th class="align-right">Stock en depósito</th>
+                <th class="align-right">Stock total</th>
+                <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="stockBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Transferencias entre depósitos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Producto</th>
+                <th>Desde</th>
+                <th>Hacia</th>
+                <th class="align-right">Cantidad</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="transferenciasBody"></tbody>
           </table>
           </div>
         </section>
@@ -907,6 +1037,7 @@
               <tr>
                 <th>Fecha</th>
                 <th>Producto</th>
+                <th>Depósito</th>
                 <th>Origen</th>
                 <th class="align-right">Cantidad</th>
                 <th>Nota</th>
@@ -956,12 +1087,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Producto</th>
-                <th class="align-right" data-orden="stock" data-tipo="numero">Stock</th>
-                <th data-orden="estado_stock" data-tipo="texto">Estado</th>
-                <th class="align-right" data-orden="valorizado" data-tipo="numero">Valorizado</th>
-                <th class="align-right" data-orden="unidades_vendidas" data-tipo="numero">Vendidas en el período</th>
-                <th class="align-right" data-orden="dias_inventario" data-tipo="numero">Días de inventario</th>
+                <th>Producto</th>
+                <th class="align-right">Stock</th>
+                <th>Estado</th>
+                <th class="align-right">Valorizado</th>
+                <th class="align-right">Vendidas en el período</th>
+                <th class="align-right">Días de inventario</th>
               </tr>
             </thead>
             <tbody id="reporteStockBody"></tbody>
@@ -977,6 +1108,7 @@
             <h2>Productos</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario" id="btnCategoriasProductos">Categorías</button>
+              <button class="btn btn-secundario" id="btnListasPrecios">Listas de precios</button>
               <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
             </div>
           </div>
@@ -986,15 +1118,15 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Nombre</th>
-                <th data-orden="sku" data-tipo="texto">SKU</th>
-                <th data-orden="categoria" data-tipo="texto">Categoría</th>
-                <th class="align-right" data-orden="precio_costo" data-tipo="numero">Costo</th>
-                <th class="align-right" data-orden="valorizado" data-tipo="numero">Valorizado</th>
-                <th class="align-right" data-orden="precio_venta" data-tipo="numero">Precio</th>
-                <th class="align-right" data-orden="margen" data-tipo="numero">Margen</th>
-                <th class="align-right" data-orden="stock" data-tipo="numero">Stock</th>
-                <th data-orden="activo" data-tipo="numero">Activo</th>
+                <th>Nombre</th>
+                <th>SKU</th>
+                <th>Categoría</th>
+                <th class="align-right col-admin">Costo</th>
+                <th class="align-right col-admin">Valorizado</th>
+                <th class="align-right">Precio</th>
+                <th class="align-right col-admin">Margen</th>
+                <th class="align-right">Stock</th>
+                <th>Activo</th>
                 <th></th>
               </tr>
             </thead>
@@ -1017,17 +1149,17 @@
         </section>
 
         <section class="ledger-strip" aria-label="Resumen del producto">
-          <div class="ledger-item">
+          <div class="ledger-item col-admin">
             <span class="ledger-label">Costo promedio</span>
             <span class="ledger-value mono" id="fichaProductoCosto">$0,00</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-divider col-admin" aria-hidden="true"></div>
           <div class="ledger-item">
             <span class="ledger-label">Stock actual</span>
             <span class="ledger-value mono" id="fichaProductoStock">0</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
+          <div class="ledger-divider col-admin" aria-hidden="true"></div>
+          <div class="ledger-item col-admin">
             <span class="ledger-label">Valorizado</span>
             <span class="ledger-value mono" id="fichaProductoValorizado">$0,00</span>
           </div>
@@ -1067,11 +1199,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Nombre</th>
+                <th>Nombre</th>
                 <th>Contacto</th>
-                <th class="align-right" data-orden="cantidad_compras" data-tipo="numero">Compras</th>
-                <th class="align-right" data-orden="total_gastado" data-tipo="numero">Total gastado</th>
-                <th class="align-right" data-orden="deuda" data-tipo="numero">Deuda</th>
+                <th class="align-right">Compras</th>
+                <th class="align-right">Total gastado</th>
+                <th class="align-right">Deuda</th>
                 <th></th>
               </tr>
             </thead>
@@ -1143,11 +1275,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Nombre</th>
+                <th>Nombre</th>
                 <th>Contacto</th>
-                <th class="align-right" data-orden="cantidad_compras" data-tipo="numero">Compras</th>
-                <th class="align-right" data-orden="total_comprado" data-tipo="numero">Total comprado</th>
-                <th class="align-right" data-orden="deuda" data-tipo="numero">Deuda</th>
+                <th class="align-right">Compras</th>
+                <th class="align-right">Total comprado</th>
+                <th class="align-right">Deuda</th>
                 <th></th>
               </tr>
             </thead>
@@ -1313,6 +1445,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Por cobrar</h2>
+            <button class="btn btn-secundario" id="btnExportarCcCobrar">Exportar CSV</button>
           </div>
           <p class="form-note" id="ccNotaFavorClientes" hidden></p>
           <div class="filtros" id="filtrosCcCobrar"></div>
@@ -1320,11 +1453,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Cliente</th>
-                <th class="align-right" data-orden="saldo" data-tipo="numero">Deuda</th>
+                <th>Cliente</th>
+                <th class="align-right">Deuda</th>
                 <th>Operaciones</th>
-                <th>Más vieja</th>
-                <th data-orden="dias_max" data-tipo="numero">Antigüedad</th>
+                <th>Vence</th>
+                <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -1337,6 +1470,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Por pagar</h2>
+            <button class="btn btn-secundario" id="btnExportarCcPagar">Exportar CSV</button>
           </div>
           <p class="form-note" id="ccNotaFavorProveedores" hidden></p>
           <div class="filtros" id="filtrosCcPagar"></div>
@@ -1344,11 +1478,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="nombre" data-tipo="texto">Proveedor</th>
-                <th class="align-right" data-orden="saldo" data-tipo="numero">Deuda</th>
+                <th>Proveedor</th>
+                <th class="align-right">Deuda</th>
                 <th>Operaciones</th>
-                <th>Más vieja</th>
-                <th data-orden="dias_max" data-tipo="numero">Antigüedad</th>
+                <th>Vence</th>
+                <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
@@ -1382,6 +1516,7 @@
           <div class="panel-head">
             <h2>Gastos</h2>
             <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnExportarGastos">Exportar CSV</button>
               <button class="btn btn-secundario" id="btnCategoriasGasto">Categorías</button>
               <button class="btn btn-primary" id="btnNuevoGasto">+ Nuevo gasto</button>
             </div>
@@ -1391,12 +1526,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th data-orden="categoria" data-tipo="texto">Categoría</th>
-                <th data-orden="tipo" data-tipo="texto">Tipo</th>
+                <th>Fecha</th>
+                <th>Categoría</th>
+                <th>Tipo</th>
                 <th>Descripción</th>
-                <th data-orden="cuenta" data-tipo="texto">Cuenta</th>
-                <th class="align-right" data-orden="importe" data-tipo="numero">Importe</th>
+                <th>Cuenta</th>
+                <th class="align-right">Importe</th>
                 <th></th>
               </tr>
             </thead>
@@ -1435,11 +1570,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="comprobante" data-tipo="texto">Comprobante</th>
-                <th data-orden="fecha" data-tipo="fecha">Fecha</th>
-                <th data-orden="cliente" data-tipo="texto">Cliente</th>
+                <th>Comprobante</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
                 <th>Origen</th>
-                <th class="align-right" data-orden="total" data-tipo="numero">Importe</th>
+                <th class="align-right">Importe</th>
                 <th>Cobro</th>
               </tr>
             </thead>
@@ -1456,6 +1591,14 @@
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaFacturaTitulo">—</h2>
+            <div class="panel-acciones">
+              <!-- "Imprimir / PDF": el diálogo del navegador ya permite elegir
+                   "Guardar como PDF" como destino, así que el mismo botón
+                   resuelve las dos cosas. El nombre lo hace descubrible; sin
+                   él, quien busca un PDF no adivina que está detrás de
+                   "Imprimir". -->
+              <button type="button" class="btn btn-secundario" id="btnImprimirFactura">Imprimir / PDF</button>
+            </div>
           </div>
           <dl class="ficha-datos" id="fichaFacturaDatos"></dl>
         </section>
@@ -1530,13 +1673,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="fecha" data-tipo="texto">Fecha</th>
-                <th data-orden="accion" data-tipo="texto">Acción</th>
-                <th data-orden="entidad" data-tipo="texto">Entidad</th>
+                <th>Fecha</th>
+                <th>Acción</th>
+                <th>Entidad</th>
                 <th>N°</th>
                 <th>Detalle</th>
-                <th data-orden="actor" data-tipo="texto">Origen</th>
-                <th data-orden="usuario_nombre" data-tipo="texto">Usuario</th>
+                <th>Origen</th>
+                <th>Usuario</th>
               </tr>
             </thead>
             <tbody id="auditoriaBody"></tbody>
@@ -1557,10 +1700,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th data-orden="fecha" data-tipo="texto">Fecha</th>
-                <th data-orden="tipo" data-tipo="texto">Tipo</th>
-                <th data-orden="concepto" data-tipo="texto">Concepto</th>
-                <th class="align-right" data-orden="importe" data-tipo="numero">Importe</th>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Concepto</th>
+                <th class="align-right">Importe</th>
               </tr>
             </thead>
             <tbody id="auditoriaMovBody"></tbody>
@@ -1719,6 +1862,12 @@
         <label>Producto
           <select name="producto_id" required></select>
         </label>
+        <!-- Opciones en runtime (poblarSelectDepositos en app.js), arranca
+             en el depósito predeterminado — mismo criterio que el select de
+             lista de precios en Venta. -->
+        <label>Depósito
+          <select name="deposito_id" required></select>
+        </label>
         <label>Cantidad
           <input type="number" name="cantidad" required placeholder="Ej: 5 o -2" step="0.01" />
         </label>
@@ -1727,6 +1876,68 @@
           <input type="text" name="nota" placeholder="Motivo del ajuste (opcional)" />
         </label>
         <button type="submit" class="btn btn-primary btn-full">Guardar ajuste</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal gestión de depósitos (CLAUDE.md §19): calcado del de listas de
+       precios, con la misma regla de "exactamente uno predeterminado". -->
+  <div class="modal" id="modalDepositos" role="dialog" aria-modal="true" aria-labelledby="modalDepositosTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalDepositosTitulo">Depósitos</h3>
+        <button class="modal-close" id="modalDepositosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formDeposito" class="form">
+        <input type="hidden" name="id" />
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Depósito principal, Sucursal Centro…" />
+        </label>
+        <label>Dirección
+          <input type="text" name="direccion" placeholder="Opcional" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formDepositoSubmit">Agregar depósito</button>
+      </form>
+      <div class="tabla-scroll">
+          <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Depósito</th>
+            <th>Predeterminado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="depositosBody"></tbody>
+      </table>
+          </div>
+    </div>
+  </div>
+
+  <!-- Modal transferencia entre depósitos (CLAUDE.md §19) -->
+  <div class="modal" id="modalTransferenciaDeposito" role="dialog" aria-modal="true" aria-labelledby="modalTransferenciaDepositoTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalTransferenciaDepositoTitulo">Transferir entre depósitos</h3>
+        <button class="modal-close" id="modalTransferenciaDepositoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formTransferenciaDeposito" class="form">
+        <label>Producto
+          <select name="producto_id" required></select>
+        </label>
+        <label>Desde
+          <select name="deposito_origen_id" id="transferenciaDepositoOrigen" required></select>
+        </label>
+        <label>Hacia
+          <select name="deposito_destino_id" id="transferenciaDepositoDestino" required></select>
+        </label>
+        <label>Cantidad
+          <input type="number" name="cantidad" required min="0.01" step="0.01" placeholder="0" />
+        </label>
+        <label>Nota
+          <input type="text" name="nota" placeholder="Opcional" />
+        </label>
+        <p class="form-note">Mueve stock real entre depósitos. No cambia el costo del producto ni el stock total.</p>
+        <button type="submit" class="btn btn-primary btn-full">Transferir</button>
       </form>
     </div>
   </div>
@@ -1741,6 +1952,12 @@
       <form id="formPresupuesto" class="form">
         <label>Cliente
           <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
+        </label>
+        <!-- Opciones en runtime (poblarSelectListasPrecios). Al elegir un
+             cliente con lista propia se propone sola (CLAUDE.md §18); se
+             puede cambiar acá para esta operación puntual. -->
+        <label>Lista de precios
+          <select name="lista_precio_id" id="presupuestoListaPrecio"></select>
         </label>
         <label>Fecha
           <input type="date" name="fecha" required />
@@ -1772,8 +1989,38 @@
           <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
           <datalist id="clientesSugeridos"></datalist>
         </label>
+        <!-- Opciones en runtime (poblarSelectListasPrecios). Al elegir un
+             cliente con lista propia se propone sola (CLAUDE.md §18); se
+             puede cambiar acá para esta operación puntual. Cambiarla con
+             ítems ya cargados repropone sus precios (ver app.js). -->
+        <label>Lista de precios
+          <select name="lista_precio_id" id="ventaListaPrecio"></select>
+        </label>
+        <!-- Opciones en runtime (poblarSelectDepositos), arranca en el
+             depósito predeterminado (CLAUDE.md §19). De acá sale toda la
+             mercadería de esta venta. -->
+        <label>Depósito
+          <select name="deposito_id" id="ventaDeposito"></select>
+        </label>
         <label>Fecha
           <input type="date" name="fecha" required />
+        </label>
+        <!-- El plazo pactado. Nexo calcula la fecha de vencimiento sola sobre
+             la fecha de arriba; "Fecha puntual" muestra el input de al lado
+             para los plazos que no son redondos. Es lo que hace que Cuentas
+             corrientes mida el atraso contra lo pactado y no contra la fecha
+             de la venta. -->
+        <label>Condición de pago
+          <select name="condicion_pago" id="ventaCondicionPago">
+            <option value="contado">Contado</option>
+            <option value="15">15 días</option>
+            <option value="30">30 días</option>
+            <option value="60">60 días</option>
+            <option value="manual">Fecha puntual…</option>
+          </select>
+        </label>
+        <label id="ventaVencimientoWrap" hidden>Vence el
+          <input type="date" name="fecha_vencimiento" id="ventaVencimiento" />
         </label>
         <div class="item-rows" id="ventaItems"></div>
         <button type="button" class="btn-add-item" id="btnAgregarItemVenta">+ agregar producto</button>
@@ -1795,8 +2042,27 @@
         <label>Proveedor
           <input type="text" name="proveedor" required placeholder="Nombre o razón social" />
         </label>
+        <!-- Opciones en runtime (poblarSelectDepositos), arranca en el
+             depósito predeterminado (CLAUDE.md §19). A ese depósito entra
+             la mercadería cuando la compra se marca recibida. -->
+        <label>Depósito
+          <select name="deposito_id" id="compraDeposito"></select>
+        </label>
         <label>Fecha
           <input type="date" name="fecha" required />
+        </label>
+        <!-- Mismo par que en Venta, del lado de la deuda con el proveedor. -->
+        <label>Condición de pago
+          <select name="condicion_pago" id="compraCondicionPago">
+            <option value="contado">Contado</option>
+            <option value="15">15 días</option>
+            <option value="30">30 días</option>
+            <option value="60">60 días</option>
+            <option value="manual">Fecha puntual…</option>
+          </select>
+        </label>
+        <label id="compraVencimientoWrap" hidden>Vence el
+          <input type="date" name="fecha_vencimiento" id="compraVencimiento" />
         </label>
         <div class="item-rows" id="compraItems"></div>
         <datalist id="productosSugeridos"></datalist>
@@ -1895,6 +2161,20 @@
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
         </label>
+        <!-- Opciones en runtime (poblarSelectListasPrecios en app.js). Sin
+             elegir nada = usa la predeterminada del negocio (CLAUDE.md §18);
+             Venta/Presupuesto la proponen sola al elegir este cliente. -->
+        <label>Lista de precios habitual
+          <select name="lista_precio_id">
+            <option value="">Usar la predeterminada</option>
+          </select>
+        </label>
+        <!-- Opciones en runtime (poblarSelectCondicionPago en app.js). Sin
+             definir = la venta arranca en Contado como siempre; con un plazo
+             cargado, Venta lo propone sola al elegir este cliente. -->
+        <label>Condición de pago habitual
+          <select name="condicion_pago"></select>
+        </label>
         <label>Notas
           <input type="text" name="notas" placeholder="Opcional" />
         </label>
@@ -1925,6 +2205,12 @@
         </label>
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <!-- Opciones en runtime (poblarSelectCondicionPago en app.js). Sin
+             definir = la compra arranca en Contado como siempre; con un plazo
+             cargado, Compra lo propone solo al elegir este proveedor. -->
+        <label>Condición de pago habitual
+          <select name="condicion_pago"></select>
         </label>
         <label>Notas
           <input type="text" name="notas" placeholder="Opcional" />
@@ -2043,6 +2329,37 @@
     </div>
   </div>
 
+  <!-- Modal listas de precios (CLAUDE.md §18): calcado del de categorías de
+       productos de arriba, con dos columnas propias (Predeterminada, Activa)
+       que categorías no necesita. -->
+  <div class="modal" id="modalListasPrecios" role="dialog" aria-modal="true" aria-labelledby="modalListasPreciosTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalListasPreciosTitulo">Listas de precios</h3>
+        <button class="modal-close" id="modalListasPreciosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <form id="formListaPrecio" class="form">
+        <input type="hidden" name="id" />
+        <label>Nombre
+          <input type="text" name="nombre" required placeholder="Minorista, Mayorista, Tarjeta…" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formListaPrecioSubmit">Agregar lista</button>
+      </form>
+      <div class="tabla-scroll">
+          <table class="ledger-table">
+        <thead>
+          <tr>
+            <th>Lista</th>
+            <th>Predeterminada</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="listasPreciosBody"></tbody>
+      </table>
+          </div>
+    </div>
+  </div>
+
   <!-- Modal cuenta de tesorería (alta y edición) -->
   <div class="modal" id="modalCuenta" role="dialog" aria-modal="true" aria-labelledby="modalCuentaTitulo" hidden>
     <div class="modal-card">
@@ -2154,9 +2471,16 @@
             <option value="">Sin categoría</option>
           </select>
         </label>
-        <label>Precio de venta
-          <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" />
+        <label>Precio de venta (lista predeterminada)
+          <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
         </label>
+        <!-- Un campo por cada lista de precios activa que NO sea la
+             predeterminada (esa ya se carga arriba, en precio_venta) — se
+             genera en runtime (poblarPreciosPorLista en app.js) porque
+             depende de qué listas existan. Sin precio propio cargado, el
+             input queda vacío y ese producto cae al fallback de
+             precio_venta en esa lista (CLAUDE.md §18). -->
+        <div id="preciosPorListaProducto" class="form-precios-lista"></div>
         <p class="form-note">El costo no se carga acá: lo define la compra al proveedor.</p>
         <label>Stock mínimo
           <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
@@ -2168,6 +2492,92 @@
           <input type="checkbox" name="activo" checked /> Activo
         </label>
         <button type="submit" class="btn btn-primary btn-full">Guardar producto</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal edición en lote de productos. Cada campo arranca deshabilitado:
+       solo viaja en el request si su checkbox está tildado — así "no tocar
+       este campo" y "ponerlo en un valor" quedan sin ambigüedad (ver
+       armarCambiosBulk en app.js). Tiene que existir en el HTML estático,
+       no inyectarse en runtime: el MutationObserver de accesibilidad hace
+       querySelectorAll(".modal") al cargar el script. -->
+  <div class="modal" id="modalBulkProductos" role="dialog" aria-modal="true" aria-labelledby="modalBulkProductosTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalBulkProductosTitulo">Editar productos</h3>
+        <button class="modal-close" id="modalBulkProductosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <p class="form-note" id="modalBulkProductosConteo">0 productos seleccionados</p>
+      <form id="formBulkProductos" class="form">
+        <div class="bulk-campo">
+          <label class="form-check">
+            <input type="checkbox" class="bulk-activar" data-campo="activo" /> Cambiar estado
+          </label>
+          <select name="activo" disabled>
+            <option value="1">Activo</option>
+            <option value="0">Inactivo</option>
+          </select>
+        </div>
+        <div class="bulk-campo">
+          <label class="form-check">
+            <input type="checkbox" class="bulk-activar" data-campo="categoria_id" /> Cambiar categoría
+          </label>
+          <select name="categoria_id" disabled>
+            <option value="">Sin categoría</option>
+          </select>
+        </div>
+        <div class="bulk-campo">
+          <label class="form-check">
+            <input type="checkbox" class="bulk-activar" data-campo="stock_minimo" /> Cambiar stock mínimo
+          </label>
+          <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" disabled />
+        </div>
+        <div class="bulk-campo">
+          <label class="form-check">
+            <input type="checkbox" class="bulk-activar" data-campo="precio_venta" /> Ajustar precio de venta
+          </label>
+          <!-- Las opciones se llenan en runtime con las listas de precios
+               activas (CLAUDE.md §18) — la predeterminada se manda como
+               precio_venta (columna del producto), cualquier otra se manda
+               como precios[id] (ver armarCambiosBulk en app.js). -->
+          <label>Sobre qué lista
+            <select name="precio_lista_id" disabled></select>
+          </label>
+          <select name="precio_modo" disabled>
+            <option value="porcentaje">Ajustar un %</option>
+            <option value="fijo">Fijar en un valor</option>
+          </select>
+          <input type="number" name="precio_valor" step="0.01" placeholder="0" disabled autocomplete="off" />
+          <p class="form-note">Con "Ajustar un %": 10 sube 10%, −10 baja 10%. Se calcula sobre el precio actual de cada producto en esa lista.</p>
+        </div>
+        <div class="bulk-resultado" id="bulkProductosResultado" hidden>
+          <p class="form-note" id="bulkProductosResultadoTitulo"></p>
+          <ul id="bulkProductosResultadoLista"></ul>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="bulkProductosSubmit">Aplicar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal edición en lote de estado de envío (Compras). Un solo campo con
+       enum cerrado, no necesita el patrón de checkboxes de arriba. -->
+  <div class="modal" id="modalBulkEstadoEnvio" role="dialog" aria-modal="true" aria-labelledby="modalBulkEstadoEnvioTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalBulkEstadoEnvioTitulo">Cambiar estado de envío</h3>
+        <button class="modal-close" id="modalBulkEstadoEnvioClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <p class="form-note" id="modalBulkEstadoEnvioConteo">0 compras seleccionadas</p>
+      <form id="formBulkEstadoEnvio" class="form">
+        <label>Nuevo estado de envío
+          <select name="estado_envio" required></select>
+        </label>
+        <div class="bulk-resultado" id="bulkEstadoEnvioResultado" hidden>
+          <p class="form-note" id="bulkEstadoEnvioResultadoTitulo"></p>
+          <ul id="bulkEstadoEnvioResultadoLista"></ul>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="bulkEstadoEnvioSubmit">Aplicar</button>
       </form>
     </div>
   </div>
@@ -2338,8 +2748,10 @@
     </form>
   </div>
 
-  <!-- Modal de configuración — todavía sin preferencias reales, es el
-       punto de entrada para cuando se sumen (foto de perfil, datos del
+  <!-- Modal de configuración. Primer contenido real: el probador de
+       tipografías (temporal, ver el comentario "Probador de tipografías"
+       en styles.css). El resto sigue siendo el punto de entrada para
+       cuando se sumen más preferencias (foto de perfil, datos del
        negocio, etc.). Desde la etapa de usuarios lo abre solo el botón de
        engranaje: el círculo de perfil pasó a abrir #modalPerfil, que sí
        tiene contenido real (ver más abajo). -->
@@ -2351,7 +2763,44 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <p class="form-note">Todavía no hay preferencias configurables acá. En una próxima etapa se van a poder ajustar cosas como la foto de perfil y los datos del negocio.</p>
+      <!-- Estos datos son el membrete de todo comprobante impreso: quién
+           emite el presupuesto o la factura que se le entrega al cliente.
+           Solo el admin puede editarlos (el servidor responde 403 a un
+           empleado); el formulario se deshabilita por rol desde app.js. -->
+      <form class="form" id="formNegocio">
+        <p class="form-note" id="negocioSoloLectura" hidden>
+          Solo un administrador puede cambiar los datos del negocio.
+        </p>
+
+        <label>Nombre del negocio *
+          <input type="text" name="nombre" required maxlength="120" />
+        </label>
+        <label>CUIT
+          <input type="text" name="documento" maxlength="20" placeholder="30-12345678-9" />
+        </label>
+        <label>Condición frente al IVA
+          <input type="text" name="condicion_iva" maxlength="60" placeholder="Monotributo / Responsable Inscripto" />
+        </label>
+        <label>Dirección
+          <input type="text" name="direccion" maxlength="160" />
+        </label>
+        <label>Teléfono
+          <input type="text" name="telefono" maxlength="40" />
+        </label>
+        <label>Email
+          <input type="email" name="email" maxlength="120" />
+        </label>
+        <label>Texto al pie (aparece en todos los comprobantes)
+          <textarea name="pie_comprobante" rows="2" maxlength="300" placeholder="Ej: Gracias por su compra."></textarea>
+        </label>
+
+        <p class="form-note">
+          Estos datos encabezan los presupuestos y facturas que imprimís. El logo
+          del negocio se va a poder subir más adelante.
+        </p>
+
+        <button type="submit" class="btn btn-primary btn-full" id="formNegocioSubmit">Guardar</button>
+      </form>
     </div>
   </div>
 
@@ -2366,10 +2815,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <p class="form-note">
+      <div class="perfil-identidad">
         <strong id="perfilNombre">—</strong>
         <span class="status" id="perfilRol">—</span>
-      </p>
+      </div>
       <form id="formCambioPassword" class="form">
         <p class="form-note" id="cambioPasswordError" hidden></p>
         <label>Contraseña actual
@@ -2417,6 +2866,35 @@
         <button type="submit" class="btn btn-primary">Guardar</button>
       </form>
     </div>
+  </div>
+
+  <!-- Hoja de impresión: el comprobante que se entrega al cliente.
+       Vive FUERA de .app a propósito (no hereda el grid, la sidebar sticky
+       ni los paddings compensatorios del asistente flotante) y está vacía
+       hasta que imprimirComprobante() la puebla — ver app.js.
+
+       Es un contenedor propio y NO la ficha con @media print encima: la
+       ficha muestra costo, margen y ganancia, que no pueden salir en un
+       papel que recibe el cliente. Acá solo aparece lo que se pone
+       explícitamente, así que agregar una columna interna a una ficha no
+       puede filtrarla al comprobante por descuido.
+
+       Se oculta con una clase y no con [hidden] para que @media print pueda
+       revelarla sin pelearle al user-agent stylesheet con !important. -->
+  <div id="hojaImpresion" class="hoja-impresion" aria-hidden="true"></div>
+
+  <!-- Barra de acciones en lote — aparece al seleccionar filas en cualquier
+       tabla. Única y compartida: como solo hay una vista visible a la vez,
+       montarBarraSeleccion() en app.js la llena con los botones de la tabla
+       activa. Fuera de .app para poder quedar fixed sobre todo el layout.
+       El botón "Seleccionar todo" de mobile NO vive acá: lo inyecta
+       crearSeleccion() junto a la tabla de cada vista (ver comentario en
+       app.js), porque tiene que estar visible aunque no haya nada
+       seleccionado todavía. -->
+  <div id="barraSeleccion" class="barra-seleccion" hidden>
+    <span class="barra-seleccion-conteo" id="barraSeleccionConteo"></span>
+    <div class="barra-seleccion-acciones" id="barraSeleccionAcciones"></div>
+    <button type="button" class="btn-link" id="barraSeleccionLimpiar">Limpiar</button>
   </div>
 
   <!-- Avisos (toasts) — reemplaza alert() nativo. Ver avisar() en app.js. -->
