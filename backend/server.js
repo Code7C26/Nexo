@@ -391,6 +391,63 @@ app.post('/api/auth/bootstrap', (req, res) => {
 // Todos los datos reales están detrás de /api.
 app.use('/api', autenticar);
 
+// Permisos por rol, segunda mitad (la primera es `soloAdmin` en cada
+// endpoint que lo necesita — ver permisos.js): el empleado no tiene que
+// ver costos, márgenes ni ganancias, y eso incluye endpoints que sí le
+// hacen falta para trabajar (GET /api/productos, /api/stock, /api/ventas).
+// No se puede resolver con `soloAdmin` en esos cuatro sin dejar al
+// empleado sin poder cargar sus pantallas del día a día — el corte es a
+// nivel de campo, no de endpoint.
+//
+// Filtra por NOMBRE de clave, recursivamente, en cualquier respuesta JSON
+// de cualquier endpoint no-admin (montado una sola vez, acá, para que un
+// endpoint nuevo nazca filtrado por default sin que nadie tenga que
+// acordarse de llamarlo — mismo argumento que ya justifica el mount de
+// `autenticar` arriba). Dos límites reales, no descuidos:
+//   - Un campo futuro con un nombre distinto a esta lista (p. ej.
+//     `utilidad`) se escaparía sin que el filtro lo note.
+//   - No distingue `venta_items.precio_unitario` (precio de venta, no se
+//     filtra) de `compra_items.precio_unitario` (costo) — mismo nombre,
+//     significado distinto según la tabla de origen. Por eso el circuito
+//     de compras entero y sus reportes van con `soloAdmin` en permisos.js
+//     en vez de confiar en que este filtro los cubra.
+// Se revisó que ninguna clave choque con algo inocente que el empleado sí
+// necesita: `gastos.importe` y `compras.costo_envio` quedan fuera a
+// propósito.
+const CLAVES_SENSIBLES = new Set([
+  'precio_costo',
+  'valorizado',
+  'margen',
+  'margen_pct',
+  'ganancia',
+  'ganancia_bruta',
+  'costo',
+  'costo_total',
+  'costo_mercaderia',
+  'costo_unitario',
+  'costo_unitario_historico'
+]);
+
+function podarSensibles(valor) {
+  if (Array.isArray(valor)) return valor.map(podarSensibles);
+  if (valor && typeof valor === 'object') {
+    const limpio = {};
+    for (const [clave, v] of Object.entries(valor)) {
+      if (CLAVES_SENSIBLES.has(clave)) continue;
+      limpio[clave] = podarSensibles(v);
+    }
+    return limpio;
+  }
+  return valor;
+}
+
+app.use('/api', (req, res, next) => {
+  if (req.usuario?.rol === 'admin') return next();
+  const jsonOriginal = res.json.bind(res);
+  res.json = (cuerpo) => jsonOriginal(podarSensibles(cuerpo));
+  next();
+});
+
 // Compara la fila de antes de un UPDATE contra los campos nuevos y
 // devuelve solo lo que cambió, listo para valor_anterior/valor_nuevo de
 // registrarAuditoria (CLAUDE.md §22) — así una edición que no tocó nada
@@ -826,7 +883,7 @@ app.get('/api/categorias', (req, res) => {
   res.json(categorias);
 });
 
-app.post('/api/categorias', (req, res) => {
+app.post('/api/categorias', soloAdmin, (req, res) => {
   const { nombre } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
@@ -843,7 +900,7 @@ app.post('/api/categorias', (req, res) => {
   res.status(201).json({ id: lastInsertRowid });
 });
 
-app.patch('/api/categorias/:id', (req, res) => {
+app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, activa } = req.body;
 
@@ -1216,7 +1273,7 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, cat
   return null;
 }
 
-app.post('/api/productos', (req, res) => {
+app.post('/api/productos', soloAdmin, (req, res) => {
   const error = validarProducto(req.body);
   if (error) {
     return res.status(400).json({ error });
@@ -1428,7 +1485,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   return { sinCambios: diff === null };
 }
 
-app.patch('/api/productos/:id', (req, res) => {
+app.patch('/api/productos/:id', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   try {
     aplicarEdicionProducto(req, productoId, req.body, 1);
@@ -1445,7 +1502,7 @@ app.patch('/api/productos/:id', (req, res) => {
 // todo-o-nada — cada id se intenta de forma independiente (ver
 // aplicarLote) y el response detalla cuáles se aplicaron y cuáles no,
 // con el mismo mensaje de error que devolvería el PATCH singular.
-app.post('/api/productos/bulk', (req, res) => {
+app.post('/api/productos/bulk', soloAdmin, (req, res) => {
   let ids;
   try {
     ids = idsDeLote(req.body?.ids);
@@ -1786,7 +1843,7 @@ app.get('/api/stock', (req, res) => {
   res.json(resultado);
 });
 
-app.post('/api/stock/ajuste', (req, res) => {
+app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
   const { producto_id, deposito_id, cantidad, nota } = req.body;
 
   const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
@@ -1968,7 +2025,7 @@ app.post('/api/transferencias', (req, res) => {
   res.status(201).json({ id: lastInsertRowid });
 });
 
-app.post('/api/transferencias/:id/anular', (req, res) => {
+app.post('/api/transferencias/:id/anular', soloAdmin, (req, res) => {
   const transferenciaId = Number(req.params.id);
   const transferencia = db.prepare('SELECT * FROM transferencias WHERE id = ?').get(transferenciaId);
   if (!transferencia) {
@@ -2690,7 +2747,7 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   res.status(201).json({ id: facturaId });
 });
 
-app.post('/api/ventas/:id/anular', (req, res) => {
+app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
   const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
@@ -2759,7 +2816,7 @@ app.post('/api/ventas/:id/anular', (req, res) => {
 // Restaurar desde la papelera: vuelve a aplicar el efecto completo de la
 // venta, o sea descuenta el stock otra vez y regenera la deuda del cliente.
 // Puede fallar si en el medio se vendió el stock que había vuelto.
-app.post('/api/ventas/:id/restaurar', (req, res) => {
+app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
   const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
@@ -3520,7 +3577,7 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
   res.status(201).json({ id: facturaId });
 });
 
-app.post('/api/devoluciones/:id/anular', (req, res) => {
+app.post('/api/devoluciones/:id/anular', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
 
   const devolucion = db.prepare('SELECT id, estado FROM devoluciones WHERE id = ?').get(devolucionId);
@@ -3556,7 +3613,7 @@ app.post('/api/devoluciones/:id/anular', (req, res) => {
 // cuenta corriente y, si correspondía, el egreso de caja). Puede fallar si
 // en el medio se volvió a vender el stock que había entrado por acá —
 // mismo cuidado que restaurar una venta.
-app.post('/api/devoluciones/:id/restaurar', (req, res) => {
+app.post('/api/devoluciones/:id/restaurar', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
 
   const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones WHERE id = ?').get(devolucionId);
@@ -3624,7 +3681,7 @@ const SUBQUERY_DEVUELTO_COMPRA = `
 // El total de una compra incluye el envío: es plata que se le debe al
 // proveedor igual que la mercadería (CLAUDE.md §6 lo lista como "costos
 // adicionales" dentro de la cabecera de la compra).
-app.get('/api/compras', (req, res) => {
+app.get('/api/compras', soloAdmin, (req, res) => {
   const compras = db
     .prepare(
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
@@ -3656,7 +3713,7 @@ app.get('/api/compras', (req, res) => {
   );
 });
 
-app.get('/api/compras/:id', (req, res) => {
+app.get('/api/compras/:id', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
   const compra = db
     .prepare(
@@ -3801,7 +3858,7 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
   return nuevaCompraId;
 }
 
-app.post('/api/compras', (req, res) => {
+app.post('/api/compras', soloAdmin, (req, res) => {
   const { proveedor, items, fecha, costo_envio, deposito_id, condicion_pago, fecha_vencimiento } = req.body;
 
   if (!proveedor || !String(proveedor).trim()) {
@@ -3860,7 +3917,7 @@ app.post('/api/compras', (req, res) => {
 // ya usan anular/restaurar. El costo se recalcula con
 // recalcularCostoProducto (no con la resta incremental) porque un
 // promedio ponderado no se puede "restar" de forma exacta.
-app.put('/api/compras/:id', (req, res) => {
+app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
   const { proveedor, items, fecha, costo_envio, deposito_id, condicion_pago, fecha_vencimiento } = req.body;
 
@@ -4118,7 +4175,7 @@ function confirmarCompra(compraId) {
   ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
 }
 
-app.post('/api/compras/:id/confirmar', (req, res) => {
+app.post('/api/compras/:id/confirmar', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db.prepare('SELECT id, estado FROM compras WHERE id = ?').get(compraId);
@@ -4240,7 +4297,7 @@ function recalcularCostoProducto(productoId) {
   return costo;
 }
 
-app.post('/api/compras/:id/anular', (req, res) => {
+app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
@@ -4337,7 +4394,7 @@ app.post('/api/compras/:id/anular', (req, res) => {
 // vuelve a ser borrador (nunca tuvo deuda ni stock); una que ya se había
 // efectuado vuelve a estar activa, con su deuda, y si además estaba
 // recibida se le vuelve a sumar el stock.
-app.post('/api/compras/:id/restaurar', (req, res) => {
+app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
@@ -4461,7 +4518,7 @@ function aplicarEstadoEnvioCompra(req, compraId, estadoEnvio, totalLote = 1) {
   return { sinCambios };
 }
 
-app.patch('/api/compras/:id/estado-envio', (req, res) => {
+app.patch('/api/compras/:id/estado-envio', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
   let resultado;
   try {
@@ -4477,7 +4534,7 @@ app.patch('/api/compras/:id/estado-envio', (req, res) => {
 
 // Edición en lote del estado de envío. Mismo criterio de éxito parcial que
 // /api/productos/bulk: cada compra se intenta de forma independiente.
-app.post('/api/compras/bulk/estado-envio', (req, res) => {
+app.post('/api/compras/bulk/estado-envio', soloAdmin, (req, res) => {
   let ids;
   try {
     ids = idsDeLote(req.body?.ids);
@@ -4496,7 +4553,7 @@ app.post('/api/compras/bulk/estado-envio', (req, res) => {
   res.json(resultado);
 });
 
-app.get('/api/compras/:id/pagos', (req, res) => {
+app.get('/api/compras/:id/pagos', soloAdmin, (req, res) => {
   const pagos = db
     .prepare(
       `SELECT pagos.id, pagos.fecha, pagos.importe, pagos.nota,
@@ -4510,7 +4567,7 @@ app.get('/api/compras/:id/pagos', (req, res) => {
   res.json(pagos);
 });
 
-app.post('/api/compras/:id/pagos', (req, res) => {
+app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
   const { importe, cuenta_tesoreria_id, nota } = req.body;
 
@@ -4608,14 +4665,14 @@ function decorarDevolucionProveedor(d) {
   };
 }
 
-app.get('/api/devoluciones-proveedor', (req, res) => {
+app.get('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const devoluciones = db
     .prepare(`${SELECT_DEVOLUCION_PROVEEDOR} ORDER BY devoluciones_proveedor.id DESC`)
     .all();
   res.json(devoluciones.map(decorarDevolucionProveedor));
 });
 
-app.get('/api/devoluciones-proveedor/:id', (req, res) => {
+app.get('/api/devoluciones-proveedor/:id', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
   const devolucion = db
     .prepare(`${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.id = ?`)
@@ -4785,7 +4842,7 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
   }
 }
 
-app.post('/api/devoluciones-proveedor', (req, res) => {
+app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const { compra_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const compraId = Number(compra_id);
 
@@ -4889,7 +4946,7 @@ app.post('/api/devoluciones-proveedor', (req, res) => {
   res.status(201).json({ id: devolucionId });
 });
 
-app.post('/api/devoluciones-proveedor/:id/nota-credito', (req, res) => {
+app.post('/api/devoluciones-proveedor/:id/nota-credito', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
   const { numero } = req.body;
 
@@ -4919,7 +4976,7 @@ app.post('/api/devoluciones-proveedor/:id/nota-credito', (req, res) => {
   res.json({ id, nota_credito_proveedor_numero: numeroFinal });
 });
 
-app.post('/api/devoluciones-proveedor/:id/anular', (req, res) => {
+app.post('/api/devoluciones-proveedor/:id/anular', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
 
   const devolucion = db
@@ -4960,7 +5017,7 @@ app.post('/api/devoluciones-proveedor/:id/anular', (req, res) => {
 // caja). Puede fallar si en el medio se volvió a comprar/vender ese
 // producto de forma que ya no alcanza el stock — mismo cuidado que
 // restaurar una compra.
-app.post('/api/devoluciones-proveedor/:id/restaurar', (req, res) => {
+app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
 
   const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones_proveedor WHERE id = ?').get(id);
@@ -5014,7 +5071,7 @@ app.get('/api/cuentas-tesoreria', (req, res) => {
 
 const TIPOS_CUENTA = ['efectivo', 'banco', 'mercadopago', 'otro'];
 
-app.post('/api/cuentas-tesoreria', (req, res) => {
+app.post('/api/cuentas-tesoreria', soloAdmin, (req, res) => {
   const { nombre, tipo, saldo_inicial } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
@@ -5040,7 +5097,7 @@ app.post('/api/cuentas-tesoreria', (req, res) => {
   res.status(201).json({ id: lastInsertRowid });
 });
 
-app.patch('/api/cuentas-tesoreria/:id', (req, res) => {
+app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
   const cuentaId = Number(req.params.id);
   const { nombre, tipo, saldo_inicial } = req.body;
 
@@ -5164,7 +5221,7 @@ app.get('/api/tesoreria/movimientos', (req, res) => {
 // Ingreso o egreso cargado a mano: aporte del dueño, retiro, un gasto
 // pagado de la caja. No tiene venta ni compra detrás, por eso lleva
 // concepto: es lo único que explica de qué se trata.
-app.post('/api/tesoreria/movimientos', (req, res) => {
+app.post('/api/tesoreria/movimientos', soloAdmin, (req, res) => {
   const { cuenta_tesoreria_id, tipo, importe, fecha, concepto } = req.body;
 
   if (tipo !== 'ingreso' && tipo !== 'egreso') {
@@ -5210,7 +5267,7 @@ app.post('/api/tesoreria/movimientos', (req, res) => {
 // Son dos movimientos y no uno porque cada cuenta tiene que ver su propio
 // lado del movimiento en su historial. Van juntos en una transacción: una
 // transferencia a medias dejaría plata desaparecida.
-app.post('/api/tesoreria/transferencias', (req, res) => {
+app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
   const { origen_id, destino_id, importe, fecha, concepto } = req.body;
 
   const monto = Number(importe);
@@ -5515,7 +5572,7 @@ app.put('/api/gastos/:id', (req, res) => {
   res.json({ id: gastoId });
 });
 
-app.post('/api/gastos/:id/anular', (req, res) => {
+app.post('/api/gastos/:id/anular', soloAdmin, (req, res) => {
   const gastoId = Number(req.params.id);
   const gasto = db.prepare('SELECT id, estado FROM gastos WHERE id = ?').get(gastoId);
   if (!gasto) {
@@ -5540,7 +5597,7 @@ app.post('/api/gastos/:id/anular', (req, res) => {
   res.json({ id: gastoId, estado: 'anulado' });
 });
 
-app.post('/api/gastos/:id/restaurar', (req, res) => {
+app.post('/api/gastos/:id/restaurar', soloAdmin, (req, res) => {
   const gastoId = Number(req.params.id);
   const gasto = db
     .prepare('SELECT id, estado, cuenta_tesoreria_id, importe, fecha, descripcion FROM gastos WHERE id = ?')
@@ -5790,7 +5847,7 @@ function calcularResultado(desde, hasta) {
   };
 }
 
-app.get('/api/resumen', (req, res) => {
+app.get('/api/resumen', soloAdmin, (req, res) => {
   const { desde, hasta } = req.query;
   res.json(calcularResultado(desde ?? null, hasta ?? null));
 });
@@ -6039,7 +6096,7 @@ function variacion(actual, anterior) {
   return { abs, pct: (abs / Math.abs(anterior)) * 100, comparable: true, cruza_cero: cruzaCero };
 }
 
-app.get('/api/resumen/evolucion', (req, res) => {
+app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
@@ -6248,7 +6305,7 @@ function netearPorId(filasVentas, filasDevoluciones, resolverNombre) {
   return [...porId.values()];
 }
 
-app.get('/api/reportes/ventas', (req, res) => {
+app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
@@ -6496,7 +6553,7 @@ function netearComprasPorId(filasCompras, filasDevoluciones, resolverNombre) {
   return [...porId.values()];
 }
 
-app.get('/api/reportes/compras', (req, res) => {
+app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
@@ -6597,7 +6654,7 @@ app.get('/api/reportes/compras', (req, res) => {
 // lados); el frontend lo muestra como "—". Con stock en 0 el resultado es
 // 0 días sin importar el ritmo: no queda nada, sea cual sea el consumo.
 
-app.get('/api/reportes/stock', (req, res) => {
+app.get('/api/reportes/stock', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 

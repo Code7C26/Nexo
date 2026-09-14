@@ -2269,10 +2269,30 @@ input.precio-sin-configurar::placeholder {
   display: none;
 }
 
-/* Ocultamiento por rol de la vista Usuarios: es UI, no seguridad — el
-   servidor igual responde 403 si un empleado llama a los endpoints de
-   /api/usuarios directo. */
-:root:not([data-rol="admin"]) .nav-item[data-view="usuarios"] {
+/* Ocultamiento por rol de las vistas que en el servidor son admin-only
+   (permisos.js): Usuarios, Estadísticas (vista "dashboard"), Reportes de
+   stock, Papelera (mezcla ventas/gastos con compras y devoluciones a
+   proveedor, que ya son admin), Compras y Devoluciones a proveedor (el
+   circuito de compras entero, valorizado al costo). Es UI, no seguridad —
+   el servidor igual responde 403 si un empleado llama a esos endpoints
+   directo; esto solo evita que entre a una vista que va a quedar vacía o
+   rota porque sus loaders ya cortan antes del fetch (ver esAdmin() en
+   app.js). */
+:root:not([data-rol="admin"]) .nav-item[data-view="usuarios"],
+:root:not([data-rol="admin"]) .nav-item[data-view="dashboard"],
+:root:not([data-rol="admin"]) .nav-item[data-view="reportes-stock"],
+:root:not([data-rol="admin"]) .nav-item[data-view="papelera"],
+:root:not([data-rol="admin"]) .nav-item[data-view="compras"],
+:root:not([data-rol="admin"]) .nav-item[data-view="devoluciones-proveedor"] {
+  display: none;
+}
+
+/* Marcador genérico para columnas, botones y tiras de ledger que solo
+   tienen sentido para admin (costos, márgenes, ganancias, acciones de
+   anular/restaurar y administración de tesorería). Se aplica con clase,
+   nunca con nth-child, porque el número de columna varía entre tablas y
+   un futuro cambio de orden rompería una regla posicional en silencio. */
+:root:not([data-rol="admin"]) .col-admin {
   display: none;
 }
 

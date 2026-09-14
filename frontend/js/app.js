@@ -15,10 +15,36 @@ document.getElementById("todayDate").textContent = new Date().toLocaleDateString
   month: "long"
 });
 
+// Guarda contra `null`/`undefined`: con el filtrado de campos sensibles por
+// rol (permisos por rol, backend/server.js) un empleado puede recibir un
+// producto sin `precio_costo` o una venta sin `margen` — sin este chequeo
+// `n.toLocaleString` explota adentro del template literal que arma la fila
+// de la tabla, y la excepción se lleva puesto el render entero (no queda
+// "vacío", no se dibuja nada). Con la guarda degrada a un guion.
 const money = (n) =>
-  n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
+  n == null
+    ? "—"
+    : n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
 
-const numero = (n) => n.toLocaleString("es-AR");
+const numero = (n) => (n == null ? "—" : n.toLocaleString("es-AR"));
+
+// sesion.js escribe data-rol en <html> antes de inyectar este archivo (ver
+// escribirDatosUsuario en sesion.js), así que ya está disponible en la
+// primera línea que corre acá. Es la misma fuente que ya usa styles.css
+// (:root:not([data-rol="admin"])) para esconder por CSS — esta función es
+// el equivalente en JS, para las decisiones que no se pueden resolver con
+// una regla de CSS (no hacer el fetch, no emitir el link, elegir la vista
+// de fallback).
+const esAdmin = () => document.documentElement.dataset.rol === "admin";
+
+// Los CSV son datos armados en JS, no DOM: `.col-admin` no les sirve. Las
+// columnas de costo/margen de un array COLUMNAS_CSV_X se marcan con
+// `admin: true`, y esto filtra esa marca al momento de exportar (no antes:
+// el rol puede no estar listo todavía si se evaluara al definir el array a
+// nivel de módulo). Sin este filtro un empleado se exporta una columna con
+// el valor real igual — el filtrado del backend (permisos por rol) no
+// interviene acá porque el array ya vive en el objeto que llegó por fetch.
+const columnasVisibles = (columnas) => (esAdmin() ? columnas : columnas.filter((c) => !c.admin));
 
 const hoyISO = () => new Date().toLocaleDateString("sv-SE"); // formato AAAA-MM-DD, para <input type="date">
 
@@ -846,6 +872,12 @@ function rangoActualResumen() {
 }
 
 async function cargarResumen() {
+  // Es rentabilidad (venta, costo y ganancia bruta juntos): admin-only en
+  // el servidor (GET /api/resumen), y esta función se llama tras casi toda
+  // mutación del sistema, no solo al entrar a la vista Resumen — por eso el
+  // corte va acá adentro y no en cada uno de esos call sites. Sin esto, un
+  // empleado dispara un 403 en segundo plano cada vez que carga una venta.
+  if (!esAdmin()) return;
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
   const resumen = await (await fetch(`/api/resumen${params ? "?" + params : ""}`)).json();
@@ -1048,6 +1080,11 @@ function renderGraficoResultado(serie) {
 let tokenEvolucion = 0;
 
 async function cargarEvolucion() {
+  // Mismo corte que cargarResumen (GET /api/resumen/evolucion es admin-only
+  // en el servidor). Hoy el único llamador es cargarResumen, que ya corta
+  // antes de esta línea — se repite acá también por si en el futuro alguien
+  // la llama sola, para no depender de que quien la use se acuerde del rol.
+  if (!esAdmin()) return;
   const mio = ++tokenEvolucion;
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
@@ -1207,6 +1244,10 @@ function renderReporteClientes(lista) {
 }
 
 async function cargarReporteVentas() {
+  // GET /api/reportes/ventas es admin-only (rentabilidad por producto,
+  // categoría y cliente); se llama tras mutaciones de venta igual que
+  // cargarResumen, no solo al entrar a la vista.
+  if (!esAdmin()) return;
   tablaCargando("reporteProductosBody", 6);
   tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
@@ -1300,6 +1341,9 @@ function renderReporteComprasCategorias(lista) {
 }
 
 async function cargarReporteCompras() {
+  // GET /api/reportes/compras es admin-only, igual que todo el circuito de
+  // compras (ver permisos.js): valorizado al costo por definición.
+  if (!esAdmin()) return;
   tablaCargando("reporteComprasProveedoresBody", 5);
   tablaCargando("reporteComprasProductosBody", 4);
   tablaCargando("reporteComprasCategoriasBody", 4);
@@ -1359,6 +1403,11 @@ function renderReporteStock(lista) {
 }
 
 async function cargarReporteStock() {
+  // GET /api/reportes/stock es admin-only (valorizado a costo). Se llama
+  // desde decenas de Promise.all repartidos por casi todas las vistas
+  // (refresco tras cada mutación de stock/venta/compra), así que el corte
+  // tiene que vivir acá y no en cada call site.
+  if (!esAdmin()) return;
   tablaCargando("reporteStockBody", 6);
 
   const rango = rangoActualReporteStock();
@@ -1959,7 +2008,7 @@ function poblarDatalistProductos() {
   document.getElementById("productosVenta").innerHTML = opciones;
 }
 
-const porcentaje = (n) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
+const porcentaje = (n) => (n == null ? "—" : `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`);
 
 const selProductos = crearSeleccion("productosBody");
 
@@ -1987,19 +2036,25 @@ function renderProductos(lista) {
     // visible en la tabla, solo al editar. Sin precio configurado (0) se
     // muestra en rojo con el texto "Sin precio", no "$0,00" (que da a
     // entender que de verdad vale cero).
-    const precioCelda =
-      p.precio_venta > 0
-        ? `<span class="precio-venta-texto mono" data-id="${p.id}" tabindex="0">${money(p.precio_venta)}</span>`
-        : `<span class="precio-venta-texto precio-sin-configurar" data-id="${p.id}" tabindex="0">Sin precio</span>`;
+    // Editar el precio es PATCH /api/productos/:id, admin-only en el
+    // servidor. `pointer-events: none` no alcanza para bloquear esto en el
+    // frontend porque además del click hay un handler de teclado
+    // (Enter/Espacio, más abajo) — para no-admin se emite un <span> plano
+    // sin `tabindex` ni la clase que dispara los listeners, así que ni el
+    // mouse ni el teclado lo activan.
+    const precioTexto = p.precio_venta > 0 ? money(p.precio_venta) : "Sin precio";
+    const precioCelda = esAdmin()
+      ? `<span class="precio-venta-texto mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}" data-id="${p.id}" tabindex="0">${precioTexto}</span>`
+      : `<span class="mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}">${precioTexto}</span>`;
     tr.innerHTML = `
       ${selProductos.celda(p.id)}
       <td data-label="Nombre">${p.nombre}</td>
       <td data-label="SKU">${p.sku || "—"}</td>
       <td data-label="Categoría">${p.categoria || "—"}</td>
-      <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
-      <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
+      <td data-label="Valorizado" class="align-right mono col-admin">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right mono">${precioCelda}</td>
-      <td data-label="Margen" class="align-right mono">${p.margen === null ? "—" : porcentaje(p.margen)}</td>
+      <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
@@ -2109,7 +2164,11 @@ async function abrirFichaProducto(id) {
         ? money(producto.precio_venta)
         : '<span class="precio-sin-configurar">Sin precio</span>'
     ],
-    ["Margen", producto.margen === null ? null : porcentaje(producto.margen)],
+    // Margen es a la vez costo y ganancia: se saca del todo para no-admin
+    // en vez de dejarlo en la lista (esta ficha se arma con un array de
+    // pares, no columnas fijas de tabla, así que acá no aplica `.col-admin`
+    // — se filtra el dato en JS antes de mapearlo a <dt>/<dd>).
+    ...(esAdmin() ? [["Margen", producto.margen == null ? null : porcentaje(producto.margen)]] : []),
     ["Stock mínimo", numero(producto.stock_minimo)],
     ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
     ["Estado de stock", STOCK_LABEL[producto.estado_stock]],
@@ -2255,10 +2314,10 @@ const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Nombre", valor: (p) => p.nombre },
   { titulo: "SKU", valor: (p) => p.sku },
   { titulo: "Categoría", valor: (p) => p.categoria },
-  { titulo: "Costo", valor: (p) => p.precio_costo },
-  { titulo: "Valorizado", valor: (p) => p.valorizado },
+  { titulo: "Costo", valor: (p) => p.precio_costo, admin: true },
+  { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
   { titulo: "Precio", valor: (p) => p.precio_venta },
-  { titulo: "Margen", valor: (p) => p.margen },
+  { titulo: "Margen", valor: (p) => p.margen, admin: true },
   { titulo: "Stock", valor: (p) => p.stock },
   { titulo: "Activo", valor: (p) => (p.activo ? "sí" : "no") }
 ];
@@ -2272,7 +2331,7 @@ montarBarraSeleccion(selProductos, [
     etiqueta: "Exportar CSV",
     onClick: (ids) => {
       const idsSet = new Set(ids);
-      descargarCSV("nexo-productos-seleccion", COLUMNAS_CSV_PRODUCTOS, listaProductosVisible().filter((p) => idsSet.has(p.id)));
+      descargarCSV("nexo-productos-seleccion", columnasVisibles(COLUMNAS_CSV_PRODUCTOS), listaProductosVisible().filter((p) => idsSet.has(p.id)));
     }
   }
 ]);
@@ -3066,7 +3125,7 @@ function renderStock(lista) {
       ${selStock.celda(`${p.producto_id}-${p.deposito_id}`)}
       <td data-label="Producto">${p.nombre}</td>
       <td data-label="Depósito">${p.deposito ?? "—"}</td>
-      <td data-label="Costo" class="align-right mono">${money(p.precio_costo)}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
       <td data-label="Stock en depósito" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Stock total" class="align-right mono">${numero(p.stock_total)}</td>
       <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
@@ -3152,17 +3211,17 @@ function listaStockVisible() {
 const COLUMNAS_CSV_STOCK = [
   { titulo: "Producto", valor: (p) => p.nombre },
   { titulo: "Depósito", valor: (p) => p.deposito ?? "" },
-  { titulo: "Costo", valor: (p) => p.precio_costo },
+  { titulo: "Costo", valor: (p) => p.precio_costo, admin: true },
   { titulo: "Stock en depósito", valor: (p) => p.stock },
   { titulo: "Stock total", valor: (p) => p.stock_total },
   { titulo: "Stock mínimo", valor: (p) => p.stock_minimo },
   { titulo: "Stock máximo", valor: (p) => p.stock_maximo },
-  { titulo: "Valorizado", valor: (p) => p.valorizado },
+  { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
   { titulo: "Estado", valor: (p) => STOCK_LABEL[p.estado_stock] ?? p.estado_stock }
 ];
 
 document.getElementById("btnExportarStock").addEventListener("click", () => {
-  descargarCSV("nexo-stock", COLUMNAS_CSV_STOCK, listaStockVisible());
+  descargarCSV("nexo-stock", columnasVisibles(COLUMNAS_CSV_STOCK), listaStockVisible());
 });
 
 montarBarraSeleccion(selStock, [
@@ -3174,7 +3233,7 @@ montarBarraSeleccion(selStock, [
       const idsSet = new Set(ids);
       descargarCSV(
         "nexo-stock-seleccion",
-        COLUMNAS_CSV_STOCK,
+        columnasVisibles(COLUMNAS_CSV_STOCK),
         listaStockVisible().filter((p) => idsSet.has(`${p.producto_id}-${p.deposito_id}`))
       );
     }
@@ -3325,7 +3384,7 @@ function renderTransferencias(lista) {
         t.estado === "anulada" ? "Anulada" : "Activa"
       }</span></td>
       <td data-label="">${
-        t.estado === "activa"
+        t.estado === "activa" && esAdmin()
           ? `<button type="button" class="btn-fila btn-anular-transferencia" data-id="${t.id}">Anular</button>`
           : ""
       }</td>
@@ -4186,7 +4245,7 @@ function renderVentas(lista) {
     // devoluciones asociadas (el backend lo vuelve a validar, esto es
     // nada más para no invitar a un click que ya sabemos que va a fallar).
     const accionAnular =
-      !v.facturada && !v.tiene_devolucion && v.estado_cobro === "pendiente"
+      !v.facturada && !v.tiene_devolucion && v.estado_cobro === "pendiente" && esAdmin()
         ? `<button type="button" class="btn-icon-danger btn-anular-venta" data-id="${v.id}" title="Anular venta" aria-label="Anular venta">${ICONO_TACHO}</button>`
         : "";
 
@@ -4196,9 +4255,9 @@ function renderVentas(lista) {
       <td data-label="Cliente">${v.cliente}</td>
       <td data-label="Productos" class="celda-wrap">${v.items_resumen || "—"}</td>
       <td data-label="Fecha">${v.fecha}</td>
-      <td data-label="Costo" class="align-right mono">${money(v.costo_total)}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono">${money(v.total)}</td>
-      <td data-label="Ganancia" class="align-right mono">${money(v.margen)}</td>
+      <td data-label="Ganancia" class="align-right mono col-admin">${money(v.margen)}</td>
       <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[v.estado_cobro]}">${ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
       <td data-label=""><div class="fila-acciones">${accionFactura} ${accionCobro} ${accionAnular}</div></td>
     `;
@@ -4260,17 +4319,17 @@ const COLUMNAS_CSV_VENTAS = [
   { titulo: "Fecha", valor: (v) => v.fecha },
   { titulo: "Cliente", valor: (v) => v.cliente },
   { titulo: "Productos", valor: (v) => v.items_resumen },
-  { titulo: "Costo", valor: (v) => v.costo_total },
+  { titulo: "Costo", valor: (v) => v.costo_total, admin: true },
   { titulo: "Total", valor: (v) => v.total },
   { titulo: "Devuelto", valor: (v) => v.devuelto },
   { titulo: "Neto", valor: (v) => v.neto },
-  { titulo: "Ganancia", valor: (v) => v.margen },
+  { titulo: "Ganancia", valor: (v) => v.margen, admin: true },
   { titulo: "Cobro", valor: (v) => ESTADO_COBRO_LABEL[v.estado_cobro] ?? v.estado_cobro },
   { titulo: "Facturada", valor: (v) => (v.facturada ? "sí" : "no") }
 ];
 
 document.getElementById("btnExportarVentas").addEventListener("click", () => {
-  descargarCSV("nexo-ventas", COLUMNAS_CSV_VENTAS, listaVentasVisible());
+  descargarCSV("nexo-ventas", columnasVisibles(COLUMNAS_CSV_VENTAS), listaVentasVisible());
 });
 
 montarBarraSeleccion(selVentas, [
@@ -4278,7 +4337,7 @@ montarBarraSeleccion(selVentas, [
     etiqueta: "Exportar CSV",
     onClick: (ids) => {
       const idsSet = new Set(ids);
-      descargarCSV("nexo-ventas-seleccion", COLUMNAS_CSV_VENTAS, listaVentasVisible().filter((v) => idsSet.has(v.id)));
+      descargarCSV("nexo-ventas-seleccion", columnasVisibles(COLUMNAS_CSV_VENTAS), listaVentasVisible().filter((v) => idsSet.has(v.id)));
     }
   }
 ]);
@@ -4288,7 +4347,7 @@ function filtrarVentas() {
   const lista = filtrosVentas.aplicar(activas);
 
   const total = lista.reduce((acc, v) => acc + v.total, 0);
-  const costo = lista.reduce((acc, v) => acc + v.costo_total, 0);
+  const costo = lista.reduce((acc, v) => acc + (v.costo_total ?? 0), 0);
   document.getElementById("ventasTotalStrip").textContent = money(total);
   document.getElementById("ventasCostoStrip").textContent = money(costo);
   document.getElementById("ventasGananciaStrip").textContent = money(total - costo);
@@ -4612,7 +4671,7 @@ async function abrirFichaVenta(id) {
           <td data-label="Devuelto" class="align-right mono">${
             i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : "—"
           }</td>
-          <td data-label="Ganancia" class="align-right mono">${money(i.ganancia)}</td>
+          <td data-label="Ganancia" class="align-right mono col-admin">${money(i.ganancia)}</td>
         </tr>`
     )
     .join("");
@@ -4882,9 +4941,11 @@ async function abrirFichaDevolucion(id) {
       botones.push(
         `<button type="button" class="btn btn-secundario" id="btnNotaCreditoDevolucion">Emitir nota de crédito</button>`
       );
-      botones.push(
-        `<button type="button" class="btn-icon-danger" id="btnAnularDevolucion" title="Anular devolución" aria-label="Anular devolución">${ICONO_TACHO}</button>`
-      );
+      if (esAdmin()) {
+        botones.push(
+          `<button type="button" class="btn-icon-danger" id="btnAnularDevolucion" title="Anular devolución" aria-label="Anular devolución">${ICONO_TACHO}</button>`
+        );
+      }
     }
   }
   acciones.innerHTML = botones.join(" ");
@@ -5427,6 +5488,12 @@ formBulkEstadoEnvio.addEventListener("submit", async (e) => {
 });
 
 async function cargarCompras() {
+  // Todo el circuito de compras es admin-only en el servidor (se valoriza
+  // al costo por definición — ver permisos.js), y esta función corre en el
+  // boot para cualquier usuario logueado. Sin este corte un empleado recibe
+  // el cuerpo del 403 (`{error: "..."}`) donde se espera un array, y
+  // filtrarCompras()/renderPapelera() explotan tratando de iterarlo.
+  if (!esAdmin()) return;
   tablaCargando("comprasBody", selCompras.colspan(7));
   const res = await fetch("/api/compras");
   compras = await res.json();
@@ -5795,6 +5862,9 @@ const filtrosDevolucionesProveedor = crearFiltros(
 );
 
 async function cargarDevolucionesProveedor() {
+  // Mismo motivo que cargarCompras(): es el reverso de una compra, se
+  // valoriza al costo, admin-only en el servidor, y corre en el boot.
+  if (!esAdmin()) return;
   tablaCargando("devolucionesProveedorBody", 7);
   const res = await fetch("/api/devoluciones-proveedor");
   devolucionesProveedor = await res.json();
@@ -7100,7 +7170,11 @@ function renderGastos(lista) {
       <td data-label="Importe" class="align-right mono">${money(g.importe)}</td>
       <td data-label=""><div class="fila-acciones">
         ${botonEditarFila("btn-editar-gasto", g.id, "gasto")}
-        <button type="button" class="btn-icon-danger btn-anular-gasto" data-id="${g.id}" title="Anular gasto" aria-label="Anular gasto">${ICONO_TACHO}</button>
+        ${
+          esAdmin()
+            ? `<button type="button" class="btn-icon-danger btn-anular-gasto" data-id="${g.id}" title="Anular gasto" aria-label="Anular gasto">${ICONO_TACHO}</button>`
+            : ""
+        }
       </div></td>
     </tr>`
     )
@@ -7954,7 +8028,10 @@ const AUDITORIA_ACCION_LABEL = {
   anular: "Anuló",
   restaurar: "Restauró",
   cambiar_estado: "Actualizó",
-  confirmar: "Confirmó"
+  confirmar: "Confirmó",
+  login: "Inició sesión",
+  logout: "Cerró sesión",
+  login_fallido: "Intento de inicio de sesión fallido"
 };
 const AUDITORIA_ENTIDAD_LABEL = {
   venta: "Venta",
@@ -8685,13 +8762,32 @@ const VISTAS_CONSTRUIDAS = {
   placeholder: { titulo: "Próximamente", dominio: "Nexo", esFicha: true }
 };
 
+// Vistas cuyo contenido depende de al menos un endpoint admin-only
+// (permisos.js): Usuarios (administración), dashboard (Estadísticas:
+// GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
+// (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
+// y todo el circuito de compras y sus devoluciones a proveedor, fichas
+// incluidas. Un deep-link escrito a mano por un empleado (el nav-item ya
+// está oculto por CSS, pero el hash se puede tipear igual) cae al mismo
+// destino que un click normal — es solo UI, el servidor responde 403 igual
+// si se llama al endpoint directo.
+const VISTAS_SOLO_ADMIN = new Set([
+  "usuarios",
+  "dashboard",
+  "reportes-stock",
+  "papelera",
+  "compras",
+  "compra-detalle",
+  "devoluciones-proveedor",
+  "devolucion-proveedor-detalle"
+]);
+
 function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
-  // Un deep-link #/usuarios escrito a mano por un empleado cae a
-  // dashboard, igual que un click de nav (el ítem está oculto por CSS,
-  // pero el hash igual se puede tipear). Es solo UI: el servidor
-  // responde 403 igual si se llama a /api/usuarios directo.
-  if (viewId === "usuarios" && document.documentElement.dataset.rol !== "admin") {
-    viewId = "dashboard";
+  // El fallback ya no puede ser "dashboard": pasó a ser admin-only (arriba).
+  // "ventas" es donde arranca un empleado al loguearse (ver el boot, más
+  // abajo), así que es el destino natural también acá.
+  if (VISTAS_SOLO_ADMIN.has(viewId) && !esAdmin()) {
+    viewId = "ventas";
   }
 
   document.querySelectorAll(".view").forEach((sec) => {
