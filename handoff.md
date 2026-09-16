@@ -3942,3 +3942,42 @@ retomar.
   familias que sobren (hoy carga 5 de más).
 - `GEMINI_API_KEY` sigue sin estar cargada en el proceso: el asistente por
   texto responde 503. Se consigue gratis en Google AI Studio.
+
+## 28. Corrección de este handoff + orden de ramas
+
+**Corrección sobre §27**: ese punto quedó registrado como "diagnóstico hecho,
+implementación NO", pero **los permisos por rol sí se implementaron** después,
+en dos commits que este handoff nunca llegó a documentar: `135de27` ("fix:
+enforzar debe_cambiar_password en el servidor y auditar login/logout") y
+`d299699` ("feat: permisos por rol admin/empleado en los ~105 endpoints y en
+la UI"). Están descritos con más detalle en `README.md` ("Estado del
+Proyecto"). Esta sesión no revisó el diff de esos commits en profundidad —
+si hace falta el detalle técnico exacto de qué se tocó, mirar los commits
+directamente.
+
+**Orden de ramas de esta sesión** (pedido explícito del usuario: "hiciste un
+lío abriendo tantas ramas"):
+- El PR #23 (`feature/precios-multideposito-cxc-reportes` → `main`) **ya
+  estaba mergeado en GitHub** desde antes de esta sesión, más un
+  `Update README.md` (`e5de3dc`) hecho directo sobre `main`. El `main` local
+  solo estaba atrasado por falta de `fetch` — no se abrió ningún PR nuevo.
+- `main` y `solla` locales y remotos quedaron en el mismo commit
+  (`e5de3dc`, fast-forward puro, sin conflicto).
+- Se borraron, local y remoto, tres ramas que ya no tenían ningún commit
+  propio fuera de `main`: `feature/fusion-resumen`,
+  `feature/usuarios-login-roles`, `feature/precios-multideposito-cxc-reportes`.
+- **`Tosi` se dejó intacta a propósito** (es la rama de Joaquín). Al revisar
+  quedó una nota suelta: el `Tosi` **local** de este clon está 8 commits
+  atrás de `origin/Tosi` (nadie hizo `fetch` de esos commits antes) — no es
+  un problema, solo desactualización del clon local, y no se tocó porque no
+  es la rama de esta sesión.
+- **Regla nueva, confirmada por el usuario, que reemplaza "rama por feature"
+  para el día a día**: de acá en adelante el trabajo va siempre sobre
+  `solla` (la rama de Santino), no una rama nueva por tarea. `Tosi` sigue
+  siendo la de Joaquín. Si en algún momento hace falta abrir un PR real
+  (`solla` → `main`), es la misma mecánica de siempre, solo que ya no se
+  crea una rama descartable para cada etapa.
+
+**Estado final de ramas**: `main`, `solla` (rama activa de trabajo), `Tosi`
+— las tres iguales en local y remoto salvo `Tosi` (ver arriba). Ninguna otra
+rama de feature quedó viva.
