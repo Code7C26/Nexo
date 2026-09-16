@@ -3981,3 +3981,51 @@ lío abriendo tantas ramas"):
 **Estado final de ramas**: `main`, `solla` (rama activa de trabajo), `Tosi`
 — las tres iguales en local y remoto salvo `Tosi` (ver arriba). Ninguna otra
 rama de feature quedó viva.
+
+## 29. Notas de débito: alta desde la UI
+
+El README marcaba pendiente "notas de débito (el modelo las soporta pero
+no hay forma de darlas de alta desde la UI)". Se confirmó con el usuario
+(dos `AskUserQuestion`, ambas con la opción recomendada):
+
+- Se dan de alta **sueltas**, sin atarlas a ninguna venta/factura
+  existente — mismo patrón que la "Factura suelta" que ya existía.
+- **No afectan cuenta corriente, tesorería ni resultado** — son solo un
+  documento, igual que la factura suelta.
+
+Investigando el código se confirmó que **no hacía falta ningún cambio de
+backend ni migración**: `backend/db/schema.sql` ya tenía `nota_debito` en
+el `CHECK` de `facturas.tipo`, `POST /api/facturas` ya aceptaba y procesaba
+`tipo: 'nota_debito'` con numeración independiente por
+`(punto_venta, tipo, letra)` (mismo mecanismo que `nota_credito`), y
+`permisos.js` ya dejaba ese endpoint en `'ambos'` roles. Lo único que
+faltaba era exponerlo en el frontend.
+
+Cambios (solo `frontend/`):
+
+- `frontend/index.html`: se agregó la opción "Nota de débito" al
+  `<select name="tipo">` del modal "Nueva factura" (la opción
+  `nota_credito` sigue sin estar disponible ahí a propósito: sigue siendo
+  exclusivamente automática desde una devolución). Se agregó la columna
+  "Tipo" al `<thead>` de la tabla de Facturas.
+- `frontend/js/app.js`: nuevo `TIPO_FACTURA_LABEL` (mismo patrón que
+  `TIPO_GASTO_LABEL`), usado en la tabla de Facturas (nueva columna
+  "Tipo"), en la ficha de detalle, en el rótulo de impresión
+  (`hojaDeFactura`), en el export CSV (`COLUMNAS_CSV_FACTURAS`) y en el
+  toast de éxito al crear ("Nota de débito #N registrada." en vez de
+  siempre "Factura #N registrada.").
+
+Verificado en una copia aislada (puerto 3002, base de datos descartable):
+numeración independiente confirmada por curl (`factura` y `nota_debito`
+arrancan cada una en su propio número 1), y un script de Playwright
+confirmó de punta a punta: el select muestra "Nota de débito", el alta
+desde la UI muestra el toast correcto, la tabla muestra la columna "Tipo"
+con el valor correcto, la ficha muestra "Tipo: Nota de débito", crear una
+factura común sigue funcionando igual que antes, y no hubo errores de
+consola. La copia de prueba y el proceso en el puerto 3002 se
+eliminaron/detuvieron al terminar.
+
+Pendiente conocido de la sesión anterior, sin resolver todavía: el commit
+`7af7308` (orden de ramas) quedó sin la línea `Co-Authored-By`; se ofreció
+corregirlo con un amend + force-push a `solla` pero no se hizo porque
+requiere confirmación explícita del usuario.

@@ -1457,6 +1457,7 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 // PRESUPUESTO_LABEL, STOCK_LABEL y TIPO_GASTO_LABEL, que ya seguían este
 // mismo criterio. Reusado por Facturas, Ventas y el historial de Clientes.
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
+const TIPO_FACTURA_LABEL = { factura: "Factura", nota_credito: "Nota de crédito", nota_debito: "Nota de débito" };
 
 // Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
 // se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
@@ -1524,10 +1525,10 @@ function renderFacturas(lista) {
 
   if (lista.length === 0) {
     if (filtrosFacturas.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(selFacturas.colspan(6));
+      body.innerHTML = filaVaciaFiltrada(selFacturas.colspan(7));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosFacturas.limpiar());
     } else {
-      body.innerHTML = filaVacia(selFacturas.colspan(6), "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
+      body.innerHTML = filaVacia(selFacturas.colspan(7), "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
     }
     return;
   }
@@ -1538,6 +1539,7 @@ function renderFacturas(lista) {
     <tr class="fila-clickeable" data-id="${f.id}">
       ${selFacturas.celda(f.id)}
       <td data-label="Comprobante" class="mono">${f.comprobante}</td>
+      <td data-label="Tipo">${TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo}</td>
       <td data-label="Fecha">${f.fecha}</td>
       <td data-label="Cliente">${f.cliente}</td>
       <td data-label="Origen">${
@@ -1633,6 +1635,7 @@ const filtrosFacturas = crearFiltros(
 // comentario junto a descargarCSV.
 const COLUMNAS_CSV_FACTURAS = [
   { titulo: "Comprobante", valor: (f) => f.comprobante },
+  { titulo: "Tipo", valor: (f) => TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo },
   { titulo: "Fecha", valor: (f) => f.fecha },
   { titulo: "Cliente", valor: (f) => f.cliente },
   { titulo: "Origen", valor: (f) => (f.venta_id ? `Venta #${f.venta_id}` : "Suelta") },
@@ -1670,6 +1673,7 @@ async function abrirFichaFactura(id) {
   document.getElementById("fichaFacturaTitulo").textContent = factura.comprobante;
 
   const campos = [
+    ["Tipo", TIPO_FACTURA_LABEL[factura.tipo] ?? factura.tipo],
     ["Cliente", factura.cliente],
     ["Fecha", factura.fecha],
     ["Concepto", factura.concepto],
@@ -1715,7 +1719,7 @@ document.getElementById("btnVolverFacturas").addEventListener("click", () => mos
 // caso "factura suelta".
 function hojaDeFactura(f) {
   return armarHojaComprobante({
-    rotulo: f.tipo === "nota_credito" ? "Nota de crédito" : f.tipo === "nota_debito" ? "Nota de débito" : "Factura",
+    rotulo: TIPO_FACTURA_LABEL[f.tipo] ?? "Factura",
     comprobanteNro: f.comprobante,
     fecha: f.fecha,
     // NO van el estado de cobro ni "Origen: Venta #N": son gestión interna.
@@ -1763,6 +1767,7 @@ modal.addEventListener("click", (e) => {
 document.getElementById("formFactura").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
+  const tipoElegido = form.tipo.value;
 
   const res = await fetch("/api/facturas", {
     method: "POST",
@@ -1772,7 +1777,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
       concepto: form.concepto.value,
       neto: parseFloat(form.neto.value),
       condicion: form.condicion.value,
-      tipo: form.tipo.value,
+      tipo: tipoElegido,
       letra: form.letra.value,
       punto_venta: Number(form.punto_venta.value) || 1
     })
@@ -1783,7 +1788,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   await cargarFacturas();
   form.reset();
   modal.hidden = true;
-  avisar(`Factura #${id} registrada.`, "ok");
+  avisar(`${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${id} registrada.`, "ok");
 });
 
 /* ---------- Filas de items (Venta / Compra) ---------- */
