@@ -4497,3 +4497,64 @@ Etapa 6 del plan madre (bloqueo del asistente IA sobre productos con
 variantes) — la última del epic "Variantes de producto", todavía no
 empezada. Etapa 5 está verificada pero, al momento de escribir esto,
 todavía no se le preguntó al usuario si commitearla.
+
+**Actualización**: en la sesión siguiente el usuario pidió commitear la
+Etapa 5. Quedó en `097787a` ("feat: devoluciones con variante de
+producto"), sobre `solla`, sin push. Ver §34 para la Etapa 6.
+
+## 34. Variantes de producto — Etapa 6 (bloqueo del asistente IA)
+
+**Objetivo**: la última etapa del epic. Antes de esta etapa, si el
+asistente de texto/IA proponía una venta o compra sobre un producto con
+variantes activas, la propuesta se armaba igual y recién fallaba al
+confirmar (con el `ErrorBulk` del backend). Ahora el bloqueo se adelanta
+al momento de interpretar el texto: la propuesta vuelve con
+`ejecutable: false` y el problema listado, antes de que el usuario
+intente confirmarla. Sin soporte de variantes para el LLM —
+`interprete.js` no se tocó, sigue fuera de alcance (el asistente no
+puede proponer una variante puntual, solo bloquea cuando el producto las
+tiene).
+
+**`backend/server.js`**: única función tocada, `resolverPropuesta(tipo,
+datos)` (~7468). Nuevo helper `tieneVariantesActivas(productoId)`
+(al lado de `buscarPorNombre`/`existeId`, mismo estilo no cacheado),
+espejo de la query ya usada 4 veces en el archivo (`SELECT COUNT(*) AS n
+FROM producto_variantes WHERE producto_id = ? AND activo = 1`). Se llama
+dentro del `.map` de items tanto en el bloque `tipo === 'venta'` como en
+`tipo === 'compra'`: cuando `producto.estado === 'resuelto'` y el
+producto tiene variantes activas, agrega a `problemas` el mensaje
+`"${nombre}" tiene variantes: elegí la variante exacta a mano.` (mismo
+texto base que ya usan `crearVenta`/`crearCompra`, adaptado porque acá no
+hay una fila con selector para elegir ahí mismo). En compra, el chequeo
+solo corre si el producto ya existe — un producto "no encontrado" en
+compra no aplica, ese camino da de alta un producto nuevo sin variantes.
+No hizo falta tocar el frontend: `frontend/js/app.js:8078` ya renderiza
+cualquier string que venga en `problemas`, así que el mensaje nuevo se
+muestra gratis. No hubo endpoints nuevos, así que no hizo falta tocar
+`permisos.js` (confirmado con `npm test`).
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3002 (nunca el 3000 real). `npm test` verde antes y después. Como
+`POST /api/asistente/interpretar` depende del LLM (`@google/genai`) y no
+había forma de probarlo end-to-end sin esa dependencia externa en esta
+sesión, se verificó `resolverPropuesta` extraído del archivo real y
+corrido standalone en Node contra la copia de la base (mismo criterio ya
+usado en la Etapa 4 para `precioVarianteEnLista`), con un producto
+"RemeraVarianteTest" armado por API con una variante "Talle: S": venta
+sobre ese producto → bloqueada con el mensaje esperado; venta sobre un
+producto sin variantes (Khamrah) → sigue proponiéndose normal, sin
+mensaje nuevo (regresión); compra sobre el mismo producto con variantes
+→ bloqueada; compra sobre un producto nuevo que no existe todavía →
+sigue sin bloquear (regresión: el alta de producto nuevo por nombre en
+compra no tiene variantes, no debe frenarse). Los 4 casos coincidieron
+con lo esperado. Datos de prueba solo en la copia de scratchpad; la base
+real no se tocó.
+
+### Qué sigue
+
+Con la Etapa 6 termina el epic completo "Variantes de producto" (las 6
+etapas del plan madre). Queda pendiente commitear esta etapa — no se
+commiteó todavía porque no se le preguntó al usuario en esta sesión.
+Después de eso, según CLAUDE.md la próxima área declarada es "gestión de
+precios" e "inventario" en V2, pero el alcance exacto todavía está en
+"a confirmar" — no arrancar sin preguntarle al usuario qué sigue.

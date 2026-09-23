@@ -7458,6 +7458,10 @@ function existeId(tabla, id) {
   return Boolean(db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ?`).get(Number(id)));
 }
 
+function tieneVariantesActivas(productoId) {
+  return db.prepare('SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1').get(productoId).n > 0;
+}
+
 // Convierte la propuesta cruda del intérprete (solo nombres, ver
 // interprete.js) en una propuesta resuelta contra la base real: cada
 // referencia queda marcada resuelta/ambigua/no encontrada/no dada, y se
@@ -7482,6 +7486,9 @@ function resolverPropuesta(tipo, datos) {
       }
       if (producto.estado === 'ambiguo') {
         problemas.push(`Hay más de un producto que coincide con "${item.producto}".`);
+      }
+      if (producto.estado === 'resuelto' && tieneVariantesActivas(producto.id)) {
+        problemas.push(`"${producto.nombre_resuelto}" tiene variantes: elegí la variante exacta a mano.`);
       }
       if (!(Number(item.cantidad) > 0)) problemas.push(`La cantidad de "${item.producto ?? '?'}" tiene que ser mayor a 0.`);
       if (!(Number(item.precio_unitario) >= 0)) problemas.push(`El precio de "${item.producto ?? '?'}" no puede ser negativo.`);
@@ -7512,6 +7519,9 @@ function resolverPropuesta(tipo, datos) {
       // nuevo por nombre, es lo que le fija el costo inicial (CLAUDE.md §6).
       if (producto.estado === 'ambiguo') {
         problemas.push(`Hay más de un producto que coincide con "${item.producto}".`);
+      }
+      if (producto.estado === 'resuelto' && tieneVariantesActivas(producto.id)) {
+        problemas.push(`"${producto.nombre_resuelto}" tiene variantes: elegí la variante exacta a mano.`);
       }
       if (!item.producto || !String(item.producto).trim()) problemas.push('Todos los items necesitan un producto.');
       if (!(Number(item.cantidad) > 0)) problemas.push(`La cantidad de "${item.producto ?? '?'}" tiene que ser mayor a 0.`);
