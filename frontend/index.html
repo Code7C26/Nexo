@@ -1143,7 +1143,10 @@
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaProductoNombre">—</h2>
-            <button class="btn btn-primary" id="btnEditarProducto">Editar</button>
+            <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnVariantesProducto">Variantes</button>
+              <button class="btn btn-primary" id="btnEditarProducto">Editar</button>
+            </div>
           </div>
           <dl class="ficha-datos" id="fichaProductoDatos"></dl>
         </section>
@@ -1162,6 +1165,30 @@
           <div class="ledger-item col-admin">
             <span class="ledger-label">Valorizado</span>
             <span class="ledger-value mono" id="fichaProductoValorizado">$0,00</span>
+          </div>
+        </section>
+
+        <!-- Solo se muestra si el producto tiene variantes activas
+             (tiene_variantes); es de solo lectura, la edición vive en
+             #modalVariantesProducto. -->
+        <section class="panel" id="fichaProductoVariantesPanel" hidden>
+          <div class="panel-head">
+            <h2>Variantes</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Combinación</th>
+                <th>SKU</th>
+                <th class="align-right col-admin">Costo</th>
+                <th class="align-right">Precio</th>
+                <th class="align-right">Stock</th>
+                <th>Activa</th>
+              </tr>
+            </thead>
+            <tbody id="fichaProductoVariantesBody"></tbody>
+          </table>
           </div>
         </section>
 
@@ -2328,6 +2355,48 @@
         <tbody id="categoriasProductosBody"></tbody>
       </table>
           </div>
+    </div>
+  </div>
+
+  <!-- Modal atributos y variantes de un producto (Talle/Color/etc.), solo
+       accesible desde la ficha de un producto ya guardado. Dos secciones:
+       atributos (con sus valores) y variantes (combinaciones concretas). La
+       combinación de una variante no se edita una vez creada — para
+       corregir un error se desactiva y se crea de nuevo (ver plan). -->
+  <div class="modal" id="modalVariantesProducto" role="dialog" aria-modal="true" aria-labelledby="modalVariantesProductoTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalVariantesProductoTitulo">Variantes de producto</h3>
+        <button class="modal-close" id="modalVariantesProductoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      <h4>Atributos</h4>
+      <form id="formAtributoProducto" class="form form-inline">
+        <label class="visualmente-oculto" for="formAtributoProductoNombre">Nombre del atributo</label>
+        <input type="text" id="formAtributoProductoNombre" name="nombre" required placeholder="Talle, Color…" />
+        <button type="submit" class="btn btn-secundario">Agregar atributo</button>
+      </form>
+      <div id="variantesAtributosLista" class="atributos-lista"></div>
+
+      <h4>Variantes</h4>
+      <div class="panel-acciones">
+        <button type="button" class="btn btn-secundario" id="btnGenerarVariantes">Generar variantes</button>
+      </div>
+      <div class="tabla-scroll">
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>Combinación</th>
+              <th>SKU</th>
+              <th class="align-right">Precio de venta</th>
+              <th class="align-right">Stock</th>
+              <th>Activa</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="variantesProductoBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 

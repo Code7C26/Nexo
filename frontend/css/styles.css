@@ -1235,6 +1235,98 @@ button { font-family: inherit; cursor: pointer; }
   margin-top: var(--sp-3);
 }
 
+/* Oculta visualmente un <label> sin sacarlo del árbol de accesibilidad
+   (el input que etiqueta sigue necesitando su label para lectores de
+   pantalla aunque el placeholder alcance para un usuario vidente). */
+.visualmente-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Variante de .form en fila en vez de columna: alta rápida de un atributo
+   (nombre + botón), sin la etiqueta vertical que .form label impone por
+   default. */
+.form-inline {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.form-inline input {
+  flex: 1;
+}
+
+/* Sección "Atributos" del modal de variantes: una tarjeta por atributo,
+   con sus valores como chips y un alta inline de valor nuevo. */
+.atributos-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.atributo-item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+}
+
+.atributo-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+
+.atributo-item-head strong {
+  font-family: var(--font-display);
+}
+
+.atributo-valores {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+  font-size: var(--txt-xs);
+}
+
+.chip button {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  padding: 0;
+  line-height: 1;
+}
+
+.chip button:hover {
+  color: var(--accent-danger);
+}
+
+.atributo-valor-form {
+  display: inline-flex;
+  gap: var(--sp-2);
+}
+
+.atributo-valor-form input {
+  width: 120px;
+}
+
 /* El widget flotante del asistente tiene su propia sección, al final del
    archivo (busca "Asistente flotante") — junto al resto de sus estilos,
    no acá suelto. */

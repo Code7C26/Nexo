@@ -1175,7 +1175,9 @@ const SELECT_PRODUCTO = `
          productos.precio_venta, productos.activo,
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
-         COALESCE(stock_actual.cantidad, 0) AS stock
+         COALESCE(stock_actual.cantidad, 0) AS stock,
+         (SELECT COUNT(*) FROM producto_variantes
+           WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count
     FROM productos
     LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
     LEFT JOIN categorias ON categorias.id = productos.categoria_id`;
@@ -1219,7 +1221,8 @@ function decorarProducto(p, precios = {}) {
     precios,
     valorizado: p.precio_costo * p.stock,
     margen: p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null,
-    estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo)
+    estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo),
+    tiene_variantes: p.variantes_count > 0
   };
 }
 
@@ -1559,6 +1562,447 @@ app.get('/api/productos/:id/movimientos', (req, res) => {
   res.json(conSaldo.reverse());
 });
 
+/* ---------- Atributos y variantes de producto ---------- */
+//
+// Un atributo (Talle, Color, ...) es propio de cada producto, no un
+// catálogo compartido entre productos distintos: cada producto define los
+// suyos. Una variante es una combinación concreta de exactamente un valor
+// por cada atributo activo del producto (nunca parcial). ABM = admin,
+// lecturas = ambos roles, mismo criterio que categorías/productos.
+
+app.get('/api/productos/:id/atributos', (req, res) => {
+  const productoId = Number(req.params.id);
+  const atributos = db
+    .prepare('SELECT id, nombre, orden FROM producto_atributos WHERE producto_id = ? ORDER BY orden, nombre')
+    .all(productoId);
+  const valores = db
+    .prepare(
+      `SELECT id, atributo_id, valor, orden FROM producto_atributo_valores
+        WHERE atributo_id IN (SELECT id FROM producto_atributos WHERE producto_id = ?)
+        ORDER BY orden, valor`
+    )
+    .all(productoId);
+  res.json(atributos.map((a) => ({ ...a, valores: valores.filter((v) => v.atributo_id === a.id) })));
+});
+
+app.post('/api/productos/:id/atributos', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
+  const { nombre } = req.body;
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'El atributo necesita un nombre.' });
+  }
+  const yaExiste = db
+    .prepare('SELECT 1 FROM producto_atributos WHERE producto_id = ? AND nombre = ? COLLATE NOCASE')
+    .get(productoId, String(nombre).trim());
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ese producto ya tiene un atributo con ese nombre.' });
+  }
+  const { orden } = db
+    .prepare('SELECT COALESCE(MAX(orden), -1) + 1 AS orden FROM producto_atributos WHERE producto_id = ?')
+    .get(productoId);
+
+  let lastInsertRowid;
+  withTransaction(() => {
+    ({ lastInsertRowid } = db
+      .prepare('INSERT INTO producto_atributos (producto_id, nombre, orden) VALUES (?, ?, ?)')
+      .run(productoId, String(nombre).trim(), orden));
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: productoId,
+      detalle: `Atributo "${String(nombre).trim()}" agregado`
+    });
+  });
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.patch('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const atributoId = Number(req.params.atributoId);
+  const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
+  if (!atributo) {
+    return res.status(404).json({ error: 'Atributo no encontrado.' });
+  }
+  const { nombre } = req.body;
+  if (!nombre || !String(nombre).trim()) {
+    return res.status(400).json({ error: 'El atributo necesita un nombre.' });
+  }
+  const yaExiste = db
+    .prepare('SELECT 1 FROM producto_atributos WHERE producto_id = ? AND nombre = ? COLLATE NOCASE AND id <> ?')
+    .get(productoId, String(nombre).trim(), atributoId);
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ese producto ya tiene un atributo con ese nombre.' });
+  }
+
+  withTransaction(() => {
+    db.prepare('UPDATE producto_atributos SET nombre = ? WHERE id = ?').run(String(nombre).trim(), atributoId);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: productoId,
+      detalle: `Atributo "${atributo.nombre}" renombrado a "${String(nombre).trim()}"`
+    });
+  });
+  res.json({ id: atributoId });
+});
+
+app.delete('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const atributoId = Number(req.params.atributoId);
+  const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
+  if (!atributo) {
+    return res.status(404).json({ error: 'Atributo no encontrado.' });
+  }
+  const enUso = db.prepare('SELECT 1 FROM producto_variante_valores WHERE atributo_id = ?').get(atributoId);
+  if (enUso) {
+    return res.status(400).json({ error: 'No se puede borrar un atributo que ya tiene variantes creadas con él.' });
+  }
+
+  withTransaction(() => {
+    db.prepare('DELETE FROM producto_atributo_valores WHERE atributo_id = ?').run(atributoId);
+    db.prepare('DELETE FROM producto_atributos WHERE id = ?').run(atributoId);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: productoId,
+      detalle: `Atributo "${atributo.nombre}" eliminado`
+    });
+  });
+  res.json({ ok: true });
+});
+
+app.post('/api/productos/:id/atributos/:atributoId/valores', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const atributoId = Number(req.params.atributoId);
+  const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
+  if (!atributo) {
+    return res.status(404).json({ error: 'Atributo no encontrado.' });
+  }
+  const { valor } = req.body;
+  if (!valor || !String(valor).trim()) {
+    return res.status(400).json({ error: 'El valor no puede estar vacío.' });
+  }
+  const yaExiste = db
+    .prepare('SELECT 1 FROM producto_atributo_valores WHERE atributo_id = ? AND valor = ? COLLATE NOCASE')
+    .get(atributoId, String(valor).trim());
+  if (yaExiste) {
+    return res.status(400).json({ error: 'Ese valor ya existe para este atributo.' });
+  }
+  const { orden } = db
+    .prepare('SELECT COALESCE(MAX(orden), -1) + 1 AS orden FROM producto_atributo_valores WHERE atributo_id = ?')
+    .get(atributoId);
+
+  let lastInsertRowid;
+  withTransaction(() => {
+    ({ lastInsertRowid } = db
+      .prepare('INSERT INTO producto_atributo_valores (atributo_id, valor, orden) VALUES (?, ?, ?)')
+      .run(atributoId, String(valor).trim(), orden));
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: productoId,
+      detalle: `Valor "${String(valor).trim()}" agregado a "${atributo.nombre}"`
+    });
+  });
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+app.delete('/api/productos/:id/atributos/:atributoId/valores/:valorId', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const atributoId = Number(req.params.atributoId);
+  const valorId = Number(req.params.valorId);
+  const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
+  if (!atributo) {
+    return res.status(404).json({ error: 'Atributo no encontrado.' });
+  }
+  const valor = db.prepare('SELECT * FROM producto_atributo_valores WHERE id = ? AND atributo_id = ?').get(valorId, atributoId);
+  if (!valor) {
+    return res.status(404).json({ error: 'Valor no encontrado.' });
+  }
+  const enUso = db.prepare('SELECT 1 FROM producto_variante_valores WHERE valor_id = ?').get(valorId);
+  if (enUso) {
+    return res.status(400).json({ error: 'No se puede borrar un valor que ya tiene variantes creadas con él.' });
+  }
+
+  withTransaction(() => {
+    db.prepare('DELETE FROM producto_atributo_valores WHERE id = ?').run(valorId);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: productoId,
+      detalle: `Valor "${valor.valor}" eliminado de "${atributo.nombre}"`
+    });
+  });
+  res.json({ ok: true });
+});
+
+const SELECT_VARIANTE = `
+  SELECT producto_variantes.id, producto_variantes.producto_id, producto_variantes.sku,
+         producto_variantes.precio_costo, producto_variantes.precio_venta, producto_variantes.activo,
+         COALESCE(stock_variante_actual.cantidad, 0) AS stock
+    FROM producto_variantes
+    LEFT JOIN stock_variante_actual ON stock_variante_actual.variante_id = producto_variantes.id`;
+
+// Espejo de obtenerPreciosPorProducto (1188) contra variante_precios.
+function obtenerPreciosPorVariante() {
+  const filas = db.prepare('SELECT variante_id, lista_precio_id, precio FROM variante_precios').all();
+  const mapa = {};
+  for (const fila of filas) {
+    if (!mapa[fila.variante_id]) mapa[fila.variante_id] = {};
+    mapa[fila.variante_id][fila.lista_precio_id] = fila.precio;
+  }
+  return mapa;
+}
+
+// Texto legible de una combinación ("Talle: M / Color: Rojo"), en el orden
+// en que están definidos los atributos del producto.
+function combinacionVariante(varianteId) {
+  const partes = db
+    .prepare(
+      `SELECT producto_atributos.nombre AS atributo, producto_atributo_valores.valor AS valor
+         FROM producto_variante_valores
+         JOIN producto_atributos ON producto_atributos.id = producto_variante_valores.atributo_id
+         JOIN producto_atributo_valores ON producto_atributo_valores.id = producto_variante_valores.valor_id
+        WHERE producto_variante_valores.variante_id = ?
+        ORDER BY producto_atributos.orden`
+    )
+    .all(varianteId);
+  return partes.map((p) => `${p.atributo}: ${p.valor}`).join(' / ');
+}
+
+function decorarVariante(v, precios = {}) {
+  return {
+    ...v,
+    precios,
+    combinacion: combinacionVariante(v.id),
+    valorizado: v.precio_costo * v.stock
+  };
+}
+
+// Valida que `valores` (array de {atributo_id, valor_id}) cubra exactamente
+// los atributos del producto, uno por uno: las variantes son siempre
+// completas, nunca parciales (decisión del plan de esta etapa).
+function validarCombinacionVariante(productoId, valores) {
+  if (!Array.isArray(valores) || valores.length === 0) {
+    return 'Elegí un valor para cada atributo del producto.';
+  }
+  const atributosProducto = db
+    .prepare('SELECT id FROM producto_atributos WHERE producto_id = ?')
+    .all(productoId)
+    .map((a) => a.id);
+  if (atributosProducto.length === 0) {
+    return 'Este producto todavía no tiene atributos definidos.';
+  }
+  const atributosElegidos = new Set();
+  for (const { atributo_id, valor_id } of valores) {
+    if (!atributosProducto.includes(Number(atributo_id))) {
+      return 'Uno de los atributos elegidos no pertenece a este producto.';
+    }
+    const valorValido = db
+      .prepare('SELECT 1 FROM producto_atributo_valores WHERE id = ? AND atributo_id = ?')
+      .get(Number(valor_id), Number(atributo_id));
+    if (!valorValido) {
+      return 'Uno de los valores elegidos no pertenece a ese atributo.';
+    }
+    atributosElegidos.add(Number(atributo_id));
+  }
+  if (atributosElegidos.size !== atributosProducto.length || atributosElegidos.size !== valores.length) {
+    return 'Elegí un valor para cada atributo del producto.';
+  }
+  return null;
+}
+
+// No hay forma declarativa en SQLite de garantizar "sin combinación
+// repetida" (es un unique sobre un conjunto de filas, no sobre una
+// columna), así que se valida acá antes de insertar.
+function combinacionYaExiste(productoId, valores, excluirVarianteId = null) {
+  const valorIds = valores.map((v) => Number(v.valor_id)).sort((a, b) => a - b);
+  const variantesActivas = excluirVarianteId
+    ? db.prepare('SELECT id FROM producto_variantes WHERE producto_id = ? AND activo = 1 AND id <> ?').all(productoId, excluirVarianteId)
+    : db.prepare('SELECT id FROM producto_variantes WHERE producto_id = ? AND activo = 1').all(productoId);
+  for (const variante of variantesActivas) {
+    const otrosValorIds = db
+      .prepare('SELECT valor_id FROM producto_variante_valores WHERE variante_id = ?')
+      .all(variante.id)
+      .map((v) => v.valor_id)
+      .sort((a, b) => a - b);
+    if (otrosValorIds.length === valorIds.length && otrosValorIds.every((id, i) => id === valorIds[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+app.get('/api/productos/:id/variantes', (req, res) => {
+  const productoId = Number(req.params.id);
+  const variantes = db
+    .prepare(`${SELECT_VARIANTE} WHERE producto_variantes.producto_id = ? ORDER BY producto_variantes.id`)
+    .all(productoId);
+  const precios = obtenerPreciosPorVariante();
+  res.json(variantes.map((v) => decorarVariante(v, precios[v.id])));
+});
+
+app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(productoId);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
+  const { valores, sku, precio_venta, activo } = req.body;
+  const errorCombinacion = validarCombinacionVariante(productoId, valores);
+  if (errorCombinacion) {
+    return res.status(400).json({ error: errorCombinacion });
+  }
+  if (combinacionYaExiste(productoId, valores)) {
+    return res.status(400).json({ error: 'Ya existe una variante con esa combinación de valores.' });
+  }
+  const skuNormalizado = sku && String(sku).trim() ? String(sku).trim() : null;
+  const precioVentaNormalizado =
+    precio_venta === undefined || precio_venta === null || precio_venta === '' ? null : Number(precio_venta);
+  if (precioVentaNormalizado !== null && (Number.isNaN(precioVentaNormalizado) || precioVentaNormalizado < 0)) {
+    return res.status(400).json({ error: 'El precio de venta debe ser un número mayor o igual a 0.' });
+  }
+
+  let lastInsertRowid;
+  try {
+    withTransaction(() => {
+      ({ lastInsertRowid } = db
+        .prepare('INSERT INTO producto_variantes (producto_id, sku, precio_venta, activo) VALUES (?, ?, ?, ?)')
+        .run(productoId, skuNormalizado, precioVentaNormalizado, activo === false || activo === 0 ? 0 : 1));
+      const insertValor = db.prepare(
+        'INSERT INTO producto_variante_valores (variante_id, atributo_id, valor_id) VALUES (?, ?, ?)'
+      );
+      for (const { atributo_id, valor_id } of valores) {
+        insertValor.run(lastInsertRowid, Number(atributo_id), Number(valor_id));
+      }
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'producto',
+        entidad_id: productoId,
+        detalle: `Variante "${combinacionVariante(lastInsertRowid)}" agregada a "${producto.nombre}"`
+      });
+    });
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'Ya existe una variante con ese SKU.' });
+    }
+    throw err;
+  }
+  res.status(201).json({ id: lastInsertRowid });
+});
+
+// La combinación de valores de una variante no se edita después de creada
+// (evitaría corromper el significado de variante_id en movimientos ya
+// generados); para corregir un error se desactiva y se crea una nueva. Acá
+// solo se editan sku, precio_venta, activo y el precio por lista.
+app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
+  const productoId = Number(req.params.id);
+  const varianteId = Number(req.params.varianteId);
+  const variante = db.prepare('SELECT * FROM producto_variantes WHERE id = ? AND producto_id = ?').get(varianteId, productoId);
+  if (!variante) {
+    return res.status(404).json({ error: 'Variante no encontrada.' });
+  }
+  const { sku, precio_venta, activo, precios } = req.body;
+  const skuNormalizado = sku === undefined ? variante.sku : sku && String(sku).trim() ? String(sku).trim() : null;
+  let precioVentaNormalizado = variante.precio_venta;
+  if (precio_venta !== undefined) {
+    precioVentaNormalizado = precio_venta === null || precio_venta === '' ? null : Number(precio_venta);
+    if (precioVentaNormalizado !== null && (Number.isNaN(precioVentaNormalizado) || precioVentaNormalizado < 0)) {
+      return res.status(400).json({ error: 'El precio de venta debe ser un número mayor o igual a 0.' });
+    }
+  }
+  const activoNormalizado = activo === undefined ? variante.activo : activo === false || activo === 0 ? 0 : 1;
+
+  let preciosPorLista = null;
+  if (precios && typeof precios === 'object') {
+    preciosPorLista = {};
+    for (const [listaIdStr, valor] of Object.entries(precios)) {
+      const listaId = Number(listaIdStr);
+      if (!db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaId)) {
+        return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
+      }
+      const precioNuevo = normalizarPrecio(valor);
+      if (Number.isNaN(precioNuevo) || precioNuevo < 0) {
+        return res.status(400).json({ error: 'El precio debe ser un número mayor o igual a 0.' });
+      }
+      preciosPorLista[listaId] = precioNuevo;
+    }
+  }
+
+  const nuevo = { sku: skuNormalizado, precio_venta: precioVentaNormalizado, activo: activoNormalizado };
+  const cambios = diffCampos(variante, nuevo, ['sku', 'precio_venta', 'activo']);
+
+  try {
+    withTransaction(() => {
+      db.prepare('UPDATE producto_variantes SET sku = ?, precio_venta = ?, activo = ? WHERE id = ?').run(
+        nuevo.sku,
+        nuevo.precio_venta,
+        nuevo.activo,
+        varianteId
+      );
+      if (preciosPorLista) {
+        const upsertPrecio = db.prepare(`
+          INSERT INTO variante_precios (variante_id, lista_precio_id, precio)
+          VALUES (?, ?, ?)
+          ON CONFLICT(variante_id, lista_precio_id) DO UPDATE SET precio = excluded.precio
+        `);
+        for (const [listaId, precio] of Object.entries(preciosPorLista)) {
+          upsertPrecio.run(varianteId, Number(listaId), precio);
+        }
+      }
+      if (cambios) {
+        auditar(req, {
+          accion: 'editar',
+          entidad: 'producto',
+          entidad_id: productoId,
+          valor_anterior: cambios.anterior,
+          valor_nuevo: cambios.nuevo,
+          detalle: `Variante "${combinacionVariante(varianteId)}" editada`
+        });
+      }
+    });
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'Ya existe una variante con ese SKU.' });
+    }
+    throw err;
+  }
+  res.json({ id: varianteId });
+});
+
+// Espejo de GET /api/productos/:id/movimientos (1535), filtrado por variante.
+app.get('/api/productos/:id/variantes/:varianteId/movimientos', (req, res) => {
+  const productoId = Number(req.params.id);
+  const varianteId = Number(req.params.varianteId);
+  const variante = db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ?').get(varianteId, productoId);
+  if (!variante) {
+    return res.status(404).json({ error: 'Variante no encontrada.' });
+  }
+
+  const movimientos = db
+    .prepare(
+      `SELECT id, tipo, cantidad, origen, venta_id, compra_id, devolucion_id, fecha, nota
+         FROM movimientos_stock
+        WHERE variante_id = ?
+        ORDER BY fecha, id`
+    )
+    .all(varianteId);
+
+  let acumulado = 0;
+  const conSaldo = movimientos.map((m) => {
+    const delta = m.tipo === 'salida' ? -m.cantidad : m.cantidad;
+    const stockAnterior = acumulado;
+    acumulado += delta;
+    return { ...m, delta, stock_anterior: stockAnterior, stock_posterior: acumulado };
+  });
+
+  res.json(conSaldo.reverse());
+});
+
 /* ---------- Proveedores ---------- */
 
 // Espejo de SELECT_CLIENTE_CON_TOTALES. Igual que aquel ignora las ventas
@@ -1734,6 +2178,7 @@ app.patch('/api/proveedores/:id', (req, res) => {
 // y no repetida acá adentro.
 function registrarMovimientoStock({
   producto_id,
+  variante_id = null,
   deposito_id,
   tipo,
   cantidad,
@@ -1749,12 +2194,13 @@ function registrarMovimientoStock({
   return db
     .prepare(
       `INSERT INTO movimientos_stock
-         (producto_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
+         (producto_id, variante_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
           devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       producto_id,
+      variante_id,
       deposito_id,
       tipo,
       cantidad,
@@ -2143,7 +2589,7 @@ app.get('/api/ventas/:id', (req, res) => {
   // topar la cantidad a devolver a lo que realmente queda.
   const items = db
     .prepare(
-      `SELECT venta_items.id, venta_items.producto_id, productos.nombre AS producto,
+      `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
               COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
@@ -2170,6 +2616,7 @@ app.get('/api/ventas/:id', (req, res) => {
     tiene_devolucion: Boolean(venta.tiene_devolucion),
     items: items.map((i) => ({
       ...i,
+      combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
       subtotal: i.cantidad * i.precio_unitario,
       ganancia: (i.precio_unitario - i.costo_unitario_historico) * i.cantidad,
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
@@ -2190,48 +2637,94 @@ app.get('/api/ventas/:id', (req, res) => {
 // decisión del usuario: bloquear y avisar dónde sí hay, nunca transferir
 // solo). Devuelve algo como "Depósito Central: 8" o "" si no hay en
 // ningún otro lado.
-function dondeHayStock(productoId, excluirDepositoId) {
-  const filas = db
-    .prepare(
-      `SELECT depositos.nombre, stock_por_deposito.cantidad
-         FROM stock_por_deposito
-         JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
-        WHERE stock_por_deposito.producto_id = ? AND stock_por_deposito.deposito_id <> ?
-          AND depositos.activo = 1 AND stock_por_deposito.cantidad > 0
-        ORDER BY stock_por_deposito.cantidad DESC`
-    )
-    .all(productoId, excluirDepositoId);
+function dondeHayStock(productoId, excluirDepositoId, varianteId = null) {
+  const filas = varianteId
+    ? db
+        .prepare(
+          `SELECT depositos.nombre, stock_variante_por_deposito.cantidad
+             FROM stock_variante_por_deposito
+             JOIN depositos ON depositos.id = stock_variante_por_deposito.deposito_id
+            WHERE stock_variante_por_deposito.variante_id = ? AND stock_variante_por_deposito.deposito_id <> ?
+              AND depositos.activo = 1 AND stock_variante_por_deposito.cantidad > 0
+            ORDER BY stock_variante_por_deposito.cantidad DESC`
+        )
+        .all(varianteId, excluirDepositoId)
+    : db
+        .prepare(
+          `SELECT depositos.nombre, stock_por_deposito.cantidad
+             FROM stock_por_deposito
+             JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
+            WHERE stock_por_deposito.producto_id = ? AND stock_por_deposito.deposito_id <> ?
+              AND depositos.activo = 1 AND stock_por_deposito.cantidad > 0
+            ORDER BY stock_por_deposito.cantidad DESC`
+        )
+        .all(productoId, excluirDepositoId);
   if (filas.length === 0) return '';
   return ` Hay stock en: ${filas.map((f) => `${f.nombre} (${f.cantidad})`).join(', ')}.`;
 }
 
 // Valida que haya stock para todos los items pedidos, EN EL DEPÓSITO
 // ELEGIDO. Devuelve un mensaje de error o null si está todo bien. Se suman
-// las cantidades por producto primero, por si el mismo producto aparece en
-// más de un renglón. La usan el alta de venta y la conversión de un
+// las cantidades por producto+variante primero, por si el mismo renglón
+// aparece más de una vez. La usan el alta de venta y la conversión de un
 // presupuesto: las dos tienen que rechazar por el mismo motivo y con el
 // mismo texto.
+//
+// Igual que en compras: un producto con variantes activas exige que cada
+// item traiga una variante puntual, y uno sin variantes rechaza si igual
+// llegó una.
 function validarStockDisponible(items, depositoId) {
-  const buscarStockDisponible = db.prepare(
-    `SELECT productos.nombre, COALESCE(stock_por_deposito.cantidad, 0) AS stock
-     FROM productos LEFT JOIN stock_por_deposito
-       ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
-     WHERE productos.id = ?`
+  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+  const contarVariantesActivas = db.prepare(
+    'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
-  const cantidadPorProducto = new Map();
+  const buscarStockDisponible = db.prepare(
+    `SELECT COALESCE(stock_por_deposito.cantidad, 0) AS stock
+       FROM stock_por_deposito
+      WHERE stock_por_deposito.producto_id = ? AND stock_por_deposito.deposito_id = ?`
+  );
+  const buscarVarianteStock = db.prepare(
+    `SELECT producto_variantes.id,
+            COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock
+       FROM producto_variantes
+       LEFT JOIN stock_variante_por_deposito
+         ON stock_variante_por_deposito.variante_id = producto_variantes.id
+        AND stock_variante_por_deposito.deposito_id = ?
+      WHERE producto_variantes.id = ? AND producto_variantes.producto_id = ? AND producto_variantes.activo = 1`
+  );
+
+  const cantidadPorClave = new Map();
   for (const item of items) {
-    cantidadPorProducto.set(
-      item.producto_id,
-      (cantidadPorProducto.get(item.producto_id) ?? 0) + Number(item.cantidad)
-    );
+    const clave = `${item.producto_id}:${item.variante_id ?? ''}`;
+    cantidadPorClave.set(clave, {
+      producto_id: item.producto_id,
+      variante_id: item.variante_id ?? null,
+      cantidad: (cantidadPorClave.get(clave)?.cantidad ?? 0) + Number(item.cantidad)
+    });
   }
-  for (const [producto_id, cantidadPedida] of cantidadPorProducto) {
-    const producto = buscarStockDisponible.get(depositoId, producto_id);
+
+  for (const { producto_id, variante_id, cantidad: cantidadPedida } of cantidadPorClave.values()) {
+    const producto = buscarProducto.get(producto_id);
     if (!producto) {
       return 'Uno de los productos de la venta no existe.';
     }
-    if (cantidadPedida > producto.stock) {
-      return `No hay suficiente stock de "${producto.nombre}" (disponible: ${producto.stock}).${dondeHayStock(producto_id, depositoId)}`;
+    const tieneVariantes = contarVariantesActivas.get(producto_id).n > 0;
+    if (!variante_id && tieneVariantes) {
+      return `"${producto.nombre}" tiene variantes: elegí una para vender.`;
+    }
+    if (variante_id) {
+      const variante = buscarVarianteStock.get(depositoId, variante_id, producto_id);
+      if (!variante) {
+        return `La variante elegida para "${producto.nombre}" no existe o no le pertenece.`;
+      }
+      if (cantidadPedida > variante.stock) {
+        return `No hay suficiente stock de "${producto.nombre}" (${combinacionVariante(variante_id)}) (disponible: ${variante.stock}).${dondeHayStock(producto_id, depositoId, variante_id)}`;
+      }
+    } else {
+      const stock = buscarStockDisponible.get(producto_id, depositoId)?.stock ?? 0;
+      if (cantidadPedida > stock) {
+        return `No hay suficiente stock de "${producto.nombre}" (disponible: ${stock}).${dondeHayStock(producto_id, depositoId)}`;
+      }
     }
   }
   return null;
@@ -2292,19 +2785,27 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
     .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
+  // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
+  // de un item con variante es el promedio ponderado de ESA variante, no el
+  // del producto padre.
+  const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
   const insertItem = db.prepare(
-    `INSERT INTO venta_items (venta_id, producto_id, cantidad, precio_unitario, costo_unitario_historico)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico)
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
 
   let total = 0;
   for (const item of items) {
+    const varianteId = item.variante_id ? Number(item.variante_id) : null;
     // El costo se congela ACA, antes de tocar nada más del producto: es
     // la foto del momento de la venta, no se vuelve a recalcular después.
-    const { precio_costo: costoActual } = buscarCostoActual.get(item.producto_id);
-    insertItem.run(nuevaVentaId, item.producto_id, item.cantidad, item.precio_unitario, costoActual);
+    const costoActual = varianteId
+      ? buscarCostoVariante.get(varianteId).precio_costo
+      : buscarCostoActual.get(item.producto_id).precio_costo;
+    insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual);
     registrarMovimientoStock({
       producto_id: item.producto_id,
+      variante_id: varianteId,
       deposito_id: depositoResuelto,
       tipo: 'salida',
       cantidad: item.cantidad,
@@ -2457,48 +2958,83 @@ app.put('/api/ventas/:id', (req, res) => {
   }
 
   const itemsViejos = db
-    .prepare('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = ?')
+    .prepare('SELECT producto_id, variante_id, cantidad FROM venta_items WHERE venta_id = ?')
     .all(ventaId);
 
   // Stock disponible para los items nuevos, contemplando que el stock de
-  // los items viejos de esta misma venta se libera primero.
-  const liberadoPorProducto = new Map();
+  // los items viejos de esta misma venta se libera primero. Se agrupa por
+  // la misma clave compuesta producto+variante que usa validarStockDisponible.
+  const liberadoPorClave = new Map();
   for (const item of itemsViejos) {
-    liberadoPorProducto.set(
-      item.producto_id,
-      (liberadoPorProducto.get(item.producto_id) ?? 0) + item.cantidad
-    );
+    const clave = `${item.producto_id}:${item.variante_id ?? ''}`;
+    liberadoPorClave.set(clave, (liberadoPorClave.get(clave) ?? 0) + item.cantidad);
   }
-  const pedidoPorProducto = new Map();
+  const pedidoPorClave = new Map();
   for (const item of items) {
-    pedidoPorProducto.set(
-      item.producto_id,
-      (pedidoPorProducto.get(item.producto_id) ?? 0) + Number(item.cantidad)
-    );
+    const varianteId = item.variante_id ? Number(item.variante_id) : null;
+    const clave = `${item.producto_id}:${varianteId ?? ''}`;
+    pedidoPorClave.set(clave, {
+      producto_id: item.producto_id,
+      variante_id: varianteId,
+      cantidad: (pedidoPorClave.get(clave)?.cantidad ?? 0) + Number(item.cantidad)
+    });
   }
   // El stock liberado por los items viejos solo cuenta si eran del MISMO
   // depósito que se va a usar ahora: si la venta cambia de depósito al
   // editarse, lo que libera en el depósito viejo no está disponible en el
   // nuevo.
   const liberadoEnDepositoResuelto = venta.deposito_id === depositoResuelto || (!venta.deposito_id && depositoResuelto === depositoPredeterminadoId())
-    ? liberadoPorProducto
+    ? liberadoPorClave
     : new Map();
-  const buscarStockDisponible = db.prepare(
-    `SELECT productos.nombre, COALESCE(stock_por_deposito.cantidad, 0) AS stock
-       FROM productos LEFT JOIN stock_por_deposito
-         ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
-      WHERE productos.id = ?`
+  const buscarProductoEdicion = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+  const contarVariantesActivasEdicion = db.prepare(
+    'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
-  for (const [productoId, cantidadPedida] of pedidoPorProducto) {
-    const producto = buscarStockDisponible.get(depositoResuelto, productoId);
+  const buscarStockDisponible = db.prepare(
+    `SELECT COALESCE(stock_por_deposito.cantidad, 0) AS stock
+       FROM stock_por_deposito
+      WHERE stock_por_deposito.producto_id = ? AND stock_por_deposito.deposito_id = ?`
+  );
+  const buscarVarianteStockEdicion = db.prepare(
+    `SELECT producto_variantes.id,
+            COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock
+       FROM producto_variantes
+       LEFT JOIN stock_variante_por_deposito
+         ON stock_variante_por_deposito.variante_id = producto_variantes.id
+        AND stock_variante_por_deposito.deposito_id = ?
+      WHERE producto_variantes.id = ? AND producto_variantes.producto_id = ? AND producto_variantes.activo = 1`
+  );
+  for (const [clave, { producto_id: productoId, variante_id: varianteId, cantidad: cantidadPedida }] of pedidoPorClave) {
+    const producto = buscarProductoEdicion.get(productoId);
     if (!producto) {
       return res.status(400).json({ error: 'Uno de los productos de la venta no existe.' });
     }
-    const disponible = producto.stock + (liberadoEnDepositoResuelto.get(productoId) ?? 0);
-    if (cantidadPedida > disponible) {
-      return res.status(400).json({
-        error: `No hay suficiente stock de "${producto.nombre}" (disponible: ${disponible}).${dondeHayStock(productoId, depositoResuelto)}`
-      });
+    const tieneVariantes = contarVariantesActivasEdicion.get(productoId).n > 0;
+    if (!varianteId && tieneVariantes) {
+      return res.status(400).json({ error: `"${producto.nombre}" tiene variantes: elegí una para vender.` });
+    }
+    const liberado = liberadoEnDepositoResuelto.get(clave) ?? 0;
+    if (varianteId) {
+      const variante = buscarVarianteStockEdicion.get(depositoResuelto, varianteId, productoId);
+      if (!variante) {
+        return res
+          .status(400)
+          .json({ error: `La variante elegida para "${producto.nombre}" no existe o no le pertenece.` });
+      }
+      const disponible = variante.stock + liberado;
+      if (cantidadPedida > disponible) {
+        return res.status(400).json({
+          error: `No hay suficiente stock de "${producto.nombre}" (${combinacionVariante(varianteId)}) (disponible: ${disponible}).${dondeHayStock(productoId, depositoResuelto, varianteId)}`
+        });
+      }
+    } else {
+      const stock = buscarStockDisponible.get(productoId, depositoResuelto)?.stock ?? 0;
+      const disponible = stock + liberado;
+      if (cantidadPedida > disponible) {
+        return res.status(400).json({
+          error: `No hay suficiente stock de "${producto.nombre}" (disponible: ${disponible}).${dondeHayStock(productoId, depositoResuelto)}`
+        });
+      }
     }
   }
 
@@ -2515,6 +3051,7 @@ app.put('/api/ventas/:id', (req, res) => {
     for (const item of itemsViejos) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
+        variante_id: item.variante_id,
         deposito_id: depositoOriginal,
         tipo: 'entrada',
         cantidad: item.cantidad,
@@ -2550,19 +3087,24 @@ app.put('/api/ventas/:id', (req, res) => {
     db.prepare('DELETE FROM venta_items WHERE venta_id = ?').run(ventaId);
 
     const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
+    const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
     const insertItem = db.prepare(
-      `INSERT INTO venta_items (venta_id, producto_id, cantidad, precio_unitario, costo_unitario_historico)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
 
     let total = 0;
     for (const item of items) {
+      const varianteId = item.variante_id ? Number(item.variante_id) : null;
       // Mismo criterio que crear una venta: el costo se congela con el
-      // costo actual del producto en este momento, no el que tenía antes.
-      const { precio_costo: costoActual } = buscarCostoActual.get(item.producto_id);
-      insertItem.run(ventaId, item.producto_id, item.cantidad, item.precio_unitario, costoActual);
+      // costo actual del producto/variante en este momento, no el que tenía antes.
+      const costoActual = varianteId
+        ? buscarCostoVariante.get(varianteId).precio_costo
+        : buscarCostoActual.get(item.producto_id).precio_costo;
+      insertItem.run(ventaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual);
       registrarMovimientoStock({
         producto_id: item.producto_id,
+        variante_id: varianteId,
         deposito_id: depositoResuelto,
         tipo: 'salida',
         cantidad: item.cantidad,
@@ -2782,12 +3324,13 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
 
     const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
     const items = db
-      .prepare('SELECT producto_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
+      .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
       .all(ventaId);
     let total = 0;
     for (const item of items) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
+        variante_id: item.variante_id,
         deposito_id: depositoVenta,
         tipo: 'entrada',
         cantidad: item.cantidad,
@@ -2830,7 +3373,8 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
 
   const items = db
     .prepare(
-      `SELECT venta_items.producto_id, venta_items.cantidad, venta_items.precio_unitario, productos.nombre
+      `SELECT venta_items.producto_id, venta_items.variante_id, venta_items.cantidad,
+              venta_items.precio_unitario, productos.nombre
          FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
         WHERE venta_id = ?`
     )
@@ -2839,11 +3383,16 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   const buscarStockDeposito = db.prepare(
     'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
   );
+  const buscarStockVarianteDeposito = db.prepare(
+    'SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?'
+  );
   for (const item of items) {
-    const stockActual = buscarStockDeposito.get(item.producto_id, depositoVenta)?.cantidad ?? 0;
+    const stockActual = item.variante_id
+      ? buscarStockVarianteDeposito.get(item.variante_id, depositoVenta)?.cantidad ?? 0
+      : buscarStockDeposito.get(item.producto_id, depositoVenta)?.cantidad ?? 0;
     if (stockActual - item.cantidad < 0) {
       return res.status(400).json({
-        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta venta.${dondeHayStock(item.producto_id, depositoVenta)}`
+        error: `No hay stock suficiente de "${item.nombre}" para restaurar esta venta.${dondeHayStock(item.producto_id, depositoVenta, item.variante_id)}`
       });
     }
   }
@@ -2855,6 +3404,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
     for (const item of items) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
+        variante_id: item.variante_id,
         deposito_id: depositoVenta,
         tipo: 'salida',
         cantidad: item.cantidad,
@@ -2943,7 +3493,8 @@ app.get('/api/presupuestos/:id', (req, res) => {
 
   const items = db
     .prepare(
-      `SELECT presupuesto_items.id, presupuesto_items.producto_id, productos.nombre AS producto,
+      `SELECT presupuesto_items.id, presupuesto_items.producto_id, presupuesto_items.variante_id,
+              productos.nombre AS producto,
               presupuesto_items.cantidad, presupuesto_items.precio_unitario
          FROM presupuesto_items JOIN productos ON productos.id = presupuesto_items.producto_id
         WHERE presupuesto_id = ?
@@ -2953,7 +3504,11 @@ app.get('/api/presupuestos/:id', (req, res) => {
 
   res.json({
     ...decorarPresupuesto(presupuesto, fechaDeHoy()),
-    items: items.map((i) => ({ ...i, subtotal: i.cantidad * i.precio_unitario }))
+    items: items.map((i) => ({
+      ...i,
+      combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
+      subtotal: i.cantidad * i.precio_unitario
+    }))
   });
 });
 
@@ -2980,13 +3535,14 @@ function validarPresupuesto(body) {
 
 function guardarItemsPresupuesto(presupuestoId, items) {
   const insertItem = db.prepare(
-    `INSERT INTO presupuesto_items (presupuesto_id, producto_id, cantidad, precio_unitario)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO presupuesto_items (presupuesto_id, producto_id, variante_id, cantidad, precio_unitario)
+     VALUES (?, ?, ?, ?, ?)`
   );
   for (const item of items) {
     insertItem.run(
       presupuestoId,
       Number(item.producto_id),
+      item.variante_id ? Number(item.variante_id) : null,
       Number(item.cantidad),
       Number(item.precio_unitario)
     );
@@ -3163,7 +3719,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
 
   const items = db
     .prepare(
-      'SELECT producto_id, cantidad, precio_unitario FROM presupuesto_items WHERE presupuesto_id = ?'
+      'SELECT producto_id, variante_id, cantidad, precio_unitario FROM presupuesto_items WHERE presupuesto_id = ?'
     )
     .all(presupuestoId);
   if (items.length === 0) {
@@ -3738,7 +4294,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
   // para topar la cantidad a devolver a lo que realmente queda.
   const items = db
     .prepare(
-      `SELECT compra_items.id, compra_items.producto_id, productos.nombre AS producto,
+      `SELECT compra_items.id, compra_items.producto_id, compra_items.variante_id, productos.nombre AS producto,
               compra_items.cantidad, compra_items.precio_unitario, compra_items.costo_real_unitario,
               COALESCE((
                 SELECT SUM(devolucion_proveedor_items.cantidad)
@@ -3766,6 +4322,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
     tiene_devolucion: Boolean(compra.tiene_devolucion),
     items: items.map((i) => ({
       ...i,
+      combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
       subtotal: i.cantidad * i.precio_unitario,
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
     })),
@@ -3833,13 +4390,23 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
   // depósito, su costo lo va a fijar la recepción de esta compra.
   const crearProducto = db.prepare('INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)');
   const insertItem = db.prepare(
-    `INSERT INTO compra_items (compra_id, producto_id, cantidad, precio_unitario, costo_real_unitario)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  );
+  // Variante resuelta por el frontend (no se autocrea a ciegas desde un
+  // nombre libre, a diferencia del producto): tiene que existir, estar
+  // activa y pertenecer al producto ya resuelto de este ítem.
+  const buscarVariante = db.prepare(
+    'SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1'
+  );
+  const contarVariantesActivas = db.prepare(
+    'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
 
   const itemsProrrateados = prorratearEnvio(
     items.map((i) => ({
       producto: String(i.producto).trim(),
+      variante_id: i.variante_id ? Number(i.variante_id) : null,
       cantidad: Number(i.cantidad),
       precio_unitario: Number(i.precio_unitario)
     })),
@@ -3852,7 +4419,20 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
       const { lastInsertRowid } = crearProducto.run(item.producto);
       productoRow = { id: lastInsertRowid };
     }
-    insertItem.run(nuevaCompraId, productoRow.id, item.cantidad, item.precio_unitario, item.costo_real_unitario);
+    if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
+      throw new ErrorBulk(`La variante elegida para "${item.producto}" no existe o no le pertenece.`);
+    }
+    if (!item.variante_id && contarVariantesActivas.get(productoRow.id).n > 0) {
+      throw new ErrorBulk(`"${item.producto}" tiene variantes: elegí una para comprar.`);
+    }
+    insertItem.run(
+      nuevaCompraId,
+      productoRow.id,
+      item.variante_id,
+      item.cantidad,
+      item.precio_unitario,
+      item.costo_real_unitario
+    );
   }
 
   return nuevaCompraId;
@@ -3995,7 +4575,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
 
   const itemsViejos = db
     .prepare(
-      `SELECT compra_items.producto_id, compra_items.cantidad, productos.nombre
+      `SELECT compra_items.producto_id, compra_items.variante_id, compra_items.cantidad, productos.nombre
          FROM compra_items JOIN productos ON productos.id = compra_items.producto_id
         WHERE compra_id = ?`
     )
@@ -4023,6 +4603,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const itemsProrrateados = prorratearEnvio(
     items.map((i) => ({
       producto: String(i.producto).trim(),
+      variante_id: i.variante_id ? Number(i.variante_id) : null,
       cantidad: Number(i.cantidad),
       precio_unitario: Number(i.precio_unitario)
     })),
@@ -4036,6 +4617,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       for (const item of itemsViejos) {
         registrarMovimientoStock({
           producto_id: item.producto_id,
+          variante_id: item.variante_id,
           deposito_id: depositoCompraOriginal,
           tipo: 'salida',
           cantidad: item.cantidad,
@@ -4086,25 +4668,40 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       'INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)'
     );
     const insertItem = db.prepare(
-      `INSERT INTO compra_items (compra_id, producto_id, cantidad, precio_unitario, costo_real_unitario)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    const buscarVariante = db.prepare(
+      'SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1'
+    );
+    const contarVariantesActivas = db.prepare(
+      'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
     );
 
     const productosNuevos = [];
+    const variantesNuevas = [];
     for (const item of itemsProrrateados) {
       let productoRow = buscarProducto.get(item.producto);
       if (!productoRow) {
         const { lastInsertRowid } = crearProducto.run(item.producto);
         productoRow = { id: lastInsertRowid };
       }
+      if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
+        throw new ErrorBulk(`La variante elegida para "${item.producto}" no existe o no le pertenece.`);
+      }
+      if (!item.variante_id && contarVariantesActivas.get(productoRow.id).n > 0) {
+        throw new ErrorBulk(`"${item.producto}" tiene variantes: elegí una para comprar.`);
+      }
       insertItem.run(
         compraId,
         productoRow.id,
+        item.variante_id,
         item.cantidad,
         item.precio_unitario,
         item.costo_real_unitario
       );
       productosNuevos.push(productoRow.id);
+      if (item.variante_id) variantesNuevas.push(item.variante_id);
     }
 
     // 3) Reaplicar según el estado actual (editar no cambia de estado).
@@ -4121,11 +4718,12 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
 
     if (compra.stock_aplicado) {
       const nuevos = db
-        .prepare('SELECT producto_id, cantidad, costo_real_unitario FROM compra_items WHERE compra_id = ?')
+        .prepare('SELECT producto_id, variante_id, cantidad, costo_real_unitario FROM compra_items WHERE compra_id = ?')
         .all(compraId);
       for (const item of nuevos) {
         registrarMovimientoStock({
           producto_id: item.producto_id,
+          variante_id: item.variante_id,
           deposito_id: depositoResueltoCompra,
           tipo: 'entrada',
           cantidad: item.cantidad,
@@ -4135,11 +4733,19 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
         });
       }
 
-      // Recalcular el costo de todos los productos tocados: los que salían
-      // antes y los que entran ahora (pueden repetirse, un Set alcanza).
+      // Recalcular el costo de todos los productos y variantes tocados: los
+      // que salían antes y los que entran ahora (pueden repetirse, un Set
+      // alcanza).
       const productosTocados = new Set([...itemsViejos.map((i) => i.producto_id), ...productosNuevos]);
       for (const productoId of productosTocados) {
         recalcularCostoProducto(productoId);
+      }
+      const variantesTocadas = new Set([
+        ...itemsViejos.filter((i) => i.variante_id).map((i) => i.variante_id),
+        ...variantesNuevas
+      ]);
+      for (const varianteId of variantesTocadas) {
+        recalcularCostoVariante(varianteId);
       }
     }
 
@@ -4213,7 +4819,7 @@ app.post('/api/compras/:id/confirmar', soloAdmin, (req, res) => {
 function aplicarStockCompra(compraId) {
   const items = db
     .prepare(
-      'SELECT producto_id, cantidad, costo_real_unitario, precio_unitario FROM compra_items WHERE compra_id = ?'
+      'SELECT producto_id, variante_id, cantidad, costo_real_unitario, precio_unitario FROM compra_items WHERE compra_id = ?'
     )
     .all(compraId);
   const { deposito_id: depositoCompra } = db.prepare('SELECT deposito_id FROM compras WHERE id = ?').get(compraId);
@@ -4222,19 +4828,35 @@ function aplicarStockCompra(compraId) {
   const buscarProducto = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
   const actualizarPrecioCosto = db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?');
+  // Espejo exacto de lo anterior, pero a nivel variante: el promedio
+  // ponderado de una variante es independiente del de su producto padre y
+  // del de sus variantes hermanas.
+  const buscarVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
+  const buscarStockVariante = db.prepare(
+    'SELECT cantidad FROM stock_variante_actual WHERE variante_id = ?'
+  );
+  const actualizarPrecioCostoVariante = db.prepare('UPDATE producto_variantes SET precio_costo = ? WHERE id = ?');
 
   for (const item of items) {
     const costoReal = item.costo_real_unitario ?? item.precio_unitario;
-    // El stock previo se acota a 0: si quedó negativo por un ajuste, no
-    // tiene sentido que arrastre el promedio hacia valores absurdos.
-    const stockPrevio = Math.max(buscarStockActual.get(item.producto_id)?.cantidad ?? 0, 0);
-    const costoAnterior = buscarProducto.get(item.producto_id).precio_costo;
-    const costoPromedio =
-      (stockPrevio * costoAnterior + item.cantidad * costoReal) / (stockPrevio + item.cantidad);
-
-    actualizarPrecioCosto.run(costoPromedio, item.producto_id);
+    if (item.variante_id) {
+      const stockPrevio = Math.max(buscarStockVariante.get(item.variante_id)?.cantidad ?? 0, 0);
+      const costoAnterior = buscarVariante.get(item.variante_id).precio_costo;
+      const costoPromedio =
+        (stockPrevio * costoAnterior + item.cantidad * costoReal) / (stockPrevio + item.cantidad);
+      actualizarPrecioCostoVariante.run(costoPromedio, item.variante_id);
+    } else {
+      // El stock previo se acota a 0: si quedó negativo por un ajuste, no
+      // tiene sentido que arrastre el promedio hacia valores absurdos.
+      const stockPrevio = Math.max(buscarStockActual.get(item.producto_id)?.cantidad ?? 0, 0);
+      const costoAnterior = buscarProducto.get(item.producto_id).precio_costo;
+      const costoPromedio =
+        (stockPrevio * costoAnterior + item.cantidad * costoReal) / (stockPrevio + item.cantidad);
+      actualizarPrecioCosto.run(costoPromedio, item.producto_id);
+    }
     registrarMovimientoStock({
       producto_id: item.producto_id,
+      variante_id: item.variante_id,
       deposito_id: depositoResuelto,
       tipo: 'entrada',
       cantidad: item.cantidad,
@@ -4265,13 +4887,13 @@ function recalcularCostoProducto(productoId) {
     .prepare(
       `SELECT tipo, cantidad, costo_unitario, compra_id
          FROM movimientos_stock
-        WHERE producto_id = ?
+        WHERE producto_id = ? AND variante_id IS NULL
         ORDER BY fecha, id`
     )
     .all(productoId);
 
   const buscarCostoCompra = db.prepare(
-    'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND producto_id = ?'
+    'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND producto_id = ? AND variante_id IS NULL'
   );
 
   let stock = 0;
@@ -4294,6 +4916,46 @@ function recalcularCostoProducto(productoId) {
   }
 
   db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?').run(costo, productoId);
+  return costo;
+}
+
+// Espejo exacto de recalcularCostoProducto, a nivel variante: mismo
+// algoritmo de costo promedio ponderado reconstruido desde el historial,
+// filtrando movimientos_stock/compra_items por variante_id en vez de por
+// "producto en general" (variante_id IS NULL).
+function recalcularCostoVariante(varianteId) {
+  const movimientos = db
+    .prepare(
+      `SELECT tipo, cantidad, costo_unitario, compra_id
+         FROM movimientos_stock
+        WHERE variante_id = ?
+        ORDER BY fecha, id`
+    )
+    .all(varianteId);
+
+  const buscarCostoCompra = db.prepare(
+    'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND variante_id = ?'
+  );
+
+  let stock = 0;
+  let costo = 0;
+  for (const m of movimientos) {
+    if (m.tipo === 'entrada') {
+      let costoEntrada = m.costo_unitario;
+      if (costoEntrada === null && m.compra_id) {
+        costoEntrada = buscarCostoCompra.get(m.compra_id, varianteId)?.costo_real_unitario ?? null;
+      }
+      if (costoEntrada !== null) {
+        const stockPrevio = Math.max(stock, 0);
+        costo = (stockPrevio * costo + m.cantidad * costoEntrada) / (stockPrevio + m.cantidad);
+      }
+      stock += m.cantidad;
+    } else {
+      stock += m.tipo === 'salida' ? -m.cantidad : m.cantidad;
+    }
+  }
+
+  db.prepare('UPDATE producto_variantes SET precio_costo = ? WHERE id = ?').run(costo, varianteId);
   return costo;
 }
 
@@ -4326,7 +4988,8 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
 
   const items = db
     .prepare(
-      `SELECT compra_items.producto_id, compra_items.cantidad, compra_items.precio_unitario, productos.nombre
+      `SELECT compra_items.producto_id, compra_items.variante_id, compra_items.cantidad,
+              compra_items.precio_unitario, productos.nombre
        FROM compra_items JOIN productos ON productos.id = compra_items.producto_id
        WHERE compra_id = ?`
     )
@@ -4357,6 +5020,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
       for (const item of items) {
         registrarMovimientoStock({
           producto_id: item.producto_id,
+          variante_id: item.variante_id,
           deposito_id: depositoCompraAnular,
           tipo: 'salida',
           cantidad: item.cantidad,

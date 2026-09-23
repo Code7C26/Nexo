@@ -4029,3 +4029,287 @@ Pendiente conocido de la sesión anterior, sin resolver todavía: el commit
 `7af7308` (orden de ramas) quedó sin la línea `Co-Authored-By`; se ofreció
 corregirlo con un amend + force-push a `solla` pero no se hizo porque
 requiere confirmación explícita del usuario.
+
+## 30. Variantes de producto — Etapa 1 (maestro) y Etapa 2 (compras)
+
+Arranca la etapa grande "variantes de producto" (talle/color con stock,
+costo y opcionalmente precio propios), con plan escrito y aprobado en
+`C:\Users\HP ULTRA 5\.claude\plans\sigamos-mejorando-nexo-typed-clover.md`
+(6 etapas: 1. schema+maestro, 2. compras, 3. ventas, 4. precio por lista a
+nivel variante, 5. devoluciones, 6. bloqueo del asistente IA). Principio de
+diseño, no perder de vista en las próximas etapas: **`producto_id` en
+`movimientos_stock`/`venta_items`/`compra_items`/etc. siempre apunta al
+producto padre; `variante_id` es una columna nueva, nullable, adicional**.
+`NULL` = "es para el producto en general", idéntico al comportamiento
+previo — así un producto sin variantes queda garantizado sin cambios de
+comportamiento.
+
+**Todo este trabajo (Etapa 1 y 2) está sin commitear todavía**, como
+cambios sin stagear sobre `solla` (`backend/db/index.js`,
+`backend/db/schema.sql`, `backend/permisos.js`, `backend/server.js`,
+`frontend/css/styles.css`, `frontend/index.html`, `frontend/js/app.js`).
+Se sigue el criterio ya vigente de esta rama: trabajar directo sobre
+`solla`, sin ramas descartables por feature.
+
+### Etapa 1 — Schema + maestro de atributos/variantes
+
+Completada y verificada en una sesión previa a la que generó este
+handoff (por eso no tiene tanto detalle acá — ver el plan para el diseño
+completo). En resumen: 5 tablas nuevas (`producto_atributos`,
+`producto_atributo_valores`, `producto_variantes`,
+`producto_variante_valores`, `variante_precios`), columna `variante_id`
+agregada a `movimientos_stock`/`venta_items`/`compra_items`/
+`devolucion_items`/`devolucion_proveedor_items`/`presupuesto_items`
+(nullable, migración idempotente igual que las ya existentes de
+`db/index.js`), vistas `stock_variante_actual`/`stock_variante_por_deposito`
+(mismo criterio que `stock_por_deposito`: viven en `index.js`, no en
+`schema.sql`), y 10 endpoints nuevos bajo `/api/productos/:id/atributos`
+y `/api/productos/:id/variantes` (todos registrados en
+`permisos.js` → `RUTAS_PERMISOS`, ABM admin / lectura ambos roles).
+`combinacionVariante(varianteId)` arma el texto legible ("Talle: S") a
+partir de esas tablas.
+
+### Etapa 2 — Compras con variante
+
+**Objetivo**: que comprar una variante puntual sume stock y recalcule
+costo promedio ponderado de esa variante específicamente, sin tocar el
+costo del producto padre ni el de sus otras variantes.
+
+**`backend/server.js`**:
+- `registrarMovimientoStock` acepta `variante_id = null` y lo persiste —
+  es el cambio raíz del que dependen todos los demás (sin esto, cualquier
+  otro cambio quedaría escribiendo `variante_id` NULL igual).
+- `crearCompra` y el `PUT /api/compras/:id` (edición): cada ítem admite
+  `variante_id` opcional; se valida que la variante exista y pertenezca
+  al producto, y que si el producto tiene variantes activas **no** se
+  pueda comprar "en general" sin elegir una (`ErrorBulk`, mensaje directo
+  al usuario). `itemsProrrateados` en las dos funciones dejaba caer
+  `variante_id` porque reconstruía el objeto ítem a mano sin ese campo —
+  bug de integración encontrado y corregido antes de llegar a probarlo en
+  vivo, agregándolo explícitamente al mapeo en ambos lados.
+- `aplicarStockCompra`: si el ítem trae `variante_id`, el costo promedio
+  ponderado se lee/escribe contra `producto_variantes.precio_costo` y
+  `stock_variante_actual` en vez de `productos`/`stock_actual`.
+- `recalcularCostoProducto` suma `AND variante_id IS NULL` a su `WHERE`
+  (no mezclar historial de variantes en el promedio del padre); nueva
+  `recalcularCostoVariante(varianteId)`, espejo exacto filtrando por
+  `variante_id`. Ambas reconstruyen el promedio desde cero repasando
+  `movimientos_stock` en orden cronológico (no restan incrementalmente:
+  un promedio ponderado no se puede "desarmar" con exactitud).
+- `GET /api/compras/:id` decora cada ítem con `combinacion` (vía
+  `combinacionVariante`) cuando tiene variante.
+- **Bug real encontrado y corregido en `POST /api/compras/:id/anular`**:
+  el `SELECT` de ítems y el `registrarMovimientoStock` de reversión no
+  incluían `variante_id`, así que anular una compra con variante generaba
+  el movimiento de reversión con `variante_id = NULL` — el stock de la
+  variante específica **nunca bajaba** (aunque el stock agregado del
+  producto padre sí, porque `stock_actual` suma sin filtrar por
+  variante), y un `restaurar` posterior duplicaba la cantidad. Corregido
+  agregando `compra_items.variante_id` al `SELECT` y `variante_id:
+  item.variante_id` al `registrarMovimientoStock` de esa transacción.
+  Verificado con curl contra una variante real: stock 5→0 (anular)→5
+  (restaurar) sin desvíos, tanto antes (fallaba) como después (correcto)
+  del fix.
+
+**`frontend/js/app.js`**:
+- `agregarFilaItemCompra(contenedor, listaProductos)` ahora recibe la
+  lista de productos (antes no la necesitaba) y agrega un
+  `<input class="item-producto-id" hidden>` + `<select
+  class="item-variante-id" hidden>` que se revela y se puebla (vía
+  `GET /api/productos/:id/variantes`, cacheado en
+  `variantesPorProductoCache`) cuando el nombre tipeado matchea un
+  producto con `tiene_variantes`. `leerItemsCompra` lee ese select.
+  `abrirModalCompra` pasó a ser `async` para poder precargar variantes al
+  editar una compra existente. Los 5 call sites de
+  `agregarFilaItemCompra` (modal manual + las dos ramas del asistente)
+  se actualizaron para pasar `productos`.
+- `activarAsistenteCompra` ahora también fija `.item-producto-id` (igual
+  que ya hacía `activarAsistenteVenta`), pero **no** arma el select de
+  variante — deferido a propósito a la Etapa 6 (bloqueo del asistente),
+  así que hoy una propuesta de IA sobre un producto con variantes falla
+  recién al confirmar, con el mismo mensaje de `ErrorBulk` del backend.
+
+**Verificación**: copia aislada (`backend`+`frontend`) en un scratchpad,
+servidor de prueba en el puerto 3002, circuito completo por curl contra
+dos productos reales (uno con variantes "Talle S/M", otro sin variantes
+como control de regresión) — alta de compra como borrador → confirmar →
+marcar recibido → editar cantidad/precio → editar cambiando de variante →
+anular → restaurar, chequeando en cada paso el stock/costo de la variante
+tocada, de su variante hermana (no debe moverse) y del producto padre (su
+`precio_costo` propio no debe moverse, pero su `stock` agregado sí debe
+incluir el de la variante — es el comportamiento esperado, no un bug, ver
+el plan). Migración probada idempotente (arrancar el server de prueba dos
+veces sobre la misma base ya migrada). `npm test` (los 3 tests de
+inventario de rutas/permisos) verde antes y después, tanto en la copia
+aislada como en el repo real. **No había herramienta de automatización de
+navegador disponible en esta sesión** (se buscó y no apareció ningún
+tool de Playwright/browser) — la integración del frontend se verificó
+estáticamente: sin ids duplicados en `index.html`, y cada
+`getElementById`/`querySelector` nuevo de `app.js` contrastado a mano
+contra los ids/clases reales del HTML. Si en la próxima sesión aparece un
+tool de navegador, vale la pena una pasada visual real de estos cambios
+de compra (no se hizo esta vez por falta de herramienta, no por decisión).
+
+### Gap conocido, no resuelto a propósito (fuera del alcance de esta etapa)
+
+Los chequeos de "ya se vendió/compró, no se puede editar/anular" en el
+`PUT`/`anular` de compras siguen mirando `stock_por_deposito` a nivel
+**producto**, no por variante — en un producto multi-variante esto podría
+aprobar o bloquear una edición/anulación de forma imprecisa respecto de
+la variante puntual involucrada. Se detectó en esta etapa pero se dejó
+así porque no es parte del alcance acordado; revisar si da problemas al
+construir la Etapa 3 (ventas), que toca el mismo tipo de chequeo.
+
+### Qué sigue
+
+Etapas 3 a 6 del plan (ventas con variante, precio por lista a nivel
+variante, devoluciones, bloqueo del asistente) — ver el archivo del plan
+para el detalle punto por punto de cada una. Etapa 3 es la siguiente en
+orden: toca `validarStockDisponible`, `crearVenta`, los movimientos de
+stock de venta/anular/restaurar/devolución, y el mismo tipo de selector
+de variante en `agregarFilaItemVenta`/`leerItemsVenta` que se acaba de
+construir para compras (con el agregado de que el `max` del input de
+cantidad debe leer el stock de la variante, no el agregado del producto).
+
+## 31. Variantes de producto — Etapa 3 (ventas y presupuestos)
+
+**Objetivo**: que vender una variante puntual descuente su stock
+específico y congele su costo histórico específico, sin tocar el
+stock/costo del producto padre ni el de sus variantes hermanas — mismo
+principio que ya rige para compras desde la Etapa 2. Presupuestos entró
+en el alcance de esta misma etapa (no es una etapa aparte del plan
+madre): convierten en venta llamando a las mismas
+`validarStockDisponible`/`crearVenta`, así que journalear `variante_id`
+en venta_items lo resuelve gratis también para presupuestos. Plan
+completo en `C:\Users\HP ULTRA 5\.claude\plans\eventual-nibbling-cray.md`.
+**Sin commitear todavía**, junto con las Etapas 1 y 2 (mismos archivos
+listados en §30).
+
+**`backend/server.js`**:
+- `dondeHayStock` ganó un tercer parámetro opcional `varianteId`: con
+  variante consulta `stock_variante_por_deposito` en vez de
+  `stock_por_deposito`.
+- `validarStockDisponible` (la usan tanto `POST /api/ventas` como
+  `POST /api/presupuestos/:id/convertir`) reescrita para agrupar por
+  clave compuesta `producto_id:variante_id` en vez de solo
+  `producto_id`, con la misma bifurcación variante/no-variante que ya
+  tenía `crearCompra`: producto con variantes activas exige
+  `variante_id` en cada ítem, producto sin variantes rechaza si igual
+  llegó una.
+- `crearVenta`: el costo congelado en `venta_items.costo_unitario_historico`
+  sale de `producto_variantes.precio_costo` cuando el ítem trae variante
+  (nuevo `buscarCostoVariante`), del `productos.precio_costo` si no —
+  ventas nunca escribe costo, solo lo lee, así que no hizo falta ningún
+  `recalcularCostoVariante` acá (a diferencia de compras).
+- `GET /api/ventas/:id` y `GET /api/presupuestos/:id`: cada ítem decorado
+  con `combinacion` (vía `combinacionVariante`) cuando tiene variante,
+  mismo patrón que ya tiene compras.
+- `PUT /api/ventas/:id` (edición): mismo patrón que la edición de
+  compras — los `Map` de liberado/pedido por producto pasan a indexar
+  por la clave compuesta, y el chequeo de stock se bifurca
+  variante/no-variante.
+- `POST /api/ventas/:id/anular` y `.../restaurar`: se les aplicó
+  directamente el mismo fix que en la Etapa 2 hizo falta parchear como
+  bug real para compras (`SELECT` de ítems + `registrarMovimientoStock`
+  de reversión con `variante_id`) — acá se agregó desde el principio,
+  sin pasar primero por el bug.
+- `guardarItemsPresupuesto` y `POST /api/presupuestos/:id/convertir`: el
+  INSERT/SELECT de ítems suma `variante_id`; no hizo falta ningún otro
+  cambio en el endpoint de convertir porque `validarStockDisponible`/
+  `crearVenta` ya leen `item.variante_id` directo del objeto.
+- No hizo falta tocar `permisos.js` (sin endpoints nuevos, confirmado con
+  `npm test`) ni el filtro de campos sensibles (`podarSensibles` ya
+  oculta costo/margen/ganancia para el rol empleado en cualquier
+  respuesta, la `combinacion` nueva no es sensible).
+
+**`frontend/js/app.js`**: mismo patrón visual que ya se construyó para
+compras en la Etapa 2, reusando la misma caché `variantesPorProductoCache`/
+`variantesDeProducto` (se reubicó antes de `agregarFilaItemVenta` porque
+ahora la usan las dos).
+- `agregarFilaItemVenta` gana el mismo `<select class="item-variante-id"
+  hidden>` que ya tiene la fila de compra, con un `data-stock` por
+  `<option>`; un listener de `change` actualiza `cantidad.max` al stock
+  de la variante elegida (no al agregado del producto) cuando
+  `limitarStock` es `true` — es la diferencia real contra el patrón de
+  compra, que no limita por stock.
+- `leerItemsVenta` suma `variante_id` al ítem emitido, igual que
+  `leerItemsCompra`.
+- `abrirModalVenta` y `abrirModalPresupuesto` pasaron a `async` para
+  poder precargar la variante al editar una venta/presupuesto existente
+  (fetch de variantes, poblar el select, seleccionar la opción correcta;
+  en venta además recalcula el `max` de cantidad contra el stock de esa
+  variante puntual).
+- `activarAsistenteVenta` no se tocó, mismo criterio ya establecido en
+  compras: el asistente asigna `.item-producto-id` sin pasar por el
+  evento del input, así que el select de variante nunca se llega a
+  mostrar — una propuesta de IA sobre un producto con variantes queda
+  bloqueada recién al confirmar. Sigue siendo la Etapa 6 la que decide
+  si eso cambia.
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3002 (nunca el 3000 real). Como la copia de la base no traía
+ningún producto con variantes cargado (a diferencia de lo esperado, la
+data de prueba de la Etapa 1/2 no había quedado persistida en
+`nexo.db`), se armó el fixture desde cero por curl contra los endpoints
+ya existentes: atributo "Talle" + valores "S"/"M" en el producto "Asad
+bourbon", dos variantes, y una compra confirmada+recibida para darles
+stock inicial (S=10, M=5, costo 30000 cada una).
+
+Circuito completo por curl, todo correcto:
+- Venta de 3 unidades de la variante S: su stock bajó a 7, la variante M
+  y el costo del producto padre no se movieron, costo histórico
+  congelado en 30000.
+- Rechazos correctos: vender el producto sin elegir variante
+  (`"Asad bourbon" tiene variantes: elegí una para vender.`); pedir 100
+  de la variante M aunque S+M agregado alcanzarían
+  (`No hay suficiente stock de "Asad bourbon" (Talle: M) (disponible: 5)`).
+- Editar la venta cambiando de variante S→M con cantidad 2: S volvió a
+  10 (liberado), M bajó a 3 (nuevo pedido) — sin mezclar los dos stocks.
+- Anular la venta editada: M volvió a 5. Restaurar: M volvió a bajar a 3.
+  Los dos movimientos correctos, sin duplicar ni perder cantidad.
+- Regresión de control sobre un producto sin variantes (Khamrah): editar/
+  anular/restaurar se comportó exactamente igual que antes de esta
+  etapa (stock 0→1 al anular→0 al restaurar).
+- Presupuesto con un ítem de variante M: creado, editado (cantidad
+  1→2), convertido a venta — la venta resultante quedó con
+  `variante_id` correcto y el stock de M bajó de 3 a 1 en el mismo paso.
+- `npm test` (los 3 tests de inventario de rutas/permisos) verde antes y
+  después.
+
+**A diferencia de la Etapa 2, esta vez sí hubo herramienta de navegador
+disponible** (Playwright 1.63, ya cacheado en un scratchpad de sesiones
+anteriores en `/tmp/claude/pwscratch`, sin necesidad de instalar nada
+nuevo — solo copiar el script de chequeo ahí para que resolviera el
+`require('playwright')` local). Se hizo la pasada visual real que había
+quedado pendiente en la Etapa 2:
+- Nueva venta: tipear "Asad bourbon" muestra el select con "Talle: S" /
+  "Talle: M"; elegir una variante actualiza el `max` de cantidad al
+  stock de esa variante puntual (confirmado con el valor real, no un
+  mock).
+- Editar una venta existente con variante: el modal precarga
+  correctamente el producto, la variante (`Talle: M` seleccionada) y la
+  cantidad.
+- Editar un presupuesto existente con variante: mismo prellenado
+  correcto, en tema claro.
+- Mobile (420px): el formulario en general se ve bien; la fila de ítem
+  (producto+variante+cantidad+precio en una sola línea flex) queda
+  apretada, pero es exactamente el mismo layout `.item-row` que ya usa
+  la fila de compra desde la Etapa 2 — no es una regresión de esta
+  etapa, es un límite de diseño preexistente que ninguna de las dos
+  etapas se propuso resolver.
+- Datos de prueba quedaron en la copia de scratchpad únicamente
+  (ventas #10/#11/#12, presupuestos #2/#3, compra #4, cliente "Cliente
+  Test"/"Cliente Presu"/"Cliente Presu UI") — la base real
+  (`backend/db/nexo.db`) no se tocó en ningún momento de esta
+  verificación. El proceso de prueba en el puerto 3002 se detuvo al
+  terminar.
+
+### Qué sigue
+
+Etapas 4 a 6 del plan madre (precio por lista a nivel variante,
+devoluciones con variante, bloqueo del asistente IA) — ninguna se
+empezó, quedan para cuando el usuario lo pida explícitamente. Antes de
+eso: **confirmar con el usuario si conviene commitear el bloque de
+Etapas 1+2+3 juntas** (siguen todas sin commitear, sobre `solla`) o
+esperar a tener más etapas — no se commiteó nada todavía porque no se
+pidió.
