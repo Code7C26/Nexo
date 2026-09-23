@@ -4313,3 +4313,101 @@ eso: **confirmar con el usuario si conviene commitear el bloque de
 Etapas 1+2+3 juntas** (siguen todas sin commitear, sobre `solla`) o
 esperar a tener más etapas — no se commiteó nada todavía porque no se
 pidió.
+
+**Actualización**: en la sesión siguiente el usuario pidió commitear
+esto. Quedó en `1dbc86b` ("feat: variantes de producto (atributos,
+compras y ventas/presupuestos)"), sobre `solla`, sin push. Ver §32 para
+la Etapa 4.
+
+## 32. Variantes de producto — Etapa 4 (precio por lista a nivel variante)
+
+**Objetivo**: que el precio sugerido en Venta/Presupuesto respete un
+precio propio de la variante elegida, con la cadena de fallback del plan
+madre: `variante_precios` → `producto_variantes.precio_venta` → precio
+del producto padre en esa lista (que a su vez cae a `precio_venta` del
+producto si no tiene precio propio ahí). Commiteada junto con Etapas
+1+2+3 en `1dbc86b`.
+
+**Hallazgo clave antes de escribir código**: el backend de esta etapa ya
+estaba hecho desde la Etapa 1 — `producto_variantes.precio_venta`,
+`variante_precios`, `obtenerPreciosPorVariante`, `decorarVariante` (con
+su `precios` por lista) y el `PATCH /api/productos/:id/variantes/:id`
+que ya acepta `precios` en el body y hace upsert contra `variante_precios`
+ya existían. Lo que faltaba era exclusivamente:
+1. Frontend: UI para cargar el precio por lista de una variante (solo se
+   podía cargar el `precio_venta` genérico, nunca `precios[listaId]`).
+2. Frontend: usar esa cadena de fallback para sugerir/reproponer el
+   precio en los formularios de Venta y Presupuesto cuando el ítem tiene
+   variante — hoy sugería siempre el precio del producto padre, ignorando
+   la variante elegida.
+
+No hizo falta ningún cambio en `backend/server.js` ni en el schema.
+
+**`frontend/index.html`**: la tabla de "Variantes" (dentro de
+`#modalVariantesProducto`) gana una columna nueva "Precios por lista"
+entre "Precio de venta" y "Stock".
+
+**`frontend/js/app.js`**:
+- `preciosPorListaVarianteHtml(v)` (nueva): mismo patrón que
+  `poblarPreciosPorLista` (Productos) — un mini-input por cada lista
+  activa que no sea la predeterminada (esa se edita en la columna "Precio
+  de venta"). Se usa dentro de `renderVariantesTabla`, que ahora arma esa
+  celda y, en el handler de "Guardar", junta esos inputs en un objeto
+  `precios` (input vacío = no se manda, igual criterio que Productos) que
+  viaja en el mismo PATCH que ya mandaba `sku`/`precio_venta`/`activo`.
+  `filaVacia` pasó de colspan 6 a 7 por la columna nueva.
+- `precioVarianteEnLista(variante, producto, listaId)` (nueva, al lado de
+  `precioProductoEnLista`): implementa la cadena de fallback completa.
+  Sin variante, delega directo en `precioProductoEnLista`.
+- `agregarFilaItemVenta`: la fila gana una variable de closure
+  `variantesFila` (el array crudo de `GET .../variantes`, no solo el
+  HTML del `<select>`) para poder resolver el precio de la variante
+  elegida sin refetchear. El listener de `change` del select de variante
+  (que hasta la Etapa 3 solo actualizaba `cantidad.max`) ahora también
+  recalcula `precio.value` con `precioVarianteEnLista` — elegir variante
+  refina el precio recién sugerido al resolver el producto, mismo
+  criterio de que "tocar un selector de esta fila re-sugiere precio" que
+  ya regía para el nombre del producto.
+- `reproponerPreciosPorLista` (cambia la lista de precios de una
+  Venta/Presupuesto con ítems ya cargados) pasó a `async`: por cada fila
+  con variante elegida, resuelve sus datos vía `variantesDeProducto`
+  (cacheada, no refetchea) y usa `precioVarianteEnLista` en vez de
+  `precioProductoEnLista`; sin variante, camino idéntico al de antes. El
+  criterio de "no pisar un precio tocado a mano" se extendió: ahora
+  compara contra los precios conocidos de la variante Y del producto
+  padre juntos.
+- No se tocó `agregarFilaItemCompra`/`leerItemsCompra`: esta etapa es
+  específicamente sobre precios de venta (listas de precios no aplican a
+  costos de compra).
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3002. `npm test` verde antes y después (sin endpoints nuevos). Se
+armó un producto "Remera" (precio_venta 10000) con lista "Mayorista"
+adicional (precio 8000 a nivel producto) y dos variantes: "Talle: S" (sin
+precio propio) y "Talle: M" (`precio_venta` propio 15000). Se extrajo
+`precioVarianteEnLista`/`precioProductoEnLista` del archivo real y se
+corrió standalone en Node con los 4 casos cruzados (variante×lista) más
+el caso sin variante — los 5 coincidieron con lo esperado por el diseño,
+incluyendo el caso no obvio: el `precio_venta` genérico de una variante
+gana por sobre el precio de lista del producto padre (M en Mayorista dio
+15000, no 8000), tal cual especifica el orden de la cadena en el plan.
+Pasada visual con Playwright (tema claro, mobile 420px): el modal de
+variantes muestra y guarda el precio por lista correctamente (persistió
+tras cerrar/reabrir el modal), y en Nueva Venta elegir "Talle: S" con
+lista Mayorista sugirió 9000 (precio propio de esa variante en esa
+lista) y cambiar a "Talle: M" sugirió el precio propio de M — con aviso
+"Se actualizaron N precio(s) según la lista elegida." confirmando que
+`reproponerPreciosPorLista` corrió bien de punta a punta. No se probó
+tema oscuro esta vez (el toggle de tema vive en la sidebar, colapsada en
+la vista mobile de la captura; no bloqueó la verificación porque los
+elementos nuevos reusan clases genéricas — `.form label`-like, tabla
+`.ledger-table` — ya probadas en oscuro en etapas anteriores). Datos de
+prueba solo en la copia de scratchpad; la base real no se tocó.
+
+### Qué sigue
+
+Etapas 5 (devoluciones con variante) y 6 (bloqueo del asistente IA sobre
+productos con variantes) del plan madre — ninguna empezada. Esta Etapa 4
+todavía no está commiteada (a diferencia de 1+2+3): confirmar con el
+usuario antes de commitear, mismo criterio que se viene aplicando en
+esta entrega grande.

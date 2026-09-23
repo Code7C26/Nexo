@@ -1846,6 +1846,10 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   const varianteSelect = fila.querySelector(".item-variante-id");
   const cantidad = fila.querySelector(".item-cantidad");
   const precio = fila.querySelector(".item-precio");
+  // Variantes del producto resuelto en esta fila, para poder resolver el
+  // precio sugerido de la variante elegida sin refetchear (variantesDeProducto
+  // ya cachea por producto, esto solo evita recorrer la lista de nuevo).
+  let variantesFila = [];
 
   productoInput.addEventListener("input", async () => {
     // Búsqueda por nombre exacto (vía <datalist>, no un <select> cerrado):
@@ -1863,10 +1867,10 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
       const precioSugerido = precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor));
       precio.value = precioSugerido > 0 ? precioSugerido : "";
       if (producto.tiene_variantes) {
-        const variantes = await variantesDeProducto(producto.id);
+        variantesFila = await variantesDeProducto(producto.id);
         varianteSelect.innerHTML =
           '<option value="">Elegí una variante…</option>' +
-          variantes
+          variantesFila
             .filter((v) => v.activo)
             .map(
               (v) =>
@@ -1877,12 +1881,14 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
         varianteSelect.value = "";
         if (limitarStock) cantidad.removeAttribute("max");
       } else {
+        variantesFila = [];
         varianteSelect.hidden = true;
         varianteSelect.value = "";
         if (limitarStock) cantidad.max = producto.stock;
       }
     } else {
       productoIdInput.value = "";
+      variantesFila = [];
       varianteSelect.hidden = true;
       varianteSelect.value = "";
       cantidad.removeAttribute("max");
@@ -1895,13 +1901,23 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     // El tope de cantidad es el stock de LA VARIANTE elegida, no el
     // agregado del producto: puede sobrar de una variante hermana y faltar
     // de esta.
+    const opcion = varianteSelect.selectedOptions[0];
     if (limitarStock) {
-      const opcion = varianteSelect.selectedOptions[0];
       if (opcion && opcion.value) {
         cantidad.max = Number(opcion.dataset.stock);
       } else {
         cantidad.removeAttribute("max");
       }
+    }
+    // Elegir variante refina el precio recién sugerido al resolver el
+    // producto (Etapa 4: cadena de fallback variante_precios →
+    // producto_variantes.precio_venta → precio del producto padre).
+    if (opcion && opcion.value) {
+      const variante = variantesFila.find((v) => v.id === Number(opcion.value));
+      const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
+      const precioSugerido = precioVarianteEnLista(variante, producto, listaPrecioDelFormulario(contenedor));
+      precio.value = precioSugerido > 0 ? precioSugerido : "";
+      actualizarSubtotalFila(fila);
     }
     contenedor.dispatchEvent(new Event("item-change"));
   });
@@ -1990,28 +2006,45 @@ function agregarFilaItemCompra(contenedor, listaProductos) {
 // renglón cuyo precio ya fue tocado a mano por el usuario (distinto del que
 // tenía la lista anterior) queda afuera del reproponer, para no pisar un
 // descuento negociado a propósito.
-function reproponerPreciosPorLista(contenedor, listaProductos) {
+async function reproponerPreciosPorLista(contenedor, listaProductos) {
   const listaId = listaPrecioDelFormulario(contenedor);
   let cambios = 0;
-  contenedor.querySelectorAll(".item-row").forEach((fila) => {
+  for (const fila of contenedor.querySelectorAll(".item-row")) {
     const productoId = Number(fila.querySelector(".item-producto-id").value);
-    if (!productoId) return;
+    if (!productoId) continue;
     const producto = listaProductos.find((p) => p.id === productoId);
-    if (!producto) return;
+    if (!producto) continue;
+    const varianteSelect = fila.querySelector(".item-variante-id");
+    const varianteId = !varianteSelect.hidden && varianteSelect.value ? Number(varianteSelect.value) : null;
     const precioInput = fila.querySelector(".item-precio");
     const precioActual = Number(precioInput.value) || 0;
-    // Si el precio actual coincide con alguno de los precios conocidos del
-    // producto (el de cualquier lista, o el fallback), se asume que nadie
-    // lo tocó a mano todavía y es seguro reproponerlo.
-    const preciosConocidos = [producto.precio_venta, ...Object.values(producto.precios || {})];
-    if (!preciosConocidos.includes(precioActual)) return;
-    const precioNuevo = precioProductoEnLista(producto, listaId);
+
+    let precioNuevo;
+    let preciosConocidos;
+    if (varianteId) {
+      const variante = (await variantesDeProducto(productoId)).find((v) => v.id === varianteId);
+      if (!variante) continue;
+      // Igual criterio que sin variante: si el precio actual coincide con
+      // alguno de los precios conocidos (de la variante o del producto
+      // padre), se asume que nadie lo tocó a mano y es seguro reproponerlo.
+      preciosConocidos = [
+        variante.precio_venta,
+        ...Object.values(variante.precios || {}),
+        producto.precio_venta,
+        ...Object.values(producto.precios || {})
+      ];
+      precioNuevo = precioVarianteEnLista(variante, producto, listaId);
+    } else {
+      preciosConocidos = [producto.precio_venta, ...Object.values(producto.precios || {})];
+      precioNuevo = precioProductoEnLista(producto, listaId);
+    }
+    if (!preciosConocidos.includes(precioActual)) continue;
     if (precioNuevo !== precioActual) {
       precioInput.value = precioNuevo > 0 ? precioNuevo : "";
       actualizarSubtotalFila(fila);
       cambios++;
     }
-  });
+  }
   if (cambios > 0) {
     contenedor.dispatchEvent(new Event("item-change"));
     avisar(`Se actualizaron ${cambios} precio${cambios === 1 ? "" : "s"} según la lista elegida.`, "atencion");
@@ -2095,6 +2128,22 @@ function precioProductoEnLista(producto, listaId) {
     return producto.precios[id];
   }
   return producto.precio_venta;
+}
+
+// Precio de UNA variante en UNA lista, con la misma cadena de fallback que
+// ya resuelve el backend para variantes (ver plan de la Etapa 4):
+// variante_precios → producto_variantes.precio_venta → precio del producto
+// padre en esa lista (precioProductoEnLista, con su propio fallback).
+function precioVarianteEnLista(variante, producto, listaId) {
+  if (!variante) return precioProductoEnLista(producto, listaId);
+  const id = Number(listaId) || null;
+  if (id && variante.precios && variante.precios[id] !== undefined) {
+    return variante.precios[id];
+  }
+  if (variante.precio_venta !== null && variante.precio_venta !== undefined) {
+    return variante.precio_venta;
+  }
+  return precioProductoEnLista(producto, listaId);
 }
 
 function poblarDatalistProductos() {
@@ -2829,10 +2878,32 @@ function renderVariantesAtributos() {
   });
 }
 
+// Mismo criterio que poblarPreciosPorLista (Productos): un mini-input por
+// cada lista activa que no sea la predeterminada (esa ya se edita arriba,
+// en la columna "Precio de venta"). Sin precio propio cargado, la variante
+// cae al fallback de precioVarianteEnLista (precio_venta de la variante, y
+// de ahí al precio del producto padre en esa lista).
+function preciosPorListaVarianteHtml(v) {
+  const predeterminada = listaPrecioPredeterminada();
+  const otras = listasPrecios.filter((l) => l.activa && l.id !== predeterminada?.id);
+  if (otras.length === 0) return "";
+  return otras
+    .map((l) => {
+      const precioActual = v.precios?.[l.id];
+      return `
+        <label>${l.nombre}
+          <input type="number" class="variante-precio-lista" data-lista-id="${l.id}"
+                 step="0.01" min="0" placeholder="Sin precio propio"
+                 value="${precioActual !== undefined ? precioActual : ""}" autocomplete="off" />
+        </label>`;
+    })
+    .join("");
+}
+
 function renderVariantesTabla() {
   const body = document.getElementById("variantesProductoBody");
   if (variantesCache.length === 0) {
-    body.innerHTML = filaVacia(6, "Todavía no hay variantes creadas.");
+    body.innerHTML = filaVacia(7, "Todavía no hay variantes creadas.");
     return;
   }
   body.innerHTML = variantesCache
@@ -2842,6 +2913,7 @@ function renderVariantesTabla() {
       <td data-label="Combinación">${v.combinacion}</td>
       <td data-label="SKU"><input type="text" class="variante-sku" value="${v.sku ?? ""}" placeholder="—" /></td>
       <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${v.precio_venta ?? ""}" placeholder="Sin precio propio" /></td>
+      <td data-label="Precios por lista" class="variante-precios-lista">${preciosPorListaVarianteHtml(v)}</td>
       <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
       <td data-label="Activa"><label class="form-check"><input type="checkbox" class="variante-activa" ${v.activo ? "checked" : ""} /></label></td>
       <td data-label=""><button type="button" class="btn btn-secundario btn-guardar-variante">Guardar</button></td>
@@ -2856,10 +2928,19 @@ function renderVariantesTabla() {
       const sku = fila.querySelector(".variante-sku").value.trim();
       const precio = fila.querySelector(".variante-precio").value;
       const activo = fila.querySelector(".variante-activa").checked;
+      // Igual que en Productos: un input vacío significa "sin precio propio
+      // en esa lista", no se manda — así no se pisa un precio existente con
+      // 0 por accidente.
+      const precios = {};
+      fila.querySelectorAll(".variante-precio-lista").forEach((input) => {
+        if (input.value !== "") precios[input.dataset.listaId] = Number(input.value);
+      });
+      const body = { sku: sku || null, precio_venta: precio === "" ? null : Number(precio), activo };
+      if (Object.keys(precios).length > 0) body.precios = precios;
       const res = await fetch(`/api/productos/${variantesProductoId}/variantes/${varianteId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku: sku || null, precio_venta: precio === "" ? null : Number(precio), activo })
+        body: JSON.stringify(body)
       });
       if (!(await manejarError(res, "No se pudo guardar la variante."))) return;
       await Promise.all([cargarVariantesModal(), cargarProductos()]);

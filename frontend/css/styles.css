@@ -1323,6 +1323,26 @@ button { font-family: inherit; cursor: pointer; }
   gap: var(--sp-2);
 }
 
+/* Columna "Precios por lista" de la tabla de variantes: un mini-label por
+   cada lista de precios activa que no sea la predeterminada (esa ya se
+   edita en la columna "Precio de venta"). Mismo criterio visual que
+   .form label, pero sin depender de un ancestro .form porque esto vive
+   dentro de una <td> de .ledger-table. */
+.variante-precios-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 140px;
+}
+
+.variante-precios-lista label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
 .atributo-valor-form input {
   width: 120px;
 }
