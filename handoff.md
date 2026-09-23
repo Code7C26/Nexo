@@ -4407,7 +4407,93 @@ prueba solo en la copia de scratchpad; la base real no se tocó.
 ### Qué sigue
 
 Etapas 5 (devoluciones con variante) y 6 (bloqueo del asistente IA sobre
-productos con variantes) del plan madre — ninguna empezada. Esta Etapa 4
-todavía no está commiteada (a diferencia de 1+2+3): confirmar con el
-usuario antes de commitear, mismo criterio que se viene aplicando en
-esta entrega grande.
+productos con variantes) del plan madre — ninguna empezada.
+
+**Actualización**: el usuario pidió commitear esta etapa también. Quedó
+en `04696f6` ("feat: precio por lista a nivel variante en ventas y
+presupuestos"), sobre `solla`, sin push.
+
+## 33. Variantes de producto — Etapa 5 (devoluciones con variante)
+
+**Objetivo**: threading puro de `variante_id` en devoluciones de venta y a
+proveedor, tal cual lo define el plan madre — se copia igual que ya se
+copia `producto_id`/`costo_unitario_historico` en esos mismos flujos, sin
+lógica de negocio nueva. La migración de columnas ya existía desde la
+Etapa 1 (`devolucion_items.variante_id` y
+`devolucion_proveedor_items.variante_id` ya estaban en el loop de
+`backend/db/index.js`), así que todo el trabajo fue en `backend/server.js`
+y en los dos modales de devolución del frontend.
+
+**`backend/server.js`**:
+- `itemsDevolviblesDeVenta`/`itemsDevolviblesDeCompra`: suman
+  `variante_id` al SELECT (antes solo devolvían `producto_id`).
+- `POST /api/devoluciones`: valida y guarda `variante_id` en el INSERT de
+  `devolucion_items`; el mensaje de "no se puede devolver más de lo
+  vendido" ahora agrega `(combinacionVariante(...))` cuando el renglón
+  tiene variante.
+- `aplicarDevolucion`/`revertirDevolucion`: el SELECT de
+  `devolucion_items` trae `variante_id` y se lo pasa a
+  `registrarMovimientoStock` — la devolución ahora entra/sale del stock de
+  la variante correcta, no del stock general del producto.
+- `GET /api/devoluciones/:id`: los items devueltos incluyen `variante_id`
+  y `combinacion` (mismo criterio que ya usan `GET /api/ventas/:id` y
+  `GET /api/compras/:id`).
+- Espejo completo del lado proveedor: `itemsDevolviblesDeCompra`,
+  `aplicarDevolucionProveedor`/`revertirDevolucionProveedor` (estas dos
+  además ahora llaman `recalcularCostoVariante` por cada variante tocada,
+  igual que ya hacían con `recalcularCostoProducto` por producto — acá SÍ
+  hace falta, a diferencia de la devolución de venta, porque se está
+  revirtiendo costeo, mismo motivo que ya explica el comentario existente
+  arriba de `aplicarDevolucionProveedor`), `GET
+  /api/devoluciones-proveedor/:id`, e inserción de `variante_id` en `POST
+  /api/devoluciones-proveedor`.
+- **Bug real encontrado y corregido de paso** (no estaba en el alcance
+  original de "threading puro", pero esta etapa es la primera que toca
+  este código exacto): la validación de stock suficiente en `POST
+  /api/devoluciones-proveedor` consultaba `stock_por_deposito` (agregado
+  del producto) sin importar si el renglón tenía variante. Con productos
+  con variantes esto podía aprobar una devolución a proveedor de una
+  variante sin stock propio con tal de que el producto padre (sumando
+  todas sus variantes) tuviera stock suficiente, o rechazar una devolución
+  válida de una variante con stock de sobra si otra variante hermana
+  estaba en 0. Se corrigió bifurcando igual que ya bifurca el resto del
+  código (`item.variante_id ? stock_variante_por_deposito :
+  stock_por_deposito`, mismo patrón que ya usa `restaurar` de venta en
+  `backend/server.js` ~línea 3386-3392); el master plan ya señalaba este
+  gap como pendiente de revisar "si da problemas al construir la Etapa 3"
+  — recién en la Etapa 5 el código llegó a tocar esa validación en
+  concreto.
+
+**`frontend/js/app.js`**: `abrirModalDevolucion` y
+`abrirModalDevolucionProveedor` ahora muestran `(combinación)` al lado del
+nombre del producto en cada renglón del modal, cuando el item tiene
+variante — mismo formato que ya usan las tablas de ítems de Venta/Compra.
+No hizo falta tocar el backend de esas fichas (`GET /api/ventas/:id` y
+`GET /api/compras/:id` ya devolvían `combinacion` desde etapas
+anteriores).
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3002 (nunca el 3000 ni la base real). `npm test` verde antes y
+después (sin endpoints nuevos). Se armó un flujo completo por HTTP (script
+Node con `fetch`, sesión con cookie): producto "Remera Test" con atributo
+Talle (valores S y M, M con `precio_venta` propio 15000) → compra de 10
+unidades de la variante S (confirmada y recibida) → venta de 4 unidades de
+esa misma variante → devolución de venta de 2 unidades (con
+`vuelve_stock`) → devolución a proveedor de 3 unidades. En cada paso se
+confirmó que `variante_id`/`combinacion` viajan correctos en las
+respuestas y que el stock evolucionó bien: 10 (compra) − 4 (venta) = 6 → +2
+(devolución de venta) = 8 → −3 (devolución a proveedor) = 5. Se probó
+además que devolver a proveedor más de lo que queda disponible cae con el
+mensaje de error correcto incluyendo la combinación. Pasada con Playwright
+sobre esos mismos datos: el modal de devolución de venta mostró `"Remera
+Test (Talle: S) (vendidas: 4, disponibles: 2)"` y el de devolución a
+proveedor `"Remera Test (Talle: S) (compradas: 10, disponibles: 7)"` — la
+combinación se ve en ambos modales tal como se buscaba. Datos de prueba
+solo en la copia de scratchpad; la base real no se tocó.
+
+### Qué sigue
+
+Etapa 6 del plan madre (bloqueo del asistente IA sobre productos con
+variantes) — la última del epic "Variantes de producto", todavía no
+empezada. Etapa 5 está verificada pero, al momento de escribir esto,
+todavía no se le preguntó al usuario si commitearla.

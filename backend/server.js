@@ -3825,8 +3825,8 @@ app.get('/api/devoluciones/:id', (req, res) => {
   const items = db
     .prepare(
       `SELECT devolucion_items.id, devolucion_items.venta_item_id, devolucion_items.producto_id,
-              productos.nombre AS producto, devolucion_items.cantidad, devolucion_items.precio_unitario,
-              devolucion_items.vuelve_stock
+              devolucion_items.variante_id, productos.nombre AS producto, devolucion_items.cantidad,
+              devolucion_items.precio_unitario, devolucion_items.vuelve_stock
          FROM devolucion_items JOIN productos ON productos.id = devolucion_items.producto_id
         WHERE devolucion_id = ?
         ORDER BY devolucion_items.id`
@@ -3838,7 +3838,8 @@ app.get('/api/devoluciones/:id', (req, res) => {
     items: items.map((i) => ({
       ...i,
       subtotal: i.cantidad * i.precio_unitario,
-      vuelve_stock: Boolean(i.vuelve_stock)
+      vuelve_stock: Boolean(i.vuelve_stock),
+      combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null
     }))
   });
 });
@@ -3850,7 +3851,7 @@ app.get('/api/devoluciones/:id', (req, res) => {
 function itemsDevolviblesDeVenta(ventaId) {
   return db
     .prepare(
-      `SELECT venta_items.id AS venta_item_id, venta_items.producto_id, productos.nombre,
+      `SELECT venta_items.id AS venta_item_id, venta_items.producto_id, venta_items.variante_id, productos.nombre,
               venta_items.precio_unitario, venta_items.costo_unitario_historico,
               venta_items.cantidad - COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
@@ -3880,7 +3881,7 @@ function aplicarDevolucion(devolucionId) {
 
   const items = db
     .prepare(
-      'SELECT producto_id, cantidad, precio_unitario, vuelve_stock FROM devolucion_items WHERE devolucion_id = ?'
+      'SELECT producto_id, variante_id, cantidad, precio_unitario, vuelve_stock FROM devolucion_items WHERE devolucion_id = ?'
     )
     .all(devolucionId);
 
@@ -3891,6 +3892,7 @@ function aplicarDevolucion(devolucionId) {
       // es la mercadería físicamente volviendo al lugar del que se fue.
       registrarMovimientoStock({
         producto_id: item.producto_id,
+        variante_id: item.variante_id,
         deposito_id: devolucion.deposito_id,
         tipo: 'entrada',
         cantidad: item.cantidad,
@@ -3937,7 +3939,7 @@ function revertirDevolucion(devolucionId) {
 
   const items = db
     .prepare(
-      'SELECT producto_id, cantidad, precio_unitario, vuelve_stock FROM devolucion_items WHERE devolucion_id = ?'
+      'SELECT producto_id, variante_id, cantidad, precio_unitario, vuelve_stock FROM devolucion_items WHERE devolucion_id = ?'
     )
     .all(devolucionId);
 
@@ -3946,6 +3948,7 @@ function revertirDevolucion(devolucionId) {
     if (item.vuelve_stock) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
+        variante_id: item.variante_id,
         deposito_id: devolucion.deposito_id,
         tipo: 'salida',
         cantidad: item.cantidad,
@@ -4023,8 +4026,9 @@ app.post('/api/devoluciones', (req, res) => {
       return res.status(400).json({ error: 'Uno de los items no pertenece a esta venta.' });
     }
     if (Number(item.cantidad) > renglon.disponible) {
+      const detalle = renglon.variante_id ? ` (${combinacionVariante(renglon.variante_id)})` : '';
       return res.status(400).json({
-        error: `No se puede devolver más de lo vendido de "${renglon.nombre}" (disponible: ${renglon.disponible}).`
+        error: `No se puede devolver más de lo vendido de "${renglon.nombre}"${detalle} (disponible: ${renglon.disponible}).`
       });
     }
   }
@@ -4036,8 +4040,8 @@ app.post('/api/devoluciones', (req, res) => {
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_items
-              (devolucion_id, venta_item_id, producto_id, cantidad, precio_unitario, costo_unitario_historico, vuelve_stock)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+              (devolucion_id, venta_item_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, vuelve_stock)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const item of items) {
       const renglon = disponibles.get(Number(item.venta_item_id));
@@ -4046,6 +4050,7 @@ app.post('/api/devoluciones', (req, res) => {
         nuevaId,
         renglon.venta_item_id,
         renglon.producto_id,
+        renglon.variante_id,
         Number(item.cantidad),
         renglon.precio_unitario,
         renglon.costo_unitario_historico,
@@ -5348,8 +5353,9 @@ app.get('/api/devoluciones-proveedor/:id', soloAdmin, (req, res) => {
   const items = db
     .prepare(
       `SELECT devolucion_proveedor_items.id, devolucion_proveedor_items.compra_item_id,
-              devolucion_proveedor_items.producto_id, productos.nombre AS producto,
-              devolucion_proveedor_items.cantidad, devolucion_proveedor_items.precio_unitario
+              devolucion_proveedor_items.producto_id, devolucion_proveedor_items.variante_id,
+              productos.nombre AS producto, devolucion_proveedor_items.cantidad,
+              devolucion_proveedor_items.precio_unitario
          FROM devolucion_proveedor_items JOIN productos ON productos.id = devolucion_proveedor_items.producto_id
         WHERE devolucion_proveedor_id = ?
         ORDER BY devolucion_proveedor_items.id`
@@ -5358,7 +5364,11 @@ app.get('/api/devoluciones-proveedor/:id', soloAdmin, (req, res) => {
 
   res.json({
     ...decorarDevolucionProveedor(devolucion),
-    items: items.map((i) => ({ ...i, subtotal: i.cantidad * i.precio_unitario }))
+    items: items.map((i) => ({
+      ...i,
+      subtotal: i.cantidad * i.precio_unitario,
+      combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null
+    }))
   });
 });
 
@@ -5369,7 +5379,7 @@ app.get('/api/devoluciones-proveedor/:id', soloAdmin, (req, res) => {
 function itemsDevolviblesDeCompra(compraId) {
   return db
     .prepare(
-      `SELECT compra_items.id AS compra_item_id, compra_items.producto_id, productos.nombre,
+      `SELECT compra_items.id AS compra_item_id, compra_items.producto_id, compra_items.variante_id, productos.nombre,
               compra_items.precio_unitario, compra_items.costo_real_unitario,
               compra_items.cantidad - COALESCE((
                 SELECT SUM(devolucion_proveedor_items.cantidad)
@@ -5404,17 +5414,19 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
 
   const items = db
     .prepare(
-      'SELECT producto_id, cantidad, precio_unitario FROM devolucion_proveedor_items WHERE devolucion_proveedor_id = ?'
+      'SELECT producto_id, variante_id, cantidad, precio_unitario FROM devolucion_proveedor_items WHERE devolucion_proveedor_id = ?'
     )
     .all(devolucionProveedorId);
 
   let total = 0;
   const productosTocados = new Set();
+  const variantesTocadas = new Set();
   for (const item of items) {
     // Sale del mismo depósito donde entró con la compra original: es la
     // mercadería físicamente volviendo al proveedor desde ahí.
     registrarMovimientoStock({
       producto_id: item.producto_id,
+      variante_id: item.variante_id,
       deposito_id: devolucion.deposito_id,
       tipo: 'salida',
       cantidad: item.cantidad,
@@ -5423,10 +5435,14 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
       nota: 'Devolución a proveedor'
     });
     productosTocados.add(item.producto_id);
+    if (item.variante_id) variantesTocadas.add(item.variante_id);
     total += item.cantidad * item.precio_unitario;
   }
   for (const productoId of productosTocados) {
     recalcularCostoProducto(productoId);
+  }
+  for (const varianteId of variantesTocadas) {
+    recalcularCostoVariante(varianteId);
   }
 
   // Crédito a favor con el proveedor: baja la deuda, igual signo que un pago.
@@ -5465,15 +5481,17 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
 
   const items = db
     .prepare(
-      'SELECT producto_id, cantidad, precio_unitario FROM devolucion_proveedor_items WHERE devolucion_proveedor_id = ?'
+      'SELECT producto_id, variante_id, cantidad, precio_unitario FROM devolucion_proveedor_items WHERE devolucion_proveedor_id = ?'
     )
     .all(devolucionProveedorId);
 
   let total = 0;
   const productosTocados = new Set();
+  const variantesTocadas = new Set();
   for (const item of items) {
     registrarMovimientoStock({
       producto_id: item.producto_id,
+      variante_id: item.variante_id,
       deposito_id: devolucion.deposito_id,
       tipo: 'entrada',
       cantidad: item.cantidad,
@@ -5482,10 +5500,14 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
       nota: 'Reversión por anulación'
     });
     productosTocados.add(item.producto_id);
+    if (item.variante_id) variantesTocadas.add(item.variante_id);
     total += item.cantidad * item.precio_unitario;
   }
   for (const productoId of productosTocados) {
     recalcularCostoProducto(productoId);
+  }
+  for (const varianteId of variantesTocadas) {
+    recalcularCostoVariante(varianteId);
   }
 
   // Vuelve a subir la deuda del proveedor (se había bajado al aplicar).
@@ -5555,20 +5577,26 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const buscarStockDeposito = db.prepare(
     'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
   );
+  const buscarStockVarianteDeposito = db.prepare(
+    'SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?'
+  );
   for (const item of items) {
     const renglon = disponibles.get(Number(item.compra_item_id));
     if (!renglon) {
       return res.status(400).json({ error: 'Uno de los items no pertenece a esta compra.' });
     }
+    const detalle = renglon.variante_id ? ` (${combinacionVariante(renglon.variante_id)})` : '';
     if (Number(item.cantidad) > renglon.disponible) {
       return res.status(400).json({
-        error: `No se puede devolver más de lo comprado de "${renglon.nombre}" (disponible: ${renglon.disponible}).`
+        error: `No se puede devolver más de lo comprado de "${renglon.nombre}"${detalle} (disponible: ${renglon.disponible}).`
       });
     }
-    const stockActual = buscarStockDeposito.get(renglon.producto_id, depositoDevolucionProveedor)?.cantidad ?? 0;
+    const stockActual = renglon.variante_id
+      ? buscarStockVarianteDeposito.get(renglon.variante_id, depositoDevolucionProveedor)?.cantidad ?? 0
+      : buscarStockDeposito.get(renglon.producto_id, depositoDevolucionProveedor)?.cantidad ?? 0;
     if (Number(item.cantidad) > stockActual) {
       return res.status(400).json({
-        error: `No hay stock suficiente de "${renglon.nombre}" para devolver (stock actual: ${stockActual}).`
+        error: `No hay stock suficiente de "${renglon.nombre}"${detalle} para devolver (stock actual: ${stockActual}).`
       });
     }
   }
@@ -5580,8 +5608,8 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_proveedor_items
-              (devolucion_proveedor_id, compra_item_id, producto_id, cantidad, precio_unitario, costo_real_unitario)
-       VALUES (?, ?, ?, ?, ?, ?)`
+              (devolucion_proveedor_id, compra_item_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
     for (const item of items) {
       const renglon = disponibles.get(Number(item.compra_item_id));
@@ -5589,6 +5617,7 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
         nuevaId,
         renglon.compra_item_id,
         renglon.producto_id,
+        renglon.variante_id,
         Number(item.cantidad),
         renglon.precio_unitario,
         renglon.costo_real_unitario ?? renglon.precio_unitario

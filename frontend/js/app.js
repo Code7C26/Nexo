@@ -5503,7 +5503,9 @@ async function abrirModalDevolucion(ventaId) {
     fila.dataset.ventaItemId = item.id;
     fila.dataset.precio = item.precio_unitario;
     fila.innerHTML = `
-      <span class="devolucion-producto">${item.producto} <span class="mono" style="color: var(--ink-muted)">(vendidas: ${numero(
+      <span class="devolucion-producto">${item.producto}${
+        item.combinacion ? ` (${item.combinacion})` : ""
+      } <span class="mono" style="color: var(--ink-muted)">(vendidas: ${numero(
         item.cantidad
       )}, disponibles: ${numero(item.disponible_devolucion)})</span></span>
       <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${
@@ -6483,7 +6485,9 @@ async function abrirModalDevolucionProveedor(compraId) {
     fila.dataset.compraItemId = item.id;
     fila.dataset.precio = item.precio_unitario;
     fila.innerHTML = `
-      <span class="devolucion-producto">${item.producto} <span class="mono" style="color: var(--ink-muted)">(compradas: ${numero(
+      <span class="devolucion-producto">${item.producto}${
+        item.combinacion ? ` (${item.combinacion})` : ""
+      } <span class="mono" style="color: var(--ink-muted)">(compradas: ${numero(
         item.cantidad
       )}, disponibles: ${numero(item.disponible_devolucion)})</span></span>
       <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${
