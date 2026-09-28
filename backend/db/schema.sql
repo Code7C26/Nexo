@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS depositos (
 -- categoria_id es nullable a propósito, no por comodidad: un producto se
 -- autocrea por nombre desde una compra (ver crearCompra en server.js) sin
 -- pasar nunca por este formulario, así que un NOT NULL rompería esa alta.
+-- margen_objetivo nullable = ese producto no tiene alerta de margen: sin
+-- objetivo cargado no hay nada contra qué comparar. Cuando está cargado, se
+-- compara contra el margen real de la lista predeterminada (precio_venta),
+-- solo a modo informativo/alerta, nunca sugiere ni fuerza un precio.
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -105,7 +109,8 @@ CREATE TABLE IF NOT EXISTS productos (
   activo INTEGER NOT NULL DEFAULT 1,
   stock_minimo REAL NOT NULL DEFAULT 0,
   stock_maximo REAL,
-  categoria_id INTEGER REFERENCES categorias(id)
+  categoria_id INTEGER REFERENCES categorias(id),
+  margen_objetivo REAL
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -121,6 +126,66 @@ CREATE TABLE IF NOT EXISTS producto_precios (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_precios_unico
   ON producto_precios(producto_id, lista_precio_id);
+
+-- Variantes de producto (ej. Talle/Color): un producto define sus propios
+-- atributos (no hay catálogo global de "Talle" compartido entre productos
+-- distintos) y una variante es una combinación concreta de valores de esos
+-- atributos. Ver handoff.md, etapa "variantes de productos", para el
+-- razonamiento completo detrás de este esquema.
+CREATE TABLE IF NOT EXISTS producto_atributos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  nombre TEXT NOT NULL,
+  orden INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_atributos_unico
+  ON producto_atributos(producto_id, nombre COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS producto_atributo_valores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  atributo_id INTEGER NOT NULL REFERENCES producto_atributos(id),
+  valor TEXT NOT NULL,
+  orden INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_atributo_valores_unico
+  ON producto_atributo_valores(atributo_id, valor COLLATE NOCASE);
+
+-- precio_venta nullable: sin precio genérico propio, la variante cae a la
+-- cadena de precio del producto padre (ver variante_precios más abajo).
+-- precio_costo sigue el mismo criterio que productos.precio_costo: arranca
+-- en 0 y lo escribe la compra (costo promedio ponderado por variante).
+CREATE TABLE IF NOT EXISTS producto_variantes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  sku TEXT UNIQUE,
+  precio_costo REAL NOT NULL DEFAULT 0,
+  precio_venta REAL,
+  activo INTEGER NOT NULL DEFAULT 1
+);
+
+-- Una fila por (variante, atributo, valor elegido). El índice único impide
+-- que una variante tenga dos valores para el mismo atributo. No hay forma
+-- declarativa en SQLite de impedir combinaciones repetidas entre variantes
+-- (es un unique sobre un conjunto de filas): eso se valida en el backend
+-- antes de insertar, mismo criterio que "una sola lista predeterminada".
+CREATE TABLE IF NOT EXISTS producto_variante_valores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  variante_id INTEGER NOT NULL REFERENCES producto_variantes(id),
+  atributo_id INTEGER NOT NULL REFERENCES producto_atributos(id),
+  valor_id INTEGER NOT NULL REFERENCES producto_atributo_valores(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variante_valores_unico
+  ON producto_variante_valores(variante_id, atributo_id);
+
+-- Espejo exacto de producto_precios, a nivel variante.
+CREATE TABLE IF NOT EXISTS variante_precios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  variante_id INTEGER NOT NULL REFERENCES producto_variantes(id),
+  lista_precio_id INTEGER NOT NULL REFERENCES listas_precios(id),
+  precio REAL NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_variante_precios_unico
+  ON variante_precios(variante_id, lista_precio_id);
 
 -- Mismo criterio que clientes: un proveedor puede nacer cargado a mano
 -- desde la pantalla de Proveedores, o creado automáticamente al registrar
@@ -159,6 +224,10 @@ CREATE TABLE IF NOT EXISTS venta_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   venta_id INTEGER NOT NULL REFERENCES ventas(id),
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  -- Variante concreta vendida (nullable): producto_id siempre es el
+  -- producto padre, variante_id es un dato adicional. NULL = este ítem es
+  -- del producto en general, sin variante (comportamiento de siempre).
+  variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL,
   -- Foto del precio_costo del producto en el momento de la venta. No se
@@ -202,6 +271,7 @@ CREATE TABLE IF NOT EXISTS presupuesto_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   presupuesto_id INTEGER NOT NULL REFERENCES presupuestos(id),
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL
 );
@@ -243,6 +313,7 @@ CREATE TABLE IF NOT EXISTS devolucion_items (
   devolucion_id INTEGER NOT NULL REFERENCES devoluciones(id),
   venta_item_id INTEGER NOT NULL REFERENCES venta_items(id),
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL,
   costo_unitario_historico REAL NOT NULL DEFAULT 0,
@@ -281,6 +352,7 @@ CREATE TABLE IF NOT EXISTS compra_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   compra_id INTEGER NOT NULL REFERENCES compras(id),
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL,
   costo_real_unitario REAL
@@ -327,6 +399,7 @@ CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
   devolucion_proveedor_id INTEGER NOT NULL REFERENCES devoluciones_proveedor(id),
   compra_item_id INTEGER NOT NULL REFERENCES compra_items(id),
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL,
   costo_real_unitario REAL NOT NULL DEFAULT 0
@@ -355,6 +428,7 @@ CREATE TABLE IF NOT EXISTS transferencias (
 CREATE TABLE IF NOT EXISTS movimientos_stock (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
   deposito_id INTEGER NOT NULL REFERENCES depositos(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
   cantidad REAL NOT NULL,

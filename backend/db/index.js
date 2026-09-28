@@ -410,6 +410,13 @@ if (!productosColumnas.some((col) => col.name === 'categoria_id')) {
   db.exec('ALTER TABLE productos ADD COLUMN categoria_id INTEGER REFERENCES categorias(id)');
 }
 
+// productos.margen_objetivo: umbral opcional para la alerta de margen bajo.
+// Nullable: sin objetivo cargado no hay alerta, comportamiento neutro para
+// todo producto existente hasta que alguien lo defina desde la ficha.
+if (!productosColumnas.some((col) => col.name === 'margen_objetivo')) {
+  db.exec('ALTER TABLE productos ADD COLUMN margen_objetivo REAL');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1012,6 +1019,51 @@ if (auditoriaSql5 && !auditoriaSql5.sql.includes("'login'")) {
   }
   db.exec('PRAGMA foreign_keys = ON');
 }
+
+// Variantes de producto (Talle/Color/etc.): variante_id se agrega como
+// columna nullable adicional en las tablas de ítems y en movimientos_stock.
+// producto_id sigue siendo siempre el producto padre en todos lados; NULL en
+// variante_id significa "este ítem es del producto en general, sin
+// variante", que es exactamente lo que ya pasa hoy sin ningún cambio de
+// dato. Es un ALTER simple (no rebuild) porque la columna es nullable, sin
+// default ni CHECK — el mismo caso que productos.categoria_id.
+for (const tabla of [
+  'movimientos_stock',
+  'venta_items',
+  'compra_items',
+  'devolucion_items',
+  'devolucion_proveedor_items',
+  'presupuesto_items'
+]) {
+  const columnas = db.prepare(`PRAGMA table_info(${tabla})`).all();
+  if (!columnas.some((col) => col.name === 'variante_id')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN variante_id INTEGER REFERENCES producto_variantes(id)`);
+  }
+}
+
+// Equivalentes de stock_actual/stock_por_deposito, pero a nivel variante.
+// Viven acá (no en schema.sql) por el mismo motivo que stock_por_deposito:
+// en una base existente, movimientos_stock.variante_id recién existe
+// después del ALTER de arriba, así que declarar la vista en schema.sql
+// rompería el primer arranque sobre una base vieja con "no such column".
+db.exec('DROP VIEW IF EXISTS stock_variante_actual');
+db.exec(`
+  CREATE VIEW stock_variante_actual AS
+  SELECT producto_id, variante_id,
+         SUM(CASE tipo WHEN 'entrada' THEN cantidad WHEN 'salida' THEN -cantidad ELSE cantidad END) AS cantidad
+  FROM movimientos_stock
+  WHERE variante_id IS NOT NULL
+  GROUP BY producto_id, variante_id
+`);
+db.exec('DROP VIEW IF EXISTS stock_variante_por_deposito');
+db.exec(`
+  CREATE VIEW stock_variante_por_deposito AS
+  SELECT producto_id, variante_id, deposito_id,
+         SUM(CASE tipo WHEN 'entrada' THEN cantidad WHEN 'salida' THEN -cantidad ELSE cantidad END) AS cantidad
+  FROM movimientos_stock
+  WHERE variante_id IS NOT NULL
+  GROUP BY producto_id, variante_id, deposito_id
+`);
 
 // Limpieza de sesiones vencidas al bootear, sin cron ni timer: con
 // `--watch` esto corre en cada reinicio del proceso, que alcanza para un

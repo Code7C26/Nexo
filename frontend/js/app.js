@@ -1457,6 +1457,7 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 // PRESUPUESTO_LABEL, STOCK_LABEL y TIPO_GASTO_LABEL, que ya seguían este
 // mismo criterio. Reusado por Facturas, Ventas y el historial de Clientes.
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
+const TIPO_FACTURA_LABEL = { factura: "Factura", nota_credito: "Nota de crédito", nota_debito: "Nota de débito" };
 
 // Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
 // se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
@@ -1524,10 +1525,10 @@ function renderFacturas(lista) {
 
   if (lista.length === 0) {
     if (filtrosFacturas.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(selFacturas.colspan(6));
+      body.innerHTML = filaVaciaFiltrada(selFacturas.colspan(7));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosFacturas.limpiar());
     } else {
-      body.innerHTML = filaVacia(selFacturas.colspan(6), "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
+      body.innerHTML = filaVacia(selFacturas.colspan(7), "Todavía no hay facturas cargadas.", { accionTexto: "+ Nueva factura", accionId: "btnNuevaFactura" });
     }
     return;
   }
@@ -1538,6 +1539,7 @@ function renderFacturas(lista) {
     <tr class="fila-clickeable" data-id="${f.id}">
       ${selFacturas.celda(f.id)}
       <td data-label="Comprobante" class="mono">${f.comprobante}</td>
+      <td data-label="Tipo">${TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo}</td>
       <td data-label="Fecha">${f.fecha}</td>
       <td data-label="Cliente">${f.cliente}</td>
       <td data-label="Origen">${
@@ -1633,6 +1635,7 @@ const filtrosFacturas = crearFiltros(
 // comentario junto a descargarCSV.
 const COLUMNAS_CSV_FACTURAS = [
   { titulo: "Comprobante", valor: (f) => f.comprobante },
+  { titulo: "Tipo", valor: (f) => TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo },
   { titulo: "Fecha", valor: (f) => f.fecha },
   { titulo: "Cliente", valor: (f) => f.cliente },
   { titulo: "Origen", valor: (f) => (f.venta_id ? `Venta #${f.venta_id}` : "Suelta") },
@@ -1670,6 +1673,7 @@ async function abrirFichaFactura(id) {
   document.getElementById("fichaFacturaTitulo").textContent = factura.comprobante;
 
   const campos = [
+    ["Tipo", TIPO_FACTURA_LABEL[factura.tipo] ?? factura.tipo],
     ["Cliente", factura.cliente],
     ["Fecha", factura.fecha],
     ["Concepto", factura.concepto],
@@ -1715,7 +1719,7 @@ document.getElementById("btnVolverFacturas").addEventListener("click", () => mos
 // caso "factura suelta".
 function hojaDeFactura(f) {
   return armarHojaComprobante({
-    rotulo: f.tipo === "nota_credito" ? "Nota de crédito" : f.tipo === "nota_debito" ? "Nota de débito" : "Factura",
+    rotulo: TIPO_FACTURA_LABEL[f.tipo] ?? "Factura",
     comprobanteNro: f.comprobante,
     fecha: f.fecha,
     // NO van el estado de cobro ni "Origen: Venta #N": son gestión interna.
@@ -1763,6 +1767,7 @@ modal.addEventListener("click", (e) => {
 document.getElementById("formFactura").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
+  const tipoElegido = form.tipo.value;
 
   const res = await fetch("/api/facturas", {
     method: "POST",
@@ -1772,7 +1777,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
       concepto: form.concepto.value,
       neto: parseFloat(form.neto.value),
       condicion: form.condicion.value,
-      tipo: form.tipo.value,
+      tipo: tipoElegido,
       letra: form.letra.value,
       punto_venta: Number(form.punto_venta.value) || 1
     })
@@ -1783,7 +1788,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   await cargarFacturas();
   form.reset();
   modal.hidden = true;
-  avisar(`Factura #${id} registrada.`, "ok");
+  avisar(`${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${id} registrada.`, "ok");
 });
 
 /* ---------- Filas de items (Venta / Compra) ---------- */
@@ -1807,6 +1812,21 @@ function listaPrecioDelFormulario(contenedor) {
 // limitarStock: en una venta la cantidad no puede superar el stock actual,
 // pero en un presupuesto sí — se puede cotizar algo que todavía no está en
 // el depósito (CLAUDE.md §15). El tope se valida igual al convertir.
+// Cache de GET /api/productos/:id/variantes por producto, para no
+// refetchear cada vez que se toca la misma fila (ej. al tipear letra por
+// letra) ni cuando hay varios renglones del mismo producto en la venta o
+// la compra.
+const variantesPorProductoCache = new Map();
+async function variantesDeProducto(productoId) {
+  if (!variantesPorProductoCache.has(productoId)) {
+    variantesPorProductoCache.set(
+      productoId,
+      fetch(`/api/productos/${productoId}/variantes`).then((r) => r.json())
+    );
+  }
+  return variantesPorProductoCache.get(productoId);
+}
+
 function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   const fila = document.createElement("div");
   fila.className = "item-row";
@@ -1814,6 +1834,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   fila.innerHTML = `
     <input type="text" class="item-producto" list="productosVenta" placeholder="Buscar producto…" />
     <input type="hidden" class="item-producto-id" />
+    <select class="item-variante-id" hidden><option value="">Elegí una variante…</option></select>
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
     <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
@@ -1822,10 +1843,15 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
 
   const productoInput = fila.querySelector(".item-producto");
   const productoIdInput = fila.querySelector(".item-producto-id");
+  const varianteSelect = fila.querySelector(".item-variante-id");
   const cantidad = fila.querySelector(".item-cantidad");
   const precio = fila.querySelector(".item-precio");
+  // Variantes del producto resuelto en esta fila, para poder resolver el
+  // precio sugerido de la variante elegida sin refetchear (variantesDeProducto
+  // ya cachea por producto, esto solo evita recorrer la lista de nuevo).
+  let variantesFila = [];
 
-  productoInput.addEventListener("input", () => {
+  productoInput.addEventListener("input", async () => {
     // Búsqueda por nombre exacto (vía <datalist>, no un <select> cerrado):
     // si el texto matchea un producto existente, se resuelve su id y se
     // sugiere precio y tope de stock; si no matchea nada, no se puede
@@ -1840,12 +1866,59 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
       // hay que ponerle un precio, no un número que parece uno.
       const precioSugerido = precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor));
       precio.value = precioSugerido > 0 ? precioSugerido : "";
-      if (limitarStock) cantidad.max = producto.stock;
+      if (producto.tiene_variantes) {
+        variantesFila = await variantesDeProducto(producto.id);
+        varianteSelect.innerHTML =
+          '<option value="">Elegí una variante…</option>' +
+          variantesFila
+            .filter((v) => v.activo)
+            .map(
+              (v) =>
+                `<option value="${v.id}" data-stock="${v.stock}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`
+            )
+            .join("");
+        varianteSelect.hidden = false;
+        varianteSelect.value = "";
+        if (limitarStock) cantidad.removeAttribute("max");
+      } else {
+        variantesFila = [];
+        varianteSelect.hidden = true;
+        varianteSelect.value = "";
+        if (limitarStock) cantidad.max = producto.stock;
+      }
     } else {
       productoIdInput.value = "";
+      variantesFila = [];
+      varianteSelect.hidden = true;
+      varianteSelect.value = "";
       cantidad.removeAttribute("max");
     }
     actualizarSubtotalFila(fila);
+    contenedor.dispatchEvent(new Event("item-change"));
+  });
+
+  varianteSelect.addEventListener("change", () => {
+    // El tope de cantidad es el stock de LA VARIANTE elegida, no el
+    // agregado del producto: puede sobrar de una variante hermana y faltar
+    // de esta.
+    const opcion = varianteSelect.selectedOptions[0];
+    if (limitarStock) {
+      if (opcion && opcion.value) {
+        cantidad.max = Number(opcion.dataset.stock);
+      } else {
+        cantidad.removeAttribute("max");
+      }
+    }
+    // Elegir variante refina el precio recién sugerido al resolver el
+    // producto (Etapa 4: cadena de fallback variante_precios →
+    // producto_variantes.precio_venta → precio del producto padre).
+    if (opcion && opcion.value) {
+      const variante = variantesFila.find((v) => v.id === Number(opcion.value));
+      const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
+      const precioSugerido = precioVarianteEnLista(variante, producto, listaPrecioDelFormulario(contenedor));
+      precio.value = precioSugerido > 0 ? precioSugerido : "";
+      actualizarSubtotalFila(fila);
+    }
     contenedor.dispatchEvent(new Event("item-change"));
   });
 
@@ -1864,17 +1937,51 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   contenedor.appendChild(fila);
 }
 
-function agregarFilaItemCompra(contenedor) {
+function agregarFilaItemCompra(contenedor, listaProductos) {
   const fila = document.createElement("div");
   fila.className = "item-row";
 
   fila.innerHTML = `
     <input type="text" class="item-producto" list="productosSugeridos" placeholder="Producto…" />
+    <input type="hidden" class="item-producto-id" />
+    <select class="item-variante-id" hidden><option value="">Elegí una variante…</option></select>
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
     <input type="number" class="item-precio" placeholder="Costo unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
     <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
   `;
+
+  const productoInput = fila.querySelector(".item-producto");
+  const productoIdInput = fila.querySelector(".item-producto-id");
+  const varianteSelect = fila.querySelector(".item-variante-id");
+
+  productoInput.addEventListener("input", async () => {
+    // Igual que en Venta: matchea por nombre exacto contra el datalist. Sin
+    // match, se sigue permitiendo tipear libre (crearCompra da de alta el
+    // producto por nombre) — pero sin id resuelto no hay forma de saber si
+    // tiene variantes, así que el select queda oculto.
+    const buscado = productoInput.value.trim().toLowerCase();
+    const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
+    productoIdInput.value = producto?.id ?? "";
+    if (producto?.tiene_variantes) {
+      const variantes = await variantesDeProducto(producto.id);
+      varianteSelect.innerHTML =
+        '<option value="">Elegí una variante…</option>' +
+        variantes
+          .filter((v) => v.activo)
+          .map((v) => `<option value="${v.id}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`)
+          .join("");
+      varianteSelect.hidden = false;
+    } else {
+      varianteSelect.hidden = true;
+      varianteSelect.value = "";
+    }
+    contenedor.dispatchEvent(new Event("item-change"));
+  });
+
+  varianteSelect.addEventListener("change", () => {
+    contenedor.dispatchEvent(new Event("item-change"));
+  });
 
   fila.querySelectorAll(".item-cantidad, .item-precio").forEach((input) => {
     input.addEventListener("input", () => {
@@ -1899,28 +2006,45 @@ function agregarFilaItemCompra(contenedor) {
 // renglón cuyo precio ya fue tocado a mano por el usuario (distinto del que
 // tenía la lista anterior) queda afuera del reproponer, para no pisar un
 // descuento negociado a propósito.
-function reproponerPreciosPorLista(contenedor, listaProductos) {
+async function reproponerPreciosPorLista(contenedor, listaProductos) {
   const listaId = listaPrecioDelFormulario(contenedor);
   let cambios = 0;
-  contenedor.querySelectorAll(".item-row").forEach((fila) => {
+  for (const fila of contenedor.querySelectorAll(".item-row")) {
     const productoId = Number(fila.querySelector(".item-producto-id").value);
-    if (!productoId) return;
+    if (!productoId) continue;
     const producto = listaProductos.find((p) => p.id === productoId);
-    if (!producto) return;
+    if (!producto) continue;
+    const varianteSelect = fila.querySelector(".item-variante-id");
+    const varianteId = !varianteSelect.hidden && varianteSelect.value ? Number(varianteSelect.value) : null;
     const precioInput = fila.querySelector(".item-precio");
     const precioActual = Number(precioInput.value) || 0;
-    // Si el precio actual coincide con alguno de los precios conocidos del
-    // producto (el de cualquier lista, o el fallback), se asume que nadie
-    // lo tocó a mano todavía y es seguro reproponerlo.
-    const preciosConocidos = [producto.precio_venta, ...Object.values(producto.precios || {})];
-    if (!preciosConocidos.includes(precioActual)) return;
-    const precioNuevo = precioProductoEnLista(producto, listaId);
+
+    let precioNuevo;
+    let preciosConocidos;
+    if (varianteId) {
+      const variante = (await variantesDeProducto(productoId)).find((v) => v.id === varianteId);
+      if (!variante) continue;
+      // Igual criterio que sin variante: si el precio actual coincide con
+      // alguno de los precios conocidos (de la variante o del producto
+      // padre), se asume que nadie lo tocó a mano y es seguro reproponerlo.
+      preciosConocidos = [
+        variante.precio_venta,
+        ...Object.values(variante.precios || {}),
+        producto.precio_venta,
+        ...Object.values(producto.precios || {})
+      ];
+      precioNuevo = precioVarianteEnLista(variante, producto, listaId);
+    } else {
+      preciosConocidos = [producto.precio_venta, ...Object.values(producto.precios || {})];
+      precioNuevo = precioProductoEnLista(producto, listaId);
+    }
+    if (!preciosConocidos.includes(precioActual)) continue;
     if (precioNuevo !== precioActual) {
       precioInput.value = precioNuevo > 0 ? precioNuevo : "";
       actualizarSubtotalFila(fila);
       cambios++;
     }
-  });
+  }
   if (cambios > 0) {
     contenedor.dispatchEvent(new Event("item-change"));
     avisar(`Se actualizaron ${cambios} precio${cambios === 1 ? "" : "s"} según la lista elegida.`, "atencion");
@@ -1931,10 +2055,12 @@ function leerItemsVenta(contenedor) {
   const items = [];
   contenedor.querySelectorAll(".item-row").forEach((fila) => {
     const producto_id = Number(fila.querySelector(".item-producto-id").value);
+    const varianteSelect = fila.querySelector(".item-variante-id");
+    const variante_id = !varianteSelect.hidden && varianteSelect.value ? Number(varianteSelect.value) : null;
     const cantidad = Number(fila.querySelector(".item-cantidad").value);
     const precio_unitario = Number(fila.querySelector(".item-precio").value);
     if (producto_id && cantidad > 0 && precio_unitario >= 0) {
-      items.push({ producto_id, cantidad, precio_unitario });
+      items.push({ producto_id, variante_id, cantidad, precio_unitario });
     }
   });
   return items;
@@ -1944,10 +2070,12 @@ function leerItemsCompra(contenedor) {
   const items = [];
   contenedor.querySelectorAll(".item-row").forEach((fila) => {
     const producto = fila.querySelector(".item-producto").value.trim();
+    const varianteSelect = fila.querySelector(".item-variante-id");
+    const variante_id = !varianteSelect.hidden && varianteSelect.value ? Number(varianteSelect.value) : null;
     const cantidad = Number(fila.querySelector(".item-cantidad").value);
     const precio_unitario = Number(fila.querySelector(".item-precio").value);
     if (producto && cantidad > 0 && precio_unitario >= 0) {
-      items.push({ producto, cantidad, precio_unitario });
+      items.push({ producto, variante_id, cantidad, precio_unitario });
     }
   });
   return items;
@@ -2002,6 +2130,22 @@ function precioProductoEnLista(producto, listaId) {
   return producto.precio_venta;
 }
 
+// Precio de UNA variante en UNA lista, con la misma cadena de fallback que
+// ya resuelve el backend para variantes (ver plan de la Etapa 4):
+// variante_precios → producto_variantes.precio_venta → precio del producto
+// padre en esa lista (precioProductoEnLista, con su propio fallback).
+function precioVarianteEnLista(variante, producto, listaId) {
+  if (!variante) return precioProductoEnLista(producto, listaId);
+  const id = Number(listaId) || null;
+  if (id && variante.precios && variante.precios[id] !== undefined) {
+    return variante.precios[id];
+  }
+  if (variante.precio_venta !== null && variante.precio_venta !== undefined) {
+    return variante.precio_venta;
+  }
+  return precioProductoEnLista(producto, listaId);
+}
+
 function poblarDatalistProductos() {
   const opciones = productos.map((p) => `<option value="${p.nombre}"></option>`).join("");
   document.getElementById("productosSugeridos").innerHTML = opciones;
@@ -2012,6 +2156,18 @@ const porcentaje = (n) => (n == null ? "—" : `${n.toLocaleString("es-AR", { ma
 
 const selProductos = crearSeleccion("productosBody");
 
+// Sin objetivo cargado no hay nada que mostrar (guion). Reusa las mismas
+// clases que ya existen para "cobrado"/"pendiente" en vez de CSS nuevo.
+// `conValor` suma el % objetivo al lado del badge (tabla, donde no hay otra
+// columna que ya lo muestre); en la ficha ese número ya tiene su propia fila.
+function badgeMargenObjetivo(p, conValor = false) {
+  if (p.margen_objetivo == null) return "—";
+  const clase = p.margen_bajo_objetivo ? "status-pendiente" : "status-cobrado";
+  const texto = p.margen_bajo_objetivo ? "Bajo objetivo" : "En objetivo";
+  const badge = `<span class="status ${clase}">${texto}</span>`;
+  return conValor ? `${badge} <span class="mono">${porcentaje(p.margen_objetivo)}</span>` : badge;
+}
+
 function renderProductos(lista) {
   const body = document.getElementById("productosBody");
   body.innerHTML = "";
@@ -2019,10 +2175,10 @@ function renderProductos(lista) {
 
   if (lista.length === 0) {
     if (filtrosProductos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(selProductos.colspan(9));
+      body.innerHTML = filaVaciaFiltrada(selProductos.colspan(10));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProductos.limpiar());
     } else {
-      body.innerHTML = filaVacia(selProductos.colspan(9), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selProductos.colspan(10), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -2055,6 +2211,7 @@ function renderProductos(lista) {
       <td data-label="Valorizado" class="align-right mono col-admin">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right mono">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
+      <td data-label="Objetivo" class="align-right col-admin">${badgeMargenObjetivo(p, true)}</td>
       <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
@@ -2168,7 +2325,13 @@ async function abrirFichaProducto(id) {
     // en vez de dejarlo en la lista (esta ficha se arma con un array de
     // pares, no columnas fijas de tabla, así que acá no aplica `.col-admin`
     // — se filtra el dato en JS antes de mapearlo a <dt>/<dd>).
-    ...(esAdmin() ? [["Margen", producto.margen == null ? null : porcentaje(producto.margen)]] : []),
+    ...(esAdmin()
+      ? [
+          ["Margen", producto.margen == null ? null : porcentaje(producto.margen)],
+          ["Margen objetivo", producto.margen_objetivo == null ? null : porcentaje(producto.margen_objetivo)],
+          ["Vs. objetivo", producto.margen_objetivo == null ? null : badgeMargenObjetivo(producto)]
+        ]
+      : []),
     ["Stock mínimo", numero(producto.stock_minimo)],
     ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
     ["Estado de stock", STOCK_LABEL[producto.estado_stock]],
@@ -2177,6 +2340,28 @@ async function abrirFichaProducto(id) {
   document.getElementById("fichaProductoDatos").innerHTML = campos
     .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
     .join("");
+
+  const panelVariantes = document.getElementById("fichaProductoVariantesPanel");
+  panelVariantes.hidden = !producto.tiene_variantes;
+  if (producto.tiene_variantes) {
+    const variantes = await (await fetch(`/api/productos/${id}/variantes`)).json();
+    document.getElementById("fichaProductoVariantesBody").innerHTML = variantes
+      .filter((v) => v.activo)
+      .map(
+        (v) => `
+      <tr>
+        <td data-label="Combinación">${v.combinacion}</td>
+        <td data-label="SKU">${v.sku || "—"}</td>
+        <td data-label="Costo" class="align-right col-admin mono">${money(v.precio_costo)}</td>
+        <td data-label="Precio" class="align-right mono">${
+          v.precio_venta > 0 ? money(v.precio_venta) : '<span class="precio-sin-configurar">Sin precio</span>'
+        }</td>
+        <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
+        <td data-label="Activa">${v.activo ? "Sí" : "No"}</td>
+      </tr>`
+      )
+      .join("");
+  }
 
   const movimientos = await (await fetch(`/api/productos/${id}/movimientos`)).json();
   const body = document.getElementById("fichaProductoMovimientos");
@@ -2209,7 +2394,7 @@ async function abrirFichaProducto(id) {
 }
 
 async function cargarProductos() {
-  tablaCargando("productosBody", selProductos.colspan(9));
+  tablaCargando("productosBody", selProductos.colspan(10));
   const [listaProductos, listaCategorias, listaListasPrecios, listaDepositos] = await Promise.all([
     fetch("/api/productos").then((r) => r.json()),
     fetch("/api/categorias").then((r) => r.json()),
@@ -2318,6 +2503,8 @@ const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
   { titulo: "Precio", valor: (p) => p.precio_venta },
   { titulo: "Margen", valor: (p) => p.margen, admin: true },
+  { titulo: "Margen objetivo", valor: (p) => p.margen_objetivo, admin: true },
+  { titulo: "Bajo objetivo", valor: (p) => (p.margen_bajo_objetivo == null ? "" : p.margen_bajo_objetivo ? "sí" : "no"), admin: true },
   { titulo: "Stock", valor: (p) => p.stock },
   { titulo: "Activo", valor: (p) => (p.activo ? "sí" : "no") }
 ];
@@ -2397,6 +2584,9 @@ function armarCambiosBulk(form) {
   }
   if (form.querySelector('[data-campo="stock_minimo"]').checked) {
     cambios.stock_minimo = form.stock_minimo.value;
+  }
+  if (form.querySelector('[data-campo="margen_objetivo"]').checked) {
+    cambios.margen_objetivo = form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value);
   }
   if (form.querySelector('[data-campo="precio_venta"]').checked) {
     const ajuste =
@@ -2497,6 +2687,16 @@ const filtrosProductos = crearFiltros(
     { clave: "precio_venta", etiqueta: "Precio de venta", tipo: "numero" },
     { clave: "precio_costo", etiqueta: "Costo", tipo: "numero" },
     { clave: "margen", etiqueta: "Margen", tipo: "numero" },
+    { clave: "margen_objetivo", etiqueta: "Margen objetivo", tipo: "numero" },
+    {
+      clave: "margen_bajo_objetivo",
+      etiqueta: "Vs. objetivo",
+      tipo: "select",
+      opciones: [
+        { valor: "true", texto: "Bajo objetivo" },
+        { valor: "false", texto: "En objetivo" }
+      ]
+    },
     { clave: "stock", etiqueta: "Stock", tipo: "numero" },
     { clave: "valorizado", etiqueta: "Valorizado", tipo: "numero" }
   ],
@@ -2543,6 +2743,7 @@ function abrirModalProducto(producto = null) {
   form.sku.value = producto?.sku ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
   form.precio_venta.value = producto?.precio_venta ?? "";
+  form.margen_objetivo.value = producto?.margen_objetivo ?? "";
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
   form.activo.checked = producto ? !!producto.activo : true;
@@ -2570,6 +2771,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     sku: form.sku.value || null,
     categoria_id: form.categoria_id.value || null,
     precio_venta: form.precio_venta.value,
+    margen_objetivo: form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value),
     stock_minimo: form.stock_minimo.value,
     stock_maximo: form.stock_maximo.value,
     activo: form.activo.checked
@@ -2606,6 +2808,268 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   form.reset();
   modalProducto.hidden = true;
   avisar(eraEdicion ? "Producto actualizado." : "Producto creado.", "ok");
+});
+
+/* ---------- Atributos y variantes de producto ---------- */
+//
+// Solo accesible desde la ficha de un producto ya guardado (btnVariantesProducto
+// vive en #producto-detalle, no en el alta). Un atributo (Talle, Color...) es
+// propio del producto; una variante es una combinación concreta de un valor
+// por cada atributo. La combinación de una variante no se edita una vez
+// creada (evita corromper el significado de variante_id en movimientos ya
+// generados): para corregir un error se desactiva y se crea de nuevo.
+
+let variantesProductoId = null;
+let variantesAtributosCache = [];
+let variantesCache = [];
+
+const modalVariantesProducto = document.getElementById("modalVariantesProducto");
+
+async function cargarVariantesModal() {
+  const [atributos, variantes] = await Promise.all([
+    fetch(`/api/productos/${variantesProductoId}/atributos`).then((r) => r.json()),
+    fetch(`/api/productos/${variantesProductoId}/variantes`).then((r) => r.json())
+  ]);
+  variantesAtributosCache = atributos;
+  variantesCache = variantes;
+  renderVariantesAtributos();
+  renderVariantesTabla();
+}
+
+function renderVariantesAtributos() {
+  const cont = document.getElementById("variantesAtributosLista");
+  if (variantesAtributosCache.length === 0) {
+    cont.innerHTML =
+      '<p class="form-note">Todavía no hay atributos. Agregá el primero (ej. "Talle") para poder crear variantes.</p>';
+    return;
+  }
+  cont.innerHTML = variantesAtributosCache
+    .map(
+      (a) => `
+    <div class="atributo-item" data-atributo-id="${a.id}">
+      <div class="atributo-item-head">
+        <strong>${a.nombre}</strong>
+        <button type="button" class="btn-icon-danger btn-eliminar-atributo" data-id="${a.id}" title="Eliminar atributo" aria-label="Eliminar atributo">${ICONO_TACHO}</button>
+      </div>
+      <div class="atributo-valores">
+        ${a.valores
+          .map(
+            (v) =>
+              `<span class="chip">${v.valor}<button type="button" class="btn-eliminar-valor" data-atributo-id="${a.id}" data-valor-id="${v.id}" aria-label="Eliminar valor ${v.valor}">×</button></span>`
+          )
+          .join("")}
+        <form class="atributo-valor-form" data-atributo-id="${a.id}">
+          <label class="visualmente-oculto" for="valorNuevo${a.id}">Nuevo valor de ${a.nombre}</label>
+          <input type="text" id="valorNuevo${a.id}" placeholder="Nuevo valor" required />
+          <button type="submit" class="btn btn-secundario">+</button>
+        </form>
+      </div>
+    </div>`
+    )
+    .join("");
+
+  cont.querySelectorAll(".btn-eliminar-atributo").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ok = await confirmar({
+        titulo: "Eliminar atributo",
+        cuerpo: "¿Eliminar este atributo y sus valores? No se puede si ya tiene variantes creadas.",
+        aceptar: "Eliminar",
+        destructivo: true
+      });
+      if (!ok) return;
+      const res = await fetch(`/api/productos/${variantesProductoId}/atributos/${btn.dataset.id}`, {
+        method: "DELETE"
+      });
+      if (!(await manejarError(res, "No se pudo eliminar el atributo."))) return;
+      await cargarVariantesModal();
+    });
+  });
+
+  cont.querySelectorAll(".btn-eliminar-valor").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const res = await fetch(
+        `/api/productos/${variantesProductoId}/atributos/${btn.dataset.atributoId}/valores/${btn.dataset.valorId}`,
+        { method: "DELETE" }
+      );
+      if (!(await manejarError(res, "No se pudo eliminar el valor."))) return;
+      await cargarVariantesModal();
+    });
+  });
+
+  cont.querySelectorAll(".atributo-valor-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = form.querySelector("input");
+      const res = await fetch(
+        `/api/productos/${variantesProductoId}/atributos/${form.dataset.atributoId}/valores`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ valor: input.value })
+        }
+      );
+      if (!(await manejarError(res, "No se pudo agregar el valor."))) return;
+      await cargarVariantesModal();
+    });
+  });
+}
+
+// Mismo criterio que poblarPreciosPorLista (Productos): un mini-input por
+// cada lista activa que no sea la predeterminada (esa ya se edita arriba,
+// en la columna "Precio de venta"). Sin precio propio cargado, la variante
+// cae al fallback de precioVarianteEnLista (precio_venta de la variante, y
+// de ahí al precio del producto padre en esa lista).
+function preciosPorListaVarianteHtml(v) {
+  const predeterminada = listaPrecioPredeterminada();
+  const otras = listasPrecios.filter((l) => l.activa && l.id !== predeterminada?.id);
+  if (otras.length === 0) return "";
+  return otras
+    .map((l) => {
+      const precioActual = v.precios?.[l.id];
+      return `
+        <label>${l.nombre}
+          <input type="number" class="variante-precio-lista" data-lista-id="${l.id}"
+                 step="0.01" min="0" placeholder="Sin precio propio"
+                 value="${precioActual !== undefined ? precioActual : ""}" autocomplete="off" />
+        </label>`;
+    })
+    .join("");
+}
+
+function renderVariantesTabla() {
+  const body = document.getElementById("variantesProductoBody");
+  if (variantesCache.length === 0) {
+    body.innerHTML = filaVacia(7, "Todavía no hay variantes creadas.");
+    return;
+  }
+  body.innerHTML = variantesCache
+    .map(
+      (v) => `
+    <tr class="${v.activo ? "" : "fila-anulada"}" data-variante-id="${v.id}">
+      <td data-label="Combinación">${v.combinacion}</td>
+      <td data-label="SKU"><input type="text" class="variante-sku" value="${v.sku ?? ""}" placeholder="—" /></td>
+      <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${v.precio_venta ?? ""}" placeholder="Sin precio propio" /></td>
+      <td data-label="Precios por lista" class="variante-precios-lista">${preciosPorListaVarianteHtml(v)}</td>
+      <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
+      <td data-label="Activa"><label class="form-check"><input type="checkbox" class="variante-activa" ${v.activo ? "checked" : ""} /></label></td>
+      <td data-label=""><button type="button" class="btn btn-secundario btn-guardar-variante">Guardar</button></td>
+    </tr>`
+    )
+    .join("");
+
+  body.querySelectorAll(".btn-guardar-variante").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const fila = btn.closest("tr");
+      const varianteId = fila.dataset.varianteId;
+      const sku = fila.querySelector(".variante-sku").value.trim();
+      const precio = fila.querySelector(".variante-precio").value;
+      const activo = fila.querySelector(".variante-activa").checked;
+      // Igual que en Productos: un input vacío significa "sin precio propio
+      // en esa lista", no se manda — así no se pisa un precio existente con
+      // 0 por accidente.
+      const precios = {};
+      fila.querySelectorAll(".variante-precio-lista").forEach((input) => {
+        if (input.value !== "") precios[input.dataset.listaId] = Number(input.value);
+      });
+      const body = { sku: sku || null, precio_venta: precio === "" ? null : Number(precio), activo };
+      if (Object.keys(precios).length > 0) body.precios = precios;
+      const res = await fetch(`/api/productos/${variantesProductoId}/variantes/${varianteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!(await manejarError(res, "No se pudo guardar la variante."))) return;
+      await Promise.all([cargarVariantesModal(), cargarProductos()]);
+      if (productoFichaId === variantesProductoId) await abrirFichaProducto(productoFichaId);
+      avisar("Variante actualizada.", "ok");
+    });
+  });
+}
+
+document.getElementById("btnVariantesProducto").addEventListener("click", async () => {
+  variantesProductoId = productoFichaId;
+  const producto = productos.find((p) => p.id === productoFichaId);
+  document.getElementById("modalVariantesProductoTitulo").textContent = `Variantes de "${producto?.nombre ?? ""}"`;
+  await cargarVariantesModal();
+  modalVariantesProducto.hidden = false;
+});
+document.getElementById("modalVariantesProductoClose").addEventListener("click", () => {
+  modalVariantesProducto.hidden = true;
+});
+modalVariantesProducto.addEventListener("click", (e) => {
+  if (e.target === modalVariantesProducto) modalVariantesProducto.hidden = true;
+});
+
+document.getElementById("formAtributoProducto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const res = await fetch(`/api/productos/${variantesProductoId}/atributos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: form.nombre.value })
+  });
+  if (!(await manejarError(res, "No se pudo agregar el atributo."))) return;
+  form.reset();
+  await cargarVariantesModal();
+});
+
+// Arma el producto cartesiano de los valores actuales de cada atributo y
+// crea (en bulk, un POST por combinación) las que todavía no existen como
+// variante activa. Se compara por el texto de la combinación en vez de
+// volver a resolver producto_variante_valores acá: ya viene armado en el
+// mismo orden de atributos en `combinacion` (ver server.js).
+document.getElementById("btnGenerarVariantes").addEventListener("click", async () => {
+  if (variantesAtributosCache.length === 0) {
+    avisar("Agregá al menos un atributo primero.", "error");
+    return;
+  }
+  if (variantesAtributosCache.some((a) => a.valores.length === 0)) {
+    avisar("Todos los atributos necesitan al menos un valor para generar variantes.", "error");
+    return;
+  }
+
+  let combinaciones = [[]];
+  for (const atributo of variantesAtributosCache) {
+    const nuevas = [];
+    for (const combo of combinaciones) {
+      for (const valor of atributo.valores) {
+        nuevas.push([...combo, { atributo_id: atributo.id, valor_id: valor.id }]);
+      }
+    }
+    combinaciones = nuevas;
+  }
+
+  const existentes = new Set(variantesCache.filter((v) => v.activo).map((v) => v.combinacion));
+  let creadas = 0;
+  let fallidas = 0;
+  for (const combo of combinaciones) {
+    const texto = combo
+      .map(({ atributo_id, valor_id }) => {
+        const atributo = variantesAtributosCache.find((a) => a.id === atributo_id);
+        const valor = atributo.valores.find((v) => v.id === valor_id);
+        return `${atributo.nombre}: ${valor.valor}`;
+      })
+      .join(" / ");
+    if (existentes.has(texto)) continue;
+    const res = await fetch(`/api/productos/${variantesProductoId}/variantes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valores: combo })
+    });
+    if (res.ok) creadas++;
+    else fallidas++;
+  }
+
+  await Promise.all([cargarVariantesModal(), cargarProductos()]);
+  if (productoFichaId === variantesProductoId) await abrirFichaProducto(productoFichaId);
+  avisar(
+    fallidas > 0
+      ? `${creadas} variante(s) creada(s), ${fallidas} no se pudieron crear.`
+      : creadas > 0
+      ? `${creadas} variante(s) nueva(s) creada(s).`
+      : "No había combinaciones nuevas para crear.",
+    fallidas > 0 ? "error" : "ok"
+  );
 });
 
 /* ---------- Categorías de productos ---------- */
@@ -4096,7 +4560,7 @@ function actualizarTotalPresupuesto() {
 }
 presupuestoItemsEl.addEventListener("item-change", actualizarTotalPresupuesto);
 
-function abrirModalPresupuesto(presupuesto = null) {
+async function abrirModalPresupuesto(presupuesto = null) {
   presupuestoEditandoId = presupuesto?.id ?? null;
   document.getElementById("modalPresupuestoTitulo").textContent = presupuesto
     ? "Editar presupuesto"
@@ -4132,6 +4596,19 @@ function abrirModalPresupuesto(presupuesto = null) {
       fila.querySelector(".item-producto-id").value = item.producto_id;
       fila.querySelector(".item-cantidad").value = item.cantidad;
       fila.querySelector(".item-precio").value = item.precio_unitario;
+      if (item.variante_id) {
+        const varianteSelect = fila.querySelector(".item-variante-id");
+        const variantes = await variantesDeProducto(item.producto_id);
+        varianteSelect.innerHTML = variantes
+          .filter((v) => v.activo || v.id === item.variante_id)
+          .map(
+            (v) =>
+              `<option value="${v.id}" data-stock="${v.stock}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`
+          )
+          .join("");
+        varianteSelect.value = item.variante_id;
+        varianteSelect.hidden = false;
+      }
       actualizarSubtotalFila(fila);
     }
   } else {
@@ -4459,7 +4936,7 @@ function poblarSelectCondicionPago(selector) {
 // casos — hace falta esta bandera aparte).
 let ventaCondicionTocada = false;
 
-function abrirModalVenta(venta = null) {
+async function abrirModalVenta(venta = null) {
   ventaEditandoId = venta?.id ?? null;
   ventaCondicionTocada = false;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
@@ -4510,13 +4987,34 @@ function abrirModalVenta(venta = null) {
       fila.querySelector(".item-producto-id").value = item.producto_id;
       fila.querySelector(".item-cantidad").value = item.cantidad;
       fila.querySelector(".item-precio").value = item.precio_unitario;
-      // El tope de stock de este renglón tiene que contemplar que su
-      // propia cantidad ya está "afuera" (reservada por esta misma
-      // venta): si no, al editar sin cambiar nada el tope quedaría más
-      // bajo que la cantidad ya cargada.
-      const productoCache = productos.find((p) => p.id === item.producto_id);
-      if (productoCache) {
-        fila.querySelector(".item-cantidad").max = productoCache.stock + item.cantidad;
+      if (item.variante_id) {
+        const varianteSelect = fila.querySelector(".item-variante-id");
+        const variantes = await variantesDeProducto(item.producto_id);
+        varianteSelect.innerHTML = variantes
+          .filter((v) => v.activo || v.id === item.variante_id)
+          .map(
+            (v) =>
+              `<option value="${v.id}" data-stock="${v.stock}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`
+          )
+          .join("");
+        varianteSelect.value = item.variante_id;
+        varianteSelect.hidden = false;
+        // Mismo criterio que abajo para el stock del producto: la cantidad
+        // ya cargada de este renglón cuenta como "disponible" también para
+        // el tope de la variante.
+        const varianteCache = variantes.find((v) => v.id === item.variante_id);
+        if (varianteCache) {
+          fila.querySelector(".item-cantidad").max = varianteCache.stock + item.cantidad;
+        }
+      } else {
+        // El tope de stock de este renglón tiene que contemplar que su
+        // propia cantidad ya está "afuera" (reservada por esta misma
+        // venta): si no, al editar sin cambiar nada el tope quedaría más
+        // bajo que la cantidad ya cargada.
+        const productoCache = productos.find((p) => p.id === item.producto_id);
+        if (productoCache) {
+          fila.querySelector(".item-cantidad").max = productoCache.stock + item.cantidad;
+        }
       }
       actualizarSubtotalFila(fila);
     }
@@ -5041,7 +5539,9 @@ async function abrirModalDevolucion(ventaId) {
     fila.dataset.ventaItemId = item.id;
     fila.dataset.precio = item.precio_unitario;
     fila.innerHTML = `
-      <span class="devolucion-producto">${item.producto} <span class="mono" style="color: var(--ink-muted)">(vendidas: ${numero(
+      <span class="devolucion-producto">${item.producto}${
+        item.combinacion ? ` (${item.combinacion})` : ""
+      } <span class="mono" style="color: var(--ink-muted)">(vendidas: ${numero(
         item.cantidad
       )}, disponibles: ${numero(item.disponible_devolucion)})</span></span>
       <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${
@@ -5520,7 +6020,7 @@ compraCostoEnvioEl.addEventListener("input", actualizarTotalCompra);
 // Mismo criterio que ventaCondicionTocada (ver ahí el porqué).
 let compraCondicionTocada = false;
 
-function abrirModalCompra(compra = null) {
+async function abrirModalCompra(compra = null) {
   compraEditandoId = compra?.id ?? null;
   compraCondicionTocada = false;
   document.getElementById("modalCompraTitulo").textContent = compra ? "Editar compra" : "Nueva compra";
@@ -5554,15 +6054,26 @@ function abrirModalCompra(compra = null) {
   compraItemsEl.innerHTML = "";
   if (compra) {
     for (const item of compra.items) {
-      agregarFilaItemCompra(compraItemsEl);
+      agregarFilaItemCompra(compraItemsEl, productos);
       const fila = compraItemsEl.lastElementChild;
       fila.querySelector(".item-producto").value = item.producto;
+      fila.querySelector(".item-producto-id").value = item.producto_id;
       fila.querySelector(".item-cantidad").value = item.cantidad;
       fila.querySelector(".item-precio").value = item.precio_unitario;
+      if (item.variante_id) {
+        const varianteSelect = fila.querySelector(".item-variante-id");
+        const variantes = await variantesDeProducto(item.producto_id);
+        varianteSelect.innerHTML = variantes
+          .filter((v) => v.activo || v.id === item.variante_id)
+          .map((v) => `<option value="${v.id}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`)
+          .join("");
+        varianteSelect.value = item.variante_id;
+        varianteSelect.hidden = false;
+      }
       actualizarSubtotalFila(fila);
     }
   } else {
-    agregarFilaItemCompra(compraItemsEl);
+    agregarFilaItemCompra(compraItemsEl, productos);
   }
   actualizarTotalCompra();
   modalCompra.hidden = false;
@@ -5570,7 +6081,7 @@ function abrirModalCompra(compra = null) {
 
 document.getElementById("btnNuevaCompra").addEventListener("click", () => abrirModalCompra());
 document.getElementById("btnAgregarItemCompra").addEventListener("click", () => {
-  agregarFilaItemCompra(compraItemsEl);
+  agregarFilaItemCompra(compraItemsEl, productos);
 });
 document.getElementById("compraCondicionPago").addEventListener("change", () => {
   compraCondicionTocada = true;
@@ -6010,7 +6521,9 @@ async function abrirModalDevolucionProveedor(compraId) {
     fila.dataset.compraItemId = item.id;
     fila.dataset.precio = item.precio_unitario;
     fila.innerHTML = `
-      <span class="devolucion-producto">${item.producto} <span class="mono" style="color: var(--ink-muted)">(compradas: ${numero(
+      <span class="devolucion-producto">${item.producto}${
+        item.combinacion ? ` (${item.combinacion})` : ""
+      } <span class="mono" style="color: var(--ink-muted)">(compradas: ${numero(
         item.cantidad
       )}, disponibles: ${numero(item.disponible_devolucion)})</span></span>
       <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${
@@ -7863,9 +8376,10 @@ function activarAsistenteCompra(raiz, propuesta, mensajeId, turnoEl) {
   itemsEl.addEventListener("item-change", actualizarTotal);
 
   for (const item of propuesta.items) {
-    agregarFilaItemCompra(itemsEl);
+    agregarFilaItemCompra(itemsEl, productos);
     const fila = itemsEl.lastElementChild;
     fila.querySelector(".item-producto").value = item.producto.nombre_resuelto || item.producto.valor || "";
+    fila.querySelector(".item-producto-id").value = item.producto.id ?? "";
     fila.querySelector(".item-cantidad").value = item.cantidad ?? "";
     fila.querySelector(".item-precio").value = item.precio_unitario ?? "";
     actualizarSubtotalFila(fila);
@@ -7876,7 +8390,7 @@ function activarAsistenteCompra(raiz, propuesta, mensajeId, turnoEl) {
   actualizarTotal();
 
   raiz.querySelector(".asistente-agregar-item").addEventListener("click", () => {
-    agregarFilaItemCompra(itemsEl);
+    agregarFilaItemCompra(itemsEl, productos);
   });
 
   raiz.querySelector("form").addEventListener("submit", async (e) => {
