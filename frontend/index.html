@@ -1125,6 +1125,7 @@
                 <th class="align-right col-admin">Valorizado</th>
                 <th class="align-right">Precio</th>
                 <th class="align-right col-admin">Margen</th>
+                <th class="align-right col-admin">Objetivo</th>
                 <th class="align-right">Stock</th>
                 <th>Activo</th>
                 <th></th>
@@ -2554,6 +2555,11 @@
              precio_venta en esa lista (CLAUDE.md §18). -->
         <div id="preciosPorListaProducto" class="form-precios-lista"></div>
         <p class="form-note">El costo no se carga acá: lo define la compra al proveedor.</p>
+        <!-- Solo informativo/alerta: compara contra el margen real de la
+             lista predeterminada, no sugiere ni fuerza ningún precio. -->
+        <label>Margen objetivo (%)
+          <input type="number" name="margen_objetivo" step="0.01" min="0" max="99.99" placeholder="Sin objetivo" />
+        </label>
         <label>Stock mínimo
           <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
         </label>
@@ -2604,6 +2610,12 @@
             <input type="checkbox" class="bulk-activar" data-campo="stock_minimo" /> Cambiar stock mínimo
           </label>
           <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" disabled />
+        </div>
+        <div class="bulk-campo">
+          <label class="form-check">
+            <input type="checkbox" class="bulk-activar" data-campo="margen_objetivo" /> Cambiar margen objetivo
+          </label>
+          <input type="number" name="margen_objetivo" step="0.01" min="0" max="99.99" placeholder="Sin objetivo" disabled />
         </div>
         <div class="bulk-campo">
           <label class="form-check">

@@ -410,6 +410,13 @@ if (!productosColumnas.some((col) => col.name === 'categoria_id')) {
   db.exec('ALTER TABLE productos ADD COLUMN categoria_id INTEGER REFERENCES categorias(id)');
 }
 
+// productos.margen_objetivo: umbral opcional para la alerta de margen bajo.
+// Nullable: sin objetivo cargado no hay alerta, comportamiento neutro para
+// todo producto existente hasta que alguien lo defina desde la ficha.
+if (!productosColumnas.some((col) => col.name === 'margen_objetivo')) {
+  db.exec('ALTER TABLE productos ADD COLUMN margen_objetivo REAL');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,

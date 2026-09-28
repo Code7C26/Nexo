@@ -2156,6 +2156,18 @@ const porcentaje = (n) => (n == null ? "—" : `${n.toLocaleString("es-AR", { ma
 
 const selProductos = crearSeleccion("productosBody");
 
+// Sin objetivo cargado no hay nada que mostrar (guion). Reusa las mismas
+// clases que ya existen para "cobrado"/"pendiente" en vez de CSS nuevo.
+// `conValor` suma el % objetivo al lado del badge (tabla, donde no hay otra
+// columna que ya lo muestre); en la ficha ese número ya tiene su propia fila.
+function badgeMargenObjetivo(p, conValor = false) {
+  if (p.margen_objetivo == null) return "—";
+  const clase = p.margen_bajo_objetivo ? "status-pendiente" : "status-cobrado";
+  const texto = p.margen_bajo_objetivo ? "Bajo objetivo" : "En objetivo";
+  const badge = `<span class="status ${clase}">${texto}</span>`;
+  return conValor ? `${badge} <span class="mono">${porcentaje(p.margen_objetivo)}</span>` : badge;
+}
+
 function renderProductos(lista) {
   const body = document.getElementById("productosBody");
   body.innerHTML = "";
@@ -2163,10 +2175,10 @@ function renderProductos(lista) {
 
   if (lista.length === 0) {
     if (filtrosProductos.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(selProductos.colspan(9));
+      body.innerHTML = filaVaciaFiltrada(selProductos.colspan(10));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProductos.limpiar());
     } else {
-      body.innerHTML = filaVacia(selProductos.colspan(9), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selProductos.colspan(10), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
     }
     return;
   }
@@ -2199,6 +2211,7 @@ function renderProductos(lista) {
       <td data-label="Valorizado" class="align-right mono col-admin">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right mono">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
+      <td data-label="Objetivo" class="align-right col-admin">${badgeMargenObjetivo(p, true)}</td>
       <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
@@ -2312,7 +2325,13 @@ async function abrirFichaProducto(id) {
     // en vez de dejarlo en la lista (esta ficha se arma con un array de
     // pares, no columnas fijas de tabla, así que acá no aplica `.col-admin`
     // — se filtra el dato en JS antes de mapearlo a <dt>/<dd>).
-    ...(esAdmin() ? [["Margen", producto.margen == null ? null : porcentaje(producto.margen)]] : []),
+    ...(esAdmin()
+      ? [
+          ["Margen", producto.margen == null ? null : porcentaje(producto.margen)],
+          ["Margen objetivo", producto.margen_objetivo == null ? null : porcentaje(producto.margen_objetivo)],
+          ["Vs. objetivo", producto.margen_objetivo == null ? null : badgeMargenObjetivo(producto)]
+        ]
+      : []),
     ["Stock mínimo", numero(producto.stock_minimo)],
     ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
     ["Estado de stock", STOCK_LABEL[producto.estado_stock]],
@@ -2375,7 +2394,7 @@ async function abrirFichaProducto(id) {
 }
 
 async function cargarProductos() {
-  tablaCargando("productosBody", selProductos.colspan(9));
+  tablaCargando("productosBody", selProductos.colspan(10));
   const [listaProductos, listaCategorias, listaListasPrecios, listaDepositos] = await Promise.all([
     fetch("/api/productos").then((r) => r.json()),
     fetch("/api/categorias").then((r) => r.json()),
@@ -2484,6 +2503,8 @@ const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
   { titulo: "Precio", valor: (p) => p.precio_venta },
   { titulo: "Margen", valor: (p) => p.margen, admin: true },
+  { titulo: "Margen objetivo", valor: (p) => p.margen_objetivo, admin: true },
+  { titulo: "Bajo objetivo", valor: (p) => (p.margen_bajo_objetivo == null ? "" : p.margen_bajo_objetivo ? "sí" : "no"), admin: true },
   { titulo: "Stock", valor: (p) => p.stock },
   { titulo: "Activo", valor: (p) => (p.activo ? "sí" : "no") }
 ];
@@ -2563,6 +2584,9 @@ function armarCambiosBulk(form) {
   }
   if (form.querySelector('[data-campo="stock_minimo"]').checked) {
     cambios.stock_minimo = form.stock_minimo.value;
+  }
+  if (form.querySelector('[data-campo="margen_objetivo"]').checked) {
+    cambios.margen_objetivo = form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value);
   }
   if (form.querySelector('[data-campo="precio_venta"]').checked) {
     const ajuste =
@@ -2663,6 +2687,16 @@ const filtrosProductos = crearFiltros(
     { clave: "precio_venta", etiqueta: "Precio de venta", tipo: "numero" },
     { clave: "precio_costo", etiqueta: "Costo", tipo: "numero" },
     { clave: "margen", etiqueta: "Margen", tipo: "numero" },
+    { clave: "margen_objetivo", etiqueta: "Margen objetivo", tipo: "numero" },
+    {
+      clave: "margen_bajo_objetivo",
+      etiqueta: "Vs. objetivo",
+      tipo: "select",
+      opciones: [
+        { valor: "true", texto: "Bajo objetivo" },
+        { valor: "false", texto: "En objetivo" }
+      ]
+    },
     { clave: "stock", etiqueta: "Stock", tipo: "numero" },
     { clave: "valorizado", etiqueta: "Valorizado", tipo: "numero" }
   ],
@@ -2709,6 +2743,7 @@ function abrirModalProducto(producto = null) {
   form.sku.value = producto?.sku ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
   form.precio_venta.value = producto?.precio_venta ?? "";
+  form.margen_objetivo.value = producto?.margen_objetivo ?? "";
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
   form.activo.checked = producto ? !!producto.activo : true;
@@ -2736,6 +2771,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     sku: form.sku.value || null,
     categoria_id: form.categoria_id.value || null,
     precio_venta: form.precio_venta.value,
+    margen_objetivo: form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value),
     stock_minimo: form.stock_minimo.value,
     stock_maximo: form.stock_maximo.value,
     activo: form.activo.checked

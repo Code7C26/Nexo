@@ -425,7 +425,9 @@ const CLAVES_SENSIBLES = new Set([
   'costo_total',
   'costo_mercaderia',
   'costo_unitario',
-  'costo_unitario_historico'
+  'costo_unitario_historico',
+  'margen_objetivo',
+  'margen_bajo_objetivo'
 ]);
 
 function podarSensibles(valor) {
@@ -1175,6 +1177,7 @@ const SELECT_PRODUCTO = `
          productos.precio_venta, productos.activo,
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
+         productos.margen_objetivo,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
            WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count
@@ -1215,12 +1218,18 @@ function estadoStock(stock, stockMinimo, stockMaximo) {
 // (viene de obtenerPreciosPorProducto, ya resuelto por producto_id antes de
 // llamar acá); un objeto vacío significa que el producto todavía no tiene
 // ningún precio propio cargado y todo cae al fallback de precio_venta.
+// margen_bajo_objetivo compara el margen real (de la lista predeterminada)
+// contra margen_objetivo: solo informativo/alerta, nunca sugiere un precio.
+// null cuando falta el objetivo o no hay margen calculable (nunca false por
+// defecto, sería engañoso). Igualdad exacta cuenta como "cumple".
 function decorarProducto(p, precios = {}) {
+  const margen = p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null;
   return {
     ...p,
     precios,
     valorizado: p.precio_costo * p.stock,
-    margen: p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null,
+    margen,
+    margen_bajo_objetivo: p.margen_objetivo != null && margen != null ? margen < p.margen_objetivo : null,
     estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo),
     tiene_variantes: p.variantes_count > 0
   };
@@ -1247,10 +1256,16 @@ function normalizarCategoriaId(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
 }
 
+// margen_objetivo es opcional de verdad: vacío significa "sin objetivo
+// cargado", no 0% (0% sería un objetivo real y absurdo).
+function normalizarMargenObjetivo(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
+
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id }) {
+function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo }) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
@@ -1273,6 +1288,10 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, cat
   if (categoriaId !== null && !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(categoriaId)) {
     return 'La categoría seleccionada no existe.';
   }
+  const margenObjetivo = normalizarMargenObjetivo(margen_objetivo);
+  if (margenObjetivo !== null && (Number.isNaN(margenObjetivo) || margenObjetivo < 0 || margenObjetivo >= 100)) {
+    return 'El margen objetivo debe ser un número entre 0 y 100.';
+  }
   return null;
 }
 
@@ -1282,7 +1301,7 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     return res.status(400).json({ error });
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id } = req.body;
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo } = req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
 
   let lastInsertRowid;
@@ -1292,8 +1311,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     // primera compra que lo incluya.
     ({ lastInsertRowid } = db
       .prepare(
-        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?)`
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -1302,7 +1321,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         activo === false || activo === 0 ? 0 : 1,
         normalizarPrecio(stock_minimo),
         normalizarStockMaximo(stock_maximo),
-        normalizarCategoriaId(categoria_id)
+        normalizarCategoriaId(categoria_id),
+        normalizarMargenObjetivo(margen_objetivo)
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -1321,7 +1341,7 @@ app.post('/api/productos', soloAdmin, (req, res) => {
 // porcentaje una lista puntual (ej. "+10% en Mayorista") sobre todo el
 // catálogo filtrado es exactamente el caso de uso que el bulk existe para
 // cubrir.
-const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'precios'];
+const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'margen_objetivo', 'precios'];
 
 // `cambios.precio_venta` puede venir como número (valor fijo) o como
 // { modo: 'porcentaje', valor: N } (ajuste sobre el precio actual DE ESE
@@ -1360,7 +1380,7 @@ function esAjustePorcentaje(valor) {
 // tiene precio propio en esa lista).
 function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
-    .prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id FROM productos WHERE id = ?')
+    .prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo FROM productos WHERE id = ?')
     .get(productoId);
   if (!producto) {
     throw new ErrorBulk('Producto no encontrado.', 404);
@@ -1423,7 +1443,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     activo: fusionado.activo === false || fusionado.activo === 0 ? 0 : 1,
     stock_minimo: normalizarPrecio(fusionado.stock_minimo),
     stock_maximo: normalizarStockMaximo(fusionado.stock_maximo),
-    categoria_id: normalizarCategoriaId(fusionado.categoria_id)
+    categoria_id: normalizarCategoriaId(fusionado.categoria_id),
+    margen_objetivo: normalizarMargenObjetivo(fusionado.margen_objetivo)
   };
   // Si el pedido tocó el precio de la lista PREDETERMINADA vía `precios`,
   // ese valor también pisa precio_venta — son la misma cosa vista desde dos
@@ -1440,7 +1461,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
-    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id'
+    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo'
   ]);
 
   withTransaction(() => {
@@ -1449,7 +1470,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     // trazabilidad del costo real.
     db.prepare(
       `UPDATE productos
-          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?
+          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -1459,6 +1480,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.stock_minimo,
       nuevo.stock_maximo,
       nuevo.categoria_id,
+      nuevo.margen_objetivo,
       productoId
     );
     if (preciosPorLista) {

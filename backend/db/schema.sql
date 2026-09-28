@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS depositos (
 -- categoria_id es nullable a propósito, no por comodidad: un producto se
 -- autocrea por nombre desde una compra (ver crearCompra en server.js) sin
 -- pasar nunca por este formulario, así que un NOT NULL rompería esa alta.
+-- margen_objetivo nullable = ese producto no tiene alerta de margen: sin
+-- objetivo cargado no hay nada contra qué comparar. Cuando está cargado, se
+-- compara contra el margen real de la lista predeterminada (precio_venta),
+-- solo a modo informativo/alerta, nunca sugiere ni fuerza un precio.
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -105,7 +109,8 @@ CREATE TABLE IF NOT EXISTS productos (
   activo INTEGER NOT NULL DEFAULT 1,
   stock_minimo REAL NOT NULL DEFAULT 0,
   stock_maximo REAL,
-  categoria_id INTEGER REFERENCES categorias(id)
+  categoria_id INTEGER REFERENCES categorias(id),
+  margen_objetivo REAL
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
