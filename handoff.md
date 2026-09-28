@@ -4558,3 +4558,208 @@ commiteó todavía porque no se le preguntó al usuario en esta sesión.
 Después de eso, según CLAUDE.md la próxima área declarada es "gestión de
 precios" e "inventario" en V2, pero el alcance exacto todavía está en
 "a confirmar" — no arrancar sin preguntarle al usuario qué sigue.
+
+**Actualización**: la Etapa 6 quedó commiteada en `5193d75` ("feat:
+bloquear asistente IA en productos con variantes activas"), sobre
+`solla`, sin push. Ver §35 para lo que se hizo después.
+
+## 35. Margen objetivo por producto
+
+**Objetivo**: CLAUDE.md §4 lista "margen objetivo" y "markup objetivo"
+como campos posibles de un producto. Se implementó solo `margen_objetivo`
+(%) — un único campo, no los dos: son matemáticamente convertibles entre
+sí y CLAUDE.md §4 pide no duplicar información derivada; si algún día
+hace falta mostrar markup, se deriva al vuelo. Uso puramente informativo:
+compara el margen real del producto (lista predeterminada, ya calculado
+como `margen` en `decorarProducto`) contra el objetivo cargado y expone
+una alerta booleana. No sugiere ni fuerza precios de venta. Alcance: solo
+a nivel producto, no por variante ni por lista de precios.
+
+**Migración** (`backend/db/schema.sql` + `backend/db/index.js`): columna
+nueva `productos.margen_objetivo REAL`, nullable, sin `DEFAULT`. Mismo
+patrón ya usado para `categoria_id`/`stock_maximo`: `PRAGMA table_info` +
+`ALTER TABLE ADD COLUMN` idempotente en el arranque del server. Aditiva y
+sin impacto en filas existentes — quedan con `margen_objetivo = NULL`
+(comportamiento neutro: sin objetivo cargado no hay alerta).
+
+**`backend/server.js`**:
+- `SELECT_PRODUCTO` suma `margen_objetivo`.
+- `decorarProducto` calcula `margen` en una variable local primero y
+  agrega `margen_bajo_objetivo`: `null` cuando no hay objetivo cargado o
+  no hay margen calculable (nunca `false` por defecto, sería engañoso),
+  si no `margen < margen_objetivo` (comparación estricta; igualdad exacta
+  cuenta como "cumple").
+- `normalizarMargenObjetivo(valor)` (junto a `normalizarCategoriaId`):
+  `''`/`null`/`undefined` → `null`, si no `Number(valor)`.
+- `validarProducto`: si viene `margen_objetivo`, debe ser un número entre
+  0 (inclusive) y 100 (exclusivo); si no, 400.
+- `POST /api/productos`, `CAMPOS_BULK_PRODUCTO` y `aplicarEdicionProducto`
+  (el punto único de edición para PATCH singular y bulk) quedaron
+  extendidos igual que el resto de los campos editables. En
+  `aplicarEdicionProducto` el punto crítico es que el `SELECT` del
+  producto actual también trae `margen_objetivo`: como la función
+  re-selecciona la fila y la fusiona con los cambios parciales, si faltara
+  ahí un PATCH que no toca este campo lo pisaría con `null` en cada
+  edición (mismo mecanismo que ya sostiene `stock_minimo`/`stock_maximo`).
+  Queda auditado vía `diffCampos`.
+- `CLAVES_SENSIBLES` suma `margen_objetivo` y `margen_bajo_objetivo` —
+  mismo trato que `margen`/`costo`/`ganancia`: un empleado no-admin no
+  debe ver nada de rentabilidad, ni en el JSON de `GET /api/productos`.
+- No se tocaron `GET /api/stock`, `GET /api/reportes/stock` (arman su
+  propio objeto de salida, el campo no se cuela solo), las altas
+  automáticas de producto por nombre (compra/asistente, quedan en `NULL`
+  como ya pasa con `stock_minimo`/`categoria_id`), ni `permisos.js` (no
+  hay endpoints nuevos, confirmado con `npm test`).
+
+**Frontend** (`frontend/index.html` + `frontend/js/app.js`):
+- Input nuevo "Margen objetivo (%)" en el formulario de alta/edición de
+  producto, mismo patrón que `stock_maximo` (vacío → `null`).
+- Ficha de detalle: filas "Margen objetivo" y "Vs. objetivo" dentro del
+  bloque ya envuelto en `esAdmin() ? [...] : []` que muestra "Margen".
+- Tabla de listado: columna nueva "Objetivo" con clase `col-admin` (se
+  oculta para no-admin vía CSS, igual que Costo/Margen), con un helper
+  `badgeMargenObjetivo(p)` que reusa las clases CSS ya existentes
+  `.status-cobrado` (verde, "En objetivo") y `.status-pendiente`
+  (naranja, "Bajo objetivo") — no hizo falta CSS nuevo.
+- Bulk edit: `.bulk-campo` nuevo para `margen_objetivo` en
+  `#formBulkProductos`; vacío → `null` explícito (borra el objetivo).
+- `filtrosProductos`: filtro numérico por `margen_objetivo` y un select
+  por `margen_bajo_objetivo` (`"true"`/`"false"`).
+- `COLUMNAS_CSV_PRODUCTOS`: dos columnas nuevas con `admin: true`, mismo
+  patrón que `margen`.
+- No hizo falta ningún guard extra para no-admin: como `CLAVES_SENSIBLES`
+  ya filtra estos campos del JSON, llegan `undefined` al frontend, y
+  todos los puntos de lectura de arriba ya toleran `== null`.
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3002 (nunca el 3000 real ni la base real). `npm test` verde antes
+y después (sin endpoints nuevos). Se confirmó la migración: columna
+ausente antes del primer arranque, presente después, y un segundo
+reinicio del proceso no la duplica ni pisa los valores ya cargados
+(idempotencia). Por API (admin, vía curl con cookie de sesión): producto
+sin objetivo trae ambos campos en `null`; `PATCH` con
+`margen_objetivo: 50` sobre un producto con margen real ~49.09% da
+`margen_bajo_objetivo: true`; con el objetivo igualado exacto al margen
+real da `false` (la igualdad cuenta como "cumple"); un `PATCH` parcial
+que solo cambia `precio_venta` sin tocar `margen_objetivo` no lo borra
+(confirma el punto crítico del `SELECT` en `aplicarEdicionProducto`);
+límites de validación: `-5`, `100` y `150` rechazados con 400, `0`
+aceptado; bulk edit sobre dos productos a la vez actualiza cada uno con
+su propio `margen_bajo_objetivo` calculado contra su propio margen real;
+`GET /api/auditoria` registra el diff de cada cambio (single y bulk);
+alta de producto nuevo con `margen_objetivo` cargado directo en el
+`POST` funciona igual. Con un usuario no-admin, `GET /api/productos`
+confirmado que **no trae** `margen_objetivo` ni `margen_bajo_objetivo` en
+ninguna fila (ausentes del JSON, no solo `null`); un PATCH de no-admin
+sobre un producto da 403 (regresión de `soloAdmin`, no relacionado al
+campo nuevo pero confirmado sin romperse). Datos de prueba solo en la
+copia de scratchpad; la base real no se tocó.
+
+No se hizo verificación visual en navegador en esta sesión — no había
+herramienta de automatización de browser disponible en el entorno. Se
+compensó con la batería de pruebas por API de arriba, que cubre toda la
+lógica de negocio (cálculo, validación, persistencia parcial, permisos,
+auditoría), pero falta la pasada visual (formulario, ficha, columna con
+badge, bulk edit, filtro, CSV) antes de dar el feature por completamente
+cerrado.
+
+### Qué sigue
+
+Falta: (1) pasada visual en navegador de esta etapa (ver arriba), (2)
+preguntarle al usuario si commitea este trabajo sobre `solla`, (3) una
+vez cerrado esto, definir con el usuario el alcance de "gestión de
+precios" / "inventario" en V2 (CLAUDE.md lo deja como "a confirmar", no
+arrancar sin esa conversación).
+
+## 36. Reescritura de CLAUDE.md — de proyecto escolar a producto real
+
+Sesión de planificación pura, sin tocar código de `backend/` ni
+`frontend/`. El usuario corrigió el marco del proyecto: aunque Nexo nació
+como trabajo de escuela, el estándar a partir de ahora es el de un
+producto real, pensado para competir con sistemas de gestión ya
+existentes en el mercado argentino (Dux Software, Contagram —
+`docs/competencia.txt`). La única restricción real es de costo, no de
+ambición: preferir siempre la solución más barata que cumpla el
+requisito completo, nunca una versión recortada del requisito.
+
+**Decisiones tomadas con el usuario en esta sesión** (ver tabla completa
+en `CLAUDE.md`, preámbulo):
+
+- App móvil → PWA (instalable, offline básico), no app nativa por ahora.
+- Frontend → sigue vanilla, pero modularizado por dominio a medida que
+  crece (`app.js` hoy tiene ~9400 líneas en un solo archivo).
+- Multi-empresa → SaaS multi-tenant real (`organizacion_id` en tablas de
+  negocio, aislamiento por empresa). Hoy `organizaciones` tiene una sola
+  fila y ninguna tabla de negocio tiene esa columna: es preparación de
+  arquitectura, no implementación.
+- Base de datos → SQLite ahora, con SQL portable y acceso a datos
+  concentrado en `backend/db/`, para poder migrar a Postgres el día que
+  haya varias empresas escribiendo en simultáneo.
+- Rubros (comercio, carnicería, gastronomía...) → un solo sistema
+  configurable por "perfil de rubro", nunca versiones de código
+  separadas. Regla dura anotada: nunca un `if (rubro === ...)` con
+  lógica de negocio adentro.
+- IVA → **entra al modelo** (revierte la decisión anterior de dejarlo
+  fuera de V1). Categoría fiscal elegible por el usuario en cliente y
+  producto; IVA discriminado por renglón en venta/compra/presupuesto. Es
+  requisito previo para ARCA. Los placeholders `IVA_ALICUOTA` y
+  `RETENCION_MP_EJEMPLO` dejan de ser código muerto.
+- Meta Ads / ROAS → reconocido como parte de la visión, pospuesto
+  explícitamente (`CLAUDE.md §39`).
+
+**Restricción dura que definió cómo se editó el documento:** el código
+cita `CLAUDE.md` por número de sección en decenas de comentarios
+(`server.js`, `schema.sql`, `db/index.js`, `app.js`), y este mismo
+handoff también. Por eso §1–§27 **conservaron su número y su tema**: se
+corrigió y amplió el contenido de varias (§4 Productos, §6 Compras, §8
+Ventas, §10 Clientes, §15 Presupuestos, §16 Facturación, §20 Reportes,
+§25 Principio de MVP — esta última pasó a marcar el MVP como completo),
+pero nada se renumeró ni se fusionó. Las secciones nuevas se agregaron
+después de §27, del §28 al §39:
+
+| § | Tema |
+|---|---|
+| 28 | Multi-empresa (multi-tenant) |
+| 29 | Perfiles de rubro y módulos activables |
+| 30 | Punto de venta (POS) y turno de caja |
+| 31 | Frontend, PWA y arquitectura de cliente |
+| 32 | Integraciones (Mercado Libre, Tienda Nube, ARCA, etc.) |
+| 33 | Facturación electrónica ARCA |
+| 34 | Portabilidad de datos y evolución del esquema (SQLite → Postgres) |
+| 35 | Seguridad y operación |
+| 36 | IA operativa (amplía §21) |
+| 37 | Qué significa "competir" |
+| 38 | Roadmap por etapas |
+| 39 | Fuera de alcance por ahora |
+
+**Verificación hecha:** se confirmó con `grep` que todas las secciones
+citadas por el código (§3 a §23) conservan tema tras la edición, que no
+quedó texto de las reglas vencidas ("fuera de V1", "V2"), y que
+`backend/test` sigue en verde (no se tocó código en esta sesión — el
+único diff de `backend/` y `frontend/` que aparece en `git status` es el
+de la etapa 35, sin commitear, ya documentado arriba).
+
+### Roadmap acordado (CLAUDE.md §38)
+
+Orden elegido para que abarate lo que sigue y para que las dos personas
+del equipo trabajen en paralelo sin pisarse: **0)** cerrar y commitear la
+etapa 35 pendiente (pasada visual incluida) → **A)** multi-empresa
+(backend) y **B)** modularizar `app.js` + base de PWA (frontend), en
+paralelo → **C)** IVA y categoría fiscal → **D)** POS y turno de caja →
+**E)** ARCA (homologación → producción) → **F)** perfiles de rubro +
+unidad de medida fraccionable → **G)** integraciones Mercado
+Libre/Tienda Nube → **H)** reportes avanzados → **I)** IA por voz y
+WhatsApp. Ninguna etapa se arranca sin planificarla primero con el
+usuario (regla ya existente de `CLAUDE.md §27`, reafirmada para las
+secciones nuevas).
+
+### Qué sigue
+
+1. Cerrar la etapa 35 (pendiente desde antes de esta sesión): pasada
+   visual en navegador + decidir con el usuario si commitear.
+2. Retomar el roadmap de `CLAUDE.md §38` empezando por la etapa 0 y
+   después A/B en paralelo — planificando cada una con el usuario antes
+   de escribir código, como exige `CLAUDE.md §27`.
+3. Esta sesión no generó commit (fue solo edición de `CLAUDE.md` y de
+   este handoff): sigue sin decidirse si `CLAUDE.md`/`handoff.md` se
+   commitean junto con la etapa 35 pendiente o por separado.
