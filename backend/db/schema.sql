@@ -322,13 +322,16 @@ CREATE TABLE IF NOT EXISTS presupuesto_items (
 -- solo generó un crédito a favor del cliente en su cuenta corriente, para
 -- descontar de una próxima venta. Es la misma idea que un renglón de
 -- cobro pero para la salida, sin necesitar una tabla aparte.
+-- organizacion_id: mismo patrón multi-tenant que ventas (CLAUDE.md §28); se
+-- deriva de venta_id -> ventas.organizacion_id al crear la devolución.
 CREATE TABLE IF NOT EXISTS devoluciones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   venta_id INTEGER NOT NULL REFERENCES ventas(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
-  motivo TEXT
+  motivo TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- venta_item_id (no producto_id solo) apunta al renglón exacto de la
@@ -412,6 +415,8 @@ CREATE TABLE IF NOT EXISTS compra_items (
 -- dio el proveedor en su propio comprobante) — no se emite desde acá, así
 -- que no tiene letra/punto_venta/numeración propia como sí tiene la nota
 -- de crédito que Nexo emite a un cliente (tabla facturas).
+-- organizacion_id: mismo patrón multi-tenant que compras (CLAUDE.md §28); se
+-- deriva de compra_id -> compras.organizacion_id al crear la devolución.
 CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   compra_id INTEGER NOT NULL REFERENCES compras(id),
@@ -419,7 +424,8 @@ CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
   motivo TEXT,
-  nota_credito_proveedor_numero TEXT
+  nota_credito_proveedor_numero TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- compra_item_id (no producto_id solo) apunta al renglón exacto de la

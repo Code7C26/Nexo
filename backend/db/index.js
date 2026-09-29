@@ -486,6 +486,19 @@ if (indiceNumeracionActual && !indiceNumeracionActual.sql.includes('organizacion
   );
 }
 
+// devoluciones.organizacion_id / devoluciones_proveedor.organizacion_id:
+// siguiente lote del mismo patrón (Etapa A, CLAUDE.md §28). Ninguna de las
+// dos suma índice nuevo: no tienen numeración correlativa propia como
+// facturas.
+const devolucionesColumnasOrg = db.prepare('PRAGMA table_info(devoluciones)').all();
+if (!devolucionesColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE devoluciones ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+const devolucionesProveedorColumnasOrg = db.prepare('PRAGMA table_info(devoluciones_proveedor)').all();
+if (!devolucionesProveedorColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE devoluciones_proveedor ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1222,7 +1235,17 @@ if (orgCount === 0) {
 // compras (ver los ALTER TABLE más arriba): recién acá hay garantizada una
 // fila en `organizaciones`. Re-ejecutable, solo toca filas que todavía no
 // tienen organización asignada.
-for (const tabla of ['productos', 'clientes', 'proveedores', 'ventas', 'compras', 'presupuestos', 'facturas']) {
+for (const tabla of [
+  'productos',
+  'clientes',
+  'proveedores',
+  'ventas',
+  'compras',
+  'presupuestos',
+  'facturas',
+  'devoluciones',
+  'devoluciones_proveedor',
+]) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
       WHERE organizacion_id IS NULL`

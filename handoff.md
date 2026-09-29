@@ -5040,3 +5040,75 @@ cambios respecto al inicio de la sesión).
 4. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
    todas partes donde se agregó).
+
+## 40. Etapa A (multi-tenant) — `devoluciones` y `devoluciones a proveedor`
+
+**Objetivo**: primer ítem de la lista que dejaba pendiente §37/§38/§39
+("Devoluciones, devoluciones a proveedor, gastos, stock/movimientos_stock,
+tesorería y cuentas corrientes"). Mismo patrón exacto que las etapas
+anteriores, sobre `devoluciones` y `devoluciones_proveedor`.
+
+**`backend/db/schema.sql` / `backend/db/index.js`**: `organizacion_id INTEGER
+REFERENCES organizaciones(id)` nullable en ambas tablas, `ALTER TABLE ADD
+COLUMN` idempotente ubicado junto al resto de los bloques de
+`organizacion_id` (después del de presupuestos/facturas), y las dos tablas
+sumadas al mismo loop de backfill que ya recorría
+`productos`/`clientes`/`proveedores`/`ventas`/`compras`/`presupuestos`/
+`facturas`. Sin cambios de índice: a diferencia de `facturas`, ninguna de las
+dos tiene numeración correlativa propia.
+
+**`backend/server.js`**:
+- `POST /api/devoluciones`, `POST /api/devoluciones-proveedor`: escriben
+  `organizacion_id` en el `INSERT` (ya validaban la venta/compra padre contra
+  la organización del usuario desde §38, eso no cambió).
+- `GET /api/devoluciones`, `GET /api/devoluciones/:id`,
+  `GET /api/devoluciones-proveedor`, `GET /api/devoluciones-proveedor/:id`:
+  filtrados por `organizacion_id`.
+- `POST /api/devoluciones/:id/anular`, `POST /api/devoluciones/:id/restaurar`,
+  `POST /api/devoluciones-proveedor/:id/anular`,
+  `POST /api/devoluciones-proveedor/:id/restaurar`,
+  `POST /api/devoluciones-proveedor/:id/nota-credito`: sus
+  `SELECT ... WHERE id = ?` ganaron `AND organizacion_id = ?`.
+- `POST /api/devoluciones/:id/nota-credito` no necesitó cambios: ya filtraba
+  vía JOIN a `ventas.organizacion_id` desde el fix de §39.
+- Gap real encontrado y cerrado (mismo tipo que §38/§39, pero más grave acá
+  porque no era solo un lookup puntual): como `devoluciones` y
+  `devoluciones_proveedor` todavía no tenían columna propia,
+  `GET /api/devoluciones` y `GET /api/devoluciones-proveedor` **no tenían
+  ningún filtro** y devolvían las devoluciones de todas las organizaciones
+  sin distinción; sus variantes por id y los endpoints `anular`/`restaurar`/
+  `nota-credito` (proveedor) tampoco filtraban, así que alguien podía
+  adivinar un id secuencial y ver, anular, restaurar o emitir una nota de
+  crédito sobre la devolución de otra empresa. Se cerró sumando el filtro
+  correspondiente a cada uno, listados arriba.
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en un
+puerto nuevo (nunca el 3000 real ni `nexo.db` real), organización 2 creada a
+mano con su propio admin (mismo `scryptSync`/parámetros que el servidor).
+Con una devolución de venta y una devolución a proveedor activas en la
+organización 1: `GET /api/devoluciones` y `GET /api/devoluciones-proveedor`
+desde la organización 2 devuelven `[]`; pedir por id, anular, restaurar y
+nota-crédito sobre esos ids desde la organización 2 da 404 en todos los
+casos. La organización 1 sigue viendo y operando sus propias devoluciones sin
+cambios (anular, restaurar y nota-crédito responden según su propia lógica de
+estado, no bloqueadas por organización). `npm test` verde antes y después.
+Idempotencia confirmada matando y reiniciando el proceso de prueba sobre la
+misma base ya migrada: sin errores. Proceso y copia de scratchpad borrados al
+terminar; la base real no se tocó (`nexo.db` real con mtime sin cambios
+respecto al inicio de la sesión).
+
+### Qué sigue
+
+1. Gastos, stock/movimientos_stock, tesorería y cuentas corrientes quedan
+   pendientes del mismo patrón (mismo orden que ya señalaba §38/§39).
+2. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa (reconstrucción de tabla + regla de "predeterminada"
+   por organización).
+3. Reportes/resumen (gap ya señalado en §38/§39) sigue necesitando su propia
+   revisión una vez que las tablas de negocio relevantes tengan la columna;
+   los agregados que suman `devoluciones`/`devoluciones_proveedor` en
+   `/api/resumen/*` y `/api/reportes/*` siguen sin filtrar por organización.
+4. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
+   todas partes donde se agregó).

@@ -3902,14 +3902,16 @@ function decorarDevolucion(d) {
 
 app.get('/api/devoluciones', (req, res) => {
   const devoluciones = db
-    .prepare(`${SELECT_DEVOLUCION} ORDER BY devoluciones.id DESC`)
-    .all();
+    .prepare(`${SELECT_DEVOLUCION} WHERE devoluciones.organizacion_id = ? ORDER BY devoluciones.id DESC`)
+    .all(req.usuario.organizacion_id);
   res.json(devoluciones.map(decorarDevolucion));
 });
 
 app.get('/api/devoluciones/:id', (req, res) => {
   const devolucionId = Number(req.params.id);
-  const devolucion = db.prepare(`${SELECT_DEVOLUCION} WHERE devoluciones.id = ?`).get(devolucionId);
+  const devolucion = db
+    .prepare(`${SELECT_DEVOLUCION} WHERE devoluciones.id = ? AND devoluciones.organizacion_id = ?`)
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -4129,8 +4131,10 @@ app.post('/api/devoluciones', (req, res) => {
 
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
-      .prepare('INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id) VALUES (?, ?, ?, ?)')
-      .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucion);
+      .prepare(
+        'INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucion, req.usuario.organizacion_id);
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_items
@@ -4245,7 +4249,9 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
 app.post('/api/devoluciones/:id/anular', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado FROM devoluciones WHERE id = ?').get(devolucionId);
+  const devolucion = db
+    .prepare('SELECT id, estado FROM devoluciones WHERE id = ? AND organizacion_id = ?')
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -4281,7 +4287,9 @@ app.post('/api/devoluciones/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/devoluciones/:id/restaurar', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones WHERE id = ?').get(devolucionId);
+  const devolucion = db
+    .prepare('SELECT id, estado, deposito_id FROM devoluciones WHERE id = ? AND organizacion_id = ?')
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -5468,16 +5476,20 @@ function decorarDevolucionProveedor(d) {
 
 app.get('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const devoluciones = db
-    .prepare(`${SELECT_DEVOLUCION_PROVEEDOR} ORDER BY devoluciones_proveedor.id DESC`)
-    .all();
+    .prepare(
+      `${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.organizacion_id = ? ORDER BY devoluciones_proveedor.id DESC`
+    )
+    .all(req.usuario.organizacion_id);
   res.json(devoluciones.map(decorarDevolucionProveedor));
 });
 
 app.get('/api/devoluciones-proveedor/:id', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
   const devolucion = db
-    .prepare(`${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.id = ?`)
-    .get(id);
+    .prepare(
+      `${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.id = ? AND devoluciones_proveedor.organizacion_id = ?`
+    )
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
@@ -5737,8 +5749,16 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
 
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
-      .prepare('INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id) VALUES (?, ?, ?, ?)')
-      .run(compraId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucionProveedor);
+      .prepare(
+        'INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(
+        compraId,
+        cuenta_tesoreria_id || null,
+        motivo?.trim() || null,
+        depositoDevolucionProveedor,
+        req.usuario.organizacion_id
+      );
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_proveedor_items
@@ -5782,8 +5802,8 @@ app.post('/api/devoluciones-proveedor/:id/nota-credito', soloAdmin, (req, res) =
   }
 
   const devolucion = db
-    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ?')
-    .get(id);
+    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ? AND organizacion_id = ?')
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
@@ -5807,8 +5827,8 @@ app.post('/api/devoluciones-proveedor/:id/anular', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
 
   const devolucion = db
-    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ?')
-    .get(id);
+    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ? AND organizacion_id = ?')
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
@@ -5847,7 +5867,9 @@ app.post('/api/devoluciones-proveedor/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones_proveedor WHERE id = ?').get(id);
+  const devolucion = db
+    .prepare('SELECT id, estado, deposito_id FROM devoluciones_proveedor WHERE id = ? AND organizacion_id = ?')
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
