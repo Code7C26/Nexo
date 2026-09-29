@@ -442,6 +442,19 @@ if (!proveedoresColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE proveedores ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
+// ventas.organizacion_id / compras.organizacion_id: siguiente lote del mismo
+// patrón (Etapa A, CLAUDE.md §28), sobre las dos cabeceras transaccionales
+// más centrales. venta_items/compra_items no suman columna propia: se
+// filtran vía JOIN a su cabecera, que ya queda organizada acá.
+const ventasColumnasOrg = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+const comprasColumnasOrg = db.prepare('PRAGMA table_info(compras)').all();
+if (!comprasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE compras ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1174,11 +1187,11 @@ if (orgCount === 0) {
   db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
 }
 
-// Backfill de organizacion_id en productos/clientes/proveedores (ver los
-// ALTER TABLE más arriba): recién acá hay garantizada una fila en
-// `organizaciones`. Re-ejecutable, solo toca filas que todavía no tienen
-// organización asignada.
-for (const tabla of ['productos', 'clientes', 'proveedores']) {
+// Backfill de organizacion_id en productos/clientes/proveedores/ventas/
+// compras (ver los ALTER TABLE más arriba): recién acá hay garantizada una
+// fila en `organizaciones`. Re-ejecutable, solo toca filas que todavía no
+// tienen organización asignada.
+for (const tabla of ['productos', 'clientes', 'proveedores', 'ventas', 'compras']) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
       WHERE organizacion_id IS NULL`

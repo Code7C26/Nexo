@@ -2590,9 +2590,10 @@ app.get('/api/ventas', (req, res) => {
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
        FROM ventas
        JOIN clientes ON clientes.id = ventas.cliente_id
+       WHERE ventas.organizacion_id = ?
        ORDER BY ventas.id DESC`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(
     ventas.map((v) => {
       const neto = v.total - v.devuelto;
@@ -2620,9 +2621,9 @@ app.get('/api/ventas/:id', (req, res) => {
          FROM ventas
          JOIN clientes ON clientes.id = ventas.cliente_id
          LEFT JOIN depositos ON depositos.id = ventas.deposito_id
-        WHERE ventas.id = ?`
+        WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
-    .get(ventaId);
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -2827,10 +2828,10 @@ function crearVenta({
 
   const { lastInsertRowid: nuevaVentaId } = db
     .prepare(
-      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento);
+    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
@@ -2939,9 +2940,9 @@ app.put('/api/ventas/:id', (req, res) => {
 
   const venta = db
     .prepare(
-      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ?'
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ? AND organizacion_id = ?'
     )
-    .get(ventaId);
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3194,10 +3195,11 @@ app.get('/api/ventas/:id/cobros', (req, res) => {
               cuentas_tesoreria.nombre AS cuenta
        FROM cobros
        JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
-       WHERE cobros.venta_id = ?
+       JOIN ventas ON ventas.id = cobros.venta_id
+       WHERE cobros.venta_id = ? AND ventas.organizacion_id = ?
        ORDER BY cobros.id`
     )
-    .all(Number(req.params.id));
+    .all(Number(req.params.id), req.usuario.organizacion_id);
   res.json(cobros);
 });
 
@@ -3211,9 +3213,9 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
-       FROM ventas WHERE ventas.id = ?`
+       FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
-    .get(ventaId);
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3275,8 +3277,8 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const venta = db
-    .prepare('SELECT ventas.id, ventas.cliente_id FROM ventas WHERE ventas.id = ?')
-    .get(ventaId);
+    .prepare('SELECT ventas.id, ventas.cliente_id FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3335,7 +3337,9 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
-  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3405,7 +3409,9 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
-  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -4031,7 +4037,9 @@ app.post('/api/devoluciones', (req, res) => {
   const { venta_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const ventaId = Number(venta_id);
 
-  const venta = db.prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -4305,9 +4313,10 @@ app.get('/api/compras', soloAdmin, (req, res) => {
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
        FROM compras
        JOIN proveedores ON proveedores.id = compras.proveedor_id
+       WHERE compras.organizacion_id = ?
        ORDER BY compras.id DESC`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(
     compras.map((c) => {
       const total = c.subtotal + c.costo_envio;
@@ -4336,9 +4345,9 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
          FROM compras
          JOIN proveedores ON proveedores.id = compras.proveedor_id
          LEFT JOIN depositos ON depositos.id = compras.deposito_id
-        WHERE compras.id = ?`
+        WHERE compras.id = ? AND compras.organizacion_id = ?`
     )
-    .get(compraId);
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -4449,10 +4458,10 @@ function crearCompra({
 
   const { lastInsertRowid: nuevaCompraId } = db
     .prepare(
-      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento);
+    .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento, organizacion_id);
 
   const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
   // Un producto nuevo nace con costo 0: todavía no entró nada al
@@ -4577,9 +4586,9 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     .prepare(
       `SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, fecha, condicion_pago,
               fecha_vencimiento
-         FROM compras WHERE id = ?`
+         FROM compras WHERE id = ? AND organizacion_id = ?`
     )
-    .get(compraId);
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -4858,7 +4867,9 @@ function confirmarCompra(compraId) {
 app.post('/api/compras/:id/confirmar', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
-  const compra = db.prepare('SELECT id, estado FROM compras WHERE id = ?').get(compraId);
+  const compra = db
+    .prepare('SELECT id, estado FROM compras WHERE id = ? AND organizacion_id = ?')
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5037,8 +5048,10 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
-    .get(compraId);
+    .prepare(
+      'SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5136,8 +5149,10 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ?')
-    .get(compraId);
+    .prepare(
+      'SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5214,8 +5229,8 @@ function aplicarEstadoEnvioCompra(req, compraId, estadoEnvio, totalLote = 1) {
   }
 
   const compra = db
-    .prepare('SELECT id, estado, estado_envio, stock_aplicado FROM compras WHERE id = ?')
-    .get(compraId);
+    .prepare('SELECT id, estado, estado_envio, stock_aplicado FROM compras WHERE id = ? AND organizacion_id = ?')
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     throw new ErrorBulk('Compra no encontrada.', 404);
   }
@@ -5298,10 +5313,11 @@ app.get('/api/compras/:id/pagos', soloAdmin, (req, res) => {
               cuentas_tesoreria.nombre AS cuenta
        FROM pagos
        JOIN cuentas_tesoreria ON cuentas_tesoreria.id = pagos.cuenta_tesoreria_id
-       WHERE pagos.compra_id = ?
+       JOIN compras ON compras.id = pagos.compra_id
+       WHERE pagos.compra_id = ? AND compras.organizacion_id = ?
        ORDER BY pagos.id`
     )
-    .all(Number(req.params.id));
+    .all(Number(req.params.id), req.usuario.organizacion_id);
   res.json(pagos);
 });
 
@@ -5315,9 +5331,9 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE compra_id = compras.id) AS pagado,
               ${SUBQUERY_DEVUELTO_COMPRA} AS devuelto
-       FROM compras WHERE compras.id = ?`
+       FROM compras WHERE compras.id = ? AND compras.organizacion_id = ?`
     )
-    .get(compraId);
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5601,7 +5617,9 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const { compra_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const compraId = Number(compra_id);
 
-  const compra = db.prepare('SELECT id, estado, stock_aplicado, deposito_id FROM compras WHERE id = ?').get(compraId);
+  const compra = db
+    .prepare('SELECT id, estado, stock_aplicado, deposito_id FROM compras WHERE id = ? AND organizacion_id = ?')
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }

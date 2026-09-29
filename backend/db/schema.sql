@@ -227,13 +227,17 @@ CREATE TABLE IF NOT EXISTS proveedores (
 -- venta más adelante no debería mover en silencio un vencimiento ya pactado.
 -- Es lo que permite que el aging de cuentas corrientes mida contra el
 -- vencimiento real y no contra la fecha de la operación.
+-- organizacion_id: siguiente lote del patrón multi-tenant piloteado en
+-- productos/clientes/proveedores (CLAUDE.md §28), sobre la cabecera de venta.
+-- venta_items no suma columna propia: se filtra vía JOIN a esta tabla.
 CREATE TABLE IF NOT EXISTS ventas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id INTEGER NOT NULL REFERENCES clientes(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   condicion_pago TEXT,
-  fecha_vencimiento TEXT
+  fecha_vencimiento TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -347,6 +351,8 @@ CREATE TABLE IF NOT EXISTS devolucion_items (
 -- stock. Es necesario porque las compras viejas (anteriores a esta regla)
 -- sumaban stock al crearse, y si no se distinguieran volverían a sumarlo
 -- al marcarlas como recibidas.
+-- organizacion_id: mismo patrón multi-tenant que ventas (CLAUDE.md §28).
+-- compra_items no suma columna propia: se filtra vía JOIN a esta tabla.
 CREATE TABLE IF NOT EXISTS compras (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
@@ -357,7 +363,8 @@ CREATE TABLE IF NOT EXISTS compras (
   stock_aplicado INTEGER NOT NULL DEFAULT 0,
   -- Mismo par que en ventas, del lado de la deuda con el proveedor.
   condicion_pago TEXT,
-  fecha_vencimiento TEXT
+  fecha_vencimiento TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a

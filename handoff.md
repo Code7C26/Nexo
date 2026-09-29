@@ -4857,8 +4857,96 @@ la base real no se tocó.
    `productos`/`clientes`/`proveedores` como referencia del patrón,
    incluida la parte de autocreación que no había quedado registrada en el
    piloto original.
-2. Preguntarle al usuario si commitea este paso antes de seguir con la
-   próxima tabla.
+2. ~~Preguntarle al usuario si commitea este paso antes de seguir con la
+   próxima tabla.~~ Resuelto en la sesión siguiente (§38): se commiteó
+   primero, como su propio commit, antes de tocar nada nuevo.
 3. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito
    en todas partes donde se agregó).
+
+## 38. Etapa A (multi-empresa) — `ventas` y `compras` (cabecera)
+
+**Objetivo**: siguiente lote del mismo patrón de §37, sobre las dos
+cabeceras transaccionales más centrales. Decisiones tomadas con el usuario
+antes de arrancar: (a) commitear primero el trabajo pendiente de §37, como
+su propio commit; (b) elegir `ventas`/`compras` como siguiente lote en vez
+de los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+`depositos`, `cuentas_tesoreria`, `categorias_gasto`), que necesitan el
+patrón de reconstrucción completa de §34 (su `UNIQUE` es a nivel columna) y
+además cambian la regla de "una predeterminada" de global a por
+organización — quedan para una etapa aparte, más riesgosa; (c) `venta_items`
+y `compra_items` no suman columna propia, se filtran vía `JOIN` a su
+cabecera.
+
+**`backend/db/schema.sql` / `backend/db/index.js`**: mismo patrón exacto que
+§37 — `organizacion_id INTEGER REFERENCES organizaciones(id)` nullable en
+ambas tablas, `ALTER TABLE ADD COLUMN` idempotente, y `'ventas'`/`'compras'`
+se agregaron al mismo loop de backfill que ya recorría
+`productos`/`clientes`/`proveedores`.
+
+**`backend/server.js`**:
+- `crearVenta`/`crearCompra` ya recibían `organizacion_id` desde §37 (lo
+  usaban solo para resolver/crear cliente, proveedor y producto); ahora
+  además lo escriben en el `INSERT INTO ventas`/`INSERT INTO compras`.
+- `GET /api/ventas`, `GET /api/ventas/:id`, `GET /api/compras`,
+  `GET /api/compras/:id`: filtrados por `organizacion_id`.
+- Todos los endpoints que buscan una venta/compra por id para operar sobre
+  ella suman `AND organizacion_id = ?` a esa búsqueda (mismo criterio que
+  `aplicarEdicionProducto` en §37: un id de otra organización da 404, nunca
+  la operación): `PUT /api/ventas/:id`, `GET/POST /api/ventas/:id/cobros`,
+  `POST /api/ventas/:id/facturar`, `POST /api/ventas/:id/anular`,
+  `POST /api/ventas/:id/restaurar`, `PUT /api/compras/:id`,
+  `POST /api/compras/:id/confirmar`, `POST /api/compras/:id/anular`,
+  `POST /api/compras/:id/restaurar`, `aplicarEstadoEnvioCompra` (cubre
+  `PATCH .../estado-envio` y el lote), `GET/POST /api/compras/:id/pagos`.
+- De yapa, se encontraron y corrigieron dos fugas reales que la migración
+  hacía explotables: `POST /api/devoluciones` y
+  `POST /api/devoluciones-proveedor` toman `venta_id`/`compra_id` directo del
+  body y operaban sobre cualquier id sin chequear organización — con
+  `organizacion_id` ya en `ventas`/`compras`, alguien de otra empresa podía
+  adivinar un id secuencial y registrar una devolución sobre una venta/compra
+  ajena. Mismo fix mecánico: se sumó `AND organizacion_id = ?` a esas dos
+  búsquedas puntuales. No se tocó nada más de esos endpoints (las tablas
+  `devoluciones`/`devoluciones_proveedor` en sí siguen sin columna propia,
+  queda para cuando les toque su etapa).
+- Funciones internas que reciben el id ya validado por su caller dentro de la
+  misma transacción (`confirmarCompra`, `aplicarStockCompra`) no se tocaron:
+  no son punto de entrada externo.
+
+**Gap conocido, no corregido en esta etapa** (fuera de alcance, es un
+subsistema aparte): las queries de `/api/resumen/*` y `/api/reportes/*`
+(dashboard, comparación de períodos) agregan `ventas`/`compras`/`gastos`/
+`devoluciones` sin filtrar por organización en ningún lado — hoy siguen
+siendo 100% globales, para cualquier tabla, no solo las de esta etapa.
+Cuando se planifique la etapa de reportes multi-empresa hay que revisarlas
+todas, no es un fix puntual de una o dos queries.
+
+**Verificación**: copia aislada en scratchpad (servidor de prueba en el
+puerto 3911), organización 2 creada a mano (bootstrap de Nexo todavía no
+tiene alta de una segunda empresa por API) con su propio admin, hasheando la
+password con el mismo `scryptSync`/parámetros que usa el servidor. Con una
+venta y una compra activas en la organización 1: `GET /api/ventas` y
+`GET /api/compras` desde la organización 2 devuelven `[]`; pedir por id
+(`GET`, `anular`, `facturar`, `confirmar`, y `POST /api/devoluciones` con el
+`venta_id` de la otra organización) devuelve 404 en todos los casos; la
+organización 1 sigue viendo y operando sus propios datos sin cambios.
+`npm test` verde antes y después. Proceso de prueba matado y copia de
+scratchpad borrada al terminar; la base real no se tocó.
+
+### Qué sigue
+
+1. Presupuestos y facturas son los candidatos naturales del próximo lote
+   (misma familia transaccional); facturas trae una decisión de diseño
+   propia todavía sin resolver: si la numeración correlativa
+   (`idx_facturas_numeracion`, hoy `punto_venta + tipo + letra + numero`
+   global) pasa a ser única por organización o se mantiene global — no
+   asumir una respuesta, preguntarlo antes de tocar ese índice.
+2. Devoluciones, devoluciones a proveedor, gastos, stock/movimientos_stock,
+   tesorería y cuentas corrientes quedan pendientes del mismo patrón
+   (columna en la cabecera/operación que corresponda, no en el detalle).
+3. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa, por el motivo explicado arriba (reconstrucción de
+   tabla + regla de "predeterminada" por organización).
+4. Reportes/resumen (ver "gap conocido" arriba) necesita su propia revisión
+   una vez que las tablas de negocio relevantes tengan la columna.
