@@ -4763,3 +4763,102 @@ secciones nuevas).
 3. Esta sesión no generó commit (fue solo edición de `CLAUDE.md` y de
    este handoff): sigue sin decidirse si `CLAUDE.md`/`handoff.md` se
    commitean junto con la etapa 35 pendiente o por separado.
+
+## 37. Etapa A (multi-empresa) — `productos`, `clientes` y `proveedores`
+
+**Objetivo**: sentar el patrón end-to-end de aislamiento multi-tenant
+(CLAUDE.md §28) y cubrir con él las tres primeras tablas de negocio, antes
+de replicarlo en el resto de las ~35 que faltan. Arrancó como piloto de
+`productos` solamente; el usuario pidió seguir "lo más que se pueda" en la
+misma sesión, así que se extendió a `clientes` y `proveedores`, incluyendo
+todos los caminos de "autocrear por nombre" que ya existían en ventas,
+compras, presupuestos y facturas — sin esto último, cualquier cliente/
+proveedor/producto creado al vuelo desde esos flujos hubiera quedado con
+`organizacion_id` NULL y habría desaparecido de los listados ya filtrados
+(regresión real, no una mejora pendiente). Sigue sin ser la Etapa A
+completa: faltan ~35 tablas más.
+
+**`backend/db/schema.sql`**: `productos`, `clientes` y `proveedores` ganan
+`organizacion_id INTEGER REFERENCES organizaciones(id)`, nullable a
+propósito (todavía no hay UI para elegir organización en el alta, y el
+resto de las tablas no la tiene). Son referencias hacia adelante en el
+archivo (`organizaciones` se define más abajo) — SQLite lo permite sin
+problema, no valida la tabla referenciada al momento del `CREATE TABLE`.
+
+**`backend/db/index.js`**: migración aditiva idempotente para bases
+existentes, mismo patrón que las anteriores (`PRAGMA table_info` +
+`ALTER TABLE ADD COLUMN`) para las tres tablas. El backfill se generalizó a
+un loop:
+```js
+for (const tabla of ['productos', 'clientes', 'proveedores']) {
+  db.exec(
+    `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
+      WHERE organizacion_id IS NULL`
+  );
+}
+```
+colocado DESPUÉS del seed de `organizaciones` (que crea la primera fila más
+abajo en el archivo): en una base nueva, `organizaciones` todavía está
+vacía en el punto donde corre la migración de columnas. Re-ejecutable (solo
+toca filas en `NULL`).
+
+**`backend/server.js`**:
+- `sesionValida()` trae `usuarios.organizacion_id` en el SELECT, disponible
+  como `req.usuario.organizacion_id` en cada request autenticado.
+- `GET/POST/PATCH` de `productos`, `clientes` y `proveedores` (incluido
+  `GET /:id`) filtran/asignan por `req.usuario.organizacion_id`. Un id de
+  otra organización da 404 igual que "no existe" (regla dura de §28:
+  "ninguna consulta puede cruzar datos de dos empresas").
+- `aplicarEdicionProducto` (PATCH singular y bulk de productos): mismo
+  filtro en el SELECT que busca el producto.
+- **Caminos de autocreación por nombre**, todos actualizados para que la
+  fila nueva nazca con el `organizacion_id` correcto en vez de NULL:
+  - `resolverCliente(cliente, cliente_id, organizacionId)` (ahora recibe la
+    organización como tercer parámetro): usado por presupuestos
+    (POST/PUT), por `POST /api/facturas` y por `PUT /api/ventas/:id`.
+  - `crearVenta({..., organizacion_id})`: delega en `resolverCliente`.
+    Actualizados sus 3 call sites (`POST /api/ventas`, conversión de
+    presupuesto, ejecución del asistente).
+  - `crearCompra({..., organizacion_id})`: resuelve/crea proveedor y
+    producto con la organización. Actualizados sus 2 call sites (`POST
+    /api/compras`, ejecución del asistente).
+  - `PUT /api/compras/:id`: tiene su propia lógica inline (no pasa por
+    `crearCompra`) para resolver/crear proveedor y producto por nombre —
+    se actualizó por separado, con el mismo criterio.
+- No se tocaron los endpoints de atributos/variantes de producto, ni
+  ninguna otra tabla de negocio (stock, tesorería, gastos...): queda para
+  las próximas sesiones, repitiendo este mismo patrón. Las tablas `ventas`,
+  `compras`, `presupuestos` y `facturas` en sí (las cabeceras) tampoco
+  tienen la columna todavía — solo se les enseñó a asignarla correctamente
+  cuando autocrean un cliente/proveedor/producto.
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3002 (nunca el 3000 real ni la base real; el proceso viejo quedó
+escuchando en un reinicio y hubo que matarlo por PID con `taskkill` antes
+del segundo arranque — `pkill` no lo encontró en este entorno Windows).
+Cubierto por HTTP: `GET/POST/PATCH` de productos/clientes/proveedores;
+venta nueva con cliente por nombre (con y sin stock disponible); compra
+nueva con proveedor y producto por nombre; `PATCH
+/api/compras/:id/estado-envio` a `recibido` para dar stock real antes de
+vender; presupuesto y factura suelta con cliente por nombre; `PUT
+/api/compras/:id` reemplazando proveedor y producto por nombres nuevos. En
+todos los casos la fila autocreada apareció en su GET filtrado con
+`organizacion_id: 1`. Idempotencia confirmada reiniciando el proceso: sin
+errores de migración, mismos datos y misma cantidad de productos antes y
+después. `npm test` verde. Datos de prueba solo en la copia de scratchpad;
+la base real no se tocó.
+
+### Qué sigue
+
+1. Replicar el mismo patrón (columna + backfill + filtrado en queries +
+   revisar autocreación por nombre) en el resto de las ~35 tablas de
+   negocio, tabla por tabla o agrupando por dominio (ventas, compras,
+   presupuestos, facturas, stock, tesorería...). Este paso ya deja
+   `productos`/`clientes`/`proveedores` como referencia del patrón,
+   incluida la parte de autocreación que no había quedado registrada en el
+   piloto original.
+2. Preguntarle al usuario si commitea este paso antes de seguir con la
+   próxima tabla.
+3. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito
+   en todas partes donde se agregó).

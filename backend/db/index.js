@@ -417,6 +417,31 @@ if (!productosColumnas.some((col) => col.name === 'margen_objetivo')) {
   db.exec('ALTER TABLE productos ADD COLUMN margen_objetivo REAL');
 }
 
+// productos.organizacion_id: primera tabla de negocio (de ~38) en sumar la
+// columna que prepara Nexo para multi-tenant (CLAUDE.md §28). Nullable a
+// propósito, no NOT NULL: no hay todavía UI para elegir organización en el
+// alta, y el resto de las tablas todavía no tiene esta columna — pasa a
+// obligatoria recién cuando el sistema sea multi-tenant de punta a punta.
+// El backfill (re-ejecutable, solo toca filas en NULL) va más abajo, después
+// de que se siembra la fila de `organizaciones`, porque en una base nueva
+// esa tabla todavía está vacía en este punto del arranque.
+if (!productosColumnas.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE productos ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
+// clientes.organizacion_id / proveedores.organizacion_id: mismo patrón que
+// productos.organizacion_id de arriba, mismos motivos (Etapa A, CLAUDE.md
+// §28). El backfill de las tres columnas se hace en un solo bloque más
+// abajo, después de que se siembra la fila de `organizaciones`.
+const clientesColumnasOrg = db.prepare('PRAGMA table_info(clientes)').all();
+if (!clientesColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+const proveedoresColumnasOrg = db.prepare('PRAGMA table_info(proveedores)').all();
+if (!proveedoresColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE proveedores ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1147,6 +1172,17 @@ if (cuentasCount === 0) {
 const { count: orgCount } = db.prepare('SELECT COUNT(*) AS count FROM organizaciones').get();
 if (orgCount === 0) {
   db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
+}
+
+// Backfill de organizacion_id en productos/clientes/proveedores (ver los
+// ALTER TABLE más arriba): recién acá hay garantizada una fila en
+// `organizaciones`. Re-ejecutable, solo toca filas que todavía no tienen
+// organización asignada.
+for (const tabla of ['productos', 'clientes', 'proveedores']) {
+  db.exec(
+    `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
+      WHERE organizacion_id IS NULL`
+  );
 }
 
 // listas_precios: mismo criterio que cuentas_tesoreria/organizaciones arriba

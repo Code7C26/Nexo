@@ -117,7 +117,7 @@ function sesionValida(token) {
   const fila = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.rol,
-              usuarios.debe_cambiar_password
+              usuarios.debe_cambiar_password, usuarios.organizacion_id
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
         WHERE sesiones.token = ?
@@ -585,14 +585,19 @@ const SELECT_CLIENTE_CON_TOTALES = `
                     WHERE saldo_cc_clientes.cliente_id = clientes.id), 0) AS deuda
     FROM clientes`;
 
+// Filtro por organizacion_id (CLAUDE.md §28), mismo patrón que productos.
 app.get('/api/clientes', (req, res) => {
-  const clientes = db.prepare(`${SELECT_CLIENTE_CON_TOTALES} ORDER BY clientes.nombre`).all();
+  const clientes = db
+    .prepare(`${SELECT_CLIENTE_CON_TOTALES} WHERE clientes.organizacion_id = ? ORDER BY clientes.nombre`)
+    .all(req.usuario.organizacion_id);
   res.json(clientes);
 });
 
 app.get('/api/clientes/:id', (req, res) => {
   const clienteId = Number(req.params.id);
-  const cliente = db.prepare(`${SELECT_CLIENTE_CON_TOTALES} WHERE clientes.id = ?`).get(clienteId);
+  const cliente = db
+    .prepare(`${SELECT_CLIENTE_CON_TOTALES} WHERE clientes.id = ? AND clientes.organizacion_id = ?`)
+    .get(clienteId, req.usuario.organizacion_id);
   if (!cliente) {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
@@ -658,8 +663,8 @@ app.post('/api/clientes', (req, res) => {
 
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       nombre.trim(),
@@ -669,14 +674,17 @@ app.post('/api/clientes', (req, res) => {
       documento ?? null,
       notas ?? null,
       listaPrecioId,
-      condicionPagoHabitual
+      condicionPagoHabitual,
+      req.usuario.organizacion_id
     );
   res.status(201).json({ id: lastInsertRowid });
 });
 
 app.patch('/api/clientes/:id', (req, res) => {
   const clienteId = Number(req.params.id);
-  const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
+  const cliente = db
+    .prepare('SELECT * FROM clientes WHERE id = ? AND organizacion_id = ?')
+    .get(clienteId, req.usuario.organizacion_id);
   if (!cliente) {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
@@ -846,11 +854,7 @@ app.post('/api/facturas', (req, res) => {
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const facturaId = withTransaction(() => {
-    let clienteRow = db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
-    if (!clienteRow) {
-      const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
-      clienteRow = { id: lastInsertRowid };
-    }
+    const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
 
     const numero = siguienteNumero(puntoVentaFinal, tipoFinal, letraFinal);
     const { lastInsertRowid } = db
@@ -1235,8 +1239,13 @@ function decorarProducto(p, precios = {}) {
   };
 }
 
+// Filtro por organizacion_id: primer punto del sistema que aplica el
+// aislamiento multi-tenant (CLAUDE.md §28). productos es la tabla piloto;
+// otros GET de negocio todavía no filtran, se van sumando etapa por etapa.
 app.get('/api/productos', (req, res) => {
-  const productos = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all();
+  const productos = db
+    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
+    .all(req.usuario.organizacion_id);
   const preciosPorProducto = obtenerPreciosPorProducto();
   res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id])));
 });
@@ -1311,8 +1320,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     // primera compra que lo incluya.
     ({ lastInsertRowid } = db
       .prepare(
-        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -1322,7 +1331,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         normalizarPrecio(stock_minimo),
         normalizarStockMaximo(stock_maximo),
         normalizarCategoriaId(categoria_id),
-        normalizarMargenObjetivo(margen_objetivo)
+        normalizarMargenObjetivo(margen_objetivo),
+        req.usuario.organizacion_id
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -1379,9 +1389,14 @@ function esAjustePorcentaje(valor) {
 // puntual (o sobre precio_venta como fallback si el producto todavía no
 // tiene precio propio en esa lista).
 function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
+  // organizacion_id en el WHERE (no solo en el INSERT del alta): CLAUDE.md
+  // §28 exige que ninguna consulta cruce datos de dos empresas, así que un
+  // id de otra organización tiene que dar 404, igual que "no existe".
   const producto = db
-    .prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo FROM productos WHERE id = ?')
-    .get(productoId);
+    .prepare(
+      'SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo FROM productos WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     throw new ErrorBulk('Producto no encontrado.', 404);
   }
@@ -2047,16 +2062,19 @@ const SELECT_PROVEEDOR_CON_TOTALES = `
                     WHERE saldo_cc_proveedores.proveedor_id = proveedores.id), 0) AS deuda
     FROM proveedores`;
 
+// Filtro por organizacion_id (CLAUDE.md §28), mismo patrón que clientes.
 app.get('/api/proveedores', (req, res) => {
-  const proveedores = db.prepare(`${SELECT_PROVEEDOR_CON_TOTALES} ORDER BY proveedores.nombre`).all();
+  const proveedores = db
+    .prepare(`${SELECT_PROVEEDOR_CON_TOTALES} WHERE proveedores.organizacion_id = ? ORDER BY proveedores.nombre`)
+    .all(req.usuario.organizacion_id);
   res.json(proveedores);
 });
 
 app.get('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
   const proveedor = db
-    .prepare(`${SELECT_PROVEEDOR_CON_TOTALES} WHERE proveedores.id = ?`)
-    .get(proveedorId);
+    .prepare(`${SELECT_PROVEEDOR_CON_TOTALES} WHERE proveedores.id = ? AND proveedores.organizacion_id = ?`)
+    .get(proveedorId, req.usuario.organizacion_id);
   if (!proveedor) {
     return res.status(404).json({ error: 'Proveedor no encontrado.' });
   }
@@ -2108,8 +2126,8 @@ app.post('/api/proveedores', (req, res) => {
 
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       String(nombre).trim(),
@@ -2118,7 +2136,8 @@ app.post('/api/proveedores', (req, res) => {
       direccion ?? null,
       documento ?? null,
       notas ?? null,
-      condicionPagoHabitual
+      condicionPagoHabitual,
+      req.usuario.organizacion_id
     );
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -2127,7 +2146,9 @@ app.patch('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
   const { nombre, email, telefono, direccion, documento, notas, condicion_pago } = req.body;
 
-  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ?').get(proveedorId);
+  const proveedor = db
+    .prepare('SELECT * FROM proveedores WHERE id = ? AND organizacion_id = ?')
+    .get(proveedorId, req.usuario.organizacion_id);
   if (!proveedor) {
     return res.status(404).json({ error: 'Proveedor no encontrado.' });
   }
@@ -2758,17 +2779,22 @@ function validarStockDisponible(items, depositoId) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
-function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento }) {
-  // Si el frontend ya sabe qué cliente es (lo eligió de la lista), usa
-  // su id directamente: evita crear un duplicado por una diferencia de
-  // tipeo. Si no, se resuelve por nombre y se crea si no existe.
-  let clienteRow = cliente_id
-    ? db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id)
-    : db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
-  if (!clienteRow) {
-    const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
-    clienteRow = { id: lastInsertRowid };
-  }
+function crearVenta({
+  cliente,
+  cliente_id,
+  items,
+  fecha,
+  lista_precio_id,
+  deposito_id,
+  condicion_pago,
+  fecha_vencimiento,
+  organizacion_id
+}) {
+  // Resuelve el cliente igual que resolverCliente (presupuestos): id
+  // directo si ya se eligió de la lista, si no por nombre, creándolo si no
+  // existe. organizacion_id es obligatorio (CLAUDE.md §28): un cliente
+  // resuelto o creado acá queda siempre en la organización de quien vende.
+  const clienteRow = resolverCliente(cliente, cliente_id, organizacion_id);
 
   // lista_precio_id es NULLABLE a propósito (CLAUDE.md §18 y §8): NULL
   // significa "se hizo con la predeterminada de ese momento", no una lista
@@ -2883,7 +2909,8 @@ app.post('/api/ventas', (req, res) => {
         lista_precio_id,
         deposito_id,
         condicion_pago,
-        fecha_vencimiento
+        fecha_vencimiento,
+        organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
       return id;
@@ -3084,13 +3111,7 @@ app.put('/api/ventas/:id', (req, res) => {
     }
 
     // 2) Reemplazar cliente, fecha e items.
-    let clienteRow = cliente_id
-      ? db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id)
-      : db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
-    if (!clienteRow) {
-      const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
-      clienteRow = { id: lastInsertRowid };
-    }
+    const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
     db.prepare(
       `UPDATE ventas
           SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ?,
@@ -3574,12 +3595,17 @@ function guardarItemsPresupuesto(presupuestoId, items) {
 // Resuelve el cliente igual que la venta: si el frontend ya sabe cuál es
 // se usa su id (evita duplicados por diferencias de tipeo), si no se busca
 // por nombre y se crea si no existe.
-function resolverCliente(cliente, cliente_id) {
+// organizacionId es obligatorio: un cliente resuelto por nombre o creado
+// acá tiene que quedar en la organización de quien hace el pedido (CLAUDE.md
+// §28), igual que el resto de las altas de clientes/proveedores/productos.
+function resolverCliente(cliente, cliente_id, organizacionId) {
   let clienteRow = cliente_id
-    ? db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id)
-    : db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
+    ? db.prepare('SELECT id FROM clientes WHERE id = ? AND organizacion_id = ?').get(cliente_id, organizacionId)
+    : db.prepare('SELECT id FROM clientes WHERE nombre = ? AND organizacion_id = ?').get(cliente, organizacionId);
   if (!clienteRow) {
-    const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO clientes (nombre, organizacion_id) VALUES (?, ?)')
+      .run(cliente, organizacionId);
     clienteRow = { id: lastInsertRowid };
   }
   return clienteRow;
@@ -3598,7 +3624,7 @@ app.post('/api/presupuestos', (req, res) => {
   }
 
   const presupuestoId = withTransaction(() => {
-    const clienteRow = resolverCliente(cliente, cliente_id);
+    const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
 
     const columnas = ['cliente_id', 'vencimiento', 'notas', 'lista_precio_id'];
     const valores = [clienteRow.id, vencimiento || null, notas?.trim() || null, listaPrecioId];
@@ -3655,7 +3681,7 @@ app.put('/api/presupuestos/:id', (req, res) => {
   }
 
   withTransaction(() => {
-    const clienteRow = resolverCliente(cliente, cliente_id);
+    const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
 
     db.prepare(
       `UPDATE presupuestos
@@ -3766,7 +3792,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       items,
       fecha: null,
       deposito_id: depositoConversion,
-      lista_precio_id: presupuesto.lista_precio_id
+      lista_precio_id: presupuesto.lista_precio_id,
+      organizacion_id: req.usuario.organizacion_id
     });
     db.prepare("UPDATE presupuestos SET estado = 'convertido', venta_id = ? WHERE id = ?").run(
       nuevaVentaId,
@@ -4386,10 +4413,25 @@ function prorratearEnvio(items, costoEnvio) {
 // que crearVenta, asume que ya se validó todo y que se la llama DENTRO de
 // una transacción — así el asistente por texto (§21) puede encadenar
 // crear+confirmar+recibir en una sola transacción atómica.
-function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condicion_pago, fecha_vencimiento }) {
-  let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
+function crearCompra({
+  proveedor,
+  items,
+  costoEnvio,
+  fecha,
+  deposito_id,
+  condicion_pago,
+  fecha_vencimiento,
+  organizacion_id
+}) {
+  // organizacion_id es obligatorio (CLAUDE.md §28): proveedor y productos
+  // resueltos/creados acá quedan siempre en la organización de quien compra.
+  let proveedorRow = db
+    .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
+    .get(proveedor, organizacion_id);
   if (!proveedorRow) {
-    const { lastInsertRowid } = db.prepare('INSERT INTO proveedores (nombre) VALUES (?)').run(proveedor);
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)')
+      .run(proveedor, organizacion_id);
     proveedorRow = { id: lastInsertRowid };
   }
 
@@ -4412,10 +4454,12 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
     )
     .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento);
 
-  const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ?');
+  const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
   // Un producto nuevo nace con costo 0: todavía no entró nada al
   // depósito, su costo lo va a fijar la recepción de esta compra.
-  const crearProducto = db.prepare('INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)');
+  const crearProducto = db.prepare(
+    'INSERT INTO productos (nombre, precio_costo, precio_venta, organizacion_id) VALUES (?, 0, 0, ?)'
+  );
   const insertItem = db.prepare(
     `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
      VALUES (?, ?, ?, ?, ?, ?)`
@@ -4441,9 +4485,9 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
   );
 
   for (const item of itemsProrrateados) {
-    let productoRow = buscarProducto.get(item.producto);
+    let productoRow = buscarProducto.get(item.producto, organizacion_id);
     if (!productoRow) {
-      const { lastInsertRowid } = crearProducto.run(item.producto);
+      const { lastInsertRowid } = crearProducto.run(item.producto, organizacion_id);
       productoRow = { id: lastInsertRowid };
     }
     if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -4500,7 +4544,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
         fecha,
         deposito_id,
         condicion_pago,
-        fecha_vencimiento
+        fecha_vencimiento,
+        organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, {
         accion: 'crear',
@@ -4666,11 +4711,13 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     }
 
     // 2) Reemplazar proveedor, fecha, envío e items.
-    let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
+    let proveedorRow = db
+      .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
+      .get(proveedor, req.usuario.organizacion_id);
     if (!proveedorRow) {
       const { lastInsertRowid } = db
-        .prepare('INSERT INTO proveedores (nombre) VALUES (?)')
-        .run(proveedor);
+        .prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)')
+        .run(proveedor, req.usuario.organizacion_id);
       proveedorRow = { id: lastInsertRowid };
     }
     db.prepare(
@@ -4690,9 +4737,9 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
 
     db.prepare('DELETE FROM compra_items WHERE compra_id = ?').run(compraId);
 
-    const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ?');
+    const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
     const crearProducto = db.prepare(
-      'INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)'
+      'INSERT INTO productos (nombre, precio_costo, precio_venta, organizacion_id) VALUES (?, 0, 0, ?)'
     );
     const insertItem = db.prepare(
       `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
@@ -4708,9 +4755,9 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     const productosNuevos = [];
     const variantesNuevas = [];
     for (const item of itemsProrrateados) {
-      let productoRow = buscarProducto.get(item.producto);
+      let productoRow = buscarProducto.get(item.producto, req.usuario.organizacion_id);
       if (!productoRow) {
-        const { lastInsertRowid } = crearProducto.run(item.producto);
+        const { lastInsertRowid } = crearProducto.run(item.producto, req.usuario.organizacion_id);
         productoRow = { id: lastInsertRowid };
       }
       if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -7751,7 +7798,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           cliente_id: clienteId,
           items,
           fecha: propuesta.fecha,
-          deposito_id: depositoAsistente
+          deposito_id: depositoAsistente,
+          organizacion_id: req.usuario.organizacion_id
         });
         auditar(req, {
           accion: 'crear',
@@ -7815,7 +7863,13 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     let compraId;
     try {
       compraId = withTransaction(() => {
-        const nuevaCompraId = crearCompra({ proveedor: proveedorNombre, items, costoEnvio, fecha: propuesta.fecha });
+        const nuevaCompraId = crearCompra({
+          proveedor: proveedorNombre,
+          items,
+          costoEnvio,
+          fecha: propuesta.fecha,
+          organizacion_id: req.usuario.organizacion_id
+        });
         confirmarCompra(nuevaCompraId);
         aplicarStockCompra(nuevaCompraId);
         auditar(req, {

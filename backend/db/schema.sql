@@ -3,6 +3,10 @@
 -- registrar una venta con un nombre nuevo. En el segundo caso solo tiene
 -- nombre y el resto se completa después desde su ficha: por eso todos
 -- los campos de contacto son opcionales.
+-- organizacion_id: segunda tabla (de ~38) en sumar la columna multi-tenant
+-- del patrón piloteado en `productos` (CLAUDE.md §28). Nullable por el mismo
+-- motivo: referencia hacia adelante a `organizaciones` (definida más abajo
+-- en este archivo, SQLite no valida la tabla referenciada al crear).
 CREATE TABLE IF NOT EXISTS clientes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -10,7 +14,8 @@ CREATE TABLE IF NOT EXISTS clientes (
   telefono TEXT,
   direccion TEXT,
   documento TEXT,
-  notas TEXT
+  notas TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- estado solo tiene sentido para una factura SUELTA (sin venta_id): no
@@ -100,6 +105,13 @@ CREATE TABLE IF NOT EXISTS depositos (
 -- objetivo cargado no hay nada contra qué comparar. Cuando está cargado, se
 -- compara contra el margen real de la lista predeterminada (precio_venta),
 -- solo a modo informativo/alerta, nunca sugiere ni fuerza un precio.
+-- organizacion_id es la primera columna multi-tenant del sistema (CLAUDE.md
+-- §28): `productos` es la tabla piloto para probar el patrón (columna +
+-- backfill + filtrado en server.js) antes de replicarlo en el resto de las
+-- tablas de negocio. Nullable a propósito, todavía no NOT NULL: la
+-- referencia a `organizaciones` es una referencia hacia adelante en este
+-- archivo (SQLite lo permite sin problema, no valida la tabla referenciada
+-- al momento del CREATE TABLE).
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -110,7 +122,8 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_minimo REAL NOT NULL DEFAULT 0,
   stock_maximo REAL,
   categoria_id INTEGER REFERENCES categorias(id),
-  margen_objetivo REAL
+  margen_objetivo REAL,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -192,6 +205,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_variante_precios_unico
 -- una compra con un nombre nuevo. En ese segundo caso solo tiene nombre y
 -- el resto se completa después desde su ficha, así que todo el contacto
 -- es opcional.
+-- organizacion_id: mismo patrón multi-tenant que clientes/productos
+-- (CLAUDE.md §28).
 CREATE TABLE IF NOT EXISTS proveedores (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -199,7 +214,8 @@ CREATE TABLE IF NOT EXISTS proveedores (
   telefono TEXT,
   direccion TEXT,
   documento TEXT,
-  notas TEXT
+  notas TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- condicion_pago / fecha_vencimiento: el plazo pactado con el cliente y la
