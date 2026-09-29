@@ -44,11 +44,20 @@ CREATE TABLE IF NOT EXISTS facturas (
   tipo TEXT NOT NULL DEFAULT 'factura' CHECK (tipo IN ('factura', 'nota_credito', 'nota_debito')),
   letra TEXT NOT NULL DEFAULT 'B' CHECK (letra IN ('A', 'B', 'C')),
   punto_venta INTEGER NOT NULL DEFAULT 1,
-  -- Correlativo por (punto_venta, tipo, letra): cada combinación tiene su
-  -- propia numeración, como en la realidad. NULL en la definición de acá
-  -- porque en una base nueva lo pone la aplicación al emitir, nunca un
-  -- default fijo (no hay forma de que SQLite calcule "el siguiente" solo).
-  numero INTEGER
+  -- Correlativo por (organizacion_id, punto_venta, tipo, letra): cada
+  -- combinación tiene su propia numeración, como en la realidad. NULL en la
+  -- definición de acá porque en una base nueva lo pone la aplicación al
+  -- emitir, nunca un default fijo (no hay forma de que SQLite calcule "el
+  -- siguiente" solo).
+  numero INTEGER,
+  -- organizacion_id: cuarta cabecera transaccional (de ~38 tablas) en sumar
+  -- la columna multi-tenant del patrón piloteado en `productos` (CLAUDE.md
+  -- §28). Nullable por el mismo motivo que el resto: referencia hacia
+  -- adelante a `organizaciones` (definida más abajo en este archivo). Cada
+  -- organización es un negocio con su propio CUIT, así que la numeración de
+  -- comprobantes también pasa a ser por organización (ver `idx_facturas_numeracion`
+  -- en db/index.js).
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 -- venta_id se agrega por migración en db/index.js (ver ahí el porqué).
 
@@ -279,7 +288,11 @@ CREATE TABLE IF NOT EXISTS presupuestos (
     CHECK (estado IN ('borrador', 'enviado', 'aceptado', 'rechazado', 'convertido'))
     DEFAULT 'borrador',
   venta_id INTEGER REFERENCES ventas(id),
-  notas TEXT
+  notas TEXT,
+  -- organizacion_id: mismo patrón multi-tenant que facturas/ventas/compras
+  -- (CLAUDE.md §28), nullable por el mismo motivo (referencia hacia
+  -- adelante a `organizaciones`).
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- A diferencia de venta_items, acá NO hay costo_unitario_historico: un

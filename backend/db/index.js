@@ -68,6 +68,8 @@ if (!facturasColumnas.some((col) => col.name === 'tipo')) {
 // tiene su propia serie. El índice es la garantía real de que no se
 // repite un número — calcular MAX(numero)+1 y después insertar no es
 // atómico, así que dos facturaciones simultáneas podrían pedir el mismo.
+// Se migra a incluir organizacion_id más abajo (Etapa A, después de que esa
+// columna existe en `facturas`), ver ahí el motivo.
 db.exec(
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_facturas_numeracion ON facturas(punto_venta, tipo, letra, numero)'
 );
@@ -453,6 +455,35 @@ if (!ventasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
 const comprasColumnasOrg = db.prepare('PRAGMA table_info(compras)').all();
 if (!comprasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE compras ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
+// presupuestos.organizacion_id / facturas.organizacion_id: siguiente lote del
+// mismo patrón (Etapa A, CLAUDE.md §28), sobre la misma familia
+// transaccional. presupuesto_items no suma columna propia: se filtra vía
+// JOIN a su cabecera, igual que venta_items/compra_items.
+const presupuestosColumnasOrg = db.prepare('PRAGMA table_info(presupuestos)').all();
+if (!presupuestosColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE presupuestos ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+const facturasColumnasOrg = db.prepare('PRAGMA table_info(facturas)').all();
+if (!facturasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE facturas ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
+// idx_facturas_numeracion pasa a incluir organizacion_id: cada organización
+// es un negocio con su propio CUIT (CLAUDE.md §28/§33), así que no comparte
+// correlativo fiscal con otra. Reemplaza la versión anterior (creada más
+// arriba, sin esta columna) dropeándola y recreándola — a diferencia de un
+// CHECK sobre una columna (CLAUDE.md §34), un índice no necesita reconstruir
+// la tabla completa. Se hace acá, recién después de que la columna existe.
+const indiceNumeracionActual = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_facturas_numeracion'")
+  .get();
+if (indiceNumeracionActual && !indiceNumeracionActual.sql.includes('organizacion_id')) {
+  db.exec('DROP INDEX idx_facturas_numeracion');
+  db.exec(
+    'CREATE UNIQUE INDEX idx_facturas_numeracion ON facturas(organizacion_id, punto_venta, tipo, letra, numero)'
+  );
 }
 
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
@@ -1191,7 +1222,7 @@ if (orgCount === 0) {
 // compras (ver los ALTER TABLE más arriba): recién acá hay garantizada una
 // fila en `organizaciones`. Re-ejecutable, solo toca filas que todavía no
 // tienen organización asignada.
-for (const tabla of ['productos', 'clientes', 'proveedores', 'ventas', 'compras']) {
+for (const tabla of ['productos', 'clientes', 'proveedores', 'ventas', 'compras', 'presupuestos', 'facturas']) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
       WHERE organizacion_id IS NULL`

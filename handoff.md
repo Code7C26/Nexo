@@ -4950,3 +4950,93 @@ scratchpad borrada al terminar; la base real no se tocó.
    tabla + regla de "predeterminada" por organización).
 4. Reportes/resumen (ver "gap conocido" arriba) necesita su propia revisión
    una vez que las tablas de negocio relevantes tengan la columna.
+
+## 39. Etapa A (multi-tenant) — `presupuestos` y `facturas`
+
+**Objetivo**: siguiente lote del mismo patrón de §37/§38, sobre la misma
+familia transaccional. Decisión pendiente que dejaba §38 sobre la numeración
+de comprobantes (`idx_facturas_numeracion`, hoy global por
+`punto_venta+tipo+letra`): se resolvió pasarla a ser **por organización**
+(`organizacion_id` sumado al índice) — cada organización es un negocio con su
+propio CUIT (CLAUDE.md §28/§33), así que no tiene sentido que comparta
+correlativo fiscal con otra.
+
+**`backend/db/schema.sql` / `backend/db/index.js`**: mismo patrón exacto que
+§37/§38 — `organizacion_id INTEGER REFERENCES organizaciones(id)` nullable en
+`presupuestos` y `facturas`, `ALTER TABLE ADD COLUMN` idempotente, y las dos
+tablas se sumaron al mismo loop de backfill que ya recorría
+`productos`/`clientes`/`proveedores`/`ventas`/`compras`. `presupuesto_items`
+no suma columna propia (se filtra vía JOIN a su cabecera, igual que
+`venta_items`/`compra_items`).
+
+Además, `idx_facturas_numeracion` se migró de `(punto_venta, tipo, letra,
+numero)` a `(organizacion_id, punto_venta, tipo, letra, numero)`: un `DROP
+INDEX` + recreación, guardado detrás de un chequeo de idempotencia contra
+`sqlite_master.sql` (si el índice ya incluye `organizacion_id`, no hace
+nada). No hizo falta el rebuild completo de tabla de `CLAUDE.md §34` — ese
+patrón es solo para `CHECK` sobre columnas; un índice se puede rehacer
+directo sin tocar los datos. La migración tiene que correr **después** de
+que la columna `organizacion_id` ya existe en `facturas`, así que el bloque
+quedó ubicado justo debajo del `ALTER TABLE` correspondiente, no en el lugar
+original (más arriba en el archivo) donde el índice se creaba por primera
+vez sin esa columna.
+
+**`backend/server.js`**:
+- `siguienteNumero` ganó un primer parámetro `organizacionId`; sus tres call
+  sites (`POST /api/facturas`, `POST /api/ventas/:id/facturar`,
+  `POST /api/devoluciones/:id/nota-credito`) lo actualizaron.
+- `GET /api/presupuestos`, `GET /api/presupuestos/:id`, `GET /api/facturas`,
+  `GET /api/facturas/:id`: filtrados por `organizacion_id`.
+- `POST /api/presupuestos`, `POST /api/facturas` (suelta),
+  `POST /api/ventas/:id/facturar`, `POST /api/devoluciones/:id/nota-credito`:
+  escriben `organizacion_id` en el `INSERT` correspondiente.
+- `PUT /api/presupuestos/:id`, `PATCH /api/presupuestos/:id/estado`,
+  `POST /api/presupuestos/:id/convertir`: sus `SELECT ... FROM presupuestos
+  WHERE id = ?` ganaron `AND organizacion_id = ?` — un id de otra
+  organización da 404, mismo criterio que el resto de los lookups de §37/§38.
+- Gap real encontrado y cerrado de yapa (mismo criterio que los de §38):
+  `POST /api/presupuestos/:id/convertir` buscaba el presupuesto por id sin
+  filtrar organización antes de convertirlo en venta — alguien podía adivinar
+  el id de un presupuesto ajeno y convertirlo (leyendo su cliente e items,
+  aunque la venta resultante quedara en la organización del atacante). Se
+  cerró con el mismo filtro de arriba.
+- Segundo gap cerrado: `POST /api/devoluciones/:id/nota-credito` buscaba la
+  devolución uniendo con `ventas` pero sin filtrar por
+  `ventas.organizacion_id` — con esa columna ya existiendo desde §38, alguien
+  podía emitir una nota de crédito sobre la devolución de otra empresa
+  adivinando el id. Se sumó `AND ventas.organizacion_id = ?` al JOIN que ya
+  estaba ahí (la tabla `devoluciones` en sí sigue sin columna propia, eso
+  queda para su propia etapa, igual que en §38).
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en el
+puerto 3913 (nunca el 3000 real ni `nexo.db` real), organización 2 creada a
+mano con su propio admin (mismo `scryptSync`/parámetros que el servidor).
+Con un presupuesto, una factura suelta, una venta con devolución y su nota de
+crédito activos en la organización 1: `GET /api/presupuestos` y
+`GET /api/facturas` desde la organización 2 devuelven `[]`; pedir por id
+(`GET`/`PUT`/`PATCH estado`/`POST convertir` de presupuestos, `GET` de
+facturas, `POST nota-credito` sobre la devolución de la organización 1) da
+404 en todos los casos desde la organización 2; la organización 1 sigue
+viendo y operando sus propios datos sin cambios. Numeración verificada
+independiente: la primera factura de la organización 2 salió con `numero: 1`
+pese a que la organización 1 ya tenía su propio número 1 (series separadas,
+confirmado). `npm test` verde. Idempotencia confirmada matando y
+reiniciando el proceso de prueba sobre la misma base ya migrada: sin
+errores, mismos datos, misma numeración. Proceso y copia de scratchpad
+borrados al terminar; la base real no se tocó (`nexo.db` real con mtime sin
+cambios respecto al inicio de la sesión).
+
+### Qué sigue
+
+1. Devoluciones, devoluciones a proveedor, gastos, stock/movimientos_stock,
+   tesorería y cuentas corrientes quedan pendientes del mismo patrón (mismo
+   orden que ya señalaba §38).
+2. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa (reconstrucción de tabla + regla de "predeterminada"
+   por organización).
+3. Reportes/resumen (gap ya señalado en §38) necesita su propia revisión una
+   vez que las tablas de negocio relevantes tengan la columna.
+4. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
+   todas partes donde se agregó).

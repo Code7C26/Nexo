@@ -754,15 +754,19 @@ app.patch('/api/clientes/:id', (req, res) => {
   res.json({ id: clienteId });
 });
 
-// El correlativo es por (punto de venta, tipo, letra): cada combinación
-// tiene su propia serie, como en la realidad. El índice único
-// (db/index.js) es la garantía real contra un choque; esto solo calcula
-// el candidato — tiene que llamarse siempre dentro de la misma
-// transacción que hace el INSERT, para que las dos cosas sean atómicas.
-function siguienteNumero(puntoVenta, tipo, letra) {
+// El correlativo es por (organización, punto de venta, tipo, letra): cada
+// combinación tiene su propia serie, como en la realidad — cada organización
+// es un negocio con su propio CUIT (CLAUDE.md §28/§33), así que no comparte
+// numeración con otra. El índice único (db/index.js) es la garantía real
+// contra un choque; esto solo calcula el candidato — tiene que llamarse
+// siempre dentro de la misma transacción que hace el INSERT, para que las
+// dos cosas sean atómicas.
+function siguienteNumero(organizacionId, puntoVenta, tipo, letra) {
   const { maximo } = db
-    .prepare('SELECT MAX(numero) AS maximo FROM facturas WHERE punto_venta = ? AND tipo = ? AND letra = ?')
-    .get(puntoVenta, tipo, letra);
+    .prepare(
+      'SELECT MAX(numero) AS maximo FROM facturas WHERE organizacion_id = ? AND punto_venta = ? AND tipo = ? AND letra = ?'
+    )
+    .get(organizacionId, puntoVenta, tipo, letra);
   return (maximo ?? 0) + 1;
 }
 
@@ -813,13 +817,17 @@ const SELECT_FACTURA = `
     JOIN clientes ON clientes.id = facturas.cliente_id`;
 
 app.get('/api/facturas', (req, res) => {
-  const facturas = db.prepare(`${SELECT_FACTURA} ORDER BY facturas.id DESC`).all();
+  const facturas = db
+    .prepare(`${SELECT_FACTURA} WHERE facturas.organizacion_id = ? ORDER BY facturas.id DESC`)
+    .all(req.usuario.organizacion_id);
   res.json(facturas.map((f) => ({ ...f, comprobante: comprobante(f) })));
 });
 
 app.get('/api/facturas/:id', (req, res) => {
   const facturaId = Number(req.params.id);
-  const factura = db.prepare(`${SELECT_FACTURA} WHERE facturas.id = ?`).get(facturaId);
+  const factura = db
+    .prepare(`${SELECT_FACTURA} WHERE facturas.id = ? AND facturas.organizacion_id = ?`)
+    .get(facturaId, req.usuario.organizacion_id);
   if (!factura) {
     return res.status(404).json({ error: 'Factura no encontrada.' });
   }
@@ -856,13 +864,23 @@ app.post('/api/facturas', (req, res) => {
   const facturaId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
 
-    const numero = siguienteNumero(puntoVentaFinal, tipoFinal, letraFinal);
+    const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero)
-         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?)`
+        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id)
+         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`
       )
-      .run(clienteRow.id, concepto, neto, condicion, tipoFinal, letraFinal, puntoVentaFinal, numero);
+      .run(
+        clienteRow.id,
+        concepto,
+        neto,
+        condicion,
+        tipoFinal,
+        letraFinal,
+        puntoVentaFinal,
+        numero,
+        req.usuario.organizacion_id
+      );
 
     auditar(req, {
       accion: 'crear',
@@ -3297,13 +3315,24 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
         )
         .get(ventaId);
 
-      const numero = siguienteNumero(puntoVentaFinal, tipoFinal, letraFinal);
+      const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero)
-           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`
+          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id)
+           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?)`
         )
-        .run(venta.cliente_id, `Venta #${ventaId}`, total, condicion, ventaId, tipoFinal, letraFinal, puntoVentaFinal, numero);
+        .run(
+          venta.cliente_id,
+          `Venta #${ventaId}`,
+          total,
+          condicion,
+          ventaId,
+          tipoFinal,
+          letraFinal,
+          puntoVentaFinal,
+          numero,
+          req.usuario.organizacion_id
+        );
 
       auditar(req, {
         accion: 'crear',
@@ -3526,16 +3555,18 @@ function decorarPresupuesto(p, hoy) {
 app.get('/api/presupuestos', (req, res) => {
   const hoy = fechaDeHoy();
   const presupuestos = db
-    .prepare(`${SELECT_PRESUPUESTO} ORDER BY presupuestos.fecha DESC, presupuestos.id DESC`)
-    .all();
+    .prepare(
+      `${SELECT_PRESUPUESTO} WHERE presupuestos.organizacion_id = ? ORDER BY presupuestos.fecha DESC, presupuestos.id DESC`
+    )
+    .all(req.usuario.organizacion_id);
   res.json(presupuestos.map((p) => decorarPresupuesto(p, hoy)));
 });
 
 app.get('/api/presupuestos/:id', (req, res) => {
   const presupuestoId = Number(req.params.id);
   const presupuesto = db
-    .prepare(`${SELECT_PRESUPUESTO} WHERE presupuestos.id = ?`)
-    .get(presupuestoId);
+    .prepare(`${SELECT_PRESUPUESTO} WHERE presupuestos.id = ? AND presupuestos.organizacion_id = ?`)
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3632,8 +3663,14 @@ app.post('/api/presupuestos', (req, res) => {
   const presupuestoId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
 
-    const columnas = ['cliente_id', 'vencimiento', 'notas', 'lista_precio_id'];
-    const valores = [clienteRow.id, vencimiento || null, notas?.trim() || null, listaPrecioId];
+    const columnas = ['cliente_id', 'vencimiento', 'notas', 'lista_precio_id', 'organizacion_id'];
+    const valores = [
+      clienteRow.id,
+      vencimiento || null,
+      notas?.trim() || null,
+      listaPrecioId,
+      req.usuario.organizacion_id
+    ];
     if (fecha) {
       columnas.push('fecha');
       valores.push(fecha);
@@ -3666,8 +3703,8 @@ app.put('/api/presupuestos/:id', (req, res) => {
   const { cliente, cliente_id, items, fecha, vencimiento, notas, lista_precio_id } = req.body;
 
   const presupuesto = db
-    .prepare('SELECT id, estado FROM presupuestos WHERE id = ?')
-    .get(presupuestoId);
+    .prepare('SELECT id, estado FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3719,8 +3756,8 @@ app.patch('/api/presupuestos/:id/estado', (req, res) => {
   const { estado } = req.body;
 
   const presupuesto = db
-    .prepare('SELECT id, estado FROM presupuestos WHERE id = ?')
-    .get(presupuestoId);
+    .prepare('SELECT id, estado FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3757,8 +3794,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
   const presupuestoId = Number(req.params.id);
 
   const presupuesto = db
-    .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ?')
-    .get(presupuestoId);
+    .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -4143,9 +4180,9 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
     .prepare(
       `SELECT devoluciones.id, devoluciones.estado, ventas.cliente_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
-        WHERE devoluciones.id = ?`
+        WHERE devoluciones.id = ? AND ventas.organizacion_id = ?`
     )
-    .get(devolucionId);
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -4165,13 +4202,23 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
   let facturaId;
   try {
     facturaId = withTransaction(() => {
-      const numero = siguienteNumero(puntoVentaFinal, 'nota_credito', letraFinal);
+      const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, 'nota_credito', letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero)
-           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?)`
+          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id)
+           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?)`
         )
-        .run(devolucion.cliente_id, `Devolución #${devolucionId}`, total, condicion || 'efectivo', devolucionId, letraFinal, puntoVentaFinal, numero);
+        .run(
+          devolucion.cliente_id,
+          `Devolución #${devolucionId}`,
+          total,
+          condicion || 'efectivo',
+          devolucionId,
+          letraFinal,
+          puntoVentaFinal,
+          numero,
+          req.usuario.organizacion_id
+        );
       auditar(req, {
         accion: 'crear',
         entidad: 'factura',
