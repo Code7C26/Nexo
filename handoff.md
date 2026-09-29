@@ -5112,3 +5112,86 @@ respecto al inicio de la sesión).
 4. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
    todas partes donde se agregó).
+
+## 41. Etapa A (multi-tenant) — `gastos`
+
+**Objetivo**: siguiente ítem de la lista que dejaba pendiente §40 ("Gastos,
+stock/movimientos_stock, tesorería y cuentas corrientes"). Mismo patrón
+exacto que las etapas anteriores, sobre `gastos`. A diferencia de
+`devoluciones`/`devoluciones_proveedor` (que derivan la organización de su
+venta/compra padre), `gastos` no cuelga de una cabecera obligatoria —
+`proveedor_id` es opcional — así que `organizacion_id` se completa siempre
+desde `req.usuario.organizacion_id` en el momento del alta, nunca por JOIN.
+
+**`backend/db/schema.sql` / `backend/db/index.js`**: `organizacion_id INTEGER
+REFERENCES organizaciones(id)` nullable en `gastos`, `ALTER TABLE ADD COLUMN`
+idempotente ubicado junto al resto de los bloques de `organizacion_id`
+(después del de `devoluciones`/`devoluciones_proveedor`), y `gastos` sumada
+al mismo loop de backfill que ya recorría el resto de las tablas migradas.
+
+**`backend/server.js`**:
+- `GET /api/gastos`: filtrado por `organizacion_id`.
+- `crearGasto(...)` gana un parámetro `organizacionId` que se escribe en el
+  `INSERT INTO gastos`. Se llama desde dos lugares — `POST /api/gastos`
+  (alta manual) y el confirmador de operaciones del asistente de IA
+  (`tipo === 'gasto'`, §21/§36) — los dos ahora pasan
+  `req.usuario.organizacion_id`.
+- `PUT /api/gastos/:id`, `POST /api/gastos/:id/anular`,
+  `POST /api/gastos/:id/restaurar`: sus `SELECT ... WHERE id = ?` ganaron
+  `AND organizacion_id = ?`.
+- Gap real encontrado y cerrado (mismo tipo que en §38/§39/§40): como
+  `gastos` todavía no tenía columna propia, `GET /api/gastos` **no tenía
+  ningún filtro** y devolvía los gastos de todas las organizaciones sin
+  distinción; `PUT`, `anular` y `restaurar` tampoco filtraban, así que
+  alguien podía adivinar un id secuencial y editar, anular o restaurar el
+  gasto de otra empresa. Se cerró sumando el filtro correspondiente a cada
+  uno, listados arriba. El alta desde el asistente de IA tenía el mismo
+  problema (no pasaba `organizacion_id` al insert) y se cerró en el mismo
+  lote.
+- No se tocó `insertarMovimientoGasto` ni `movimientos_tesoreria`: quedan
+  para la etapa "tesorería" completa (ver "Qué sigue" abajo).
+
+**Gaps que quedan fuera a propósito**:
+- `movimientos_tesoreria` sigue sin `organizacion_id` — es la etapa
+  "tesorería" completa aparte, con ~9 sitios de `INSERT` distintos (cobro,
+  pago, devolución, devolución a proveedor, manual, transferencia, gasto).
+  Incluye que el egreso que genera cada gasto (`insertarMovimientoGasto`) no
+  quedó filtrado ni marcado con organización en esta tanda.
+- `cuentas_tesoreria` y `categorias_gasto` siguen como catálogos globales
+  (`UNIQUE(nombre)`) — misma etapa aparte ya anotada en §39/§40.
+- `SQL_RESULTADO_GASTOS` (dashboard/resultado del período) sigue sin filtrar
+  por organización — mismo gap ya trackeado como "Reportes/resumen" en
+  §38/§39/§40.
+
+**Verificación**: copia aislada en scratchpad, servidor de prueba en un
+puerto nuevo (nunca el 3000 real ni `nexo.db` real), organización 2 creada a
+mano con su propio admin (mismo `scryptSync`/parámetros que el servidor).
+Con un gasto activo cargado en la organización 1: `GET /api/gastos` desde la
+organización 2 devuelve `[]`; `PUT`, `anular` y `restaurar` sobre ese id
+desde la organización 2 dan 404 en los tres casos. La organización 1 sigue
+pudiendo editar, anular y restaurar su propio gasto sin cambios de
+comportamiento. `npm test` verde antes y después. Idempotencia confirmada
+matando y reiniciando el proceso de prueba sobre la misma base ya migrada:
+sin errores. Proceso y copia de scratchpad borrados al terminar; no existe
+`nexo.db` real en esta máquina, así que no hay riesgo de haberlo tocado.
+
+### Qué sigue
+
+1. `stock`/`movimientos_stock`, tesorería (`movimientos_tesoreria`, `cobros`,
+   `pagos`) y cuentas corrientes (`movimientos_cc_clientes`/
+   `movimientos_cc_proveedores`) quedan pendientes del mismo patrón (mismo
+   orden que ya señalaba §38/§39/§40). De esos, tesorería es el que más
+   sitios de `INSERT` toca (~9) porque no siempre cuelga de una cabecera ya
+   organizada.
+2. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa (reconstrucción de tabla + regla de "predeterminada"
+   por organización).
+3. Reportes/resumen (gap ya señalado en §38/§39/§40) sigue necesitando su
+   propia revisión una vez que las tablas de negocio relevantes tengan la
+   columna; los agregados que usan `gastos` en `/api/resumen/*` y
+   `/api/reportes/*` (incluido `SQL_RESULTADO_GASTOS`) siguen sin filtrar
+   por organización.
+4. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
+   todas partes donde se agregó).

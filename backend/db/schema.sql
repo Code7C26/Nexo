@@ -585,6 +585,10 @@ CREATE TABLE IF NOT EXISTS categorias_gasto (
 -- meses ya cerrados.
 -- proveedor_id es opcional: el alquiler no tiene proveedor, pero el
 -- service de una máquina sí puede tenerlo.
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28); no se deriva de otra tabla porque proveedor_id es opcional y no hay
+-- una cabecera obligatoria de la que copiarlo, así que se completa en el
+-- INSERT desde req.usuario.organizacion_id.
 CREATE TABLE IF NOT EXISTS gastos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   categoria_id INTEGER NOT NULL REFERENCES categorias_gasto(id),
@@ -595,7 +599,8 @@ CREATE TABLE IF NOT EXISTS gastos (
   tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
   descripcion TEXT,
   comprobante TEXT,
-  estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo'
+  estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo',
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo

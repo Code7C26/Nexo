@@ -6270,7 +6270,9 @@ const SELECT_GASTO = `
     LEFT JOIN proveedores ON proveedores.id = gastos.proveedor_id`;
 
 app.get('/api/gastos', (req, res) => {
-  const gastos = db.prepare(`${SELECT_GASTO} ORDER BY gastos.fecha DESC, gastos.id DESC`).all();
+  const gastos = db
+    .prepare(`${SELECT_GASTO} WHERE gastos.organizacion_id = ? ORDER BY gastos.fecha DESC, gastos.id DESC`)
+    .all(req.usuario.organizacion_id);
   res.json(gastos);
 });
 
@@ -6325,7 +6327,17 @@ app.post('/api/gastos', (req, res) => {
   const { categoriaId, cuentaId, proveedorId, monto, tipo } = validacion;
 
   const gastoId = withTransaction(() => {
-    const id = crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante });
+    const id = crearGasto({
+      categoriaId,
+      cuentaId,
+      proveedorId,
+      monto,
+      tipo,
+      fecha,
+      descripcion,
+      comprobante,
+      organizacionId: req.usuario.organizacion_id
+    });
     auditar(req, { accion: 'crear', entidad: 'gasto', entidad_id: id, detalle: `Gasto #${id} creado` });
     return id;
   });
@@ -6337,9 +6349,27 @@ app.post('/api/gastos', (req, res) => {
 // validados por validarGasto() (categoriaId/cuentaId/proveedorId/monto/
 // tipo con nombres resueltos a ID). Asume que se la llama DENTRO de una
 // transacción.
-function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante }) {
-  const columnas = ['categoria_id', 'cuenta_tesoreria_id', 'proveedor_id', 'importe', 'tipo', 'descripcion', 'comprobante'];
-  const valores = [categoriaId, cuentaId, proveedorId, monto, tipo, descripcion?.trim() || null, comprobante?.trim() || null];
+function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante, organizacionId }) {
+  const columnas = [
+    'categoria_id',
+    'cuenta_tesoreria_id',
+    'proveedor_id',
+    'importe',
+    'tipo',
+    'descripcion',
+    'comprobante',
+    'organizacion_id'
+  ];
+  const valores = [
+    categoriaId,
+    cuentaId,
+    proveedorId,
+    monto,
+    tipo,
+    descripcion?.trim() || null,
+    comprobante?.trim() || null,
+    organizacionId
+  ];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -6375,7 +6405,9 @@ app.put('/api/gastos/:id', (req, res) => {
   const gastoId = Number(req.params.id);
   const { fecha, descripcion, comprobante } = req.body;
 
-  const gasto = db.prepare('SELECT id, estado FROM gastos WHERE id = ?').get(gastoId);
+  const gasto = db
+    .prepare('SELECT id, estado FROM gastos WHERE id = ? AND organizacion_id = ?')
+    .get(gastoId, req.usuario.organizacion_id);
   if (!gasto) {
     return res.status(404).json({ error: 'Gasto no encontrado.' });
   }
@@ -6423,7 +6455,9 @@ app.put('/api/gastos/:id', (req, res) => {
 
 app.post('/api/gastos/:id/anular', soloAdmin, (req, res) => {
   const gastoId = Number(req.params.id);
-  const gasto = db.prepare('SELECT id, estado FROM gastos WHERE id = ?').get(gastoId);
+  const gasto = db
+    .prepare('SELECT id, estado FROM gastos WHERE id = ? AND organizacion_id = ?')
+    .get(gastoId, req.usuario.organizacion_id);
   if (!gasto) {
     return res.status(404).json({ error: 'Gasto no encontrado.' });
   }
@@ -6449,8 +6483,10 @@ app.post('/api/gastos/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/gastos/:id/restaurar', soloAdmin, (req, res) => {
   const gastoId = Number(req.params.id);
   const gasto = db
-    .prepare('SELECT id, estado, cuenta_tesoreria_id, importe, fecha, descripcion FROM gastos WHERE id = ?')
-    .get(gastoId);
+    .prepare(
+      'SELECT id, estado, cuenta_tesoreria_id, importe, fecha, descripcion FROM gastos WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(gastoId, req.usuario.organizacion_id);
   if (!gasto) {
     return res.status(404).json({ error: 'Gasto no encontrado.' });
   }
@@ -8011,7 +8047,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           tipo: tipoValidado,
           fecha: propuesta.fecha,
           descripcion: propuesta.descripcion,
-          comprobante: null
+          comprobante: null,
+          organizacionId: req.usuario.organizacion_id
         });
         auditar(req, {
           accion: 'crear',

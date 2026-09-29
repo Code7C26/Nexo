@@ -499,6 +499,13 @@ if (!devolucionesProveedorColumnasOrg.some((col) => col.name === 'organizacion_i
   db.exec('ALTER TABLE devoluciones_proveedor ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
+// gastos.organizacion_id: siguiente lote del mismo patrón (Etapa A,
+// CLAUDE.md §28).
+const gastosColumnasOrg = db.prepare('PRAGMA table_info(gastos)').all();
+if (!gastosColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE gastos ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1245,6 +1252,7 @@ for (const tabla of [
   'facturas',
   'devoluciones',
   'devoluciones_proveedor',
+  'gastos',
 ]) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
