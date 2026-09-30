@@ -520,6 +520,15 @@ if (!transferenciasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE transferencias ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
+// movimientos_tesoreria.organizacion_id: mismo patrón (Etapa A, CLAUDE.md
+// §28). A diferencia de cobros/pagos/movimientos_cc_*, necesita columna
+// propia porque hay orígenes ('manual', 'transferencia') sin venta/compra/
+// gasto del que derivar la organización por join.
+const movimientosTesoreriaColumnasOrg = db.prepare('PRAGMA table_info(movimientos_tesoreria)').all();
+if (!movimientosTesoreriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE movimientos_tesoreria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1269,6 +1278,7 @@ for (const tabla of [
   'gastos',
   'movimientos_stock',
   'transferencias',
+  'movimientos_tesoreria',
 ]) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)

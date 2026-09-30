@@ -617,6 +617,12 @@ CREATE TABLE IF NOT EXISTS gastos (
 -- valor, así se puede mostrar una contra la otra. Es plata que se mueve
 -- de bolsillo, no plata que entra o sale del negocio, por eso son dos
 -- movimientos y no uno.
+-- organizacion_id: columna propia (CLAUDE.md §28), a diferencia de cobros/
+-- pagos/movimientos_cc_*. Hay orígenes ('manual', 'transferencia') que no
+-- cuelgan de ninguna venta/compra/gasto de la que derivar la organización
+-- por join, así que se completa en cada INSERT desde
+-- req.usuario.organizacion_id (o la organización ya resuelta de la
+-- operación padre, cuando la función que inserta ya la tiene en scope).
 CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
@@ -631,7 +637,8 @@ CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   transferencia_id INTEGER,
   gasto_id INTEGER REFERENCES gastos(id),
   devolucion_id INTEGER REFERENCES devoluciones(id),
-  devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id)
+  devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando

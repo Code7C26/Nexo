@@ -3286,7 +3286,7 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
   }
 
   const cobroId = withTransaction(() => {
-    const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota);
+    const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota, req.usuario.organizacion_id);
     auditar(req, {
       accion: 'crear',
       entidad: 'cobro',
@@ -3305,14 +3305,14 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
 // cuenta corriente del cliente). Sin validación propia — el llamador ya
 // tiene que haber verificado importe/saldo pendiente/existencia de la
 // cuenta. Asume que se la llama DENTRO de una transacción.
-function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota) {
+function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId) {
   const { lastInsertRowid: nuevoCobroId } = db
     .prepare('INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota) VALUES (?, ?, ?, ?)')
     .run(ventaId, importe, cuentaTesoreriaId, nota ?? null);
 
   db.prepare(
-    "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen) VALUES (?, 'ingreso', ?, ?, 'cobro')"
-  ).run(cuentaTesoreriaId, importe, nuevoCobroId);
+    "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen, organizacion_id) VALUES (?, 'ingreso', ?, ?, 'cobro', ?)"
+  ).run(cuentaTesoreriaId, importe, nuevoCobroId, organizacionId);
 
   db.prepare(
     "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id) VALUES (?, 'cobro', ?, ?, ?)"
@@ -4050,8 +4050,8 @@ function aplicarDevolucion(devolucionId) {
     ).run(devolucion.cliente_id, total, devolucion.venta_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id) VALUES (?, 'egreso', ?, 'devolucion', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id) VALUES (?, 'egreso', ?, 'devolucion', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId, devolucion.organizacion_id);
   }
 }
 
@@ -4105,8 +4105,8 @@ function revertirDevolucion(devolucionId) {
     ).run(devolucion.cliente_id, -total, devolucion.venta_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id) VALUES (?, 'ingreso', ?, 'devolucion', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id) VALUES (?, 'ingreso', ?, 'devolucion', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId, devolucion.organizacion_id);
   }
 }
 
@@ -5455,8 +5455,8 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
       .run(compraId, importe, cuenta_tesoreria_id, nota ?? null);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, pago_id, origen) VALUES (?, 'egreso', ?, ?, 'pago')"
-    ).run(cuenta_tesoreria_id, importe, nuevoPagoId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, pago_id, origen, organizacion_id) VALUES (?, 'egreso', ?, ?, 'pago', ?)"
+    ).run(cuenta_tesoreria_id, importe, nuevoPagoId, req.usuario.organizacion_id);
 
     db.prepare(
       "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, pago_id) VALUES (?, 'pago', ?, ?, ?)"
@@ -5650,8 +5650,8 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
     ).run(devolucion.proveedor_id, total, devolucion.compra_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id) VALUES (?, 'ingreso', ?, 'devolucion_proveedor', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id) VALUES (?, 'ingreso', ?, 'devolucion_proveedor', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId, devolucion.organizacion_id);
   }
 }
 
@@ -5713,8 +5713,8 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
     ).run(devolucion.proveedor_id, -total, devolucion.compra_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id) VALUES (?, 'egreso', ?, 'devolucion_proveedor', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id) VALUES (?, 'egreso', ?, 'devolucion_proveedor', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId, devolucion.organizacion_id);
   }
 }
 
@@ -6068,9 +6068,9 @@ app.get('/api/tesoreria', (req, res) => {
       `SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN importe END), 0) AS ingresos,
               COALESCE(SUM(CASE WHEN tipo = 'egreso' THEN importe END), 0) AS egresos
          FROM movimientos_tesoreria
-        WHERE origen <> 'transferencia'`
+        WHERE origen <> 'transferencia' AND organizacion_id = ?`
     )
-    .get();
+    .get(req.usuario.organizacion_id);
 
   res.json({
     cuentas,
@@ -6105,10 +6105,11 @@ app.get('/api/tesoreria/movimientos', (req, res) => {
          JOIN cuentas_tesoreria ON cuentas_tesoreria.id = movimientos_tesoreria.cuenta_tesoreria_id
          LEFT JOIN cobros ON cobros.id = movimientos_tesoreria.cobro_id
          LEFT JOIN pagos ON pagos.id = movimientos_tesoreria.pago_id
+        WHERE movimientos_tesoreria.organizacion_id = ?
         ORDER BY movimientos_tesoreria.fecha DESC, movimientos_tesoreria.id DESC
         LIMIT ?`
     )
-    .all(limit);
+    .all(req.usuario.organizacion_id, limit);
 
   res.json(movimientos);
 });
@@ -6131,8 +6132,8 @@ app.post('/api/tesoreria/movimientos', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
   }
 
-  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto'];
-  const valores = [cuenta.id, tipo, monto, 'manual', concepto?.trim() || null];
+  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto', 'organizacion_id'];
+  const valores = [cuenta.id, tipo, monto, 'manual', concepto?.trim() || null, req.usuario.organizacion_id];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -6180,8 +6181,8 @@ app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
 
   const transferenciaId = withTransaction(() => {
     const insertMovimiento = (cuentaId, tipo, grupo) => {
-      const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto'];
-      const valores = [cuentaId, tipo, monto, 'transferencia', concepto?.trim() || null];
+      const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto', 'organizacion_id'];
+      const valores = [cuentaId, tipo, monto, 'transferencia', concepto?.trim() || null, req.usuario.organizacion_id];
       if (fecha) {
         columnas.push('fecha');
         valores.push(fecha);
@@ -6424,13 +6425,13 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
     .prepare(`INSERT INTO gastos (${columnas.join(', ')}) VALUES (${columnas.map(() => '?').join(', ')})`)
     .run(...valores);
 
-  insertarMovimientoGasto(nuevoGastoId, cuentaId, monto, fecha, descripcion);
+  insertarMovimientoGasto(nuevoGastoId, cuentaId, monto, fecha, descripcion, organizacionId);
   return nuevoGastoId;
 }
 
-function insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion) {
-  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'gasto_id', 'concepto'];
-  const valores = [cuentaId, 'egreso', monto, 'gasto', gastoId, descripcion?.trim() || null];
+function insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion, organizacionId) {
+  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'gasto_id', 'concepto', 'organizacion_id'];
+  const valores = [cuentaId, 'egreso', monto, 'gasto', gastoId, descripcion?.trim() || null, organizacionId];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -6486,7 +6487,7 @@ app.put('/api/gastos/:id', (req, res) => {
     );
 
     db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
-    insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion);
+    insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion, req.usuario.organizacion_id);
 
     auditar(req, {
       accion: 'editar',
@@ -6547,7 +6548,8 @@ app.post('/api/gastos/:id/restaurar', soloAdmin, (req, res) => {
       gasto.cuenta_tesoreria_id,
       gasto.importe,
       gasto.fecha,
-      gasto.descripcion
+      gasto.descripcion,
+      req.usuario.organizacion_id
     );
     auditar(req, {
       accion: 'restaurar',
@@ -6594,7 +6596,7 @@ function tramoDeVencimiento(dias) {
 // (ver PUT /api/ventas/:id) — sin la entidad en el GROUP BY, esta
 // consulta sumaría los dos juntos y se los adjudicaría a cualquiera de
 // los dos en vez de partirlos correctamente entre ambos.
-function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion) {
+function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion, organizacionId) {
   return db
     .prepare(
       `SELECT m.${columnaOperacion} AS operacion_id, m.${columnaEntidad} AS entidad_id,
@@ -6602,17 +6604,18 @@ function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, 
               ROUND(SUM(m.importe), 2) AS pendiente
          FROM ${tablaMovimientos} m
          JOIN ${tablaOperacion} o ON o.id = m.${columnaOperacion}
+        WHERE o.organizacion_id = ?
         GROUP BY m.${columnaOperacion}, m.${columnaEntidad}
        HAVING ABS(SUM(m.importe)) > 0.005`
     )
-    .all();
+    .all(organizacionId);
 }
 
 // Agrupa los saldos por operación (arriba) en uno por entidad: saldo total,
 // los días vencidos de la deuda más atrasada (solo entre las operaciones que
 // SÍ son deuda: un saldo negativo es crédito a favor, no vence), y el detalle
 // ordenado por vencimiento para la fila expandible.
-function agruparPorEntidad(saldos, tablaEntidad, hoy) {
+function agruparPorEntidad(saldos, tablaEntidad, hoy, organizacionId) {
   const porEntidad = new Map();
   for (const s of saldos) {
     if (!porEntidad.has(s.entidad_id)) porEntidad.set(s.entidad_id, []);
@@ -6621,7 +6624,9 @@ function agruparPorEntidad(saldos, tablaEntidad, hoy) {
 
   const resultado = [];
   for (const [entidadId, operacionesRaw] of porEntidad) {
-    const entidad = db.prepare(`SELECT id, nombre, telefono, email FROM ${tablaEntidad} WHERE id = ?`).get(entidadId);
+    const entidad = db
+      .prepare(`SELECT id, nombre, telefono, email FROM ${tablaEntidad} WHERE id = ? AND organizacion_id = ?`)
+      .get(entidadId, organizacionId);
     if (!entidad) continue; // defensivo: no debería pasar, la FK lo garantiza
 
     const operaciones = operacionesRaw
@@ -6662,14 +6667,16 @@ app.get('/api/cuentas-corrientes', (req, res) => {
   const hoy = fechaDeHoy();
 
   const entidadesClientes = agruparPorEntidad(
-    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas'),
+    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', req.usuario.organizacion_id),
     'clientes',
-    hoy
+    hoy,
+    req.usuario.organizacion_id
   );
   const entidadesProveedores = agruparPorEntidad(
-    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras'),
+    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras', req.usuario.organizacion_id),
     'proveedores',
-    hoy
+    hoy,
+    req.usuario.organizacion_id
   );
 
   // Los totales solo suman deuda real (saldo > 0); un saldo a favor va
@@ -7983,7 +7990,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           const { cliente_id: clienteIdCreado } = db
             .prepare('SELECT cliente_id FROM ventas WHERE id = ?')
             .get(nuevaVentaId);
-          const nuevoCobroId = registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente');
+          const nuevoCobroId = registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente', req.usuario.organizacion_id);
           auditar(req, {
             accion: 'crear',
             entidad: 'cobro',

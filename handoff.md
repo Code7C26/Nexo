@@ -5289,18 +5289,126 @@ terminar; la base real (`backend/db/nexo.db`) no se tocó en ningún momento.
 
 ### Qué sigue
 
-1. Tesorería (`movimientos_tesoreria`, `cobros`, `pagos`) y cuentas
-   corrientes (`movimientos_cc_clientes`/`movimientos_cc_proveedores`) quedan
-   pendientes del mismo patrón (mismo orden que ya señalaba §38-41). Tesorería
-   sigue siendo el que más sitios de `INSERT` toca (~9).
-2. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
    `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
    como su propia etapa (reconstrucción de tabla + regla de "predeterminada"
    por organización).
-3. Gap deferido de este lote: `POST /api/productos/:id/atributos` y
+2. Gap deferido de este lote: `POST /api/productos/:id/atributos` y
    `POST /api/productos/:id/variantes` sin filtro de organización.
-4. Reportes/resumen (gap ya señalado desde §38) sigue necesitando su propia
+3. Reportes/resumen (gap ya señalado desde §38) sigue necesitando su propia
    revisión una vez que las tablas de negocio relevantes tengan la columna.
-5. Cuando el resto de las tablas tenga la columna, evaluar pasar
+4. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
+   todas partes donde se agregó).
+
+## 43. Etapa A (multi-tenant) — tesorería y cuentas corrientes
+
+**Objetivo**: siguiente ítem de la lista que dejaba pendiente §42 —
+`movimientos_tesoreria`, `cobros`, `pagos`, `movimientos_cc_clientes` y
+`movimientos_cc_proveedores`.
+
+**Decisión de diseño por tabla** (para no repetir sin pensar el patrón de
+`movimientos_stock`/`transferencias`):
+- `movimientos_tesoreria` **necesitó columna propia**: a diferencia de
+  `cobros`/`pagos`, tiene orígenes (`manual`, `transferencia`) que no cuelgan
+  de ninguna venta/compra/gasto de la que derivar la organización por join.
+- `cobros` y `pagos` **no la necesitaron**: son filas hijas de una única
+  venta/compra (`venta_id`/`compra_id` `NOT NULL`), mismo caso que
+  `venta_items`/`compra_items`. Los `GET` que las exponen
+  (`/api/ventas/:id/cobros`, `/api/compras/:id/pagos`) ya filtraban vía join
+  a `ventas`/`compras.organizacion_id` desde una tanda anterior — nada que
+  tocar ahí.
+- `movimientos_cc_clientes`/`movimientos_cc_proveedores` **tampoco la
+  necesitaron**, mismo motivo: `cliente_id`/`proveedor_id` son siempre
+  `NOT NULL` y esas tablas ya tienen `organizacion_id` desde una tanda
+  anterior. Agregarles columna propia hubiera sido la versión más cara de
+  resolver lo mismo (ALTER + backfill + ~14 sitios de `INSERT`) cuando
+  alcanzaba con filtrar los `SELECT` que las leen.
+
+**`backend/db/schema.sql` / `backend/db/index.js`**: `organizacion_id INTEGER
+REFERENCES organizaciones(id)` nullable en `movimientos_tesoreria`,
+`ALTER TABLE ADD COLUMN` idempotente junto al resto de los bloques (después
+del de `transferencias`), y sumada al mismo loop de backfill.
+
+**`backend/server.js`** — `organizacion_id` completado en los 8 sitios que
+insertan en `movimientos_tesoreria`:
+- `registrarCobro(...)` (llamada desde `POST /api/ventas/:id/cobros` y desde
+  el alta de venta del asistente) gana el parámetro `organizacionId`.
+- `POST /api/compras/:id/pagos`: usa `req.usuario.organizacion_id` directo.
+- `aplicarDevolucion`/`revertirDevolucion` y
+  `aplicarDevolucionProveedor`/`revertirDevolucionProveedor`: reusan la
+  `ventas.organizacion_id`/`compras.organizacion_id` que ya traía su propio
+  `SELECT` para `registrarMovimientoStock`.
+- `insertarMovimientoGasto(...)` (llamada desde `crearGasto`, `PUT
+  /api/gastos/:id` y `POST /api/gastos/:id/restaurar`) gana el parámetro
+  `organizacionId`.
+- `POST /api/tesoreria/movimientos` y `POST /api/tesoreria/transferencias`
+  (las dos inserciones de la transferencia): `req.usuario.organizacion_id`.
+- `confirmarCompra` no necesitó cambios: solo inserta en
+  `movimientos_cc_proveedores`, que no lleva columna propia.
+
+**Lecturas filtradas**: `GET /api/tesoreria` (el agregado de
+ingresos/egresos, no la lista de `cuentas`, que sigue siendo catálogo
+global) y `GET /api/tesoreria/movimientos`.
+
+**Gap real encontrado y cerrado**: `GET /api/cuentas-corrientes` (el aging de
+cuentas por cobrar/pagar) no filtraba por organización en absoluto —
+`saldosPorOperacion(...)` unía `movimientos_cc_clientes`/`_proveedores` con
+`ventas`/`compras` sin condición de organización, y `agruparPorEntidad(...)`
+buscaba el cliente/proveedor por id sin filtrar tampoco. Se cerró sumando
+`AND o.organizacion_id = ?` al join en `saldosPorOperacion` y
+`AND organizacion_id = ?` al lookup de la entidad en `agruparPorEntidad`,
+pasando `req.usuario.organizacion_id` desde el endpoint a las dos funciones.
+
+**Limitación conocida documentada (no resuelta en esta tanda)**:
+`cuentas_tesoreria` sigue siendo catálogo global (`UNIQUE(nombre)`), igual
+que `categorias`/`listas_precios`/`depositos`/`categorias_gasto`. Para
+catálogos que son solo etiquetas, compartir la fila es inofensivo porque las
+vistas que agregan sobre ellos agrupan también por una columna ya distinguida
+por organización. `cuentas_tesoreria` es distinto: la vista `saldo_tesoreria`
+(`backend/db/index.js`, ver comentario junto a su definición) suma
+`movimientos_tesoreria` agrupando *solo* por `cuenta_tesoreria_id` — el día
+que una segunda organización real comparta la fila "Efectivo" (porque
+`UNIQUE(nombre)` se lo obliga), su saldo se mezclaría con el de la otra
+organización: no es una fuga de visibilidad, es un balance de caja
+incorrecto. Se verificó en la práctica: con dos organizaciones operando
+sobre el mismo scratchpad, `GET /api/tesoreria` mostró el mismo `saldo` por
+cuenta para las dos (suma de ambas), mientras que `ingresos`/`egresos` (que sí
+filtran por `movimientos_tesoreria.organizacion_id`) mostraron correctamente
+solo lo de cada una. No se resuelve acá: requiere el rebuild de la tabla a
+`UNIQUE(organizacion_id, nombre)`, ya anotado como su propia etapa (ítem 1 de
+abajo).
+
+**Verificación**: mismo procedimiento que §42 — copia aislada de
+`backend/` en scratchpad, servidor de prueba contra esa copia (puerto 3981),
+organización 2 creada a mano con su propio admin (mismo `scryptSync`). Con
+datos reales de la organización 1 (ventas con cobros, gastos, movimientos
+manuales y una transferencia ya existentes) y datos nuevos cargados para la
+organización 2 (venta + cobro, gasto, movimiento manual, transferencia):
+`GET /api/tesoreria/movimientos` y `GET /api/cuentas-corrientes` desde la
+organización 2 no mostraron nada de la organización 1 y viceversa;
+`ingresos`/`egresos` de `GET /api/tesoreria` quedaron correctamente separados
+por organización; la organización 1 pudo seguir cobrando, transfiriendo y
+viendo su propio aging sin cambios después de que la organización 2 operara.
+Se confirmó por SQL directo que no quedó ninguna fila con
+`organizacion_id IS NULL` en `movimientos_tesoreria` tras el backfill.
+`npm test` verde antes y después. Idempotencia confirmada matando y
+reiniciando el proceso de prueba sobre la misma base ya migrada: sin
+errores. Proceso y copia de scratchpad borrados al terminar (incluido un
+proceso de una corrida anterior que había quedado huérfano reteniendo el
+archivo); la base real (`backend/db/nexo.db`) no se tocó en ningún momento.
+
+### Qué sigue
+
+1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa (reconstrucción de tabla + regla de "predeterminada"
+   por organización) — para `cuentas_tesoreria` deja de ser solo prolijidad:
+   es lo que corrige el balance de caja mezclado documentado arriba.
+2. Gap deferido desde §42: `POST /api/productos/:id/atributos` y
+   `POST /api/productos/:id/variantes` sin filtro de organización.
+3. Reportes/resumen (gap ya señalado desde §38) sigue necesitando su propia
+   revisión una vez que las tablas de negocio relevantes tengan la columna.
+4. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
    todas partes donde se agregó).
