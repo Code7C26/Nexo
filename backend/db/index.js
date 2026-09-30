@@ -506,6 +506,20 @@ if (!gastosColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE gastos ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
+// movimientos_stock.organizacion_id / transferencias.organizacion_id:
+// siguiente lote del mismo patrón (Etapa A, CLAUDE.md §28). Ninguna de las
+// dos toca un CHECK, así que alcanza el ALTER TABLE aditivo de siempre — no
+// hace falta el rebuild completo que sí necesitaron los cambios de §5/§19
+// más arriba en este archivo.
+const movimientosStockColumnasOrg = db.prepare('PRAGMA table_info(movimientos_stock)').all();
+if (!movimientosStockColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE movimientos_stock ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+const transferenciasColumnasOrg = db.prepare('PRAGMA table_info(transferencias)').all();
+if (!transferenciasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE transferencias ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1253,6 +1267,8 @@ for (const tabla of [
   'devoluciones',
   'devoluciones_proveedor',
   'gastos',
+  'movimientos_stock',
+  'transferencias',
 ]) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)

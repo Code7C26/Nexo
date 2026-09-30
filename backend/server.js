@@ -1592,7 +1592,9 @@ app.post('/api/productos/bulk', soloAdmin, (req, res) => {
 // vuelta la lista, para mostrar lo más reciente primero.
 app.get('/api/productos/:id/movimientos', (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -2033,7 +2035,15 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
 app.get('/api/productos/:id/variantes/:varianteId/movimientos', (req, res) => {
   const productoId = Number(req.params.id);
   const varianteId = Number(req.params.varianteId);
-  const variante = db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ?').get(varianteId, productoId);
+  const variante = db
+    .prepare(
+      `SELECT producto_variantes.id
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+        WHERE producto_variantes.id = ? AND producto_variantes.producto_id = ?
+          AND productos.organizacion_id = ?`
+    )
+    .get(varianteId, productoId, req.usuario.organizacion_id);
   if (!variante) {
     return res.status(404).json({ error: 'Variante no encontrada.' });
   }
@@ -2250,14 +2260,15 @@ function registrarMovimientoStock({
   devolucion_proveedor_id = null,
   transferencia_id = null,
   costo_unitario = null,
-  nota = null
+  nota = null,
+  organizacion_id
 }) {
   return db
     .prepare(
       `INSERT INTO movimientos_stock
          (producto_id, variante_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
-          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       producto_id,
@@ -2272,7 +2283,8 @@ function registrarMovimientoStock({
       devolucion_proveedor_id,
       transferencia_id,
       costo_unitario,
-      nota
+      nota,
+      organizacion_id
     );
 }
 
@@ -2291,18 +2303,25 @@ app.get('/api/stock', (req, res) => {
               COALESCE(stock_actual.cantidad, 0) AS stock_total
        FROM productos
        LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+       WHERE productos.organizacion_id = ?
        ORDER BY productos.nombre`
     )
-    .all();
-  const porDeposito = db
-    .prepare(
-      `SELECT stock_por_deposito.producto_id, stock_por_deposito.deposito_id,
-              depositos.nombre AS deposito, stock_por_deposito.cantidad AS stock
-         FROM stock_por_deposito
-         JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
-        WHERE depositos.activo = 1`
-    )
-    .all();
+    .all(req.usuario.organizacion_id);
+  // stock_por_deposito no tiene organizacion_id propia (se agrupa por
+  // producto_id, que ya está filtrado arriba): acotarla a los productos de
+  // esta organización evita traer filas de depósitos de otra empresa.
+  const idsProductos = productos.map((p) => p.id);
+  const porDeposito = idsProductos.length === 0
+    ? []
+    : db
+        .prepare(
+          `SELECT stock_por_deposito.producto_id, stock_por_deposito.deposito_id,
+                  depositos.nombre AS deposito, stock_por_deposito.cantidad AS stock
+             FROM stock_por_deposito
+             JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
+            WHERE depositos.activo = 1 AND stock_por_deposito.producto_id IN (${idsProductos.map(() => '?').join(',')})`
+        )
+        .all(...idsProductos);
   const filasPorProducto = new Map();
   for (const fila of porDeposito) {
     if (!filasPorProducto.has(fila.producto_id)) filasPorProducto.set(fila.producto_id, []);
@@ -2353,7 +2372,9 @@ app.get('/api/stock', (req, res) => {
 app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
   const { producto_id, deposito_id, cantidad, nota } = req.body;
 
-  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
+  const producto = db
+    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(producto_id, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
   }
@@ -2384,7 +2405,8 @@ app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
       tipo: 'ajuste',
       cantidad: Number(cantidad),
       origen: 'ajuste_manual',
-      nota: nota ?? null
+      nota: nota ?? null,
+      organizacion_id: req.usuario.organizacion_id
     }));
     auditar(req, {
       accion: 'editar',
@@ -2423,10 +2445,11 @@ app.get('/api/movimientos-stock', (req, res) => {
          FROM movimientos_stock
          JOIN productos ON productos.id = movimientos_stock.producto_id
          LEFT JOIN depositos ON depositos.id = movimientos_stock.deposito_id
+        WHERE movimientos_stock.organizacion_id = ?
         ORDER BY movimientos_stock.fecha DESC, movimientos_stock.id DESC
         LIMIT ?`
     )
-    .all(limite);
+    .all(req.usuario.organizacion_id, limite);
   res.json(movimientos);
 });
 
@@ -2460,9 +2483,10 @@ app.get('/api/transferencias', (req, res) => {
             WHERE transferencia_id = transferencias.id AND tipo = 'salida'
          )
          JOIN productos ON productos.id = mov.producto_id
+        WHERE transferencias.organizacion_id = ?
         ORDER BY transferencias.fecha DESC, transferencias.id DESC`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(transferencias);
 });
 
@@ -2483,7 +2507,9 @@ app.post('/api/transferencias', (req, res) => {
   if (!destino) {
     return res.status(400).json({ error: 'El depósito de destino no existe o está inactivo.' });
   }
-  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
+  const producto = db
+    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(producto_id, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
   }
@@ -2503,16 +2529,17 @@ app.post('/api/transferencias', (req, res) => {
   withTransaction(() => {
     ({ lastInsertRowid } = db
       .prepare(
-        'INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota) VALUES (?, ?, ?)'
+        'INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota, organizacion_id) VALUES (?, ?, ?, ?)'
       )
-      .run(Number(deposito_origen_id), Number(deposito_destino_id), nota ?? null));
+      .run(Number(deposito_origen_id), Number(deposito_destino_id), nota ?? null, req.usuario.organizacion_id));
     registrarMovimientoStock({
       producto_id: Number(producto_id),
       deposito_id: Number(deposito_origen_id),
       tipo: 'salida',
       cantidad: Number(cantidad),
       origen: 'transferencia',
-      transferencia_id: lastInsertRowid
+      transferencia_id: lastInsertRowid,
+      organizacion_id: req.usuario.organizacion_id
     });
     registrarMovimientoStock({
       producto_id: Number(producto_id),
@@ -2520,7 +2547,8 @@ app.post('/api/transferencias', (req, res) => {
       tipo: 'entrada',
       cantidad: Number(cantidad),
       origen: 'transferencia',
-      transferencia_id: lastInsertRowid
+      transferencia_id: lastInsertRowid,
+      organizacion_id: req.usuario.organizacion_id
     });
     auditar(req, {
       accion: 'crear',
@@ -2534,7 +2562,9 @@ app.post('/api/transferencias', (req, res) => {
 
 app.post('/api/transferencias/:id/anular', soloAdmin, (req, res) => {
   const transferenciaId = Number(req.params.id);
-  const transferencia = db.prepare('SELECT * FROM transferencias WHERE id = ?').get(transferenciaId);
+  const transferencia = db
+    .prepare('SELECT * FROM transferencias WHERE id = ? AND organizacion_id = ?')
+    .get(transferenciaId, req.usuario.organizacion_id);
   if (!transferencia) {
     return res.status(404).json({ error: 'Transferencia no encontrada.' });
   }
@@ -2558,7 +2588,8 @@ app.post('/api/transferencias/:id/anular', soloAdmin, (req, res) => {
         cantidad: mov.cantidad,
         origen: 'transferencia',
         transferencia_id: transferenciaId,
-        nota: 'Reversión por anulación'
+        nota: 'Reversión por anulación',
+        organizacion_id: transferencia.organizacion_id
       });
     }
     db.prepare("UPDATE transferencias SET estado = 'anulada' WHERE id = ?").run(transferenciaId);
@@ -2877,7 +2908,8 @@ function crearVenta({
       tipo: 'salida',
       cantidad: item.cantidad,
       origen: 'venta',
-      venta_id: nuevaVentaId
+      venta_id: nuevaVentaId,
+      organizacion_id
     });
     // Ya NO se pisa productos.precio_venta con el precio de esta venta
     // (CLAUDE.md §18): con varias listas de precios, una venta con un
@@ -3125,7 +3157,8 @@ app.put('/api/ventas/:id', (req, res) => {
         cantidad: item.cantidad,
         origen: 'venta',
         venta_id: ventaId,
-        nota: 'Reversión por edición'
+        nota: 'Reversión por edición',
+        organizacion_id: req.usuario.organizacion_id
       });
     }
 
@@ -3171,7 +3204,8 @@ app.put('/api/ventas/:id', (req, res) => {
         tipo: 'salida',
         cantidad: item.cantidad,
         origen: 'venta',
-        venta_id: ventaId
+        venta_id: ventaId,
+        organizacion_id: req.usuario.organizacion_id
       });
       // Ya NO se pisa productos.precio_venta acá tampoco — mismo motivo que
       // en crearVenta (CLAUDE.md §18).
@@ -3412,7 +3446,8 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
         cantidad: item.cantidad,
         origen: 'venta',
         venta_id: ventaId,
-        nota: 'Reversión por anulación'
+        nota: 'Reversión por anulación',
+        organizacion_id: req.usuario.organizacion_id
       });
       total += item.cantidad * item.precio_unitario;
     }
@@ -3488,7 +3523,8 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
         cantidad: item.cantidad,
         origen: 'venta',
         venta_id: ventaId,
-        nota: 'Restaurada desde la papelera'
+        nota: 'Restaurada desde la papelera',
+        organizacion_id: req.usuario.organizacion_id
       });
       total += item.cantidad * item.precio_unitario;
     }
@@ -3967,7 +4003,7 @@ function aplicarDevolucion(devolucionId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, devoluciones.deposito_id,
-              ventas.cliente_id
+              ventas.cliente_id, ventas.organizacion_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ?`
     )
@@ -3992,7 +4028,8 @@ function aplicarDevolucion(devolucionId) {
         cantidad: item.cantidad,
         origen: 'devolucion',
         devolucion_id: devolucionId,
-        nota: 'Devolución de venta'
+        nota: 'Devolución de venta',
+        organizacion_id: devolucion.organizacion_id
       });
     }
     total += item.cantidad * item.precio_unitario;
@@ -4025,7 +4062,7 @@ function revertirDevolucion(devolucionId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, devoluciones.deposito_id,
-              ventas.cliente_id
+              ventas.cliente_id, ventas.organizacion_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ?`
     )
@@ -4048,7 +4085,8 @@ function revertirDevolucion(devolucionId) {
         cantidad: item.cantidad,
         origen: 'devolucion',
         devolucion_id: devolucionId,
-        nota: 'Reversión por anulación'
+        nota: 'Reversión por anulación',
+        organizacion_id: devolucion.organizacion_id
       });
     }
     total += item.cantidad * item.precio_unitario;
@@ -4759,7 +4797,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
           cantidad: item.cantidad,
           origen: 'compra',
           compra_id: compraId,
-          nota: 'Reversión por edición'
+          nota: 'Reversión por edición',
+          organizacion_id: req.usuario.organizacion_id
         });
       }
     }
@@ -4867,7 +4906,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
           cantidad: item.cantidad,
           origen: 'compra',
           compra_id: compraId,
-          costo_unitario: item.costo_real_unitario
+          costo_unitario: item.costo_real_unitario,
+          organizacion_id: req.usuario.organizacion_id
         });
       }
 
@@ -4962,7 +5002,9 @@ function aplicarStockCompra(compraId) {
       'SELECT producto_id, variante_id, cantidad, costo_real_unitario, precio_unitario FROM compra_items WHERE compra_id = ?'
     )
     .all(compraId);
-  const { deposito_id: depositoCompra } = db.prepare('SELECT deposito_id FROM compras WHERE id = ?').get(compraId);
+  const { deposito_id: depositoCompra, organizacion_id: organizacionCompra } = db
+    .prepare('SELECT deposito_id, organizacion_id FROM compras WHERE id = ?')
+    .get(compraId);
   const depositoResuelto = depositoCompra ?? depositoPredeterminadoId();
 
   const buscarProducto = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
@@ -5002,7 +5044,8 @@ function aplicarStockCompra(compraId) {
       cantidad: item.cantidad,
       origen: 'compra',
       compra_id: compraId,
-      costo_unitario: costoReal
+      costo_unitario: costoReal,
+      organizacion_id: organizacionCompra
     });
   }
 
@@ -5168,7 +5211,8 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
           cantidad: item.cantidad,
           origen: 'compra',
           compra_id: compraId,
-          nota: 'Reversión por anulación'
+          nota: 'Reversión por anulación',
+          organizacion_id: req.usuario.organizacion_id
         });
       }
       // Queda en 0 para que, si se restaura desde la papelera, el stock se
@@ -5550,7 +5594,7 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id,
-              devoluciones_proveedor.deposito_id, compras.proveedor_id
+              devoluciones_proveedor.deposito_id, compras.proveedor_id, compras.organizacion_id
          FROM devoluciones_proveedor JOIN compras ON compras.id = devoluciones_proveedor.compra_id
         WHERE devoluciones_proveedor.id = ?`
     )
@@ -5576,7 +5620,8 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
       cantidad: item.cantidad,
       origen: 'devolucion_proveedor',
       devolucion_proveedor_id: devolucionProveedorId,
-      nota: 'Devolución a proveedor'
+      nota: 'Devolución a proveedor',
+      organizacion_id: devolucion.organizacion_id
     });
     productosTocados.add(item.producto_id);
     if (item.variante_id) variantesTocadas.add(item.variante_id);
@@ -5617,7 +5662,7 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id,
-              devoluciones_proveedor.deposito_id, compras.proveedor_id
+              devoluciones_proveedor.deposito_id, compras.proveedor_id, compras.organizacion_id
          FROM devoluciones_proveedor JOIN compras ON compras.id = devoluciones_proveedor.compra_id
         WHERE devoluciones_proveedor.id = ?`
     )
@@ -5641,7 +5686,8 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
       cantidad: item.cantidad,
       origen: 'devolucion_proveedor',
       devolucion_proveedor_id: devolucionProveedorId,
-      nota: 'Reversión por anulación'
+      nota: 'Reversión por anulación',
+      organizacion_id: devolucion.organizacion_id
     });
     productosTocados.add(item.producto_id);
     if (item.variante_id) variantesTocadas.add(item.variante_id);

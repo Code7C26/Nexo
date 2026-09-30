@@ -5195,3 +5195,112 @@ sin errores. Proceso y copia de scratchpad borrados al terminar; no existe
 4. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
    todas partes donde se agregó).
+
+## 42. Etapa A (multi-tenant) — `movimientos_stock` y `transferencias`
+
+**Objetivo**: siguiente ítem de la lista que dejaba pendiente §41 ("stock/
+movimientos_stock"). "Stock" no es una tabla propia: `stock_actual` y
+`stock_por_deposito` son vistas SQL derivadas de `movimientos_stock`
+(agrupadas por `producto_id`, y por `producto_id, deposito_id` la segunda), así
+que no tienen columna propia y se filtran indirectamente vía
+`productos.organizacion_id` o vía `producto_id IN (...)` sobre productos ya
+filtrados. `transferencias` sí es una cabecera de operación (como
+ventas/compras/gastos) y necesitó su propia columna, poblada siempre desde
+`req.usuario.organizacion_id` al insertar — no se deriva de `depositos`, que
+sigue siendo catálogo global (§39/§40).
+
+**`backend/db/schema.sql` / `backend/db/index.js`**: `organizacion_id INTEGER
+REFERENCES organizaciones(id)` nullable en `movimientos_stock` y
+`transferencias`, `ALTER TABLE ADD COLUMN` idempotente junto al resto de los
+bloques de `organizacion_id` (después del de `gastos`), y ambas tablas
+sumadas al mismo loop de backfill.
+
+**`backend/server.js`**:
+- `registrarMovimientoStock(...)` — el punto de inserción centralizado y
+  único de toda escritura a `movimientos_stock` — gana un parámetro
+  obligatorio `organizacion_id` (sin default: cualquier llamado que no lo
+  pase revienta en el momento, a propósito). Los 17 sitios que la llaman se
+  actualizaron: los que ya tenían `req.usuario.organizacion_id` en scope de
+  handler lo pasan directo (`POST /api/stock/ajuste`, `POST /api/transferencias`
+  y su `anular`, `crearVenta`, `PUT /api/ventas/:id` —dos loops—,
+  `POST /api/ventas/:id/anular` y `/restaurar`, `PUT /api/compras/:id` —dos
+  loops—, `POST /api/compras/:id/anular`); los que son funciones internas sin
+  ese parámetro (`aplicarDevolucion`, `revertirDevolucion`,
+  `aplicarStockCompra`, `aplicarDevolucionProveedor`,
+  `revertirDevolucionProveedor`) ganaron `organizacion_id`/`compras.
+  organizacion_id`/`ventas.organizacion_id` en el `SELECT` que ya hacían
+  contra la venta/compra padre, y lo propagan desde ahí.
+- `GET /api/stock`: ahora filtra `productos` por `organizacion_id` y resuelve
+  `stock_por_deposito` acotando por los ids de producto ya filtrados
+  (`IN (...)`), porque la vista no tiene columna propia.
+- `GET /api/movimientos-stock`, `GET /api/transferencias`: filtrados por
+  `organizacion_id`.
+- `POST /api/transferencias`: el `INSERT` en `transferencias` escribe
+  `organizacion_id` desde `req.usuario.organizacion_id`.
+- `POST /api/transferencias/:id/anular`: su `SELECT ... WHERE id = ?` ganó
+  `AND organizacion_id = ?`.
+- `POST /api/stock/ajuste`, `GET /api/productos/:id/movimientos`,
+  `GET /api/productos/:id/variantes/:varianteId/movimientos`: sus lookups de
+  `productos`/`producto_variantes` (`SELECT ... WHERE id = ?`) ganaron el
+  filtro por organización.
+- Gap real encontrado y cerrado (mismo tipo que §38-41): ninguno de los
+  endpoints de arriba filtraba por organización antes de esta tanda —
+  `GET /api/stock`, `GET /api/movimientos-stock`, `GET /api/transferencias`
+  devolvían datos de todas las organizaciones sin distinción, y
+  `POST /api/stock/ajuste`, `POST /api/transferencias`,
+  `POST /api/transferencias/:id/anular` y los dos endpoints de movimientos por
+  producto/variante permitían operar sobre productos/transferencias de otra
+  empresa adivinando el id. Se cerró sumando el filtro correspondiente a cada
+  uno.
+
+**Gaps que quedan fuera a propósito**:
+- `POST /api/productos/:id/atributos` y `POST /api/productos/:id/variantes`
+  tienen el mismo patrón de fuga (`SELECT id FROM productos WHERE id = ?` sin
+  filtro de organización) pero no tocan stock/movimientos_stock — quedan
+  para cuando se retome la migración de `productos` en detalle, no se
+  corrigieron en este lote para no mezclar alcance.
+- Tesorería (`movimientos_tesoreria`, `cobros`, `pagos`) y cuentas
+  corrientes (`movimientos_cc_clientes`/`movimientos_cc_proveedores`) siguen
+  pendientes, ya anotado en §41.
+- `depositos` sigue como catálogo global — misma etapa aparte ya anotada en
+  §39/§40/§41 (catálogos con `UNIQUE(nombre)`).
+- Reportes/resumen sigue sin filtrar por organización (mismo gap trackeado
+  desde §38).
+
+**Verificación**: copia aislada del `nexo.db` real en scratchpad (todo el
+directorio `backend/` copiado aparte, porque la ruta de la base está fijada a
+`__dirname/nexo.db` en `db/index.js` y no hay variable de entorno para
+redirigirla), servidor de prueba en el puerto 4173 (nunca usado antes) contra
+esa copia, organización 2 creada a mano con su propio admin
+(`scryptSync`/parámetros idénticos a los del servidor). Con productos,
+movimientos de stock, ventas y compras reales de la organización 1:
+`GET /api/stock`, `GET /api/movimientos-stock` y `GET /api/transferencias`
+desde la organización 2 devuelven `[]`; `POST /api/stock/ajuste` desde la
+organización 2 contra un producto de la organización 1 responde 400 ("El
+producto no existe"); la organización 1 sigue pudiendo ajustar su propio
+stock, crear una venta y anularla con normalidad. Se confirmó por SQL directo
+que los movimientos de stock generados por esa venta (salida + entrada de
+reversión al anular) quedaron con `organizacion_id = 1`, y que no quedó
+ninguna fila con `organizacion_id IS NULL` en `movimientos_stock` ni en
+`transferencias` tras el backfill. `npm test` verde antes y después.
+Idempotencia confirmada matando y reiniciando el proceso de prueba sobre la
+misma base ya migrada: sin errores. Proceso y copia de scratchpad borrados al
+terminar; la base real (`backend/db/nexo.db`) no se tocó en ningún momento.
+
+### Qué sigue
+
+1. Tesorería (`movimientos_tesoreria`, `cobros`, `pagos`) y cuentas
+   corrientes (`movimientos_cc_clientes`/`movimientos_cc_proveedores`) quedan
+   pendientes del mismo patrón (mismo orden que ya señalaba §38-41). Tesorería
+   sigue siendo el que más sitios de `INSERT` toca (~9).
+2. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa (reconstrucción de tabla + regla de "predeterminada"
+   por organización).
+3. Gap deferido de este lote: `POST /api/productos/:id/atributos` y
+   `POST /api/productos/:id/variantes` sin filtro de organización.
+4. Reportes/resumen (gap ya señalado desde §38) sigue necesitando su propia
+   revisión una vez que las tablas de negocio relevantes tengan la columna.
+5. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
+   todas partes donde se agregó).

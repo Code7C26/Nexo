@@ -454,19 +454,28 @@ CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
 -- referencian por transferencia_id, igual que una venta referencia sus
 -- movimientos por venta_id. anulada revierte con el par contrario, nunca
 -- borra filas — mismo criterio que el resto del sistema.
+-- organizacion_id: mismo patrón multi-tenant que gastos (CLAUDE.md §28); no
+-- se deriva de otra tabla (depositos sigue siendo un catálogo global, ver
+-- §29/§39 del handoff) así que se completa en el INSERT desde
+-- req.usuario.organizacion_id.
 CREATE TABLE IF NOT EXISTS transferencias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deposito_origen_id INTEGER NOT NULL REFERENCES depositos(id),
   deposito_destino_id INTEGER NOT NULL REFERENCES depositos(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
-  nota TEXT
+  nota TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
 -- deposito_id es NOT NULL: toda unidad de stock vive en algún depósito
 -- físico concreto, nunca "en general" (CLAUDE.md §5/§19).
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28); se deriva de la operación que generó el movimiento (venta, compra,
+-- devolución, transferencia o ajuste manual), nunca se resuelve solo acá —
+-- quien llama a registrarMovimientoStock ya la tiene resuelta.
 CREATE TABLE IF NOT EXISTS movimientos_stock (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
@@ -489,7 +498,8 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   -- Solo tiene sentido en las entradas por compra; en salidas y ajustes
   -- queda NULL.
   costo_unitario REAL,
-  nota TEXT
+  nota TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- El índice sobre (producto_id, deposito_id) se crea en db/index.js, no
