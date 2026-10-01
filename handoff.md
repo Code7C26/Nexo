@@ -2292,3 +2292,56 @@ retomar.
   familias que sobren (hoy carga 5 de más).
 - `GEMINI_API_KEY` sigue sin estar cargada en el proceso: el asistente por
   texto responde 503. Se consigue gratis en Google AI Studio.
+
+## 20. Última etapa: Business Model Canvas (documentación comercial)
+
+Etapa de **documentación, no de código**: no se tocó `backend/`,
+`frontend/` ni el esquema, así que el proceso del 3000 no se reinició ni
+hizo falta.
+
+- **Pedido**: resolver la consigna de `docs/BUSINESS MODEL CANVAS.txt`
+  (actividad de clase) con la información real del proyecto, exportarla a
+  PDF y subirla a una carpeta de documentación comercial en el repo.
+- **Entregable**: `documentacion comercial/Nexo - Business Model Canvas.pdf`
+  — una sola página A3 apaisada (420×297 mm) con los 9 bloques del lienzo,
+  en la identidad visual de Nexo (negro/blanco puro, wordmark en el
+  encabezado, Plus Jakarta Sans). **Sin tipografía monoespaciada**, por la
+  objeción ya conocida del usuario al estilo "caja registradora".
+- **De dónde salió el contenido**: `CLAUDE.md` (reglas de negocio y
+  arquitectura), `README.md`, `handoff.md`, `docs/3- Análisis FODA.docx`
+  (los dos lienzos FODA están **como imágenes** dentro del .docx, no como
+  texto) y `docs/Revisión post pasantías...docx` (de ahí sale el hallazgo
+  de que los sistemas que usan las pymes son complejos, poco interactivos
+  y no facturan).
+- **Dos decisiones que tomó el usuario**, no inventadas:
+  1. **Fuentes de ingresos = SaaS por planes** (abono mensual por negocio,
+     Plan Base + Plan Premium con asistente/ARCA/multidepósito), coherente
+     con el "planes premium" que ya estaba en el FODA.
+  2. **Estructura de costos sin cifras**: se listan los rubros reales
+     (horas/hombre, hosting, dominio, API de IA, legales) pero **no se
+     inventaron montos**. Si en clase calcularon números concretos, el
+     lugar donde van es ese bloque.
+- **Cómo se generó** (reproducible): se escribió un HTML con la grilla del
+  canvas y se exportó con Chrome headless
+  (`chrome.exe --headless --no-pdf-header-footer --print-to-pdf=...`),
+  con `@page { size: 420mm 297mm }` para fijar el A3 apaisado. Dos
+  detalles que costaron:
+  - La grilla superior **no puede ser `1fr 1fr`**: cada columna parte
+    donde su contenido lo pide. Se resolvió con
+    `grid-template-rows: repeat(14, 1fr)` y un span distinto por bloque
+    (Actividades 6 / Recursos 8, Relación 7 / Canales 7).
+  - La tipografía **va embebida como data URI** en el HTML. En la primera
+    exportación Chrome no alcanzó a bajar la fuente de Google y el PDF
+    salió en Segoe UI; con el `@font-face` embebido el resultado deja de
+    depender de la red. Se verificó con `document.fonts.check(...)` que la
+    familia activa fuera la correcta, y sobre el PDF ya generado que
+    tuviera 1 página, MediaBox de 420×297 mm y las cuatro variantes de
+    Plus Jakarta Sans embebidas.
+- **El fuente del canvas no quedó en el repo** (solo el PDF, que es lo que
+  se pidió): vivía en el scratchpad de la sesión. Si hay que editarlo, se
+  regenera con el método de arriba.
+- **Pendiente del lado del usuario**: la consigna pide además adjuntar el
+  PDF en la tarea de Google Classroom — eso lo hace el coordinador del
+  grupo, no se puede hacer desde acá.
+- `docs/BUSINESS MODEL CANVAS.txt` (el enunciado) quedó **sin commitear**,
+  a propósito: no se pidió subirlo.
