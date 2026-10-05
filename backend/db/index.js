@@ -98,6 +98,15 @@ if (!movimientosColumnas.some((col) => col.name === 'venta_id')) {
   );
 }
 
+// movimientos_stock.costo_unitario: costo con el envío prorrateado (ver
+// compra_items.costo_real_unitario más abajo). Va acá, antes de los tres
+// rebuilds de movimientos_stock que siguen, porque sus INSERT..SELECT leen
+// esta columna: en una base anterior a ella, el primer rebuild reventaba con
+// "no such column: costo_unitario" en todos los arranques.
+if (!movimientosColumnas.some((col) => col.name === 'costo_unitario')) {
+  db.exec('ALTER TABLE movimientos_stock ADD COLUMN costo_unitario REAL');
+}
+
 // movimientos_stock: agregar 'devolucion' al CHECK de origen y la columna
 // devolucion_id obliga a reconstruir la tabla (SQLite no permite modificar
 // un CHECK con ALTER TABLE) — mismo procedimiento ya usado para compras y
@@ -323,6 +332,66 @@ db.exec(`
   GROUP BY producto_id, deposito_id
 `);
 
+// compras.estado_envio: informativo, no afecta el stock. Las compras
+// viejas quedan en 'recibido' (el default), que es lo correcto: ya
+// habían sumado su stock, así que conceptualmente ya estaban recibidas.
+const comprasColumnas = db.prepare('PRAGMA table_info(compras)').all();
+if (!comprasColumnas.some((col) => col.name === 'estado_envio')) {
+  db.exec(
+    "ALTER TABLE compras ADD COLUMN estado_envio TEXT NOT NULL DEFAULT 'recibido' CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido'))"
+  );
+}
+
+// compras: agregar 'borrador' al CHECK de estado obliga a reconstruir la
+// tabla, porque SQLite no permite modificar un CHECK con ALTER TABLE. Se
+// hace copiando las filas a una tabla nueva y renombrando. Es seguro
+// porque los id se preservan tal cual, así que las FK que apuntan acá
+// (compra_items, pagos, movimientos_stock, movimientos_cc_proveedores)
+// siguen resolviendo a la misma compra.
+// Va antes de los ALTER de compras que siguen (deposito_id, condicion_pago,
+// fecha_vencimiento, organizacion_id) y después del de estado_envio, que su
+// INSERT..SELECT lee: el cuerpo de un rebuild es una foto de la tabla del día
+// en que se escribió, así que toda columna agregada por ALTER antes de que
+// corra se pierde. Regla para cualquier ALTER nuevo: va después del último
+// rebuild de su tabla.
+const comprasSql = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'compras'")
+  .get();
+if (comprasSql && !comprasSql.sql.includes('borrador')) {
+  // Las compras que ya existían sumaron su stock al crearse (era la regla
+  // vieja), así que arrancan con stock_aplicado = 1 para que marcarlas
+  // como recibidas no lo vuelva a sumar. Las anuladas quedan en 0 porque
+  // su stock ya fue revertido.
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE compras_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
+        fecha TEXT NOT NULL DEFAULT (date('now')),
+        estado TEXT NOT NULL CHECK (estado IN ('borrador', 'activa', 'anulada')) DEFAULT 'borrador',
+        estado_envio TEXT NOT NULL CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido')) DEFAULT 'pedido',
+        costo_envio REAL NOT NULL DEFAULT 0,
+        stock_aplicado INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    db.exec(`
+      INSERT INTO compras_nueva (id, proveedor_id, fecha, estado, estado_envio, costo_envio, stock_aplicado)
+      SELECT id, proveedor_id, fecha, estado, estado_envio, 0,
+             CASE WHEN estado = 'anulada' THEN 0 ELSE 1 END
+        FROM compras
+    `);
+    db.exec('DROP TABLE compras');
+    db.exec('ALTER TABLE compras_nueva RENAME TO compras');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // deposito_id en las operaciones que mueven stock (venta, compra,
 // devolución, devolución a proveedor): de qué depósito salió o a cuál
 // entró la mercadería de esa operación puntual (CLAUDE.md §19). Nullable,
@@ -382,16 +451,6 @@ db.exec(`
      SET fecha_vencimiento = fecha, condicion_pago = COALESCE(condicion_pago, 'contado')
    WHERE fecha_vencimiento IS NULL;
 `);
-
-// compras.estado_envio: informativo, no afecta el stock. Las compras
-// viejas quedan en 'recibido' (el default), que es lo correcto: ya
-// habían sumado su stock, así que conceptualmente ya estaban recibidas.
-const comprasColumnas = db.prepare('PRAGMA table_info(compras)').all();
-if (!comprasColumnas.some((col) => col.name === 'estado_envio')) {
-  db.exec(
-    "ALTER TABLE compras ADD COLUMN estado_envio TEXT NOT NULL DEFAULT 'recibido' CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido'))"
-  );
-}
 
 // productos.stock_minimo / stock_maximo: umbrales de la alerta de stock.
 // Los productos viejos quedan con mínimo 0 y máximo NULL, o sea sin
@@ -520,92 +579,25 @@ if (!transferenciasColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE transferencias ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
-// movimientos_tesoreria.organizacion_id: mismo patrón (Etapa A, CLAUDE.md
-// §28). A diferencia de cobros/pagos/movimientos_cc_*, necesita columna
-// propia porque hay orígenes ('manual', 'transferencia') sin venta/compra/
-// gasto del que derivar la organización por join.
-const movimientosTesoreriaColumnasOrg = db.prepare('PRAGMA table_info(movimientos_tesoreria)').all();
-if (!movimientosTesoreriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
-  db.exec('ALTER TABLE movimientos_tesoreria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
-}
-
-// auditoria.organizacion_id / asistente_mensajes.organizacion_id: cierran el
-// gap de lectura más grande que quedaba abierto de la Etapa A (CLAUDE.md
-// §28) — eran las dos únicas tablas de datos de negocio sin columna de
-// organización. Ninguna toca un CHECK, así que alcanza el ALTER aditivo de
+// asistente_mensajes.organizacion_id: junto con auditoria.organizacion_id
+// (que vive más abajo, después de los rebuilds de esa tabla) cierra el gap
+// de lectura más grande que quedaba abierto de la Etapa A (CLAUDE.md §28) —
+// eran las dos únicas tablas de datos de negocio sin columna de
+// organización. No toca un CHECK, así que alcanza el ALTER aditivo de
 // siempre.
-const auditoriaColumnasOrg = db.prepare('PRAGMA table_info(auditoria)').all();
-if (!auditoriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
-  db.exec('ALTER TABLE auditoria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
-}
-// idx_auditoria_org_fecha, el índice que en la práctica reemplaza a
-// idx_auditoria_fecha una vez que GET /api/auditoria filtra por
-// organización: se crea acá, fuera del `if` de arriba y no en schema.sql
-// (mismo criterio que idx_facturas_numeracion), porque tiene que cubrir
-// tanto la instalación fresca (donde la columna ya viene en el CREATE
-// TABLE y el ALTER de arriba no llega a correr) como la que se acaba de
-// migrar.
-db.exec('CREATE INDEX IF NOT EXISTS idx_auditoria_org_fecha ON auditoria(organizacion_id, fecha DESC, id DESC)');
 const asistenteMensajesColumnasOrg = db.prepare('PRAGMA table_info(asistente_mensajes)').all();
 if (!asistenteMensajesColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE asistente_mensajes ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
-// compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
-// costo con el envío prorrateado. Nullable porque las filas viejas se
+// compra_items.costo_real_unitario (y movimientos_stock.costo_unitario, más
+// arriba): costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
 // el costo real era exactamente el precio unitario.
 const compraItemsColumnas = db.prepare('PRAGMA table_info(compra_items)').all();
 if (!compraItemsColumnas.some((col) => col.name === 'costo_real_unitario')) {
   db.exec('ALTER TABLE compra_items ADD COLUMN costo_real_unitario REAL');
   db.exec('UPDATE compra_items SET costo_real_unitario = precio_unitario');
-}
-if (!movimientosColumnas.some((col) => col.name === 'costo_unitario')) {
-  db.exec('ALTER TABLE movimientos_stock ADD COLUMN costo_unitario REAL');
-}
-
-// compras: agregar 'borrador' al CHECK de estado obliga a reconstruir la
-// tabla, porque SQLite no permite modificar un CHECK con ALTER TABLE. Se
-// hace copiando las filas a una tabla nueva y renombrando. Es seguro
-// porque los id se preservan tal cual, así que las FK que apuntan acá
-// (compra_items, pagos, movimientos_stock, movimientos_cc_proveedores)
-// siguen resolviendo a la misma compra.
-const comprasSql = db
-  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'compras'")
-  .get();
-if (comprasSql && !comprasSql.sql.includes('borrador')) {
-  // Las compras que ya existían sumaron su stock al crearse (era la regla
-  // vieja), así que arrancan con stock_aplicado = 1 para que marcarlas
-  // como recibidas no lo vuelva a sumar. Las anuladas quedan en 0 porque
-  // su stock ya fue revertido.
-  db.exec('PRAGMA foreign_keys = OFF');
-  db.exec('BEGIN');
-  try {
-    db.exec(`
-      CREATE TABLE compras_nueva (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
-        fecha TEXT NOT NULL DEFAULT (date('now')),
-        estado TEXT NOT NULL CHECK (estado IN ('borrador', 'activa', 'anulada')) DEFAULT 'borrador',
-        estado_envio TEXT NOT NULL CHECK (estado_envio IN ('pedido', 'en_camino', 'recibido')) DEFAULT 'pedido',
-        costo_envio REAL NOT NULL DEFAULT 0,
-        stock_aplicado INTEGER NOT NULL DEFAULT 0
-      )
-    `);
-    db.exec(`
-      INSERT INTO compras_nueva (id, proveedor_id, fecha, estado, estado_envio, costo_envio, stock_aplicado)
-      SELECT id, proveedor_id, fecha, estado, estado_envio, 0,
-             CASE WHEN estado = 'anulada' THEN 0 ELSE 1 END
-        FROM compras
-    `);
-    db.exec('DROP TABLE compras');
-    db.exec('ALTER TABLE compras_nueva RENAME TO compras');
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
-  db.exec('PRAGMA foreign_keys = ON');
 }
 
 // clientes: campos de CRM agregados después de que la tabla ya existía.
@@ -844,6 +836,19 @@ if (movimientosTesoreriaSql3 && !movimientosTesoreriaSql3.sql.includes("'devoluc
   }
   db.exec('PRAGMA foreign_keys = ON');
 }
+
+// movimientos_tesoreria.organizacion_id: mismo patrón (Etapa A, CLAUDE.md
+// §28). A diferencia de cobros/pagos/movimientos_cc_*, necesita columna
+// propia porque hay orígenes ('manual', 'transferencia') sin venta/compra/
+// gasto del que derivar la organización por join. Va después de los tres
+// rebuilds de arriba y no junto al resto de la Etapa A: sus cuerpos no traen
+// esta columna, así que en una base vieja la borraban (ver el comentario del
+// rebuild de compras).
+const movimientosTesoreriaColumnasOrg = db.prepare('PRAGMA table_info(movimientos_tesoreria)').all();
+if (!movimientosTesoreriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE movimientos_tesoreria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // La vista del saldo de tesorería va acá y no en schema.sql a propósito:
 // schema.sql se ejecuta al principio de este archivo, cuando en una base
 // existente todavía no se agregó cuentas_tesoreria.saldo_inicial, así que
@@ -1153,6 +1158,27 @@ if (auditoriaSql5 && !auditoriaSql5.sql.includes("'login'")) {
   }
   db.exec('PRAGMA foreign_keys = ON');
 }
+
+// auditoria.organizacion_id (Etapa A, CLAUDE.md §28, ver
+// asistente_mensajes.organizacion_id más arriba). Va después de los cinco
+// rebuilds de auditoria y no junto al resto de la Etapa A: sus cuerpos no
+// traen esta columna, así que la borraban — en una base vieja, y también en
+// una nueva mientras el CHECK de entidad de schema.sql estuvo atrasado
+// respecto del último rebuild (el primer arranque reventaba en el backfill
+// con "no such column: organizacion_id").
+const auditoriaColumnasOrg = db.prepare('PRAGMA table_info(auditoria)').all();
+if (!auditoriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE auditoria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+// idx_auditoria_org_fecha, el índice que en la práctica reemplaza a
+// idx_auditoria_fecha una vez que GET /api/auditoria filtra por
+// organización: se crea acá, fuera del `if` de arriba y no en schema.sql
+// (mismo criterio que idx_facturas_numeracion), porque tiene que cubrir
+// tanto la instalación fresca (donde la columna ya viene en el CREATE
+// TABLE y el ALTER de arriba no llega a correr) como la que se acaba de
+// migrar. Por la misma razón que el ALTER, va después de los rebuilds: un
+// DROP TABLE se lleva sus índices.
+db.exec('CREATE INDEX IF NOT EXISTS idx_auditoria_org_fecha ON auditoria(organizacion_id, fecha DESC, id DESC)');
 
 // Variantes de producto (Talle/Color/etc.): variante_id se agrega como
 // columna nullable adicional en las tablas de ítems y en movimientos_stock.

@@ -5843,3 +5843,49 @@ arriba).
    Auditoría (§46).
 5. Bug de instalación fresca: agregar `organizacion_id` al `CREATE TABLE
    auditoria` de `schema.sql` (ver detalle en el "Qué sigue" de §46 de arriba).
+   **Cerrado en §48** (el diagnóstico de este ítem estaba equivocado, ver ahí).
+
+## 48. Instalación desde cero y migración de bases viejas
+
+**Objetivo**: ítem 5 del "Qué sigue" de §47 — instalar Nexo desde cero
+reventaba en el primer arranque. **El diagnóstico de §46/§47 estaba mal**:
+`schema.sql` sí traía `organizacion_id` en `auditoria`. Lo atrasado era su
+`CHECK` de `entidad` (le faltaban `'lista_precio'`, `'deposito'` y
+`'transferencia'`), así que una base nueva disparaba los rebuilds #3–#5 de
+`auditoria` en `db/index.js`, cuyos cuerpos recrean la tabla sin
+`organizacion_id` ni `idx_auditoria_org_fecha`.
+
+**Causa general, ya anotada en el código**: el cuerpo de un rebuild es una foto
+de la tabla del día en que se escribió, así que toda columna agregada por
+`ALTER` *antes* de que corra se pierde. **Regla: todo `ALTER` nuevo va después
+del último rebuild de su tabla.** El mismo defecto rompía el primer arranque de
+todas las bases anteriores a la Etapa A.
+
+**Cambios** (sin cambio de esquema final, solo de orden):
+- `schema.sql`: `CHECK` de `entidad` de `auditoria` igual al del último rebuild,
+  con un comentario que lo exige.
+- `db/index.js`:
+  - Los `ALTER` de `organizacion_id` de `auditoria` (con su índice) y de
+    `movimientos_tesoreria` se movieron después de los rebuilds de su tabla.
+  - El rebuild `'borrador'` de `compras`, junto con el `ALTER` de
+    `estado_envio` que su `INSERT..SELECT` lee, se movió antes de los `ALTER`
+    de `deposito_id`, `condicion_pago`, `fecha_vencimiento` y
+    `organizacion_id` de `compras`, que se perdían.
+  - El `ALTER` de `movimientos_stock.costo_unitario` se movió antes de los
+    tres rebuilds que la leen: la base del 25/8 no arrancaba nunca
+    (`no such column: costo_unitario`).
+
+**Verificación**: arnés en el scratchpad que corre `db/index.js` tres veces
+sobre una base nueva, una copia de la real y los 21 backups de `backend/db/`.
+- **Con `HEAD`:** la base nueva y 20 backups fallaban en el 1er arranque; el del
+  25/8 fallaba en todos.
+- **Con el fix:**
+  - los 23 casos migran en un solo arranque, y el 2do y el 3er arranque no
+    cambian nada (huella de esquema + datos);
+  - `foreign_key_check` queda vacío;
+  - columnas, índices y vistas finales son idénticos a los de una base nueva;
+  - la base real queda idéntica en datos con `HEAD` y con el fix.
+- **Smoke test HTTP sobre base nueva** (bootstrap, producto, compra recibida,
+  venta + cobro, gasto, auditoría con organización): 18/18. Con `HEAD` el
+  servidor ni arranca.
+- La base real no se tocó (md5 `a25ce51db1f9978b77c16aac22bc8a3e`).

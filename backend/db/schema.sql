@@ -736,11 +736,14 @@ CREATE TABLE IF NOT EXISTS auditoria (
   -- 'organizacion' cubre los datos del negocio (nombre, CUIT, dirección) que
   -- salen impresos en el membrete de todo comprobante: cambiarlos no es un
   -- ajuste cosmético, así que queda registrado como cualquier otra mutación.
+  -- Estos dos CHECK tienen que quedar iguales a los del último rebuild de
+  -- auditoria en db/index.js: si acá falta un valor, una base nueva dispara
+  -- ese rebuild, que recrea la tabla sin organizacion_id.
   entidad TEXT NOT NULL
     CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
                        'factura','cobro','pago','gasto','producto','cliente','proveedor',
                        'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
-                       'organizacion')),
+                       'organizacion','lista_precio','deposito','transferencia')),
   entidad_id INTEGER,
   -- Quién operó, más allá de por qué vía (actor). Nullable a propósito:
   -- las filas de antes de esta etapa no tienen a quién atribuirse, y
