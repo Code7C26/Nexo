@@ -5412,3 +5412,103 @@ archivo); la base real (`backend/db/nexo.db`) no se tocó en ningún momento.
 4. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
    todas partes donde se agregó).
+
+## 44. Etapa A (multi-tenant) — reportes y dashboard
+
+**Objetivo**: el ítem 3 que dejaba pendiente §43 — los cinco endpoints de
+reportes/dashboard (`GET /api/resumen`, `/api/resumen/evolucion`,
+`/api/reportes/ventas`, `/api/reportes/compras`, `/api/reportes/stock`) no
+filtraban por organización en absoluto: eran el gap más severo que quedaba,
+porque agregan (`SUM`, `COUNT`, `GROUP BY`) datos financieros de todas las
+organizaciones mezclados, no un registro individual adivinable por id.
+
+**Decisión de diseño**: filtro plano no opcional `AND tabla.organizacion_id
+= ?` como última condición de cada `WHERE` — nunca envuelto en `(? IS NULL
+OR ...)` como los filtros de fecha opcionales, a propósito, para que un
+llamador que pase `organizacionId` undefined explote en el bind (500
+ruidoso) en vez de mezclar organizaciones en silencio. El array de bindings
+compartido por handler (`rango`) se extendió de 4 a 5 elementos agregando
+`req.usuario.organizacion_id` al final, sirviendo sin bifurcar para todas
+las queries de un mismo handler.
+
+**`backend/server.js`** — sin ninguna migración de esquema nueva (las 6
+tablas involucradas ya tenían `organizacion_id` desde tandas anteriores):
+- `calcularResultado(desde, hasta, organizacionId)`: sus 3 queries
+  (`SQL_RESULTADO_VENTAS/GASTOS/DEVOLUCIONES`) y sus 5 call-sites
+  (`/api/resumen`, y `/api/resumen/evolucion` en `serie`, `total` y
+  `resultadoAnterior`).
+- `SQL_LIMITES_OPERACIONES` (el `UNION ALL` de 5 subqueries que busca el
+  rango de fechas por defecto): cada rama ganó su propio placeholder —
+  SQLite no permite reusar un `?` posicional entre subqueries distintas— y
+  sus 4 call-sites pasan el mismo `organizacionId` 5 veces.
+- Los 8 pares de queries de reporte de ventas y los 8 de compras
+  (unidades/por-producto/por-categoría/por-cliente-o-proveedor, para
+  ventas y sus devoluciones, y compras y sus devoluciones a proveedor):
+  filtro siempre sobre la tabla cabecera (`ventas`/`compras`/
+  `devoluciones`/`devoluciones_proveedor`), nunca sobre `categorias`
+  (catálogo global sin columna propia).
+- Lookups inline de `resolverNombre` (`buscarNombreProducto`,
+  `buscarNombreCliente`, `buscarNombreProveedor`): ganaron `AND
+  organizacion_id = ?` como defensa en profundidad, mismo criterio ya
+  aplicado en §40-43. `buscarNombreCategoria` no se tocó (catálogo global).
+
+**Gap real encontrado y cerrado (el de mayor impacto de los cinco)**: `GET
+/api/reportes/stock` traía `productosBase` con un `SELECT_PRODUCTO` sin
+ningún `WHERE` — el `resumen.total_valorizado`/`cantidad_productos` del
+dashboard de stock salían de productos de **todas** las organizaciones
+sumados. Se cerró agregando `WHERE productos.organizacion_id = ?`, espejando
+exactamente el mismo patrón que ya usa `GET /api/productos`.
+
+**Gaps fuera a propósito (relevados en esta misma sesión, no tocados)**:
+usuarios (incluye una vulnerabilidad crítica de reseteo de contraseña
+cruzado entre organizaciones), `organizacionUnica()` como función a
+reemplazar, atributos/variantes de producto (10 de 11 endpoints, deferido
+desde §42), y `asistente_mensajes`/`auditoria` sin columna de organización.
+Ninguno se arranca sin su propia planificación (CLAUDE.md §27).
+
+**Verificación**: mismo procedimiento que §40-43. Copia aislada de
+`backend/` en el scratchpad, dos servidores de prueba sobre la misma base
+(uno con el código sin parchear, puerto 4732, y otro con el fix, puerto
+4731) para probar regresión cero: los 5 endpoints devolvieron respuestas
+**byte-idénticas** entre ambos para la organización 1 (la única con datos
+reales hoy). Se creó a mano una organización 2 con admin propio (mismo
+`scryptSync`) y se le cargó un set mínimo de datos que ejercita los 5
+endpoints: producto, cliente, proveedor, compra confirmada y recibida
+(stock solo sube en `estado_envio: recibido`, no al confirmar — ver §6),
+venta, gasto, devolución de esa venta y devolución a esa compra. Los 5
+endpoints devolvieron para la organización 2 solo lo cargado para ella,
+nunca mezclado con la organización 1 — en particular
+`resumen.total_valorizado`/`cantidad_productos` de `/api/reportes/stock`
+coincidieron exactamente con el único producto de la organización 2. Se
+forzó además el camino de `resolverNombre` (editando a mano la fecha de la
+venta/compra original para que quedara fuera del rango consultado mientras
+la devolución seguía dentro): los nombres resolvieron correctamente sin
+cruzarse entre organizaciones. Se probaron los 5 endpoints con y sin
+`?desde=&hasta=`, incluida una consulta fuera de rango (resultado en cero,
+no error). `npm test` verde antes y después, y de nuevo tras reiniciar el
+proceso de prueba desde cero (confirma que las sentencias modificadas
+preparan bien en un proceso fresco). Proceso y copia de scratchpad borrados
+al terminar; `backend/db/nexo.db` real no se tocó (confirmado por `git
+status`/mtime sin cambios — la ruta está en `.gitignore`, así que tampoco
+aparecería en el diff aunque hubiera cambiado).
+
+### Qué sigue
+
+1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes
+   como su propia etapa de rebuild a `UNIQUE(organizacion_id, nombre)`.
+2. Gap deferido desde §42/§43: `POST /api/productos/:id/atributos` y
+   `POST /api/productos/:id/variantes` (10 de 11 endpoints de
+   atributos/variantes) sin filtro de organización.
+3. Usuarios: filtrado por organización pendiente en sus endpoints,
+   incluyendo una vulnerabilidad crítica de reseteo de contraseña entre
+   organizaciones distintas detectada durante la exploración de esta etapa
+   — priorizar antes que el resto de este roadmap.
+4. `organizacionUnica()` (la función que hoy resuelve "la única
+   organización que existe") queda para reemplazar una vez que haya más de
+   una organización real operando.
+5. `asistente_mensajes` y `auditoria` todavía no tienen columna de
+   organización propia.
+6. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito
+   en todas partes donde se agregó).

@@ -6726,7 +6726,8 @@ const SQL_RESULTADO_VENTAS = db.prepare(
      FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
-      AND (? IS NULL OR ventas.fecha <= ?)`
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?`
 );
 
 const SQL_RESULTADO_GASTOS = db.prepare(
@@ -6736,7 +6737,8 @@ const SQL_RESULTADO_GASTOS = db.prepare(
      FROM gastos
     WHERE estado = 'activo'
       AND (? IS NULL OR fecha >= ?)
-      AND (? IS NULL OR fecha <= ?)`
+      AND (? IS NULL OR fecha <= ?)
+      AND organizacion_id = ?`
 );
 
 // Una devolución activa borra la venta que revierte (y su costo, si esa
@@ -6753,7 +6755,8 @@ const SQL_RESULTADO_DEVOLUCIONES = db.prepare(
      FROM devoluciones JOIN devolucion_items ON devolucion_items.devolucion_id = devoluciones.id
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
-      AND (? IS NULL OR devoluciones.fecha <= ?)`
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?`
 );
 
 // Fuente de verdad única del resultado del negocio: la usan tanto
@@ -6761,10 +6764,13 @@ const SQL_RESULTADO_DEVOLUCIONES = db.prepare(
 // por período de la serie, más el total y el período de comparación). Las
 // reglas contables de arriba viven acá y en ningún otro lado — si el día
 // de mañana cambian, cambian una sola vez.
-function calcularResultado(desde, hasta) {
+function calcularResultado(desde, hasta, organizacionId) {
   // El mismo par de parámetros se repite en cada consulta; con
   // (? IS NULL OR campo >= ?) el filtro se apaga solo cuando no viene.
-  const rango = [desde ?? null, desde ?? null, hasta ?? null, hasta ?? null];
+  // organizacionId NO es opcional: va plano y sin IS NULL a propósito
+  // (ver CLAUDE.md §28) para que un llamador que lo pase undefined
+  // explote en el bind en vez de mezclar organizaciones en silencio.
+  const rango = [desde ?? null, desde ?? null, hasta ?? null, hasta ?? null, organizacionId];
 
   const ventas = SQL_RESULTADO_VENTAS.get(...rango);
   const gastos = SQL_RESULTADO_GASTOS.get(...rango);
@@ -6787,7 +6793,7 @@ function calcularResultado(desde, hasta) {
 
 app.get('/api/resumen', soloAdmin, (req, res) => {
   const { desde, hasta } = req.query;
-  res.json(calcularResultado(desde ?? null, hasta ?? null));
+  res.json(calcularResultado(desde ?? null, hasta ?? null, req.usuario.organizacion_id));
 });
 
 /* ---------- Resumen: evolución y comparación de períodos ---------- */
@@ -6820,11 +6826,11 @@ const MAX_BUCKETS = 40;
 // query preparada.
 const SQL_LIMITES_OPERACIONES = db.prepare(
   `SELECT MIN(fecha) AS primera, MAX(fecha) AS ultima FROM (
-     SELECT fecha FROM ventas WHERE estado = 'activa'
-     UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo'
-     UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa'
-     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa'
-     UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa'
+     SELECT fecha FROM ventas WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa' AND organizacion_id = ?
    )`
 );
 // "Hoy" se pide a SQLite (no a `new Date()` de JS) para quedar consistente
@@ -7038,7 +7044,14 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
 
   // Cuando falta un extremo (el caso por defecto: el filtro del Resumen
@@ -7054,8 +7067,8 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
 
   const granularidad = granularidadDe(desde, hasta);
   const buckets = generarBuckets(desde, hasta, granularidad);
-  const serie = buckets.map((b) => ({ ...b, ...calcularResultado(b.desde, b.hasta) }));
-  const total = calcularResultado(desde, hasta);
+  const serie = buckets.map((b) => ({ ...b, ...calcularResultado(b.desde, b.hasta, organizacionId) }));
+  const total = calcularResultado(desde, hasta, organizacionId);
 
   let anterior = null;
   let delta = null;
@@ -7067,7 +7080,7 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
     const rangoAnterior = periodoAnterior(desde, hasta);
     const hayOperacionAntes = primera !== null && primera <= rangoAnterior.hasta;
     if (hayOperacionAntes) {
-      const resultadoAnterior = calcularResultado(rangoAnterior.desde, rangoAnterior.hasta);
+      const resultadoAnterior = calcularResultado(rangoAnterior.desde, rangoAnterior.hasta, organizacionId);
       anterior = { rango: rangoAnterior, ...resultadoAnterior };
       delta = {};
       for (const campo of CAMPOS_RESULTADO) {
@@ -7101,7 +7114,8 @@ const SQL_REPORTE_UNIDADES_VENTAS = db.prepare(
      FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
-      AND (? IS NULL OR ventas.fecha <= ?)`
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?`
 );
 
 const SQL_REPORTE_UNIDADES_DEVOLUCIONES = db.prepare(
@@ -7109,7 +7123,8 @@ const SQL_REPORTE_UNIDADES_DEVOLUCIONES = db.prepare(
      FROM devoluciones JOIN devolucion_items ON devolucion_items.devolucion_id = devoluciones.id
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
-      AND (? IS NULL OR devoluciones.fecha <= ?)`
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?`
 );
 
 const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
@@ -7123,6 +7138,7 @@ const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
       AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
     GROUP BY venta_items.producto_id`
 );
 
@@ -7138,6 +7154,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO = db.prepare(
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
       AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
     GROUP BY devolucion_items.producto_id`
 );
 
@@ -7158,6 +7175,7 @@ const SQL_REPORTE_VENTAS_POR_CATEGORIA = db.prepare(
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
       AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -7174,6 +7192,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA = db.prepare(
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
       AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -7189,6 +7208,7 @@ const SQL_REPORTE_VENTAS_POR_CLIENTE = db.prepare(
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
       AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
     GROUP BY ventas.cliente_id`
 );
 
@@ -7207,6 +7227,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE = db.prepare(
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
       AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
     GROUP BY ventas.cliente_id`
 );
 
@@ -7249,25 +7270,32 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
 
   // Mismo tratamiento de rango abierto que /api/resumen/evolucion: sin
   // desde/hasta, se acota contra la primera/última operación registrada.
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
-  const rango = [desde, desde, hasta, hasta];
+  const rango = [desde, desde, hasta, hasta, organizacionId];
 
-  const resultado = calcularResultado(desde, hasta);
+  const resultado = calcularResultado(desde, hasta, organizacionId);
   const ventasUnid = SQL_REPORTE_UNIDADES_VENTAS.get(...rango);
   const devolucionesUnid = SQL_REPORTE_UNIDADES_DEVOLUCIONES.get(...rango);
   const cantidadVentas = ventasUnid.cantidad_ventas;
 
-  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
-  const buscarNombreCliente = db.prepare('SELECT nombre FROM clientes WHERE id = ?');
+  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const buscarNombreCliente = db.prepare('SELECT nombre FROM clientes WHERE id = ? AND organizacion_id = ?');
 
   const productos = netearPorId(
     SQL_REPORTE_VENTAS_POR_PRODUCTO.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO.all(...rango),
-    (id) => buscarNombreProducto.get(id)?.nombre ?? '(producto eliminado)'
+    (id) => buscarNombreProducto.get(id, organizacionId)?.nombre ?? '(producto eliminado)'
   )
     .map((p) => {
       const ganancia = redondear2(p.ventas - p.costo);
@@ -7311,7 +7339,7 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
   const clientes = netearPorId(
     SQL_REPORTE_VENTAS_POR_CLIENTE.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE.all(...rango),
-    (id) => buscarNombreCliente.get(id)?.nombre ?? '(cliente eliminado)'
+    (id) => buscarNombreCliente.get(id, organizacionId)?.nombre ?? '(cliente eliminado)'
   )
     .map((c) => {
       const ganancia = redondear2(c.ventas - c.costo);
@@ -7368,7 +7396,8 @@ const SQL_REPORTE_UNIDADES_COMPRAS = db.prepare(
      FROM compras JOIN compra_items ON compra_items.compra_id = compras.id
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
-      AND (? IS NULL OR compras.fecha <= ?)`
+      AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?`
 );
 
 const SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR = db.prepare(
@@ -7377,7 +7406,8 @@ const SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR = db.prepare(
      JOIN devolucion_proveedor_items ON devolucion_proveedor_items.devolucion_proveedor_id = devoluciones_proveedor.id
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
-      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)`
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?`
 );
 
 const SQL_REPORTE_COMPRAS_POR_PROVEEDOR = db.prepare(
@@ -7391,6 +7421,7 @@ const SQL_REPORTE_COMPRAS_POR_PROVEEDOR = db.prepare(
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
       AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?
     GROUP BY compras.proveedor_id`
 );
 
@@ -7406,6 +7437,7 @@ const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR = db.prepare(
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
       AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?
     GROUP BY compras.proveedor_id`
 );
 
@@ -7419,6 +7451,7 @@ const SQL_REPORTE_COMPRAS_POR_PRODUCTO = db.prepare(
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
       AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?
     GROUP BY compra_items.producto_id`
 );
 
@@ -7431,6 +7464,7 @@ const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PRODUCTO = db.prepare(
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
       AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?
     GROUP BY devolucion_proveedor_items.producto_id`
 );
 
@@ -7448,6 +7482,7 @@ const SQL_REPORTE_COMPRAS_POR_CATEGORIA = db.prepare(
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
       AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -7461,6 +7496,7 @@ const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_CATEGORIA = db.prepare(
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
       AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -7495,19 +7531,26 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
-  const rango = [desde, desde, hasta, hasta];
+  const rango = [desde, desde, hasta, hasta, organizacionId];
 
   const comprasUnid = SQL_REPORTE_UNIDADES_COMPRAS.get(...rango);
   const devolucionesUnid = SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR.get(...rango);
   const cantidadCompras = comprasUnid.cantidad_compras;
 
-  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
-  const buscarNombreProveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ?');
+  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const buscarNombreProveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ? AND organizacion_id = ?');
   const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
 
   // Los totales de plata (compras_netas) se recalculan sumando las mismas
@@ -7516,7 +7559,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const proveedoresNeteados = netearComprasPorId(
     SQL_REPORTE_COMPRAS_POR_PROVEEDOR.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR.all(...rango),
-    (id) => buscarNombreProveedor.get(id)?.nombre ?? '(proveedor eliminado)'
+    (id) => buscarNombreProveedor.get(id, organizacionId)?.nombre ?? '(proveedor eliminado)'
   );
   const comprasNetas = redondear2(proveedoresNeteados.reduce((acc, p) => acc + p.compras, 0));
 
@@ -7534,7 +7577,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const productos = netearComprasPorId(
     SQL_REPORTE_COMPRAS_POR_PRODUCTO.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PRODUCTO.all(...rango),
-    (id) => buscarNombreProducto.get(id)?.nombre ?? '(producto eliminado)'
+    (id) => buscarNombreProducto.get(id, organizacionId)?.nombre ?? '(producto eliminado)'
   )
     .map((p) => ({
       id: p.id,
@@ -7596,12 +7639,19 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
-  const rango = [desde, desde, hasta, hasta];
+  const rango = [desde, desde, hasta, hasta, organizacionId];
   const diasPeriodo = diffDias(desde, hasta) + 1;
 
   const unidadesNetasPorProducto = new Map(
@@ -7612,7 +7662,10 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
     ).map((fila) => [fila.id, fila.unidades])
   );
 
-  const productosBase = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all().map(decorarProducto);
+  const productosBase = db
+    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
+    .all(req.usuario.organizacion_id)
+    .map(decorarProducto);
 
   const productos = productosBase
     .map((p) => {
