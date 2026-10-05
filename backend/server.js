@@ -1665,6 +1665,12 @@ app.get('/api/productos/:id/movimientos', (req, res) => {
 
 app.get('/api/productos/:id/atributos', (req, res) => {
   const productoId = Number(req.params.id);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributos = db
     .prepare('SELECT id, nombre, orden FROM producto_atributos WHERE producto_id = ? ORDER BY orden, nombre')
     .all(productoId);
@@ -1680,7 +1686,9 @@ app.get('/api/productos/:id/atributos', (req, res) => {
 
 app.post('/api/productos/:id/atributos', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -1716,6 +1724,12 @@ app.post('/api/productos/:id/atributos', soloAdmin, (req, res) => {
 app.patch('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1746,6 +1760,12 @@ app.patch('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
 app.delete('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1771,6 +1791,12 @@ app.delete('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => 
 app.post('/api/productos/:id/atributos/:atributoId/valores', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1808,6 +1834,12 @@ app.delete('/api/productos/:id/atributos/:atributoId/valores/:valorId', soloAdmi
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
   const valorId = Number(req.params.valorId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1932,6 +1964,12 @@ function combinacionYaExiste(productoId, valores, excluirVarianteId = null) {
 
 app.get('/api/productos/:id/variantes', (req, res) => {
   const productoId = Number(req.params.id);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const variantes = db
     .prepare(`${SELECT_VARIANTE} WHERE producto_variantes.producto_id = ? ORDER BY producto_variantes.id`)
     .all(productoId);
@@ -1941,7 +1979,9 @@ app.get('/api/productos/:id/variantes', (req, res) => {
 
 app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(productoId);
+  const producto = db
+    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -1995,6 +2035,12 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
 app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const varianteId = Number(req.params.varianteId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const variante = db.prepare('SELECT * FROM producto_variantes WHERE id = ? AND producto_id = ?').get(varianteId, productoId);
   if (!variante) {
     return res.status(404).json({ error: 'Variante no encontrada.' });

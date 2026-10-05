@@ -5734,7 +5734,7 @@ sesión.
    también el filtro de `cuentas_tesoreria`/`categorias_gasto` en
    `contextoParaInterprete()`.
 2. 9 de 10 endpoints de atributos/variantes sin filtro de organización (el de
-   movimientos por variante ya filtra).
+   movimientos por variante ya filtra). **Cerrado en §47.**
 3. Pasar `organizacion_id` a `NOT NULL` en todas las tablas que lo tienen
    nullable hoy.
 4. Filtrar `valor_anterior`/`valor_nuevo` por campos sensibles en
@@ -5742,3 +5742,104 @@ sesión.
    lectura al rol empleado; con el endpoint en `admin` no es urgente.
 5. Pasada visual pendiente en el navegador: Usuarios, Configuración (§45) y
    Auditoría (§46), las tres en una sola sesión si se puede.
+6. Bug encontrado en §47, sin corregir porque es ajeno a esa etapa:
+   `backend/db/schema.sql` define `CREATE TABLE auditoria` sin columna
+   `organizacion_id`, pese a que el comentario de `backend/db/index.js` (línea
+   544-547, agregado en §46) asume que en una instalación fresca "la columna
+   ya viene en el CREATE TABLE". En los hechos, solo llega por el `ALTER
+   TABLE` de la migración (índice 537-540 de `db/index.js`), así que una base
+   nueva de cero revienta en el arranque (`Error: no such column:
+   organizacion_id`) al llegar al backfill de la línea 1314-1316 — el resto
+   de las tablas de esa misma lista sí tienen la columna en el `CREATE
+   TABLE`. No afecta ninguna base ya migrada (como la real del repo), pero
+   bloquea instalar Nexo desde cero. Encontrado al armar la base compartida
+   de la verificación de §47 con `nexo.db` recién borrado; no estaba en el
+   handoff. Arreglo esperado: agregar `organizacion_id INTEGER REFERENCES
+   organizaciones(id)` al `CREATE TABLE auditoria` de `schema.sql`, igual que
+   ya la tienen `productos`/`clientes`/etc. en sus propios `CREATE TABLE`.
+
+## 47. Etapa A (multi-tenant) — atributos y variantes de producto
+
+**Objetivo**: ítem 2 del "Qué sigue" de §46. 9 de los 10 endpoints de
+atributos y variantes de producto (`backend/server.js`, bloque "Atributos y
+variantes de producto") no filtraban por `organizacion_id`: un admin de la
+empresa B que adivinara o enumerara un `producto_id`/`atributo_id`/
+`variante_id` de la empresa A podía leer y **escribir** sus atributos,
+valores y variantes (nombres de talles/colores, SKU, precio de venta, stock
+por variante). El único que ya filtraba era
+`GET /api/productos/:id/variantes/:varianteId/movimientos`, que sirvió de
+referencia del patrón esperado.
+
+**No hizo falta tocar el esquema**: `producto_atributos`,
+`producto_atributo_valores`, `producto_variantes` y `producto_variante_valores`
+no necesitan columna propia de organización — heredan el aislamiento del
+`producto_id`, igual que ya pasa con `movimientos_stock` por producto.
+
+**`backend/server.js`** — mismo patrón "chokepoint" que ya usa
+`GET /api/productos/:id/movimientos`: verificar una sola vez, al principio de
+cada handler, que el `producto_id` de la URL pertenece a
+`req.usuario.organizacion_id` (`SELECT id FROM productos WHERE id = ? AND
+organizacion_id = ?`), 404 genérico ("Producto no encontrado.") si no. Las
+consultas anidadas por `atributoId`/`valorId`/`varianteId` que ya filtraban
+por `producto_id` quedan igual, ahora correctamente acotadas:
+- `GET /api/productos/:id/atributos` y `GET /api/productos/:id/variantes`: no
+  verificaban ni la existencia del producto. Se les agregó el lookup completo.
+- `POST /api/productos/:id/atributos` y `POST /api/productos/:id/variantes`:
+  ya hacían `SELECT id FROM productos WHERE id = ?`; se les agregó
+  `AND organizacion_id = ?`.
+- `PATCH`/`DELETE` de atributos, `POST`/`DELETE` de valores y `PATCH` de
+  variantes: verificaban que el hijo perteneciera al `producto_id` de la URL,
+  pero nunca que ese producto fuera de la organización. Se les agregó el
+  mismo lookup de producto antes de las queries existentes.
+
+**Verificación**: mismo procedimiento que §40-46, pero con un hallazgo
+intermedio: armar la base compartida borrando `nexo.db` para arrancar de cero
+expuso el bug de `auditoria` sin `organizacion_id` en `schema.sql` (documentado
+arriba, en el ítem 6 del "Qué sigue" — no se corrigió, es ajeno a esta etapa).
+Se resolvió usando una **copia de la base real** (ya migrada) en vez de una
+base fresca, confirmando por `md5sum` que la base real nunca se tocó
+(idéntica antes y después:
+`a25ce51db1f9978b77c16aac22bc8a3e`). Dos servidores sobre esa copia
+compartida (4731 parcheado, 4732 `HEAD` sin parchear como `server-head.js` en
+el mismo directorio), con una segunda organización y dos admins de prueba
+creados a mano en la copia (`admin1_test` en la organización 1 ya existente,
+`admin2_test` + organización "Empresa Test 2" nueva) porque no se tenía la
+contraseña real del admin existente. Se armó un producto de prueba por
+empresa con un atributo ("Talle"), un valor ("M") y una variante (SKU
+"SKU-EMP1") en el producto de la empresa 1. Todo verde:
+- Los 9 endpoints devuelven 404 en 4731 (parcheado) cuando el admin de la
+  empresa 2 pasa el `producto_id`/`atributo_id`/`variante_id` de la empresa 1
+  (lectura y escritura, probado uno por uno).
+- Confirmado por contraste que `HEAD` (4732) sí filtraba la fuga: el mismo
+  `GET` de atributos/variantes devolvía 200 con los datos de la empresa 1, y
+  un `PATCH` cruzado (renombrar el atributo "Talle" a "HackeadoHead") devolvía
+  200 y **efectivamente modificaba la fila real** — confirma que no era solo
+  un bug de lectura, sino de escritura cruzada entre inquilinos.
+- Controles de no-regresión en 4731: las mismas operaciones dentro de la
+  propia empresa siguen funcionando igual (200/201), incluida una regla de
+  negocio preexistente (borrar un atributo con variantes creadas sigue dando
+  400, no un 404 falso por el nuevo filtro).
+- Producto inexistente sigue dando 404 igual que antes.
+- `npm test` (inventario estático de rutas) verde antes y después — no se
+  agregaron rutas, `permisos.js` no se tocó.
+
+Proceso y copia del scratchpad borrados al terminar.
+
+**Lo único del plan que quedó sin hacer**: ninguno de los puntos planificados
+quedó pendiente; el bug de `schema.sql`/`auditoria` que apareció durante la
+verificación quedó fuera del alcance de esta etapa a propósito (ver ítem 6
+arriba).
+
+### Qué sigue
+
+1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes como
+   su propia etapa de rebuild a `UNIQUE(organizacion_id, nombre)`.
+2. Pasar `organizacion_id` a `NOT NULL` en todas las tablas que lo tienen
+   nullable hoy.
+3. Filtrar `valor_anterior`/`valor_nuevo` por campos sensibles en
+   `GET /api/auditoria` — no urgente con el endpoint en `admin`.
+4. Pasada visual pendiente en el navegador: Usuarios, Configuración (§45) y
+   Auditoría (§46).
+5. Bug de instalación fresca: agregar `organizacion_id` al `CREATE TABLE
+   auditoria` de `schema.sql` (ver detalle en el "Qué sigue" de §46 de arriba).
