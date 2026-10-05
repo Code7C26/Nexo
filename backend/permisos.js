@@ -20,7 +20,10 @@
 // (pagos incluidos) y sus devoluciones a proveedor, y las 5 vistas de
 // análisis (resumen y reportes) son admin. Cobros de venta y creación de
 // devoluciones de venta quedan del lado del empleado a propósito: es su
-// trabajo diario.
+// trabajo diario. Auditoría (GET /api/auditoria) pasó de 'ambos' a admin
+// en la Etapa A de multi-tenant (CLAUDE.md §28): valor_anterior/valor_nuevo
+// traen costo/margen/ganancia sin filtrar, que es justo lo que §35 le
+// esconde al empleado en el resto de las respuestas.
 //
 // Gap conocido, no resuelto todavía (preguntar antes de restringir, no
 // inventar): el ABM de listas de precios, depósitos y categorías de gasto
@@ -135,7 +138,7 @@ export const RUTAS_PERMISOS = {
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',
   'POST /api/asistente/ejecutar': 'ambos',
-  'GET /api/auditoria': 'ambos',
+  'GET /api/auditoria': 'admin',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
   'GET /api/usuarios': 'admin',

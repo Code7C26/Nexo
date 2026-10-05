@@ -5609,13 +5609,13 @@ visual sigue pendiente.
 1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
    `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes como
    su propia etapa de rebuild a `UNIQUE(organizacion_id, nombre)`.
-2. Gap deferido desde §42/§43: `POST /api/productos/:id/atributos` y
-   `POST /api/productos/:id/variantes` (10 de 11 endpoints de
-   atributos/variantes) sin filtro de organización.
+2. Gap deferido desde §42/§43, corregido en §46: son **9 de 10** endpoints de
+   atributos/variantes sin filtro de organización, no 10 de 11 — el de
+   movimientos por variante ya filtraba.
 3. `GET /api/auditoria` devuelve la auditoría de **todas** las empresas, y es
    accesible también al rol empleado. Necesita migración: la tabla `auditoria`
    no tiene columna de organización. Lo mismo `asistente_mensajes`. Es el
-   gap de lectura más grande que queda abierto.
+   gap de lectura más grande que queda abierto. **Cerrado en §46.**
 4. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
    todas partes donde se agregó; `usuarios` ya era `NOT NULL` de origen).
@@ -5623,3 +5623,122 @@ visual sigue pendiente.
    empresas puedan tener el mismo nombre de usuario, hay que elegir entre
    `UNIQUE(organizacion_id, usuario)` + empresa en el login, o login por email
    (ver el párrafo de decisión de negocio más arriba).
+
+## 46. Etapa A (multi-tenant) — auditoría y asistente
+
+**Objetivo**: el ítem 3 del "Qué sigue" de §45, el gap de lectura más grande
+que quedaba abierto. `auditoria` y `asistente_mensajes` eran las únicas dos
+tablas de datos de negocio sin `organizacion_id`. Dos problemas distintos:
+`GET /api/auditoria` devolvía el log de **todas** las empresas, con los JSON
+`valor_anterior`/`valor_nuevo` adentro (nombres de clientes, importes, costos
+y márgenes de otros inquilinos). Y `POST /api/asistente/ejecutar` resolvía la
+propuesta con `WHERE id = ? AND estado = 'interpretado'` sin más — un usuario
+de la empresa B que pasara el `mensaje_id` de la empresa A ejecutaba esa
+propuesta: **escritura** cruzada entre inquilinos, no solo lectura. No estaba
+en el handoff; apareció al relevar esta etapa.
+
+**Decisiones de negocio tomadas con el equipo en esta sesión**:
+- `GET /api/auditoria` pasa de `'ambos'` a `'admin'`: los JSON de valor
+  anterior/nuevo traen costo, margen y ganancia sin filtrar, justo lo que §35
+  le esconde al empleado en el resto de las respuestas.
+- `login_fallido` con un usuario que no existe (no hay empresa deducible)
+  guarda `organizacion_id = NULL`, que lo deja invisible en
+  `GET /api/auditoria` para todas las empresas — antes que mostrarlo a todas
+  (cruzaría inquilinos) o atribuirlo a `organizacionUnica()` (falsificaría la
+  auditoría en cuanto haya dos empresas reales).
+
+**`backend/db/schema.sql`** y **`backend/db/index.js`** — ALTER aditivo de
+siempre (ningún `CHECK` tocado, no hace falta rebuild) para las dos columnas,
+más backfill de las dos tablas al array compartido. Una trampa encontrada y
+resuelta: el índice nuevo `idx_auditoria_org_fecha` **no puede vivir en
+`schema.sql`** como un `CREATE INDEX` suelto — ese archivo se ejecuta completo
+en cada arranque, incluso en una base vieja donde `organizacion_id` todavía no
+existe en la primera pasada, así que reventaba antes de que el `ALTER TABLE`
+llegara a correr. Se resolvió con el mismo criterio que `idx_facturas_numeracion`:
+el índice se crea entero dentro de `db/index.js`, fuera del `if` del `ALTER`
+(para cubrir tanto la instalación fresca como la recién migrada).
+
+**`backend/db/index.js`** y **`backend/server.js`** — escritura, reusando el
+chokepoint sin tocar los 63 call-sites de auditoría: `registrarAuditoria()`
+suma `organizacion_id`, y el wrapper `auditar(req, datos)` le pasa
+`req.usuario?.organizacion_id ?? null` igual que ya hace con `usuario_id`. Los
+4 `registrarAuditoria` directos de auth (no pasan por el wrapper, son
+endpoints públicos) se ajustaron a mano: login y login_fallido-por-contraseña
+ahora traen `organizacion_id` del `SELECT` de login (que no lo traía); bootstrap
+ya tenía `orgId` en scope; login_fallido-por-usuario-inexistente se deja sin
+el parámetro a propósito (→ NULL). El INSERT de `asistente_mensajes` suma la
+columna con `req.usuario.organizacion_id`.
+
+**`backend/server.js`** — lectura y aislamiento, mismo filtro plano
+`AND organizacion_id = ?` que §40-45 (nunca `(? IS NULL OR ...)`):
+- `GET /api/auditoria`: `WHERE auditoria.organizacion_id = ?` antes del
+  `ORDER BY`, más `soloAdmin` como argumento.
+- `POST /api/asistente/ejecutar`: el filtro en el `SELECT` de lookup. Un
+  `mensaje_id` de otra empresa cae en el mismo 404 de siempre, sin revelar que
+  existe en otra parte. Los `UPDATE` de `marcarFallido`/`marcarConfirmado` no
+  necesitan filtro propio: operan sobre `mensaje.id`, que ya salió del lookup
+  acotado.
+- `POST /api/asistente/:id/descartar`: mismo filtro en el `UPDATE`.
+- `contextoParaInterprete()`: fuga parcial encontrada en el relevamiento —
+  manda a Gemini `productos`, `cuentas_tesoreria` y `categorias_gasto` sin
+  ningún `WHERE`. Se filtró `productos` (ya tiene la columna). Las otras dos
+  son catálogos que todavía no la tienen (ítem 1 del "Qué sigue" de §45, el
+  rebuild de catálogos) — queda comentado en el código como mejora parcial
+  declarada, no un cierre.
+
+**`backend/permisos.js`**: `'GET /api/auditoria'` de `'ambos'` a `'admin'`.
+
+**`frontend/js/app.js`** y **`frontend/css/styles.css`**: `"auditoria"` suma a
+`VISTAS_SOLO_ADMIN`, guard `if (!esAdmin()) return;` en `cargarAuditoria()`, y
+el nav-item se oculta por CSS — mismas tres capas que ya usan Usuarios,
+Estadísticas, Papelera y Compras.
+
+**Verificación**: mismo procedimiento que §40-45, sin tocar `backend/db/nexo.db`
+real (md5 idéntico antes y después: `a25ce51db1f9978b77c16aac22bc8a3e`). Dos
+servidores sobre la misma base copiada (4731 parcheado, 4732 `HEAD` como
+`server-base.js`), cookie de sesión compartida por la tabla `sesiones` común.
+Todo verde:
+- Regresión cero en la empresa 1: `GET /api/auditoria` byte-idéntico entre
+  4731 y 4732.
+- Migración idempotente: reinicio en frío del proceso sin error; `PRAGMA
+  table_info` confirma la columna en las dos tablas; `SELECT COUNT(*) WHERE
+  organizacion_id IS NULL` da 0 después del backfill.
+- Aislamiento probado por efecto: empresa 2 creada a mano con su admin, un
+  alta de auditoría en cada empresa (edición de categoría), cada admin ve solo
+  la suya y el `valor_nuevo` de la otra nunca aparece. `GET /api/auditoria`
+  como empleado → 403.
+- Asistente cruzado: `mensaje_id` de la empresa 1 pasado por la cookie de la
+  empresa 2 a `ejecutar` y a `descartar` → 404 en los dos, `estado` de la fila
+  sin cambios, sin operación creada. Controles de no-regresión: el descartar y
+  el ejecutar legítimos **dentro** de la propia empresa funcionan (200, gasto
+  creado con el `organizacion_id` correcto).
+- Auditoría de login: login exitoso y login con contraseña mala quedan con la
+  empresa del usuario; login con usuario inexistente queda con
+  `organizacion_id = NULL` y no aparece en `GET /api/auditoria` de ninguna
+  empresa.
+- `npm test` verde antes y después del cambio de `permisos.js`.
+
+**Lo único del plan que quedó sin hacer**: la pasada visual en el navegador
+contra la base real (no hay herramienta de browser disponible en esta sesión
+para automatizarla). Queda pendiente confirmar a mano que un admin ve
+Auditoría normalmente y que un empleado no ve el ítem de nav ni puede llegar
+por deep-link (`#/auditoria` → Ventas) — cubre también la pasada visual que
+§45 dejó pendiente (Usuarios y Configuración), que tampoco se hizo en esta
+sesión.
+
+### Qué sigue
+
+1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes como
+   su propia etapa de rebuild a `UNIQUE(organizacion_id, nombre)`. Cierra
+   también el filtro de `cuentas_tesoreria`/`categorias_gasto` en
+   `contextoParaInterprete()`.
+2. 9 de 10 endpoints de atributos/variantes sin filtro de organización (el de
+   movimientos por variante ya filtra).
+3. Pasar `organizacion_id` a `NOT NULL` en todas las tablas que lo tienen
+   nullable hoy.
+4. Filtrar `valor_anterior`/`valor_nuevo` por campos sensibles en
+   `GET /api/auditoria` — solo haría falta si alguna vez se vuelve a abrir esa
+   lectura al rol empleado; con el endpoint en `admin` no es urgente.
+5. Pasada visual pendiente en el navegador: Usuarios, Configuración (§45) y
+   Auditoría (§46), las tres en una sola sesión si se puede.

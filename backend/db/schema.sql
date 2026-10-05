@@ -682,6 +682,9 @@ GROUP BY proveedor_id;
 -- confirmarse, ver `error`). La IA nunca escribe en ninguna otra tabla
 -- directamente: esta es su única puerta de entrada, y es también el
 -- registro de auditoría de esa puerta (§22).
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28); se completa en el INSERT desde req.usuario.organizacion_id, porque el
+-- handler que lo escribe ya está autenticado.
 CREATE TABLE IF NOT EXISTS asistente_mensajes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
@@ -690,7 +693,8 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   estado TEXT NOT NULL CHECK (estado IN ('interpretado', 'confirmado', 'descartado', 'fallido')),
   operacion_tipo TEXT CHECK (operacion_tipo IN ('venta', 'compra', 'gasto')),
   operacion_id INTEGER,
-  error TEXT
+  error TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- Auditoría central unificada (CLAUDE.md §22). Registra el ACTO del
@@ -713,6 +717,14 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
 -- entidad_id es nullable y sin FK a propósito: es la única columna del
 -- proyecto que apunta a tablas distintas según el valor de `entidad`, y el
 -- registro debe sobrevivir aunque la fila referida deje de existir.
+--
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28), con un caso sin empresa deducible: un login_fallido con un usuario
+-- que no existe no tiene a quién atribuirse, así que queda NULL a propósito
+-- (mismo criterio que usuario_id arriba: NULL es honesto, inventarle una
+-- empresa sería falsificar la auditoría) y por lo tanto invisible en
+-- GET /api/auditoria para todas las empresas. Se completa desde
+-- req.usuario.organizacion_id vía el wrapper `auditar` en server.js.
 CREATE TABLE IF NOT EXISTS auditoria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
@@ -748,11 +760,19 @@ CREATE TABLE IF NOT EXISTS auditoria (
   -- Frase legible ya armada en el backend ("Venta #12 anulada, stock
   -- devuelto"): sin esto el frontend tendría que reimplementar la
   -- narración de cada uno de los ~20 casos distintos.
-  detalle TEXT
+  detalle TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria(fecha DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_id);
+-- idx_auditoria_org_fecha (la que reemplaza en la práctica a
+-- idx_auditoria_fecha una vez que GET /api/auditoria filtra por
+-- organizacion_id) no se crea acá sino en index.js, mismo criterio que
+-- idx_facturas_numeracion: en una instalación vieja, este archivo se
+-- ejecuta completo en cada arranque y organizacion_id todavía no existe en
+-- esa primera pasada, así que un CREATE INDEX sobre esa columna acá
+-- rompería la migración antes de que el ALTER TABLE llegue a correr.
 
 -- Usuarios, login y roles. Nexo pasa de "un solo operador sin identidad"
 -- a admin/empleado con sesión propia.

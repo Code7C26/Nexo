@@ -8746,6 +8746,12 @@ const filtrosAuditoriaMov = crearFiltros(
 );
 
 async function cargarAuditoria() {
+  // GET /api/auditoria es admin-only en el servidor desde la Etapa A de
+  // multi-tenant (valor_anterior/valor_nuevo traen costo/margen/ganancia sin
+  // filtrar). El nav-item ya está oculto por CSS y VISTAS_SOLO_ADMIN manda a
+  // un empleado a Ventas antes de llegar acá, pero se corta igual por si
+  // alguien llama a esta función directo — mismo criterio que cargarCompras.
+  if (!esAdmin()) return;
   tablaCargando("auditoriaBody", 7);
   tablaCargando("auditoriaMovBody", 4);
 
@@ -9280,11 +9286,12 @@ const VISTAS_CONSTRUIDAS = {
 // (permisos.js): Usuarios (administración), dashboard (Estadísticas:
 // GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
 // (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
-// y todo el circuito de compras y sus devoluciones a proveedor, fichas
-// incluidas. Un deep-link escrito a mano por un empleado (el nav-item ya
-// está oculto por CSS, pero el hash se puede tipear igual) cae al mismo
-// destino que un click normal — es solo UI, el servidor responde 403 igual
-// si se llama al endpoint directo.
+// todo el circuito de compras y sus devoluciones a proveedor, fichas
+// incluidas, y auditoria (GET /api/auditoria, admin desde la Etapa A de
+// multi-tenant — ver permisos.js). Un deep-link escrito a mano por un
+// empleado (el nav-item ya está oculto por CSS, pero el hash se puede
+// tipear igual) cae al mismo destino que un click normal — es solo UI, el
+// servidor responde 403 igual si se llama al endpoint directo.
 const VISTAS_SOLO_ADMIN = new Set([
   "usuarios",
   "dashboard",
@@ -9293,7 +9300,8 @@ const VISTAS_SOLO_ADMIN = new Set([
   "compras",
   "compra-detalle",
   "devoluciones-proveedor",
-  "devolucion-proveedor-detalle"
+  "devolucion-proveedor-detalle",
+  "auditoria"
 ]);
 
 function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {

@@ -154,8 +154,18 @@ function renovarSesion(token) {
 // usuario_id: fue el asistente la vía de entrada, pero fue esa persona
 // quien confirmó la operación propuesta. Es exactamente la distinción que
 // justifica tener las dos columnas en vez de una sola.
+//
+// Mismo wrapper agrega organizacion_id (Etapa A, CLAUDE.md §28): como
+// autenticar ya carga req.usuario.organizacion_id, los ~63 call-sites que
+// pasan por acá quedan aislados sin tocarlos uno por uno. Los 4 llamados
+// directos a registrarAuditoria de auth (login/bootstrap, sin sesión
+// todavía) resuelven su propia organización aparte, ver más abajo.
 function auditar(req, datos) {
-  return registrarAuditoria({ ...datos, usuario_id: req.usuario?.id ?? null });
+  return registrarAuditoria({
+    ...datos,
+    usuario_id: req.usuario?.id ?? null,
+    organizacion_id: req.usuario?.organizacion_id ?? null
+  });
 }
 
 function autenticar(req, res, next) {
@@ -284,7 +294,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const fila = db
     .prepare(
-      `SELECT id, nombre, rol, password_hash, password_salt, debe_cambiar_password
+      `SELECT id, nombre, rol, password_hash, password_salt, debe_cambiar_password, organizacion_id
          FROM usuarios
         WHERE LOWER(usuario) = LOWER(?) AND activo = 1`
     )
@@ -304,6 +314,10 @@ app.post('/api/auth/login', (req, res) => {
     // si alguien escribió su contraseña en el campo de usuario por error,
     // quedaría igual en texto plano acá; riesgo aceptado, no hay forma de
     // distinguir ese caso del de un usuario tipeado mal.
+    // Tampoco organizacion_id (Etapa A, CLAUDE.md §28), por el mismo motivo
+    // que no hay usuario_id: no existe empresa a la que atribuirle este
+    // intento, y queda NULL a propósito en vez de mezclarlo con una al
+    // azar — invisible en GET /api/auditoria para todas las empresas.
     registrarAuditoria({
       accion: 'login_fallido',
       entidad: 'usuario',
@@ -320,6 +334,7 @@ app.post('/api/auth/login', (req, res) => {
       entidad: 'usuario',
       entidad_id: fila.id,
       usuario_id: fila.id,
+      organizacion_id: fila.organizacion_id,
       detalle: 'Intento de inicio de sesión con contraseña incorrecta'
     });
     return res.status(401).json({ error: MENSAJE_ERROR });
@@ -329,7 +344,14 @@ app.post('/api/auth/login', (req, res) => {
   const token = crearSesion(fila.id);
   ponerCookieSesion(res, token);
   db.prepare("UPDATE usuarios SET ultimo_acceso = datetime('now') WHERE id = ?").run(fila.id);
-  registrarAuditoria({ accion: 'login', entidad: 'usuario', entidad_id: fila.id, usuario_id: fila.id, detalle: 'Inició sesión' });
+  registrarAuditoria({
+    accion: 'login',
+    entidad: 'usuario',
+    entidad_id: fila.id,
+    usuario_id: fila.id,
+    organizacion_id: fila.organizacion_id,
+    detalle: 'Inició sesión'
+  });
 
   res.json({
     usuario: {
@@ -382,6 +404,7 @@ app.post('/api/auth/bootstrap', (req, res) => {
       entidad: 'usuario',
       entidad_id: usuarioId,
       usuario_id: usuarioId,
+      organizacion_id: orgId,
       detalle: `Primer administrador creado: ${nombre} (${usuario})`
     });
   });
@@ -7888,11 +7911,18 @@ function resolverPropuesta(tipo, datos) {
   return { ejecutable: false, problemas: ['Tipo de operación desconocido.'] };
 }
 
-function contextoParaInterprete() {
+// Gap conocido (Etapa A, CLAUDE.md §28), no cerrado del todo en esta etapa:
+// `cuentas` y `categoriasGasto` todavía viajan sin filtrar porque
+// cuentas_tesoreria/categorias_gasto no tienen organizacion_id propia
+// (es el rebuild de catálogos pendiente, ver handoff.md). `productos` sí se
+// filtra porque esa tabla ya tiene la columna desde una etapa anterior.
+function contextoParaInterprete(organizacionId) {
   return {
     cuentas: db.prepare('SELECT nombre, tipo FROM cuentas_tesoreria ORDER BY nombre').all(),
     categoriasGasto: db.prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 ORDER BY nombre').all(),
-    productos: db.prepare('SELECT nombre FROM productos WHERE activo = 1 ORDER BY nombre').all()
+    productos: db
+      .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
+      .all(organizacionId)
   };
 }
 
@@ -7901,7 +7931,7 @@ app.post('/api/asistente/interpretar', async (req, res) => {
 
   let resultado;
   try {
-    resultado = await interpretar(texto, contextoParaInterprete());
+    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id));
   } catch (err) {
     if (err instanceof InterpreteError) {
       return res.status(err.status).json({ error: err.message });
@@ -7924,9 +7954,10 @@ app.post('/api/asistente/interpretar', async (req, res) => {
 
   const { lastInsertRowid: mensajeId } = db
     .prepare(
-      "INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo) VALUES (?, ?, 'interpretado', ?)"
+      `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
+       VALUES (?, ?, 'interpretado', ?, ?)`
     )
-    .run(texto, JSON.stringify(propuesta), resultado.tipo);
+    .run(texto, JSON.stringify(propuesta), resultado.tipo, req.usuario.organizacion_id);
 
   res.json({
     mensaje_id: Number(mensajeId),
@@ -7940,9 +7971,15 @@ app.post('/api/asistente/interpretar', async (req, res) => {
 
 app.post('/api/asistente/:id/descartar', (req, res) => {
   const mensajeId = Number(req.params.id);
+  // organizacion_id en el WHERE (Etapa A, CLAUDE.md §28): sin este filtro,
+  // un usuario de otra empresa podía descartar una propuesta pendiente que
+  // no era suya pasando el id a mano.
   const { changes } = db
-    .prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ? AND estado = 'interpretado'")
-    .run(mensajeId);
+    .prepare(
+      `UPDATE asistente_mensajes SET estado = 'descartado'
+        WHERE id = ? AND estado = 'interpretado' AND organizacion_id = ?`
+    )
+    .run(mensajeId, req.usuario.organizacion_id);
   if (changes === 0) {
     return res.status(404).json({ error: 'Este mensaje no existe o ya fue procesado.' });
   }
@@ -7959,9 +7996,18 @@ app.post('/api/asistente/:id/descartar', (req, res) => {
 app.post('/api/asistente/ejecutar', (req, res) => {
   const { mensaje_id: mensajeId, tipo, propuesta } = req.body;
 
+  // organizacion_id en el lookup (Etapa A, CLAUDE.md §28): sin este filtro,
+  // un usuario de la empresa B podía ejecutar una propuesta de la empresa A
+  // pasando su mensaje_id — era escritura cruzada entre inquilinos, no solo
+  // lectura. Un id de otra empresa cae en el mismo 404 de siempre, sin
+  // revelar que existe en otra parte. Los UPDATE de marcarFallido/
+  // marcarConfirmado de abajo operan sobre mensaje.id, que ya salió de este
+  // lookup acotado, así que no necesitan su propio filtro.
   const mensaje = db
-    .prepare("SELECT id FROM asistente_mensajes WHERE id = ? AND estado = 'interpretado'")
-    .get(Number(mensajeId));
+    .prepare(
+      "SELECT id FROM asistente_mensajes WHERE id = ? AND estado = 'interpretado' AND organizacion_id = ?"
+    )
+    .get(Number(mensajeId), req.usuario.organizacion_id);
   if (!mensaje) {
     return res.status(404).json({ error: 'Este mensaje no existe o ya fue procesado.' });
   }
@@ -8205,7 +8251,15 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 // porque las dos tablas comparten la columna id — sin calificar, el id
 // que llega al frontend podría terminar siendo el del usuario, no el de
 // la fila de auditoría.
-app.get('/api/auditoria', (req, res) => {
+//
+// soloAdmin (Etapa A, CLAUDE.md §28): valor_anterior/valor_nuevo traen el
+// JSON crudo de la operación, que para productos/ventas incluye costo,
+// margen y ganancia — justo los campos que el rol empleado no debería ver
+// en ningún otro endpoint (§35). Antes era 'ambos'; pasa a admin acá para
+// cerrar esa deuda. Filtro por organizacion_id: las filas con NULL (ver el
+// comentario de login_fallido más arriba) quedan afuera del listado de
+// cualquier empresa, por diseño.
+app.get('/api/auditoria', soloAdmin, (req, res) => {
   const limite = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
   const registros = db
     .prepare(
@@ -8216,10 +8270,11 @@ app.get('/api/auditoria', (req, res) => {
               auditoria.operacion_tipo, auditoria.operacion_id, auditoria.detalle
          FROM auditoria
          LEFT JOIN usuarios ON usuarios.id = auditoria.usuario_id
+        WHERE auditoria.organizacion_id = ?
         ORDER BY auditoria.fecha DESC, auditoria.id DESC
         LIMIT ?`
     )
-    .all(limite);
+    .all(req.usuario.organizacion_id, limite);
   res.json(registros);
 });
 

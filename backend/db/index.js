@@ -529,6 +529,28 @@ if (!movimientosTesoreriaColumnasOrg.some((col) => col.name === 'organizacion_id
   db.exec('ALTER TABLE movimientos_tesoreria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
 
+// auditoria.organizacion_id / asistente_mensajes.organizacion_id: cierran el
+// gap de lectura más grande que quedaba abierto de la Etapa A (CLAUDE.md
+// §28) — eran las dos únicas tablas de datos de negocio sin columna de
+// organización. Ninguna toca un CHECK, así que alcanza el ALTER aditivo de
+// siempre.
+const auditoriaColumnasOrg = db.prepare('PRAGMA table_info(auditoria)').all();
+if (!auditoriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE auditoria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+// idx_auditoria_org_fecha, el índice que en la práctica reemplaza a
+// idx_auditoria_fecha una vez que GET /api/auditoria filtra por
+// organización: se crea acá, fuera del `if` de arriba y no en schema.sql
+// (mismo criterio que idx_facturas_numeracion), porque tiene que cubrir
+// tanto la instalación fresca (donde la columna ya viene en el CREATE
+// TABLE y el ALTER de arriba no llega a correr) como la que se acaba de
+// migrar.
+db.exec('CREATE INDEX IF NOT EXISTS idx_auditoria_org_fecha ON auditoria(organizacion_id, fecha DESC, id DESC)');
+const asistenteMensajesColumnasOrg = db.prepare('PRAGMA table_info(asistente_mensajes)').all();
+if (!asistenteMensajesColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE asistente_mensajes ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+
 // compra_items.costo_real_unitario y movimientos_stock.costo_unitario:
 // costo con el envío prorrateado. Nullable porque las filas viejas se
 // cargaron cuando no existía el concepto de costo de envío — para esas,
@@ -1217,12 +1239,18 @@ export function registrarAuditoria({
   valor_nuevo = null,
   operacion_tipo = null,
   operacion_id = null,
-  detalle = null
+  detalle = null,
+  // Nullable a propósito (Etapa A, CLAUDE.md §28): el único caso sin
+  // organización deducible es login_fallido con un usuario que no existe
+  // (ver server.js), donde no hay a quién atribuirle la empresa. NULL deja
+  // esa fila invisible en GET /api/auditoria para todas las empresas, en
+  // vez de mezclarla con una al azar.
+  organizacion_id = null
 }) {
   db.prepare(
     `INSERT INTO auditoria
-       (actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle, organizacion_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     actor,
     accion,
@@ -1233,7 +1261,8 @@ export function registrarAuditoria({
     valor_nuevo,
     operacion_tipo,
     operacion_id,
-    detalle
+    detalle,
+    organizacion_id
   );
 }
 
@@ -1279,6 +1308,8 @@ for (const tabla of [
   'movimientos_stock',
   'transferencias',
   'movimientos_tesoreria',
+  'auditoria',
+  'asistente_mensajes',
 ]) {
   db.exec(
     `UPDATE ${tabla} SET organizacion_id = (SELECT id FROM organizaciones ORDER BY id LIMIT 1)
