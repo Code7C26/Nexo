@@ -5512,3 +5512,114 @@ aparecería en el diff aunque hubiera cambiado).
 6. Cuando el resto de las tablas tenga la columna, evaluar pasar
    `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito
    en todas partes donde se agregó).
+
+## 45. Etapa A (multi-tenant) — usuarios, último admin y datos del negocio
+
+**Objetivo**: el ítem 3 que §44 marcaba como prioritario sobre el resto del
+roadmap. Los cuatro endpoints de usuarios no filtraban por organización, y uno
+de ellos no era una fuga de lectura sino una **escalada de privilegios entre
+inquilinos**: `POST /api/usuarios/:id/resetear-password` buscaba al usuario con
+`WHERE id = ?` y nada más, así que un admin de la empresa A podía fijarle la
+contraseña a un usuario de la empresa B y después loguearse como él, tomando
+control de otra empresa entera. Era el agujero más grave que tuvo el sistema.
+
+**Decisión de negocio tomada con el equipo en esta sesión**: el nombre de
+usuario **sigue siendo único de forma global**. `usuarios.usuario` conserva su
+`UNIQUE` del esquema y `POST /api/auth/login` sigue resolviendo sin saber la
+empresa (no se hace rebuild de la tabla ni se toca el login). Consecuencia
+deliberada, ya comentada en el código para que nadie la "arregle": el chequeo
+de duplicados de `POST /api/usuarios` **tiene que seguir siendo global** — si
+se filtrara por organización, el `INSERT` reventaría contra ese `UNIQUE` y
+devolvería un 500 en vez del 409 claro que devuelve hoy. Las alternativas que
+se descartaron por ahora: `UNIQUE(organizacion_id, usuario)` (obliga a que el
+login sepa la empresa: slug/subdominio, y toca frontend) y login por email
+(es lo que usan los sistemas comerciales y habilita recuperación de contraseña
+de §35, pero es una etapa propia bastante más grande).
+
+**`backend/server.js`** — sin ninguna migración de esquema (`usuarios` ya tenía
+`organizacion_id NOT NULL` con FK desde el inicio). Mismo patrón de §40-44:
+filtro plano `AND organizacion_id = ?` con `req.usuario.organizacion_id`, nunca
+envuelto en `(? IS NULL OR ...)`:
+- `contarAdminsActivos(organizacionId)`: contaba admins de **todo Nexo**, así
+  que la salvaguarda del "último administrador activo" era falsa por empresa —
+  la empresa B podía quedarse sin ningún admin porque la A todavía tenía los
+  suyos, y no hay registro público para recuperarse de eso. Ahora cuenta dentro
+  de la empresa.
+- `GET /api/usuarios`: `WHERE organizacion_id = ?` (listaba nombre, rol y
+  último acceso de los usuarios de todas las empresas).
+- `POST /api/usuarios`: la empresa sale de la sesión y no de
+  `organizacionUnica()` (un admin de la empresa B creaba su empleado dentro de
+  la empresa A).
+- `PATCH /api/usuarios/:id` y `POST /api/usuarios/:id/resetear-password`:
+  filtro en el lookup (un usuario de otra empresa cae en el 404 que ya existía,
+  sin revelar que existe en otra parte) **y además en el `WHERE` de la
+  escritura**, como defensa en profundidad.
+- `GET /api/negocio` (`ORDER BY id LIMIT 1` → `WHERE id = ?`) y
+  `PUT /api/negocio` (`organizacionUnica()` → sesión): un admin de la empresa B
+  leía y sobrescribía el membrete de comprobantes de la empresa A.
+- `organizacionUnica()`: **ya no se llama desde ningún handler de negocio**. Le
+  queda un único uso legítimo, `POST /api/auth/bootstrap`, donde por definición
+  hay una sola organización (es el primer usuario del sistema). El comentario
+  de la función lo dice, para que deje de leerse como un atajo pendiente de
+  reemplazo generalizado. Esto cierra el ítem 4 del "Qué sigue" de §44.
+
+**Verificación**: mismo procedimiento que §40-44, sin tocar
+`backend/db/nexo.db` real (confirmado por md5 y mtime idénticos antes y
+después). Copia aislada de `backend/` en el scratchpad con **una sola base
+compartida por los dos servidores** (el parcheado en 4731 y el de `HEAD` sin
+parchear en 4732, este último copiado como `server-base.js` dentro del mismo
+directorio para que `db/index.js` resuelva el mismo archivo). Compartir la base
+hace que la tabla `sesiones` también sea común, así que **la misma cookie sirve
+en los dos puertos** y se puede comparar el mismo request contra las dos
+versiones del código. Suite de 28 chequeos, toda verde, levantada sobre
+procesos recién arrancados (confirma que las sentencias modificadas preparan
+bien en un proceso fresco):
+- Regresión cero en la empresa 1: `GET /api/negocio` byte-idéntico a `HEAD`, y
+  `GET /api/usuarios` con las mismas columnas y sin `password_hash`/
+  `password_salt`.
+- El reseteo cruzado devuelve 404, el hash de la víctima **no** cambia, el
+  atacante **no** puede loguearse como ella y la víctima sigue entrando con su
+  contraseña original — se probó el efecto, no solo el código de error.
+- `PATCH` cruzado en los dos sentidos: 404 y la fila de la otra empresa intacta.
+- Controles de no-regresión: el `PATCH` y el reseteo legítimos **dentro** de la
+  propia empresa siguen funcionando (204, `debe_cambiar_password = 1`, y la
+  contraseña nueva loguea).
+- `POST /api/usuarios` crea con `organizacion_id = 2`, y un nombre de usuario
+  que ya existe en la empresa 1 devuelve **409 y no 500** (la consecuencia de
+  la decisión de unicidad global, probada explícitamente).
+- La salvaguarda del último admin: 409 al degradar al único admin de la empresa
+  2 aunque la empresa 1 tenga los suyos. Se comprobó además que `HEAD` **sí** lo
+  degradaba (204), o sea que el bug existía y quedó cerrado.
+- `PUT /api/negocio` de la empresa 2 actualiza su fila y deja la de la empresa 1
+  intacta.
+
+`npm test` (el test estático de inventario de rutas) verde antes y después; no
+se agregaron rutas, así que `permisos.js` no se tocó. Proceso y copia del
+scratchpad borrados al terminar.
+
+**Lo único del plan que quedó sin hacer**: la pasada visual en el navegador
+contra la base real (pantalla de Usuarios y Configuración → datos del negocio).
+El contrato de la API se verificó idéntico en forma y el frontend consume estos
+dos endpoints con `fetch` + render directo, sin asumir nada que cambie (las
+respuestas solo se acotan a la empresa de la sesión), pero la confirmación
+visual sigue pendiente.
+
+### Qué sigue
+
+1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
+   `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes como
+   su propia etapa de rebuild a `UNIQUE(organizacion_id, nombre)`.
+2. Gap deferido desde §42/§43: `POST /api/productos/:id/atributos` y
+   `POST /api/productos/:id/variantes` (10 de 11 endpoints de
+   atributos/variantes) sin filtro de organización.
+3. `GET /api/auditoria` devuelve la auditoría de **todas** las empresas, y es
+   accesible también al rol empleado. Necesita migración: la tabla `auditoria`
+   no tiene columna de organización. Lo mismo `asistente_mensajes`. Es el
+   gap de lectura más grande que queda abierto.
+4. Cuando el resto de las tablas tenga la columna, evaluar pasar
+   `organizacion_id` a `NOT NULL` en cada una (hoy es nullable a propósito en
+   todas partes donde se agregó; `usuarios` ya era `NOT NULL` de origen).
+5. Decisión que quedó anotada y no cerrada: si alguna vez se quiere que dos
+   empresas puedan tener el mismo nombre de usuario, hay que elegir entre
+   `UNIQUE(organizacion_id, usuario)` + empresa en el login, o login por email
+   (ver el párrafo de decisión de negocio más arriba).

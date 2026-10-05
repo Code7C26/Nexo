@@ -222,11 +222,24 @@ function limpiarIntentos(usuario) {
   intentosLogin.delete(usuario.toLowerCase());
 }
 
-function contarAdminsActivos() {
-  return db.prepare("SELECT COUNT(*) AS count FROM usuarios WHERE rol = 'admin' AND activo = 1").get()
-    .count;
+// Por organización y no global: con multi-empresa (CLAUDE.md §28) la
+// salvaguarda del último admin tiene que mirar solo la empresa que se está
+// tocando. Global, la empresa B podría quedarse sin ningún admin porque la
+// empresa A todavía tiene los suyos.
+function contarAdminsActivos(organizacionId) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM usuarios
+        WHERE rol = 'admin' AND activo = 1 AND organizacion_id = ?`
+    )
+    .get(organizacionId).count;
 }
 
+// Único uso legítimo que queda: POST /api/auth/bootstrap, donde por
+// definición hay una sola organización (es el primer usuario del sistema, y
+// la fila la sembró db/index.js al arrancar). Cualquier otro handler resuelve
+// la empresa desde la sesión con req.usuario.organizacion_id, nunca desde
+// acá — ver CLAUDE.md §28.
 function organizacionUnica() {
   return db.prepare('SELECT id FROM organizaciones ORDER BY id LIMIT 1').get().id;
 }
@@ -8267,9 +8280,10 @@ app.get('/api/usuarios', soloAdmin, (req, res) => {
     .prepare(
       `SELECT id, usuario, nombre, rol, activo, debe_cambiar_password, fecha_alta, ultimo_acceso
          FROM usuarios
+        WHERE organizacion_id = ?
         ORDER BY nombre`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(usuarios);
 });
 
@@ -8286,6 +8300,11 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
   }
   const rolFinal = rol === 'admin' ? 'admin' : 'empleado';
 
+  // Sin filtro por organización a propósito: `usuarios.usuario` tiene UNIQUE
+  // global en el esquema y el login resuelve sin saber la empresa, así que el
+  // nombre de usuario es único en todo Nexo (decisión del equipo). Si acá se
+  // filtrara por empresa, el INSERT de abajo reventaría contra ese UNIQUE y
+  // devolvería un 500 en vez de este 409 claro.
   const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
   if (existe) {
     return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
@@ -8293,7 +8312,10 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
 
   let usuarioId;
   withTransaction(() => {
-    const orgId = organizacionUnica();
+    // La empresa sale de la sesión del admin que crea el usuario: con
+    // organizacionUnica() un admin de la empresa B creaba su empleado dentro
+    // de la empresa A (CLAUDE.md §28).
+    const orgId = req.usuario.organizacion_id;
     const { hash, salt } = hashPassword(password);
     // debe_cambiar_password: 1 porque la eligió el admin, no el dueño de
     // la cuenta — se lo obliga a elegir la suya en el primer login.
@@ -8317,7 +8339,15 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
 
 app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
-  const anterior = db.prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ?').get(id);
+  // Filtro por organización como parte del aislamiento multi-empresa
+  // (CLAUDE.md §28): sin él, un admin de la empresa A podía renombrar,
+  // promover a admin o dar de baja usuarios de la empresa B (y la baja además
+  // les mata la sesión en el acto). Un usuario de otra empresa cae en el
+  // mismo 404 que un id inexistente, sin revelar que existe en otra parte.
+  const organizacionId = req.usuario.organizacion_id;
+  const anterior = db
+    .prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ? AND organizacion_id = ?')
+    .get(id, organizacionId);
   if (!anterior) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
   const nuevo = {
@@ -8332,7 +8362,8 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   // Salvaguardas en el servidor, no solo en la UI: sin esto el sistema
   // podría quedar sin ningún admin que lo administre, y no hay registro
   // público para recuperarse solo.
-  const eraUltimoAdmin = anterior.rol === 'admin' && anterior.activo === 1 && contarAdminsActivos() === 1;
+  const eraUltimoAdmin =
+    anterior.rol === 'admin' && anterior.activo === 1 && contarAdminsActivos(organizacionId) === 1;
   const dejaDeSerAdminActivo = nuevo.rol !== 'admin' || nuevo.activo === 0;
   if (eraUltimoAdmin && dejaDeSerAdminActivo) {
     return res.status(409).json({ error: 'No se puede dar de baja ni degradar al último administrador activo.' });
@@ -8342,12 +8373,12 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   }
 
   withTransaction(() => {
-    db.prepare('UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ?').run(
-      nuevo.nombre,
-      nuevo.rol,
-      nuevo.activo,
-      id
-    );
+    // organizacion_id también en el WHERE de la escritura (defensa en
+    // profundidad), aunque el lookup de arriba ya validó que el id es de esta
+    // empresa — mismo criterio que el resto de la Etapa A.
+    db.prepare(
+      'UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ? AND organizacion_id = ?'
+    ).run(nuevo.nombre, nuevo.rol, nuevo.activo, id, organizacionId);
     // Dar de baja echa al usuario en el acto: sin esto seguiría operando
     // con su sesión actual hasta que expirara sola (hasta 12hs).
     if (nuevo.activo === 0) {
@@ -8375,14 +8406,22 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   if (!password || password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
-  const usuario = db.prepare('SELECT id, nombre FROM usuarios WHERE id = ?').get(id);
+  // NO sacar el filtro por organización de acá. Sin él, un admin de la
+  // empresa A podía fijarle la contraseña a un usuario de la empresa B y
+  // después loguearse como él, o sea tomar control de otra empresa entera
+  // (CLAUDE.md §28) — era el agujero más grave que tuvo el sistema.
+  const organizacionId = req.usuario.organizacion_id;
+  const usuario = db
+    .prepare('SELECT id, nombre FROM usuarios WHERE id = ? AND organizacion_id = ?')
+    .get(id, organizacionId);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
   withTransaction(() => {
     const { hash, salt } = hashPassword(password);
     db.prepare(
-      'UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1 WHERE id = ?'
-    ).run(hash, salt, id);
+      `UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1
+        WHERE id = ? AND organizacion_id = ?`
+    ).run(hash, salt, id, organizacionId);
     // Igual que la baja: resetear la contraseña echa al usuario en el
     // acto, para que la sesión vieja no siga viva con la contraseña
     // anterior todavía en la cabeza de quien la tenía.
@@ -8424,19 +8463,22 @@ app.get('/api/negocio', (req, res) => {
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
          FROM organizaciones
-        ORDER BY id
-        LIMIT 1`
+        WHERE id = ?`
     )
-    .get();
+    .get(req.usuario.organizacion_id);
   if (!negocio) {
-    // No debería pasar: db/index.js siembra la fila al arrancar.
+    // No debería pasar: usuarios.organizacion_id es NOT NULL con FK a
+    // organizaciones, así que la empresa de la sesión siempre existe.
     return res.status(404).json({ error: 'No hay datos de negocio cargados.' });
   }
   res.json(negocio);
 });
 
 app.put('/api/negocio', soloAdmin, (req, res) => {
-  const id = organizacionUnica();
+  // La empresa sale de la sesión: con organizacionUnica() un admin de la
+  // empresa B leía y sobrescribía el membrete de comprobantes de la empresa A
+  // (CLAUDE.md §28).
+  const id = req.usuario.organizacion_id;
   const anterior = db
     .prepare(
       `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
