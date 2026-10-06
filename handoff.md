@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §51);
+    siguiente número (hoy el último es §53);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -37,6 +37,16 @@ consultas filtran por la empresa de la sesión, incluidos los cinco catálogos
 (hist. §49). Una empresa se crea desde la pantalla de login con
 `POST /api/auth/registro` (hist. §51). Lo que falta para cerrarla está en
 "Qué sigue".
+
+**Etapa B (modularizar `app.js` + PWA, CLAUDE.md §31): en curso** (hist.
+§52, §53). Hechas F0 (test estático `backend/test/frontend-modulos.test.js`),
+F1 (`sesion.js` inyecta `app.js` como módulo ES, con `onerror`) y F2 (el
+núcleo compartido salió a `frontend/js/core/`: `formato`, `ui`, `csv`,
+`filtros`, `seleccion`, `comprobante`, `router`, `negocio`, `registro`).
+`app.js` bajó de 9407 a 7933 líneas y sigue teniendo todos los dominios; falta
+extraerlos (F3–F13) y la PWA (B2).
+Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
+incluido.
 
 **Base de datos real** (`backend/db/nexo.db`, en `.gitignore`):
 - Todavía no corrió **ninguna** migración de la Etapa A: el próximo
@@ -147,6 +157,16 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
+
+**Etapa B, siguiente paso: F3** (primer dominio, uno chico: `negocio`/
+`usuarios`/`auditoria`). El patrón ya está probado en F2 (hist. §53): el dominio
+exporta con `export let` el estado que otros leen, registra sus acciones con
+`registrar('cargar:x', ...)`, los demás usan `recargar('x')`, y el router llama
+a lo registrado con `alEntrarEnVista`. Los dominios grandes (ventas, compras,
+productos) van al final. El baseline de navegador, el seed y ESLint viven en el
+scratchpad de la sesión: hay que recrearlos (copia del repo, `playwright-core`
+contra el Chrome instalado, usuario empleado con la contraseña ya cambiada).
+Hist. §53 cuenta qué cubren y las trampas.
 
 **Para cerrar la Etapa A:**
 1. Pasar `organizacion_id` a `NOT NULL` en las 15 tablas que lo tienen

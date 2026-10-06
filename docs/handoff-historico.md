@@ -6139,3 +6139,138 @@ el 4741):
 Quedan el ítem 1 de §49 (NOT NULL en las tablas) y los pendientes chicos.
 Nuevos, anotados en `handoff.md`: poder apagar el registro público por
 configuración, y verificación de email o captcha.
+
+## 52. Etapa B (modularizar `app.js`) — F0 red de seguridad y F1 módulo ES
+
+Plan completo de la etapa: fases F0–F13 (modularización) y B2 (PWA). Hecho
+hasta acá: F0 y F1. `app.js` sigue entero (9407 líneas); lo único que cambió
+en el código de la app es cómo se carga.
+
+**Decisión de la sesión (para la Etapa C, no implementada):** `precio_unitario`
+pasa a ser precio final con IVA incluido; el IVA se extrae por renglón.
+
+**F0 — red de seguridad (nada de esto va al repo salvo el test):**
+- `backend/test/frontend-modulos.test.js`, corre con `npm test`. Lee
+  `frontend/js/**` como texto y verifica: imports relativos resuelven con las
+  mayúsculas exactas, nombres importados exportados, sin ciclos fuera de
+  `CICLOS_PERMITIDOS` (vacía), y cada `invocar('x')` / `recargar('x')` con su
+  `registrar('x')` / `registrar('cargar:x')`. Se probó con módulos rotos a
+  propósito: los cuatro defectos fallan.
+- Baseline de navegador (scratchpad, no commiteado): `playwright-core` contra
+  el Chrome instalado, en una copia del repo en el puerto 4731 con base nueva.
+  Por rol (admin y empleado) y por cada una de las 18 vistas más 7 fichas
+  captura requests, consola y DOM normalizado. Dos corridas idénticas dan cero
+  diferencias, salvo el DOM de Auditoría y Usuarios (cada login agrega filas
+  y un "último acceso"), que el comparador ignora.
+- Trampa: un usuario recién creado tiene `debe_cambiar_password`, y
+  `sesion.js` no inyecta `app.js` hasta que lo cambia. El baseline del
+  empleado salió inválido (siempre el Resumen vacío) hasta cambiarle la
+  contraseña por `POST /api/auth/cambiar-password`.
+- ESLint ad hoc (`no-undef` con `sourceType: module`) sobre `app.js`: **cero
+  errores**. Los 4 de `sesion.js` son globales implícitos por `id` del HTML
+  (`formRegistro`, `irALogin`) y `sesion.js` sigue siendo script clásico.
+
+**F1 — `frontend/js/sesion.js`:** inyecta `app.js` con `type = "module"` y un
+`onerror` que registra el motivo en consola, libera `appInyectada`, cierra la
+sesión local y muestra el login con "No se pudo cargar la aplicación".
+`index.html` sigue sin referenciar `app.js` (el gate depende de eso; el test lo
+verifica). Baseline posterior: cero diferencias. El `onerror` se probó
+renombrando `app.js` en la copia.
+
+Base real intacta (md5 `a25ce51db1f9978b77c16aac22bc8a3e`). Sin commitear.
+
+### Qué sigue
+
+F2 (núcleo: `core/formato.js`, `ui.js`, `csv.js`, `filtros.js`, `seleccion.js`,
+`registro.js`, `router.js`). Para retomar, el baseline y las herramientas hay que
+recrearlas: están en el scratchpad de la sesión, no en el repo.
+
+## 53. Etapa B — F2: el núcleo compartido sale de `app.js` a `frontend/js/core/`
+
+**Qué se hizo.** `app.js` pasó de 9407 a 7933 líneas. El código movido es el de
+siempre, copiado tal cual y con `export`/`import` agregados; no se reescribió
+ningún patrón (CLAUDE.md §31). Módulos nuevos en `frontend/js/core/`:
+- `formato.js`: `money`, `numero`, `moneyCorto`, `hoyISO`, `esc`, `esAdmin`,
+  `columnasVisibles`, íconos y `botonEditarFila`.
+- `ui.js`: `avisar`, `confirmar`, accesibilidad de modales, `manejarError`,
+  `mostrarResultadoBulk`, `filaVacia*`, `tablaCargando`.
+- `csv.js`, `filtros.js` (`crearFiltros` y operadores) y `seleccion.js`
+  (`crearSeleccion`, `montarBarraSeleccion`, `traerConcurrencia`).
+- `comprobante.js`: hoja imprimible y PDF. Va en core porque lo usan facturas,
+  presupuestos y devoluciones.
+- `router.js`: `VISTAS_CONSTRUIDAS`, `mostrarVista`, hash y nav.
+- `negocio.js` y `registro.js`: ver abajo, son lo único que no es una mudanza.
+
+**Decisiones que no son obvias:**
+- **`negocio` tiene módulo propio.** `comprobante.js` lee los datos del negocio
+  para el membrete y los llena `cargarNegocio()`, que sigue en `app.js`. Un
+  binding importado no se puede reasignar desde afuera, así que el dato vive en
+  `core/negocio.js` (`export let negocio` + `fijarNegocio()`). Mismo patrón que
+  va a usar cada dominio con su estado: `export let` en el dueño, que es el
+  único que reasigna. Se verificó que los arrays maestros (`productos`,
+  `clientes`, `proveedores`, `cuentasTesoreria`...) se reasignan en un solo
+  lugar cada uno.
+- **`registro.js` reemplaza llamadas directas entre dominios** (`registrar`,
+  `invocar`, `recargar`, `alEntrarEnVista`/`entrarEnVista`). Hoy solo lo usa el
+  router; los dominios lo van a necesitar desde F3. El test de F0 ya valida
+  que cada `invocar`/`recargar` tenga su `registrar`.
+- **Único cambio de lógica:** `mostrarVista` llamaba `cargarAuditoria()` y
+  `cargarUsuarios()` según la vista. Ahora llama `entrarEnVista(viewId)` y
+  `app.js` registra las dos con `alEntrarEnVista`.
+- **`core/` solo puede importar de `core/`.** Test nuevo en
+  `frontend-modulos.test.js` (probado a propósito con un `import "../app.js"`
+  en `csv.js`: falla).
+
+**Qué falló en el camino (para no repetirlo):**
+- La primera versión del router llamaba `entrarEnVista("auditoria")` y
+  `entrarEnVista("usuarios")` **sin condición**, en vez de por vista. Cada
+  navegación cargaba Auditoría y Usuarios; al empleado le daba 403 en
+  `/api/usuarios` y dejaba el tbody de Usuarios con el skeleton. No lo vio
+  ESLint ni `npm test`: lo vio la sonda de login de empleado (21 requests en el
+  original, 22 con el 403). Con ese código el baseline completo se colgó dos
+  veces con `Page crashed` en el recorrido del empleado; con la corrección
+  dejó de pasar, pero no se investigó por qué crasheaba (puede ser otra cosa
+  que el 403). Correcto: una sola llamada `entrarEnVista(viewId)` y el
+  registro decide.
+- Un `Escape` no cierra el menú de "+ Filtro" (pasa igual en el original); el
+  script de prueba tuvo que hacer click afuera.
+- El puerto 4731 ya estaba ocupado por un `node server.js` ajeno a esta
+  sesión (PID 18000, arrancado a las 10:17). El seed corrió contra ese servidor
+  sin querer. Se usaron 4741 (original) y 4742 (nuevo), y el 4731 no se tocó.
+
+**Cómo se verificó.** Todo contra copias en el scratchpad, con base nueva:
+- Baseline de navegador (`baseline.mjs`): por rol (admin y empleado), 18
+  vistas, 9 fichas, selección, menú de filtros, modal de nueva venta,
+  deep-link a vista admin, Atrás, tema y perfil: requests, consola y DOM
+  normalizado. Dos corridas del original dan cero diferencias; original contra
+  nuevo: **cero diferencias**. Hace falta esperar ~3,5 s tras el login porque
+  el boot encadena `Promise.all` en etapas y `networkidle` cae entre dos.
+  Auditoría y Usuarios se vacían del DOM antes de comparar (traen horas).
+- Prueba funcional (`funcional.mjs`), original contra nuevo, **idénticas byte a
+  byte**: exportar CSV de Ventas (BOM, separador, nombre), `confirmar` con 27
+  facturas seleccionadas ("Imprimir en lote", cierre con Escape), Escape que
+  limpia la selección, descarga de PDF (jsPDF + html2canvas, `%PDF`, nombre) e
+  impresión (`window.print` interceptado: la hoja se vacía justo después, hay
+  que capturarla adentro). No ejercitó: el contenido del menú de filtros (el
+  selector no matchó; lo cubre el baseline) ni PDF/impresión en lote de varias
+  hojas.
+- ESLint `no-undef` (`sourceType: module`; `html2canvas` y `jspdf` como globales
+  de vendor) sobre `app.js` y `core/*.js`: cero errores.
+- `npm test`: 9 de 9. `backend/db/nexo.db` intacta (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e` antes y después).
+
+**Herramientas (scratchpad, no van al repo).** `seed.mjs` (empresa "Baseline SA",
+admin1 y emp1, 3 productos, 2 clientes, 1 proveedor, 1 compra recibida, 1
+venta; el gasto se carga después de crear la categoría), `baseline.mjs`
+(incluye `--diff a.json b.json`), `funcional.mjs` y `extraer.mjs`, que cortó
+`app.js` por rangos de líneas y calculó exports/imports con ESLint iterando
+hasta estabilizarse. Trampas del seed: `condicion_pago` solo acepta `contado`,
+15, 30 o 60; `facturas.condicion` solo `efectivo`, `transferencia` o
+`mercadopago`; la compra hay que confirmarla y marcarla `recibido` para que
+haya stock.
+
+### Qué sigue
+
+F3: primer dominio, uno chico (`negocio`, `usuarios` o `auditoria`), para
+fijar el patrón con `registrar`/`recargar`. Después ir de los chicos a los
+grandes (ventas, compras, productos), el boot en F13 y la PWA (B2).

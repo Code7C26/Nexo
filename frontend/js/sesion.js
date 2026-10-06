@@ -3,7 +3,8 @@
  * -----------------------------------------------------------
  * El gate de arranque de Nexo. Se carga en vez de app.js
  * (index.html no tiene <script src="js/app.js"> — lo inyecta este
- * archivo, y recién cuando confirma que hay una sesión válida).
+ * archivo como módulo ES, y recién cuando confirma que hay una sesión
+ * válida).
  *
  * Por qué existe: app.js no tiene init() ni DOMContentLoaded — toca el
  * DOM desde su primera línea y dispara varias olas de fetch() sin
@@ -109,8 +110,25 @@
     if (appInyectada) return;
     appInyectada = true;
 
+    // app.js es un módulo ES (CLAUDE.md §31): carga diferida, modo estricto y
+    // su propio scope en vez del global. Inyectarlo con type="module" desde
+    // acá (y no con un <script type="module"> estático en index.html) es lo
+    // que conserva el gate: sin sesión ni siquiera se descarga.
     const script = document.createElement("script");
+    script.type = "module";
     script.src = "js/app.js";
+    // Si falta o falla cualquier archivo del grafo de imports el navegador
+    // descarta TODO el módulo y la pantalla quedaría en blanco sin una pista.
+    // Se vuelve al login con el motivo, y la guarda de idempotencia se libera
+    // para que un reintento pueda inyectarlo de nuevo.
+    script.onerror = () => {
+      console.error("No se pudo cargar js/app.js (o alguno de los módulos que importa).");
+      script.remove();
+      appInyectada = false;
+      cerrarSesionLocal();
+      mostrarPantalla("login");
+      mostrarErrorEn("loginError", "No se pudo cargar la aplicación. Recargá la página.");
+    };
     document.body.appendChild(script);
   }
 
