@@ -24,8 +24,12 @@ frontend/
 ├── css/styles.css     → sistema de diseño (colores, tipografía, layout)
 └── js/
     ├── sesion.js       → login y gate: recién logueado inyecta app.js (módulo ES)
-    ├── app.js          → pantallas por dominio + llamadas a /api/... (se está
-    │                     partiendo por dominio, Etapa B de CLAUDE.md §31)
+    ├── app.js          → las pantallas que todavía no se partieron + boot
+    │                     (se está partiendo por dominio, Etapa B de CLAUDE.md §31)
+    ├── dominios/       → una pantalla (o grupo chico) por módulo
+    │   ├── usuarios.js       ABM de usuarios (solo admin)
+    │   ├── configuracion.js  datos del negocio
+    │   └── perfil.js         Mi cuenta: contraseña y cerrar sesión
     └── core/           → lo que comparten todas las pantallas
         ├── formato.js      money, numero, esc, esAdmin, hoyISO
         ├── ui.js           avisar (toasts), confirmar, estados de tabla
@@ -38,7 +42,8 @@ frontend/
         └── registro.js     acciones por nombre entre módulos (sin ciclos)
 ```
 
-`core/` solo importa de `core/`: lo verifica `backend/test/frontend-modulos.test.js`
+`core/` solo importa de `core/`, y `dominios/` nunca importa `app.js` (`app.js`
+los importa a ellos): lo verifica `backend/test/frontend-modulos.test.js`
 (`npm test`).
 
 ## Qué es real y qué es placeholder

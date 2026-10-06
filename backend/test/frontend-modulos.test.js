@@ -12,6 +12,7 @@
 //    - invocar('x', ...)  necesita  registrar('x', ...)
 //    - recargar('x', ...) necesita  registrar('cargar:x', ...)
 //    - alEntrarEnVista('v', ...) no necesita nada: es quien registra.
+// 5. dominios/ nunca importa app.js (app.js los importa a ellos).
 //
 // Los archivos de js/vendor/ son librerías de terceros y no se analizan.
 import { test } from 'node:test';
@@ -196,4 +197,16 @@ test('core/ solo importa de core/ (nunca de un dominio ni de app.js)', () => {
     }
   }
   assert.deepEqual(haciaAfuera, [], `core/ depende de código fuera de core/:\n${haciaAfuera.join('\n')}`);
+});
+
+test('dominios/ nunca importa app.js (app.js los importa a ellos)', () => {
+  const haciaApp = [];
+  for (const [archivo, { imports }] of modulos) {
+    if (!rel(archivo).startsWith('dominios/')) continue;
+    for (const { origen } of imports) {
+      const destino = resolver(archivo, origen);
+      if (destino && rel(destino) === 'app.js') haciaApp.push(`${rel(archivo)} importa '${origen}'`);
+    }
+  }
+  assert.deepEqual(haciaApp, [], `dominios/ depende de app.js:\n${haciaApp.join('\n')}`);
 });

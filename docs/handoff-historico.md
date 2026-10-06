@@ -6274,3 +6274,85 @@ haya stock.
 F3: primer dominio, uno chico (`negocio`, `usuarios` o `auditoria`), para
 fijar el patrón con `registrar`/`recargar`. Después ir de los chicos a los
 grandes (ventas, compras, productos), el boot en F13 y la PWA (B2).
+
+## 54. Etapa B — F3: Usuarios, Configuración y Mi cuenta salen a `frontend/js/dominios/`
+
+**Qué se hizo.** `app.js` pasó de 7933 a 7631 líneas. Tres módulos nuevos en
+`frontend/js/dominios/` (carpeta nueva, una por dominio), con el código movido
+tal cual y solo `import`/`export` agregados:
+- `usuarios.js`: ABM de usuarios (lista, modal, baja, reactivar, resetear
+  contraseña). Se registra solo con `alEntrarEnVista("usuarios", cargarUsuarios)`.
+  No exporta nada: nadie más lee su estado.
+- `configuracion.js`: datos del negocio. Registra `registrar("cargar:negocio", ...)`
+  y el boot de `app.js` pasó de `cargarNegocio()` a `recargar("negocio")`, en la
+  misma primera ola del `Promise.all`. Es el primer uso real de
+  `registrar`/`recargar`. Escribe el membrete con `fijarNegocio()` (`core/negocio.js`).
+- `perfil.js`: menú Mi cuenta, cambio de contraseña y cerrar sesión. Solo
+  listeners.
+
+`app.js` los trae con tres imports de efecto. Los módulos importados se evalúan
+antes que el cuerpo de `app.js`, así que sus registros ya existen cuando corre
+el boot y el `mostrarVista` inicial. Siguen en `app.js` hasta F13: tema,
+colapsar sidebar, `navToggle` y el boot.
+
+**Decisión: Auditoría no entra en F3.** `cargarAuditoria` lee y además
+**reasigna** `movimientosStockCache` y `movimientosCajaCache`, que son estado de
+Stock y Caja. Moverla ahora obligaba a importar de `app.js` (ciclo) o a cambiar
+comportamiento. Va después de Stock y Caja: leerá sus cachés como live binding
+de solo lectura y pedirá lo que falte en variables propias. Papelera, que lee
+ventas/compras/gastos/devoluciones, también espera.
+
+**Test estático.** Regla nueva en `frontend-modulos.test.js`: `dominios/` nunca
+importa `app.js`. Dominio→dominio queda permitido a propósito (los dominios
+grandes van a leer estado de otros). Probada con un `import "../app.js"` en
+`perfil.js`: fallan la regla nueva y la de ciclos; con el archivo restaurado,
+10 de 10.
+
+**Cómo se verificó.** Todo contra copias en el scratchpad, con base nueva
+(original = `HEAD`, puerto 4741; nuevo, 4742):
+- Baseline de navegador (`baseline.mjs`), admin y empleado, 18 vistas y 9
+  fichas: **cero diferencias** en requests, consola y DOM.
+- Prueba funcional dirigida (`funcional-f3.mjs`, 38 observaciones),
+  **idéntica** entre original y nuevo:
+  - Usuarios: alta, duplicado (409, el modal queda abierto), edición, resetear
+    con `prompt` corto y válido, baja con `confirmar` (cancelada con Escape y
+    luego aceptada), reactivar.
+  - Configuración: nombre vacío rechazado, guardado, cerrar sin guardar y
+    reabrir sin valores a medias.
+  - Membrete: tras guardar el nombre, el comprobante impreso sale con el
+    nombre, el CUIT y el pie nuevos (valida el live binding de `negocio`).
+  - Mi cuenta: contraseña actual incorrecta, cambio correcto, cierre con click
+    afuera, cerrar sesión.
+  - Empleado: Configuración en solo lectura (8 de 8 controles deshabilitados) y
+    ningún `GET /api/usuarios`.
+- `npm test`: 10 de 10. `backend/db/nexo.db` intacta (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e`).
+
+**Qué falló en el camino (para no repetirlo):**
+- **El ESLint de la primera pasada de F3 no probaba nada** (y el de F2 pudo
+  estar igual: no se volvió a correr). ESLint ignora en silencio los archivos
+  fuera de la carpeta base de la config, y `--no-warn-ignored` esconde el
+  aviso: devolvía "cero errores" sobre archivos que no leía. Se notó porque un
+  archivo de control con un import sin usar tampoco dio error. Hay que correrlo
+  **desde la carpeta que contiene los archivos** y confirmar siempre con un
+  control que falle a propósito. Ya bien corrido sobre `app.js`, `core/` y
+  `dominios/`: sin `no-undef`, `no-import-assign` ni imports sin usar. Quedan 4
+  `no-unused-vars` que **ya estaban en el original** (`presupuestoFichaId`,
+  `devolucionFichaId`, `ventaADevolverItems`, `devolucionProveedorFichaId`,
+  asignadas y nunca leídas): no se tocaron, una mudanza no cambia comportamiento.
+- La primera corrida funcional dio dos diferencias que eran ruido: un toast
+  viejo todavía visible en una corrida y ya vencido en la otra, y un 404 de
+  logos que no copié al scratchpad (`/assets/...`). Se resolvió registrando solo
+  el último toast y las URLs de los 404, y repitiendo con bases nuevas.
+- Mi primer script usaba `[name=...]` y los inputs de Usuarios y Mi cuenta
+  tienen solo `id` (el código accede por `form.usuarioUsuario`).
+- Un heredoc largo con dos `<<'EOF'` encadenados falló al parsear y no aplicó
+  nada: para docs largos usar Edit.
+
+### Qué sigue
+
+F4: siguiente dominio chico. Candidatos sin acoplamiento con estado ajeno:
+catálogos de Productos (categorías, listas de precios, depósitos) o Cuentas
+corrientes. Auditoría y Papelera van después de Stock/Caja y de los dominios
+que leen. Después los grandes (ventas, compras, productos), el boot en F13 y
+la PWA (B2).
