@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "backup": "node ../scripts/backup-db.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",

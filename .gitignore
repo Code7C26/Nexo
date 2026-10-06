@@ -1,6 +1,8 @@
 node_modules/
 *.db
 backend/db/*.backup-*
+# Respaldos automáticos de la base (backend/db/respaldo.js).
+/backups/
 .env
 nexo-app.zip
 ~$*

@@ -58,7 +58,15 @@ incluido.
 - Todavía no corrió **ninguna** migración de la Etapa A: el próximo
   `npm start` aplica §37–§49 de una vez.
 - El arnés de hist. §48 ya simuló ese arranque sobre una copia, sin errores.
-- Backup previo: `backend/db/nexo.db.backup-antes-etapa-a-20261005-210622`.
+- Backup previo: `backend/db/nexo.db.backup-antes-etapa-a-20261005-210622`, y una
+  copia fuera del repo en `~/Documents/nexo-backups/` (6 de octubre, mismo md5).
+- **Respaldo automático** (`backend/db/respaldo.js`, auditoría de hist. §57): cada
+  arranque respalda la base ANTES de abrirla, en `<repo>/backups/` (ignorada por
+  git), con rotación de 14 y sin duplicar si no cambió nada. Si el respaldo falla,
+  el arranque se corta. Variables: `NEXO_BACKUP=off` (lo apaga), `NEXO_BACKUP_DIR`
+  (destino: conviene una carpeta sincronizada con la nube, porque por defecto está
+  en el mismo disco), `NEXO_BACKUP_KEEP`. Manual: `cd backend && npm run backup`.
+  Con `node --watch` cada reinicio con datos nuevos crea uno y los 14 rotan rápido.
 - Tiene una sola organización ("Mi negocio") y un solo usuario, admin.
 
 **Servidor**: `cd backend && npm start`, en el puerto 3000 (`PORT` lo cambia).
@@ -137,8 +145,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 ## Cómo verificar un cambio (procedimiento de hist. §40–§49)
 
 1. **Nunca contra `backend/db/nexo.db`:**
-   - copiar `backend/` (con `node_modules`) al scratchpad, porque la ruta de la
-     base está fija en `db/index.js`;
+   - apuntar el código a otra base con `NEXO_DB_PATH` (y `NEXO_BACKUP_DIR` al
+     scratchpad, o `NEXO_BACKUP=off`); ya no hace falta copiar `backend/`;
    - anotar el md5 de la base real antes y después.
 2. **Regresión:** levantar el código de `HEAD` y el nuevo en puertos distintos
    (por ejemplo 4732 y 4731), cada uno con su copia de la misma base, y

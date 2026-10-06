@@ -2,9 +2,37 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { respaldarBase, rutasDeRespaldo } from './respaldo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new DatabaseSync(path.join(__dirname, 'nexo.db'));
+
+// NEXO_DB_PATH permite apuntar el servidor a otra base (pruebas, copias de
+// verificación) sin tocar la real. Sin la variable, la base de siempre.
+const { dbPath, dir: dirRespaldos } = rutasDeRespaldo(__dirname);
+
+// Respaldo ANTES de abrir la base: lo que sigue (schema.sql, los rebuilds)
+// puede reescribir tablas enteras. Si el respaldo falla se corta el arranque a
+// propósito: seguir sin red de seguridad es peor que no arrancar. NEXO_BACKUP=off
+// lo apaga (pruebas); NEXO_BACKUP_DIR cambia el destino, por ejemplo a una
+// carpeta sincronizada con la nube. Ver db/respaldo.js (CLAUDE.md §35).
+if (process.env.NEXO_BACKUP !== 'off') {
+  let respaldo;
+  try {
+    respaldo = respaldarBase({ dbPath, dir: dirRespaldos });
+  } catch (err) {
+    throw new Error(
+      `No se pudo respaldar la base antes de arrancar. Revisá el espacio y los permisos de ${dirRespaldos} ` +
+        '(o arrancá con NEXO_BACKUP=off bajo tu responsabilidad: las migraciones son destructivas).',
+      { cause: err }
+    );
+  }
+  if (respaldo.creado) console.log(`Respaldo de la base: ${respaldo.archivo}`);
+  if (respaldo.noEliminados?.length) {
+    console.warn(`No se pudieron borrar respaldos viejos (¿abiertos en otro programa?): ${respaldo.noEliminados.join(', ')}`);
+  }
+}
+
+const db = new DatabaseSync(dbPath);
 
 db.exec(readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 
