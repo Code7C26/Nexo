@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §55);
+    siguiente número (hoy el último es §56);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -24,9 +24,11 @@
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está 18 commits adelante de `origin/solla`, sin pushear (toda la
-  Etapa A).
-- `main` está 22 commits atrás de `solla`. Pasar `solla` → `main` es por PR.
+- `solla` está sincronizada con `origin/solla`, salvo el commit de F5 si todavía
+  no se pusheó.
+- El PR #24 ya pasó la Etapa A y F0–F4 a `main`. `origin/main` tiene 2 commits
+  que `solla` no (los merges): conviene traerlos antes del próximo PR. Pasar
+  `solla` → `main` es por PR.
 
 **Construido.** El núcleo de CLAUDE.md §1–§27 está completo (ver "Estado real
 del sistema" en `CLAUDE.md`). Facturación de monto simple, sin IVA ni ARCA.
@@ -39,15 +41,16 @@ consultas filtran por la empresa de la sesión, incluidos los cinco catálogos
 "Qué sigue".
 
 **Etapa B (modularizar `app.js` + PWA, CLAUDE.md §31): en curso** (hist.
-§52–§55). Hechas F0 (test estático `backend/test/frontend-modulos.test.js`),
+§52–§56). Hechas F0 (test estático `backend/test/frontend-modulos.test.js`),
 F1 (`sesion.js` inyecta `app.js` como módulo ES, con `onerror`), F2 (el
 núcleo compartido salió a `frontend/js/core/`: `formato`, `ui`, `csv`,
 `filtros`, `seleccion`, `comprobante`, `router`, `negocio`, `registro`), F3
 (primeros dominios en `frontend/js/dominios/`: `usuarios`, `configuracion`,
 `perfil`) y F4 (`cuentas-corrientes`, que invoca fichas, cobrar y pagar de otros
-dominios por nombre con `invocar`). `app.js` bajó de 9407 a 7408 líneas y sigue
-teniendo el resto de los dominios; falta extraerlos (F5–F13) y la PWA (B2).
-Los commits de F4 están en `solla`, sin pushear.
+dominios por nombre con `invocar`) y F5 (`gastos`, más `core/maestros.js` con `cuentasTesoreria`,
+`proveedores` y `poblarSelectCuentas`; hist. §56). `app.js` bajó de 9407 a 7083
+líneas y sigue teniendo el resto de los dominios; falta extraerlos (F6–F13) y la
+PWA (B2).
 Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
 incluido.
 
@@ -161,11 +164,14 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Etapa B, siguiente paso: F5** (otro dominio chico sin acoplamiento con estado
-ajeno; candidato: Gastos, verificando antes que `categoriasGasto` solo lo
-reasigne su propio cargador). Los catálogos de Productos (categorías, listas,
+**Etapa B, siguiente paso: F6** (otro dominio sin acoplamiento con estado ajeno;
+candidatos: Proveedores o Clientes, que dejan su tabla, ficha y modal en el
+dominio y siguen fijando el maestro con `fijarProveedores()` de
+`core/maestros.js`; Caja también fija `cuentasTesoreria` ahí). Los maestros
+compartidos que lee más de un dominio van a `core/maestros.js` con su
+`fijarX()` (hist. §56). Los catálogos de Productos (categorías, listas,
 depósitos) van con Productos: leen estado que reasigna `cargarProductos()`
-(hist. §55). El patrón está probado en F3 y F4 (hist. §54, §55): el módulo del
+(hist. §55). El patrón está probado en F3, F4 y F5 (hist. §54–§56): el módulo del
 dominio se importa desde `app.js` con un import de efecto y se registra solo
 (`alEntrarEnVista('v', ...)` o `registrar('cargar:x', ...)`); el que otros leen
 exporta con `export let`, los demás usan `recargar('x')`, y las acciones de

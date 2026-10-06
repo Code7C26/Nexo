@@ -6413,3 +6413,69 @@ reasigna su propio `cargarGastos`; verificar antes) o Proveedores/Clientes si se
 resuelve cómo exponen su estado (`export let` en el dueño). Auditoría y Papelera
 siguen esperando a Stock, Caja y a los dominios que leen. Los grandes (ventas,
 compras, productos) al final, el boot en F13 y la PWA (B2).
+
+## 56. Etapa B — F5: Gastos sale a `frontend/js/dominios/` y los maestros compartidos a `core/maestros.js`
+
+**Qué se hizo.** `app.js` pasó de 7408 a 7083 líneas. Módulos nuevos:
+- `frontend/js/dominios/gastos.js` (337 líneas): tabla, filtros, CSV, modal de gasto y modal
+  de categorías de gasto, movidos tal cual. Exporta `gastos` y `categoriasGasto` con
+  `export let` (los leen Resumen, Papelera y el asistente) y se registra con
+  `registrar("cargar:gastos", ...)`.
+- `frontend/js/core/maestros.js` (34 líneas): `cuentasTesoreria` y `proveedores`, con
+  `fijarCuentasTesoreria()`/`fijarProveedores()`, y `poblarSelectCuentas()`. Mismo mecanismo
+  que `core/negocio.js` (hist. §53): un binding importado no se puede reasignar, así que el
+  dueño del dato (`cargarCaja`, `cargarProveedores`, ambos todavía en `app.js`) lo fija con el
+  setter y todos los demás lo leen importándolo.
+
+**Por qué `core/maestros.js` y no otra forma.** Gastos lee cuentas de tesorería y proveedores,
+que hoy reasignan funciones de `app.js`, y `dominios/` no puede importar `app.js` (lo verifica
+el test de F0). Se descartó `invocar("leer:proveedores")`, que mete lecturas síncronas en el
+registro de acciones, y se descartó importar de un futuro `dominios/proveedores.js`, que
+abriría una red de imports entre dominios (Compras ↔ Proveedores) con riesgo de ciclos. Las
+cuentas de tesorería las leen unos ocho lugares y son un maestro (CLAUDE.md §3).
+
+**Únicos cambios de lógica (equivalentes):**
+- Anular y guardar un gasto hacían `Promise.all([cargarGastos(), cargarCaja(),
+  cargarPanelResumen()])`; ahora `recargar("gastos", "caja", "panelResumen")`. `app.js`
+  registra `cargar:caja` y `cargar:panelResumen`.
+- `cargarGastos()` llamaba a `renderPapelera()`; ahora `invocar("render:papelera")`, que
+  `app.js` registra. Las tres acciones se registran **antes** del `Promise.all` del boot,
+  porque `render:papelera` corre apenas termina el primer fetch de gastos.
+- Las tres llamadas a `cargarGastos()` que quedaban en `app.js` (asistente, restaurar desde
+  la papelera, boot) pasaron a `recargar("gastos")`.
+
+**Cómo se verificó.** Copias en el scratchpad con base nueva (original = `HEAD`, puerto
+4741; nuevo, 4742), mismo seed: empresa, admin, un proveedor y un empleado con la contraseña
+ya cambiada.
+- Prueba funcional dirigida (`funcional-f5.mjs`, 52 observaciones), **idéntica** entre
+  original y nuevo, con 0 errores de consola: alta y edición de categorías, cuentas y
+  proveedores del modal de gasto, el tipo que arrastra la categoría, alta, edición y anulación
+  de gastos con sus avisos, Caja (`-$ 2.300,00`) y Resumen recargados solos, filtro con chip y
+  "sin resultados", CSV, Papelera (anular y restaurar), la propuesta de gasto del asistente
+  con `NEXO_INTERPRETE=stub`, y la vista del empleado (sin botón de anular).
+- Pasada de humo (`humo-f5.mjs`, 41 observaciones) por las 18 vistas como admin y como
+  empleado, más el modal de movimiento de caja, el de compra y la tabla de proveedores:
+  **idéntica** salvo los timestamps de Auditoría, que son la hora de cada corrida.
+- `npm test`: 10 de 10. ESLint corrido desde la carpeta de los archivos, con un
+  `control.js` que falló a propósito: `app.js` solo con los 4 `no-unused-vars` viejos;
+  `gastos.js` y `maestros.js` sin errores. `backend/db/nexo.db` intacta (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e`).
+
+**Qué se aprendió en el camino (para no repetirlo):**
+- En Windows con `core.autocrlf=true`, `git archive HEAD` entrega LF y el árbol de trabajo
+  tiene CRLF: un `diff -rq` entre ambos marca casi todos los archivos como distintos. Hay que
+  usar `diff --strip-trailing-cr`.
+- Los hooks de GateGuard piden presentar los hechos antes de la primera escritura de cada
+  archivo nuevo y de la primera edición de `app.js`; si se manda un lote en paralelo, solo la
+  primera operación rechazada queda sin aplicar y hay que reintentarla.
+- Las bases de prueba quedan modificadas por el recorrido: si un selector falla a la mitad
+  hay que resembrar las dos.
+
+### Qué sigue
+
+F6: otro dominio. Con `core/maestros.js` ya existe el hogar de los maestros compartidos, así
+que Proveedores y Clientes pasan a ser candidatos: al moverlos, `cargarProveedores()` sigue
+llamando a `fijarProveedores()` y se queda con su propia tabla, ficha y modal. Auditoría y
+Papelera siguen esperando a Stock, Caja y a los dominios que leen: `renderPapelera` lee
+`ventas`, `compras`, `gastos`, `devoluciones` y `devolucionesProveedor`. Los grandes (ventas,
+compras, productos) al final, el boot en F13 y la PWA (B2).
