@@ -5835,6 +5835,7 @@ arriba).
 1. Los catálogos con `UNIQUE(nombre)` (`categorias`, `listas_precios`,
    `depositos`, `cuentas_tesoreria`, `categorias_gasto`) siguen pendientes como
    su propia etapa de rebuild a `UNIQUE(organizacion_id, nombre)`.
+   **Cerrado en §49.**
 2. Pasar `organizacion_id` a `NOT NULL` en todas las tablas que lo tienen
    nullable hoy.
 3. Filtrar `valor_anterior`/`valor_nuevo` por campos sensibles en
@@ -5889,3 +5890,128 @@ sobre una base nueva, una copia de la real y los 21 backups de `backend/db/`.
   venta + cobro, gasto, auditoría con organización): 18/18. Con `HEAD` el
   servidor ni arranca.
 - La base real no se tocó (md5 `a25ce51db1f9978b77c16aac22bc8a3e`).
+
+## 49. Etapa A (multi-tenant) — catálogos por organización
+
+**Objetivo**: ítem 1 del "Qué sigue" de §47, el último bloque grande de la
+Etapa A. Los cinco catálogos (`categorias`, `listas_precios`, `depositos`,
+`cuentas_tesoreria`, `categorias_gasto`) eran globales, con `UNIQUE(nombre)`.
+Con una segunda empresa pasaba esto:
+- el saldo de caja se mezclaba entre empresas (documentado en §43);
+- marcar una lista o un depósito como predeterminado se lo quitaba a todas las
+  demás empresas;
+- `depositoPredeterminadoId()` devolvía el depósito de cualquier empresa;
+- unos 25 caminos de escritura aceptaban ids de catálogo de otra empresa
+  (cobros y pagos ni siquiera validaban la cuenta);
+- el asistente resolvía nombres contra todas las empresas.
+
+**Esquema** (`schema.sql` + `db/index.js`):
+- Las 5 tablas se reconstruyen con `organizacion_id INTEGER NOT NULL
+  REFERENCES organizaciones(id)` y `UNIQUE (organizacion_id, nombre)`.
+  - Hace falta rebuild porque el `UNIQUE` de columna es un índice automático
+    que no se puede tirar.
+  - `NOT NULL` a propósito: con `NULL`, el `UNIQUE` no frena duplicados.
+  - Mismo procedimiento que el rebuild de `compras`, que también es tabla padre
+    de FKs: se preservan los ids, y todas las filas existentes quedan en la
+    primera organización.
+  - El marcador del rebuild es el texto `UNIQUE (organizacion_id, nombre)`.
+- El rebuild corre al principio del archivo. Para eso:
+  - el seed de `organizaciones` subió arriba de todo;
+  - el `ALTER` de `cuentas_tesoreria.saldo_inicial` va antes del rebuild,
+    porque el rebuild lo lee.
+- Los seeds de depósito, cuentas y lista pasan a
+  `sembrarCatalogosBase(organizacionId)`. Corre en cada arranque para cada
+  organización y solo siembra lo que le falta a esa empresa, así que una
+  empresa creada a mano recibe sus catálogos al reiniciar.
+
+**`server.js`**: mismo patrón que §40–47 — filtro plano
+`AND organizacion_id = ?` y los mismos mensajes de siempre. Un id ajeno en
+`/:id` de catálogo da 404; un id ajeno en el body da 400 "no existe".
+- **CRUD de los 5 catálogos:** listado, chequeo de duplicado por empresa,
+  lookup, y desmarcar predeterminados solo dentro de la empresa.
+- **Helpers que ahora reciben la empresa:**
+  - `depositoPredeterminadoId(org)` (19 llamadas);
+  - `depositoActivoValido` (nuevo);
+  - `listaPrecioValida`, `validarProducto` y `validarStockDisponible`;
+  - `validarGasto`, que ahora valida también el proveedor;
+  - `buscarPorNombre`, `existeId` y `resolverPropuesta` del asistente. Esto
+    cubre también clientes, productos y proveedores, que tampoco filtraban:
+    los `candidatos` de un nombre ambiguo mostraban nombres de otras empresas.
+- **Validación nueva:** la cuenta en `POST /api/ventas/:id/cobros` y
+  `POST /api/compras/:id/pagos`. Antes solo la frenaba la FK, y una cuenta
+  inexistente daba 500.
+- **Lecturas:**
+  - `GET /api/tesoreria` (cuentas y total);
+  - `contextoParaInterprete`, que ya no le manda a Gemini cuentas ni
+    categorías de gasto de otras empresas;
+  - `buscarNombreCategoria` en los reportes.
+- **Mismo camino, mismo pase:** un producto de otra empresa en
+  `validarStockDisponible` y en `PUT /api/ventas/:id` entraba a la venta y
+  exponía su costo. Cerrado.
+
+**Sin cambios**:
+- El frontend no tiene ids ni nombres fijos y elige los predeterminados por
+  flag.
+- `interprete.js` y `permisos.js` (no hay rutas nuevas) tampoco cambian.
+- Las respuestas de los catálogos suman la clave `organizacion_id`.
+
+**Verificación** (scratchpad, borrado al terminar):
+- **Preparación:** una copia de la base real con un admin de prueba en la org 1
+  y una org 2 con su admin, creados a mano. `HEAD` corre en el 4732 y el árbol
+  de trabajo en el 4731.
+- **Resultado:** 113/113 chequeos verdes:
+  - **Migración:** `NOT NULL` y marcador en las 5 tablas; las filas de la org 1
+    quedan idénticas a la base real, con los mismos ids; `foreign_key_check`
+    vacío; la org 2 recibe sus catálogos al arrancar; un alta nueva toma
+    max(id)+1.
+  - **Regresión de la org 1:** 27 `GET` (catálogos, tesorería, stock, ventas,
+    compras, reportes, cuentas corrientes) dan idéntico con `HEAD` y con el
+    fix, ignorando la clave nueva.
+  - **Aislamiento:**
+    - cada empresa ve solo sus listados, y dos empresas pueden usar el mismo
+      nombre;
+    - un `PATCH` cruzado da 404 y no cambia nada;
+    - 26 operaciones con ids de la otra empresa en el body dan 400 con el
+      mensaje esperado, y los conteos no cambian;
+    - los controles dentro de la propia empresa pasan;
+    - una venta sin depósito descuenta stock del depósito propio;
+    - el saldo de Efectivo queda separado por empresa;
+    - el asistente resuelve "Efectivo" a la cuenta propia y rechaza una cuenta
+      ajena metida a mano;
+    - cada empresa tiene sus propios predeterminados.
+  - **Contrastes que confirman que `HEAD` tenía cada bug:**
+    - la org 2 veía el Efectivo de la org 1 y le cargaba plata;
+    - el asistente resolvía su "Efectivo" a la cuenta de la org 1;
+    - marcar una lista le quitaba la predeterminada a la org 1.
+- **Arnés de arranque de §48** con el esquema nuevo: la base nueva, la real y
+  los 21 backups migran en un solo arranque, quedan estables y con el mismo
+  esquema. Smoke de instalación desde cero: 18/18.
+- `npm test` verde. La base real no se tocó (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e`).
+
+**Ojo con el próximo arranque real**: la base real todavía no corrió ninguna
+migración de la Etapa A (§37–§49), así que el próximo `npm start` las aplica
+todas juntas. Backup previo:
+`backend/db/nexo.db.backup-antes-etapa-a-20261005-210622`. El arnés de §48 ya
+lo simuló sobre una copia, sin errores.
+
+### Qué sigue
+
+1. Pasar `organizacion_id` a `NOT NULL` en las 15 tablas que lo tienen
+   nullable. Los 5 catálogos ya nacen `NOT NULL`.
+2. Alta de empresa desde la API (hoy se crean a mano). Tiene que llamar a
+   `sembrarCatalogosBase`, que hoy es local a `db/index.js` y habría que
+   exportar.
+3. El alta de categoría, lista, cuenta y categoría de gasto no se audita (solo
+   la edición; el alta de depósito sí).
+4. Una lista o un depósito inactivo puede quedar como predeterminado si el
+   `PATCH` omite `activa`/`activo`.
+5. `obtenerPreciosPorProducto` y `obtenerPreciosPorVariante` leen los precios
+   de todas las empresas. No hay fuga, porque se indexan por los productos
+   propios, pero cuesta rendimiento a medida que crecen las empresas.
+6. Filtrar `valor_anterior`/`valor_nuevo` por campos sensibles en
+   `GET /api/auditoria` — no urgente con el endpoint en `admin`.
+7. Pasada visual pendiente en el navegador: Usuarios, Configuración,
+   Auditoría y las pantallas de catálogos.
+8. Decisión abierta en `permisos.js`: si listas, depósitos y categorías de
+   gasto tienen que ser solo admin.

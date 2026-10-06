@@ -660,12 +660,20 @@ app.get('/api/clientes/:id', (req, res) => {
 });
 
 // lista_precio_id: NULL = "usa la predeterminada", igual que en
-// ventas/presupuestos (CLAUDE.md §18). Si viene un id, tiene que existir.
+// ventas/presupuestos (CLAUDE.md §18). Si viene un id, tiene que existir y
+// ser de la organización de la operación (Etapa A, CLAUDE.md §28).
 function normalizarListaPrecioId(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
 }
-function listaPrecioValida(listaPrecioId) {
-  return listaPrecioId === null || Boolean(db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId));
+function listaPrecioValida(listaPrecioId, organizacionId) {
+  return (
+    listaPrecioId === null ||
+    Boolean(
+      db
+        .prepare('SELECT 1 FROM listas_precios WHERE id = ? AND organizacion_id = ?')
+        .get(listaPrecioId, organizacionId)
+    )
+  );
 }
 
 // condicion_pago habitual de un cliente/proveedor: NULL = "no tiene un plazo
@@ -689,7 +697,7 @@ app.post('/api/clientes', (req, res) => {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
   const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
-  if (!listaPrecioValida(listaPrecioId)) {
+  if (!listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
   const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
@@ -730,7 +738,7 @@ app.patch('/api/clientes/:id', (req, res) => {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
   const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
-  if (!listaPrecioValida(listaPrecioId)) {
+  if (!listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
   const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
@@ -937,9 +945,17 @@ app.post('/api/facturas', (req, res) => {
 // tres validaciones (nombre vacío, nombre duplicado, baja lógica vía
 // `activa` en vez de DELETE, para no dejar productos apuntando a una FK
 // borrada). Sin `tipo`: acá no hay una razón contable que lo justifique.
+//
+// Los cinco catálogos (categorías, listas de precios, depósitos, cuentas de
+// tesorería y categorías de gasto) son por organización (Etapa A, CLAUDE.md
+// §28): cada empresa ve y edita solo los suyos, y el nombre duplicado se
+// chequea dentro de la empresa — dos empresas pueden tener cada una su
+// "Efectivo". Un id de otra empresa da el mismo 404 que uno inexistente.
 
 app.get('/api/categorias', (req, res) => {
-  const categorias = db.prepare('SELECT * FROM categorias ORDER BY nombre').all();
+  const categorias = db
+    .prepare('SELECT * FROM categorias WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(categorias);
 });
 
@@ -949,14 +965,16 @@ app.post('/api/categorias', soloAdmin, (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'La categoría necesita un nombre.' });
   }
-  const yaExiste = db.prepare('SELECT 1 FROM categorias WHERE nombre = ?').get(String(nombre).trim());
+  const yaExiste = db
+    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
   }
 
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO categorias (nombre) VALUES (?)')
-    .run(String(nombre).trim());
+    .prepare('INSERT INTO categorias (nombre, organizacion_id) VALUES (?, ?)')
+    .run(String(nombre).trim(), req.usuario.organizacion_id);
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -964,7 +982,9 @@ app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, activa } = req.body;
 
-  const categoria = db.prepare('SELECT * FROM categorias WHERE id = ?').get(categoriaId);
+  const categoria = db
+    .prepare('SELECT * FROM categorias WHERE id = ? AND organizacion_id = ?')
+    .get(categoriaId, req.usuario.organizacion_id);
   if (!categoria) {
     return res.status(404).json({ error: 'Categoría no encontrada.' });
   }
@@ -972,8 +992,8 @@ app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'La categoría necesita un nombre.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), categoriaId);
+    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), categoriaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
   }
@@ -1015,7 +1035,9 @@ app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
 // puede desactivar ni desmarcar directamente.
 
 app.get('/api/listas-precios', (req, res) => {
-  const listas = db.prepare('SELECT * FROM listas_precios ORDER BY nombre').all();
+  const listas = db
+    .prepare('SELECT * FROM listas_precios WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(listas);
 });
 
@@ -1025,14 +1047,16 @@ app.post('/api/listas-precios', (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'La lista necesita un nombre.' });
   }
-  const yaExiste = db.prepare('SELECT 1 FROM listas_precios WHERE nombre = ?').get(String(nombre).trim());
+  const yaExiste = db
+    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una lista con ese nombre.' });
   }
 
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO listas_precios (nombre) VALUES (?)')
-    .run(String(nombre).trim());
+    .prepare('INSERT INTO listas_precios (nombre, organizacion_id) VALUES (?, ?)')
+    .run(String(nombre).trim(), req.usuario.organizacion_id);
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -1040,7 +1064,9 @@ app.patch('/api/listas-precios/:id', (req, res) => {
   const listaId = Number(req.params.id);
   const { nombre, activa, es_predeterminada } = req.body;
 
-  const lista = db.prepare('SELECT * FROM listas_precios WHERE id = ?').get(listaId);
+  const lista = db
+    .prepare('SELECT * FROM listas_precios WHERE id = ? AND organizacion_id = ?')
+    .get(listaId, req.usuario.organizacion_id);
   if (!lista) {
     return res.status(404).json({ error: 'Lista de precios no encontrada.' });
   }
@@ -1048,8 +1074,8 @@ app.patch('/api/listas-precios/:id', (req, res) => {
     return res.status(400).json({ error: 'La lista necesita un nombre.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), listaId);
+    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), listaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra lista con ese nombre.' });
   }
@@ -1079,10 +1105,15 @@ app.patch('/api/listas-precios/:id', (req, res) => {
 
   withTransaction(() => {
     // Si esta lista pasa a ser la predeterminada, desmarcar cualquier otra
-    // primero — dentro de la misma transacción, así nunca hay un instante
-    // (ni una falla a mitad de camino) con dos marcadas o con cero.
+    // de la misma organización primero — dentro de la misma transacción, así
+    // nunca hay un instante (ni una falla a mitad de camino) con dos marcadas
+    // o con cero. Sin el filtro de organización, marcar una lista acá le
+    // quitaba la predeterminada a todas las demás empresas.
     if (nuevaEsPredeterminada && !lista.es_predeterminada) {
-      db.prepare('UPDATE listas_precios SET es_predeterminada = 0 WHERE id <> ?').run(listaId);
+      db.prepare('UPDATE listas_precios SET es_predeterminada = 0 WHERE id <> ? AND organizacion_id = ?').run(
+        listaId,
+        req.usuario.organizacion_id
+      );
     }
     db.prepare('UPDATE listas_precios SET nombre = ?, activa = ?, es_predeterminada = ? WHERE id = ?').run(
       nuevo.nombre,
@@ -1114,7 +1145,9 @@ app.patch('/api/listas-precios/:id', (req, res) => {
 // real escondida de cualquier pantalla que solo liste depósitos activos.
 
 app.get('/api/depositos', (req, res) => {
-  const depositos = db.prepare('SELECT * FROM depositos ORDER BY nombre').all();
+  const depositos = db
+    .prepare('SELECT * FROM depositos WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(depositos);
 });
 
@@ -1124,14 +1157,16 @@ app.post('/api/depositos', (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El depósito necesita un nombre.' });
   }
-  const yaExiste = db.prepare('SELECT 1 FROM depositos WHERE nombre = ?').get(String(nombre).trim());
+  const yaExiste = db
+    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe un depósito con ese nombre.' });
   }
 
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO depositos (nombre, direccion) VALUES (?, ?)')
-    .run(String(nombre).trim(), direccion ? String(direccion).trim() : null);
+    .prepare('INSERT INTO depositos (nombre, direccion, organizacion_id) VALUES (?, ?, ?)')
+    .run(String(nombre).trim(), direccion ? String(direccion).trim() : null, req.usuario.organizacion_id);
   auditar(req, {
     accion: 'crear',
     entidad: 'deposito',
@@ -1145,7 +1180,9 @@ app.patch('/api/depositos/:id', (req, res) => {
   const depositoId = Number(req.params.id);
   const { nombre, direccion, activo, es_predeterminado } = req.body;
 
-  const deposito = db.prepare('SELECT * FROM depositos WHERE id = ?').get(depositoId);
+  const deposito = db
+    .prepare('SELECT * FROM depositos WHERE id = ? AND organizacion_id = ?')
+    .get(depositoId, req.usuario.organizacion_id);
   if (!deposito) {
     return res.status(404).json({ error: 'Depósito no encontrado.' });
   }
@@ -1153,8 +1190,8 @@ app.patch('/api/depositos/:id', (req, res) => {
     return res.status(400).json({ error: 'El depósito necesita un nombre.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), depositoId);
+    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), depositoId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otro depósito con ese nombre.' });
   }
@@ -1194,10 +1231,14 @@ app.patch('/api/depositos/:id', (req, res) => {
 
   withTransaction(() => {
     // Mismo criterio que listas de precios: si este depósito pasa a ser el
-    // predeterminado, desmarcar cualquier otro primero, dentro de la misma
-    // transacción, para que nunca haya un instante con dos marcados o cero.
+    // predeterminado, desmarcar cualquier otro de la misma organización
+    // primero, dentro de la misma transacción, para que nunca haya un
+    // instante con dos marcados o cero.
     if (nuevoEsPredeterminado && !deposito.es_predeterminado) {
-      db.prepare('UPDATE depositos SET es_predeterminado = 0 WHERE id <> ?').run(depositoId);
+      db.prepare('UPDATE depositos SET es_predeterminado = 0 WHERE id <> ? AND organizacion_id = ?').run(
+        depositoId,
+        req.usuario.organizacion_id
+      );
     }
     db.prepare('UPDATE depositos SET nombre = ?, direccion = ?, activo = ?, es_predeterminado = ? WHERE id = ?').run(
       nuevo.nombre,
@@ -1223,9 +1264,25 @@ app.patch('/api/depositos/:id', (req, res) => {
 // El depósito predeterminado, resuelto una sola vez y reusado por todas las
 // operaciones que necesitan "el depósito de esta operación, si no se
 // especificó uno". Mismo criterio que NULL en ventas.lista_precio_id: nunca
-// se guarda el id copiado, siempre se resuelve en el momento.
-function depositoPredeterminadoId() {
-  return db.prepare('SELECT id FROM depositos WHERE es_predeterminado = 1').get()?.id ?? null;
+// se guarda el id copiado, siempre se resuelve en el momento. Es el de la
+// organización de la operación: cada empresa tiene el suyo.
+function depositoPredeterminadoId(organizacionId) {
+  return (
+    db
+      .prepare('SELECT id FROM depositos WHERE es_predeterminado = 1 AND organizacion_id = ?')
+      .get(organizacionId)?.id ?? null
+  );
+}
+
+// Un id de depósito que llega del cliente tiene que existir, estar activo y
+// ser de la organización de la operación. Devuelve el mismo resultado para
+// "no existe" y "es de otra empresa", igual que el resto de la Etapa A.
+function depositoActivoValido(depositoId, organizacionId) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+      .get(depositoId, organizacionId)
+  );
 }
 
 /* ---------- Productos ---------- */
@@ -1328,7 +1385,7 @@ function normalizarMargenObjetivo(valor) {
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo }) {
+function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo }, organizacionId) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
@@ -1345,10 +1402,13 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, cat
     return 'El stock máximo no puede ser menor que el mínimo.';
   }
   // Mismo criterio que categoria_id en gastos (validarGasto, más abajo):
-  // si viene, tiene que existir de verdad — nunca se confía ciegamente en
-  // un id que llega del cliente.
+  // si viene, tiene que existir de verdad y ser de la organización del
+  // producto — nunca se confía ciegamente en un id que llega del cliente.
   const categoriaId = normalizarCategoriaId(categoria_id);
-  if (categoriaId !== null && !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(categoriaId)) {
+  if (
+    categoriaId !== null &&
+    !db.prepare('SELECT 1 FROM categorias WHERE id = ? AND organizacion_id = ?').get(categoriaId, organizacionId)
+  ) {
     return 'La categoría seleccionada no existe.';
   }
   const margenObjetivo = normalizarMargenObjetivo(margen_objetivo);
@@ -1359,7 +1419,7 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, cat
 }
 
 app.post('/api/productos', soloAdmin, (req, res) => {
-  const error = validarProducto(req.body);
+  const error = validarProducto(req.body, req.usuario.organizacion_id);
   if (error) {
     return res.status(400).json({ error });
   }
@@ -1467,7 +1527,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     fusionado.precio_venta = Math.round(producto.precio_venta * (1 + ajuste) * 100) / 100;
   }
 
-  const error = validarProducto(fusionado);
+  const error = validarProducto(fusionado, req.usuario.organizacion_id);
   if (error) {
     throw new ErrorBulk(error);
   }
@@ -1485,8 +1545,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     preciosPorLista = {};
     for (const [listaIdStr, valor] of Object.entries(cambios.precios)) {
       const listaId = Number(listaIdStr);
-      const listaExiste = db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaId);
-      if (!listaExiste) {
+      if (!listaPrecioValida(listaId, req.usuario.organizacion_id)) {
         throw new ErrorBulk('La lista de precios seleccionada no existe.');
       }
       const precioBase = preciosActuales[listaId] ?? producto.precio_venta;
@@ -1521,7 +1580,9 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // desincronizarse. Se resuelve acá, antes del diff, para que quede
   // reflejado en la auditoría del producto como cualquier otro cambio de
   // precio_venta.
-  const listaPredeterminada = db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1').get();
+  const listaPredeterminada = db
+    .prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?')
+    .get(req.usuario.organizacion_id);
   if (preciosPorLista && listaPredeterminada && preciosPorLista[listaPredeterminada.id] !== undefined) {
     nuevo.precio_venta = preciosPorLista[listaPredeterminada.id];
   }
@@ -2061,7 +2122,7 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
     preciosPorLista = {};
     for (const [listaIdStr, valor] of Object.entries(precios)) {
       const listaId = Number(listaIdStr);
-      if (!db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaId)) {
+      if (!listaPrecioValida(listaId, req.usuario.organizacion_id)) {
         return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
       }
       const precioNuevo = normalizarPrecio(valor);
@@ -2463,8 +2524,10 @@ app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
   if (!Number(cantidad) || Number(cantidad) === 0) {
     return res.status(400).json({ error: 'La cantidad del ajuste no puede ser 0.' });
   }
-  const depositoIdResuelto = deposito_id ? Number(deposito_id) : depositoPredeterminadoId();
-  const deposito = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(depositoIdResuelto);
+  const depositoIdResuelto = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
+  const deposito = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(depositoIdResuelto, req.usuario.organizacion_id);
   if (!deposito) {
     return res.status(400).json({ error: 'El depósito no existe o está inactivo.' });
   }
@@ -2581,11 +2644,15 @@ app.post('/api/transferencias', (req, res) => {
   if (Number(deposito_origen_id) === Number(deposito_destino_id)) {
     return res.status(400).json({ error: 'El depósito de origen y de destino no pueden ser el mismo.' });
   }
-  const origen = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(deposito_origen_id);
+  const origen = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(deposito_origen_id, req.usuario.organizacion_id);
   if (!origen) {
     return res.status(400).json({ error: 'El depósito de origen no existe o está inactivo.' });
   }
-  const destino = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(deposito_destino_id);
+  const destino = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(deposito_destino_id, req.usuario.organizacion_id);
   if (!destino) {
     return res.status(400).json({ error: 'El depósito de destino no existe o está inactivo.' });
   }
@@ -2848,8 +2915,12 @@ function dondeHayStock(productoId, excluirDepositoId, varianteId = null) {
 // Igual que en compras: un producto con variantes activas exige que cada
 // item traiga una variante puntual, y uno sin variantes rechaza si igual
 // llegó una.
-function validarStockDisponible(items, depositoId) {
-  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+//
+// El producto se busca dentro de la organización de la venta: sin ese
+// filtro, un producto de otra empresa sin stock controlado entraba a la
+// venta y exponía su nombre y su costo (venta_items.costo_unitario_historico).
+function validarStockDisponible(items, depositoId, organizacionId) {
+  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivas = db.prepare(
     'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
@@ -2879,7 +2950,7 @@ function validarStockDisponible(items, depositoId) {
   }
 
   for (const { producto_id, variante_id, cantidad: cantidadPedida } of cantidadPorClave.values()) {
-    const producto = buscarProducto.get(producto_id);
+    const producto = buscarProducto.get(producto_id, organizacionId);
     if (!producto) {
       return 'Uno de los productos de la venta no existe.';
     }
@@ -2937,7 +3008,7 @@ function crearVenta({
   // escapa del catch de POST /api/ventas y termina en el handler default
   // de Express (HTML de stack trace en vez de un 400 con JSON).
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, organizacion_id)) {
     throw new ErrorBulk('La lista de precios seleccionada no existe.');
   }
 
@@ -2945,10 +3016,10 @@ function crearVenta({
   // de ese momento" (CLAUDE.md §19). Si viene un id, tiene que existir y
   // estar activo.
   const depositoId = deposito_id ? Number(deposito_id) : null;
-  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  if (depositoId && !depositoActivoValido(depositoId, organizacion_id)) {
     throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
   }
-  const depositoResuelto = depositoId ?? depositoPredeterminadoId();
+  const depositoResuelto = depositoId ?? depositoPredeterminadoId(organizacion_id);
 
   // El vencimiento se calcula sobre la fecha real de la venta, así que hay
   // que resolverla antes del INSERT: sin fecha explícita la columna usaría
@@ -3019,14 +3090,14 @@ app.post('/api/ventas', (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La venta necesita al menos un item.' });
   }
-  const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId();
-  if (deposito_id && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
+  if (deposito_id && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
 
   // No se puede vender más de lo que hay EN ESE DEPÓSITO: se valida antes
   // de tocar nada, así una venta que falla no deja nada a mitad de camino.
-  const errorStock = validarStockDisponible(items, depositoId);
+  const errorStock = validarStockDisponible(items, depositoId, req.usuario.organizacion_id);
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
@@ -3066,7 +3137,7 @@ app.put('/api/ventas/:id', (req, res) => {
     req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
@@ -3100,8 +3171,8 @@ app.put('/api/ventas/:id', (req, res) => {
   const depositoId = deposito_id !== undefined
     ? (deposito_id ? Number(deposito_id) : null)
     : venta.deposito_id;
-  const depositoResuelto = depositoId ?? depositoPredeterminadoId();
-  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  const depositoResuelto = depositoId ?? depositoPredeterminadoId(req.usuario.organizacion_id);
+  if (depositoId && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
   if (venta.estado === 'anulada') {
@@ -3165,10 +3236,12 @@ app.put('/api/ventas/:id', (req, res) => {
   // depósito que se va a usar ahora: si la venta cambia de depósito al
   // editarse, lo que libera en el depósito viejo no está disponible en el
   // nuevo.
-  const liberadoEnDepositoResuelto = venta.deposito_id === depositoResuelto || (!venta.deposito_id && depositoResuelto === depositoPredeterminadoId())
+  const liberadoEnDepositoResuelto = venta.deposito_id === depositoResuelto || (!venta.deposito_id && depositoResuelto === depositoPredeterminadoId(req.usuario.organizacion_id))
     ? liberadoPorClave
     : new Map();
-  const buscarProductoEdicion = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+  // Mismo filtro de organización que validarStockDisponible: un producto de
+  // otra empresa tiene que dar el mismo error que uno inexistente.
+  const buscarProductoEdicion = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivasEdicion = db.prepare(
     'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
@@ -3187,7 +3260,7 @@ app.put('/api/ventas/:id', (req, res) => {
       WHERE producto_variantes.id = ? AND producto_variantes.producto_id = ? AND producto_variantes.activo = 1`
   );
   for (const [clave, { producto_id: productoId, variante_id: varianteId, cantidad: cantidadPedida }] of pedidoPorClave) {
-    const producto = buscarProductoEdicion.get(productoId);
+    const producto = buscarProductoEdicion.get(productoId, req.usuario.organizacion_id);
     if (!producto) {
       return res.status(400).json({ error: 'Uno de los productos de la venta no existe.' });
     }
@@ -3229,7 +3302,7 @@ app.put('/api/ventas/:id', (req, res) => {
 
     // 1) Revertir el stock que se había descontado, en el depósito ORIGINAL
     // de la venta (no en el nuevo, si cambió al editar).
-    const depositoOriginal = venta.deposito_id ?? depositoPredeterminadoId();
+    const depositoOriginal = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     for (const item of itemsViejos) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -3365,6 +3438,16 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
     return res.status(400).json({
       error: `El importe supera el saldo pendiente de la venta (${saldoPendiente.toFixed(2)}).`
     });
+  }
+  // registrarCobro no valida la cuenta (ver su comentario): se valida acá.
+  // Hasta la Etapa A de catálogos solo la frenaba la FK (una inexistente
+  // reventaba en el INSERT como 500); ahora además tiene que ser de la
+  // organización, o el ingreso subiría la caja de otra empresa.
+  const cuenta = db
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
+  if (!cuenta) {
+    return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
   }
 
   const cobroId = withTransaction(() => {
@@ -3514,7 +3597,7 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(ventaId);
 
-    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
+    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     const items = db
       .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
       .all(ventaId);
@@ -3564,7 +3647,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   if (venta.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta venta no está en la papelera.' });
   }
-  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
+  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const items = db
     .prepare(
@@ -3774,7 +3857,7 @@ app.post('/api/presupuestos', (req, res) => {
     return res.status(400).json({ error });
   }
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
@@ -3837,7 +3920,7 @@ app.put('/api/presupuestos/:id', (req, res) => {
     return res.status(400).json({ error });
   }
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
@@ -3939,8 +4022,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
   // comprometen mercadería de un lugar concreto): al convertir se usa el
   // predeterminado del momento, igual que cualquier venta sin depósito
   // elegido a mano.
-  const depositoConversion = depositoPredeterminadoId();
-  const errorStock = validarStockDisponible(items, depositoConversion);
+  const depositoConversion = depositoPredeterminadoId(req.usuario.organizacion_id);
+  const errorStock = validarStockDisponible(items, depositoConversion, req.usuario.organizacion_id);
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
@@ -4212,7 +4295,7 @@ app.post('/api/devoluciones', (req, res) => {
   }
   // La devolución reingresa al MISMO depósito de la venta original: no es
   // una elección del operador, es de dónde salió físicamente la mercadería.
-  const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const vistos = new Set();
   for (const item of items) {
@@ -4227,7 +4310,9 @@ app.post('/api/devoluciones', (req, res) => {
   }
 
   if (cuenta_tesoreria_id) {
-    const cuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ?').get(cuenta_tesoreria_id);
+    const cuenta = db
+      .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+      .get(cuenta_tesoreria_id, req.usuario.organizacion_id);
     if (!cuenta) {
       return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
     }
@@ -4416,7 +4501,7 @@ app.post('/api/devoluciones/:id/restaurar', soloAdmin, (req, res) => {
   if (devolucion.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta devolución no está en la papelera.' });
   }
-  const depositoDevolucionVentaRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucionVentaRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const items = db
     .prepare(
@@ -4622,7 +4707,7 @@ function crearCompra({
   // Mismo criterio que en ventas: nullable, NULL = "el predeterminado de
   // ese momento" (CLAUDE.md §19).
   const depositoId = deposito_id ? Number(deposito_id) : null;
-  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  if (depositoId && !depositoActivoValido(depositoId, organizacion_id)) {
     throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
   }
 
@@ -4785,8 +4870,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const depositoIdNuevo = deposito_id !== undefined
     ? (deposito_id ? Number(deposito_id) : null)
     : compra.deposito_id;
-  const depositoResueltoCompra = depositoIdNuevo ?? depositoPredeterminadoId();
-  if (depositoIdNuevo && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoIdNuevo)) {
+  const depositoResueltoCompra = depositoIdNuevo ?? depositoPredeterminadoId(req.usuario.organizacion_id);
+  if (depositoIdNuevo && !depositoActivoValido(depositoIdNuevo, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
   if (compra.estado === 'anulada') {
@@ -4842,7 +4927,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   // depósito ORIGINAL de la compra (de ahí es de donde va a salir la
   // reversión), no contra el nuevo si cambió de depósito al editar.
   if (compra.stock_aplicado) {
-    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId();
+    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     const buscarStockDeposito = db.prepare(
       'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
     );
@@ -4868,7 +4953,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
 
   withTransaction(() => {
     // 1) Revertir los efectos actuales, en el depósito ORIGINAL de la compra.
-    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId();
+    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     if (compra.stock_aplicado) {
       for (const item of itemsViejos) {
         registrarMovimientoStock({
@@ -5087,7 +5172,7 @@ function aplicarStockCompra(compraId) {
   const { deposito_id: depositoCompra, organizacion_id: organizacionCompra } = db
     .prepare('SELECT deposito_id, organizacion_id FROM compras WHERE id = ?')
     .get(compraId);
-  const depositoResuelto = depositoCompra ?? depositoPredeterminadoId();
+  const depositoResuelto = depositoCompra ?? depositoPredeterminadoId(organizacionCompra);
 
   const buscarProducto = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
@@ -5261,7 +5346,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
        WHERE compra_id = ?`
     )
     .all(compraId);
-  const depositoCompraAnular = compra.deposito_id ?? depositoPredeterminadoId();
+  const depositoCompraAnular = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   // El stock solo hay que devolverlo si esta compra llegó a sumarlo (o sea,
   // si se marcó recibida). Un borrador o un pedido en camino no tocaron el
@@ -5529,6 +5614,15 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
     return res.status(400).json({
       error: `El importe supera el saldo pendiente de la compra (${saldoPendiente.toFixed(2)}).`
     });
+  }
+  // Hasta la Etapa A de catálogos la cuenta solo la frenaba la FK (una
+  // inexistente reventaba en el INSERT como 500): ahora además tiene que ser
+  // de la organización, o el egreso bajaría la caja de otra empresa.
+  const cuenta = db
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
+  if (!cuenta) {
+    return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
   }
 
   const pagoId = withTransaction(() => {
@@ -5810,7 +5904,7 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
-  const depositoDevolucionProveedor = compra.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucionProveedor = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
   if (compra.estado === 'anulada') {
     return res
       .status(400)
@@ -5838,7 +5932,9 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   }
 
   if (cuenta_tesoreria_id) {
-    const cuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ?').get(cuenta_tesoreria_id);
+    const cuenta = db
+      .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+      .get(cuenta_tesoreria_id, req.usuario.organizacion_id);
     if (!cuenta) {
       return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
     }
@@ -6004,7 +6100,7 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
   if (devolucion.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta devolución no está en la papelera.' });
   }
-  const depositoDevolucionRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucionRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const items = db
     .prepare(
@@ -6042,7 +6138,9 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
 /* ---------- Cuentas de tesorería ---------- */
 
 app.get('/api/cuentas-tesoreria', (req, res) => {
-  const cuentas = db.prepare('SELECT * FROM cuentas_tesoreria ORDER BY id').all();
+  const cuentas = db
+    .prepare('SELECT * FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY id')
+    .all(req.usuario.organizacion_id);
   res.json(cuentas);
 });
 
@@ -6061,16 +6159,18 @@ app.post('/api/cuentas-tesoreria', soloAdmin, (req, res) => {
   if (Number.isNaN(saldoInicial)) {
     return res.status(400).json({ error: 'El saldo inicial tiene que ser un número.' });
   }
-  // nombre es UNIQUE en la tabla: se chequea acá para devolver un mensaje
-  // entendible en vez de dejar que reviente la constraint.
-  const yaExiste = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ?').get(String(nombre).trim());
+  // nombre es UNIQUE dentro de la organización: se chequea acá para devolver
+  // un mensaje entendible en vez de dejar que reviente la constraint.
+  const yaExiste = db
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una cuenta con ese nombre.' });
   }
 
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, saldo_inicial) VALUES (?, ?, ?)')
-    .run(String(nombre).trim(), tipo, saldoInicial);
+    .prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, saldo_inicial, organizacion_id) VALUES (?, ?, ?, ?)')
+    .run(String(nombre).trim(), tipo, saldoInicial, req.usuario.organizacion_id);
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -6078,7 +6178,9 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
   const cuentaId = Number(req.params.id);
   const { nombre, tipo, saldo_inicial } = req.body;
 
-  const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(cuentaId);
+  const cuenta = db
+    .prepare('SELECT * FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(cuentaId, req.usuario.organizacion_id);
   if (!cuenta) {
     return res.status(404).json({ error: 'Cuenta no encontrada.' });
   }
@@ -6093,8 +6195,8 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'El saldo inicial tiene que ser un número.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), cuentaId);
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), cuentaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra cuenta con ese nombre.' });
   }
@@ -6132,15 +6234,20 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
 // (saldo_inicial + movimientos), nunca de un campo editable a mano
 // (CLAUDE.md §12/§13): se puede reconstruir siempre desde el historial.
 app.get('/api/tesoreria', (req, res) => {
+  // Las cuentas son de la organización (cada una con su "Efectivo"), así que
+  // el saldo de cada fila ya es solo de esa empresa: saldo_tesoreria agrupa
+  // por cuenta, y una cuenta nunca recibe movimientos de otra organización
+  // (todo alta de movimiento valida la cuenta contra la sesión).
   const cuentas = db
     .prepare(
       `SELECT cuentas_tesoreria.*,
               COALESCE((SELECT saldo FROM saldo_tesoreria
                          WHERE saldo_tesoreria.cuenta_tesoreria_id = cuentas_tesoreria.id), 0) AS saldo
          FROM cuentas_tesoreria
+        WHERE cuentas_tesoreria.organizacion_id = ?
         ORDER BY cuentas_tesoreria.id`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
 
   // Las transferencias se excluyen de los totales de ingresos/egresos a
   // propósito: mover plata de una cuenta propia a otra no es plata que
@@ -6209,7 +6316,9 @@ app.post('/api/tesoreria/movimientos', soloAdmin, (req, res) => {
   if (!(monto > 0)) {
     return res.status(400).json({ error: 'El importe tiene que ser mayor a 0.' });
   }
-  const cuenta = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(cuenta_tesoreria_id));
+  const cuenta = db
+    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
   if (!cuenta) {
     return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
   }
@@ -6255,8 +6364,9 @@ app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
   if (Number(origen_id) === Number(destino_id)) {
     return res.status(400).json({ error: 'La cuenta de origen y la de destino tienen que ser distintas.' });
   }
-  const cuentaOrigen = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(origen_id));
-  const cuentaDestino = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(destino_id));
+  const buscarCuenta = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?');
+  const cuentaOrigen = buscarCuenta.get(Number(origen_id), req.usuario.organizacion_id);
+  const cuentaDestino = buscarCuenta.get(Number(destino_id), req.usuario.organizacion_id);
   if (!cuentaOrigen || !cuentaDestino) {
     return res.status(400).json({ error: 'Alguna de las cuentas de la transferencia no existe.' });
   }
@@ -6306,7 +6416,9 @@ app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
 const TIPOS_GASTO = ['operativo', 'inversion', 'retiro'];
 
 app.get('/api/categorias-gasto', (req, res) => {
-  const categorias = db.prepare('SELECT * FROM categorias_gasto ORDER BY nombre').all();
+  const categorias = db
+    .prepare('SELECT * FROM categorias_gasto WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(categorias);
 });
 
@@ -6319,18 +6431,18 @@ app.post('/api/categorias-gasto', (req, res) => {
   if (!TIPOS_GASTO.includes(tipo)) {
     return res.status(400).json({ error: 'El tipo de gasto no es válido.' });
   }
-  // nombre es UNIQUE: se chequea acá para devolver un mensaje entendible
-  // en vez de dejar que reviente la constraint.
+  // nombre es UNIQUE dentro de la organización: se chequea acá para devolver
+  // un mensaje entendible en vez de dejar que reviente la constraint.
   const yaExiste = db
-    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ?')
-    .get(String(nombre).trim());
+    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
   }
 
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO categorias_gasto (nombre, tipo) VALUES (?, ?)')
-    .run(String(nombre).trim(), tipo);
+    .prepare('INSERT INTO categorias_gasto (nombre, tipo, organizacion_id) VALUES (?, ?, ?)')
+    .run(String(nombre).trim(), tipo, req.usuario.organizacion_id);
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -6341,7 +6453,9 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, tipo, activa } = req.body;
 
-  const categoria = db.prepare('SELECT * FROM categorias_gasto WHERE id = ?').get(categoriaId);
+  const categoria = db
+    .prepare('SELECT * FROM categorias_gasto WHERE id = ? AND organizacion_id = ?')
+    .get(categoriaId, req.usuario.organizacion_id);
   if (!categoria) {
     return res.status(404).json({ error: 'Categoría no encontrada.' });
   }
@@ -6352,8 +6466,8 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
     return res.status(400).json({ error: 'El tipo de gasto no es válido.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), categoriaId);
+    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), categoriaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
   }
@@ -6406,19 +6520,21 @@ app.get('/api/gastos', (req, res) => {
 });
 
 // Valida el cuerpo de un gasto y resuelve la categoría. Lo comparten el
-// alta y la edición, que exigen exactamente lo mismo.
-function validarGasto(body) {
+// alta y la edición, que exigen exactamente lo mismo. Categoría, cuenta y
+// proveedor tienen que ser de la organización del gasto: uno de otra
+// empresa da el mismo error que uno inexistente.
+function validarGasto(body, organizacionId) {
   const { categoria_id, cuenta_tesoreria_id, proveedor_id, importe, tipo } = body;
 
   const categoria = db
-    .prepare('SELECT id, tipo FROM categorias_gasto WHERE id = ?')
-    .get(Number(categoria_id));
+    .prepare('SELECT id, tipo FROM categorias_gasto WHERE id = ? AND organizacion_id = ?')
+    .get(Number(categoria_id), organizacionId);
   if (!categoria) {
     return { error: 'La categoría del gasto no existe.' };
   }
   const cuenta = db
-    .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ?')
-    .get(Number(cuenta_tesoreria_id));
+    .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), organizacionId);
   if (!cuenta) {
     return { error: 'La cuenta de tesorería no existe.' };
   }
@@ -6434,7 +6550,9 @@ function validarGasto(body) {
   }
   let proveedorFinal = null;
   if (proveedor_id) {
-    const proveedor = db.prepare('SELECT id FROM proveedores WHERE id = ?').get(Number(proveedor_id));
+    const proveedor = db
+      .prepare('SELECT id FROM proveedores WHERE id = ? AND organizacion_id = ?')
+      .get(Number(proveedor_id), organizacionId);
     if (!proveedor) {
       return { error: 'El proveedor del gasto no existe.' };
     }
@@ -6449,7 +6567,7 @@ function validarGasto(body) {
 // transacción para que no quede plata descontada sin gasto ni al revés.
 app.post('/api/gastos', (req, res) => {
   const { fecha, descripcion, comprobante } = req.body;
-  const validacion = validarGasto(req.body);
+  const validacion = validarGasto(req.body, req.usuario.organizacion_id);
   if (validacion.error) {
     return res.status(400).json({ error: validacion.error });
   }
@@ -6544,7 +6662,7 @@ app.put('/api/gastos/:id', (req, res) => {
     return res.status(400).json({ error: 'Este gasto está anulado. Restauralo primero si querés editarlo.' });
   }
 
-  const validacion = validarGasto(req.body);
+  const validacion = validarGasto(req.body, req.usuario.organizacion_id);
   if (validacion.error) {
     return res.status(400).json({ error: validacion.error });
   }
@@ -7397,11 +7515,11 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
   // resolverNombre recibe id === null para el balde "Sin categoría" (ver
   // el comentario del GROUP BY arriba) — no es "categoría eliminada", así
   // que se lo distingue explícitamente antes de ir a buscar el nombre.
-  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
+  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ? AND organizacion_id = ?');
   const categorias = netearPorId(
     SQL_REPORTE_VENTAS_POR_CATEGORIA.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA.all(...rango),
-    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id)?.nombre ?? '(categoría eliminada)')
+    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id, organizacionId)?.nombre ?? '(categoría eliminada)')
   )
     .map((c) => {
       const ganancia = redondear2(c.ventas - c.costo);
@@ -7633,7 +7751,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
 
   const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
   const buscarNombreProveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ? AND organizacion_id = ?');
-  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
+  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ? AND organizacion_id = ?');
 
   // Los totales de plata (compras_netas) se recalculan sumando las mismas
   // filas por-proveedor ya neteadas, en vez de una query aparte: así el
@@ -7675,7 +7793,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const categorias = netearComprasPorId(
     SQL_REPORTE_COMPRAS_POR_CATEGORIA.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_CATEGORIA.all(...rango),
-    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id)?.nombre ?? '(categoría eliminada)')
+    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id, organizacionId)?.nombre ?? '(categoría eliminada)')
   )
     .map((c) => ({
       id: c.id,
@@ -7811,19 +7929,28 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
 // primero y aproximada después. Devuelve el ESTADO de la resolución, no
 // solo el resultado: la UI necesita distinguir "no existe" de "hay varios
 // que matchean" para poder pedirle al usuario que elija.
-function buscarPorNombre(tabla, nombreCrudo) {
+// Busca solo dentro de la organización de la sesión (Etapa A, CLAUDE.md
+// §28): todas las tablas que recibe tienen organizacion_id. Sin el filtro,
+// los `candidatos` de un nombre ambiguo le mostraban a la UI clientes,
+// productos o proveedores de otras empresas, y con un "Efectivo" por empresa
+// toda cuenta de tesorería quedaba ambigua.
+function buscarPorNombre(tabla, nombreCrudo, organizacionId) {
   const nombre = nombreCrudo === undefined || nombreCrudo === null ? '' : String(nombreCrudo).trim();
   if (!nombre) {
     return { estado: 'no_dado', valor: nombreCrudo ?? null, id: null, nombre_resuelto: null, candidatos: [] };
   }
-  const exactos = db.prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre = ? COLLATE NOCASE`).all(nombre);
+  const exactos = db
+    .prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre = ? COLLATE NOCASE AND organizacion_id = ?`)
+    .all(nombre, organizacionId);
   if (exactos.length === 1) {
     return { estado: 'resuelto', valor: nombre, id: exactos[0].id, nombre_resuelto: exactos[0].nombre, candidatos: [] };
   }
   if (exactos.length > 1) {
     return { estado: 'ambiguo', valor: nombre, id: null, nombre_resuelto: null, candidatos: exactos };
   }
-  const parciales = db.prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre LIKE ? COLLATE NOCASE`).all(`%${nombre}%`);
+  const parciales = db
+    .prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre LIKE ? COLLATE NOCASE AND organizacion_id = ?`)
+    .all(`%${nombre}%`, organizacionId);
   if (parciales.length === 1) {
     return { estado: 'resuelto', valor: nombre, id: parciales[0].id, nombre_resuelto: parciales[0].nombre, candidatos: [] };
   }
@@ -7833,9 +7960,12 @@ function buscarPorNombre(tabla, nombreCrudo) {
   return { estado: 'no_encontrado', valor: nombre, id: null, nombre_resuelto: null, candidatos: [] };
 }
 
-function existeId(tabla, id) {
+// Mismo criterio que buscarPorNombre: un id de otra organización no existe.
+function existeId(tabla, id, organizacionId) {
   if (id === null || id === undefined || id === '') return false;
-  return Boolean(db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ?`).get(Number(id)));
+  return Boolean(
+    db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ? AND organizacion_id = ?`).get(Number(id), organizacionId)
+  );
 }
 
 function tieneVariantesActivas(productoId) {
@@ -7849,16 +7979,16 @@ function tieneVariantesActivas(productoId) {
 // proveedor/producto (compra) pueden ser "nuevos" — igual que el
 // formulario manual, esos SÍ se crean por nombre. Producto en una venta y
 // categoría/cuenta en un gasto NO se crean solos: si no existen, bloquea.
-function resolverPropuesta(tipo, datos) {
+function resolverPropuesta(tipo, datos, organizacionId) {
   const problemas = [];
 
   if (tipo === 'venta') {
-    const cliente = buscarPorNombre('clientes', datos.cliente);
+    const cliente = buscarPorNombre('clientes', datos.cliente, organizacionId);
     if (cliente.estado === 'no_dado') problemas.push('Falta el nombre del cliente.');
     if (cliente.estado === 'ambiguo') problemas.push(`Hay más de un cliente que coincide con "${cliente.valor}".`);
 
     const items = (Array.isArray(datos.items) ? datos.items : []).map((item) => {
-      const producto = buscarPorNombre('productos', item.producto);
+      const producto = buscarPorNombre('productos', item.producto, organizacionId);
       if (producto.estado === 'no_dado' || producto.estado === 'no_encontrado') {
         problemas.push(
           `El producto "${item.producto ?? '(sin nombre)'}" no existe en el catálogo. Cargalo primero o corregí el nombre.`
@@ -7878,7 +8008,7 @@ function resolverPropuesta(tipo, datos) {
 
     let cobro = null;
     if (datos.cobro) {
-      const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cobro.cuenta);
+      const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cobro.cuenta, organizacionId);
       if (cuenta.estado !== 'resuelto') {
         problemas.push(`No encontré la cuenta de tesorería "${datos.cobro.cuenta ?? '?'}" para el cobro.`);
       }
@@ -7889,12 +8019,12 @@ function resolverPropuesta(tipo, datos) {
   }
 
   if (tipo === 'compra') {
-    const proveedor = buscarPorNombre('proveedores', datos.proveedor);
+    const proveedor = buscarPorNombre('proveedores', datos.proveedor, organizacionId);
     if (proveedor.estado === 'no_dado') problemas.push('Falta el nombre del proveedor.');
     if (proveedor.estado === 'ambiguo') problemas.push(`Hay más de un proveedor que coincide con "${proveedor.valor}".`);
 
     const items = (Array.isArray(datos.items) ? datos.items : []).map((item) => {
-      const producto = buscarPorNombre('productos', item.producto);
+      const producto = buscarPorNombre('productos', item.producto, organizacionId);
       // Acá "no encontrado" no bloquea: la compra da de alta el producto
       // nuevo por nombre, es lo que le fija el costo inicial (CLAUDE.md §6).
       if (producto.estado === 'ambiguo') {
@@ -7924,18 +8054,18 @@ function resolverPropuesta(tipo, datos) {
   }
 
   if (tipo === 'gasto') {
-    const categoria = buscarPorNombre('categorias_gasto', datos.categoria);
+    const categoria = buscarPorNombre('categorias_gasto', datos.categoria, organizacionId);
     if (categoria.estado !== 'resuelto') {
       problemas.push(`No encontré la categoría de gasto "${datos.categoria ?? '?'}" (las categorías no se crean solas).`);
     }
-    const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cuenta);
+    const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cuenta, organizacionId);
     if (cuenta.estado !== 'resuelto') {
       problemas.push(`No encontré la cuenta de tesorería "${datos.cuenta ?? '?'}".`);
     }
     // El proveedor de un gasto es opcional y tampoco se crea por nombre
     // (validarGasto exige un proveedor_id existente): si no matchea, el
     // gasto se puede confirmar igual sin proveedor, no bloquea.
-    const proveedor = datos.proveedor ? buscarPorNombre('proveedores', datos.proveedor) : null;
+    const proveedor = datos.proveedor ? buscarPorNombre('proveedores', datos.proveedor, organizacionId) : null;
     if (proveedor && proveedor.estado === 'ambiguo') {
       problemas.push(`Hay más de un proveedor que coincide con "${proveedor.valor}"; se puede confirmar sin proveedor.`);
     }
@@ -7957,15 +8087,17 @@ function resolverPropuesta(tipo, datos) {
   return { ejecutable: false, problemas: ['Tipo de operación desconocido.'] };
 }
 
-// Gap conocido (Etapa A, CLAUDE.md §28), no cerrado del todo en esta etapa:
-// `cuentas` y `categoriasGasto` todavía viajan sin filtrar porque
-// cuentas_tesoreria/categorias_gasto no tienen organizacion_id propia
-// (es el rebuild de catálogos pendiente, ver handoff.md). `productos` sí se
-// filtra porque esa tabla ya tiene la columna desde una etapa anterior.
+// Lo que viaja a Gemini como contexto del negocio: solo lo de la
+// organización de la sesión (Etapa A, CLAUDE.md §28) — nombres de otra
+// empresa no pueden salir hacia el proveedor de IA.
 function contextoParaInterprete(organizacionId) {
   return {
-    cuentas: db.prepare('SELECT nombre, tipo FROM cuentas_tesoreria ORDER BY nombre').all(),
-    categoriasGasto: db.prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 ORDER BY nombre').all(),
+    cuentas: db
+      .prepare('SELECT nombre, tipo FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY nombre')
+      .all(organizacionId),
+    categoriasGasto: db
+      .prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 AND organizacion_id = ? ORDER BY nombre')
+      .all(organizacionId),
     productos: db
       .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
       .all(organizacionId)
@@ -7996,7 +8128,7 @@ app.post('/api/asistente/interpretar', async (req, res) => {
     });
   }
 
-  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos);
+  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, req.usuario.organizacion_id);
 
   const { lastInsertRowid: mensajeId } = db
     .prepare(
@@ -8076,7 +8208,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     }
     const items = [];
     for (const item of propuesta.items) {
-      if (!existeId('productos', item.producto?.id)) {
+      if (!existeId('productos', item.producto?.id, req.usuario.organizacion_id)) {
         marcarFallido(`Producto inválido: "${item.producto?.valor ?? '?'}".`);
         return res.status(400).json({ error: `El producto "${item.producto?.valor ?? '?'}" no existe.` });
       }
@@ -8090,7 +8222,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
       });
     }
 
-    const clienteId = existeId('clientes', propuesta.cliente?.id) ? Number(propuesta.cliente.id) : null;
+    const clienteId = existeId('clientes', propuesta.cliente?.id, req.usuario.organizacion_id) ? Number(propuesta.cliente.id) : null;
     const clienteNombre = propuesta.cliente?.nombre_resuelto || propuesta.cliente?.valor || null;
     if (!clienteId && (!clienteNombre || !clienteNombre.trim())) {
       return res.status(400).json({ error: 'La venta necesita un cliente.' });
@@ -8099,8 +8231,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     // El asistente todavía no interpreta depósito desde el texto (CLAUDE.md
     // §19 y §21 son etapas separadas): usa el predeterminado, igual que la
     // conversión de un presupuesto.
-    const depositoAsistente = depositoPredeterminadoId();
-    const errorStock = validarStockDisponible(items, depositoAsistente);
+    const depositoAsistente = depositoPredeterminadoId(req.usuario.organizacion_id);
+    const errorStock = validarStockDisponible(items, depositoAsistente, req.usuario.organizacion_id);
     if (errorStock) {
       return res.status(400).json({ error: errorStock });
     }
@@ -8109,7 +8241,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     let cuentaCobroId = null;
     let importeCobro = null;
     if (propuesta.cobro) {
-      if (!existeId('cuentas_tesoreria', propuesta.cobro.cuenta?.id)) {
+      if (!existeId('cuentas_tesoreria', propuesta.cobro.cuenta?.id, req.usuario.organizacion_id)) {
         return res.status(400).json({ error: 'La cuenta de tesorería del cobro no existe.' });
       }
       cuentaCobroId = Number(propuesta.cobro.cuenta.id);
@@ -8227,21 +8359,24 @@ app.post('/api/asistente/ejecutar', (req, res) => {
   }
 
   if (tipo === 'gasto') {
-    if (!existeId('categorias_gasto', propuesta?.categoria?.id)) {
+    if (!existeId('categorias_gasto', propuesta?.categoria?.id, req.usuario.organizacion_id)) {
       return res.status(400).json({ error: 'La categoría del gasto no existe.' });
     }
-    if (!existeId('cuentas_tesoreria', propuesta?.cuenta?.id)) {
+    if (!existeId('cuentas_tesoreria', propuesta?.cuenta?.id, req.usuario.organizacion_id)) {
       return res.status(400).json({ error: 'La cuenta de tesorería del gasto no existe.' });
     }
-    const proveedorId = existeId('proveedores', propuesta?.proveedor?.id) ? Number(propuesta.proveedor.id) : null;
+    const proveedorId = existeId('proveedores', propuesta?.proveedor?.id, req.usuario.organizacion_id) ? Number(propuesta.proveedor.id) : null;
 
-    const validacion = validarGasto({
-      categoria_id: propuesta.categoria.id,
-      cuenta_tesoreria_id: propuesta.cuenta.id,
-      proveedor_id: proveedorId,
-      importe: propuesta.importe,
-      tipo: propuesta.tipo
-    });
+    const validacion = validarGasto(
+      {
+        categoria_id: propuesta.categoria.id,
+        cuenta_tesoreria_id: propuesta.cuenta.id,
+        proveedor_id: proveedorId,
+        importe: propuesta.importe,
+        tipo: propuesta.tipo
+      },
+      req.usuario.organizacion_id
+    );
     if (validacion.error) {
       return res.status(400).json({ error: validacion.error });
     }

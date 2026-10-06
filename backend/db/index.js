@@ -8,6 +8,126 @@ const db = new DatabaseSync(path.join(__dirname, 'nexo.db'));
 
 db.exec(readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 
+// organizaciones: no es un dato de ejemplo, es infraestructura real —
+// usuarios.organizacion_id la necesita para existir, y desde la Etapa A
+// (CLAUDE.md §28) todas las tablas de negocio cuelgan de ella. Se siembra
+// acá, antes que nada, porque el rebuild de catálogos de abajo y el seed del
+// depósito principal ya necesitan una organización a la que asignar filas.
+const { count: orgCount } = db.prepare('SELECT COUNT(*) AS count FROM organizaciones').get();
+if (orgCount === 0) {
+  db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
+}
+const primeraOrganizacionId = db.prepare('SELECT id FROM organizaciones ORDER BY id LIMIT 1').get().id;
+
+// cuentas_tesoreria.saldo_inicial: la plata que ya había antes de usar el
+// sistema. Las cuentas que ya existen arrancan en 0, así que su saldo
+// sigue siendo exactamente la suma de sus movimientos — el número que se
+// venía calculando hasta ahora no cambia. Va antes del rebuild de catálogos
+// de abajo porque su INSERT..SELECT la lee.
+const cuentasColumnas = db.prepare('PRAGMA table_info(cuentas_tesoreria)').all();
+if (!cuentasColumnas.some((col) => col.name === 'saldo_inicial')) {
+  db.exec('ALTER TABLE cuentas_tesoreria ADD COLUMN saldo_inicial REAL NOT NULL DEFAULT 0');
+}
+
+// Catálogos por organización (Etapa A, CLAUDE.md §28): categorias,
+// listas_precios, depositos, cuentas_tesoreria y categorias_gasto pasan de
+// UNIQUE(nombre) global a UNIQUE(organizacion_id, nombre), con
+// organizacion_id NOT NULL (ver el porqué en schema.sql, comentario de
+// categorias). Hace falta rebuild y no un ALTER: el UNIQUE de columna es un
+// índice automático que SQLite no deja tirar. Mismo procedimiento que el
+// rebuild de compras, que también es tabla padre de FKs: los id se
+// preservan, así que productos.categoria_id, cobros.cuenta_tesoreria_id,
+// movimientos_stock.deposito_id, etc. siguen apuntando a la misma fila.
+// Todas las filas existentes quedan en la primera organización: hasta acá
+// los catálogos eran globales, y la única empresa real es esa.
+// Va al principio del archivo para que todo lo que sigue (seeds incluidos)
+// ya encuentre estas tablas en su forma final. saldo_tesoreria apunta a
+// cuentas_tesoreria, así que se tira antes del RENAME (SQLite valida las
+// vistas durante esa operación) y se recrea más abajo, con el resto de la
+// definición de esa vista.
+const CATALOGOS_POR_ORGANIZACION = [
+  {
+    tabla: 'categorias',
+    columnas: 'id, nombre, activa',
+    definicion: `
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      activa INTEGER NOT NULL DEFAULT 1,
+      organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+      UNIQUE (organizacion_id, nombre)`
+  },
+  {
+    tabla: 'listas_precios',
+    columnas: 'id, nombre, activa, es_predeterminada',
+    definicion: `
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      activa INTEGER NOT NULL DEFAULT 1,
+      es_predeterminada INTEGER NOT NULL DEFAULT 0,
+      organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+      UNIQUE (organizacion_id, nombre)`
+  },
+  {
+    tabla: 'depositos',
+    columnas: 'id, nombre, direccion, activo, es_predeterminado',
+    definicion: `
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      direccion TEXT,
+      activo INTEGER NOT NULL DEFAULT 1,
+      es_predeterminado INTEGER NOT NULL DEFAULT 0,
+      organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+      UNIQUE (organizacion_id, nombre)`
+  },
+  {
+    tabla: 'cuentas_tesoreria',
+    columnas: 'id, nombre, tipo, saldo_inicial',
+    vistas: ['saldo_tesoreria'],
+    definicion: `
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'banco', 'mercadopago', 'otro')),
+      saldo_inicial REAL NOT NULL DEFAULT 0,
+      organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+      UNIQUE (organizacion_id, nombre)`
+  },
+  {
+    tabla: 'categorias_gasto',
+    columnas: 'id, nombre, tipo, activa',
+    definicion: `
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL,
+      tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
+      activa INTEGER NOT NULL DEFAULT 1,
+      organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+      UNIQUE (organizacion_id, nombre)`
+  }
+];
+for (const { tabla, columnas, definicion, vistas = [] } of CATALOGOS_POR_ORGANIZACION) {
+  const actual = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tabla);
+  if (actual && !actual.sql.includes('UNIQUE (organizacion_id, nombre)')) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('BEGIN');
+    try {
+      for (const vista of vistas) {
+        db.exec(`DROP VIEW IF EXISTS ${vista}`);
+      }
+      db.exec(`CREATE TABLE ${tabla}_nueva (${definicion})`);
+      db.prepare(
+        `INSERT INTO ${tabla}_nueva (${columnas}, organizacion_id)
+         SELECT ${columnas}, ? FROM ${tabla}`
+      ).run(primeraOrganizacionId);
+      db.exec(`DROP TABLE ${tabla}`);
+      db.exec(`ALTER TABLE ${tabla}_nueva RENAME TO ${tabla}`);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
 // `CREATE TABLE IF NOT EXISTS` no altera una tabla que ya existe, así que
 // facturas.venta_id (agregada después de que nexo.db ya tenía datos) se
 // migra a mano acá. Nullable y aditiva: las filas viejas quedan en NULL.
@@ -224,21 +344,24 @@ if (movimientosStockSql2 && !movimientosStockSql2.sql.includes("'devolucion_prov
   }
   db.exec('PRAGMA foreign_keys = ON');
 }
-// depositos: infraestructura real, mismo criterio que cuentas_tesoreria /
-// organizaciones / listas_precios más abajo — se siembra acá arriba (y no
-// junto a esos otros seeds, al final del archivo) porque el rebuild de
-// movimientos_stock que sigue necesita que ya exista al menos un depósito
-// para poder backfillear deposito_id en los movimientos históricos.
-const { count: depositosCount } = db.prepare('SELECT COUNT(*) AS count FROM depositos').get();
+// depositos: el depósito predeterminado de la primera organización se
+// siembra acá arriba (y no con el resto de los catálogos base al final del
+// archivo, ver sembrarCatalogosBase) porque el rebuild de movimientos_stock
+// que sigue necesita que ya exista para poder backfillear deposito_id en los
+// movimientos históricos — que, por ser anteriores a la Etapa A, son todos
+// de esa organización.
+const { count: depositosCount } = db
+  .prepare('SELECT COUNT(*) AS count FROM depositos WHERE organizacion_id = ?')
+  .get(primeraOrganizacionId);
 let depositoPrincipalId;
 if (depositosCount === 0) {
   ({ lastInsertRowid: depositoPrincipalId } = db
-    .prepare('INSERT INTO depositos (nombre, es_predeterminado) VALUES (?, 1)')
-    .run('Depósito principal'));
+    .prepare('INSERT INTO depositos (nombre, es_predeterminado, organizacion_id) VALUES (?, 1, ?)')
+    .run('Depósito principal', primeraOrganizacionId));
 } else {
   depositoPrincipalId = db
-    .prepare('SELECT id FROM depositos WHERE es_predeterminado = 1')
-    .get()?.id;
+    .prepare('SELECT id FROM depositos WHERE es_predeterminado = 1 AND organizacion_id = ?')
+    .get(primeraOrganizacionId)?.id;
 }
 
 // movimientos_stock: agregar deposito_id (CLAUDE.md §5/§19 — el stock se
@@ -662,15 +785,6 @@ for (const columna of ['direccion', 'documento', 'notas']) {
 // clientes.condicion_pago de arriba, del lado de la deuda con el proveedor.
 if (!proveedoresColumnas.some((col) => col.name === 'condicion_pago')) {
   db.exec('ALTER TABLE proveedores ADD COLUMN condicion_pago TEXT');
-}
-
-// cuentas_tesoreria.saldo_inicial: la plata que ya había antes de usar el
-// sistema. Las cuentas que ya existen arrancan en 0, así que su saldo
-// sigue siendo exactamente la suma de sus movimientos — el número que se
-// venía calculando hasta ahora no cambia.
-const cuentasColumnas = db.prepare('PRAGMA table_info(cuentas_tesoreria)').all();
-if (!cuentasColumnas.some((col) => col.name === 'saldo_inicial')) {
-  db.exec('ALTER TABLE cuentas_tesoreria ADD COLUMN saldo_inicial REAL NOT NULL DEFAULT 0');
 }
 
 // movimientos_tesoreria: origen / concepto / transferencia_id (ver
@@ -1292,33 +1406,10 @@ export function registrarAuditoria({
   );
 }
 
-// Nota: los seeds de clientes/facturas/productos/proveedores de ejemplo
-// que existían acá (para que el prototipo no arrancara vacío) se sacaron
-// a pedido del usuario, ya en etapa de prueba real de las funciones —
-// no tiene sentido seguir inyectando cuentas de ejemplo cada vez que la
-// base arranca vacía. `cuentas_tesoreria` sigue sembrándose porque no es
-// "dato de ejemplo": es infraestructura real que necesitan Cobros/Pagos
-// para funcionar (Efectivo/Banco/Mercado Pago).
-
-const { count: cuentasCount } = db.prepare('SELECT COUNT(*) AS count FROM cuentas_tesoreria').get();
-if (cuentasCount === 0) {
-  const insertCuenta = db.prepare('INSERT INTO cuentas_tesoreria (nombre, tipo) VALUES (?, ?)');
-  insertCuenta.run('Efectivo', 'efectivo');
-  insertCuenta.run('Banco', 'banco');
-  insertCuenta.run('Mercado Pago', 'mercadopago');
-}
-
-// organizaciones: mismo criterio que cuentas_tesoreria arriba — no es un
-// dato de ejemplo, es infraestructura real que usuarios.organizacion_id
-// necesita para existir (preparación para multi-negocio, ver schema.sql).
-const { count: orgCount } = db.prepare('SELECT COUNT(*) AS count FROM organizaciones').get();
-if (orgCount === 0) {
-  db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run('Mi negocio');
-}
-
-// Backfill de organizacion_id en productos/clientes/proveedores/ventas/
-// compras (ver los ALTER TABLE más arriba): recién acá hay garantizada una
-// fila en `organizaciones`. Re-ejecutable, solo toca filas que todavía no
+// Backfill de organizacion_id en las tablas que la sumaron por ALTER TABLE
+// (ver más arriba): recién acá corrieron todos esos ALTER. Los cinco
+// catálogos no están en la lista porque la traen NOT NULL desde su rebuild,
+// al principio del archivo. Re-ejecutable, solo toca filas que todavía no
 // tienen organización asignada.
 for (const tabla of [
   'productos',
@@ -1343,23 +1434,48 @@ for (const tabla of [
   );
 }
 
-// listas_precios: mismo criterio que cuentas_tesoreria/organizaciones arriba
-// — no es un dato de ejemplo, es infraestructura real que el sistema entero
-// necesita para tener una lista predeterminada (CLAUDE.md §18). Se crea una
-// única vez, la primera vez que la base no tiene ninguna lista todavía.
-// El backfill copia el precio_venta de cada producto a esa lista, así que
-// el número que el negocio ya venía usando no cambia ni un peso — solo pasa
-// a vivir también como fila de producto_precios, en vez de únicamente como
-// columna suelta en productos.
-const { count: listasCount } = db.prepare('SELECT COUNT(*) AS count FROM listas_precios').get();
-if (listasCount === 0) {
-  const { lastInsertRowid: listaPredeterminadaId } = db
-    .prepare('INSERT INTO listas_precios (nombre, es_predeterminada) VALUES (?, 1)')
-    .run('Minorista');
-  db.exec(`
-    INSERT INTO producto_precios (producto_id, lista_precio_id, precio)
-    SELECT id, ${listaPredeterminadaId}, precio_venta FROM productos
-  `);
+// Catálogos base de cada organización: el depósito y la lista de precios
+// predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
+// ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo
+// que existían acá se sacaron a pedido del usuario): son infraestructura que
+// el sistema necesita para operar — sin depósito predeterminado una venta sin
+// depósito elegido no tiene de dónde sacar stock, sin lista predeterminada no
+// hay precio de fallback (CLAUDE.md §18), y Cobros/Pagos necesitan dónde
+// registrar la plata.
+// Se siembra por organización y por tabla, solo si esa organización todavía
+// no tiene ninguna fila. Corre en cada arranque para todas, así que una
+// empresa creada a mano recibe los suyos en el próximo arranque; el día que
+// exista un alta de empresa desde la API, tiene que llamar a esta misma
+// función. La lista copia el precio_venta de cada producto de esa
+// organización, así que el número que el negocio ya venía usando no cambia
+// ni un peso — solo pasa a vivir también como fila de producto_precios.
+function sembrarCatalogosBase(organizacionId) {
+  const contar = (tabla) =>
+    db.prepare(`SELECT COUNT(*) AS count FROM ${tabla} WHERE organizacion_id = ?`).get(organizacionId).count;
+  if (contar('depositos') === 0) {
+    db.prepare('INSERT INTO depositos (nombre, es_predeterminado, organizacion_id) VALUES (?, 1, ?)').run(
+      'Depósito principal',
+      organizacionId
+    );
+  }
+  if (contar('cuentas_tesoreria') === 0) {
+    const insertCuenta = db.prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, organizacion_id) VALUES (?, ?, ?)');
+    insertCuenta.run('Efectivo', 'efectivo', organizacionId);
+    insertCuenta.run('Banco', 'banco', organizacionId);
+    insertCuenta.run('Mercado Pago', 'mercadopago', organizacionId);
+  }
+  if (contar('listas_precios') === 0) {
+    const { lastInsertRowid: listaPredeterminadaId } = db
+      .prepare('INSERT INTO listas_precios (nombre, es_predeterminada, organizacion_id) VALUES (?, 1, ?)')
+      .run('Minorista', organizacionId);
+    db.prepare(
+      `INSERT INTO producto_precios (producto_id, lista_precio_id, precio)
+       SELECT id, ?, precio_venta FROM productos WHERE organizacion_id = ?`
+    ).run(listaPredeterminadaId, organizacionId);
+  }
+}
+for (const { id } of db.prepare('SELECT id FROM organizaciones ORDER BY id').all()) {
+  sembrarCatalogosBase(id);
 }
 
 export default db;

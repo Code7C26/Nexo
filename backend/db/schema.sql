@@ -65,40 +65,57 @@ CREATE TABLE IF NOT EXISTS facturas (
 -- mencionan como entidades separadas, pero con el catálogo actual un
 -- segundo nivel sería estructura vacía. Agregar subcategoría después es
 -- aditivo (una columna parent_id acá mismo), no obliga a rehacer nada.
+--
+-- organizacion_id (Etapa A, CLAUDE.md §28), igual en los cinco catálogos de
+-- este archivo (categorias, listas_precios, depositos, cuentas_tesoreria,
+-- categorias_gasto): cada empresa tiene los suyos, y el nombre es único
+-- dentro de la empresa, no en todo Nexo. NOT NULL a diferencia del resto de
+-- la Etapa A, que la sumó nullable por ALTER: estas tablas se reconstruyen
+-- (ver db/index.js), y con NULL el UNIQUE no frenaría duplicados, porque
+-- SQLite trata cada NULL como distinto. El texto "UNIQUE (organizacion_id,
+-- nombre)" es además el marcador que usa ese rebuild para saber si ya corrió.
 CREATE TABLE IF NOT EXISTS categorias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
-  activa INTEGER NOT NULL DEFAULT 1
+  nombre TEXT NOT NULL,
+  activa INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- Listas de precios (CLAUDE.md §18): un mismo producto puede tener precios
 -- distintos según el canal (minorista/mayorista/tarjeta). Exactamente una
--- lista es la predeterminada en todo momento — es el fallback cuando un
--- producto no tiene precio cargado en la lista elegida, y la que asumen
--- clientes/ventas/presupuestos sin lista propia asignada. La consistencia
--- de "una sola marcada" la garantiza el backend (ver /api/listas-precios en
--- server.js), no un constraint de SQL: SQLite no tiene forma declarativa de
--- expresar "a lo sumo una fila con es_predeterminada = 1".
+-- lista por organización es la predeterminada en todo momento — es el
+-- fallback cuando un producto no tiene precio cargado en la lista elegida, y
+-- la que asumen clientes/ventas/presupuestos sin lista propia asignada. La
+-- consistencia de "una sola marcada" la garantiza el backend (ver
+-- /api/listas-precios en server.js), no un constraint de SQL: SQLite no tiene
+-- forma declarativa de expresar "a lo sumo una fila con es_predeterminada =
+-- 1". organizacion_id: ver el comentario de categorias.
 CREATE TABLE IF NOT EXISTS listas_precios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   activa INTEGER NOT NULL DEFAULT 1,
-  es_predeterminada INTEGER NOT NULL DEFAULT 0
+  es_predeterminada INTEGER NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- Depósitos (CLAUDE.md §5/§19): el stock se maneja por producto Y
--- depósito, no como un único total global. Exactamente uno es el
--- predeterminado en todo momento — es el que asumen las operaciones
+-- depósito, no como un único total global. Exactamente uno por organización
+-- es el predeterminado en todo momento — es el que asumen las operaciones
 -- (venta/compra/devolución) sin depósito elegido a mano, mismo criterio
 -- que listas_precios.es_predeterminada. La consistencia de "una sola
 -- marcada" la garantiza el backend (ver /api/depositos en server.js), no
 -- un constraint de SQL, por el mismo motivo que esa tabla.
+-- organizacion_id: ver el comentario de categorias.
 CREATE TABLE IF NOT EXISTS depositos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   direccion TEXT,
   activo INTEGER NOT NULL DEFAULT 1,
-  es_predeterminado INTEGER NOT NULL DEFAULT 0
+  es_predeterminado INTEGER NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
@@ -454,10 +471,10 @@ CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
 -- referencian por transferencia_id, igual que una venta referencia sus
 -- movimientos por venta_id. anulada revierte con el par contrario, nunca
 -- borra filas — mismo criterio que el resto del sistema.
--- organizacion_id: mismo patrón multi-tenant que gastos (CLAUDE.md §28); no
--- se deriva de otra tabla (depositos sigue siendo un catálogo global, ver
--- §29/§39 del handoff) así que se completa en el INSERT desde
--- req.usuario.organizacion_id.
+-- organizacion_id: mismo patrón multi-tenant que gastos (CLAUDE.md §28); se
+-- completa en el INSERT desde req.usuario.organizacion_id, y los dos
+-- depósitos de la transferencia tienen que ser de esa misma organización (lo
+-- valida POST /api/transferencias).
 CREATE TABLE IF NOT EXISTS transferencias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deposito_origen_id INTEGER NOT NULL REFERENCES depositos(id),
@@ -537,11 +554,15 @@ GROUP BY producto_id;
 -- usar Nexo. No es un movimiento (nadie la ingresó desde el sistema), así
 -- que vive en la cuenta y el saldo real se calcula como
 -- saldo_inicial + movimientos (ver la vista saldo_tesoreria en db/index.js).
+-- organizacion_id: ver el comentario de categorias. Acá además es lo que
+-- impide que dos empresas compartan la fila "Efectivo" y mezclen su saldo.
 CREATE TABLE IF NOT EXISTS cuentas_tesoreria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'banco', 'mercadopago', 'otro')),
-  saldo_inicial REAL NOT NULL DEFAULT 0
+  saldo_inicial REAL NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 CREATE TABLE IF NOT EXISTS cobros (
@@ -581,11 +602,14 @@ CREATE TABLE IF NOT EXISTS pagos (
 --                es ganancia ya generada que se reparte.
 -- Los tres bajan la caja; solo el operativo baja el resultado. Si se
 -- mezclaran, un mes con un retiro grande figuraría como mes con pérdida.
+-- organizacion_id: ver el comentario de categorias.
 CREATE TABLE IF NOT EXISTS categorias_gasto (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
-  activa INTEGER NOT NULL DEFAULT 1
+  activa INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- gastos.tipo se copia de la categoría al momento de cargar el gasto y se
