@@ -182,6 +182,30 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
+**Auditoría general del 6 de octubre (hist. §57), en curso: hechas las Fases 0 a 2**
+(git, respaldo automático, backend). Decidido con el usuario: seguridad y datos
+primero, antes de seguir con F6–F13. Falta, en este orden:
+- **Fase 3 (frontend):** `esc()` (ya existe en `core/formato.js`) en las 145
+  asignaciones a `innerHTML` de `app.js` y en `core/maestros.js:23`,
+  `core/filtros.js`, `dominios/gastos.js` (hoy hay XSS almacenado: un nombre de
+  cliente `<img onerror=…>` ejecuta código en la sesión del admin). Se hace por
+  bloque de dominio, así cada dominio que se extraiga después ya sale escapado.
+  Más un wrapper `api()` con `res.ok` y errores de red (hoy 56 de 98 `fetch`
+  pasan por `manejarError`), `.catch` en el boot (`app.js`, cadena de
+  `cargarX`), y ampliar `frontend-modulos.test.js` (ids de `getElementById`
+  contra `index.html`, heurística de `esc`).
+- **Fase 4:** ESLint versionado con archivo de control, `.editorconfig`, CI en
+  GitHub Actions (Node 22), `.env.example`. Sin Prettier; sin `LICENSE` hasta que
+  el equipo decida cuál.
+- **Fase 5:** `scripts/seed.mjs`, `verificar-migracion.mjs`, `regresion-head.mjs`.
+- **Fase 6:** borrar `src/`, los `hola.txt` y `docs/Mejoras.txt`; renombrar
+  `desing/` → `diseno/`; corregir README, `frontend/README.md`, CLAUDE.md (rama
+  personal + PR a `main`, alta de empresas ya existe, estructura del repo, §38
+  con columna de estado) y la cabecera de `docs/handoff-historico.md`.
+- **Fase 7:** consolidar este backlog; ver abajo "Para cerrar la Etapa A" (sumar
+  SKU único por empresa e índices en la misma pasada de rebuilds).
+Los commits de las Fases 1 y 2 están en `solla`, sin pushear.
+
 **Etapa B, siguiente paso: F6** (otro dominio sin acoplamiento con estado ajeno;
 candidatos: Proveedores o Clientes, que dejan su tabla, ficha y modal en el
 dominio y siguen fijando el maestro con `fijarProveedores()` de
