@@ -6479,3 +6479,66 @@ llamando a `fijarProveedores()` y se queda con su propia tabla, ficha y modal. A
 Papelera siguen esperando a Stock, Caja y a los dominios que leen: `renderPapelera` lee
 `ventas`, `compras`, `gastos`, `devoluciones` y `devolucionesProveedor`. Los grandes (ventas,
 compras, productos) al final, el boot en F13 y la PWA (B2).
+
+## 57. Auditoría general del 6 de octubre de 2026 — Fases 0 a 2 (respaldo y backend)
+
+Pedido del usuario: auditar todo el proceso con las herramientas de ECC y pulir el proyecto para
+que sirva de estructura de trabajo. Tres exploraciones en paralelo (backend, frontend,
+proceso/herramientas) y la revisión de ECC (`code-reviewer`, `security-reviewer`) sobre cada fase.
+Decisiones del usuario: seguridad y datos primero (antes de seguir con F6–F13), oficializar la rama
+personal `solla` + PR a `main`, y borrar los placeholders y renombrar `desing/` → `diseno/`.
+
+**Fase 0 — git.** `solla` pusheada, `origin/main` traído (los 2 merges #24/#25), `main` local
+adelantado. Copia de la base real fuera del repo en `~/Documents/nexo-backups/`.
+
+**Fase 1 — respaldo automático** (`backend/db/respaldo.js`, `scripts/backup-db.mjs`,
+`npm run backup`). `db/index.js` no tiene tabla de versiones, así que "migración pendiente" no se
+puede detectar de forma genérica: se respalda en cada arranque, antes de abrir la base, con
+`VACUUM INTO`. No duplica si la base no cambió: la huella ignora los bytes 24-27, 40-43 y 92-95 del
+encabezado SQLite, porque `index.js` recrea vistas en cada arranque y cambian sin que cambie ningún
+dato (con el hash del archivo crudo, cada arranque creaba un respaldo). Rotación de 14 que nunca borra
+el recién creado (si el reloj retrocede) y que no corta el arranque si no puede borrar uno
+(archivo abierto en Windows). Si el respaldo falla, el arranque se corta. Variables:
+`NEXO_DB_PATH`, `NEXO_BACKUP_DIR`, `NEXO_BACKUP_KEEP`, `NEXO_BACKUP=off`. 13 tests.
+
+**Fase 2 — backend** (`server.js`, `interprete.js`, tests en `backend/test/api.test.js` con el
+arnés `servidor-de-prueba.js`):
+- **Ventas:** `validarItemsVenta` (POST y PUT). Cantidad 0, precio negativo y valores no numéricos
+  pasaban. El revisor encontró además que un texto como `"0x5"` pasa `Number()` pero SQLite lo
+  guarda como TEXT en la columna REAL: venta en total 0 con deuda y stock inconsistente. Por eso solo
+  se aceptan números JSON reales, con tope 1e9 (dos valores finitos grandes se desbordaban y dejaban
+  el dashboard en `null`). Mismo criterio en cobros y pagos.
+- **Asistente:** la rama de compra de `/api/asistente/ejecutar` exige admin (era un atajo alrededor
+  de la política del circuito de compras).
+- **Presupuestos:** `producto_id`/`variante_id` se validan contra la empresa (el GET devolvía
+  nombres de productos de otra empresa).
+- **Compras y ventas:** el saldo de pago incluye el envío y solo se paga una compra activa; cobros
+  y facturación rechazan ventas anuladas.
+- **Errores:** 404 JSON bajo `/api`, manejador final sin stack (conserva los 4xx), `interpretar`
+  envuelto con `asincrono()` (un rechazo tumbaba el proceso de todas las empresas),
+  `unhandledRejection` registrado, Gemini ya no devuelve su mensaje al cliente.
+- **Cabeceras, login y menores:** nosniff, X-Frame-Options DENY, Referrer-Policy, `x-powered-by`
+  off, `NEXO_TRUST_PROXY`; login valida tipos y largos y tiene tope de 30 fallos por IP con poda de los
+  mapas; `?limit` negativo; alta de clientes y proveedores auditada; `engines` Node >= 22.
+
+**Se decidió NO hacer** (queda en el backlog): WAL y `busy_timeout` (cambia el formato del archivo de
+la base real al próximo arranque; conviene decidirlo junto con la migración de la Etapa A), CSP
+(necesita autoalojar fuentes y mover el script inline del `<head>`: va con la PWA, B2), validar
+`POST /api/facturas` (`neto`, `tipo`, `letra`) y los importes de tesorería/gastos con el mismo rigor.
+
+**Qué se aprendió:**
+- `Number()` es un validador demasiado permisivo para algo que va crudo al INSERT: acepta `"0x5"`,
+  `"0b11"`, `" 5 "`. Validar `typeof` además del valor.
+- Un hash del archivo SQLite entero no sirve para detectar "cambió la base": el encabezado cambia con
+  cada escritura, aunque no cambie ningún dato.
+- El arnés de tests de API tiene que matar al servidor hijo si el arranque expira: sus pipes
+  mantienen vivo el event loop y `node --test` no termina.
+
+### Qué sigue
+
+Fase 3 (frontend: `esc()` en las 145 asignaciones a `innerHTML` de `app.js`, que hoy no lo usa
+ninguna; wrapper `api()` con `res.ok` y errores de red; `.catch` en el boot), Fase 4
+(ESLint versionado, CI, `.editorconfig`, `.env.example`), Fase 5 (scripts `seed`,
+`verificar-migracion`, `regresion-head`), Fase 6 (limpieza del repo y correcciones de README,
+CLAUDE.md y `frontend/README.md`) y Fase 7 (backlog ordenado en `handoff.md`). Los commits de las
+Fases 1 y 2 están en `solla` sin pushear.
