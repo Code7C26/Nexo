@@ -6542,3 +6542,15 @@ ninguna; wrapper `api()` con `res.ok` y errores de red; `.catch` en el boot), Fa
 `verificar-migracion`, `regresion-head`), Fase 6 (limpieza del repo y correcciones de README,
 CLAUDE.md y `frontend/README.md`) y Fase 7 (backlog ordenado en `handoff.md`). Los commits de las
 Fases 1 y 2 están en `solla` sin pushear.
+
+### Addendum al §57 — primer arranque real de la base (6 de octubre, 22:17 UTC)
+
+Autorizado por el usuario ("las tres primeras" de lo que se le pedía tras las Fases 0–2). Se
+importó `backend/db/index.js` con `NEXO_BACKUP_DIR` apuntando a `OneDrive\Nexo-respaldos`: el
+respaldo automático dejó primero la base pre-migración y, en el segundo arranque, la migrada.
+Los conteos de las 36 tablas dieron idénticos antes y después (solo `sesiones` 1 → 0, limpieza
+de vencidas); `integrity_check` ok, `foreign_key_check` sin filas, ninguna fila sin
+`organizacion_id`, `categorias` con `UNIQUE (organizacion_id, nombre)`, un tercer arranque no creó
+otro respaldo. md5 de la base real pasó de `a25ce51d…` a `8dc00857…`. `NEXO_BACKUP_DIR` se fijó
+como variable de entorno de usuario de Windows. `NEXO_TRUST_PROXY` no se define: hoy no hay proxy
+inverso delante.

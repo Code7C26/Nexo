@@ -55,17 +55,25 @@ Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
 incluido.
 
 **Base de datos real** (`backend/db/nexo.db`, en `.gitignore`):
-- Todavía no corrió **ninguna** migración de la Etapa A: el próximo
-  `npm start` aplica §37–§49 de una vez.
-- El arnés de hist. §48 ya simuló ese arranque sobre una copia, sin errores.
-- Backup previo: `backend/db/nexo.db.backup-antes-etapa-a-20261005-210622`, y una
-  copia fuera del repo en `~/Documents/nexo-backups/` (6 de octubre, mismo md5).
+- **Ya migrada a la Etapa A** (6 de octubre de 2026, primer arranque real, hist.
+  §57): se aplicó §37–§49 de una vez. Los conteos de las 36 tablas dieron
+  idénticos antes y después (solo bajó `sesiones`, que el arranque limpia),
+  `integrity_check` ok, `foreign_key_check` sin filas y ninguna fila sin
+  `organizacion_id`. md5 de la base migrada: `8dc00857…` (la referencia para
+  "la base real no cambió" en las verificaciones de ahora en adelante).
+- Copias de la base **anterior** a la migración (md5 `a25ce51d…`):
+  `backend/db/nexo.db.backup-antes-etapa-a-20261005-210622` y, fuera del repo,
+  `~/Documents/nexo-backups/`. Para volver atrás, restaurar una de las dos.
+- `NEXO_BACKUP_DIR` quedó definida como variable de entorno **de usuario de
+  Windows** apuntando a `C:\Users\HP ULTRA 5\OneDrive\Nexo-respaldos`: los
+  respaldos automáticos salen a la nube sin hacer nada. Si hace falta quitarla:
+  `[Environment]::SetEnvironmentVariable('NEXO_BACKUP_DIR',$null,'User')`. Una
+  terminal ya abierta no la ve hasta reiniciarse.
 - **Respaldo automático** (`backend/db/respaldo.js`, auditoría de hist. §57): cada
-  arranque respalda la base ANTES de abrirla, en `<repo>/backups/` (ignorada por
-  git), con rotación de 14 y sin duplicar si no cambió nada. Si el respaldo falla,
-  el arranque se corta. Variables: `NEXO_BACKUP=off` (lo apaga), `NEXO_BACKUP_DIR`
-  (destino: conviene una carpeta sincronizada con la nube, porque por defecto está
-  en el mismo disco), `NEXO_BACKUP_KEEP`. Manual: `cd backend && npm run backup`.
+  arranque respalda la base ANTES de abrirla, con rotación de 14 y sin duplicar si
+  no cambió nada. Sin `NEXO_BACKUP_DIR` el destino es `<repo>/backups/` (ignorada
+  por git, mismo disco que la base). Si el respaldo falla, el arranque se corta.
+  Variables: `NEXO_BACKUP=off` (lo apaga), `NEXO_BACKUP_DIR`, `NEXO_BACKUP_KEEP`. Manual: `cd backend && npm run backup`.
   Con `node --watch` cada reinicio con datos nuevos crea uno y los 14 rotan rápido.
 - Tiene una sola organización ("Mi negocio") y un solo usuario, admin.
 
