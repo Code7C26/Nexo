@@ -8564,7 +8564,11 @@ const AUDITORIA_ENTIDAD_LABEL = {
   tesoreria: "Tesorería",
   categoria: "Categoría",
   categoria_gasto: "Categoría de gasto",
-  cuenta_tesoreria: "Cuenta de tesorería"
+  cuenta_tesoreria: "Cuenta de tesorería",
+  lista_precio: "Lista de precios",
+  deposito: "Depósito",
+  usuario: "Usuario",
+  transferencia: "Transferencia"
 };
 const AUDITORIA_ACTOR_LABEL = { operador: "Operador", asistente: "Asistente IA", sistema: "Sistema" };
 

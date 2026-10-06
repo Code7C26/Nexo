@@ -1,6 +1,6 @@
 # Handoff histórico — Nexo
 
-> Relato completo, etapa por etapa, de las secciones §1 a §49 tal como se
+> Relato completo, etapa por etapa, de las secciones §1 a §50 tal como se
 > escribieron en `handoff.md` hasta el 5 de octubre de 2026. Se movió acá sin
 > cambios (misma numeración) cuando `handoff.md` pasó a ser un resumen corto y
 > vivo, a pedido del usuario. `handoff.md` y algunos comentarios del código
@@ -6029,3 +6029,51 @@ lo simuló sobre una copia, sin errores.
    Auditoría y las pantallas de catálogos.
 8. Decisión abierta en `permisos.js`: si listas, depósitos y categorías de
    gasto tienen que ser solo admin.
+
+## 50. Catálogos — altas auditadas y predeterminado siempre activo
+
+Cierra los puntos 3 y 4 del "Qué sigue" de §49. Sin cambio de esquema.
+
+**Altas auditadas** (`backend/server.js`):
+- `POST /api/categorias`, `/api/listas-precios`, `/api/cuentas-tesoreria` y
+  `/api/categorias-gasto` ahora registran `accion: 'crear'`, con la misma
+  `entidad` que ya usaba su edición.
+- El INSERT y la auditoría van en un mismo `withTransaction`, como las
+  ediciones. El alta de depósito, que ya auditaba, se movió a la misma forma.
+- La cuenta de tesorería lleva su saldo inicial en el `detalle`, porque es el
+  campo sensible de esa entidad.
+
+**Predeterminado inactivo**:
+- `PATCH /api/listas-precios/:id` y `/api/depositos/:id` miraban solo el
+  `activa`/`activo` del body, así que marcar como predeterminada una fila que
+  ya estaba inactiva (sin mandar el flag) pasaba.
+- Ahora el chequeo es sobre el estado final. Un `activa:false` explícito
+  conserva el mensaje de antes; el caso nuevo responde 400 con "Activá la
+  lista/el depósito antes de marcarlo como predeterminado".
+- **Decisión:** se rechaza y no se activa sola, para que la API no cambie en
+  silencio un campo que nadie pidió cambiar.
+- **Consecuencia:** una fila que ya estuviera predeterminada e inactiva
+  (estado ya corrupto) tampoco se puede editar sin mandar `activa:true`. En la
+  base real no hay ninguna.
+
+**Frontend** (`frontend/js/app.js`): `AUDITORIA_ENTIDAD_LABEL` suma
+`lista_precio`, `deposito`, `usuario` y `transferencia`. Sin eso la tabla
+mostraba el nombre crudo y el filtro "Entidad" no ofrecía esas opciones.
+
+**Verificación** (scratchpad, base nueva, servidor en el 4731):
+- Las 5 altas dan 201 y dejan su fila de auditoría con `usuario_id`,
+  `organizacion_id` y `detalle` correctos, comprobado en la tabla.
+- Listas y depósitos, 8 casos cada uno, todos como se esperaba: desactivar una
+  no predeterminada, marcarla inactiva sin el flag (400, la predeterminada
+  anterior sigue), con `false` explícito (400), con `true` (200, queda una sola
+  y activa), y desmarcar o desactivar la predeterminada (400).
+- `npm test` verde (3/3). La base real no se tocó (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e`) y no tiene predeterminados inactivos.
+- El script marcó 5 falsos negativos en el chequeo de auditoría vía
+  `GET /api/auditoria`; las filas en la tabla están bien. No se inspeccionó qué
+  campos expone ese endpoint.
+- Sin pasada visual en el navegador para las etiquetas nuevas.
+
+### Qué sigue
+
+Quedan los puntos 1, 2 y 5–8 de §49.

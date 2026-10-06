@@ -972,9 +972,18 @@ app.post('/api/categorias', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO categorias (nombre, organizacion_id) VALUES (?, ?)')
-    .run(String(nombre).trim(), req.usuario.organizacion_id);
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO categorias (nombre, organizacion_id) VALUES (?, ?)')
+      .run(String(nombre).trim(), req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'categoria',
+      entidad_id: id,
+      detalle: `Categoría "${String(nombre).trim()}" creada`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -1054,9 +1063,18 @@ app.post('/api/listas-precios', (req, res) => {
     return res.status(400).json({ error: 'Ya existe una lista con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO listas_precios (nombre, organizacion_id) VALUES (?, ?)')
-    .run(String(nombre).trim(), req.usuario.organizacion_id);
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO listas_precios (nombre, organizacion_id) VALUES (?, ?)')
+      .run(String(nombre).trim(), req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'lista_precio',
+      entidad_id: id,
+      detalle: `Lista de precios "${String(nombre).trim()}" creada`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -1092,8 +1110,17 @@ app.patch('/api/listas-precios/:id', (req, res) => {
       error: 'No se puede quitar la lista predeterminada: marcá otra como predeterminada en su lugar.'
     });
   }
-  if (nuevaEsPredeterminada && activa === false) {
-    return res.status(400).json({ error: 'La lista predeterminada no se puede desactivar.' });
+  // Se mira el estado final, no solo el body: marcar como predeterminada una
+  // lista que ya estaba inactiva (sin mandar `activa`) la dejaba inactiva y
+  // predeterminada a la vez. No se la activa sola: la API no cambia en
+  // silencio un campo que nadie pidió cambiar.
+  const nuevaActiva = activa === undefined ? Boolean(lista.activa) : Boolean(activa);
+  if (nuevaEsPredeterminada && !nuevaActiva) {
+    return res.status(400).json({
+      error: activa === false
+        ? 'La lista predeterminada no se puede desactivar.'
+        : 'Activá la lista antes de marcarla como predeterminada.'
+    });
   }
 
   const nuevo = {
@@ -1164,14 +1191,17 @@ app.post('/api/depositos', (req, res) => {
     return res.status(400).json({ error: 'Ya existe un depósito con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO depositos (nombre, direccion, organizacion_id) VALUES (?, ?, ?)')
-    .run(String(nombre).trim(), direccion ? String(direccion).trim() : null, req.usuario.organizacion_id);
-  auditar(req, {
-    accion: 'crear',
-    entidad: 'deposito',
-    entidad_id: lastInsertRowid,
-    detalle: `Depósito "${String(nombre).trim()}" creado`
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO depositos (nombre, direccion, organizacion_id) VALUES (?, ?, ?)')
+      .run(String(nombre).trim(), direccion ? String(direccion).trim() : null, req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'deposito',
+      entidad_id: id,
+      detalle: `Depósito "${String(nombre).trim()}" creado`
+    });
+    return id;
   });
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -1205,8 +1235,15 @@ app.patch('/api/depositos/:id', (req, res) => {
       error: 'No se puede quitar el depósito predeterminado: marcá otro como predeterminado en su lugar.'
     });
   }
-  if (nuevoEsPredeterminado && activo === false) {
-    return res.status(400).json({ error: 'El depósito predeterminado no se puede desactivar.' });
+  // Mismo criterio que listas de precios: se mira el estado final, no solo el
+  // body, para que un depósito inactivo no pueda quedar como predeterminado.
+  const nuevoActivoFinal = activo === undefined ? Boolean(deposito.activo) : Boolean(activo);
+  if (nuevoEsPredeterminado && !nuevoActivoFinal) {
+    return res.status(400).json({
+      error: activo === false
+        ? 'El depósito predeterminado no se puede desactivar.'
+        : 'Activá el depósito antes de marcarlo como predeterminado.'
+    });
   }
 
   const nuevoActivo = activo === undefined ? Number(Boolean(deposito.activo)) : Number(Boolean(activo));
@@ -6168,9 +6205,18 @@ app.post('/api/cuentas-tesoreria', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'Ya existe una cuenta con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, saldo_inicial, organizacion_id) VALUES (?, ?, ?, ?)')
-    .run(String(nombre).trim(), tipo, saldoInicial, req.usuario.organizacion_id);
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, saldo_inicial, organizacion_id) VALUES (?, ?, ?, ?)')
+      .run(String(nombre).trim(), tipo, saldoInicial, req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cuenta_tesoreria',
+      entidad_id: id,
+      detalle: `Cuenta "${String(nombre).trim()}" (${tipo}) creada con saldo inicial $${saldoInicial}`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -6440,9 +6486,18 @@ app.post('/api/categorias-gasto', (req, res) => {
     return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO categorias_gasto (nombre, tipo, organizacion_id) VALUES (?, ?, ?)')
-    .run(String(nombre).trim(), tipo, req.usuario.organizacion_id);
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO categorias_gasto (nombre, tipo, organizacion_id) VALUES (?, ?, ?)')
+      .run(String(nombre).trim(), tipo, req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'categoria_gasto',
+      entidad_id: id,
+      detalle: `Categoría de gasto "${String(nombre).trim()}" (${tipo}) creada`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 

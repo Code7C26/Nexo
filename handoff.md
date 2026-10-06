@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §49);
+    siguiente número (hoy el último es §50);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,14 +19,14 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (5 de octubre de 2026)
+## Estado actual (6 de octubre de 2026)
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está 14 commits adelante de `origin/solla`, sin pushear (toda la
+- `solla` está 15 commits adelante de `origin/solla`, sin pushear (toda la
   Etapa A).
-- `main` está 21 commits atrás de `solla`. Pasar `solla` → `main` es por PR.
+- `main` está 22 commits atrás de `solla`. Pasar `solla` → `main` es por PR.
 
 **Construido.** El núcleo de CLAUDE.md §1–§27 está completo (ver "Estado real
 del sistema" en `CLAUDE.md`). Facturación de monto simple, sin IVA ni ARCA.
@@ -69,6 +69,9 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Catálogos por empresa:** `organizacion_id NOT NULL` y
   `UNIQUE(organizacion_id, nombre)`. Cada empresa recibe su depósito, lista y
   cuentas base vía `sembrarCatalogosBase` al arrancar (hist. §49).
+- **La lista y el depósito predeterminados tienen que estar activos.** El
+  `PATCH` rechaza (400) marcar como predeterminado uno inactivo, en vez de
+  activarlo solo (hist. §50). Las altas de los cinco catálogos se auditan.
 - **`GET /api/auditoria` es solo admin**, porque los JSON de valor
   anterior/nuevo traen costos. Un `login_fallido` con un usuario inexistente
   queda con `organizacion_id NULL`, invisible para todas las empresas
@@ -149,15 +152,11 @@ Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 4. Pasada visual en el navegador de Usuarios, Configuración, Auditoría y las
    pantallas de catálogos. En las sesiones de §45–§49 no hubo herramienta de
    navegador.
-5. El alta de categoría, lista, cuenta y categoría de gasto no se audita (solo
-   la edición).
-6. Una lista o un depósito inactivo puede quedar como predeterminado si el
-   `PATCH` omite `activa`/`activo`.
-7. Decidir en `permisos.js` si listas, depósitos y categorías de gasto pasan a
+5. Decidir en `permisos.js` si listas, depósitos y categorías de gasto pasan a
    ser solo admin.
-8. Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
+6. Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
    sensibles. Solo hace falta si se reabre ese endpoint al rol empleado.
-9. `obtenerPreciosPorProducto` y `obtenerPreciosPorVariante` leen los precios
+7. `obtenerPreciosPorProducto` y `obtenerPreciosPorVariante` leen los precios
    de todas las empresas. No hay fuga, pero no escala.
 
 **Roadmap** (CLAUDE.md §38):
