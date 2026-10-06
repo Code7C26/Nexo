@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
-import db, { withTransaction, registrarAuditoria } from './db/index.js';
+import db, { withTransaction, registrarAuditoria, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -158,7 +158,7 @@ function renovarSesion(token) {
 // Mismo wrapper agrega organizacion_id (Etapa A, CLAUDE.md §28): como
 // autenticar ya carga req.usuario.organizacion_id, los ~63 call-sites que
 // pasan por acá quedan aislados sin tocarlos uno por uno. Los 4 llamados
-// directos a registrarAuditoria de auth (login/bootstrap, sin sesión
+// directos a registrarAuditoria de auth (login/registro, sin sesión
 // todavía) resuelven su propia organización aparte, ver más abajo.
 function auditar(req, datos) {
   return registrarAuditoria({
@@ -245,11 +245,11 @@ function contarAdminsActivos(organizacionId) {
     .get(organizacionId).count;
 }
 
-// Único uso legítimo que queda: POST /api/auth/bootstrap, donde por
-// definición hay una sola organización (es el primer usuario del sistema, y
-// la fila la sembró db/index.js al arrancar). Cualquier otro handler resuelve
-// la empresa desde la sesión con req.usuario.organizacion_id, nunca desde
-// acá — ver CLAUDE.md §28.
+// Único uso legítimo que queda: la rama "instalación nueva" de
+// POST /api/auth/registro, donde por definición hay una sola organización (es
+// el primer usuario del sistema, y la fila la sembró db/index.js al arrancar).
+// Cualquier otro handler resuelve la empresa desde la sesión con
+// req.usuario.organizacion_id, nunca desde acá — ver CLAUDE.md §28.
 function organizacionUnica() {
   return db.prepare('SELECT id FROM organizaciones ORDER BY id LIMIT 1').get().id;
 }
@@ -364,34 +364,75 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-// Riesgo aceptado y documentado acá para que no se lea como un olvido:
-// entre el primer arranque del sistema y el primer alta de admin,
-// cualquiera con acceso a localhost:3000 puede llamar a este endpoint y
-// crearse como administrador. En un sistema que corre en la máquina del
-// negocio, sin exposición a internet, se considera aceptable — la
-// alternativa (contraseña por defecto tipo admin/admin, o una variable de
-// entorno) es peor: el proyecto ya tiene el precedente de GEMINI_API_KEY,
-// que se pierde entre reinicios porque nunca se guarda en disco.
-app.post('/api/auth/bootstrap', (req, res) => {
-  const { usuario, nombre, password } = req.body ?? {};
-  if (!usuario || !nombre || !password) {
-    return res.status(400).json({ error: 'Usuario, nombre y contraseña son obligatorios.' });
+// Rate limit del registro, por IP y en memoria (mismo criterio que
+// intentosLogin: efímero a propósito). Cuenta cada intento, no solo los
+// fallidos: este endpoint es público y cada llamada calcula un scrypt, así
+// que sin tope un script podría congelar el event loop o llenar la base de
+// empresas vacías.
+const REGISTROS_MAX = 5;
+const REGISTROS_VENTANA_MS = 60 * 60 * 1000;
+const intentosRegistro = new Map();
+
+function registroExcedido(ip) {
+  const ahora = Date.now();
+  const registro = intentosRegistro.get(ip);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    intentosRegistro.set(ip, { cuenta: 1, desde: ahora });
+    return false;
+  }
+  registro.cuenta += 1;
+  return registro.cuenta > REGISTROS_MAX;
+}
+
+// Alta de empresa (CLAUDE.md §28): cualquiera crea su negocio y queda como su
+// primer admin. Reemplaza al viejo /api/auth/bootstrap, que era el caso
+// particular "instalación nueva, primera empresa".
+//
+// Riesgo aceptado y documentado acá para que no se lea como un olvido: no hay
+// verificación de email ni captcha (requieren un servicio externo), solo el
+// rate limit por IP de arriba. Tampoco hay forma de apagar el registro
+// público; ver "Qué sigue" en handoff.md.
+app.post('/api/auth/registro', (req, res) => {
+  if (registroExcedido(req.ip)) {
+    return res.status(429).json({ error: 'Demasiados intentos de registro. Probá de nuevo más tarde.' });
+  }
+
+  const empresa = String(req.body?.empresa ?? '').trim();
+  const usuario = String(req.body?.usuario ?? '').trim();
+  const nombre = String(req.body?.nombre ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (!empresa || !usuario || !nombre || !password) {
+    return res.status(400).json({ error: 'Negocio, usuario, nombre y contraseña son obligatorios.' });
+  }
+  if (/\s/.test(usuario)) {
+    return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
   }
   if (password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
 
-  // Revalida en el servidor la misma condición que /api/auth/estado
-  // reportó — nunca confiar en que el frontend la respetó.
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
-  if (count > 0) {
-    return res.status(409).json({ error: 'Ya existe un administrador. El bootstrap no está disponible.' });
+  // Global a propósito: el nombre de usuario es único en todo Nexo y el login
+  // no pide empresa (hist. §45).
+  const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
+  if (existe) {
+    return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
   }
 
   let usuarioId;
   withTransaction(() => {
-    const orgId = organizacionUnica();
     const { hash, salt } = hashPassword(password);
+    // Instalación nueva: todavía no hay ningún usuario, así que se adopta la
+    // organización que db/index.js sembró al arrancar en vez de dejarla
+    // huérfana. Revalidado acá adentro, nunca confiar en el frontend.
+    const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+    let orgId;
+    if (count === 0) {
+      orgId = organizacionUnica();
+      db.prepare('UPDATE organizaciones SET nombre = ? WHERE id = ?').run(empresa, orgId);
+    } else {
+      orgId = Number(db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run(empresa).lastInsertRowid);
+      sembrarCatalogosBase(orgId);
+    }
     const info = db
       .prepare(
         `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, rol, debe_cambiar_password)
@@ -399,6 +440,14 @@ app.post('/api/auth/bootstrap', (req, res) => {
       )
       .run(orgId, usuario, nombre, hash, salt);
     usuarioId = Number(info.lastInsertRowid);
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: orgId,
+      usuario_id: usuarioId,
+      organizacion_id: orgId,
+      detalle: `Empresa "${empresa}" creada`
+    });
     registrarAuditoria({
       accion: 'crear',
       entidad: 'usuario',

@@ -1121,7 +1121,7 @@ button { font-family: inherit; cursor: pointer; }
    le gana en especificidad al [hidden] del navegador. No importaba
    mientras cada .form vivía solo en su propio modal (nunca dos .form
    hidden/visible compartiendo padre) — pero la pantalla de sesión pone
-   tres formularios hermanos (login/bootstrap/cambio forzado) alternados
+   tres formularios hermanos (login/registro/cambio forzado) alternados
    con hidden, y sin esta regla los dos ocultos seguían ocupando espacio
    en el flex de .sesion-card, estirándola muy por fuera del viewport. */
 .form[hidden] {
@@ -2365,7 +2365,13 @@ input.precio-sin-configurar::placeholder {
   color: #000000;
 }
 
-/* .form-note (mensajes de error de login/bootstrap) usa var(--surface-sunk),
+/* .btn-link usa var(--ink), que se invierte con el tema: en claro sería negro
+   sobre la card negra fija. Mismo criterio que .btn-primary de arriba. */
+.sesion-card .btn-link {
+  color: #CFCFCF;
+}
+
+/* .form-note (mensajes de error de login/registro) usa var(--surface-sunk),
    que en claro es casi blanco — ilegible sobre esta card negra fija. */
 .sesion-card .form-note {
   background: #141414;

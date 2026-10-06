@@ -67,7 +67,7 @@
   function mostrarPantalla(cual) {
     pantalla.hidden = false;
     formLogin.hidden = cual !== "login";
-    formBootstrap.hidden = cual !== "bootstrap";
+    formRegistro.hidden = cual !== "registro";
     formCambioForzado.hidden = cual !== "cambio";
   }
 
@@ -156,26 +156,30 @@
     }
   });
 
-  formBootstrap.addEventListener("submit", async (e) => {
+  document.getElementById("irARegistro").addEventListener("click", () => mostrarPantalla("registro"));
+  irALogin.addEventListener("click", () => mostrarPantalla("login"));
+
+  formRegistro.addEventListener("submit", async (e) => {
     e.preventDefault();
-    ocultarErrorEn("bootstrapError");
-    const usuario = document.getElementById("bootstrapUsuario").value.trim();
-    const nombre = document.getElementById("bootstrapNombre").value.trim();
-    const password = document.getElementById("bootstrapPassword").value;
+    ocultarErrorEn("registroError");
+    const empresa = document.getElementById("registroEmpresa").value.trim();
+    const nombre = document.getElementById("registroNombre").value.trim();
+    const usuario = document.getElementById("registroUsuario").value.trim();
+    const password = document.getElementById("registroPassword").value;
     try {
-      const res = await fetchOriginal("/api/auth/bootstrap", {
+      const res = await fetchOriginal("/api/auth/registro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, nombre, password })
+        body: JSON.stringify({ empresa, usuario, nombre, password })
       });
       const datos = await res.json();
       if (!res.ok) {
-        mostrarErrorEn("bootstrapError", datos.error || "No se pudo crear el administrador.");
+        mostrarErrorEn("registroError", datos.error || "No se pudo crear la cuenta.");
         return;
       }
       arrancarApp(datos.usuario);
     } catch {
-      mostrarErrorEn("bootstrapError", "No se pudo conectar con el servidor.");
+      mostrarErrorEn("registroError", "No se pudo conectar con el servidor.");
     }
   });
 
@@ -208,7 +212,10 @@
       const res = await fetchOriginal("/api/auth/estado");
       const estado = await res.json();
       if (estado.requiere_bootstrap) {
-        mostrarPantalla("bootstrap");
+        // Instalación nueva: no hay cuenta a la que volver, así que se saca
+        // el link "Ya tengo cuenta".
+        irALogin.hidden = true;
+        mostrarPantalla("registro");
       } else if (!estado.autenticado) {
         cerrarSesionLocal();
         mostrarPantalla("login");

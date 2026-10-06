@@ -34,7 +34,7 @@
 export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
-  'POST /api/auth/bootstrap': 'publico',
+  'POST /api/auth/registro': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',
