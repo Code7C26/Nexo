@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §54);
+    siguiente número (hoy el último es §55);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -39,13 +39,15 @@ consultas filtran por la empresa de la sesión, incluidos los cinco catálogos
 "Qué sigue".
 
 **Etapa B (modularizar `app.js` + PWA, CLAUDE.md §31): en curso** (hist.
-§52–§54). Hechas F0 (test estático `backend/test/frontend-modulos.test.js`),
+§52–§55). Hechas F0 (test estático `backend/test/frontend-modulos.test.js`),
 F1 (`sesion.js` inyecta `app.js` como módulo ES, con `onerror`), F2 (el
 núcleo compartido salió a `frontend/js/core/`: `formato`, `ui`, `csv`,
-`filtros`, `seleccion`, `comprobante`, `router`, `negocio`, `registro`) y F3
+`filtros`, `seleccion`, `comprobante`, `router`, `negocio`, `registro`), F3
 (primeros dominios en `frontend/js/dominios/`: `usuarios`, `configuracion`,
-`perfil`). `app.js` bajó de 9407 a 7631 líneas y sigue teniendo el resto de los
-dominios; falta extraerlos (F4–F13) y la PWA (B2).
+`perfil`) y F4 (`cuentas-corrientes`, que invoca fichas, cobrar y pagar de otros
+dominios por nombre con `invocar`). `app.js` bajó de 9407 a 7408 líneas y sigue
+teniendo el resto de los dominios; falta extraerlos (F5–F13) y la PWA (B2).
+Los commits de F4 están en `solla`, sin pushear.
 Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
 incluido.
 
@@ -159,12 +161,16 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Etapa B, siguiente paso: F4** (otro dominio chico sin acoplamiento con estado
-ajeno: los catálogos de Productos o Cuentas corrientes). El patrón está probado
-en F3 (hist. §54): el módulo del dominio se importa desde `app.js` con un import
-de efecto y se registra solo (`alEntrarEnVista('v', ...)` o
-`registrar('cargar:x', ...)`); el que otros leen exporta con `export let`, y los
-demás usan `recargar('x')`. `dominios/` nunca importa `app.js` (lo verifica el
+**Etapa B, siguiente paso: F5** (otro dominio chico sin acoplamiento con estado
+ajeno; candidato: Gastos, verificando antes que `categoriasGasto` solo lo
+reasigne su propio cargador). Los catálogos de Productos (categorías, listas,
+depósitos) van con Productos: leen estado que reasigna `cargarProductos()`
+(hist. §55). El patrón está probado en F3 y F4 (hist. §54, §55): el módulo del
+dominio se importa desde `app.js` con un import de efecto y se registra solo
+(`alEntrarEnVista('v', ...)` o `registrar('cargar:x', ...)`); el que otros leen
+exporta con `export let`, los demás usan `recargar('x')`, y las acciones de
+otro dominio se piden con `invocar('x', ...)` (el dueño las registra, por
+ejemplo `app.js` con `registrar('cobrar:venta', ...)`). `dominios/` nunca importa `app.js` (lo verifica el
 test). **Auditoría y Papelera esperan a Stock, Caja y a los dominios que leen**:
 reasignan o leen sus cachés (hist. §54). Los dominios grandes (ventas, compras,
 productos) van al final. El baseline de navegador, el seed y ESLint viven en el

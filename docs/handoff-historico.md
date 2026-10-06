@@ -6356,3 +6356,60 @@ catálogos de Productos (categorías, listas de precios, depósitos) o Cuentas
 corrientes. Auditoría y Papelera van después de Stock/Caja y de los dominios
 que leen. Después los grandes (ventas, compras, productos), el boot en F13 y
 la PWA (B2).
+
+## 55. Etapa B — F4: Cuentas corrientes sale a `frontend/js/dominios/`
+
+**Qué se hizo.** `app.js` pasó de 7631 a 7408 líneas. Módulo nuevo
+`frontend/js/dominios/cuentas-corrientes.js` (tablas a cobrar y a pagar, aging,
+filas expandibles, filtros y exportar CSV), con el código movido tal cual y solo
+`import`/`export` agregados. Se registra solo con
+`registrar("cargar:cuentasCorrientes", ...)` y no exporta nada.
+
+**Por qué este dominio y no los catálogos de Productos.** Categorías, listas de
+precios y depósitos leen `categorias`, `listasPrecios` y `depositos`, que
+reasigna `cargarProductos()`: moverlos obliga a sacar ese estado de su dueño
+antes de tiempo, así que van junto con Productos. Cuentas corrientes solo tiene
+su propia caché (`ccUltimaRespuesta`).
+
+**Únicos cambios de lógica (equivalentes):**
+- Las cuatro acciones de otros dominios que dispara CC pasan por el registro:
+  `invocar("abrirFicha:cliente" | "abrirFicha:proveedor" | "cobrar:venta" |
+  "pagar:compra", id)`. `app.js` las registra junto a
+  `alEntrarEnVista("auditoria", ...)`.
+- Las 15 llamadas a `cargarCuentasCorrientes()` de `app.js` pasaron a
+  `recargar("cuentasCorrientes")`. Todas estaban dentro de un `Promise.all` o un
+  `then`, así que devolver la Promise de `recargar` es equivalente.
+
+**Cómo se verificó.** Copias en el scratchpad con base nueva (original = `HEAD`,
+puerto 4741; nuevo, 4742), más una venta a 30 días y una compra a 60 para tener
+varios tramos:
+- Baseline de navegador (`baseline.mjs`), admin y empleado, 36 pasos cada uno:
+  **cero diferencias**.
+- Prueba funcional dirigida (`funcional-f4.mjs`, 22 observaciones), **idéntica**
+  entre original y nuevo: totales y nota de neto, expandir/colapsar, CSV de
+  cobrar, pagar y filtrado, filtro por cliente con su chip, "sin resultados" con
+  limpiar, nombre que abre la ficha de cliente y de proveedor, "Cobrar" y "Pagar"
+  (modal con el saldo, registro, toast y totales de CC recargados solos) y la
+  vista del empleado.
+- `npm test`: 10 de 10. ESLint corrido desde la carpeta de los archivos, con un
+  control que falló a propósito: sin `no-undef` ni imports sin usar; solo los 4
+  `no-unused-vars` viejos. `backend/db/nexo.db` intacta (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e`).
+
+**Qué falló en el camino (para no repetirlo):**
+- La primera versión del script funcional apuntaba a `.filtro-popover
+  .filtro-input`, que resuelve a tres elementos (dos selects y el input): hay que
+  usar `input.filtro-input`. Falló igual en original y nuevo, o sea que era de la
+  prueba y no del cambio.
+- `npm test` falló en el paso intermedio hasta registrar las cuatro acciones en
+  `app.js`: el test de F0 detecta cada `invocar` sin su `registrar`.
+- En `fichaCliente` el hash sigue siendo `#/cuentas-corrientes` (la ficha no
+  cambia el hash); es igual en el original.
+
+### Qué sigue
+
+F5: otro dominio chico. Candidatos: Gastos (con `categoriasGasto`, que solo
+reasigna su propio `cargarGastos`; verificar antes) o Proveedores/Clientes si se
+resuelve cómo exponen su estado (`export let` en el dueño). Auditoría y Papelera
+siguen esperando a Stock, Caja y a los dominios que leen. Los grandes (ventas,
+compras, productos) al final, el boot en F13 y la PWA (B2).

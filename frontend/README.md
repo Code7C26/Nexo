@@ -29,7 +29,8 @@ frontend/
     ├── dominios/       → una pantalla (o grupo chico) por módulo
     │   ├── usuarios.js       ABM de usuarios (solo admin)
     │   ├── configuracion.js  datos del negocio
-    │   └── perfil.js         Mi cuenta: contraseña y cerrar sesión
+    │   ├── perfil.js         Mi cuenta: contraseña y cerrar sesión
+    │   └── cuentas-corrientes.js  a cobrar y a pagar, con aging
     └── core/           → lo que comparten todas las pantallas
         ├── formato.js      money, numero, esc, esAdmin, hoyISO
         ├── ui.js           avisar (toasts), confirmar, estados de tabla
