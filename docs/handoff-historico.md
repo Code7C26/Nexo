@@ -1,6 +1,6 @@
 # Handoff histórico — Nexo
 
-> Relato completo, etapa por etapa, de las secciones §1 a §50 tal como se
+> Relato completo, etapa por etapa, de las secciones §1 a §51 tal como se
 > escribieron en `handoff.md` hasta el 5 de octubre de 2026. Se movió acá sin
 > cambios (misma numeración) cuando `handoff.md` pasó a ser un resumen corto y
 > vivo, a pedido del usuario. `handoff.md` y algunos comentarios del código
@@ -6077,3 +6077,65 @@ mostraba el nombre crudo y el filtro "Entidad" no ofrecía esas opciones.
 ### Qué sigue
 
 Quedan los puntos 1, 2 y 5–8 de §49.
+
+## 51. Etapa A (multi-tenant) — alta de empresa por registro público
+
+**Objetivo**: el ítem 2 del "Qué sigue" para cerrar la Etapa A. Hasta acá una
+empresa nueva se creaba a mano en la base. **Decisión del usuario**: registro
+público (cualquiera crea su negocio desde el login y queda como su primer
+admin). Se descartaron un rol de superadmin de plataforma y un script de
+consola. El NOT NULL de las 14 tablas (ítem 1) se dejó para otra sesión.
+
+**Bug encontrado y corregido** (`backend/db/index.js`): el backfill de
+`organizacion_id` que corre en cada arranque incluía `auditoria`, así que cada
+reinicio le asignaba a la primera empresa los `login_fallido` de usuarios
+inexistentes. Esos registros quedan en NULL a propósito (hist. §46) y el bug le
+mostraba al admin de esa empresa lo que había tecleado cualquiera en el login.
+- `auditoria` salió del array compartido. Su backfill pasó a ejecutarse una
+  sola vez, dentro del `if` del `ALTER TABLE`, y excluye esos `login_fallido`.
+- Un `UPDATE` idempotente repara las bases que ya habían arrancado con el bug.
+- La base real todavía no migró, así que no tenía filas afectadas.
+
+**`POST /api/auth/registro`** (`backend/server.js`) reemplaza a
+`POST /api/auth/bootstrap`, que era el caso particular "primera empresa".
+- Body `{ empresa, usuario, nombre, password }`. Mismas reglas que
+  `POST /api/usuarios`: sin espacios en el usuario, contraseña de 8 o más,
+  duplicado de usuario global (409, hist. §45).
+- Rate limit por IP en memoria: 5 intentos por hora, cuenta todos (cada uno
+  cuesta un scrypt). El sexto da 429.
+- Una transacción. Con la base sin usuarios se **adopta** la organización que
+  sembró `db/index.js` y se le cambia el nombre. Si ya hay usuarios se inserta
+  una organización y se llama a `sembrarCatalogosBase`, que ahora se exporta.
+- Audita `crear organizacion` y `crear usuario`, con `organizacion_id` propio.
+- `permisos.js`: la ruta nueva es `publico`. `GET /api/auth/estado` no cambió.
+
+**Frontend**: `formBootstrap` pasó a `formRegistro` (suma "Nombre del negocio").
+El login tiene un link "Creá una cuenta" y el registro uno de vuelta. En una
+instalación nueva el link de vuelta se oculta. `.btn-link` necesitó un color
+fijo dentro de `.sesion-card`: usa `var(--ink)` y en tema claro quedaba negro
+sobre la tarjeta negra.
+
+**Verificación** (scratchpad, copia de la base real en el 4742 y base nueva en
+el 4741):
+- Copia real: migró entera en un solo arranque. Registro con body vacío,
+  usuario con espacio y contraseña corta dan 400; el válido, 201; el duplicado
+  (distinto caso de mayúsculas), 409; el sexto intento, 429.
+- La empresa B queda con su organización, depósito, lista y 3 cuentas propias y
+  2 filas de auditoría. Con su sesión, productos, clientes, ventas y categorías
+  vuelven vacíos y `negocio` devuelve el suyo. La empresa A conserva sus 3
+  productos y 9 ventas.
+- Base nueva: el primer registro adopta la organización sembrada, el segundo
+  crea la empresa 2. Cada una con sus catálogos base.
+- Bug de auditoría: un `login_fallido` inexistente queda en NULL; con la fila
+  forzada a la empresa 1 el reinicio la devuelve a NULL; el admin de B no la ve
+  en `GET /api/auditoria`.
+- `npm test` verde (3/3). Base real intacta (md5
+  `a25ce51db1f9978b77c16aac22bc8a3e`) y servidores cerrados con `taskkill`.
+- **No se hizo pasada visual en el navegador** de las pantallas de login y
+  registro: no hay herramienta de navegador en esta sesión.
+
+### Qué sigue
+
+Quedan el ítem 1 de §49 (NOT NULL en las tablas) y los pendientes chicos.
+Nuevos, anotados en `handoff.md`: poder apagar el registro público por
+configuración, y verificación de email o captcha.

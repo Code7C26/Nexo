@@ -81,8 +81,11 @@ El frontend es estático: `backend/server.js` lo sirve directamente desde
 `/frontend`, así que con el backend arriba ya está disponible en el mismo
 puerto — no hace falta un segundo proceso ni build.
 
-En el primer arranque, si no hay ningún usuario en la base, el propio login
-ofrece un flujo de "bootstrap" para crear el primer administrador.
+En el primer arranque, si no hay ningún usuario en la base, la pantalla de
+sesión ofrece directamente el registro: el nombre del negocio y su primer
+administrador. Después, cualquiera puede crear otra empresa desde el link
+"Creá una cuenta" del login (`POST /api/auth/registro`, con un tope de 5
+intentos por hora y por IP).
 
 ### Tests
 

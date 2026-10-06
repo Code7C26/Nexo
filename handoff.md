@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §50);
+    siguiente número (hoy el último es §51);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -24,7 +24,7 @@
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está 15 commits adelante de `origin/solla`, sin pushear (toda la
+- `solla` está 18 commits adelante de `origin/solla`, sin pushear (toda la
   Etapa A).
 - `main` está 22 commits atrás de `solla`. Pasar `solla` → `main` es por PR.
 
@@ -34,7 +34,9 @@ del sistema" en `CLAUDE.md`). Facturación de monto simple, sin IVA ni ARCA.
 **Etapa A del roadmap (multi-empresa, CLAUDE.md §28): núcleo hecho** (hist.
 §37–§49). Todas las tablas de negocio tienen `organizacion_id` y todas las
 consultas filtran por la empresa de la sesión, incluidos los cinco catálogos
-(hist. §49). Lo que falta para cerrarla está en "Qué sigue".
+(hist. §49). Una empresa se crea desde la pantalla de login con
+`POST /api/auth/registro` (hist. §51). Lo que falta para cerrarla está en
+"Qué sigue".
 
 **Base de datos real** (`backend/db/nexo.db`, en `.gitignore`):
 - Todavía no corrió **ninguna** migración de la Etapa A: el próximo
@@ -50,7 +52,8 @@ consultas filtran por la empresa de la sesión, incluidos los cinco catálogos
   pruebas (formato en `interpretarStub`, `backend/interprete.js`).
 
 **Instalar desde cero funciona** (hist. §48): con `nexo.db` borrado, el primer
-arranque crea todo y `POST /api/auth/bootstrap` da de alta el primer admin.
+arranque crea todo y `POST /api/auth/registro` da de alta la primera empresa
+con su admin (adopta la organización sembrada).
 
 ## Decisiones vigentes
 
@@ -72,6 +75,12 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **La lista y el depósito predeterminados tienen que estar activos.** El
   `PATCH` rechaza (400) marcar como predeterminado uno inactivo, en vez de
   activarlo solo (hist. §50). Las altas de los cinco catálogos se auditan.
+- **El registro de empresas es público** (decisión del usuario, hist. §51),
+  sin verificación de email ni captcha. Solo lo frena un tope de 5 intentos
+  por hora y por IP, en memoria.
+- **`auditoria` no está en el backfill de arranque** de `organizacion_id`: su
+  NULL de `login_fallido` es legítimo. Volver a sumarla al array de
+  `db/index.js` reintroduce el bug de hist. §51.
 - **`GET /api/auditoria` es solo admin**, porque los JSON de valor
   anterior/nuevo traen costos. Un `login_fallido` con un usuario inexistente
   queda con `organizacion_id NULL`, invisible para todas las empresas
@@ -142,16 +151,18 @@ Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 **Para cerrar la Etapa A:**
 1. Pasar `organizacion_id` a `NOT NULL` en las 15 tablas que lo tienen
    nullable. Cada una requiere rebuild; los catálogos ya nacen así.
-2. Alta de empresa desde la API (hoy se crean a mano). Tiene que llamar a
-   `sembrarCatalogosBase`, que habría que exportar de `db/index.js`.
+2. Poder apagar el registro público por configuración (por ejemplo, en una
+   instalación de un solo comercio) y sumarle verificación de email o captcha.
+   Ninguna de las dos se hizo: requieren decisión y, la segunda, un servicio
+   externo.
 3. Si algún día dos empresas necesitan el mismo nombre de usuario, elegir entre
    `UNIQUE(organizacion_id, usuario)` con la empresa en el login, o login por
    email (hist. §45).
 
 **Pendientes chicos conocidos:**
-4. Pasada visual en el navegador de Usuarios, Configuración, Auditoría y las
-   pantallas de catálogos. En las sesiones de §45–§49 no hubo herramienta de
-   navegador.
+4. Pasada visual en el navegador de Usuarios, Configuración, Auditoría, las
+   pantallas de catálogos y el login con el registro nuevo (hist. §51). En las
+   sesiones de §45–§51 no hubo herramienta de navegador.
 5. Decidir en `permisos.js` si listas, depósitos y categorías de gasto pasan a
    ser solo admin.
 6. Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
