@@ -55,8 +55,9 @@ no aplica.
 - Frontend: se mantiene **vanilla sin framework**, pero modularizado por
   dominio a medida que crece. Ver §31.
 - Multi-empresa: Nexo es **multi-tenant** (varios negocios sobre la misma
-  instalación, con sus datos aislados). Ver §28 — es preparación de
-  arquitectura, todavía no implementada.
+  instalación, con sus datos aislados). Ver §28 — el aislamiento por empresa
+  ya está implementado en todo el esquema y el backend; falta el alta de
+  empresas desde la aplicación.
 - Adaptación a rubros (comercio, carnicería, gastronomía, etc.): **un solo
   sistema configurable** por perfil de rubro, nunca versiones de código
   separadas por vertical. Ver §29.
@@ -1081,14 +1082,21 @@ Nexo es un sistema multi-tenant: la misma instalación sirve a varios negocios
 aislados. Es requisito para poder ofrecer Nexo a más de un cliente sin montar
 una instancia por negocio.
 
-**Estado real: no implementado.** Existe la tabla `organizaciones`, pero hoy
-tiene una única fila, `usuarios.organizacion_id` apunta siempre a ella, y
-ninguna de las ~38 tablas de datos de negocio (productos, ventas, compras,
-clientes, etc.) tiene columna de empresa ni ninguna consulta filtra por
-empresa. Es la migración de arquitectura más grande pendiente del proyecto:
-tocar el esquema entero, no una funcionalidad aislada.
+**Estado real: aislamiento implementado, alta de empresas pendiente.**
+- Todas las tablas de datos de negocio tienen `organizacion_id`, y toda
+  consulta filtra por la empresa de la sesión.
+  - Las tablas hijas (ítems, cobros, pagos, atributos/variantes) heredan la
+    empresa de su fila padre.
+  - Los catálogos (categorías, listas de precios, depósitos, cuentas de
+    tesorería, categorías de gasto) son propios de cada empresa, con nombre
+    único dentro de ella.
+- Lo que falta:
+  - crear empresas desde la aplicación (hoy se dan de alta a mano en la base);
+  - pasar `organizacion_id` a `NOT NULL` en las tablas que la sumaron nullable.
+- Detalle de cada paso y decisiones tomadas: `handoff.md` y
+  `docs/handoff-historico.md` (§37–§49).
 
-Diseño a seguir cuando se planifique esta etapa:
+Diseño que se siguió (y que rige para toda tabla o consulta nueva):
 
 - Toda tabla de datos de negocio (no los catálogos técnicos del sistema en sí)
   agrega `organizacion_id` con FK a `organizaciones`.

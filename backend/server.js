@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
-import db, { withTransaction, registrarAuditoria } from './db/index.js';
+import db, { withTransaction, registrarAuditoria, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -117,7 +117,7 @@ function sesionValida(token) {
   const fila = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.rol,
-              usuarios.debe_cambiar_password
+              usuarios.debe_cambiar_password, usuarios.organizacion_id
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
         WHERE sesiones.token = ?
@@ -154,8 +154,18 @@ function renovarSesion(token) {
 // usuario_id: fue el asistente la vía de entrada, pero fue esa persona
 // quien confirmó la operación propuesta. Es exactamente la distinción que
 // justifica tener las dos columnas en vez de una sola.
+//
+// Mismo wrapper agrega organizacion_id (Etapa A, CLAUDE.md §28): como
+// autenticar ya carga req.usuario.organizacion_id, los ~63 call-sites que
+// pasan por acá quedan aislados sin tocarlos uno por uno. Los 4 llamados
+// directos a registrarAuditoria de auth (login/registro, sin sesión
+// todavía) resuelven su propia organización aparte, ver más abajo.
 function auditar(req, datos) {
-  return registrarAuditoria({ ...datos, usuario_id: req.usuario?.id ?? null });
+  return registrarAuditoria({
+    ...datos,
+    usuario_id: req.usuario?.id ?? null,
+    organizacion_id: req.usuario?.organizacion_id ?? null
+  });
 }
 
 function autenticar(req, res, next) {
@@ -222,11 +232,24 @@ function limpiarIntentos(usuario) {
   intentosLogin.delete(usuario.toLowerCase());
 }
 
-function contarAdminsActivos() {
-  return db.prepare("SELECT COUNT(*) AS count FROM usuarios WHERE rol = 'admin' AND activo = 1").get()
-    .count;
+// Por organización y no global: con multi-empresa (CLAUDE.md §28) la
+// salvaguarda del último admin tiene que mirar solo la empresa que se está
+// tocando. Global, la empresa B podría quedarse sin ningún admin porque la
+// empresa A todavía tiene los suyos.
+function contarAdminsActivos(organizacionId) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM usuarios
+        WHERE rol = 'admin' AND activo = 1 AND organizacion_id = ?`
+    )
+    .get(organizacionId).count;
 }
 
+// Único uso legítimo que queda: la rama "instalación nueva" de
+// POST /api/auth/registro, donde por definición hay una sola organización (es
+// el primer usuario del sistema, y la fila la sembró db/index.js al arrancar).
+// Cualquier otro handler resuelve la empresa desde la sesión con
+// req.usuario.organizacion_id, nunca desde acá — ver CLAUDE.md §28.
 function organizacionUnica() {
   return db.prepare('SELECT id FROM organizaciones ORDER BY id LIMIT 1').get().id;
 }
@@ -271,7 +294,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const fila = db
     .prepare(
-      `SELECT id, nombre, rol, password_hash, password_salt, debe_cambiar_password
+      `SELECT id, nombre, rol, password_hash, password_salt, debe_cambiar_password, organizacion_id
          FROM usuarios
         WHERE LOWER(usuario) = LOWER(?) AND activo = 1`
     )
@@ -291,6 +314,10 @@ app.post('/api/auth/login', (req, res) => {
     // si alguien escribió su contraseña en el campo de usuario por error,
     // quedaría igual en texto plano acá; riesgo aceptado, no hay forma de
     // distinguir ese caso del de un usuario tipeado mal.
+    // Tampoco organizacion_id (Etapa A, CLAUDE.md §28), por el mismo motivo
+    // que no hay usuario_id: no existe empresa a la que atribuirle este
+    // intento, y queda NULL a propósito en vez de mezclarlo con una al
+    // azar — invisible en GET /api/auditoria para todas las empresas.
     registrarAuditoria({
       accion: 'login_fallido',
       entidad: 'usuario',
@@ -307,6 +334,7 @@ app.post('/api/auth/login', (req, res) => {
       entidad: 'usuario',
       entidad_id: fila.id,
       usuario_id: fila.id,
+      organizacion_id: fila.organizacion_id,
       detalle: 'Intento de inicio de sesión con contraseña incorrecta'
     });
     return res.status(401).json({ error: MENSAJE_ERROR });
@@ -316,7 +344,14 @@ app.post('/api/auth/login', (req, res) => {
   const token = crearSesion(fila.id);
   ponerCookieSesion(res, token);
   db.prepare("UPDATE usuarios SET ultimo_acceso = datetime('now') WHERE id = ?").run(fila.id);
-  registrarAuditoria({ accion: 'login', entidad: 'usuario', entidad_id: fila.id, usuario_id: fila.id, detalle: 'Inició sesión' });
+  registrarAuditoria({
+    accion: 'login',
+    entidad: 'usuario',
+    entidad_id: fila.id,
+    usuario_id: fila.id,
+    organizacion_id: fila.organizacion_id,
+    detalle: 'Inició sesión'
+  });
 
   res.json({
     usuario: {
@@ -329,34 +364,75 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-// Riesgo aceptado y documentado acá para que no se lea como un olvido:
-// entre el primer arranque del sistema y el primer alta de admin,
-// cualquiera con acceso a localhost:3000 puede llamar a este endpoint y
-// crearse como administrador. En un sistema que corre en la máquina del
-// negocio, sin exposición a internet, se considera aceptable — la
-// alternativa (contraseña por defecto tipo admin/admin, o una variable de
-// entorno) es peor: el proyecto ya tiene el precedente de GEMINI_API_KEY,
-// que se pierde entre reinicios porque nunca se guarda en disco.
-app.post('/api/auth/bootstrap', (req, res) => {
-  const { usuario, nombre, password } = req.body ?? {};
-  if (!usuario || !nombre || !password) {
-    return res.status(400).json({ error: 'Usuario, nombre y contraseña son obligatorios.' });
+// Rate limit del registro, por IP y en memoria (mismo criterio que
+// intentosLogin: efímero a propósito). Cuenta cada intento, no solo los
+// fallidos: este endpoint es público y cada llamada calcula un scrypt, así
+// que sin tope un script podría congelar el event loop o llenar la base de
+// empresas vacías.
+const REGISTROS_MAX = 5;
+const REGISTROS_VENTANA_MS = 60 * 60 * 1000;
+const intentosRegistro = new Map();
+
+function registroExcedido(ip) {
+  const ahora = Date.now();
+  const registro = intentosRegistro.get(ip);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    intentosRegistro.set(ip, { cuenta: 1, desde: ahora });
+    return false;
+  }
+  registro.cuenta += 1;
+  return registro.cuenta > REGISTROS_MAX;
+}
+
+// Alta de empresa (CLAUDE.md §28): cualquiera crea su negocio y queda como su
+// primer admin. Reemplaza al viejo /api/auth/bootstrap, que era el caso
+// particular "instalación nueva, primera empresa".
+//
+// Riesgo aceptado y documentado acá para que no se lea como un olvido: no hay
+// verificación de email ni captcha (requieren un servicio externo), solo el
+// rate limit por IP de arriba. Tampoco hay forma de apagar el registro
+// público; ver "Qué sigue" en handoff.md.
+app.post('/api/auth/registro', (req, res) => {
+  if (registroExcedido(req.ip)) {
+    return res.status(429).json({ error: 'Demasiados intentos de registro. Probá de nuevo más tarde.' });
+  }
+
+  const empresa = String(req.body?.empresa ?? '').trim();
+  const usuario = String(req.body?.usuario ?? '').trim();
+  const nombre = String(req.body?.nombre ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (!empresa || !usuario || !nombre || !password) {
+    return res.status(400).json({ error: 'Negocio, usuario, nombre y contraseña son obligatorios.' });
+  }
+  if (/\s/.test(usuario)) {
+    return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
   }
   if (password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
 
-  // Revalida en el servidor la misma condición que /api/auth/estado
-  // reportó — nunca confiar en que el frontend la respetó.
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
-  if (count > 0) {
-    return res.status(409).json({ error: 'Ya existe un administrador. El bootstrap no está disponible.' });
+  // Global a propósito: el nombre de usuario es único en todo Nexo y el login
+  // no pide empresa (hist. §45).
+  const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
+  if (existe) {
+    return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
   }
 
   let usuarioId;
   withTransaction(() => {
-    const orgId = organizacionUnica();
     const { hash, salt } = hashPassword(password);
+    // Instalación nueva: todavía no hay ningún usuario, así que se adopta la
+    // organización que db/index.js sembró al arrancar en vez de dejarla
+    // huérfana. Revalidado acá adentro, nunca confiar en el frontend.
+    const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+    let orgId;
+    if (count === 0) {
+      orgId = organizacionUnica();
+      db.prepare('UPDATE organizaciones SET nombre = ? WHERE id = ?').run(empresa, orgId);
+    } else {
+      orgId = Number(db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run(empresa).lastInsertRowid);
+      sembrarCatalogosBase(orgId);
+    }
     const info = db
       .prepare(
         `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, rol, debe_cambiar_password)
@@ -366,9 +442,18 @@ app.post('/api/auth/bootstrap', (req, res) => {
     usuarioId = Number(info.lastInsertRowid);
     registrarAuditoria({
       accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: orgId,
+      usuario_id: usuarioId,
+      organizacion_id: orgId,
+      detalle: `Empresa "${empresa}" creada`
+    });
+    registrarAuditoria({
+      accion: 'crear',
       entidad: 'usuario',
       entidad_id: usuarioId,
       usuario_id: usuarioId,
+      organizacion_id: orgId,
       detalle: `Primer administrador creado: ${nombre} (${usuario})`
     });
   });
@@ -585,14 +670,19 @@ const SELECT_CLIENTE_CON_TOTALES = `
                     WHERE saldo_cc_clientes.cliente_id = clientes.id), 0) AS deuda
     FROM clientes`;
 
+// Filtro por organizacion_id (CLAUDE.md §28), mismo patrón que productos.
 app.get('/api/clientes', (req, res) => {
-  const clientes = db.prepare(`${SELECT_CLIENTE_CON_TOTALES} ORDER BY clientes.nombre`).all();
+  const clientes = db
+    .prepare(`${SELECT_CLIENTE_CON_TOTALES} WHERE clientes.organizacion_id = ? ORDER BY clientes.nombre`)
+    .all(req.usuario.organizacion_id);
   res.json(clientes);
 });
 
 app.get('/api/clientes/:id', (req, res) => {
   const clienteId = Number(req.params.id);
-  const cliente = db.prepare(`${SELECT_CLIENTE_CON_TOTALES} WHERE clientes.id = ?`).get(clienteId);
+  const cliente = db
+    .prepare(`${SELECT_CLIENTE_CON_TOTALES} WHERE clientes.id = ? AND clientes.organizacion_id = ?`)
+    .get(clienteId, req.usuario.organizacion_id);
   if (!cliente) {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
@@ -619,12 +709,20 @@ app.get('/api/clientes/:id', (req, res) => {
 });
 
 // lista_precio_id: NULL = "usa la predeterminada", igual que en
-// ventas/presupuestos (CLAUDE.md §18). Si viene un id, tiene que existir.
+// ventas/presupuestos (CLAUDE.md §18). Si viene un id, tiene que existir y
+// ser de la organización de la operación (Etapa A, CLAUDE.md §28).
 function normalizarListaPrecioId(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
 }
-function listaPrecioValida(listaPrecioId) {
-  return listaPrecioId === null || Boolean(db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId));
+function listaPrecioValida(listaPrecioId, organizacionId) {
+  return (
+    listaPrecioId === null ||
+    Boolean(
+      db
+        .prepare('SELECT 1 FROM listas_precios WHERE id = ? AND organizacion_id = ?')
+        .get(listaPrecioId, organizacionId)
+    )
+  );
 }
 
 // condicion_pago habitual de un cliente/proveedor: NULL = "no tiene un plazo
@@ -648,7 +746,7 @@ app.post('/api/clientes', (req, res) => {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
   const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
-  if (!listaPrecioValida(listaPrecioId)) {
+  if (!listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
   const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
@@ -658,8 +756,8 @@ app.post('/api/clientes', (req, res) => {
 
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       nombre.trim(),
@@ -669,14 +767,17 @@ app.post('/api/clientes', (req, res) => {
       documento ?? null,
       notas ?? null,
       listaPrecioId,
-      condicionPagoHabitual
+      condicionPagoHabitual,
+      req.usuario.organizacion_id
     );
   res.status(201).json({ id: lastInsertRowid });
 });
 
 app.patch('/api/clientes/:id', (req, res) => {
   const clienteId = Number(req.params.id);
-  const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(clienteId);
+  const cliente = db
+    .prepare('SELECT * FROM clientes WHERE id = ? AND organizacion_id = ?')
+    .get(clienteId, req.usuario.organizacion_id);
   if (!cliente) {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
@@ -686,7 +787,7 @@ app.patch('/api/clientes/:id', (req, res) => {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
   const listaPrecioId = normalizarListaPrecioId(lista_precio_id);
-  if (!listaPrecioValida(listaPrecioId)) {
+  if (!listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
   const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
@@ -746,15 +847,19 @@ app.patch('/api/clientes/:id', (req, res) => {
   res.json({ id: clienteId });
 });
 
-// El correlativo es por (punto de venta, tipo, letra): cada combinación
-// tiene su propia serie, como en la realidad. El índice único
-// (db/index.js) es la garantía real contra un choque; esto solo calcula
-// el candidato — tiene que llamarse siempre dentro de la misma
-// transacción que hace el INSERT, para que las dos cosas sean atómicas.
-function siguienteNumero(puntoVenta, tipo, letra) {
+// El correlativo es por (organización, punto de venta, tipo, letra): cada
+// combinación tiene su propia serie, como en la realidad — cada organización
+// es un negocio con su propio CUIT (CLAUDE.md §28/§33), así que no comparte
+// numeración con otra. El índice único (db/index.js) es la garantía real
+// contra un choque; esto solo calcula el candidato — tiene que llamarse
+// siempre dentro de la misma transacción que hace el INSERT, para que las
+// dos cosas sean atómicas.
+function siguienteNumero(organizacionId, puntoVenta, tipo, letra) {
   const { maximo } = db
-    .prepare('SELECT MAX(numero) AS maximo FROM facturas WHERE punto_venta = ? AND tipo = ? AND letra = ?')
-    .get(puntoVenta, tipo, letra);
+    .prepare(
+      'SELECT MAX(numero) AS maximo FROM facturas WHERE organizacion_id = ? AND punto_venta = ? AND tipo = ? AND letra = ?'
+    )
+    .get(organizacionId, puntoVenta, tipo, letra);
   return (maximo ?? 0) + 1;
 }
 
@@ -805,13 +910,17 @@ const SELECT_FACTURA = `
     JOIN clientes ON clientes.id = facturas.cliente_id`;
 
 app.get('/api/facturas', (req, res) => {
-  const facturas = db.prepare(`${SELECT_FACTURA} ORDER BY facturas.id DESC`).all();
+  const facturas = db
+    .prepare(`${SELECT_FACTURA} WHERE facturas.organizacion_id = ? ORDER BY facturas.id DESC`)
+    .all(req.usuario.organizacion_id);
   res.json(facturas.map((f) => ({ ...f, comprobante: comprobante(f) })));
 });
 
 app.get('/api/facturas/:id', (req, res) => {
   const facturaId = Number(req.params.id);
-  const factura = db.prepare(`${SELECT_FACTURA} WHERE facturas.id = ?`).get(facturaId);
+  const factura = db
+    .prepare(`${SELECT_FACTURA} WHERE facturas.id = ? AND facturas.organizacion_id = ?`)
+    .get(facturaId, req.usuario.organizacion_id);
   if (!factura) {
     return res.status(404).json({ error: 'Factura no encontrada.' });
   }
@@ -846,19 +955,25 @@ app.post('/api/facturas', (req, res) => {
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const facturaId = withTransaction(() => {
-    let clienteRow = db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
-    if (!clienteRow) {
-      const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
-      clienteRow = { id: lastInsertRowid };
-    }
+    const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
 
-    const numero = siguienteNumero(puntoVentaFinal, tipoFinal, letraFinal);
+    const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero)
-         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?)`
+        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id)
+         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`
       )
-      .run(clienteRow.id, concepto, neto, condicion, tipoFinal, letraFinal, puntoVentaFinal, numero);
+      .run(
+        clienteRow.id,
+        concepto,
+        neto,
+        condicion,
+        tipoFinal,
+        letraFinal,
+        puntoVentaFinal,
+        numero,
+        req.usuario.organizacion_id
+      );
 
     auditar(req, {
       accion: 'crear',
@@ -879,9 +994,17 @@ app.post('/api/facturas', (req, res) => {
 // tres validaciones (nombre vacío, nombre duplicado, baja lógica vía
 // `activa` en vez de DELETE, para no dejar productos apuntando a una FK
 // borrada). Sin `tipo`: acá no hay una razón contable que lo justifique.
+//
+// Los cinco catálogos (categorías, listas de precios, depósitos, cuentas de
+// tesorería y categorías de gasto) son por organización (Etapa A, CLAUDE.md
+// §28): cada empresa ve y edita solo los suyos, y el nombre duplicado se
+// chequea dentro de la empresa — dos empresas pueden tener cada una su
+// "Efectivo". Un id de otra empresa da el mismo 404 que uno inexistente.
 
 app.get('/api/categorias', (req, res) => {
-  const categorias = db.prepare('SELECT * FROM categorias ORDER BY nombre').all();
+  const categorias = db
+    .prepare('SELECT * FROM categorias WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(categorias);
 });
 
@@ -891,14 +1014,25 @@ app.post('/api/categorias', soloAdmin, (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'La categoría necesita un nombre.' });
   }
-  const yaExiste = db.prepare('SELECT 1 FROM categorias WHERE nombre = ?').get(String(nombre).trim());
+  const yaExiste = db
+    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO categorias (nombre) VALUES (?)')
-    .run(String(nombre).trim());
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO categorias (nombre, organizacion_id) VALUES (?, ?)')
+      .run(String(nombre).trim(), req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'categoria',
+      entidad_id: id,
+      detalle: `Categoría "${String(nombre).trim()}" creada`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -906,7 +1040,9 @@ app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, activa } = req.body;
 
-  const categoria = db.prepare('SELECT * FROM categorias WHERE id = ?').get(categoriaId);
+  const categoria = db
+    .prepare('SELECT * FROM categorias WHERE id = ? AND organizacion_id = ?')
+    .get(categoriaId, req.usuario.organizacion_id);
   if (!categoria) {
     return res.status(404).json({ error: 'Categoría no encontrada.' });
   }
@@ -914,8 +1050,8 @@ app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'La categoría necesita un nombre.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), categoriaId);
+    .prepare('SELECT 1 FROM categorias WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), categoriaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
   }
@@ -957,7 +1093,9 @@ app.patch('/api/categorias/:id', soloAdmin, (req, res) => {
 // puede desactivar ni desmarcar directamente.
 
 app.get('/api/listas-precios', (req, res) => {
-  const listas = db.prepare('SELECT * FROM listas_precios ORDER BY nombre').all();
+  const listas = db
+    .prepare('SELECT * FROM listas_precios WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(listas);
 });
 
@@ -967,14 +1105,25 @@ app.post('/api/listas-precios', (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'La lista necesita un nombre.' });
   }
-  const yaExiste = db.prepare('SELECT 1 FROM listas_precios WHERE nombre = ?').get(String(nombre).trim());
+  const yaExiste = db
+    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una lista con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO listas_precios (nombre) VALUES (?)')
-    .run(String(nombre).trim());
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO listas_precios (nombre, organizacion_id) VALUES (?, ?)')
+      .run(String(nombre).trim(), req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'lista_precio',
+      entidad_id: id,
+      detalle: `Lista de precios "${String(nombre).trim()}" creada`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -982,7 +1131,9 @@ app.patch('/api/listas-precios/:id', (req, res) => {
   const listaId = Number(req.params.id);
   const { nombre, activa, es_predeterminada } = req.body;
 
-  const lista = db.prepare('SELECT * FROM listas_precios WHERE id = ?').get(listaId);
+  const lista = db
+    .prepare('SELECT * FROM listas_precios WHERE id = ? AND organizacion_id = ?')
+    .get(listaId, req.usuario.organizacion_id);
   if (!lista) {
     return res.status(404).json({ error: 'Lista de precios no encontrada.' });
   }
@@ -990,8 +1141,8 @@ app.patch('/api/listas-precios/:id', (req, res) => {
     return res.status(400).json({ error: 'La lista necesita un nombre.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), listaId);
+    .prepare('SELECT 1 FROM listas_precios WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), listaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra lista con ese nombre.' });
   }
@@ -1008,8 +1159,17 @@ app.patch('/api/listas-precios/:id', (req, res) => {
       error: 'No se puede quitar la lista predeterminada: marcá otra como predeterminada en su lugar.'
     });
   }
-  if (nuevaEsPredeterminada && activa === false) {
-    return res.status(400).json({ error: 'La lista predeterminada no se puede desactivar.' });
+  // Se mira el estado final, no solo el body: marcar como predeterminada una
+  // lista que ya estaba inactiva (sin mandar `activa`) la dejaba inactiva y
+  // predeterminada a la vez. No se la activa sola: la API no cambia en
+  // silencio un campo que nadie pidió cambiar.
+  const nuevaActiva = activa === undefined ? Boolean(lista.activa) : Boolean(activa);
+  if (nuevaEsPredeterminada && !nuevaActiva) {
+    return res.status(400).json({
+      error: activa === false
+        ? 'La lista predeterminada no se puede desactivar.'
+        : 'Activá la lista antes de marcarla como predeterminada.'
+    });
   }
 
   const nuevo = {
@@ -1021,10 +1181,15 @@ app.patch('/api/listas-precios/:id', (req, res) => {
 
   withTransaction(() => {
     // Si esta lista pasa a ser la predeterminada, desmarcar cualquier otra
-    // primero — dentro de la misma transacción, así nunca hay un instante
-    // (ni una falla a mitad de camino) con dos marcadas o con cero.
+    // de la misma organización primero — dentro de la misma transacción, así
+    // nunca hay un instante (ni una falla a mitad de camino) con dos marcadas
+    // o con cero. Sin el filtro de organización, marcar una lista acá le
+    // quitaba la predeterminada a todas las demás empresas.
     if (nuevaEsPredeterminada && !lista.es_predeterminada) {
-      db.prepare('UPDATE listas_precios SET es_predeterminada = 0 WHERE id <> ?').run(listaId);
+      db.prepare('UPDATE listas_precios SET es_predeterminada = 0 WHERE id <> ? AND organizacion_id = ?').run(
+        listaId,
+        req.usuario.organizacion_id
+      );
     }
     db.prepare('UPDATE listas_precios SET nombre = ?, activa = ?, es_predeterminada = ? WHERE id = ?').run(
       nuevo.nombre,
@@ -1056,7 +1221,9 @@ app.patch('/api/listas-precios/:id', (req, res) => {
 // real escondida de cualquier pantalla que solo liste depósitos activos.
 
 app.get('/api/depositos', (req, res) => {
-  const depositos = db.prepare('SELECT * FROM depositos ORDER BY nombre').all();
+  const depositos = db
+    .prepare('SELECT * FROM depositos WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(depositos);
 });
 
@@ -1066,19 +1233,24 @@ app.post('/api/depositos', (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El depósito necesita un nombre.' });
   }
-  const yaExiste = db.prepare('SELECT 1 FROM depositos WHERE nombre = ?').get(String(nombre).trim());
+  const yaExiste = db
+    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe un depósito con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO depositos (nombre, direccion) VALUES (?, ?)')
-    .run(String(nombre).trim(), direccion ? String(direccion).trim() : null);
-  auditar(req, {
-    accion: 'crear',
-    entidad: 'deposito',
-    entidad_id: lastInsertRowid,
-    detalle: `Depósito "${String(nombre).trim()}" creado`
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO depositos (nombre, direccion, organizacion_id) VALUES (?, ?, ?)')
+      .run(String(nombre).trim(), direccion ? String(direccion).trim() : null, req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'deposito',
+      entidad_id: id,
+      detalle: `Depósito "${String(nombre).trim()}" creado`
+    });
+    return id;
   });
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -1087,7 +1259,9 @@ app.patch('/api/depositos/:id', (req, res) => {
   const depositoId = Number(req.params.id);
   const { nombre, direccion, activo, es_predeterminado } = req.body;
 
-  const deposito = db.prepare('SELECT * FROM depositos WHERE id = ?').get(depositoId);
+  const deposito = db
+    .prepare('SELECT * FROM depositos WHERE id = ? AND organizacion_id = ?')
+    .get(depositoId, req.usuario.organizacion_id);
   if (!deposito) {
     return res.status(404).json({ error: 'Depósito no encontrado.' });
   }
@@ -1095,8 +1269,8 @@ app.patch('/api/depositos/:id', (req, res) => {
     return res.status(400).json({ error: 'El depósito necesita un nombre.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), depositoId);
+    .prepare('SELECT 1 FROM depositos WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), depositoId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otro depósito con ese nombre.' });
   }
@@ -1110,8 +1284,15 @@ app.patch('/api/depositos/:id', (req, res) => {
       error: 'No se puede quitar el depósito predeterminado: marcá otro como predeterminado en su lugar.'
     });
   }
-  if (nuevoEsPredeterminado && activo === false) {
-    return res.status(400).json({ error: 'El depósito predeterminado no se puede desactivar.' });
+  // Mismo criterio que listas de precios: se mira el estado final, no solo el
+  // body, para que un depósito inactivo no pueda quedar como predeterminado.
+  const nuevoActivoFinal = activo === undefined ? Boolean(deposito.activo) : Boolean(activo);
+  if (nuevoEsPredeterminado && !nuevoActivoFinal) {
+    return res.status(400).json({
+      error: activo === false
+        ? 'El depósito predeterminado no se puede desactivar.'
+        : 'Activá el depósito antes de marcarlo como predeterminado.'
+    });
   }
 
   const nuevoActivo = activo === undefined ? Number(Boolean(deposito.activo)) : Number(Boolean(activo));
@@ -1136,10 +1317,14 @@ app.patch('/api/depositos/:id', (req, res) => {
 
   withTransaction(() => {
     // Mismo criterio que listas de precios: si este depósito pasa a ser el
-    // predeterminado, desmarcar cualquier otro primero, dentro de la misma
-    // transacción, para que nunca haya un instante con dos marcados o cero.
+    // predeterminado, desmarcar cualquier otro de la misma organización
+    // primero, dentro de la misma transacción, para que nunca haya un
+    // instante con dos marcados o cero.
     if (nuevoEsPredeterminado && !deposito.es_predeterminado) {
-      db.prepare('UPDATE depositos SET es_predeterminado = 0 WHERE id <> ?').run(depositoId);
+      db.prepare('UPDATE depositos SET es_predeterminado = 0 WHERE id <> ? AND organizacion_id = ?').run(
+        depositoId,
+        req.usuario.organizacion_id
+      );
     }
     db.prepare('UPDATE depositos SET nombre = ?, direccion = ?, activo = ?, es_predeterminado = ? WHERE id = ?').run(
       nuevo.nombre,
@@ -1165,9 +1350,25 @@ app.patch('/api/depositos/:id', (req, res) => {
 // El depósito predeterminado, resuelto una sola vez y reusado por todas las
 // operaciones que necesitan "el depósito de esta operación, si no se
 // especificó uno". Mismo criterio que NULL en ventas.lista_precio_id: nunca
-// se guarda el id copiado, siempre se resuelve en el momento.
-function depositoPredeterminadoId() {
-  return db.prepare('SELECT id FROM depositos WHERE es_predeterminado = 1').get()?.id ?? null;
+// se guarda el id copiado, siempre se resuelve en el momento. Es el de la
+// organización de la operación: cada empresa tiene el suyo.
+function depositoPredeterminadoId(organizacionId) {
+  return (
+    db
+      .prepare('SELECT id FROM depositos WHERE es_predeterminado = 1 AND organizacion_id = ?')
+      .get(organizacionId)?.id ?? null
+  );
+}
+
+// Un id de depósito que llega del cliente tiene que existir, estar activo y
+// ser de la organización de la operación. Devuelve el mismo resultado para
+// "no existe" y "es de otra empresa", igual que el resto de la Etapa A.
+function depositoActivoValido(depositoId, organizacionId) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+      .get(depositoId, organizacionId)
+  );
 }
 
 /* ---------- Productos ---------- */
@@ -1235,8 +1436,13 @@ function decorarProducto(p, precios = {}) {
   };
 }
 
+// Filtro por organizacion_id: primer punto del sistema que aplica el
+// aislamiento multi-tenant (CLAUDE.md §28). productos es la tabla piloto;
+// otros GET de negocio todavía no filtran, se van sumando etapa por etapa.
 app.get('/api/productos', (req, res) => {
-  const productos = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all();
+  const productos = db
+    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
+    .all(req.usuario.organizacion_id);
   const preciosPorProducto = obtenerPreciosPorProducto();
   res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id])));
 });
@@ -1265,7 +1471,7 @@ function normalizarMargenObjetivo(valor) {
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo }) {
+function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo }, organizacionId) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
@@ -1282,10 +1488,13 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, cat
     return 'El stock máximo no puede ser menor que el mínimo.';
   }
   // Mismo criterio que categoria_id en gastos (validarGasto, más abajo):
-  // si viene, tiene que existir de verdad — nunca se confía ciegamente en
-  // un id que llega del cliente.
+  // si viene, tiene que existir de verdad y ser de la organización del
+  // producto — nunca se confía ciegamente en un id que llega del cliente.
   const categoriaId = normalizarCategoriaId(categoria_id);
-  if (categoriaId !== null && !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(categoriaId)) {
+  if (
+    categoriaId !== null &&
+    !db.prepare('SELECT 1 FROM categorias WHERE id = ? AND organizacion_id = ?').get(categoriaId, organizacionId)
+  ) {
     return 'La categoría seleccionada no existe.';
   }
   const margenObjetivo = normalizarMargenObjetivo(margen_objetivo);
@@ -1296,7 +1505,7 @@ function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, cat
 }
 
 app.post('/api/productos', soloAdmin, (req, res) => {
-  const error = validarProducto(req.body);
+  const error = validarProducto(req.body, req.usuario.organizacion_id);
   if (error) {
     return res.status(400).json({ error });
   }
@@ -1311,8 +1520,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     // primera compra que lo incluya.
     ({ lastInsertRowid } = db
       .prepare(
-        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -1322,7 +1531,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         normalizarPrecio(stock_minimo),
         normalizarStockMaximo(stock_maximo),
         normalizarCategoriaId(categoria_id),
-        normalizarMargenObjetivo(margen_objetivo)
+        normalizarMargenObjetivo(margen_objetivo),
+        req.usuario.organizacion_id
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -1379,9 +1589,14 @@ function esAjustePorcentaje(valor) {
 // puntual (o sobre precio_venta como fallback si el producto todavía no
 // tiene precio propio en esa lista).
 function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
+  // organizacion_id en el WHERE (no solo en el INSERT del alta): CLAUDE.md
+  // §28 exige que ninguna consulta cruce datos de dos empresas, así que un
+  // id de otra organización tiene que dar 404, igual que "no existe".
   const producto = db
-    .prepare('SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo FROM productos WHERE id = ?')
-    .get(productoId);
+    .prepare(
+      'SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo FROM productos WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     throw new ErrorBulk('Producto no encontrado.', 404);
   }
@@ -1398,7 +1613,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     fusionado.precio_venta = Math.round(producto.precio_venta * (1 + ajuste) * 100) / 100;
   }
 
-  const error = validarProducto(fusionado);
+  const error = validarProducto(fusionado, req.usuario.organizacion_id);
   if (error) {
     throw new ErrorBulk(error);
   }
@@ -1416,8 +1631,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     preciosPorLista = {};
     for (const [listaIdStr, valor] of Object.entries(cambios.precios)) {
       const listaId = Number(listaIdStr);
-      const listaExiste = db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaId);
-      if (!listaExiste) {
+      if (!listaPrecioValida(listaId, req.usuario.organizacion_id)) {
         throw new ErrorBulk('La lista de precios seleccionada no existe.');
       }
       const precioBase = preciosActuales[listaId] ?? producto.precio_venta;
@@ -1452,7 +1666,9 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // desincronizarse. Se resuelve acá, antes del diff, para que quede
   // reflejado en la auditoría del producto como cualquier otro cambio de
   // precio_venta.
-  const listaPredeterminada = db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1').get();
+  const listaPredeterminada = db
+    .prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?')
+    .get(req.usuario.organizacion_id);
   if (preciosPorLista && listaPredeterminada && preciosPorLista[listaPredeterminada.id] !== undefined) {
     nuevo.precio_venta = preciosPorLista[listaPredeterminada.id];
   }
@@ -1559,7 +1775,9 @@ app.post('/api/productos/bulk', soloAdmin, (req, res) => {
 // vuelta la lista, para mostrar lo más reciente primero.
 app.get('/api/productos/:id/movimientos', (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -1594,6 +1812,12 @@ app.get('/api/productos/:id/movimientos', (req, res) => {
 
 app.get('/api/productos/:id/atributos', (req, res) => {
   const productoId = Number(req.params.id);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributos = db
     .prepare('SELECT id, nombre, orden FROM producto_atributos WHERE producto_id = ? ORDER BY orden, nombre')
     .all(productoId);
@@ -1609,7 +1833,9 @@ app.get('/api/productos/:id/atributos', (req, res) => {
 
 app.post('/api/productos/:id/atributos', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id FROM productos WHERE id = ?').get(productoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -1645,6 +1871,12 @@ app.post('/api/productos/:id/atributos', soloAdmin, (req, res) => {
 app.patch('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1675,6 +1907,12 @@ app.patch('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
 app.delete('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1700,6 +1938,12 @@ app.delete('/api/productos/:id/atributos/:atributoId', soloAdmin, (req, res) => 
 app.post('/api/productos/:id/atributos/:atributoId/valores', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1737,6 +1981,12 @@ app.delete('/api/productos/:id/atributos/:atributoId/valores/:valorId', soloAdmi
   const productoId = Number(req.params.id);
   const atributoId = Number(req.params.atributoId);
   const valorId = Number(req.params.valorId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const atributo = db.prepare('SELECT * FROM producto_atributos WHERE id = ? AND producto_id = ?').get(atributoId, productoId);
   if (!atributo) {
     return res.status(404).json({ error: 'Atributo no encontrado.' });
@@ -1861,6 +2111,12 @@ function combinacionYaExiste(productoId, valores, excluirVarianteId = null) {
 
 app.get('/api/productos/:id/variantes', (req, res) => {
   const productoId = Number(req.params.id);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const variantes = db
     .prepare(`${SELECT_VARIANTE} WHERE producto_variantes.producto_id = ? ORDER BY producto_variantes.id`)
     .all(productoId);
@@ -1870,7 +2126,9 @@ app.get('/api/productos/:id/variantes', (req, res) => {
 
 app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
-  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(productoId);
+  const producto = db
+    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
@@ -1924,6 +2182,12 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
 app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const varianteId = Number(req.params.varianteId);
+  const producto = db
+    .prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(productoId, req.usuario.organizacion_id);
+  if (!producto) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
   const variante = db.prepare('SELECT * FROM producto_variantes WHERE id = ? AND producto_id = ?').get(varianteId, productoId);
   if (!variante) {
     return res.status(404).json({ error: 'Variante no encontrada.' });
@@ -1944,7 +2208,7 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
     preciosPorLista = {};
     for (const [listaIdStr, valor] of Object.entries(precios)) {
       const listaId = Number(listaIdStr);
-      if (!db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaId)) {
+      if (!listaPrecioValida(listaId, req.usuario.organizacion_id)) {
         return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
       }
       const precioNuevo = normalizarPrecio(valor);
@@ -2000,7 +2264,15 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
 app.get('/api/productos/:id/variantes/:varianteId/movimientos', (req, res) => {
   const productoId = Number(req.params.id);
   const varianteId = Number(req.params.varianteId);
-  const variante = db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ?').get(varianteId, productoId);
+  const variante = db
+    .prepare(
+      `SELECT producto_variantes.id
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+        WHERE producto_variantes.id = ? AND producto_variantes.producto_id = ?
+          AND productos.organizacion_id = ?`
+    )
+    .get(varianteId, productoId, req.usuario.organizacion_id);
   if (!variante) {
     return res.status(404).json({ error: 'Variante no encontrada.' });
   }
@@ -2047,16 +2319,19 @@ const SELECT_PROVEEDOR_CON_TOTALES = `
                     WHERE saldo_cc_proveedores.proveedor_id = proveedores.id), 0) AS deuda
     FROM proveedores`;
 
+// Filtro por organizacion_id (CLAUDE.md §28), mismo patrón que clientes.
 app.get('/api/proveedores', (req, res) => {
-  const proveedores = db.prepare(`${SELECT_PROVEEDOR_CON_TOTALES} ORDER BY proveedores.nombre`).all();
+  const proveedores = db
+    .prepare(`${SELECT_PROVEEDOR_CON_TOTALES} WHERE proveedores.organizacion_id = ? ORDER BY proveedores.nombre`)
+    .all(req.usuario.organizacion_id);
   res.json(proveedores);
 });
 
 app.get('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
   const proveedor = db
-    .prepare(`${SELECT_PROVEEDOR_CON_TOTALES} WHERE proveedores.id = ?`)
-    .get(proveedorId);
+    .prepare(`${SELECT_PROVEEDOR_CON_TOTALES} WHERE proveedores.id = ? AND proveedores.organizacion_id = ?`)
+    .get(proveedorId, req.usuario.organizacion_id);
   if (!proveedor) {
     return res.status(404).json({ error: 'Proveedor no encontrado.' });
   }
@@ -2108,8 +2383,8 @@ app.post('/api/proveedores', (req, res) => {
 
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       String(nombre).trim(),
@@ -2118,7 +2393,8 @@ app.post('/api/proveedores', (req, res) => {
       direccion ?? null,
       documento ?? null,
       notas ?? null,
-      condicionPagoHabitual
+      condicionPagoHabitual,
+      req.usuario.organizacion_id
     );
   res.status(201).json({ id: lastInsertRowid });
 });
@@ -2127,7 +2403,9 @@ app.patch('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
   const { nombre, email, telefono, direccion, documento, notas, condicion_pago } = req.body;
 
-  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ?').get(proveedorId);
+  const proveedor = db
+    .prepare('SELECT * FROM proveedores WHERE id = ? AND organizacion_id = ?')
+    .get(proveedorId, req.usuario.organizacion_id);
   if (!proveedor) {
     return res.status(404).json({ error: 'Proveedor no encontrado.' });
   }
@@ -2211,14 +2489,15 @@ function registrarMovimientoStock({
   devolucion_proveedor_id = null,
   transferencia_id = null,
   costo_unitario = null,
-  nota = null
+  nota = null,
+  organizacion_id
 }) {
   return db
     .prepare(
       `INSERT INTO movimientos_stock
          (producto_id, variante_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
-          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       producto_id,
@@ -2233,7 +2512,8 @@ function registrarMovimientoStock({
       devolucion_proveedor_id,
       transferencia_id,
       costo_unitario,
-      nota
+      nota,
+      organizacion_id
     );
 }
 
@@ -2252,18 +2532,25 @@ app.get('/api/stock', (req, res) => {
               COALESCE(stock_actual.cantidad, 0) AS stock_total
        FROM productos
        LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+       WHERE productos.organizacion_id = ?
        ORDER BY productos.nombre`
     )
-    .all();
-  const porDeposito = db
-    .prepare(
-      `SELECT stock_por_deposito.producto_id, stock_por_deposito.deposito_id,
-              depositos.nombre AS deposito, stock_por_deposito.cantidad AS stock
-         FROM stock_por_deposito
-         JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
-        WHERE depositos.activo = 1`
-    )
-    .all();
+    .all(req.usuario.organizacion_id);
+  // stock_por_deposito no tiene organizacion_id propia (se agrupa por
+  // producto_id, que ya está filtrado arriba): acotarla a los productos de
+  // esta organización evita traer filas de depósitos de otra empresa.
+  const idsProductos = productos.map((p) => p.id);
+  const porDeposito = idsProductos.length === 0
+    ? []
+    : db
+        .prepare(
+          `SELECT stock_por_deposito.producto_id, stock_por_deposito.deposito_id,
+                  depositos.nombre AS deposito, stock_por_deposito.cantidad AS stock
+             FROM stock_por_deposito
+             JOIN depositos ON depositos.id = stock_por_deposito.deposito_id
+            WHERE depositos.activo = 1 AND stock_por_deposito.producto_id IN (${idsProductos.map(() => '?').join(',')})`
+        )
+        .all(...idsProductos);
   const filasPorProducto = new Map();
   for (const fila of porDeposito) {
     if (!filasPorProducto.has(fila.producto_id)) filasPorProducto.set(fila.producto_id, []);
@@ -2314,15 +2601,19 @@ app.get('/api/stock', (req, res) => {
 app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
   const { producto_id, deposito_id, cantidad, nota } = req.body;
 
-  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
+  const producto = db
+    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(producto_id, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
   }
   if (!Number(cantidad) || Number(cantidad) === 0) {
     return res.status(400).json({ error: 'La cantidad del ajuste no puede ser 0.' });
   }
-  const depositoIdResuelto = deposito_id ? Number(deposito_id) : depositoPredeterminadoId();
-  const deposito = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(depositoIdResuelto);
+  const depositoIdResuelto = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
+  const deposito = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(depositoIdResuelto, req.usuario.organizacion_id);
   if (!deposito) {
     return res.status(400).json({ error: 'El depósito no existe o está inactivo.' });
   }
@@ -2345,7 +2636,8 @@ app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
       tipo: 'ajuste',
       cantidad: Number(cantidad),
       origen: 'ajuste_manual',
-      nota: nota ?? null
+      nota: nota ?? null,
+      organizacion_id: req.usuario.organizacion_id
     }));
     auditar(req, {
       accion: 'editar',
@@ -2384,10 +2676,11 @@ app.get('/api/movimientos-stock', (req, res) => {
          FROM movimientos_stock
          JOIN productos ON productos.id = movimientos_stock.producto_id
          LEFT JOIN depositos ON depositos.id = movimientos_stock.deposito_id
+        WHERE movimientos_stock.organizacion_id = ?
         ORDER BY movimientos_stock.fecha DESC, movimientos_stock.id DESC
         LIMIT ?`
     )
-    .all(limite);
+    .all(req.usuario.organizacion_id, limite);
   res.json(movimientos);
 });
 
@@ -2421,9 +2714,10 @@ app.get('/api/transferencias', (req, res) => {
             WHERE transferencia_id = transferencias.id AND tipo = 'salida'
          )
          JOIN productos ON productos.id = mov.producto_id
+        WHERE transferencias.organizacion_id = ?
         ORDER BY transferencias.fecha DESC, transferencias.id DESC`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(transferencias);
 });
 
@@ -2436,15 +2730,21 @@ app.post('/api/transferencias', (req, res) => {
   if (Number(deposito_origen_id) === Number(deposito_destino_id)) {
     return res.status(400).json({ error: 'El depósito de origen y de destino no pueden ser el mismo.' });
   }
-  const origen = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(deposito_origen_id);
+  const origen = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(deposito_origen_id, req.usuario.organizacion_id);
   if (!origen) {
     return res.status(400).json({ error: 'El depósito de origen no existe o está inactivo.' });
   }
-  const destino = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1').get(deposito_destino_id);
+  const destino = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(deposito_destino_id, req.usuario.organizacion_id);
   if (!destino) {
     return res.status(400).json({ error: 'El depósito de destino no existe o está inactivo.' });
   }
-  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ?').get(producto_id);
+  const producto = db
+    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(producto_id, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
   }
@@ -2464,16 +2764,17 @@ app.post('/api/transferencias', (req, res) => {
   withTransaction(() => {
     ({ lastInsertRowid } = db
       .prepare(
-        'INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota) VALUES (?, ?, ?)'
+        'INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota, organizacion_id) VALUES (?, ?, ?, ?)'
       )
-      .run(Number(deposito_origen_id), Number(deposito_destino_id), nota ?? null));
+      .run(Number(deposito_origen_id), Number(deposito_destino_id), nota ?? null, req.usuario.organizacion_id));
     registrarMovimientoStock({
       producto_id: Number(producto_id),
       deposito_id: Number(deposito_origen_id),
       tipo: 'salida',
       cantidad: Number(cantidad),
       origen: 'transferencia',
-      transferencia_id: lastInsertRowid
+      transferencia_id: lastInsertRowid,
+      organizacion_id: req.usuario.organizacion_id
     });
     registrarMovimientoStock({
       producto_id: Number(producto_id),
@@ -2481,7 +2782,8 @@ app.post('/api/transferencias', (req, res) => {
       tipo: 'entrada',
       cantidad: Number(cantidad),
       origen: 'transferencia',
-      transferencia_id: lastInsertRowid
+      transferencia_id: lastInsertRowid,
+      organizacion_id: req.usuario.organizacion_id
     });
     auditar(req, {
       accion: 'crear',
@@ -2495,7 +2797,9 @@ app.post('/api/transferencias', (req, res) => {
 
 app.post('/api/transferencias/:id/anular', soloAdmin, (req, res) => {
   const transferenciaId = Number(req.params.id);
-  const transferencia = db.prepare('SELECT * FROM transferencias WHERE id = ?').get(transferenciaId);
+  const transferencia = db
+    .prepare('SELECT * FROM transferencias WHERE id = ? AND organizacion_id = ?')
+    .get(transferenciaId, req.usuario.organizacion_id);
   if (!transferencia) {
     return res.status(404).json({ error: 'Transferencia no encontrada.' });
   }
@@ -2519,7 +2823,8 @@ app.post('/api/transferencias/:id/anular', soloAdmin, (req, res) => {
         cantidad: mov.cantidad,
         origen: 'transferencia',
         transferencia_id: transferenciaId,
-        nota: 'Reversión por anulación'
+        nota: 'Reversión por anulación',
+        organizacion_id: transferencia.organizacion_id
       });
     }
     db.prepare("UPDATE transferencias SET estado = 'anulada' WHERE id = ?").run(transferenciaId);
@@ -2569,9 +2874,10 @@ app.get('/api/ventas', (req, res) => {
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
        FROM ventas
        JOIN clientes ON clientes.id = ventas.cliente_id
+       WHERE ventas.organizacion_id = ?
        ORDER BY ventas.id DESC`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(
     ventas.map((v) => {
       const neto = v.total - v.devuelto;
@@ -2599,9 +2905,9 @@ app.get('/api/ventas/:id', (req, res) => {
          FROM ventas
          JOIN clientes ON clientes.id = ventas.cliente_id
          LEFT JOIN depositos ON depositos.id = ventas.deposito_id
-        WHERE ventas.id = ?`
+        WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
-    .get(ventaId);
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -2695,8 +3001,12 @@ function dondeHayStock(productoId, excluirDepositoId, varianteId = null) {
 // Igual que en compras: un producto con variantes activas exige que cada
 // item traiga una variante puntual, y uno sin variantes rechaza si igual
 // llegó una.
-function validarStockDisponible(items, depositoId) {
-  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+//
+// El producto se busca dentro de la organización de la venta: sin ese
+// filtro, un producto de otra empresa sin stock controlado entraba a la
+// venta y exponía su nombre y su costo (venta_items.costo_unitario_historico).
+function validarStockDisponible(items, depositoId, organizacionId) {
+  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivas = db.prepare(
     'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
@@ -2726,7 +3036,7 @@ function validarStockDisponible(items, depositoId) {
   }
 
   for (const { producto_id, variante_id, cantidad: cantidadPedida } of cantidadPorClave.values()) {
-    const producto = buscarProducto.get(producto_id);
+    const producto = buscarProducto.get(producto_id, organizacionId);
     if (!producto) {
       return 'Uno de los productos de la venta no existe.';
     }
@@ -2758,17 +3068,22 @@ function validarStockDisponible(items, depositoId) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
-function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento }) {
-  // Si el frontend ya sabe qué cliente es (lo eligió de la lista), usa
-  // su id directamente: evita crear un duplicado por una diferencia de
-  // tipeo. Si no, se resuelve por nombre y se crea si no existe.
-  let clienteRow = cliente_id
-    ? db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id)
-    : db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
-  if (!clienteRow) {
-    const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
-    clienteRow = { id: lastInsertRowid };
-  }
+function crearVenta({
+  cliente,
+  cliente_id,
+  items,
+  fecha,
+  lista_precio_id,
+  deposito_id,
+  condicion_pago,
+  fecha_vencimiento,
+  organizacion_id
+}) {
+  // Resuelve el cliente igual que resolverCliente (presupuestos): id
+  // directo si ya se eligió de la lista, si no por nombre, creándolo si no
+  // existe. organizacion_id es obligatorio (CLAUDE.md §28): un cliente
+  // resuelto o creado acá queda siempre en la organización de quien vende.
+  const clienteRow = resolverCliente(cliente, cliente_id, organizacion_id);
 
   // lista_precio_id es NULLABLE a propósito (CLAUDE.md §18 y §8): NULL
   // significa "se hizo con la predeterminada de ese momento", no una lista
@@ -2779,7 +3094,7 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
   // escapa del catch de POST /api/ventas y termina en el handler default
   // de Express (HTML de stack trace en vez de un 400 con JSON).
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, organizacion_id)) {
     throw new ErrorBulk('La lista de precios seleccionada no existe.');
   }
 
@@ -2787,10 +3102,10 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
   // de ese momento" (CLAUDE.md §19). Si viene un id, tiene que existir y
   // estar activo.
   const depositoId = deposito_id ? Number(deposito_id) : null;
-  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  if (depositoId && !depositoActivoValido(depositoId, organizacion_id)) {
     throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
   }
-  const depositoResuelto = depositoId ?? depositoPredeterminadoId();
+  const depositoResuelto = depositoId ?? depositoPredeterminadoId(organizacion_id);
 
   // El vencimiento se calcula sobre la fecha real de la venta, así que hay
   // que resolverla antes del INSERT: sin fecha explícita la columna usaría
@@ -2801,10 +3116,10 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
 
   const { lastInsertRowid: nuevaVentaId } = db
     .prepare(
-      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento);
+    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
@@ -2832,7 +3147,8 @@ function crearVenta({ cliente, cliente_id, items, fecha, lista_precio_id, deposi
       tipo: 'salida',
       cantidad: item.cantidad,
       origen: 'venta',
-      venta_id: nuevaVentaId
+      venta_id: nuevaVentaId,
+      organizacion_id
     });
     // Ya NO se pisa productos.precio_venta con el precio de esta venta
     // (CLAUDE.md §18): con varias listas de precios, una venta con un
@@ -2860,14 +3176,14 @@ app.post('/api/ventas', (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'La venta necesita al menos un item.' });
   }
-  const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId();
-  if (deposito_id && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
+  if (deposito_id && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
 
   // No se puede vender más de lo que hay EN ESE DEPÓSITO: se valida antes
   // de tocar nada, así una venta que falla no deja nada a mitad de camino.
-  const errorStock = validarStockDisponible(items, depositoId);
+  const errorStock = validarStockDisponible(items, depositoId, req.usuario.organizacion_id);
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
@@ -2883,7 +3199,8 @@ app.post('/api/ventas', (req, res) => {
         lista_precio_id,
         deposito_id,
         condicion_pago,
-        fecha_vencimiento
+        fecha_vencimiento,
+        organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
       return id;
@@ -2906,15 +3223,15 @@ app.put('/api/ventas/:id', (req, res) => {
     req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
   const venta = db
     .prepare(
-      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ?'
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ? AND organizacion_id = ?'
     )
-    .get(ventaId);
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -2940,8 +3257,8 @@ app.put('/api/ventas/:id', (req, res) => {
   const depositoId = deposito_id !== undefined
     ? (deposito_id ? Number(deposito_id) : null)
     : venta.deposito_id;
-  const depositoResuelto = depositoId ?? depositoPredeterminadoId();
-  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  const depositoResuelto = depositoId ?? depositoPredeterminadoId(req.usuario.organizacion_id);
+  if (depositoId && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
   if (venta.estado === 'anulada') {
@@ -3005,10 +3322,12 @@ app.put('/api/ventas/:id', (req, res) => {
   // depósito que se va a usar ahora: si la venta cambia de depósito al
   // editarse, lo que libera en el depósito viejo no está disponible en el
   // nuevo.
-  const liberadoEnDepositoResuelto = venta.deposito_id === depositoResuelto || (!venta.deposito_id && depositoResuelto === depositoPredeterminadoId())
+  const liberadoEnDepositoResuelto = venta.deposito_id === depositoResuelto || (!venta.deposito_id && depositoResuelto === depositoPredeterminadoId(req.usuario.organizacion_id))
     ? liberadoPorClave
     : new Map();
-  const buscarProductoEdicion = db.prepare('SELECT nombre FROM productos WHERE id = ?');
+  // Mismo filtro de organización que validarStockDisponible: un producto de
+  // otra empresa tiene que dar el mismo error que uno inexistente.
+  const buscarProductoEdicion = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivasEdicion = db.prepare(
     'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
@@ -3027,7 +3346,7 @@ app.put('/api/ventas/:id', (req, res) => {
       WHERE producto_variantes.id = ? AND producto_variantes.producto_id = ? AND producto_variantes.activo = 1`
   );
   for (const [clave, { producto_id: productoId, variante_id: varianteId, cantidad: cantidadPedida }] of pedidoPorClave) {
-    const producto = buscarProductoEdicion.get(productoId);
+    const producto = buscarProductoEdicion.get(productoId, req.usuario.organizacion_id);
     if (!producto) {
       return res.status(400).json({ error: 'Uno de los productos de la venta no existe.' });
     }
@@ -3069,7 +3388,7 @@ app.put('/api/ventas/:id', (req, res) => {
 
     // 1) Revertir el stock que se había descontado, en el depósito ORIGINAL
     // de la venta (no en el nuevo, si cambió al editar).
-    const depositoOriginal = venta.deposito_id ?? depositoPredeterminadoId();
+    const depositoOriginal = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     for (const item of itemsViejos) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -3079,18 +3398,13 @@ app.put('/api/ventas/:id', (req, res) => {
         cantidad: item.cantidad,
         origen: 'venta',
         venta_id: ventaId,
-        nota: 'Reversión por edición'
+        nota: 'Reversión por edición',
+        organizacion_id: req.usuario.organizacion_id
       });
     }
 
     // 2) Reemplazar cliente, fecha e items.
-    let clienteRow = cliente_id
-      ? db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id)
-      : db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
-    if (!clienteRow) {
-      const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
-      clienteRow = { id: lastInsertRowid };
-    }
+    const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
     db.prepare(
       `UPDATE ventas
           SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ?,
@@ -3131,7 +3445,8 @@ app.put('/api/ventas/:id', (req, res) => {
         tipo: 'salida',
         cantidad: item.cantidad,
         origen: 'venta',
-        venta_id: ventaId
+        venta_id: ventaId,
+        organizacion_id: req.usuario.organizacion_id
       });
       // Ya NO se pisa productos.precio_venta acá tampoco — mismo motivo que
       // en crearVenta (CLAUDE.md §18).
@@ -3173,10 +3488,11 @@ app.get('/api/ventas/:id/cobros', (req, res) => {
               cuentas_tesoreria.nombre AS cuenta
        FROM cobros
        JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
-       WHERE cobros.venta_id = ?
+       JOIN ventas ON ventas.id = cobros.venta_id
+       WHERE cobros.venta_id = ? AND ventas.organizacion_id = ?
        ORDER BY cobros.id`
     )
-    .all(Number(req.params.id));
+    .all(Number(req.params.id), req.usuario.organizacion_id);
   res.json(cobros);
 });
 
@@ -3190,9 +3506,9 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
-       FROM ventas WHERE ventas.id = ?`
+       FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
-    .get(ventaId);
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3209,9 +3525,19 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
       error: `El importe supera el saldo pendiente de la venta (${saldoPendiente.toFixed(2)}).`
     });
   }
+  // registrarCobro no valida la cuenta (ver su comentario): se valida acá.
+  // Hasta la Etapa A de catálogos solo la frenaba la FK (una inexistente
+  // reventaba en el INSERT como 500); ahora además tiene que ser de la
+  // organización, o el ingreso subiría la caja de otra empresa.
+  const cuenta = db
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
+  if (!cuenta) {
+    return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
+  }
 
   const cobroId = withTransaction(() => {
-    const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota);
+    const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota, req.usuario.organizacion_id);
     auditar(req, {
       accion: 'crear',
       entidad: 'cobro',
@@ -3230,14 +3556,14 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
 // cuenta corriente del cliente). Sin validación propia — el llamador ya
 // tiene que haber verificado importe/saldo pendiente/existencia de la
 // cuenta. Asume que se la llama DENTRO de una transacción.
-function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota) {
+function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId) {
   const { lastInsertRowid: nuevoCobroId } = db
     .prepare('INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota) VALUES (?, ?, ?, ?)')
     .run(ventaId, importe, cuentaTesoreriaId, nota ?? null);
 
   db.prepare(
-    "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen) VALUES (?, 'ingreso', ?, ?, 'cobro')"
-  ).run(cuentaTesoreriaId, importe, nuevoCobroId);
+    "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen, organizacion_id) VALUES (?, 'ingreso', ?, ?, 'cobro', ?)"
+  ).run(cuentaTesoreriaId, importe, nuevoCobroId, organizacionId);
 
   db.prepare(
     "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id) VALUES (?, 'cobro', ?, ?, ?)"
@@ -3254,8 +3580,8 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const venta = db
-    .prepare('SELECT ventas.id, ventas.cliente_id FROM ventas WHERE ventas.id = ?')
-    .get(ventaId);
+    .prepare('SELECT ventas.id, ventas.cliente_id FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3274,13 +3600,24 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
         )
         .get(ventaId);
 
-      const numero = siguienteNumero(puntoVentaFinal, tipoFinal, letraFinal);
+      const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero)
-           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`
+          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id)
+           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?)`
         )
-        .run(venta.cliente_id, `Venta #${ventaId}`, total, condicion, ventaId, tipoFinal, letraFinal, puntoVentaFinal, numero);
+        .run(
+          venta.cliente_id,
+          `Venta #${ventaId}`,
+          total,
+          condicion,
+          ventaId,
+          tipoFinal,
+          letraFinal,
+          puntoVentaFinal,
+          numero,
+          req.usuario.organizacion_id
+        );
 
       auditar(req, {
         accion: 'crear',
@@ -3314,7 +3651,9 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
-  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -3344,7 +3683,7 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(ventaId);
 
-    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
+    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     const items = db
       .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
       .all(ventaId);
@@ -3358,7 +3697,8 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
         cantidad: item.cantidad,
         origen: 'venta',
         venta_id: ventaId,
-        nota: 'Reversión por anulación'
+        nota: 'Reversión por anulación',
+        organizacion_id: req.usuario.organizacion_id
       });
       total += item.cantidad * item.precio_unitario;
     }
@@ -3384,14 +3724,16 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
-  const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
   if (venta.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta venta no está en la papelera.' });
   }
-  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId();
+  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const items = db
     .prepare(
@@ -3432,7 +3774,8 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
         cantidad: item.cantidad,
         origen: 'venta',
         venta_id: ventaId,
-        nota: 'Restaurada desde la papelera'
+        nota: 'Restaurada desde la papelera',
+        organizacion_id: req.usuario.organizacion_id
       });
       total += item.cantidad * item.precio_unitario;
     }
@@ -3499,16 +3842,18 @@ function decorarPresupuesto(p, hoy) {
 app.get('/api/presupuestos', (req, res) => {
   const hoy = fechaDeHoy();
   const presupuestos = db
-    .prepare(`${SELECT_PRESUPUESTO} ORDER BY presupuestos.fecha DESC, presupuestos.id DESC`)
-    .all();
+    .prepare(
+      `${SELECT_PRESUPUESTO} WHERE presupuestos.organizacion_id = ? ORDER BY presupuestos.fecha DESC, presupuestos.id DESC`
+    )
+    .all(req.usuario.organizacion_id);
   res.json(presupuestos.map((p) => decorarPresupuesto(p, hoy)));
 });
 
 app.get('/api/presupuestos/:id', (req, res) => {
   const presupuestoId = Number(req.params.id);
   const presupuesto = db
-    .prepare(`${SELECT_PRESUPUESTO} WHERE presupuestos.id = ?`)
-    .get(presupuestoId);
+    .prepare(`${SELECT_PRESUPUESTO} WHERE presupuestos.id = ? AND presupuestos.organizacion_id = ?`)
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3574,12 +3919,17 @@ function guardarItemsPresupuesto(presupuestoId, items) {
 // Resuelve el cliente igual que la venta: si el frontend ya sabe cuál es
 // se usa su id (evita duplicados por diferencias de tipeo), si no se busca
 // por nombre y se crea si no existe.
-function resolverCliente(cliente, cliente_id) {
+// organizacionId es obligatorio: un cliente resuelto por nombre o creado
+// acá tiene que quedar en la organización de quien hace el pedido (CLAUDE.md
+// §28), igual que el resto de las altas de clientes/proveedores/productos.
+function resolverCliente(cliente, cliente_id, organizacionId) {
   let clienteRow = cliente_id
-    ? db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id)
-    : db.prepare('SELECT id FROM clientes WHERE nombre = ?').get(cliente);
+    ? db.prepare('SELECT id FROM clientes WHERE id = ? AND organizacion_id = ?').get(cliente_id, organizacionId)
+    : db.prepare('SELECT id FROM clientes WHERE nombre = ? AND organizacion_id = ?').get(cliente, organizacionId);
   if (!clienteRow) {
-    const { lastInsertRowid } = db.prepare('INSERT INTO clientes (nombre) VALUES (?)').run(cliente);
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO clientes (nombre, organizacion_id) VALUES (?, ?)')
+      .run(cliente, organizacionId);
     clienteRow = { id: lastInsertRowid };
   }
   return clienteRow;
@@ -3593,15 +3943,21 @@ app.post('/api/presupuestos', (req, res) => {
     return res.status(400).json({ error });
   }
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
   const presupuestoId = withTransaction(() => {
-    const clienteRow = resolverCliente(cliente, cliente_id);
+    const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
 
-    const columnas = ['cliente_id', 'vencimiento', 'notas', 'lista_precio_id'];
-    const valores = [clienteRow.id, vencimiento || null, notas?.trim() || null, listaPrecioId];
+    const columnas = ['cliente_id', 'vencimiento', 'notas', 'lista_precio_id', 'organizacion_id'];
+    const valores = [
+      clienteRow.id,
+      vencimiento || null,
+      notas?.trim() || null,
+      listaPrecioId,
+      req.usuario.organizacion_id
+    ];
     if (fecha) {
       columnas.push('fecha');
       valores.push(fecha);
@@ -3634,8 +3990,8 @@ app.put('/api/presupuestos/:id', (req, res) => {
   const { cliente, cliente_id, items, fecha, vencimiento, notas, lista_precio_id } = req.body;
 
   const presupuesto = db
-    .prepare('SELECT id, estado FROM presupuestos WHERE id = ?')
-    .get(presupuestoId);
+    .prepare('SELECT id, estado FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3650,12 +4006,12 @@ app.put('/api/presupuestos/:id', (req, res) => {
     return res.status(400).json({ error });
   }
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
-  if (listaPrecioId && !db.prepare('SELECT 1 FROM listas_precios WHERE id = ?').get(listaPrecioId)) {
+  if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
 
   withTransaction(() => {
-    const clienteRow = resolverCliente(cliente, cliente_id);
+    const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
 
     db.prepare(
       `UPDATE presupuestos
@@ -3687,8 +4043,8 @@ app.patch('/api/presupuestos/:id/estado', (req, res) => {
   const { estado } = req.body;
 
   const presupuesto = db
-    .prepare('SELECT id, estado FROM presupuestos WHERE id = ?')
-    .get(presupuestoId);
+    .prepare('SELECT id, estado FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3725,8 +4081,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
   const presupuestoId = Number(req.params.id);
 
   const presupuesto = db
-    .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ?')
-    .get(presupuestoId);
+    .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+    .get(presupuestoId, req.usuario.organizacion_id);
   if (!presupuesto) {
     return res.status(404).json({ error: 'Presupuesto no encontrado.' });
   }
@@ -3752,8 +4108,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
   // comprometen mercadería de un lugar concreto): al convertir se usa el
   // predeterminado del momento, igual que cualquier venta sin depósito
   // elegido a mano.
-  const depositoConversion = depositoPredeterminadoId();
-  const errorStock = validarStockDisponible(items, depositoConversion);
+  const depositoConversion = depositoPredeterminadoId(req.usuario.organizacion_id);
+  const errorStock = validarStockDisponible(items, depositoConversion, req.usuario.organizacion_id);
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
@@ -3766,7 +4122,8 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       items,
       fecha: null,
       deposito_id: depositoConversion,
-      lista_precio_id: presupuesto.lista_precio_id
+      lista_precio_id: presupuesto.lista_precio_id,
+      organizacion_id: req.usuario.organizacion_id
     });
     db.prepare("UPDATE presupuestos SET estado = 'convertido', venta_id = ? WHERE id = ?").run(
       nuevaVentaId,
@@ -3832,14 +4189,16 @@ function decorarDevolucion(d) {
 
 app.get('/api/devoluciones', (req, res) => {
   const devoluciones = db
-    .prepare(`${SELECT_DEVOLUCION} ORDER BY devoluciones.id DESC`)
-    .all();
+    .prepare(`${SELECT_DEVOLUCION} WHERE devoluciones.organizacion_id = ? ORDER BY devoluciones.id DESC`)
+    .all(req.usuario.organizacion_id);
   res.json(devoluciones.map(decorarDevolucion));
 });
 
 app.get('/api/devoluciones/:id', (req, res) => {
   const devolucionId = Number(req.params.id);
-  const devolucion = db.prepare(`${SELECT_DEVOLUCION} WHERE devoluciones.id = ?`).get(devolucionId);
+  const devolucion = db
+    .prepare(`${SELECT_DEVOLUCION} WHERE devoluciones.id = ? AND devoluciones.organizacion_id = ?`)
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -3895,7 +4254,7 @@ function aplicarDevolucion(devolucionId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, devoluciones.deposito_id,
-              ventas.cliente_id
+              ventas.cliente_id, ventas.organizacion_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ?`
     )
@@ -3920,7 +4279,8 @@ function aplicarDevolucion(devolucionId) {
         cantidad: item.cantidad,
         origen: 'devolucion',
         devolucion_id: devolucionId,
-        nota: 'Devolución de venta'
+        nota: 'Devolución de venta',
+        organizacion_id: devolucion.organizacion_id
       });
     }
     total += item.cantidad * item.precio_unitario;
@@ -3941,8 +4301,8 @@ function aplicarDevolucion(devolucionId) {
     ).run(devolucion.cliente_id, total, devolucion.venta_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id) VALUES (?, 'egreso', ?, 'devolucion', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id) VALUES (?, 'egreso', ?, 'devolucion', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId, devolucion.organizacion_id);
   }
 }
 
@@ -3953,7 +4313,7 @@ function revertirDevolucion(devolucionId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones.venta_id, devoluciones.cuenta_tesoreria_id, devoluciones.deposito_id,
-              ventas.cliente_id
+              ventas.cliente_id, ventas.organizacion_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ?`
     )
@@ -3976,7 +4336,8 @@ function revertirDevolucion(devolucionId) {
         cantidad: item.cantidad,
         origen: 'devolucion',
         devolucion_id: devolucionId,
-        nota: 'Reversión por anulación'
+        nota: 'Reversión por anulación',
+        organizacion_id: devolucion.organizacion_id
       });
     }
     total += item.cantidad * item.precio_unitario;
@@ -3995,8 +4356,8 @@ function revertirDevolucion(devolucionId) {
     ).run(devolucion.cliente_id, -total, devolucion.venta_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id) VALUES (?, 'ingreso', ?, 'devolucion', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id) VALUES (?, 'ingreso', ?, 'devolucion', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionId, devolucion.organizacion_id);
   }
 }
 
@@ -4004,7 +4365,9 @@ app.post('/api/devoluciones', (req, res) => {
   const { venta_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const ventaId = Number(venta_id);
 
-  const venta = db.prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ?').get(ventaId);
+  const venta = db
+    .prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -4018,7 +4381,7 @@ app.post('/api/devoluciones', (req, res) => {
   }
   // La devolución reingresa al MISMO depósito de la venta original: no es
   // una elección del operador, es de dónde salió físicamente la mercadería.
-  const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const vistos = new Set();
   for (const item of items) {
@@ -4033,7 +4396,9 @@ app.post('/api/devoluciones', (req, res) => {
   }
 
   if (cuenta_tesoreria_id) {
-    const cuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ?').get(cuenta_tesoreria_id);
+    const cuenta = db
+      .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+      .get(cuenta_tesoreria_id, req.usuario.organizacion_id);
     if (!cuenta) {
       return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
     }
@@ -4057,8 +4422,10 @@ app.post('/api/devoluciones', (req, res) => {
 
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
-      .prepare('INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id) VALUES (?, ?, ?, ?)')
-      .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucion);
+      .prepare(
+        'INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucion, req.usuario.organizacion_id);
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_items
@@ -4108,9 +4475,9 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
     .prepare(
       `SELECT devoluciones.id, devoluciones.estado, ventas.cliente_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
-        WHERE devoluciones.id = ?`
+        WHERE devoluciones.id = ? AND ventas.organizacion_id = ?`
     )
-    .get(devolucionId);
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -4130,13 +4497,23 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
   let facturaId;
   try {
     facturaId = withTransaction(() => {
-      const numero = siguienteNumero(puntoVentaFinal, 'nota_credito', letraFinal);
+      const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, 'nota_credito', letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero)
-           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?)`
+          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id)
+           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?)`
         )
-        .run(devolucion.cliente_id, `Devolución #${devolucionId}`, total, condicion || 'efectivo', devolucionId, letraFinal, puntoVentaFinal, numero);
+        .run(
+          devolucion.cliente_id,
+          `Devolución #${devolucionId}`,
+          total,
+          condicion || 'efectivo',
+          devolucionId,
+          letraFinal,
+          puntoVentaFinal,
+          numero,
+          req.usuario.organizacion_id
+        );
       auditar(req, {
         accion: 'crear',
         entidad: 'factura',
@@ -4163,7 +4540,9 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
 app.post('/api/devoluciones/:id/anular', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado FROM devoluciones WHERE id = ?').get(devolucionId);
+  const devolucion = db
+    .prepare('SELECT id, estado FROM devoluciones WHERE id = ? AND organizacion_id = ?')
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
@@ -4199,14 +4578,16 @@ app.post('/api/devoluciones/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/devoluciones/:id/restaurar', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones WHERE id = ?').get(devolucionId);
+  const devolucion = db
+    .prepare('SELECT id, estado, deposito_id FROM devoluciones WHERE id = ? AND organizacion_id = ?')
+    .get(devolucionId, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución no encontrada.' });
   }
   if (devolucion.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta devolución no está en la papelera.' });
   }
-  const depositoDevolucionVentaRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucionVentaRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const items = db
     .prepare(
@@ -4278,9 +4659,10 @@ app.get('/api/compras', soloAdmin, (req, res) => {
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
        FROM compras
        JOIN proveedores ON proveedores.id = compras.proveedor_id
+       WHERE compras.organizacion_id = ?
        ORDER BY compras.id DESC`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(
     compras.map((c) => {
       const total = c.subtotal + c.costo_envio;
@@ -4309,9 +4691,9 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
          FROM compras
          JOIN proveedores ON proveedores.id = compras.proveedor_id
          LEFT JOIN depositos ON depositos.id = compras.deposito_id
-        WHERE compras.id = ?`
+        WHERE compras.id = ? AND compras.organizacion_id = ?`
     )
-    .get(compraId);
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -4386,17 +4768,32 @@ function prorratearEnvio(items, costoEnvio) {
 // que crearVenta, asume que ya se validó todo y que se la llama DENTRO de
 // una transacción — así el asistente por texto (§21) puede encadenar
 // crear+confirmar+recibir en una sola transacción atómica.
-function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condicion_pago, fecha_vencimiento }) {
-  let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
+function crearCompra({
+  proveedor,
+  items,
+  costoEnvio,
+  fecha,
+  deposito_id,
+  condicion_pago,
+  fecha_vencimiento,
+  organizacion_id
+}) {
+  // organizacion_id es obligatorio (CLAUDE.md §28): proveedor y productos
+  // resueltos/creados acá quedan siempre en la organización de quien compra.
+  let proveedorRow = db
+    .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
+    .get(proveedor, organizacion_id);
   if (!proveedorRow) {
-    const { lastInsertRowid } = db.prepare('INSERT INTO proveedores (nombre) VALUES (?)').run(proveedor);
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)')
+      .run(proveedor, organizacion_id);
     proveedorRow = { id: lastInsertRowid };
   }
 
   // Mismo criterio que en ventas: nullable, NULL = "el predeterminado de
   // ese momento" (CLAUDE.md §19).
   const depositoId = deposito_id ? Number(deposito_id) : null;
-  if (depositoId && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoId)) {
+  if (depositoId && !depositoActivoValido(depositoId, organizacion_id)) {
     throw new ErrorBulk('El depósito seleccionado no existe o está inactivo.');
   }
 
@@ -4407,15 +4804,17 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
 
   const { lastInsertRowid: nuevaCompraId } = db
     .prepare(
-      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento);
+    .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento, organizacion_id);
 
-  const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ?');
+  const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
   // Un producto nuevo nace con costo 0: todavía no entró nada al
   // depósito, su costo lo va a fijar la recepción de esta compra.
-  const crearProducto = db.prepare('INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)');
+  const crearProducto = db.prepare(
+    'INSERT INTO productos (nombre, precio_costo, precio_venta, organizacion_id) VALUES (?, 0, 0, ?)'
+  );
   const insertItem = db.prepare(
     `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
      VALUES (?, ?, ?, ?, ?, ?)`
@@ -4441,9 +4840,9 @@ function crearCompra({ proveedor, items, costoEnvio, fecha, deposito_id, condici
   );
 
   for (const item of itemsProrrateados) {
-    let productoRow = buscarProducto.get(item.producto);
+    let productoRow = buscarProducto.get(item.producto, organizacion_id);
     if (!productoRow) {
-      const { lastInsertRowid } = crearProducto.run(item.producto);
+      const { lastInsertRowid } = crearProducto.run(item.producto, organizacion_id);
       productoRow = { id: lastInsertRowid };
     }
     if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -4500,7 +4899,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
         fecha,
         deposito_id,
         condicion_pago,
-        fecha_vencimiento
+        fecha_vencimiento,
+        organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, {
         accion: 'crear',
@@ -4532,9 +4932,9 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     .prepare(
       `SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, fecha, condicion_pago,
               fecha_vencimiento
-         FROM compras WHERE id = ?`
+         FROM compras WHERE id = ? AND organizacion_id = ?`
     )
-    .get(compraId);
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -4556,8 +4956,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const depositoIdNuevo = deposito_id !== undefined
     ? (deposito_id ? Number(deposito_id) : null)
     : compra.deposito_id;
-  const depositoResueltoCompra = depositoIdNuevo ?? depositoPredeterminadoId();
-  if (depositoIdNuevo && !db.prepare('SELECT 1 FROM depositos WHERE id = ? AND activo = 1').get(depositoIdNuevo)) {
+  const depositoResueltoCompra = depositoIdNuevo ?? depositoPredeterminadoId(req.usuario.organizacion_id);
+  if (depositoIdNuevo && !depositoActivoValido(depositoIdNuevo, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
   }
   if (compra.estado === 'anulada') {
@@ -4613,7 +5013,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   // depósito ORIGINAL de la compra (de ahí es de donde va a salir la
   // reversión), no contra el nuevo si cambió de depósito al editar.
   if (compra.stock_aplicado) {
-    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId();
+    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     const buscarStockDeposito = db.prepare(
       'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
     );
@@ -4639,7 +5039,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
 
   withTransaction(() => {
     // 1) Revertir los efectos actuales, en el depósito ORIGINAL de la compra.
-    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId();
+    const depositoCompraOriginal = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
     if (compra.stock_aplicado) {
       for (const item of itemsViejos) {
         registrarMovimientoStock({
@@ -4650,7 +5050,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
           cantidad: item.cantidad,
           origen: 'compra',
           compra_id: compraId,
-          nota: 'Reversión por edición'
+          nota: 'Reversión por edición',
+          organizacion_id: req.usuario.organizacion_id
         });
       }
     }
@@ -4666,11 +5067,13 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     }
 
     // 2) Reemplazar proveedor, fecha, envío e items.
-    let proveedorRow = db.prepare('SELECT id FROM proveedores WHERE nombre = ?').get(proveedor);
+    let proveedorRow = db
+      .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
+      .get(proveedor, req.usuario.organizacion_id);
     if (!proveedorRow) {
       const { lastInsertRowid } = db
-        .prepare('INSERT INTO proveedores (nombre) VALUES (?)')
-        .run(proveedor);
+        .prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)')
+        .run(proveedor, req.usuario.organizacion_id);
       proveedorRow = { id: lastInsertRowid };
     }
     db.prepare(
@@ -4690,9 +5093,9 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
 
     db.prepare('DELETE FROM compra_items WHERE compra_id = ?').run(compraId);
 
-    const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ?');
+    const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
     const crearProducto = db.prepare(
-      'INSERT INTO productos (nombre, precio_costo, precio_venta) VALUES (?, 0, 0)'
+      'INSERT INTO productos (nombre, precio_costo, precio_venta, organizacion_id) VALUES (?, 0, 0, ?)'
     );
     const insertItem = db.prepare(
       `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
@@ -4708,9 +5111,9 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     const productosNuevos = [];
     const variantesNuevas = [];
     for (const item of itemsProrrateados) {
-      let productoRow = buscarProducto.get(item.producto);
+      let productoRow = buscarProducto.get(item.producto, req.usuario.organizacion_id);
       if (!productoRow) {
-        const { lastInsertRowid } = crearProducto.run(item.producto);
+        const { lastInsertRowid } = crearProducto.run(item.producto, req.usuario.organizacion_id);
         productoRow = { id: lastInsertRowid };
       }
       if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -4756,7 +5159,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
           cantidad: item.cantidad,
           origen: 'compra',
           compra_id: compraId,
-          costo_unitario: item.costo_real_unitario
+          costo_unitario: item.costo_real_unitario,
+          organizacion_id: req.usuario.organizacion_id
         });
       }
 
@@ -4811,7 +5215,9 @@ function confirmarCompra(compraId) {
 app.post('/api/compras/:id/confirmar', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
-  const compra = db.prepare('SELECT id, estado FROM compras WHERE id = ?').get(compraId);
+  const compra = db
+    .prepare('SELECT id, estado FROM compras WHERE id = ? AND organizacion_id = ?')
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -4849,8 +5255,10 @@ function aplicarStockCompra(compraId) {
       'SELECT producto_id, variante_id, cantidad, costo_real_unitario, precio_unitario FROM compra_items WHERE compra_id = ?'
     )
     .all(compraId);
-  const { deposito_id: depositoCompra } = db.prepare('SELECT deposito_id FROM compras WHERE id = ?').get(compraId);
-  const depositoResuelto = depositoCompra ?? depositoPredeterminadoId();
+  const { deposito_id: depositoCompra, organizacion_id: organizacionCompra } = db
+    .prepare('SELECT deposito_id, organizacion_id FROM compras WHERE id = ?')
+    .get(compraId);
+  const depositoResuelto = depositoCompra ?? depositoPredeterminadoId(organizacionCompra);
 
   const buscarProducto = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   const buscarStockActual = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?');
@@ -4889,7 +5297,8 @@ function aplicarStockCompra(compraId) {
       cantidad: item.cantidad,
       origen: 'compra',
       compra_id: compraId,
-      costo_unitario: costoReal
+      costo_unitario: costoReal,
+      organizacion_id: organizacionCompra
     });
   }
 
@@ -4990,8 +5399,10 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ?')
-    .get(compraId);
+    .prepare(
+      'SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5021,7 +5432,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
        WHERE compra_id = ?`
     )
     .all(compraId);
-  const depositoCompraAnular = compra.deposito_id ?? depositoPredeterminadoId();
+  const depositoCompraAnular = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   // El stock solo hay que devolverlo si esta compra llegó a sumarlo (o sea,
   // si se marcó recibida). Un borrador o un pedido en camino no tocaron el
@@ -5053,7 +5464,8 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
           cantidad: item.cantidad,
           origen: 'compra',
           compra_id: compraId,
-          nota: 'Reversión por anulación'
+          nota: 'Reversión por anulación',
+          organizacion_id: req.usuario.organizacion_id
         });
       }
       // Queda en 0 para que, si se restaura desde la papelera, el stock se
@@ -5089,8 +5501,10 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
 
   const compra = db
-    .prepare('SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ?')
-    .get(compraId);
+    .prepare(
+      'SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5167,8 +5581,8 @@ function aplicarEstadoEnvioCompra(req, compraId, estadoEnvio, totalLote = 1) {
   }
 
   const compra = db
-    .prepare('SELECT id, estado, estado_envio, stock_aplicado FROM compras WHERE id = ?')
-    .get(compraId);
+    .prepare('SELECT id, estado, estado_envio, stock_aplicado FROM compras WHERE id = ? AND organizacion_id = ?')
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     throw new ErrorBulk('Compra no encontrada.', 404);
   }
@@ -5251,10 +5665,11 @@ app.get('/api/compras/:id/pagos', soloAdmin, (req, res) => {
               cuentas_tesoreria.nombre AS cuenta
        FROM pagos
        JOIN cuentas_tesoreria ON cuentas_tesoreria.id = pagos.cuenta_tesoreria_id
-       WHERE pagos.compra_id = ?
+       JOIN compras ON compras.id = pagos.compra_id
+       WHERE pagos.compra_id = ? AND compras.organizacion_id = ?
        ORDER BY pagos.id`
     )
-    .all(Number(req.params.id));
+    .all(Number(req.params.id), req.usuario.organizacion_id);
   res.json(pagos);
 });
 
@@ -5268,9 +5683,9 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE compra_id = compras.id) AS pagado,
               ${SUBQUERY_DEVUELTO_COMPRA} AS devuelto
-       FROM compras WHERE compras.id = ?`
+       FROM compras WHERE compras.id = ? AND compras.organizacion_id = ?`
     )
-    .get(compraId);
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
@@ -5286,6 +5701,15 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
       error: `El importe supera el saldo pendiente de la compra (${saldoPendiente.toFixed(2)}).`
     });
   }
+  // Hasta la Etapa A de catálogos la cuenta solo la frenaba la FK (una
+  // inexistente reventaba en el INSERT como 500): ahora además tiene que ser
+  // de la organización, o el egreso bajaría la caja de otra empresa.
+  const cuenta = db
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
+  if (!cuenta) {
+    return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
+  }
 
   const pagoId = withTransaction(() => {
     const { lastInsertRowid: nuevoPagoId } = db
@@ -5293,8 +5717,8 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
       .run(compraId, importe, cuenta_tesoreria_id, nota ?? null);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, pago_id, origen) VALUES (?, 'egreso', ?, ?, 'pago')"
-    ).run(cuenta_tesoreria_id, importe, nuevoPagoId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, pago_id, origen, organizacion_id) VALUES (?, 'egreso', ?, ?, 'pago', ?)"
+    ).run(cuenta_tesoreria_id, importe, nuevoPagoId, req.usuario.organizacion_id);
 
     db.prepare(
       "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, pago_id) VALUES (?, 'pago', ?, ?, ?)"
@@ -5358,16 +5782,20 @@ function decorarDevolucionProveedor(d) {
 
 app.get('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const devoluciones = db
-    .prepare(`${SELECT_DEVOLUCION_PROVEEDOR} ORDER BY devoluciones_proveedor.id DESC`)
-    .all();
+    .prepare(
+      `${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.organizacion_id = ? ORDER BY devoluciones_proveedor.id DESC`
+    )
+    .all(req.usuario.organizacion_id);
   res.json(devoluciones.map(decorarDevolucionProveedor));
 });
 
 app.get('/api/devoluciones-proveedor/:id', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
   const devolucion = db
-    .prepare(`${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.id = ?`)
-    .get(id);
+    .prepare(
+      `${SELECT_DEVOLUCION_PROVEEDOR} WHERE devoluciones_proveedor.id = ? AND devoluciones_proveedor.organizacion_id = ?`
+    )
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
@@ -5428,7 +5856,7 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id,
-              devoluciones_proveedor.deposito_id, compras.proveedor_id
+              devoluciones_proveedor.deposito_id, compras.proveedor_id, compras.organizacion_id
          FROM devoluciones_proveedor JOIN compras ON compras.id = devoluciones_proveedor.compra_id
         WHERE devoluciones_proveedor.id = ?`
     )
@@ -5454,7 +5882,8 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
       cantidad: item.cantidad,
       origen: 'devolucion_proveedor',
       devolucion_proveedor_id: devolucionProveedorId,
-      nota: 'Devolución a proveedor'
+      nota: 'Devolución a proveedor',
+      organizacion_id: devolucion.organizacion_id
     });
     productosTocados.add(item.producto_id);
     if (item.variante_id) variantesTocadas.add(item.variante_id);
@@ -5483,8 +5912,8 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
     ).run(devolucion.proveedor_id, total, devolucion.compra_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id) VALUES (?, 'ingreso', ?, 'devolucion_proveedor', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id) VALUES (?, 'ingreso', ?, 'devolucion_proveedor', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId, devolucion.organizacion_id);
   }
 }
 
@@ -5495,7 +5924,7 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
   const devolucion = db
     .prepare(
       `SELECT devoluciones_proveedor.compra_id, devoluciones_proveedor.cuenta_tesoreria_id,
-              devoluciones_proveedor.deposito_id, compras.proveedor_id
+              devoluciones_proveedor.deposito_id, compras.proveedor_id, compras.organizacion_id
          FROM devoluciones_proveedor JOIN compras ON compras.id = devoluciones_proveedor.compra_id
         WHERE devoluciones_proveedor.id = ?`
     )
@@ -5519,7 +5948,8 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
       cantidad: item.cantidad,
       origen: 'devolucion_proveedor',
       devolucion_proveedor_id: devolucionProveedorId,
-      nota: 'Reversión por anulación'
+      nota: 'Reversión por anulación',
+      organizacion_id: devolucion.organizacion_id
     });
     productosTocados.add(item.producto_id);
     if (item.variante_id) variantesTocadas.add(item.variante_id);
@@ -5545,8 +5975,8 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
     ).run(devolucion.proveedor_id, -total, devolucion.compra_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id) VALUES (?, 'egreso', ?, 'devolucion_proveedor', ?)"
-    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId);
+      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id) VALUES (?, 'egreso', ?, 'devolucion_proveedor', ?, ?)"
+    ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId, devolucion.organizacion_id);
   }
 }
 
@@ -5554,11 +5984,13 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const { compra_id, items, motivo, cuenta_tesoreria_id } = req.body;
   const compraId = Number(compra_id);
 
-  const compra = db.prepare('SELECT id, estado, stock_aplicado, deposito_id FROM compras WHERE id = ?').get(compraId);
+  const compra = db
+    .prepare('SELECT id, estado, stock_aplicado, deposito_id FROM compras WHERE id = ? AND organizacion_id = ?')
+    .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
-  const depositoDevolucionProveedor = compra.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucionProveedor = compra.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
   if (compra.estado === 'anulada') {
     return res
       .status(400)
@@ -5586,7 +6018,9 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   }
 
   if (cuenta_tesoreria_id) {
-    const cuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ?').get(cuenta_tesoreria_id);
+    const cuenta = db
+      .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+      .get(cuenta_tesoreria_id, req.usuario.organizacion_id);
     if (!cuenta) {
       return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
     }
@@ -5625,8 +6059,16 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
 
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
-      .prepare('INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id) VALUES (?, ?, ?, ?)')
-      .run(compraId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucionProveedor);
+      .prepare(
+        'INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(
+        compraId,
+        cuenta_tesoreria_id || null,
+        motivo?.trim() || null,
+        depositoDevolucionProveedor,
+        req.usuario.organizacion_id
+      );
 
     const insertItem = db.prepare(
       `INSERT INTO devolucion_proveedor_items
@@ -5670,8 +6112,8 @@ app.post('/api/devoluciones-proveedor/:id/nota-credito', soloAdmin, (req, res) =
   }
 
   const devolucion = db
-    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ?')
-    .get(id);
+    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ? AND organizacion_id = ?')
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
@@ -5695,8 +6137,8 @@ app.post('/api/devoluciones-proveedor/:id/anular', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
 
   const devolucion = db
-    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ?')
-    .get(id);
+    .prepare('SELECT id, estado, nota_credito_proveedor_numero FROM devoluciones_proveedor WHERE id = ? AND organizacion_id = ?')
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
@@ -5735,14 +6177,16 @@ app.post('/api/devoluciones-proveedor/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
 
-  const devolucion = db.prepare('SELECT id, estado, deposito_id FROM devoluciones_proveedor WHERE id = ?').get(id);
+  const devolucion = db
+    .prepare('SELECT id, estado, deposito_id FROM devoluciones_proveedor WHERE id = ? AND organizacion_id = ?')
+    .get(id, req.usuario.organizacion_id);
   if (!devolucion) {
     return res.status(404).json({ error: 'Devolución a proveedor no encontrada.' });
   }
   if (devolucion.estado !== 'anulada') {
     return res.status(400).json({ error: 'Esta devolución no está en la papelera.' });
   }
-  const depositoDevolucionRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId();
+  const depositoDevolucionRestaurar = devolucion.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
   const items = db
     .prepare(
@@ -5780,7 +6224,9 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
 /* ---------- Cuentas de tesorería ---------- */
 
 app.get('/api/cuentas-tesoreria', (req, res) => {
-  const cuentas = db.prepare('SELECT * FROM cuentas_tesoreria ORDER BY id').all();
+  const cuentas = db
+    .prepare('SELECT * FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY id')
+    .all(req.usuario.organizacion_id);
   res.json(cuentas);
 });
 
@@ -5799,16 +6245,27 @@ app.post('/api/cuentas-tesoreria', soloAdmin, (req, res) => {
   if (Number.isNaN(saldoInicial)) {
     return res.status(400).json({ error: 'El saldo inicial tiene que ser un número.' });
   }
-  // nombre es UNIQUE en la tabla: se chequea acá para devolver un mensaje
-  // entendible en vez de dejar que reviente la constraint.
-  const yaExiste = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ?').get(String(nombre).trim());
+  // nombre es UNIQUE dentro de la organización: se chequea acá para devolver
+  // un mensaje entendible en vez de dejar que reviente la constraint.
+  const yaExiste = db
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una cuenta con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, saldo_inicial) VALUES (?, ?, ?)')
-    .run(String(nombre).trim(), tipo, saldoInicial);
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO cuentas_tesoreria (nombre, tipo, saldo_inicial, organizacion_id) VALUES (?, ?, ?, ?)')
+      .run(String(nombre).trim(), tipo, saldoInicial, req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cuenta_tesoreria',
+      entidad_id: id,
+      detalle: `Cuenta "${String(nombre).trim()}" (${tipo}) creada con saldo inicial $${saldoInicial}`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -5816,7 +6273,9 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
   const cuentaId = Number(req.params.id);
   const { nombre, tipo, saldo_inicial } = req.body;
 
-  const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(cuentaId);
+  const cuenta = db
+    .prepare('SELECT * FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(cuentaId, req.usuario.organizacion_id);
   if (!cuenta) {
     return res.status(404).json({ error: 'Cuenta no encontrada.' });
   }
@@ -5831,8 +6290,8 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'El saldo inicial tiene que ser un número.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), cuentaId);
+    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), cuentaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra cuenta con ese nombre.' });
   }
@@ -5870,15 +6329,20 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
 // (saldo_inicial + movimientos), nunca de un campo editable a mano
 // (CLAUDE.md §12/§13): se puede reconstruir siempre desde el historial.
 app.get('/api/tesoreria', (req, res) => {
+  // Las cuentas son de la organización (cada una con su "Efectivo"), así que
+  // el saldo de cada fila ya es solo de esa empresa: saldo_tesoreria agrupa
+  // por cuenta, y una cuenta nunca recibe movimientos de otra organización
+  // (todo alta de movimiento valida la cuenta contra la sesión).
   const cuentas = db
     .prepare(
       `SELECT cuentas_tesoreria.*,
               COALESCE((SELECT saldo FROM saldo_tesoreria
                          WHERE saldo_tesoreria.cuenta_tesoreria_id = cuentas_tesoreria.id), 0) AS saldo
          FROM cuentas_tesoreria
+        WHERE cuentas_tesoreria.organizacion_id = ?
         ORDER BY cuentas_tesoreria.id`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
 
   // Las transferencias se excluyen de los totales de ingresos/egresos a
   // propósito: mover plata de una cuenta propia a otra no es plata que
@@ -5888,9 +6352,9 @@ app.get('/api/tesoreria', (req, res) => {
       `SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN importe END), 0) AS ingresos,
               COALESCE(SUM(CASE WHEN tipo = 'egreso' THEN importe END), 0) AS egresos
          FROM movimientos_tesoreria
-        WHERE origen <> 'transferencia'`
+        WHERE origen <> 'transferencia' AND organizacion_id = ?`
     )
-    .get();
+    .get(req.usuario.organizacion_id);
 
   res.json({
     cuentas,
@@ -5925,10 +6389,11 @@ app.get('/api/tesoreria/movimientos', (req, res) => {
          JOIN cuentas_tesoreria ON cuentas_tesoreria.id = movimientos_tesoreria.cuenta_tesoreria_id
          LEFT JOIN cobros ON cobros.id = movimientos_tesoreria.cobro_id
          LEFT JOIN pagos ON pagos.id = movimientos_tesoreria.pago_id
+        WHERE movimientos_tesoreria.organizacion_id = ?
         ORDER BY movimientos_tesoreria.fecha DESC, movimientos_tesoreria.id DESC
         LIMIT ?`
     )
-    .all(limit);
+    .all(req.usuario.organizacion_id, limit);
 
   res.json(movimientos);
 });
@@ -5946,13 +6411,15 @@ app.post('/api/tesoreria/movimientos', soloAdmin, (req, res) => {
   if (!(monto > 0)) {
     return res.status(400).json({ error: 'El importe tiene que ser mayor a 0.' });
   }
-  const cuenta = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(cuenta_tesoreria_id));
+  const cuenta = db
+    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
   if (!cuenta) {
     return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
   }
 
-  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto'];
-  const valores = [cuenta.id, tipo, monto, 'manual', concepto?.trim() || null];
+  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto', 'organizacion_id'];
+  const valores = [cuenta.id, tipo, monto, 'manual', concepto?.trim() || null, req.usuario.organizacion_id];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -5992,16 +6459,17 @@ app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
   if (Number(origen_id) === Number(destino_id)) {
     return res.status(400).json({ error: 'La cuenta de origen y la de destino tienen que ser distintas.' });
   }
-  const cuentaOrigen = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(origen_id));
-  const cuentaDestino = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ?').get(Number(destino_id));
+  const buscarCuenta = db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?');
+  const cuentaOrigen = buscarCuenta.get(Number(origen_id), req.usuario.organizacion_id);
+  const cuentaDestino = buscarCuenta.get(Number(destino_id), req.usuario.organizacion_id);
   if (!cuentaOrigen || !cuentaDestino) {
     return res.status(400).json({ error: 'Alguna de las cuentas de la transferencia no existe.' });
   }
 
   const transferenciaId = withTransaction(() => {
     const insertMovimiento = (cuentaId, tipo, grupo) => {
-      const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto'];
-      const valores = [cuentaId, tipo, monto, 'transferencia', concepto?.trim() || null];
+      const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto', 'organizacion_id'];
+      const valores = [cuentaId, tipo, monto, 'transferencia', concepto?.trim() || null, req.usuario.organizacion_id];
       if (fecha) {
         columnas.push('fecha');
         valores.push(fecha);
@@ -6043,7 +6511,9 @@ app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
 const TIPOS_GASTO = ['operativo', 'inversion', 'retiro'];
 
 app.get('/api/categorias-gasto', (req, res) => {
-  const categorias = db.prepare('SELECT * FROM categorias_gasto ORDER BY nombre').all();
+  const categorias = db
+    .prepare('SELECT * FROM categorias_gasto WHERE organizacion_id = ? ORDER BY nombre')
+    .all(req.usuario.organizacion_id);
   res.json(categorias);
 });
 
@@ -6056,18 +6526,27 @@ app.post('/api/categorias-gasto', (req, res) => {
   if (!TIPOS_GASTO.includes(tipo)) {
     return res.status(400).json({ error: 'El tipo de gasto no es válido.' });
   }
-  // nombre es UNIQUE: se chequea acá para devolver un mensaje entendible
-  // en vez de dejar que reviente la constraint.
+  // nombre es UNIQUE dentro de la organización: se chequea acá para devolver
+  // un mensaje entendible en vez de dejar que reviente la constraint.
   const yaExiste = db
-    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ?')
-    .get(String(nombre).trim());
+    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe una categoría con ese nombre.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO categorias_gasto (nombre, tipo) VALUES (?, ?)')
-    .run(String(nombre).trim(), tipo);
+  const lastInsertRowid = withTransaction(() => {
+    const { lastInsertRowid: id } = db
+      .prepare('INSERT INTO categorias_gasto (nombre, tipo, organizacion_id) VALUES (?, ?, ?)')
+      .run(String(nombre).trim(), tipo, req.usuario.organizacion_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'categoria_gasto',
+      entidad_id: id,
+      detalle: `Categoría de gasto "${String(nombre).trim()}" (${tipo}) creada`
+    });
+    return id;
+  });
   res.status(201).json({ id: lastInsertRowid });
 });
 
@@ -6078,7 +6557,9 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, tipo, activa } = req.body;
 
-  const categoria = db.prepare('SELECT * FROM categorias_gasto WHERE id = ?').get(categoriaId);
+  const categoria = db
+    .prepare('SELECT * FROM categorias_gasto WHERE id = ? AND organizacion_id = ?')
+    .get(categoriaId, req.usuario.organizacion_id);
   if (!categoria) {
     return res.status(404).json({ error: 'Categoría no encontrada.' });
   }
@@ -6089,8 +6570,8 @@ app.patch('/api/categorias-gasto/:id', (req, res) => {
     return res.status(400).json({ error: 'El tipo de gasto no es válido.' });
   }
   const yaExiste = db
-    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ? AND id <> ?')
-    .get(String(nombre).trim(), categoriaId);
+    .prepare('SELECT 1 FROM categorias_gasto WHERE nombre = ? AND id <> ? AND organizacion_id = ?')
+    .get(String(nombre).trim(), categoriaId, req.usuario.organizacion_id);
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra categoría con ese nombre.' });
   }
@@ -6136,24 +6617,28 @@ const SELECT_GASTO = `
     LEFT JOIN proveedores ON proveedores.id = gastos.proveedor_id`;
 
 app.get('/api/gastos', (req, res) => {
-  const gastos = db.prepare(`${SELECT_GASTO} ORDER BY gastos.fecha DESC, gastos.id DESC`).all();
+  const gastos = db
+    .prepare(`${SELECT_GASTO} WHERE gastos.organizacion_id = ? ORDER BY gastos.fecha DESC, gastos.id DESC`)
+    .all(req.usuario.organizacion_id);
   res.json(gastos);
 });
 
 // Valida el cuerpo de un gasto y resuelve la categoría. Lo comparten el
-// alta y la edición, que exigen exactamente lo mismo.
-function validarGasto(body) {
+// alta y la edición, que exigen exactamente lo mismo. Categoría, cuenta y
+// proveedor tienen que ser de la organización del gasto: uno de otra
+// empresa da el mismo error que uno inexistente.
+function validarGasto(body, organizacionId) {
   const { categoria_id, cuenta_tesoreria_id, proveedor_id, importe, tipo } = body;
 
   const categoria = db
-    .prepare('SELECT id, tipo FROM categorias_gasto WHERE id = ?')
-    .get(Number(categoria_id));
+    .prepare('SELECT id, tipo FROM categorias_gasto WHERE id = ? AND organizacion_id = ?')
+    .get(Number(categoria_id), organizacionId);
   if (!categoria) {
     return { error: 'La categoría del gasto no existe.' };
   }
   const cuenta = db
-    .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ?')
-    .get(Number(cuenta_tesoreria_id));
+    .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), organizacionId);
   if (!cuenta) {
     return { error: 'La cuenta de tesorería no existe.' };
   }
@@ -6169,7 +6654,9 @@ function validarGasto(body) {
   }
   let proveedorFinal = null;
   if (proveedor_id) {
-    const proveedor = db.prepare('SELECT id FROM proveedores WHERE id = ?').get(Number(proveedor_id));
+    const proveedor = db
+      .prepare('SELECT id FROM proveedores WHERE id = ? AND organizacion_id = ?')
+      .get(Number(proveedor_id), organizacionId);
     if (!proveedor) {
       return { error: 'El proveedor del gasto no existe.' };
     }
@@ -6184,14 +6671,24 @@ function validarGasto(body) {
 // transacción para que no quede plata descontada sin gasto ni al revés.
 app.post('/api/gastos', (req, res) => {
   const { fecha, descripcion, comprobante } = req.body;
-  const validacion = validarGasto(req.body);
+  const validacion = validarGasto(req.body, req.usuario.organizacion_id);
   if (validacion.error) {
     return res.status(400).json({ error: validacion.error });
   }
   const { categoriaId, cuentaId, proveedorId, monto, tipo } = validacion;
 
   const gastoId = withTransaction(() => {
-    const id = crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante });
+    const id = crearGasto({
+      categoriaId,
+      cuentaId,
+      proveedorId,
+      monto,
+      tipo,
+      fecha,
+      descripcion,
+      comprobante,
+      organizacionId: req.usuario.organizacion_id
+    });
     auditar(req, { accion: 'crear', entidad: 'gasto', entidad_id: id, detalle: `Gasto #${id} creado` });
     return id;
   });
@@ -6203,9 +6700,27 @@ app.post('/api/gastos', (req, res) => {
 // validados por validarGasto() (categoriaId/cuentaId/proveedorId/monto/
 // tipo con nombres resueltos a ID). Asume que se la llama DENTRO de una
 // transacción.
-function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante }) {
-  const columnas = ['categoria_id', 'cuenta_tesoreria_id', 'proveedor_id', 'importe', 'tipo', 'descripcion', 'comprobante'];
-  const valores = [categoriaId, cuentaId, proveedorId, monto, tipo, descripcion?.trim() || null, comprobante?.trim() || null];
+function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante, organizacionId }) {
+  const columnas = [
+    'categoria_id',
+    'cuenta_tesoreria_id',
+    'proveedor_id',
+    'importe',
+    'tipo',
+    'descripcion',
+    'comprobante',
+    'organizacion_id'
+  ];
+  const valores = [
+    categoriaId,
+    cuentaId,
+    proveedorId,
+    monto,
+    tipo,
+    descripcion?.trim() || null,
+    comprobante?.trim() || null,
+    organizacionId
+  ];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -6214,13 +6729,13 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
     .prepare(`INSERT INTO gastos (${columnas.join(', ')}) VALUES (${columnas.map(() => '?').join(', ')})`)
     .run(...valores);
 
-  insertarMovimientoGasto(nuevoGastoId, cuentaId, monto, fecha, descripcion);
+  insertarMovimientoGasto(nuevoGastoId, cuentaId, monto, fecha, descripcion, organizacionId);
   return nuevoGastoId;
 }
 
-function insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion) {
-  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'gasto_id', 'concepto'];
-  const valores = [cuentaId, 'egreso', monto, 'gasto', gastoId, descripcion?.trim() || null];
+function insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion, organizacionId) {
+  const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'gasto_id', 'concepto', 'organizacion_id'];
+  const valores = [cuentaId, 'egreso', monto, 'gasto', gastoId, descripcion?.trim() || null, organizacionId];
   if (fecha) {
     columnas.push('fecha');
     valores.push(fecha);
@@ -6241,7 +6756,9 @@ app.put('/api/gastos/:id', (req, res) => {
   const gastoId = Number(req.params.id);
   const { fecha, descripcion, comprobante } = req.body;
 
-  const gasto = db.prepare('SELECT id, estado FROM gastos WHERE id = ?').get(gastoId);
+  const gasto = db
+    .prepare('SELECT id, estado FROM gastos WHERE id = ? AND organizacion_id = ?')
+    .get(gastoId, req.usuario.organizacion_id);
   if (!gasto) {
     return res.status(404).json({ error: 'Gasto no encontrado.' });
   }
@@ -6249,7 +6766,7 @@ app.put('/api/gastos/:id', (req, res) => {
     return res.status(400).json({ error: 'Este gasto está anulado. Restauralo primero si querés editarlo.' });
   }
 
-  const validacion = validarGasto(req.body);
+  const validacion = validarGasto(req.body, req.usuario.organizacion_id);
   if (validacion.error) {
     return res.status(400).json({ error: validacion.error });
   }
@@ -6274,7 +6791,7 @@ app.put('/api/gastos/:id', (req, res) => {
     );
 
     db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
-    insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion);
+    insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion, req.usuario.organizacion_id);
 
     auditar(req, {
       accion: 'editar',
@@ -6289,7 +6806,9 @@ app.put('/api/gastos/:id', (req, res) => {
 
 app.post('/api/gastos/:id/anular', soloAdmin, (req, res) => {
   const gastoId = Number(req.params.id);
-  const gasto = db.prepare('SELECT id, estado FROM gastos WHERE id = ?').get(gastoId);
+  const gasto = db
+    .prepare('SELECT id, estado FROM gastos WHERE id = ? AND organizacion_id = ?')
+    .get(gastoId, req.usuario.organizacion_id);
   if (!gasto) {
     return res.status(404).json({ error: 'Gasto no encontrado.' });
   }
@@ -6315,8 +6834,10 @@ app.post('/api/gastos/:id/anular', soloAdmin, (req, res) => {
 app.post('/api/gastos/:id/restaurar', soloAdmin, (req, res) => {
   const gastoId = Number(req.params.id);
   const gasto = db
-    .prepare('SELECT id, estado, cuenta_tesoreria_id, importe, fecha, descripcion FROM gastos WHERE id = ?')
-    .get(gastoId);
+    .prepare(
+      'SELECT id, estado, cuenta_tesoreria_id, importe, fecha, descripcion FROM gastos WHERE id = ? AND organizacion_id = ?'
+    )
+    .get(gastoId, req.usuario.organizacion_id);
   if (!gasto) {
     return res.status(404).json({ error: 'Gasto no encontrado.' });
   }
@@ -6331,7 +6852,8 @@ app.post('/api/gastos/:id/restaurar', soloAdmin, (req, res) => {
       gasto.cuenta_tesoreria_id,
       gasto.importe,
       gasto.fecha,
-      gasto.descripcion
+      gasto.descripcion,
+      req.usuario.organizacion_id
     );
     auditar(req, {
       accion: 'restaurar',
@@ -6378,7 +6900,7 @@ function tramoDeVencimiento(dias) {
 // (ver PUT /api/ventas/:id) — sin la entidad en el GROUP BY, esta
 // consulta sumaría los dos juntos y se los adjudicaría a cualquiera de
 // los dos en vez de partirlos correctamente entre ambos.
-function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion) {
+function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion, organizacionId) {
   return db
     .prepare(
       `SELECT m.${columnaOperacion} AS operacion_id, m.${columnaEntidad} AS entidad_id,
@@ -6386,17 +6908,18 @@ function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, 
               ROUND(SUM(m.importe), 2) AS pendiente
          FROM ${tablaMovimientos} m
          JOIN ${tablaOperacion} o ON o.id = m.${columnaOperacion}
+        WHERE o.organizacion_id = ?
         GROUP BY m.${columnaOperacion}, m.${columnaEntidad}
        HAVING ABS(SUM(m.importe)) > 0.005`
     )
-    .all();
+    .all(organizacionId);
 }
 
 // Agrupa los saldos por operación (arriba) en uno por entidad: saldo total,
 // los días vencidos de la deuda más atrasada (solo entre las operaciones que
 // SÍ son deuda: un saldo negativo es crédito a favor, no vence), y el detalle
 // ordenado por vencimiento para la fila expandible.
-function agruparPorEntidad(saldos, tablaEntidad, hoy) {
+function agruparPorEntidad(saldos, tablaEntidad, hoy, organizacionId) {
   const porEntidad = new Map();
   for (const s of saldos) {
     if (!porEntidad.has(s.entidad_id)) porEntidad.set(s.entidad_id, []);
@@ -6405,7 +6928,9 @@ function agruparPorEntidad(saldos, tablaEntidad, hoy) {
 
   const resultado = [];
   for (const [entidadId, operacionesRaw] of porEntidad) {
-    const entidad = db.prepare(`SELECT id, nombre, telefono, email FROM ${tablaEntidad} WHERE id = ?`).get(entidadId);
+    const entidad = db
+      .prepare(`SELECT id, nombre, telefono, email FROM ${tablaEntidad} WHERE id = ? AND organizacion_id = ?`)
+      .get(entidadId, organizacionId);
     if (!entidad) continue; // defensivo: no debería pasar, la FK lo garantiza
 
     const operaciones = operacionesRaw
@@ -6446,14 +6971,16 @@ app.get('/api/cuentas-corrientes', (req, res) => {
   const hoy = fechaDeHoy();
 
   const entidadesClientes = agruparPorEntidad(
-    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas'),
+    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', req.usuario.organizacion_id),
     'clientes',
-    hoy
+    hoy,
+    req.usuario.organizacion_id
   );
   const entidadesProveedores = agruparPorEntidad(
-    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras'),
+    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras', req.usuario.organizacion_id),
     'proveedores',
-    hoy
+    hoy,
+    req.usuario.organizacion_id
   );
 
   // Los totales solo suman deuda real (saldo > 0); un saldo a favor va
@@ -6503,7 +7030,8 @@ const SQL_RESULTADO_VENTAS = db.prepare(
      FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
-      AND (? IS NULL OR ventas.fecha <= ?)`
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?`
 );
 
 const SQL_RESULTADO_GASTOS = db.prepare(
@@ -6513,7 +7041,8 @@ const SQL_RESULTADO_GASTOS = db.prepare(
      FROM gastos
     WHERE estado = 'activo'
       AND (? IS NULL OR fecha >= ?)
-      AND (? IS NULL OR fecha <= ?)`
+      AND (? IS NULL OR fecha <= ?)
+      AND organizacion_id = ?`
 );
 
 // Una devolución activa borra la venta que revierte (y su costo, si esa
@@ -6530,7 +7059,8 @@ const SQL_RESULTADO_DEVOLUCIONES = db.prepare(
      FROM devoluciones JOIN devolucion_items ON devolucion_items.devolucion_id = devoluciones.id
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
-      AND (? IS NULL OR devoluciones.fecha <= ?)`
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?`
 );
 
 // Fuente de verdad única del resultado del negocio: la usan tanto
@@ -6538,10 +7068,13 @@ const SQL_RESULTADO_DEVOLUCIONES = db.prepare(
 // por período de la serie, más el total y el período de comparación). Las
 // reglas contables de arriba viven acá y en ningún otro lado — si el día
 // de mañana cambian, cambian una sola vez.
-function calcularResultado(desde, hasta) {
+function calcularResultado(desde, hasta, organizacionId) {
   // El mismo par de parámetros se repite en cada consulta; con
   // (? IS NULL OR campo >= ?) el filtro se apaga solo cuando no viene.
-  const rango = [desde ?? null, desde ?? null, hasta ?? null, hasta ?? null];
+  // organizacionId NO es opcional: va plano y sin IS NULL a propósito
+  // (ver CLAUDE.md §28) para que un llamador que lo pase undefined
+  // explote en el bind en vez de mezclar organizaciones en silencio.
+  const rango = [desde ?? null, desde ?? null, hasta ?? null, hasta ?? null, organizacionId];
 
   const ventas = SQL_RESULTADO_VENTAS.get(...rango);
   const gastos = SQL_RESULTADO_GASTOS.get(...rango);
@@ -6564,7 +7097,7 @@ function calcularResultado(desde, hasta) {
 
 app.get('/api/resumen', soloAdmin, (req, res) => {
   const { desde, hasta } = req.query;
-  res.json(calcularResultado(desde ?? null, hasta ?? null));
+  res.json(calcularResultado(desde ?? null, hasta ?? null, req.usuario.organizacion_id));
 });
 
 /* ---------- Resumen: evolución y comparación de períodos ---------- */
@@ -6597,11 +7130,11 @@ const MAX_BUCKETS = 40;
 // query preparada.
 const SQL_LIMITES_OPERACIONES = db.prepare(
   `SELECT MIN(fecha) AS primera, MAX(fecha) AS ultima FROM (
-     SELECT fecha FROM ventas WHERE estado = 'activa'
-     UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo'
-     UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa'
-     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa'
-     UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa'
+     SELECT fecha FROM ventas WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa' AND organizacion_id = ?
    )`
 );
 // "Hoy" se pide a SQLite (no a `new Date()` de JS) para quedar consistente
@@ -6815,7 +7348,14 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
 
   // Cuando falta un extremo (el caso por defecto: el filtro del Resumen
@@ -6831,8 +7371,8 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
 
   const granularidad = granularidadDe(desde, hasta);
   const buckets = generarBuckets(desde, hasta, granularidad);
-  const serie = buckets.map((b) => ({ ...b, ...calcularResultado(b.desde, b.hasta) }));
-  const total = calcularResultado(desde, hasta);
+  const serie = buckets.map((b) => ({ ...b, ...calcularResultado(b.desde, b.hasta, organizacionId) }));
+  const total = calcularResultado(desde, hasta, organizacionId);
 
   let anterior = null;
   let delta = null;
@@ -6844,7 +7384,7 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
     const rangoAnterior = periodoAnterior(desde, hasta);
     const hayOperacionAntes = primera !== null && primera <= rangoAnterior.hasta;
     if (hayOperacionAntes) {
-      const resultadoAnterior = calcularResultado(rangoAnterior.desde, rangoAnterior.hasta);
+      const resultadoAnterior = calcularResultado(rangoAnterior.desde, rangoAnterior.hasta, organizacionId);
       anterior = { rango: rangoAnterior, ...resultadoAnterior };
       delta = {};
       for (const campo of CAMPOS_RESULTADO) {
@@ -6878,7 +7418,8 @@ const SQL_REPORTE_UNIDADES_VENTAS = db.prepare(
      FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
-      AND (? IS NULL OR ventas.fecha <= ?)`
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?`
 );
 
 const SQL_REPORTE_UNIDADES_DEVOLUCIONES = db.prepare(
@@ -6886,7 +7427,8 @@ const SQL_REPORTE_UNIDADES_DEVOLUCIONES = db.prepare(
      FROM devoluciones JOIN devolucion_items ON devolucion_items.devolucion_id = devoluciones.id
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
-      AND (? IS NULL OR devoluciones.fecha <= ?)`
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?`
 );
 
 const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
@@ -6900,6 +7442,7 @@ const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
       AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
     GROUP BY venta_items.producto_id`
 );
 
@@ -6915,6 +7458,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO = db.prepare(
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
       AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
     GROUP BY devolucion_items.producto_id`
 );
 
@@ -6935,6 +7479,7 @@ const SQL_REPORTE_VENTAS_POR_CATEGORIA = db.prepare(
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
       AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -6951,6 +7496,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA = db.prepare(
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
       AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -6966,6 +7512,7 @@ const SQL_REPORTE_VENTAS_POR_CLIENTE = db.prepare(
     WHERE ventas.estado = 'activa'
       AND (? IS NULL OR ventas.fecha >= ?)
       AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
     GROUP BY ventas.cliente_id`
 );
 
@@ -6984,6 +7531,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE = db.prepare(
     WHERE devoluciones.estado = 'activa'
       AND (? IS NULL OR devoluciones.fecha >= ?)
       AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
     GROUP BY ventas.cliente_id`
 );
 
@@ -7026,25 +7574,32 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
 
   // Mismo tratamiento de rango abierto que /api/resumen/evolucion: sin
   // desde/hasta, se acota contra la primera/última operación registrada.
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
-  const rango = [desde, desde, hasta, hasta];
+  const rango = [desde, desde, hasta, hasta, organizacionId];
 
-  const resultado = calcularResultado(desde, hasta);
+  const resultado = calcularResultado(desde, hasta, organizacionId);
   const ventasUnid = SQL_REPORTE_UNIDADES_VENTAS.get(...rango);
   const devolucionesUnid = SQL_REPORTE_UNIDADES_DEVOLUCIONES.get(...rango);
   const cantidadVentas = ventasUnid.cantidad_ventas;
 
-  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
-  const buscarNombreCliente = db.prepare('SELECT nombre FROM clientes WHERE id = ?');
+  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const buscarNombreCliente = db.prepare('SELECT nombre FROM clientes WHERE id = ? AND organizacion_id = ?');
 
   const productos = netearPorId(
     SQL_REPORTE_VENTAS_POR_PRODUCTO.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO.all(...rango),
-    (id) => buscarNombreProducto.get(id)?.nombre ?? '(producto eliminado)'
+    (id) => buscarNombreProducto.get(id, organizacionId)?.nombre ?? '(producto eliminado)'
   )
     .map((p) => {
       const ganancia = redondear2(p.ventas - p.costo);
@@ -7064,11 +7619,11 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
   // resolverNombre recibe id === null para el balde "Sin categoría" (ver
   // el comentario del GROUP BY arriba) — no es "categoría eliminada", así
   // que se lo distingue explícitamente antes de ir a buscar el nombre.
-  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
+  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ? AND organizacion_id = ?');
   const categorias = netearPorId(
     SQL_REPORTE_VENTAS_POR_CATEGORIA.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA.all(...rango),
-    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id)?.nombre ?? '(categoría eliminada)')
+    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id, organizacionId)?.nombre ?? '(categoría eliminada)')
   )
     .map((c) => {
       const ganancia = redondear2(c.ventas - c.costo);
@@ -7088,7 +7643,7 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
   const clientes = netearPorId(
     SQL_REPORTE_VENTAS_POR_CLIENTE.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE.all(...rango),
-    (id) => buscarNombreCliente.get(id)?.nombre ?? '(cliente eliminado)'
+    (id) => buscarNombreCliente.get(id, organizacionId)?.nombre ?? '(cliente eliminado)'
   )
     .map((c) => {
       const ganancia = redondear2(c.ventas - c.costo);
@@ -7145,7 +7700,8 @@ const SQL_REPORTE_UNIDADES_COMPRAS = db.prepare(
      FROM compras JOIN compra_items ON compra_items.compra_id = compras.id
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
-      AND (? IS NULL OR compras.fecha <= ?)`
+      AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?`
 );
 
 const SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR = db.prepare(
@@ -7154,7 +7710,8 @@ const SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR = db.prepare(
      JOIN devolucion_proveedor_items ON devolucion_proveedor_items.devolucion_proveedor_id = devoluciones_proveedor.id
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
-      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)`
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?`
 );
 
 const SQL_REPORTE_COMPRAS_POR_PROVEEDOR = db.prepare(
@@ -7168,6 +7725,7 @@ const SQL_REPORTE_COMPRAS_POR_PROVEEDOR = db.prepare(
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
       AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?
     GROUP BY compras.proveedor_id`
 );
 
@@ -7183,6 +7741,7 @@ const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR = db.prepare(
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
       AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?
     GROUP BY compras.proveedor_id`
 );
 
@@ -7196,6 +7755,7 @@ const SQL_REPORTE_COMPRAS_POR_PRODUCTO = db.prepare(
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
       AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?
     GROUP BY compra_items.producto_id`
 );
 
@@ -7208,6 +7768,7 @@ const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PRODUCTO = db.prepare(
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
       AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?
     GROUP BY devolucion_proveedor_items.producto_id`
 );
 
@@ -7225,6 +7786,7 @@ const SQL_REPORTE_COMPRAS_POR_CATEGORIA = db.prepare(
     WHERE compras.estado = 'activa'
       AND (? IS NULL OR compras.fecha >= ?)
       AND (? IS NULL OR compras.fecha <= ?)
+      AND compras.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -7238,6 +7800,7 @@ const SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_CATEGORIA = db.prepare(
     WHERE devoluciones_proveedor.estado = 'activa'
       AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
       AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+      AND devoluciones_proveedor.organizacion_id = ?
     GROUP BY productos.categoria_id`
 );
 
@@ -7272,20 +7835,27 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
-  const rango = [desde, desde, hasta, hasta];
+  const rango = [desde, desde, hasta, hasta, organizacionId];
 
   const comprasUnid = SQL_REPORTE_UNIDADES_COMPRAS.get(...rango);
   const devolucionesUnid = SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR.get(...rango);
   const cantidadCompras = comprasUnid.cantidad_compras;
 
-  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ?');
-  const buscarNombreProveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ?');
-  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ?');
+  const buscarNombreProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const buscarNombreProveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ? AND organizacion_id = ?');
+  const buscarNombreCategoria = db.prepare('SELECT nombre FROM categorias WHERE id = ? AND organizacion_id = ?');
 
   // Los totales de plata (compras_netas) se recalculan sumando las mismas
   // filas por-proveedor ya neteadas, en vez de una query aparte: así el
@@ -7293,7 +7863,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const proveedoresNeteados = netearComprasPorId(
     SQL_REPORTE_COMPRAS_POR_PROVEEDOR.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR.all(...rango),
-    (id) => buscarNombreProveedor.get(id)?.nombre ?? '(proveedor eliminado)'
+    (id) => buscarNombreProveedor.get(id, organizacionId)?.nombre ?? '(proveedor eliminado)'
   );
   const comprasNetas = redondear2(proveedoresNeteados.reduce((acc, p) => acc + p.compras, 0));
 
@@ -7311,7 +7881,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const productos = netearComprasPorId(
     SQL_REPORTE_COMPRAS_POR_PRODUCTO.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PRODUCTO.all(...rango),
-    (id) => buscarNombreProducto.get(id)?.nombre ?? '(producto eliminado)'
+    (id) => buscarNombreProducto.get(id, organizacionId)?.nombre ?? '(producto eliminado)'
   )
     .map((p) => ({
       id: p.id,
@@ -7327,7 +7897,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const categorias = netearComprasPorId(
     SQL_REPORTE_COMPRAS_POR_CATEGORIA.all(...rango),
     SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_CATEGORIA.all(...rango),
-    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id)?.nombre ?? '(categoría eliminada)')
+    (id) => (id === null ? 'Sin categoría' : buscarNombreCategoria.get(id, organizacionId)?.nombre ?? '(categoría eliminada)')
   )
     .map((c) => ({
       id: c.id,
@@ -7373,12 +7943,19 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
 
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get();
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
   const hoy = SQL_HOY.get().hoy;
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
-  const rango = [desde, desde, hasta, hasta];
+  const rango = [desde, desde, hasta, hasta, organizacionId];
   const diasPeriodo = diffDias(desde, hasta) + 1;
 
   const unidadesNetasPorProducto = new Map(
@@ -7389,7 +7966,10 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
     ).map((fila) => [fila.id, fila.unidades])
   );
 
-  const productosBase = db.prepare(`${SELECT_PRODUCTO} ORDER BY productos.nombre`).all().map(decorarProducto);
+  const productosBase = db
+    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
+    .all(req.usuario.organizacion_id)
+    .map(decorarProducto);
 
   const productos = productosBase
     .map((p) => {
@@ -7453,19 +8033,28 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
 // primero y aproximada después. Devuelve el ESTADO de la resolución, no
 // solo el resultado: la UI necesita distinguir "no existe" de "hay varios
 // que matchean" para poder pedirle al usuario que elija.
-function buscarPorNombre(tabla, nombreCrudo) {
+// Busca solo dentro de la organización de la sesión (Etapa A, CLAUDE.md
+// §28): todas las tablas que recibe tienen organizacion_id. Sin el filtro,
+// los `candidatos` de un nombre ambiguo le mostraban a la UI clientes,
+// productos o proveedores de otras empresas, y con un "Efectivo" por empresa
+// toda cuenta de tesorería quedaba ambigua.
+function buscarPorNombre(tabla, nombreCrudo, organizacionId) {
   const nombre = nombreCrudo === undefined || nombreCrudo === null ? '' : String(nombreCrudo).trim();
   if (!nombre) {
     return { estado: 'no_dado', valor: nombreCrudo ?? null, id: null, nombre_resuelto: null, candidatos: [] };
   }
-  const exactos = db.prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre = ? COLLATE NOCASE`).all(nombre);
+  const exactos = db
+    .prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre = ? COLLATE NOCASE AND organizacion_id = ?`)
+    .all(nombre, organizacionId);
   if (exactos.length === 1) {
     return { estado: 'resuelto', valor: nombre, id: exactos[0].id, nombre_resuelto: exactos[0].nombre, candidatos: [] };
   }
   if (exactos.length > 1) {
     return { estado: 'ambiguo', valor: nombre, id: null, nombre_resuelto: null, candidatos: exactos };
   }
-  const parciales = db.prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre LIKE ? COLLATE NOCASE`).all(`%${nombre}%`);
+  const parciales = db
+    .prepare(`SELECT id, nombre FROM ${tabla} WHERE nombre LIKE ? COLLATE NOCASE AND organizacion_id = ?`)
+    .all(`%${nombre}%`, organizacionId);
   if (parciales.length === 1) {
     return { estado: 'resuelto', valor: nombre, id: parciales[0].id, nombre_resuelto: parciales[0].nombre, candidatos: [] };
   }
@@ -7475,9 +8064,12 @@ function buscarPorNombre(tabla, nombreCrudo) {
   return { estado: 'no_encontrado', valor: nombre, id: null, nombre_resuelto: null, candidatos: [] };
 }
 
-function existeId(tabla, id) {
+// Mismo criterio que buscarPorNombre: un id de otra organización no existe.
+function existeId(tabla, id, organizacionId) {
   if (id === null || id === undefined || id === '') return false;
-  return Boolean(db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ?`).get(Number(id)));
+  return Boolean(
+    db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ? AND organizacion_id = ?`).get(Number(id), organizacionId)
+  );
 }
 
 function tieneVariantesActivas(productoId) {
@@ -7491,16 +8083,16 @@ function tieneVariantesActivas(productoId) {
 // proveedor/producto (compra) pueden ser "nuevos" — igual que el
 // formulario manual, esos SÍ se crean por nombre. Producto en una venta y
 // categoría/cuenta en un gasto NO se crean solos: si no existen, bloquea.
-function resolverPropuesta(tipo, datos) {
+function resolverPropuesta(tipo, datos, organizacionId) {
   const problemas = [];
 
   if (tipo === 'venta') {
-    const cliente = buscarPorNombre('clientes', datos.cliente);
+    const cliente = buscarPorNombre('clientes', datos.cliente, organizacionId);
     if (cliente.estado === 'no_dado') problemas.push('Falta el nombre del cliente.');
     if (cliente.estado === 'ambiguo') problemas.push(`Hay más de un cliente que coincide con "${cliente.valor}".`);
 
     const items = (Array.isArray(datos.items) ? datos.items : []).map((item) => {
-      const producto = buscarPorNombre('productos', item.producto);
+      const producto = buscarPorNombre('productos', item.producto, organizacionId);
       if (producto.estado === 'no_dado' || producto.estado === 'no_encontrado') {
         problemas.push(
           `El producto "${item.producto ?? '(sin nombre)'}" no existe en el catálogo. Cargalo primero o corregí el nombre.`
@@ -7520,7 +8112,7 @@ function resolverPropuesta(tipo, datos) {
 
     let cobro = null;
     if (datos.cobro) {
-      const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cobro.cuenta);
+      const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cobro.cuenta, organizacionId);
       if (cuenta.estado !== 'resuelto') {
         problemas.push(`No encontré la cuenta de tesorería "${datos.cobro.cuenta ?? '?'}" para el cobro.`);
       }
@@ -7531,12 +8123,12 @@ function resolverPropuesta(tipo, datos) {
   }
 
   if (tipo === 'compra') {
-    const proveedor = buscarPorNombre('proveedores', datos.proveedor);
+    const proveedor = buscarPorNombre('proveedores', datos.proveedor, organizacionId);
     if (proveedor.estado === 'no_dado') problemas.push('Falta el nombre del proveedor.');
     if (proveedor.estado === 'ambiguo') problemas.push(`Hay más de un proveedor que coincide con "${proveedor.valor}".`);
 
     const items = (Array.isArray(datos.items) ? datos.items : []).map((item) => {
-      const producto = buscarPorNombre('productos', item.producto);
+      const producto = buscarPorNombre('productos', item.producto, organizacionId);
       // Acá "no encontrado" no bloquea: la compra da de alta el producto
       // nuevo por nombre, es lo que le fija el costo inicial (CLAUDE.md §6).
       if (producto.estado === 'ambiguo') {
@@ -7566,18 +8158,18 @@ function resolverPropuesta(tipo, datos) {
   }
 
   if (tipo === 'gasto') {
-    const categoria = buscarPorNombre('categorias_gasto', datos.categoria);
+    const categoria = buscarPorNombre('categorias_gasto', datos.categoria, organizacionId);
     if (categoria.estado !== 'resuelto') {
       problemas.push(`No encontré la categoría de gasto "${datos.categoria ?? '?'}" (las categorías no se crean solas).`);
     }
-    const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cuenta);
+    const cuenta = buscarPorNombre('cuentas_tesoreria', datos.cuenta, organizacionId);
     if (cuenta.estado !== 'resuelto') {
       problemas.push(`No encontré la cuenta de tesorería "${datos.cuenta ?? '?'}".`);
     }
     // El proveedor de un gasto es opcional y tampoco se crea por nombre
     // (validarGasto exige un proveedor_id existente): si no matchea, el
     // gasto se puede confirmar igual sin proveedor, no bloquea.
-    const proveedor = datos.proveedor ? buscarPorNombre('proveedores', datos.proveedor) : null;
+    const proveedor = datos.proveedor ? buscarPorNombre('proveedores', datos.proveedor, organizacionId) : null;
     if (proveedor && proveedor.estado === 'ambiguo') {
       problemas.push(`Hay más de un proveedor que coincide con "${proveedor.valor}"; se puede confirmar sin proveedor.`);
     }
@@ -7599,11 +8191,20 @@ function resolverPropuesta(tipo, datos) {
   return { ejecutable: false, problemas: ['Tipo de operación desconocido.'] };
 }
 
-function contextoParaInterprete() {
+// Lo que viaja a Gemini como contexto del negocio: solo lo de la
+// organización de la sesión (Etapa A, CLAUDE.md §28) — nombres de otra
+// empresa no pueden salir hacia el proveedor de IA.
+function contextoParaInterprete(organizacionId) {
   return {
-    cuentas: db.prepare('SELECT nombre, tipo FROM cuentas_tesoreria ORDER BY nombre').all(),
-    categoriasGasto: db.prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 ORDER BY nombre').all(),
-    productos: db.prepare('SELECT nombre FROM productos WHERE activo = 1 ORDER BY nombre').all()
+    cuentas: db
+      .prepare('SELECT nombre, tipo FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY nombre')
+      .all(organizacionId),
+    categoriasGasto: db
+      .prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 AND organizacion_id = ? ORDER BY nombre')
+      .all(organizacionId),
+    productos: db
+      .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
+      .all(organizacionId)
   };
 }
 
@@ -7612,7 +8213,7 @@ app.post('/api/asistente/interpretar', async (req, res) => {
 
   let resultado;
   try {
-    resultado = await interpretar(texto, contextoParaInterprete());
+    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id));
   } catch (err) {
     if (err instanceof InterpreteError) {
       return res.status(err.status).json({ error: err.message });
@@ -7631,13 +8232,14 @@ app.post('/api/asistente/interpretar', async (req, res) => {
     });
   }
 
-  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos);
+  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, req.usuario.organizacion_id);
 
   const { lastInsertRowid: mensajeId } = db
     .prepare(
-      "INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo) VALUES (?, ?, 'interpretado', ?)"
+      `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
+       VALUES (?, ?, 'interpretado', ?, ?)`
     )
-    .run(texto, JSON.stringify(propuesta), resultado.tipo);
+    .run(texto, JSON.stringify(propuesta), resultado.tipo, req.usuario.organizacion_id);
 
   res.json({
     mensaje_id: Number(mensajeId),
@@ -7651,9 +8253,15 @@ app.post('/api/asistente/interpretar', async (req, res) => {
 
 app.post('/api/asistente/:id/descartar', (req, res) => {
   const mensajeId = Number(req.params.id);
+  // organizacion_id en el WHERE (Etapa A, CLAUDE.md §28): sin este filtro,
+  // un usuario de otra empresa podía descartar una propuesta pendiente que
+  // no era suya pasando el id a mano.
   const { changes } = db
-    .prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ? AND estado = 'interpretado'")
-    .run(mensajeId);
+    .prepare(
+      `UPDATE asistente_mensajes SET estado = 'descartado'
+        WHERE id = ? AND estado = 'interpretado' AND organizacion_id = ?`
+    )
+    .run(mensajeId, req.usuario.organizacion_id);
   if (changes === 0) {
     return res.status(404).json({ error: 'Este mensaje no existe o ya fue procesado.' });
   }
@@ -7670,9 +8278,18 @@ app.post('/api/asistente/:id/descartar', (req, res) => {
 app.post('/api/asistente/ejecutar', (req, res) => {
   const { mensaje_id: mensajeId, tipo, propuesta } = req.body;
 
+  // organizacion_id en el lookup (Etapa A, CLAUDE.md §28): sin este filtro,
+  // un usuario de la empresa B podía ejecutar una propuesta de la empresa A
+  // pasando su mensaje_id — era escritura cruzada entre inquilinos, no solo
+  // lectura. Un id de otra empresa cae en el mismo 404 de siempre, sin
+  // revelar que existe en otra parte. Los UPDATE de marcarFallido/
+  // marcarConfirmado de abajo operan sobre mensaje.id, que ya salió de este
+  // lookup acotado, así que no necesitan su propio filtro.
   const mensaje = db
-    .prepare("SELECT id FROM asistente_mensajes WHERE id = ? AND estado = 'interpretado'")
-    .get(Number(mensajeId));
+    .prepare(
+      "SELECT id FROM asistente_mensajes WHERE id = ? AND estado = 'interpretado' AND organizacion_id = ?"
+    )
+    .get(Number(mensajeId), req.usuario.organizacion_id);
   if (!mensaje) {
     return res.status(404).json({ error: 'Este mensaje no existe o ya fue procesado.' });
   }
@@ -7695,7 +8312,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     }
     const items = [];
     for (const item of propuesta.items) {
-      if (!existeId('productos', item.producto?.id)) {
+      if (!existeId('productos', item.producto?.id, req.usuario.organizacion_id)) {
         marcarFallido(`Producto inválido: "${item.producto?.valor ?? '?'}".`);
         return res.status(400).json({ error: `El producto "${item.producto?.valor ?? '?'}" no existe.` });
       }
@@ -7709,7 +8326,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
       });
     }
 
-    const clienteId = existeId('clientes', propuesta.cliente?.id) ? Number(propuesta.cliente.id) : null;
+    const clienteId = existeId('clientes', propuesta.cliente?.id, req.usuario.organizacion_id) ? Number(propuesta.cliente.id) : null;
     const clienteNombre = propuesta.cliente?.nombre_resuelto || propuesta.cliente?.valor || null;
     if (!clienteId && (!clienteNombre || !clienteNombre.trim())) {
       return res.status(400).json({ error: 'La venta necesita un cliente.' });
@@ -7718,8 +8335,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     // El asistente todavía no interpreta depósito desde el texto (CLAUDE.md
     // §19 y §21 son etapas separadas): usa el predeterminado, igual que la
     // conversión de un presupuesto.
-    const depositoAsistente = depositoPredeterminadoId();
-    const errorStock = validarStockDisponible(items, depositoAsistente);
+    const depositoAsistente = depositoPredeterminadoId(req.usuario.organizacion_id);
+    const errorStock = validarStockDisponible(items, depositoAsistente, req.usuario.organizacion_id);
     if (errorStock) {
       return res.status(400).json({ error: errorStock });
     }
@@ -7728,7 +8345,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     let cuentaCobroId = null;
     let importeCobro = null;
     if (propuesta.cobro) {
-      if (!existeId('cuentas_tesoreria', propuesta.cobro.cuenta?.id)) {
+      if (!existeId('cuentas_tesoreria', propuesta.cobro.cuenta?.id, req.usuario.organizacion_id)) {
         return res.status(400).json({ error: 'La cuenta de tesorería del cobro no existe.' });
       }
       cuentaCobroId = Number(propuesta.cobro.cuenta.id);
@@ -7751,7 +8368,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           cliente_id: clienteId,
           items,
           fecha: propuesta.fecha,
-          deposito_id: depositoAsistente
+          deposito_id: depositoAsistente,
+          organizacion_id: req.usuario.organizacion_id
         });
         auditar(req, {
           accion: 'crear',
@@ -7766,7 +8384,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           const { cliente_id: clienteIdCreado } = db
             .prepare('SELECT cliente_id FROM ventas WHERE id = ?')
             .get(nuevaVentaId);
-          const nuevoCobroId = registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente');
+          const nuevoCobroId = registrarCobro(nuevaVentaId, clienteIdCreado, importeCobro, cuentaCobroId, 'Cargado por el asistente', req.usuario.organizacion_id);
           auditar(req, {
             accion: 'crear',
             entidad: 'cobro',
@@ -7815,7 +8433,13 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     let compraId;
     try {
       compraId = withTransaction(() => {
-        const nuevaCompraId = crearCompra({ proveedor: proveedorNombre, items, costoEnvio, fecha: propuesta.fecha });
+        const nuevaCompraId = crearCompra({
+          proveedor: proveedorNombre,
+          items,
+          costoEnvio,
+          fecha: propuesta.fecha,
+          organizacion_id: req.usuario.organizacion_id
+        });
         confirmarCompra(nuevaCompraId);
         aplicarStockCompra(nuevaCompraId);
         auditar(req, {
@@ -7839,21 +8463,24 @@ app.post('/api/asistente/ejecutar', (req, res) => {
   }
 
   if (tipo === 'gasto') {
-    if (!existeId('categorias_gasto', propuesta?.categoria?.id)) {
+    if (!existeId('categorias_gasto', propuesta?.categoria?.id, req.usuario.organizacion_id)) {
       return res.status(400).json({ error: 'La categoría del gasto no existe.' });
     }
-    if (!existeId('cuentas_tesoreria', propuesta?.cuenta?.id)) {
+    if (!existeId('cuentas_tesoreria', propuesta?.cuenta?.id, req.usuario.organizacion_id)) {
       return res.status(400).json({ error: 'La cuenta de tesorería del gasto no existe.' });
     }
-    const proveedorId = existeId('proveedores', propuesta?.proveedor?.id) ? Number(propuesta.proveedor.id) : null;
+    const proveedorId = existeId('proveedores', propuesta?.proveedor?.id, req.usuario.organizacion_id) ? Number(propuesta.proveedor.id) : null;
 
-    const validacion = validarGasto({
-      categoria_id: propuesta.categoria.id,
-      cuenta_tesoreria_id: propuesta.cuenta.id,
-      proveedor_id: proveedorId,
-      importe: propuesta.importe,
-      tipo: propuesta.tipo
-    });
+    const validacion = validarGasto(
+      {
+        categoria_id: propuesta.categoria.id,
+        cuenta_tesoreria_id: propuesta.cuenta.id,
+        proveedor_id: proveedorId,
+        importe: propuesta.importe,
+        tipo: propuesta.tipo
+      },
+      req.usuario.organizacion_id
+    );
     if (validacion.error) {
       return res.status(400).json({ error: validacion.error });
     }
@@ -7870,7 +8497,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
           tipo: tipoValidado,
           fecha: propuesta.fecha,
           descripcion: propuesta.descripcion,
-          comprobante: null
+          comprobante: null,
+          organizacionId: req.usuario.organizacion_id
         });
         auditar(req, {
           accion: 'crear',
@@ -7908,7 +8536,15 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 // porque las dos tablas comparten la columna id — sin calificar, el id
 // que llega al frontend podría terminar siendo el del usuario, no el de
 // la fila de auditoría.
-app.get('/api/auditoria', (req, res) => {
+//
+// soloAdmin (Etapa A, CLAUDE.md §28): valor_anterior/valor_nuevo traen el
+// JSON crudo de la operación, que para productos/ventas incluye costo,
+// margen y ganancia — justo los campos que el rol empleado no debería ver
+// en ningún otro endpoint (§35). Antes era 'ambos'; pasa a admin acá para
+// cerrar esa deuda. Filtro por organizacion_id: las filas con NULL (ver el
+// comentario de login_fallido más arriba) quedan afuera del listado de
+// cualquier empresa, por diseño.
+app.get('/api/auditoria', soloAdmin, (req, res) => {
   const limite = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
   const registros = db
     .prepare(
@@ -7919,10 +8555,11 @@ app.get('/api/auditoria', (req, res) => {
               auditoria.operacion_tipo, auditoria.operacion_id, auditoria.detalle
          FROM auditoria
          LEFT JOIN usuarios ON usuarios.id = auditoria.usuario_id
+        WHERE auditoria.organizacion_id = ?
         ORDER BY auditoria.fecha DESC, auditoria.id DESC
         LIMIT ?`
     )
-    .all(limite);
+    .all(req.usuario.organizacion_id, limite);
   res.json(registros);
 });
 
@@ -7983,9 +8620,10 @@ app.get('/api/usuarios', soloAdmin, (req, res) => {
     .prepare(
       `SELECT id, usuario, nombre, rol, activo, debe_cambiar_password, fecha_alta, ultimo_acceso
          FROM usuarios
+        WHERE organizacion_id = ?
         ORDER BY nombre`
     )
-    .all();
+    .all(req.usuario.organizacion_id);
   res.json(usuarios);
 });
 
@@ -8002,6 +8640,11 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
   }
   const rolFinal = rol === 'admin' ? 'admin' : 'empleado';
 
+  // Sin filtro por organización a propósito: `usuarios.usuario` tiene UNIQUE
+  // global en el esquema y el login resuelve sin saber la empresa, así que el
+  // nombre de usuario es único en todo Nexo (decisión del equipo). Si acá se
+  // filtrara por empresa, el INSERT de abajo reventaría contra ese UNIQUE y
+  // devolvería un 500 en vez de este 409 claro.
   const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
   if (existe) {
     return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
@@ -8009,7 +8652,10 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
 
   let usuarioId;
   withTransaction(() => {
-    const orgId = organizacionUnica();
+    // La empresa sale de la sesión del admin que crea el usuario: con
+    // organizacionUnica() un admin de la empresa B creaba su empleado dentro
+    // de la empresa A (CLAUDE.md §28).
+    const orgId = req.usuario.organizacion_id;
     const { hash, salt } = hashPassword(password);
     // debe_cambiar_password: 1 porque la eligió el admin, no el dueño de
     // la cuenta — se lo obliga a elegir la suya en el primer login.
@@ -8033,7 +8679,15 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
 
 app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   const id = Number(req.params.id);
-  const anterior = db.prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ?').get(id);
+  // Filtro por organización como parte del aislamiento multi-empresa
+  // (CLAUDE.md §28): sin él, un admin de la empresa A podía renombrar,
+  // promover a admin o dar de baja usuarios de la empresa B (y la baja además
+  // les mata la sesión en el acto). Un usuario de otra empresa cae en el
+  // mismo 404 que un id inexistente, sin revelar que existe en otra parte.
+  const organizacionId = req.usuario.organizacion_id;
+  const anterior = db
+    .prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ? AND organizacion_id = ?')
+    .get(id, organizacionId);
   if (!anterior) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
   const nuevo = {
@@ -8048,7 +8702,8 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   // Salvaguardas en el servidor, no solo en la UI: sin esto el sistema
   // podría quedar sin ningún admin que lo administre, y no hay registro
   // público para recuperarse solo.
-  const eraUltimoAdmin = anterior.rol === 'admin' && anterior.activo === 1 && contarAdminsActivos() === 1;
+  const eraUltimoAdmin =
+    anterior.rol === 'admin' && anterior.activo === 1 && contarAdminsActivos(organizacionId) === 1;
   const dejaDeSerAdminActivo = nuevo.rol !== 'admin' || nuevo.activo === 0;
   if (eraUltimoAdmin && dejaDeSerAdminActivo) {
     return res.status(409).json({ error: 'No se puede dar de baja ni degradar al último administrador activo.' });
@@ -8058,12 +8713,12 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   }
 
   withTransaction(() => {
-    db.prepare('UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ?').run(
-      nuevo.nombre,
-      nuevo.rol,
-      nuevo.activo,
-      id
-    );
+    // organizacion_id también en el WHERE de la escritura (defensa en
+    // profundidad), aunque el lookup de arriba ya validó que el id es de esta
+    // empresa — mismo criterio que el resto de la Etapa A.
+    db.prepare(
+      'UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ? AND organizacion_id = ?'
+    ).run(nuevo.nombre, nuevo.rol, nuevo.activo, id, organizacionId);
     // Dar de baja echa al usuario en el acto: sin esto seguiría operando
     // con su sesión actual hasta que expirara sola (hasta 12hs).
     if (nuevo.activo === 0) {
@@ -8091,14 +8746,22 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   if (!password || password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
-  const usuario = db.prepare('SELECT id, nombre FROM usuarios WHERE id = ?').get(id);
+  // NO sacar el filtro por organización de acá. Sin él, un admin de la
+  // empresa A podía fijarle la contraseña a un usuario de la empresa B y
+  // después loguearse como él, o sea tomar control de otra empresa entera
+  // (CLAUDE.md §28) — era el agujero más grave que tuvo el sistema.
+  const organizacionId = req.usuario.organizacion_id;
+  const usuario = db
+    .prepare('SELECT id, nombre FROM usuarios WHERE id = ? AND organizacion_id = ?')
+    .get(id, organizacionId);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
   withTransaction(() => {
     const { hash, salt } = hashPassword(password);
     db.prepare(
-      'UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1 WHERE id = ?'
-    ).run(hash, salt, id);
+      `UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1
+        WHERE id = ? AND organizacion_id = ?`
+    ).run(hash, salt, id, organizacionId);
     // Igual que la baja: resetear la contraseña echa al usuario en el
     // acto, para que la sesión vieja no siga viva con la contraseña
     // anterior todavía en la cabeza de quien la tenía.
@@ -8140,19 +8803,22 @@ app.get('/api/negocio', (req, res) => {
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
          FROM organizaciones
-        ORDER BY id
-        LIMIT 1`
+        WHERE id = ?`
     )
-    .get();
+    .get(req.usuario.organizacion_id);
   if (!negocio) {
-    // No debería pasar: db/index.js siembra la fila al arrancar.
+    // No debería pasar: usuarios.organizacion_id es NOT NULL con FK a
+    // organizaciones, así que la empresa de la sesión siempre existe.
     return res.status(404).json({ error: 'No hay datos de negocio cargados.' });
   }
   res.json(negocio);
 });
 
 app.put('/api/negocio', soloAdmin, (req, res) => {
-  const id = organizacionUnica();
+  // La empresa sale de la sesión: con organizacionUnica() un admin de la
+  // empresa B leía y sobrescribía el membrete de comprobantes de la empresa A
+  // (CLAUDE.md §28).
+  const id = req.usuario.organizacion_id;
   const anterior = db
     .prepare(
       `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante

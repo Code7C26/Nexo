@@ -1804,21 +1804,26 @@
           <input type="password" id="loginPassword" autocomplete="current-password" required />
         </label>
         <button type="submit" class="btn btn-primary">Ingresar</button>
+        <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
       </form>
 
-      <form id="formBootstrap" class="form" hidden>
-        <p class="form-note">Es la primera vez que se usa Nexo acá. Creá el primer administrador.</p>
-        <p class="form-note" id="bootstrapError" hidden></p>
-        <label>Usuario
-          <input type="text" id="bootstrapUsuario" autocomplete="username" required />
+      <form id="formRegistro" class="form" hidden>
+        <p class="form-note">Creá la cuenta de tu negocio. Vas a quedar como administrador.</p>
+        <p class="form-note" id="registroError" hidden></p>
+        <label>Nombre del negocio
+          <input type="text" id="registroEmpresa" autocomplete="organization" required />
         </label>
-        <label>Nombre
-          <input type="text" id="bootstrapNombre" autocomplete="name" required />
+        <label>Tu nombre
+          <input type="text" id="registroNombre" autocomplete="name" required />
+        </label>
+        <label>Usuario
+          <input type="text" id="registroUsuario" autocomplete="username" required />
         </label>
         <label>Contraseña
-          <input type="password" id="bootstrapPassword" autocomplete="new-password" minlength="8" required />
+          <input type="password" id="registroPassword" autocomplete="new-password" minlength="8" required />
         </label>
-        <button type="submit" class="btn btn-primary">Crear administrador</button>
+        <button type="submit" class="btn btn-primary">Crear cuenta</button>
+        <button type="button" class="btn-link" id="irALogin">Ya tengo cuenta, ingresar</button>
       </form>
 
       <form id="formCambioForzado" class="form" hidden>

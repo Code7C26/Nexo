@@ -14,13 +14,16 @@
 // - 'ambos': requiere sesión (admin o empleado), sin `soloAdmin`.
 // - 'admin': requiere sesión Y rol admin (`soloAdmin` como argumento).
 //
-// Decisiones de negocio detrás de esta tabla (ver handoff.md, sección de
-// permisos por rol): anular/restaurar, tesorería, alta/edición de
+// Decisiones de negocio detrás de esta tabla (ver docs/handoff-historico.md,
+// §27 y §28): anular/restaurar, tesorería, alta/edición de
 // productos y categorías, ajuste de stock, todo el circuito de compras
 // (pagos incluidos) y sus devoluciones a proveedor, y las 5 vistas de
 // análisis (resumen y reportes) son admin. Cobros de venta y creación de
 // devoluciones de venta quedan del lado del empleado a propósito: es su
-// trabajo diario.
+// trabajo diario. Auditoría (GET /api/auditoria) pasó de 'ambos' a admin
+// en la Etapa A de multi-tenant (CLAUDE.md §28): valor_anterior/valor_nuevo
+// traen costo/margen/ganancia sin filtrar, que es justo lo que §35 le
+// esconde al empleado en el resto de las respuestas.
 //
 // Gap conocido, no resuelto todavía (preguntar antes de restringir, no
 // inventar): el ABM de listas de precios, depósitos y categorías de gasto
@@ -31,7 +34,7 @@
 export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
-  'POST /api/auth/bootstrap': 'publico',
+  'POST /api/auth/registro': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',
@@ -135,7 +138,7 @@ export const RUTAS_PERMISOS = {
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',
   'POST /api/asistente/ejecutar': 'ambos',
-  'GET /api/auditoria': 'ambos',
+  'GET /api/auditoria': 'admin',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
   'GET /api/usuarios': 'admin',

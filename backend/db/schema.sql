@@ -3,6 +3,10 @@
 -- registrar una venta con un nombre nuevo. En el segundo caso solo tiene
 -- nombre y el resto se completa después desde su ficha: por eso todos
 -- los campos de contacto son opcionales.
+-- organizacion_id: segunda tabla (de ~38) en sumar la columna multi-tenant
+-- del patrón piloteado en `productos` (CLAUDE.md §28). Nullable por el mismo
+-- motivo: referencia hacia adelante a `organizaciones` (definida más abajo
+-- en este archivo, SQLite no valida la tabla referenciada al crear).
 CREATE TABLE IF NOT EXISTS clientes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -10,7 +14,8 @@ CREATE TABLE IF NOT EXISTS clientes (
   telefono TEXT,
   direccion TEXT,
   documento TEXT,
-  notas TEXT
+  notas TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- estado solo tiene sentido para una factura SUELTA (sin venta_id): no
@@ -39,11 +44,20 @@ CREATE TABLE IF NOT EXISTS facturas (
   tipo TEXT NOT NULL DEFAULT 'factura' CHECK (tipo IN ('factura', 'nota_credito', 'nota_debito')),
   letra TEXT NOT NULL DEFAULT 'B' CHECK (letra IN ('A', 'B', 'C')),
   punto_venta INTEGER NOT NULL DEFAULT 1,
-  -- Correlativo por (punto_venta, tipo, letra): cada combinación tiene su
-  -- propia numeración, como en la realidad. NULL en la definición de acá
-  -- porque en una base nueva lo pone la aplicación al emitir, nunca un
-  -- default fijo (no hay forma de que SQLite calcule "el siguiente" solo).
-  numero INTEGER
+  -- Correlativo por (organizacion_id, punto_venta, tipo, letra): cada
+  -- combinación tiene su propia numeración, como en la realidad. NULL en la
+  -- definición de acá porque en una base nueva lo pone la aplicación al
+  -- emitir, nunca un default fijo (no hay forma de que SQLite calcule "el
+  -- siguiente" solo).
+  numero INTEGER,
+  -- organizacion_id: cuarta cabecera transaccional (de ~38 tablas) en sumar
+  -- la columna multi-tenant del patrón piloteado en `productos` (CLAUDE.md
+  -- §28). Nullable por el mismo motivo que el resto: referencia hacia
+  -- adelante a `organizaciones` (definida más abajo en este archivo). Cada
+  -- organización es un negocio con su propio CUIT, así que la numeración de
+  -- comprobantes también pasa a ser por organización (ver `idx_facturas_numeracion`
+  -- en db/index.js).
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 -- venta_id se agrega por migración en db/index.js (ver ahí el porqué).
 
@@ -51,40 +65,57 @@ CREATE TABLE IF NOT EXISTS facturas (
 -- mencionan como entidades separadas, pero con el catálogo actual un
 -- segundo nivel sería estructura vacía. Agregar subcategoría después es
 -- aditivo (una columna parent_id acá mismo), no obliga a rehacer nada.
+--
+-- organizacion_id (Etapa A, CLAUDE.md §28), igual en los cinco catálogos de
+-- este archivo (categorias, listas_precios, depositos, cuentas_tesoreria,
+-- categorias_gasto): cada empresa tiene los suyos, y el nombre es único
+-- dentro de la empresa, no en todo Nexo. NOT NULL a diferencia del resto de
+-- la Etapa A, que la sumó nullable por ALTER: estas tablas se reconstruyen
+-- (ver db/index.js), y con NULL el UNIQUE no frenaría duplicados, porque
+-- SQLite trata cada NULL como distinto. El texto "UNIQUE (organizacion_id,
+-- nombre)" es además el marcador que usa ese rebuild para saber si ya corrió.
 CREATE TABLE IF NOT EXISTS categorias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
-  activa INTEGER NOT NULL DEFAULT 1
+  nombre TEXT NOT NULL,
+  activa INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- Listas de precios (CLAUDE.md §18): un mismo producto puede tener precios
 -- distintos según el canal (minorista/mayorista/tarjeta). Exactamente una
--- lista es la predeterminada en todo momento — es el fallback cuando un
--- producto no tiene precio cargado en la lista elegida, y la que asumen
--- clientes/ventas/presupuestos sin lista propia asignada. La consistencia
--- de "una sola marcada" la garantiza el backend (ver /api/listas-precios en
--- server.js), no un constraint de SQL: SQLite no tiene forma declarativa de
--- expresar "a lo sumo una fila con es_predeterminada = 1".
+-- lista por organización es la predeterminada en todo momento — es el
+-- fallback cuando un producto no tiene precio cargado en la lista elegida, y
+-- la que asumen clientes/ventas/presupuestos sin lista propia asignada. La
+-- consistencia de "una sola marcada" la garantiza el backend (ver
+-- /api/listas-precios en server.js), no un constraint de SQL: SQLite no tiene
+-- forma declarativa de expresar "a lo sumo una fila con es_predeterminada =
+-- 1". organizacion_id: ver el comentario de categorias.
 CREATE TABLE IF NOT EXISTS listas_precios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   activa INTEGER NOT NULL DEFAULT 1,
-  es_predeterminada INTEGER NOT NULL DEFAULT 0
+  es_predeterminada INTEGER NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- Depósitos (CLAUDE.md §5/§19): el stock se maneja por producto Y
--- depósito, no como un único total global. Exactamente uno es el
--- predeterminado en todo momento — es el que asumen las operaciones
+-- depósito, no como un único total global. Exactamente uno por organización
+-- es el predeterminado en todo momento — es el que asumen las operaciones
 -- (venta/compra/devolución) sin depósito elegido a mano, mismo criterio
 -- que listas_precios.es_predeterminada. La consistencia de "una sola
 -- marcada" la garantiza el backend (ver /api/depositos en server.js), no
 -- un constraint de SQL, por el mismo motivo que esa tabla.
+-- organizacion_id: ver el comentario de categorias.
 CREATE TABLE IF NOT EXISTS depositos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   direccion TEXT,
   activo INTEGER NOT NULL DEFAULT 1,
-  es_predeterminado INTEGER NOT NULL DEFAULT 0
+  es_predeterminado INTEGER NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
@@ -100,6 +131,13 @@ CREATE TABLE IF NOT EXISTS depositos (
 -- objetivo cargado no hay nada contra qué comparar. Cuando está cargado, se
 -- compara contra el margen real de la lista predeterminada (precio_venta),
 -- solo a modo informativo/alerta, nunca sugiere ni fuerza un precio.
+-- organizacion_id es la primera columna multi-tenant del sistema (CLAUDE.md
+-- §28): `productos` es la tabla piloto para probar el patrón (columna +
+-- backfill + filtrado en server.js) antes de replicarlo en el resto de las
+-- tablas de negocio. Nullable a propósito, todavía no NOT NULL: la
+-- referencia a `organizaciones` es una referencia hacia adelante en este
+-- archivo (SQLite lo permite sin problema, no valida la tabla referenciada
+-- al momento del CREATE TABLE).
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -110,7 +148,8 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_minimo REAL NOT NULL DEFAULT 0,
   stock_maximo REAL,
   categoria_id INTEGER REFERENCES categorias(id),
-  margen_objetivo REAL
+  margen_objetivo REAL,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -130,8 +169,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_precios_unico
 -- Variantes de producto (ej. Talle/Color): un producto define sus propios
 -- atributos (no hay catálogo global de "Talle" compartido entre productos
 -- distintos) y una variante es una combinación concreta de valores de esos
--- atributos. Ver handoff.md, etapa "variantes de productos", para el
--- razonamiento completo detrás de este esquema.
+-- atributos. Ver docs/handoff-historico.md, §30, para el razonamiento
+-- completo detrás de este esquema.
 CREATE TABLE IF NOT EXISTS producto_atributos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
@@ -192,6 +231,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_variante_precios_unico
 -- una compra con un nombre nuevo. En ese segundo caso solo tiene nombre y
 -- el resto se completa después desde su ficha, así que todo el contacto
 -- es opcional.
+-- organizacion_id: mismo patrón multi-tenant que clientes/productos
+-- (CLAUDE.md §28).
 CREATE TABLE IF NOT EXISTS proveedores (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -199,7 +240,8 @@ CREATE TABLE IF NOT EXISTS proveedores (
   telefono TEXT,
   direccion TEXT,
   documento TEXT,
-  notas TEXT
+  notas TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- condicion_pago / fecha_vencimiento: el plazo pactado con el cliente y la
@@ -211,13 +253,17 @@ CREATE TABLE IF NOT EXISTS proveedores (
 -- venta más adelante no debería mover en silencio un vencimiento ya pactado.
 -- Es lo que permite que el aging de cuentas corrientes mida contra el
 -- vencimiento real y no contra la fecha de la operación.
+-- organizacion_id: siguiente lote del patrón multi-tenant piloteado en
+-- productos/clientes/proveedores (CLAUDE.md §28), sobre la cabecera de venta.
+-- venta_items no suma columna propia: se filtra vía JOIN a esta tabla.
 CREATE TABLE IF NOT EXISTS ventas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id INTEGER NOT NULL REFERENCES clientes(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   condicion_pago TEXT,
-  fecha_vencimiento TEXT
+  fecha_vencimiento TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -259,7 +305,11 @@ CREATE TABLE IF NOT EXISTS presupuestos (
     CHECK (estado IN ('borrador', 'enviado', 'aceptado', 'rechazado', 'convertido'))
     DEFAULT 'borrador',
   venta_id INTEGER REFERENCES ventas(id),
-  notas TEXT
+  notas TEXT,
+  -- organizacion_id: mismo patrón multi-tenant que facturas/ventas/compras
+  -- (CLAUDE.md §28), nullable por el mismo motivo (referencia hacia
+  -- adelante a `organizaciones`).
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- A diferencia de venta_items, acá NO hay costo_unitario_historico: un
@@ -289,13 +339,16 @@ CREATE TABLE IF NOT EXISTS presupuesto_items (
 -- solo generó un crédito a favor del cliente en su cuenta corriente, para
 -- descontar de una próxima venta. Es la misma idea que un renglón de
 -- cobro pero para la salida, sin necesitar una tabla aparte.
+-- organizacion_id: mismo patrón multi-tenant que ventas (CLAUDE.md §28); se
+-- deriva de venta_id -> ventas.organizacion_id al crear la devolución.
 CREATE TABLE IF NOT EXISTS devoluciones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   venta_id INTEGER NOT NULL REFERENCES ventas(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
-  motivo TEXT
+  motivo TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- venta_item_id (no producto_id solo) apunta al renglón exacto de la
@@ -331,6 +384,8 @@ CREATE TABLE IF NOT EXISTS devolucion_items (
 -- stock. Es necesario porque las compras viejas (anteriores a esta regla)
 -- sumaban stock al crearse, y si no se distinguieran volverían a sumarlo
 -- al marcarlas como recibidas.
+-- organizacion_id: mismo patrón multi-tenant que ventas (CLAUDE.md §28).
+-- compra_items no suma columna propia: se filtra vía JOIN a esta tabla.
 CREATE TABLE IF NOT EXISTS compras (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
@@ -341,7 +396,8 @@ CREATE TABLE IF NOT EXISTS compras (
   stock_aplicado INTEGER NOT NULL DEFAULT 0,
   -- Mismo par que en ventas, del lado de la deuda con el proveedor.
   condicion_pago TEXT,
-  fecha_vencimiento TEXT
+  fecha_vencimiento TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a
@@ -376,6 +432,8 @@ CREATE TABLE IF NOT EXISTS compra_items (
 -- dio el proveedor en su propio comprobante) — no se emite desde acá, así
 -- que no tiene letra/punto_venta/numeración propia como sí tiene la nota
 -- de crédito que Nexo emite a un cliente (tabla facturas).
+-- organizacion_id: mismo patrón multi-tenant que compras (CLAUDE.md §28); se
+-- deriva de compra_id -> compras.organizacion_id al crear la devolución.
 CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   compra_id INTEGER NOT NULL REFERENCES compras(id),
@@ -383,7 +441,8 @@ CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
   motivo TEXT,
-  nota_credito_proveedor_numero TEXT
+  nota_credito_proveedor_numero TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- compra_item_id (no producto_id solo) apunta al renglón exacto de la
@@ -412,19 +471,28 @@ CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
 -- referencian por transferencia_id, igual que una venta referencia sus
 -- movimientos por venta_id. anulada revierte con el par contrario, nunca
 -- borra filas — mismo criterio que el resto del sistema.
+-- organizacion_id: mismo patrón multi-tenant que gastos (CLAUDE.md §28); se
+-- completa en el INSERT desde req.usuario.organizacion_id, y los dos
+-- depósitos de la transferencia tienen que ser de esa misma organización (lo
+-- valida POST /api/transferencias).
 CREATE TABLE IF NOT EXISTS transferencias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   deposito_origen_id INTEGER NOT NULL REFERENCES depositos(id),
   deposito_destino_id INTEGER NOT NULL REFERENCES depositos(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
-  nota TEXT
+  nota TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
 -- deposito_id es NOT NULL: toda unidad de stock vive en algún depósito
 -- físico concreto, nunca "en general" (CLAUDE.md §5/§19).
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28); se deriva de la operación que generó el movimiento (venta, compra,
+-- devolución, transferencia o ajuste manual), nunca se resuelve solo acá —
+-- quien llama a registrarMovimientoStock ya la tiene resuelta.
 CREATE TABLE IF NOT EXISTS movimientos_stock (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
@@ -447,7 +515,8 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   -- Solo tiene sentido en las entradas por compra; en salidas y ajustes
   -- queda NULL.
   costo_unitario REAL,
-  nota TEXT
+  nota TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- El índice sobre (producto_id, deposito_id) se crea en db/index.js, no
@@ -485,11 +554,15 @@ GROUP BY producto_id;
 -- usar Nexo. No es un movimiento (nadie la ingresó desde el sistema), así
 -- que vive en la cuenta y el saldo real se calcula como
 -- saldo_inicial + movimientos (ver la vista saldo_tesoreria en db/index.js).
+-- organizacion_id: ver el comentario de categorias. Acá además es lo que
+-- impide que dos empresas compartan la fila "Efectivo" y mezclen su saldo.
 CREATE TABLE IF NOT EXISTS cuentas_tesoreria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'banco', 'mercadopago', 'otro')),
-  saldo_inicial REAL NOT NULL DEFAULT 0
+  saldo_inicial REAL NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 CREATE TABLE IF NOT EXISTS cobros (
@@ -529,11 +602,14 @@ CREATE TABLE IF NOT EXISTS pagos (
 --                es ganancia ya generada que se reparte.
 -- Los tres bajan la caja; solo el operativo baja el resultado. Si se
 -- mezclaran, un mes con un retiro grande figuraría como mes con pérdida.
+-- organizacion_id: ver el comentario de categorias.
 CREATE TABLE IF NOT EXISTS categorias_gasto (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
   tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
-  activa INTEGER NOT NULL DEFAULT 1
+  activa INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
 );
 
 -- gastos.tipo se copia de la categoría al momento de cargar el gasto y se
@@ -543,6 +619,10 @@ CREATE TABLE IF NOT EXISTS categorias_gasto (
 -- meses ya cerrados.
 -- proveedor_id es opcional: el alquiler no tiene proveedor, pero el
 -- service de una máquina sí puede tenerlo.
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28); no se deriva de otra tabla porque proveedor_id es opcional y no hay
+-- una cabecera obligatoria de la que copiarlo, así que se completa en el
+-- INSERT desde req.usuario.organizacion_id.
 CREATE TABLE IF NOT EXISTS gastos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   categoria_id INTEGER NOT NULL REFERENCES categorias_gasto(id),
@@ -553,13 +633,20 @@ CREATE TABLE IF NOT EXISTS gastos (
   tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
   descripcion TEXT,
   comprobante TEXT,
-  estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo'
+  estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo',
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo
 -- valor, así se puede mostrar una contra la otra. Es plata que se mueve
 -- de bolsillo, no plata que entra o sale del negocio, por eso son dos
 -- movimientos y no uno.
+-- organizacion_id: columna propia (CLAUDE.md §28), a diferencia de cobros/
+-- pagos/movimientos_cc_*. Hay orígenes ('manual', 'transferencia') que no
+-- cuelgan de ninguna venta/compra/gasto de la que derivar la organización
+-- por join, así que se completa en cada INSERT desde
+-- req.usuario.organizacion_id (o la organización ya resuelta de la
+-- operación padre, cuando la función que inserta ya la tiene en scope).
 CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
@@ -574,7 +661,8 @@ CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   transferencia_id INTEGER,
   gasto_id INTEGER REFERENCES gastos(id),
   devolucion_id INTEGER REFERENCES devoluciones(id),
-  devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id)
+  devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando
@@ -618,6 +706,9 @@ GROUP BY proveedor_id;
 -- confirmarse, ver `error`). La IA nunca escribe en ninguna otra tabla
 -- directamente: esta es su única puerta de entrada, y es también el
 -- registro de auditoría de esa puerta (§22).
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28); se completa en el INSERT desde req.usuario.organizacion_id, porque el
+-- handler que lo escribe ya está autenticado.
 CREATE TABLE IF NOT EXISTS asistente_mensajes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
@@ -626,7 +717,8 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   estado TEXT NOT NULL CHECK (estado IN ('interpretado', 'confirmado', 'descartado', 'fallido')),
   operacion_tipo TEXT CHECK (operacion_tipo IN ('venta', 'compra', 'gasto')),
   operacion_id INTEGER,
-  error TEXT
+  error TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 -- Auditoría central unificada (CLAUDE.md §22). Registra el ACTO del
@@ -649,6 +741,14 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
 -- entidad_id es nullable y sin FK a propósito: es la única columna del
 -- proyecto que apunta a tablas distintas según el valor de `entidad`, y el
 -- registro debe sobrevivir aunque la fila referida deje de existir.
+--
+-- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
+-- §28), con un caso sin empresa deducible: un login_fallido con un usuario
+-- que no existe no tiene a quién atribuirse, así que queda NULL a propósito
+-- (mismo criterio que usuario_id arriba: NULL es honesto, inventarle una
+-- empresa sería falsificar la auditoría) y por lo tanto invisible en
+-- GET /api/auditoria para todas las empresas. Se completa desde
+-- req.usuario.organizacion_id vía el wrapper `auditar` en server.js.
 CREATE TABLE IF NOT EXISTS auditoria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
@@ -660,11 +760,14 @@ CREATE TABLE IF NOT EXISTS auditoria (
   -- 'organizacion' cubre los datos del negocio (nombre, CUIT, dirección) que
   -- salen impresos en el membrete de todo comprobante: cambiarlos no es un
   -- ajuste cosmético, así que queda registrado como cualquier otra mutación.
+  -- Estos dos CHECK tienen que quedar iguales a los del último rebuild de
+  -- auditoria en db/index.js: si acá falta un valor, una base nueva dispara
+  -- ese rebuild, que recrea la tabla sin organizacion_id.
   entidad TEXT NOT NULL
     CHECK (entidad IN ('venta','compra','presupuesto','devolucion','devolucion_proveedor',
                        'factura','cobro','pago','gasto','producto','cliente','proveedor',
                        'stock','tesoreria','categoria','categoria_gasto','cuenta_tesoreria','usuario',
-                       'organizacion')),
+                       'organizacion','lista_precio','deposito','transferencia')),
   entidad_id INTEGER,
   -- Quién operó, más allá de por qué vía (actor). Nullable a propósito:
   -- las filas de antes de esta etapa no tienen a quién atribuirse, y
@@ -684,11 +787,19 @@ CREATE TABLE IF NOT EXISTS auditoria (
   -- Frase legible ya armada en el backend ("Venta #12 anulada, stock
   -- devuelto"): sin esto el frontend tendría que reimplementar la
   -- narración de cada uno de los ~20 casos distintos.
-  detalle TEXT
+  detalle TEXT,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria(fecha DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_id);
+-- idx_auditoria_org_fecha (la que reemplaza en la práctica a
+-- idx_auditoria_fecha una vez que GET /api/auditoria filtra por
+-- organizacion_id) no se crea acá sino en index.js, mismo criterio que
+-- idx_facturas_numeracion: en una instalación vieja, este archivo se
+-- ejecuta completo en cada arranque y organizacion_id todavía no existe en
+-- esa primera pasada, así que un CREATE INDEX sobre esa columna acá
+-- rompería la migración antes de que el ALTER TABLE llegue a correr.
 
 -- Usuarios, login y roles. Nexo pasa de "un solo operador sin identidad"
 -- a admin/empleado con sesión propia.

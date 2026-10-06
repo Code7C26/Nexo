@@ -2,10 +2,10 @@
 
 > Sistema de gestión integral para PyMEs y emprendimientos, con interfaz conversacional por voz.
 
-Nació como proyecto de escuela, pero se construye con el estándar de un
-producto real: el objetivo es que un comercio lo pueda usar de verdad y que
-compita con los sistemas de gestión que ya existen en el mercado argentino
-(referencias: Dux Software, Contagram). Las reglas de negocio y de
+Nexo centraliza productos, stock, compras, ventas, clientes, proveedores,
+tesorería y facturación en un solo sistema, pensado para que un comercio lo use
+de verdad y compita con los sistemas de gestión que ya existen en el mercado
+argentino (referencias: Dux Software, Contagram). Las reglas de negocio y de
 arquitectura completas viven en [`CLAUDE.md`](CLAUDE.md); este README es la
 puerta de entrada rápida.
 
@@ -81,8 +81,11 @@ El frontend es estático: `backend/server.js` lo sirve directamente desde
 `/frontend`, así que con el backend arriba ya está disponible en el mismo
 puerto — no hace falta un segundo proceso ni build.
 
-En el primer arranque, si no hay ningún usuario en la base, el propio login
-ofrece un flujo de "bootstrap" para crear el primer administrador.
+En el primer arranque, si no hay ningún usuario en la base, la pantalla de
+sesión ofrece directamente el registro: el nombre del negocio y su primer
+administrador. Después, cualquiera puede crear otra empresa desde el link
+"Creá una cuenta" del login (`POST /api/auth/registro`, con un tope de 5
+intentos por hora y por IP).
 
 ### Tests
 
@@ -102,7 +105,9 @@ npm test            # node --test — hoy cubre el inventario de rutas y permiso
 │   ├── permisos.js     → tabla versionada de permisos por rol y endpoint
 │   ├── db/              → schema.sql + migraciones (index.js)
 │   └── test/            → tests con node:test
-├── /frontend  → UI (index.html, css/, js/app.js), sin build step
+├── /frontend  → UI (index.html, css/, js/), sin build step ni framework
+│   └── js/      → app.js (lo que falta modularizar), core/ (compartido) y
+│                  dominios/ (una pantalla por módulo ES); ver frontend/README.md
 ├── /docs      → documentación técnica y análisis del proyecto
 ├── /desing    → mockups y diseño visual
 ├── /assets    → imágenes, íconos y recursos estáticos
@@ -144,20 +149,40 @@ las etapas que lo acercan a un producto comercializable.
 - Asistente por lenguaje natural (Gemini) para registrar ventas, compras y
   gastos por texto, siempre con confirmación humana antes de ejecutar.
 
+**Multi-empresa (Etapa A): núcleo hecho.** Todas las tablas de negocio llevan
+`organizacion_id` y cada consulta filtra por la empresa de la sesión, así que
+varios negocios conviven en una instalación con los datos aislados. Una empresa
+nueva se da de alta desde la pantalla de login (registro público).
+
 **Todavía no construido** (para no prometer de más), próximos pasos del
 roadmap real (`CLAUDE.md §38`): IVA discriminado y facturación electrónica
-con ARCA, multi-empresa (SaaS multi-tenant), punto de venta de mostrador con
-turno de caja, PWA instalable, perfiles configurables por rubro de comercio,
-integraciones con Mercado Libre y Tienda Nube, marca y unidad de medida como
-entidades propias, subcategorías, ventas por vendedor, y la parte de
-IA/voz descripta en `CLAUDE.md §21`/`§36` más allá del asistente por texto
-que ya existe.
+con ARCA, punto de venta de mostrador con turno de caja, PWA instalable,
+perfiles configurables por rubro de comercio, integraciones con Mercado Libre
+y Tienda Nube, marca y unidad de medida como entidades propias,
+subcategorías, ventas por vendedor, y la parte de IA/voz descripta en
+`CLAUDE.md §21`/`§36` más allá del asistente por texto que ya existe.
 
 ## 🗺️ Roadmap
 
 El orden y el porqué de cada etapa siguiente están en `CLAUDE.md §38`. Cada
 etapa se planifica con el equipo antes de arrancarla — estar en el roadmap no
 es una autorización para empezarla (`CLAUDE.md §27`).
+
+| Etapa | Qué | Estado |
+|---|---|---|
+| A | Multi-empresa (`organizacion_id`, aislamiento, registro) | Núcleo hecho. Falta pasar `organizacion_id` a `NOT NULL` en 15 tablas y poder apagar el registro público |
+| B | Modularizar `app.js` por dominio + PWA | En curso: hechos el núcleo compartido (`core/`) y 4 dominios (usuarios, configuración, mi cuenta, cuentas corrientes). `app.js` bajó de 9407 a 7408 líneas; faltan el resto de los dominios y la PWA (manifest, service worker, offline de lectura) |
+| C | IVA discriminado y categoría fiscal | Pendiente |
+| D | Punto de venta (POS) y turno de caja | Pendiente |
+| E | Facturación electrónica ARCA (homologación → producción) | Pendiente, depende de C |
+| F | Perfiles de rubro y unidad de medida fraccionable | Pendiente |
+| G | Integraciones: Mercado Libre, Tienda Nube | Pendiente |
+| H | Reportes avanzados y dashboard por rubro | Pendiente |
+| I | IA: voz y WhatsApp | Pendiente |
+
+Pendientes de seguridad y operación para producción real (`CLAUDE.md §35`):
+backups de la base, recuperación de contraseña, HTTPS, límites de request y
+paginación de los listados.
 
 El detalle sesión a sesión de qué se hizo y qué decisiones quedaron
 tomadas vive en [`handoff.md`](handoff.md), en la raíz del repo.

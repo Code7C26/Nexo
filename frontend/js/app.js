@@ -7,6 +7,19 @@
  * un único monto (`total`), sin impuestos.
  */
 
+import { crearFiltros, rangoDeFiltroFecha } from "./core/filtros.js";
+import { ICONO_TACHO, botonEditarFila, columnasVisibles, esAdmin, hoyISO, money, moneyCorto, numero } from "./core/formato.js";
+import { avisar, confirmar, filaVacia, filaVaciaFiltrada, manejarError, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
+import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
+import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
+import { descargarCSV } from "./core/csv.js";
+import { mostrarVista, vistaDesdeHash } from "./core/router.js";
+import { alEntrarEnVista, recargar, registrar } from "./core/registro.js";
+import "./dominios/usuarios.js";
+import "./dominios/configuracion.js";
+import "./dominios/perfil.js";
+import "./dominios/cuentas-corrientes.js";
+
 let facturas = [];
 
 document.getElementById("todayDate").textContent = new Date().toLocaleDateString("es-AR", {
@@ -15,848 +28,6 @@ document.getElementById("todayDate").textContent = new Date().toLocaleDateString
   month: "long"
 });
 
-// Guarda contra `null`/`undefined`: con el filtrado de campos sensibles por
-// rol (permisos por rol, backend/server.js) un empleado puede recibir un
-// producto sin `precio_costo` o una venta sin `margen` — sin este chequeo
-// `n.toLocaleString` explota adentro del template literal que arma la fila
-// de la tabla, y la excepción se lleva puesto el render entero (no queda
-// "vacío", no se dibuja nada). Con la guarda degrada a un guion.
-const money = (n) =>
-  n == null
-    ? "—"
-    : n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
-
-const numero = (n) => (n == null ? "—" : n.toLocaleString("es-AR"));
-
-// sesion.js escribe data-rol en <html> antes de inyectar este archivo (ver
-// escribirDatosUsuario en sesion.js), así que ya está disponible en la
-// primera línea que corre acá. Es la misma fuente que ya usa styles.css
-// (:root:not([data-rol="admin"])) para esconder por CSS — esta función es
-// el equivalente en JS, para las decisiones que no se pueden resolver con
-// una regla de CSS (no hacer el fetch, no emitir el link, elegir la vista
-// de fallback).
-const esAdmin = () => document.documentElement.dataset.rol === "admin";
-
-// Los CSV son datos armados en JS, no DOM: `.col-admin` no les sirve. Las
-// columnas de costo/margen de un array COLUMNAS_CSV_X se marcan con
-// `admin: true`, y esto filtra esa marca al momento de exportar (no antes:
-// el rol puede no estar listo todavía si se evaluara al definir el array a
-// nivel de módulo). Sin este filtro un empleado se exporta una columna con
-// el valor real igual — el filtrado del backend (permisos por rol) no
-// interviene acá porque el array ya vive en el objeto que llegó por fetch.
-const columnasVisibles = (columnas) => (esAdmin() ? columnas : columnas.filter((c) => !c.admin));
-
-const hoyISO = () => new Date().toLocaleDateString("sv-SE"); // formato AAAA-MM-DD, para <input type="date">
-
-// Versión abreviada de money(), para las etiquetas del eje del gráfico de
-// evolución: "$450.000,00" no entra en la canaleta angosta del eje.
-// Conserva el signo.
-function moneyCorto(n) {
-  const signo = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  if (abs >= 1e6) return `${signo}$${(abs / 1e6).toLocaleString("es-AR", { maximumFractionDigits: 1 })}M`;
-  if (abs >= 1e3) return `${signo}$${Math.round(abs / 1e3)}k`;
-  return `${signo}$${Math.round(abs)}`;
-}
-
-const ICONO_TACHO =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/>' +
-  '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
-  '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>' +
-  '<line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-
-const ICONO_LAPIZ =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M12 20h9"/>' +
-  '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-
-// Botón de editar que va en una fila de tabla. Se usa igual en Productos,
-// Clientes y Proveedores para que sea una sola convención: el click en la
-// fila abre la ficha completa, el lápiz va directo al modal de edición.
-const botonEditarFila = (clase, id, que) =>
-  `<button type="button" class="btn-icon ${clase}" data-id="${id}" title="Editar ${que}" aria-label="Editar ${que}">${ICONO_LAPIZ}</button>`;
-
-/* ---------- Filtros (estilo Notion) ---------- */
-
-// La idea es la de Notion: la pantalla no muestra una fila de campos
-// siempre visible, sino un botón "+ Filtro". Elegís la propiedad, se
-// agrega un chip "Propiedad · operador · valor", y ese chip se edita o se
-// borra. Qué operadores hay depende del tipo de la propiedad: un texto se
-// puede "contener", un monto puede ser "mayor que", una fecha puede caer
-// "entre" dos días o en un período relativo como "este mes".
-//
-// campos: [{ clave, etiqueta, tipo: "texto"|"numero"|"fecha"|"select", opciones }]
-// Un filtro guardado es { campo, operador, valor, valor2 }.
-
-const OPERADORES = {
-  texto: [
-    { valor: "contiene", texto: "contiene", pide: 1 },
-    { valor: "no_contiene", texto: "no contiene", pide: 1 },
-    { valor: "es", texto: "es exactamente", pide: 1 },
-    { valor: "no_es", texto: "no es", pide: 1 },
-    { valor: "empieza", texto: "empieza con", pide: 1 },
-    { valor: "vacio", texto: "está vacío", pide: 0 },
-    { valor: "no_vacio", texto: "no está vacío", pide: 0 }
-  ],
-  numero: [
-    { valor: "mayor", texto: "es mayor que", pide: 1 },
-    { valor: "mayor_igual", texto: "es mayor o igual que", pide: 1 },
-    { valor: "menor", texto: "es menor que", pide: 1 },
-    { valor: "menor_igual", texto: "es menor o igual que", pide: 1 },
-    { valor: "igual", texto: "es igual a", pide: 1 },
-    { valor: "distinto", texto: "es distinto de", pide: 1 },
-    { valor: "entre", texto: "está entre", pide: 2 }
-  ],
-  fecha: [
-    // Los relativos van primero porque son los que más se usan: "¿cómo me
-    // fue este mes?" no debería obligar a tipear dos fechas.
-    { valor: "hoy", texto: "es hoy", pide: 0 },
-    { valor: "ayer", texto: "es ayer", pide: 0 },
-    { valor: "ultimos_7", texto: "está en los últimos 7 días", pide: 0 },
-    { valor: "ultimos_30", texto: "está en los últimos 30 días", pide: 0 },
-    { valor: "este_mes", texto: "es este mes", pide: 0 },
-    { valor: "mes_pasado", texto: "es el mes pasado", pide: 0 },
-    { valor: "este_anio", texto: "es este año", pide: 0 },
-    { valor: "es", texto: "es el día", pide: 1 },
-    { valor: "despues", texto: "es posterior a", pide: 1 },
-    { valor: "en_o_despues", texto: "es desde el", pide: 1 },
-    { valor: "antes", texto: "es anterior a", pide: 1 },
-    { valor: "en_o_antes", texto: "es hasta el", pide: 1 },
-    { valor: "entre", texto: "está entre", pide: 2 }
-  ],
-  select: [
-    { valor: "es", texto: "es", pide: 1 },
-    { valor: "no_es", texto: "no es", pide: 1 },
-    { valor: "vacio", texto: "está vacío", pide: 0 },
-    { valor: "no_vacio", texto: "no está vacío", pide: 0 }
-  ]
-};
-
-// Traduce un operador relativo a un par de fechas concretas. Devuelve null
-// si el operador no es relativo, y ahí el filtro usa las fechas tipeadas.
-function rangoRelativo(operador) {
-  const iso = (d) => d.toLocaleDateString("sv-SE");
-  const hoy = new Date();
-  const corrido = (dias) => {
-    const d = new Date(hoy);
-    d.setDate(d.getDate() + dias);
-    return d;
-  };
-
-  switch (operador) {
-    case "hoy":
-      return [iso(hoy), iso(hoy)];
-    case "ayer":
-      return [iso(corrido(-1)), iso(corrido(-1))];
-    case "ultimos_7":
-      return [iso(corrido(-6)), iso(hoy)];
-    case "ultimos_30":
-      return [iso(corrido(-29)), iso(hoy)];
-    case "este_mes":
-      // El día 0 del mes siguiente es el último del actual.
-      return [
-        iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)),
-        iso(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0))
-      ];
-    case "mes_pasado":
-      return [
-        iso(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)),
-        iso(new Date(hoy.getFullYear(), hoy.getMonth(), 0))
-      ];
-    case "este_anio":
-      return [`${hoy.getFullYear()}-01-01`, `${hoy.getFullYear()}-12-31`];
-    default:
-      return null;
-  }
-}
-
-// Un filtro de fecha, sea relativo o tipeado, se puede expresar siempre
-// como un desde/hasta. Lo usa el Resumen, que le manda el rango al backend
-// en vez de filtrar en memoria.
-function rangoDeFiltroFecha(filtro) {
-  const relativo = rangoRelativo(filtro.operador);
-  if (relativo) return { desde: relativo[0], hasta: relativo[1] };
-
-  const { operador, valor, valor2 } = filtro;
-  if (!valor) return {};
-  switch (operador) {
-    case "es":
-      return { desde: valor, hasta: valor };
-    case "despues":
-    case "en_o_despues":
-      return { desde: valor };
-    case "antes":
-    case "en_o_antes":
-      return { hasta: valor };
-    case "entre":
-      return valor2 ? { desde: valor, hasta: valor2 } : { desde: valor };
-    default:
-      return {};
-  }
-}
-
-const estaVacio = (v) => v === null || v === undefined || String(v).trim() === "";
-
-function cumpleFiltro(fila, filtro, campo) {
-  const bruto = fila[filtro.campo];
-  const { operador, valor, valor2 } = filtro;
-
-  if (operador === "vacio") return estaVacio(bruto);
-  if (operador === "no_vacio") return !estaVacio(bruto);
-
-  if (campo.tipo === "fecha") {
-    const relativo = rangoRelativo(operador);
-    if (relativo) return bruto >= relativo[0] && bruto <= relativo[1];
-    if (!valor) return true; // filtro a medio cargar: no esconde nada
-    switch (operador) {
-      case "es": return bruto === valor;
-      case "antes": return bruto < valor;
-      case "despues": return bruto > valor;
-      case "en_o_antes": return bruto <= valor;
-      case "en_o_despues": return bruto >= valor;
-      case "entre": return bruto >= valor && (!valor2 || bruto <= valor2);
-      default: return true;
-    }
-  }
-
-  if (campo.tipo === "numero") {
-    if (estaVacio(valor)) return true;
-    const n = Number(bruto);
-    const v = Number(valor);
-    switch (operador) {
-      case "igual": return n === v;
-      case "distinto": return n !== v;
-      case "mayor": return n > v;
-      case "mayor_igual": return n >= v;
-      case "menor": return n < v;
-      case "menor_igual": return n <= v;
-      case "entre": return n >= v && (estaVacio(valor2) || n <= Number(valor2));
-      default: return true;
-    }
-  }
-
-  if (estaVacio(valor)) return true;
-  // Los select comparan el valor crudo (suelen ser ids); los textos
-  // comparan sin distinguir mayúsculas ni acentos de más.
-  if (campo.tipo === "select") {
-    if (operador === "es") return String(bruto) === String(valor);
-    if (operador === "no_es") return String(bruto) !== String(valor);
-    return true;
-  }
-  const texto = String(bruto ?? "").toLowerCase();
-  const busca = String(valor).toLowerCase();
-  switch (operador) {
-    case "contiene": return texto.includes(busca);
-    case "no_contiene": return !texto.includes(busca);
-    case "es": return texto === busca;
-    case "no_es": return texto !== busca;
-    case "empieza": return texto.startsWith(busca);
-    default: return true;
-  }
-}
-
-// Todos los filtros tienen que cumplirse (Y), como el modo básico de Notion.
-function aplicarFiltros(lista, filtros, campos) {
-  if (filtros.length === 0) return lista;
-  return lista.filter((fila) =>
-    filtros.every((filtro) => {
-      const campo = campos.find((c) => c.clave === filtro.campo);
-      return !campo || cumpleFiltro(fila, filtro, campo);
-    })
-  );
-}
-
-
-/* ---------- Selección múltiple ---------- */
-
-// A partir de esta cantidad de seleccionados, las acciones en lote que
-// tardan (imprimir varias páginas, generar varios PDF) piden confirmación
-// antes de arrancar: no para bloquear, sino para avisar que puede demorar
-// (y, para descargas, que el navegador va a pedir permiso para bajar varios
-// archivos — Chrome bloquea descargas múltiples automáticas por defecto).
-const CONFIRMAR_LOTE_DESDE = 25;
-
-// Tope duro, no una regla de negocio: guardarraíl contra un "seleccionar
-// todo" accidental sobre una tabla con miles de filas, no un límite que
-// alguien vaya a pedir subir. Ninguna acción en lote de esta etapa debería
-// necesitar más.
-const LIMITE_LOTE = 500;
-
-// Utilitario transversal de tablas, hermano de crearFiltros: agrega una
-// columna de checkbox a una tabla y lleva el set de ids tildados. idBody
-// es el id del <tbody> (la única marca que ya llevan las tablas, sin
-// agregar un id nuevo a la <table>). idDe saca el id de una fila de la
-// lista (default (x) => x.id; hace falta pasarlo distinto en tablas donde
-// la fila no es la entidad en sí, como Stock, que es producto×depósito).
-//
-// La columna del <th> se inyecta acá por JS (insertAdjacentHTML), así la
-// columna existe SI Y SOLO SI la selección está montada, y colspan(n) puede
-// resolver solo el ancho de la fila vacía sin tocar cada vista a mano.
-//
-// El binding de los checkboxes de fila es la ÚNICA delegación real del
-// archivo (el resto re-bindea en cada render): los checkboxes se destruyen
-// en cada innerHTML =, y re-bindear un listener por fila en cada render
-// sería el único costo evitable de esta función.
-function crearSeleccion(idBody, { idDe = (x) => x.id } = {}) {
-  const body = document.getElementById(idBody);
-  const tabla = body.closest("table");
-  const filaHead = tabla.querySelector("thead tr");
-
-  const seleccionados = new Set();
-  let visibles = []; // ids de la lista visible en el último sincronizar()
-  // Quien quiera enterarse de cada cambio de selección (típicamente
-  // montarBarraSeleccion) se suscribe con sel.escuchar(fn) en vez de pasar
-  // un único callback por el constructor — así crearSeleccion() no necesita
-  // saber nada de la barra ni del orden en que se arma cada vista.
-  const escuchas = [];
-
-  filaHead.insertAdjacentHTML(
-    "afterbegin",
-    `<th class="col-sel"><input type="checkbox" class="sel-todo" aria-label="Seleccionar todo"></th>`
-  );
-  const checkTodo = filaHead.querySelector(".sel-todo");
-
-  // En mobile el <thead> completo pasa a display:none (las filas se vuelven
-  // cards apiladas), así que checkTodo deja de ser alcanzable — no hay forma
-  // de seleccionar todo salvo tildar card por card. Se inyecta un botón de
-  // texto, visible SOLO en ese breakpoint (.btn-sel-todo-mobile en CSS),
-  // antes de .tabla-scroll. Va acá y no a mano en cada vista de index.html
-  // por el mismo motivo que el <th>: nace y muere con la selección montada.
-  const scrollWrap = tabla.closest(".tabla-scroll") ?? tabla;
-  scrollWrap.insertAdjacentHTML(
-    "beforebegin",
-    `<button type="button" class="btn-link btn-sel-todo-mobile">Seleccionar todo</button>`
-  );
-  const btnTodoMobile = scrollWrap.previousElementSibling;
-
-  function notificar() {
-    for (const fn of escuchas) fn(seleccionados.size);
-  }
-
-  function actualizarCheckTodo() {
-    const totalVisibles = visibles.length;
-    const marcados = visibles.filter((id) => seleccionados.has(id)).length;
-    checkTodo.checked = totalVisibles > 0 && marcados === totalVisibles;
-    checkTodo.indeterminate = marcados > 0 && marcados < totalVisibles;
-    // El botón de mobile hace las veces de checkTodo ahí: mismo texto que
-    // comunica el estado, alternando entre marcar y desmarcar.
-    btnTodoMobile.textContent = checkTodo.checked ? "Ninguno" : "Seleccionar todo";
-  }
-
-  // Comparte lógica entre el checkbox del header (desktop) y el botón de
-  // texto de mobile (el thead con checkTodo queda oculto en ese breakpoint).
-  function marcarTodosVisibles(marcar) {
-    for (const id of visibles) {
-      if (marcar) seleccionados.add(id);
-      else seleccionados.delete(id);
-    }
-    body.querySelectorAll(".sel-fila").forEach((cb) => {
-      cb.checked = seleccionados.has(Number(cb.dataset.selId));
-    });
-    actualizarCheckTodo();
-    notificar();
-  }
-
-  checkTodo.addEventListener("change", () => marcarTodosVisibles(checkTodo.checked));
-  btnTodoMobile.addEventListener("click", () => marcarTodosVisibles(!checkTodo.checked));
-
-  // Delegado una sola vez: sobrevive a que el tbody se reescriba entero en
-  // cada render.
-  body.addEventListener("change", (e) => {
-    const cb = e.target.closest(".sel-fila");
-    if (!cb) return;
-    const id = Number(cb.dataset.selId);
-    if (cb.checked) seleccionados.add(id);
-    else seleccionados.delete(id);
-    actualizarCheckTodo();
-    notificar();
-  });
-
-  // El checkbox nativo mide 13px: un click en el resto de la celda (que la
-  // guarda de la fila ya excluye vía .col-sel, así que nunca abre la ficha)
-  // no debería quedar "sin efecto" — clickear la celda entera tildaría o
-  // destildaría igual, en vez de exigirle al usuario acertarle al cuadrito.
-  body.addEventListener("click", (e) => {
-    const celda = e.target.closest("td.col-sel");
-    if (!celda || e.target.closest(".sel-fila")) return; // el click directo en el input ya dispara su propio change
-    celda.querySelector(".sel-fila")?.click();
-  });
-
-  return {
-    get ids() {
-      // En el orden de la lista visible, no el orden de inserción del Set.
-      return visibles.filter((id) => seleccionados.has(id));
-    },
-    get cantidad() {
-      return seleccionados.size;
-    },
-    tiene(id) {
-      return seleccionados.has(id);
-    },
-    // fn(cantidad) se llama con cada cambio de selección. Usado por
-    // montarBarraSeleccion para mantener la barra sincronizada sin que
-    // crearSeleccion necesite conocerla.
-    escuchar(fn) {
-      escuchas.push(fn);
-    },
-    limpiar() {
-      seleccionados.clear();
-      body.querySelectorAll(".sel-fila").forEach((cb) => (cb.checked = false));
-      actualizarCheckTodo();
-      notificar();
-    },
-    // Se llama desde render*(), con la lista YA filtrada/ordenada, ANTES de
-    // pintar el tbody. Poda del set lo que ya no está visible: "todo" solo
-    // puede significar "todo lo que se está viendo", igual que ya significa
-    // para los botones de Exportar CSV (ver comentario de descargarCSV más
-    // abajo). Si no se podara, el contador de la barra podría no coincidir
-    // con lo que hay tildado en pantalla.
-    sincronizar(lista) {
-      visibles = lista.map(idDe);
-      const visiblesSet = new Set(visibles);
-      for (const id of [...seleccionados]) {
-        if (!visiblesSet.has(id)) seleccionados.delete(id);
-      }
-      actualizarCheckTodo();
-      notificar();
-    },
-    // n = cantidad de columnas de datos reales de la tabla (lo que ya se le
-    // pasaba a filaVacia/filaVaciaFiltrada/tablaCargando antes de esta
-    // función existir). +1 por la columna de checkbox.
-    colspan(n) {
-      return n + 1;
-    },
-    // Celda de checkbox para anteponer al template de la fila. Sirve para
-    // los dos estilos de render del archivo (innerHTML+.map().join("") y
-    // createElement("tr")+tr.innerHTML=...): los dos arman la fila con un
-    // template string, así que un solo helper que devuelva string alcanza.
-    celda(id) {
-      return `<td class="col-sel" data-label=""><input type="checkbox" class="sel-fila" data-sel-id="${id}" ${
-        seleccionados.has(id) ? "checked" : ""
-      } aria-label="Seleccionar fila"></td>`;
-    }
-  };
-}
-
-// Conecta un crearSeleccion() con la barra flotante #barraSeleccion (única,
-// compartida por todas las tablas — ver el comentario en index.html). Se
-// suscribe a sel.escuchar(...), así que no hace falta pasarle nada al
-// construir crearSeleccion(): se llama después, una vez por tabla.
-//
-// acciones: [{ etiqueta, onClick(ids, btn) }] — los botones que aparecen
-// para ESTA tabla en particular. onClick recibe también el propio <button>
-// por si la acción necesita deshabilitarlo / cambiarle el texto mientras
-// corre (ver "Descargar PDF" en la sub-etapa 4, que tarda varios segundos).
-//
-// Solo puede haber una vista visible a la vez, así que un único juego de
-// elementos alcanza: cada vista que se activa vuelve a llenar la barra con
-// sus propios botones apenas cambia su propia selección, sobreescribiendo
-// los que hubiera dejado la tabla anterior.
-function montarBarraSeleccion(sel, acciones) {
-  const barra = document.getElementById("barraSeleccion");
-  const conteo = document.getElementById("barraSeleccionConteo");
-  const contenedorAcciones = document.getElementById("barraSeleccionAcciones");
-  const btnLimpiar = document.getElementById("barraSeleccionLimpiar");
-
-  sel.escuchar((cantidad) => {
-    if (cantidad === 0) {
-      barra.hidden = true;
-      return;
-    }
-    barra.hidden = false;
-    conteo.textContent = `${cantidad} ${cantidad === 1 ? "seleccionada" : "seleccionadas"}`;
-    contenedorAcciones.innerHTML = "";
-    for (const accion of acciones) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-secundario";
-      btn.textContent = accion.etiqueta;
-      btn.addEventListener("click", () => accion.onClick(sel.ids, btn));
-      contenedorAcciones.appendChild(btn);
-    }
-    btnLimpiar.onclick = () => sel.limpiar();
-    // Registra cuál sel es "la de la barra" en este momento: Escape (bindeado
-    // una sola vez, más abajo) necesita saber a cuál de las 8 selecciones
-    // limpiarle sin que cada montarBarraSeleccion() agregue su propio
-    // listener global (serían 8 handlers de keydown apilados en el documento
-    // para siempre, uno por tabla ya visitada en la sesión).
-    seleccionActivaEnBarra = sel;
-  });
-}
-
-// Sale del "modo selección" con Escape, sin importar en qué tabla se esté:
-// limpia la selección que tiene la barra abierta ahora mismo. Un solo
-// listener global (no uno por tabla) porque solo puede haber una barra
-// visible a la vez.
-let seleccionActivaEnBarra = null;
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if (!seleccionActivaEnBarra || seleccionActivaEnBarra.cantidad === 0) return;
-  seleccionActivaEnBarra.limpiar();
-});
-
-// Corre fn(id) para cada id de la lista, con como máximo `limite` en vuelo a
-// la vez (Chrome ya limita a ~6 conexiones por host, esto lo hace explícito
-// y evita 200 promesas coleccionándose de una si el usuario seleccionó
-// medio libro mayor). Devuelve los resultados EN EL MISMO ORDEN que ids,
-// no en el orden en que terminaron — necesario para que "Imprimir en lote"
-// pagine en el orden que el usuario ve en la tabla, no en el orden de
-// respuesta de la red.
-async function traerConcurrencia(ids, fn, limite = 6) {
-  const resultados = new Array(ids.length);
-  let siguiente = 0;
-  async function trabajador() {
-    while (siguiente < ids.length) {
-      const i = siguiente++;
-      resultados[i] = await fn(ids[i]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limite, ids.length) }, trabajador));
-  return resultados;
-}
-
-/* ---------- Exportar a CSV ---------- */
-
-// Utilitario transversal de tablas, hermano de crearFiltros: las dos
-// responden a "cosas que le pasan a una tabla". Va acá arriba, antes de
-// las secciones de vista que lo usan.
-//
-// Se genera en el navegador y no en el servidor a propósito: lo que hay que
-// exportar es lo que el usuario ESTÁ VIENDO, y sus filtros viven solo acá.
-// Un endpoint tendría que reimplementar en SQL los operadores de
-// crearFiltros (incluidos los relativos, "este mes", "últimos 7 días") y los
-// campos que el frontend calcula por su cuenta — el mismo motor duplicado en
-// dos lenguajes, que es justo lo que el proyecto ya evitó para el filtrado.
-
-// Excel no lee el separador del archivo: usa el "separador de listas" de la
-// configuración regional de Windows. En español es ';', porque la coma es el
-// separador decimal — un CSV con comas mete toda la fila en la columna A.
-const SEPARADOR_CSV = ";";
-
-// Sin BOM, Excel abre el archivo con el codepage ANSI y todo acento se rompe
-// ("Devolución" → "DevoluciÃ³n"). Con "N°" y "×" en casi todas las tablas, el
-// archivo sería ilegible. Va en el CONTENIDO, no alcanza con el MIME type.
-const BOM_UTF8 = "﻿";
-
-// Escapado RFC 4180: se entrecomilla si el valor trae el separador, comillas,
-// saltos de línea o espacios en los bordes; las comillas internas se DUPLICAN
-// (no se escapan con backslash). El caso real que esto resuelve es
-// items_resumen, que viene del backend como "2 × Remera, 3 × Pantalón" — con
-// comas adentro: sin comillas, cada venta se partiría en columnas de más.
-function celdaCSV(valor) {
-  if (valor === null || valor === undefined) return "";
-  const texto = String(valor);
-  const necesitaComillas =
-    texto.includes(SEPARADOR_CSV) ||
-    texto.includes('"') ||
-    texto.includes("\n") ||
-    texto.includes("\r") ||
-    texto.trim() !== texto;
-  return necesitaComillas ? `"${texto.replaceAll('"', '""')}"` : texto;
-}
-
-// columnas: [{ titulo, valor: (fila) => any }]
-// filas: la lista YA filtrada y ordenada que la vista le pasó a su render*().
-//
-// Los números se exportan CRUDOS (1234.5), nunca por money(): un "$ 1.234,50"
-// llega a Excel como texto y no se puede sumar, que es exactamente para lo que
-// alguien exporta. El formato se aplica después, en la planilla.
-function descargarCSV(nombreArchivo, columnas, filas) {
-  if (!filas.length) {
-    avisar("No hay filas para exportar.", "atencion");
-    return;
-  }
-
-  const lineas = [
-    columnas.map((c) => celdaCSV(c.titulo)).join(SEPARADOR_CSV),
-    ...filas.map((fila) => columnas.map((c) => celdaCSV(c.valor(fila))).join(SEPARADOR_CSV))
-  ];
-  // CRLF: lo que manda RFC 4180 y lo que espera Excel en Windows.
-  const contenido = BOM_UTF8 + lineas.join("\r\n") + "\r\n";
-
-  const url = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8;" }));
-  const enlace = document.createElement("a");
-  enlace.href = url;
-  enlace.download = `${nombreArchivo}-${hoyISO()}.csv`;
-  // Firefox exige que el <a> esté en el documento para que el click descargue.
-  document.body.appendChild(enlace);
-  enlace.click();
-  enlace.remove();
-  // Sin esto el Blob queda retenido hasta cerrar la pestaña: exportar veinte
-  // veces en una sesión larga sería una fuga real.
-  URL.revokeObjectURL(url);
-
-  avisar(`Exportadas ${filas.length} ${filas.length === 1 ? "fila" : "filas"} a CSV.`, "ok");
-}
-
-function crearFiltros(contenedorId, campos, onCambio) {
-  const contenedor = document.getElementById(contenedorId);
-  const claveGuardado = `nexo.filtros.${contenedorId}`;
-
-  // Los filtros sobreviven a recargar la página. Se descartan los que
-  // apuntan a un campo que ya no existe, para que un cambio de config no
-  // deje filtros fantasma escondiendo datos.
-  let filtros = [];
-  try {
-    const guardado = JSON.parse(localStorage.getItem(claveGuardado) ?? "[]");
-    if (Array.isArray(guardado)) {
-      filtros = guardado.filter((f) => campos.some((c) => c.clave === f.campo));
-    }
-  } catch {
-    filtros = [];
-  }
-
-  const buscarCampo = (clave) => campos.find((c) => c.clave === clave);
-  const operadoresDe = (clave) => OPERADORES[buscarCampo(clave).tipo];
-
-  function guardar() {
-    try {
-      localStorage.setItem(claveGuardado, JSON.stringify(filtros));
-    } catch {
-      // Modo privado o storage lleno: los filtros siguen funcionando en
-      // esta sesión, solo no se recuerdan.
-    }
-  }
-
-  function textoValor(filtro, campo) {
-    if (campo.tipo === "select") {
-      return campo.opciones?.find((o) => String(o.valor) === String(filtro.valor))?.texto ?? filtro.valor;
-    }
-    if (campo.tipo === "numero") {
-      const n = Number(filtro.valor);
-      return Number.isFinite(n) ? numero(n) : filtro.valor;
-    }
-    return filtro.valor;
-  }
-
-  function etiquetaChip(filtro) {
-    const campo = buscarCampo(filtro.campo);
-    const op = operadoresDe(filtro.campo).find((o) => o.valor === filtro.operador);
-    if (!op) return campo.etiqueta;
-
-    let texto = `<strong>${campo.etiqueta}</strong> ${op.texto}`;
-    if (op.pide >= 1) {
-      texto += ` <strong>${estaVacio(filtro.valor) ? "…" : textoValor(filtro, campo)}</strong>`;
-    }
-    if (op.pide === 2) {
-      texto += ` y <strong>${estaVacio(filtro.valor2) ? "…" : textoValor({ ...filtro, valor: filtro.valor2 }, campo)}</strong>`;
-    }
-    return texto;
-  }
-
-  function cerrarPopover() {
-    contenedor.querySelector(".filtro-popover")?.remove();
-    contenedor.querySelectorAll(".filtro-chip.is-abierto").forEach((c) => c.classList.remove("is-abierto"));
-  }
-
-  // Popover 1: elegir sobre qué propiedad filtrar.
-  function abrirSelectorCampo(anclaje) {
-    cerrarPopover();
-    const pop = document.createElement("div");
-    pop.className = "filtro-popover";
-    pop.innerHTML =
-      `<p class="filtro-popover-titulo">Filtrar por</p>` +
-      campos
-        .map((c) => `<button type="button" class="filtro-opcion" data-campo="${c.clave}">${c.etiqueta}</button>`)
-        .join("");
-    contenedor.appendChild(pop);
-    // Clamp de los dos lados: antes solo se evitaba desbordar por la
-    // izquierda (Math.max(0, ...)), así que un chip cerca del final de una
-    // fila con flex-wrap podía abrir el popover fuera del ancho de
-    // .main. Se mide después de appendear porque offsetWidth recién
-    // existe con el elemento en el DOM.
-    const maxLeft = Math.max(0, contenedor.clientWidth - pop.offsetWidth);
-    pop.style.left = `${Math.max(0, Math.min(anclaje.offsetLeft, maxLeft))}px`;
-    // Sin esto, el click sale del popover, llega al listener de "click
-    // afuera" y —como para entonces este popover ya fue reemplazado— se
-    // interpreta como un click externo que cierra el editor recién abierto.
-    pop.addEventListener("click", (e) => e.stopPropagation());
-
-    pop.querySelectorAll(".filtro-opcion").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const clave = btn.dataset.campo;
-        // Arranca con el primer operador del tipo, que es el más usado.
-        filtros.push({ campo: clave, operador: operadoresDe(clave)[0].valor, valor: "", valor2: "" });
-        guardar();
-        render();
-        // Se abre enseguida para poder completar el valor sin otro click.
-        const chip = contenedor.querySelectorAll(".filtro-chip")[filtros.length - 1];
-        abrirEditorFiltro(filtros.length - 1, chip);
-      });
-    });
-  }
-
-  // Popover 2: editar un filtro ya puesto (propiedad, operador y valores).
-  function abrirEditorFiltro(indice, anclaje) {
-    cerrarPopover();
-    anclaje.classList.add("is-abierto");
-
-    const filtro = filtros[indice];
-    const campo = buscarCampo(filtro.campo);
-    const op = operadoresDe(filtro.campo).find((o) => o.valor === filtro.operador);
-
-    const inputValor = (cual, valor) => {
-      if (campo.tipo === "select") {
-        return `<select class="filtro-input" data-cual="${cual}">
-            <option value="">Elegir…</option>
-            ${(campo.opciones ?? [])
-              .map(
-                (o) =>
-                  `<option value="${o.valor}" ${String(o.valor) === String(valor) ? "selected" : ""}>${o.texto}</option>`
-              )
-              .join("")}
-          </select>`;
-      }
-      const tipo = campo.tipo === "fecha" ? "date" : campo.tipo === "numero" ? "number" : "text";
-      return `<input class="filtro-input" data-cual="${cual}" type="${tipo}" value="${valor ?? ""}" placeholder="Valor" />`;
-    };
-
-    const pop = document.createElement("div");
-    pop.className = "filtro-popover";
-    pop.innerHTML = `
-      <select class="filtro-input filtro-campo-select">
-        ${campos
-          .map((c) => `<option value="${c.clave}" ${c.clave === filtro.campo ? "selected" : ""}>${c.etiqueta}</option>`)
-          .join("")}
-      </select>
-      <select class="filtro-input filtro-operador-select">
-        ${operadoresDe(filtro.campo)
-          .map((o) => `<option value="${o.valor}" ${o.valor === filtro.operador ? "selected" : ""}>${o.texto}</option>`)
-          .join("")}
-      </select>
-      ${op && op.pide >= 1 ? inputValor("valor", filtro.valor) : ""}
-      ${op && op.pide === 2 ? inputValor("valor2", filtro.valor2) : ""}
-      <button type="button" class="filtro-eliminar">Eliminar filtro</button>
-    `;
-    contenedor.appendChild(pop);
-    // Mismo clamp de ambos lados que abrirSelectorCampo — ver comentario ahí.
-    const maxLeft = Math.max(0, contenedor.clientWidth - pop.offsetWidth);
-    pop.style.left = `${Math.max(0, Math.min(anclaje.offsetLeft, maxLeft))}px`;
-    pop.addEventListener("click", (e) => e.stopPropagation());
-
-    // Cambiar de propiedad reinicia el operador: los de un texto no tienen
-    // sentido en una fecha.
-    pop.querySelector(".filtro-campo-select").addEventListener("change", (e) => {
-      filtros[indice] = { campo: e.target.value, operador: operadoresDe(e.target.value)[0].valor, valor: "", valor2: "" };
-      guardar();
-      render();
-      abrirEditorFiltro(indice, contenedor.querySelectorAll(".filtro-chip")[indice]);
-      onCambio(filtros);
-    });
-
-    pop.querySelector(".filtro-operador-select").addEventListener("change", (e) => {
-      filtros[indice].operador = e.target.value;
-      guardar();
-      render();
-      abrirEditorFiltro(indice, contenedor.querySelectorAll(".filtro-chip")[indice]);
-      onCambio(filtros);
-    });
-
-    pop.querySelectorAll("[data-cual]").forEach((input) => {
-      input.addEventListener(input.tagName === "SELECT" || input.type === "date" ? "change" : "input", () => {
-        filtros[indice][input.dataset.cual] = input.value;
-        guardar();
-        // Solo se repinta el texto del chip: repintar todo sacaría el foco
-        // del campo mientras se está escribiendo.
-        contenedor.querySelectorAll(".filtro-chip")[indice].querySelector(".filtro-chip-texto").innerHTML =
-          etiquetaChip(filtros[indice]);
-        onCambio(filtros);
-      });
-    });
-
-    pop.querySelector(".filtro-eliminar").addEventListener("click", () => {
-      filtros.splice(indice, 1);
-      guardar();
-      cerrarPopover();
-      render();
-      onCambio(filtros);
-    });
-
-    pop.querySelector(".filtro-input")?.focus();
-  }
-
-  function render() {
-    const abierto = contenedor.querySelector(".filtro-popover");
-    contenedor.innerHTML =
-      filtros
-        .map(
-          (filtro, i) => `
-        <span class="filtro-chip" data-indice="${i}">
-          <button type="button" class="filtro-chip-texto">${etiquetaChip(filtro)}</button>
-          <button type="button" class="filtro-chip-x" title="Quitar filtro" aria-label="Quitar filtro">✕</button>
-        </span>`
-        )
-        .join("") +
-      `<button type="button" class="btn-agregar-filtro">${filtros.length ? "+" : "+ Filtro"}</button>` +
-      (filtros.length > 1 ? `<button type="button" class="btn-limpiar-filtros">Limpiar todo</button>` : "");
-    if (abierto) contenedor.appendChild(abierto);
-
-    contenedor.querySelectorAll(".filtro-chip-texto").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        abrirEditorFiltro(Number(btn.closest(".filtro-chip").dataset.indice), btn.closest(".filtro-chip"));
-      });
-    });
-
-    contenedor.querySelectorAll(".filtro-chip-x").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        filtros.splice(Number(btn.closest(".filtro-chip").dataset.indice), 1);
-        guardar();
-        cerrarPopover();
-        render();
-        onCambio(filtros);
-      });
-    });
-
-    contenedor.querySelector(".btn-agregar-filtro").addEventListener("click", (e) => {
-      e.stopPropagation();
-      abrirSelectorCampo(e.currentTarget);
-    });
-
-    contenedor.querySelector(".btn-limpiar-filtros")?.addEventListener("click", () => {
-      filtros = [];
-      guardar();
-      cerrarPopover();
-      render();
-      onCambio(filtros);
-    });
-  }
-
-  // Un click afuera cierra el popover, como en Notion.
-  document.addEventListener("click", (e) => {
-    if (!contenedor.contains(e.target)) cerrarPopover();
-  });
-
-  render();
-
-  return {
-    get filtros() {
-      return filtros;
-    },
-    // Los selects que se llenan con datos que llegan después (cuentas,
-    // categorías, productos) actualizan sus opciones acá.
-    setOpciones(clave, opciones) {
-      const campo = buscarCampo(clave);
-      if (campo) campo.opciones = opciones;
-      render();
-    },
-    aplicar(lista) {
-      return aplicarFiltros(lista, filtros, campos);
-    },
-    // Para el botón "Limpiar filtros" del estado vacío filtrado — mismo
-    // efecto que vaciar los filtros a mano desde los chips.
-    limpiar() {
-      filtros = [];
-      guardar();
-      cerrarPopover();
-      render();
-      onCambio(filtros);
-    }
-  };
-}
 
 /* ---------- Resumen (resultado del negocio) ---------- */
 
@@ -3346,204 +2517,6 @@ function poblarSelectCuentas(select, seleccionada = null) {
   if (seleccionada !== null) select.value = seleccionada;
 }
 
-/* ---------- Avisos y confirmaciones (reemplazan alert()/confirm() nativos) ---------- */
-
-// Toast que se apila abajo a la izquierda y se retira solo — no bloquea
-// el hilo ni rompe la identidad visual con el chrome del navegador.
-// tono: "ok" | "atencion" | "error".
-const avisosEl = document.getElementById("avisos");
-
-function avisar(mensaje, tono = "ok") {
-  const aviso = document.createElement("div");
-  aviso.className = `aviso aviso-${tono}`;
-  aviso.setAttribute("role", tono === "error" ? "alert" : "status");
-  aviso.textContent = mensaje;
-  avisosEl.appendChild(aviso);
-  setTimeout(() => aviso.remove(), 4200);
-}
-
-// Reemplaza confirm(): abre el modal de confirmación en vez de bloquear
-// la página con el diálogo nativo, y resuelve una Promise<boolean> según
-// qué botón se apriete (Enter confirma, Escape o click afuera cancela).
-const modalConfirmar = document.getElementById("modalConfirmar");
-const modalConfirmarTitulo = document.getElementById("modalConfirmarTitulo");
-const modalConfirmarCuerpo = document.getElementById("modalConfirmarCuerpo");
-const btnConfirmarAceptar = document.getElementById("modalConfirmarAceptar");
-const btnConfirmarCancelar = document.getElementById("modalConfirmarCancelar");
-let confirmarActivo = null;
-
-function confirmarCerrar(resultado) {
-  if (!confirmarActivo) return;
-  modalConfirmar.hidden = true;
-  document.removeEventListener("keydown", confirmarKeydown);
-  const { resolve, trigger } = confirmarActivo;
-  confirmarActivo = null;
-  trigger?.focus();
-  resolve(resultado);
-}
-
-function confirmarKeydown(e) {
-  if (e.key === "Escape") {
-    e.preventDefault();
-    confirmarCerrar(false);
-  }
-  if (e.key === "Enter") {
-    e.preventDefault();
-    confirmarCerrar(true);
-  }
-}
-
-function confirmar({ titulo = "Confirmar", cuerpo, aceptar = "Confirmar", destructivo = false } = {}) {
-  return new Promise((resolve) => {
-    modalConfirmarTitulo.textContent = titulo;
-    modalConfirmarCuerpo.textContent = cuerpo;
-    btnConfirmarAceptar.textContent = aceptar;
-    btnConfirmarAceptar.className = `btn ${destructivo ? "btn-peligro" : "btn-primary"}`;
-    confirmarActivo = { resolve, trigger: document.activeElement };
-    modalConfirmar.hidden = false;
-    document.addEventListener("keydown", confirmarKeydown);
-    btnConfirmarCancelar.focus();
-  });
-}
-
-btnConfirmarAceptar.addEventListener("click", () => confirmarCerrar(true));
-btnConfirmarCancelar.addEventListener("click", () => confirmarCerrar(false));
-modalConfirmar.addEventListener("click", (e) => {
-  if (e.target === modalConfirmar) confirmarCerrar(false);
-});
-
-/* ---------- Accesibilidad de modales (foco, Escape, Tab) ---------- */
-
-// Se engancha al atributo hidden de cada .modal con un MutationObserver
-// en vez de tocar los ~90 lugares que ya hacen `modalX.hidden = true/false`
-// desde botones, submits y clicks afuera — así cualquier apertura/cierre
-// existente hereda foco y Escape sin reescribir esos call sites.
-// modalConfirmar queda afuera: ya tiene su propio manejo arriba, necesario
-// porque tiene que resolver una promesa según qué botón se apriete, no
-// solo abrir o cerrar.
-const FOCUSABLES_MODAL = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-
-document.querySelectorAll(".modal").forEach((modal) => {
-  if (modal.id === "modalConfirmar") return;
-
-  let trigger = null;
-
-  new MutationObserver(() => {
-    if (modal.hidden) {
-      trigger?.focus();
-    } else {
-      trigger = document.activeElement;
-      // El botón ✕ es siempre el primer focusable en el DOM (va al
-      // principio del modal-head), pero no es un buen destino de foco
-      // inicial: hay que saltarlo y arrancar en el primer campo real.
-      const focosables = [...modal.querySelectorAll(FOCUSABLES_MODAL)];
-      const objetivo = focosables.find((el) => !el.classList.contains("modal-close")) ?? focosables[0] ?? modal;
-      objetivo.focus();
-    }
-  }).observe(modal, { attributes: true, attributeFilter: ["hidden"] });
-
-  modal.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      modal.hidden = true;
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const focosables = [...modal.querySelectorAll(FOCUSABLES_MODAL)].filter((el) => el.offsetParent !== null);
-    if (focosables.length === 0) return;
-    const primero = focosables[0];
-    const ultimo = focosables[focosables.length - 1];
-    if (e.shiftKey && document.activeElement === primero) {
-      e.preventDefault();
-      ultimo.focus();
-    } else if (!e.shiftKey && document.activeElement === ultimo) {
-      e.preventDefault();
-      primero.focus();
-    }
-  });
-});
-
-async function manejarError(res, accionDefault) {
-  if (res.ok) return true;
-  let mensaje = accionDefault;
-  try {
-    const cuerpo = await res.json();
-    if (cuerpo.error) mensaje = cuerpo.error;
-  } catch {
-    // sin cuerpo JSON, se usa el mensaje por defecto
-  }
-  avisar(mensaje, "error");
-  return false;
-}
-
-/* ---------- Resultado de una edición en lote ---------- */
-//
-// Compartida entre el bulk de Productos y el de Compras (mismo shape de
-// response: {aplicados, fallidos, resumen}). Devuelve true si hubo algún
-// fallo (así el caller sabe si debe dejar el modal abierto en vez de
-// cerrarlo) y false si el lote entero salió bien.
-//
-// `etiquetar(id)` arma el texto legible de un id fallido (ej. el nombre
-// del producto en vez de un número pelado) buscando en el array que el
-// caller ya tiene en memoria — mostrarResultadoBulk no conoce la entidad.
-function mostrarResultadoBulk(resultado, { bloque, titulo, lista, etiquetar = (id) => `#${id}` } = {}) {
-  const { aplicados, fallidos, resumen } = resultado;
-
-  if (fallidos.length === 0) {
-    bloque.hidden = true;
-    lista.innerHTML = "";
-    const partes = [`${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"}`];
-    if (resumen.sin_cambios > 0) partes.push(`${resumen.sin_cambios} ya estaba${resumen.sin_cambios === 1 ? "" : "n"} así`);
-    avisar(partes.join(", ") + ".", "ok");
-    return false;
-  }
-
-  titulo.textContent =
-    aplicados.length === 0
-      ? "Ninguno se pudo aplicar."
-      : `${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"} · ${resumen.fallidos} falló${resumen.fallidos === 1 ? "" : "aron"}.`;
-  lista.innerHTML = fallidos
-    .map((f) => `<li>${etiquetar(f.id)} — ${f.error}</li>`)
-    .join("");
-  bloque.hidden = false;
-  avisar(titulo.textContent, "atencion");
-  return true;
-}
-
-/* ---------- Estado de tablas: carga y vacío ---------- */
-
-// Fila de estado vacío. Con accionTexto+accionId agrega un botón que
-// dispara el mismo control que ya abre el alta correspondiente (así no
-// duplica la lógica de apertura de cada modal).
-function filaVacia(colspan, mensaje, { accionTexto, accionId } = {}) {
-  const accion =
-    accionTexto && accionId
-      ? ` <button type="button" class="btn-link tabla-vacia-accion" data-abrir="${accionId}">${accionTexto}</button>`
-      : "";
-  return `<tr><td colspan="${colspan}" class="tabla-vacia">${mensaje}${accion}</td></tr>`;
-}
-
-// Distingue "no hay nada cargado" de "el filtro no encontró nada": en el
-// segundo caso invitar a crear un registro sería confuso (puede que sí
-// existan, el filtro los está ocultando), así que se ofrece limpiarlos.
-function filaVaciaFiltrada(colspan) {
-  return `<tr><td colspan="${colspan}" class="tabla-vacia">Ningún resultado para estos filtros. <button type="button" class="btn-link tabla-vacia-limpiar">Limpiar filtros</button></td></tr>`;
-}
-
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".tabla-vacia-accion");
-  if (btn) document.getElementById(btn.dataset.abrir)?.click();
-});
-
-// Filas skeleton mientras el fetch de un cargar*() todavía está en
-// curso — se llama al principio de esas funciones, antes del await.
-function tablaCargando(bodyId, colspan, filas = 3) {
-  const body = document.getElementById(bodyId);
-  if (!body) return;
-  body.innerHTML = Array.from({ length: filas })
-    .map(() => `<tr class="fila-cargando"><td colspan="${colspan}"><div class="skeleton-linea"></div></td></tr>`)
-    .join("");
-}
 
 /* ---------- Stock ---------- */
 
@@ -3918,288 +2891,6 @@ document.getElementById("formTransferenciaDeposito").addEventListener("submit", 
   avisar("Transferencia registrada.", "ok");
 });
 
-/* ---------- Comprobante imprimible ---------- */
-
-// El papel que se le entrega al cliente: presupuesto o factura. Se arma en un
-// contenedor propio (#hojaImpresion) y NO reusando la ficha con @media print,
-// porque la ficha muestra costo, margen y ganancia — datos internos que no
-// pueden salir impresos. Acá solo aparece lo que se pone explícitamente.
-//
-// El PDF lo hace el navegador: su diálogo de impresión ya trae "Guardar como
-// PDF", así que no hace falta ninguna librería (el proyecto no tiene build
-// step y no queremos sumar dependencias solo para esto).
-
-const hojaImpresionEl = document.getElementById("hojaImpresion");
-
-// Escapa lo que va al HTML de la hoja. Los datos vienen de la base (nombres de
-// cliente, productos, notas del negocio), así que un nombre con "<" rompería
-// el markup si se interpolara crudo.
-function esc(valor) {
-  return String(valor ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-// Línea del membrete que solo aparece si el dato existe: un monotributista sin
-// local no debería ver un renglón "Dirección: —" en su comprobante.
-const lineaSiHay = (etiqueta, valor) =>
-  valor ? `<p><span class="hoja-etiqueta">${esc(etiqueta)}</span> ${esc(valor)}</p>` : "";
-
-// Arma el HTML del comprobante. Un solo molde para los dos tipos: cambian el
-// rótulo, el número y algún campo, no la estructura.
-// OJO con los nombres: el parámetro del número de comprobante NO puede
-// llamarse `numero`, porque sombrearía al helper de formato numero() que esta
-// misma función usa para las cantidades (y tirar "numero is not a function").
-function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra }) {
-  const filas = items
-    .map(
-      (i) => `
-        <tr>
-          <td>${esc(i.producto)}</td>
-          <td class="num">${numero(i.cantidad)}</td>
-          <td class="num">${money(i.precio_unitario)}</td>
-          <td class="num">${money(i.cantidad * i.precio_unitario)}</td>
-        </tr>`
-    )
-    .join("");
-
-  return `
-    <div class="hoja">
-      <header class="hoja-encabezado">
-        <div class="hoja-negocio">
-          <h1>${esc(negocio.nombre || "—")}</h1>
-          ${lineaSiHay("CUIT:", negocio.documento)}
-          ${lineaSiHay("", negocio.condicion_iva)}
-          ${lineaSiHay("", negocio.direccion)}
-          ${lineaSiHay("Tel:", negocio.telefono)}
-          ${lineaSiHay("", negocio.email)}
-        </div>
-        <div class="hoja-comprobante">
-          <p class="hoja-rotulo">${esc(rotulo)}</p>
-          <p class="hoja-numero">${esc(comprobanteNro)}</p>
-          <p>${esc(fecha)}</p>
-          ${campos.map(([e, v]) => (v ? `<p><span class="hoja-etiqueta">${esc(e)}</span> ${esc(v)}</p>` : "")).join("")}
-        </div>
-      </header>
-
-      <section class="hoja-cliente">
-        <p class="hoja-etiqueta">Cliente</p>
-        <p class="hoja-cliente-nombre">${esc(cliente.nombre)}</p>
-        ${lineaSiHay("CUIT/DNI:", cliente.documento)}
-        ${lineaSiHay("", cliente.direccion)}
-        ${lineaSiHay("Tel:", cliente.telefono)}
-        ${lineaSiHay("", cliente.email)}
-      </section>
-
-      <table class="hoja-items">
-        <thead>
-          <tr>
-            <th>Producto</th>
-            <th class="num">Cantidad</th>
-            <th class="num">Precio unit.</th>
-            <th class="num">Subtotal</th>
-          </tr>
-        </thead>
-        <tbody>${filas}</tbody>
-      </table>
-
-      <p class="hoja-total"><span>Total</span> <strong>${money(total)}</strong></p>
-
-      ${notas ? `<section class="hoja-notas"><p class="hoja-etiqueta">Notas</p><p>${esc(notas)}</p></section>` : ""}
-
-      <footer class="hoja-pie">
-        ${pieExtra ? `<p>${esc(pieExtra)}</p>` : ""}
-        ${negocio.pie_comprobante ? `<p>${esc(negocio.pie_comprobante)}</p>` : ""}
-        <!-- Nexo no está conectado a ARCA y no emite CAE: lo impreso es un
-             documento interno, no un comprobante fiscal. Decirlo es
-             obligatorio para no inducir a error a quien lo recibe. -->
-        <p class="hoja-legal">Documento no válido como comprobante fiscal.</p>
-      </footer>
-    </div>
-  `;
-}
-
-// Imprime UNA O VARIAS hojas juntas: htmls.join("") las concatena en el
-// mismo contenedor y un único window.print() las manda todas al mismo
-// diálogo (una página impresa por hoja — ver el break-after en styles.css).
-// Así "imprimir 5 facturas seleccionadas" desde el listado es un solo
-// diálogo con 5 páginas, no 5 diálogos separados.
-function imprimirHojas(htmls) {
-  hojaImpresionEl.innerHTML = htmls.join("");
-
-  // El PDF sale del mismo diálogo (destino "Guardar como PDF"), pero eso no es
-  // obvio para quien busca descargar un archivo. Se avisa UNA sola vez por
-  // navegador: repetirlo en cada impresión sería ruido para quien ya lo sabe.
-  try {
-    if (!localStorage.getItem("nexo.avisoPdf")) {
-      avisar('Para guardarlo como PDF, elegí "Guardar como PDF" en el destino de impresión.', "ok");
-      localStorage.setItem("nexo.avisoPdf", "1");
-    }
-  } catch {
-    // Sin storage disponible (modo privado) el aviso simplemente no se muestra:
-    // no vale la pena bloquear una impresión por un mensaje de ayuda.
-  }
-
-  window.print();
-  // Se vacía después de imprimir para no dejar datos de un cliente colgando
-  // en el DOM mientras se navega a otra pantalla.
-  hojaImpresionEl.innerHTML = "";
-}
-
-// Caso de un solo comprobante: los dos botones de ficha (factura y
-// presupuesto) siguen llamando a esta función tal cual, sin enterarse de
-// que por dentro ahora es un array de uno.
-function imprimirComprobante(html) {
-  imprimirHojas([html]);
-}
-
-/* ---------- Descargar PDF (jsPDF + html2canvas) ---------- */
-
-// "Imprimir" (arriba) ya cubre el caso de guardar un PDF: es lo que hace el
-// destino "Guardar como PDF" del diálogo del navegador, con texto real y
-// seleccionable, sin sumar ninguna dependencia. Esto es otra cosa: el
-// usuario pidió poder seleccionar varios comprobantes y que se descarguen
-// como archivos separados, uno por comprobante, con nombre propio — el
-// navegador no permite eso sin intervención humana (no hay forma de
-// disparar N diálogos de impresión ni de nombrar el archivo por JS), así
-// que hace falta generar el PDF nosotros. jsPDF arma el archivo, html2canvas
-// convierte el HTML de la hoja en una imagen para meter adentro.
-//
-// Contrapartida que hay que tener presente: el PDF resultante es una
-// IMAGEN, no texto seleccionable ni buscable — es la limitación real de
-// fotografiar el HTML en vez de redibujar el comprobante en la API de
-// jsPDF (que implicaría mantener dos versiones del diseño sincronizadas).
-// Por eso conviven los dos botones en vez de reemplazar uno por el otro.
-
-// Vendorizadas en frontend/js/vendor/, servidas por el mismo express.static
-// que ya sirve el resto del frontend — sin dependencia de npm ni build step.
-const VENDOR_JSPDF = "js/vendor/jspdf.umd.min.js";
-const VENDOR_HTML2CANVAS = "js/vendor/html2canvas.min.js";
-
-// No se cargan con <script> en index.html: son ~500KB combinados y solo
-// hacen falta si alguien aprieta "Descargar PDF". Memoizada para no volver
-// a inyectar los <script> en cada descarga; si la carga falla, se limpia la
-// memoización para permitir un reintento (una mala red no debería dejar el
-// botón roto para siempre en esa misma sesión de página).
-let libsPdfPromesa = null;
-function cargarLibsPdf() {
-  if (libsPdfPromesa) return libsPdfPromesa;
-  const cargarScript = (src) =>
-    new Promise((ok, mal) => {
-      const s = document.createElement("script");
-      s.src = src;
-      s.onload = ok;
-      s.onerror = () => mal(new Error(`No se pudo cargar ${src}`));
-      document.body.appendChild(s);
-    });
-  libsPdfPromesa = Promise.all([cargarScript(VENDOR_JSPDF), cargarScript(VENDOR_HTML2CANVAS)]).catch((err) => {
-    libsPdfPromesa = null;
-    throw err;
-  });
-  return libsPdfPromesa;
-}
-
-// Crea un contenedor .hoja-render con el HTML de una hoja, lo deja en el DOM
-// el tiempo que dure fn(), y lo saca pase lo que pase. Ver el comentario de
-// .hoja-render en styles.css: display:none (como #hojaImpresion) no sirve
-// acá, html2canvas necesita medir un nodo realmente presente.
-async function conHojaVisible(html, fn) {
-  const caja = document.createElement("div");
-  caja.className = "hoja-render";
-  caja.innerHTML = html;
-  document.body.appendChild(caja);
-  try {
-    return await fn(caja.firstElementChild);
-  } finally {
-    caja.remove();
-  }
-}
-
-// Sanitiza un nombre de comprobante para usarlo como nombre de archivo:
-// Windows prohíbe \ / : * ? " < > | y el comprobante puede traer espacios
-// ("B 0001-00000123") que sin normalizar quedarían igual pero es más
-// prolijo unificarlos.
-function nombreArchivoPdf(prefijo, identificador) {
-  const limpio = String(identificador)
-    .toLowerCase()
-    .replace(/[^\w.-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return `${prefijo}-${limpio}.pdf`;
-}
-
-// Convierte UNA hoja (el HTML que arma armarHojaComprobante) en un archivo
-// PDF y lo descarga. Si la hoja mide más que una página A4 útil (una
-// factura con muchos ítems), se reparte en varias páginas del mismo PDF en
-// vez de achicar la imagen — una factura larga escalada a una sola página
-// quedaría ilegible.
-async function descargarPDFDeHoja(html, nombreArchivo) {
-  await cargarLibsPdf();
-  await conHojaVisible(html, async (hoja) => {
-    const canvas = await html2canvas(hoja, { scale: 2, backgroundColor: "#FFFFFF", useCORS: true });
-    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-
-    const MARGEN = 14; // mismo margen que @page en el CSS de impresión
-    const anchoUtil = 210 - MARGEN * 2;
-    const altoUtil = 297 - MARGEN * 2;
-    const altoImg = (canvas.height / canvas.width) * anchoUtil;
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92); // JPEG: una A4 a scale 2 en PNG pesa 1-3MB, en JPEG ~200KB
-
-    if (altoImg <= altoUtil) {
-      pdf.addImage(dataUrl, "JPEG", MARGEN, MARGEN, anchoUtil, altoImg);
-    } else {
-      // Reparte la misma imagen en N páginas, desplazando hacia arriba en
-      // cada una (el resto de la imagen queda recortado por los bordes de
-      // la página, que es exactamente lo que hace una impresión paginada).
-      let restante = altoImg;
-      let offsetY = 0;
-      while (restante > 0) {
-        pdf.addImage(dataUrl, "JPEG", MARGEN, MARGEN - offsetY, anchoUtil, altoImg);
-        restante -= altoUtil;
-        offsetY += altoUtil;
-        if (restante > 0) pdf.addPage();
-      }
-    }
-
-    pdf.save(nombreArchivo);
-  });
-}
-
-// Genera y descarga un PDF por cada hoja, EN SERIE (no en paralelo): varios
-// html2canvas corriendo a la vez saturan memoria y el hilo principal del
-// navegador. El setTimeout(0) entre iteraciones le da un respiro al
-// navegador para repintar el contador del botón — sin eso, con el hilo
-// principal ocupado generando canvases, "Generando 3/20…" no llegaría a
-// verse hasta que todo terminó.
-// items: [{ html, nombreArchivo }]. btn: el <button> que disparó la acción,
-// para deshabilitarlo y mostrar el progreso mientras dura (puede ser largo:
-// unos 0.5-1.5s por hoja).
-async function descargarPDFsEnLote(items, btn) {
-  const textoOriginal = btn.textContent;
-  btn.disabled = true;
-  let fallidos = 0;
-  try {
-    for (let i = 0; i < items.length; i++) {
-      btn.textContent = `Generando ${i + 1}/${items.length}…`;
-      await new Promise((r) => setTimeout(r, 0));
-      try {
-        await descargarPDFDeHoja(items[i].html, items[i].nombreArchivo);
-      } catch {
-        fallidos++;
-      }
-    }
-  } finally {
-    btn.disabled = false;
-    btn.textContent = textoOriginal;
-  }
-
-  if (fallidos === 0) {
-    avisar(`Se descargaron ${items.length} PDF.`, "ok");
-  } else {
-    avisar(`Se descargaron ${items.length - fallidos} PDF. ${fallidos} fallaron.`, "atencion");
-  }
-}
 
 /* ---------- Presupuestos ---------- */
 
@@ -4510,7 +3201,7 @@ async function abrirFichaPresupuesto(id) {
         cargarStock(),
         cargarProductos(),
         cargarClientes(),
-        cargarCuentasCorrientes(),
+        recargar("cuentasCorrientes"),
         cargarPanelResumen(),
         cargarReporteStock()
       ]);
@@ -4765,7 +3456,7 @@ function renderVentas(lista) {
       const res = await fetch(`/api/ventas/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la venta."))) return;
       avisar(`Venta #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarPanelResumen(), cargarReporteStock()]);
+      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
     });
   });
 
@@ -5116,7 +3807,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, ventaEditandoId ? "No se pudo guardar la venta." : "No se pudo registrar la venta."))) return;
 
   const idEditado = ventaEditandoId;
-  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), cargarCuentasCorrientes(), cargarPanelResumen(), cargarReporteStock()]);
+  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
   form.reset();
   modalVenta.hidden = true;
   // Si se estaba editando desde la ficha, volver a esa ficha con los
@@ -5301,7 +3992,7 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
 
   // Un cobro entra plata en una cuenta y baja la deuda del cliente, así
   // que Caja y Clientes también quedan desactualizados.
-  await Promise.all([cargarVentas(), cargarCaja(), cargarClientes(), cargarCuentasCorrientes()]);
+  await Promise.all([cargarVentas(), cargarCaja(), cargarClientes(), recargar("cuentasCorrientes")]);
   form.reset();
   modalCobrarVenta.hidden = true;
   avisar("Cobro registrado.", "ok");
@@ -5479,7 +4170,7 @@ async function abrirFichaDevolucion(id) {
         cargarProductos(),
         cargarClientes(),
         cargarCaja(),
-        cargarCuentasCorrientes(),
+        recargar("cuentasCorrientes"),
         cargarPanelResumen(),
         cargarReporteStock()
       ]);
@@ -5626,7 +4317,7 @@ document.getElementById("formDevolucion").addEventListener("submit", async (e) =
     cargarProductos(),
     cargarClientes(),
     cargarCaja(),
-    cargarCuentasCorrientes(),
+    recargar("cuentasCorrientes"),
     cargarPanelResumen(),
     cargarReporteStock()
   ]);
@@ -5767,7 +4458,7 @@ function renderCompras(lista) {
       const res = await fetch(`/api/compras/${btn.dataset.id}/confirmar`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo efectuar el pedido."))) return;
       avisar(`Compra #${btn.dataset.id} efectuada.`, "ok");
-      await Promise.all([cargarCompras(), cargarProveedores(), cargarCuentasCorrientes()]);
+      await Promise.all([cargarCompras(), cargarProveedores(), recargar("cuentasCorrientes")]);
     });
   });
 
@@ -5788,7 +4479,7 @@ function renderCompras(lista) {
       const res = await fetch(`/api/compras/${btn.dataset.id}/anular`, { method: "POST" });
       if (!(await manejarError(res, "No se pudo anular la compra."))) return;
       avisar(`Compra #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes(), cargarReporteStock()]);
+      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
     });
   });
 
@@ -6139,7 +4830,7 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
   if (!(await manejarError(res, "No se pudo guardar la compra."))) return;
 
   const idEditado = compraEditandoId;
-  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarCuentasCorrientes(), cargarReporteStock()]);
+  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
   form.reset();
   modalCompra.hidden = true;
   if (idEditado) await abrirFichaCompra(idEditado);
@@ -6276,7 +4967,7 @@ document.getElementById("formPagarCompra").addEventListener("submit", async (e) 
   if (!(await manejarError(res, "No se pudo registrar el pago."))) return;
 
   // Un pago saca plata de una cuenta y baja la deuda con el proveedor.
-  await Promise.all([cargarCompras(), cargarCaja(), cargarProveedores(), cargarCuentasCorrientes()]);
+  await Promise.all([cargarCompras(), cargarCaja(), cargarProveedores(), recargar("cuentasCorrientes")]);
   form.reset();
   modalPagarCompra.hidden = true;
   avisar("Pago registrado.", "ok");
@@ -6459,7 +5150,7 @@ async function abrirFichaDevolucionProveedor(id) {
         cargarProductos(),
         cargarProveedores(),
         cargarCaja(),
-        cargarCuentasCorrientes(),
+        recargar("cuentasCorrientes"),
         cargarPanelResumen(),
         cargarReporteStock()
       ]);
@@ -6599,7 +5290,7 @@ document.getElementById("formDevolucionProveedor").addEventListener("submit", as
     cargarProductos(),
     cargarProveedores(),
     cargarCaja(),
-    cargarCuentasCorrientes(),
+    recargar("cuentasCorrientes"),
     cargarPanelResumen(),
     cargarReporteStock()
   ]);
@@ -7396,237 +6087,6 @@ document.getElementById("formTransferencia").addEventListener("submit", async (e
   avisar("Transferencia registrada.", "ok");
 });
 
-/* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
-
-// Mismo criterio de color que ESTADO_COBRO_CLASE: verde = sin urgencia,
-// amarillo = empieza a atrasarse, rojo = viejo. El backend ya calcula el
-// tramo por operación (server.js, tramoDeVencimiento) midiendo contra el
-// vencimiento pactado — acá solo se traduce a clase/etiqueta visual. Los dos
-// tramos más viejos comparten el rojo: ya son deuda vencida, la diferencia
-// de cuánto la da la columna de días.
-const CC_TRAMO_CLASE = {
-  a_vencer: "status-cobrado",
-  vencido_30: "status-pendiente",
-  vencido_60: "status-vencido",
-  vencido_mas: "status-vencido"
-};
-const CC_TRAMO_LABEL = {
-  a_vencer: "A vencer",
-  vencido_30: "Vencido 1-30",
-  vencido_60: "Vencido 31-60",
-  vencido_mas: "Vencido +60"
-};
-
-// "Vence en 5 días" / "Vencido hace 5 días" / "Vence hoy", según el signo.
-// `dias` viene del backend como distancia desde el vencimiento hasta hoy.
-function ccTextoDias(dias) {
-  if (dias === null) return "A favor";
-  if (dias === 0) return "Vence hoy";
-  return dias < 0 ? `Vence en ${numero(-dias)} días` : `Vencido hace ${numero(dias)} días`;
-}
-
-// La operación "más vieja" tiene que ser la deuda más vieja, no
-// simplemente operaciones[0]: si una entidad tiene una operación con
-// crédito a favor (pendiente negativo, sin tramo) fechada antes que su
-// deuda real, esa no cuenta para "hace cuánto que me debe".
-function ccMasVieja(entidad) {
-  const conDeuda = entidad.operaciones.filter((o) => o.tramo);
-  return conDeuda.find((o) => o.dias === entidad.dias_max) ?? conDeuda[0] ?? entidad.operaciones[0];
-}
-
-function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLabel, abrirFicha, abrirAccion }) {
-  const body = document.getElementById(bodyId);
-  body.innerHTML = "";
-
-  if (lista.length === 0) {
-    if (filtros.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
-      body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtros.limpiar());
-    } else {
-      body.innerHTML = filaVacia(
-        6,
-        tipoClave === "cliente" ? "Nadie te debe: todo cobrado." : "No le debés nada a nadie: todo pagado."
-      );
-    }
-    return;
-  }
-
-  for (const e of lista) {
-    const masVieja = ccMasVieja(e);
-    const fila = document.createElement("tr");
-    fila.className = "fila-clickeable";
-    fila.innerHTML = `
-      <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${e.nombre}</button></td>
-      <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
-      <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
-      <td data-label="Vence">${masVieja.vencimiento}</td>
-      <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
-      <td data-label="" class="cc-chevron">▸</td>
-    `;
-
-    const detalle = document.createElement("tr");
-    detalle.className = "cc-detalle-fila";
-    detalle.hidden = true;
-    detalle.innerHTML = `
-      <td colspan="6">
-        <table class="cc-detalle">
-          <tbody>
-            ${e.operaciones
-              .map(
-                (o) => `
-              <tr>
-                <td data-label="Fecha">${o.fecha}</td>
-                <td data-label="Vence">${o.vencimiento}</td>
-                <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
-                <td data-label="Estado">${ccTextoDias(o.dias)}</td>
-                <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
-              </tr>`
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </td>`;
-
-    fila.addEventListener("click", (ev) => {
-      if (ev.target.closest("button")) return;
-      detalle.hidden = !detalle.hidden;
-      fila.querySelector(".cc-chevron").textContent = detalle.hidden ? "▸" : "▾";
-    });
-    fila.querySelector(".cc-abrir-ficha").addEventListener("click", () => abrirFicha(e.id));
-
-    body.appendChild(fila);
-    body.appendChild(detalle);
-  }
-
-  body.querySelectorAll(".cc-accion").forEach((btn) => {
-    btn.addEventListener("click", () => abrirAccion(Number(btn.dataset.id)));
-  });
-}
-
-function renderCuentasCorrientes(datos) {
-  const { por_cobrar, por_pagar, a_favor_clientes, a_favor_proveedores, totales } = datos;
-
-  document.getElementById("ccPorCobrar").textContent = money(totales.por_cobrar);
-  document.getElementById("ccPorPagar").textContent = money(totales.por_pagar);
-  const neto = document.getElementById("ccNeto");
-  neto.textContent = money(totales.neto);
-  neto.classList.toggle("saldo-negativo", totales.neto < 0);
-  neto.classList.toggle("ledger-ok", totales.neto >= 0);
-
-  const notaFavorClientes = document.getElementById("ccNotaFavorClientes");
-  notaFavorClientes.hidden = a_favor_clientes.length === 0;
-  if (a_favor_clientes.length > 0) {
-    notaFavorClientes.textContent = `A favor de ${a_favor_clientes.length} cliente(s) por ${money(totales.a_favor_clientes)} (crédito de una devolución sin reintegro): no suma a la deuda de nadie más.`;
-  }
-  const notaFavorProveedores = document.getElementById("ccNotaFavorProveedores");
-  notaFavorProveedores.hidden = a_favor_proveedores.length === 0;
-  if (a_favor_proveedores.length > 0) {
-    notaFavorProveedores.textContent = `A favor de ${a_favor_proveedores.length} proveedor(es) por ${money(totales.a_favor_proveedores)}: no compensa la deuda con otro proveedor.`;
-  }
-
-  renderCcTabla(
-    "ccCobrarBody",
-    filtrosCcCobrar.aplicar(por_cobrar),
-    filtrosCcCobrar,
-    {
-      tipoLabel: "Cliente",
-      tipoClave: "cliente",
-      accionLabel: "Cobrar",
-      abrirFicha: abrirFichaCliente,
-      abrirAccion: abrirModalCobrarVenta
-    }
-  );
-  renderCcTabla(
-    "ccPagarBody",
-    filtrosCcPagar.aplicar(por_pagar),
-    filtrosCcPagar,
-    {
-      tipoLabel: "Proveedor",
-      tipoClave: "proveedor",
-      accionLabel: "Pagar",
-      abrirFicha: abrirFichaProveedor,
-      abrirAccion: abrirModalPagarCompra
-    }
-  );
-}
-
-function filtrarCcCobrar() {
-  renderCuentasCorrientes(ccUltimaRespuesta);
-}
-function filtrarCcPagar() {
-  renderCuentasCorrientes(ccUltimaRespuesta);
-}
-
-const filtrosCcCobrar = crearFiltros(
-  "filtrosCcCobrar",
-  [
-    { clave: "nombre", etiqueta: "Cliente", tipo: "texto" },
-    { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
-    { clave: "dias_max", etiqueta: "Días vencido", tipo: "numero" }
-  ],
-  filtrarCcCobrar
-);
-
-const filtrosCcPagar = crearFiltros(
-  "filtrosCcPagar",
-  [
-    { clave: "nombre", etiqueta: "Proveedor", tipo: "texto" },
-    { clave: "saldo", etiqueta: "Deuda", tipo: "numero" },
-    { clave: "dias_max", etiqueta: "Días vencido", tipo: "numero" }
-  ],
-  filtrarCcPagar
-);
-
-// Guarda la última respuesta cruda del endpoint para que los filtros y el
-// orden (que solo tocan una de las dos tablas) puedan re-renderizar sin
-// pedir los datos de nuevo — es una foto de hoy, no cambia entre filtros.
-let ccUltimaRespuesta = {
-  por_cobrar: [],
-  por_pagar: [],
-  a_favor_clientes: [],
-  a_favor_proveedores: [],
-  totales: { por_cobrar: 0, por_pagar: 0, a_favor_clientes: 0, a_favor_proveedores: 0, neto: 0 }
-};
-
-async function cargarCuentasCorrientes() {
-  tablaCargando("ccCobrarBody", 6);
-  tablaCargando("ccPagarBody", 6);
-  const datos = await (await fetch("/api/cuentas-corrientes")).json();
-  ccUltimaRespuesta = datos;
-  renderCuentasCorrientes(datos);
-}
-
-// Cuentas corrientes tiene dos tablas independientes (a cobrar y a pagar), así
-// que lleva un botón por panel y no uno por vista. Cada lista es plana: las
-// filas expandibles (.cc-detalle) son un detalle del render, no de los datos.
-const COLUMNAS_CSV_CC = (tipoLabel) => [
-  { titulo: tipoLabel, valor: (e) => e.nombre },
-  { titulo: "Teléfono", valor: (e) => e.telefono },
-  { titulo: "Email", valor: (e) => e.email },
-  { titulo: "Saldo", valor: (e) => e.saldo },
-  { titulo: "Operaciones pendientes", valor: (e) => e.operaciones?.filter((o) => o.pendiente > 0).length ?? 0 },
-  // La operación pendiente que vence primero: las operaciones vienen
-  // ordenadas por vencimiento ascendente desde el backend.
-  { titulo: "Vence", valor: (e) => e.operaciones?.find((o) => o.pendiente > 0)?.vencimiento ?? "" },
-  { titulo: "Días vencido", valor: (e) => e.dias_max }
-];
-
-document.getElementById("btnExportarCcCobrar").addEventListener("click", () => {
-  descargarCSV(
-    "nexo-cuentas-por-cobrar",
-    COLUMNAS_CSV_CC("Cliente"),
-    filtrosCcCobrar.aplicar(ccUltimaRespuesta?.por_cobrar ?? [])
-  );
-});
-
-document.getElementById("btnExportarCcPagar").addEventListener("click", () => {
-  descargarCSV(
-    "nexo-cuentas-por-pagar",
-    COLUMNAS_CSV_CC("Proveedor"),
-    filtrosCcPagar.aplicar(ccUltimaRespuesta?.por_pagar ?? [])
-  );
-});
-
 /* ---------- Gastos ---------- */
 
 // Los gastos son lo que le falta al sistema para saber si el negocio gana
@@ -8153,7 +6613,7 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     cargarClientes(),
     cargarProveedores(),
     cargarCaja(),
-    cargarCuentasCorrientes(),
+    recargar("cuentasCorrientes"),
     cargarPanelResumen(),
     cargarReporteStock()
   ]);
@@ -8564,7 +7024,11 @@ const AUDITORIA_ENTIDAD_LABEL = {
   tesoreria: "Tesorería",
   categoria: "Categoría",
   categoria_gasto: "Categoría de gasto",
-  cuenta_tesoreria: "Cuenta de tesorería"
+  cuenta_tesoreria: "Cuenta de tesorería",
+  lista_precio: "Lista de precios",
+  deposito: "Depósito",
+  usuario: "Usuario",
+  transferencia: "Transferencia"
 };
 const AUDITORIA_ACTOR_LABEL = { operador: "Operador", asistente: "Asistente IA", sistema: "Sistema" };
 
@@ -8746,6 +7210,12 @@ const filtrosAuditoriaMov = crearFiltros(
 );
 
 async function cargarAuditoria() {
+  // GET /api/auditoria es admin-only en el servidor desde la Etapa A de
+  // multi-tenant (valor_anterior/valor_nuevo traen costo/margen/ganancia sin
+  // filtrar). El nav-item ya está oculto por CSS y VISTAS_SOLO_ADMIN manda a
+  // un empleado a Ventas antes de llegar acá, pero se corta igual por si
+  // alguien llama a esta función directo — mismo criterio que cargarCompras.
+  if (!esAdmin()) return;
   tablaCargando("auditoriaBody", 7);
   tablaCargando("auditoriaMovBody", 4);
 
@@ -8775,189 +7245,6 @@ document.getElementById("btnActualizarAuditoria").addEventListener("click", () =
   cargarAuditoria();
   avisar("Auditoría actualizada.", "ok");
 });
-
-/* ---------- Usuarios (solo admin) ---------- */
-// Calcada del ABM de Cuentas de tesorería (arriba, misma estructura:
-// render + modal de alta/edición con listeners atados después del
-// innerHTML, no delegación, misma convención del resto del archivo) y de
-// Categorías (baja lógica en vez de DELETE).
-
-let usuariosCache = [];
-
-const ROL_LABEL = { admin: "Administrador", empleado: "Empleado" };
-const ROL_CLASE = { admin: "status-cobrado", empleado: "status-pendiente" };
-
-function renderUsuarios(lista) {
-  const body = document.getElementById("usuariosBody");
-
-  if (lista.length === 0) {
-    body.innerHTML = filaVacia(7, "Todavía no hay otros usuarios cargados.", {
-      accionTexto: "+ Usuario",
-      accionId: "btnNuevoUsuario"
-    });
-    return;
-  }
-
-  body.innerHTML = lista
-    .map((u) => {
-      const acciones = [`<button type="button" class="btn-fila btn-editar-usuario" data-id="${u.id}">Editar</button>`];
-      if (u.activo) {
-        acciones.push(
-          `<button type="button" class="btn-fila btn-resetear-usuario" data-id="${u.id}">Resetear contraseña</button>`,
-          `<button type="button" class="btn-fila btn-baja-usuario" data-id="${u.id}">Dar de baja</button>`
-        );
-      } else {
-        acciones.push(`<button type="button" class="btn-fila btn-reactivar-usuario" data-id="${u.id}">Reactivar</button>`);
-      }
-      return `
-        <tr class="${u.activo ? "" : "fila-anulada"}">
-          <td data-label="Usuario" class="mono">${u.usuario}</td>
-          <td data-label="Nombre">${u.nombre}</td>
-          <td data-label="Rol"><span class="status ${ROL_CLASE[u.rol] || ""}">${ROL_LABEL[u.rol] || u.rol}</span></td>
-          <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : "status-pendiente"}">${
-            u.activo ? "Activo" : "Dado de baja"
-          }</span></td>
-          <td data-label="Alta">${u.fecha_alta ? u.fecha_alta.split(" ")[0] : "—"}</td>
-          <td data-label="Último acceso">${u.ultimo_acceso ? u.ultimo_acceso.split(" ")[0] : "—"}</td>
-          <td data-label=""><div class="fila-acciones">${acciones.join("")}</div></td>
-        </tr>`;
-    })
-    .join("");
-
-  body.querySelectorAll(".btn-editar-usuario").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      abrirModalUsuario(usuariosCache.find((u) => u.id === Number(btn.dataset.id)));
-    });
-  });
-  body.querySelectorAll(".btn-baja-usuario").forEach((btn) => {
-    btn.addEventListener("click", () => darDeBajaUsuario(Number(btn.dataset.id)));
-  });
-  body.querySelectorAll(".btn-reactivar-usuario").forEach((btn) => {
-    btn.addEventListener("click", () => reactivarUsuario(Number(btn.dataset.id)));
-  });
-  body.querySelectorAll(".btn-resetear-usuario").forEach((btn) => {
-    btn.addEventListener("click", () => resetearPasswordUsuario(Number(btn.dataset.id)));
-  });
-}
-
-async function cargarUsuarios() {
-  tablaCargando("usuariosBody", 7);
-  // A diferencia del resto de las lecturas del archivo, este endpoint
-  // puede dar 403 (si por algún motivo lo llama un empleado): chequear
-  // res.ok antes de asumir que el cuerpo es la lista.
-  const res = await fetch("/api/usuarios");
-  if (!res.ok) return;
-  usuariosCache = await res.json();
-  renderUsuarios(usuariosCache);
-}
-
-/* --- Modal de usuario (alta y edición) --- */
-
-const modalUsuario = document.getElementById("modalUsuario");
-let usuarioEditandoId = null;
-
-function abrirModalUsuario(usuario = null) {
-  usuarioEditandoId = usuario?.id ?? null;
-  const form = document.getElementById("formUsuario");
-  document.getElementById("modalUsuarioTitulo").textContent = usuario ? "Editar usuario" : "Nuevo usuario";
-  form.usuarioUsuario.value = usuario?.usuario ?? "";
-  form.usuarioNombre.value = usuario?.nombre ?? "";
-  form.usuarioRol.value = usuario?.rol ?? "empleado";
-  form.usuarioPassword.value = "";
-  // El usuario de login no se cambia en edición (es la clave con la que
-  // inicia sesión); la contraseña tampoco se toca acá, para eso está el
-  // botón "Resetear contraseña" en la fila.
-  form.usuarioUsuario.disabled = !!usuario;
-  document.getElementById("usuarioPasswordLabel").hidden = !!usuario;
-  modalUsuario.hidden = false;
-}
-
-document.getElementById("btnNuevoUsuario").addEventListener("click", () => abrirModalUsuario());
-document.getElementById("modalUsuarioClose").addEventListener("click", () => {
-  modalUsuario.hidden = true;
-});
-modalUsuario.addEventListener("click", (e) => {
-  if (e.target === modalUsuario) modalUsuario.hidden = true;
-});
-
-document.getElementById("formUsuario").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const eraEdicion = usuarioEditandoId !== null;
-
-  const res = await fetch(eraEdicion ? `/api/usuarios/${usuarioEditandoId}` : "/api/usuarios", {
-    method: eraEdicion ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      eraEdicion
-        ? { nombre: form.usuarioNombre.value, rol: form.usuarioRol.value }
-        : {
-            usuario: form.usuarioUsuario.value,
-            nombre: form.usuarioNombre.value,
-            password: form.usuarioPassword.value,
-            rol: form.usuarioRol.value
-          }
-    )
-  });
-  if (!(await manejarError(res, "No se pudo guardar el usuario."))) return;
-
-  await cargarUsuarios();
-  form.reset();
-  modalUsuario.hidden = true;
-  avisar(eraEdicion ? "Usuario actualizado." : "Usuario creado.", "ok");
-});
-
-async function darDeBajaUsuario(id) {
-  const usuario = usuariosCache.find((u) => u.id === id);
-  const ok = await confirmar({
-    titulo: "Dar de baja usuario",
-    cuerpo: `"${usuario?.nombre}" no va a poder ingresar a Nexo. Se va a cerrar su sesión en el acto si la tiene abierta.`,
-    aceptar: "Dar de baja",
-    destructivo: true
-  });
-  if (!ok) return;
-
-  const res = await fetch(`/api/usuarios/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ activo: false })
-  });
-  if (!(await manejarError(res, "No se pudo dar de baja al usuario."))) return;
-
-  await cargarUsuarios();
-  avisar("Usuario dado de baja.", "ok");
-}
-
-async function reactivarUsuario(id) {
-  const res = await fetch(`/api/usuarios/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ activo: true })
-  });
-  if (!(await manejarError(res, "No se pudo reactivar al usuario."))) return;
-
-  await cargarUsuarios();
-  avisar("Usuario reactivado.", "ok");
-}
-
-async function resetearPasswordUsuario(id) {
-  const usuario = usuariosCache.find((u) => u.id === id);
-  const nueva = prompt(`Nueva contraseña temporal para "${usuario?.nombre}" (mínimo 8 caracteres):`);
-  if (!nueva) return;
-  if (nueva.length < 8) {
-    avisar("La contraseña tiene que tener al menos 8 caracteres.", "error");
-    return;
-  }
-
-  const res = await fetch(`/api/usuarios/${id}/resetear-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password: nueva })
-  });
-  if (!(await manejarError(res, "No se pudo resetear la contraseña."))) return;
-
-  avisar(`Contraseña reseteada. Se le va a pedir que la cambie en su próximo ingreso.`, "ok");
-}
 
 /* ---------- Papelera ---------- */
 
@@ -9032,7 +7319,7 @@ function renderPapelera() {
         cargarClientes(),
         cargarProveedores(),
         cargarCaja(),
-        cargarCuentasCorrientes(),
+        recargar("cuentasCorrientes"),
         cargarPanelResumen(),
         cargarReporteStock()
       ]);
@@ -9040,84 +7327,19 @@ function renderPapelera() {
   });
 }
 
-/* ---------- Configuración (datos del negocio) ---------- */
-
-// El engranaje abre Configuración, que desde esta etapa tiene contenido real:
-// los datos que encabezan los comprobantes impresos. El círculo de perfil
-// (#btnPerfil) no lo comparte: abre #modalPerfil, el menú de cuenta.
-//
-// `negocio` queda en memoria para que armarHojaComprobante() no tenga que
-// hacer un fetch cada vez que se imprime — mismo criterio que `cuentasTesoreria`
-// y los demás cachés que llena el boot.
-let negocio = {};
-
-const modalConfiguracion = document.getElementById("modalConfiguracion");
-const formNegocio = document.getElementById("formNegocio");
-
-function pintarFormNegocio() {
-  for (const campo of ["nombre", "documento", "condicion_iva", "direccion", "telefono", "email", "pie_comprobante"]) {
-    if (formNegocio[campo]) formNegocio[campo].value = negocio[campo] ?? "";
-  }
-  // Gating por rol: es UI, no seguridad — el servidor responde 403 igual si un
-  // empleado llama al endpoint directo (mismo criterio que la vista Usuarios).
-  const esAdmin = document.documentElement.dataset.rol === "admin";
-  document.getElementById("negocioSoloLectura").hidden = esAdmin;
-  for (const control of formNegocio.querySelectorAll("input, textarea, button")) {
-    control.disabled = !esAdmin;
-  }
-}
-
-async function cargarNegocio() {
-  const res = await fetch("/api/negocio");
-  if (!res.ok) return;
-  negocio = await res.json();
-  pintarFormNegocio();
-}
-
-formNegocio.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const datos = Object.fromEntries(new FormData(formNegocio).entries());
-  if (!datos.nombre?.trim()) {
-    avisar("El negocio necesita un nombre.", "atencion");
-    return;
-  }
-  const res = await fetch("/api/negocio", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(datos)
-  });
-  if (!(await manejarError(res, "No se pudieron guardar los datos del negocio."))) return;
-  await cargarNegocio();
-  modalConfiguracion.hidden = true;
-  avisar("Datos del negocio actualizados.", "ok");
-});
-
-document.getElementById("btnConfiguracion").addEventListener("click", () => {
-  // Se repinta al abrir: así el formulario nunca muestra un valor viejo si el
-  // usuario editó, cerró sin guardar y volvió a abrir.
-  pintarFormNegocio();
-  modalConfiguracion.hidden = false;
-});
-document.getElementById("modalConfiguracionClose").addEventListener("click", () => {
-  modalConfiguracion.hidden = true;
-});
-modalConfiguracion.addEventListener("click", (e) => {
-  if (e.target === modalConfiguracion) modalConfiguracion.hidden = true;
-});
-
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último
 // porque su tabla de últimos movimientos se arma con los cachés de
 // ventas, compras y gastos ya cargados. Cuentas corrientes y el reporte
 // de stock no dependen de ningún caché del frontend (traen su propio
 // fetch), así que entran en el mismo último grupo que Resumen.
-// cargarNegocio va en la primera ola: no depende de nada y la impresión de
+// recargar("negocio") va en la primera ola: no depende de nada y la impresión de
 // comprobantes necesita el membrete listo antes del primer click en Imprimir.
-Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), cargarNegocio()])
+Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio")])
   .then(() => Promise.all([cargarGastos(), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
-  .then(() => Promise.all([cargarPanelResumen(), cargarCuentasCorrientes(), cargarReporteStock()]));
+  .then(() => Promise.all([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]));
 
 /* ---------- Tema claro / oscuro ---------- */
 
@@ -9141,62 +7363,6 @@ btnTema.addEventListener("click", () => {
     // Sin storage disponible, el tema sigue cambiado para esta sesión,
     // solo no se recuerda la próxima vez.
   }
-});
-
-/* ---------- Menú de perfil (mi cuenta) ---------- */
-
-const modalPerfil = document.getElementById("modalPerfil");
-document.getElementById("btnPerfil").addEventListener("click", () => {
-  // Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
-  // data-usuario-nombre/data-usuario-rol en el pie de la sidebar) —
-  // leerlos de ahí evita un fetch propio solo para mostrar el modal.
-  document.getElementById("perfilNombre").textContent =
-    document.querySelector("[data-usuario-nombre]")?.textContent ?? "—";
-  const rol = document.documentElement.dataset.rol;
-  const perfilRolEl = document.getElementById("perfilRol");
-  perfilRolEl.textContent = rol === "admin" ? "Administrador" : "Empleado";
-  perfilRolEl.className = `status ${rol === "admin" ? "status-cobrado" : "status-pendiente"}`;
-  modalPerfil.hidden = false;
-});
-document.getElementById("modalPerfilClose").addEventListener("click", () => {
-  modalPerfil.hidden = true;
-});
-modalPerfil.addEventListener("click", (e) => {
-  if (e.target === modalPerfil) modalPerfil.hidden = true;
-});
-
-document.getElementById("formCambioPassword").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const errorEl = document.getElementById("cambioPasswordError");
-  errorEl.hidden = true;
-
-  const res = await fetch("/api/auth/cambiar-password", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      actual: form.perfilPasswordActual.value,
-      nueva: form.perfilPasswordNueva.value
-    })
-  });
-  if (!res.ok) {
-    const datos = await res.json().catch(() => ({}));
-    errorEl.textContent = datos.error || "No se pudo cambiar la contraseña.";
-    errorEl.hidden = false;
-    return;
-  }
-
-  form.reset();
-  modalPerfil.hidden = true;
-  avisar("Contraseña actualizada.", "ok");
-});
-
-document.getElementById("btnCerrarSesion").addEventListener("click", () => {
-  // nexoCerrarSesion la expone sesion.js (que cargó antes que este
-  // archivo): hace el POST de logout y recarga la página — más simple y
-  // más seguro que intentar desmontar los listeners de este archivo a
-  // mano.
-  window.nexoCerrarSesion?.();
 });
 
 /* ---------- Colapsar sidebar (pantalla completa en desktop) ---------- */
@@ -9225,171 +7391,18 @@ document.getElementById("navToggle").addEventListener("click", () => {
   }
 });
 
-// Un título y un dominio por vista, para que la topbar diga siempre
-// dónde está el usuario (antes su <h1> era la fecha de hoy en las 14
-// pantallas). El dominio es el mismo agrupamiento por el que ya está
-// ordenado el <nav>: Resumen -> Maestros -> embudo de venta -> embudo de
-// compra -> Stock -> Finanzas -> Papelera.
-//
-// Las vistas de ficha (no están en el nav, se abren desde una fila de
-// tabla) llevan además "nav" — qué ítem del menú se marca activo — y
-// "esFicha", que le dice a mostrarVista() que no actualice el hash: el
-// nombre de la vista solo no alcanza para reconstruir cuál registro
-// mostrar, así que no tiene sentido ofrecerla como deep-link. Su título
-// genérico ("Venta") lo reemplaza abrirFicha*() por el real ("Venta #37")
-// apenas sabe qué registro es.
-const VISTAS_CONSTRUIDAS = {
-  dashboard: { titulo: "Resumen", dominio: "Resumen" },
-  productos: { titulo: "Productos", dominio: "Maestros" },
-  clientes: { titulo: "Clientes", dominio: "Maestros" },
-  proveedores: { titulo: "Proveedores", dominio: "Maestros" },
-  presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
-  ventas: { titulo: "Ventas", dominio: "Embudo de venta" },
-  devoluciones: { titulo: "Devoluciones", dominio: "Embudo de venta" },
-  facturas: { titulo: "Facturas", dominio: "Embudo de venta" },
-  compras: { titulo: "Compras", dominio: "Embudo de compra" },
-  "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
-  stock: { titulo: "Stock", dominio: "Stock" },
-  "reportes-stock": { titulo: "Reportes de stock", dominio: "Stock" },
-  caja: { titulo: "Caja", dominio: "Finanzas" },
-  "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
-  gastos: { titulo: "Gastos", dominio: "Finanzas" },
-  papelera: { titulo: "Papelera", dominio: "Papelera" },
-  auditoria: { titulo: "Auditoría", dominio: "Auditoría" },
-  usuarios: { titulo: "Usuarios", dominio: "Administración" },
-
-  "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
-  "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
-  "devolucion-detalle": { titulo: "Devolución", dominio: "Embudo de venta", nav: "devoluciones", esFicha: true },
-  "factura-detalle": { titulo: "Factura", dominio: "Embudo de venta", nav: "facturas", esFicha: true },
-  "compra-detalle": { titulo: "Compra", dominio: "Embudo de compra", nav: "compras", esFicha: true },
-  "devolucion-proveedor-detalle": {
-    titulo: "Devolución a proveedor",
-    dominio: "Embudo de compra",
-    nav: "devoluciones-proveedor",
-    esFicha: true
-  },
-  "producto-detalle": { titulo: "Producto", dominio: "Maestros", nav: "productos", esFicha: true },
-  "cliente-detalle": { titulo: "Cliente", dominio: "Maestros", nav: "clientes", esFicha: true },
-  "proveedor-detalle": { titulo: "Proveedor", dominio: "Maestros", nav: "proveedores", esFicha: true },
-
-  placeholder: { titulo: "Próximamente", dominio: "Nexo", esFicha: true }
-};
-
-// Vistas cuyo contenido depende de al menos un endpoint admin-only
-// (permisos.js): Usuarios (administración), dashboard (Estadísticas:
-// GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
-// (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
-// y todo el circuito de compras y sus devoluciones a proveedor, fichas
-// incluidas. Un deep-link escrito a mano por un empleado (el nav-item ya
-// está oculto por CSS, pero el hash se puede tipear igual) cae al mismo
-// destino que un click normal — es solo UI, el servidor responde 403 igual
-// si se llama al endpoint directo.
-const VISTAS_SOLO_ADMIN = new Set([
-  "usuarios",
-  "dashboard",
-  "reportes-stock",
-  "papelera",
-  "compras",
-  "compra-detalle",
-  "devoluciones-proveedor",
-  "devolucion-proveedor-detalle"
-]);
-
-function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
-  // El fallback ya no puede ser "dashboard": pasó a ser admin-only (arriba).
-  // "ventas" es donde arranca un empleado al loguearse (ver el boot, más
-  // abajo), así que es el destino natural también acá.
-  if (VISTAS_SOLO_ADMIN.has(viewId) && !esAdmin()) {
-    viewId = "ventas";
-  }
-
-  document.querySelectorAll(".view").forEach((sec) => {
-    sec.hidden = sec.dataset.view !== viewId;
-  });
-
-  // Excepción deliberada al patrón "todo se carga una vez al bootear"
-  // (ver la cadena de Promise.all al final de este archivo): Auditoría
-  // cambia con CUALQUIER mutación del sistema (~40 puntos distintos), así
-  // que engancharla a cada una ensuciaría demasiado. Al ser una vista de
-  // consulta ocasional (no un panel que se mira mientras se opera), se
-  // carga al entrar en vez de al bootear — cubre nav click, deep-link
-  // (F5) y el botón Atrás/Adelante porque los tres pasan por acá. El
-  // botón "Actualizar" del panel (ver activarAuditoria) cubre lo que
-  // cambió mientras la vista ya estaba abierta.
-  if (viewId === "auditoria") cargarAuditoria();
-  // Misma excepción y mismo motivo que Auditoría arriba: es
-  // administración ocasional, no un panel que se mira mientras se opera.
-  // No entra en la cadena de Promise.all del boot (más abajo en este
-  // archivo) a propósito — un empleado recibiría 403 en cada arranque si
-  // estuviera ahí.
-  if (viewId === "usuarios") cargarUsuarios();
-
-  const info = VISTAS_CONSTRUIDAS[viewId];
-  const tituloFinal = titulo ?? info?.titulo;
-  // El elemento #vistaEyebrow (el texto chico "RESUMEN"/"ADMINISTRACIÓN"
-  // sobre el título) se sacó del HTML por decisión de diseño. El campo
-  // `dominio` de VISTAS_CONSTRUIDAS se conserva igual: sigue documentando
-  // a qué dominio pertenece cada vista, aunque ya no se pinte en pantalla.
-  // El optional chaining evita romper acá si el elemento no existe.
-  if (info) {
-    const eyebrow = document.getElementById("vistaEyebrow");
-    if (eyebrow) eyebrow.textContent = info.dominio;
-  }
-  if (tituloFinal) {
-    document.getElementById("vistaTitulo").textContent = tituloFinal;
-    document.title = `${tituloFinal} · Nexo`;
-  }
-
-  // El nav marca activo el ítem de la vista, o el de la lista de la que
-  // salió una ficha (ver "nav" en VISTAS_CONSTRUIDAS): mirando la ficha
-  // de una venta, "Ventas" se mantiene resaltado en vez de apagarse.
-  const navObjetivo = info?.nav ?? viewId;
-  document.querySelectorAll(".nav-item").forEach((item) => {
-    const activo = item.dataset.view === navObjetivo;
-    item.classList.toggle("is-active", activo);
-    if (activo) item.setAttribute("aria-current", "page");
-    else item.removeAttribute("aria-current");
-  });
-
-  // Deep-link: F5 o el botón Atrás vuelven a esta misma pantalla. Las
-  // fichas quedan afuera (ver "esFicha" arriba); actualizarHash en false
-  // lo pasa quien ya está respondiendo a un cambio de hash, para no
-  // generar un loop de escritura.
-  if (actualizarHash && info && !info.esFicha) {
-    const hash = `#/${viewId}`;
-    if (location.hash !== hash) history.pushState(null, "", hash);
-  }
-}
-
-// Vistas que existieron con otro nombre y se fusionaron/renombraron: un
-// bookmark o un link viejo a "reportes-ventas" debe abrir Resumen en vez
-// de quedar muerto.
-const VISTAS_RENOMBRADAS = { "reportes-ventas": "dashboard" };
-
-// Vuelve del hash a una vista válida (no de ficha, que no alcanza para
-// reconstruir cuál registro mostrar), o null si no hay nada aprovechable.
-function vistaDesdeHash() {
-  const id = (location.hash || "").replace(/^#\/?/, "");
-  const idResuelto = VISTAS_RENOMBRADAS[id] ?? id;
-  return VISTAS_CONSTRUIDAS[idResuelto] && !VISTAS_CONSTRUIDAS[idResuelto].esFicha ? idResuelto : null;
-}
-
-// Botón Atrás/Adelante del navegador entre vistas del nav.
-window.addEventListener("hashchange", () => {
-  const view = vistaDesdeHash();
-  if (view) mostrarVista(view, { actualizarHash: false });
-});
-
-document.querySelectorAll(".nav-item").forEach((item) => {
-  item.addEventListener("click", (e) => {
-    e.preventDefault();
-    document.getElementById("sidebar").classList.remove("is-open");
-    const view = item.dataset.view;
-    mostrarVista(VISTAS_CONSTRUIDAS[view] ? view : "placeholder");
-  });
-});
 
 // Al entrar: si la URL ya trae una vista puesta (F5, o volver con el
 // botón Atrás), arrancar ahí en vez de siempre en Resumen.
+// Auditoría se carga al entrar (ver mostrarVista en core/router.js); Usuarios
+// hace lo mismo desde dominios/usuarios.js.
+alEntrarEnVista("auditoria", cargarAuditoria);
+
+// Acciones que dominios/cuentas-corrientes.js invoca por nombre (solo con un
+// click, después del boot).
+registrar("abrirFicha:cliente", abrirFichaCliente);
+registrar("abrirFicha:proveedor", abrirFichaProveedor);
+registrar("cobrar:venta", abrirModalCobrarVenta);
+registrar("pagar:compra", abrirModalPagarCompra);
+
 mostrarVista(vistaDesdeHash() ?? "dashboard", { actualizarHash: false });

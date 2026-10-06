@@ -3,7 +3,8 @@
  * -----------------------------------------------------------
  * El gate de arranque de Nexo. Se carga en vez de app.js
  * (index.html no tiene <script src="js/app.js"> — lo inyecta este
- * archivo, y recién cuando confirma que hay una sesión válida).
+ * archivo como módulo ES, y recién cuando confirma que hay una sesión
+ * válida).
  *
  * Por qué existe: app.js no tiene init() ni DOMContentLoaded — toca el
  * DOM desde su primera línea y dispara varias olas de fetch() sin
@@ -67,7 +68,7 @@
   function mostrarPantalla(cual) {
     pantalla.hidden = false;
     formLogin.hidden = cual !== "login";
-    formBootstrap.hidden = cual !== "bootstrap";
+    formRegistro.hidden = cual !== "registro";
     formCambioForzado.hidden = cual !== "cambio";
   }
 
@@ -109,8 +110,25 @@
     if (appInyectada) return;
     appInyectada = true;
 
+    // app.js es un módulo ES (CLAUDE.md §31): carga diferida, modo estricto y
+    // su propio scope en vez del global. Inyectarlo con type="module" desde
+    // acá (y no con un <script type="module"> estático en index.html) es lo
+    // que conserva el gate: sin sesión ni siquiera se descarga.
     const script = document.createElement("script");
+    script.type = "module";
     script.src = "js/app.js";
+    // Si falta o falla cualquier archivo del grafo de imports el navegador
+    // descarta TODO el módulo y la pantalla quedaría en blanco sin una pista.
+    // Se vuelve al login con el motivo, y la guarda de idempotencia se libera
+    // para que un reintento pueda inyectarlo de nuevo.
+    script.onerror = () => {
+      console.error("No se pudo cargar js/app.js (o alguno de los módulos que importa).");
+      script.remove();
+      appInyectada = false;
+      cerrarSesionLocal();
+      mostrarPantalla("login");
+      mostrarErrorEn("loginError", "No se pudo cargar la aplicación. Recargá la página.");
+    };
     document.body.appendChild(script);
   }
 
@@ -156,26 +174,30 @@
     }
   });
 
-  formBootstrap.addEventListener("submit", async (e) => {
+  document.getElementById("irARegistro").addEventListener("click", () => mostrarPantalla("registro"));
+  irALogin.addEventListener("click", () => mostrarPantalla("login"));
+
+  formRegistro.addEventListener("submit", async (e) => {
     e.preventDefault();
-    ocultarErrorEn("bootstrapError");
-    const usuario = document.getElementById("bootstrapUsuario").value.trim();
-    const nombre = document.getElementById("bootstrapNombre").value.trim();
-    const password = document.getElementById("bootstrapPassword").value;
+    ocultarErrorEn("registroError");
+    const empresa = document.getElementById("registroEmpresa").value.trim();
+    const nombre = document.getElementById("registroNombre").value.trim();
+    const usuario = document.getElementById("registroUsuario").value.trim();
+    const password = document.getElementById("registroPassword").value;
     try {
-      const res = await fetchOriginal("/api/auth/bootstrap", {
+      const res = await fetchOriginal("/api/auth/registro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, nombre, password })
+        body: JSON.stringify({ empresa, usuario, nombre, password })
       });
       const datos = await res.json();
       if (!res.ok) {
-        mostrarErrorEn("bootstrapError", datos.error || "No se pudo crear el administrador.");
+        mostrarErrorEn("registroError", datos.error || "No se pudo crear la cuenta.");
         return;
       }
       arrancarApp(datos.usuario);
     } catch {
-      mostrarErrorEn("bootstrapError", "No se pudo conectar con el servidor.");
+      mostrarErrorEn("registroError", "No se pudo conectar con el servidor.");
     }
   });
 
@@ -208,7 +230,10 @@
       const res = await fetchOriginal("/api/auth/estado");
       const estado = await res.json();
       if (estado.requiere_bootstrap) {
-        mostrarPantalla("bootstrap");
+        // Instalación nueva: no hay cuenta a la que volver, así que se saca
+        // el link "Ya tengo cuenta".
+        irALogin.hidden = true;
+        mostrarPantalla("registro");
       } else if (!estado.autenticado) {
         cerrarSesionLocal();
         mostrarPantalla("login");
