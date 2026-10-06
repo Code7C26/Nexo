@@ -2,10 +2,10 @@
 
 > Sistema de gestión integral para PyMEs y emprendimientos, con interfaz conversacional por voz.
 
-Nació como proyecto de escuela, pero se construye con el estándar de un
-producto real: el objetivo es que un comercio lo pueda usar de verdad y que
-compita con los sistemas de gestión que ya existen en el mercado argentino
-(referencias: Dux Software, Contagram). Las reglas de negocio y de
+Nexo centraliza productos, stock, compras, ventas, clientes, proveedores,
+tesorería y facturación en un solo sistema, pensado para que un comercio lo use
+de verdad y compita con los sistemas de gestión que ya existen en el mercado
+argentino (referencias: Dux Software, Contagram). Las reglas de negocio y de
 arquitectura completas viven en [`CLAUDE.md`](CLAUDE.md); este README es la
 puerta de entrada rápida.
 
