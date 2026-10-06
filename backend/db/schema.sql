@@ -169,8 +169,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_precios_unico
 -- Variantes de producto (ej. Talle/Color): un producto define sus propios
 -- atributos (no hay catálogo global de "Talle" compartido entre productos
 -- distintos) y una variante es una combinación concreta de valores de esos
--- atributos. Ver handoff.md, etapa "variantes de productos", para el
--- razonamiento completo detrás de este esquema.
+-- atributos. Ver docs/handoff-historico.md, §30, para el razonamiento
+-- completo detrás de este esquema.
 CREATE TABLE IF NOT EXISTS producto_atributos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),

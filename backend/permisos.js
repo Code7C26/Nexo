@@ -14,8 +14,8 @@
 // - 'ambos': requiere sesión (admin o empleado), sin `soloAdmin`.
 // - 'admin': requiere sesión Y rol admin (`soloAdmin` como argumento).
 //
-// Decisiones de negocio detrás de esta tabla (ver handoff.md, sección de
-// permisos por rol): anular/restaurar, tesorería, alta/edición de
+// Decisiones de negocio detrás de esta tabla (ver docs/handoff-historico.md,
+// §27 y §28): anular/restaurar, tesorería, alta/edición de
 // productos y categorías, ajuste de stock, todo el circuito de compras
 // (pagos incluidos) y sus devoluciones a proveedor, y las 5 vistas de
 // análisis (resumen y reportes) son admin. Cobros de venta y creación de
