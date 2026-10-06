@@ -1283,7 +1283,24 @@ if (auditoriaSql5 && !auditoriaSql5.sql.includes("'login'")) {
 const auditoriaColumnasOrg = db.prepare('PRAGMA table_info(auditoria)').all();
 if (!auditoriaColumnasOrg.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE auditoria ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+  // Backfill de una sola vez, acá adentro y no en el array compartido de más
+  // abajo (que corre en cada arranque): auditoria es la única tabla con un
+  // NULL legítimo, el login_fallido de un usuario que no existe (ver
+  // schema.sql). En el array, cada reinicio se lo atribuía a la primera
+  // empresa y su admin veía lo que había tecleado cualquiera.
+  db.prepare(
+    `UPDATE auditoria SET organizacion_id = ?
+      WHERE organizacion_id IS NULL
+        AND NOT (accion = 'login_fallido' AND usuario_id IS NULL)`
+  ).run(primeraOrganizacionId);
 }
+// Repara las bases que ya arrancaron con auditoria en el backfill compartido
+// (copias de desarrollo de la Etapa A). Re-ejecutable: una vez en NULL, el
+// WHERE ya no las encuentra.
+db.exec(
+  `UPDATE auditoria SET organizacion_id = NULL
+    WHERE accion = 'login_fallido' AND usuario_id IS NULL AND organizacion_id IS NOT NULL`
+);
 // idx_auditoria_org_fecha, el índice que en la práctica reemplaza a
 // idx_auditoria_fecha una vez que GET /api/auditoria filtra por
 // organización: se crea acá, fuera del `if` de arriba y no en schema.sql
@@ -1409,7 +1426,8 @@ export function registrarAuditoria({
 // Backfill de organizacion_id en las tablas que la sumaron por ALTER TABLE
 // (ver más arriba): recién acá corrieron todos esos ALTER. Los cinco
 // catálogos no están en la lista porque la traen NOT NULL desde su rebuild,
-// al principio del archivo. Re-ejecutable, solo toca filas que todavía no
+// al principio del archivo, y auditoria tampoco porque tiene su propio
+// backfill junto a su ALTER. Re-ejecutable, solo toca filas que todavía no
 // tienen organización asignada.
 for (const tabla of [
   'productos',
@@ -1425,7 +1443,6 @@ for (const tabla of [
   'movimientos_stock',
   'transferencias',
   'movimientos_tesoreria',
-  'auditoria',
   'asistente_mensajes',
 ]) {
   db.exec(
@@ -1444,12 +1461,12 @@ for (const tabla of [
 // registrar la plata.
 // Se siembra por organización y por tabla, solo si esa organización todavía
 // no tiene ninguna fila. Corre en cada arranque para todas, así que una
-// empresa creada a mano recibe los suyos en el próximo arranque; el día que
-// exista un alta de empresa desde la API, tiene que llamar a esta misma
-// función. La lista copia el precio_venta de cada producto de esa
+// empresa creada a mano recibe los suyos en el próximo arranque; el alta de
+// empresa de POST /api/auth/registro la llama directo, por eso se exporta. La
+// lista copia el precio_venta de cada producto de esa
 // organización, así que el número que el negocio ya venía usando no cambia
 // ni un peso — solo pasa a vivir también como fila de producto_precios.
-function sembrarCatalogosBase(organizacionId) {
+export function sembrarCatalogosBase(organizacionId) {
   const contar = (tabla) =>
     db.prepare(`SELECT COUNT(*) AS count FROM ${tabla} WHERE organizacion_id = ?`).get(organizacionId).count;
   if (contar('depositos') === 0) {
