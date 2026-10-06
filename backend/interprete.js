@@ -229,7 +229,10 @@ async function interpretarConGemini(texto, contexto) {
   } catch (err) {
     // No dejamos que un error de red/API tumbe el server: se traduce a un
     // error tipado que el endpoint convierte en una respuesta HTTP clara.
-    throw new InterpreteError(`El intérprete no pudo responder: ${err.message}`, 502);
+    // El mensaje de la API de Gemini puede traer detalles internos (cuota,
+    // proyecto, claves parciales): al log del servidor, no al cliente.
+    console.error('[interprete] Falló la llamada a Gemini:', err);
+    throw new InterpreteError('El intérprete no pudo responder. Probá de nuevo en unos minutos.', 502);
   }
 
   return extraerPropuesta(response);

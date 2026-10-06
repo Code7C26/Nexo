@@ -72,6 +72,11 @@ incluido.
 **Servidor**: `cd backend && npm start`, en el puerto 3000 (`PORT` lo cambia).
 - No hay `.env`. `GEMINI_API_KEY` se pasa como variable de entorno al arrancar;
   sin ella el asistente responde 503 y el resto funciona igual.
+- `NEXO_TRUST_PROXY=<n>` (cantidad de proxies de confianza delante, normalmente
+  1) es **obligatoria detrás de un proxy inverso**: sin ella `req.ip` es siempre
+  la IP del proxy y 30 logins fallidos de cualquiera bloquean el login de todas
+  las empresas 15 minutos (tope por IP, hist. §57). En `NODE_ENV=production` sin
+  ella el servidor avisa al arrancar.
 - `NEXO_INTERPRETE=stub` reemplaza a Gemini por un parser determinista para
   pruebas (formato en `interpretarStub`, `backend/interprete.js`).
 
@@ -163,7 +168,12 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
      no cambia nada y que el esquema final es el mismo en todas (hist. §48).
 5. **`cd backend && npm test`** (inventario estático de rutas contra
    `permisos.js`): toda ruta nueva tiene que estar clasificada ahí, declarada
-   en la columna 0 y con `soloAdmin` en la misma línea.
+   en la columna 0 y con `soloAdmin` en la misma línea. También corre
+   `backend/test/api.test.js`: levanta `server.js` como proceso hijo con base
+   temporal (`servidor-de-prueba.js`: `levantarServidor`, `registrarEmpresa`,
+   `crearEmpleado`, `crearCliente` con cookie) y fija los arreglos de la
+   auditoría de hist. §57. Un endpoint nuevo con validación de entrada merece
+   su caso ahí; el del límite por IP va último porque bloquea la IP local.
 6. **En Windows**, matar los servidores de prueba por PID (`taskkill`):
    `pkill` no los encuentra.
 

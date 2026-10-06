@@ -9,6 +9,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Cabeceras de seguridad básicas (CLAUDE.md §35). No se agrega CSP todavía:
+// index.html tiene un script inline en el <head> y carga fuentes de Google, así
+// que un CSP útil necesita antes autoalojar las fuentes y mover ese script
+// (se hace junto con la PWA, Etapa B2).
+app.disable('x-powered-by');
+// Detrás de un proxy inverso (HTTPS en producción) `req.ip` sería siempre la IP
+// del proxy y los límites por IP agruparían a todos los clientes. NEXO_TRUST_PROXY
+// es la cantidad de proxies de confianza delante (normalmente 1).
+if (Number(process.env.NEXO_TRUST_PROXY) > 0) {
+  app.set('trust proxy', Number(process.env.NEXO_TRUST_PROXY));
+} else if (process.env.NODE_ENV === 'production') {
+  // Sin esto, detrás de un proxy todos los clientes comparten IP y 30 logins
+  // fallidos de cualquiera bloquean el login de todos durante 15 minutos.
+  console.warn('NEXO_TRUST_PROXY no está definido: si hay un proxy inverso delante, los límites por IP agrupan a todos los clientes.');
+}
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  next();
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 // assets/ vive al mismo nivel que backend/ y frontend/ (así lo define
@@ -190,6 +212,14 @@ function autenticar(req, res, next) {
   next();
 }
 
+// Express 4 no captura el rechazo de un handler `async`: sin esto, una
+// excepción después de un `await` (la llamada a Gemini, el INSERT) es un
+// unhandledRejection, que en Node 22 mata el proceso y deja sin servicio a
+// TODAS las empresas. Esto lo manda al manejador de errores del final.
+function asincrono(handler) {
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+}
+
 function soloAdmin(req, res, next) {
   // 403, no 401: distinción a propósito. El frontend trata 401 como
   // "mostrar la pantalla de login" y 403 como "estás logueado pero no
@@ -218,13 +248,51 @@ function bloqueado(usuario) {
   return registro.fallos >= INTENTOS_MAX;
 }
 
-function registrarIntentoFallido(usuario) {
+// El tope por usuario solo frena a quien insiste con UN usuario (y deja que
+// cualquiera bloquee la cuenta de otro durante 15 minutos). Cada intento con un
+// usuario distinto igual cuesta un scryptSync de ~100 ms que congela el event
+// loop de todas las empresas, así que también hay un tope por IP. Es más
+// holgado a propósito: una oficina entera sale por la misma IP.
+const INTENTOS_MAX_POR_IP = 30;
+const intentosPorIp = new Map();
+const TOPE_REGISTROS_EN_MEMORIA = 5000;
+
+// Los dos mapas crecen con cada usuario/IP distinto que falla: sin poda, un
+// script que pruebe usuarios al azar llena la memoria del proceso.
+function podarVencidos(mapa) {
+  const ahora = Date.now();
+  for (const [clave, registro] of mapa) {
+    if (ahora - registro.desde > INTENTOS_VENTANA_MS) mapa.delete(clave);
+  }
+}
+
+function ipBloqueada(ip) {
+  const registro = intentosPorIp.get(ip);
+  if (!registro) return false;
+  if (Date.now() - registro.desde > INTENTOS_VENTANA_MS) {
+    intentosPorIp.delete(ip);
+    return false;
+  }
+  return registro.fallos >= INTENTOS_MAX_POR_IP;
+}
+
+function registrarIntentoFallido(usuario, ip) {
+  if (intentosLogin.size > TOPE_REGISTROS_EN_MEMORIA) podarVencidos(intentosLogin);
+  if (intentosPorIp.size > TOPE_REGISTROS_EN_MEMORIA) podarVencidos(intentosPorIp);
+
   const clave = usuario.toLowerCase();
   const registro = intentosLogin.get(clave);
   if (!registro || Date.now() - registro.desde > INTENTOS_VENTANA_MS) {
     intentosLogin.set(clave, { fallos: 1, desde: Date.now() });
   } else {
     registro.fallos += 1;
+  }
+
+  const registroIp = intentosPorIp.get(ip);
+  if (!registroIp || Date.now() - registroIp.desde > INTENTOS_VENTANA_MS) {
+    intentosPorIp.set(ip, { fallos: 1, desde: Date.now() });
+  } else {
+    registroIp.fallos += 1;
   }
 }
 
@@ -288,7 +356,13 @@ app.post('/api/auth/login', (req, res) => {
   if (!usuario || !password) {
     return res.status(400).json({ error: 'Usuario y contraseña son obligatorios.' });
   }
-  if (bloqueado(usuario)) {
+  // Sin sesión todavía: un tipo inesperado (`usuario: 123`) reventaba en
+  // `.toLowerCase()` como 500 con stack en el log, y un usuario de 90 KB se
+  // guardaba entero como clave del mapa de intentos y en la auditoría.
+  if (typeof usuario !== 'string' || typeof password !== 'string' || usuario.length > 100 || password.length > 1000) {
+    return res.status(400).json({ error: 'Usuario o contraseña inválidos.' });
+  }
+  if (bloqueado(usuario) || ipBloqueada(req.ip)) {
     return res.status(429).json({ error: 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.' });
   }
 
@@ -308,7 +382,7 @@ app.post('/api/auth/login', (req, res) => {
 
   if (!fila) {
     verificarPassword(password, HASH_DUMMY.hash, HASH_DUMMY.salt);
-    registrarIntentoFallido(usuario);
+    registrarIntentoFallido(usuario, req.ip);
     // Sin usuario_id: no hay a quién atribuírselo, no existe ese usuario.
     // En detalle va solo el nombre tecleado, nunca el body entero — aunque
     // si alguien escribió su contraseña en el campo de usuario por error,
@@ -328,7 +402,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const ok = verificarPassword(password, fila.password_hash, fila.password_salt);
   if (!ok) {
-    registrarIntentoFallido(usuario);
+    registrarIntentoFallido(usuario, req.ip);
     registrarAuditoria({
       accion: 'login_fallido',
       entidad: 'usuario',
@@ -465,7 +539,7 @@ app.post('/api/auth/registro', (req, res) => {
 
 // A partir de acá, TODO /api/* requiere sesión — los únicos tres
 // endpoints que no la necesitan son los de arriba (estado/login/
-// bootstrap), declarados antes de este montaje. Los 82 endpoints de
+// bootstrap), declarados antes de este montaje. Los ~115 endpoints de
 // negocio son app.METHOD planos bajo /api, así que este único middleware
 // los cubre a todos, y cualquier ruta nueva que se agregue en el futuro
 // nace protegida por default sin tener que acordarse de nada.
@@ -754,23 +828,34 @@ app.post('/api/clientes', (req, res) => {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, organizacion_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      nombre.trim(),
-      email ?? null,
-      telefono ?? null,
-      direccion ?? null,
-      documento ?? null,
-      notas ?? null,
-      listaPrecioId,
-      condicionPagoHabitual,
-      req.usuario.organizacion_id
-    );
-  res.status(201).json({ id: lastInsertRowid });
+  // Con auditoría como el resto de las altas (CLAUDE.md §22): era de las pocas
+  // que escribían sin dejar quién ni cuándo.
+  const clienteId = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        nombre.trim(),
+        email ?? null,
+        telefono ?? null,
+        direccion ?? null,
+        documento ?? null,
+        notas ?? null,
+        listaPrecioId,
+        condicionPagoHabitual,
+        req.usuario.organizacion_id
+      );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cliente',
+      entidad_id: Number(lastInsertRowid),
+      detalle: `Cliente "${nombre.trim()}" creado`
+    });
+    return Number(lastInsertRowid);
+  });
+  res.status(201).json({ id: clienteId });
 });
 
 app.patch('/api/clientes/:id', (req, res) => {
@@ -2381,22 +2466,32 @@ app.post('/api/proveedores', (req, res) => {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
 
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago, organizacion_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      String(nombre).trim(),
-      email ?? null,
-      telefono ?? null,
-      direccion ?? null,
-      documento ?? null,
-      notas ?? null,
-      condicionPagoHabitual,
-      req.usuario.organizacion_id
-    );
-  res.status(201).json({ id: lastInsertRowid });
+  // Con auditoría, igual que el alta de clientes (CLAUDE.md §22).
+  const proveedorNuevoId = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        String(nombre).trim(),
+        email ?? null,
+        telefono ?? null,
+        direccion ?? null,
+        documento ?? null,
+        notas ?? null,
+        condicionPagoHabitual,
+        req.usuario.organizacion_id
+      );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'proveedor',
+      entidad_id: Number(lastInsertRowid),
+      detalle: `Proveedor "${String(nombre).trim()}" creado`
+    });
+    return Number(lastInsertRowid);
+  });
+  res.status(201).json({ id: proveedorNuevoId });
 });
 
 app.patch('/api/proveedores/:id', (req, res) => {
@@ -2663,8 +2758,15 @@ app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
 // filas de movimientos, hay que volver a bajar el filtrado al servidor.
 const TOPE_MOVIMIENTOS = 2000;
 
+// `?limit=` de los listados con tope. Antes era `Number(x) || 2000` con
+// Math.min: un `-1` pasaba tal cual y SQLite lo interpreta como "sin límite".
+function limiteDeConsulta(valor) {
+  const n = Math.floor(Number(valor));
+  return n >= 1 ? Math.min(n, 5000) : TOPE_MOVIMIENTOS;
+}
+
 app.get('/api/movimientos-stock', (req, res) => {
-  const limite = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
+  const limite = limiteDeConsulta(req.query.limit);
   const movimientos = db
     .prepare(
       `SELECT movimientos_stock.id, movimientos_stock.fecha, movimientos_stock.tipo,
@@ -3005,6 +3107,45 @@ function dondeHayStock(productoId, excluirDepositoId, varianteId = null) {
 // El producto se busca dentro de la organización de la venta: sin ese
 // filtro, un producto de otra empresa sin stock controlado entraba a la
 // venta y exponía su nombre y su costo (venta_items.costo_unitario_historico).
+// Forma de los renglones de una venta, ANTES de tocar nada. Sin esto, una
+// cantidad 0 o negativa pasaba la validación de stock (`cantidad > stock` es
+// falso) y registraba una "salida" que sumaba stock, y un precio negativo
+// dejaba total y cuenta corriente en negativo. Un valor no numérico llegaba al
+// INSERT y salía como 500. `Number.isFinite` además corta `1e999` (Infinity).
+// Misma regla que ya aplicaban presupuestos, compras y el asistente.
+//
+// Solo se aceptan números JSON de verdad, no texto que `Number()` sabe leer: un
+// "0x5" o "0b11" pasa `Number()` pero SQLite lo guarda como TEXT en la columna
+// REAL (y un TEXT siempre es "mayor que" un número en el CHECK), con lo que la
+// venta quedaba en total 0 con una deuda de por medio. El frontend siempre
+// manda Number. El tope de 1e9 evita que dos valores finitos grandes se
+// desborden al multiplicarse y dejen total, saldo y dashboard en null.
+const LIMITE_NUMERICO = 1e9;
+const esNumeroValido = (valor) =>
+  typeof valor === 'number' && Number.isFinite(valor) && Math.abs(valor) <= LIMITE_NUMERICO;
+const esIdValido = (valor) => typeof valor === 'number' && Number.isInteger(valor) && valor > 0;
+
+function validarItemsVenta(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return 'La venta necesita al menos un item.';
+  }
+  for (const item of items) {
+    if (!esIdValido(item?.producto_id)) {
+      return 'Todos los items necesitan un producto.';
+    }
+    if (item.variante_id != null && !esIdValido(item.variante_id)) {
+      return 'La variante de un item no es válida.';
+    }
+    if (!esNumeroValido(item.cantidad) || !(Number(item.cantidad) > 0)) {
+      return 'La cantidad de cada item debe ser un número mayor a 0.';
+    }
+    if (!esNumeroValido(item.precio_unitario) || !(Number(item.precio_unitario) >= 0)) {
+      return 'El precio unitario de cada item debe ser un número, y no puede ser negativo.';
+    }
+  }
+  return null;
+}
+
 function validarStockDisponible(items, depositoId, organizacionId) {
   const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivas = db.prepare(
@@ -3173,8 +3314,9 @@ app.post('/api/ventas', (req, res) => {
   const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
     req.body;
 
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'La venta necesita al menos un item.' });
+  const errorItems = validarItemsVenta(items);
+  if (errorItems) {
+    return res.status(400).json({ error: errorItems });
   }
   const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
   if (deposito_id && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
@@ -3282,8 +3424,9 @@ app.put('/api/ventas/:id', (req, res) => {
       .status(400)
       .json({ error: 'Esta venta tiene una devolución asociada, no se puede editar.' });
   }
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'La venta necesita al menos un item.' });
+  const errorItems = validarItemsVenta(items);
+  if (errorItems) {
+    return res.status(400).json({ error: errorItems });
   }
 
   const { cobrado } = db
@@ -3502,7 +3645,7 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
 
   const venta = db
     .prepare(
-      `SELECT ventas.id, ventas.cliente_id,
+      `SELECT ventas.id, ventas.cliente_id, ventas.estado,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
@@ -3512,13 +3655,19 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
+  // Anular solo se bloquea si ya había cobros o factura, pero después de
+  // anulada la venta ya no es plata a cobrar: un cobro acá deja tesorería y
+  // cuenta corriente con un ingreso de una operación que no existe.
+  if (venta.estado === 'anulada') {
+    return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
+  }
 
   // La mercadería devuelta ya no es plata que se le pueda reclamar al
   // cliente: el saldo pendiente se calcula sobre el neto, no sobre el
   // total bruto de la venta.
   const saldoPendiente = venta.total - venta.devuelto - venta.cobrado;
-  if (!(importe > 0)) {
-    return res.status(400).json({ error: 'El importe del cobro tiene que ser mayor a 0.' });
+  if (!esNumeroValido(importe) || !(importe > 0)) {
+    return res.status(400).json({ error: 'El importe del cobro tiene que ser un número mayor a 0.' });
   }
   if (importe > saldoPendiente) {
     return res.status(400).json({
@@ -3580,10 +3729,13 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const venta = db
-    .prepare('SELECT ventas.id, ventas.cliente_id FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?')
+    .prepare('SELECT ventas.id, ventas.cliente_id, ventas.estado FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  if (venta.estado === 'anulada') {
+    return res.status(400).json({ error: 'No se puede facturar una venta anulada.' });
   }
 
   const yaFacturada = db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(ventaId);
@@ -3881,20 +4033,36 @@ app.get('/api/presupuestos/:id', (req, res) => {
 
 // Valida el cuerpo de un presupuesto. A diferencia de una venta, NO valida
 // stock: se puede cotizar algo que todavía no está en el depósito.
-function validarPresupuesto(body) {
+// organizacionId es obligatorio: producto_id y variante_id vienen del cliente y
+// hay que comprobar que son de ESTA empresa. Sin eso el GET del presupuesto
+// (que hace JOIN a productos) devolvía el nombre y los atributos de un producto
+// de otra empresa enumerando ids (CLAUDE.md §28), y un id inexistente salía
+// como 500 por la FK.
+function validarPresupuesto(body, organizacionId) {
   const { items } = body;
   if (!Array.isArray(items) || items.length === 0) {
     return 'El presupuesto necesita al menos un item.';
   }
   for (const item of items) {
-    if (!Number(item.producto_id)) {
+    if (!esIdValido(item?.producto_id)) {
       return 'Todos los items necesitan un producto.';
     }
-    if (!(Number(item.cantidad) > 0)) {
-      return 'La cantidad de cada item debe ser mayor a 0.';
+    if (!esNumeroValido(item.cantidad) || !(Number(item.cantidad) > 0)) {
+      return 'La cantidad de cada item debe ser un número mayor a 0.';
     }
-    if (!(Number(item.precio_unitario) >= 0)) {
-      return 'El precio unitario no puede ser negativo.';
+    if (!esNumeroValido(item.precio_unitario) || !(Number(item.precio_unitario) >= 0)) {
+      return 'El precio unitario de cada item debe ser un número, y no puede ser negativo.';
+    }
+    if (!existeId('productos', item.producto_id, organizacionId)) {
+      return 'Uno de los productos del presupuesto no existe.';
+    }
+    if (item.variante_id) {
+      const variante = db
+        .prepare('SELECT 1 FROM producto_variantes WHERE id = ? AND producto_id = ?')
+        .get(Number(item.variante_id), Number(item.producto_id));
+      if (!variante) {
+        return 'La variante elegida no existe o no pertenece al producto.';
+      }
     }
   }
   return null;
@@ -3938,7 +4106,7 @@ function resolverCliente(cliente, cliente_id, organizacionId) {
 app.post('/api/presupuestos', (req, res) => {
   const { cliente, cliente_id, items, fecha, vencimiento, notas, lista_precio_id } = req.body;
 
-  const error = validarPresupuesto(req.body);
+  const error = validarPresupuesto(req.body, req.usuario.organizacion_id);
   if (error) {
     return res.status(400).json({ error });
   }
@@ -4001,7 +4169,7 @@ app.put('/api/presupuestos/:id', (req, res) => {
       .json({ error: 'Este presupuesto ya se convirtió en venta, no se puede editar.' });
   }
 
-  const error = validarPresupuesto(req.body);
+  const error = validarPresupuesto(req.body, req.usuario.organizacion_id);
   if (error) {
     return res.status(400).json({ error });
   }
@@ -5679,7 +5847,7 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
 
   const compra = db
     .prepare(
-      `SELECT compras.id, compras.proveedor_id,
+      `SELECT compras.id, compras.proveedor_id, compras.estado, compras.costo_envio,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE compra_id = compras.id) AS pagado,
               ${SUBQUERY_DEVUELTO_COMPRA} AS devuelto
@@ -5689,12 +5857,24 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
   }
+  // Un borrador todavía no es deuda con el proveedor y una anulada ya no lo es:
+  // pagarlas deja tesorería con un egreso de una operación que no vale.
+  if (compra.estado !== 'activa') {
+    return res.status(400).json({
+      error: compra.estado === 'borrador'
+        ? 'Confirmá la compra antes de registrar pagos.'
+        : 'No se puede pagar una compra anulada.'
+    });
+  }
 
   // La mercadería devuelta ya no es plata que el proveedor pueda cobrar:
-  // el saldo pendiente se calcula sobre el neto, no sobre el total bruto.
-  const saldoPendiente = compra.total - compra.devuelto - compra.pagado;
-  if (!(importe > 0)) {
-    return res.status(400).json({ error: 'El importe del pago tiene que ser mayor a 0.' });
+  // el saldo pendiente se calcula sobre el neto, no sobre el total bruto. El
+  // envío es parte de lo que se le debe al proveedor (confirmarCompra y los
+  // listados lo suman): sin él, una compra con envío quedaba "parcial" para
+  // siempre porque el último tramo nunca se podía pagar.
+  const saldoPendiente = compra.total + compra.costo_envio - compra.devuelto - compra.pagado;
+  if (!esNumeroValido(importe) || !(importe > 0)) {
+    return res.status(400).json({ error: 'El importe del pago tiene que ser un número mayor a 0.' });
   }
   if (importe > saldoPendiente) {
     return res.status(400).json({
@@ -6367,7 +6547,7 @@ app.get('/api/tesoreria', (req, res) => {
 // Igual que movimientos-stock: se devuelve el historial y el navegador lo
 // filtra con el motor común (ver el comentario de TOPE_MOVIMIENTOS).
 app.get('/api/tesoreria/movimientos', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
+  const limit = limiteDeConsulta(req.query.limit);
 
   // La contraparte de una transferencia es la otra pata que comparte
   // transferencia_id: se busca su cuenta para poder mostrar
@@ -8208,7 +8388,7 @@ function contextoParaInterprete(organizacionId) {
   };
 }
 
-app.post('/api/asistente/interpretar', async (req, res) => {
+app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
   const { texto } = req.body;
 
   let resultado;
@@ -8249,7 +8429,7 @@ app.post('/api/asistente/interpretar', async (req, res) => {
     ejecutable: propuesta.ejecutable,
     problemas: propuesta.problemas
   });
-});
+}));
 
 app.post('/api/asistente/:id/descartar', (req, res) => {
   const mensajeId = Number(req.params.id);
@@ -8316,7 +8496,10 @@ app.post('/api/asistente/ejecutar', (req, res) => {
         marcarFallido(`Producto inválido: "${item.producto?.valor ?? '?'}".`);
         return res.status(400).json({ error: `El producto "${item.producto?.valor ?? '?'}" no existe.` });
       }
-      if (!(Number(item.cantidad) > 0) || !(Number(item.precio_unitario) >= 0)) {
+      if (
+        !Number.isFinite(Number(item.cantidad)) || !(Number(item.cantidad) > 0) || Number(item.cantidad) > LIMITE_NUMERICO ||
+        !Number.isFinite(Number(item.precio_unitario)) || !(Number(item.precio_unitario) >= 0) || Number(item.precio_unitario) > LIMITE_NUMERICO
+      ) {
         return res.status(400).json({ error: 'Cantidad y precio de cada item tienen que ser válidos.' });
       }
       items.push({
@@ -8407,6 +8590,15 @@ app.post('/api/asistente/ejecutar', (req, res) => {
   }
 
   if (tipo === 'compra') {
+    // El circuito de compras es solo admin por HTTP (crear, confirmar y
+    // recibir mueven stock, recalculan el costo y generan deuda con el
+    // proveedor). Este endpoint es 'ambos' en permisos.js porque ventas y
+    // gastos sí son del empleado, así que la restricción de la rama de compra
+    // se aplica acá: sin esto el asistente era un atajo alrededor de esa
+    // política (CLAUDE.md §21, §35).
+    if (req.usuario.rol !== 'admin') {
+      return res.status(403).json({ error: 'Necesitás ser administrador para registrar compras.' });
+    }
     if (!Array.isArray(propuesta?.items) || propuesta.items.length === 0) {
       return res.status(400).json({ error: 'La compra necesita al menos un item.' });
     }
@@ -8545,7 +8737,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 // comentario de login_fallido más arriba) quedan afuera del listado de
 // cualquier empresa, por diseño.
 app.get('/api/auditoria', soloAdmin, (req, res) => {
-  const limite = Math.min(Number(req.query.limit) || TOPE_MOVIMIENTOS, 5000);
+  const limite = limiteDeConsulta(req.query.limit);
   const registros = db
     .prepare(
       `SELECT auditoria.id, auditoria.fecha, auditoria.actor, auditoria.accion,
@@ -8890,6 +9082,44 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   });
 
   res.json({ id });
+});
+
+/* ---------- Errores ---------- */
+
+// Una ruta de API que no existe responde JSON, no el HTML por defecto de
+// Express. Va después de todas las rutas y de `autenticar`.
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Ruta no encontrada.' });
+});
+
+// Manejador final: todo error que llega acá (un throw síncrono, un JSON
+// malformado, un handler `async` envuelto en asincrono()) responde JSON
+// genérico. Sin esto Express devuelve HTML con el stack trace completo salvo
+// que NODE_ENV=production, y `npm start` no lo setea (CLAUDE.md §35). El
+// detalle va al log del servidor, nunca al cliente.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'El cuerpo de la petición no es un JSON válido.' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'El cuerpo de la petición es demasiado grande.' });
+  }
+  // Errores del cliente que Express/body-parser ya clasificó (una URL mal
+  // codificada con `%`, un Content-Encoding que no soporta): conservan su 4xx
+  // en vez de pasar por 500, que además llenaría el log de stacks.
+  const estado = err?.status ?? err?.statusCode;
+  if (estado >= 400 && estado < 500) {
+    return res.status(estado).json({ error: 'Petición inválida.' });
+  }
+  console.error(`[error] ${req.method} ${req.originalUrl}:`, err);
+  res.status(500).json({ error: 'Error interno del servidor.' });
+});
+
+// Red de seguridad: un rechazo que nadie capturó no debería tirar el proceso
+// de todas las empresas. Se registra para que no pase desapercibido.
+process.on('unhandledRejection', (motivo) => {
+  console.error('[unhandledRejection]', motivo);
 });
 
 app.listen(PORT, () => {
