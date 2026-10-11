@@ -111,15 +111,9 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
 
   const info = VISTAS_CONSTRUIDAS[viewId];
   const tituloFinal = titulo ?? info?.titulo;
-  // El elemento #vistaEyebrow (el texto chico "RESUMEN"/"ADMINISTRACIÓN"
-  // sobre el título) se sacó del HTML por decisión de diseño. El campo
-  // `dominio` de VISTAS_CONSTRUIDAS se conserva igual: sigue documentando
-  // a qué dominio pertenece cada vista, aunque ya no se pinte en pantalla.
-  // El optional chaining evita romper acá si el elemento no existe.
-  if (info) {
-    const eyebrow = document.getElementById("vistaEyebrow");
-    if (eyebrow) eyebrow.textContent = info.dominio;
-  }
+  // El texto chico "RESUMEN"/"ADMINISTRACIÓN" sobre el título se sacó del
+  // HTML por decisión de diseño. El campo `dominio` de VISTAS_CONSTRUIDAS se
+  // conserva igual: documenta a qué dominio pertenece cada vista.
   if (tituloFinal) {
     document.getElementById("vistaTitulo").textContent = tituloFinal;
     document.title = `${tituloFinal} · Nexo`;

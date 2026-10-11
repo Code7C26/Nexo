@@ -243,3 +243,22 @@ test('todo campo impreso en HTML pasa por esc()', () => {
   }
   assert.deepEqual(crudos, [], `Campos impresos en HTML sin esc():\n${crudos.join('\n')}`);
 });
+
+test('todo getElementById("literal") apunta a un id que existe', () => {
+  // Un id mal escrito o un elemento que se sacó del HTML da null, y el
+  // `.addEventListener` de la línea siguiente tira y corta el resto del
+  // módulo: la pantalla queda a medias sin ningún error en el test de imports.
+  // Vale un id de index.html o uno que arma un template de JS.
+  const html = readFileSync(path.join(RAIZ_JS, '..', 'index.html'), 'utf8');
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
+  for (const [, { texto }] of modulos) {
+    for (const m of texto.matchAll(/\bid="([\w-]+)"/g)) ids.add(m[1]);
+  }
+  const faltantes = [];
+  for (const [archivo, { texto }] of modulos) {
+    for (const m of texto.matchAll(/getElementById\(\s*["']([^"'`]+)["']\s*\)/g)) {
+      if (!ids.has(m[1])) faltantes.push(`${rel(archivo)}: #${m[1]}`);
+    }
+  }
+  assert.deepEqual(faltantes, [], `Ids que no existen:\n${faltantes.join('\n')}`);
+});

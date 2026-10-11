@@ -24,7 +24,11 @@
 (() => {
   const pantalla = document.getElementById("sesionPantalla");
   const formLogin = document.getElementById("formLogin");
-  const formBootstrap = document.getElementById("formBootstrap");
+  // Explícitos: antes se leían como globales implícitas del navegador (cada
+  // id del DOM es una propiedad de window), que se rompen sin aviso si otro
+  // script declara una variable con el mismo nombre.
+  const formRegistro = document.getElementById("formRegistro");
+  const irALogin = document.getElementById("irALogin");
   const formCambioForzado = document.getElementById("formCambioForzado");
 
   let appInyectada = false;

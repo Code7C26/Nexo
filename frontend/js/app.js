@@ -6996,8 +6996,25 @@ document.getElementById("btnColapsar").addEventListener("click", () => {
 
 /* ---------- Menú mobile y navegación entre vistas ---------- */
 
-document.getElementById("navToggle").addEventListener("click", () => {
-  document.getElementById("sidebar").classList.toggle("is-open");
+const navToggle = document.getElementById("navToggle");
+const sidebar = document.getElementById("sidebar");
+
+// aria-expanded sigue a la clase is-open sin importar quién la cambie: este
+// botón, Escape o el router al navegar (core/router.js la saca en cada click
+// del nav). Mismo criterio que los modales en core/ui.js.
+new MutationObserver(() => {
+  navToggle.setAttribute("aria-expanded", String(sidebar.classList.contains("is-open")));
+}).observe(sidebar, { attributes: true, attributeFilter: ["class"] });
+
+// Escape cierra el drawer mobile, salvo que un modal ya la haya usado.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented || !sidebar.classList.contains("is-open")) return;
+  sidebar.classList.remove("is-open");
+  navToggle.focus();
+});
+
+navToggle.addEventListener("click", () => {
+  sidebar.classList.toggle("is-open");
   // En desktop este mismo botón reaparece cuando la sidebar está
   // colapsada (ver CSS) y su única función ahí es volver a mostrarla.
   if (document.documentElement.getAttribute("data-sidebar") === "colapsada") {

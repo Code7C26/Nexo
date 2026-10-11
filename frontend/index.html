@@ -40,7 +40,7 @@
 </head>
 <body>
 
-  <button class="nav-toggle" id="navToggle" aria-label="Abrir menú">
+  <button class="nav-toggle" id="navToggle" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">
     <span></span><span></span><span></span>
   </button>
 
@@ -234,13 +234,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Período</th>
-                <th class="align-right">Ventas</th>
-                <th class="align-right">Costo</th>
-                <th class="align-right">Ganancia bruta</th>
-                <th class="align-right">Margen</th>
-                <th class="align-right">Gastos</th>
-                <th class="align-right">Resultado</th>
+                <th scope="col">Período</th>
+                <th scope="col" class="align-right">Ventas</th>
+                <th scope="col" class="align-right">Costo</th>
+                <th scope="col" class="align-right">Ganancia bruta</th>
+                <th scope="col" class="align-right">Margen</th>
+                <th scope="col" class="align-right">Gastos</th>
+                <th scope="col" class="align-right">Resultado</th>
               </tr>
             </thead>
             <!-- Sin orden por columna a propósito: las filas son
@@ -261,10 +261,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Tipo</th>
-                <th>Detalle</th>
-                <th class="align-right">Importe</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Detalle</th>
+                <th scope="col" class="align-right">Importe</th>
               </tr>
             </thead>
             <tbody id="movimientosBody">
@@ -312,12 +312,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Unidades</th>
-                <th class="align-right">Ventas</th>
-                <th class="align-right">Ganancia</th>
-                <th class="align-right">Margen</th>
-                <th class="align-right">% del total</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Unidades</th>
+                <th scope="col" class="align-right">Ventas</th>
+                <th scope="col" class="align-right">Ganancia</th>
+                <th scope="col" class="align-right">Margen</th>
+                <th scope="col" class="align-right">% del total</th>
               </tr>
             </thead>
             <tbody id="reporteProductosBody"></tbody>
@@ -336,12 +336,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Categoría</th>
-                <th class="align-right">Unidades</th>
-                <th class="align-right">Ventas</th>
-                <th class="align-right">Ganancia</th>
-                <th class="align-right">Margen</th>
-                <th class="align-right">% del total</th>
+                <th scope="col">Categoría</th>
+                <th scope="col" class="align-right">Unidades</th>
+                <th scope="col" class="align-right">Ventas</th>
+                <th scope="col" class="align-right">Ganancia</th>
+                <th scope="col" class="align-right">Margen</th>
+                <th scope="col" class="align-right">% del total</th>
               </tr>
             </thead>
             <tbody id="reporteCategoriasBody"></tbody>
@@ -357,12 +357,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Cliente</th>
-                <th class="align-right">Ventas</th>
-                <th class="align-right">Total</th>
-                <th class="align-right">Ticket promedio</th>
-                <th class="align-right">Ganancia</th>
-                <th>Última compra</th>
+                <th scope="col">Cliente</th>
+                <th scope="col" class="align-right">Ventas</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col" class="align-right">Ticket promedio</th>
+                <th scope="col" class="align-right">Ganancia</th>
+                <th scope="col">Última compra</th>
               </tr>
             </thead>
             <tbody id="reporteClientesBody"></tbody>
@@ -405,11 +405,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Proveedor</th>
-                <th class="align-right">Compras</th>
-                <th class="align-right">Total</th>
-                <th class="align-right">Ticket promedio</th>
-                <th>Última compra</th>
+                <th scope="col">Proveedor</th>
+                <th scope="col" class="align-right">Compras</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col" class="align-right">Ticket promedio</th>
+                <th scope="col">Última compra</th>
               </tr>
             </thead>
             <tbody id="reporteComprasProveedoresBody"></tbody>
@@ -425,10 +425,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Unidades</th>
-                <th class="align-right">Total</th>
-                <th class="align-right">% del total</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Unidades</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col" class="align-right">% del total</th>
               </tr>
             </thead>
             <tbody id="reporteComprasProductosBody"></tbody>
@@ -446,10 +446,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Categoría</th>
-                <th class="align-right">Unidades</th>
-                <th class="align-right">Total</th>
-                <th class="align-right">% del total</th>
+                <th scope="col">Categoría</th>
+                <th scope="col" class="align-right">Unidades</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col" class="align-right">% del total</th>
               </tr>
             </thead>
             <tbody id="reporteComprasCategoriasBody"></tbody>
@@ -488,14 +488,14 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Cliente</th>
-                <th>Productos</th>
-                <th>Fecha</th>
-                <th>Vence</th>
-                <th class="align-right">Total</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Productos</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Vence</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="presupuestosBody"></tbody>
@@ -531,10 +531,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Precio unit.</th>
-                <th class="align-right">Subtotal</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Subtotal</th>
               </tr>
             </thead>
             <tbody id="fichaPresupuestoItems"></tbody>
@@ -576,15 +576,15 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Cliente</th>
-                <th>Productos</th>
-                <th>Fecha</th>
-                <th class="align-right col-admin">Costo</th>
-                <th class="align-right">Total</th>
-                <th class="align-right col-admin">Ganancia</th>
-                <th>Cobro</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Productos</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="align-right col-admin">Costo</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col" class="align-right col-admin">Ganancia</th>
+                <th scope="col">Cobro</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="ventasBody"></tbody>
@@ -643,12 +643,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Precio unit.</th>
-                <th class="align-right">Subtotal</th>
-                <th class="align-right">Devuelto</th>
-                <th class="align-right col-admin">Ganancia</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Subtotal</th>
+                <th scope="col" class="align-right">Devuelto</th>
+                <th scope="col" class="align-right col-admin">Ganancia</th>
               </tr>
             </thead>
             <tbody id="fichaVentaItems"></tbody>
@@ -664,11 +664,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Productos</th>
-                <th class="align-right">Total</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Productos</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="fichaVentaDevolucionesBody"></tbody>
@@ -706,13 +706,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Cliente</th>
-                <th>Productos</th>
-                <th>Fecha</th>
-                <th class="align-right">Total</th>
-                <th>Plata</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Productos</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Plata</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="devolucionesBody"></tbody>
@@ -748,11 +748,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Precio unit.</th>
-                <th class="align-right">Subtotal</th>
-                <th>Vuelve al stock</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Subtotal</th>
+                <th scope="col">Vuelve al stock</th>
               </tr>
             </thead>
             <tbody id="fichaDevolucionItems"></tbody>
@@ -790,13 +790,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Proveedor</th>
-                <th>Fecha</th>
-                <th class="align-right">Total</th>
-                <th>Pago</th>
-                <th>Envío</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Proveedor</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Pago</th>
+                <th scope="col">Envío</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="comprasBody"></tbody>
@@ -855,12 +855,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Precio unit.</th>
-                <th class="align-right">Costo real (con envío)</th>
-                <th class="align-right">Subtotal</th>
-                <th class="align-right">Devuelto</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Costo real (con envío)</th>
+                <th scope="col" class="align-right">Subtotal</th>
+                <th scope="col" class="align-right">Devuelto</th>
               </tr>
             </thead>
             <tbody id="fichaCompraItems"></tbody>
@@ -876,11 +876,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Productos</th>
-                <th class="align-right">Total</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Productos</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="fichaCompraDevolucionesBody"></tbody>
@@ -918,13 +918,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Proveedor</th>
-                <th>Productos</th>
-                <th>Fecha</th>
-                <th class="align-right">Total</th>
-                <th>Plata</th>
-                <th></th>
+                <th scope="col">N°</th>
+                <th scope="col">Proveedor</th>
+                <th scope="col">Productos</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Plata</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="devolucionesProveedorBody"></tbody>
@@ -960,10 +960,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Precio unit.</th>
-                <th class="align-right">Subtotal</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Subtotal</th>
               </tr>
             </thead>
             <tbody id="fichaDevolucionProveedorItems"></tbody>
@@ -990,13 +990,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th>Depósito</th>
-                <th class="align-right col-admin">Costo</th>
-                <th class="align-right">Stock en depósito</th>
-                <th class="align-right">Stock total</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">Producto</th>
+                <th scope="col">Depósito</th>
+                <th scope="col" class="align-right col-admin">Costo</th>
+                <th scope="col" class="align-right">Stock en depósito</th>
+                <th scope="col" class="align-right">Stock total</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="stockBody"></tbody>
@@ -1012,13 +1012,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Producto</th>
-                <th>Desde</th>
-                <th>Hacia</th>
-                <th class="align-right">Cantidad</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Producto</th>
+                <th scope="col">Desde</th>
+                <th scope="col">Hacia</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="transferenciasBody"></tbody>
@@ -1035,12 +1035,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Producto</th>
-                <th>Depósito</th>
-                <th>Origen</th>
-                <th class="align-right">Cantidad</th>
-                <th>Nota</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Producto</th>
+                <th scope="col">Depósito</th>
+                <th scope="col">Origen</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col">Nota</th>
               </tr>
             </thead>
             <tbody id="stockMovimientosBody"></tbody>
@@ -1087,12 +1087,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Stock</th>
-                <th>Estado</th>
-                <th class="align-right">Valorizado</th>
-                <th class="align-right">Vendidas en el período</th>
-                <th class="align-right">Días de inventario</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Stock</th>
+                <th scope="col">Estado</th>
+                <th scope="col" class="align-right">Valorizado</th>
+                <th scope="col" class="align-right">Vendidas en el período</th>
+                <th scope="col" class="align-right">Días de inventario</th>
               </tr>
             </thead>
             <tbody id="reporteStockBody"></tbody>
@@ -1118,17 +1118,17 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>SKU</th>
-                <th>Categoría</th>
-                <th class="align-right col-admin">Costo</th>
-                <th class="align-right col-admin">Valorizado</th>
-                <th class="align-right">Precio</th>
-                <th class="align-right col-admin">Margen</th>
-                <th class="align-right col-admin">Objetivo</th>
-                <th class="align-right">Stock</th>
-                <th>Activo</th>
-                <th></th>
+                <th scope="col">Nombre</th>
+                <th scope="col">SKU</th>
+                <th scope="col">Categoría</th>
+                <th scope="col" class="align-right col-admin">Costo</th>
+                <th scope="col" class="align-right col-admin">Valorizado</th>
+                <th scope="col" class="align-right">Precio</th>
+                <th scope="col" class="align-right col-admin">Margen</th>
+                <th scope="col" class="align-right col-admin">Objetivo</th>
+                <th scope="col" class="align-right">Stock</th>
+                <th scope="col">Activo</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="productosBody"></tbody>
@@ -1180,12 +1180,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Combinación</th>
-                <th>SKU</th>
-                <th class="align-right col-admin">Costo</th>
-                <th class="align-right">Precio</th>
-                <th class="align-right">Stock</th>
-                <th>Activa</th>
+                <th scope="col">Combinación</th>
+                <th scope="col">SKU</th>
+                <th scope="col" class="align-right col-admin">Costo</th>
+                <th scope="col" class="align-right">Precio</th>
+                <th scope="col" class="align-right">Stock</th>
+                <th scope="col">Activa</th>
               </tr>
             </thead>
             <tbody id="fichaProductoVariantesBody"></tbody>
@@ -1201,11 +1201,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Origen</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Stock resultante</th>
-                <th>Nota</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Origen</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Stock resultante</th>
+                <th scope="col">Nota</th>
               </tr>
             </thead>
             <tbody id="fichaProductoMovimientos"></tbody>
@@ -1227,12 +1227,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Contacto</th>
-                <th class="align-right">Compras</th>
-                <th class="align-right">Total gastado</th>
-                <th class="align-right">Deuda</th>
-                <th></th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Contacto</th>
+                <th scope="col" class="align-right">Compras</th>
+                <th scope="col" class="align-right">Total gastado</th>
+                <th scope="col" class="align-right">Deuda</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="clientesBody"></tbody>
@@ -1278,10 +1278,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Fecha</th>
-                <th class="align-right">Total</th>
-                <th>Cobro</th>
+                <th scope="col">N°</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Cobro</th>
               </tr>
             </thead>
             <tbody id="fichaClienteHistorial"></tbody>
@@ -1303,12 +1303,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Contacto</th>
-                <th class="align-right">Compras</th>
-                <th class="align-right">Total comprado</th>
-                <th class="align-right">Deuda</th>
-                <th></th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Contacto</th>
+                <th scope="col" class="align-right">Compras</th>
+                <th scope="col" class="align-right">Total comprado</th>
+                <th scope="col" class="align-right">Deuda</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="proveedoresBody"></tbody>
@@ -1354,10 +1354,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>N°</th>
-                <th>Fecha</th>
-                <th class="align-right">Total</th>
-                <th>Pago</th>
+                <th scope="col">N°</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col">Pago</th>
               </tr>
             </thead>
             <tbody id="fichaProveedorHistorial"></tbody>
@@ -1373,11 +1373,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Compra</th>
-                <th>Cuenta</th>
-                <th class="align-right">Importe</th>
-                <th>Nota</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Compra</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col">Nota</th>
               </tr>
             </thead>
             <tbody id="fichaProveedorPagos"></tbody>
@@ -1418,11 +1418,11 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Cuenta</th>
-                <th>Tipo</th>
-                <th class="align-right">Saldo inicial</th>
-                <th class="align-right">Saldo actual</th>
-                <th></th>
+                <th scope="col">Cuenta</th>
+                <th scope="col">Tipo</th>
+                <th scope="col" class="align-right">Saldo inicial</th>
+                <th scope="col" class="align-right">Saldo actual</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="cajaCuentasBody"></tbody>
@@ -1439,10 +1439,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Cuenta</th>
-                <th>Concepto</th>
-                <th class="align-right">Importe</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col">Concepto</th>
+                <th scope="col" class="align-right">Importe</th>
               </tr>
             </thead>
             <tbody id="cajaMovimientosBody"></tbody>
@@ -1481,12 +1481,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Cliente</th>
-                <th class="align-right">Deuda</th>
-                <th>Operaciones</th>
-                <th>Vence</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">Cliente</th>
+                <th scope="col" class="align-right">Deuda</th>
+                <th scope="col">Operaciones</th>
+                <th scope="col">Vence</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="ccCobrarBody"></tbody>
@@ -1506,12 +1506,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Proveedor</th>
-                <th class="align-right">Deuda</th>
-                <th>Operaciones</th>
-                <th>Vence</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">Proveedor</th>
+                <th scope="col" class="align-right">Deuda</th>
+                <th scope="col">Operaciones</th>
+                <th scope="col">Vence</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="ccPagarBody"></tbody>
@@ -1554,13 +1554,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Categoría</th>
-                <th>Tipo</th>
-                <th>Descripción</th>
-                <th>Cuenta</th>
-                <th class="align-right">Importe</th>
-                <th></th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Categoría</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Descripción</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="gastosBody"></tbody>
@@ -1598,13 +1598,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Comprobante</th>
-                <th>Tipo</th>
-                <th>Fecha</th>
-                <th>Cliente</th>
-                <th>Origen</th>
-                <th class="align-right">Importe</th>
-                <th>Cobro</th>
+                <th scope="col">Comprobante</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Origen</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col">Cobro</th>
               </tr>
             </thead>
             <tbody id="facturasBody"></tbody>
@@ -1643,10 +1643,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th class="align-right">Cantidad</th>
-                <th class="align-right">Precio unit.</th>
-                <th class="align-right">Subtotal</th>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Subtotal</th>
               </tr>
             </thead>
             <tbody id="fichaFacturaItems"></tbody>
@@ -1668,12 +1668,12 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Tipo</th>
-                <th>N°</th>
-                <th>Fecha</th>
-                <th>Cliente / Proveedor</th>
-                <th class="align-right">Total</th>
-                <th></th>
+                <th scope="col">Tipo</th>
+                <th scope="col">N°</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Cliente / Proveedor</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="papeleraBody"></tbody>
@@ -1702,13 +1702,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Acción</th>
-                <th>Entidad</th>
-                <th>N°</th>
-                <th>Detalle</th>
-                <th>Origen</th>
-                <th>Usuario</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Acción</th>
+                <th scope="col">Entidad</th>
+                <th scope="col">N°</th>
+                <th scope="col">Detalle</th>
+                <th scope="col">Origen</th>
+                <th scope="col">Usuario</th>
               </tr>
             </thead>
             <tbody id="auditoriaBody"></tbody>
@@ -1729,10 +1729,10 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Tipo</th>
-                <th>Concepto</th>
-                <th class="align-right">Importe</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Concepto</th>
+                <th scope="col" class="align-right">Importe</th>
               </tr>
             </thead>
             <tbody id="auditoriaMovBody"></tbody>
@@ -1756,13 +1756,13 @@
           <table class="ledger-table">
             <thead>
               <tr>
-                <th>Usuario</th>
-                <th>Nombre</th>
-                <th>Rol</th>
-                <th>Estado</th>
-                <th>Alta</th>
-                <th>Último acceso</th>
-                <th></th>
+                <th scope="col">Usuario</th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Rol</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Alta</th>
+                <th scope="col">Último acceso</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody id="usuariosBody"></tbody>
@@ -1937,9 +1937,9 @@
           <table class="ledger-table">
         <thead>
           <tr>
-            <th>Depósito</th>
-            <th>Predeterminado</th>
-            <th></th>
+            <th scope="col">Depósito</th>
+            <th scope="col">Predeterminado</th>
+            <th scope="col"></th>
           </tr>
         </thead>
         <tbody id="depositosBody"></tbody>
@@ -2323,9 +2323,9 @@
           <table class="ledger-table">
         <thead>
           <tr>
-            <th>Categoría</th>
-            <th>Tipo</th>
-            <th></th>
+            <th scope="col">Categoría</th>
+            <th scope="col">Tipo</th>
+            <th scope="col"></th>
           </tr>
         </thead>
         <tbody id="categoriasBody"></tbody>
@@ -2354,8 +2354,8 @@
           <table class="ledger-table">
         <thead>
           <tr>
-            <th>Categoría</th>
-            <th></th>
+            <th scope="col">Categoría</th>
+            <th scope="col"></th>
           </tr>
         </thead>
         <tbody id="categoriasProductosBody"></tbody>
@@ -2392,13 +2392,13 @@
         <table class="ledger-table">
           <thead>
             <tr>
-              <th>Combinación</th>
-              <th>SKU</th>
-              <th class="align-right">Precio de venta</th>
-              <th>Precios por lista</th>
-              <th class="align-right">Stock</th>
-              <th>Activa</th>
-              <th></th>
+              <th scope="col">Combinación</th>
+              <th scope="col">SKU</th>
+              <th scope="col" class="align-right">Precio de venta</th>
+              <th scope="col">Precios por lista</th>
+              <th scope="col" class="align-right">Stock</th>
+              <th scope="col">Activa</th>
+              <th scope="col"></th>
             </tr>
           </thead>
           <tbody id="variantesProductoBody"></tbody>
@@ -2427,9 +2427,9 @@
           <table class="ledger-table">
         <thead>
           <tr>
-            <th>Lista</th>
-            <th>Predeterminada</th>
-            <th></th>
+            <th scope="col">Lista</th>
+            <th scope="col">Predeterminada</th>
+            <th scope="col"></th>
           </tr>
         </thead>
         <tbody id="listasPreciosBody"></tbody>

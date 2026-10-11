@@ -49,7 +49,7 @@ export function crearSeleccion(idBody, { idDe = (x) => x.id } = {}) {
 
   filaHead.insertAdjacentHTML(
     "afterbegin",
-    `<th class="col-sel"><input type="checkbox" class="sel-todo" aria-label="Seleccionar todo"></th>`
+    `<th scope="col" class="col-sel"><input type="checkbox" class="sel-todo" aria-label="Seleccionar todo"></th>`
   );
   const checkTodo = filaHead.querySelector(".sel-todo");
 
