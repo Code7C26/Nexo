@@ -2,7 +2,7 @@
   "recommendations": [
     "ritwickdey.liveserver",
     "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
     "qwtel.sqlite-viewer",
     "eamodio.gitlens"
   ]
