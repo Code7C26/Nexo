@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §56);
+    siguiente número (hoy el último es §58);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,13 +19,13 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (6 de octubre de 2026)
+## Estado actual (11 de octubre de 2026)
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está sincronizada con `origin/solla`, salvo el commit de F5 si todavía
-  no se pusheó.
+- `solla` tiene los commits de la Fase 3 de la auditoría (hist. §58) sin
+  pushear.
 - El PR #24 ya pasó la Etapa A y F0–F4 a `main`. `origin/main` tiene 2 commits
   que `solla` no (los merges): conviene traerlos antes del próximo PR. Pasar
   `solla` → `main` es por PR.
@@ -145,6 +145,23 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - la condición de pago habitual de un cliente o proveedor solo se propone,
     no pisa lo que ya se cargó (hist. §26).
 
+**Frontend (hist. §58)**
+- **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
+  incluidos atributos `value="…"`. Lo exige `npm test`
+  (`backend/test/plantillas-html.js`): un `${x.campo}` crudo en un template
+  con etiquetas falla. El test no ve un string armado en otra variable ni lo
+  que devuelve una función propia: esos se escapan donde se arman. La ficha de
+  producto es la única que mete HTML en `valor` y escapa sus datos en el
+  arreglo.
+- **Toda llamada al backend pasa por `api()`** (`core/api.js`): avisa el
+  error (HTTP o de red) con un toast y lanza, así lo que sigue al `await` no
+  corre. Para limpiar algo ante un error: `.catch((e) => { …; throw e; })`.
+  Las recargas después de una escritura van con `refrescar([...])`: no
+  cortan por una falla ya avisada (si no, el modal queda abierto y el
+  usuario reenvía: duplicado).
+  Excepciones a propósito: `perfil.js` (error en el modal) y la creación de
+  variantes en lote (cuenta fallas). El 401 lo sigue resolviendo `sesion.js`.
+
 **Comprobantes, catálogo y auditoría**
 - **Comprobantes:** los datos del membrete viven en `organizaciones` (no hay
   tabla `datos_negocio`). Venta y compra no se imprimen como comprobante
@@ -184,27 +201,30 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    su caso ahí; el del límite por IP va último porque bloquea la IP local.
 6. **En Windows**, matar los servidores de prueba por PID (`taskkill`):
    `pkill` no los encuentra.
+7. **Frontend en navegador** (hist. §58): `playwright-core` instalado en el
+   scratchpad contra el Chrome de `C:/Program Files/Google/Chrome`, servidor
+   con base nueva (`NEXO_DB_PATH` al scratchpad, `NEXO_BACKUP=off`,
+   `NEXO_INTERPRETE=stub`), empresa creada con `POST /api/auth/registro`.
+   Para XSS: sembrar `<img src=x onerror="window.__xss=…">'"` en cada campo de
+   texto, recorrer vistas, fichas, modales, filtros y asistente, y mirar
+   `window.__xss`. Correr lo mismo contra el commit anterior (`git worktree`
+   + junction de `node_modules`) como control: si ahí tampoco salta, la
+   prueba no está probando nada.
 
 ## Qué sigue
 
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Auditoría general del 6 de octubre (hist. §57), en curso: hechas las Fases 0 a 2**
-(git, respaldo automático, backend). Decidido con el usuario: seguridad y datos
-primero, antes de seguir con F6–F13. Falta, en este orden:
-- **Fase 3 (frontend):** `esc()` (ya existe en `core/formato.js`) en las 145
-  asignaciones a `innerHTML` de `app.js` y en `core/maestros.js:23`,
-  `core/filtros.js`, `dominios/gastos.js` (hoy hay XSS almacenado: un nombre de
-  cliente `<img onerror=…>` ejecuta código en la sesión del admin). Se hace por
-  bloque de dominio, así cada dominio que se extraiga después ya sale escapado.
-  Más un wrapper `api()` con `res.ok` y errores de red (hoy 56 de 98 `fetch`
-  pasan por `manejarError`), `.catch` en el boot (`app.js`, cadena de
-  `cargarX`), y ampliar `frontend-modulos.test.js` (ids de `getElementById`
-  contra `index.html`, heurística de `esc`).
+**Auditoría general del 6 de octubre (hist. §57–§58), en curso: hechas las Fases 0 a 3**
+(git, respaldo automático, backend, frontend). Decidido con el usuario: seguridad y
+datos primero, antes de seguir con F6–F13. Falta, en este orden:
 - **Fase 4:** ESLint versionado con archivo de control, `.editorconfig`, CI en
   GitHub Actions (Node 22), `.env.example`. Sin Prettier; sin `LICENSE` hasta que
-  el equipo decida cuál.
+  el equipo decida cuál. En hist. §58 ya se corrió ESLint 9 sobre una copia del
+  frontend: la config tiene que ser `eslint.config.mjs` (sin `"type": "module"`
+  en el `package.json`, un `.js` falla al cargar), y quedan solo los 4
+  `no-unused-vars` viejos de `app.js`.
 - **Fase 5:** `scripts/seed.mjs`, `verificar-migracion.mjs`, `regresion-head.mjs`.
 - **Fase 6:** borrar `src/`, los `hola.txt` y `docs/Mejoras.txt`; renombrar
   `desing/` → `diseno/`; corregir README, `frontend/README.md`, CLAUDE.md (rama
@@ -212,7 +232,7 @@ primero, antes de seguir con F6–F13. Falta, en este orden:
   con columna de estado) y la cabecera de `docs/handoff-historico.md`.
 - **Fase 7:** consolidar este backlog; ver abajo "Para cerrar la Etapa A" (sumar
   SKU único por empresa e índices en la misma pasada de rebuilds).
-Los commits de las Fases 1 y 2 están en `solla`, sin pushear.
+Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de la Fase 3, no.
 
 **Etapa B, siguiente paso: F6** (otro dominio sin acoplamiento con estado ajeno;
 candidatos: Proveedores o Clientes, que dejan su tabla, ficha y modal en el
@@ -259,6 +279,10 @@ cubre cada prueba y las trampas.
    sensibles. Solo hace falta si se reabre ese endpoint al rol empleado.
 7. `obtenerPreciosPorProducto` y `obtenerPreciosPorVariante` leen los precios
    de todas las empresas. No hay fuga, pero no escala.
+8. `POST /api/facturas` no valida `condicion` (ni `neto`, `tipo`, `letra`, ya
+   anotado en hist. §57): un valor fuera del `CHECK` de la tabla
+   (`efectivo`/`transferencia`/`mercadopago`) da 500 en vez de 400
+   (hist. §58).
 
 **Roadmap** (CLAUDE.md §38):
 - B: modularizar `app.js` y la base de la PWA (en paralelo con A).

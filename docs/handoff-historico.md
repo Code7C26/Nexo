@@ -1,7 +1,7 @@
 # Handoff histórico — Nexo
 
-> Relato completo, etapa por etapa, de las secciones §1 a §51 tal como se
-> escribieron en `handoff.md` hasta el 5 de octubre de 2026. Se movió acá sin
+> Relato completo, etapa por etapa. Las secciones §1 a §51 son las que se
+> escribieron en `handoff.md` hasta el 5 de octubre de 2026 y se movieron acá sin
 > cambios (misma numeración) cuando `handoff.md` pasó a ser un resumen corto y
 > vivo, a pedido del usuario. `handoff.md` y algunos comentarios del código
 > citan estas secciones como "hist. §N".
@@ -6554,3 +6554,84 @@ de vencidas); `integrity_check` ok, `foreign_key_check` sin filas, ninguna fila 
 otro respaldo. md5 de la base real pasó de `a25ce51d…` a `8dc00857…`. `NEXO_BACKUP_DIR` se fijó
 como variable de entorno de usuario de Windows. `NEXO_TRUST_PROXY` no se define: hoy no hay proxy
 inverso delante.
+
+## 58. Auditoría general — Fase 3 (frontend: XSS y errores de red), 11 de octubre de 2026
+
+Pedido del usuario: "seguir trabajando" → la Fase 3 del plan de §57, decidida antes de seguir con
+F6–F13. Siete commits en `solla` (`05d71e3` a `56537e9`), sin pushear.
+
+**XSS almacenado cerrado.** `app.js` tenía 147 asignaciones a `innerHTML` y ningún `esc()`: un
+cliente llamado `<img src=x onerror=…>` ejecutaba código en la sesión de quien lo mirara.
+- `esc()` (`core/formato.js`) suma la comilla simple y se aplica a todo dato del backend, del
+  usuario, de localStorage (filtros guardados) o del LLM que se imprime en HTML, incluidos
+  atributos `value="…"`.
+- 134 interpolaciones se escaparon con un script que usa el mismo analizador del test; el resto,
+  a mano (valores de las fichas, `<title>` del gráfico, contacto, concepto de caja, auditoría,
+  asistente).
+- La ficha de producto es la única que mete HTML en `valor`: escapa sus datos dentro del arreglo
+  de pares.
+- Test estático nuevo (`backend/test/plantillas-html.js` desde `frontend-modulos.test.js`):
+  tokeniza los template literals (con anidamiento) y exige `esc()` en todo `${x.campo}` impreso
+  en un template con etiquetas o atributos. Solo eximen los formateadores de una lista
+  explícita (`esc`, `money`, `numero`, `porcentaje` y cuatro funciones propias que escapan
+  adentro). Tiene un caso de control con cadenas sintéticas y un test de mutación: quitar
+  cualquier `esc(x.campo)` real que esté dentro de un template lo hace fallar.
+- No ve un string armado en otra variable y después interpolado: esos se escapan donde se arman.
+
+**Errores de red.** Nuevo `core/api.js`.
+- `api(url, { method, body, error })` avisa con un toast un error HTTP, un corte de red o una
+  respuesta no JSON, y lanza. Lo que sigue al `await` no corre.
+- `refrescar([...])` espera todas las recargas posteriores a una escritura con `allSettled`.
+  Solo relanza errores que no vengan de `api()`.
+- Las 112 llamadas de `app.js`, `core/` y `dominios/` pasan por ahí, salvo dos a propósito:
+  `perfil.js` (muestra el error en el modal) y la creación de variantes en lote (cuenta las
+  fallas).
+- El arranque usa `refrescar()` por ola, y `cargarFacturas()` entró en la primera.
+
+**Menores.**
+- Test de ids: todo `getElementById("x")` literal existe. Encontró `formBootstrap` y
+  `vistaEyebrow` muertos.
+- `sesion.js` usaba `formRegistro`/`irALogin` como globales implícitas de `window`.
+- `scope="col"` en los 269 `<th>`.
+- Drawer móvil con `aria-expanded` sincronizado (MutationObserver) y cierre con Escape.
+- CSV: los textos que empiezan con `= + - @` llevan un apóstrofo, para que Excel no los ejecute
+  como fórmula.
+
+**Verificación.**
+- `npm test`: 46 tests, 11 del frontend.
+- Chrome vía `playwright-core` desde el scratchpad, contra un servidor de prueba (base nueva,
+  `NEXO_INTERPRETE=stub`).
+- XSS: payloads en todos los campos de texto, recorriendo 18 vistas con sus fichas, 4 modales,
+  un filtro y el asistente. Dio 0 ejecuciones. El mismo recorrido contra `bfde0a6` (control) dio
+  81.
+- Servidor caído: una lectura y una escritura avisan "Sin conexión" y el modal queda abierto.
+- `GET /api/categorias-gasto` en 500 después de guardar un gasto: se guarda una sola vez, el
+  modal cierra y avisa el éxito.
+- `GET /api/facturas` en 500 al arrancar: Ventas y Resumen cargan igual.
+- Drawer en 390 px: abre, cierra con Escape y devuelve el foco.
+- ESLint 9 sobre una copia del frontend, con un archivo de control: solo quedan los 4
+  `no-unused-vars` viejos.
+- md5 de la base real sin cambios (`8dc00857…`).
+
+**Revisión de ECC (`security-reviewer`).**
+- No encontró XSS residual.
+- Encontró un problema que la propia Fase 3 había introducido: `api()` lanzaba también en las
+  recargas después de guardar. Una venta guardada cuyo refresco fallaba dejaba el modal abierto
+  e invitaba a reenviarla (duplicado). Se resolvió con `refrescar()`.
+- También señaló el arranque que se cortaba entero, la promesa rechazada cacheada en
+  `variantesDeProducto`, los huecos del analizador (funciones propias, templates de solo
+  atributos) y la inyección de fórmulas en el CSV. Todo quedó arreglado.
+
+**Qué se aprendió:**
+- Si un wrapper de fetch lanza, cambia también el comportamiento de las recargas posteriores a
+  una escritura. Separar "falló lo que pedí" de "falló algo que refresco después".
+- Un test estático necesita dos controles: uno sintético (que el analizador lee) y uno de
+  mutación sobre el código real (que no tiene huecos donde importa).
+- El control negativo en el navegador (correr lo mismo contra el commit anterior) es lo que
+  demuestra que la prueba de XSS prueba algo.
+- `POST /api/facturas` con una `condicion` fuera del `CHECK` devuelve 500: anotado como pendiente.
+
+### Qué sigue
+
+Fase 4 (ESLint versionado, CI, `.editorconfig`, `.env.example`), después las Fases 5 a 7 de §57.
+Pushear `solla`.
