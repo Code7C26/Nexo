@@ -3,7 +3,9 @@
  * Usuarios (solo admin). Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F3).
  */
 
-import { avisar, confirmar, filaVacia, manejarError, tablaCargando } from "../core/ui.js";
+import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
+import { api } from "../core/api.js";
+import { esc } from "../core/formato.js";
 import { alEntrarEnVista } from "../core/registro.js";
 
 /* ---------- Usuarios (solo admin) ---------- */
@@ -41,14 +43,14 @@ function renderUsuarios(lista) {
       }
       return `
         <tr class="${u.activo ? "" : "fila-anulada"}">
-          <td data-label="Usuario" class="mono">${u.usuario}</td>
-          <td data-label="Nombre">${u.nombre}</td>
-          <td data-label="Rol"><span class="status ${ROL_CLASE[u.rol] || ""}">${ROL_LABEL[u.rol] || u.rol}</span></td>
+          <td data-label="Usuario" class="mono">${esc(u.usuario)}</td>
+          <td data-label="Nombre">${esc(u.nombre)}</td>
+          <td data-label="Rol"><span class="status ${ROL_CLASE[u.rol] || ""}">${esc(ROL_LABEL[u.rol] || u.rol)}</span></td>
           <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : "status-pendiente"}">${
             u.activo ? "Activo" : "Dado de baja"
           }</span></td>
-          <td data-label="Alta">${u.fecha_alta ? u.fecha_alta.split(" ")[0] : "—"}</td>
-          <td data-label="Último acceso">${u.ultimo_acceso ? u.ultimo_acceso.split(" ")[0] : "—"}</td>
+          <td data-label="Alta">${u.fecha_alta ? esc(u.fecha_alta.split(" ")[0]) : "—"}</td>
+          <td data-label="Último acceso">${u.ultimo_acceso ? esc(u.ultimo_acceso.split(" ")[0]) : "—"}</td>
           <td data-label=""><div class="fila-acciones">${acciones.join("")}</div></td>
         </tr>`;
     })
@@ -72,12 +74,9 @@ function renderUsuarios(lista) {
 
 async function cargarUsuarios() {
   tablaCargando("usuariosBody", 7);
-  // A diferencia del resto de las lecturas del archivo, este endpoint
-  // puede dar 403 (si por algún motivo lo llama un empleado): chequear
-  // res.ok antes de asumir que el cuerpo es la lista.
-  const res = await fetch("/api/usuarios");
-  if (!res.ok) return;
-  usuariosCache = await res.json();
+  // Este endpoint es solo admin: si por algún motivo lo llama un empleado,
+  // api() avisa el 403 y corta acá, sin pintar un cuerpo de error como lista.
+  usuariosCache = await api("/api/usuarios", { error: "No se pudieron cargar los usuarios." });
   renderUsuarios(usuariosCache);
 }
 
@@ -115,21 +114,18 @@ document.getElementById("formUsuario").addEventListener("submit", async (e) => {
   const form = e.target;
   const eraEdicion = usuarioEditandoId !== null;
 
-  const res = await fetch(eraEdicion ? `/api/usuarios/${usuarioEditandoId}` : "/api/usuarios", {
+  await api(eraEdicion ? `/api/usuarios/${usuarioEditandoId}` : "/api/usuarios", {
     method: eraEdicion ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      eraEdicion
-        ? { nombre: form.usuarioNombre.value, rol: form.usuarioRol.value }
-        : {
-            usuario: form.usuarioUsuario.value,
-            nombre: form.usuarioNombre.value,
-            password: form.usuarioPassword.value,
-            rol: form.usuarioRol.value
-          }
-    )
+    body: eraEdicion
+      ? { nombre: form.usuarioNombre.value, rol: form.usuarioRol.value }
+      : {
+          usuario: form.usuarioUsuario.value,
+          nombre: form.usuarioNombre.value,
+          password: form.usuarioPassword.value,
+          rol: form.usuarioRol.value
+        },
+    error: "No se pudo guardar el usuario."
   });
-  if (!(await manejarError(res, "No se pudo guardar el usuario."))) return;
 
   await cargarUsuarios();
   form.reset();
@@ -147,24 +143,22 @@ async function darDeBajaUsuario(id) {
   });
   if (!ok) return;
 
-  const res = await fetch(`/api/usuarios/${id}`, {
+  await api(`/api/usuarios/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ activo: false })
+    body: { activo: false },
+    error: "No se pudo dar de baja al usuario."
   });
-  if (!(await manejarError(res, "No se pudo dar de baja al usuario."))) return;
 
   await cargarUsuarios();
   avisar("Usuario dado de baja.", "ok");
 }
 
 async function reactivarUsuario(id) {
-  const res = await fetch(`/api/usuarios/${id}`, {
+  await api(`/api/usuarios/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ activo: true })
+    body: { activo: true },
+    error: "No se pudo reactivar al usuario."
   });
-  if (!(await manejarError(res, "No se pudo reactivar al usuario."))) return;
 
   await cargarUsuarios();
   avisar("Usuario reactivado.", "ok");
@@ -179,12 +173,11 @@ async function resetearPasswordUsuario(id) {
     return;
   }
 
-  const res = await fetch(`/api/usuarios/${id}/resetear-password`, {
+  await api(`/api/usuarios/${id}/resetear-password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password: nueva })
+    body: { password: nueva },
+    error: "No se pudo resetear la contraseña."
   });
-  if (!(await manejarError(res, "No se pudo resetear la contraseña."))) return;
 
   avisar(`Contraseña reseteada. Se le va a pedir que la cambie en su próximo ingreso.`, "ok");
 }

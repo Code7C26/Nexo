@@ -13,6 +13,8 @@
 //    - recargar('x', ...) necesita  registrar('cargar:x', ...)
 //    - alEntrarEnVista('v', ...) no necesita nada: es quien registra.
 // 5. dominios/ nunca importa app.js (app.js los importa a ellos).
+// 6. Todo campo de un objeto que se imprime en un template que arma HTML pasa
+//    por esc() (XSS almacenado, auditoría de hist. §57; ver plantillas-html.js).
 //
 // Los archivos de js/vendor/ son librerías de terceros y no se analizan.
 import { test } from 'node:test';
@@ -20,6 +22,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { sinEscapar } from './plantillas-html.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ_JS = path.join(__dirname, '..', '..', 'frontend', 'js');
@@ -27,6 +30,10 @@ const RAIZ_JS = path.join(__dirname, '..', '..', 'frontend', 'js');
 // Ciclos aceptados a propósito, como pares "a.js -> b.js" relativos a RAIZ_JS.
 // Empieza vacía: cada entrada nueva tiene que justificarse acá.
 const CICLOS_PERMITIDOS = [];
+
+// Archivos que todavía no pasaron por el escape (se van vaciando por bloque de
+// dominio durante la Fase 3). Cada entrada que quede acá es XSS conocido.
+const PENDIENTES_ESCAPE = ['app.js'];
 
 function listarJs(dir) {
   const salida = [];
@@ -209,4 +216,28 @@ test('dominios/ nunca importa app.js (app.js los importa a ellos)', () => {
     }
   }
   assert.deepEqual(haciaApp, [], `dominios/ depende de app.js:\n${haciaApp.join('\n')}`);
+});
+
+test('el chequeo de escape detecta un campo crudo (control)', () => {
+  // Si el analizador dejara de leer los templates daría "cero hallazgos" sin
+  // revisar nada (la trampa de ESLint de hist. §54); este caso lo impide.
+  const crudo = 'body.innerHTML = lista.map((c) => `<tr><td>${c.nombre}</td><td>${c.id}</td></tr>`).join("");';
+  assert.deepEqual(sinEscapar(crudo).map((h) => h.campo), ['c.nombre']);
+  const escapado = 'body.innerHTML = lista.map((c) => `<tr><td>${esc(c.nombre)}</td><td>${money(c.total)}</td></tr>`).join("");';
+  assert.deepEqual(sinEscapar(escapado), []);
+  const condicion = 'x.innerHTML = `<span class="${c.activo ? "a" : "b"}">${c.tipo === "x" ? "Sí" : "No"}</span>`;';
+  assert.deepEqual(sinEscapar(condicion), []);
+  const anidado = 'x.innerHTML = `<ul>${items.map((i) => `${i.nombre} (${esc(i.sku)})`).join("")}</ul>`;';
+  assert.deepEqual(sinEscapar(anidado).map((h) => h.campo), ['i.nombre']);
+});
+
+test('todo campo impreso en HTML pasa por esc()', () => {
+  const crudos = [];
+  for (const [archivo] of modulos) {
+    if (PENDIENTES_ESCAPE.includes(rel(archivo))) continue;
+    for (const { linea, campo } of sinEscapar(readFileSync(archivo, 'utf8'))) {
+      crudos.push(`${rel(archivo)}:${linea} ${campo}`);
+    }
+  }
+  assert.deepEqual(crudos, [], `Campos impresos en HTML sin esc():\n${crudos.join('\n')}`);
 });

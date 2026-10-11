@@ -67,13 +67,18 @@ const ICONO_LAPIZ =
 export const botonEditarFila = (clase, id, que) =>
   `<button type="button" class="btn-icon ${clase}" data-id="${id}" title="Editar ${que}" aria-label="Editar ${que}">${ICONO_LAPIZ}</button>`;
 
-// Escapa lo que va al HTML de la hoja. Los datos vienen de la base (nombres de
-// cliente, productos, notas del negocio), así que un nombre con "<" rompería
-// el markup si se interpolara crudo.
+// Escapa todo dato que se interpola en un template que termina en innerHTML.
+// Los datos vienen de la base (nombres de cliente, productos, notas) y los
+// carga cualquier usuario de la empresa: sin esto, un nombre como
+// `<img src=x onerror=…>` ejecuta código en la sesión de quien lo mire.
+// Sirve igual dentro de un atributo (value="…", title="…"), por eso escapa
+// también las dos comillas. backend/test/frontend-modulos.test.js falla si
+// un campo de un objeto se interpola en HTML sin pasar por acá.
 export function esc(valor) {
   return String(valor ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

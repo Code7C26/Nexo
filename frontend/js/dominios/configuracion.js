@@ -5,7 +5,8 @@
  */
 
 import { fijarNegocio, negocio } from "../core/negocio.js";
-import { avisar, manejarError } from "../core/ui.js";
+import { avisar } from "../core/ui.js";
+import { api } from "../core/api.js";
 import { registrar } from "../core/registro.js";
 
 /* ---------- Configuración (datos del negocio) ---------- */
@@ -36,9 +37,7 @@ function pintarFormNegocio() {
 }
 
 async function cargarNegocio() {
-  const res = await fetch("/api/negocio");
-  if (!res.ok) return;
-  fijarNegocio(await res.json());
+  fijarNegocio(await api("/api/negocio", { error: "No se pudieron cargar los datos del negocio." }));
   pintarFormNegocio();
 }
 
@@ -49,12 +48,7 @@ formNegocio.addEventListener("submit", async (e) => {
     avisar("El negocio necesita un nombre.", "atencion");
     return;
   }
-  const res = await fetch("/api/negocio", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(datos)
-  });
-  if (!(await manejarError(res, "No se pudieron guardar los datos del negocio."))) return;
+  await api("/api/negocio", { method: "PUT", body: datos, error: "No se pudieron guardar los datos del negocio." });
   await cargarNegocio();
   modalConfiguracion.hidden = true;
   avisar("Datos del negocio actualizados.", "ok");

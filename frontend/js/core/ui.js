@@ -4,6 +4,8 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
+import { esc } from "./formato.js";
+
 /* ---------- Avisos y confirmaciones (reemplazan alert()/confirm() nativos) ---------- */
 
 // Toast que se apila abajo a la izquierda y se retira solo — no bloquea
@@ -161,7 +163,7 @@ export function mostrarResultadoBulk(resultado, { bloque, titulo, lista, etiquet
       ? "Ninguno se pudo aplicar."
       : `${resumen.aplicados} aplicado${resumen.aplicados === 1 ? "" : "s"} · ${resumen.fallidos} falló${resumen.fallidos === 1 ? "" : "aron"}.`;
   lista.innerHTML = fallidos
-    .map((f) => `<li>${etiquetar(f.id)} — ${f.error}</li>`)
+    .map((f) => `<li>${esc(etiquetar(f.id))} — ${esc(f.error)}</li>`)
     .join("");
   bloque.hidden = false;
   avisar(titulo.textContent, "atencion");

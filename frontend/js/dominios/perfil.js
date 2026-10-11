@@ -34,14 +34,22 @@ document.getElementById("formCambioPassword").addEventListener("submit", async (
   const errorEl = document.getElementById("cambioPasswordError");
   errorEl.hidden = true;
 
-  const res = await fetch("/api/auth/cambiar-password", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      actual: form.perfilPasswordActual.value,
-      nueva: form.perfilPasswordNueva.value
-    })
-  });
+  // No usa api(): el error se muestra en el propio modal, no en un toast.
+  let res;
+  try {
+    res = await fetch("/api/auth/cambiar-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actual: form.perfilPasswordActual.value,
+        nueva: form.perfilPasswordNueva.value
+      })
+    });
+  } catch {
+    errorEl.textContent = "Sin conexión con el servidor. Revisá la red y volvé a intentar.";
+    errorEl.hidden = false;
+    return;
+  }
   if (!res.ok) {
     const datos = await res.json().catch(() => ({}));
     errorEl.textContent = datos.error || "No se pudo cambiar la contraseña.";

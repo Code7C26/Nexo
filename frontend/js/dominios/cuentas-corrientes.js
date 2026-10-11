@@ -5,7 +5,8 @@
  * otros dominios (fichas, cobrar, pagar) se invocan por nombre.
  */
 
-import { money, numero } from "../core/formato.js";
+import { esc, money, numero } from "../core/formato.js";
+import { api } from "../core/api.js";
 import { filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
 import { crearFiltros } from "../core/filtros.js";
 import { descargarCSV } from "../core/csv.js";
@@ -71,10 +72,10 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
     const fila = document.createElement("tr");
     fila.className = "fila-clickeable";
     fila.innerHTML = `
-      <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${e.nombre}</button></td>
+      <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${esc(e.nombre)}</button></td>
       <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
       <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
-      <td data-label="Vence">${masVieja.vencimiento}</td>
+      <td data-label="Vence">${esc(masVieja.vencimiento)}</td>
       <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
       <td data-label="" class="cc-chevron">▸</td>
     `;
@@ -90,8 +91,8 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
               .map(
                 (o) => `
               <tr>
-                <td data-label="Fecha">${o.fecha}</td>
-                <td data-label="Vence">${o.vencimiento}</td>
+                <td data-label="Fecha">${esc(o.fecha)}</td>
+                <td data-label="Vence">${esc(o.vencimiento)}</td>
                 <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
                 <td data-label="Estado">${ccTextoDias(o.dias)}</td>
                 <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>
@@ -206,7 +207,7 @@ let ccUltimaRespuesta = {
 async function cargarCuentasCorrientes() {
   tablaCargando("ccCobrarBody", 6);
   tablaCargando("ccPagarBody", 6);
-  const datos = await (await fetch("/api/cuentas-corrientes")).json();
+  const datos = await api("/api/cuentas-corrientes");
   ccUltimaRespuesta = datos;
   renderCuentasCorrientes(datos);
 }

@@ -4,7 +4,7 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
-import { numero } from "./formato.js";
+import { esc, numero } from "./formato.js";
 
 /* ---------- Filtros (estilo Notion) ---------- */
 
@@ -237,17 +237,19 @@ export function crearFiltros(contenedorId, campos, onCambio) {
     return filtro.valor;
   }
 
+  // Devuelve HTML ya escapado: el valor lo escribe el usuario (y queda en
+  // localStorage) y el texto de una opción puede ser un nombre de cliente.
   function etiquetaChip(filtro) {
     const campo = buscarCampo(filtro.campo);
     const op = operadoresDe(filtro.campo).find((o) => o.valor === filtro.operador);
-    if (!op) return campo.etiqueta;
+    if (!op) return esc(campo.etiqueta);
 
-    let texto = `<strong>${campo.etiqueta}</strong> ${op.texto}`;
+    let texto = `<strong>${esc(campo.etiqueta)}</strong> ${esc(op.texto)}`;
     if (op.pide >= 1) {
-      texto += ` <strong>${estaVacio(filtro.valor) ? "…" : textoValor(filtro, campo)}</strong>`;
+      texto += ` <strong>${estaVacio(filtro.valor) ? "…" : esc(textoValor(filtro, campo))}</strong>`;
     }
     if (op.pide === 2) {
-      texto += ` y <strong>${estaVacio(filtro.valor2) ? "…" : textoValor({ ...filtro, valor: filtro.valor2 }, campo)}</strong>`;
+      texto += ` y <strong>${estaVacio(filtro.valor2) ? "…" : esc(textoValor({ ...filtro, valor: filtro.valor2 }, campo))}</strong>`;
     }
     return texto;
   }
@@ -265,7 +267,7 @@ export function crearFiltros(contenedorId, campos, onCambio) {
     pop.innerHTML =
       `<p class="filtro-popover-titulo">Filtrar por</p>` +
       campos
-        .map((c) => `<button type="button" class="filtro-opcion" data-campo="${c.clave}">${c.etiqueta}</button>`)
+        .map((c) => `<button type="button" class="filtro-opcion" data-campo="${esc(c.clave)}">${esc(c.etiqueta)}</button>`)
         .join("");
     contenedor.appendChild(pop);
     // Clamp de los dos lados: antes solo se evitaba desbordar por la
@@ -310,13 +312,13 @@ export function crearFiltros(contenedorId, campos, onCambio) {
             ${(campo.opciones ?? [])
               .map(
                 (o) =>
-                  `<option value="${o.valor}" ${String(o.valor) === String(valor) ? "selected" : ""}>${o.texto}</option>`
+                  `<option value="${esc(o.valor)}" ${String(o.valor) === String(valor) ? "selected" : ""}>${esc(o.texto)}</option>`
               )
               .join("")}
           </select>`;
       }
       const tipo = campo.tipo === "fecha" ? "date" : campo.tipo === "numero" ? "number" : "text";
-      return `<input class="filtro-input" data-cual="${cual}" type="${tipo}" value="${valor ?? ""}" placeholder="Valor" />`;
+      return `<input class="filtro-input" data-cual="${cual}" type="${tipo}" value="${esc(valor)}" placeholder="Valor" />`;
     };
 
     const pop = document.createElement("div");
@@ -324,12 +326,12 @@ export function crearFiltros(contenedorId, campos, onCambio) {
     pop.innerHTML = `
       <select class="filtro-input filtro-campo-select">
         ${campos
-          .map((c) => `<option value="${c.clave}" ${c.clave === filtro.campo ? "selected" : ""}>${c.etiqueta}</option>`)
+          .map((c) => `<option value="${esc(c.clave)}" ${c.clave === filtro.campo ? "selected" : ""}>${esc(c.etiqueta)}</option>`)
           .join("")}
       </select>
       <select class="filtro-input filtro-operador-select">
         ${operadoresDe(filtro.campo)
-          .map((o) => `<option value="${o.valor}" ${o.valor === filtro.operador ? "selected" : ""}>${o.texto}</option>`)
+          .map((o) => `<option value="${esc(o.valor)}" ${o.valor === filtro.operador ? "selected" : ""}>${esc(o.texto)}</option>`)
           .join("")}
       </select>
       ${op && op.pide >= 1 ? inputValor("valor", filtro.valor) : ""}

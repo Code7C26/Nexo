@@ -8,6 +8,8 @@
 // reasignar desde otro módulo, así que cada dueño fija el suyo con fijarX()
 // y los demás lo leen importándolo.
 
+import { esc } from "./formato.js";
+
 /* ---------- Cuentas de tesorería ---------- */
 
 // Las llena cargarCaja() con fijarCuentasTesoreria(): ese endpoint devuelve
@@ -20,7 +22,7 @@ export function fijarCuentasTesoreria(lista) {
 }
 
 export function poblarSelectCuentas(select, seleccionada = null) {
-  select.innerHTML = cuentasTesoreria.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("");
+  select.innerHTML = cuentasTesoreria.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
   if (seleccionada !== null) select.value = seleccionada;
 }
 

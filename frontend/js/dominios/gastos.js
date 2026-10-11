@@ -5,8 +5,9 @@
  * papelera, que viven en otros dominios, se piden por nombre.
  */
 
-import { ICONO_TACHO, botonEditarFila, esAdmin, hoyISO, money } from "../core/formato.js";
-import { avisar, confirmar, filaVacia, filaVaciaFiltrada, manejarError, tablaCargando } from "../core/ui.js";
+import { ICONO_TACHO, botonEditarFila, esAdmin, esc, hoyISO, money } from "../core/formato.js";
+import { avisar, confirmar, filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
+import { api } from "../core/api.js";
 import { crearFiltros } from "../core/filtros.js";
 import { descargarCSV } from "../core/csv.js";
 import { cuentasTesoreria, poblarSelectCuentas, proveedores } from "../core/maestros.js";
@@ -60,13 +61,13 @@ function renderGastos(lista) {
     .map(
       (g) => `
     <tr>
-      <td data-label="Fecha">${g.fecha}</td>
-      <td data-label="Categoría">${g.categoria}</td>
+      <td data-label="Fecha">${esc(g.fecha)}</td>
+      <td data-label="Categoría">${esc(g.categoria)}</td>
       <td data-label="Tipo"><span class="status ${TIPO_GASTO_CLASE[g.tipo]}">${
         TIPO_GASTO_LABEL[g.tipo]
       }</span></td>
-      <td data-label="Descripción">${g.descripcion || "—"}</td>
-      <td data-label="Cuenta">${g.cuenta}</td>
+      <td data-label="Descripción">${esc(g.descripcion || "—")}</td>
+      <td data-label="Cuenta">${esc(g.cuenta)}</td>
       <td data-label="Importe" class="align-right mono">${money(g.importe)}</td>
       <td data-label=""><div class="fila-acciones">
         ${botonEditarFila("btn-editar-gasto", g.id, "gasto")}
@@ -94,8 +95,7 @@ function renderGastos(lista) {
         }))
       )
         return;
-      const res = await fetch(`/api/gastos/${btn.dataset.id}/anular`, { method: "POST" });
-      if (!(await manejarError(res, "No se pudo anular el gasto."))) return;
+      await api(`/api/gastos/${btn.dataset.id}/anular`, { method: "POST", error: "No se pudo anular el gasto." });
       avisar(`Gasto #${btn.dataset.id} anulado.`, "ok");
       await recargar("gastos", "caja", "panelResumen");
     });
@@ -157,8 +157,8 @@ const filtrosGastos = crearFiltros(
 async function cargarGastos() {
   tablaCargando("gastosBody", 7);
   const [listaGastos, listaCategorias] = await Promise.all([
-    fetch("/api/gastos").then((r) => r.json()),
-    fetch("/api/categorias-gasto").then((r) => r.json())
+    api("/api/gastos"),
+    api("/api/categorias-gasto")
   ]);
   gastos = listaGastos;
   categoriasGasto = listaCategorias;
@@ -197,12 +197,12 @@ function abrirModalGasto(gasto = null) {
     (c) => c.activa || c.id === gasto?.categoria_id
   );
   document.getElementById("gastoCategoria").innerHTML = categoriasDisponibles
-    .map((c) => `<option value="${c.id}">${c.nombre}</option>`)
+    .map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`)
     .join("");
   poblarSelectCuentas(document.getElementById("gastoCuenta"));
   document.getElementById("gastoProveedor").innerHTML =
     `<option value="">Sin proveedor</option>` +
-    proveedores.map((p) => `<option value="${p.id}">${p.nombre}</option>`).join("");
+    proveedores.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
 
   form.categoria_id.value = gasto?.categoria_id ?? categoriasDisponibles[0]?.id ?? "";
   form.tipo.value = gasto?.tipo ?? categoriasDisponibles[0]?.tipo ?? "operativo";
@@ -245,12 +245,11 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
     comprobante: form.comprobante.value || null
   };
 
-  const res = await fetch(gastoEditandoId ? `/api/gastos/${gastoEditandoId}` : "/api/gastos", {
+  await api(gastoEditandoId ? `/api/gastos/${gastoEditandoId}` : "/api/gastos", {
     method: gastoEditandoId ? "PUT" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(datos)
+    body: datos,
+    error: "No se pudo guardar el gasto."
   });
-  if (!(await manejarError(res, "No se pudo guardar el gasto."))) return;
 
   const eraEdicion = gastoEditandoId !== null;
   // Un gasto mueve plata y cambia el resultado: hay que refrescar las tres.
@@ -275,7 +274,7 @@ function renderCategorias() {
     .map(
       (c) => `
     <tr class="${c.activa ? "" : "fila-anulada"}">
-      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Categoría">${esc(c.nombre)}</td>
       <td data-label="Tipo"><span class="status ${TIPO_GASTO_CLASE[c.tipo]}">${
         TIPO_GASTO_LABEL[c.tipo]
       }</span></td>
@@ -315,15 +314,11 @@ document.getElementById("formCategoria").addEventListener("submit", async (e) =>
   const form = e.target;
   const editandoId = form.id.value;
 
-  const res = await fetch(
-    editandoId ? `/api/categorias-gasto/${editandoId}` : "/api/categorias-gasto",
-    {
-      method: editandoId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: form.nombre.value, tipo: form.tipo.value, activa: 1 })
-    }
-  );
-  if (!(await manejarError(res, "No se pudo guardar la categoría."))) return;
+  await api(editandoId ? `/api/categorias-gasto/${editandoId}` : "/api/categorias-gasto", {
+    method: editandoId ? "PATCH" : "POST",
+    body: { nombre: form.nombre.value, tipo: form.tipo.value, activa: 1 },
+    error: "No se pudo guardar la categoría."
+  });
 
   const eraEdicion = Boolean(editandoId);
   await cargarGastos();
