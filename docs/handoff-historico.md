@@ -6635,3 +6635,73 @@ cliente llamado `<img src=x onerror=…>` ejecutaba código en la sesión de qui
 
 Fase 4 (ESLint versionado, CI, `.editorconfig`, `.env.example`), después las Fases 5 a 7 de §57.
 Pushear `solla`.
+
+## 59. Auditoría general — Fase 4 (herramientas versionadas), 11 de octubre de 2026
+
+Pedido del usuario: "seguir" → la Fase 4 del plan de §57. Tres commits en `solla`
+(`03c5baf`, `426e80f`, `fcba6e7`) más este de documentación, sin pushear.
+
+**ESLint versionado.**
+- `package.json` en la raíz, solo de herramientas: devDependencies `eslint` 10, `@eslint/js` y
+  `globals`, y los scripts `lint`, `test` y `backup` (los dos últimos delegan en `backend/`).
+  No es `"type": "module"`, así que la config es `eslint.config.mjs`.
+- Se usó ESLint 10 y no el 9 que decía el plan: el 10 ya era la línea vigente (10.12) y la
+  misma config funcionó sin cambios. Pide Node `^22.13`, el mismo mínimo que `node:sqlite`
+  sin flag.
+- Config: `recommended`, globales de navegador para `frontend/js` (más `jspdf` y
+  `html2canvas`), `sesion.js` como script clásico, globales de Node para `backend`, `scripts`
+  y los `.mjs` de la raíz. `no-empty` con `allowEmptyCatch`: los 5 `catch {}` vacíos son a
+  propósito (localStorage y logout).
+- `scripts/lint.mjs` no se fía del resultado de ESLint. Antes:
+  - pasa un fuente de control (`const sinUsar = <global de la zona>; noDefinida();`) como si
+    estuviera en cada zona y exige exactamente `no-undef` + `no-unused-vars`. Eso prueba que
+    las reglas corren y que los globales de la zona están cargados;
+  - recorre las carpetas y exige que cada `.js`/`.mjs` (salvo `node_modules` y `vendor`)
+    aparezca entre los archivos que ESLint leyó.
+- Se borraron los 4 `no-unused-vars` viejos de `app.js` (`presupuestoFichaId`,
+  `devolucionFichaId`, `ventaADevolverItems`, `devolucionProveedorFichaId`): se asignaban y
+  nunca se leían.
+- Resultado: 32 archivos, sin problemas. El backend ya estaba limpio con `recommended`.
+
+**`.env`, versiones y editor.**
+- `start`, `dev` y `backup` de `backend/package.json` cargan `../.env` con
+  `--env-file-if-exists` (Node 22.9+, sin dependencias). Lo del entorno le gana al archivo,
+  así que `NEXO_BACKUP_DIR` de Windows sigue mandando. `npm test` no lo lee. Sin `.env`, Node 24
+  imprime "../.env not found. Continuing without it." y sigue.
+- `.env.example` documenta, comentadas, las 9 variables que lee el backend.
+- `engines >=22.13` en los dos `package.json` y `.nvmrc` con `22`. Según el historial de la
+  doc de Node, `node:sqlite` dejó de necesitar `--experimental-sqlite` en 22.13.0.
+- `.editorconfig` (utf-8, LF, dos espacios; Markdown sin recorte de espacios finales). Sin
+  Prettier. `.vscode`: `formatOnSave` apagado y EditorConfig en lugar de Prettier en las
+  extensiones recomendadas.
+
+**CI.** `.github/workflows/ci.yml`:
+- en cada PR y en cada push a `main`, con permisos de solo lectura y cancelación de corridas
+  viejas;
+- `checkout@v7` y `setup-node@v7` (las vigentes), Node de `.nvmrc` con caché de los dos
+  lockfiles;
+- `npm ci` (raíz y backend), `npm run lint`, `npm test`.
+
+También se sumaron una plantilla de PR con el checklist del proyecto y el README ("Cómo
+correrlo" y "Tests").
+
+**Verificación.**
+- Mutaciones, todas revertidas, con el mensaje que dieron:
+  - `app.js` en `ignores` → "ESLint no leyó 1 archivo(s): frontend\js\app.js";
+  - `no-undef` apagado → falla el control de reglas en `frontend/js/__control__.js`;
+  - sin `globals.browser` → el control da dos `no-undef`;
+  - una variable sin usar en `gastos.js` → error normal.
+- Clon limpio en el scratchpad (`npm ci` ×2, lint, tests): 32 archivos y 46 de 46.
+- `.env` en el clon, con base del scratchpad: `PORT=4799` del archivo se respeta, `PORT=4800`
+  del shell le gana y sin `.env` arranca igual. `NEXO_BACKUP=off` del archivo se respetó (no se
+  creó `backups/`).
+- Imports relativos contra los nombres reales de archivo (mayúsculas): sin diferencias. Es lo
+  que más suele romper al pasar a Linux.
+- md5 de la base real sin cambios (`8dc00857…`).
+- **No probado:** el CI en Linux. Docker Desktop estaba apagado y no se levantó; la primera
+  corrida real va a ser al abrir el PR.
+
+### Qué sigue
+
+Fase 5 (scripts `seed`, `verificar-migracion`, `regresion-head`), después las Fases 6 y 7
+de §57. Pushear `solla` y abrir el PR a `main`, que es también la primera corrida del CI.

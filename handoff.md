@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §58);
+    siguiente número (hoy el último es §59);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -24,11 +24,11 @@
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` tiene los commits de la Fase 3 de la auditoría (hist. §58) sin
-  pushear.
-- El PR #24 ya pasó la Etapa A y F0–F4 a `main`. `origin/main` tiene 2 commits
-  que `solla` no (los merges): conviene traerlos antes del próximo PR. Pasar
-  `solla` → `main` es por PR.
+- `solla` tiene los commits de las Fases 3 y 4 de la auditoría (hist. §58,
+  §59) sin pushear.
+- `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
+  F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
+  Actions (`npm run lint` + `npm test`) corre en cada PR.
 
 **Construido.** El núcleo de CLAUDE.md §1–§27 está completo (ver "Estado real
 del sistema" en `CLAUDE.md`). Facturación de monto simple, sin IVA ni ARCA.
@@ -78,8 +78,12 @@ incluido.
 - Tiene una sola organización ("Mi negocio") y un solo usuario, admin.
 
 **Servidor**: `cd backend && npm start`, en el puerto 3000 (`PORT` lo cambia).
-- No hay `.env`. `GEMINI_API_KEY` se pasa como variable de entorno al arrancar;
-  sin ella el asistente responde 503 y el resto funciona igual.
+- Node 22.13+ (`engines`, `.nvmrc`). `npm start`, `npm run dev` y
+  `npm run backup` leen `.env` de la raíz si existe (`--env-file-if-exists`;
+  plantilla en `.env.example`, hist. §59). Lo que ya está en el entorno le gana
+  al archivo. `npm test` no lo lee. Hoy no hay `.env` en la máquina de Santino.
+- `GEMINI_API_KEY`: sin ella el asistente responde 503 y el resto funciona
+  igual.
 - `NEXO_TRUST_PROXY=<n>` (cantidad de proxies de confianza delante, normalmente
   1) es **obligatoria detrás de un proxy inverso**: sin ella `req.ip` es siempre
   la IP del proxy y 30 logins fallidos de cualquiera bloquean el login de todas
@@ -162,6 +166,18 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   Excepciones a propósito: `perfil.js` (error en el modal) y la creación de
   variantes en lote (cuenta fallas). El 401 lo sigue resolviendo `sesion.js`.
 
+**Herramientas (hist. §59)**
+- **ESLint se corre solo con `npm run lint` desde la raíz** (`scripts/lint.mjs`),
+  nunca a mano: antes de dar el resultado controla que las reglas se apliquen en
+  cada zona y que haya leído cada `.js`/`.mjs`. ESLint ignora en silencio lo que
+  no alcanza su config (hist. §54). Una carpeta nueva con código se suma a
+  `CARPETAS` del script y a `eslint.config.mjs`.
+- El `package.json` de la raíz es solo de herramientas (devDependencies) y **no**
+  es `"type": "module"`: por eso la config es `.mjs`. Las dependencias de la app
+  siguen en `backend/package.json`.
+- Sin Prettier y con `formatOnSave` apagado: el estilo lo marca `.editorconfig`
+  y nadie reformatea un archivo entero.
+
 **Comprobantes, catálogo y auditoría**
 - **Comprobantes:** los datos del membrete viven en `organizaciones` (no hay
   tabla `datos_negocio`). Venta y compra no se imprimen como comprobante
@@ -191,7 +207,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
      backups de `backend/db/`;
    - confirmar que todas migran en un solo arranque, que el segundo arranque
      no cambia nada y que el esquema final es el mismo en todas (hist. §48).
-5. **`cd backend && npm test`** (inventario estático de rutas contra
+5. **`npm test` y `npm run lint` desde la raíz** (los mismos que corre el CI;
+   `npm install` en la raíz trae ESLint). `npm test` es el inventario estático de rutas contra
    `permisos.js`): toda ruta nueva tiene que estar clasificada ahí, declarada
    en la columna 0 y con `soloAdmin` en la misma línea. También corre
    `backend/test/api.test.js`: levanta `server.js` como proceso hijo con base
@@ -216,15 +233,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Auditoría general del 6 de octubre (hist. §57–§58), en curso: hechas las Fases 0 a 3**
-(git, respaldo automático, backend, frontend). Decidido con el usuario: seguridad y
-datos primero, antes de seguir con F6–F13. Falta, en este orden:
-- **Fase 4:** ESLint versionado con archivo de control, `.editorconfig`, CI en
-  GitHub Actions (Node 22), `.env.example`. Sin Prettier; sin `LICENSE` hasta que
-  el equipo decida cuál. En hist. §58 ya se corrió ESLint 9 sobre una copia del
-  frontend: la config tiene que ser `eslint.config.mjs` (sin `"type": "module"`
-  en el `package.json`, un `.js` falla al cargar), y quedan solo los 4
-  `no-unused-vars` viejos de `app.js`.
+**Auditoría general del 6 de octubre (hist. §57–§59), en curso: hechas las Fases 0 a 4**
+(git, respaldo automático, backend, frontend, herramientas). Decidido con el usuario:
+seguridad y datos primero, antes de seguir con F6–F13. `LICENSE` sigue sin agregarse
+hasta que el equipo decida cuál. Falta, en este orden:
 - **Fase 5:** `scripts/seed.mjs`, `verificar-migracion.mjs`, `regresion-head.mjs`.
 - **Fase 6:** borrar `src/`, los `hola.txt` y `docs/Mejoras.txt`; renombrar
   `desing/` → `diseno/`; corregir README, `frontend/README.md`, CLAUDE.md (rama
@@ -232,7 +244,10 @@ datos primero, antes de seguir con F6–F13. Falta, en este orden:
   con columna de estado) y la cabecera de `docs/handoff-historico.md`.
 - **Fase 7:** consolidar este backlog; ver abajo "Para cerrar la Etapa A" (sumar
   SKU único por empresa e índices en la misma pasada de rebuilds).
-Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de la Fase 3, no.
+Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 y 4, no.
+El CI todavía no corrió nunca en GitHub: la primera corrida real va a ser al abrir el
+próximo PR `solla` → `main` (en local se probó en un clon limpio, en Windows; Docker
+Desktop estaba apagado y no se probó en Linux).
 
 **Etapa B, siguiente paso: F6** (otro dominio sin acoplamiento con estado ajeno;
 candidatos: Proveedores o Clientes, que dejan su tabla, ficha y modal en el
@@ -249,14 +264,11 @@ otro dominio se piden con `invocar('x', ...)` (el dueño las registra, por
 ejemplo `app.js` con `registrar('cobrar:venta', ...)`). `dominios/` nunca importa `app.js` (lo verifica el
 test). **Auditoría y Papelera esperan a Stock, Caja y a los dominios que leen**:
 reasignan o leen sus cachés (hist. §54). Los dominios grandes (ventas, compras,
-productos) van al final. El baseline de navegador, el seed y ESLint viven en el
+productos) van al final. El baseline de navegador y el seed viven en el
 scratchpad de la sesión: hay que recrearlos (copia del repo, `playwright-core`
-contra el Chrome instalado, usuario empleado con la contraseña ya cambiada).
-**ESLint se corre desde la carpeta que contiene los archivos** y se confirma con
-un archivo de control que falle a propósito; si no, ignora en silencio lo que
-queda fuera de su base y da "cero errores" sin leer nada (hist. §54). Hay 4
-`no-unused-vars` viejos en `app.js` que se dejaron. Hist. §53 y §54 cuentan qué
-cubre cada prueba y las trampas.
+contra el Chrome instalado, usuario empleado con la contraseña ya cambiada) hasta
+que la Fase 5 los versione. ESLint ya no: `npm run lint` desde la raíz (hist. §59).
+Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
 
 **Para cerrar la Etapa A:**
 1. Pasar `organizacion_id` a `NOT NULL` en las 15 tablas que lo tienen
