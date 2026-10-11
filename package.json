@@ -1,0 +1,18 @@
+{
+  "name": "nexo",
+  "private": true,
+  "description": "Herramientas de desarrollo del repo (lint). La app vive en backend/ y frontend/.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "test": "npm --prefix backend test",
+    "backup": "npm --prefix backend run backup"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0"
+  }
+}

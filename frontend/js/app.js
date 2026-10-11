@@ -2877,7 +2877,6 @@ document.getElementById("formTransferenciaDeposito").addEventListener("submit", 
 // genera deuda. Todo eso pasa recién al convertirlo en venta.
 let presupuestos = [];
 let presupuestoEditandoId = null;
-let presupuestoFichaId = null;
 
 const PRESUPUESTO_LABEL = {
   borrador: "Borrador",
@@ -3101,7 +3100,6 @@ function hojaDePresupuesto(p) {
 }
 
 async function abrirFichaPresupuesto(id) {
-  presupuestoFichaId = id;
   const p = await api(`/api/presupuestos/${id}`, {
     error: "No se pudo cargar el presupuesto."
   });
@@ -3967,7 +3965,6 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
 // de la venta que revierte (botón "Devolver"), no desde un "+ Nuevo" en
 // su propia pantalla — esta pantalla es nada más el listado y la ficha.
 let devoluciones = [];
-let devolucionFichaId = null;
 let ventaADevolverId = null;
 
 function renderDevoluciones(lista) {
@@ -4057,7 +4054,6 @@ async function cargarDevoluciones() {
 /* --- Ficha --- */
 
 async function abrirFichaDevolucion(id) {
-  devolucionFichaId = id;
   const d = await api(`/api/devoluciones/${id}`, {
     error: "No se pudo cargar la devolución."
   });
@@ -4163,7 +4159,6 @@ document.getElementById("btnVolverDevoluciones").addEventListener("click", () =>
 
 const modalDevolucion = document.getElementById("modalDevolucion");
 const devolucionItemsEl = document.getElementById("devolucionItems");
-let ventaADevolverItems = [];
 
 function actualizarTotalDevolucion() {
   let total = 0;
@@ -4929,7 +4924,6 @@ document.getElementById("formPagarCompra").addEventListener("submit", async (e) 
 // registra desde la ficha de la compra que revierte (botón "Devolver"),
 // no desde un "+ Nuevo" en su propia pantalla.
 let devolucionesProveedor = [];
-let devolucionProveedorFichaId = null;
 let compraADevolverId = null;
 
 function renderDevolucionesProveedor(lista) {
@@ -5025,7 +5019,6 @@ async function cargarDevolucionesProveedor() {
 /* --- Ficha --- */
 
 async function abrirFichaDevolucionProveedor(id) {
-  devolucionProveedorFichaId = id;
   const d = await api(`/api/devoluciones-proveedor/${id}`, {
     error: "No se pudo cargar la devolución."
   });
