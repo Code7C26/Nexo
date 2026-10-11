@@ -9,7 +9,8 @@
 
 import { crearFiltros, rangoDeFiltroFecha } from "./core/filtros.js";
 import { ICONO_TACHO, botonEditarFila, columnasVisibles, esAdmin, esc, hoyISO, money, moneyCorto, numero } from "./core/formato.js";
-import { avisar, confirmar, filaVacia, filaVaciaFiltrada, manejarError, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
+import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
+import { api } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
 import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
@@ -53,7 +54,7 @@ async function cargarResumen() {
   if (!esAdmin()) return;
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
-  const resumen = await (await fetch(`/api/resumen${params ? "?" + params : ""}`)).json();
+  const resumen = await api(`/api/resumen${params ? "?" + params : ""}`);
 
   document.getElementById("sumVentas").textContent = money(resumen.ventas);
   document.getElementById("sumCosto").textContent = money(resumen.costo_mercaderia);
@@ -261,7 +262,7 @@ async function cargarEvolucion() {
   const mio = ++tokenEvolucion;
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
-  const data = await (await fetch(`/api/resumen/evolucion${params ? "?" + params : ""}`)).json();
+  const data = await api(`/api/resumen/evolucion${params ? "?" + params : ""}`);
   if (mio !== tokenEvolucion) return;
 
   document.getElementById("graficoGranularidad").textContent =
@@ -427,7 +428,7 @@ async function cargarReporteVentas() {
 
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
-  const datos = await (await fetch(`/api/reportes/ventas${params ? "?" + params : ""}`)).json();
+  const datos = await api(`/api/reportes/ventas${params ? "?" + params : ""}`);
 
   document.getElementById("reporteVentasNetas").textContent = money(datos.totales.ventas_netas);
   document.getElementById("reporteTicketPromedio").textContent = money(datos.totales.ticket_promedio);
@@ -523,7 +524,7 @@ async function cargarReporteCompras() {
 
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
-  const datos = await (await fetch(`/api/reportes/compras${params ? "?" + params : ""}`)).json();
+  const datos = await api(`/api/reportes/compras${params ? "?" + params : ""}`);
 
   document.getElementById("reporteComprasNetas").textContent = money(datos.totales.compras_netas);
   document.getElementById("reporteComprasTicketPromedio").textContent = money(datos.totales.ticket_promedio);
@@ -585,7 +586,7 @@ async function cargarReporteStock() {
 
   const rango = rangoActualReporteStock();
   const params = new URLSearchParams(rango).toString();
-  const datos = await (await fetch(`/api/reportes/stock${params ? "?" + params : ""}`)).json();
+  const datos = await api(`/api/reportes/stock${params ? "?" + params : ""}`);
 
   document.getElementById("reporteStockValorizado").textContent = money(datos.resumen.total_valorizado);
   document.getElementById("reporteStockSinStock").textContent = numero(datos.resumen.cantidad_sin_stock);
@@ -665,7 +666,7 @@ async function imprimirFacturasSeleccionadas(ids) {
   )
     return;
 
-  const facturasDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/facturas/${id}`).then((r) => r.json()));
+  const facturasDetalle = await traerConcurrencia(ids, (id) => api(`/api/facturas/${id}`));
   imprimirHojas(facturasDetalle.map(hojaDeFactura));
 }
 
@@ -684,7 +685,7 @@ async function descargarPDFFacturasSeleccionadas(ids, btn) {
   )
     return;
 
-  const facturasDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/facturas/${id}`).then((r) => r.json()));
+  const facturasDetalle = await traerConcurrencia(ids, (id) => api(`/api/facturas/${id}`));
   const items = facturasDetalle.map((f) => ({
     html: hojaDeFactura(f),
     nombreArchivo: nombreArchivoPdf("factura", f.comprobante)
@@ -826,21 +827,18 @@ function exportarFacturasSeleccionadas(ids) {
 
 async function cargarFacturas() {
   tablaCargando("facturasBody", selFacturas.colspan(6));
-  const res = await fetch("/api/facturas");
-  facturas = await res.json();
+  facturas = await api("/api/facturas");
   filtrarFacturas();
 }
-
-cargarFacturas();
 
 // La factura que se está mirando, para que el botón Imprimir (estático en el
 // HTML, bindeado una sola vez más abajo) sepa qué imprimir.
 let facturaFichaDatos = null;
 
 async function abrirFichaFactura(id) {
-  const res = await fetch(`/api/facturas/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar la factura."))) return;
-  const factura = await res.json();
+  const factura = await api(`/api/facturas/${id}`, {
+    error: "No se pudo cargar la factura."
+  });
   facturaFichaDatos = factura;
 
   document.getElementById("fichaFacturaTitulo").textContent = factura.comprobante;
@@ -942,10 +940,9 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   const form = e.target;
   const tipoElegido = form.tipo.value;
 
-  const res = await fetch("/api/facturas", {
+  const { id } = await api("/api/facturas", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       cliente: form.cliente.value,
       concepto: form.concepto.value,
       neto: parseFloat(form.neto.value),
@@ -953,10 +950,9 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
       tipo: tipoElegido,
       letra: form.letra.value,
       punto_venta: Number(form.punto_venta.value) || 1
-    })
+    },
+    error: "No se pudo registrar la factura."
   });
-  if (!(await manejarError(res, "No se pudo registrar la factura."))) return;
-  const { id } = await res.json();
 
   await cargarFacturas();
   form.reset();
@@ -994,7 +990,7 @@ async function variantesDeProducto(productoId) {
   if (!variantesPorProductoCache.has(productoId)) {
     variantesPorProductoCache.set(
       productoId,
-      fetch(`/api/productos/${productoId}/variantes`).then((r) => r.json())
+      api(`/api/productos/${productoId}/variantes`)
     );
   }
   return variantesPorProductoCache.get(productoId);
@@ -1446,20 +1442,23 @@ function activarEdicionPrecio(span) {
     guardado = true;
     // El PATCH espera el producto completo (no solo el precio): se arma
     // con los datos que ya están en caché, cambiando nada más el precio.
-    const res = await fetch(`/api/productos/${productoId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nombre: producto.nombre,
-        sku: producto.sku,
-        precio_venta: input.value === "" ? 0 : Number(input.value),
-        activo: !!producto.activo,
-        stock_minimo: producto.stock_minimo,
-        stock_maximo: producto.stock_maximo
-      })
-    });
-    await manejarError(res, "No se pudo actualizar el precio.");
-    await cargarProductos();
+    // Si falla igual se recarga: la celda tiene que volver al precio real.
+    try {
+      await api(`/api/productos/${productoId}`, {
+        method: "PATCH",
+        body: {
+          nombre: producto.nombre,
+          sku: producto.sku,
+          precio_venta: input.value === "" ? 0 : Number(input.value),
+          activo: !!producto.activo,
+          stock_minimo: producto.stock_minimo,
+          stock_maximo: producto.stock_maximo
+        },
+        error: "No se pudo actualizar el precio."
+      });
+    } finally {
+      await cargarProductos();
+    }
   };
 
   input.addEventListener("blur", confirmar);
@@ -1520,7 +1519,7 @@ async function abrirFichaProducto(id) {
   const panelVariantes = document.getElementById("fichaProductoVariantesPanel");
   panelVariantes.hidden = !producto.tiene_variantes;
   if (producto.tiene_variantes) {
-    const variantes = await (await fetch(`/api/productos/${id}/variantes`)).json();
+    const variantes = await api(`/api/productos/${id}/variantes`);
     document.getElementById("fichaProductoVariantesBody").innerHTML = variantes
       .filter((v) => v.activo)
       .map(
@@ -1539,7 +1538,7 @@ async function abrirFichaProducto(id) {
       .join("");
   }
 
-  const movimientos = await (await fetch(`/api/productos/${id}/movimientos`)).json();
+  const movimientos = await api(`/api/productos/${id}/movimientos`);
   const body = document.getElementById("fichaProductoMovimientos");
   body.innerHTML =
     movimientos.length === 0
@@ -1572,10 +1571,10 @@ async function abrirFichaProducto(id) {
 async function cargarProductos() {
   tablaCargando("productosBody", selProductos.colspan(10));
   const [listaProductos, listaCategorias, listaListasPrecios, listaDepositos] = await Promise.all([
-    fetch("/api/productos").then((r) => r.json()),
-    fetch("/api/categorias").then((r) => r.json()),
-    fetch("/api/listas-precios").then((r) => r.json()),
-    fetch("/api/depositos").then((r) => r.json())
+    api("/api/productos"),
+    api("/api/categorias"),
+    api("/api/listas-precios"),
+    api("/api/depositos")
   ]);
   productos = listaProductos;
   categorias = listaCategorias;
@@ -1801,13 +1800,11 @@ formBulkProductos.addEventListener("submit", async (e) => {
     if (!ok) return;
   }
 
-  const res = await fetch("/api/productos/bulk", {
+  const resultado = await api("/api/productos/bulk", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: bulkProductosIds, cambios })
+    body: { ids: bulkProductosIds, cambios },
+    error: "No se pudo aplicar la edición en lote."
   });
-  if (!(await manejarError(res, "No se pudo aplicar la edición en lote."))) return;
-  const resultado = await res.json();
 
   await Promise.all([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
 
@@ -1963,15 +1960,11 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     if (Object.keys(precios).length > 0) datos.precios = precios;
   }
 
-  const res = await fetch(
-    productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos",
-    {
-      method: productoEditandoId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos)
-    }
-  );
-  if (!(await manejarError(res, "No se pudo guardar el producto."))) return;
+  await api(productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos", {
+    method: productoEditandoId ? "PATCH" : "POST",
+    body: datos,
+    error: "No se pudo guardar el producto."
+  });
 
   const eraEdicion = productoEditandoId !== null;
   // categoria_id también puede cambiar acá, y "Ventas por categoría" (en
@@ -2003,8 +1996,8 @@ const modalVariantesProducto = document.getElementById("modalVariantesProducto")
 
 async function cargarVariantesModal() {
   const [atributos, variantes] = await Promise.all([
-    fetch(`/api/productos/${variantesProductoId}/atributos`).then((r) => r.json()),
-    fetch(`/api/productos/${variantesProductoId}/variantes`).then((r) => r.json())
+    api(`/api/productos/${variantesProductoId}/atributos`),
+    api(`/api/productos/${variantesProductoId}/variantes`)
   ]);
   variantesAtributosCache = atributos;
   variantesCache = variantes;
@@ -2053,21 +2046,20 @@ function renderVariantesAtributos() {
         destructivo: true
       });
       if (!ok) return;
-      const res = await fetch(`/api/productos/${variantesProductoId}/atributos/${btn.dataset.id}`, {
-        method: "DELETE"
+      await api(`/api/productos/${variantesProductoId}/atributos/${btn.dataset.id}`, {
+        method: "DELETE",
+        error: "No se pudo eliminar el atributo."
       });
-      if (!(await manejarError(res, "No se pudo eliminar el atributo."))) return;
       await cargarVariantesModal();
     });
   });
 
   cont.querySelectorAll(".btn-eliminar-valor").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const res = await fetch(
-        `/api/productos/${variantesProductoId}/atributos/${btn.dataset.atributoId}/valores/${btn.dataset.valorId}`,
-        { method: "DELETE" }
-      );
-      if (!(await manejarError(res, "No se pudo eliminar el valor."))) return;
+      await api(`/api/productos/${variantesProductoId}/atributos/${btn.dataset.atributoId}/valores/${btn.dataset.valorId}`, {
+        method: "DELETE",
+        error: "No se pudo eliminar el valor."
+      });
       await cargarVariantesModal();
     });
   });
@@ -2076,15 +2068,11 @@ function renderVariantesAtributos() {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = form.querySelector("input");
-      const res = await fetch(
-        `/api/productos/${variantesProductoId}/atributos/${form.dataset.atributoId}/valores`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ valor: input.value })
-        }
-      );
-      if (!(await manejarError(res, "No se pudo agregar el valor."))) return;
+      await api(`/api/productos/${variantesProductoId}/atributos/${form.dataset.atributoId}/valores`, {
+        method: "POST",
+        body: { valor: input.value },
+        error: "No se pudo agregar el valor."
+      });
       await cargarVariantesModal();
     });
   });
@@ -2149,12 +2137,11 @@ function renderVariantesTabla() {
       });
       const body = { sku: sku || null, precio_venta: precio === "" ? null : Number(precio), activo };
       if (Object.keys(precios).length > 0) body.precios = precios;
-      const res = await fetch(`/api/productos/${variantesProductoId}/variantes/${varianteId}`, {
+      await api(`/api/productos/${variantesProductoId}/variantes/${varianteId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: body,
+        error: "No se pudo guardar la variante."
       });
-      if (!(await manejarError(res, "No se pudo guardar la variante."))) return;
       await Promise.all([cargarVariantesModal(), cargarProductos()]);
       if (productoFichaId === variantesProductoId) await abrirFichaProducto(productoFichaId);
       avisar("Variante actualizada.", "ok");
@@ -2179,12 +2166,11 @@ modalVariantesProducto.addEventListener("click", (e) => {
 document.getElementById("formAtributoProducto").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
-  const res = await fetch(`/api/productos/${variantesProductoId}/atributos`, {
+  await api(`/api/productos/${variantesProductoId}/atributos`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nombre: form.nombre.value })
+    body: { nombre: form.nombre.value },
+    error: "No se pudo agregar el atributo."
   });
-  if (!(await manejarError(res, "No se pudo agregar el atributo."))) return;
   form.reset();
   await cargarVariantesModal();
 });
@@ -2227,12 +2213,14 @@ document.getElementById("btnGenerarVariantes").addEventListener("click", async (
       })
       .join(" / ");
     if (existentes.has(texto)) continue;
+    // Sin api(): las fallas se cuentan y se avisan juntas al final, no una
+    // por combinación. Un corte de red cuenta como falla.
     const res = await fetch(`/api/productos/${variantesProductoId}/variantes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ valores: combo })
-    });
-    if (res.ok) creadas++;
+    }).catch(() => null);
+    if (res?.ok) creadas++;
     else fallidas++;
   }
 
@@ -2304,12 +2292,11 @@ document.getElementById("formCategoriaProducto").addEventListener("submit", asyn
   const form = e.target;
   const editandoId = form.id.value;
 
-  const res = await fetch(editandoId ? `/api/categorias/${editandoId}` : "/api/categorias", {
+  await api(editandoId ? `/api/categorias/${editandoId}` : "/api/categorias", {
     method: editandoId ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nombre: form.nombre.value, activa: 1 })
+    body: { nombre: form.nombre.value, activa: 1 },
+    error: "No se pudo guardar la categoría."
   });
-  if (!(await manejarError(res, "No se pudo guardar la categoría."))) return;
 
   const eraEdicion = Boolean(editandoId);
   // Una categoría nueva o renombrada cambia el select del formulario de
@@ -2366,12 +2353,11 @@ function renderListasPrecios() {
   body.querySelectorAll(".btn-marcar-predeterminada").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const lista = listasPrecios.find((l) => l.id === Number(btn.dataset.id));
-      const res = await fetch(`/api/listas-precios/${lista.id}`, {
+      await api(`/api/listas-precios/${lista.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre: lista.nombre, activa: true, es_predeterminada: true })
+        body: { nombre: lista.nombre, activa: true, es_predeterminada: true },
+        error: "No se pudo marcar la lista como predeterminada."
       });
-      if (!(await manejarError(res, "No se pudo marcar la lista como predeterminada."))) return;
       await cargarProductos();
       renderListasPrecios();
       avisar(`"${lista.nombre}" es ahora la lista predeterminada.`, "ok");
@@ -2398,12 +2384,11 @@ document.getElementById("formListaPrecio").addEventListener("submit", async (e) 
   const form = e.target;
   const editandoId = form.id.value;
 
-  const res = await fetch(editandoId ? `/api/listas-precios/${editandoId}` : "/api/listas-precios", {
+  await api(editandoId ? `/api/listas-precios/${editandoId}` : "/api/listas-precios", {
     method: editandoId ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nombre: form.nombre.value })
+    body: { nombre: form.nombre.value },
+    error: "No se pudo guardar la lista de precios."
   });
-  if (!(await manejarError(res, "No se pudo guardar la lista de precios."))) return;
 
   const eraEdicion = Boolean(editandoId);
   // Una lista nueva o renombrada cambia el select del modal de producto y
@@ -2460,12 +2445,11 @@ function renderDepositos() {
   body.querySelectorAll(".btn-marcar-deposito-predeterminado").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const deposito = depositos.find((d) => d.id === Number(btn.dataset.id));
-      const res = await fetch(`/api/depositos/${deposito.id}`, {
+      await api(`/api/depositos/${deposito.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre: deposito.nombre, direccion: deposito.direccion, activo: true, es_predeterminado: true })
+        body: { nombre: deposito.nombre, direccion: deposito.direccion, activo: true, es_predeterminado: true },
+        error: "No se pudo marcar el depósito como predeterminado."
       });
-      if (!(await manejarError(res, "No se pudo marcar el depósito como predeterminado."))) return;
       await cargarProductos();
       renderDepositos();
       avisar(`"${deposito.nombre}" es ahora el depósito predeterminado.`, "ok");
@@ -2492,12 +2476,11 @@ document.getElementById("formDeposito").addEventListener("submit", async (e) => 
   const form = e.target;
   const editandoId = form.id.value;
 
-  const res = await fetch(editandoId ? `/api/depositos/${editandoId}` : "/api/depositos", {
+  await api(editandoId ? `/api/depositos/${editandoId}` : "/api/depositos", {
     method: editandoId ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nombre: form.nombre.value, direccion: form.direccion.value || null })
+    body: { nombre: form.nombre.value, direccion: form.direccion.value || null },
+    error: "No se pudo guardar el depósito."
   });
-  if (!(await manejarError(res, "No se pudo guardar el depósito."))) return;
 
   const eraEdicion = Boolean(editandoId);
   // Un depósito nuevo o renombrado cambia los selects de Venta, Compra,
@@ -2713,14 +2696,13 @@ let movimientosStockCache = [];
 
 async function cargarMovimientosStock() {
   tablaCargando("stockMovimientosBody", 5);
-  movimientosStockCache = await (await fetch("/api/movimientos-stock")).json();
+  movimientosStockCache = await api("/api/movimientos-stock");
   renderMovimientosStock(filtrosStockMov.aplicar(movimientosStockCache));
 }
 
 async function cargarStock() {
   tablaCargando("stockBody", selStock.colspan(7));
-  const stockRes = await fetch("/api/stock");
-  stockCache = await stockRes.json();
+  stockCache = await api("/api/stock");
   const opcionesDeposito = depositos
     .filter((d) => d.activo)
     .map((d) => ({ valor: String(d.id), texto: d.nombre }));
@@ -2772,17 +2754,16 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch("/api/stock/ajuste", {
+  await api("/api/stock/ajuste", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       producto_id: Number(form.producto_id.value),
       deposito_id: Number(form.deposito_id.value),
       cantidad: parseFloat(form.cantidad.value),
       nota: form.nota.value || null
-    })
+    },
+    error: "No se pudo registrar el ajuste."
   });
-  if (!(await manejarError(res, "No se pudo registrar el ajuste."))) return;
 
   await Promise.all([cargarStock(), cargarProductos(), cargarReporteStock()]);
   form.reset();
@@ -2830,8 +2811,10 @@ function renderTransferencias(lista) {
         destructivo: true
       });
       if (!ok) return;
-      const res = await fetch(`/api/transferencias/${btn.dataset.id}/anular`, { method: "POST" });
-      if (!(await manejarError(res, "No se pudo anular la transferencia."))) return;
+      await api(`/api/transferencias/${btn.dataset.id}/anular`, {
+        method: "POST",
+        error: "No se pudo anular la transferencia."
+      });
       await cargarStock();
       avisar("Transferencia anulada.", "ok");
     });
@@ -2839,7 +2822,7 @@ function renderTransferencias(lista) {
 }
 
 async function cargarTransferencias() {
-  transferenciasCache = await (await fetch("/api/transferencias")).json();
+  transferenciasCache = await api("/api/transferencias");
   renderTransferencias(transferenciasCache);
 }
 
@@ -2864,18 +2847,17 @@ document.getElementById("formTransferenciaDeposito").addEventListener("submit", 
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch("/api/transferencias", {
+  await api("/api/transferencias", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       producto_id: Number(form.producto_id.value),
       deposito_origen_id: Number(form.deposito_origen_id.value),
       deposito_destino_id: Number(form.deposito_destino_id.value),
       cantidad: parseFloat(form.cantidad.value),
       nota: form.nota.value || null
-    })
+    },
+    error: "No se pudo registrar la transferencia."
   });
-  if (!(await manejarError(res, "No se pudo registrar la transferencia."))) return;
 
   await cargarStock();
   form.reset();
@@ -2937,7 +2919,7 @@ async function imprimirPresupuestosSeleccionados(ids) {
   )
     return;
 
-  const presupuestosDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/presupuestos/${id}`).then((r) => r.json()));
+  const presupuestosDetalle = await traerConcurrencia(ids, (id) => api(`/api/presupuestos/${id}`));
   imprimirHojas(presupuestosDetalle.map(hojaDePresupuesto));
 }
 
@@ -2956,7 +2938,7 @@ async function descargarPDFPresupuestosSeleccionados(ids, btn) {
   )
     return;
 
-  const presupuestosDetalle = await traerConcurrencia(ids, (id) => fetch(`/api/presupuestos/${id}`).then((r) => r.json()));
+  const presupuestosDetalle = await traerConcurrencia(ids, (id) => api(`/api/presupuestos/${id}`));
   const items = presupuestosDetalle.map((p) => ({
     html: hojaDePresupuesto(p),
     nombreArchivo: nombreArchivoPdf("presupuesto", p.id)
@@ -3022,9 +3004,7 @@ function renderPresupuestos(lista) {
 
   body.querySelectorAll(".btn-editar-presupuesto").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const res = await fetch(`/api/presupuestos/${btn.dataset.id}`);
-      if (!(await manejarError(res, "No se pudo cargar el presupuesto."))) return;
-      abrirModalPresupuesto(await res.json());
+      abrirModalPresupuesto(await api(`/api/presupuestos/${btn.dataset.id}`, { error: "No se pudo cargar el presupuesto." }));
     });
   });
 
@@ -3085,8 +3065,7 @@ function exportarPresupuestosSeleccionados(ids) {
 
 async function cargarPresupuestos() {
   tablaCargando("presupuestosBody", selPresupuestos.colspan(8));
-  const res = await fetch("/api/presupuestos");
-  presupuestos = await res.json();
+  presupuestos = await api("/api/presupuestos");
   filtrarPresupuestos();
 }
 
@@ -3118,9 +3097,9 @@ function hojaDePresupuesto(p) {
 
 async function abrirFichaPresupuesto(id) {
   presupuestoFichaId = id;
-  const res = await fetch(`/api/presupuestos/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar el presupuesto."))) return;
-  const p = await res.json();
+  const p = await api(`/api/presupuestos/${id}`, {
+    error: "No se pudo cargar el presupuesto."
+  });
 
   document.getElementById("fichaPresupuestoTitulo").textContent = `Presupuesto #${p.id}`;
   document.getElementById("fichaPresupuestoTotal").textContent = money(p.total);
@@ -3164,12 +3143,11 @@ async function abrirFichaPresupuesto(id) {
 
     acciones.querySelectorAll(".btn-estado-presu").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const r = await fetch(`/api/presupuestos/${p.id}/estado`, {
+        await api(`/api/presupuestos/${p.id}/estado`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ estado: btn.dataset.estado })
+          body: { estado: btn.dataset.estado },
+          error: "No se pudo cambiar el estado."
         });
-        if (!(await manejarError(r, "No se pudo cambiar el estado."))) return;
         await cargarPresupuestos();
         await abrirFichaPresupuesto(p.id);
       });
@@ -3183,8 +3161,10 @@ async function abrirFichaPresupuesto(id) {
         }))
       )
         return;
-      const r = await fetch(`/api/presupuestos/${p.id}/convertir`, { method: "POST" });
-      if (!(await manejarError(r, "No se pudo convertir el presupuesto."))) return;
+      await api(`/api/presupuestos/${p.id}/convertir`, {
+        method: "POST",
+        error: "No se pudo convertir el presupuesto."
+      });
       avisar(`Presupuesto #${p.id} convertido en venta.`, "ok");
       // La conversión mueve stock, cuenta corriente y resultado.
       await Promise.all([
@@ -3342,7 +3322,7 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
     (c) => c.nombre.trim().toLowerCase() === nombreCliente.toLowerCase()
   );
 
-  const body = JSON.stringify({
+  const body = {
     cliente: nombreCliente,
     cliente_id: clienteExistente?.id ?? null,
     fecha: form.fecha.value,
@@ -3350,17 +3330,13 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
     notas: form.notas.value || null,
     items,
     lista_precio_id: form.lista_precio_id.value || null
-  });
+  };
 
-  const res = await fetch(
-    presupuestoEditandoId ? `/api/presupuestos/${presupuestoEditandoId}` : "/api/presupuestos",
-    {
-      method: presupuestoEditandoId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body
-    }
-  );
-  if (!(await manejarError(res, "No se pudo guardar el presupuesto."))) return;
+  await api(presupuestoEditandoId ? `/api/presupuestos/${presupuestoEditandoId}` : "/api/presupuestos", {
+    method: presupuestoEditandoId ? "PUT" : "POST",
+    body,
+    error: "No se pudo guardar el presupuesto."
+  });
 
   const idEditado = presupuestoEditandoId;
   // Puede haber creado un cliente nuevo; el stock no se toca nunca acá.
@@ -3445,8 +3421,10 @@ function renderVentas(lista) {
         }))
       )
         return;
-      const res = await fetch(`/api/ventas/${btn.dataset.id}/anular`, { method: "POST" });
-      if (!(await manejarError(res, "No se pudo anular la venta."))) return;
+      await api(`/api/ventas/${btn.dataset.id}/anular`, {
+        method: "POST",
+        error: "No se pudo anular la venta."
+      });
       avisar(`Venta #${btn.dataset.id} anulada.`, "ok");
       await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
     });
@@ -3544,8 +3522,7 @@ const filtrosVentas = crearFiltros(
 // filtra al renderizar.
 async function cargarVentas() {
   tablaCargando("ventasBody", selVentas.colspan(8));
-  const res = await fetch("/api/ventas");
-  ventas = await res.json();
+  ventas = await api("/api/ventas");
   filtrarVentas();
   renderPapelera();
 }
@@ -3775,7 +3752,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     (c) => c.nombre.trim().toLowerCase() === nombreCliente.toLowerCase()
   );
 
-  const body = JSON.stringify({
+  const body = {
     cliente: nombreCliente,
     cliente_id: clienteExistente?.id ?? null,
     fecha: form.fecha.value,
@@ -3783,20 +3760,13 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     lista_precio_id: form.lista_precio_id.value || null,
     deposito_id: form.deposito_id.value || null,
     ...datosCondicionPago(form)
-  });
+  };
 
-  const res = ventaEditandoId
-    ? await fetch(`/api/ventas/${ventaEditandoId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body
-      })
-    : await fetch("/api/ventas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body
-      });
-  if (!(await manejarError(res, ventaEditandoId ? "No se pudo guardar la venta." : "No se pudo registrar la venta."))) return;
+  await api(ventaEditandoId ? `/api/ventas/${ventaEditandoId}` : "/api/ventas", {
+    method: ventaEditandoId ? "PUT" : "POST",
+    body,
+    error: ventaEditandoId ? "No se pudo guardar la venta." : "No se pudo registrar la venta."
+  });
 
   const idEditado = ventaEditandoId;
   await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
@@ -3810,9 +3780,9 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
 
 async function abrirFichaVenta(id) {
   ventaFichaId = id;
-  const res = await fetch(`/api/ventas/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar la venta."))) return;
-  const venta = await res.json();
+  const venta = await api(`/api/ventas/${id}`, {
+    error: "No se pudo cargar la venta."
+  });
 
   document.getElementById("fichaVentaTitulo").textContent = `Venta #${venta.id}`;
   // Editar reemplaza los items enteros, y una devolución apunta a esos
@@ -3889,9 +3859,7 @@ async function abrirFichaVenta(id) {
 }
 
 document.getElementById("btnEditarVenta").addEventListener("click", async () => {
-  const res = await fetch(`/api/ventas/${ventaFichaId}`);
-  if (!(await manejarError(res, "No se pudo cargar la venta."))) return;
-  abrirModalVenta(await res.json());
+  abrirModalVenta(await api(`/api/ventas/${ventaFichaId}`, { error: "No se pudo cargar la venta." }));
 });
 document.getElementById("btnVolverVentas").addEventListener("click", () => mostrarVista("ventas"));
 
@@ -3908,16 +3876,15 @@ document.getElementById("formFacturarVenta").addEventListener("submit", async (e
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch(`/api/ventas/${ventaAFacturarId}/facturar`, {
+  await api(`/api/ventas/${ventaAFacturarId}/facturar`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       condicion: form.condicion.value,
       letra: form.letra.value,
       punto_venta: Number(form.punto_venta.value) || 1
-    })
+    },
+    error: "No se pudo generar la factura."
   });
-  if (!(await manejarError(res, "No se pudo generar la factura."))) return;
 
   await Promise.all([cargarVentas(), cargarFacturas()]);
   avisar(`Venta #${ventaAFacturarId} facturada.`, "ok");
@@ -3953,7 +3920,7 @@ async function abrirModalCobrarVenta(id) {
 
   poblarSelectCuentas(document.querySelector('#formCobrarVenta select[name="cuenta_tesoreria_id"]'));
 
-  const cobros = await (await fetch(`/api/ventas/${id}/cobros`)).json();
+  const cobros = await api(`/api/ventas/${id}/cobros`);
   renderHistorialPagos("cobroVentaHistorial", cobros);
 
   modalCobrarVenta.hidden = false;
@@ -3970,17 +3937,15 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch(`/api/ventas/${ventaACobrarId}/cobros`, {
+  await api(`/api/ventas/${ventaACobrarId}/cobros`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       importe: parseFloat(form.importe.value),
       cuenta_tesoreria_id: Number(form.cuenta_tesoreria_id.value),
       nota: form.nota.value || null
-    })
+    },
+    error: "No se pudo registrar el cobro."
   });
-
-  if (!(await manejarError(res, "No se pudo registrar el cobro."))) return;
 
   // Un cobro entra plata en una cuenta y baja la deuda del cliente, así
   // que Caja y Clientes también quedan desactualizados.
@@ -4079,8 +4044,7 @@ const filtrosDevoluciones = crearFiltros(
 
 async function cargarDevoluciones() {
   tablaCargando("devolucionesBody", 7);
-  const res = await fetch("/api/devoluciones");
-  devoluciones = await res.json();
+  devoluciones = await api("/api/devoluciones");
   filtrarDevoluciones();
   renderPapelera();
 }
@@ -4089,9 +4053,9 @@ async function cargarDevoluciones() {
 
 async function abrirFichaDevolucion(id) {
   devolucionFichaId = id;
-  const res = await fetch(`/api/devoluciones/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar la devolución."))) return;
-  const d = await res.json();
+  const d = await api(`/api/devoluciones/${id}`, {
+    error: "No se pudo cargar la devolución."
+  });
 
   document.getElementById("fichaDevolucionTitulo").textContent = `Devolución #${d.id}`;
   document.getElementById("fichaDevolucionTotal").textContent = money(d.total);
@@ -4152,8 +4116,10 @@ async function abrirFichaDevolucion(id) {
         }))
       )
         return;
-      const r = await fetch(`/api/devoluciones/${d.id}/anular`, { method: "POST" });
-      if (!(await manejarError(r, "No se pudo anular la devolución."))) return;
+      await api(`/api/devoluciones/${d.id}/anular`, {
+        method: "POST",
+        error: "No se pudo anular la devolución."
+      });
       avisar(`Devolución #${d.id} anulada.`, "ok");
       await Promise.all([
         cargarDevoluciones(),
@@ -4209,9 +4175,9 @@ function actualizarTotalDevolucion() {
 // cuánto queda disponible para devolver de cada renglón.
 async function abrirModalDevolucion(ventaId) {
   ventaADevolverId = ventaId;
-  const res = await fetch(`/api/ventas/${ventaId}`);
-  if (!(await manejarError(res, "No se pudo cargar la venta."))) return;
-  const venta = await res.json();
+  const venta = await api(`/api/ventas/${ventaId}`, {
+    error: "No se pudo cargar la venta."
+  });
   document.getElementById("modalDevolucionTitulo").textContent = `Registrar devolución — Venta #${ventaId}`;
 
   devolucionItemsEl.innerHTML = "";
@@ -4286,17 +4252,16 @@ document.getElementById("formDevolucion").addEventListener("submit", async (e) =
 
   const reintegrar = document.getElementById("devolucionReintegrar").checked;
 
-  const res = await fetch("/api/devoluciones", {
+  await api("/api/devoluciones", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       venta_id: ventaADevolverId,
       items,
       motivo: form.motivo.value || null,
       cuenta_tesoreria_id: reintegrar ? Number(form.cuenta_tesoreria_id.value) : null
-    })
+    },
+    error: "No se pudo registrar la devolución."
   });
-  if (!(await manejarError(res, "No se pudo registrar la devolución."))) return;
   avisar("Devolución registrada.", "ok");
 
   // Toca stock, cuenta corriente, caja (si hubo reintegro) y el resultado.
@@ -4331,16 +4296,15 @@ document.getElementById("formNotaCredito").addEventListener("submit", async (e) 
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch(`/api/devoluciones/${devolucionANotaCreditoId}/nota-credito`, {
+  await api(`/api/devoluciones/${devolucionANotaCreditoId}/nota-credito`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       condicion: form.condicion.value,
       letra: form.letra.value,
       punto_venta: Number(form.punto_venta.value) || 1
-    })
+    },
+    error: "No se pudo emitir la nota de crédito."
   });
-  if (!(await manejarError(res, "No se pudo emitir la nota de crédito."))) return;
 
   await Promise.all([cargarDevoluciones(), cargarFacturas()]);
   modalNotaCredito.hidden = true;
@@ -4445,8 +4409,10 @@ function renderCompras(lista) {
         }))
       )
         return;
-      const res = await fetch(`/api/compras/${btn.dataset.id}/confirmar`, { method: "POST" });
-      if (!(await manejarError(res, "No se pudo efectuar el pedido."))) return;
+      await api(`/api/compras/${btn.dataset.id}/confirmar`, {
+        method: "POST",
+        error: "No se pudo efectuar el pedido."
+      });
       avisar(`Compra #${btn.dataset.id} efectuada.`, "ok");
       await Promise.all([cargarCompras(), cargarProveedores(), recargar("cuentasCorrientes")]);
     });
@@ -4466,8 +4432,10 @@ function renderCompras(lista) {
         }))
       )
         return;
-      const res = await fetch(`/api/compras/${btn.dataset.id}/anular`, { method: "POST" });
-      if (!(await manejarError(res, "No se pudo anular la compra."))) return;
+      await api(`/api/compras/${btn.dataset.id}/anular`, {
+        method: "POST",
+        error: "No se pudo anular la compra."
+      });
       avisar(`Compra #${btn.dataset.id} anulada.`, "ok");
       await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
     });
@@ -4485,15 +4453,15 @@ function renderCompras(lista) {
         await cargarCompras();
         return;
       }
-      const res = await fetch(`/api/compras/${select.dataset.id}/estado-envio`, {
+      await api(`/api/compras/${select.dataset.id}/estado-envio`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado_envio: select.value })
-      });
-      if (!(await manejarError(res, "No se pudo cambiar el estado de envío."))) {
+        body: { estado_envio: select.value },
+        error: "No se pudo cambiar el estado de envío."
+      }).catch(async (e) => {
+        // El select ya muestra el estado nuevo: se repinta con el real.
         await cargarCompras();
-        return;
-      }
+        throw e;
+      });
       // Recibir una compra mueve stock y costo, así que hay que refrescar
       // esas pantallas también.
       await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarReporteStock()]);
@@ -4641,13 +4609,11 @@ formBulkEstadoEnvio.addEventListener("submit", async (e) => {
     if (!ok) return;
   }
 
-  const res = await fetch("/api/compras/bulk/estado-envio", {
+  const resultado = await api("/api/compras/bulk/estado-envio", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: bulkComprasIds, estado_envio: estadoEnvio })
+    body: { ids: bulkComprasIds, estado_envio: estadoEnvio },
+    error: "No se pudo aplicar el cambio de estado en lote."
   });
-  if (!(await manejarError(res, "No se pudo aplicar el cambio de estado en lote."))) return;
-  const resultado = await res.json();
 
   await Promise.all([cargarCompras(), cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
 
@@ -4676,8 +4642,7 @@ async function cargarCompras() {
   // filtrarCompras()/renderPapelera() explotan tratando de iterarlo.
   if (!esAdmin()) return;
   tablaCargando("comprasBody", selCompras.colspan(7));
-  const res = await fetch("/api/compras");
-  compras = await res.json();
+  compras = await api("/api/compras");
   filtrarCompras();
   renderPapelera();
 }
@@ -4797,27 +4762,20 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     return;
   }
 
-  const body = JSON.stringify({
+  const body = {
     proveedor: form.proveedor.value,
     fecha: form.fecha.value,
     costo_envio: form.costo_envio.value,
     items,
     deposito_id: form.deposito_id.value || null,
     ...datosCondicionPago(form)
-  });
+  };
 
-  const res = compraEditandoId
-    ? await fetch(`/api/compras/${compraEditandoId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body
-      })
-    : await fetch("/api/compras", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body
-      });
-  if (!(await manejarError(res, "No se pudo guardar la compra."))) return;
+  await api(compraEditandoId ? `/api/compras/${compraEditandoId}` : "/api/compras", {
+    method: compraEditandoId ? "PUT" : "POST",
+    body,
+    error: "No se pudo guardar la compra."
+  });
 
   const idEditado = compraEditandoId;
   await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
@@ -4829,9 +4787,9 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
 
 async function abrirFichaCompra(id) {
   compraFichaId = id;
-  const res = await fetch(`/api/compras/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar la compra."))) return;
-  const compra = await res.json();
+  const compra = await api(`/api/compras/${id}`, {
+    error: "No se pudo cargar la compra."
+  });
 
   document.getElementById("fichaCompraTitulo").textContent = `Compra #${compra.id}`;
   // Editar reemplaza los items enteros, y una devolución a proveedor apunta
@@ -4907,9 +4865,7 @@ async function abrirFichaCompra(id) {
 }
 
 document.getElementById("btnEditarCompra").addEventListener("click", async () => {
-  const res = await fetch(`/api/compras/${compraFichaId}`);
-  if (!(await manejarError(res, "No se pudo cargar la compra."))) return;
-  abrirModalCompra(await res.json());
+  abrirModalCompra(await api(`/api/compras/${compraFichaId}`, { error: "No se pudo cargar la compra." }));
 });
 document.getElementById("btnVolverCompras").addEventListener("click", () => mostrarVista("compras"));
 
@@ -4927,7 +4883,7 @@ async function abrirModalPagarCompra(id) {
 
   poblarSelectCuentas(document.querySelector('#formPagarCompra select[name="cuenta_tesoreria_id"]'));
 
-  const pagos = await (await fetch(`/api/compras/${id}/pagos`)).json();
+  const pagos = await api(`/api/compras/${id}/pagos`);
   renderHistorialPagos("pagoCompraHistorial", pagos);
 
   modalPagarCompra.hidden = false;
@@ -4944,17 +4900,15 @@ document.getElementById("formPagarCompra").addEventListener("submit", async (e) 
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch(`/api/compras/${compraAPagarId}/pagos`, {
+  await api(`/api/compras/${compraAPagarId}/pagos`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       importe: parseFloat(form.importe.value),
       cuenta_tesoreria_id: Number(form.cuenta_tesoreria_id.value),
       nota: form.nota.value || null
-    })
+    },
+    error: "No se pudo registrar el pago."
   });
-
-  if (!(await manejarError(res, "No se pudo registrar el pago."))) return;
 
   // Un pago saca plata de una cuenta y baja la deuda con el proveedor.
   await Promise.all([cargarCompras(), cargarCaja(), cargarProveedores(), recargar("cuentasCorrientes")]);
@@ -5058,8 +5012,7 @@ async function cargarDevolucionesProveedor() {
   // valoriza al costo, admin-only en el servidor, y corre en el boot.
   if (!esAdmin()) return;
   tablaCargando("devolucionesProveedorBody", 7);
-  const res = await fetch("/api/devoluciones-proveedor");
-  devolucionesProveedor = await res.json();
+  devolucionesProveedor = await api("/api/devoluciones-proveedor");
   filtrarDevolucionesProveedor();
   renderPapelera();
 }
@@ -5068,9 +5021,9 @@ async function cargarDevolucionesProveedor() {
 
 async function abrirFichaDevolucionProveedor(id) {
   devolucionProveedorFichaId = id;
-  const res = await fetch(`/api/devoluciones-proveedor/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar la devolución."))) return;
-  const d = await res.json();
+  const d = await api(`/api/devoluciones-proveedor/${id}`, {
+    error: "No se pudo cargar la devolución."
+  });
 
   document.getElementById("fichaDevolucionProveedorTitulo").textContent = `Devolución a proveedor #${d.id}`;
   document.getElementById("fichaDevolucionProveedorTotal").textContent = money(d.total);
@@ -5130,8 +5083,10 @@ async function abrirFichaDevolucionProveedor(id) {
         }))
       )
         return;
-      const r = await fetch(`/api/devoluciones-proveedor/${d.id}/anular`, { method: "POST" });
-      if (!(await manejarError(r, "No se pudo anular la devolución."))) return;
+      await api(`/api/devoluciones-proveedor/${d.id}/anular`, {
+        method: "POST",
+        error: "No se pudo anular la devolución."
+      });
       avisar(`Devolución #${d.id} anulada.`, "ok");
       await Promise.all([
         cargarDevolucionesProveedor(),
@@ -5187,9 +5142,9 @@ function actualizarTotalDevolucionProveedor() {
 // cuánto queda disponible para devolver de cada renglón.
 async function abrirModalDevolucionProveedor(compraId) {
   compraADevolverId = compraId;
-  const res = await fetch(`/api/compras/${compraId}`);
-  if (!(await manejarError(res, "No se pudo cargar la compra."))) return;
-  const compra = await res.json();
+  const compra = await api(`/api/compras/${compraId}`, {
+    error: "No se pudo cargar la compra."
+  });
   document.getElementById(
     "modalDevolucionProveedorTitulo"
   ).textContent = `Registrar devolución — Compra #${compraId}`;
@@ -5257,17 +5212,16 @@ document.getElementById("formDevolucionProveedor").addEventListener("submit", as
 
   const reintegrar = document.getElementById("devolucionProveedorReintegrar").checked;
 
-  const res = await fetch("/api/devoluciones-proveedor", {
+  await api("/api/devoluciones-proveedor", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       compra_id: compraADevolverId,
       items,
       motivo: form.motivo.value || null,
       cuenta_tesoreria_id: reintegrar ? Number(form.cuenta_tesoreria_id.value) : null
-    })
+    },
+    error: "No se pudo registrar la devolución."
   });
-  if (!(await manejarError(res, "No se pudo registrar la devolución."))) return;
   avisar("Devolución registrada.", "ok");
 
   // Toca stock, costo, cuenta corriente y caja (si hubo reintegro).
@@ -5302,12 +5256,11 @@ document.getElementById("formNotaCreditoProveedor").addEventListener("submit", a
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch(`/api/devoluciones-proveedor/${devolucionProveedorANotaCreditoId}/nota-credito`, {
+  await api(`/api/devoluciones-proveedor/${devolucionProveedorANotaCreditoId}/nota-credito`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ numero: form.numero.value })
+    body: { numero: form.numero.value },
+    error: "No se pudo guardar la nota de crédito."
   });
-  if (!(await manejarError(res, "No se pudo guardar la nota de crédito."))) return;
 
   await cargarDevolucionesProveedor();
   modalNotaCreditoProveedor.hidden = true;
@@ -5375,8 +5328,7 @@ function poblarDatalistClientes() {
 
 async function cargarClientes() {
   tablaCargando("clientesBody", selClientes.colspan(5));
-  const res = await fetch("/api/clientes");
-  clientes = await res.json();
+  clientes = await api("/api/clientes");
   filtrarClientes();
   poblarDatalistClientes();
 }
@@ -5439,7 +5391,7 @@ document.getElementById("clientesSearch").addEventListener("input", filtrarClien
 
 async function abrirFichaCliente(id) {
   clienteFichaId = id;
-  const cliente = await (await fetch(`/api/clientes/${id}`)).json();
+  const cliente = await api(`/api/clientes/${id}`);
 
   document.getElementById("fichaClienteNombre").textContent = cliente.nombre;
   document.getElementById("fichaClienteTotal").textContent = money(cliente.total_gastado);
@@ -5501,7 +5453,7 @@ function abrirModalCliente(cliente = null) {
 
 document.getElementById("btnNuevoCliente").addEventListener("click", () => abrirModalCliente());
 document.getElementById("btnEditarCliente").addEventListener("click", async () => {
-  const cliente = await (await fetch(`/api/clientes/${clienteFichaId}`)).json();
+  const cliente = await api(`/api/clientes/${clienteFichaId}`);
   abrirModalCliente(cliente);
 });
 document.getElementById("modalClienteClose").addEventListener("click", () => {
@@ -5526,15 +5478,11 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
     condicion_pago: form.condicion_pago.value || null
   };
 
-  const res = await fetch(
-    clienteEditandoId ? `/api/clientes/${clienteEditandoId}` : "/api/clientes",
-    {
-      method: clienteEditandoId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos)
-    }
-  );
-  if (!(await manejarError(res, "No se pudo guardar el cliente."))) return;
+  await api(clienteEditandoId ? `/api/clientes/${clienteEditandoId}` : "/api/clientes", {
+    method: clienteEditandoId ? "PATCH" : "POST",
+    body: datos,
+    error: "No se pudo guardar el cliente."
+  });
 
   const eraEdicion = clienteEditandoId !== null;
   await cargarClientes();
@@ -5598,8 +5546,7 @@ function renderProveedores(lista) {
 
 async function cargarProveedores() {
   tablaCargando("proveedoresBody", selProveedores.colspan(6));
-  const res = await fetch("/api/proveedores");
-  fijarProveedores(await res.json());
+  fijarProveedores(await api("/api/proveedores"));
   filtrarProveedores();
 }
 
@@ -5658,9 +5605,9 @@ document.getElementById("proveedoresSearch").addEventListener("input", filtrarPr
 
 async function abrirFichaProveedor(id) {
   proveedorFichaId = id;
-  const res = await fetch(`/api/proveedores/${id}`);
-  if (!(await manejarError(res, "No se pudo cargar el proveedor."))) return;
-  const proveedor = await res.json();
+  const proveedor = await api(`/api/proveedores/${id}`, {
+    error: "No se pudo cargar el proveedor."
+  });
 
   document.getElementById("fichaProveedorNombre").textContent = proveedor.nombre;
   document.getElementById("fichaProveedorTotal").textContent = money(proveedor.total_comprado);
@@ -5769,15 +5716,11 @@ document.getElementById("formProveedor").addEventListener("submit", async (e) =>
     condicion_pago: form.condicion_pago.value || null
   };
 
-  const res = await fetch(
-    proveedorEditandoId ? `/api/proveedores/${proveedorEditandoId}` : "/api/proveedores",
-    {
-      method: proveedorEditandoId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos)
-    }
-  );
-  if (!(await manejarError(res, "No se pudo guardar el proveedor."))) return;
+  await api(proveedorEditandoId ? `/api/proveedores/${proveedorEditandoId}` : "/api/proveedores", {
+    method: proveedorEditandoId ? "PATCH" : "POST",
+    body: datos,
+    error: "No se pudo guardar el proveedor."
+  });
 
   const eraEdicion = proveedorEditandoId !== null;
   await cargarProveedores();
@@ -5917,8 +5860,8 @@ let movimientosCajaCache = [];
 async function cargarCaja() {
   tablaCargando("cajaMovimientosBody", 4);
   const [tesoreria, movimientos] = await Promise.all([
-    fetch("/api/tesoreria").then((r) => r.json()),
-    fetch("/api/tesoreria/movimientos").then((r) => r.json())
+    api("/api/tesoreria"),
+    api("/api/tesoreria/movimientos")
   ]);
 
   fijarCuentasTesoreria(tesoreria.cuentas);
@@ -5964,19 +5907,15 @@ document.getElementById("formCuenta").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch(
-    cuentaEditandoId ? `/api/cuentas-tesoreria/${cuentaEditandoId}` : "/api/cuentas-tesoreria",
-    {
-      method: cuentaEditandoId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+  await api(cuentaEditandoId ? `/api/cuentas-tesoreria/${cuentaEditandoId}` : "/api/cuentas-tesoreria", {
+    method: cuentaEditandoId ? "PATCH" : "POST",
+    body: {
         nombre: form.nombre.value,
         tipo: form.tipo.value,
         saldo_inicial: form.saldo_inicial.value
-      })
-    }
-  );
-  if (!(await manejarError(res, "No se pudo guardar la cuenta."))) return;
+      },
+    error: "No se pudo guardar la cuenta."
+  });
 
   const eraEdicion = cuentaEditandoId !== null;
   await cargarCaja();
@@ -6007,18 +5946,17 @@ document.getElementById("formMovimientoCaja").addEventListener("submit", async (
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch("/api/tesoreria/movimientos", {
+  await api("/api/tesoreria/movimientos", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       cuenta_tesoreria_id: Number(form.cuenta_tesoreria_id.value),
       tipo: form.tipo.value,
       importe: parseFloat(form.importe.value),
       fecha: form.fecha.value,
       concepto: form.concepto.value || null
-    })
+    },
+    error: "No se pudo registrar el movimiento."
   });
-  if (!(await manejarError(res, "No se pudo registrar el movimiento."))) return;
 
   await cargarCaja();
   form.reset();
@@ -6055,18 +5993,17 @@ document.getElementById("formTransferencia").addEventListener("submit", async (e
   e.preventDefault();
   const form = e.target;
 
-  const res = await fetch("/api/tesoreria/transferencias", {
+  await api("/api/tesoreria/transferencias", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: {
       origen_id: Number(form.origen_id.value),
       destino_id: Number(form.destino_id.value),
       importe: parseFloat(form.importe.value),
       fecha: form.fecha.value,
       concepto: form.concepto.value || null
-    })
+    },
+    error: "No se pudo hacer la transferencia."
   });
-  if (!(await manejarError(res, "No se pudo hacer la transferencia."))) return;
 
   await cargarCaja();
   form.reset();
@@ -6213,16 +6150,15 @@ formAsistente.addEventListener("submit", async (e) => {
 
   btnAsistenteEnviar.disabled = true;
   try {
-    const res = await fetch("/api/asistente/interpretar", {
+    const data = await api("/api/asistente/interpretar", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto })
-    });
-    if (!(await manejarError(res, "No se pudo interpretar el texto."))) {
+      body: { texto },
+      error: "No se pudo interpretar el texto."
+    }).catch((e) => {
       turnoRespuesta.remove();
-      return;
-    }
-    asistenteRenderRespuesta(turnoRespuesta, await res.json());
+      throw e;
+    });
+    asistenteRenderRespuesta(turnoRespuesta, data);
   } finally {
     btnAsistenteEnviar.disabled = false;
     asistenteScrollAlFinal();
@@ -6257,14 +6193,11 @@ function asistenteRenderRespuesta(turnoEl, data) {
 // Confirmada: la tarjeta colapsa a una línea de resultado y queda como
 // historial del turno — el hilo entero no se borra por esto.
 async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
-  const res = await fetch("/api/asistente/ejecutar", {
+  const { id } = await api("/api/asistente/ejecutar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mensaje_id: mensajeId, tipo, propuesta })
+    body: { mensaje_id: mensajeId, tipo, propuesta },
+    error: "No se pudo registrar la operación."
   });
-  if (!(await manejarError(res, "No se pudo registrar la operación."))) return;
-
-  const { id } = await res.json();
   const etiqueta = { venta: "Venta", compra: "Compra", gasto: "Gasto" }[tipo];
   turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">✓ ${etiqueta} #${id} registrada.</p>`;
   asistenteScrollAlFinal();
@@ -6289,7 +6222,11 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
 
 async function asistenteDescartar(mensajeId, turnoEl) {
   if (mensajeId) {
-    await fetch(`/api/asistente/${mensajeId}/descartar`, { method: "POST" });
+    // Si el servidor no lo registra, se avisa pero la tarjeta se descarta igual.
+    await api(`/api/asistente/${mensajeId}/descartar`, {
+      method: "POST",
+      error: "No se pudo registrar el descarte en el servidor."
+    }).catch(() => {});
   }
   turnoEl.innerHTML = `<p class="asistente-resuelto asistente-descartado">Descartada.</p>`;
 }
@@ -6885,15 +6822,15 @@ async function cargarAuditoria() {
   tablaCargando("auditoriaBody", 7);
   tablaCargando("auditoriaMovBody", 4);
 
-  const peticiones = [fetch("/api/auditoria").then((r) => r.json())];
+  const peticiones = [api("/api/auditoria")];
   // Solo se piden si todavía no están en memoria: Stock y Caja ya los
   // cargan al bootear la página (ver la cadena de Promise.all al final de
   // este archivo), así que lo normal es no volver a pedirlos acá.
   if (movimientosStockCache.length === 0) {
-    peticiones.push(fetch("/api/movimientos-stock").then((r) => r.json()));
+    peticiones.push(api("/api/movimientos-stock"));
   }
   if (movimientosCajaCache.length === 0) {
-    peticiones.push(fetch("/api/tesoreria/movimientos").then((r) => r.json()));
+    peticiones.push(api("/api/tesoreria/movimientos"));
   }
   const [auditoria, stockExtra, cajaExtra] = await Promise.all(peticiones);
 
@@ -6970,10 +6907,10 @@ function renderPapelera() {
 
   body.querySelectorAll(".btn-restaurar").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const res = await fetch(`/api/${btn.dataset.tipo}/${btn.dataset.id}/restaurar`, {
-        method: "POST"
+      await api(`/api/${btn.dataset.tipo}/${btn.dataset.id}/restaurar`, {
+        method: "POST",
+        error: "No se pudo restaurar el documento."
       });
-      if (!(await manejarError(res, "No se pudo restaurar el documento."))) return;
       await Promise.all([
         cargarVentas(),
         cargarCompras(),
@@ -7007,11 +6944,19 @@ registrar("render:papelera", renderPapelera);
 // fetch), así que entran en el mismo último grupo que Resumen.
 // recargar("negocio") va en la primera ola: no depende de nada y la impresión de
 // comprobantes necesita el membrete listo antes del primer click en Imprimir.
-Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio")])
+// Facturas tampoco depende de ningún caché.
+// Si una carga falla, api() ya avisó con un toast y el resto de la cadena se
+// corta (las olas siguientes leen los cachés de la anterior). El .catch solo
+// agrega cómo seguir; lo que ya se pintó queda en pantalla.
+Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), cargarFacturas()])
   .then(() => Promise.all([recargar("gastos"), cargarProductos()]))
   .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => cargarDevolucionesProveedor())
-  .then(() => Promise.all([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]));
+  .then(() => Promise.all([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]))
+  .catch((e) => {
+    avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");
+    if (!e?.yaAvisado) throw e;
+  });
 
 /* ---------- Tema claro / oscuro ---------- */
 
