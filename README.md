@@ -68,14 +68,19 @@ hasta negocios con varios puntos de venta.
 
 ## 🚀 Cómo correrlo
 
-Requisitos: Node.js 22 o superior (usa `node:sqlite`, todavía experimental
-en algunas versiones — anda bien en 22.5+ y 24).
+Requisitos: Node.js 22.13 o superior (usa `node:sqlite`, que desde 22.13 ya
+no necesita `--experimental-sqlite`; `.nvmrc` fija la 22).
 
 ```bash
 cd backend
 npm install
 npm start          # levanta el servidor en http://localhost:3000
 ```
+
+Configuración opcional: copiar `.env.example` como `.env` en la raíz y
+descomentar lo que haga falta (puerto, clave de Gemini, carpeta de respaldos,
+etc.). `npm start`, `npm run dev` y `npm run backup` lo leen solos; sin `.env`
+el servidor arranca igual.
 
 El frontend es estático: `backend/server.js` lo sirve directamente desde
 `/frontend`, así que con el backend arriba ya está disponible en el mismo
@@ -89,10 +94,15 @@ intentos por hora y por IP).
 
 ### Tests
 
+Desde la raíz del repo (el `npm install` de la raíz solo trae ESLint):
+
 ```bash
-cd backend
-npm test            # node --test — hoy cubre el inventario de rutas y permisos
+npm install
+npm test            # node --test del backend: rutas y permisos, API, respaldo y módulos del frontend
+npm run lint        # ESLint sobre frontend/js, backend y scripts
 ```
+
+Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
 
 ---
 

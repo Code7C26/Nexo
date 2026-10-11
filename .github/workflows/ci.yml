@@ -1,0 +1,34 @@
+# Lint y tests en cada PR y en cada push a main. `main` siempre tiene que
+# quedar funcional (CLAUDE.md, Reglas de desarrollo), así que un PR en rojo no
+# se mergea. Node sale de .nvmrc: es la versión mínima soportada (engines).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-y-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix backend
+      - run: npm run lint
+      - run: npm test
