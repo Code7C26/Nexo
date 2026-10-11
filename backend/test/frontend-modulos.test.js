@@ -31,9 +31,9 @@ const RAIZ_JS = path.join(__dirname, '..', '..', 'frontend', 'js');
 // Empieza vacía: cada entrada nueva tiene que justificarse acá.
 const CICLOS_PERMITIDOS = [];
 
-// Archivos que todavía no pasaron por el escape (se van vaciando por bloque de
-// dominio durante la Fase 3). Cada entrada que quede acá es XSS conocido.
-const PENDIENTES_ESCAPE = ['app.js'];
+// Archivos exceptuados del chequeo de escape. Empieza vacía: cada entrada
+// que se agregue es XSS conocido y tiene que justificarse acá.
+const PENDIENTES_ESCAPE = [];
 
 function listarJs(dir) {
   const salida = [];
@@ -229,6 +229,8 @@ test('el chequeo de escape detecta un campo crudo (control)', () => {
   assert.deepEqual(sinEscapar(condicion), []);
   const anidado = 'x.innerHTML = `<ul>${items.map((i) => `${i.nombre} (${esc(i.sku)})`).join("")}</ul>`;';
   assert.deepEqual(sinEscapar(anidado).map((h) => h.campo), ['i.nombre']);
+  const unido = 'x.innerHTML = `<p>${data.problemas.join(" · ")}</p><div>${acciones.join("")}</div>`;';
+  assert.deepEqual(sinEscapar(unido).map((h) => h.campo), ['data.problemas.join']);
 });
 
 test('todo campo impreso en HTML pasa por esc()', () => {

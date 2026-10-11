@@ -10,7 +10,8 @@
 // de objetos: dentro de un template que arma HTML, todo `${x.campo}` que se
 // imprime tal cual tiene que pasar por esc(). Quedan afuera los usos que no
 // imprimen el valor (condición de un ternario, comparación, índice entre
-// corchetes, argumento de otra función) y los ids numéricos (`id`, `*_id`).
+// corchetes, argumento de otra función), los ids numéricos (`id`, `*_id`) y
+// los campos de constantes del código en mayúsculas (`MARGEN.left`).
 // Lo que no ve: un string armado en otra variable y después interpolado
 // (`${etiqueta}`) y lo que devuelve una función propia; eso queda en manos
 // de quien arma el string o la función.
@@ -175,11 +176,16 @@ export function camposCrudos(expr) {
     }
 
     if (/^\s*\(/.test(despues)) {
-      // Es una llamada `x.metodo(...)`: solo imprime el dato si es un método de texto.
-      if (METODOS_DE_TEXTO.has(ultimo)) crudos.push(cadena);
+      // Es una llamada `x.metodo(...)`: solo imprime el dato si es un método
+      // de texto, o un join sobre un campo (`data.problemas.join(" · ")`). Un
+      // join sobre una variable suelta (`acciones.join("")`) es el armado
+      // habitual de HTML ya escapado y no se marca.
+      const segmentos = cadena.split(/\??\./).length;
+      if (METODOS_DE_TEXTO.has(ultimo) || (ultimo === 'join' && segmentos >= 3)) crudos.push(cadena);
       continue;
     }
     if (esId(ultimo)) continue;
+    if (/^[A-Z][A-Z0-9_]*$/.test(cadena.split(/\??\./)[0])) continue; // constante del código: MARGEN.left
     if (/^\s*\.\s*length\b/.test(despues)) continue;
     // Condición o comparación: el valor no se imprime.
     if (/^\s*(\?(?![.?])|===|!==|==|!=|>=|<=|>|<|&&)/.test(despues)) continue;

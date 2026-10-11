@@ -8,7 +8,7 @@
  */
 
 import { crearFiltros, rangoDeFiltroFecha } from "./core/filtros.js";
-import { ICONO_TACHO, botonEditarFila, columnasVisibles, esAdmin, hoyISO, money, moneyCorto, numero } from "./core/formato.js";
+import { ICONO_TACHO, botonEditarFila, columnasVisibles, esAdmin, esc, hoyISO, money, moneyCorto, numero } from "./core/formato.js";
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, manejarError, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
 import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
@@ -138,7 +138,7 @@ function renderTablaEvolucion(serie) {
       const margen = p.ventas > 0 ? porcentaje((p.ganancia_bruta / p.ventas) * 100) : "—";
       return `
     <tr>
-      <td data-label="Período">${p.etiqueta}${p.parcial ? " (parcial)" : ""}</td>
+      <td data-label="Período">${esc(p.etiqueta)}${p.parcial ? " (parcial)" : ""}</td>
       <td data-label="Ventas" class="align-right mono">${money(p.ventas)}</td>
       <td data-label="Costo" class="align-right mono">${money(p.costo_mercaderia)}</td>
       <td data-label="Ganancia bruta" class="align-right mono">${money(p.ganancia_bruta)}</td>
@@ -207,7 +207,7 @@ function renderGraficoResultado(serie) {
       // insinuado — una barra de resultado no es una píldora.
       return `<rect x="${x(i).toFixed(1)}" y="${yTop.toFixed(1)}" width="${ancho.toFixed(1)}" height="${alto.toFixed(
         1
-      )}" rx="2" fill="${color}" opacity="${opacidad}"${dash}><title>${titulo}</title></rect>`;
+      )}" rx="2" fill="${color}" opacity="${opacidad}"${dash}><title>${esc(titulo)}</title></rect>`;
     })
     .join("");
 
@@ -215,7 +215,7 @@ function renderGraficoResultado(serie) {
     .map((p, i) => {
       const esUltima = i === serie.length - 1;
       if (!esUltima && i % pasoEtiqueta !== 0) return "";
-      return `<text x="${(x(i) + ancho / 2).toFixed(1)}" y="${H - M.bottom + 16}" text-anchor="middle" font-size="11" fill="var(--ink-muted)">${p.etiqueta}</text>`;
+      return `<text x="${(x(i) + ancho / 2).toFixed(1)}" y="${H - M.bottom + 16}" text-anchor="middle" font-size="11" fill="var(--ink-muted)">${esc(p.etiqueta)}</text>`;
     })
     .join("");
 
@@ -238,7 +238,7 @@ function renderGraficoResultado(serie) {
 
   contenedor.innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="graficoResultadoTitulo">
-      <title id="graficoResultadoTitulo">${resumenTexto}</title>
+      <title id="graficoResultadoTitulo">${esc(resumenTexto)}</title>
       <style>text { font-family: var(--font-mono); }</style>
       ${ejeY}
       ${barras}
@@ -314,9 +314,9 @@ function renderUltimosMovimientos(rango = {}) {
     .map(
       (m) => `
     <tr>
-      <td data-label="Fecha">${m.fecha}</td>
-      <td data-label="Tipo">${m.tipo}</td>
-      <td data-label="Detalle" class="celda-wrap">${m.detalle}</td>
+      <td data-label="Fecha">${esc(m.fecha)}</td>
+      <td data-label="Tipo">${esc(m.tipo)}</td>
+      <td data-label="Detalle" class="celda-wrap">${esc(m.detalle)}</td>
       <td data-label="Importe" class="align-right mono ${m.signo < 0 ? "saldo-negativo" : ""}">${
         m.signo < 0 ? "-" : "+"
       }${money(m.importe)}</td>
@@ -356,7 +356,7 @@ function renderReporteProductos(lista) {
     .map(
       (p) => `
     <tr>
-      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Producto">${esc(p.nombre)}</td>
       <td data-label="Unidades" class="align-right mono">${numero(p.unidades)}</td>
       <td data-label="Ventas" class="align-right mono">${money(p.ventas)}</td>
       <td data-label="Ganancia" class="align-right mono ${p.ganancia < 0 ? "saldo-negativo" : ""}">${money(p.ganancia)}</td>
@@ -380,7 +380,7 @@ function renderReporteCategorias(lista) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Categoría">${esc(c.nombre)}</td>
       <td data-label="Unidades" class="align-right mono">${numero(c.unidades)}</td>
       <td data-label="Ventas" class="align-right mono">${money(c.ventas)}</td>
       <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
@@ -401,12 +401,12 @@ function renderReporteClientes(lista) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Cliente"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${c.nombre}</button></td>
+      <td data-label="Cliente"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${esc(c.nombre)}</button></td>
       <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
       <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
       <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
       <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
-      <td data-label="Última compra">${c.ultima_compra ?? "—"}</td>
+      <td data-label="Última compra">${esc(c.ultima_compra ?? "—")}</td>
     </tr>`
     )
     .join("");
@@ -459,11 +459,11 @@ function renderReporteComprasProveedores(lista) {
     .map(
       (p) => `
     <tr>
-      <td data-label="Proveedor"><button type="button" class="btn-link reporte-proveedor-ficha" data-id="${p.id}">${p.nombre}</button></td>
+      <td data-label="Proveedor"><button type="button" class="btn-link reporte-proveedor-ficha" data-id="${p.id}">${esc(p.nombre)}</button></td>
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
       <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
       <td data-label="Ticket promedio" class="align-right mono">${money(p.ticket_promedio)}</td>
-      <td data-label="Última compra">${p.ultima_compra ?? "—"}</td>
+      <td data-label="Última compra">${esc(p.ultima_compra ?? "—")}</td>
     </tr>`
     )
     .join("");
@@ -483,7 +483,7 @@ function renderReporteComprasProductos(lista) {
     .map(
       (p) => `
     <tr>
-      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Producto">${esc(p.nombre)}</td>
       <td data-label="Unidades" class="align-right mono">${numero(p.unidades)}</td>
       <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
       <td data-label="% del total" class="align-right mono">${porcentaje(p.participacion_pct)}</td>
@@ -504,7 +504,7 @@ function renderReporteComprasCategorias(lista) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Categoría">${esc(c.nombre)}</td>
       <td data-label="Unidades" class="align-right mono">${numero(c.unidades)}</td>
       <td data-label="Total" class="align-right mono">${money(c.compras)}</td>
       <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
@@ -564,7 +564,7 @@ function renderReporteStock(lista) {
     .map(
       (p) => `
     <tr>
-      <td data-label="Producto">${p.nombre}</td>
+      <td data-label="Producto">${esc(p.nombre)}</td>
       <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${STOCK_LABEL[p.estado_stock]}</span></td>
       <td data-label="Valorizado" class="align-right mono">${money(p.valorizado)}</td>
@@ -711,10 +711,10 @@ function renderFacturas(lista) {
       (f) => `
     <tr class="fila-clickeable" data-id="${f.id}">
       ${selFacturas.celda(f.id)}
-      <td data-label="Comprobante" class="mono">${f.comprobante}</td>
-      <td data-label="Tipo">${TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo}</td>
-      <td data-label="Fecha">${f.fecha}</td>
-      <td data-label="Cliente">${f.cliente}</td>
+      <td data-label="Comprobante" class="mono">${esc(f.comprobante)}</td>
+      <td data-label="Tipo">${esc(TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo)}</td>
+      <td data-label="Fecha">${esc(f.fecha)}</td>
+      <td data-label="Cliente">${esc(f.cliente)}</td>
       <td data-label="Origen">${
         f.venta_id
           ? `<a href="#" class="btn-link ficha-factura-ver-venta" data-venta-id="${f.venta_id}">Venta #${f.venta_id}</a>`
@@ -856,7 +856,7 @@ async function abrirFichaFactura(id) {
     ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"]
   ];
   document.getElementById("fichaFacturaDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor ?? "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor ?? "—")}</dd></div>`)
     .join("");
 
   const panelItems = document.getElementById("fichaFacturaItemsPanel");
@@ -870,7 +870,7 @@ async function abrirFichaFactura(id) {
       .map(
         (i) => `
       <tr>
-        <td data-label="Producto">${i.producto}</td>
+        <td data-label="Producto">${esc(i.producto)}</td>
         <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
         <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
         <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
@@ -1047,7 +1047,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
             .filter((v) => v.activo)
             .map(
               (v) =>
-                `<option value="${v.id}" data-stock="${v.stock}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`
+                `<option value="${v.id}" data-stock="${esc(v.stock)}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`
             )
             .join("");
         varianteSelect.hidden = false;
@@ -1142,7 +1142,7 @@ function agregarFilaItemCompra(contenedor, listaProductos) {
         '<option value="">Elegí una variante…</option>' +
         variantes
           .filter((v) => v.activo)
-          .map((v) => `<option value="${v.id}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`)
+          .map((v) => `<option value="${v.id}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`)
           .join("");
       varianteSelect.hidden = false;
     } else {
@@ -1320,7 +1320,7 @@ function precioVarianteEnLista(variante, producto, listaId) {
 }
 
 function poblarDatalistProductos() {
-  const opciones = productos.map((p) => `<option value="${p.nombre}"></option>`).join("");
+  const opciones = productos.map((p) => `<option value="${esc(p.nombre)}"></option>`).join("");
   document.getElementById("productosSugeridos").innerHTML = opciones;
   document.getElementById("productosVenta").innerHTML = opciones;
 }
@@ -1377,9 +1377,9 @@ function renderProductos(lista) {
       : `<span class="mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}">${precioTexto}</span>`;
     tr.innerHTML = `
       ${selProductos.celda(p.id)}
-      <td data-label="Nombre">${p.nombre}</td>
-      <td data-label="SKU">${p.sku || "—"}</td>
-      <td data-label="Categoría">${p.categoria || "—"}</td>
+      <td data-label="Nombre">${esc(p.nombre)}</td>
+      <td data-label="SKU">${esc(p.sku || "—")}</td>
+      <td data-label="Categoría">${esc(p.categoria || "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
       <td data-label="Valorizado" class="align-right mono col-admin">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right mono">${precioCelda}</td>
@@ -1486,8 +1486,11 @@ async function abrirFichaProducto(id) {
   document.getElementById("fichaProductoValorizado").textContent = money(producto.valorizado);
 
   const campos = [
-    ["SKU", producto.sku],
-    ["Categoría", producto.categoria],
+    // Esta ficha es la única que mete HTML en `valor` (el aviso de "Sin
+    // precio" y el badge de margen), así que los datos se escapan acá y el
+    // map de abajo los imprime tal cual.
+    ["SKU", esc(producto.sku)],
+    ["Categoría", esc(producto.categoria)],
     [
       "Precio de venta",
       producto.precio_venta > 0
@@ -1523,8 +1526,8 @@ async function abrirFichaProducto(id) {
       .map(
         (v) => `
       <tr>
-        <td data-label="Combinación">${v.combinacion}</td>
-        <td data-label="SKU">${v.sku || "—"}</td>
+        <td data-label="Combinación">${esc(v.combinacion)}</td>
+        <td data-label="SKU">${esc(v.sku || "—")}</td>
         <td data-label="Costo" class="align-right col-admin mono">${money(v.precio_costo)}</td>
         <td data-label="Precio" class="align-right mono">${
           v.precio_venta > 0 ? money(v.precio_venta) : '<span class="precio-sin-configurar">Sin precio</span>'
@@ -1554,11 +1557,11 @@ async function abrirFichaProducto(id) {
             const signo = m.delta > 0 ? "+" : "";
             return `
         <tr>
-          <td data-label="Fecha">${m.fecha}</td>
+          <td data-label="Fecha">${esc(m.fecha)}</td>
           <td data-label="Origen">${origen}</td>
           <td data-label="Cantidad" class="align-right mono">${signo}${numero(m.delta)}</td>
           <td data-label="Stock resultante" class="align-right mono">${numero(m.stock_posterior)}</td>
-          <td data-label="Nota">${m.nota || "—"}</td>
+          <td data-label="Nota">${esc(m.nota || "—")}</td>
         </tr>`;
           })
           .join("");
@@ -1607,7 +1610,7 @@ function poblarSelectListasPrecios(selector, { conPredeterminada = false } = {})
     activas
       .map(
         (l) =>
-          `<option value="${l.id}">${l.nombre}${l.es_predeterminada ? " (predeterminada)" : ""}</option>`
+          `<option value="${l.id}">${esc(l.nombre)}${l.es_predeterminada ? " (predeterminada)" : ""}</option>`
       )
       .join("");
   select.value = actual || (conPredeterminada ? "" : String(predeterminada?.id ?? ""));
@@ -1625,7 +1628,7 @@ function poblarSelectDepositos(selector) {
   const activos = depositos.filter((d) => d.activo);
   const predeterminado = depositoPredeterminado();
   select.innerHTML = activos
-    .map((d) => `<option value="${d.id}">${d.nombre}${d.es_predeterminado ? " (predeterminado)" : ""}</option>`)
+    .map((d) => `<option value="${d.id}">${esc(d.nombre)}${d.es_predeterminado ? " (predeterminado)" : ""}</option>`)
     .join("");
   select.value = actual || String(predeterminado?.id ?? "");
 }
@@ -1645,7 +1648,7 @@ function poblarSelectCategorias(selector = '#formProducto [name="categoria_id"]'
     '<option value="">Sin categoría</option>' +
     categorias
       .filter((c) => c.activa)
-      .map((c) => `<option value="${c.id}">${c.nombre}</option>`)
+      .map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`)
       .join("");
   select.value = actual;
 }
@@ -1899,7 +1902,7 @@ function poblarPreciosPorLista(producto) {
     .map((l) => {
       const precioActual = producto.precios?.[l.id];
       return `
-        <label>Precio (${l.nombre})
+        <label>Precio (${esc(l.nombre)})
           <input type="number" class="precio-lista-input" data-lista-id="${l.id}"
                  step="0.01" min="0" placeholder="Sin precio propio: usa ${money(producto.precio_venta)}"
                  value="${precioActual !== undefined ? precioActual : ""}" autocomplete="off" />
@@ -2021,18 +2024,18 @@ function renderVariantesAtributos() {
       (a) => `
     <div class="atributo-item" data-atributo-id="${a.id}">
       <div class="atributo-item-head">
-        <strong>${a.nombre}</strong>
+        <strong>${esc(a.nombre)}</strong>
         <button type="button" class="btn-icon-danger btn-eliminar-atributo" data-id="${a.id}" title="Eliminar atributo" aria-label="Eliminar atributo">${ICONO_TACHO}</button>
       </div>
       <div class="atributo-valores">
         ${a.valores
           .map(
             (v) =>
-              `<span class="chip">${v.valor}<button type="button" class="btn-eliminar-valor" data-atributo-id="${a.id}" data-valor-id="${v.id}" aria-label="Eliminar valor ${v.valor}">×</button></span>`
+              `<span class="chip">${esc(v.valor)}<button type="button" class="btn-eliminar-valor" data-atributo-id="${a.id}" data-valor-id="${v.id}" aria-label="Eliminar valor ${esc(v.valor)}">×</button></span>`
           )
           .join("")}
         <form class="atributo-valor-form" data-atributo-id="${a.id}">
-          <label class="visualmente-oculto" for="valorNuevo${a.id}">Nuevo valor de ${a.nombre}</label>
+          <label class="visualmente-oculto" for="valorNuevo${a.id}">Nuevo valor de ${esc(a.nombre)}</label>
           <input type="text" id="valorNuevo${a.id}" placeholder="Nuevo valor" required />
           <button type="submit" class="btn btn-secundario">+</button>
         </form>
@@ -2100,7 +2103,7 @@ function preciosPorListaVarianteHtml(v) {
     .map((l) => {
       const precioActual = v.precios?.[l.id];
       return `
-        <label>${l.nombre}
+        <label>${esc(l.nombre)}
           <input type="number" class="variante-precio-lista" data-lista-id="${l.id}"
                  step="0.01" min="0" placeholder="Sin precio propio"
                  value="${precioActual !== undefined ? precioActual : ""}" autocomplete="off" />
@@ -2119,9 +2122,9 @@ function renderVariantesTabla() {
     .map(
       (v) => `
     <tr class="${v.activo ? "" : "fila-anulada"}" data-variante-id="${v.id}">
-      <td data-label="Combinación">${v.combinacion}</td>
-      <td data-label="SKU"><input type="text" class="variante-sku" value="${v.sku ?? ""}" placeholder="—" /></td>
-      <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${v.precio_venta ?? ""}" placeholder="Sin precio propio" /></td>
+      <td data-label="Combinación">${esc(v.combinacion)}</td>
+      <td data-label="SKU"><input type="text" class="variante-sku" value="${esc(v.sku ?? "")}" placeholder="—" /></td>
+      <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${esc(v.precio_venta ?? "")}" placeholder="Sin precio propio" /></td>
       <td data-label="Precios por lista" class="variante-precios-lista">${preciosPorListaVarianteHtml(v)}</td>
       <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
       <td data-label="Activa"><label class="form-check"><input type="checkbox" class="variante-activa" ${v.activo ? "checked" : ""} /></label></td>
@@ -2265,7 +2268,7 @@ function renderCategoriasProductos() {
     .map(
       (c) => `
     <tr class="${c.activa ? "" : "fila-anulada"}">
-      <td data-label="Categoría">${c.nombre}</td>
+      <td data-label="Categoría">${esc(c.nombre)}</td>
       <td data-label="">${botonEditarFila("btn-editar-categoria-producto", c.id, "categoría")}</td>
     </tr>`
     )
@@ -2339,7 +2342,7 @@ function renderListasPrecios() {
     .map(
       (l) => `
     <tr class="${l.activa ? "" : "fila-anulada"}">
-      <td data-label="Lista">${l.nombre}</td>
+      <td data-label="Lista">${esc(l.nombre)}</td>
       <td data-label="Predeterminada">${
         l.es_predeterminada
           ? `<span class="status status-cobrado">Predeterminada</span>`
@@ -2432,7 +2435,7 @@ function renderDepositos() {
     .map(
       (d) => `
     <tr class="${d.activo ? "" : "fila-anulada"}">
-      <td data-label="Depósito">${d.nombre}</td>
+      <td data-label="Depósito">${esc(d.nombre)}</td>
       <td data-label="Predeterminado">${
         d.es_predeterminado
           ? `<span class="status status-cobrado">Predeterminado</span>`
@@ -2549,8 +2552,8 @@ function renderStock(lista) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       ${selStock.celda(`${p.producto_id}-${p.deposito_id}`)}
-      <td data-label="Producto">${p.nombre}</td>
-      <td data-label="Depósito">${p.deposito ?? "—"}</td>
+      <td data-label="Producto">${esc(p.nombre)}</td>
+      <td data-label="Depósito">${esc(p.deposito ?? "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
       <td data-label="Stock en depósito" class="align-right mono">${numero(p.stock)}</td>
       <td data-label="Stock total" class="align-right mono">${numero(p.stock_total)}</td>
@@ -2601,12 +2604,12 @@ function renderMovimientosStock(movimientos) {
       const signo = m.tipo === "salida" ? "-" : m.tipo === "entrada" ? "+" : m.cantidad >= 0 ? "+" : "-";
       return `
     <tr>
-      <td data-label="Fecha">${m.fecha}</td>
-      <td data-label="Producto">${m.producto}</td>
-      <td data-label="Depósito">${m.deposito ?? "—"}</td>
+      <td data-label="Fecha">${esc(m.fecha)}</td>
+      <td data-label="Producto">${esc(m.producto)}</td>
+      <td data-label="Depósito">${esc(m.deposito ?? "—")}</td>
       <td data-label="Origen">${origen}</td>
       <td data-label="Cantidad" class="align-right mono">${signo}${numero(Math.abs(m.cantidad))}</td>
-      <td data-label="Nota">${m.nota || "—"}</td>
+      <td data-label="Nota">${esc(m.nota || "—")}</td>
     </tr>`;
     })
     .join("");
@@ -2743,7 +2746,7 @@ const modalAjusteStock = document.getElementById("modalAjusteStock");
 function poblarSelectProductos(select) {
   select.innerHTML =
     '<option value="">Producto…</option>' +
-    productos.map((p) => `<option value="${p.id}">${p.nombre}</option>`).join("");
+    productos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
 }
 
 function abrirModalAjusteStock(productoIdPreseleccionado = null, depositoIdPreseleccionado = null) {
@@ -2801,10 +2804,10 @@ function renderTransferencias(lista) {
     .map(
       (t) => `
     <tr class="${t.estado === "anulada" ? "fila-anulada" : ""}">
-      <td data-label="Fecha">${t.fecha}</td>
-      <td data-label="Producto">${t.producto}</td>
-      <td data-label="Desde">${t.deposito_origen}</td>
-      <td data-label="Hacia">${t.deposito_destino}</td>
+      <td data-label="Fecha">${esc(t.fecha)}</td>
+      <td data-label="Producto">${esc(t.producto)}</td>
+      <td data-label="Desde">${esc(t.deposito_origen)}</td>
+      <td data-label="Hacia">${esc(t.deposito_destino)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(t.cantidad)}</td>
       <td data-label="Estado"><span class="status ${t.estado === "anulada" ? "status-vencido" : "status-cobrado"}">${
         t.estado === "anulada" ? "Anulada" : "Activa"
@@ -2993,10 +2996,10 @@ function renderPresupuestos(lista) {
     <tr class="fila-clickeable" data-id="${p.id}">
       ${selPresupuestos.celda(p.id)}
       <td data-label="N°" class="mono">#${p.id}</td>
-      <td data-label="Cliente">${p.cliente}</td>
-      <td data-label="Productos" class="celda-wrap">${p.items_resumen || "—"}</td>
-      <td data-label="Fecha">${p.fecha}</td>
-      <td data-label="Vence">${p.vencimiento || "—"}</td>
+      <td data-label="Cliente">${esc(p.cliente)}</td>
+      <td data-label="Productos" class="celda-wrap">${esc(p.items_resumen || "—")}</td>
+      <td data-label="Fecha">${esc(p.fecha)}</td>
+      <td data-label="Vence">${esc(p.vencimiento || "—")}</td>
       <td data-label="Total" class="align-right mono">${money(p.total)}</td>
       <td data-label="Estado"><span class="status ${PRESUPUESTO_CLASE[p.estado_efectivo]}">${
         PRESUPUESTO_LABEL[p.estado_efectivo]
@@ -3130,7 +3133,7 @@ async function abrirFichaPresupuesto(id) {
     ["Notas", p.notas]
   ];
   document.getElementById("fichaPresupuestoDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
     .join("");
 
   // Las acciones dependen del estado: un presupuesto convertido ya es una
@@ -3215,7 +3218,7 @@ async function abrirFichaPresupuesto(id) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Producto">${i.producto}</td>
+      <td data-label="Producto">${esc(i.producto)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
       <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
@@ -3283,7 +3286,7 @@ async function abrirModalPresupuesto(presupuesto = null) {
           .filter((v) => v.activo || v.id === item.variante_id)
           .map(
             (v) =>
-              `<option value="${v.id}" data-stock="${v.stock}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`
+              `<option value="${v.id}" data-stock="${esc(v.stock)}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`
           )
           .join("");
         varianteSelect.value = item.variante_id;
@@ -3409,9 +3412,9 @@ function renderVentas(lista) {
     tr.innerHTML = `
       ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
-      <td data-label="Cliente">${v.cliente}</td>
-      <td data-label="Productos" class="celda-wrap">${v.items_resumen || "—"}</td>
-      <td data-label="Fecha">${v.fecha}</td>
+      <td data-label="Cliente">${esc(v.cliente)}</td>
+      <td data-label="Productos" class="celda-wrap">${esc(v.items_resumen || "—")}</td>
+      <td data-label="Fecha">${esc(v.fecha)}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono">${money(v.total)}</td>
       <td data-label="Ganancia" class="align-right mono col-admin">${money(v.margen)}</td>
@@ -3674,7 +3677,7 @@ async function abrirModalVenta(venta = null) {
           .filter((v) => v.activo || v.id === item.variante_id)
           .map(
             (v) =>
-              `<option value="${v.id}" data-stock="${v.stock}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`
+              `<option value="${v.id}" data-stock="${esc(v.stock)}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`
           )
           .join("");
         varianteSelect.value = item.variante_id;
@@ -3829,7 +3832,7 @@ async function abrirFichaVenta(id) {
     ["Facturada", venta.facturada ? "Sí" : "No"]
   ];
   document.getElementById("fichaVentaDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor ?? "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor ?? "—")}</dd></div>`)
     .join("");
 
   document.getElementById("fichaVentaCosto").textContent = money(venta.costo_total);
@@ -3842,7 +3845,7 @@ async function abrirFichaVenta(id) {
     .map(
       (i) => `
         <tr>
-          <td data-label="Producto">${i.producto}</td>
+          <td data-label="Producto">${esc(i.producto)}</td>
           <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
           <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
           <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
@@ -3865,7 +3868,7 @@ async function abrirFichaVenta(id) {
       (d) => `
     <tr>
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Estado">${
         d.estado === "anulada"
@@ -3936,7 +3939,7 @@ function renderHistorialPagos(contenedorId, lista) {
   contenedor.innerHTML =
     `<div class="historial-pagos">` +
     lista
-      .map((p) => `<div class="historial-pagos-item"><span>${p.fecha} · ${p.cuenta}</span><span class="mono">${money(p.importe)}</span></div>`)
+      .map((p) => `<div class="historial-pagos-item"><span>${esc(p.fecha)} · ${esc(p.cuenta)}</span><span class="mono">${money(p.importe)}</span></div>`)
       .join("") +
     `</div>`;
 }
@@ -4025,9 +4028,9 @@ function renderDevoluciones(lista) {
       (d) => `
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Cliente">${d.cliente}</td>
-      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
-      <td data-label="Fecha">${d.fecha}</td>
+      <td data-label="Cliente">${esc(d.cliente)}</td>
+      <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
+      <td data-label="Fecha">${esc(d.fecha)}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
@@ -4105,7 +4108,7 @@ async function abrirFichaDevolucion(id) {
     ["Estado", d.estado === "anulada" ? "Anulada" : "Activa"]
   ];
   document.getElementById("fichaDevolucionDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
     .join("");
 
   const acciones = document.getElementById("fichaDevolucionAcciones");
@@ -4171,7 +4174,7 @@ async function abrirFichaDevolucion(id) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Producto">${i.producto}</td>
+      <td data-label="Producto">${esc(i.producto)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
       <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
@@ -4219,14 +4222,12 @@ async function abrirModalDevolucion(ventaId) {
     fila.dataset.ventaItemId = item.id;
     fila.dataset.precio = item.precio_unitario;
     fila.innerHTML = `
-      <span class="devolucion-producto">${item.producto}${
-        item.combinacion ? ` (${item.combinacion})` : ""
+      <span class="devolucion-producto">${esc(item.producto)}${
+        item.combinacion ? ` (${esc(item.combinacion)})` : ""
       } <span class="mono" style="color: var(--ink-muted)">(vendidas: ${numero(
         item.cantidad
       )}, disponibles: ${numero(item.disponible_devolucion)})</span></span>
-      <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${
-        item.disponible_devolucion
-      }" value="0" />
+      <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${esc(item.disponible_devolucion)}" value="0" />
       <label class="form-check">
         <input type="checkbox" class="devolucion-vuelve-stock" checked /> Vuelve al stock
       </label>
@@ -4395,8 +4396,8 @@ function renderCompras(lista) {
       tr.innerHTML = `
         ${selCompras.celda(c.id)}
         <td data-label="N°" class="mono">#${c.id}</td>
-        <td data-label="Proveedor">${c.proveedor}</td>
-        <td data-label="Fecha">${c.fecha}</td>
+        <td data-label="Proveedor">${esc(c.proveedor)}</td>
+        <td data-label="Fecha">${esc(c.fecha)}</td>
         <td data-label="Total" class="align-right mono">${money(c.total)}</td>
         <td data-label="Pago"><span class="status status-pendiente">borrador</span></td>
         <td data-label="Envío">—</td>
@@ -4425,8 +4426,8 @@ function renderCompras(lista) {
     tr.innerHTML = `
       ${selCompras.celda(c.id)}
       <td data-label="N°" class="mono">#${c.id}</td>
-      <td data-label="Proveedor">${c.proveedor}</td>
-      <td data-label="Fecha">${c.fecha}</td>
+      <td data-label="Proveedor">${esc(c.proveedor)}</td>
+      <td data-label="Fecha">${esc(c.fecha)}</td>
       <td data-label="Total" class="align-right mono">${money(c.total)}</td>
       <td data-label="Pago"><span class="status ${ESTADO_PAGO_CLASE[c.estado_pago]}">${ESTADO_PAGO_LABEL[c.estado_pago]}</span></td>
       <td data-label="Envío">${celdaEnvio}</td>
@@ -4745,7 +4746,7 @@ async function abrirModalCompra(compra = null) {
         const variantes = await variantesDeProducto(item.producto_id);
         varianteSelect.innerHTML = variantes
           .filter((v) => v.activo || v.id === item.variante_id)
-          .map((v) => `<option value="${v.id}">${v.combinacion}${v.sku ? ` — ${v.sku}` : ""}</option>`)
+          .map((v) => `<option value="${v.id}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`)
           .join("");
         varianteSelect.value = item.variante_id;
         varianteSelect.hidden = false;
@@ -4849,7 +4850,7 @@ async function abrirFichaCompra(id) {
     ["Pago", `${money(compra.pagado)} de ${money(compra.neto)} (${ESTADO_PAGO_LABEL[compra.estado_pago] ?? compra.estado_pago})`]
   ];
   document.getElementById("fichaCompraDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor ?? "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor ?? "—")}</dd></div>`)
     .join("");
 
   document.getElementById("fichaCompraSubtotal").textContent = money(compra.subtotal);
@@ -4862,7 +4863,7 @@ async function abrirFichaCompra(id) {
     .map(
       (i) => `
         <tr>
-          <td data-label="Producto">${i.producto}</td>
+          <td data-label="Producto">${esc(i.producto)}</td>
           <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
           <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
           <td data-label="Costo real (con envío)" class="align-right mono">${money(i.costo_real_unitario)}</td>
@@ -4885,7 +4886,7 @@ async function abrirFichaCompra(id) {
       (d) => `
     <tr>
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
+      <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Estado">${
         d.estado === "anulada"
@@ -5000,9 +5001,9 @@ function renderDevolucionesProveedor(lista) {
       (d) => `
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Proveedor">${d.proveedor}</td>
-      <td data-label="Productos" class="celda-wrap">${d.items_resumen || "—"}</td>
-      <td data-label="Fecha">${d.fecha}</td>
+      <td data-label="Proveedor">${esc(d.proveedor)}</td>
+      <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
+      <td data-label="Fecha">${esc(d.fecha)}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
@@ -5084,7 +5085,7 @@ async function abrirFichaDevolucionProveedor(id) {
     ["Estado", d.estado === "anulada" ? "Anulada" : "Activa"]
   ];
   document.getElementById("fichaDevolucionProveedorDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
     .join("");
 
   const acciones = document.getElementById("fichaDevolucionProveedorAcciones");
@@ -5151,7 +5152,7 @@ async function abrirFichaDevolucionProveedor(id) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Producto">${i.producto}</td>
+      <td data-label="Producto">${esc(i.producto)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
       <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
@@ -5201,14 +5202,12 @@ async function abrirModalDevolucionProveedor(compraId) {
     fila.dataset.compraItemId = item.id;
     fila.dataset.precio = item.precio_unitario;
     fila.innerHTML = `
-      <span class="devolucion-producto">${item.producto}${
-        item.combinacion ? ` (${item.combinacion})` : ""
+      <span class="devolucion-producto">${esc(item.producto)}${
+        item.combinacion ? ` (${esc(item.combinacion)})` : ""
       } <span class="mono" style="color: var(--ink-muted)">(compradas: ${numero(
         item.cantidad
       )}, disponibles: ${numero(item.disponible_devolucion)})</span></span>
-      <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${
-        item.disponible_devolucion
-      }" value="0" />
+      <input type="number" class="devolucion-cantidad" placeholder="Cant." step="1" min="0" max="${esc(item.disponible_devolucion)}" value="0" />
     `;
     fila.querySelector(".devolucion-cantidad").addEventListener("input", actualizarTotalDevolucionProveedor);
     devolucionProveedorItemsEl.appendChild(fila);
@@ -5345,8 +5344,8 @@ function renderClientes(lista) {
     const contacto = [c.telefono, c.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
       ${selClientes.celda(c.id)}
-      <td data-label="Nombre">${c.nombre}</td>
-      <td data-label="Contacto">${contacto}</td>
+      <td data-label="Nombre">${esc(c.nombre)}</td>
+      <td data-label="Contacto">${esc(contacto)}</td>
       <td data-label="Compras" class="align-right mono">${numero(c.cantidad_compras)}</td>
       <td data-label="Total gastado" class="align-right mono">${money(c.total_gastado)}</td>
       <td data-label="Deuda" class="align-right mono">${money(c.deuda)}</td>
@@ -5370,7 +5369,7 @@ function renderClientes(lista) {
 
 function poblarDatalistClientes() {
   document.getElementById("clientesSugeridos").innerHTML = clientes
-    .map((c) => `<option value="${c.nombre}"></option>`)
+    .map((c) => `<option value="${esc(c.nombre)}"></option>`)
     .join("");
 }
 
@@ -5456,7 +5455,7 @@ async function abrirFichaCliente(id) {
     ["Notas", cliente.notas]
   ];
   document.getElementById("fichaClienteDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
     .join("");
 
   const historialBody = document.getElementById("fichaClienteHistorial");
@@ -5469,7 +5468,7 @@ async function abrirFichaCliente(id) {
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
           <td data-label="N°" class="mono">#${v.id}</td>
-          <td data-label="Fecha">${v.fecha}</td>
+          <td data-label="Fecha">${esc(v.fecha)}</td>
           <td data-label="Total" class="align-right mono">${money(v.total)}</td>
           <td data-label="Cobro"><span class="status ${
             anulada ? "status-vencido" : ESTADO_COBRO_CLASE[v.estado_cobro]
@@ -5576,8 +5575,8 @@ function renderProveedores(lista) {
     const contacto = [p.telefono, p.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
       ${selProveedores.celda(p.id)}
-      <td data-label="Nombre">${p.nombre}</td>
-      <td data-label="Contacto">${contacto}</td>
+      <td data-label="Nombre">${esc(p.nombre)}</td>
+      <td data-label="Contacto">${esc(contacto)}</td>
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
       <td data-label="Total comprado" class="align-right mono">${money(p.total_comprado)}</td>
       <td data-label="Deuda" class="align-right mono">${money(p.deuda)}</td>
@@ -5677,7 +5676,7 @@ async function abrirFichaProveedor(id) {
     ["Notas", proveedor.notas]
   ];
   document.getElementById("fichaProveedorDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
+    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
     .join("");
 
   const historialBody = document.getElementById("fichaProveedorHistorial");
@@ -5697,7 +5696,7 @@ async function abrirFichaProveedor(id) {
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
           <td data-label="N°" class="mono">#${c.id}</td>
-          <td data-label="Fecha">${c.fecha}</td>
+          <td data-label="Fecha">${esc(c.fecha)}</td>
           <td data-label="Total" class="align-right mono">${money(c.total)}</td>
           <td data-label="Pago"><span class="status ${clase}">${etiqueta}</span></td>
         </tr>`;
@@ -5712,11 +5711,11 @@ async function abrirFichaProveedor(id) {
           .map(
             (p) => `
         <tr>
-          <td data-label="Fecha">${p.fecha}</td>
+          <td data-label="Fecha">${esc(p.fecha)}</td>
           <td data-label="Compra" class="mono">#${p.compra_id}</td>
-          <td data-label="Cuenta">${p.cuenta}</td>
+          <td data-label="Cuenta">${esc(p.cuenta)}</td>
           <td data-label="Importe" class="align-right mono">${money(p.importe)}</td>
-          <td data-label="Nota">${p.nota || "—"}</td>
+          <td data-label="Nota">${esc(p.nota || "—")}</td>
         </tr>`
           )
           .join("");
@@ -5806,8 +5805,8 @@ function renderCuentasTesoreria(cuentas) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Cuenta">${c.nombre}</td>
-      <td data-label="Tipo">${TIPO_LABEL[c.tipo] ?? c.tipo}</td>
+      <td data-label="Cuenta">${esc(c.nombre)}</td>
+      <td data-label="Tipo">${esc(TIPO_LABEL[c.tipo] ?? c.tipo)}</td>
       <td data-label="Saldo inicial" class="align-right mono">${money(c.saldo_inicial)}</td>
       <td data-label="Saldo actual" class="align-right mono ${
         c.saldo < 0 ? "saldo-negativo" : ""
@@ -5865,9 +5864,9 @@ function renderMovimientosTesoreria(movimientos) {
       const signo = m.tipo === "ingreso" ? "+" : "-";
       return `
         <tr>
-          <td data-label="Fecha">${m.fecha}</td>
-          <td data-label="Cuenta">${m.cuenta}</td>
-          <td data-label="Concepto">${concepto}</td>
+          <td data-label="Fecha">${esc(m.fecha)}</td>
+          <td data-label="Cuenta">${esc(m.cuenta)}</td>
+          <td data-label="Concepto">${esc(concepto)}</td>
           <td data-label="Importe" class="align-right mono ${
             m.tipo === "egreso" ? "saldo-negativo" : ""
           }">${signo}${money(m.importe)}</td>
@@ -6127,7 +6126,7 @@ function asistenteBadge(ref, { creaSiNoExiste = false } = {}) {
 
 function asistenteNotaCandidatos(candidatos) {
   return candidatos?.length
-    ? `<p class="form-note">Coinciden: ${candidatos.map((c) => c.nombre).join(", ")}</p>`
+    ? `<p class="form-note">Coinciden: ${esc(candidatos.map((c) => c.nombre).join(", "))}</p>`
     : "";
 }
 
@@ -6232,7 +6231,7 @@ formAsistente.addEventListener("submit", async (e) => {
 
 function asistenteRenderRespuesta(turnoEl, data) {
   if (!data.tipo) {
-    turnoEl.innerHTML = `<p>${data.mensaje ?? "No identifiqué ninguna operación en ese texto."}</p>`;
+    turnoEl.innerHTML = `<p>${esc(data.mensaje ?? "No identifiqué ninguna operación en ese texto.")}</p>`;
     return;
   }
 
@@ -6243,7 +6242,7 @@ function asistenteRenderRespuesta(turnoEl, data) {
   if (data.problemas?.length) {
     tarjeta.insertAdjacentHTML(
       "afterbegin",
-      `<p class="form-note asistente-problemas">${data.problemas.join(" · ")}</p>`
+      `<p class="form-note asistente-problemas">${esc(data.problemas.join(" · "))}</p>`
     );
   }
 
@@ -6305,13 +6304,13 @@ function plantillaAsistenteVenta(propuesta) {
       <form class="form">
         <label>
           <span>Cliente ${asistenteBadge(propuesta.cliente, { creaSiNoExiste: true })}</span>
-          <input type="text" class="asistente-cliente" list="clientesSugeridos" value="${clienteNombre}" placeholder="Nombre del cliente" />
+          <input type="text" class="asistente-cliente" list="clientesSugeridos" value="${esc(clienteNombre)}" placeholder="Nombre del cliente" />
         </label>
         <label class="asistente-cliente-ambiguo-wrap" ${propuesta.cliente.estado === "ambiguo" ? "" : "hidden"}>
           <span>Elegí cuál es</span>
           <select class="asistente-cliente-ambiguo">
             <option value="">— elegí uno —</option>
-            ${propuesta.cliente.candidatos.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("")}
+            ${propuesta.cliente.candidatos.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("")}
           </select>
         </label>
 
@@ -6329,12 +6328,12 @@ function plantillaAsistenteVenta(propuesta) {
         </label>
         <label class="asistente-cobro-importe-wrap" ${propuesta.cobro ? "" : "hidden"}>
           <span>Importe cobrado (vacío = el total)</span>
-          <input type="number" class="asistente-cobro-importe" step="0.01" min="0" value="${propuesta.cobro?.importe ?? ""}" />
+          <input type="number" class="asistente-cobro-importe" step="0.01" min="0" value="${esc(propuesta.cobro?.importe ?? "")}" />
         </label>
 
         <label>
           <span>Fecha (vacío = hoy)</span>
-          <input type="date" class="asistente-fecha" value="${propuesta.fecha ?? ""}" />
+          <input type="date" class="asistente-fecha" value="${esc(propuesta.fecha ?? "")}" />
         </label>
 
         <div class="panel-acciones">
@@ -6453,13 +6452,13 @@ function plantillaAsistenteCompra(propuesta) {
       <form class="form">
         <label>
           <span>Proveedor ${asistenteBadge(propuesta.proveedor, { creaSiNoExiste: true })}</span>
-          <input type="text" class="asistente-proveedor" value="${proveedorNombre}" placeholder="Nombre del proveedor" />
+          <input type="text" class="asistente-proveedor" value="${esc(proveedorNombre)}" placeholder="Nombre del proveedor" />
         </label>
         <label class="asistente-proveedor-ambiguo-wrap" ${propuesta.proveedor.estado === "ambiguo" ? "" : "hidden"}>
           <span>Elegí cuál es</span>
           <select class="asistente-proveedor-ambiguo">
             <option value="">— elegí uno —</option>
-            ${propuesta.proveedor.candidatos.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("")}
+            ${propuesta.proveedor.candidatos.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("")}
           </select>
         </label>
 
@@ -6469,11 +6468,11 @@ function plantillaAsistenteCompra(propuesta) {
 
         <label>
           <span>Costo de envío</span>
-          <input type="number" class="asistente-costo-envio" step="0.01" min="0" value="${propuesta.costo_envio ?? 0}" />
+          <input type="number" class="asistente-costo-envio" step="0.01" min="0" value="${esc(propuesta.costo_envio ?? 0)}" />
         </label>
         <label>
           <span>Fecha (vacío = hoy)</span>
-          <input type="date" class="asistente-fecha" value="${propuesta.fecha ?? ""}" />
+          <input type="date" class="asistente-fecha" value="${esc(propuesta.fecha ?? "")}" />
         </label>
 
         <div class="panel-acciones">
@@ -6574,7 +6573,7 @@ function plantillaAsistenteGasto(propuesta) {
         </label>
         <label>
           <span>Importe</span>
-          <input type="number" class="asistente-importe" step="0.01" min="0.01" value="${propuesta.importe ?? ""}" />
+          <input type="number" class="asistente-importe" step="0.01" min="0.01" value="${esc(propuesta.importe ?? "")}" />
         </label>
         <label>
           <span>Tipo</span>
@@ -6587,11 +6586,11 @@ function plantillaAsistenteGasto(propuesta) {
         </label>
         <label>
           <span>Descripción</span>
-          <input type="text" class="asistente-descripcion" value="${propuesta.descripcion ?? ""}" />
+          <input type="text" class="asistente-descripcion" value="${esc(propuesta.descripcion ?? "")}" />
         </label>
         <label>
           <span>Fecha (vacío = hoy)</span>
-          <input type="date" class="asistente-fecha" value="${propuesta.fecha ?? ""}" />
+          <input type="date" class="asistente-fecha" value="${esc(propuesta.fecha ?? "")}" />
         </label>
 
         <div class="panel-acciones">
@@ -6607,7 +6606,7 @@ function activarAsistenteGasto(raiz, propuesta, mensajeId, turnoEl) {
   const categoriaSelect = raiz.querySelector(".asistente-categoria");
   categoriaSelect.innerHTML = categoriasGasto
     .filter((c) => c.activa)
-    .map((c) => `<option value="${c.id}">${c.nombre}</option>`)
+    .map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`)
     .join("");
   if (propuesta.categoria.estado === "resuelto") categoriaSelect.value = propuesta.categoria.id;
 
@@ -6618,7 +6617,7 @@ function activarAsistenteGasto(raiz, propuesta, mensajeId, turnoEl) {
 
   const proveedorSelect = raiz.querySelector(".asistente-proveedor-gasto");
   proveedorSelect.innerHTML =
-    `<option value="">Sin proveedor</option>` + proveedores.map((p) => `<option value="${p.id}">${p.nombre}</option>`).join("");
+    `<option value="">Sin proveedor</option>` + proveedores.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
   if (propuesta.proveedor?.estado === "resuelto") proveedorSelect.value = propuesta.proveedor.id;
 
   raiz.querySelector(".asistente-tipo-gasto").value = propuesta.tipo ?? "";
@@ -6740,15 +6739,13 @@ function renderAuditoria(registros) {
       const detalle = `${r.detalle || "—"}${auditoriaDiffTexto(r.valor_anterior, r.valor_nuevo)}`;
       return `
         <tr>
-          <td data-label="Fecha">${fecha || "—"}${hora ? ` <span class="mono">${hora}</span>` : ""}</td>
-          <td data-label="Acción"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${
-            AUDITORIA_ACCION_LABEL[r.accion] || r.accion
-          }</span></td>
-          <td data-label="Entidad">${AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad}</td>
+          <td data-label="Fecha">${esc(fecha || "—")}${hora ? ` <span class="mono">${esc(hora)}</span>` : ""}</td>
+          <td data-label="Acción"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${esc(AUDITORIA_ACCION_LABEL[r.accion] || r.accion)}</span></td>
+          <td data-label="Entidad">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}</td>
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
-          <td data-label="Detalle" class="celda-wrap">${detalle}</td>
-          <td data-label="Origen" class="mono">${AUDITORIA_ACTOR_LABEL[r.actor] || r.actor}</td>
-          <td data-label="Usuario">${r.usuario_nombre ?? "—"}</td>
+          <td data-label="Detalle" class="celda-wrap">${esc(detalle)}</td>
+          <td data-label="Origen" class="mono">${esc(AUDITORIA_ACTOR_LABEL[r.actor] || r.actor)}</td>
+          <td data-label="Usuario">${esc(r.usuario_nombre ?? "—")}</td>
         </tr>`;
     })
     .join("");
@@ -6811,10 +6808,10 @@ function renderAuditoriaMovimientos(movimientos) {
       const importeFmt = m.tipoLabel === "Stock" ? numero(Math.abs(m.importe)) : money(Math.abs(m.importe));
       return `
         <tr>
-          <td data-label="Fecha">${m.fecha}</td>
-          <td data-label="Tipo">${m.tipoLabel}</td>
-          <td data-label="Concepto">${m.concepto}</td>
-          <td data-label="Importe" class="align-right mono">${m.signo}${importeFmt}</td>
+          <td data-label="Fecha">${esc(m.fecha)}</td>
+          <td data-label="Tipo">${esc(m.tipoLabel)}</td>
+          <td data-label="Concepto">${esc(m.concepto)}</td>
+          <td data-label="Importe" class="align-right mono">${esc(m.signo)}${importeFmt}</td>
         </tr>`;
     })
     .join("");
@@ -6950,10 +6947,10 @@ function renderPapelera() {
     .map(
       (d) => `
     <tr>
-      <td data-label="Tipo">${d.tipo}</td>
+      <td data-label="Tipo">${esc(d.tipo)}</td>
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Fecha">${d.fecha}</td>
-      <td data-label="Cliente / Proveedor">${d.quien}</td>
+      <td data-label="Fecha">${esc(d.fecha)}</td>
+      <td data-label="Cliente / Proveedor">${esc(d.quien)}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label=""><button type="button" class="btn-fila btn-restaurar"
         data-tipo="${
