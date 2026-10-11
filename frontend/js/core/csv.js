@@ -35,9 +35,16 @@ const BOM_UTF8 = "﻿";
 // (no se escapan con backslash). El caso real que esto resuelve es
 // items_resumen, que viene del backend como "2 × Remera, 3 × Pantalón" — con
 // comas adentro: sin comillas, cada venta se partiría en columnas de más.
+//
+// Inyección de fórmulas: Excel interpreta como fórmula una celda de texto que
+// empieza con = + - @ (o tab/CR), así que un cliente llamado
+// `=HYPERLINK("http://…")` se ejecutaba al abrir el export. Los textos que
+// empiezan así llevan un apóstrofo adelante (Excel lo oculta). Los números
+// van tal cual: -1500 es un importe, no una fórmula.
 function celdaCSV(valor) {
   if (valor === null || valor === undefined) return "";
-  const texto = String(valor);
+  let texto = String(valor);
+  if (typeof valor !== "number" && /^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`;
   const necesitaComillas =
     texto.includes(SEPARADOR_CSV) ||
     texto.includes('"') ||

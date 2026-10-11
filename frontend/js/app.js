@@ -10,7 +10,7 @@
 import { crearFiltros, rangoDeFiltroFecha } from "./core/filtros.js";
 import { ICONO_TACHO, botonEditarFila, columnasVisibles, esAdmin, esc, hoyISO, money, moneyCorto, numero } from "./core/formato.js";
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
-import { api } from "./core/api.js";
+import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
 import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
@@ -77,7 +77,7 @@ async function cargarResumen() {
   // toda mutación), así que tiene que quedar al día ya. La evolución
   // (gráfico + tabla + deltas) es una vista más profunda que puede llegar
   // unos milisegundos después sin que nadie lo note.
-  cargarEvolucion().catch(() => {});
+  refrescar([cargarEvolucion()]);
 }
 
 // Métrica → si "subir" es una mejora. Para gastos es al revés que para el
@@ -336,7 +336,7 @@ const filtrosResumen = crearFiltros(
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
 async function cargarPanelResumen() {
-  await Promise.all([cargarResumen(), cargarReporteVentas(), cargarReporteCompras()]);
+  await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras()]);
 }
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
@@ -954,7 +954,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
     error: "No se pudo registrar la factura."
   });
 
-  await cargarFacturas();
+  await refrescar([cargarFacturas()]);
   form.reset();
   modal.hidden = true;
   avisar(`${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${id} registrada.`, "ok");
@@ -988,9 +988,14 @@ function listaPrecioDelFormulario(contenedor) {
 const variantesPorProductoCache = new Map();
 async function variantesDeProducto(productoId) {
   if (!variantesPorProductoCache.has(productoId)) {
+    // Si falla no queda cacheada la promesa rechazada: el próximo intento
+    // vuelve a pedirla.
     variantesPorProductoCache.set(
       productoId,
-      api(`/api/productos/${productoId}/variantes`)
+      api(`/api/productos/${productoId}/variantes`).catch((e) => {
+        variantesPorProductoCache.delete(productoId);
+        throw e;
+      })
     );
   }
   return variantesPorProductoCache.get(productoId);
@@ -1457,7 +1462,7 @@ function activarEdicionPrecio(span) {
         error: "No se pudo actualizar el precio."
       });
     } finally {
-      await cargarProductos();
+      await refrescar([cargarProductos()]);
     }
   };
 
@@ -1806,7 +1811,7 @@ formBulkProductos.addEventListener("submit", async (e) => {
     error: "No se pudo aplicar la edición en lote."
   });
 
-  await Promise.all([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+  await refrescar([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
 
   const huboFallos = mostrarResultadoBulk(resultado, {
     bloque: bulkProductosResultado,
@@ -1970,7 +1975,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   // categoria_id también puede cambiar acá, y "Ventas por categoría" (en
   // Qué se vende) agrupa por la categoría ACTUAL del producto, no por una
   // foto histórica — así que también hay que refrescarlo.
-  await Promise.all([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+  await refrescar([cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
   // Si se editaba desde la ficha, se refresca para que muestre los datos
   // nuevos en vez de quedar con los viejos detrás del modal.
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
@@ -2050,7 +2055,7 @@ function renderVariantesAtributos() {
         method: "DELETE",
         error: "No se pudo eliminar el atributo."
       });
-      await cargarVariantesModal();
+      await refrescar([cargarVariantesModal()]);
     });
   });
 
@@ -2060,7 +2065,7 @@ function renderVariantesAtributos() {
         method: "DELETE",
         error: "No se pudo eliminar el valor."
       });
-      await cargarVariantesModal();
+      await refrescar([cargarVariantesModal()]);
     });
   });
 
@@ -2073,7 +2078,7 @@ function renderVariantesAtributos() {
         body: { valor: input.value },
         error: "No se pudo agregar el valor."
       });
-      await cargarVariantesModal();
+      await refrescar([cargarVariantesModal()]);
     });
   });
 }
@@ -2142,7 +2147,7 @@ function renderVariantesTabla() {
         body: body,
         error: "No se pudo guardar la variante."
       });
-      await Promise.all([cargarVariantesModal(), cargarProductos()]);
+      await refrescar([cargarVariantesModal(), cargarProductos()]);
       if (productoFichaId === variantesProductoId) await abrirFichaProducto(productoFichaId);
       avisar("Variante actualizada.", "ok");
     });
@@ -2153,7 +2158,7 @@ document.getElementById("btnVariantesProducto").addEventListener("click", async 
   variantesProductoId = productoFichaId;
   const producto = productos.find((p) => p.id === productoFichaId);
   document.getElementById("modalVariantesProductoTitulo").textContent = `Variantes de "${producto?.nombre ?? ""}"`;
-  await cargarVariantesModal();
+  await refrescar([cargarVariantesModal()]);
   modalVariantesProducto.hidden = false;
 });
 document.getElementById("modalVariantesProductoClose").addEventListener("click", () => {
@@ -2172,7 +2177,7 @@ document.getElementById("formAtributoProducto").addEventListener("submit", async
     error: "No se pudo agregar el atributo."
   });
   form.reset();
-  await cargarVariantesModal();
+  await refrescar([cargarVariantesModal()]);
 });
 
 // Arma el producto cartesiano de los valores actuales de cada atributo y
@@ -2224,7 +2229,7 @@ document.getElementById("btnGenerarVariantes").addEventListener("click", async (
     else fallidas++;
   }
 
-  await Promise.all([cargarVariantesModal(), cargarProductos()]);
+  await refrescar([cargarVariantesModal(), cargarProductos()]);
   if (productoFichaId === variantesProductoId) await abrirFichaProducto(productoFichaId);
   avisar(
     fallidas > 0
@@ -2301,7 +2306,7 @@ document.getElementById("formCategoriaProducto").addEventListener("submit", asyn
   const eraEdicion = Boolean(editandoId);
   // Una categoría nueva o renombrada cambia el select del formulario de
   // producto y el agrupamiento de "Ventas por categoría".
-  await Promise.all([cargarProductos(), cargarPanelResumen()]);
+  await refrescar([cargarProductos(), cargarPanelResumen()]);
   renderCategoriasProductos();
   form.reset();
   form.id.value = "";
@@ -2358,7 +2363,7 @@ function renderListasPrecios() {
         body: { nombre: lista.nombre, activa: true, es_predeterminada: true },
         error: "No se pudo marcar la lista como predeterminada."
       });
-      await cargarProductos();
+      await refrescar([cargarProductos()]);
       renderListasPrecios();
       avisar(`"${lista.nombre}" es ahora la lista predeterminada.`, "ok");
     });
@@ -2393,7 +2398,7 @@ document.getElementById("formListaPrecio").addEventListener("submit", async (e) 
   const eraEdicion = Boolean(editandoId);
   // Una lista nueva o renombrada cambia el select del modal de producto y
   // los de Venta/Presupuesto.
-  await cargarProductos();
+  await refrescar([cargarProductos()]);
   renderListasPrecios();
   form.reset();
   form.id.value = "";
@@ -2450,7 +2455,7 @@ function renderDepositos() {
         body: { nombre: deposito.nombre, direccion: deposito.direccion, activo: true, es_predeterminado: true },
         error: "No se pudo marcar el depósito como predeterminado."
       });
-      await cargarProductos();
+      await refrescar([cargarProductos()]);
       renderDepositos();
       avisar(`"${deposito.nombre}" es ahora el depósito predeterminado.`, "ok");
     });
@@ -2485,7 +2490,7 @@ document.getElementById("formDeposito").addEventListener("submit", async (e) => 
   const eraEdicion = Boolean(editandoId);
   // Un depósito nuevo o renombrado cambia los selects de Venta, Compra,
   // Ajuste de stock y Transferencia.
-  await Promise.all([cargarProductos(), cargarStock()]);
+  await refrescar([cargarProductos(), cargarStock()]);
   renderDepositos();
   form.reset();
   form.id.value = "";
@@ -2718,7 +2723,7 @@ async function cargarStock() {
   );
   filtrosStockMov.setOpciones("deposito_id", opcionesDeposito);
   filtrarStock();
-  await Promise.all([cargarMovimientosStock(), cargarTransferencias()]);
+  await refrescar([cargarMovimientosStock(), cargarTransferencias()]);
 }
 
 document.getElementById("stockSearch").addEventListener("input", filtrarStock);
@@ -2765,7 +2770,7 @@ document.getElementById("formAjusteStock").addEventListener("submit", async (e) 
     error: "No se pudo registrar el ajuste."
   });
 
-  await Promise.all([cargarStock(), cargarProductos(), cargarReporteStock()]);
+  await refrescar([cargarStock(), cargarProductos(), cargarReporteStock()]);
   form.reset();
   modalAjusteStock.hidden = true;
   avisar("Stock ajustado.", "ok");
@@ -2815,7 +2820,7 @@ function renderTransferencias(lista) {
         method: "POST",
         error: "No se pudo anular la transferencia."
       });
-      await cargarStock();
+      await refrescar([cargarStock()]);
       avisar("Transferencia anulada.", "ok");
     });
   });
@@ -2859,7 +2864,7 @@ document.getElementById("formTransferenciaDeposito").addEventListener("submit", 
     error: "No se pudo registrar la transferencia."
   });
 
-  await cargarStock();
+  await refrescar([cargarStock()]);
   form.reset();
   modalTransferenciaDeposito.hidden = true;
   avisar("Transferencia registrada.", "ok");
@@ -3148,7 +3153,7 @@ async function abrirFichaPresupuesto(id) {
           body: { estado: btn.dataset.estado },
           error: "No se pudo cambiar el estado."
         });
-        await cargarPresupuestos();
+        await refrescar([cargarPresupuestos()]);
         await abrirFichaPresupuesto(p.id);
       });
     });
@@ -3167,7 +3172,7 @@ async function abrirFichaPresupuesto(id) {
       });
       avisar(`Presupuesto #${p.id} convertido en venta.`, "ok");
       // La conversión mueve stock, cuenta corriente y resultado.
-      await Promise.all([
+      await refrescar([
         cargarPresupuestos(),
         cargarVentas(),
         cargarStock(),
@@ -3340,7 +3345,7 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
 
   const idEditado = presupuestoEditandoId;
   // Puede haber creado un cliente nuevo; el stock no se toca nunca acá.
-  await Promise.all([cargarPresupuestos(), cargarClientes()]);
+  await refrescar([cargarPresupuestos(), cargarClientes()]);
   form.reset();
   modalPresupuesto.hidden = true;
   if (idEditado) await abrirFichaPresupuesto(idEditado);
@@ -3426,7 +3431,7 @@ function renderVentas(lista) {
         error: "No se pudo anular la venta."
       });
       avisar(`Venta #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
+      await refrescar([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
     });
   });
 
@@ -3769,7 +3774,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   });
 
   const idEditado = ventaEditandoId;
-  await Promise.all([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
+  await refrescar([cargarVentas(), cargarStock(), cargarProductos(), cargarClientes(), recargar("cuentasCorrientes"), cargarPanelResumen(), cargarReporteStock()]);
   form.reset();
   modalVenta.hidden = true;
   // Si se estaba editando desde la ficha, volver a esa ficha con los
@@ -3886,7 +3891,7 @@ document.getElementById("formFacturarVenta").addEventListener("submit", async (e
     error: "No se pudo generar la factura."
   });
 
-  await Promise.all([cargarVentas(), cargarFacturas()]);
+  await refrescar([cargarVentas(), cargarFacturas()]);
   avisar(`Venta #${ventaAFacturarId} facturada.`, "ok");
   ventaAFacturarId = null;
   modalFacturarVenta.hidden = true;
@@ -3949,7 +3954,7 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
 
   // Un cobro entra plata en una cuenta y baja la deuda del cliente, así
   // que Caja y Clientes también quedan desactualizados.
-  await Promise.all([cargarVentas(), cargarCaja(), cargarClientes(), recargar("cuentasCorrientes")]);
+  await refrescar([cargarVentas(), cargarCaja(), cargarClientes(), recargar("cuentasCorrientes")]);
   form.reset();
   modalCobrarVenta.hidden = true;
   avisar("Cobro registrado.", "ok");
@@ -4121,7 +4126,7 @@ async function abrirFichaDevolucion(id) {
         error: "No se pudo anular la devolución."
       });
       avisar(`Devolución #${d.id} anulada.`, "ok");
-      await Promise.all([
+      await refrescar([
         cargarDevoluciones(),
         cargarVentas(),
         cargarStock(),
@@ -4265,7 +4270,7 @@ document.getElementById("formDevolucion").addEventListener("submit", async (e) =
   avisar("Devolución registrada.", "ok");
 
   // Toca stock, cuenta corriente, caja (si hubo reintegro) y el resultado.
-  await Promise.all([
+  await refrescar([
     cargarDevoluciones(),
     cargarVentas(),
     cargarStock(),
@@ -4306,7 +4311,7 @@ document.getElementById("formNotaCredito").addEventListener("submit", async (e) 
     error: "No se pudo emitir la nota de crédito."
   });
 
-  await Promise.all([cargarDevoluciones(), cargarFacturas()]);
+  await refrescar([cargarDevoluciones(), cargarFacturas()]);
   modalNotaCredito.hidden = true;
   await abrirFichaDevolucion(devolucionANotaCreditoId);
   avisar("Nota de crédito emitida.", "ok");
@@ -4414,7 +4419,7 @@ function renderCompras(lista) {
         error: "No se pudo efectuar el pedido."
       });
       avisar(`Compra #${btn.dataset.id} efectuada.`, "ok");
-      await Promise.all([cargarCompras(), cargarProveedores(), recargar("cuentasCorrientes")]);
+      await refrescar([cargarCompras(), cargarProveedores(), recargar("cuentasCorrientes")]);
     });
   });
 
@@ -4437,7 +4442,7 @@ function renderCompras(lista) {
         error: "No se pudo anular la compra."
       });
       avisar(`Compra #${btn.dataset.id} anulada.`, "ok");
-      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
+      await refrescar([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
     });
   });
 
@@ -4450,7 +4455,7 @@ function renderCompras(lista) {
           aceptar: "Marcar recibida"
         }))
       ) {
-        await cargarCompras();
+        await refrescar([cargarCompras()]);
         return;
       }
       await api(`/api/compras/${select.dataset.id}/estado-envio`, {
@@ -4459,12 +4464,12 @@ function renderCompras(lista) {
         error: "No se pudo cambiar el estado de envío."
       }).catch(async (e) => {
         // El select ya muestra el estado nuevo: se repinta con el real.
-        await cargarCompras();
+        await refrescar([cargarCompras()]);
         throw e;
       });
       // Recibir una compra mueve stock y costo, así que hay que refrescar
       // esas pantallas también.
-      await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarReporteStock()]);
+      await refrescar([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), cargarReporteStock()]);
     });
   });
 }
@@ -4615,7 +4620,7 @@ formBulkEstadoEnvio.addEventListener("submit", async (e) => {
     error: "No se pudo aplicar el cambio de estado en lote."
   });
 
-  await Promise.all([cargarCompras(), cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
+  await refrescar([cargarCompras(), cargarProductos(), cargarReporteStock(), cargarPanelResumen()]);
 
   const huboFallos = mostrarResultadoBulk(resultado, {
     bloque: bulkEstadoEnvioResultado,
@@ -4778,7 +4783,7 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
   });
 
   const idEditado = compraEditandoId;
-  await Promise.all([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
+  await refrescar([cargarCompras(), cargarStock(), cargarProductos(), cargarProveedores(), recargar("cuentasCorrientes"), cargarReporteStock()]);
   form.reset();
   modalCompra.hidden = true;
   if (idEditado) await abrirFichaCompra(idEditado);
@@ -4911,7 +4916,7 @@ document.getElementById("formPagarCompra").addEventListener("submit", async (e) 
   });
 
   // Un pago saca plata de una cuenta y baja la deuda con el proveedor.
-  await Promise.all([cargarCompras(), cargarCaja(), cargarProveedores(), recargar("cuentasCorrientes")]);
+  await refrescar([cargarCompras(), cargarCaja(), cargarProveedores(), recargar("cuentasCorrientes")]);
   form.reset();
   modalPagarCompra.hidden = true;
   avisar("Pago registrado.", "ok");
@@ -5088,7 +5093,7 @@ async function abrirFichaDevolucionProveedor(id) {
         error: "No se pudo anular la devolución."
       });
       avisar(`Devolución #${d.id} anulada.`, "ok");
-      await Promise.all([
+      await refrescar([
         cargarDevolucionesProveedor(),
         cargarCompras(),
         cargarStock(),
@@ -5225,7 +5230,7 @@ document.getElementById("formDevolucionProveedor").addEventListener("submit", as
   avisar("Devolución registrada.", "ok");
 
   // Toca stock, costo, cuenta corriente y caja (si hubo reintegro).
-  await Promise.all([
+  await refrescar([
     cargarDevolucionesProveedor(),
     cargarCompras(),
     cargarStock(),
@@ -5262,7 +5267,7 @@ document.getElementById("formNotaCreditoProveedor").addEventListener("submit", a
     error: "No se pudo guardar la nota de crédito."
   });
 
-  await cargarDevolucionesProveedor();
+  await refrescar([cargarDevolucionesProveedor()]);
   modalNotaCreditoProveedor.hidden = true;
   await abrirFichaDevolucionProveedor(devolucionProveedorANotaCreditoId);
   avisar("Nota de crédito guardada.", "ok");
@@ -5485,7 +5490,7 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
   });
 
   const eraEdicion = clienteEditandoId !== null;
-  await cargarClientes();
+  await refrescar([cargarClientes()]);
   if (eraEdicion && clienteFichaId) await abrirFichaCliente(clienteFichaId);
   form.reset();
   modalCliente.hidden = true;
@@ -5723,7 +5728,7 @@ document.getElementById("formProveedor").addEventListener("submit", async (e) =>
   });
 
   const eraEdicion = proveedorEditandoId !== null;
-  await cargarProveedores();
+  await refrescar([cargarProveedores()]);
   if (eraEdicion && proveedorFichaId) await abrirFichaProveedor(proveedorFichaId);
   form.reset();
   modalProveedor.hidden = true;
@@ -5918,7 +5923,7 @@ document.getElementById("formCuenta").addEventListener("submit", async (e) => {
   });
 
   const eraEdicion = cuentaEditandoId !== null;
-  await cargarCaja();
+  await refrescar([cargarCaja()]);
   form.reset();
   modalCuenta.hidden = true;
   avisar(eraEdicion ? "Cuenta actualizada." : "Cuenta creada.", "ok");
@@ -5958,7 +5963,7 @@ document.getElementById("formMovimientoCaja").addEventListener("submit", async (
     error: "No se pudo registrar el movimiento."
   });
 
-  await cargarCaja();
+  await refrescar([cargarCaja()]);
   form.reset();
   modalMovimientoCaja.hidden = true;
   avisar("Movimiento registrado.", "ok");
@@ -6005,7 +6010,7 @@ document.getElementById("formTransferencia").addEventListener("submit", async (e
     error: "No se pudo hacer la transferencia."
   });
 
-  await cargarCaja();
+  await refrescar([cargarCaja()]);
   form.reset();
   modalTransferencia.hidden = true;
   avisar("Transferencia registrada.", "ok");
@@ -6205,7 +6210,7 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
   // Toda la cascada real la hizo el backend; acá solo hace falta refrescar
   // los caches que la operación pudo haber tocado, para que el resto de
   // las pantallas no queden desactualizadas hasta el próximo F5.
-  await Promise.all([
+  await refrescar([
     cargarVentas(),
     cargarCompras(),
     recargar("gastos"),
@@ -6223,10 +6228,12 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
 async function asistenteDescartar(mensajeId, turnoEl) {
   if (mensajeId) {
     // Si el servidor no lo registra, se avisa pero la tarjeta se descarta igual.
-    await api(`/api/asistente/${mensajeId}/descartar`, {
-      method: "POST",
-      error: "No se pudo registrar el descarte en el servidor."
-    }).catch(() => {});
+    await refrescar([
+      api(`/api/asistente/${mensajeId}/descartar`, {
+        method: "POST",
+        error: "No se pudo registrar el descarte en el servidor."
+      })
+    ]);
   }
   turnoEl.innerHTML = `<p class="asistente-resuelto asistente-descartado">Descartada.</p>`;
 }
@@ -6844,8 +6851,8 @@ async function cargarAuditoria() {
   renderAuditoriaMovimientos(filtrosAuditoriaMov.aplicar(auditoriaMovCache));
 }
 
-document.getElementById("btnActualizarAuditoria").addEventListener("click", () => {
-  cargarAuditoria();
+document.getElementById("btnActualizarAuditoria").addEventListener("click", async () => {
+  await cargarAuditoria();
   avisar("Auditoría actualizada.", "ok");
 });
 
@@ -6911,7 +6918,7 @@ function renderPapelera() {
         method: "POST",
         error: "No se pudo restaurar el documento."
       });
-      await Promise.all([
+      await refrescar([
         cargarVentas(),
         cargarCompras(),
         recargar("gastos"),
@@ -6945,17 +6952,17 @@ registrar("render:papelera", renderPapelera);
 // recargar("negocio") va en la primera ola: no depende de nada y la impresión de
 // comprobantes necesita el membrete listo antes del primer click en Imprimir.
 // Facturas tampoco depende de ningún caché.
-// Si una carga falla, api() ya avisó con un toast y el resto de la cadena se
-// corta (las olas siguientes leen los cachés de la anterior). El .catch solo
-// agrega cómo seguir; lo que ya se pintó queda en pantalla.
-Promise.all([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), cargarFacturas()])
-  .then(() => Promise.all([recargar("gastos"), cargarProductos()]))
-  .then(() => Promise.all([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
-  .then(() => cargarDevolucionesProveedor())
-  .then(() => Promise.all([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]))
+// Cada ola usa refrescar(): si una carga falla, api() ya la avisó con un toast
+// y las demás siguen (la pantalla de esa carga queda vacía, no toda la app).
+// Solo un error inesperado (un bug al pintar) corta la cadena.
+refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), cargarFacturas()])
+  .then(() => refrescar([recargar("gastos"), cargarProductos()]))
+  .then(() => refrescar([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
+  .then(() => refrescar([cargarDevolucionesProveedor()]))
+  .then(() => refrescar([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]))
   .catch((e) => {
     avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");
-    if (!e?.yaAvisado) throw e;
+    throw e;
   });
 
 /* ---------- Tema claro / oscuro ---------- */

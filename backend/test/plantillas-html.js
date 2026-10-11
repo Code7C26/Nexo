@@ -96,7 +96,9 @@ export function plantillas(texto) {
   };
 
   leerCodigo(null, null);
-  const esHtml = (p) => /<\/?[a-zA-Z]/.test(p.estatico) || (p.padre !== null && esHtml(p.padre));
+  // `="` también cuenta: un template que arma solo atributos
+  // (`data-x="${…}" title="${…}"`) termina igual adentro de una etiqueta.
+  const esHtml = (p) => /<\/?[a-zA-Z]|="/.test(p.estatico) || (p.padre !== null && esHtml(p.padre));
   return salida.map((p) => ({ pos: p.pos, estatico: p.estatico, exprs: p.exprs, html: esHtml(p) }));
 }
 
@@ -136,6 +138,19 @@ function blanquear(expr) {
 const METODOS_DE_TEXTO = new Set(['split', 'slice', 'trim', 'toUpperCase', 'toLowerCase', 'replace', 'replaceAll', 'substring', 'padStart', 'padEnd', 'at', 'toString', 'concat']);
 const METODOS_DE_LISTA = /^\s*\.\s*(map|filter|forEach|find|some|every|reduce|flatMap|sort)\b/;
 const esId = (campo) => campo === 'id' || campo.endsWith('_id');
+// Formateadores que devuelven texto seguro: esc() y los que formatean números.
+// Más las funciones propias que escapan adentro lo que reciben (verificado a
+// mano: si una de estas deja de escapar, hay que sacarla de la lista).
+const FUNCIONES_SEGURAS = new Set([
+  'esc', 'money', 'numero', 'moneyCorto', 'porcentaje', 'Number',
+  'lineaSiHay', // core/comprobante.js
+  'asistenteBadge', // app.js: solo lee ref.estado para elegir un texto fijo
+  'ccTextoDias', // dominios/cuentas-corrientes.js: recibe un número
+  'inputValor' // core/filtros.js: escapa el valor del input; en el select solo lo compara
+]);
+const esFuncionSegura = (nombre) => FUNCIONES_SEGURAS.has(nombre) || /^Math\.\w+$/.test(nombre);
+const COMPARACION_DESPUES = /^\s*(\?(?![.?])|===|!==|==|!=|>=|<=|>|<|&&)/;
+const COMPARACION_ANTES = /(===|!==|==|!=|>=|<=|>|<|!)\s*$/;
 
 // Devuelve los `x.campo` que una expresión imprime sin pasar por esc().
 export function camposCrudos(expr) {
@@ -147,33 +162,41 @@ export function camposCrudos(expr) {
     const antes = b.slice(0, m.index);
     const despues = b.slice(m.index + m[0].length);
 
-    // ¿Está adentro de una llamada o de un índice? Se busca el paréntesis o
-    // corchete abierto más cercano que lo contiene.
+    // Paréntesis y corchetes que lo encierran, del más cercano al más lejano.
+    const contenedores = [];
     let prof = 0;
-    let contenedor = null;
     for (let k = m.index - 1; k >= 0; k--) {
       const c = b[k];
       if (c === ')' || c === ']') prof++;
       else if (c === '(' || c === '[') {
-        if (prof === 0) {
-          contenedor = { tipo: c, pos: k, funcion: b.slice(0, k).match(/([\w$.]+)\s*$/)?.[1] ?? '' };
-          break;
+        if (prof > 0) {
+          prof--;
+          continue;
         }
-        prof--;
+        let p = 0;
+        let cierre = k;
+        for (; cierre < b.length; cierre++) {
+          if (b[cierre] === c) p++;
+          else if (b[cierre] === (c === '(' ? ')' : ']') && --p === 0) break;
+        }
+        const funcion = c === '(' ? b.slice(0, k).match(/([\w$.]+)\s*$/)?.[1] ?? '' : '';
+        contenedores.push({ tipo: c, inicio: k - funcion.length, cierre, funcion });
       }
     }
-    if (contenedor?.tipo === '[') continue; // índice: TIPO_LABEL[x.tipo]
-    if (contenedor?.funcion) continue; // argumento: lo resuelve esa función (esc, money, propias)
-    if (contenedor) {
-      // Paréntesis sueltos: `(x.lista ?? []).map(...)` recorre, no imprime.
-      let p = 0;
-      let k = contenedor.pos;
-      for (; k < b.length; k++) {
-        if (b[k] === '(') p++;
-        else if (b[k] === ')' && --p === 0) break;
-      }
-      if (METODOS_DE_LISTA.test(b.slice(k + 1))) continue;
-    }
+    // Índice (TIPO_LABEL[x.tipo]), argumento de un formateador seguro en
+    // cualquier nivel (`esc(textoValor(x.valor))`), o un grupo que se recorre
+    // (`(x.lista ?? []).map(...)`) o se compara (`String(o.valor) === v`):
+    // en todos esos casos el campo no se imprime crudo. Una función propia
+    // que no está en la lista (`${fmt(c.nombre)}`) no exime.
+    const exento = contenedores.some(
+      (c) =>
+        c.tipo === '[' ||
+        esFuncionSegura(c.funcion) ||
+        METODOS_DE_LISTA.test(b.slice(c.cierre + 1)) ||
+        COMPARACION_DESPUES.test(b.slice(c.cierre + 1)) ||
+        COMPARACION_ANTES.test(b.slice(0, c.inicio))
+    );
+    if (exento) continue;
 
     if (/^\s*\(/.test(despues)) {
       // Es una llamada `x.metodo(...)`: solo imprime el dato si es un método
@@ -188,8 +211,8 @@ export function camposCrudos(expr) {
     if (/^[A-Z][A-Z0-9_]*$/.test(cadena.split(/\??\./)[0])) continue; // constante del código: MARGEN.left
     if (/^\s*\.\s*length\b/.test(despues)) continue;
     // Condición o comparación: el valor no se imprime.
-    if (/^\s*(\?(?![.?])|===|!==|==|!=|>=|<=|>|<|&&)/.test(despues)) continue;
-    if (/(===|!==|==|!=|>=|<=|>|<|!)\s*$/.test(antes)) continue;
+    if (COMPARACION_DESPUES.test(despues)) continue;
+    if (COMPARACION_ANTES.test(antes)) continue;
     crudos.push(cadena);
   }
   return crudos;

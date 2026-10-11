@@ -51,5 +51,22 @@ export async function api(url, { method = "GET", body, error = "No se pudo compl
 
   // 204 (y cualquier respuesta sin cuerpo) no es un error: no hay nada que leer.
   const texto = await res.text();
-  return texto ? JSON.parse(texto) : null;
+  if (!texto) return null;
+  try {
+    return JSON.parse(texto);
+  } catch {
+    avisar(error, "error");
+    throw new ErrorApi(`Respuesta no JSON: ${method} ${url}`);
+  }
+}
+
+// Recarga de pantallas después de una escritura (y olas del arranque): espera
+// todas las cargas y no corta por las que ya avisó api(). Sin esto, una venta
+// que se guardó bien pero cuyo refresco de stock falla dejaba el modal abierto
+// con un toast de error, y el usuario la volvía a enviar (venta duplicada).
+// Un error que no viene de api() (un bug al pintar) se relanza igual.
+export async function refrescar(cargas) {
+  const resultados = await Promise.allSettled(cargas);
+  const inesperado = resultados.find((r) => r.status === "rejected" && !(r.reason instanceof ErrorApi));
+  if (inesperado) throw inesperado.reason;
 }

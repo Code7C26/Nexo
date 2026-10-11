@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { sinEscapar } from './plantillas-html.js';
+import { plantillas, sinEscapar } from './plantillas-html.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ_JS = path.join(__dirname, '..', '..', 'frontend', 'js');
@@ -231,6 +231,13 @@ test('el chequeo de escape detecta un campo crudo (control)', () => {
   assert.deepEqual(sinEscapar(anidado).map((h) => h.campo), ['i.nombre']);
   const unido = 'x.innerHTML = `<p>${data.problemas.join(" · ")}</p><div>${acciones.join("")}</div>`;';
   assert.deepEqual(sinEscapar(unido).map((h) => h.campo), ['data.problemas.join']);
+  // Huecos que encontró la revisión de seguridad de hist. §58.
+  const funcionPropia = 'x.innerHTML = `<td>${fmt(c.nombre)}</td><td>${String(c.sku)}</td>`;';
+  assert.deepEqual(sinEscapar(funcionPropia).map((h) => h.campo), ['c.nombre', 'c.sku']);
+  const soloAtributos = 'const a = `data-nombre="${c.nombre}"`;';
+  assert.deepEqual(sinEscapar(soloAtributos).map((h) => h.campo), ['c.nombre']);
+  const anidadoEnEsc = 'x.innerHTML = `<b>${esc(textoValor(f.valor))}</b><option ${String(o.valor) === v ? "selected" : ""}>`;';
+  assert.deepEqual(sinEscapar(anidadoEnEsc), []);
 });
 
 test('todo campo impreso en HTML pasa por esc()', () => {
@@ -261,4 +268,31 @@ test('todo getElementById("literal") apunta a un id que existe', () => {
     }
   }
   assert.deepEqual(faltantes, [], `Ids que no existen:\n${faltantes.join('\n')}`);
+});
+
+test('quitar cualquier esc(x.campo) real del frontend hace fallar el chequeo (mutación)', () => {
+  // El control de arriba prueba cadenas sintéticas; esto prueba el código
+  // real: si el analizador dejara de ver alguno de los esc() que hoy protegen
+  // un campo, sacarlo pasaría el test en silencio.
+  const noDetectados = [];
+  let mutaciones = 0;
+  for (const [archivo] of modulos) {
+    const original = readFileSync(archivo, 'utf8');
+    const base = sinEscapar(original).length;
+    // Solo los esc() que están dentro de un ${…} de un template HTML: uno
+    // afuera (en un arreglo de pares, en un return) no es asunto del chequeo.
+    const enTemplate = plantillas(original)
+      .filter((p) => p.html)
+      .flatMap((p) => p.exprs.map((e) => [e.pos, e.pos + e.texto.length]));
+    for (const m of original.matchAll(/\besc\(([\w$]+(?:\??\.[\w$]+)+)\)/g)) {
+      if (!enTemplate.some(([desde, hasta]) => m.index >= desde && m.index < hasta)) continue;
+      const mutado = original.slice(0, m.index) + m[1] + original.slice(m.index + m[0].length);
+      mutaciones++;
+      if (sinEscapar(mutado).length === base) {
+        noDetectados.push(`${rel(archivo)}:${original.slice(0, m.index).split('\n').length} ${m[0]}`);
+      }
+    }
+  }
+  assert.ok(mutaciones > 100, `se esperaban más de 100 esc(x.campo) en el frontend y hay ${mutaciones}`);
+  assert.deepEqual(noDetectados, [], `Quitar estos esc() no lo detecta el chequeo:\n${noDetectados.join('\n')}`);
 });

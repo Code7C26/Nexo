@@ -7,7 +7,7 @@
 
 import { ICONO_TACHO, botonEditarFila, esAdmin, esc, hoyISO, money } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
-import { api } from "../core/api.js";
+import { api, refrescar } from "../core/api.js";
 import { crearFiltros } from "../core/filtros.js";
 import { descargarCSV } from "../core/csv.js";
 import { cuentasTesoreria, poblarSelectCuentas, proveedores } from "../core/maestros.js";
@@ -97,7 +97,7 @@ function renderGastos(lista) {
         return;
       await api(`/api/gastos/${btn.dataset.id}/anular`, { method: "POST", error: "No se pudo anular el gasto." });
       avisar(`Gasto #${btn.dataset.id} anulado.`, "ok");
-      await recargar("gastos", "caja", "panelResumen");
+      await refrescar([recargar("gastos", "caja", "panelResumen")]);
     });
   });
 }
@@ -253,7 +253,7 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
 
   const eraEdicion = gastoEditandoId !== null;
   // Un gasto mueve plata y cambia el resultado: hay que refrescar las tres.
-  await recargar("gastos", "caja", "panelResumen");
+  await refrescar([recargar("gastos", "caja", "panelResumen")]);
   form.reset();
   modalGasto.hidden = true;
   avisar(eraEdicion ? "Gasto actualizado." : "Gasto registrado.", "ok");
@@ -321,7 +321,7 @@ document.getElementById("formCategoria").addEventListener("submit", async (e) =>
   });
 
   const eraEdicion = Boolean(editandoId);
-  await cargarGastos();
+  await refrescar([cargarGastos()]);
   form.reset();
   form.id.value = "";
   document.getElementById("formCategoriaSubmit").textContent = "Agregar categoría";

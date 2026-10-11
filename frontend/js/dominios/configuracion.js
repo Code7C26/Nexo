@@ -6,7 +6,7 @@
 
 import { fijarNegocio, negocio } from "../core/negocio.js";
 import { avisar } from "../core/ui.js";
-import { api } from "../core/api.js";
+import { api, refrescar } from "../core/api.js";
 import { registrar } from "../core/registro.js";
 
 /* ---------- Configuración (datos del negocio) ---------- */
@@ -49,7 +49,7 @@ formNegocio.addEventListener("submit", async (e) => {
     return;
   }
   await api("/api/negocio", { method: "PUT", body: datos, error: "No se pudieron guardar los datos del negocio." });
-  await cargarNegocio();
+  await refrescar([cargarNegocio()]);
   modalConfiguracion.hidden = true;
   avisar("Datos del negocio actualizados.", "ok");
 });

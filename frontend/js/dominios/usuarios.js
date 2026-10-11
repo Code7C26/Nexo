@@ -4,7 +4,7 @@
  */
 
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
-import { api } from "../core/api.js";
+import { api, refrescar } from "../core/api.js";
 import { esc } from "../core/formato.js";
 import { alEntrarEnVista } from "../core/registro.js";
 
@@ -127,7 +127,7 @@ document.getElementById("formUsuario").addEventListener("submit", async (e) => {
     error: "No se pudo guardar el usuario."
   });
 
-  await cargarUsuarios();
+  await refrescar([cargarUsuarios()]);
   form.reset();
   modalUsuario.hidden = true;
   avisar(eraEdicion ? "Usuario actualizado." : "Usuario creado.", "ok");
@@ -149,7 +149,7 @@ async function darDeBajaUsuario(id) {
     error: "No se pudo dar de baja al usuario."
   });
 
-  await cargarUsuarios();
+  await refrescar([cargarUsuarios()]);
   avisar("Usuario dado de baja.", "ok");
 }
 
@@ -160,7 +160,7 @@ async function reactivarUsuario(id) {
     error: "No se pudo reactivar al usuario."
   });
 
-  await cargarUsuarios();
+  await refrescar([cargarUsuarios()]);
   avisar("Usuario reactivado.", "ok");
 }
 
