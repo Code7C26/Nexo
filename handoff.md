@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §59);
+    siguiente número (hoy el último es §60);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,13 +19,13 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (11 de octubre de 2026)
+## Estado actual (13 de octubre de 2026)
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` tiene los commits de las Fases 3 y 4 de la auditoría (hist. §58,
-  §59) sin pushear.
+- `solla` tiene los commits de las Fases 3, 4 y 5 de la auditoría (hist.
+  §58–§60) sin pushear.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
@@ -177,6 +177,13 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   siguen en `backend/package.json`.
 - Sin Prettier y con `formatOnSave` apagado: el estilo lo marca `.editorconfig`
   y nadie reformatea un archivo entero.
+- **Scripts de verificación (hist. §60)**, desde la raíz: `npm run seed`,
+  `npm run verificar-migracion` y `npm run regresion` (ver "Cómo verificar").
+  Ninguno escribe en `backend/db/nexo.db`, y los que la leen fallan si su md5
+  cambió. Reusan el arnés `levantarServidor` de `backend/test/`.
+  - Una ruta `GET` nueva con `:id` se suma a `LISTADO_DE` de
+    `regresion-head.mjs`: si no está, el script corta.
+  - Un campo volátil nuevo (una hora) se suma a `normalizar`.
 
 **Comprobantes, catálogo y auditoría**
 - **Comprobantes:** los datos del membrete viven en `organizaciones` (no hay
@@ -188,25 +195,34 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   columnas distintas a propósito (hist. §14, §16).
 - **El asistente IA no opera productos con variantes activas** (hist. §34).
 
-## Cómo verificar un cambio (procedimiento de hist. §40–§49)
+## Cómo verificar un cambio (procedimiento de hist. §40–§49, scripts de §60)
 
 1. **Nunca contra `backend/db/nexo.db`:**
    - apuntar el código a otra base con `NEXO_DB_PATH` (y `NEXO_BACKUP_DIR` al
      scratchpad, o `NEXO_BACKUP=off`); ya no hace falta copiar `backend/`;
-   - anotar el md5 de la base real antes y después.
-2. **Regresión:** levantar el código de `HEAD` y el nuevo en puertos distintos
-   (por ejemplo 4732 y 4731), cada uno con su copia de la misma base, y
-   comparar el JSON de los mismos `GET`.
+   - anotar el md5 de la base real antes y después (los scripts lo hacen
+     solos).
+   - Para una base con datos: `npm run seed -- --db <ruta>` (empresa "Baseline
+     SA", `admin1`/`clave-segura-1` y `emp1`/`clave-segura-2`).
+2. **Regresión:** `npm run regresion`. Compara el árbol de trabajo contra
+   `HEAD` (`-- --ref <ref>` para otra) con la misma base sembrada, en todos los
+   `GET` y con los dos roles. `-- --db <ruta>` parte de una copia de esa base.
+   Cada diferencia que muestre hay que justificarla.
 3. **Aislamiento:**
-   - crear a mano una segunda organización con su admin, con `scrypt` y los
-     mismos parámetros que `hashPassword` de `server.js`;
+   - segunda empresa en la misma base:
+     `npm run seed -- --db <ruta> --prefijo b --empresa "Otra SRL"` (o
+     `--url` contra un servidor de prueba que ya corre);
    - probar cada acceso cruzado por su efecto en la base, no solo por el
      código HTTP.
-4. **Cambios de esquema:**
-   - correr `db/index.js` sobre una base nueva, una copia de la real y los
-     backups de `backend/db/`;
-   - confirmar que todas migran en un solo arranque, que el segundo arranque
-     no cambia nada y que el esquema final es el mismo en todas (hist. §48).
+4. **Cambios de esquema:** `npm run verificar-migracion`. Corre `db/index.js`
+   tres veces sobre una base nueva, una copia de la real y cada backup de
+   `backend/db/`, y controla:
+   - que migren en un solo arranque y que el segundo no cambie nada;
+   - integridad y FKs;
+   - que el esquema final sea igual en todas y que no se pierdan filas;
+   - que `schema.sql` no tenga `CHECK` atrasados.
+
+   El aviso `!` de `schema.sql` incompleto es conocido (Fase 7).
 5. **`npm test` y `npm run lint` desde la raíz** (los mismos que corre el CI;
    `npm install` en la raíz trae ESLint). `npm test` es el inventario estático de rutas contra
    `permisos.js`): toda ruta nueva tiene que estar clasificada ahí, declarada
@@ -233,18 +249,21 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Auditoría general del 6 de octubre (hist. §57–§59), en curso: hechas las Fases 0 a 4**
-(git, respaldo automático, backend, frontend, herramientas). Decidido con el usuario:
-seguridad y datos primero, antes de seguir con F6–F13. `LICENSE` sigue sin agregarse
-hasta que el equipo decida cuál. Falta, en este orden:
-- **Fase 5:** `scripts/seed.mjs`, `verificar-migracion.mjs`, `regresion-head.mjs`.
+**Auditoría general del 6 de octubre (hist. §57–§60), en curso: hechas las Fases 0 a 5**
+(git, respaldo automático, backend, frontend, herramientas, scripts de verificación).
+Decidido con el usuario: seguridad y datos primero, antes de seguir con F6–F13.
+`LICENSE` sigue sin agregarse hasta que el equipo decida cuál. Falta, en este orden:
 - **Fase 6:** borrar `src/`, los `hola.txt` y `docs/Mejoras.txt`; renombrar
   `desing/` → `diseno/`; corregir README, `frontend/README.md`, CLAUDE.md (rama
   personal + PR a `main`, alta de empresas ya existe, estructura del repo, §38
   con columna de estado) y la cabecera de `docs/handoff-historico.md`.
 - **Fase 7:** consolidar este backlog; ver abajo "Para cerrar la Etapa A" (sumar
   SKU único por empresa e índices en la misma pasada de rebuilds).
-Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 y 4, no.
+  - Alinear `schema.sql` con la forma final: hoy le faltan 13 columnas, 7 índices
+    y 4 vistas que suma `db/index.js` (lista en hist. §60). Es lo que
+    `verificar-migracion` muestra como aviso.
+  - Evaluar llevar `verificar-migracion` (al menos el caso de base nueva) al CI.
+Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 a 5, no.
 El CI todavía no corrió nunca en GitHub: la primera corrida real va a ser al abrir el
 próximo PR `solla` → `main` (en local se probó en un clon limpio, en Windows; Docker
 Desktop estaba apagado y no se probó en Linux).
@@ -264,10 +283,10 @@ otro dominio se piden con `invocar('x', ...)` (el dueño las registra, por
 ejemplo `app.js` con `registrar('cobrar:venta', ...)`). `dominios/` nunca importa `app.js` (lo verifica el
 test). **Auditoría y Papelera esperan a Stock, Caja y a los dominios que leen**:
 reasignan o leen sus cachés (hist. §54). Los dominios grandes (ventas, compras,
-productos) van al final. El baseline de navegador y el seed viven en el
-scratchpad de la sesión: hay que recrearlos (copia del repo, `playwright-core`
-contra el Chrome instalado, usuario empleado con la contraseña ya cambiada) hasta
-que la Fase 5 los versione. ESLint ya no: `npm run lint` desde la raíz (hist. §59).
+productos) van al final. El seed ya está versionado (`npm run seed`, con el
+empleado y su contraseña ya cambiada). El baseline de navegador sigue en el
+scratchpad de la sesión y hay que recrearlo (`playwright-core` contra el Chrome
+instalado). ESLint ya no: `npm run lint` desde la raíz (hist. §59).
 Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
 
 **Para cerrar la Etapa A:**

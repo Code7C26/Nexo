@@ -6705,3 +6705,100 @@ correrlo" y "Tests").
 
 Fase 5 (scripts `seed`, `verificar-migracion`, `regresion-head`), después las Fases 6 y 7
 de §57. Pushear `solla` y abrir el PR a `main`, que es también la primera corrida del CI.
+
+## 60. Auditoría general — Fase 5 (scripts de verificación), 13 de octubre de 2026
+
+Pedido del usuario: "seguir" → la Fase 5 del plan de §57. Cuatro commits en `solla`
+(`deecda5`, `4ee9652`, `e137dd1`, `435db4f`) más este de documentación, sin pushear. Pasan a
+estar versionados los procedimientos de "Cómo verificar" que cada sesión reescribía en el
+scratchpad.
+
+**Base común.**
+- `levantarServidor` (`backend/test/servidor-de-prueba.js`) acepta `{ backendDir, dbPath }`:
+  levanta otro árbol (un worktree) o usa una base existente, que no se borra al cerrar. Sin
+  argumentos hace lo mismo que antes, y `api.test.js` no cambió. El cliente suma `del`.
+- `scripts/lib/base-real.mjs`: `md5`, `copiarBase` (abre el origen de solo lectura y hace
+  `VACUUM INTO`, igual que `respaldo.js`) y `asegurarQueNoEsLaReal`.
+
+**`npm run seed -- --db <ruta>`** (`scripts/seed.mjs`). Crea la empresa "Baseline SA" con
+`admin1`/`clave-segura-1` y `emp1`/`clave-segura-2` (con la contraseña ya cambiada).
+- **Datos:**
+  - 3 productos, uno con variantes por talle;
+  - 2 clientes y 1 proveedor;
+  - una compra a 30 días con envío, recibida y pagada en parte;
+  - una venta de contado cobrada y facturada, y otra a cuenta corriente;
+  - un presupuesto, una factura manual, una devolución de venta y una a proveedor;
+  - una transferencia entre depósitos;
+  - un gasto y un aporte a caja.
+- **Todo por la API**, así que valida y audita igual que un operador. Por eso ya no hace falta
+  crear una segunda organización a mano con scrypt: `--prefijo b --empresa "Otra SRL"` la
+  siembra en la misma base (usuarios y SKU son únicos en todo Nexo).
+- **Otras opciones:** `--url` siembra un servidor que ya corre.
+- **Rechazos:** la base real, siempre; el puerto 3000, salvo con `--forzar`.
+- **Verificado:** dos empresas en la misma base, con conteos simétricos por `organizacion_id`
+  en todas las tablas de negocio.
+
+**`npm run verificar-migracion`** (`scripts/verificar-migracion.mjs`). Es el arnés de §48.
+- **Casos:** base nueva, copia de la real, copia de cada `nexo.db.backup-*` y `--base <ruta>`.
+- **Controles:**
+  - 1er arranque sin errores;
+  - 2do y 3er arranque sin cambios de esquema ni de datos (salvo `sesiones`);
+  - `integrity_check` y `foreign_key_check`;
+  - esquema final igual al de la base nueva. Se comparan columnas por nombre, índices
+    automáticos por sus columnas, FKs, CHECK, vistas y triggers;
+  - ninguna tabla pierde filas.
+- **Resultado:** 24 de 24 OK en unos 30 s.
+- **Controles negativos, todos revertidos:**
+  - una columna que solo está en `schema.sql` → fallan la real y los 22 backups;
+  - un `DELETE` de `auditoria` en cada arranque → idempotencia y "se perdieron filas".
+- **Hallazgo 1: un CHECK atrasado ya no se detectaba.** Desde el arreglo de §48, un `CHECK`
+  atrasado en `schema.sql` se corrige solo: `db/index.js` corre los rebuilds sobre la base
+  nueva y el esquema final queda igual. Ninguno de los controles de arriba lo detectaba. Se
+  sumó uno: una base armada **solo** con `schema.sql` tiene que tener los mismos `CHECK` que
+  la base nueva migrada. Con el `CHECK` de `entidad` de `auditoria` atrasado a propósito,
+  falla.
+- **Hallazgo 2: `schema.sql` no tiene la forma final.** Ese mismo control mostró que hoy
+  `schema.sql` no tiene la forma final en 10 tablas. Lo que vive solo en `db/index.js` (por
+  `ALTER` posteriores al último rebuild):
+  - 13 columnas: `deposito_id`, `lista_precio_id` y `condicion_pago` en las operaciones y en
+    clientes y proveedores, y `venta_id`/`devolucion_id` en `facturas`;
+  - 7 índices: `idx_auditoria_org_fecha`, la numeración de facturas, etc.;
+  - 4 vistas de stock y saldo.
+
+  Funciona, pero contradice la regla de §48. El script lo muestra como aviso (`!`) sin
+  fallar. Alinearlo es un cambio de esquema que hay que explicar antes, y queda para la Fase
+  7.
+
+**`npm run regresion`** (`scripts/regresion-head.mjs`).
+- **Cómo compara:**
+  - `git worktree` de `--ref` (por defecto `HEAD`), con una junction a
+    `backend/node_modules`;
+  - base sembrada una vez con el código de la ref y copiada a las dos versiones;
+  - todos los `GET` de `RUTAS_PERMISOS` como admin y como empleado. Las rutas con `:id` salen
+    de su listado (`LISTADO_DE`), y una ruta nueva con parámetro que no esté ahí corta el
+    script.
+- **Qué normaliza:** solo la hora de los logins de la propia prueba (`ultimo_acceso` de
+  `/api/usuarios` y `fecha` de los `login` en `/api/auditoria`).
+- **Otras opciones:** `--db` parte de una copia de otra base y siembra encima una empresa
+  "regresion"; `--usuario`/`--password` compara además como un usuario de esa base.
+- **Resultado:**
+  - 112 comparaciones (56 rutas × 2 roles): 0 distintas en unos 5 s, también con
+    `--db backend/db/nexo.db`;
+  - control negativo (un campo de más en `GET /api/clientes`, revertido): marca esa ruta en
+    los dos roles y nada más;
+  - al terminar, `git worktree list` queda solo con el principal.
+- **La junction se borra antes que el worktree.** Se probó antes con carpetas de mentira:
+  `rmSync` de la junction, y también un borrado recursivo de la carpeta que la contiene,
+  dejan intacto el destino.
+
+**Verificación general.** `npm run lint` (36 archivos) y `npm test` (46 de 46) verdes en cada
+commit. md5 de la base real sin cambios (`8dc00857…`).
+
+**No entra al CI todavía:** las bases de `backend/db/` no están versionadas, y la regresión
+necesita una ref con la que comparar. Queda para la Fase 7, junto con alinear `schema.sql`.
+
+### Qué sigue
+
+Fase 6 de §57 (limpieza del repo y correcciones de README, `frontend/README.md` y CLAUDE.md),
+después la Fase 7. Pushear `solla` y abrir el PR a `main`, que es también la primera corrida
+del CI.
