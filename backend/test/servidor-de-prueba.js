@@ -1,7 +1,8 @@
 // Arnés de las pruebas de API: levanta server.js como proceso hijo contra una
 // base temporal y da un cliente HTTP con cookie de sesión. Nunca toca
 // backend/db/nexo.db: NEXO_DB_PATH apunta a una carpeta temporal y el respaldo
-// automático se apaga (db/respaldo.js).
+// automático se apaga (db/respaldo.js). Los scripts de verificación de
+// scripts/ (seed, regresion-head) lo reusan con otro backend o una base dada.
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const backendDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const backendPropio = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function puertoLibre() {
   return new Promise((resolve, reject) => {
@@ -56,11 +57,16 @@ export function crearCliente(url) {
     get: (ruta) => pedir('GET', ruta),
     post: (ruta, cuerpo = {}) => pedir('POST', ruta, cuerpo),
     put: (ruta, cuerpo = {}) => pedir('PUT', ruta, cuerpo),
-    patch: (ruta, cuerpo = {}) => pedir('PATCH', ruta, cuerpo)
+    patch: (ruta, cuerpo = {}) => pedir('PATCH', ruta, cuerpo),
+    del: (ruta) => pedir('DELETE', ruta)
   };
 }
 
-export async function levantarServidor() {
+// Sin argumentos: este backend contra una base nueva en una carpeta temporal.
+// `backendDir` levanta otro árbol (un worktree de HEAD, en regresion-head);
+// `dbPath` usa una base que ya existe. Esa base no se borra al cerrar: solo
+// la carpeta temporal propia del arnés.
+export async function levantarServidor({ backendDir = backendPropio, dbPath } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'nexo-api-'));
   const puerto = await puertoLibre();
   const url = `http://127.0.0.1:${puerto}`;
@@ -69,7 +75,7 @@ export async function levantarServidor() {
     env: {
       ...process.env,
       PORT: String(puerto),
-      NEXO_DB_PATH: path.join(dir, 'nexo.db'),
+      NEXO_DB_PATH: dbPath ?? path.join(dir, 'nexo.db'),
       NEXO_BACKUP: 'off',
       NEXO_INTERPRETE: 'stub',
       NODE_ENV: 'test'
