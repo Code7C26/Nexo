@@ -9,7 +9,8 @@
     "lint": "node scripts/lint.mjs",
     "test": "npm --prefix backend test",
     "backup": "npm --prefix backend run backup",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "verificar-migracion": "node scripts/verificar-migracion.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
