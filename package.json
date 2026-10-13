@@ -10,7 +10,8 @@
     "test": "npm --prefix backend test",
     "backup": "npm --prefix backend run backup",
     "seed": "node scripts/seed.mjs",
-    "verificar-migracion": "node scripts/verificar-migracion.mjs"
+    "verificar-migracion": "node scripts/verificar-migracion.mjs",
+    "regresion": "node scripts/regresion-head.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
