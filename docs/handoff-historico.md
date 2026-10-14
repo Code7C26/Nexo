@@ -6850,3 +6850,63 @@ Fase 7 de §57: consolidar el backlog y alinear `schema.sql`. Se evalúa sumar e
 de rebuilds el `NOT NULL` de `organizacion_id`, el SKU único por empresa y los índices, y llevar
 `verificar-migracion` al CI. Antes de tocar el esquema se explica la migración. Después: pushear
 `solla` y abrir el PR a `main`, que va a ser la primera corrida del CI.
+
+## 62. Rediseño visual general del frontend, 14 de octubre de 2026
+
+Pedido del usuario: "una mejora general de todo el diseño, agregá iconos, mejorá la tipografía,
+todo todo", con las skills de diseño instaladas (`ui-ux-pro-max` y `frontend-design`), porque
+"aunque tenga muchas funciones al cliente no le va a gustar si no tiene un diseño atractivo e
+interactivo". Además pidió anotar como pendiente una landing page con planes e ingreso (queda en
+`handoff.md`). Commit `802ebcf` en `solla`, sin pushear.
+
+**Dirección.** `ui-ux-pro-max` recomendó estilo plano, slate + verde y Poppins/Open Sans, todo genérico
+para un SaaS. Se tomaron sus reglas de calidad (contraste, foco visible, objetivos de toque, SVG en
+vez de emojis, reduced-motion) y no la paleta ni las fuentes. El concepto viene del rubro: el cuaderno
+de cuentas de un comercio, con birome azul para las acciones y resaltador amarillo para lo que
+importa. Antes era negro puro con monoespaciada en todos los títulos: se leía como terminal y no como
+producto.
+
+**Qué cambió:**
+- **Tokens** (`styles.css`): fondo gris frío con paneles blancos y sombra mínima, tinta azul noche,
+  tema oscuro azul noche, radios por jerarquía, duraciones y curva de movimiento. Sin etiquetas en
+  mayúsculas: el tamaño chico se compensa con peso y color.
+- **Tipografía:** Bricolage Grotesque para títulos y cifras e Instrument Sans para el resto. Las dos son
+  variables, tienen `tnum` y llevan licencia OFL. Se sirven desde `frontend/fonts/` (solo el
+  subconjunto latino, 107 KB en total) y se precarga la del texto. Se fue Google Fonts con sus 7
+  familias y el probador de tipografías de Configuración (solo quedaban sus bloques de CSS y el
+  script del `<head>`).
+- **Íconos:** 63 de Lucide (`lucide-static` 1.57.0, ISC) en un sprite propio
+  (`frontend/img/iconos.svg`, 16 KB) y `icono()` en `core/iconos.js`. Están en el menú, los botones de
+  crear, exportar, editar, filtrar y volver, en los cierres de modal, el chevron de Cuentas
+  corrientes, los deltas del Resumen y los avisos. `ICONO_TACHO` y `ICONO_LAPIZ` de `formato.js` salen
+  del sprite.
+- **Menú** agrupado por circuito: Maestros, Ventas, Compras, Stock, Finanzas y Administración, con
+  "Estadísticas" renombrado a "Resumen", que es el título que ya mostraba la vista. Los grupos que
+  son solo de admin se ocultan enteros.
+- **Interacción:** halo de foco en todos los campos, botones con estado apretado, modales y
+  popovers con entrada animada y fondo desenfocado, avisos oscuros con ícono por tono, barra de
+  selección oscura flotante, badges de estado con punto (no solo color), fila de tabla con hover
+  y encabezado con fondo.
+- **Login:** fondo de marca con dos luces, tarjeta translúcida, bajada y botón resaltador.
+- **Celular:** drawer de 300 px con velo detrás. El logo ya no queda debajo de la hamburguesa y el
+  botón de ocultar barra (que es de escritorio) no aparece.
+
+**Cómo se verificó:** `playwright-core` en el scratchpad contra el Chrome instalado. Se usó un servidor
+de prueba en el 3100 con base sembrada (`npm run seed`) y entrando por el formulario de login (entrar
+por API no deja la marca de sesión de `sesion.js` y la captura queda en el login). Se sacaron capturas
+de escritorio en claro y oscuro y de celular a 390 px, antes y después, sin errores de consola. También
+se capturaron los modales (venta, producto, confirmación), el asistente, la barra de selección y el
+drawer. `npm test` dio 46 ok y `npm run lint` pasó sin problemas en 37 archivos.
+
+**Qué se aprendió:**
+- Un `@@@ CUT` de dos líneas no entra en el aplicador de parches del scratchpad: las marcas tienen que
+  ser de una línea.
+- Un script Python grande dentro de un heredoc de bash falla en Windows por el largo de la línea de
+  comando (`ENAMETOOLONG`): conviene escribirlo como archivo.
+- La base real cambió de md5 durante la sesión porque el servidor del puerto 3000 quedó corriendo
+  para que el usuario mirara la app, y el login escribe en `sesiones`. No es una migración.
+
+### Qué sigue
+
+Revisar a ojo las pantallas que no se capturaron (lista en `handoff.md`) y el gráfico del Resumen.
+Después, la landing page cuando el equipo defina los planes, y la Fase 7 de la auditoría.

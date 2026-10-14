@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §61);
+    siguiente número (hoy el último es §62);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -148,6 +148,21 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     su propia fecha) para no mover el aging histórico (hist. §25);
   - la condición de pago habitual de un cliente o proveedor solo se propone,
     no pisa lo que ya se cargó (hist. §26).
+
+**Diseño visual (hist. §62)**
+- **Sistema visual:** azul birome (`--accent`) para toda acción y
+  resaltador (`--highlight`) solo en la sección activa del menú y la cifra
+  que concluye (`.ledger-item-total`). Está explicado al principio de
+  `styles.css`. Sumar amarillo en otros lugares le saca el sentido.
+- **Fuentes propias** en `frontend/fonts/` (sin Google Fonts, pensado para
+  la PWA y una CSP sin dominios externos). `--font-mono` ya no es
+  monoespaciada: las cifras se alinean con `tabular-nums`.
+- **Íconos:** solo del sprite `frontend/img/iconos.svg` vía `icono()`
+  (`core/iconos.js`) o `<use href="/img/iconos.svg#…">` en el HTML. Un ícono
+  nuevo se baja de `lucide-static` y se agrega como `<symbol>`. Nada de
+  emojis ni caracteres sueltos (✕, ▸, ←) como íconos.
+- **Menú:** grupos `.nav-seccion`; los que son solo de admin llevan
+  `.nav-seccion-admin` y se ocultan enteros para el empleado.
 
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
@@ -311,6 +326,21 @@ Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
    anotado en hist. §57): un valor fuera del `CHECK` de la tabla
    (`efectivo`/`transferencia`/`mercadopago`) da 500 en vez de 400
    (hist. §58).
+
+**Diseño, siguiente pasada (hist. §62):** el rediseño se revisó en navegador
+en Resumen, Productos, Ventas, Caja, Stock, Cuentas corrientes, login,
+modales, asistente, barra de selección y menú del celular. Falta revisar a
+ojo las fichas (venta, compra, cliente, producto), Presupuestos, Facturas,
+Reportes de stock, Papelera, Auditoría y Usuarios. El placeholder del
+asistente se corta en dos líneas (ya pasaba antes). El gráfico del Resumen
+sigue con el estilo anterior (ejes y barras).
+
+**Pendiente pedido por el usuario (14 de octubre de 2026): landing page pública.**
+Una página de entrada, previa al login, donde el visitante vea qué es Nexo y los
+planes, y pueda ingresar o crear su cuenta. Requiere definir con el equipo los
+planes (qué incluye cada uno y su precio), que hoy no existen en el sistema: las
+suscripciones por empresa son una etapa aparte (CLAUDE.md §28). Se sirve desde el
+mismo Express, sin hosting extra.
 
 **Roadmap** (CLAUDE.md §38):
 - B: modularizar `app.js` y la base de la PWA (en paralelo con A).
