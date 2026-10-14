@@ -4,7 +4,12 @@
 > escribieron en `handoff.md` hasta el 5 de octubre de 2026 y se movieron acá sin
 > cambios (misma numeración) cuando `handoff.md` pasó a ser un resumen corto y
 > vivo, a pedido del usuario. `handoff.md` y algunos comentarios del código
-> citan estas secciones como "hist. §N".
+> citan estas secciones como "hist. §N". Desde §52, cada etapa se escribe
+> directamente acá al cerrarla, y `handoff.md` solo guarda el estado actual.
+>
+> Las secciones §1 a §51 conservan el encabezado `# Handoff — Nexo` y la
+> introducción del `handoff.md` original: son parte del texto movido, no la
+> cabecera de este archivo.
 >
 > Cada sección describe el estado del proyecto en ESE momento: para el estado
 > actual, leer `handoff.md`. Lo de acá no se reescribe; las etapas nuevas
@@ -6802,3 +6807,46 @@ necesita una ref con la que comparar. Queda para la Fase 7, junto con alinear `s
 Fase 6 de §57 (limpieza del repo y correcciones de README, `frontend/README.md` y CLAUDE.md),
 después la Fase 7. Pushear `solla` y abrir el PR a `main`, que es también la primera corrida
 del CI.
+
+## 61. Auditoría general — Fase 6 (limpieza del repo y documentación), 14 de octubre de 2026
+
+Pedido del usuario: "seguir laburando (hacerme un resumen de lo que falta antes de empezar)" → la
+Fase 6 del plan de §57. Tres commits en `solla` (`0f6565b`, `70d80c5`, `21c665b`) más este de
+documentación, sin pushear. No toca código de la app ni la base.
+
+**Repo.** Se borraron `src/hola.txt` (con eso desaparece `src/`), `assets/hola.txt` y
+`desing/hola.txt` (vacíos o pruebas de git) y `docs/Mejoras.txt` (una línea de prueba).
+`desing/` pasa a `diseno/` con `git mv`: solo tiene `logo.png`, que no es igual a ninguno de
+`assets/logo/` y no lo referencia ningún archivo de código.
+
+**README y `frontend/README.md`.**
+- La estructura del README suma `scripts/`, `.github/` y `diseno/`. La fila B del roadmap pasa a 5
+  dominios y 7042 líneas de `app.js`, y los respaldos salen de los pendientes de producción.
+- El árbol de `frontend/README.md` suma `core/api.js`, `core/maestros.js`, `dominios/gastos.js` y
+  `vendor/`. La sección "Qué es real y qué es placeholder" decía que Facturas y Clientes no tenían
+  pantalla: hoy los 17 ítems del menú tienen su vista (verificado contra `index.html`), y la vista
+  `placeholder` sigue solo como red de `router.js`. El comentario de IVA de `index.html` apunta a
+  la Etapa C en vez de "fuera de V1".
+
+**`CLAUDE.md`** (sin renumerar):
+- la regla de ramas pasa de `feature/<nombre>` a la rama personal + PR con CI;
+- el preámbulo y §28 reflejan que el alta de empresas ya existe, y lo que falta es `NOT NULL` y el
+  registro configurable o verificado;
+- la estructura suma `core/`, `dominios/`, `respaldo.js`, `scripts/` y `.github/`;
+- §31 dice que la modularización está en curso;
+- §35 saca los backups de pendientes;
+- §38 suma una columna "Estado". La Etapa 0 figura hecha: el commit `9e45182` y hist. §35.
+
+**Cabecera de este archivo:** aclara que desde §52 las etapas se escriben acá directamente y que
+el `# Handoff — Nexo` de más abajo es parte del texto movido.
+
+**Verificación:** `npm test` (46 ok) y `npm run lint` (36 archivos, sin problemas). `git grep`
+de `desing`, `hola.txt` y `Mejoras.txt` solo encuentra este archivo. md5 de la base real sin
+cambios (`8dc00857…`).
+
+### Qué sigue
+
+Fase 7 de §57: consolidar el backlog y alinear `schema.sql`. Se evalúa sumar en la misma pasada
+de rebuilds el `NOT NULL` de `organizacion_id`, el SKU único por empresa y los índices, y llevar
+`verificar-migracion` al CI. Antes de tocar el esquema se explica la migración. Después: pushear
+`solla` y abrir el PR a `main`, que va a ser la primera corrida del CI.

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §60);
+    siguiente número (hoy el último es §61);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,13 +19,13 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (13 de octubre de 2026)
+## Estado actual (14 de octubre de 2026)
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` tiene los commits de las Fases 3, 4 y 5 de la auditoría (hist.
-  §58–§60) sin pushear.
+- `solla` tiene los commits de las Fases 3 a 6 de la auditoría (hist.
+  §58–§61) sin pushear.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
@@ -249,21 +249,18 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Auditoría general del 6 de octubre (hist. §57–§60), en curso: hechas las Fases 0 a 5**
-(git, respaldo automático, backend, frontend, herramientas, scripts de verificación).
+**Auditoría general del 6 de octubre (hist. §57–§61), en curso: hechas las Fases 0 a 6**
+(git, respaldo automático, backend, frontend, herramientas, scripts de verificación, limpieza
+del repo y documentación al día).
 Decidido con el usuario: seguridad y datos primero, antes de seguir con F6–F13.
-`LICENSE` sigue sin agregarse hasta que el equipo decida cuál. Falta, en este orden:
-- **Fase 6:** borrar `src/`, los `hola.txt` y `docs/Mejoras.txt`; renombrar
-  `desing/` → `diseno/`; corregir README, `frontend/README.md`, CLAUDE.md (rama
-  personal + PR a `main`, alta de empresas ya existe, estructura del repo, §38
-  con columna de estado) y la cabecera de `docs/handoff-historico.md`.
+`LICENSE` sigue sin agregarse hasta que el equipo decida cuál. Falta:
 - **Fase 7:** consolidar este backlog; ver abajo "Para cerrar la Etapa A" (sumar
   SKU único por empresa e índices en la misma pasada de rebuilds).
   - Alinear `schema.sql` con la forma final: hoy le faltan 13 columnas, 7 índices
     y 4 vistas que suma `db/index.js` (lista en hist. §60). Es lo que
     `verificar-migracion` muestra como aviso.
   - Evaluar llevar `verificar-migracion` (al menos el caso de base nueva) al CI.
-Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 a 5, no.
+Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 a 6, no.
 El CI todavía no corrió nunca en GitHub: la primera corrida real va a ser al abrir el
 próximo PR `solla` → `main` (en local se probó en un clon limpio, en Windows; Docker
 Desktop estaba apagado y no se probó en Linux).
