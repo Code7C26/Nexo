@@ -6934,3 +6934,93 @@ Queda blanco y negro de marca con un solo acento, el azul birome:
 - el ícono de "atención" de los avisos pasa a rojo, como "pendiente" (regla vieja: atención y
   pendiente comparten color);
 - `--highlight` y `--highlight-ink` dejan de existir.
+
+## 63. Segunda pasada de diseño: fichas, administración, gráfico y asistente, 14 de octubre de 2026
+
+Pedido del usuario: "seguir", que retoma lo que había dejado anotado el §62: revisar a ojo las
+pantallas que el rediseño no había capturado y el gráfico del Resumen. Cubre también el
+pendiente chico #4 (pasada visual de Usuarios, Configuración, Auditoría, catálogos y registro).
+
+**Cómo se miró.** `playwright-core` contra el Chrome instalado, con un servidor en el 3100 sobre
+una base sembrada (`npm run seed`) más 14 días de ventas y tres gastos con fecha pasada. Se
+capturaron las 9 fichas, Presupuestos, Facturas, Reportes de stock, Papelera, Auditoría,
+Usuarios, Configuración, los 5 catálogos y el login con registro, en claro, en oscuro y a 390 px,
+antes y después.
+
+**Qué se encontró y se arregló:**
+- **Escape no cerraba cuatro catálogos** (categorías de producto, listas, depósitos y categorías
+  de gasto), y el foco no entraba al modal. El formulario arranca con
+  `<input type="hidden" name="id">`, que `core/ui.js` tomaba como primer enfocable, y `focus()`
+  sobre él no hace nada. `FOCUSABLES_MODAL` excluye ahora los `type="hidden"`.
+- **Rojo donde no hay alarma.** Al salir el naranja (§62), `--accent-warn` quedó igual al rojo, y
+  todo lo que usaba `status-pendiente` se leía como un problema: el presupuesto en borrador o
+  enviado, el rol "Empleado", "Editó" y "Actualizó" en Auditoría, la factura "Suelta", la compra
+  en borrador y los gastos de inversión o retiro. Todos esos pasan a gris (`.status` sin clase).
+  `status-pendiente` queda para lo que pide atención, y ahora va **con contorno y sin relleno**:
+  así "Parcial" no se confunde con "Pendiente" (lleno).
+- **Cifras en cero con color** ("Devuelto $0,00" en rojo, "Aceptado $0,00" en verde, "Sin stock 0"
+  en rojo). Un `MutationObserver` en `core/ui.js` marca `.ledger-cero` sobre las
+  `.ledger-value` verdes o rojas cuando el texto es un cero, y el CSS las pasa a tinta. Es el
+  mismo recurso que ya usaban los modales, para no tocar las ~25 escrituras de esas cifras.
+- **Fichas:**
+  - la tira de cifras estaba pegada al panel de datos en todas menos Cliente, que tenía una
+    regla propia. Ahora rige `.panel + .ledger-strip` para todas y la de Cliente se borró;
+  - los estados eran texto suelto y pasan a ser badges, como en los listados (cobro, pago,
+    presupuesto, compra, devolución, stock);
+  - el medio de pago de la factura salía crudo ("transferencia");
+  - en el celular, los datos van de a dos por fila, las acciones en una grilla pareja y la
+    última tarjeta de una tabla no lleva la línea de abajo.
+- **`camposFicha()`, `html()` y `badge()`** (`core/formato.js`) reemplazan el `map` que repetían
+  las 9 fichas. Todo valor se escapa salvo el que viene envuelto en `html()`, y `badge()` escapa
+  su texto. La de Producto deja de escapar a mano en su arreglo. El test de escape no ve el `dd`
+  intermedio, que es la excepción documentada.
+- **Catálogos:** el botón de agregar quedaba pegado al encabezado de la tabla.
+- **Gráfico del Resumen** (reescrito con las reglas de la skill `dataviz`):
+  - se dibuja al ancho real del contenedor y lo redibuja un `ResizeObserver`. Con el `viewBox`
+    fijo de 800, a 360 px el texto quedaba en unos 5 px;
+  - barras en tinta (a favor) y en rojo (en contra), de hasta 24 px de ancho, con punta
+    redondeada y base recta;
+  - de 3 a 5 marcas redondas en el eje Y (pasos de 1, 2 o 5) y grilla de línea fina;
+  - el período en curso va en contorno;
+  - tooltip con ventas, ganancia bruta, gastos y resultado: con el mouse sigue la franja, con el
+    dedo se queda hasta tocar afuera, y con el teclado el SVG es una sola parada de Tab y las
+    flechas recorren los períodos;
+  - la última fecha del eje se alinea al borde si no entra;
+  - `moneyCorto` conserva un decimal en miles.
+- **Asistente:** el ejemplo largo no entraba en el placeholder de una línea. Pasa a tres
+  sugerencias en la bienvenida, que llenan el cuadro sin enviar, y el placeholder queda en
+  "Contame qué pasó…". Las sugerencias van en castellano común y no en el formato de
+  `interpretarStub`: son para el usuario real (Gemini), y el stub solo sirve para probar el flujo.
+
+**Cómo se verificó:**
+- capturas de antes y después, sin errores de consola;
+- Escape cierra los 5 catálogos con el foco en el primer campo;
+- tooltip con mouse, toque (y toque afuera) y flechas; el eje se mantiene en 12px a 390 px;
+- XSS: `<img onerror>` en cliente, producto, SKU, categoría, email, notas y concepto de factura.
+  Abiertas las fichas de cliente, venta, producto, factura y presupuesto, el payload se ve como
+  texto y `window.__xss` sigue en 0. El control (el mismo payload insertado crudo) sí dispara;
+- `npm test` dio 46 ok y `npm run lint` dio 37 archivos sin problemas.
+
+**Encontrado y no tocado (no es de diseño):**
+- `POST /api/ventas` sin `cliente` ni `cliente_id` da 500 en vez de 400: `resolverCliente`
+  intenta enlazar `undefined`. Desde la UI no pasa, porque el formulario pide cliente, pero el
+  POS (venta sin cliente) va a necesitar una decisión.
+- **Un producto con variantes tiene `precio_costo` 0** (el costo vive en cada variante), así que
+  su costo promedio y su valorizado salen en $0 en la ficha y en Reportes de stock, y el
+  "Valorizado total" queda corto. Cómo se costea un producto con variantes es una regla de
+  negocio: no se inventó.
+
+**Qué se aprendió:**
+- La base real cambia de md5 aunque nada de la sesión la toque, si el servidor del 3000 sigue
+  abierto con una pestaña logueada: cada pedido autenticado extiende el vencimiento de la sesión
+  (`UPDATE sesiones`, `server.js:154`). En el §62 se lo había atribuido solo al login.
+- Una línea o un texto del SVG le ganan el mouse a la franja que tienen detrás: necesitan
+  `pointer-events: none`.
+
+### Qué sigue
+
+Las dos cuestiones de arriba, con el equipo. En diseño quedan:
+- en el celular, la tabla de evolución del Resumen es una tarjeta por período (15 con un rango
+  diario) y alarga mucho la pantalla;
+- las fechas se muestran en ISO (`2026-10-14`) en toda la app;
+- las fichas repiten el título arriba y en el primer panel.

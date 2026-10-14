@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §62);
+    siguiente número (hoy el último es §63);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -167,6 +167,13 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   (`core/iconos.js`) o `<use href="/img/iconos.svg#…">` en el HTML. Un ícono
   nuevo se baja de `lucide-static` y se agrega como `<symbol>`. Nada de
   emojis ni caracteres sueltos (✕, ▸, ←) como íconos.
+- **Colores de estado (hist. §63):**
+  - verde para lo resuelto y rojo lleno (`status-vencido`) para lo urgente;
+  - `status-pendiente` es el mismo rojo, pero con contorno y sin relleno;
+  - lo que no es bueno ni urgente va en gris, con `.status` sin clase: un borrador, un rol,
+    "Editó", una factura suelta o un gasto de inversión;
+  - una cifra `.ledger-value` verde o roja que vale cero pasa sola a tinta (observer de
+    `core/ui.js`).
 - **Menú:** grupos `.nav-seccion`; los que son solo de admin llevan
   `.nav-seccion-admin` y se ocultan enteros para el empleado.
 
@@ -175,9 +182,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   incluidos atributos `value="…"`. Lo exige `npm test`
   (`backend/test/plantillas-html.js`): un `${x.campo}` crudo en un template
   con etiquetas falla. El test no ve un string armado en otra variable ni lo
-  que devuelve una función propia: esos se escapan donde se arman. La ficha de
-  producto es la única que mete HTML en `valor` y escapa sus datos en el
-  arreglo.
+  que devuelve una función propia: esos se escapan donde se arman. Las fichas
+  arman sus datos con `camposFicha()` (`core/formato.js`): escapa cada valor
+  salvo el envuelto en `html()`; un estado va con `badge(clase, texto)`, que
+  escapa su texto (hist. §63).
 - **Toda llamada al backend pasa por `api()`** (`core/api.js`): avisa el
   error (HTTP o de red) con un toast y lanza, así lo que sigue al `await` no
   corre. Para limpiar algo ante un error: `.catch((e) => { …; throw e; })`.
@@ -319,9 +327,6 @@ Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
    email (hist. §45).
 
 **Pendientes chicos conocidos:**
-4. Pasada visual en el navegador de Usuarios, Configuración, Auditoría, las
-   pantallas de catálogos y el login con el registro nuevo (hist. §51). En las
-   sesiones de §45–§51 no hubo herramienta de navegador.
 5. Decidir en `permisos.js` si listas, depósitos y categorías de gasto pasan a
    ser solo admin.
 6. Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
@@ -332,14 +337,22 @@ Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
    anotado en hist. §57): un valor fuera del `CHECK` de la tabla
    (`efectivo`/`transferencia`/`mercadopago`) da 500 en vez de 400
    (hist. §58).
+9. `POST /api/ventas` sin `cliente` ni `cliente_id` da 500 en vez de 400
+   (`resolverCliente` enlaza `undefined`). La UI siempre manda cliente, pero el
+   POS va a necesitar decidir qué es una venta sin cliente (hist. §63).
+10. **A decidir con el equipo:** un producto con variantes tiene `precio_costo`
+    0 (el costo vive en cada variante), así que su costo promedio y su
+    valorizado salen en $0 en la ficha y en Reportes de stock, y el valorizado
+    total queda corto (hist. §63).
 
-**Diseño, siguiente pasada (hist. §62):** el rediseño se revisó en navegador
-en Resumen, Productos, Ventas, Caja, Stock, Cuentas corrientes, login,
-modales, asistente, barra de selección y menú del celular. Falta revisar a
-ojo las fichas (venta, compra, cliente, producto), Presupuestos, Facturas,
-Reportes de stock, Papelera, Auditoría y Usuarios. El placeholder del
-asistente se corta en dos líneas (ya pasaba antes). El gráfico del Resumen
-sigue con el estilo anterior (ejes y barras).
+**Diseño (hist. §62–§63):** todas las pantallas ya se revisaron en el navegador,
+en claro, en oscuro y a 390 px. El gráfico del Resumen se rehízo (ancho real,
+tooltip, teclado) y el asistente tiene sugerencias que se pueden tocar. Queda,
+para decidir:
+- en el celular, la tabla de evolución del Resumen es una tarjeta por período y
+  alarga mucho la pantalla;
+- las fechas se muestran en ISO (`2026-10-14`) en toda la app;
+- las fichas repiten el título arriba y en el primer panel.
 
 **Pendiente pedido por el usuario (14 de octubre de 2026): landing page pública.**
 Una página de entrada, previa al login, donde el visitante vea qué es Nexo y los
