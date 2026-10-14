@@ -118,8 +118,11 @@ Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
 ├── /frontend  → UI (index.html, css/, js/), sin build step ni framework
 │   └── js/      → app.js (lo que falta modularizar), core/ (compartido) y
 │                  dominios/ (una pantalla por módulo ES); ver frontend/README.md
+├── /scripts   → herramientas desde la raíz: lint, backup, seed,
+│                verificar-migracion y regresión contra HEAD
+├── /.github   → CI (GitHub Actions: lint + tests en cada PR)
 ├── /docs      → documentación técnica y análisis del proyecto
-├── /desing    → mockups y diseño visual
+├── /diseno    → mockups y diseño visual
 ├── /assets    → imágenes, íconos y recursos estáticos
 ├── handoff.md → estado y decisiones vigentes del proyecto, sesión a sesión
 └── README.md  → este archivo
@@ -181,7 +184,7 @@ es una autorización para empezarla (`CLAUDE.md §27`).
 | Etapa | Qué | Estado |
 |---|---|---|
 | A | Multi-empresa (`organizacion_id`, aislamiento, registro) | Núcleo hecho. Falta pasar `organizacion_id` a `NOT NULL` en 15 tablas y poder apagar el registro público |
-| B | Modularizar `app.js` por dominio + PWA | En curso: hechos el núcleo compartido (`core/`) y 4 dominios (usuarios, configuración, mi cuenta, cuentas corrientes). `app.js` bajó de 9407 a 7408 líneas; faltan el resto de los dominios y la PWA (manifest, service worker, offline de lectura) |
+| B | Modularizar `app.js` por dominio + PWA | En curso: hechos el núcleo compartido (`core/`) y 5 dominios (usuarios, configuración, mi cuenta, cuentas corrientes, gastos). `app.js` bajó de 9407 a 7042 líneas; faltan el resto de los dominios y la PWA (manifest, service worker, offline de lectura) |
 | C | IVA discriminado y categoría fiscal | Pendiente |
 | D | Punto de venta (POS) y turno de caja | Pendiente |
 | E | Facturación electrónica ARCA (homologación → producción) | Pendiente, depende de C |
@@ -190,9 +193,12 @@ es una autorización para empezarla (`CLAUDE.md §27`).
 | H | Reportes avanzados y dashboard por rubro | Pendiente |
 | I | IA: voz y WhatsApp | Pendiente |
 
+Respaldos: cada arranque del servidor respalda la base antes de abrirla (con
+rotación de 14; `NEXO_BACKUP_DIR` elige la carpeta, por ejemplo una
+sincronizada con la nube) y `cd backend && npm run backup` lo hace a mano.
 Pendientes de seguridad y operación para producción real (`CLAUDE.md §35`):
-backups de la base, recuperación de contraseña, HTTPS, límites de request y
-paginación de los listados.
+recuperación de contraseña, HTTPS, límites de request y paginación de los
+listados.
 
 El detalle sesión a sesión de qué se hizo y qué decisiones quedaron
 tomadas vive en [`handoff.md`](handoff.md), en la raíz del repo.

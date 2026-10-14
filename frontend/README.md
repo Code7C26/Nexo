@@ -30,29 +30,35 @@ frontend/
     │   ├── usuarios.js       ABM de usuarios (solo admin)
     │   ├── configuracion.js  datos del negocio
     │   ├── perfil.js         Mi cuenta: contraseña y cerrar sesión
-    │   └── cuentas-corrientes.js  a cobrar y a pagar, con aging
-    └── core/           → lo que comparten todas las pantallas
-        ├── formato.js      money, numero, esc, esAdmin, hoyISO
-        ├── ui.js           avisar (toasts), confirmar, estados de tabla
-        ├── filtros.js      motor de filtros (crearFiltros)
-        ├── seleccion.js    selección múltiple y barra de acciones en lote
-        ├── csv.js          exportar a CSV
-        ├── comprobante.js  hoja imprimible y PDF
-        ├── router.js       vistas, hash y navegación (mostrarVista)
-        ├── negocio.js      datos del negocio (membrete de comprobantes)
-        └── registro.js     acciones por nombre entre módulos (sin ciclos)
+    │   ├── cuentas-corrientes.js  a cobrar y a pagar, con aging
+    │   └── gastos.js         gastos y sus categorías
+    ├── core/           → lo que comparten todas las pantallas
+    │   ├── api.js          api(): toda llamada al backend, con aviso de error
+    │   ├── formato.js      money, numero, esc, esAdmin, hoyISO
+    │   ├── ui.js           avisar (toasts), confirmar, estados de tabla
+    │   ├── filtros.js      motor de filtros (crearFiltros)
+    │   ├── seleccion.js    selección múltiple y barra de acciones en lote
+    │   ├── csv.js          exportar a CSV
+    │   ├── comprobante.js  hoja imprimible y PDF
+    │   ├── router.js       vistas, hash y navegación (mostrarVista)
+    │   ├── negocio.js      datos del negocio (membrete de comprobantes)
+    │   ├── maestros.js     maestros que leen varios dominios (cuentas, proveedores)
+    │   └── registro.js     acciones por nombre entre módulos (sin ciclos)
+    └── vendor/         → jsPDF y html2canvas, cargados a demanda para el PDF
 ```
 
 `core/` solo importa de `core/`, y `dominios/` nunca importa `app.js` (`app.js`
 los importa a ellos): lo verifica `backend/test/frontend-modulos.test.js`
 (`npm test`).
 
-## Qué es real y qué es placeholder
+## Qué hay y qué falta
 
-- Clientes, Facturas, Ventas, Compras, Stock: conectados a la API real
-  (`backend/`), persistidos en SQLite.
-- IVA y retención de Mercado Pago quedan fuera de V1 (decisión del
-  equipo) — no hay cálculo ni pantalla para eso todavía.
-- El menú "Facturas" (vista aparte de Resumen), "Clientes", "IVA &
-  Retenciones" y "Asistente de voz" todavía no tienen pantalla propia —
-  muestran un aviso de "sección todavía no construida".
+- Todas las pantallas del menú están conectadas a la API real (`backend/`) y
+  persisten en SQLite. La vista `placeholder` ("sección todavía no
+  construida") sigue en `index.html` como red del router: hoy ningún ítem del
+  menú cae ahí.
+- El asistente de texto (CLAUDE.md §21) no es un ítem del menú: es el widget
+  flotante del final de `index.html` (`#asistenteLauncher`).
+- IVA y retención de Mercado Pago no tienen cálculo ni pantalla todavía: son
+  la Etapa C del roadmap (CLAUDE.md §16, §33, §38).
+- Falta la PWA (manifest, service worker, offline de lectura; CLAUDE.md §31).
