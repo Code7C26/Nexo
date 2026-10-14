@@ -56,8 +56,9 @@ no aplica.
   dominio a medida que crece. Ver §31.
 - Multi-empresa: Nexo es **multi-tenant** (varios negocios sobre la misma
   instalación, con sus datos aislados). Ver §28 — el aislamiento por empresa
-  ya está implementado en todo el esquema y el backend; falta el alta de
-  empresas desde la aplicación.
+  ya está implementado en todo el esquema y el backend, y una empresa nueva
+  se da de alta desde la pantalla de login; falta cerrar los detalles que
+  lista §28.
 - Adaptación a rubros (comercio, carnicería, gastronomía, etc.): **un solo
   sistema configurable** por perfil de rubro, nunca versiones de código
   separadas por vertical. Ver §29.
@@ -83,11 +84,17 @@ no aplica.
 
 ## Estructura del repositorio
 ```
-/frontend   → UI (index.html, css/, js/, incluye js/vendor/ para libs client-side)
+/frontend   → UI (index.html, css/, js/): js/core/ (lo compartido), js/dominios/
+              (una pantalla por módulo ES), app.js (lo que falta partir) y
+              js/vendor/ para libs client-side
 /backend    → servidor Express, esquema (db/schema.sql), acceso a datos
-              (db/index.js), permisos.js, interprete.js, test/
+              (db/index.js), respaldo (db/respaldo.js), permisos.js,
+              interprete.js, test/
+/scripts    → herramientas que se corren desde la raíz: lint, backup, seed,
+              verificar-migracion y regresión contra HEAD
+/.github    → CI: GitHub Actions corre lint y tests en cada PR
 /docs       → documentación técnica y análisis del proyecto
-/desing     → mockups y diseño visual
+/diseno     → mockups y diseño visual
 /assets     → imágenes, íconos y recursos estáticos
 handoff.md  → bitácora de sesión, vive en la raíz del repo (no en /docs)
 ```
@@ -106,8 +113,9 @@ handoff.md  → bitácora de sesión, vive en la raíz del repo (no en /docs)
 - Trabajar por etapas chicas y testeables.
 - Diseño responsive y mobile-first desde el inicio (ver §31).
 - Movimientos de datos auditables (quién/cuándo, no solo el estado final).
-- No pushear directo a `main`: rama por feature (`feature/<nombre>`) +
-  Pull Request. `main` siempre debe quedar en estado funcional.
+- No pushear directo a `main`: cada integrante trabaja en su rama personal
+  (`solla`, `Tosi`) y llega a `main` por Pull Request, donde el CI corre
+  `npm run lint` y `npm test`. `main` siempre debe quedar en estado funcional.
 - Antes de cambiar el esquema de la base de datos, explicar la migración y
   su impacto (ver el patrón de migración idempotente en §34).
 - Preferir siempre la solución más económica que cumpla el requisito completo
@@ -1082,7 +1090,7 @@ Nexo es un sistema multi-tenant: la misma instalación sirve a varios negocios
 aislados. Es requisito para poder ofrecer Nexo a más de un cliente sin montar
 una instancia por negocio.
 
-**Estado real: aislamiento implementado, alta de empresas pendiente.**
+**Estado real: aislamiento y alta de empresas implementados.**
 - Todas las tablas de datos de negocio tienen `organizacion_id`, y toda
   consulta filtra por la empresa de la sesión.
   - Las tablas hijas (ítems, cobros, pagos, atributos/variantes) heredan la
@@ -1090,11 +1098,15 @@ una instancia por negocio.
   - Los catálogos (categorías, listas de precios, depósitos, cuentas de
     tesorería, categorías de gasto) son propios de cada empresa, con nombre
     único dentro de ella.
+- Una empresa nueva se crea desde la pantalla de login
+  (`POST /api/auth/registro`): el registro es público, con un tope de
+  intentos por IP.
 - Lo que falta:
-  - crear empresas desde la aplicación (hoy se dan de alta a mano en la base);
-  - pasar `organizacion_id` a `NOT NULL` en las tablas que la sumaron nullable.
+  - pasar `organizacion_id` a `NOT NULL` en las tablas que la sumaron nullable;
+  - poder apagar el registro público por configuración y sumarle
+    verificación (email o captcha); las dos requieren decisión del equipo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
-  `docs/handoff-historico.md` (§37–§49).
+  `docs/handoff-historico.md` (§37–§51).
 
 Diseño que se siguió (y que rige para toda tabla o consulta nueva):
 
@@ -1177,10 +1189,10 @@ sobre datos que ya existen. Ver §38 para cuándo se planifica.
 # 31. FRONTEND, PWA Y ARQUITECTURA DE CLIENTE
 
 **Decisión de arquitectura: seguir sin framework, pero modularizar.**
-`frontend/js/app.js` concentra hoy toda la lógica de todas las pantallas en un
+`frontend/js/app.js` concentraba toda la lógica de todas las pantallas en un
 solo archivo. A medida que el sistema crece (multi-empresa, POS, perfiles de
-rubro), eso deja de ser sostenible. El camino es dividirlo en módulos ES por
-dominio (ventas, compras, stock, clientes, etc.), conservando los patrones que
+rubro), eso deja de ser sostenible. El camino, ya en curso (Etapa B, §38), es
+dividirlo en módulos ES por dominio (ventas, compras, stock, clientes, etc.), conservando los patrones que
 ya funcionan bien y están probados en producción: el router por hash
 (`mostrarVista`), `crearFiltros` (motor de filtros), `confirmar` (reemplazo de
 `window.confirm`), `crearSeleccion` + `montarBarraSeleccion` (selección
@@ -1315,11 +1327,13 @@ poder revocar de inmediato dando de baja a un usuario), cookie `httpOnly` +
 por nombre de clave en las respuestas para el rol empleado (costos, márgenes,
 ganancia).
 
+Ya existe también el **respaldo automático** de la base: cada arranque la
+respalda antes de abrirla (`backend/db/respaldo.js`, con rotación y carpeta
+configurable con `NEXO_BACKUP_DIR`), y `npm run backup` lo hace a mano.
+
 Pendiente para producción real, a incorporar progresivamente sin bloquear el
 resto del roadmap:
 
-- **Backups** de la base de datos (crítico apenas haya un negocio real
-  operando con esto).
 - **Recuperación de contraseña** sin depender de que un admin la resetee a
   mano (hoy es la única vía).
 - **HTTPS** obligatorio fuera de desarrollo local.
@@ -1386,18 +1400,21 @@ cambio de cliente). **Estar en esta lista no autoriza a empezar una etapa sin
 planificarla primero con el equipo** (regla de §27, sigue vigente sin
 excepciones).
 
-| Etapa | Qué | Por qué en ese lugar |
-|---|---|---|
-| 0 | Cerrar el trabajo pendiente de margen objetivo (pasada visual en navegador + commit) | Hay cambios sin commitear en el árbol de trabajo; no se empieza nada nuevo arriba de eso |
-| A | Multi-empresa: `organizacion_id`, aislamiento, resolución desde sesión (§28) | Cuanto más crezca el esquema, más caro se vuelve; conviene hacerlo temprano |
-| B | Modularizar `app.js` por dominio + base de PWA (§31) | Habilita todas las pantallas que siguen y el uso desde el celular; en paralelo con A |
-| C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio |
-| D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real |
-| E | ARCA: homologación → producción (§33) | Depende de C |
-| F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo |
-| G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos |
-| H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos |
-| I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro |
+| Etapa | Qué | Por qué en ese lugar | Estado |
+|---|---|---|---|
+| 0 | Cerrar el trabajo pendiente de margen objetivo (pasada visual en navegador + commit) | Hay cambios sin commitear en el árbol de trabajo; no se empieza nada nuevo arriba de eso | Hecha |
+| A | Multi-empresa: `organizacion_id`, aislamiento, resolución desde sesión (§28) | Cuanto más crezca el esquema, más caro se vuelve; conviene hacerlo temprano | Núcleo hecho; faltan los detalles de §28 |
+| B | Modularizar `app.js` por dominio + base de PWA (§31) | Habilita todas las pantallas que siguen y el uso desde el celular; en paralelo con A | En curso |
+| C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio | Pendiente |
+| D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Pendiente |
+| E | ARCA: homologación → producción (§33) | Depende de C | Pendiente |
+| F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Pendiente |
+| G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Pendiente |
+| H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
+| I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | Pendiente |
+
+El detalle de cada etapa en curso (qué está hecho y qué falta) vive en
+`handoff.md`; esta columna solo da el estado grueso.
 
 ---
 
