@@ -26,10 +26,12 @@ export let categoriasGasto = [];
 let gastoEditandoId = null;
 
 const TIPO_GASTO_LABEL = { operativo: "Operativo", inversion: "Inversión", retiro: "Retiro" };
+// Rojo solo el que baja el resultado (como la cifra de gastos operativos);
+// inversión y retiro, que quedan fuera del resultado, van en gris.
 const TIPO_GASTO_CLASE = {
   operativo: "status-vencido",
-  inversion: "status-pendiente",
-  retiro: "status-pendiente"
+  inversion: "",
+  retiro: ""
 };
 
 function renderGastos(lista) {

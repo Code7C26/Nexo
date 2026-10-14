@@ -81,7 +81,11 @@ modalConfirmar.addEventListener("click", (e) => {
 // modalConfirmar queda afuera: ya tiene su propio manejo arriba, necesario
 // porque tiene que resolver una promesa según qué botón se apriete, no
 // solo abrir o cerrar.
-const FOCUSABLES_MODAL = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+// Sin input[type=hidden]: los formularios de catálogo arrancan con el id
+// oculto, focus() sobre él no hace nada, el foco quedaba en el botón de
+// afuera y Escape no cerraba el modal.
+const FOCUSABLES_MODAL =
+  'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex]:not([tabindex="-1"])';
 
 document.querySelectorAll(".modal").forEach((modal) => {
   if (modal.id === "modalConfirmar") return;
@@ -121,6 +125,20 @@ document.querySelectorAll(".modal").forEach((modal) => {
       primero.focus();
     }
   });
+});
+
+/* ---------- Cifras en cero, sin color ---------- */
+
+// Un "Devuelto $ 0,00" en rojo o un "Aceptado $ 0,00" en verde avisan algo
+// que no pasó. Mismo recurso que con los modales: en vez de tocar los ~25
+// lugares que escriben estas cifras, un observer marca .ledger-cero cuando
+// el texto es un cero (con o sin "$") y el CSS le saca el color.
+const CIFRA_CERO = /^\$?\s*0(,0+)?$/;
+
+document.querySelectorAll(".ledger-value.ledger-ok, .ledger-value.ledger-warn").forEach((el) => {
+  const marcar = () => el.classList.toggle("ledger-cero", CIFRA_CERO.test(el.textContent.trim()));
+  marcar();
+  new MutationObserver(marcar).observe(el, { childList: true, characterData: true, subtree: true });
 });
 
 export async function manejarError(res, accionDefault) {

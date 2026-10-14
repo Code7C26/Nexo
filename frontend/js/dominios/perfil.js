@@ -18,7 +18,7 @@ document.getElementById("btnPerfil").addEventListener("click", () => {
   const rol = document.documentElement.dataset.rol;
   const perfilRolEl = document.getElementById("perfilRol");
   perfilRolEl.textContent = rol === "admin" ? "Administrador" : "Empleado";
-  perfilRolEl.className = `status ${rol === "admin" ? "status-cobrado" : "status-pendiente"}`;
+  perfilRolEl.className = "status"; // un rol no es bueno ni malo: gris, como en Usuarios
   modalPerfil.hidden = false;
 });
 document.getElementById("modalPerfilClose").addEventListener("click", () => {

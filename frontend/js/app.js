@@ -8,7 +8,20 @@
  */
 
 import { crearFiltros, rangoDeFiltroFecha } from "./core/filtros.js";
-import { ICONO_TACHO, botonEditarFila, columnasVisibles, esAdmin, esc, hoyISO, money, moneyCorto, numero } from "./core/formato.js";
+import {
+  ICONO_TACHO,
+  badge,
+  botonEditarFila,
+  camposFicha,
+  columnasVisibles,
+  esAdmin,
+  esc,
+  hoyISO,
+  html,
+  money,
+  moneyCorto,
+  numero
+} from "./core/formato.js";
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
@@ -153,23 +166,72 @@ function renderTablaEvolucion(serie) {
 }
 
 // Gráfico de barras del resultado por período, en SVG dibujado a mano
-// (el proyecto no tiene librería de gráficos ni build step). Los colores
-// van por variable CSS (var(--accent-ok) etc.), nunca hardcodeados: como
-// esos tokens ya se redefinen para modo oscuro, el gráfico sigue el tema
-// sin una sola línea de JS y sin volver a dibujarse — no "arreglar" esto
-// pasando colores por parámetro.
+// (el proyecto no tiene librería de gráficos ni build step). Se dibuja al
+// ancho real del contenedor: con un viewBox fijo el texto se achicaba con
+// la pantalla y en el celular no se leía. Por eso un ResizeObserver lo
+// redibuja cuando cambia ese ancho (también al volver a la vista: oculta
+// mide 0 y no se dibuja). Los colores van por variable CSS, nunca
+// hardcodeados: como esos tokens ya se redefinen para modo oscuro, el
+// cambio de tema no lo redibuja — no "arreglar" esto pasando colores por
+// parámetro. Barras en tinta (a favor) y en rojo (en contra), como los
+// números de un cuaderno de cuentas; el período en curso va en contorno.
+const graficoResultadoEl = document.getElementById("graficoResultado");
+let serieGrafico = [];
+let anchoGrafico = 0;
+let ocultarTipGrafico = () => {};
+
 function renderGraficoResultado(serie) {
-  const contenedor = document.getElementById("graficoResultado");
+  serieGrafico = serie;
+  dibujarGraficoResultado({ animar: true });
+}
+
+new ResizeObserver(() => {
+  const ancho = Math.round(graficoResultadoEl.clientWidth);
+  if (ancho !== anchoGrafico) dibujarGraficoResultado({ animar: false });
+}).observe(graficoResultadoEl);
+
+// Un toque fuera del gráfico cierra el tooltip que dejó abierto el dedo.
+document.addEventListener("pointerdown", (e) => {
+  if (!graficoResultadoEl.contains(e.target)) ocultarTipGrafico();
+});
+
+// Paso "redondo" (1, 2 o 5 × 10^n) para que las marcas del eje Y caigan
+// en cifras que se leen de un vistazo ($20k, $40k) y no en $37.412.
+function pasoRedondo(span, marcas) {
+  const crudo = span / marcas;
+  const magnitud = 10 ** Math.floor(Math.log10(crudo));
+  const n = crudo / magnitud;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * magnitud;
+}
+
+// Barra con la punta redondeada (4px) y la base recta sobre la línea del
+// 0: hacia arriba si el resultado es a favor, hacia abajo si es en contra.
+function pathBarra(x, y0, ancho, alto, haciaArriba) {
+  const r = Math.min(4, ancho / 2, alto);
+  const f = (n) => n.toFixed(1);
+  const punta = haciaArriba ? y0 - alto : y0 + alto;
+  const curva = haciaArriba ? punta + r : punta - r;
+  return `M${f(x)},${f(y0)}V${f(curva)}Q${f(x)},${f(punta)} ${f(x + r)},${f(punta)}H${f(x + ancho - r)}Q${f(
+    x + ancho
+  )},${f(punta)} ${f(x + ancho)},${f(curva)}V${f(y0)}Z`;
+}
+
+function dibujarGraficoResultado({ animar }) {
+  const contenedor = graficoResultadoEl;
+  const serie = serieGrafico;
 
   const hayDatos = serie.some((p) => p.ventas !== 0 || p.resultado !== 0);
   if (serie.length === 0 || !hayDatos) {
+    anchoGrafico = 0;
     contenedor.innerHTML = `<p class="tabla-vacia">No hay operaciones en este período.</p>`;
     return;
   }
 
-  const W = 800;
-  const H = 260;
-  const M = { top: 16, right: 8, bottom: 28, left: 64 };
+  const W = Math.round(contenedor.clientWidth);
+  if (W === 0) return;
+  anchoGrafico = W;
+  const H = W < 480 ? 200 : 240;
+  const M = { top: 12, right: 4, bottom: 28, left: 52 };
   const pw = W - M.left - M.right;
   const ph = H - M.top - M.bottom;
 
@@ -179,73 +241,158 @@ function renderGraficoResultado(serie) {
   // sin ningún caso especial para el signo.
   let maxV = Math.max(0, ...valores);
   let minV = Math.min(0, ...valores);
-  if (maxV === minV) {
-    maxV = 1;
-    minV = 0;
-  }
-  const span = maxV - minV;
-  const y = (v) => M.top + ((maxV - v) / span) * ph;
+  if (maxV === minV) maxV = 1;
+  const paso = pasoRedondo(maxV - minV, 4);
+  maxV = Math.ceil(maxV / paso) * paso;
+  minV = Math.floor(minV / paso) * paso;
+  const y = (v) => M.top + ((maxV - v) / (maxV - minV)) * ph;
   const y0 = y(0);
 
-  const paso = pw / serie.length;
-  const ancho = Math.max(2, Math.min(48, paso * 0.62));
-  const x = (i) => M.left + paso * i + (paso - ancho) / 2;
+  const banda = pw / serie.length;
+  // Hasta 24px de grueso y siempre 2px de aire entre barras vecinas.
+  const ancho = Math.max(2, Math.min(24, banda * 0.62, banda - 2));
+  const xBanda = (i) => M.left + banda * i;
+  const centro = (i) => xBanda(i) + banda / 2;
 
-  // Cuántas etiquetas del eje X entran sin amontonarse, determinístico
-  // (sin medir texto): a partir de un ancho mínimo estimado por etiqueta.
-  const anchoMinEtiqueta = 34;
-  const pasoEtiqueta = Math.max(1, Math.ceil(anchoMinEtiqueta / paso));
+  const marcas = [];
+  for (let v = minV; v <= maxV + paso / 2; v += paso) marcas.push(v);
+  const ejeY = marcas
+    .map((v) => {
+      const yv = y(v).toFixed(1);
+      return `<line class="${v === 0 ? "grafico-base" : "grafico-grilla"}" x1="${M.left}" y1="${yv}" x2="${W - M.right}" y2="${yv}" />
+        <text x="${M.left - 8}" y="${yv}" text-anchor="end" dominant-baseline="middle">${moneyCorto(v)}</text>`;
+    })
+    .join("");
+
+  // Cuántas etiquetas del eje X entran sin amontonarse, sin medir texto
+  // (~7px por carácter a 12px, más aire). La última siempre va; si queda
+  // pegada a la anterior, se saca la anterior.
+  const largoEtiqueta = Math.max(...serie.map((p) => String(p.etiqueta).length));
+  const pasoEtiqueta = Math.max(1, Math.ceil((largoEtiqueta * 7 + 12) / banda));
+  const ultima = serie.length - 1;
+  const visibles = new Set(serie.map((_, i) => i).filter((i) => i % pasoEtiqueta === 0));
+  const anteriorALaUltima = ultima - (ultima % pasoEtiqueta);
+  if (ultima !== anteriorALaUltima) {
+    if (ultima - anteriorALaUltima < pasoEtiqueta) visibles.delete(anteriorALaUltima);
+    visibles.add(ultima);
+  }
+  // Centrada bajo su barra, salvo la que no entra contra el borde derecho
+  // (en el celular "14/10" quedaba cortada): esa se alinea al borde.
+  const etiquetasX = serie
+    .map((p, i) => {
+      if (!visibles.has(i)) return "";
+      const mitad = (String(p.etiqueta).length * 7) / 2;
+      const alBorde = centro(i) + mitad > W - M.right;
+      const x = alBorde ? W - M.right : centro(i);
+      return `<text x="${x.toFixed(1)}" y="${H - M.bottom + 18}" text-anchor="${alBorde ? "end" : "middle"}">${esc(
+        p.etiqueta
+      )}</text>`;
+    })
+    .join("");
+
+  // Franja de cada período, detrás de las barras: es la zona de mouse y de
+  // toque (más grande que la barra) y la que se resalta al pasar.
+  const columnas = serie
+    .map(
+      (_, i) =>
+        `<rect class="grafico-col" data-i="${i}" x="${xBanda(i).toFixed(1)}" y="${M.top}" width="${banda.toFixed(1)}" height="${ph}" />`
+    )
+    .join("");
 
   const barras = serie
     .map((p, i) => {
-      const yTop = Math.min(y(p.resultado), y0);
-      const alto = Math.max(Math.abs(y(p.resultado) - y0), p.resultado === 0 ? 0 : 1);
-      const color = p.resultado >= 0 ? "var(--accent-ok)" : "var(--accent-danger)";
-      const opacidad = p.parcial ? "0.75" : "1";
-      const dash = p.parcial ? ' stroke-dasharray="2,2" stroke="var(--ink-muted)"' : "";
-      const titulo = `${p.etiqueta}${p.parcial ? " (parcial)" : ""}: ${money(p.resultado)}`;
-      // rx chico: el mismo gesto de "esquina de ticket" que ya usan los
-      // chips y botones de la app (--r-sm/--r-full), pero apenas
-      // insinuado — una barra de resultado no es una píldora.
-      return `<rect x="${x(i).toFixed(1)}" y="${yTop.toFixed(1)}" width="${ancho.toFixed(1)}" height="${alto.toFixed(
-        1
-      )}" rx="2" fill="${color}" opacity="${opacidad}"${dash}><title>${esc(titulo)}</title></rect>`;
+      if (p.resultado === 0) return "";
+      const aFavor = p.resultado > 0;
+      const alto = Math.max(Math.abs(y(p.resultado) - y0), 1);
+      const clase = `grafico-barra ${aFavor ? "grafico-barra-pos" : "grafico-barra-neg"}${
+        p.parcial ? " grafico-barra-parcial" : ""
+      }`;
+      return `<path class="${clase}" d="${pathBarra(centro(i) - ancho / 2, y0, ancho, alto, aFavor)}" />`;
     })
-    .join("");
-
-  const etiquetasX = serie
-    .map((p, i) => {
-      const esUltima = i === serie.length - 1;
-      if (!esUltima && i % pasoEtiqueta !== 0) return "";
-      return `<text x="${(x(i) + ancho / 2).toFixed(1)}" y="${H - M.bottom + 16}" text-anchor="middle" font-size="11" fill="var(--ink-muted)">${esc(p.etiqueta)}</text>`;
-    })
-    .join("");
-
-  const refs = [maxV, 0, minV].filter((v, i, arr) => arr.indexOf(v) === i);
-  const ejeY = refs
-    .map(
-      (v) => `
-    <line x1="${M.left}" y1="${y(v).toFixed(1)}" x2="${W - M.right}" y2="${y(v).toFixed(1)}"
-          stroke="${v === 0 ? "var(--ink-muted)" : "var(--line)"}" stroke-width="1" />
-    <text x="${M.left - 8}" y="${y(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle"
-          font-size="11" fill="var(--ink-muted)">${moneyCorto(v)}</text>`
-    )
     .join("");
 
   const mejor = serie.reduce((a, b) => (b.resultado > a.resultado ? b : a));
   const peor = serie.reduce((a, b) => (b.resultado < a.resultado ? b : a));
-  const resumenTexto = `Resultado por período, de ${serie[0].etiqueta} a ${serie[serie.length - 1].etiqueta}. Mejor: ${
+  const resumenTexto = `Resultado por período, de ${serie[0].etiqueta} a ${serie[ultima].etiqueta}. Mejor: ${
     mejor.etiqueta
-  } con ${money(mejor.resultado)}. Peor: ${peor.etiqueta} con ${money(peor.resultado)}.`;
+  } con ${money(mejor.resultado)}. Peor: ${peor.etiqueta} con ${money(
+    peor.resultado
+  )}. Con las flechas se recorre período por período.`;
+  const hayParcial = serie.some((p) => p.parcial);
 
   contenedor.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-labelledby="graficoResultadoTitulo">
+    <svg class="${animar ? "grafico-animar" : ""}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+         role="img" tabindex="0" aria-labelledby="graficoResultadoTitulo">
       <title id="graficoResultadoTitulo">${esc(resumenTexto)}</title>
-      <style>text { font-family: var(--font-mono); }</style>
+      ${columnas}
       ${ejeY}
       ${barras}
       ${etiquetasX}
-    </svg>`;
+    </svg>
+    <div class="grafico-tip" hidden></div>
+    ${hayParcial ? `<p class="grafico-nota">En contorno, el período en curso: todavía puede cambiar.</p>` : ""}`;
+
+  enlazarTooltipGrafico(contenedor, serie, centro);
+}
+
+// Tooltip del gráfico: con el mouse sigue la franja que está debajo; con
+// el dedo se queda en la que se tocó hasta tocar afuera; con el teclado el
+// SVG es una sola parada de Tab y las flechas recorren los períodos.
+function enlazarTooltipGrafico(contenedor, serie, centro) {
+  const svg = contenedor.querySelector("svg");
+  const tip = contenedor.querySelector(".grafico-tip");
+  const columnas = [...svg.querySelectorAll(".grafico-col")];
+  let activo = null;
+
+  const mostrar = (i) => {
+    activo = i;
+    columnas.forEach((c, j) => c.classList.toggle("is-activa", j === i));
+    const p = serie[i];
+    tip.innerHTML = `
+      <strong>${esc(p.etiqueta)}${p.parcial ? " · en curso" : ""}</strong>
+      <dl>
+        <div><dt>Ventas</dt><dd>${money(p.ventas)}</dd></div>
+        <div><dt>Ganancia bruta</dt><dd>${money(p.ganancia_bruta)}</dd></div>
+        <div><dt>Gastos</dt><dd>${money(p.gastos_operativos)}</dd></div>
+        <div class="grafico-tip-total"><dt>Resultado</dt><dd class="${p.resultado < 0 ? "saldo-negativo" : ""}">${money(
+          p.resultado
+        )}</dd></div>
+      </dl>`;
+    tip.hidden = false;
+    // Al costado de la franja, del lado que tenga lugar.
+    const x = centro(i);
+    const anchoTip = tip.offsetWidth;
+    const izquierda = x + 16 + anchoTip <= contenedor.clientWidth ? x + 16 : Math.max(0, x - 16 - anchoTip);
+    tip.style.left = `${izquierda}px`;
+  };
+  const ocultar = () => {
+    activo = null;
+    columnas.forEach((c) => c.classList.remove("is-activa"));
+    tip.hidden = true;
+  };
+  ocultarTipGrafico = ocultar;
+
+  svg.addEventListener("pointerover", (e) => {
+    const col = e.target.closest(".grafico-col");
+    if (col) mostrar(Number(col.dataset.i));
+  });
+  svg.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "mouse") ocultar();
+  });
+
+  svg.addEventListener("focus", () => mostrar(activo ?? serie.length - 1));
+  svg.addEventListener("blur", ocultar);
+  svg.addEventListener("keydown", (e) => {
+    const destino = {
+      ArrowLeft: (activo ?? 0) - 1,
+      ArrowRight: (activo ?? -1) + 1,
+      Home: 0,
+      End: serie.length - 1
+    }[e.key];
+    if (destino === undefined) return;
+    e.preventDefault();
+    mostrar(Math.min(serie.length - 1, Math.max(0, destino)));
+  });
 }
 
 // Dos refrescos pueden solaparse (cargarResumen dispara este sin esperar,
@@ -633,6 +780,7 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 // mismo criterio. Reusado por Facturas, Ventas y el historial de Clientes.
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
 const TIPO_FACTURA_LABEL = { factura: "Factura", nota_credito: "Nota de crédito", nota_debito: "Nota de débito" };
+const CONDICION_FACTURA_LABEL = { efectivo: "Efectivo", transferencia: "Transferencia", mercadopago: "Mercado Pago" };
 
 // Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
 // se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
@@ -720,7 +868,7 @@ function renderFacturas(lista) {
       <td data-label="Origen">${
         f.venta_id
           ? `<a href="#" class="btn-link ficha-factura-ver-venta" data-venta-id="${f.venta_id}">Venta #${f.venta_id}</a>`
-          : `<span class="status status-pendiente">Suelta</span>`
+          : `<span class="status">Suelta</span>`
       }</td>
       <td data-label="Importe" class="align-right mono">${money(f.total)}</td>
       <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[f.estado_cobro]}">${ESTADO_COBRO_LABEL[f.estado_cobro]}</span></td>
@@ -849,14 +997,12 @@ async function abrirFichaFactura(id) {
     ["Cliente", factura.cliente],
     ["Fecha", factura.fecha],
     ["Concepto", factura.concepto],
-    ["Medio de pago", factura.condicion],
+    ["Medio de pago", CONDICION_FACTURA_LABEL[factura.condicion] ?? factura.condicion],
     ["Importe", money(factura.total)],
-    ["Estado de cobro", ESTADO_COBRO_LABEL[factura.estado_cobro] ?? factura.estado_cobro],
+    ["Estado de cobro", badge(ESTADO_COBRO_CLASE[factura.estado_cobro], ESTADO_COBRO_LABEL[factura.estado_cobro] ?? factura.estado_cobro)],
     ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"]
   ];
-  document.getElementById("fichaFacturaDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor ?? "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaFacturaDatos").innerHTML = camposFicha(campos);
 
   const panelItems = document.getElementById("fichaFacturaItemsPanel");
   if (factura.venta_id) {
@@ -1491,16 +1637,13 @@ async function abrirFichaProducto(id) {
   document.getElementById("fichaProductoValorizado").textContent = money(producto.valorizado);
 
   const campos = [
-    // Esta ficha es la única que mete HTML en `valor` (el aviso de "Sin
-    // precio" y el badge de margen), así que los datos se escapan acá y el
-    // map de abajo los imprime tal cual.
-    ["SKU", esc(producto.sku)],
-    ["Categoría", esc(producto.categoria)],
+    ["SKU", producto.sku],
+    ["Categoría", producto.categoria],
     [
       "Precio de venta",
       producto.precio_venta > 0
         ? money(producto.precio_venta)
-        : '<span class="precio-sin-configurar">Sin precio</span>'
+        : html('<span class="precio-sin-configurar">Sin precio</span>')
     ],
     // Margen es a la vez costo y ganancia: se saca del todo para no-admin
     // en vez de dejarlo en la lista (esta ficha se arma con un array de
@@ -1510,17 +1653,15 @@ async function abrirFichaProducto(id) {
       ? [
           ["Margen", producto.margen == null ? null : porcentaje(producto.margen)],
           ["Margen objetivo", producto.margen_objetivo == null ? null : porcentaje(producto.margen_objetivo)],
-          ["Vs. objetivo", producto.margen_objetivo == null ? null : badgeMargenObjetivo(producto)]
+          ["Vs. objetivo", producto.margen_objetivo == null ? null : html(badgeMargenObjetivo(producto))]
         ]
       : []),
     ["Stock mínimo", numero(producto.stock_minimo)],
     ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
-    ["Estado de stock", STOCK_LABEL[producto.estado_stock]],
+    ["Estado de stock", badge(STOCK_CLASE[producto.estado_stock], STOCK_LABEL[producto.estado_stock])],
     ["Activo", producto.activo ? "Sí" : "No"]
   ];
-  document.getElementById("fichaProductoDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${valor || "—"}</dd></div>`)
-    .join("");
+  document.getElementById("fichaProductoDatos").innerHTML = camposFicha(campos);
 
   const panelVariantes = document.getElementById("fichaProductoVariantesPanel");
   panelVariantes.hidden = !producto.tiene_variantes;
@@ -2888,9 +3029,11 @@ const PRESUPUESTO_LABEL = {
   convertido: "Convertido"
 };
 
+// Borrador y enviado van en gris: no piden nada todavía, y en rojo se
+// leían como un problema.
 const PRESUPUESTO_CLASE = {
-  borrador: "status-pendiente",
-  enviado: "status-pendiente",
+  borrador: "",
+  enviado: "",
   aceptado: "status-cobrado",
   rechazado: "status-vencido",
   vencido: "status-vencido",
@@ -3112,12 +3255,10 @@ async function abrirFichaPresupuesto(id) {
     ["Cliente", p.cliente],
     ["Fecha", p.fecha],
     ["Válido hasta", p.vencimiento || "Sin vencimiento"],
-    ["Estado", PRESUPUESTO_LABEL[p.estado_efectivo]],
+    ["Estado", badge(PRESUPUESTO_CLASE[p.estado_efectivo], PRESUPUESTO_LABEL[p.estado_efectivo])],
     ["Notas", p.notas]
   ];
-  document.getElementById("fichaPresupuestoDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaPresupuestoDatos").innerHTML = camposFicha(campos);
 
   // Las acciones dependen del estado: un presupuesto convertido ya es una
   // venta, así que lo único que ofrece es el link para ir a verla.
@@ -3802,12 +3943,10 @@ async function abrirFichaVenta(id) {
     ["Cliente", venta.cliente],
     ["Fecha", venta.fecha],
     ["Cobrado", `${money(venta.cobrado)} de ${money(venta.neto)}`],
-    ["Estado de cobro", ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro],
+    ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
     ["Facturada", venta.facturada ? "Sí" : "No"]
   ];
-  document.getElementById("fichaVentaDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor ?? "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaVentaDatos").innerHTML = camposFicha(campos);
 
   document.getElementById("fichaVentaCosto").textContent = money(venta.costo_total);
   document.getElementById("fichaVentaTotal").textContent = money(venta.total);
@@ -4071,11 +4210,9 @@ async function abrirFichaDevolucion(id) {
       "Plata",
       d.reintegrada ? `Reintegrada por ${d.cuenta}` : "Crédito a favor del cliente"
     ],
-    ["Estado", d.estado === "anulada" ? "Anulada" : "Activa"]
+    ["Estado", d.estado === "anulada" ? badge("status-vencido", "Anulada") : badge("status-cobrado", "Activa")]
   ];
-  document.getElementById("fichaDevolucionDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaDevolucionDatos").innerHTML = camposFicha(campos);
 
   const acciones = document.getElementById("fichaDevolucionAcciones");
   const botones = [
@@ -4364,7 +4501,7 @@ function renderCompras(lista) {
         <td data-label="Proveedor">${esc(c.proveedor)}</td>
         <td data-label="Fecha">${esc(c.fecha)}</td>
         <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-        <td data-label="Pago"><span class="status status-pendiente">borrador</span></td>
+        <td data-label="Pago"><span class="status">Borrador</span></td>
         <td data-label="Envío">—</td>
         <td data-label=""><div class="fila-acciones"><button type="button" class="btn-fila btn-confirmar-compra" data-id="${c.id}">Efectuar pedido</button> ${accionAnular}</div></td>
       `;
@@ -4804,13 +4941,12 @@ async function abrirFichaCompra(id) {
   const campos = [
     ["Proveedor", compra.proveedor],
     ["Fecha", compra.fecha],
-    ["Estado", compra.estado === "borrador" ? "Borrador" : "Efectuada"],
+    ["Estado", compra.estado === "borrador" ? badge("", "Borrador") : badge("status-cobrado", "Efectuada")],
     ["Envío", ENVIO_LABEL[compra.estado_envio] ?? "—"],
-    ["Pago", `${money(compra.pagado)} de ${money(compra.neto)} (${ESTADO_PAGO_LABEL[compra.estado_pago] ?? compra.estado_pago})`]
+    ["Pagado", `${money(compra.pagado)} de ${money(compra.neto)}`],
+    ["Estado de pago", badge(ESTADO_PAGO_CLASE[compra.estado_pago], ESTADO_PAGO_LABEL[compra.estado_pago] ?? compra.estado_pago)]
   ];
-  document.getElementById("fichaCompraDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor ?? "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaCompraDatos").innerHTML = camposFicha(campos);
 
   document.getElementById("fichaCompraSubtotal").textContent = money(compra.subtotal);
   document.getElementById("fichaCompraEnvio").textContent = money(compra.costo_envio);
@@ -5034,11 +5170,9 @@ async function abrirFichaDevolucionProveedor(id) {
     ["Motivo", d.motivo],
     ["Plata", d.reintegrada ? `Reintegrada por ${d.cuenta}` : "Crédito con el proveedor"],
     ["Nota de crédito del proveedor", d.nota_credito_proveedor_numero],
-    ["Estado", d.estado === "anulada" ? "Anulada" : "Activa"]
+    ["Estado", d.estado === "anulada" ? badge("status-vencido", "Anulada") : badge("status-cobrado", "Activa")]
   ];
-  document.getElementById("fichaDevolucionProveedorDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaDevolucionProveedorDatos").innerHTML = camposFicha(campos);
 
   const acciones = document.getElementById("fichaDevolucionProveedorAcciones");
   const botones = [
@@ -5405,9 +5539,7 @@ async function abrirFichaCliente(id) {
     ["Última compra", cliente.ultima_compra],
     ["Notas", cliente.notas]
   ];
-  document.getElementById("fichaClienteDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaClienteDatos").innerHTML = camposFicha(campos);
 
   const historialBody = document.getElementById("fichaClienteHistorial");
   historialBody.innerHTML =
@@ -5621,9 +5753,7 @@ async function abrirFichaProveedor(id) {
     ["Última compra", proveedor.ultima_compra],
     ["Notas", proveedor.notas]
   ];
-  document.getElementById("fichaProveedorDatos").innerHTML = campos
-    .map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${esc(valor || "—")}</dd></div>`)
-    .join("");
+  document.getElementById("fichaProveedorDatos").innerHTML = camposFicha(campos);
 
   const historialBody = document.getElementById("fichaProveedorHistorial");
   historialBody.innerHTML =
@@ -5637,7 +5767,7 @@ async function abrirFichaProveedor(id) {
             const clase = anulada
               ? "status-vencido"
               : borrador
-              ? "status-pendiente"
+              ? ""
               : ESTADO_PAGO_CLASE[c.estado_pago];
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
@@ -6112,6 +6242,16 @@ function asistenteAjustarAltoTextarea() {
   asistenteTextoEl.style.height = `${asistenteTextoEl.scrollHeight}px`;
 }
 asistenteTextoEl.addEventListener("input", asistenteAjustarAltoTextarea);
+
+// Un ejemplo de la bienvenida llena el cuadro para editarlo: no se envía
+// solo, igual que todo lo demás del asistente (CLAUDE.md §21).
+document.querySelectorAll(".asistente-sugerencia").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    asistenteTextoEl.value = btn.textContent;
+    asistenteAjustarAltoTextarea();
+    asistenteTextoEl.focus();
+  });
+});
 
 function asistenteScrollAlFinal() {
   asistenteHilo.scrollTop = asistenteHilo.scrollHeight;
@@ -6595,8 +6735,8 @@ const AUDITORIA_ACCION_CLASE = {
   crear: "status-cobrado",
   confirmar: "status-cobrado",
   restaurar: "status-cobrado",
-  editar: "status-pendiente",
-  cambiar_estado: "status-pendiente",
+  editar: "",
+  cambiar_estado: "",
   anular: "status-vencido"
 };
 // Una sola palabra cada una: el badge .status no tiene white-space:nowrap

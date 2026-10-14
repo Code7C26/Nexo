@@ -2836,6 +2836,13 @@
       <p class="asistente-bienvenida">
         Contame una venta, una compra o un gasto como se lo dirías a alguien — te muestro cómo lo entendí antes de cargar nada.
       </p>
+      <!-- Ejemplos que se pueden tocar: llenan el cuadro, no envían (el
+           ejemplo entero no entraba en el placeholder de una línea). -->
+      <div class="asistente-sugerencias" aria-label="Ejemplos">
+        <button type="button" class="asistente-sugerencia">Vendí 3 remeras a Juan por 45 mil y me pagó por Mercado Pago</button>
+        <button type="button" class="asistente-sugerencia">Compré 10 pantalones a Textil Norte a 9 mil cada uno</button>
+        <button type="button" class="asistente-sugerencia">Pagué 25 mil de luz en efectivo</button>
+      </div>
     </div>
 
     <form id="formAsistente" class="asistente-composer">
@@ -2843,7 +2850,7 @@
         id="asistenteTexto"
         name="texto"
         rows="1"
-        placeholder='Ej: "vendí 3 remeras negras M a Juan por 45 mil y me pagó por Mercado Pago"'
+        placeholder="Contame qué pasó…"
       ></textarea>
       <button type="submit" id="btnAsistenteEnviar" class="asistente-enviar" aria-label="Enviar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

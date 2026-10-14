@@ -17,7 +17,9 @@ import { alEntrarEnVista } from "../core/registro.js";
 let usuariosCache = [];
 
 const ROL_LABEL = { admin: "Administrador", empleado: "Empleado" };
-const ROL_CLASE = { admin: "status-cobrado", empleado: "status-pendiente" };
+// Un rol no es bueno ni malo: los dos van en gris (en rojo, "Empleado" se
+// leía como un problema). Lo mismo un usuario dado de baja, abajo.
+const ROL_CLASE = { admin: "", empleado: "" };
 
 function renderUsuarios(lista) {
   const body = document.getElementById("usuariosBody");
@@ -46,7 +48,7 @@ function renderUsuarios(lista) {
           <td data-label="Usuario" class="mono">${esc(u.usuario)}</td>
           <td data-label="Nombre">${esc(u.nombre)}</td>
           <td data-label="Rol"><span class="status ${ROL_CLASE[u.rol] || ""}">${esc(ROL_LABEL[u.rol] || u.rol)}</span></td>
-          <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : "status-pendiente"}">${
+          <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : ""}">${
             u.activo ? "Activo" : "Dado de baja"
           }</span></td>
           <td data-label="Alta">${u.fecha_alta ? esc(u.fecha_alta.split(" ")[0]) : "—"}</td>

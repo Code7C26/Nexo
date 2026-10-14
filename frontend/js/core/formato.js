@@ -41,12 +41,14 @@ export const hoyISO = () => new Date().toLocaleDateString("sv-SE"); // formato A
 
 // Versión abreviada de money(), para las etiquetas del eje del gráfico de
 // evolución: "$450.000,00" no entra en la canaleta angosta del eje.
-// Conserva el signo.
+// Conserva el signo, y un decimal en miles: con marcas cada $500, redondear
+// a miles enteros escribía "$2k" en la de $1.500.
 export function moneyCorto(n) {
   const signo = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-  if (abs >= 1e6) return `${signo}$${(abs / 1e6).toLocaleString("es-AR", { maximumFractionDigits: 1 })}M`;
-  if (abs >= 1e3) return `${signo}$${Math.round(abs / 1e3)}k`;
+  const corto = (v) => v.toLocaleString("es-AR", { maximumFractionDigits: 1 });
+  if (abs >= 1e6) return `${signo}$${corto(abs / 1e6)}M`;
+  if (abs >= 1e3) return `${signo}$${corto(abs / 1e3)}k`;
   return `${signo}$${Math.round(abs)}`;
 }
 
@@ -76,3 +78,24 @@ export function esc(valor) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+// Marca un valor de camposFicha() como HTML ya armado (un badge): se
+// imprime tal cual, así que quien lo arma escapa lo que lleva adentro.
+export const html = (s) => ({ html: s });
+
+// Badge de estado (.status) para una ficha: el texto se escapa acá. Sin
+// clase queda gris, para lo que no es ni bueno ni urgente (un borrador).
+export const badge = (clase, texto) => html(`<span class="status ${clase ?? ""}">${esc(texto)}</span>`);
+
+// Los datos de una ficha (<dl class="ficha-datos">) desde pares
+// [etiqueta, valor]. Todo valor se escapa salvo el envuelto en html(), y
+// uno vacío se muestra como "—". Antes cada ficha repetía este map.
+// (El test de escape no ve `dd`: es la excepción documentada en el
+// handoff, y acá todo lo que no viene marcado con html() pasa por esc().)
+export const camposFicha = (campos) =>
+  campos
+    .map(([etiqueta, valor]) => {
+      const dd = valor?.html ?? esc(valor || "—");
+      return `<div><dt>${etiqueta}</dt><dd>${dd}</dd></div>`;
+    })
+    .join("");

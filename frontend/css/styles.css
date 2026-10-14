@@ -660,6 +660,10 @@ button { font-family: inherit; cursor: pointer; }
    sesión"), separarlo con una línea — son dos acciones de naturaleza
    distinta y sin esto quedaban pegados, sin ningún gap entre ellos
    porque son contenedores hermanos, no parte del mismo .form. */
+/* Catálogos (categorías, listas, depósitos): el botón de agregar quedaba
+   pegado al encabezado de la tabla de abajo. */
+.modal-card > .form + .tabla-scroll { margin-top: var(--sp-5); }
+
 .modal-card > .form + .panel-acciones {
   margin-top: var(--sp-4);
   padding-top: var(--sp-4);
@@ -871,6 +875,10 @@ button { font-family: inherit; cursor: pointer; }
 .ledger-danger { color: var(--accent-danger); }
 .ledger-ok     { color: var(--accent-ok); }
 
+/* Un cero no es ni a favor ni en contra: va en tinta. La clase la pone el
+   observer de core/ui.js cuando la cifra vale cero. */
+.ledger-value.ledger-cero { color: var(--ink); }
+
 .ledger-divider {
   width: 1px;
   background: var(--line);
@@ -1061,7 +1069,14 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
 }
 
 .status-cobrado  { background: var(--accent-ok-bg); color: var(--accent-ok); }
-.status-pendiente{ background: var(--accent-warn-bg); color: var(--accent-warn); }
+/* Pendiente y vencido comparten el rojo desde que salió el naranja: el
+   pendiente va con contorno y sin relleno, así "Parcial" no se confunde
+   con "Pendiente" (lleno). Lo que no es urgente va sin clase, en gris. */
+.status-pendiente{
+  background: transparent;
+  color: var(--accent-warn);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warn) 45%, transparent);
+}
 .status-vencido  { background: var(--accent-danger-bg); color: var(--accent-danger); }
 
 /* Estado vacío de una tabla. Reemplaza el style="..." repetido que tenía
@@ -1111,22 +1126,91 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
 
 /* ---------- Gráfico de evolución (Resumen) ---------- */
 
-/* SVG dibujado a mano, sin librería (el proyecto no tiene build step). El
-   ancho es fluido vía viewBox + width:100%, así que no hace falta ningún
-   listener de resize. Los colores de las barras y los ejes se resuelven
-   con var(--accent-ok) / var(--accent-danger) / var(--ink-muted) /
-   var(--line) desde el propio SVG inline, así el gráfico sigue el tema
-   claro/oscuro solo — no pasarlos por parámetro ni redibujar al togglear. */
+/* SVG dibujado a mano, sin librería (el proyecto no tiene build step), al
+   ancho real del contenedor: renderGraficoResultado lo mide y lo redibuja
+   si cambia, así el texto queda siempre en 12px reales. Los colores salen
+   de estos tokens, que ya cambian con el tema: el gráfico sigue el claro/
+   oscuro solo — no pasarlos por parámetro ni redibujar al togglear. */
 .grafico {
+  position: relative;
   width: 100%;
-  max-width: 900px;
-  margin: 0 auto var(--sp-4);
+  margin: 0 0 var(--sp-4);
 }
 
 .grafico svg {
-  width: 100%;
-  height: auto;
   display: block;
+  max-width: 100%;
+  outline: none;
+  border-radius: var(--r-sm);
+}
+
+.grafico svg:focus-visible { box-shadow: 0 0 0 3px var(--accent-bg); }
+
+.grafico text {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--ink-muted);
+}
+
+.grafico-grilla { stroke: var(--line); stroke-width: 1; }
+.grafico-base   { stroke: var(--line-strong); stroke-width: 1; }
+
+/* Franja de cada período: invisible hasta que se la señala. */
+.grafico-col { fill: transparent; transition: fill var(--dur-1) ease; }
+.grafico-col.is-activa { fill: var(--surface-sunk); }
+
+/* Ni la barra ni la grilla ni el texto toman el mouse: lo toma la franja
+   del período que tienen detrás (si no, cruzar una línea lo "soltaba"). */
+.grafico-barra, .grafico line, .grafico text { pointer-events: none; }
+.grafico-barra-pos { fill: var(--ink); }
+.grafico-barra-neg { fill: var(--accent-danger); }
+
+/* Período en curso: contorno con un velo del mismo color, todavía no es
+   una cifra cerrada. */
+.grafico-barra-parcial { fill-opacity: 0.16; stroke-width: 1.5; }
+.grafico-barra-pos.grafico-barra-parcial { stroke: var(--ink); }
+.grafico-barra-neg.grafico-barra-parcial { stroke: var(--accent-danger); }
+
+/* Las barras crecen desde la línea del 0 al llegar datos nuevos (no al
+   redibujar por un cambio de ancho). prefers-reduced-motion las apaga con
+   la regla general de animaciones. */
+.grafico-animar .grafico-barra {
+  transform-box: fill-box;
+  animation: grafico-crecer var(--dur-3) var(--ease-out) both;
+}
+.grafico-animar .grafico-barra-pos { transform-origin: bottom; }
+.grafico-animar .grafico-barra-neg { transform-origin: top; }
+
+@keyframes grafico-crecer {
+  from { transform: scaleY(0); }
+}
+
+.grafico-tip {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  min-width: 190px;
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-md);
+  font-size: var(--txt-xs);
+  pointer-events: none;
+}
+
+.grafico-tip strong { display: block; margin-bottom: var(--sp-2); font-family: var(--font-display); }
+.grafico-tip dl { margin: 0; display: grid; gap: 4px; }
+.grafico-tip dl div { display: flex; justify-content: space-between; gap: var(--sp-4); }
+.grafico-tip dt { color: var(--ink-muted); }
+.grafico-tip dd { margin: 0; font-variant-numeric: tabular-nums; }
+.grafico-tip-total { padding-top: 4px; border-top: 1px solid var(--line); font-weight: 600; }
+
+.grafico-nota {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
 }
 
 /* Los paneles del Resumen ahora se apilan (Evolución entre "fuera del
@@ -1138,11 +1222,12 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
 }
 
 /* Paneles apilados en cualquier vista (Caja: Cuentas y Movimientos)
-   tenían 0 de separación. El Resumen y la ficha de cliente ya separan
-   con margin-bottom propio, por eso quedan afuera. */
-.panel + .panel { margin-top: var(--sp-5); }
-[data-view="dashboard"] .panel + .panel,
-[data-view="cliente-detalle"] .panel + .panel { margin-top: 0; }
+   tenían 0 de separación. El Resumen ya separa con margin-bottom propio,
+   por eso queda afuera. En las fichas, la tira de cifras que sigue al
+   panel de datos quedaba pegada a él (ledger-strip solo separa abajo). */
+.panel + .panel,
+.panel + .ledger-strip { margin-top: var(--sp-5); }
+[data-view="dashboard"] .panel + .panel { margin-top: 0; }
 
 /* La nota del período va pegada arriba de las cifras: necesita aire. */
 .form-note + .ledger-strip { margin-top: var(--sp-3); }
@@ -1662,11 +1747,6 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .fila-clickeable { cursor: pointer; }
 
-[data-view="cliente-detalle"] .panel,
-[data-view="cliente-detalle"] .ledger-strip {
-  margin-bottom: 20px;
-}
-
 .item-subtotal {
   flex: 0 0 92px;
   text-align: right;
@@ -2090,6 +2170,28 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 
+.asistente-sugerencias {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.asistente-sugerencia {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--txt-xs);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) ease, border-color var(--dur-1) ease;
+}
+
+.asistente-sugerencia:hover { background: var(--accent-bg); border-color: var(--accent); }
+
 .asistente-turno { display: flex; flex-direction: column; }
 
 .asistente-turno-usuario { align-items: flex-end; }
@@ -2322,6 +2424,20 @@ input.precio-sin-configurar::placeholder {
   .search { min-width: 0; }
 
   .ledger-table thead { display: none; }
+
+  /* La última tarjeta no lleva la línea que separa de la siguiente. */
+  .ledger-table tbody tr:last-child { border-bottom: none; }
+
+  /* Fichas: los datos de a dos por fila (de a uno quedaba una columna
+     larga con medio ancho en blanco) y las acciones en una grilla pareja
+     en vez de botones de anchos sueltos en tres renglones. */
+  .ficha-datos { grid-template-columns: 1fr 1fr; }
+  .ficha-datos dd { overflow-wrap: anywhere; }
+
+  [data-view$="-detalle"] .panel-acciones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
 
   .ledger-table, .ledger-table tbody, .ledger-table tr, .ledger-table td {
     display: block;
