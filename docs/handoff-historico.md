@@ -6910,3 +6910,13 @@ drawer. `npm test` dio 46 ok y `npm run lint` pasó sin problemas en 37 archivos
 
 Revisar a ojo las pantallas que no se capturaron (lista en `handoff.md`) y el gráfico del Resumen.
 Después, la landing page cuando el equipo defina los planes, y la Fase 7 de la auditoría.
+
+### Addendum al §62 — vuelve el negro de marca (14 de octubre)
+
+El usuario aprobó el rediseño pero lo corrigió: "el concepto de la marca aclaraba que se tenía que
+mantener el negro". El rediseño había cambiado la base oscura por azul noche (`#111733` en la sidebar,
+`#0A0E1B` en el login y el tema oscuro, `#141A2E` en la tinta) y teñido los grises de azul. Ahora la
+sidebar, el login, los avisos, la barra de selección, `--brand` y el fondo del tema oscuro vuelven a
+`#000000`, la tinta vuelve a `#121212` y los grises son neutros. Las luces del login bajan de
+intensidad para que el fondo se lea negro. La sidebar recupera su borde derecho, porque en tema oscuro
+el fondo de la app también es negro. El azul birome y el resaltador quedan como acentos.

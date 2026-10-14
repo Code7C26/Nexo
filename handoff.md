@@ -150,6 +150,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     no pisa lo que ya se cargó (hist. §26).
 
 **Diseño visual (hist. §62)**
+- **El negro es el color de marca** (el logo es blanco y negro): sidebar,
+  login, tinta, avisos y fondo del tema oscuro son negros, con grises
+  neutros. El rediseño lo había cambiado por azul noche y el usuario lo
+  corrigió (hist. §62, addendum). Los acentos van encima, no en su lugar.
 - **Sistema visual:** azul birome (`--accent`) para toda acción y
   resaltador (`--highlight`) solo en la sección activa del menú y la cifra
   que concluye (`.ledger-item-total`). Está explicado al principio de

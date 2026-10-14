@@ -1,8 +1,11 @@
 /* ============================================================
    NEXO — Sistema de diseño
-   Concepto: el cuaderno del comercio, pasado en limpio. Un negocio
-   chico lleva sus cuentas con birome azul y marca con resaltador lo
-   que importa; Nexo toma esos dos gestos como identidad:
+   Concepto: el cuaderno del comercio, pasado en limpio. La marca es
+   blanco y negro (el logo no tiene otro color): el negro es la tinta,
+   la barra lateral, el login y todo lo que flota oscuro, y el tema
+   oscuro es negro, no un azul oscuro. Un negocio chico lleva sus
+   cuentas con birome azul y marca con resaltador lo que importa; Nexo
+   suma esos dos gestos como acentos sobre el blanco y negro:
    - azul birome (--accent) para toda acción: botones, links, foco;
    - amarillo resaltador (--highlight) en muy pocos lugares: la
      sección activa del menú y la cifra que concluye (Resultado);
@@ -34,20 +37,21 @@
 }
 
 :root {
-  /* Color — tema claro. El fondo de la app es un gris frío apenas
+  /* Color — tema claro. El fondo de la app es un gris neutro apenas
      marcado y los paneles son blancos: la jerarquía la dan el relleno
-     y una sombra mínima, con --line como borde de apoyo. */
-  --bg:            #F3F4F7;
+     y una sombra mínima, con --line como borde de apoyo. Grises sin
+     tinte de color, para que el negro de la marca siga siendo negro. */
+  --bg:            #F4F4F4;
   --surface:       #FFFFFF;
-  --surface-sunk:  #EEF0F4;   /* inputs, zonas hundidas, encabezado de tabla */
-  --surface-hover: #F7F8FA;   /* fila de tabla bajo el mouse */
-  --ink:           #141A2E;   /* tinta: azul noche, no negro puro */
-  --ink-muted:     #5A6176;
-  --ink-faint:     #8B91A3;
-  --line:          #E2E5EB;
-  --line-strong:   #C9CED9;   /* bordes de controles (inputs, botones secundarios) */
+  --surface-sunk:  #EFEFEF;   /* inputs, zonas hundidas, encabezado de tabla */
+  --surface-hover: #F8F8F8;   /* fila de tabla bajo el mouse */
+  --ink:           #121212;   /* tinta negra, la misma de antes del rediseño */
+  --ink-muted:     #5E5E5E;
+  --ink-faint:     #8C8C8C;
+  --line:          #E3E3E3;
+  --line-strong:   #CBCBCB;   /* bordes de controles (inputs, botones secundarios) */
 
-  --brand:         #141A2E;
+  --brand:         #000000;
   --brand-contrast:#FFFFFF;
 
   /* Azul birome: el color de toda acción. */
@@ -59,7 +63,7 @@
   /* Resaltador: muy pocos lugares, nunca de fondo de un bloque entero.
      --highlight-ink es la tinta que va encima. */
   --highlight:     #FFE15A;
-  --highlight-ink: #141A2E;
+  --highlight-ink: #000000;
 
   --accent-ok:     #0F7A52;   /* verde: a favor / cobrado */
   --accent-ok-bg:  #E1F3EA;
@@ -72,27 +76,29 @@
   --accent-danger: #C0362C;   /* rojo — atención / retenido */
   --accent-danger-bg: #FBE6E4;
 
-  /* La sidebar es oscura en los dos temas (es parte de la identidad
-     visual, no del tema): azul noche, la misma familia que la tinta. */
-  --sidebar-bg:      #111733;
-  --sidebar-ink:     #EEF0F8;
-  --sidebar-ink-2:   #B9BFD6;
-  --sidebar-ink-3:   #7E86A6;
-  --sidebar-line:    rgba(255,255,255,0.10);
+  /* La sidebar es negra en los dos temas: es identidad de marca (el
+     logo es blanco y negro), no una preferencia de lectura del tema. */
+  --sidebar-bg:      #000000;
+  --sidebar-ink:     #F2F2F2;
+  --sidebar-ink-2:   #C2C2C2;
+  --sidebar-ink-3:   #858585;
+  /* Más marcado que los demás bordes: en tema oscuro el fondo de la app
+     también es negro, y este borde es lo único que separa la sidebar. */
+  --sidebar-line:    rgba(255,255,255,0.16);
   --sidebar-hover:   rgba(255,255,255,0.07);
   --sidebar-active:  rgba(255,255,255,0.12);
 
   /* Fondo de los elementos flotantes oscuros (hamburguesa, burbujas del
      chat del asistente): se despegan del fondo en los dos temas. */
-  --pill-bg:         #1B2245;
+  --pill-bg:         #121212;
 
   /* Elevación: una sombra mínima para los paneles (que ya no se
      distinguen solo por el borde, porque el fondo de la app no es
      blanco) y una grande para lo que flota de verdad: modal, popover,
      toasts. */
-  --shadow-sm: 0 1px 2px rgba(20, 26, 46, 0.06), 0 1px 1px rgba(20, 26, 46, 0.03);
-  --shadow-md: 0 6px 16px rgba(20, 26, 46, 0.08), 0 2px 4px rgba(20, 26, 46, 0.04);
-  --shadow-lg: 0 20px 48px rgba(20, 26, 46, 0.18), 0 4px 12px rgba(20, 26, 46, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 1px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
 
   /* Tipografía. Dos familias con roles claros:
      - Bricolage Grotesque (--font-display): títulos y cifras grandes. Es
@@ -148,23 +154,23 @@
    dirección (aunque el SO diga otra cosa). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
-    --bg:            #0A0E1B;
-    --surface:       #121829;
-    --surface-sunk:  #0D1222;
-    --surface-hover: #182036;
-    --ink:           #EDF0F7;
-    --ink-muted:     #9AA2B8;
-    --ink-faint:     #6D7590;
-    --line:          #232B42;
-    --line-strong:   #333D58;
+    --bg:            #000000;
+    --surface:       #0F0F0F;
+    --surface-sunk:  #171717;
+    --surface-hover: #151515;
+    --ink:           #F2F2F2;
+    --ink-muted:     #9A9A9A;
+    --ink-faint:     #6E6E6E;
+    --line:          #242424;
+    --line-strong:   #383838;
 
-    --brand-contrast:#0A0E1B;
+    --brand-contrast:#000000;
 
     /* La birome se aclara para leerse sobre fondo oscuro. */
     --accent:        #8097FF;
     --accent-hover:  #9AACFF;
     --accent-bg:     rgba(128, 151, 255, 0.15);
-    --accent-contrast:#0A0E1B;
+    --accent-contrast:#000000;
 
     --accent-ok:     #4CC797;
     --accent-ok-bg:  rgba(76, 199, 151, 0.15);
@@ -173,8 +179,8 @@
     --accent-danger: #F07167;
     --accent-danger-bg: rgba(240, 113, 103, 0.15);
 
-    --sidebar-bg:    #0D1228;
-    --pill-bg:       #222A50;
+    --sidebar-bg:    #000000;
+    --pill-bg:       #1C1C1C;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.35);
@@ -183,22 +189,22 @@
 }
 
 :root[data-tema="oscuro"] {
-  --bg:            #0A0E1B;
-  --surface:       #121829;
-  --surface-sunk:  #0D1222;
-  --surface-hover: #182036;
-  --ink:           #EDF0F7;
-  --ink-muted:     #9AA2B8;
-  --ink-faint:     #6D7590;
-  --line:          #232B42;
-  --line-strong:   #333D58;
+  --bg:            #000000;
+  --surface:       #0F0F0F;
+  --surface-sunk:  #171717;
+  --surface-hover: #151515;
+  --ink:           #F2F2F2;
+  --ink-muted:     #9A9A9A;
+  --ink-faint:     #6E6E6E;
+  --line:          #242424;
+  --line-strong:   #383838;
 
-  --brand-contrast:#0A0E1B;
+  --brand-contrast:#000000;
 
   --accent:        #8097FF;
   --accent-hover:  #9AACFF;
   --accent-bg:     rgba(128, 151, 255, 0.15);
-  --accent-contrast:#0A0E1B;
+  --accent-contrast:#000000;
 
   --accent-ok:     #4CC797;
   --accent-ok-bg:  rgba(76, 199, 151, 0.15);
@@ -207,8 +213,8 @@
   --accent-danger: #F07167;
   --accent-danger-bg: rgba(240, 113, 103, 0.15);
 
-  --sidebar-bg:    #0D1228;
-  --pill-bg:       #222A50;
+  --sidebar-bg:    #000000;
+  --pill-bg:       #1C1C1C;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.35);
@@ -296,6 +302,7 @@ button { font-family: inherit; cursor: pointer; }
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-active) transparent;
+  border-right: 1px solid var(--sidebar-line);
 }
 
 .brand {
@@ -620,7 +627,7 @@ button { font-family: inherit; cursor: pointer; }
 .btn-primary {
   background: var(--accent);
   color: var(--accent-contrast);
-  box-shadow: 0 1px 2px rgba(20, 26, 46, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .btn-primary:hover { background: var(--accent-hover); }
@@ -933,7 +940,7 @@ button { font-family: inherit; cursor: pointer; }
   font-family: inherit;
   color: var(--ink);
   min-width: 260px;
-  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238B91A3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 12px 50%;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238C8C8C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 12px 50%;
 }
 
 /* Un solo foco para todo lo que se escribe: borde birome y un halo. */
@@ -1167,7 +1174,7 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(10, 14, 27, 0.55);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   display: flex;
@@ -2020,7 +2027,7 @@ input.precio-sin-configurar::placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 28px rgba(45, 75, 224, 0.38), 0 2px 6px rgba(20, 26, 46, 0.18);
+  box-shadow: 0 10px 28px rgba(45, 75, 224, 0.38), 0 2px 6px rgba(0, 0, 0, 0.18);
   transition: transform 0.15s ease;
 }
 
@@ -2232,7 +2239,7 @@ input.precio-sin-configurar::placeholder {
 
   /* Velo sobre el contenido mientras el drawer está abierto: una sombra
      extendida, sin un elemento extra en el HTML. */
-  .sidebar.is-open { box-shadow: 0 0 0 100vmax rgba(10, 14, 27, 0.45); }
+  .sidebar.is-open { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45); }
   #btnColapsar { display: none; }
 
   /* La topbar (nombre de la pantalla + fecha) vivía en el flujo normal
@@ -2557,9 +2564,9 @@ input.precio-sin-configurar::placeholder {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(1100px 560px at 88% -12%, rgba(45, 75, 224, 0.38), transparent 62%),
-    radial-gradient(800px 480px at -12% 112%, rgba(255, 225, 90, 0.10), transparent 62%),
-    #0A0E1B;
+    radial-gradient(1100px 560px at 88% -12%, rgba(45, 75, 224, 0.20), transparent 62%),
+    radial-gradient(800px 480px at -12% 112%, rgba(255, 225, 90, 0.07), transparent 62%),
+    #000000;
   z-index: 100;
   display: flex;
   align-items: center;
@@ -2582,11 +2589,11 @@ input.precio-sin-configurar::placeholder {
    (invisible sobre esta card). --sidebar-line ya está pensado para
    funcionar como borde sobre negro puro, por eso se reusa acá. */
 .sesion-card {
-  background: rgba(17, 23, 51, 0.82);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.10);
-  color: #EEF0F8;
+  color: #F2F2F2;
   border-radius: var(--r-lg);
   width: min(420px, 92vw);
   padding: var(--sp-6) var(--sp-6) var(--sp-5);
@@ -2615,7 +2622,7 @@ input.precio-sin-configurar::placeholder {
 .sesion-bajada {
   margin: -6px 0 var(--sp-3);
   font-size: var(--txt-sm);
-  color: #9AA2B8;
+  color: #9A9A9A;
   text-wrap: balance;
 }
 
@@ -2625,13 +2632,13 @@ input.precio-sin-configurar::placeholder {
 }
 
 .sesion-card .form label {
-  color: #B9BFD6;
+  color: #C2C2C2;
 }
 
 .sesion-card .form input {
-  background: rgba(10, 14, 27, 0.6);
+  background: rgba(0, 0, 0, 0.6);
   border-color: rgba(255, 255, 255, 0.14);
-  color: #EEF0F8;
+  color: #F2F2F2;
   min-height: 44px;
 }
 
@@ -2645,7 +2652,7 @@ input.precio-sin-configurar::placeholder {
    invisible. Fijo también, mismo criterio. */
 .sesion-card .btn-primary {
   background: #FFE15A;
-  color: #141A2E;
+  color: #000000;
   min-height: 46px;
   font-size: var(--txt-md);
 }
@@ -2655,15 +2662,15 @@ input.precio-sin-configurar::placeholder {
 /* .btn-link usa var(--ink), que se invierte con el tema: en claro sería negro
    sobre la card negra fija. Mismo criterio que .btn-primary de arriba. */
 .sesion-card .btn-link {
-  color: #B9BFD6;
+  color: #C2C2C2;
   text-decoration-color: rgba(185, 191, 214, 0.5);
 }
 
 /* .form-note (mensajes de error de login/registro) usa var(--surface-sunk),
    que en claro es casi blanco — ilegible sobre esta card negra fija. */
 .sesion-card .form-note {
-  background: rgba(10, 14, 27, 0.6);
-  color: #B9BFD6;
+  background: rgba(0, 0, 0, 0.6);
+  color: #C2C2C2;
 }
 
 /* Ocultar la app entera (no solo .app: #navToggle vive fuera de .app en
