@@ -5,6 +5,7 @@
  */
 
 import { esc, numero } from "./formato.js";
+import { icono } from "./iconos.js";
 
 /* ---------- Filtros (estilo Notion) ---------- */
 
@@ -393,11 +394,11 @@ export function crearFiltros(contenedorId, campos, onCambio) {
           (filtro, i) => `
         <span class="filtro-chip" data-indice="${i}">
           <button type="button" class="filtro-chip-texto">${etiquetaChip(filtro)}</button>
-          <button type="button" class="filtro-chip-x" title="Quitar filtro" aria-label="Quitar filtro">✕</button>
+          <button type="button" class="filtro-chip-x" title="Quitar filtro" aria-label="Quitar filtro">${icono("x")}</button>
         </span>`
         )
         .join("") +
-      `<button type="button" class="btn-agregar-filtro">${filtros.length ? "+" : "+ Filtro"}</button>` +
+      `<button type="button" class="btn-agregar-filtro"${filtros.length ? ' aria-label="Agregar filtro"' : ""}>${icono("list-filter")}${filtros.length ? "" : "Filtrar"}</button>` +
       (filtros.length > 1 ? `<button type="button" class="btn-limpiar-filtros">Limpiar todo</button>` : "");
     if (abierto) contenedor.appendChild(abierto);
 

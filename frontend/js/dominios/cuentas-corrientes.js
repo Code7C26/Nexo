@@ -11,6 +11,7 @@ import { filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
 import { crearFiltros } from "../core/filtros.js";
 import { descargarCSV } from "../core/csv.js";
 import { invocar, registrar } from "../core/registro.js";
+import { icono } from "../core/iconos.js";
 
 /* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
 
@@ -77,7 +78,7 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
       <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
       <td data-label="Vence">${esc(masVieja.vencimiento)}</td>
       <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
-      <td data-label="" class="cc-chevron">▸</td>
+      <td data-label="" class="cc-chevron">${icono("chevron-right")}</td>
     `;
 
     const detalle = document.createElement("tr");
@@ -106,7 +107,7 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
     fila.addEventListener("click", (ev) => {
       if (ev.target.closest("button")) return;
       detalle.hidden = !detalle.hidden;
-      fila.querySelector(".cc-chevron").textContent = detalle.hidden ? "▸" : "▾";
+      fila.classList.toggle("is-abierta", !detalle.hidden);
     });
     fila.querySelector(".cc-abrir-ficha").addEventListener("click", () => abrirFicha(e.id));
 

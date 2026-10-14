@@ -1,87 +1,121 @@
 /* ============================================================
    NEXO — Sistema de diseño
-   Concepto: libro mayor / ticket de caja. Los números son
-   el contenido central del producto, así que se tratan como
-   tal: tipografía monoespaciada, alineación a la derecha,
-   estados de color que codifican significado (verde = a favor,
-   terracota = pendiente, rojo = atención).
+   Concepto: el cuaderno del comercio, pasado en limpio. Un negocio
+   chico lleva sus cuentas con birome azul y marca con resaltador lo
+   que importa; Nexo toma esos dos gestos como identidad:
+   - azul birome (--accent) para toda acción: botones, links, foco;
+   - amarillo resaltador (--highlight) en muy pocos lugares: la
+     sección activa del menú y la cifra que concluye (Resultado);
+   - verde/rojo con significado de plata (a favor / atención).
+   Los números se leen en cifras tabulares (alineadas en columna) de
+   la misma familia que el texto: la monoespaciada anterior se retiró.
    ============================================================ */
 
-:root {
-  /* Color — tema claro. Blanco puro, sin escalones de gris intermedios:
-     --surface es igual a --bg a propósito. La jerarquía de panel/tabla
-     ya no la da el relleno (dos blancos idénticos no se distinguen
-     entre sí), la da --line, por eso --line tiene contraste real en vez
-     de ser un gris casi invisible. */
-  --bg:            #FFFFFF;
-  --surface:       #FFFFFF;
-  --surface-sunk:  #F4F4F4;   /* solo inputs/zonas hundidas, no paneles */
-  --ink:           #121212;   /* negro neutro, texto principal y sidebar */
-  --ink-muted:     #616161;
-  --line:          #C4C4C4;
+/* Fuentes alojadas en el propio servidor (no Google Fonts): cargan sin
+   depender de un tercero, funcionan en la PWA sin conexión y dejan lista
+   una CSP sin dominios externos. Las dos son variables (un archivo por
+   familia, todos los pesos) y tienen cifras tabulares (tnum). Licencia
+   SIL Open Font License. Solo el subconjunto latino, que cubre el
+   castellano completo. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("../fonts/bricolage-grotesque.woff2") format("woff2");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
 
-  --brand:         #000000;   /* negro — color de marca Nexo */
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("../fonts/instrument-sans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Color — tema claro. El fondo de la app es un gris frío apenas
+     marcado y los paneles son blancos: la jerarquía la dan el relleno
+     y una sombra mínima, con --line como borde de apoyo. */
+  --bg:            #F3F4F7;
+  --surface:       #FFFFFF;
+  --surface-sunk:  #EEF0F4;   /* inputs, zonas hundidas, encabezado de tabla */
+  --surface-hover: #F7F8FA;   /* fila de tabla bajo el mouse */
+  --ink:           #141A2E;   /* tinta: azul noche, no negro puro */
+  --ink-muted:     #5A6176;
+  --ink-faint:     #8B91A3;
+  --line:          #E2E5EB;
+  --line-strong:   #C9CED9;   /* bordes de controles (inputs, botones secundarios) */
+
+  --brand:         #141A2E;
   --brand-contrast:#FFFFFF;
 
-  --accent-ok:     #1F7350;   /* verde recibo — "positivo/cobrado", no es color de marca */
-  --accent-ok-bg:  #E4F3EB;
+  /* Azul birome: el color de toda acción. */
+  --accent:        #2D4BE0;
+  --accent-hover:  #2340C8;
+  --accent-bg:     #E9EDFD;
+  --accent-contrast:#FFFFFF;
+
+  /* Resaltador: muy pocos lugares, nunca de fondo de un bloque entero.
+     --highlight-ink es la tinta que va encima. */
+  --highlight:     #FFE15A;
+  --highlight-ink: #141A2E;
+
+  --accent-ok:     #0F7A52;   /* verde: a favor / cobrado */
+  --accent-ok-bg:  #E1F3EA;
   /* "Pendiente" comparte color con "atención": por decisión del equipo todo
      lo que antes era terracota pasó a rojo (los importes de plata que sale,
      los badges pendientes y los avisos). Se mantienen como tokens separados
      —no un alias— para poder volver a diferenciarlos sin tocar cada uso. */
-  --accent-warn:   #B23A3A;
-  --accent-warn-bg:#F5E2E1;
-  --accent-danger: #B23A3A;   /* rojo — atención / retenido */
-  --accent-danger-bg: #F5E2E1;
+  --accent-warn:   #C0362C;
+  --accent-warn-bg:#FBE6E4;
+  --accent-danger: #C0362C;   /* rojo — atención / retenido */
+  --accent-danger-bg: #FBE6E4;
 
   /* La sidebar es oscura en los dos temas (es parte de la identidad
-     visual, no del tema), así que sus colores no son tokens de tema: son
-     fijos acá y se usan igual en :root y en data-tema="oscuro". */
-  --sidebar-bg:      #000000;
-  --sidebar-ink:     #F0F3EF;
-  --sidebar-ink-2:   #CFCFCF;
-  --sidebar-ink-3:   #858585;
-  /* Más marcado que el 0.12 anterior: con la sidebar en negro puro, igual
-     al fondo del tema oscuro, este borde es lo único que las separa. */
-  --sidebar-line:    rgba(255,255,255,0.22);
-  --sidebar-hover:   rgba(255,255,255,0.06);
-  --sidebar-active:  rgba(255,255,255,0.1);
+     visual, no del tema): azul noche, la misma familia que la tinta. */
+  --sidebar-bg:      #111733;
+  --sidebar-ink:     #EEF0F8;
+  --sidebar-ink-2:   #B9BFD6;
+  --sidebar-ink-3:   #7E86A6;
+  --sidebar-line:    rgba(255,255,255,0.10);
+  --sidebar-hover:   rgba(255,255,255,0.07);
+  --sidebar-active:  rgba(255,255,255,0.12);
 
-  /* Fondo de los elementos flotantes que antes usaban --sidebar-bg (botón
-     del asistente, hamburger, burbujas del chat, enviar). Al pasar la
-     sidebar a negro puro, esos quedaban invisibles sobre el fondo oscuro:
-     necesitan seguir despegándose de él, así que conservan el #121212 que
-     la sidebar tenía antes. */
-  --pill-bg:         #121212;
+  /* Fondo de los elementos flotantes oscuros (hamburguesa, burbujas del
+     chat del asistente): se despegan del fondo en los dos temas. */
+  --pill-bg:         #1B2245;
 
-  /* Elevación: con jerarquía por bordes, una sombra suave en paneles
-     ensucia el contorno en vez de ayudarlo — --shadow-sm queda sin uso
-     en .panel/.ledger-strip (ver más abajo) y --shadow-lg se reserva
-     para lo que flota de verdad: modal y popover. */
-  --shadow-sm: 0 2px 8px rgba(18, 18, 18, 0.06);
-  --shadow-lg: 0 16px 40px rgba(18, 18, 18, 0.16);
+  /* Elevación: una sombra mínima para los paneles (que ya no se
+     distinguen solo por el borde, porque el fondo de la app no es
+     blanco) y una grande para lo que flota de verdad: modal, popover,
+     toasts. */
+  --shadow-sm: 0 1px 2px rgba(20, 26, 46, 0.06), 0 1px 1px rgba(20, 26, 46, 0.03);
+  --shadow-md: 0 6px 16px rgba(20, 26, 46, 0.08), 0 2px 4px rgba(20, 26, 46, 0.04);
+  --shadow-lg: 0 20px 48px rgba(20, 26, 46, 0.18), 0 4px 12px rgba(20, 26, 46, 0.08);
 
-  /* Tipografía. El concepto del sistema es "libro mayor / ticket de
-     caja" (ver el comentario de arriba), pero hasta acá la única voz
-     tipográfica era la sans — el mono solo aparecía en los números. Para
-     que la estructura misma hable en mono (títulos, eyebrows, columnas,
-     badges) --font-display deja de ser un alias de --font-body y pasa a
-     ser la familia monoespaciada, con la sans reservada para texto
-     corrido, celdas y formularios. */
-  --font-display: 'IBM Plex Mono', 'Courier New', monospace;
-  --font-body:    'Plus Jakarta Sans', 'Segoe UI', sans-serif;
-  --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
+  /* Tipografía. Dos familias con roles claros:
+     - Bricolage Grotesque (--font-display): títulos y cifras grandes. Es
+       una grotesca con carácter (contraste de trazo, terminaciones
+       vivas) que le da voz a la pantalla sin volverse decorativa.
+     - Instrument Sans (--font-body): todo lo demás, tablas incluidas.
+     --font-mono se conserva como nombre (lo usan .mono y varias reglas)
+     pero ya no es monoespaciada: es la misma familia del texto, y lo
+     que alinea las cifras en columna es font-variant-numeric. */
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body:    "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono:    "Instrument Sans", "Segoe UI", system-ui, sans-serif;
 
-  /* Escala tipográfica: reemplaza los ~13 tamaños sueltos (11px, 11.5px,
-     12px, 12.5px, 13px, 13.5px, 14px, 14.5px, 15px, 16px, 20px, 21px,
-     28px) que tenía cada regla elegidos caso por caso. */
-  --txt-2xs: 11px;   /* etiquetas uppercase: eyebrow, dt, th */
-  --txt-xs:  12.5px; /* texto secundario chico: chips, notas, meta */
-  --txt-sm:  13.5px; /* texto de tabla e inputs */
+  /* Escala tipográfica. Las etiquetas ya no van en mayúsculas: el
+     tamaño chico se compensa con peso y color, no con versalitas. */
+  --txt-2xs: 12px;   /* etiquetas: encabezado de tabla, dt, meta */
+  --txt-xs:  13px;   /* texto secundario chico: chips, notas */
+  --txt-sm:  14px;   /* texto de tabla e inputs */
   --txt-md:  15px;   /* texto de párrafo por defecto */
-  --txt-lg:  17px;   /* títulos de modal/ficha */
-  --txt-xl:  21px;   /* valores destacados (ledger-value) */
-  --txt-2xl: 28px;   /* título de página */
+  --txt-lg:  18px;   /* títulos de panel, modal y ficha */
+  --txt-xl:  26px;   /* cifras del resumen (ledger-value) */
+  --txt-2xl: 32px;   /* título de página */
+  --txt-3xl: 40px;   /* la cifra que concluye: Resultado */
 
   /* Escala de espaciado: 4 / 8 / 12 / 16 / 24 / 32 / 48px. */
   --sp-1: 4px;
@@ -92,39 +126,21 @@
   --sp-6: 32px;
   --sp-7: 48px;
 
-  /* Radios: chico para controles, mediano para paneles/modales, completo
-     para pills y chips. Antes era un único --radius de 6px para todo. */
-  --r-sm: 6px;
-  --r-md: 10px;
+  /* Radios con jerarquía: control < panel < modal. */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 18px;
   --r-full: 999px;
 
+  /* Movimiento: lo que responde a una acción del usuario es rápido
+     (--dur-1/2), lo que entra a escena un poco más (--dur-3). */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
   /* Layout */
-  --sidebar-w: 240px;
-}
-
-/* ---------- Probador de tipografías (Configuración) ----------
-   Temporal a propósito: mientras se compara, hay cuatro combinaciones
-   posibles vía data-fuente en <html> (ver el selector en el modal de
-   Configuración). "plex" es la de hoy y es el default de :root de
-   arriba, no necesita bloque propio. Cuando se elija una definitiva, se
-   fija como default, se borran los otros tres bloques y las familias que
-   sobren del <link> de Google Fonts en index.html. */
-:root[data-fuente="jetbrains"] {
-  --font-display: 'JetBrains Mono', 'Courier New', monospace;
-  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
-  --font-body:    'Inter', 'Segoe UI', sans-serif;
-}
-
-:root[data-fuente="plex-full"] {
-  --font-display: 'IBM Plex Mono', 'Courier New', monospace;
-  --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
-  --font-body:    'IBM Plex Sans', 'Segoe UI', sans-serif;
-}
-
-:root[data-fuente="dm"] {
-  --font-display: 'DM Mono', 'Courier New', monospace;
-  --font-mono:    'DM Mono', 'Courier New', monospace;
-  --font-body:    'DM Sans', 'Segoe UI', sans-serif;
+  --sidebar-w: 252px;
 }
 
 /* Sin elección explícita, el tema sigue al sistema operativo. El botón
@@ -132,51 +148,71 @@
    dirección (aunque el SO diga otra cosa). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
-    /* Negro puro, sin escalones: mismo criterio que el tema claro,
-       --surface = --bg y la jerarquía la lleva --line. */
-    --bg:            #000000;
-    --surface:       #000000;
-    --surface-sunk:  #141414;
-    --ink:           #FFFFFF;
-    --ink-muted:     #909090;
-    --line:          #3A3A3A;
+    --bg:            #0A0E1B;
+    --surface:       #121829;
+    --surface-sunk:  #0D1222;
+    --surface-hover: #182036;
+    --ink:           #EDF0F7;
+    --ink-muted:     #9AA2B8;
+    --ink-faint:     #6D7590;
+    --line:          #232B42;
+    --line-strong:   #333D58;
 
-    --brand-contrast:#121212;
+    --brand-contrast:#0A0E1B;
 
-    /* Los tres colores semánticos suben de luminosidad para seguir
-       legibles sobre fondo oscuro: la versión de papel claro (pensada
-       para tinta sobre blanco) se ve apagada y de bajo contraste acá. */
-    --accent-ok:     #4CC490;
-    --accent-ok-bg:  rgba(76, 196, 144, 0.16);
-    --accent-warn:   #E06767;
-    --accent-warn-bg:rgba(224, 103, 103, 0.16);
-    --accent-danger: #E06767;
-    --accent-danger-bg: rgba(224, 103, 103, 0.16);
+    /* La birome se aclara para leerse sobre fondo oscuro. */
+    --accent:        #8097FF;
+    --accent-hover:  #9AACFF;
+    --accent-bg:     rgba(128, 151, 255, 0.15);
+    --accent-contrast:#0A0E1B;
 
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
-    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+    --accent-ok:     #4CC797;
+    --accent-ok-bg:  rgba(76, 199, 151, 0.15);
+    --accent-warn:   #F07167;
+    --accent-warn-bg:rgba(240, 113, 103, 0.15);
+    --accent-danger: #F07167;
+    --accent-danger-bg: rgba(240, 113, 103, 0.15);
+
+    --sidebar-bg:    #0D1228;
+    --pill-bg:       #222A50;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
   }
 }
 
 :root[data-tema="oscuro"] {
-  --bg:            #000000;
-  --surface:       #000000;
-  --surface-sunk:  #141414;
-  --ink:           #FFFFFF;
-  --ink-muted:     #909090;
-  --line:          #3A3A3A;
+  --bg:            #0A0E1B;
+  --surface:       #121829;
+  --surface-sunk:  #0D1222;
+  --surface-hover: #182036;
+  --ink:           #EDF0F7;
+  --ink-muted:     #9AA2B8;
+  --ink-faint:     #6D7590;
+  --line:          #232B42;
+  --line-strong:   #333D58;
 
-  --brand-contrast:#121212;
+  --brand-contrast:#0A0E1B;
 
-  --accent-ok:     #4CC490;
-  --accent-ok-bg:  rgba(76, 196, 144, 0.16);
-  --accent-warn:   #E06767;
-  --accent-warn-bg:rgba(224, 103, 103, 0.16);
-  --accent-danger: #E06767;
-  --accent-danger-bg: rgba(224, 103, 103, 0.16);
+  --accent:        #8097FF;
+  --accent-hover:  #9AACFF;
+  --accent-bg:     rgba(128, 151, 255, 0.15);
+  --accent-contrast:#0A0E1B;
 
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.24);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+  --accent-ok:     #4CC797;
+  --accent-ok-bg:  rgba(76, 199, 151, 0.15);
+  --accent-warn:   #F07167;
+  --accent-warn-bg:rgba(240, 113, 103, 0.15);
+  --accent-danger: #F07167;
+  --accent-danger-bg: rgba(240, 113, 103, 0.15);
+
+  --sidebar-bg:    #0D1228;
+  --pill-bg:       #222A50;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -198,8 +234,22 @@ html { color-scheme: light dark; }
 /* Un solo estilo de foco, consistente en toda la app: sin esto no había
    ninguna señal visible al navegar con teclado. */
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+::selection { background: var(--highlight); color: var(--highlight-ink); }
+
+/* Íconos del sprite (core/iconos.js): heredan el color del texto y miden
+   un poco más que una letra, así acompañan al texto en cualquier tamaño. */
+.ico {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.2em;
 }
 
 /* Transición suave solo para los tokens de color, y no para todo (que
@@ -207,10 +257,14 @@ html { color-scheme: light dark; }
    parpadeo brusco. */
 body, .panel, .surface, .modal-card, .filtro-chip, .filtro-popover,
 .ledger-strip, .status, .btn, input, select {
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--dur-2) ease, border-color var(--dur-2) ease, color var(--dur-2) ease, box-shadow var(--dur-2) ease;
 }
 
+/* Cifras tabulares: todas del mismo ancho, así se alinean en columna. Ya
+   no es una familia monoespaciada (ver --font-mono). */
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+h1, h2, h3 { text-wrap: balance; }
 
 a { color: inherit; text-decoration: none; }
 
@@ -226,36 +280,29 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ---------- Sidebar ---------- */
 
-/* La sidebar es oscura en los dos temas: es identidad de marca, no
-   preferencia de lectura. Por eso usa --sidebar-* (fijos) y no --ink/--bg
-   (que se invierten con el tema) — antes usaba esos por accidente, y con
-   el modo oscuro habría quedado clara justo cuando el resto se oscurece. */
 .sidebar {
   background: var(--sidebar-bg);
   color: var(--sidebar-ink);
-  padding: var(--sp-5) var(--sp-4);
+  padding: var(--sp-5) var(--sp-3) var(--sp-4);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-5);
   /* Clavada al viewport: sin esto, al crecer .main en una página larga la
-     fila del grid crece con ella y arrastra el pie de la sidebar
-     ("Negocio / Tu Pyme") cada vez más abajo, fuera de la vista, en vez de
-     quedarse a la vista todo el tiempo que dura el scroll. */
+     fila del grid crece con ella y arrastra el pie de la sidebar cada vez
+     más abajo, fuera de la vista. */
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  /* La sidebar es #121212 fija en los dos temas, pero en tema oscuro el
-     fondo de .main ahora es negro puro (#000000): sin este borde, la
-     sidebar (más clara que el fondo) queda casi indistinguible de él,
-     1.12:1 de contraste. El borde la separa en los dos temas por igual. */
-  border-right: 1px solid var(--sidebar-line);
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-active) transparent;
 }
 
 .brand {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 var(--sp-2);
 }
 
 .brand-id {
@@ -265,39 +312,62 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
 }
 
 .brand-name {
-  font-size: var(--txt-xl);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .nav {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 2px;
   flex: 1;
 }
 
-.nav-item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-2);
-  border-radius: var(--r-sm);
-  color: var(--sidebar-ink-2);
-  font-size: var(--txt-md);
-  transition: background 0.15s ease, color 0.15s ease;
+/* Grupos del menú (Ventas, Compras, Stock, Finanzas...): el orden ya
+   seguía el circuito del negocio, ahora se ve. El título del grupo no es
+   un link: solo ordena. */
+.nav-grupo {
+  margin: var(--sp-4) var(--sp-3) var(--sp-1);
+  font-size: var(--txt-2xs);
+  font-weight: 600;
+  color: var(--sidebar-ink-3);
 }
 
-.nav-index {
-  font-family: var(--font-mono);
-  font-size: var(--txt-2xs);
+.nav-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-seccion:first-child .nav-grupo { margin-top: 0; }
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  color: var(--sidebar-ink-2);
+  font-size: var(--txt-sm);
+  font-weight: 500;
+  transition: background var(--dur-1) ease, color var(--dur-1) ease;
+}
+
+.nav-item .ico {
+  width: 18px;
+  height: 18px;
   color: var(--sidebar-ink-3);
+  transition: color var(--dur-1) ease;
 }
 
 .nav-item:hover {
@@ -305,14 +375,27 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--sidebar-ink);
 }
 
+.nav-item:hover .ico { color: var(--sidebar-ink-2); }
+
+/* La sección activa lleva el trazo de resaltador: el único amarillo de
+   la sidebar. */
 .nav-item.is-active {
   background: var(--sidebar-active);
-  color: var(--sidebar-ink);
+  color: #FFFFFF;
   font-weight: 600;
 }
 
-.nav-item.is-active .nav-index {
-  color: var(--sidebar-ink);
+.nav-item.is-active .ico { color: var(--highlight); }
+
+.nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--highlight);
 }
 
 /* Grid de dos filas, no una sola fila flex: en una fila, avatar (36px) +
@@ -327,7 +410,7 @@ button { font-family: inherit; cursor: pointer; }
   gap: var(--sp-2) var(--sp-3);
   align-items: center;
   border-top: 1px solid var(--sidebar-line);
-  padding-top: var(--sp-4);
+  padding: var(--sp-4) var(--sp-2) 0;
   font-size: var(--txt-sm);
 }
 
@@ -340,8 +423,6 @@ button { font-family: inherit; cursor: pointer; }
 .sidebar-foot-negocio p {
   margin: 0 0 2px;
   color: var(--sidebar-ink-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   font-size: var(--txt-2xs);
 }
 
@@ -370,21 +451,19 @@ button { font-family: inherit; cursor: pointer; }
    temas, es parte de la identidad de la sidebar, no del tema claro/oscuro). */
 .perfil-avatar {
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  background: var(--sidebar-hover);
-  border: 1px solid var(--sidebar-line);
+  background: var(--highlight);
+  border: none;
   border-radius: var(--r-full);
-  color: var(--sidebar-ink-2);
+  color: var(--highlight-ink);
   padding: 0;
+  transition: filter var(--dur-1) ease;
 }
 
-.perfil-avatar:hover {
-  background: var(--sidebar-active);
-  color: var(--sidebar-ink);
-}
+.perfil-avatar:hover { filter: brightness(0.94); }
 
 /* Ocultar la sidebar para ver una vista en pantalla completa (solo
    desktop: en mobile la sidebar ya es un drawer aparte, con su propio
@@ -419,8 +498,8 @@ button { font-family: inherit; cursor: pointer; }
    sustituirse de golpe. */
 .btn-tema {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   flex: none;
   display: grid;
   place-items: center;
@@ -493,17 +572,17 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: var(--sp-6);
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
 }
 
 .topbar h1 {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--txt-2xl);
-  font-weight: 600;
-  /* El mono se abre más que la sans a este tamaño; un poco de tracking
-     negativo lo compensa sin perder la identidad monoespaciada. */
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
 }
 
 /* La fecha de hoy era el <h1> de la topbar; ahora ese lugar lo ocupa el
@@ -515,24 +594,36 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink-muted);
 }
 
+.topbar-fecha::first-letter { text-transform: uppercase; }
+
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 40px;
   border: none;
   border-radius: var(--r-sm);
-  padding: var(--sp-3) var(--sp-4);
+  padding: 0 var(--sp-4);
   font-size: var(--txt-sm);
   font-weight: 600;
+  white-space: nowrap;
+  transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease, color var(--dur-1) ease, transform var(--dur-1) ease;
 }
+
+/* Un apretón visible: el botón responde al toque antes de que vuelva el
+   servidor. */
+.btn:active { transform: translateY(1px) scale(0.985); }
+
+.btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 
 .btn-primary {
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 1px 2px rgba(20, 26, 46, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
-/* filter en vez de un hex fijo: con --ink/--bg invertidos en oscuro (el
-   botón primario pasa a ser una píldora clara), un #000000 fijo en hover
-   dejaría el texto invisible (negro sobre negro). brightness() oscurece
-   un poco cualquiera de los dos, sin importar qué color tenga debajo. */
-.btn-primary:hover { filter: brightness(0.9); }
+.btn-primary:hover { background: var(--accent-hover); }
 
 .btn-full { width: 100%; margin-top: var(--sp-2); }
 
@@ -541,10 +632,10 @@ button { font-family: inherit; cursor: pointer; }
 .btn-secundario {
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
 }
 
-.btn-secundario:hover { background: var(--line); }
+.btn-secundario:hover { background: var(--surface-sunk); border-color: var(--ink-faint); }
 
 /* Varios botones en el encabezado de un panel, sin que se peguen ni
    desborden en pantallas chicas. */
@@ -585,14 +676,14 @@ button { font-family: inherit; cursor: pointer; }
 .filtro-chip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent);
   border-radius: var(--r-full);
-  background: var(--surface);
+  background: var(--accent-bg);
   overflow: hidden;
 }
 
 .filtro-chip.is-abierto {
-  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .filtro-chip-texto {
@@ -610,9 +701,11 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 600;
 }
 
-.filtro-chip-texto:hover { background: var(--line); }
+.filtro-chip-texto:hover { background: var(--accent-bg); }
 
 .filtro-chip-x {
+  display: inline-flex;
+  align-items: center;
   background: none;
   border: none;
   border-left: 1px solid var(--line);
@@ -629,11 +722,15 @@ button { font-family: inherit; cursor: pointer; }
 
 .btn-agregar-filtro,
 .btn-limpiar-filtros {
-  background: none;
-  border: 1px dashed var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
   border-radius: var(--r-full);
   color: var(--ink-muted);
-  padding: 6px 12px;
+  padding: 0 12px;
   font-size: var(--txt-xs);
   font-weight: 600;
   font-family: inherit;
@@ -641,8 +738,8 @@ button { font-family: inherit; cursor: pointer; }
 
 .btn-agregar-filtro:hover,
 .btn-limpiar-filtros:hover {
-  background: var(--line);
-  color: var(--ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .btn-limpiar-filtros { border-style: solid; }
@@ -663,14 +760,18 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-lg);
+  animation: flota-entra var(--dur-2) var(--ease-out);
+}
+
+@keyframes flota-entra {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
 }
 
 .filtro-popover-titulo {
   margin: 0;
   font-size: var(--txt-2xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
   color: var(--ink-muted);
 }
 
@@ -686,7 +787,7 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
 }
 
-.filtro-opcion:hover { background: var(--line); }
+.filtro-opcion:hover { background: var(--surface-sunk); }
 
 .filtro-input {
   width: 100%;
@@ -725,31 +826,35 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-5);
   overflow: hidden;
-  /* Sin sombra, mismo criterio que .panel: la jerarquía la lleva el
-     borde, no el relleno. */
+  box-shadow: var(--shadow-sm);
 }
 
 .ledger-item {
   flex: 1;
-  padding: var(--sp-4) var(--sp-5);
+  padding: var(--sp-5);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 6px;
+  min-width: 0;
 }
 
 .ledger-label {
   font-size: var(--txt-xs);
+  font-weight: 500;
   color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-family: var(--font-display);
 }
 
+/* Las cifras del resumen van en la familia de títulos: son el contenido
+   principal de la pantalla, no un dato más de una tabla. */
 .ledger-value {
+  font-family: var(--font-display);
   font-size: var(--txt-xl);
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
 }
 
 .ledger-warn   { color: var(--accent-warn); }
@@ -769,9 +874,21 @@ button { font-family: inherit; cursor: pointer; }
   flex: 1.3;
 }
 
+/* La cifra que concluye: más grande y marcada con resaltador, como se
+   marca el total en un cuaderno. */
 .ledger-item-total .ledger-value {
-  font-size: var(--txt-2xl);
-  letter-spacing: -0.02em;
+  font-size: var(--txt-3xl);
+  letter-spacing: -0.035em;
+  align-self: flex-start;
+  padding: 0 4px;
+  margin-left: -4px;
+  background: linear-gradient(transparent 60%, var(--highlight-trazo, rgba(255, 225, 90, 0.85)) 60%, var(--highlight-trazo, rgba(255, 225, 90, 0.85)) 92%, transparent 92%);
+}
+
+:root[data-tema="oscuro"] .ledger-item-total .ledger-value { --highlight-trazo: rgba(255, 225, 90, 0.26); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) .ledger-item-total .ledger-value { --highlight-trazo: rgba(255, 225, 90, 0.26); }
 }
 
 .ledger-item-total .ledger-label {
@@ -786,34 +903,52 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: var(--sp-5);
-  /* Sin sombra: --surface = --bg (mismo blanco/negro puro), así que el
-     panel se lee solo por su borde. Una sombra acá ensuciaría ese
-     contorno en vez de reforzarlo — se reserva para lo que sí flota
-     (modal, popover). */
+  box-shadow: var(--shadow-sm);
 }
 
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--sp-3);
   margin-bottom: var(--sp-4);
 }
 
 .panel-head h2 {
   margin: 0;
   font-size: var(--txt-lg);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   font-family: var(--font-display);
 }
 
+/* Buscador con lupa: el ícono va de fondo para no tocar el HTML de cada
+   pantalla. */
 .search {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  padding: var(--sp-2) var(--sp-3);
+  min-height: 40px;
+  padding: 0 var(--sp-3) 0 36px;
   font-size: var(--txt-sm);
   font-family: inherit;
-  min-width: 240px;
-  background: var(--surface-sunk);
+  color: var(--ink);
+  min-width: 260px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238B91A3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 12px 50%;
+}
+
+/* Un solo foco para todo lo que se escribe: borde birome y un halo. */
+.search:focus,
+.form input:focus,
+.form select:focus,
+.form textarea:focus,
+.filtro-input:focus,
+.item-row input:focus,
+.item-row select:focus,
+.select-inline:focus,
+.asistente-composer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 /* Contenedor propio de scroll para las tablas anchas (Ventas: 9
@@ -833,13 +968,12 @@ button { font-family: inherit; cursor: pointer; }
 .ledger-table th {
   text-align: left;
   font-size: var(--txt-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 600;
   color: var(--ink-muted);
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--line);
+  padding: 10px var(--sp-3);
+  border-bottom: none;
   white-space: nowrap;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   /* Encabezado fijo al scrollear una tabla larga: sin esto se pierde de
      vista qué columna es cuál. .tabla-scroll tiene overflow-x:auto (por
      las tablas anchas), que en teoría podría capturar el sticky para sí
@@ -850,12 +984,16 @@ button { font-family: inherit; cursor: pointer; }
      transparentarían por debajo del encabezado al scrollear. */
   position: sticky;
   top: 0;
-  background: var(--surface);
+  background: var(--surface-sunk);
   z-index: 1;
 }
 
+.ledger-table th:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.ledger-table th:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+
 .ledger-table td {
-  padding: var(--sp-3) var(--sp-3);
+  padding: 14px var(--sp-3);
+  vertical-align: middle;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-body);
   /* Sin esto una fecha ("2026-08-29") se partía en dos líneas al
@@ -877,7 +1015,9 @@ button { font-family: inherit; cursor: pointer; }
 .align-right { text-align: right; }
 .ledger-table th.align-right { text-align: right; }
 
-.ledger-table tbody tr:hover { background: var(--surface-sunk); }
+.ledger-table tbody tr { transition: background var(--dur-1) ease; }
+.ledger-table tbody tr:hover { background: var(--surface-hover); }
+.ledger-table tbody tr:last-child > td { border-bottom: none; }
 
 /* Fila expandible de Cuentas corrientes: el detalle por operación vive en
    una <tr> propia, oculta hasta que se hace click en la fila de la
@@ -885,18 +1025,36 @@ button { font-family: inherit; cursor: pointer; }
    solo se le saca el padding para que se sienta "adentro" de la fila que
    la abrió. */
 .cc-chevron { color: var(--ink-muted); text-align: center; }
+.cc-chevron .ico { transition: transform var(--dur-2) var(--ease-out); }
+tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent); }
 .cc-detalle-fila td { padding: 0; background: var(--surface-sunk); }
 .cc-detalle { width: 100%; border-collapse: collapse; }
 .cc-detalle td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: var(--txt-sm); }
 .cc-detalle tr:last-child td { border-bottom: none; }
 
+/* Badge de estado: un punto delante del texto, así el estado no depende
+   solo del color de fondo para leerse. */
 .status {
-  display: inline-block;
-  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
   border-radius: var(--r-full);
   font-size: var(--txt-2xs);
   font-weight: 600;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
+  white-space: nowrap;
+  background: var(--surface-sunk);
+  color: var(--ink-muted);
+}
+
+.status::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .status-cobrado  { background: var(--accent-ok-bg); color: var(--accent-ok); }
@@ -905,10 +1063,12 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Estado vacío de una tabla. Reemplaza el style="..." repetido que tenía
    cada render*(): mismo aspecto, en un solo lugar. */
-.tabla-vacia {
+/* Estado vacío: una invitación a cargar lo primero, con aire. */
+.ledger-table td.tabla-vacia {
   text-align: center;
   color: var(--ink-muted);
-  padding: var(--sp-5);
+  padding: var(--sp-7) var(--sp-5);
+  white-space: normal;
 }
 
 /* Filas skeleton mientras un cargar*() todavía no resolvió el fetch — ver
@@ -935,8 +1095,12 @@ button { font-family: inherit; cursor: pointer; }
 
 .ledger-delta {
   font-size: var(--txt-2xs);
+  font-weight: 500;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
+
+.ledger-delta .ico { width: 14px; height: 14px; vertical-align: -2px; }
 
 .ledger-delta-ok     { color: var(--accent-ok); }
 .ledger-delta-mal    { color: var(--accent-danger); }
@@ -967,8 +1131,33 @@ button { font-family: inherit; cursor: pointer; }
    separación propia — mismo problema y misma solución que ya existe para
    [data-view="cliente-detalle"] más abajo. */
 [data-view="dashboard"] .panel {
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-5);
 }
+
+/* Paneles apilados en cualquier vista (Caja: Cuentas y Movimientos)
+   tenían 0 de separación. El Resumen y la ficha de cliente ya separan
+   con margin-bottom propio, por eso quedan afuera. */
+.panel + .panel { margin-top: var(--sp-5); }
+[data-view="dashboard"] .panel + .panel,
+[data-view="cliente-detalle"] .panel + .panel { margin-top: 0; }
+
+/* La nota del período va pegada arriba de las cifras: necesita aire. */
+.form-note + .ledger-strip { margin-top: var(--sp-3); }
+
+/* "Fuera del resultado" del Resumen: texto y las dos cifras en una línea
+   que se parte sola en pantallas angostas. */
+.nota-fuera {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-5);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.nota-fuera strong { color: var(--ink); font-weight: 600; margin-right: var(--sp-1); }
+.nota-fuera .mono { color: var(--ink); }
 
 .fila-anulada { opacity: 0.5; }
 .fila-anulada td { text-decoration: line-through; }
@@ -978,7 +1167,9 @@ button { font-family: inherit; cursor: pointer; }
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(10, 14, 27, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -990,10 +1181,11 @@ button { font-family: inherit; cursor: pointer; }
 
 .modal-card {
   background: var(--surface);
-  border-radius: var(--r-md);
-  width: min(420px, 90vw);
+  border-radius: var(--r-lg);
+  width: min(440px, 92vw);
   padding: var(--sp-5);
   box-shadow: var(--shadow-lg);
+  animation: modal-entra var(--dur-3) var(--ease-out);
   /* Sin esto, un modal con muchos renglones de items (Venta/Compra) se
      salía de la pantalla en viewports chicos y no se podía scrollear
      para llegar al botón de submit. */
@@ -1015,15 +1207,30 @@ button { font-family: inherit; cursor: pointer; }
   margin-bottom: var(--sp-4);
 }
 
-.modal-head h3 { margin: 0; font-size: var(--txt-lg); font-family: var(--font-display); }
+@keyframes modal-entra {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+}
 
 .modal-close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
   background: none;
   border: none;
   font-size: var(--txt-md);
   color: var(--ink-muted);
-  border-radius: var(--r-sm);
-  padding: var(--sp-1);
+  border-radius: var(--r-full);
+  padding: 0;
 }
 
 .modal-close:hover { background: var(--surface-sunk); color: var(--ink); }
@@ -1046,69 +1253,7 @@ button { font-family: inherit; cursor: pointer; }
 .perfil-identidad strong {
   font-family: var(--font-display);
   font-size: var(--txt-md);
-}
-
-/* Probador de tipografías (modal Configuración). Cada muestra fija su
-   propia font-family inline (ver index.html) en vez de leer
-   --font-display/--font-body, porque las cuatro tienen que verse a la
-   vez sin importar cuál esté aplicada al resto de la app ahora mismo. */
-.fuente-selector {
-  border: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.fuente-selector legend {
-  padding: 0;
-  font-family: var(--font-display);
-  font-size: var(--txt-lg);
-  font-weight: 600;
-  margin-bottom: var(--sp-3);
-}
-
-.fuente-selector .form-note { margin-bottom: var(--sp-2); }
-
-.fuente-opcion {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-}
-
-.fuente-opcion:has(input:checked) {
-  border-color: var(--ink);
-}
-
-.fuente-opcion input { margin-top: 3px; }
-
-.fuente-opcion-texto {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--txt-sm);
-}
-
-.fuente-opcion-muestra {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--ink-muted);
-}
-
-.fuente-opcion-muestra span:first-child {
-  font-size: var(--txt-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.fuente-opcion-muestra span:last-child {
-  font-size: var(--txt-md);
-  color: var(--ink);
+  font-weight: 700;
 }
 
 .form {
@@ -1131,8 +1276,9 @@ button { font-family: inherit; cursor: pointer; }
 .form label {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 6px;
   font-size: var(--txt-xs);
+  font-weight: 500;
   color: var(--ink-muted);
 }
 
@@ -1195,15 +1341,26 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .form input,
-.form select {
-  border: 1px solid var(--line);
+.form select,
+.form textarea {
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
+  min-height: 40px;
   padding: var(--sp-2) var(--sp-3);
   font-size: var(--txt-sm);
   font-family: inherit;
   color: var(--ink);
   background: var(--surface);
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease;
 }
+
+.form input:hover,
+.form select:hover,
+.form textarea:hover { border-color: var(--ink-faint); }
+
+/* Casillas y opciones con el azul de la marca, y del tamaño de un dedo. */
+input[type="checkbox"],
+input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .form label.form-check {
   flex-direction: row;
@@ -1212,7 +1369,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .form label.form-check input[type="checkbox"] {
-  width: auto;
+  width: 16px;
+  min-height: 0;
   border: none;
   padding: 0;
 }
@@ -1221,7 +1379,7 @@ button { font-family: inherit; cursor: pointer; }
   font-size: var(--txt-xs);
   color: var(--ink-muted);
   background: var(--surface-sunk);
-  padding: var(--sp-2) var(--sp-3);
+  padding: 10px var(--sp-3);
   border-radius: var(--r-sm);
   margin: 0;
 }
@@ -1287,6 +1445,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .atributo-item-head strong {
   font-family: var(--font-display);
+  font-weight: 700;
 }
 
 .atributo-valores {
@@ -1368,7 +1527,7 @@ button { font-family: inherit; cursor: pointer; }
 .item-row select {
   flex: 2;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   padding: 9px 10px;
   font-size: var(--txt-sm);
@@ -1380,7 +1539,7 @@ button { font-family: inherit; cursor: pointer; }
 .item-row input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   padding: 9px 10px;
   font-size: var(--txt-sm);
@@ -1459,9 +1618,12 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .btn-icon:hover {
-  background: var(--line);
-  color: var(--ink);
+  background: var(--accent-bg);
+  color: var(--accent);
 }
+
+.btn-icon,
+.btn-icon-danger { min-width: 32px; min-height: 32px; }
 
 /* ---------- Ficha de cliente ---------- */
 
@@ -1485,15 +1647,14 @@ button { font-family: inherit; cursor: pointer; }
 
 .ficha-datos dt {
   font-size: var(--txt-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 500;
   color: var(--ink-muted);
-  font-family: var(--font-display);
 }
 
 .ficha-datos dd {
   margin: 0;
-  font-size: var(--txt-sm);
+  font-size: var(--txt-md);
+  font-weight: 500;
 }
 
 .fila-clickeable { cursor: pointer; }
@@ -1513,14 +1674,22 @@ button { font-family: inherit; cursor: pointer; }
 
 .btn-link {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: none;
   border: none;
-  color: var(--ink);
+  color: var(--accent);
   font-weight: 600;
   font-size: var(--txt-xs);
   padding: 4px 0;
   text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-1) ease;
 }
+
+.btn-link:hover { text-decoration-color: currentColor; }
 
 /* Botón chico de acción sobre una fila de tabla (Cobrar, Facturar, Pagar,
    Efectuar pedido, Ajustar, Restaurar): antes eran <button class="btn-link">,
@@ -1530,11 +1699,13 @@ button { font-family: inherit; cursor: pointer; }
 .btn-fila {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+  min-height: 30px;
   white-space: nowrap;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  padding: 5px 10px;
+  padding: 0 10px;
   font-size: var(--txt-xs);
   font-weight: 600;
   font-family: inherit;
@@ -1542,7 +1713,9 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .btn-fila:hover {
-  background: var(--line);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
 }
 
 /* Envuelve las acciones de una fila (Cobrar/Facturar/Anular, Pagar/Anular,
@@ -1566,8 +1739,8 @@ button { font-family: inherit; cursor: pointer; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--accent-ok-bg);
-  color: var(--accent-ok);
+  background: var(--accent-bg);
+  color: var(--accent);
   border: none;
   border-radius: var(--r-full);
   padding: 8px 16px;
@@ -1577,8 +1750,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .btn-add-item:hover {
-  background: var(--accent-ok);
-  color: var(--brand-contrast);
+  background: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .item-total {
@@ -1608,7 +1781,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .select-inline {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   padding: 4px 6px;
   font-size: var(--txt-xs);
@@ -1649,12 +1822,12 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .input-inline:hover {
-  border-color: var(--line);
+  border-color: var(--line-strong);
   background: var(--surface);
 }
 
 .input-inline:focus {
-  border-color: var(--ink);
+  border-color: var(--accent);
   background: var(--surface);
   outline: none;
 }
@@ -1703,8 +1876,8 @@ input.precio-sin-configurar::placeholder {
   top: 16px;
   left: 16px;
   z-index: 60;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   /* --pill-bg, no --sidebar-bg: con la sidebar en negro puro (igual al
      fondo del tema oscuro), este botón necesita seguir despegándose del
      fondo que tiene detrás. */
@@ -1720,6 +1893,7 @@ input.precio-sin-configurar::placeholder {
 .nav-toggle span {
   width: 18px;
   height: 2px;
+  border-radius: 2px;
   background: var(--sidebar-ink);
 }
 
@@ -1758,12 +1932,37 @@ input.precio-sin-configurar::placeholder {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-4);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-ink);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-full);
   box-shadow: var(--shadow-lg);
+  animation: barra-entra var(--dur-3) var(--ease-out);
 }
+
+@keyframes barra-entra {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* La barra es oscura en los dos temas: sus botones secundarios se
+   adaptan a ese fondo. */
+.barra-seleccion .btn-secundario {
+  background: transparent;
+  color: var(--sidebar-ink);
+  border-color: var(--sidebar-line);
+}
+
+.barra-seleccion .btn-secundario:hover { background: var(--sidebar-hover); }
+
+.barra-seleccion .btn-link {
+  align-self: center;
+  color: var(--sidebar-ink-2);
+  padding: 0 var(--sp-3);
+}
+
+.barra-seleccion .btn-link:hover { color: #FFFFFF; }
 
 /* El "display: flex" de arriba tiene la misma especificidad que la regla
    [hidden] del user-agent stylesheet, y por venir después en la cascada le
@@ -1816,13 +2015,12 @@ input.precio-sin-configurar::placeholder {
   height: 56px;
   border: none;
   border-radius: var(--r-full);
-  /* --pill-bg, no --sidebar-bg — ver comentario en .nav-toggle. */
-  background: var(--pill-bg);
-  color: var(--sidebar-ink);
+  background: var(--accent);
+  color: var(--accent-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 10px 28px rgba(45, 75, 224, 0.38), 0 2px 6px rgba(20, 26, 46, 0.18);
   transition: transform 0.15s ease;
 }
 
@@ -1837,11 +2035,14 @@ input.precio-sin-configurar::placeholder {
   right: var(--sp-5);
   bottom: calc(56px + var(--sp-5) + var(--sp-3));
   z-index: 45;
-  width: min(380px, calc(100vw - var(--sp-5) * 2));
-  max-height: min(620px, 72vh);
+  width: min(400px, calc(100vw - var(--sp-5) * 2));
+  max-height: min(640px, 74vh);
   background: var(--surface);
-  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
+  transform-origin: bottom right;
+  animation: asistente-abre var(--dur-3) var(--ease-out);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1858,9 +2059,17 @@ input.precio-sin-configurar::placeholder {
   border-bottom: 1px solid var(--line);
 }
 
+@keyframes asistente-abre {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
 .asistente-panel-head h2 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: var(--txt-lg);
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .asistente-hilo {
@@ -1885,9 +2094,8 @@ input.precio-sin-configurar::placeholder {
 .asistente-turno-usuario p {
   margin: 0;
   max-width: 88%;
-  /* --pill-bg, no --sidebar-bg — ver comentario en .nav-toggle. */
-  background: var(--pill-bg);
-  color: var(--sidebar-ink);
+  background: var(--accent);
+  color: var(--accent-contrast);
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-md);
   border-bottom-right-radius: var(--r-sm);
@@ -1939,11 +2147,9 @@ input.precio-sin-configurar::placeholder {
 
 .asistente-propuesta-titulo {
   margin: 0 0 var(--sp-2);
-  font-size: var(--txt-2xs);
+  font-size: var(--txt-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
+  color: var(--ink);
 }
 
 .asistente-problemas {
@@ -1972,7 +2178,7 @@ input.precio-sin-configurar::placeholder {
   flex: 1;
   resize: none;
   max-height: 120px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   padding: var(--sp-2) var(--sp-3);
   font-family: inherit;
@@ -1984,13 +2190,12 @@ input.precio-sin-configurar::placeholder {
 
 .asistente-enviar {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border: none;
   border-radius: var(--r-full);
-  /* --pill-bg, no --sidebar-bg — ver comentario en .nav-toggle. */
-  background: var(--pill-bg);
-  color: var(--sidebar-ink);
+  background: var(--accent);
+  color: var(--accent-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2011,13 +2216,24 @@ input.precio-sin-configurar::placeholder {
 
   .sidebar {
     position: fixed;
-    inset: 0 30% 0 0;
+    inset: 0 auto 0 0;
+    width: min(300px, 84vw);
     z-index: 55;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    transition: transform var(--dur-3) var(--ease-out);
   }
 
   .sidebar.is-open { transform: translateX(0); }
+
+  /* La hamburguesa (fixed, arriba a la izquierda) queda encima del drawer
+     abierto: el logo se corre a su derecha. Ocultar la barra lateral es
+     cosa de escritorio; en el celular el drawer ya se cierra solo. */
+  .brand { padding-left: 60px; min-height: 42px; }
+
+  /* Velo sobre el contenido mientras el drawer está abierto: una sombra
+     extendida, sin un elemento extra en el HTML. */
+  .sidebar.is-open { box-shadow: 0 0 0 100vmax rgba(10, 14, 27, 0.45); }
+  #btnColapsar { display: none; }
 
   /* La topbar (nombre de la pantalla + fecha) vivía en el flujo normal
      de .main, así que al scrollear pasaba por detrás del hamburger —
@@ -2058,8 +2274,32 @@ input.precio-sin-configurar::placeholder {
   .main {
     /* El padding-top tiene que despejar la topbar fixed de arriba, no
        solo el hamburger — mismo motivo que el ajuste de arriba. */
-    padding: 92px 20px 88px;
+    padding: 92px 16px 88px;
   }
+
+  .topbar h1 { font-size: 24px; }
+
+  .topbar {
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .panel { padding: var(--sp-4); }
+
+  .ledger-item { padding: var(--sp-4); }
+
+  .ledger-item-total .ledger-value { font-size: 32px; }
+
+  /* En el celular cada fila de tabla es una tarjeta: se separan con aire
+     en vez de con una línea. */
+  .ledger-table tbody tr {
+    padding: var(--sp-3) 0;
+  }
+
+  .search { min-width: 0; width: 100%; }
+
+  .sidebar { box-shadow: var(--shadow-lg); }
 
   .ledger-strip {
     flex-direction: column;
@@ -2106,8 +2346,8 @@ input.precio-sin-configurar::placeholder {
     display: inline-block;
     width: 110px;
     font-size: var(--txt-2xs);
+    font-weight: 500;
     color: var(--ink-muted);
-    text-transform: uppercase;
   }
 
   /* El <td> de checkbox lleva data-label="" (no hay una etiqueta que tenga
@@ -2148,8 +2388,8 @@ input.precio-sin-configurar::placeholder {
     display: inline-block;
     width: 110px;
     font-size: var(--txt-2xs);
+    font-weight: 500;
     color: var(--ink-muted);
-    text-transform: uppercase;
   }
 
   .asistente-launcher {
@@ -2235,26 +2475,49 @@ input.precio-sin-configurar::placeholder {
   }
 }
 
+/* El aviso es oscuro en los dos temas (se despega de cualquier pantalla)
+   y lleva un ícono del color de su tono. */
 .aviso {
   display: flex;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--ink-muted);
-  border-radius: var(--r-sm);
+  align-items: flex-start;
+  gap: var(--sp-3);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
   box-shadow: var(--shadow-lg);
   padding: var(--sp-3) var(--sp-4);
   font-size: var(--txt-sm);
-  color: var(--ink);
-  animation: aviso-entra 0.15s ease;
+  color: var(--sidebar-ink);
+  animation: aviso-entra var(--dur-3) var(--ease-out);
 }
 
-.aviso-ok       { border-left-color: var(--accent-ok); }
-.aviso-atencion { border-left-color: var(--accent-warn); }
-.aviso-error    { border-left-color: var(--accent-danger); }
+.aviso::before {
+  content: "";
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  background: currentColor;
+  -webkit-mask: var(--aviso-icono) center / contain no-repeat;
+  mask: var(--aviso-icono) center / contain no-repeat;
+}
+
+.aviso-ok {
+  --aviso-icono: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E");
+}
+
+.aviso-atencion,
+.aviso-error {
+  --aviso-icono: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' x2='12' y1='8' y2='12'/%3E%3Cline x1='12' x2='12.01' y1='16' y2='16'/%3E%3C/svg%3E");
+}
+
+.aviso-ok::before       { color: #4CC797; }
+.aviso-atencion::before { color: #FFE15A; }
+.aviso-error::before    { color: #F07167; }
 
 @keyframes aviso-entra {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* Botón para la acción destructiva del modal de confirmación (anular,
@@ -2293,7 +2556,10 @@ input.precio-sin-configurar::placeholder {
 .sesion-pantalla {
   position: fixed;
   inset: 0;
-  background: #000000;
+  background:
+    radial-gradient(1100px 560px at 88% -12%, rgba(45, 75, 224, 0.38), transparent 62%),
+    radial-gradient(800px 480px at -12% 112%, rgba(255, 225, 90, 0.10), transparent 62%),
+    #0A0E1B;
   z-index: 100;
   display: flex;
   align-items: center;
@@ -2316,12 +2582,14 @@ input.precio-sin-configurar::placeholder {
    (invisible sobre esta card). --sidebar-line ya está pensado para
    funcionar como borde sobre negro puro, por eso se reusa acá. */
 .sesion-card {
-  background: #000000;
-  border: 1px solid var(--sidebar-line);
-  color: #F0F3EF;
-  border-radius: var(--r-md);
-  width: min(400px, 90vw);
-  padding: var(--sp-5);
+  background: rgba(17, 23, 51, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #EEF0F8;
+  border-radius: var(--r-lg);
+  width: min(420px, 92vw);
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
@@ -2336,10 +2604,19 @@ input.precio-sin-configurar::placeholder {
 }
 
 .sesion-card h1 {
-  margin: 0 0 var(--sp-2);
+  margin: 0;
   font-family: var(--font-display);
-  font-size: var(--txt-lg);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   color: inherit;
+}
+
+.sesion-bajada {
+  margin: -6px 0 var(--sp-3);
+  font-size: var(--txt-sm);
+  color: #9AA2B8;
+  text-wrap: balance;
 }
 
 .sesion-card .form {
@@ -2348,34 +2625,45 @@ input.precio-sin-configurar::placeholder {
 }
 
 .sesion-card .form label {
-  color: #CFCFCF;
+  color: #B9BFD6;
 }
 
 .sesion-card .form input {
-  background: #141414;
-  border-color: var(--sidebar-line);
-  color: #F0F3EF;
+  background: rgba(10, 14, 27, 0.6);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #EEF0F8;
+  min-height: 44px;
+}
+
+.sesion-card .form input:focus {
+  border-color: #8097FF;
+  box-shadow: 0 0 0 3px rgba(128, 151, 255, 0.25);
 }
 
 /* .btn-primary usa var(--ink)/var(--bg), que se invierten con el tema —
    en modo claro sería negro sobre la card ya negra fijada arriba,
    invisible. Fijo también, mismo criterio. */
 .sesion-card .btn-primary {
-  background: #F0F3EF;
-  color: #000000;
+  background: #FFE15A;
+  color: #141A2E;
+  min-height: 46px;
+  font-size: var(--txt-md);
 }
+
+.sesion-card .btn-primary:hover { background: #FFD73A; }
 
 /* .btn-link usa var(--ink), que se invierte con el tema: en claro sería negro
    sobre la card negra fija. Mismo criterio que .btn-primary de arriba. */
 .sesion-card .btn-link {
-  color: #CFCFCF;
+  color: #B9BFD6;
+  text-decoration-color: rgba(185, 191, 214, 0.5);
 }
 
 /* .form-note (mensajes de error de login/registro) usa var(--surface-sunk),
    que en claro es casi blanco — ilegible sobre esta card negra fija. */
 .sesion-card .form-note {
-  background: #141414;
-  color: #CFCFCF;
+  background: rgba(10, 14, 27, 0.6);
+  color: #B9BFD6;
 }
 
 /* Ocultar la app entera (no solo .app: #navToggle vive fuera de .app en
@@ -2397,6 +2685,9 @@ input.precio-sin-configurar::placeholder {
    responde 403 si un empleado llama a esos endpoints directo; esto solo
    evita que entre a una vista que va a quedar vacía o rota porque sus
    loaders ya cortan antes del fetch (ver esAdmin() en app.js). */
+/* Grupos del menú con solo pantallas de admin: se oculta el grupo entero,
+   título incluido. */
+:root:not([data-rol="admin"]) .nav-seccion-admin,
 :root:not([data-rol="admin"]) .nav-item[data-view="usuarios"],
 :root:not([data-rol="admin"]) .nav-item[data-view="dashboard"],
 :root:not([data-rol="admin"]) .nav-item[data-view="reportes-stock"],

@@ -5,13 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nexo — Gestión para tu negocio</title>
   <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <!-- Las cinco familias extra (JetBrains Mono, Inter, IBM Plex Sans, DM
-       Mono, DM Sans) son solo para el probador de tipografías de
-       Configuración (ver data-fuente en styles.css) — cuando se elija una
-       combinación definitiva, sacar las que no se usen de esta línea. -->
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Las fuentes se sirven desde frontend/fonts/ (ver @font-face en
+       styles.css): sin Google Fonts. Se precarga la del texto, que es la
+       que más se ve apenas abre la app. -->
+  <link rel="preload" href="fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin />
+  <meta name="theme-color" content="#111733" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
     // Se aplica antes de pintar la página (no en app.js, que carga después)
@@ -21,11 +19,6 @@
       if (guardado) document.documentElement.setAttribute("data-tema", guardado);
       const sidebarGuardada = localStorage.getItem("nexo.sidebar");
       if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
-      // Mismo criterio que el tema: sin esto, elegir una tipografía en el
-      // probador de Configuración se ve un instante en Plex (el default de
-      // :root) antes de saltar a la elegida en cada recarga.
-      const fuenteGuardada = localStorage.getItem("nexo.fuente");
-      if (fuenteGuardada) document.documentElement.setAttribute("data-fuente", fuenteGuardada);
       // Marca cosmética para evitar el flash de la app antes de que
       // sesion.js confirme con el servidor si hay sesión de verdad. Esto
       // NO es seguridad: el servidor decide con la cookie httpOnly, que
@@ -61,74 +54,97 @@
       <!-- Orden por dominio, no por cuándo se construyó cada pantalla:
            Resumen -> maestros (lo que hace falta cargado ANTES de operar)
            -> embudo de venta -> embudo de compra -> Stock (consecuencia de
-           los dos embudos) -> Finanzas -> Papelera (utilidad, siempre al
-           final). -->
-      <nav class="nav">
-        <a href="#" class="nav-item is-active" data-view="dashboard">
-          <span class="nav-index">01</span> Estadísticas
-        </a>
-        <a href="#" class="nav-item" data-view="productos">
-          <span class="nav-index">02</span> Productos
-        </a>
-        <a href="#" class="nav-item" data-view="clientes">
-          <span class="nav-index">03</span> Clientes
-        </a>
-        <a href="#" class="nav-item" data-view="proveedores">
-          <span class="nav-index">04</span> Proveedores
-        </a>
-        <a href="#" class="nav-item" data-view="presupuestos">
-          <span class="nav-index">05</span> Presupuestos
-        </a>
-        <a href="#" class="nav-item" data-view="ventas">
-          <span class="nav-index">06</span> Ventas
-        </a>
-        <a href="#" class="nav-item" data-view="devoluciones">
-          <span class="nav-index">07</span> Devoluciones
-        </a>
-        <a href="#" class="nav-item" data-view="facturas">
-          <span class="nav-index">08</span> Facturas
-        </a>
-        <a href="#" class="nav-item" data-view="compras">
-          <span class="nav-index">09</span> Compras
-        </a>
-        <a href="#" class="nav-item" data-view="devoluciones-proveedor">
-          <span class="nav-index">10</span> Dev. a proveedor
-        </a>
-        <a href="#" class="nav-item" data-view="stock">
-          <span class="nav-index">11</span> Stock
-        </a>
-        <a href="#" class="nav-item" data-view="reportes-stock">
-          <span class="nav-index">12</span> Reportes de stock
-        </a>
-        <a href="#" class="nav-item" data-view="caja">
-          <span class="nav-index">13</span> Caja
-        </a>
-        <a href="#" class="nav-item" data-view="cuentas-corrientes">
-          <span class="nav-index">14</span> Cuentas corrientes
-        </a>
-        <a href="#" class="nav-item" data-view="gastos">
-          <span class="nav-index">15</span> Gastos
-        </a>
+           los dos embudos) -> Finanzas -> Administración (Papelera,
+           Auditoría y Usuarios, siempre al final). Cada grupo es un
+           .nav-seccion con su título; las que tienen solo pantallas de
+           admin llevan .nav-seccion-admin y se ocultan enteras para el
+           empleado (ver styles.css), así no queda un título sin ítems.
+           Los íconos salen del sprite img/iconos.svg (core/iconos.js). -->
+      <nav class="nav" aria-label="Secciones">
+        <div class="nav-seccion nav-seccion-admin">
+          <a href="#" class="nav-item is-active" data-view="dashboard">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layout-dashboard"></use></svg> Resumen
+          </a>
+        </div>
+        <div class="nav-seccion">
+          <p class="nav-grupo">Maestros</p>
+          <a href="#" class="nav-item" data-view="productos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Productos
+          </a>
+          <a href="#" class="nav-item" data-view="clientes">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> Clientes
+          </a>
+          <a href="#" class="nav-item" data-view="proveedores">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg> Proveedores
+          </a>
+        </div>
+        <div class="nav-seccion">
+          <p class="nav-grupo">Ventas</p>
+          <a href="#" class="nav-item" data-view="presupuestos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg> Presupuestos
+          </a>
+          <a href="#" class="nav-item" data-view="ventas">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg> Ventas
+          </a>
+          <a href="#" class="nav-item" data-view="devoluciones">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg> Devoluciones
+          </a>
+          <a href="#" class="nav-item" data-view="facturas">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Facturas
+          </a>
+        </div>
+        <div class="nav-seccion nav-seccion-admin">
+          <p class="nav-grupo">Compras</p>
+          <a href="#" class="nav-item" data-view="compras">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-bag"></use></svg> Compras
+          </a>
+          <a href="#" class="nav-item" data-view="devoluciones-proveedor">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package-minus"></use></svg> Dev. a proveedor
+          </a>
+        </div>
+        <div class="nav-seccion">
+          <p class="nav-grupo">Stock</p>
+          <a href="#" class="nav-item" data-view="stock">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#boxes"></use></svg> Stock
+          </a>
+          <a href="#" class="nav-item" data-view="reportes-stock">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chart-column"></use></svg> Reportes de stock
+          </a>
+        </div>
+        <div class="nav-seccion">
+          <p class="nav-grupo">Finanzas</p>
+          <a href="#" class="nav-item" data-view="caja">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#wallet"></use></svg> Caja
+          </a>
+          <a href="#" class="nav-item" data-view="cuentas-corrientes">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg> Cuentas corrientes
+          </a>
+          <a href="#" class="nav-item" data-view="gastos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg> Gastos
+          </a>
+        </div>
         <!-- IVA & Retenciones: sin pantalla propia todavía, es la Etapa C
              del roadmap (CLAUDE.md §16, §33, §38). Oculto en vez de apuntar a
-             un placeholder vacío, hasta que se construya. El asistente de texto (CLAUDE.md §21) tampoco
-             está acá: no es un módulo más, es el widget flotante al final
-             de este archivo (ver #asistenteLauncher). -->
-        <a href="#" class="nav-item" data-view="papelera">
-          <span class="nav-index">16</span> Papelera
-        </a>
-        <!-- Auditoría (CLAUDE.md §22): vista de revisión, no de operación
-             diaria, por eso va al final y no se mezcla con el resto del
-             nav por dominio. -->
-        <a href="#" class="nav-item" data-view="auditoria">
-          <span class="nav-index">17</span> Auditoría
-        </a>
-        <!-- Usuarios: administración, solo admin. Oculta por CSS con
-             data-rol (ver styles.css) — el servidor igual responde 403
-             si un empleado llama a /api/usuarios directo. -->
-        <a href="#" class="nav-item" data-view="usuarios">
-          <span class="nav-index">18</span> Usuarios
-        </a>
+             un placeholder vacío, hasta que se construya. El asistente de
+             texto (CLAUDE.md §21) tampoco está acá: no es un módulo más, es
+             el widget flotante al final de este archivo (ver
+             #asistenteLauncher). -->
+        <!-- Administración: vistas de revisión, no de operación diaria
+             (Auditoría es CLAUDE.md §22). Usuarios además está oculta por
+             CSS con data-rol — el servidor igual responde 403 si un
+             empleado llama a /api/usuarios directo. -->
+        <div class="nav-seccion nav-seccion-admin">
+          <p class="nav-grupo">Administración</p>
+          <a href="#" class="nav-item" data-view="papelera">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trash-2"></use></svg> Papelera
+          </a>
+          <a href="#" class="nav-item" data-view="auditoria">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Auditoría
+          </a>
+          <a href="#" class="nav-item" data-view="usuarios">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-cog"></use></svg> Usuarios
+          </a>
+        </div>
       </nav>
 
       <div class="sidebar-foot">
@@ -215,10 +231,10 @@
         <!-- Inversiones y retiros salieron de la caja pero NO son gasto del
              período, así que se muestran aparte y no se restan del resultado. -->
         <section class="panel panel-nota">
-          <p class="form-note">
-            Fuera del resultado — plata que salió de la caja pero no es gasto del negocio:
-            <strong>Inversiones</strong> <span class="mono" id="sumInversiones">$0,00</span> ·
-            <strong>Retiros</strong> <span class="mono" id="sumRetiros">$0,00</span>
+          <p class="nota-fuera">
+            <span>Fuera del resultado: plata que salió de la caja pero no es gasto del negocio.</span>
+            <span><strong>Inversiones</strong> <span class="mono" id="sumInversiones">$0,00</span></span>
+            <span><strong>Retiros</strong> <span class="mono" id="sumRetiros">$0,00</span></span>
           </p>
         </section>
 
@@ -481,7 +497,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Presupuestos</h2>
-            <button class="btn btn-primary" id="btnNuevoPresupuesto">+ Nuevo presupuesto</button>
+            <button class="btn btn-primary" id="btnNuevoPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo presupuesto</button>
           </div>
           <div class="filtros" id="filtrosPresupuestos"></div>
           <div class="tabla-scroll">
@@ -506,7 +522,7 @@
 
       <!-- Vista: ficha de un presupuesto -->
       <section class="view" data-view="presupuesto-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverPresupuestos">← Volver a presupuestos</button>
+        <button type="button" class="btn-link" id="btnVolverPresupuestos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a presupuestos</button>
 
         <section class="panel">
           <div class="panel-head">
@@ -567,8 +583,8 @@
             <!-- .panel-acciones y no dos botones sueltos: sin el contenedor
                  quedan pegados sin separación (ver el gap de .fila-acciones). -->
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnExportarVentas">Exportar CSV</button>
-              <button class="btn btn-primary" id="btnNuevaVenta">+ Nueva venta</button>
+              <button class="btn btn-secundario" id="btnExportarVentas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+              <button class="btn btn-primary" id="btnNuevaVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva venta</button>
             </div>
           </div>
           <div class="filtros" id="filtrosVentas"></div>
@@ -595,14 +611,14 @@
 
       <!-- Vista: ficha de una venta -->
       <section class="view" data-view="venta-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverVentas">← Volver a ventas</button>
+        <button type="button" class="btn-link" id="btnVolverVentas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a ventas</button>
 
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaVentaTitulo">—</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnDevolverVenta">Devolver</button>
-              <button class="btn btn-primary" id="btnEditarVenta">Editar</button>
+              <button class="btn btn-secundario" id="btnDevolverVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg> Devolver</button>
+              <button class="btn btn-primary" id="btnEditarVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
           </div>
           <dl class="ficha-datos" id="fichaVentaDatos"></dl>
@@ -723,7 +739,7 @@
 
       <!-- Vista: ficha de una devolución -->
       <section class="view" data-view="devolucion-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverDevoluciones">← Volver a devoluciones</button>
+        <button type="button" class="btn-link" id="btnVolverDevoluciones"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a devoluciones</button>
 
         <section class="panel">
           <div class="panel-head">
@@ -783,7 +799,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Compras</h2>
-            <button class="btn btn-primary" id="btnNuevaCompra">+ Nueva compra</button>
+            <button class="btn btn-primary" id="btnNuevaCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva compra</button>
           </div>
           <div class="filtros" id="filtrosCompras"></div>
           <div class="tabla-scroll">
@@ -807,14 +823,14 @@
 
       <!-- Vista: ficha de una compra -->
       <section class="view" data-view="compra-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverCompras">← Volver a compras</button>
+        <button type="button" class="btn-link" id="btnVolverCompras"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a compras</button>
 
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaCompraTitulo">—</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnDevolverCompra">Devolver</button>
-              <button class="btn btn-primary" id="btnEditarCompra">Editar</button>
+              <button class="btn btn-secundario" id="btnDevolverCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg> Devolver</button>
+              <button class="btn btn-primary" id="btnEditarCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
           </div>
           <dl class="ficha-datos" id="fichaCompraDatos"></dl>
@@ -935,7 +951,7 @@
 
       <!-- Vista: ficha de una devolución a proveedor -->
       <section class="view" data-view="devolucion-proveedor-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverDevolucionesProveedor">← Volver a devoluciones a proveedor</button>
+        <button type="button" class="btn-link" id="btnVolverDevolucionesProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a devoluciones a proveedor</button>
 
         <section class="panel">
           <div class="panel-head">
@@ -978,10 +994,10 @@
           <div class="panel-head">
             <h2>Stock</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnDepositos">Depósitos</button>
-              <button class="btn btn-secundario" id="btnExportarStock">Exportar CSV</button>
-              <button class="btn btn-secundario" id="btnTransferirStock">Transferir</button>
-              <button class="btn btn-primary" id="btnAjusteStock">+ Ajustar stock</button>
+              <button class="btn btn-secundario" id="btnDepositos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#warehouse"></use></svg> Depósitos</button>
+              <button class="btn btn-secundario" id="btnExportarStock"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+              <button class="btn btn-secundario" id="btnTransferirStock"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#arrow-right-left"></use></svg> Transferir</button>
+              <button class="btn btn-primary" id="btnAjusteStock"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Ajustar stock</button>
             </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre" id="stockSearch" />
@@ -1107,9 +1123,9 @@
           <div class="panel-head">
             <h2>Productos</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnCategoriasProductos">Categorías</button>
-              <button class="btn btn-secundario" id="btnListasPrecios">Listas de precios</button>
-              <button class="btn btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
+              <button class="btn btn-secundario" id="btnCategoriasProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
+              <button class="btn btn-secundario" id="btnListasPrecios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Listas de precios</button>
+              <button class="btn btn-primary" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo producto</button>
             </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
@@ -1139,14 +1155,14 @@
 
       <!-- Vista: ficha de un producto -->
       <section class="view" data-view="producto-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverProductos">← Volver a productos</button>
+        <button type="button" class="btn-link" id="btnVolverProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a productos</button>
 
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaProductoNombre">—</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnVariantesProducto">Variantes</button>
-              <button class="btn btn-primary" id="btnEditarProducto">Editar</button>
+              <button class="btn btn-secundario" id="btnVariantesProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Variantes</button>
+              <button class="btn btn-primary" id="btnEditarProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
           </div>
           <dl class="ficha-datos" id="fichaProductoDatos"></dl>
@@ -1219,7 +1235,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Clientes</h2>
-            <button class="btn btn-primary" id="btnNuevoCliente">+ Nuevo cliente</button>
+            <button class="btn btn-primary" id="btnNuevoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo cliente</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="clientesSearch" />
           <div class="filtros" id="filtrosClientes"></div>
@@ -1243,12 +1259,12 @@
 
       <!-- Vista: ficha de un cliente -->
       <section class="view" data-view="cliente-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverClientes">← Volver a clientes</button>
+        <button type="button" class="btn-link" id="btnVolverClientes"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a clientes</button>
 
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaClienteNombre">—</h2>
-            <button class="btn btn-primary" id="btnEditarCliente">Editar</button>
+            <button class="btn btn-primary" id="btnEditarCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
           </div>
           <dl class="ficha-datos" id="fichaClienteDatos"></dl>
         </section>
@@ -1295,7 +1311,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Proveedores</h2>
-            <button class="btn btn-primary" id="btnNuevoProveedor">+ Nuevo proveedor</button>
+            <button class="btn btn-primary" id="btnNuevoProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo proveedor</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="proveedoresSearch" />
           <div class="filtros" id="filtrosProveedores"></div>
@@ -1319,12 +1335,12 @@
 
       <!-- Vista: ficha de un proveedor -->
       <section class="view" data-view="proveedor-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverProveedores">← Volver a proveedores</button>
+        <button type="button" class="btn-link" id="btnVolverProveedores"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a proveedores</button>
 
         <section class="panel">
           <div class="panel-head">
             <h2 id="fichaProveedorNombre">—</h2>
-            <button class="btn btn-primary" id="btnEditarProveedor">Editar</button>
+            <button class="btn btn-primary" id="btnEditarProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
           </div>
           <dl class="ficha-datos" id="fichaProveedorDatos"></dl>
         </section>
@@ -1409,9 +1425,9 @@
           <div class="panel-head">
             <h2>Cuentas</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnNuevaCuenta">+ Cuenta</button>
-              <button class="btn btn-secundario" id="btnTransferencia">↔ Transferencia</button>
-              <button class="btn btn-primary" id="btnMovimientoTesoreria">+ Movimiento</button>
+              <button class="btn btn-secundario" id="btnNuevaCuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Cuenta</button>
+              <button class="btn btn-secundario" id="btnTransferencia"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#arrow-right-left"></use></svg> Transferencia</button>
+              <button class="btn btn-primary" id="btnMovimientoTesoreria"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Movimiento</button>
             </div>
           </div>
           <div class="tabla-scroll">
@@ -1473,7 +1489,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Por cobrar</h2>
-            <button class="btn btn-secundario" id="btnExportarCcCobrar">Exportar CSV</button>
+            <button class="btn btn-secundario" id="btnExportarCcCobrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
           </div>
           <p class="form-note" id="ccNotaFavorClientes" hidden></p>
           <div class="filtros" id="filtrosCcCobrar"></div>
@@ -1498,7 +1514,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Por pagar</h2>
-            <button class="btn btn-secundario" id="btnExportarCcPagar">Exportar CSV</button>
+            <button class="btn btn-secundario" id="btnExportarCcPagar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
           </div>
           <p class="form-note" id="ccNotaFavorProveedores" hidden></p>
           <div class="filtros" id="filtrosCcPagar"></div>
@@ -1544,9 +1560,9 @@
           <div class="panel-head">
             <h2>Gastos</h2>
             <div class="panel-acciones">
-              <button class="btn btn-secundario" id="btnExportarGastos">Exportar CSV</button>
-              <button class="btn btn-secundario" id="btnCategoriasGasto">Categorías</button>
-              <button class="btn btn-primary" id="btnNuevoGasto">+ Nuevo gasto</button>
+              <button class="btn btn-secundario" id="btnExportarGastos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+              <button class="btn btn-secundario" id="btnCategoriasGasto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
+              <button class="btn btn-primary" id="btnNuevoGasto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo gasto</button>
             </div>
           </div>
           <div class="filtros" id="filtrosGastos"></div>
@@ -1591,7 +1607,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Facturas</h2>
-            <button class="btn btn-primary" id="btnNuevaFactura">+ Nueva factura</button>
+            <button class="btn btn-primary" id="btnNuevaFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva factura</button>
           </div>
           <div class="filtros" id="filtrosFacturas"></div>
           <div class="tabla-scroll">
@@ -1615,7 +1631,7 @@
 
       <!-- Vista: ficha de una factura -->
       <section class="view" data-view="factura-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverFacturas">← Volver a facturas</button>
+        <button type="button" class="btn-link" id="btnVolverFacturas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a facturas</button>
 
         <section class="panel">
           <div class="panel-head">
@@ -1626,7 +1642,7 @@
                    resuelve las dos cosas. El nombre lo hace descubrible; sin
                    él, quien busca un PDF no adivina que está detrás de
                    "Imprimir". -->
-              <button type="button" class="btn btn-secundario" id="btnImprimirFactura">Imprimir / PDF</button>
+              <button type="button" class="btn btn-secundario" id="btnImprimirFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#printer"></use></svg> Imprimir / PDF</button>
             </div>
           </div>
           <dl class="ficha-datos" id="fichaFacturaDatos"></dl>
@@ -1637,7 +1653,7 @@
         <section class="panel" id="fichaFacturaItemsPanel" hidden>
           <div class="panel-head">
             <h2>Productos facturados</h2>
-            <a href="#" class="btn-link" id="fichaFacturaVerVenta">Ver la venta →</a>
+            <a href="#" class="btn-link" id="fichaFacturaVerVenta">Ver la venta</a>
           </div>
           <div class="tabla-scroll">
           <table class="ledger-table">
@@ -1691,7 +1707,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Registro de actividad</h2>
-            <button type="button" class="btn btn-secundario" id="btnActualizarAuditoria">Actualizar</button>
+            <button type="button" class="btn btn-secundario" id="btnActualizarAuditoria"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Actualizar</button>
           </div>
           <p class="form-note">
             Qué se hizo y cuándo, en orden de más reciente a más antiguo. Este registro empieza en esta etapa: no
@@ -1749,7 +1765,7 @@
           <div class="panel-head">
             <h2>Usuarios</h2>
             <div class="panel-acciones">
-              <button type="button" class="btn btn-primary" id="btnNuevoUsuario">+ Usuario</button>
+              <button type="button" class="btn btn-primary" id="btnNuevoUsuario"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Usuario</button>
             </div>
           </div>
           <div class="tabla-scroll">
@@ -1794,6 +1810,7 @@
     <div class="sesion-card">
       <img src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" class="sesion-logo" />
       <h1>Nexo</h1>
+      <p class="sesion-bajada">Stock, ventas, caja y cuentas de tu negocio, en un solo lugar.</p>
 
       <form id="formLogin" class="form">
         <p class="form-note" id="loginError" hidden></p>
@@ -1845,7 +1862,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalFacturaTitulo">Nueva factura</h3>
-        <button class="modal-close" id="modalClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formFactura" class="form">
         <label>Cliente
@@ -1891,7 +1908,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalAjusteStockTitulo">Ajustar stock</h3>
-        <button class="modal-close" id="modalAjusteStockClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalAjusteStockClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formAjusteStock" class="form">
         <label>Producto
@@ -1921,7 +1938,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalDepositosTitulo">Depósitos</h3>
-        <button class="modal-close" id="modalDepositosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalDepositosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formDeposito" class="form">
         <input type="hidden" name="id" />
@@ -1953,7 +1970,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalTransferenciaDepositoTitulo">Transferir entre depósitos</h3>
-        <button class="modal-close" id="modalTransferenciaDepositoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalTransferenciaDepositoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formTransferenciaDeposito" class="form">
         <label>Producto
@@ -1982,7 +1999,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalPresupuestoTitulo">Nuevo presupuesto</h3>
-        <button class="modal-close" id="modalPresupuestoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalPresupuestoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formPresupuesto" class="form">
         <label>Cliente
@@ -2002,7 +2019,7 @@
         </label>
         <p class="form-note">Si dejás la fecha vacía, el presupuesto no vence. Pasada esa fecha sin respuesta, figura como vencido.</p>
         <div class="item-rows" id="presupuestoItems"></div>
-        <button type="button" class="btn-add-item" id="btnAgregarItemPresupuesto">+ agregar producto</button>
+        <button type="button" class="btn-add-item" id="btnAgregarItemPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
         <label>Notas
           <input type="text" name="notas" placeholder="Condiciones, plazo de entrega…" />
         </label>
@@ -2017,7 +2034,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalVentaTitulo">Nueva venta</h3>
-        <button class="modal-close" id="modalVentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalVentaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formVenta" class="form">
         <label>Cliente
@@ -2058,7 +2075,7 @@
           <input type="date" name="fecha_vencimiento" id="ventaVencimiento" />
         </label>
         <div class="item-rows" id="ventaItems"></div>
-        <button type="button" class="btn-add-item" id="btnAgregarItemVenta">+ agregar producto</button>
+        <button type="button" class="btn-add-item" id="btnAgregarItemVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
         <datalist id="productosVenta"></datalist>
         <p class="item-total">Total: <span class="mono" id="ventaTotal">$0,00</span></p>
         <button type="submit" class="btn btn-primary btn-full" id="formVentaSubmit">Registrar venta</button>
@@ -2071,7 +2088,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalCompraTitulo">Nueva compra</h3>
-        <button class="modal-close" id="modalCompraClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalCompraClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formCompra" class="form">
         <label>Proveedor
@@ -2101,7 +2118,7 @@
         </label>
         <div class="item-rows" id="compraItems"></div>
         <datalist id="productosSugeridos"></datalist>
-        <button type="button" class="btn-add-item" id="btnAgregarItemCompra">+ agregar producto</button>
+        <button type="button" class="btn-add-item" id="btnAgregarItemCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
         <label>Costo de envío
           <input type="number" name="costo_envio" id="compraCostoEnvio" step="0.01" min="0" placeholder="0.00" />
         </label>
@@ -2118,7 +2135,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalFacturarVentaTitulo">Facturar venta</h3>
-        <button class="modal-close" id="modalFacturarVentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalFacturarVentaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formFacturarVenta" class="form">
         <label>Medio de pago
@@ -2148,7 +2165,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalNotaCreditoTitulo">Emitir nota de crédito</h3>
-        <button class="modal-close" id="modalNotaCreditoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalNotaCreditoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formNotaCredito" class="form">
         <label>Medio de pago
@@ -2178,7 +2195,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalClienteTitulo">Nuevo cliente</h3>
-        <button class="modal-close" id="modalClienteClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalClienteClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formCliente" class="form">
         <label>Nombre
@@ -2223,7 +2240,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalProveedorTitulo">Nuevo proveedor</h3>
-        <button class="modal-close" id="modalProveedorClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalProveedorClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formProveedor" class="form">
         <label>Nombre
@@ -2260,7 +2277,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalGastoTitulo">Nuevo gasto</h3>
-        <button class="modal-close" id="modalGastoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalGastoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formGasto" class="form">
         <label>Categoría
@@ -2302,7 +2319,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalCategoriasTitulo">Categorías de gasto</h3>
-        <button class="modal-close" id="modalCategoriasClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalCategoriasClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formCategoria" class="form">
         <input type="hidden" name="id" />
@@ -2341,7 +2358,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalCategoriasProductosTitulo">Categorías de productos</h3>
-        <button class="modal-close" id="modalCategoriasProductosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalCategoriasProductosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formCategoriaProducto" class="form">
         <input type="hidden" name="id" />
@@ -2373,7 +2390,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalVariantesProductoTitulo">Variantes de producto</h3>
-        <button class="modal-close" id="modalVariantesProductoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalVariantesProductoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
 
       <h4>Atributos</h4>
@@ -2414,7 +2431,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalListasPreciosTitulo">Listas de precios</h3>
-        <button class="modal-close" id="modalListasPreciosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalListasPreciosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formListaPrecio" class="form">
         <input type="hidden" name="id" />
@@ -2443,7 +2460,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalCuentaTitulo">Nueva cuenta</h3>
-        <button class="modal-close" id="modalCuentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalCuentaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formCuenta" class="form">
         <label>Nombre
@@ -2471,7 +2488,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalMovimientoCajaTitulo">Movimiento de caja</h3>
-        <button class="modal-close" id="modalMovimientoCajaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalMovimientoCajaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formMovimientoCaja" class="form">
         <label>Tipo
@@ -2503,7 +2520,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalTransferenciaTitulo">Transferencia entre cuentas</h3>
-        <button class="modal-close" id="modalTransferenciaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalTransferenciaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formTransferencia" class="form">
         <label>Desde
@@ -2532,7 +2549,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalProductoTitulo">Nuevo producto</h3>
-        <button class="modal-close" id="modalProductoClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalProductoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formProducto" class="form">
         <label>Nombre
@@ -2589,7 +2606,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalBulkProductosTitulo">Editar productos</h3>
-        <button class="modal-close" id="modalBulkProductosClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalBulkProductosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <p class="form-note" id="modalBulkProductosConteo">0 productos seleccionados</p>
       <form id="formBulkProductos" class="form">
@@ -2655,7 +2672,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalBulkEstadoEnvioTitulo">Cambiar estado de envío</h3>
-        <button class="modal-close" id="modalBulkEstadoEnvioClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalBulkEstadoEnvioClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <p class="form-note" id="modalBulkEstadoEnvioConteo">0 compras seleccionadas</p>
       <form id="formBulkEstadoEnvio" class="form">
@@ -2676,7 +2693,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalCobrarVentaTitulo">Registrar cobro</h3>
-        <button class="modal-close" id="modalCobrarVentaClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalCobrarVentaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <p class="item-total">Total: <span class="mono" id="cobroVentaTotal">$0,00</span></p>
       <p class="item-total">Cobrado: <span class="mono" id="cobroVentaCobrado">$0,00</span></p>
@@ -2702,7 +2719,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalDevolucionTitulo">Registrar devolución</h3>
-        <button class="modal-close" id="modalDevolucionClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalDevolucionClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formDevolucion" class="form">
         <div id="devolucionItems" class="item-rows"></div>
@@ -2728,7 +2745,7 @@
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
         <h3 id="modalDevolucionProveedorTitulo">Registrar devolución a proveedor</h3>
-        <button class="modal-close" id="modalDevolucionProveedorClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalDevolucionProveedorClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formDevolucionProveedor" class="form">
         <div id="devolucionProveedorItems" class="item-rows"></div>
@@ -2754,7 +2771,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalNotaCreditoProveedorTitulo">Nota de crédito del proveedor</h3>
-        <button class="modal-close" id="modalNotaCreditoProveedorClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalNotaCreditoProveedorClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formNotaCreditoProveedor" class="form">
         <label>Número de nota de crédito del proveedor
@@ -2770,7 +2787,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <h3 id="modalPagarCompraTitulo">Registrar pago</h3>
-        <button class="modal-close" id="modalPagarCompraClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="modal-close" id="modalPagarCompraClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <p class="item-total">Total: <span class="mono" id="pagoCompraTotal">$0,00</span></p>
       <p class="item-total">Pagado: <span class="mono" id="pagoCompraPagado">$0,00</span></p>
@@ -2812,7 +2829,7 @@
   <div id="asistentePanel" class="asistente-panel" role="dialog" aria-label="Asistente" hidden>
     <div class="asistente-panel-head">
       <h2>Asistente</h2>
-      <button type="button" class="modal-close" id="asistentePanelClose" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      <button type="button" class="modal-close" id="asistentePanelClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
     </div>
 
     <div class="asistente-hilo" id="asistenteHilo">
@@ -2849,7 +2866,7 @@
       <div class="modal-head">
         <h3 id="modalConfiguracionTitulo">Configuración</h3>
         <button class="modal-close" id="modalConfiguracionClose" aria-label="Cerrar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
         </button>
       </div>
       <!-- Estos datos son el membrete de todo comprobante impreso: quién
@@ -2901,7 +2918,7 @@
       <div class="modal-head">
         <h3 id="modalPerfilTitulo">Mi cuenta</h3>
         <button class="modal-close" id="modalPerfilClose" aria-label="Cerrar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
         </button>
       </div>
       <div class="perfil-identidad">
@@ -2930,7 +2947,7 @@
       <div class="modal-head">
         <h3 id="modalUsuarioTitulo">Nuevo usuario</h3>
         <button class="modal-close" id="modalUsuarioClose" aria-label="Cerrar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
         </button>
       </div>
       <form id="formUsuario" class="form">

@@ -4,6 +4,8 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
+import { icono } from "./iconos.js";
+
 // Guarda contra `null`/`undefined`: con el filtrado de campos sensibles por
 // rol (permisos por rol, backend/server.js) un empleado puede recibir un
 // producto sin `precio_costo` o una venta sin `margen` — sin este chequeo
@@ -48,18 +50,10 @@ export function moneyCorto(n) {
   return `${signo}$${Math.round(abs)}`;
 }
 
-export const ICONO_TACHO =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/>' +
-  '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
-  '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>' +
-  '<line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+// Íconos de las acciones de fila, del sprite de core/iconos.js.
+export const ICONO_TACHO = icono("trash-2");
 
-const ICONO_LAPIZ =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M12 20h9"/>' +
-  '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const ICONO_LAPIZ = icono("pencil");
 
 // Botón de editar que va en una fila de tabla. Se usa igual en Productos,
 // Clientes y Proveedores para que sea una sola convención: el click en la

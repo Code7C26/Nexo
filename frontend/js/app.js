@@ -14,6 +14,7 @@ import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
 import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
+import { icono } from "./core/iconos.js";
 import { mostrarVista, vistaDesdeHash } from "./core/router.js";
 import { alEntrarEnVista, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
@@ -96,7 +97,7 @@ function formatearDelta(campo, delta) {
   }
   const mejoro = MEJOR_SI_SUBE[campo] ? delta.abs >= 0 : delta.abs <= 0;
   const clase = delta.abs === 0 ? "ledger-delta-neutro" : mejoro ? "ledger-delta-ok" : "ledger-delta-mal";
-  const flecha = delta.abs > 0 ? "▲" : delta.abs < 0 ? "▼" : "—";
+  const flecha = delta.abs > 0 ? icono("trending-up") : delta.abs < 0 ? icono("trending-down") : "—";
   const abs = money(Math.abs(delta.abs));
   if (delta.cruza_cero) {
     // Un porcentaje acá sería técnicamente correcto pero absurdo de leer
@@ -1012,7 +1013,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
     <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
-    <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
+    <button type="button" class="item-row-remove" aria-label="Quitar producto">${icono("x")}</button>
   `;
 
   const productoInput = fila.querySelector(".item-producto");
@@ -1122,7 +1123,7 @@ function agregarFilaItemCompra(contenedor, listaProductos) {
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
     <input type="number" class="item-precio" placeholder="Costo unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
-    <button type="button" class="item-row-remove" aria-label="Quitar producto">✕</button>
+    <button type="button" class="item-row-remove" aria-label="Quitar producto">${icono("x")}</button>
   `;
 
   const productoInput = fila.querySelector(".item-producto");
@@ -6197,7 +6198,7 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     error: "No se pudo registrar la operación."
   });
   const etiqueta = { venta: "Venta", compra: "Compra", gasto: "Gasto" }[tipo];
-  turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">✓ ${etiqueta} #${id} registrada.</p>`;
+  turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">${icono("circle-check")} ${etiqueta} #${id} registrada.</p>`;
   asistenteScrollAlFinal();
 
   // Toda la cascada real la hizo el backend; acá solo hace falta refrescar
