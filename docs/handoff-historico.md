@@ -6920,3 +6920,17 @@ sidebar, el login, los avisos, la barra de selección, `--brand` y el fondo del 
 `#000000`, la tinta vuelve a `#121212` y los grises son neutros. Las luces del login bajan de
 intensidad para que el fondo se lea negro. La sidebar recupera su borde derecho, porque en tema oscuro
 el fondo de la app también es negro. El azul birome y el resaltador quedan como acentos.
+
+### Segundo addendum al §62 — sale el amarillo (14 de octubre)
+
+Al usuario no le gustó la combinación de negro con amarillo ("buscar otra combinación más buena").
+Queda blanco y negro de marca con un solo acento, el azul birome:
+- la sección activa del menú usa `--accent-on-dark` (`#8FA3FF`, el azul aclarado para leerse sobre
+  negro);
+- el avatar del pie pasa a círculo blanco con ícono negro;
+- el botón del login es blanco sobre negro, como el logo;
+- la cifra que concluye (Resultado, Posición neta) cambia el trazo de resaltador por una doble raya
+  azul debajo, como se subraya el total en un libro de cuentas;
+- el ícono de "atención" de los avisos pasa a rojo, como "pendiente" (regla vieja: atención y
+  pendiente comparten color);
+- `--highlight` y `--highlight-ink` dejan de existir.

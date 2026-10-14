@@ -71,9 +71,10 @@ los importa a ellos): lo verifica `backend/test/frontend-modulos.test.js`
 El concepto y los tokens (color, tipografía, espaciado, movimiento) están
 explicados al principio de `css/styles.css`. En corto:
 
-- Azul birome (`--accent`) para toda acción; amarillo resaltador
-  (`--highlight`) solo para la sección activa del menú y la cifra que
-  concluye (Resultado, Posición neta).
+- Blanco y negro de marca con un solo acento: azul birome (`--accent`) para
+  toda acción, y su versión clara (`--accent-on-dark`) sobre la sidebar
+  negra. La cifra que concluye (Resultado, Posición neta) lleva doble raya
+  azul, como el total de un libro de cuentas.
 - Bricolage Grotesque para títulos y cifras grandes; Instrument Sans para el
   resto, con cifras tabulares (`.mono`) en importes y cantidades.
 - Íconos: un ícono nuevo se baja de `lucide-static` y se agrega como

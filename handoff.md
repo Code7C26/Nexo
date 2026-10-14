@@ -154,10 +154,12 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   login, tinta, avisos y fondo del tema oscuro son negros, con grises
   neutros. El rediseño lo había cambiado por azul noche y el usuario lo
   corrigió (hist. §62, addendum). Los acentos van encima, no en su lugar.
-- **Sistema visual:** azul birome (`--accent`) para toda acción y
-  resaltador (`--highlight`) solo en la sección activa del menú y la cifra
-  que concluye (`.ledger-item-total`). Está explicado al principio de
-  `styles.css`. Sumar amarillo en otros lugares le saca el sentido.
+- **Sistema visual:** blanco y negro con **un solo acento**, el azul
+  birome (`--accent`), para toda acción. Sobre negro va su versión clara
+  (`--accent-on-dark`, la sección activa del menú). La cifra que concluye
+  (`.ledger-item-total`) lleva doble raya azul. El amarillo resaltador del
+  primer rediseño se sacó porque al usuario no le gusta negro con amarillo:
+  no sumar un segundo color de acento sin preguntar.
 - **Fuentes propias** en `frontend/fonts/` (sin Google Fonts, pensado para
   la PWA y una CSP sin dominios externos). `--font-mono` ya no es
   monoespaciada: las cifras se alinean con `tabular-nums`.
