@@ -7246,3 +7246,89 @@ terceros (ARCA real, Mercado Libre, Tienda Nube) queda para después de la prese
 ### Qué sigue
 
 Etapa D del plan: punto de venta y turno de caja.
+
+## 67. Etapa D, primera parte: turno de caja y venta de mostrador (backend), 16 de octubre de 2026
+
+Primera etapa del plan de §66, decidida sin consulta como pidió el usuario. Commit `e8400bb`.
+
+**Esquema.**
+- **Tabla nueva `turnos_caja`** (ver el comentario en `schema.sql`):
+  - una cuenta de tesorería de tipo efectivo entre una apertura y un cierre;
+  - en cada punta, el saldo del sistema (`esperado_*`) y lo contado (`contado_*`);
+  - quién abrió y quién cerró;
+  - la ventana de movimientos `desde_movimiento_id` / `hasta_movimiento_id`.
+- `idx_turnos_caja_abierto`, único parcial: un turno abierto por caja. La tabla nace con
+  `schema.sql` en cualquier base, así que el índice puede vivir ahí.
+- `ventas.turno_caja_id`, nullable: en `schema.sql` y por `ALTER` en `db/index.js`, después
+  del rebuild de §65. Lleva un índice parcial para el resumen.
+
+**Por qué la ventana es por id.** `movimientos_tesoreria.fecha` es solo la fecha
+(`date('now')`), sin hora, así que no alcanza para saber qué entró durante el turno. Los id
+crecen siempre (AUTOINCREMENT), así que "id mayor que el último al abrir" es exacto. Una
+anulación posterior genera un movimiento nuevo, que también cae en la ventana.
+
+**Arqueo.**
+- Al abrir y al cerrar, si lo contado difiere del saldo, se inserta un movimiento `manual`
+  por la diferencia ("Diferencia de arqueo al abrir/cerrar la caja (turno #N)").
+- Así el saldo de la caja siempre es lo último que se contó.
+- El ajuste de apertura queda antes de la ventana y el de cierre después, así que ninguno
+  cuenta como movimiento del turno.
+- Se descartó un origen nuevo `arqueo`: obligaba a reconstruir `movimientos_tesoreria` por su
+  `CHECK`.
+
+**Rutas** (todas para los dos roles; el efectivo no es un dato sensible):
+- `GET /api/turnos-caja` (filtro `?estado=`) y `GET /api/turnos-caja/:id`. Devuelven el
+  resumen:
+  - ventas del turno (cantidad y total);
+  - cobros por cuenta;
+  - cobros, otros ingresos y egresos de la caja;
+  - esperado: el saldo en vivo si el turno está abierto, el del cierre si no;
+  - diferencias de apertura y de cierre.
+- `POST /api/turnos-caja` y `POST /api/turnos-caja/:id/cerrar`.
+- `GET /api/pos/catalogo`:
+  - un ítem por producto sin variantes y uno por variante activa ("Gorra — Talle: M"), con
+    su SKU;
+  - precio de la lista predeterminada, con la misma cadena que la pantalla de ventas;
+  - stock del depósito predeterminado.
+- `POST /api/pos/ventas`: `crearVenta`, `turno_caja_id` y un `registrarCobro` por medio, en
+  una transacción, con auditoría de la venta y de cada cobro.
+  - Sin `cliente_id` va a "Consumidor final".
+  - Los cobros no pueden superar el total.
+  - Si suman menos, hace falta un cliente real y el resto queda en su cuenta corriente.
+- Abrir y cerrar se auditan como `cambiar_estado` de la `cuenta_tesoreria`, con
+  `operacion_tipo 'turno_caja'`. `auditoria.operacion_tipo` es texto libre, así que no hizo
+  falta reconstruir `auditoria` para sumar una entidad.
+
+**Seed y regresión.**
+- El seed suma un turno abierto con el saldo justo, una venta de mostrador de $9.000 ($5.000
+  en efectivo y $4.000 en banco) y el cierre con arqueo justo.
+- `regresion-head.mjs` siembra ahora con el `seed.mjs` de la ref (import dinámico desde el
+  worktree), no con el del árbol. Con el del árbol, el paso "abrir la caja" fallaba con 404
+  contra el servidor de `HEAD`. Consecuencia: un paso nuevo del seed recién se compara en el
+  commit siguiente.
+
+**Verificación.**
+- `api.test.js`, caso nuevo de punta a punta:
+  - sin turno no se vende, y en una cuenta de banco no se abre caja;
+  - una apertura con $100 de más deja registrada la diferencia;
+  - un solo turno abierto por caja;
+  - el catálogo no trae productos de otra empresa;
+  - cobro mixto con "Consumidor final";
+  - cobros de más → 400; de menos sin cliente → 400; de menos con cliente → 201;
+  - el resumen da 2 ventas por $200, $90 en efectivo y esperado $190;
+  - la empresa B no ve el turno (404), no vende con él, no abre caja en una cuenta de A y
+    no lo cierra;
+  - el cierre con $10 de menos da diferencia −10, ni el turno cerrado ni un segundo cierre
+    se aceptan, y el turno siguiente abre esperando lo contado.
+- `npm test` 50 de 50, `npm run lint` verde y `verificar-migracion` 24 de 24 (base real sin
+  cambios).
+- `npm run regresion`: las 4 diferencias son las rutas nuevas (404 en `HEAD`).
+
+### Qué sigue
+
+La pantalla del punto de venta, segunda parte de la Etapa D (ver el plan en handoff.md):
+- módulo `frontend/js/dominios/pos.js`, mobile-first;
+- apertura y cierre de caja con arqueo;
+- búsqueda por nombre, SKU o lector de código de barras;
+- carrito, cobro mixto con vuelto y cliente opcional;
+- recorrido en el navegador con los dos roles y a 390 px.

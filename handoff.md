@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §66);
+    siguiente número (hoy el último es §67);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -240,6 +240,21 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     `regresion-head.mjs`: si no está, el script corta.
   - Un campo volátil nuevo (una hora) se suma a `normalizar`.
 
+**Punto de venta (hist. §67)**
+- **El turno de caja es por cuenta de tesorería de tipo efectivo**, no por
+  usuario, con un solo turno abierto por caja (índice parcial).
+- **Arqueo:** al abrir y al cerrar, si lo contado no coincide con el saldo, se
+  registra un movimiento `manual` por la diferencia. El saldo de la caja
+  queda siempre en lo último que se contó.
+- **Los movimientos de un turno se delimitan por id** de
+  `movimientos_tesoreria` (`desde_movimiento_id` y `hasta_movimiento_id`),
+  porque esa tabla guarda la fecha sin hora.
+- **Auditoría del turno:** `entidad cuenta_tesoreria`, acción
+  `cambiar_estado`, `operacion_tipo turno_caja`. Así no hizo falta
+  reconstruir `auditoria` para sumar una entidad nueva a su `CHECK`.
+- **Venta de mostrador sin cliente:** va al cliente "Consumidor final" de la
+  empresa, y a ese cliente no se le fía.
+
 **Comprobantes, catálogo y auditoría**
 - **Comprobantes:** los datos del membrete viven en `organizaciones` (no hay
   tabla `datos_negocio`). Venta y compra no se imprimen como comprobante
@@ -262,6 +277,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 2. **Regresión:** `npm run regresion`. Compara el árbol de trabajo contra
    `HEAD` (`-- --ref <ref>` para otra) con la misma base sembrada, en todos los
    `GET` y con los dos roles. `-- --db <ruta>` parte de una copia de esa base.
+   La base la siembran el servidor **y el `seed.mjs` de la ref**: un paso nuevo
+   del seed recién se compara en el commit siguiente (hist. §67).
    Cada diferencia que muestre hay que justificarla.
 3. **Aislamiento:**
    - segunda empresa en la misma base:
@@ -371,7 +388,8 @@ pasada final del plan:
   en una demo, completa y funcionando. Lo que queda afuera se anota como
   "después de la presentación".
 
-1. **D: punto de venta y turno de caja** (2 sesiones). Decidido:
+1. **D: punto de venta y turno de caja** (2 sesiones). **Backend hecho (hist.
+   §67); falta la pantalla**, que es lo siguiente. Decidido:
    - **Venta sin cliente:** va al cliente "Consumidor final" de la empresa, que
      se crea solo la primera vez.
    - **Pantalla de mostrador:**
@@ -391,6 +409,23 @@ pasada final del plan:
      - si hay diferencia, se registra como movimiento de tesorería, para que el
        saldo de la caja dé lo contado.
    - El POS exige un turno abierto.
+   - **Lo que la pantalla tiene que respetar** (rutas en `server.js`, sección
+     "Punto de venta y turno de caja"):
+     - `GET /api/turnos-caja?estado=abierto` dice si hay caja abierta; si no
+       hay, se abre con `POST /api/turnos-caja` (`cuenta_tesoreria_id` de
+       tipo efectivo, `contado`). La respuesta trae `esperado_apertura`
+       para mostrar la diferencia.
+     - `GET /api/pos/catalogo` trae los ítems vendibles: cada variante como
+       ítem propio, con `sku`, `precio` y `stock`.
+     - `POST /api/pos/ventas` recibe `turno_caja_id`, `cliente_id`
+       opcional, `items` y `cobros` (`[{cuenta_tesoreria_id, importe}]`).
+       Los cobros no pueden superar el total, así que el vuelto lo calcula la
+       pantalla. El cobro en efectivo va a la cuenta del turno. Si los cobros
+       suman menos que el total, el resto queda en la cuenta corriente, y para
+       eso hace falta elegir un cliente.
+     - `POST /api/turnos-caja/:id/cerrar` (`contado`) devuelve el resumen
+       con `diferencia_cierre`. `GET /api/turnos-caja/:id` da el resumen en
+       vivo: ventas, cobros por medio, ingresos, egresos y esperado.
 2. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.
