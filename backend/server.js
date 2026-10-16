@@ -9187,6 +9187,310 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
 
 /* ---------- Errores ---------- */
 
+/* ---------- Punto de venta y turno de caja (CLAUDE.md §30) ---------- */
+//
+// El punto de venta no es un circuito de datos nuevo: una venta de mostrador
+// es crearVenta + registrarCobro, como en la pantalla administrativa, pero en
+// una sola transacción (la venta nunca queda sin su cobro) y colgada de un
+// turno de caja abierto. Ver turnos_caja en schema.sql.
+
+// Una venta de mostrador sin cliente elegido va a este cliente, uno por
+// empresa, que resolverCliente crea la primera vez.
+const CONSUMIDOR_FINAL = 'Consumidor final';
+const SQL_ULTIMO_MOVIMIENTO_TESORERIA = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM movimientos_tesoreria');
+const SQL_SALDO_CUENTA = db.prepare('SELECT saldo FROM saldo_tesoreria WHERE cuenta_tesoreria_id = ?');
+const SELECT_TURNO = `
+  SELECT turnos_caja.*, cuentas_tesoreria.nombre AS cuenta,
+         abrio.nombre AS abierto_por_nombre, cerro.nombre AS cerrado_por_nombre
+    FROM turnos_caja
+    JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turnos_caja.cuenta_tesoreria_id
+    JOIN usuarios abrio ON abrio.id = turnos_caja.abierto_por
+    LEFT JOIN usuarios cerro ON cerro.id = turnos_caja.cerrado_por`;
+
+// Deja el saldo de la cuenta en lo contado: un movimiento manual por la
+// diferencia, si la hay (medio centavo de tolerancia por redondeo).
+function ajustarArqueo(cuentaId, diferencia, concepto, organizacionId) {
+  if (Math.abs(diferencia) < 0.005) return;
+  db.prepare(
+    `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, concepto, organizacion_id)
+     VALUES (?, ?, ?, 'manual', ?, ?)`
+  ).run(cuentaId, diferencia > 0 ? 'ingreso' : 'egreso', redondear2(Math.abs(diferencia)), concepto, organizacionId);
+}
+
+// El turno con lo que pasó en él. Con el turno abierto, esperado es el saldo
+// de la caja ahora; cerrado, el que había al cerrar.
+function resumenTurno(turno) {
+  const hasta = turno.estado === 'abierto' ? SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id : turno.hasta_movimiento_id;
+  const movimientos = db
+    .prepare(
+      `SELECT tipo, origen, SUM(importe) AS importe
+         FROM movimientos_tesoreria
+        WHERE cuenta_tesoreria_id = ? AND id > ? AND id <= ?
+        GROUP BY tipo, origen`
+    )
+    .all(turno.cuenta_tesoreria_id, turno.desde_movimiento_id, hasta);
+  const sumar = (filtro) => redondear2(movimientos.filter(filtro).reduce((acc, m) => acc + m.importe, 0));
+  const ventas = db
+    .prepare(
+      `SELECT COUNT(*) AS cantidad,
+              COALESCE(SUM((SELECT SUM(cantidad * precio_unitario) FROM venta_items WHERE venta_id = ventas.id)), 0) AS total
+         FROM ventas WHERE turno_caja_id = ? AND estado = 'activa'`
+    )
+    .get(turno.id);
+  const cobrosPorCuenta = db
+    .prepare(
+      `SELECT cuentas_tesoreria.nombre AS cuenta, SUM(cobros.importe) AS importe
+         FROM cobros
+         JOIN ventas ON ventas.id = cobros.venta_id
+         JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
+        WHERE ventas.turno_caja_id = ?
+        GROUP BY cobros.cuenta_tesoreria_id
+        ORDER BY cuentas_tesoreria.nombre`
+    )
+    .all(turno.id)
+    .map((c) => ({ ...c, importe: redondear2(c.importe) }));
+  const esperado =
+    turno.estado === 'abierto' ? redondear2(SQL_SALDO_CUENTA.get(turno.cuenta_tesoreria_id).saldo) : turno.esperado_cierre;
+  return {
+    ...turno,
+    esperado,
+    diferencia_apertura: redondear2(turno.contado_apertura - turno.esperado_apertura),
+    diferencia_cierre: turno.estado === 'cerrado' ? redondear2(turno.contado_cierre - turno.esperado_cierre) : null,
+    movimientos: {
+      cobros: sumar((m) => m.tipo === 'ingreso' && m.origen === 'cobro'),
+      otros_ingresos: sumar((m) => m.tipo === 'ingreso' && m.origen !== 'cobro'),
+      egresos: sumar((m) => m.tipo === 'egreso')
+    },
+    ventas: { cantidad: ventas.cantidad, total: redondear2(ventas.total) },
+    cobros_por_cuenta: cobrosPorCuenta
+  };
+}
+
+function turnoDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_TURNO} WHERE turnos_caja.id = ? AND turnos_caja.organizacion_id = ?`).get(id, organizacionId);
+}
+
+const esImporteDeCaja = (valor) => esNumeroValido(valor) && valor >= 0;
+
+app.get('/api/turnos-caja', (req, res) => {
+  const estado = ['abierto', 'cerrado'].includes(req.query.estado) ? req.query.estado : null;
+  const turnos = db
+    .prepare(
+      `${SELECT_TURNO}
+        WHERE turnos_caja.organizacion_id = ? AND (? IS NULL OR turnos_caja.estado = ?)
+        ORDER BY turnos_caja.id DESC LIMIT 50`
+    )
+    .all(req.usuario.organizacion_id, estado, estado);
+  res.json(turnos.map(resumenTurno));
+});
+
+app.get('/api/turnos-caja/:id', (req, res) => {
+  const turno = turnoDeLaEmpresa(Number(req.params.id), req.usuario.organizacion_id);
+  if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+  res.json(resumenTurno(turno));
+});
+
+app.post('/api/turnos-caja', (req, res) => {
+  const { cuenta_tesoreria_id, contado, nota } = req.body;
+  const organizacionId = req.usuario.organizacion_id;
+  const cuenta = db
+    .prepare('SELECT id, nombre, tipo FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), organizacionId);
+  if (!cuenta) return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
+  if (cuenta.tipo !== 'efectivo') {
+    return res.status(400).json({ error: 'El turno de caja es para una cuenta de efectivo.' });
+  }
+  if (!esImporteDeCaja(contado)) {
+    return res.status(400).json({ error: 'Lo contado tiene que ser un número, 0 o más.' });
+  }
+  const abierto = db
+    .prepare("SELECT id FROM turnos_caja WHERE cuenta_tesoreria_id = ? AND estado = 'abierto'")
+    .get(cuenta.id);
+  if (abierto) return res.status(400).json({ error: `Esa caja ya tiene un turno abierto (#${abierto.id}).` });
+
+  const turnoId = withTransaction(() => {
+    const esperado = redondear2(SQL_SALDO_CUENTA.get(cuenta.id).saldo);
+    const { lastInsertRowid: id } = db
+      .prepare(
+        `INSERT INTO turnos_caja (cuenta_tesoreria_id, abierto_por, esperado_apertura, contado_apertura, nota, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(cuenta.id, req.usuario.id, esperado, contado, nota?.trim() || null, organizacionId);
+    ajustarArqueo(cuenta.id, contado - esperado, `Diferencia de arqueo al abrir la caja (turno #${id})`, organizacionId);
+    db.prepare('UPDATE turnos_caja SET desde_movimiento_id = ? WHERE id = ?').run(
+      SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id,
+      id
+    );
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'cuenta_tesoreria',
+      entidad_id: cuenta.id,
+      operacion_tipo: 'turno_caja',
+      operacion_id: id,
+      detalle: `Abrió la caja "${cuenta.nombre}" (turno #${id}): esperado $${esperado}, contado $${contado}`
+    });
+    return id;
+  });
+  res.status(201).json(resumenTurno(turnoDeLaEmpresa(turnoId, organizacionId)));
+});
+
+app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
+  const { contado, nota } = req.body;
+  const organizacionId = req.usuario.organizacion_id;
+  const turno = turnoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+  if (turno.estado !== 'abierto') return res.status(400).json({ error: 'El turno ya está cerrado.' });
+  if (!esImporteDeCaja(contado)) {
+    return res.status(400).json({ error: 'Lo contado tiene que ser un número, 0 o más.' });
+  }
+
+  withTransaction(() => {
+    const esperado = redondear2(SQL_SALDO_CUENTA.get(turno.cuenta_tesoreria_id).saldo);
+    db.prepare(
+      `UPDATE turnos_caja
+          SET estado = 'cerrado', cerrado_en = datetime('now'), cerrado_por = ?, esperado_cierre = ?,
+              contado_cierre = ?, hasta_movimiento_id = ?, nota = COALESCE(?, nota)
+        WHERE id = ?`
+    ).run(req.usuario.id, esperado, contado, SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id, nota?.trim() || null, turno.id);
+    ajustarArqueo(
+      turno.cuenta_tesoreria_id,
+      contado - esperado,
+      `Diferencia de arqueo al cerrar la caja (turno #${turno.id})`,
+      organizacionId
+    );
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'cuenta_tesoreria',
+      entidad_id: turno.cuenta_tesoreria_id,
+      operacion_tipo: 'turno_caja',
+      operacion_id: turno.id,
+      detalle: `Cerró la caja "${turno.cuenta}" (turno #${turno.id}): esperado $${esperado}, contado $${contado}`
+    });
+  });
+  res.json(resumenTurno(turnoDeLaEmpresa(turno.id, organizacionId)));
+});
+
+// Lo que se puede vender desde el mostrador: cada producto activo sin
+// variantes, y cada variante activa como un ítem propio (con su SKU, que es
+// lo que lee el lector de código de barras). Precio de la lista
+// predeterminada, con la misma cadena que la pantalla de ventas (variante →
+// precio propio de la variante → producto), y stock del depósito
+// predeterminado, que es de donde sale una venta de mostrador.
+app.get('/api/pos/catalogo', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const depositoId = depositoPredeterminadoId(organizacionId);
+  const listaId = db
+    .prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?')
+    .get(organizacionId)?.id;
+  const productos = db
+    .prepare(
+      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku,
+              productos.precio_venta AS precio, COALESCE(stock_por_deposito.cantidad, 0) AS stock,
+              categorias.nombre AS categoria
+         FROM productos
+         LEFT JOIN stock_por_deposito
+           ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
+         LEFT JOIN categorias ON categorias.id = productos.categoria_id
+        WHERE productos.organizacion_id = ? AND productos.activo = 1
+          AND NOT EXISTS (SELECT 1 FROM producto_variantes
+                           WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1)`
+    )
+    .all(depositoId, organizacionId);
+  const variantes = db
+    .prepare(
+      `SELECT productos.id AS producto_id, producto_variantes.id AS variante_id, productos.nombre,
+              producto_variantes.sku,
+              COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio,
+              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, categorias.nombre AS categoria
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+         LEFT JOIN variante_precios
+           ON variante_precios.variante_id = producto_variantes.id AND variante_precios.lista_precio_id = ?
+         LEFT JOIN stock_variante_por_deposito
+           ON stock_variante_por_deposito.variante_id = producto_variantes.id
+          AND stock_variante_por_deposito.deposito_id = ?
+         LEFT JOIN categorias ON categorias.id = productos.categoria_id
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND producto_variantes.activo = 1`
+    )
+    .all(listaId ?? null, depositoId, organizacionId)
+    .map((v) => ({ ...v, nombre: `${v.nombre} — ${combinacionVariante(v.variante_id)}` }));
+  res.json([...productos, ...variantes].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+});
+
+// Venta de mostrador: la venta y sus cobros (uno o varios medios) en una sola
+// transacción, colgada del turno. Los cobros no pueden pasarse del total (el
+// vuelto lo calcula la pantalla); si suman menos, el resto queda en la cuenta
+// corriente del cliente, así que hace falta un cliente de verdad: a
+// "Consumidor final" no se le fía.
+app.post('/api/pos/ventas', (req, res) => {
+  const { turno_caja_id, cliente_id, items, cobros = [] } = req.body;
+  const organizacionId = req.usuario.organizacion_id;
+  const turno = turnoDeLaEmpresa(Number(turno_caja_id), organizacionId);
+  if (!turno || turno.estado !== 'abierto') {
+    return res.status(400).json({ error: 'Abrí la caja antes de vender.' });
+  }
+  const errorItems = validarItemsVenta(items);
+  if (errorItems) return res.status(400).json({ error: errorItems });
+  const errorStock = validarStockDisponible(items, depositoPredeterminadoId(organizacionId), organizacionId);
+  if (errorStock) return res.status(400).json({ error: errorStock });
+
+  if (!Array.isArray(cobros)) return res.status(400).json({ error: 'Los cobros no son válidos.' });
+  const buscarCuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?');
+  for (const cobro of cobros) {
+    if (!esNumeroValido(cobro?.importe) || !(cobro.importe > 0)) {
+      return res.status(400).json({ error: 'Cada cobro tiene que tener un importe mayor a 0.' });
+    }
+    if (!buscarCuenta.get(Number(cobro.cuenta_tesoreria_id), organizacionId)) {
+      return res.status(400).json({ error: 'La cuenta de tesorería de un cobro no existe.' });
+    }
+  }
+  const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
+  const cobrado = redondear2(cobros.reduce((acc, c) => acc + c.importe, 0));
+  if (cobrado > total) {
+    return res.status(400).json({ error: 'Los cobros superan el total de la venta.' });
+  }
+  if (cobrado < total && !cliente_id) {
+    return res.status(400).json({ error: 'Para dejar saldo en cuenta corriente, elegí un cliente.' });
+  }
+
+  let ventaId;
+  try {
+    ventaId = withTransaction(() => {
+      const id = crearVenta({
+        cliente: cliente_id ? undefined : CONSUMIDOR_FINAL,
+        cliente_id,
+        items,
+        organizacion_id: organizacionId
+      });
+      const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
+      db.prepare('UPDATE ventas SET turno_caja_id = ? WHERE id = ?').run(turno.id, id);
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'venta',
+        entidad_id: id,
+        operacion_tipo: 'turno_caja',
+        operacion_id: turno.id,
+        detalle: `Venta #${id} desde el punto de venta (turno #${turno.id})`
+      });
+      for (const cobro of cobros) {
+        const cobroId = registrarCobro(id, clienteId, cobro.importe, Number(cobro.cuenta_tesoreria_id), 'Punto de venta', organizacionId);
+        auditar(req, {
+          accion: 'crear',
+          entidad: 'cobro',
+          entidad_id: cobroId,
+          operacion_tipo: 'venta',
+          operacion_id: id,
+          detalle: `Cobro #${cobroId} de $${cobro.importe} sobre la venta #${id}`
+        });
+      }
+      return id;
+    });
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
+  }
+  res.status(201).json({ id: ventaId, total, cobrado });
+});
+
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
 // Express. Va después de todas las rutas y de `autenticar`.
 app.use('/api', (req, res) => {

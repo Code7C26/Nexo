@@ -295,7 +295,10 @@ CREATE TABLE IF NOT EXISTS ventas (
   -- §18, §19). NULL = el predeterminado de ese momento, no un id copiado:
   -- las operaciones sin uno propio siguen al que pase a ser predeterminado.
   deposito_id INTEGER REFERENCES depositos(id),
-  lista_precio_id INTEGER REFERENCES listas_precios(id)
+  lista_precio_id INTEGER REFERENCES listas_precios(id),
+  -- El turno de caja en el que se hizo la venta, si fue desde el punto de
+  -- venta (CLAUDE.md §30). NULL en las ventas de la pantalla administrativa.
+  turno_caja_id INTEGER REFERENCES turnos_caja(id)
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -703,6 +706,39 @@ CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
+
+-- Turno de caja del punto de venta (CLAUDE.md §30, hist. §67). Un turno es
+-- una cuenta de tesorería de tipo efectivo (el cajón) entre una apertura y un
+-- cierre, ambos con arqueo: lo contado contra el saldo del sistema. Si no
+-- coinciden, la diferencia se registra como movimiento manual de esa cuenta,
+-- así el saldo de la caja siempre queda en lo que se contó.
+-- Los movimientos del turno se delimitan por id de movimientos_tesoreria
+-- (desde_movimiento_id excluido, hasta_movimiento_id incluido) y no por
+-- fecha: esa tabla guarda solo la fecha, sin hora, y los id crecen siempre
+-- (AUTOINCREMENT). desde se toma después del ajuste de apertura y hasta
+-- antes del de cierre, así ninguno de los dos cuenta como movimiento del
+-- turno.
+-- esperado_* es el saldo del sistema en ese momento; contado_*, lo que se
+-- contó. Un turno abierto por cuenta como máximo (idx_turnos_caja_abierto).
+CREATE TABLE IF NOT EXISTS turnos_caja (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
+  estado TEXT NOT NULL CHECK (estado IN ('abierto', 'cerrado')) DEFAULT 'abierto',
+  abierto_en TEXT NOT NULL DEFAULT (datetime('now')),
+  abierto_por INTEGER NOT NULL REFERENCES usuarios(id),
+  esperado_apertura REAL NOT NULL,
+  contado_apertura REAL NOT NULL,
+  desde_movimiento_id INTEGER NOT NULL DEFAULT 0,
+  cerrado_en TEXT,
+  cerrado_por INTEGER REFERENCES usuarios(id),
+  esperado_cierre REAL,
+  contado_cierre REAL,
+  hasta_movimiento_id INTEGER,
+  nota TEXT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_turnos_caja_abierto
+  ON turnos_caja(cuenta_tesoreria_id) WHERE estado = 'abierto';
 
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando
 -- movimientos, nunca es un campo editable a mano. importe con signo:

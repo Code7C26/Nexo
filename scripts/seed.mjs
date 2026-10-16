@@ -174,6 +174,22 @@ export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '' } = {
     descripcion: 'Alquiler del local'
   }));
 
+  // Punto de venta: un turno de caja abierto y cerrado con arqueo justo, con
+  // una venta de mostrador cobrada en dos medios.
+  const { cuentas } = await paso('saldos de tesorería', empleado.get('/api/tesoreria'));
+  const saldoCaja = cuentas.find((c) => c.id === efectivo.id).saldo;
+  const banco = cuentas.find((c) => c.tipo === 'banco');
+  const caja = await paso('abrir la caja', empleado.post('/api/turnos-caja', { cuenta_tesoreria_id: efectivo.id, contado: saldoCaja }));
+  await paso('venta de mostrador', empleado.post('/api/pos/ventas', {
+    turno_caja_id: caja.id,
+    items: [{ producto_id: remera.id, cantidad: 1, precio_unitario: 9000 }],
+    cobros: [
+      { cuenta_tesoreria_id: efectivo.id, importe: 5000 },
+      { cuenta_tesoreria_id: banco.id, importe: 4000 }
+    ]
+  }));
+  await paso('cerrar la caja', empleado.post(`/api/turnos-caja/${caja.id}/cerrar`, { contado: saldoCaja + 5000 }));
+
   return { empresa, usuarios, admin, empleado };
 }
 

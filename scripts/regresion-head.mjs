@@ -5,7 +5,7 @@
 // mano en cada sesión:
 //   1. saca la ref en un `git worktree` temporal (con una junction a
 //      backend/node_modules, que en Windows no pide permisos de admin);
-//   2. arma una base: una nueva sembrada con seed.mjs usando el código de la
+//   2. arma una base: una nueva sembrada con el seed.mjs y el servidor de la
 //      ref, o con --db una copia de esa base más una empresa sembrada encima.
 //      La base se copia dos veces, así las dos versiones arrancan con los
 //      mismos datos y, si el árbol trae una migración, se ejercita;
@@ -21,12 +21,13 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { RUTAS_PERMISOS } from '../backend/permisos.js';
 import { crearCliente, levantarServidor } from '../backend/test/servidor-de-prueba.js';
 import { copiarBase, md5, raiz, rutaBaseReal } from './lib/base-real.mjs';
-import { PASSWORD_ADMIN, PASSWORD_EMPLEADO, sembrar } from './seed.mjs';
+import { PASSWORD_ADMIN, PASSWORD_EMPLEADO } from './seed.mjs';
 
 const { values: op } = parseArgs({
   options: {
@@ -48,6 +49,7 @@ const LISTADO_DE = {
   '/api/productos/:id/variantes': '/api/productos',
   '/api/proveedores/:id': '/api/proveedores',
   '/api/ventas/:id': '/api/ventas',
+  '/api/turnos-caja/:id': '/api/turnos-caja',
   '/api/ventas/:id/cobros': '/api/ventas',
   '/api/presupuestos/:id': '/api/presupuestos',
   '/api/devoluciones/:id': '/api/devoluciones',
@@ -146,7 +148,9 @@ async function principal() {
     console.log(`Comparando ${op.ref} (${sha}) contra el árbol de trabajo.`);
 
     // Base de partida, con una empresa de usuarios conocidos sembrada con el
-    // código de la ref.
+    // código de la ref: su servidor y también su seed.mjs. Con el seed del árbol,
+    // un paso que usa una ruta nueva fallaría contra el servidor de la ref.
+    const { sembrar } = await import(pathToFileURL(path.join(worktree, 'scripts', 'seed.mjs')).href);
     const base = path.join(tmp, 'base.db');
     if (op.db) copiarBase(path.resolve(op.db), base);
     const sembrador = await levantarServidor({ backendDir: path.join(worktree, 'backend'), dbPath: base });

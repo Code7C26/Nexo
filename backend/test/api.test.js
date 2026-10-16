@@ -207,6 +207,83 @@ test('una venta sin cliente, o con un cliente de otra empresa, responde 400 y no
   assert.equal(await stockDe(adminA, productoA), stockAntes);
 });
 
+test('punto de venta: turno de caja con arqueo, cobro mixto y aislamiento (hist. §67)', async () => {
+  const cuentas = (await adminA.get('/api/cuentas-tesoreria')).json;
+  const efectivo = cuentas.find((c) => c.tipo === 'efectivo');
+  const banco = cuentas.find((c) => c.tipo === 'banco');
+  const item = { producto_id: productoA, cantidad: 1, precio_unitario: 100 };
+
+  // Sin turno no se vende; el turno es solo para cuentas de efectivo.
+  assert.equal((await empleadoA.post('/api/pos/ventas', { items: [item], cobros: [] })).status, 400);
+  assert.equal((await empleadoA.post('/api/turnos-caja', { cuenta_tesoreria_id: banco.id, contado: 0 })).status, 400);
+
+  // Apertura con $100 de más: queda registrada la diferencia y el saldo pasa a lo contado.
+  const previo = await empleadoA.post('/api/turnos-caja', { cuenta_tesoreria_id: efectivo.id, contado: 0 });
+  assert.equal(previo.status, 201, previo.texto);
+  const saldoInicial = previo.json.esperado_apertura + previo.json.diferencia_apertura;
+  assert.equal(saldoInicial, 0);
+  await empleadoA.post(`/api/turnos-caja/${previo.json.id}/cerrar`, { contado: 0 });
+  const abierto = await empleadoA.post('/api/turnos-caja', { cuenta_tesoreria_id: efectivo.id, contado: 100 });
+  assert.equal(abierto.status, 201, abierto.texto);
+  const turno = abierto.json;
+  assert.equal(turno.diferencia_apertura, 100);
+  assert.equal(turno.esperado, 100);
+  const otro = await empleadoA.post('/api/turnos-caja', { cuenta_tesoreria_id: efectivo.id, contado: 100 });
+  assert.equal(otro.status, 400, 'un solo turno abierto por caja');
+
+  // Catálogo: los productos de la empresa, con precio y stock; nada de la otra.
+  const catalogo = (await empleadoA.get('/api/pos/catalogo')).json;
+  assert.ok(catalogo.some((c) => c.producto_id === productoA && c.precio === 100));
+  assert.ok(!catalogo.some((c) => c.producto_id === productoB));
+
+  // Cobro mixto: $60 efectivo + $40 banco, sin cliente → Consumidor final.
+  const stockAntes = await stockDe(adminA, productoA);
+  const mixta = await empleadoA.post('/api/pos/ventas', {
+    turno_caja_id: turno.id,
+    items: [item],
+    cobros: [
+      { cuenta_tesoreria_id: efectivo.id, importe: 60 },
+      { cuenta_tesoreria_id: banco.id, importe: 40 }
+    ]
+  });
+  assert.equal(mixta.status, 201, mixta.texto);
+  assert.equal(await stockDe(adminA, productoA), stockAntes - 1);
+  const venta = (await adminA.get(`/api/ventas/${mixta.json.id}`)).json;
+  assert.equal(venta.cliente ?? venta.cliente_nombre, 'Consumidor final');
+
+  // Más de lo que vale: 400. Menos sin cliente: 400. Menos con cliente: el resto queda a cuenta.
+  const cobrosDeMas = [{ cuenta_tesoreria_id: efectivo.id, importe: 150 }];
+  assert.equal((await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, items: [item], cobros: cobrosDeMas })).status, 400);
+  const parcial = [{ cuenta_tesoreria_id: efectivo.id, importe: 30 }];
+  assert.equal((await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, items: [item], cobros: parcial })).status, 400);
+  const cliente = await empleadoA.post('/api/clientes', { nombre: 'Cliente POS' });
+  const fiado = await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, cliente_id: cliente.json.id, items: [item], cobros: parcial });
+  assert.equal(fiado.status, 201, fiado.texto);
+
+  // Resumen: 2 ventas por $200; a la caja entraron $90 en efectivo.
+  const resumen = (await empleadoA.get(`/api/turnos-caja/${turno.id}`)).json;
+  assert.deepEqual(resumen.ventas, { cantidad: 2, total: 200 });
+  assert.equal(resumen.movimientos.cobros, 90);
+  assert.equal(resumen.esperado, 190);
+
+  // La otra empresa no ve el turno, no vende con él y no abre caja en una cuenta ajena.
+  assert.equal((await adminB.get(`/api/turnos-caja/${turno.id}`)).status, 404);
+  assert.equal((await adminB.post('/api/pos/ventas', { turno_caja_id: turno.id, items: [{ ...item, producto_id: productoB }], cobros: [] })).status, 400);
+  assert.equal((await adminB.post('/api/turnos-caja', { cuenta_tesoreria_id: efectivo.id, contado: 0 })).status, 400);
+  assert.equal((await adminB.post(`/api/turnos-caja/${turno.id}/cerrar`, { contado: 0 })).status, 404);
+
+  // Cierre con $10 de menos: la diferencia queda registrada y el turno no admite más ventas.
+  const cierre = await empleadoA.post(`/api/turnos-caja/${turno.id}/cerrar`, { contado: 180 });
+  assert.equal(cierre.status, 200, cierre.texto);
+  assert.equal(cierre.json.estado, 'cerrado');
+  assert.equal(cierre.json.diferencia_cierre, -10);
+  assert.equal((await empleadoA.post(`/api/turnos-caja/${turno.id}/cerrar`, { contado: 180 })).status, 400);
+  assert.equal((await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, items: [item], cobros: [] })).status, 400);
+  const nuevo = await empleadoA.post('/api/turnos-caja', { cuenta_tesoreria_id: efectivo.id, contado: 180 });
+  assert.equal(nuevo.json.esperado_apertura, 180, 'después del arqueo, el saldo de la caja es lo contado');
+  await empleadoA.post(`/api/turnos-caja/${nuevo.json.id}/cerrar`, { contado: 180 });
+});
+
 test('un error interno o un JSON malformado responde JSON genérico, sin stack (A4)', async () => {
   const malformado = await adminA.post('/api/ventas', '{"items": [');
   assert.equal(malformado.status, 400);

@@ -1627,6 +1627,16 @@ if (rebuildsEmpresa.length) {
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_org_sku ON productos(organizacion_id, sku)');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_org_sku ON producto_variantes(organizacion_id, sku)');
 
+// ventas.turno_caja_id (hist. §67, ver schema.sql): nullable, las ventas
+// anteriores no son de ningún turno. Después del rebuild de arriba, la regla
+// de todo ALTER nuevo. El índice es para el resumen de cada turno, que filtra
+// por esta columna.
+const ventasColumnasTurno = db.prepare('PRAGMA table_info(ventas)').all();
+if (!ventasColumnasTurno.some((col) => col.name === 'turno_caja_id')) {
+  db.exec('ALTER TABLE ventas ADD COLUMN turno_caja_id INTEGER REFERENCES turnos_caja(id)');
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_ventas_turno_caja ON ventas(turno_caja_id) WHERE turno_caja_id IS NOT NULL');
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo
