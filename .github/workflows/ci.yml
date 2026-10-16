@@ -32,3 +32,7 @@ jobs:
       - run: npm ci --prefix backend
       - run: npm run lint
       - run: npm test
+      # Sin nexo.db ni backups (no se versionan), acá corre solo el caso de
+      # base nueva: instalar desde cero, idempotencia y que schema.sql tenga
+      # la forma final de cada tabla (regla de hist. §48).
+      - run: npm run verificar-migracion

@@ -15,13 +15,16 @@
 //      CHECK de schema.sql atrasado respecto del último rebuild;
 //   5. en una base con datos, ninguna tabla pierde filas al migrar (salvo
 //      `sesiones`): un rebuild que se olvida filas se ve acá.
-// Y un control aparte sobre schema.sql (regla de hist. §48): sus CHECK tienen
-// que ser los finales. Si no, una base nueva dispara rebuilds viejos para
-// llegar; hoy terminan bien, pero el cuerpo de un rebuild es una foto de la
-// tabla del día en que se escribió, y el control 4 no lo vería. El resto de
-// lo que schema.sql no tiene y db/index.js suma por ALTER (columnas, índices,
-// vistas) se muestra como aviso sin fallar: así está hoy el proyecto, y
-// alinearlo es un cambio de esquema pendiente (Fase 7 en handoff.md).
+// Y un control aparte sobre schema.sql (regla de hist. §48): la definición de
+// cada tabla (columnas, claves foráneas, CHECK y UNIQUE) tiene que ser la
+// final. Si un CHECK está atrasado, una base nueva dispara rebuilds viejos
+// para llegar: hoy terminan bien, pero el cuerpo de un rebuild es una foto de
+// la tabla del día en que se escribió, y el control 4 no lo vería. Una columna
+// que solo suma un ALTER deja a schema.sql describiendo una tabla que no
+// existe. Quedan afuera los CREATE INDEX y las vistas: varios referencian
+// columnas que una base vieja recibe por ALTER, así que en schema.sql (que
+// corre antes) fallarían con "no such column"; viven en db/index.js y los
+// cubre el control 4.
 //
 // Todo pasa en una carpeta temporal: las bases de origen se copian de solo
 // lectura (scripts/lib/base-real.mjs) y el md5 de la real se compara al final.
@@ -94,6 +97,7 @@ function esquemaDe(db) {
         const def = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?").get(ix.name);
         return {
           clave: ix.origin === 'c' ? ix.name : `${ix.origin}:${cols.join(',')}`,
+          origen: ix.origin,
           unique: ix.unique,
           cols,
           sql: sinEspacios(def?.sql)
@@ -160,6 +164,20 @@ function diferenciasDeEsquema(a, b) {
   });
   if (sha(a.otros) !== sha(b.otros)) difs.push('vistas o triggers distintos');
   return difs;
+}
+
+// Lo que declara el CREATE TABLE: todo menos los CREATE INDEX (origen 'c').
+function diferenciasDeDefinicion(soloSchema, final) {
+  const definicion = (t) => t && { ...t, indices: t.indices.filter((ix) => ix.origen !== 'c') };
+  return Object.keys(final.tablas)
+    .sort()
+    .map((n) => {
+      const [a, b] = [definicion(soloSchema.tablas[n]), definicion(final.tablas[n])];
+      if (!a) return `tabla ${n}: no está`;
+      const partes = ['columnas', 'fks', 'checks', 'indices'].filter((k) => sha(a[k]) !== sha(b[k]));
+      return partes.length ? `tabla ${n}: difieren ${partes.join(', ').replace('indices', 'UNIQUE/PK')}` : null;
+    })
+    .filter(Boolean);
 }
 
 function diferenciasDeDatos(a, b) {
@@ -251,18 +269,12 @@ let esquemaNuevo = null;
 let fallidos = 0;
 for (const caso of casos) {
   const { errores, esquema } = verificarCaso(caso, esquemaNuevo);
-  const avisos = [];
   if (caso.nombre === 'nueva' && esquema) {
     esquemaNuevo = esquema;
-    const soloSchema = esquemaDeSchemaSql();
-    const checksAtrasados = Object.keys(esquema.tablas).filter(
-      (t) => soloSchema.tablas[t] && sha(soloSchema.tablas[t].checks) !== sha(esquema.tablas[t].checks)
-    );
-    if (checksAtrasados.length) {
-      errores.push(`schema.sql tiene CHECK atrasados respecto del último rebuild en: ${checksAtrasados.join(', ')}`);
+    const atrasadas = diferenciasDeDefinicion(esquemaDeSchemaSql(), esquema);
+    if (atrasadas.length) {
+      errores.push(`schema.sql no tiene la forma final (db/index.js la completa): ${atrasadas.join('; ')}`);
     }
-    const resto = diferenciasDeEsquema(soloSchema, esquema);
-    if (resto.length) avisos.push(`schema.sql no tiene la forma final; db/index.js la completa en: ${resto.join('; ')}`);
   }
   if (errores.length) {
     fallidos++;
@@ -271,7 +283,6 @@ for (const caso of casos) {
   } else {
     console.log(`✔ ${caso.nombre}`);
   }
-  for (const a of avisos) console.log(`    ! ${a}`);
 }
 
 console.log(`\n${casos.length - fallidos} de ${casos.length} casos OK.`);

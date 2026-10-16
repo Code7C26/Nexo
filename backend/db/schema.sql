@@ -15,7 +15,12 @@ CREATE TABLE IF NOT EXISTS clientes (
   direccion TEXT,
   documento TEXT,
   notas TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- Lista de precios y plazo de pago habituales: solo se proponen al elegir
+  -- el cliente en una venta. NULL = la lista predeterminada / sin plazo
+  -- definido (el porqué de cada una, en su ALTER de db/index.js).
+  lista_precio_id INTEGER REFERENCES listas_precios(id),
+  condicion_pago TEXT
 );
 
 -- estado solo tiene sentido para una factura SUELTA (sin venta_id): no
@@ -57,9 +62,16 @@ CREATE TABLE IF NOT EXISTS facturas (
   -- organización es un negocio con su propio CUIT, así que la numeración de
   -- comprobantes también pasa a ser por organización (ver `idx_facturas_numeracion`
   -- en db/index.js).
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- La venta que respalda esta factura, o la devolución que respalda esta
+  -- nota de crédito (CLAUDE.md §16, §17). NULL en una factura suelta. Que
+  -- ninguna de las dos se facture dos veces lo garantizan índices únicos
+  -- parciales de db/index.js (idx_facturas_venta_id e
+  -- idx_facturas_devolucion_id): no pueden vivir acá porque en una base
+  -- vieja estas columnas todavía no existen cuando corre este archivo.
+  venta_id INTEGER REFERENCES ventas(id),
+  devolucion_id INTEGER REFERENCES devoluciones(id)
 );
--- venta_id se agrega por migración en db/index.js (ver ahí el porqué).
 
 -- Solo un nivel por ahora (sin subcategoría): CLAUDE.md §3/§4 las
 -- mencionan como entidades separadas, pero con el catálogo actual un
@@ -241,7 +253,9 @@ CREATE TABLE IF NOT EXISTS proveedores (
   direccion TEXT,
   documento TEXT,
   notas TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- Plazo de pago habitual: mismo criterio que clientes.condicion_pago.
+  condicion_pago TEXT
 );
 
 -- condicion_pago / fecha_vencimiento: el plazo pactado con el cliente y la
@@ -263,7 +277,12 @@ CREATE TABLE IF NOT EXISTS ventas (
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   condicion_pago TEXT,
   fecha_vencimiento TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- De qué depósito salió la mercadería y con qué lista se vendió (CLAUDE.md
+  -- §18, §19). NULL = el predeterminado de ese momento, no un id copiado:
+  -- las operaciones sin uno propio siguen al que pase a ser predeterminado.
+  deposito_id INTEGER REFERENCES depositos(id),
+  lista_precio_id INTEGER REFERENCES listas_precios(id)
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -309,7 +328,9 @@ CREATE TABLE IF NOT EXISTS presupuestos (
   -- organizacion_id: mismo patrón multi-tenant que facturas/ventas/compras
   -- (CLAUDE.md §28), nullable por el mismo motivo (referencia hacia
   -- adelante a `organizaciones`).
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- Mismo criterio que ventas.lista_precio_id.
+  lista_precio_id INTEGER REFERENCES listas_precios(id)
 );
 
 -- A diferencia de venta_items, acá NO hay costo_unitario_historico: un
@@ -348,7 +369,9 @@ CREATE TABLE IF NOT EXISTS devoluciones (
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
   motivo TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- A qué depósito reingresa lo devuelto: mismo criterio que ventas.deposito_id.
+  deposito_id INTEGER REFERENCES depositos(id)
 );
 
 -- venta_item_id (no producto_id solo) apunta al renglón exacto de la
@@ -397,7 +420,9 @@ CREATE TABLE IF NOT EXISTS compras (
   -- Mismo par que en ventas, del lado de la deuda con el proveedor.
   condicion_pago TEXT,
   fecha_vencimiento TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- A qué depósito entra la mercadería: mismo criterio que ventas.deposito_id.
+  deposito_id INTEGER REFERENCES depositos(id)
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a
@@ -442,7 +467,9 @@ CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
   motivo TEXT,
   nota_credito_proveedor_numero TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- De qué depósito sale lo devuelto: mismo criterio que ventas.deposito_id.
+  deposito_id INTEGER REFERENCES depositos(id)
 );
 
 -- compra_item_id (no producto_id solo) apunta al renglón exacto de la
