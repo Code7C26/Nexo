@@ -4,7 +4,7 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
-import { esc, money, numero } from "./formato.js";
+import { esc, fechaAR, money, numero } from "./formato.js";
 import { negocio } from "./negocio.js";
 import { avisar } from "./ui.js";
 
@@ -60,7 +60,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
         <div class="hoja-comprobante">
           <p class="hoja-rotulo">${esc(rotulo)}</p>
           <p class="hoja-numero">${esc(comprobanteNro)}</p>
-          <p>${esc(fecha)}</p>
+          <p>${esc(fechaAR(fecha))}</p>
           ${campos.map(([e, v]) => (v ? `<p><span class="hoja-etiqueta">${esc(e)}</span> ${esc(v)}</p>` : "")).join("")}
         </div>
       </header>

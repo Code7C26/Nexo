@@ -5,7 +5,7 @@
  * otros dominios (fichas, cobrar, pagar) se invocan por nombre.
  */
 
-import { esc, money, numero } from "../core/formato.js";
+import { esc, fechaAR, money, numero } from "../core/formato.js";
 import { api } from "../core/api.js";
 import { filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
 import { crearFiltros } from "../core/filtros.js";
@@ -76,7 +76,7 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
       <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${esc(e.nombre)}</button></td>
       <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
       <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
-      <td data-label="Vence">${esc(masVieja.vencimiento)}</td>
+      <td data-label="Vence">${esc(fechaAR(masVieja.vencimiento))}</td>
       <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
       <td data-label="" class="cc-chevron">${icono("chevron-right")}</td>
     `;
@@ -92,8 +92,8 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
               .map(
                 (o) => `
               <tr>
-                <td data-label="Fecha">${esc(o.fecha)}</td>
-                <td data-label="Vence">${esc(o.vencimiento)}</td>
+                <td data-label="Fecha">${esc(fechaAR(o.fecha))}</td>
+                <td data-label="Vence">${esc(fechaAR(o.vencimiento))}</td>
                 <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
                 <td data-label="Estado">${ccTextoDias(o.dias)}</td>
                 <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>

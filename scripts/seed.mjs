@@ -166,7 +166,7 @@ export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '' } = {
     cantidad: 2
   }));
 
-  const alquiler = await paso('categoría de gasto', empleado.post('/api/categorias-gasto', { nombre: 'Alquiler', tipo: 'operativo' }));
+  const alquiler = await paso('categoría de gasto', admin.post('/api/categorias-gasto', { nombre: 'Alquiler', tipo: 'operativo' }));
   await paso('gasto', empleado.post('/api/gastos', {
     categoria_id: alquiler.id,
     cuenta_tesoreria_id: efectivo.id,

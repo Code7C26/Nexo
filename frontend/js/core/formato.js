@@ -39,6 +39,15 @@ export const columnasVisibles = (columnas) => (esAdmin() ? columnas : columnas.f
 
 export const hoyISO = () => new Date().toLocaleDateString("sv-SE"); // formato AAAA-MM-DD, para <input type="date">
 
+// Fecha para mostrar en pantalla y en comprobantes: dd/mm/aaaa, el formato
+// de Argentina. La API, los <input type="date"> y los CSV siguen en ISO. De
+// un "AAAA-MM-DD hh:mm:ss" toma solo la fecha; lo que no empieza con una
+// fecha ISO vuelve tal cual, y null/undefined como "".
+export function fechaAR(valor) {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})/.exec(valor ?? "");
+  return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : (valor ?? "");
+}
+
 // Versión abreviada de money(), para las etiquetas del eje del gráfico de
 // evolución: "$450.000,00" no entra en la canaleta angosta del eje.
 // Conserva el signo, y un decimal en miles: con marcas cada $500, redondear

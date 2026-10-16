@@ -5,7 +5,7 @@
 
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
-import { esc } from "../core/formato.js";
+import { esc, fechaAR } from "../core/formato.js";
 import { alEntrarEnVista } from "../core/registro.js";
 
 /* ---------- Usuarios (solo admin) ---------- */
@@ -51,8 +51,8 @@ function renderUsuarios(lista) {
           <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : ""}">${
             u.activo ? "Activo" : "Dado de baja"
           }</span></td>
-          <td data-label="Alta">${u.fecha_alta ? esc(u.fecha_alta.split(" ")[0]) : "—"}</td>
-          <td data-label="Último acceso">${u.ultimo_acceso ? esc(u.ultimo_acceso.split(" ")[0]) : "—"}</td>
+          <td data-label="Alta">${u.fecha_alta ? esc(fechaAR(u.fecha_alta)) : "—"}</td>
+          <td data-label="Último acceso">${u.ultimo_acceso ? esc(fechaAR(u.ultimo_acceso)) : "—"}</td>
           <td data-label=""><div class="fila-acciones">${acciones.join("")}</div></td>
         </tr>`;
     })

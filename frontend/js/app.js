@@ -16,6 +16,7 @@ import {
   columnasVisibles,
   esAdmin,
   esc,
+  fechaAR,
   hoyISO,
   html,
   money,
@@ -463,7 +464,7 @@ function renderUltimosMovimientos(rango = {}) {
     .map(
       (m) => `
     <tr>
-      <td data-label="Fecha">${esc(m.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
       <td data-label="Tipo">${esc(m.tipo)}</td>
       <td data-label="Detalle" class="celda-wrap">${esc(m.detalle)}</td>
       <td data-label="Importe" class="align-right mono ${m.signo < 0 ? "saldo-negativo" : ""}">${
@@ -863,7 +864,7 @@ function renderFacturas(lista) {
       ${selFacturas.celda(f.id)}
       <td data-label="Comprobante" class="mono">${esc(f.comprobante)}</td>
       <td data-label="Tipo">${esc(TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo)}</td>
-      <td data-label="Fecha">${esc(f.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(f.fecha))}</td>
       <td data-label="Cliente">${esc(f.cliente)}</td>
       <td data-label="Origen">${
         f.venta_id
@@ -995,7 +996,7 @@ async function abrirFichaFactura(id) {
   const campos = [
     ["Tipo", TIPO_FACTURA_LABEL[factura.tipo] ?? factura.tipo],
     ["Cliente", factura.cliente],
-    ["Fecha", factura.fecha],
+    ["Fecha", fechaAR(factura.fecha)],
     ["Concepto", factura.concepto],
     ["Medio de pago", CONDICION_FACTURA_LABEL[factura.condicion] ?? factura.condicion],
     ["Importe", money(factura.total)],
@@ -1703,7 +1704,7 @@ async function abrirFichaProducto(id) {
             const signo = m.delta > 0 ? "+" : "";
             return `
         <tr>
-          <td data-label="Fecha">${esc(m.fecha)}</td>
+          <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
           <td data-label="Origen">${origen}</td>
           <td data-label="Cantidad" class="align-right mono">${signo}${numero(m.delta)}</td>
           <td data-label="Stock resultante" class="align-right mono">${numero(m.stock_posterior)}</td>
@@ -2734,7 +2735,7 @@ function renderMovimientosStock(movimientos) {
       const signo = m.tipo === "salida" ? "-" : m.tipo === "entrada" ? "+" : m.cantidad >= 0 ? "+" : "-";
       return `
     <tr>
-      <td data-label="Fecha">${esc(m.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
       <td data-label="Producto">${esc(m.producto)}</td>
       <td data-label="Depósito">${esc(m.deposito ?? "—")}</td>
       <td data-label="Origen">${origen}</td>
@@ -2932,7 +2933,7 @@ function renderTransferencias(lista) {
     .map(
       (t) => `
     <tr class="${t.estado === "anulada" ? "fila-anulada" : ""}">
-      <td data-label="Fecha">${esc(t.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(t.fecha))}</td>
       <td data-label="Producto">${esc(t.producto)}</td>
       <td data-label="Desde">${esc(t.deposito_origen)}</td>
       <td data-label="Hacia">${esc(t.deposito_destino)}</td>
@@ -3128,8 +3129,8 @@ function renderPresupuestos(lista) {
       <td data-label="N°" class="mono">#${p.id}</td>
       <td data-label="Cliente">${esc(p.cliente)}</td>
       <td data-label="Productos" class="celda-wrap">${esc(p.items_resumen || "—")}</td>
-      <td data-label="Fecha">${esc(p.fecha)}</td>
-      <td data-label="Vence">${esc(p.vencimiento || "—")}</td>
+      <td data-label="Fecha">${esc(fechaAR(p.fecha))}</td>
+      <td data-label="Vence">${esc(fechaAR(p.vencimiento) || "—")}</td>
       <td data-label="Total" class="align-right mono">${money(p.total)}</td>
       <td data-label="Estado"><span class="status ${PRESUPUESTO_CLASE[p.estado_efectivo]}">${
         PRESUPUESTO_LABEL[p.estado_efectivo]
@@ -3229,7 +3230,7 @@ function hojaDePresupuesto(p) {
     fecha: p.fecha,
     // El estado (borrador/enviado/aceptado) NO va: es gestión interna y no
     // le dice nada a quien recibe el papel.
-    campos: [["Válido hasta:", p.vencimiento]],
+    campos: [["Válido hasta:", fechaAR(p.vencimiento)]],
     cliente: {
       nombre: p.cliente,
       documento: p.cliente_documento,
@@ -3253,8 +3254,8 @@ async function abrirFichaPresupuesto(id) {
 
   const campos = [
     ["Cliente", p.cliente],
-    ["Fecha", p.fecha],
-    ["Válido hasta", p.vencimiento || "Sin vencimiento"],
+    ["Fecha", fechaAR(p.fecha)],
+    ["Válido hasta", fechaAR(p.vencimiento) || "Sin vencimiento"],
     ["Estado", badge(PRESUPUESTO_CLASE[p.estado_efectivo], PRESUPUESTO_LABEL[p.estado_efectivo])],
     ["Notas", p.notas]
   ];
@@ -3535,7 +3536,7 @@ function renderVentas(lista) {
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente">${esc(v.cliente)}</td>
       <td data-label="Productos" class="celda-wrap">${esc(v.items_resumen || "—")}</td>
-      <td data-label="Fecha">${esc(v.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono">${money(v.total)}</td>
       <td data-label="Ganancia" class="align-right mono col-admin">${money(v.margen)}</td>
@@ -3941,7 +3942,7 @@ async function abrirFichaVenta(id) {
 
   const campos = [
     ["Cliente", venta.cliente],
-    ["Fecha", venta.fecha],
+    ["Fecha", fechaAR(venta.fecha)],
     ["Cobrado", `${money(venta.cobrado)} de ${money(venta.neto)}`],
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
     ["Facturada", venta.facturada ? "Sí" : "No"]
@@ -4049,7 +4050,7 @@ function renderHistorialPagos(contenedorId, lista) {
   contenedor.innerHTML =
     `<div class="historial-pagos">` +
     lista
-      .map((p) => `<div class="historial-pagos-item"><span>${esc(p.fecha)} · ${esc(p.cuenta)}</span><span class="mono">${money(p.importe)}</span></div>`)
+      .map((p) => `<div class="historial-pagos-item"><span>${esc(fechaAR(p.fecha))} · ${esc(p.cuenta)}</span><span class="mono">${money(p.importe)}</span></div>`)
       .join("") +
     `</div>`;
 }
@@ -4137,7 +4138,7 @@ function renderDevoluciones(lista) {
       <td data-label="N°" class="mono">#${d.id}</td>
       <td data-label="Cliente">${esc(d.cliente)}</td>
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
-      <td data-label="Fecha">${esc(d.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
@@ -4203,7 +4204,7 @@ async function abrirFichaDevolucion(id) {
 
   const campos = [
     ["Cliente", d.cliente],
-    ["Fecha", d.fecha],
+    ["Fecha", fechaAR(d.fecha)],
     ["Venta de origen", `Venta #${d.venta_id}`],
     ["Motivo", d.motivo],
     [
@@ -4499,7 +4500,7 @@ function renderCompras(lista) {
         ${selCompras.celda(c.id)}
         <td data-label="N°" class="mono">#${c.id}</td>
         <td data-label="Proveedor">${esc(c.proveedor)}</td>
-        <td data-label="Fecha">${esc(c.fecha)}</td>
+        <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
         <td data-label="Total" class="align-right mono">${money(c.total)}</td>
         <td data-label="Pago"><span class="status">Borrador</span></td>
         <td data-label="Envío">—</td>
@@ -4529,7 +4530,7 @@ function renderCompras(lista) {
       ${selCompras.celda(c.id)}
       <td data-label="N°" class="mono">#${c.id}</td>
       <td data-label="Proveedor">${esc(c.proveedor)}</td>
-      <td data-label="Fecha">${esc(c.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
       <td data-label="Total" class="align-right mono">${money(c.total)}</td>
       <td data-label="Pago"><span class="status ${ESTADO_PAGO_CLASE[c.estado_pago]}">${ESTADO_PAGO_LABEL[c.estado_pago]}</span></td>
       <td data-label="Envío">${celdaEnvio}</td>
@@ -4940,7 +4941,7 @@ async function abrirFichaCompra(id) {
 
   const campos = [
     ["Proveedor", compra.proveedor],
-    ["Fecha", compra.fecha],
+    ["Fecha", fechaAR(compra.fecha)],
     ["Estado", compra.estado === "borrador" ? badge("", "Borrador") : badge("status-cobrado", "Efectuada")],
     ["Envío", ENVIO_LABEL[compra.estado_envio] ?? "—"],
     ["Pagado", `${money(compra.pagado)} de ${money(compra.neto)}`],
@@ -5093,7 +5094,7 @@ function renderDevolucionesProveedor(lista) {
       <td data-label="N°" class="mono">#${d.id}</td>
       <td data-label="Proveedor">${esc(d.proveedor)}</td>
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
-      <td data-label="Fecha">${esc(d.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
@@ -5165,7 +5166,7 @@ async function abrirFichaDevolucionProveedor(id) {
 
   const campos = [
     ["Proveedor", d.proveedor],
-    ["Fecha", d.fecha],
+    ["Fecha", fechaAR(d.fecha)],
     ["Compra de origen", `Compra #${d.compra_id}`],
     ["Motivo", d.motivo],
     ["Plata", d.reintegrada ? `Reintegrada por ${d.cuenta}` : "Crédito con el proveedor"],
@@ -5551,7 +5552,7 @@ async function abrirFichaCliente(id) {
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
           <td data-label="N°" class="mono">#${v.id}</td>
-          <td data-label="Fecha">${esc(v.fecha)}</td>
+          <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
           <td data-label="Total" class="align-right mono">${money(v.total)}</td>
           <td data-label="Cobro"><span class="status ${
             anulada ? "status-vencido" : ESTADO_COBRO_CLASE[v.estado_cobro]
@@ -5772,7 +5773,7 @@ async function abrirFichaProveedor(id) {
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
           <td data-label="N°" class="mono">#${c.id}</td>
-          <td data-label="Fecha">${esc(c.fecha)}</td>
+          <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
           <td data-label="Total" class="align-right mono">${money(c.total)}</td>
           <td data-label="Pago"><span class="status ${clase}">${etiqueta}</span></td>
         </tr>`;
@@ -5787,7 +5788,7 @@ async function abrirFichaProveedor(id) {
           .map(
             (p) => `
         <tr>
-          <td data-label="Fecha">${esc(p.fecha)}</td>
+          <td data-label="Fecha">${esc(fechaAR(p.fecha))}</td>
           <td data-label="Compra" class="mono">#${p.compra_id}</td>
           <td data-label="Cuenta">${esc(p.cuenta)}</td>
           <td data-label="Importe" class="align-right mono">${money(p.importe)}</td>
@@ -5936,7 +5937,7 @@ function renderMovimientosTesoreria(movimientos) {
       const signo = m.tipo === "ingreso" ? "+" : "-";
       return `
         <tr>
-          <td data-label="Fecha">${esc(m.fecha)}</td>
+          <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
           <td data-label="Cuenta">${esc(m.cuenta)}</td>
           <td data-label="Concepto">${esc(concepto)}</td>
           <td data-label="Importe" class="align-right mono ${
@@ -6817,7 +6818,7 @@ function renderAuditoria(registros) {
       const detalle = `${r.detalle || "—"}${auditoriaDiffTexto(r.valor_anterior, r.valor_nuevo)}`;
       return `
         <tr>
-          <td data-label="Fecha">${esc(fecha || "—")}${hora ? ` <span class="mono">${esc(hora)}</span>` : ""}</td>
+          <td data-label="Fecha">${esc(fechaAR(fecha) || "—")}${hora ? ` <span class="mono">${esc(hora)}</span>` : ""}</td>
           <td data-label="Acción"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${esc(AUDITORIA_ACCION_LABEL[r.accion] || r.accion)}</span></td>
           <td data-label="Entidad">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}</td>
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
@@ -6886,7 +6887,7 @@ function renderAuditoriaMovimientos(movimientos) {
       const importeFmt = m.tipoLabel === "Stock" ? numero(Math.abs(m.importe)) : money(Math.abs(m.importe));
       return `
         <tr>
-          <td data-label="Fecha">${esc(m.fecha)}</td>
+          <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
           <td data-label="Tipo">${esc(m.tipoLabel)}</td>
           <td data-label="Concepto">${esc(m.concepto)}</td>
           <td data-label="Importe" class="align-right mono">${esc(m.signo)}${importeFmt}</td>
@@ -7027,7 +7028,7 @@ function renderPapelera() {
     <tr>
       <td data-label="Tipo">${esc(d.tipo)}</td>
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Fecha">${esc(d.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
       <td data-label="Cliente / Proveedor">${esc(d.quien)}</td>
       <td data-label="Total" class="align-right mono">${money(d.total)}</td>
       <td data-label=""><button type="button" class="btn-fila btn-restaurar"

@@ -172,6 +172,41 @@ test('el SKU de producto y de variante es único por empresa, no en todo Nexo (h
   assert.match(varianteRepetida.json.error, /SKU/);
 });
 
+test('una factura suelta con datos fuera de lo válido responde 400, no 500', async () => {
+  const base = { cliente: 'Juan', concepto: 'Servicio', neto: 1000, condicion: 'efectivo' };
+  const casos = [
+    { condicion: 'cheque' },
+    { tipo: 'recibo' },
+    { letra: 'Z' },
+    { neto: 0 },
+    { neto: '1000' },
+    { concepto: '' },
+    { punto_venta: 1.5 },
+    { cliente: '' }
+  ];
+  for (const caso of casos) {
+    const r = await empleadoA.post('/api/facturas', { ...base, ...caso });
+    assert.equal(r.status, 400, `${JSON.stringify(caso)}: ${r.texto}`);
+  }
+  const ok = await empleadoA.post('/api/facturas', base);
+  assert.equal(ok.status, 201, ok.texto);
+});
+
+test('una venta sin cliente, o con un cliente de otra empresa, responde 400 y no se crea', async () => {
+  const items = [{ producto_id: productoA, cantidad: 1, precio_unitario: 100 }];
+  const clienteB = await adminB.post('/api/clientes', { nombre: 'Cliente de B' });
+  assert.equal(clienteB.status, 201, clienteB.texto);
+  const ventasAntes = (await adminA.get('/api/ventas')).json.length;
+  const stockAntes = await stockDe(adminA, productoA);
+  for (const cuerpo of [{ items }, { cliente: '   ', items }, { cliente_id: clienteB.json.id, items }]) {
+    const r = await empleadoA.post('/api/ventas', cuerpo);
+    assert.equal(r.status, 400, `${JSON.stringify(cuerpo)}: ${r.texto}`);
+    assert.ok(!r.texto.includes('Cliente de B'));
+  }
+  assert.equal((await adminA.get('/api/ventas')).json.length, ventasAntes);
+  assert.equal(await stockDe(adminA, productoA), stockAntes);
+});
+
 test('un error interno o un JSON malformado responde JSON genérico, sin stack (A4)', async () => {
   const malformado = await adminA.post('/api/ventas', '{"items": [');
   assert.equal(malformado.status, 400);

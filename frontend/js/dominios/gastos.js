@@ -5,7 +5,7 @@
  * papelera, que viven en otros dominios, se piden por nombre.
  */
 
-import { ICONO_TACHO, botonEditarFila, esAdmin, esc, hoyISO, money } from "../core/formato.js";
+import { ICONO_TACHO, botonEditarFila, esAdmin, esc, fechaAR, hoyISO, money } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { crearFiltros } from "../core/filtros.js";
@@ -63,7 +63,7 @@ function renderGastos(lista) {
     .map(
       (g) => `
     <tr>
-      <td data-label="Fecha">${esc(g.fecha)}</td>
+      <td data-label="Fecha">${esc(fechaAR(g.fecha))}</td>
       <td data-label="Categoría">${esc(g.categoria)}</td>
       <td data-label="Tipo"><span class="status ${TIPO_GASTO_CLASE[g.tipo]}">${
         TIPO_GASTO_LABEL[g.tipo]

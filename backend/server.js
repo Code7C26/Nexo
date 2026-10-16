@@ -654,12 +654,23 @@ class ErrorBulk extends Error {
   }
 }
 
+// Un dato inválido detectado en lo profundo de una operación (por ejemplo,
+// adentro de un withTransaction): el throw hace ROLLBACK, y su mensaje llega
+// al usuario como 400, tanto por mensajeDeError como por el manejador final.
+// Los demás errores siguen saliendo como 500 genérico.
+class ErrorValidacion extends Error {
+  constructor(mensaje) {
+    super(mensaje);
+    this.status = 400;
+  }
+}
+
 // Traduce un error lanzado durante un item del lote al texto que ve el
 // usuario. El `throw err` del final es deliberado: un error que no sabemos
 // traducir es un bug, y tiene que romper el request y quedar en el log —
 // disfrazarlo de "falló el producto 13" haría imposible depurarlo.
 function mensajeDeError(err) {
-  if (err instanceof ErrorBulk) return err.message;
+  if (err instanceof ErrorBulk || err instanceof ErrorValidacion) return err.message;
   if (String(err.message).includes('UNIQUE constraint failed')) {
     return 'Ya existe un producto con ese SKU.';
   }
@@ -1032,12 +1043,33 @@ app.get('/api/facturas/:id', (req, res) => {
 // flujo de facturación rápida, pero es plata que el sistema no puede
 // cruzar con stock, cuenta corriente ni resultado — por eso el listado la
 // marca distinto de una factura que sí respalda una venta.
+// Valores que acepta el CHECK de facturas (schema.sql). Validados acá: un
+// valor fuera de la lista era un 500 en vez de un 400.
+const MEDIOS_FACTURA = ['efectivo', 'transferencia', 'mercadopago'];
+const TIPOS_COMPROBANTE = ['factura', 'nota_credito', 'nota_debito'];
+const LETRAS_COMPROBANTE = ['A', 'B', 'C'];
+
 app.post('/api/facturas', (req, res) => {
   const { cliente, concepto, neto, condicion, tipo, letra, punto_venta } = req.body;
 
   const tipoFinal = tipo || 'factura';
   const letraFinal = letra || 'B';
-  const puntoVentaFinal = Number(punto_venta) || 1;
+  const puntoVentaFinal = punto_venta === undefined || punto_venta === null || punto_venta === '' ? 1 : Number(punto_venta);
+  if (typeof concepto !== 'string' || !concepto.trim()) {
+    return res.status(400).json({ error: 'Indicá el concepto.' });
+  }
+  if (!esNumeroValido(neto) || !(Number(neto) > 0)) {
+    return res.status(400).json({ error: 'El importe debe ser un número mayor a 0.' });
+  }
+  if (!MEDIOS_FACTURA.includes(condicion)) {
+    return res.status(400).json({ error: 'Elegí un medio de pago válido.' });
+  }
+  if (!TIPOS_COMPROBANTE.includes(tipoFinal) || !LETRAS_COMPROBANTE.includes(letraFinal)) {
+    return res.status(400).json({ error: 'Tipo o letra de comprobante inválidos.' });
+  }
+  if (!Number.isInteger(puntoVentaFinal) || puntoVentaFinal < 1 || puntoVentaFinal > 99999) {
+    return res.status(400).json({ error: 'El punto de venta debe ser un número entero entre 1 y 99999.' });
+  }
 
   const facturaId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
@@ -1184,7 +1216,7 @@ app.get('/api/listas-precios', (req, res) => {
   res.json(listas);
 });
 
-app.post('/api/listas-precios', (req, res) => {
+app.post('/api/listas-precios', soloAdmin, (req, res) => {
   const { nombre } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
@@ -1212,7 +1244,7 @@ app.post('/api/listas-precios', (req, res) => {
   res.status(201).json({ id: lastInsertRowid });
 });
 
-app.patch('/api/listas-precios/:id', (req, res) => {
+app.patch('/api/listas-precios/:id', soloAdmin, (req, res) => {
   const listaId = Number(req.params.id);
   const { nombre, activa, es_predeterminada } = req.body;
 
@@ -1312,7 +1344,7 @@ app.get('/api/depositos', (req, res) => {
   res.json(depositos);
 });
 
-app.post('/api/depositos', (req, res) => {
+app.post('/api/depositos', soloAdmin, (req, res) => {
   const { nombre, direccion } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
@@ -1340,7 +1372,7 @@ app.post('/api/depositos', (req, res) => {
   res.status(201).json({ id: lastInsertRowid });
 });
 
-app.patch('/api/depositos/:id', (req, res) => {
+app.patch('/api/depositos/:id', soloAdmin, (req, res) => {
   const depositoId = Number(req.params.id);
   const { nombre, direccion, activo, es_predeterminado } = req.body;
 
@@ -1458,6 +1490,25 @@ function depositoActivoValido(depositoId, organizacionId) {
 
 /* ---------- Productos ---------- */
 
+// Stock y valorizado de las variantes de cada producto, agregados una sola
+// vez (no una subconsulta por fila). Un producto con variantes tiene
+// precio_costo 0: el costo vive en cada variante, así que su valorizado sale
+// de acá (ver valorizadoProducto).
+const JOIN_STOCK_VARIANTES = `
+    LEFT JOIN (
+      SELECT sva.producto_id, SUM(sva.cantidad) AS stock_variantes,
+             SUM(sva.cantidad * producto_variantes.precio_costo) AS valorizado_variantes
+        FROM stock_variante_actual sva
+        JOIN producto_variantes ON producto_variantes.id = sva.variante_id
+       GROUP BY sva.producto_id
+    ) AS sv ON sv.producto_id = productos.id`;
+
+// Lo que queda sin variante va al costo del producto, y cada variante a su
+// propio costo. Sin variantes es precio_costo × stock, como siempre.
+function valorizadoProducto(precioCosto, stock, stockVariantes, valorizadoVariantes) {
+  return precioCosto * (stock - (stockVariantes ?? 0)) + (valorizadoVariantes ?? 0);
+}
+
 const SELECT_PRODUCTO = `
   SELECT productos.id, productos.nombre, productos.sku, productos.precio_costo,
          productos.precio_venta, productos.activo,
@@ -1466,18 +1517,27 @@ const SELECT_PRODUCTO = `
          productos.margen_objetivo,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
-           WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count
+           WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count,
+         sv.stock_variantes, sv.valorizado_variantes
     FROM productos
     LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
-    LEFT JOIN categorias ON categorias.id = productos.categoria_id`;
+    LEFT JOIN categorias ON categorias.id = productos.categoria_id${JOIN_STOCK_VARIANTES}`;
 
-// Precios de todos los productos en todas las listas, indexados por
-// producto_id -> { lista_precio_id: precio }. Se resuelve con un segundo
+// Precios de los productos de una empresa en todas sus listas, indexados por
+// producto_id -> { lista_precio_id: precio }. Antes leía los de todas las
+// empresas: sin fuga (cada producto solo ve los suyos), pero no escalaba. Se resuelve con un segundo
 // query en vez de un pivot en SQL: evita tener que generar una columna por
 // lista de forma dinámica, y el número de listas es chico (típicamente unas
 // pocas), así que el costo de armar el mapa en JS es despreciable.
-function obtenerPreciosPorProducto() {
-  const filas = db.prepare('SELECT producto_id, lista_precio_id, precio FROM producto_precios').all();
+function obtenerPreciosPorProducto(organizacionId) {
+  const filas = db
+    .prepare(
+      `SELECT producto_precios.producto_id, producto_precios.lista_precio_id, producto_precios.precio
+         FROM producto_precios
+         JOIN productos ON productos.id = producto_precios.producto_id
+        WHERE productos.organizacion_id = ?`
+    )
+    .all(organizacionId);
   const mapa = {};
   for (const fila of filas) {
     if (!mapa[fila.producto_id]) mapa[fila.producto_id] = {};
@@ -1508,12 +1568,19 @@ function estadoStock(stock, stockMinimo, stockMaximo) {
 // contra margen_objetivo: solo informativo/alerta, nunca sugiere un precio.
 // null cuando falta el objetivo o no hay margen calculable (nunca false por
 // defecto, sería engañoso). Igualdad exacta cuenta como "cumple".
-function decorarProducto(p, precios = {}) {
+// Un producto con stock en variantes muestra como costo el promedio ponderado
+// de lo que tiene (valorizado / stock): su precio_costo propio es 0 y daba
+// valorizado $0 y margen 100%. stock_variantes y valorizado_variantes no
+// salen en la respuesta: el filtro de campos sensibles corta por nombre de
+// clave (CLAUDE.md §35) y no los conoce.
+function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}) {
+  const valorizado = valorizadoProducto(p.precio_costo, p.stock, stock_variantes, valorizado_variantes);
+  if (stock_variantes && p.stock > 0) p.precio_costo = valorizado / p.stock;
   const margen = p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null;
   return {
     ...p,
     precios,
-    valorizado: p.precio_costo * p.stock,
+    valorizado,
     margen,
     margen_bajo_objetivo: p.margen_objetivo != null && margen != null ? margen < p.margen_objetivo : null,
     estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo),
@@ -1528,7 +1595,7 @@ app.get('/api/productos', (req, res) => {
   const productos = db
     .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
     .all(req.usuario.organizacion_id);
-  const preciosPorProducto = obtenerPreciosPorProducto();
+  const preciosPorProducto = obtenerPreciosPorProducto(req.usuario.organizacion_id);
   res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id])));
 });
 
@@ -2104,9 +2171,17 @@ const SELECT_VARIANTE = `
     FROM producto_variantes
     LEFT JOIN stock_variante_actual ON stock_variante_actual.variante_id = producto_variantes.id`;
 
-// Espejo de obtenerPreciosPorProducto (1188) contra variante_precios.
-function obtenerPreciosPorVariante() {
-  const filas = db.prepare('SELECT variante_id, lista_precio_id, precio FROM variante_precios').all();
+// Espejo de obtenerPreciosPorProducto contra variante_precios, para las
+// variantes de un producto (el que la ruta ya validó como de la empresa).
+function obtenerPreciosPorVariante(productoId) {
+  const filas = db
+    .prepare(
+      `SELECT variante_precios.variante_id, variante_precios.lista_precio_id, variante_precios.precio
+         FROM variante_precios
+         JOIN producto_variantes ON producto_variantes.id = variante_precios.variante_id
+        WHERE producto_variantes.producto_id = ?`
+    )
+    .all(productoId);
   const mapa = {};
   for (const fila of filas) {
     if (!mapa[fila.variante_id]) mapa[fila.variante_id] = {};
@@ -2205,7 +2280,7 @@ app.get('/api/productos/:id/variantes', (req, res) => {
   const variantes = db
     .prepare(`${SELECT_VARIANTE} WHERE producto_variantes.producto_id = ? ORDER BY producto_variantes.id`)
     .all(productoId);
-  const precios = obtenerPreciosPorVariante();
+  const precios = obtenerPreciosPorVariante(productoId);
   res.json(variantes.map((v) => decorarVariante(v, precios[v.id])));
 });
 
@@ -2632,13 +2707,23 @@ app.get('/api/stock', (req, res) => {
     .prepare(
       `SELECT productos.id, productos.nombre, productos.precio_costo,
               productos.stock_minimo, productos.stock_maximo,
-              COALESCE(stock_actual.cantidad, 0) AS stock_total
+              COALESCE(stock_actual.cantidad, 0) AS stock_total,
+              sv.stock_variantes, sv.valorizado_variantes
        FROM productos
-       LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+       LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id${JOIN_STOCK_VARIANTES}
        WHERE productos.organizacion_id = ?
        ORDER BY productos.nombre`
     )
-    .all(req.usuario.organizacion_id);
+    .all(req.usuario.organizacion_id)
+    // Mismo valorizado y mismo costo que GET /api/productos (decorarProducto).
+    .map(({ stock_variantes, valorizado_variantes, ...p }) => {
+      const valorizado = valorizadoProducto(p.precio_costo, p.stock_total, stock_variantes, valorizado_variantes);
+      return {
+        ...p,
+        precio_costo: stock_variantes && p.stock_total > 0 ? valorizado / p.stock_total : p.precio_costo,
+        valorizado
+      };
+    });
   // stock_por_deposito no tiene organizacion_id propia (se agrupa por
   // producto_id, que ya está filtrado arriba): acotarla a los productos de
   // esta organización evita traer filas de depósitos de otra empresa.
@@ -2677,7 +2762,7 @@ app.get('/api/stock', (req, res) => {
         deposito: null,
         stock: 0,
         stock_total: p.stock_total,
-        valorizado: p.precio_costo * p.stock_total,
+        valorizado: p.valorizado,
         estado_stock
       });
       continue;
@@ -2693,7 +2778,7 @@ app.get('/api/stock', (req, res) => {
         deposito: fila.deposito,
         stock: fila.stock,
         stock_total: p.stock_total,
-        valorizado: p.precio_costo * p.stock_total,
+        valorizado: p.valorizado,
         estado_stock
       });
     }
@@ -4098,17 +4183,25 @@ function guardarItemsPresupuesto(presupuestoId, items) {
 // organizacionId es obligatorio: un cliente resuelto por nombre o creado
 // acá tiene que quedar en la organización de quien hace el pedido (CLAUDE.md
 // §28), igual que el resto de las altas de clientes/proveedores/productos.
+// Un cliente_id que no es de la empresa responde lo mismo que uno que no
+// existe (CLAUDE.md §28). Sin id, el nombre es obligatorio: antes un alta sin
+// cliente enlazaba undefined y salía como 500.
 function resolverCliente(cliente, cliente_id, organizacionId) {
-  let clienteRow = cliente_id
-    ? db.prepare('SELECT id FROM clientes WHERE id = ? AND organizacion_id = ?').get(cliente_id, organizacionId)
-    : db.prepare('SELECT id FROM clientes WHERE nombre = ? AND organizacion_id = ?').get(cliente, organizacionId);
-  if (!clienteRow) {
-    const { lastInsertRowid } = db
-      .prepare('INSERT INTO clientes (nombre, organizacion_id) VALUES (?, ?)')
-      .run(cliente, organizacionId);
-    clienteRow = { id: lastInsertRowid };
+  if (cliente_id) {
+    const clienteRow = db
+      .prepare('SELECT id FROM clientes WHERE id = ? AND organizacion_id = ?')
+      .get(Number(cliente_id), organizacionId);
+    if (!clienteRow) throw new ErrorValidacion('El cliente no existe.');
+    return clienteRow;
   }
-  return clienteRow;
+  const nombre = typeof cliente === 'string' ? cliente.trim() : '';
+  if (!nombre) throw new ErrorValidacion('Indicá el cliente.');
+  const clienteRow = db.prepare('SELECT id FROM clientes WHERE nombre = ? AND organizacion_id = ?').get(nombre, organizacionId);
+  if (clienteRow) return clienteRow;
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO clientes (nombre, organizacion_id) VALUES (?, ?)')
+    .run(nombre, organizacionId);
+  return { id: lastInsertRowid };
 }
 
 app.post('/api/presupuestos', (req, res) => {
@@ -6705,7 +6798,7 @@ app.get('/api/categorias-gasto', (req, res) => {
   res.json(categorias);
 });
 
-app.post('/api/categorias-gasto', (req, res) => {
+app.post('/api/categorias-gasto', soloAdmin, (req, res) => {
   const { nombre, tipo } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
@@ -6741,7 +6834,7 @@ app.post('/api/categorias-gasto', (req, res) => {
 // Cambiar el tipo de una categoría afecta solo a los gastos futuros: los
 // ya cargados guardan su propio tipo (ver schema.sql), justamente para no
 // reescribir resultados de meses cerrados.
-app.patch('/api/categorias-gasto/:id', (req, res) => {
+app.patch('/api/categorias-gasto/:id', soloAdmin, (req, res) => {
   const categoriaId = Number(req.params.id);
   const { nombre, tipo, activa } = req.body;
 
@@ -9112,6 +9205,9 @@ app.use((err, req, res, next) => {
   }
   if (err?.type === 'entity.too.large') {
     return res.status(413).json({ error: 'El cuerpo de la petición es demasiado grande.' });
+  }
+  if (err instanceof ErrorValidacion) {
+    return res.status(err.status).json({ error: err.message });
   }
   // Errores del cliente que Express/body-parser ya clasificó (una URL mal
   // codificada con `%`, un Content-Encoding que no soporta): conservan su 4xx
