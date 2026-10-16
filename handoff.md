@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §64);
+    siguiente número (hoy el último es §65);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -110,8 +110,17 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   empresa de la sesión, nunca `(? IS NULL OR ...)`. Un id de otra empresa da el
   mismo 404/400 que uno inexistente (hist. §40–§49).
 - **Tablas hijas sin columna propia** (`venta_items`, `cobros`, `pagos`,
-  `movimientos_cc_*`, atributos y variantes): heredan el aislamiento de su fila
-  padre (hist. §43, §47).
+  `movimientos_cc_*`, atributos): heredan el aislamiento de su fila padre
+  (hist. §43, §47).
+  - **Excepción: `producto_variantes` tiene `organizacion_id`** (hist. §65),
+    solo para que su SKU sea único por empresa en la base. Una FK compuesta
+    `(producto_id, organizacion_id)` la ata a la empresa de su producto. Las
+    consultas la siguen filtrando por el JOIN a `productos`.
+- **`organizacion_id` es `NOT NULL` en todas las tablas de negocio** (hist.
+  §65), salvo `auditoria`. Un alta que no la cargue falla en la base.
+- **SKU único por empresa** (hist. §65): `idx_productos_org_sku` e
+  `idx_producto_variantes_org_sku`. Cada tabla por separado, como antes: un
+  SKU de variante puede coincidir con el de un producto.
 - **Catálogos por empresa:** `organizacion_id NOT NULL` y
   `UNIQUE(organizacion_id, nombre)`. Cada empresa recibe su depósito, lista y
   cuentas base vía `sembrarCatalogosBase` al arrancar (hist. §49).
@@ -143,6 +152,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - `npm run verificar-migracion` (también en el CI) falla si la definición
     de una tabla en `schema.sql` (columnas, FK, `CHECK`, `UNIQUE`) no es la
     final.
+  - Un rebuild que solo cambia una restricción puede partir del `CREATE` que
+    la tabla tiene en `sqlite_master` en vez de una foto escrita a mano
+    (patrón de hist. §65, `definicionConEmpresaObligatoria`). Así no pierde
+    columnas sumadas por `ALTER`.
 
 **Stock, precios y vencimientos**
 - **El costo promedio ponderado es global por producto**, no por depósito. El
@@ -289,19 +302,16 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 §38).
 
-**Auditoría general del 6 de octubre (hist. §57–§61), en curso: hechas las Fases 0 a 6**
+**Auditoría general del 6 de octubre (hist. §57–§65): hechas las Fases 0 a 7**
 (git, respaldo automático, backend, frontend, herramientas, scripts de verificación, limpieza
-del repo y documentación al día).
+del repo, documentación al día y esquema).
 Decidido con el usuario: seguridad y datos primero, antes de seguir con F6–F13.
 `LICENSE` sigue sin agregarse hasta que el equipo decida cuál. Falta:
-- **Fase 7, en curso** (hist. §64). Ya están `schema.sql` con la forma final de
-  cada tabla y `verificar-migracion` en el CI. Falta la pasada de rebuilds, que
-  **espera el visto bueno del usuario** porque reescribe tablas de la base real:
-  - `organizacion_id NOT NULL` (ver abajo "Para cerrar la Etapa A");
-  - SKU único por empresa, no en todo Nexo. Hoy una empresa recibe "Ya existe
-    un producto con ese SKU" por el SKU de otra: es un dato que cruza de una
-    empresa a otra (CLAUDE.md §28);
-  - índices que hagan falta en la misma pasada.
+- **Fase 7: hecha** (hist. §64–§65). `schema.sql` tiene la forma final de cada
+  tabla, `verificar-migracion` corre en el CI, `organizacion_id` es `NOT NULL` y
+  el SKU es único por empresa. **La base real todavía no se migró:** lo hace el
+  próximo `npm start`, con el respaldo automático antes. Si el arranque falla,
+  el `ROLLBACK` la deja como estaba y se restaura el respaldo si hiciera falta.
 Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 a 6, no.
 El CI todavía no corrió nunca en GitHub: la primera corrida real va a ser al abrir el
 próximo PR `solla` → `main` (en local se probó en un clon limpio, en Windows; Docker
@@ -328,16 +338,13 @@ scratchpad de la sesión y hay que recrearlo (`playwright-core` contra el Chrome
 instalado). ESLint ya no: `npm run lint` desde la raíz (hist. §59).
 Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
 
-**Para cerrar la Etapa A:**
-1. Pasar `organizacion_id` a `NOT NULL` en las 14 tablas que lo tienen
-   nullable. Cada una requiere rebuild; los catálogos ya nacen así. La tabla 15,
-   `auditoria`, queda nullable a propósito: un `login_fallido` con un usuario
-   inexistente no tiene empresa (hist. §46).
-2. Poder apagar el registro público por configuración (por ejemplo, en una
+**Para cerrar la Etapa A** (`organizacion_id NOT NULL` y SKU por empresa ya
+están, hist. §65):
+1. Poder apagar el registro público por configuración (por ejemplo, en una
    instalación de un solo comercio) y sumarle verificación de email o captcha.
    Ninguna de las dos se hizo: requieren decisión y, la segunda, un servicio
    externo.
-3. Si algún día dos empresas necesitan el mismo nombre de usuario, elegir entre
+2. Si algún día dos empresas necesitan el mismo nombre de usuario, elegir entre
    `UNIQUE(organizacion_id, usuario)` con la empresa en el login, o login por
    email (hist. §45).
 

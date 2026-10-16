@@ -7093,3 +7093,93 @@ Fase 7, segunda parte, con el visto bueno del usuario: una pasada de rebuilds pa
 `organizacion_id NOT NULL` en las 14 tablas y SKU único por empresa en `productos` (y una
 decisión sobre `producto_variantes`, que no tiene columna de empresa). Después, F6 de la
 Etapa B.
+
+## 65. Auditoría general — Fase 7, segunda parte (`organizacion_id NOT NULL` y SKU por empresa), 16 de octubre de 2026
+
+Pedido del usuario: "si" a la propuesta del cierre de §64: las dos cosas en una sola migración,
+y para las variantes la columna propia que se había recomendado (la otra opción era controlar
+el SKU solo en el backend).
+
+**Qué cambia en el esquema.**
+- `organizacion_id NOT NULL` en las 14 tablas que la tenían nullable: `productos`, `clientes`,
+  `proveedores`, `ventas`, `compras`, `presupuestos`, `facturas`, `devoluciones`,
+  `devoluciones_proveedor`, `gastos`, `movimientos_stock`, `transferencias`,
+  `movimientos_tesoreria` y `asistente_mensajes`. `auditoria` queda nullable a propósito
+  (hist. §46).
+- **SKU único por empresa**, cada tabla por separado como antes. `productos.sku` y
+  `producto_variantes.sku` pierden su `UNIQUE` global, y los reemplazan
+  `idx_productos_org_sku` e `idx_producto_variantes_org_sku`.
+- **`producto_variantes.organizacion_id`**, nueva y `NOT NULL`. Sale de su producto y la ata
+  la FK compuesta `(producto_id, organizacion_id) → productos(id, organizacion_id)`. Esa FK
+  necesita la clave única `idx_productos_id_org`.
+  - Corrige la decisión vigente de que las variantes heredaban la empresa del producto. La
+    columna está para que la unicidad la garantice la base; las consultas siguen filtrando
+    por el JOIN.
+
+**Rebuild genérico** (`db/index.js`, después del backfill compartido de `organizacion_id`).
+- **Cuerpo:** no es una foto escrita a mano. Parte del `CREATE TABLE` que cada tabla tiene hoy
+  en `sqlite_master` y le cambia solo tres cosas:
+  - el `organizacion_id` nullable pasa a `NOT NULL`;
+  - se saca `sku TEXT UNIQUE`;
+  - en la variante, se suma la FK compuesta.
+- **Controles del texto:** si el patrón no aparece exactamente una vez, el arranque se corta.
+  Antes de escribirlo se miró el texto de las 15 tablas en la base real y en los 22 backups:
+  el patrón aparece una vez en cada una.
+- **Así no se pierde ninguna columna sumada por `ALTER`** (la trampa de §48).
+- **Se preserva:**
+  - los índices y triggers de cada tabla, recreados con su SQL original;
+  - todas las vistas, que se tiran y se recrean en su orden de creación;
+  - `sqlite_sequence`, que el `INSERT..SELECT` dejaba en el id más alto y creaba en 0 en las
+    tablas vacías.
+- **Una sola transacción:** con `foreign_keys` apagado y `PRAGMA foreign_key_check` de las
+  tablas reconstruidas antes del `COMMIT`.
+- **Idempotente:** en una base nueva, o ya migrada, ninguna tabla cambia y no corre.
+
+**La trampa de la FK compuesta.**
+- **El problema:** en una base anterior a las variantes, `schema.sql` crea
+  `producto_variantes` de cero, ya con la FK compuesta. Pasa antes de que `productos` tenga
+  `organizacion_id` y antes de que exista `idx_productos_id_org`.
+- **Por qué rompe:** sin esa clave, SQLite rechaza con "foreign key mismatch" todo `UPDATE`
+  de `productos.organizacion_id`, aun el que no toca filas, porque falla al preparar. Se
+  confirmó con una prueba aislada antes de escribir el código.
+- **Solución:** `idx_productos_id_org` se crea pegado al `ALTER` que suma esa columna.
+- **En el verificador:** una base armada solo con `schema.sql` tampoco pasa
+  `foreign_key_check`, así que `verificar-migracion` lee su esquema sin la huella completa.
+
+**Código.** El único `INSERT` que no cargaba empresa era el alta de variante
+(`POST /api/productos/:id/variantes`), que ahora la carga. El resto de los `INSERT` en las 14
+tablas ya la cargaba, y `node:sqlite` rechaza enlazar `undefined`. El aviso de SKU repetido
+se detecta por "UNIQUE constraint failed", así que no cambió. Comentarios de `schema.sql` y
+`db/index.js` que decían "nullable a propósito" corregidos.
+
+**Verificación.**
+- `verificar-migracion`: 24 de 24 OK, md5 de la base real sin cambios (`b10b3a94…`).
+- **Copia de la base real migrada:**
+  - mismas filas y misma suma de ids en las 15 tablas;
+  - `sqlite_sequence` idéntica;
+  - `NOT NULL` en las 15;
+  - sin `UNIQUE` global de SKU, con los tres índices nuevos;
+  - FK compuesta presente y `foreign_key_check` sin filas;
+  - 7 vistas;
+  - ninguna variante con una empresa distinta de la de su producto.
+- **En la base:** una variante con otra empresa da "FOREIGN KEY constraint failed"; una
+  variante o un cliente sin empresa, "NOT NULL constraint failed".
+- **`api.test.js`, caso nuevo:**
+  - la empresa B puede usar el SKU de producto y de variante de A;
+  - un SKU repetido dentro de B da 400 "…SKU".
+  - Usa productos propios: al primer intento les agregaba variantes a los de las otras
+    pruebas, que después ya no se podían vender sin elegir una.
+  - Control negativo: corrido contra `HEAD` en un `git worktree` (junction de `node_modules`
+    borrada antes que el worktree), falla con "Ya existe un producto con ese SKU.".
+- `npm run regresion`: 112 comparaciones, 0 distintas. La base la siembra el código de `HEAD`
+  y la migra el nuevo al arrancar.
+- `npm test` 47 de 47 y `npm run lint` (37 archivos) verdes.
+
+**La base real no se tocó:** la migra el próximo `npm start`, con el respaldo automático
+antes.
+
+### Qué sigue
+
+La auditoría general (§57) queda cerrada. Lo próximo es F6 de la Etapa B, o pushear `solla` y
+abrir el PR a `main`, que es también la primera corrida del CI. De la Etapa A queda solo lo
+que requiere decisión del equipo (registro público configurable y su verificación).

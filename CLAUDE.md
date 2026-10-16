@@ -1101,10 +1101,12 @@ una instancia por negocio.
 - Una empresa nueva se crea desde la pantalla de login
   (`POST /api/auth/registro`): el registro es público, con un tope de
   intentos por IP.
-- Lo que falta:
-  - pasar `organizacion_id` a `NOT NULL` en las tablas que la sumaron nullable;
-  - poder apagar el registro público por configuración y sumarle
-    verificación (email o captcha); las dos requieren decisión del equipo.
+- `organizacion_id` es `NOT NULL` en todas las tablas de negocio, salvo
+  `auditoria` (un login fallido con un usuario inexistente no tiene empresa).
+  El SKU de producto y de variante es único dentro de cada empresa, no en todo
+  Nexo.
+- Lo que falta: poder apagar el registro público por configuración y sumarle
+  verificación (email o captcha). Las dos requieren decisión del equipo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
   `docs/handoff-historico.md` (§37–§51).
 
