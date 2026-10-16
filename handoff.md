@@ -441,32 +441,85 @@ pasada final del plan:
      otro, C si el emisor es monotributista. La factura A discrimina el IVA.
    - Reporte de IVA ventas y compras.
    - La retención de Mercado Pago queda para después de la presentación.
-4. **Landing pública con planes** (1 sesión). Se sirve desde el mismo Express.
-   La única pregunta para el usuario es qué precios mostrar; si no hay
-   respuesta, va "consultanos".
-5. **I: voz en el asistente** (1–2 sesiones).
+4. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
+   electrónica real contra el ambiente de prueba de ARCA, con CAE de prueba.
+   - Gratis.
+   - WSAA + WSFEv1 implementados directo en el backend. No se usa AfipSDK: su
+     producción pasa por una nube paga.
+   - La firma del ticket de acceso (CMS) necesita `node-forge`, una
+     dependencia sin costo; `node:crypto` no la tiene.
+   - Certificado y clave por empresa (CLAUDE.md §33).
+   - Reintento sin duplicar: antes de emitir se consulta el último número
+     autorizado.
+5. **G: Mercado Libre** (2 sesiones). Arma también la base común de
+   integraciones de CLAUDE.md §32:
+   - credenciales OAuth por empresa;
+   - tabla de vínculos publicación ↔ producto o variante;
+   - log de sincronización.
+   - Funciones:
+     - Nexo empuja stock y precio de las publicaciones vinculadas;
+     - las ventas de Mercado Libre entran por webhook como ventas de Nexo, por
+       la misma lógica que una venta cargada a mano, y sin duplicarse.
+   - Para la demo, usuarios de prueba de Mercado Libre (se crean por API).
+   - Gratis.
+6. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
+   partners, con una tienda demo.
+7. **I: voz y WhatsApp** (2 sesiones).
    - Dictado con la Web Speech API del navegador (es-AR, sin costo), con el
      mismo flujo de confirmación.
+   - WhatsApp Cloud API como canal del asistente, con el número de prueba que
+     da Meta: hasta 5 teléfonos y gratis. Las respuestas dentro de la ventana
+     de 24 h no se cobran.
+     - La política de "AI Providers" de Meta (2026) cobra a asistentes de IA de
+       uso general, y solo en algunos países (hoy, Brasil). Ni el asistente de
+       Nexo ni la Argentina entran.
+   - Las notas de voz de WhatsApp se transcriben con Gemini, que ya se usa.
    - Consultas de solo lectura en lenguaje natural ("¿cuánto vendí este
      mes?").
-6. **F: unidades fraccionables y perfil de rubro** (1 sesión).
+8. **Landing pública con planes** (1 sesión). Se sirve desde el mismo Express.
+   La única pregunta para el usuario es qué precios mostrar; si no hay
+   respuesta, va "consultanos".
+9. **F: unidades fraccionables y perfil de rubro** (1 sesión). Es lo primero
+   que se recorta si no da el tiempo.
    - Unidades kg, g y l, con cantidades decimales.
    - El perfil de rubro preconfigura la unidad por defecto y qué módulos se ven
      (CLAUDE.md §29).
-7. **H: reportes** (1 sesión). Ventas por vendedor y comparación contra el mismo
-   período del año anterior.
-8. **Cierre** (1 sesión).
-   - Datos de demo realistas.
-   - Pasada final de diseño, con los dos puntos de arriba.
-   - Ensayo de la demo.
-   - Decidir dónde corre la presentación: local o hosting gratis, a confirmar
-     con el usuario.
+10. **H: reportes** (1 sesión, segundo en recortarse): ventas por vendedor y
+    comparación contra el mismo período del año anterior.
+11. **Cierre** (1 sesión).
+    - Datos de demo realistas.
+    - Pasada final de diseño, con los dos puntos de arriba.
+    - Ensayo de la demo.
+    - Decidir dónde corre la presentación: local o hosting gratis, a confirmar
+      con el usuario.
+
+**Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
+los usa):
+- **ARCA (etapa 4):**
+  - clave fiscal nivel 3, la suya o la de un adulto; la app de ARCA la da
+    validando el DNI;
+  - adherir el servicio "WSASS – Autogestión Certificados Homologación";
+  - generar el certificado de prueba con el pedido (CSR) que se prepara acá.
+- **Dirección pública con HTTPS (etapa 5):** Mercado Libre, Tienda Nube y
+  WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
+  ngrok con su dominio fijo, apuntando al servidor local.
+- **Mercado Libre (etapa 5):** cuenta propia de Mercado Libre y crear la app
+  en su portal de desarrolladores.
+- **Tienda Nube (etapa 6):** registrarse en el programa de partners, crear una
+  tienda demo y la app.
+- **Meta (etapa 7):**
+  - cuenta de Meta for Developers;
+  - una app con el producto WhatsApp;
+  - cargar hasta 5 teléfonos de prueba.
 
 **Después de la presentación:**
-- **E: ARCA real.** Necesita el certificado del contribuyente, un trámite del
-  usuario. Si lo consigue antes, se puede mostrar en homologación.
-- **G: Mercado Libre y Tienda Nube.** Necesitan apps registradas en cada
-  plataforma.
+- **ARCA en producción.** Cada empresa usa su propio certificado, o delega el
+  servicio en el CUIT de Nexo.
+- **Producción de WhatsApp.** Pide verificar un negocio real ante Meta.
+- **Fuera de alcance (CLAUDE.md §39):**
+  - métricas de Meta Ads: la API es gratis, pero leer cuentas de otros negocios
+    pide revisión de la app y verificación de negocio, semanas de trámite;
+  - catálogo de Instagram.
 - **Modularización F6–F13.** Se avanza cuando una etapa toca un dominio.
 - **Migrar a Postgres.**
 - **Registro público:** poder apagarlo y sumarle verificación.
