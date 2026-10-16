@@ -139,6 +139,39 @@ test('presupuesto con un producto de otra empresa: 400 y no filtra su nombre (A1
   assert.ok(!r.texto.includes('Remera B'));
 });
 
+// Producto con una variante de talle `valor` y SKU `sku`; devuelve la respuesta del alta.
+async function crearVariante(admin, productoId, valor, sku) {
+  const atributos = await admin.get(`/api/productos/${productoId}/atributos`);
+  let talle = atributos.json.find((a) => a.nombre === 'Talle');
+  if (!talle) {
+    const alta = await admin.post(`/api/productos/${productoId}/atributos`, { nombre: 'Talle' });
+    assert.equal(alta.status, 201, `atributo: ${alta.texto}`);
+    talle = alta.json;
+  }
+  const v = await admin.post(`/api/productos/${productoId}/atributos/${talle.id}/valores`, { valor });
+  assert.equal(v.status, 201, `valor: ${v.texto}`);
+  return admin.post(`/api/productos/${productoId}/variantes`, { valores: [{ atributo_id: talle.id, valor_id: v.json.id }], sku });
+}
+
+test('el SKU de producto y de variante es único por empresa, no en todo Nexo (hist. §64)', async () => {
+  const mismoQueA = await adminB.post('/api/productos', { nombre: 'Otra remera', sku: 'SKU-A1', precio_venta: 100 });
+  assert.equal(mismoQueA.status, 201, `B puede usar un SKU de A: ${mismoQueA.texto}`);
+  const repetido = await adminB.post('/api/productos', { nombre: 'Tercera remera', sku: 'SKU-A1', precio_venta: 100 });
+  assert.equal(repetido.status, 400, repetido.texto);
+  assert.match(repetido.json.error, /SKU/);
+
+  // Productos propios: con variantes, los de las demás pruebas ya no se venden sin elegir una.
+  const gorraA = await crearProducto(adminA, 'Gorra A', null, 0);
+  const gorraB = await crearProducto(adminB, 'Gorra B', null, 0);
+  const varianteA = await crearVariante(adminA, gorraA, 'S', 'VAR-1');
+  assert.equal(varianteA.status, 201, varianteA.texto);
+  const varianteB = await crearVariante(adminB, gorraB, 'S', 'VAR-1');
+  assert.equal(varianteB.status, 201, `B puede usar un SKU de variante de A: ${varianteB.texto}`);
+  const varianteRepetida = await crearVariante(adminB, gorraB, 'M', 'VAR-1');
+  assert.equal(varianteRepetida.status, 400, varianteRepetida.texto);
+  assert.match(varianteRepetida.json.error, /SKU/);
+});
+
 test('un error interno o un JSON malformado responde JSON genérico, sin stack (A4)', async () => {
   const malformado = await adminA.post('/api/ventas', '{"items": [');
   assert.equal(malformado.status, 400);

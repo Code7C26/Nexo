@@ -4,9 +4,9 @@
 -- nombre y el resto se completa después desde su ficha: por eso todos
 -- los campos de contacto son opcionales.
 -- organizacion_id: segunda tabla (de ~38) en sumar la columna multi-tenant
--- del patrón piloteado en `productos` (CLAUDE.md §28). Nullable por el mismo
--- motivo: referencia hacia adelante a `organizaciones` (definida más abajo
--- en este archivo, SQLite no valida la tabla referenciada al crear).
+-- del patrón piloteado en `productos` (CLAUDE.md §28), NOT NULL igual que
+-- en todas las tablas de negocio salvo auditoria (ver el comentario de
+-- productos).
 CREATE TABLE IF NOT EXISTS clientes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   direccion TEXT,
   documento TEXT,
   notas TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- Lista de precios y plazo de pago habituales: solo se proponen al elegir
   -- el cliente en una venta. NULL = la lista predeterminada / sin plazo
   -- definido (el porqué de cada una, en su ALTER de db/index.js).
@@ -57,12 +57,10 @@ CREATE TABLE IF NOT EXISTS facturas (
   numero INTEGER,
   -- organizacion_id: cuarta cabecera transaccional (de ~38 tablas) en sumar
   -- la columna multi-tenant del patrón piloteado en `productos` (CLAUDE.md
-  -- §28). Nullable por el mismo motivo que el resto: referencia hacia
-  -- adelante a `organizaciones` (definida más abajo en este archivo). Cada
-  -- organización es un negocio con su propio CUIT, así que la numeración de
-  -- comprobantes también pasa a ser por organización (ver `idx_facturas_numeracion`
-  -- en db/index.js).
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- §28). Cada organización es un negocio con su propio CUIT, así que la
+  -- numeración de comprobantes también pasa a ser por organización (ver
+  -- `idx_facturas_numeracion` en db/index.js).
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- La venta que respalda esta factura, o la devolución que respalda esta
   -- nota de crédito (CLAUDE.md §16, §17). NULL en una factura suelta. Que
   -- ninguna de las dos se facture dos veces lo garantizan índices únicos
@@ -146,14 +144,21 @@ CREATE TABLE IF NOT EXISTS depositos (
 -- organizacion_id es la primera columna multi-tenant del sistema (CLAUDE.md
 -- §28): `productos` es la tabla piloto para probar el patrón (columna +
 -- backfill + filtrado en server.js) antes de replicarlo en el resto de las
--- tablas de negocio. Nullable a propósito, todavía no NOT NULL: la
--- referencia a `organizaciones` es una referencia hacia adelante en este
--- archivo (SQLite lo permite sin problema, no valida la tabla referenciada
--- al momento del CREATE TABLE).
+-- tablas de negocio. La referencia a `organizaciones` es hacia adelante en
+-- este archivo (SQLite no valida la tabla referenciada al crear). NOT NULL
+-- desde hist. §64 en las 14 tablas que la sumaron nullable por ALTER: en una
+-- base existente lo aplica el rebuild de "organizacion_id NOT NULL" al final
+-- de db/index.js. auditoria queda nullable a propósito (ver ahí).
+-- sku es único por empresa, no en todo Nexo: si no, una empresa recibiría
+-- "ya existe" por el SKU de otra (CLAUDE.md §28). Lo garantiza
+-- idx_productos_org_sku en db/index.js, que no puede vivir acá por el mismo
+-- motivo que idx_facturas_numeracion. NULL = sin SKU, puede repetirse.
+-- idx_productos_id_org (también en db/index.js) es la clave que exige la FK
+-- compuesta de producto_variantes.
 CREATE TABLE IF NOT EXISTS productos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
-  sku TEXT UNIQUE,
+  sku TEXT,
   precio_costo REAL NOT NULL DEFAULT 0,
   precio_venta REAL NOT NULL DEFAULT 0,
   activo INTEGER NOT NULL DEFAULT 1,
@@ -161,7 +166,7 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_maximo REAL,
   categoria_id INTEGER REFERENCES categorias(id),
   margen_objetivo REAL,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -205,13 +210,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_atributo_valores_unico
 -- cadena de precio del producto padre (ver variante_precios más abajo).
 -- precio_costo sigue el mismo criterio que productos.precio_costo: arranca
 -- en 0 y lo escribe la compra (costo promedio ponderado por variante).
+-- organizacion_id: a diferencia del resto de las tablas hijas, que heredan
+-- la empresa de su fila padre, la variante tiene columna propia (hist. §64)
+-- para que su SKU sea único por empresa en la base, igual que el del
+-- producto (idx_producto_variantes_org_sku en db/index.js). Las consultas la
+-- siguen filtrando por el JOIN a productos. La FK compuesta garantiza que
+-- sea la de su producto: una variante con otra empresa no se puede guardar.
 CREATE TABLE IF NOT EXISTS producto_variantes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
-  sku TEXT UNIQUE,
+  sku TEXT,
   precio_costo REAL NOT NULL DEFAULT 0,
   precio_venta REAL,
-  activo INTEGER NOT NULL DEFAULT 1
+  activo INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  FOREIGN KEY (producto_id, organizacion_id) REFERENCES productos(id, organizacion_id)
 );
 
 -- Una fila por (variante, atributo, valor elegido). El índice único impide
@@ -253,7 +266,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
   direccion TEXT,
   documento TEXT,
   notas TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- Plazo de pago habitual: mismo criterio que clientes.condicion_pago.
   condicion_pago TEXT
 );
@@ -277,7 +290,7 @@ CREATE TABLE IF NOT EXISTS ventas (
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   condicion_pago TEXT,
   fecha_vencimiento TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- De qué depósito salió la mercadería y con qué lista se vendió (CLAUDE.md
   -- §18, §19). NULL = el predeterminado de ese momento, no un id copiado:
   -- las operaciones sin uno propio siguen al que pase a ser predeterminado.
@@ -326,9 +339,8 @@ CREATE TABLE IF NOT EXISTS presupuestos (
   venta_id INTEGER REFERENCES ventas(id),
   notas TEXT,
   -- organizacion_id: mismo patrón multi-tenant que facturas/ventas/compras
-  -- (CLAUDE.md §28), nullable por el mismo motivo (referencia hacia
-  -- adelante a `organizaciones`).
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- (CLAUDE.md §28).
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- Mismo criterio que ventas.lista_precio_id.
   lista_precio_id INTEGER REFERENCES listas_precios(id)
 );
@@ -369,7 +381,7 @@ CREATE TABLE IF NOT EXISTS devoluciones (
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
   motivo TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- A qué depósito reingresa lo devuelto: mismo criterio que ventas.deposito_id.
   deposito_id INTEGER REFERENCES depositos(id)
 );
@@ -420,7 +432,7 @@ CREATE TABLE IF NOT EXISTS compras (
   -- Mismo par que en ventas, del lado de la deuda con el proveedor.
   condicion_pago TEXT,
   fecha_vencimiento TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- A qué depósito entra la mercadería: mismo criterio que ventas.deposito_id.
   deposito_id INTEGER REFERENCES depositos(id)
 );
@@ -467,7 +479,7 @@ CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
   cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
   motivo TEXT,
   nota_credito_proveedor_numero TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- De qué depósito sale lo devuelto: mismo criterio que ventas.deposito_id.
   deposito_id INTEGER REFERENCES depositos(id)
 );
@@ -509,7 +521,7 @@ CREATE TABLE IF NOT EXISTS transferencias (
   fecha TEXT NOT NULL DEFAULT (date('now')),
   estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
   nota TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
@@ -543,7 +555,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   -- queda NULL.
   costo_unitario REAL,
   nota TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
 -- El índice sobre (producto_id, deposito_id) se crea en db/index.js, no
@@ -661,7 +673,7 @@ CREATE TABLE IF NOT EXISTS gastos (
   descripcion TEXT,
   comprobante TEXT,
   estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo',
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo
@@ -689,7 +701,7 @@ CREATE TABLE IF NOT EXISTS movimientos_tesoreria (
   gasto_id INTEGER REFERENCES gastos(id),
   devolucion_id INTEGER REFERENCES devoluciones(id),
   devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando
@@ -745,7 +757,7 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   operacion_tipo TEXT CHECK (operacion_tipo IN ('venta', 'compra', 'gasto')),
   operacion_id INTEGER,
   error TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
 -- Auditoría central unificada (CLAUDE.md §22). Registra el ACTO del

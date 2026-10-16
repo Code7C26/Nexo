@@ -254,15 +254,17 @@ origenes.forEach(([nombre, origen], i) => {
   casos.push({ nombre, ruta, conDatos: true });
 });
 
+// Solo el esquema, sin la huella completa: una base armada nada más que con
+// schema.sql no es válida para foreign_key_check (la FK compuesta de
+// producto_variantes necesita idx_productos_id_org, que crea db/index.js).
 function esquemaDeSchemaSql() {
-  const ruta = path.join(tmp, 'solo-schema-sql.db');
-  const db = new DatabaseSync(ruta);
+  const db = new DatabaseSync(path.join(tmp, 'solo-schema-sql.db'));
   try {
     db.exec(readFileSync(path.join(dirDb, 'schema.sql'), 'utf8'));
+    return esquemaDe(db);
   } finally {
     db.close();
   }
-  return huella(ruta).esquema;
 }
 
 let esquemaNuevo = null;

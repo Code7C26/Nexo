@@ -2236,8 +2236,16 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
   try {
     withTransaction(() => {
       ({ lastInsertRowid } = db
-        .prepare('INSERT INTO producto_variantes (producto_id, sku, precio_venta, activo) VALUES (?, ?, ?, ?)')
-        .run(productoId, skuNormalizado, precioVentaNormalizado, activo === false || activo === 0 ? 0 : 1));
+        .prepare(
+          'INSERT INTO producto_variantes (producto_id, sku, precio_venta, activo, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+        )
+        .run(
+          productoId,
+          skuNormalizado,
+          precioVentaNormalizado,
+          activo === false || activo === 0 ? 0 : 1,
+          req.usuario.organizacion_id
+        ));
       const insertValor = db.prepare(
         'INSERT INTO producto_variante_valores (variante_id, atributo_id, valor_id) VALUES (?, ?, ?)'
       );

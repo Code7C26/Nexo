@@ -630,16 +630,24 @@ if (!productosColumnas.some((col) => col.name === 'margen_objetivo')) {
 }
 
 // productos.organizacion_id: primera tabla de negocio (de ~38) en sumar la
-// columna que prepara Nexo para multi-tenant (CLAUDE.md §28). Nullable a
-// propósito, no NOT NULL: no hay todavía UI para elegir organización en el
-// alta, y el resto de las tablas todavía no tiene esta columna — pasa a
-// obligatoria recién cuando el sistema sea multi-tenant de punta a punta.
+// columna que prepara Nexo para multi-tenant (CLAUDE.md §28). Se suma
+// nullable porque un ALTER no puede agregar una columna NOT NULL sin
+// default; pasa a obligatoria en el rebuild de hist. §64, al final del
+// archivo, igual que en el resto de las tablas que siguieron este patrón.
 // El backfill (re-ejecutable, solo toca filas en NULL) va más abajo, después
 // de que se siembra la fila de `organizaciones`, porque en una base nueva
 // esa tabla todavía está vacía en este punto del arranque.
 if (!productosColumnas.some((col) => col.name === 'organizacion_id')) {
   db.exec('ALTER TABLE productos ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
 }
+// productos(id, organizacion_id) único: es la clave a la que apunta la FK
+// compuesta de producto_variantes (ver schema.sql). Va pegado al ALTER y no
+// con el resto de la migración de hist. §64: en una base anterior a las
+// variantes, schema.sql ya creó producto_variantes con esa FK, y sin este
+// índice SQLite rechaza cualquier UPDATE de productos.organizacion_id (el
+// backfill de más abajo) con "foreign key mismatch". id ya es único, así
+// que crearlo no puede fallar.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_id_org ON productos(id, organizacion_id)');
 
 // clientes.organizacion_id / proveedores.organizacion_id: mismo patrón que
 // productos.organizacion_id de arriba, mismos motivos (Etapa A, CLAUDE.md
@@ -1456,7 +1464,10 @@ export function registrarAuditoria({
 // catálogos no están en la lista porque la traen NOT NULL desde su rebuild,
 // al principio del archivo, y auditoria tampoco porque tiene su propio
 // backfill junto a su ALTER. Re-ejecutable, solo toca filas que todavía no
-// tienen organización asignada.
+// tienen organización asignada. Desde el rebuild de abajo (hist. §64) las 14
+// son NOT NULL y esto solo encuentra filas en el primer arranque de una
+// base anterior: ninguna fila nueva puede quedar sin empresa y terminar
+// atribuida a la primera.
 for (const tabla of [
   'productos',
   'clientes',
@@ -1478,6 +1489,143 @@ for (const tabla of [
       WHERE organizacion_id IS NULL`
   );
 }
+
+// producto_variantes.organizacion_id (hist. §64, ver schema.sql): la de su
+// producto, que el backfill de arriba ya completó. Re-ejecutable, solo toca
+// variantes en NULL.
+const variantesColumnasOrg = db.prepare('PRAGMA table_info(producto_variantes)').all();
+if (!variantesColumnasOrg.some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE producto_variantes ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+db.exec(
+  `UPDATE producto_variantes
+      SET organizacion_id = (SELECT organizacion_id FROM productos WHERE productos.id = producto_variantes.producto_id)
+    WHERE organizacion_id IS NULL`
+);
+
+// organizacion_id NOT NULL (hist. §64, cierre de la Etapa A, CLAUDE.md §28)
+// en las 14 tablas que la sumaron nullable por ALTER y en producto_variantes.
+// En la misma pasada, productos y producto_variantes pierden el UNIQUE
+// global de sku (pasa a ser por empresa, índices de abajo) y la variante
+// suma la FK compuesta que la ata a la empresa de su producto. auditoria
+// queda afuera a propósito: su NULL de login_fallido es legítimo.
+// A diferencia de los rebuilds de más arriba, el cuerpo no es una foto
+// escrita a mano: se parte del CREATE TABLE que la tabla tiene hoy en
+// sqlite_master y se cambia solo eso. Si el texto esperado no aparece
+// exactamente una vez, el arranque se corta en vez de adivinar. Así no se
+// pierde ninguna columna sumada por ALTER (la trampa de hist. §48), y los
+// índices y triggers de la tabla se recrean con su SQL original. Las
+// vistas se tiran todas y se recrean en su orden de creación: SQLite las
+// valida en el RENAME.
+// Va después de los backfills: si quedara una fila en NULL, el INSERT..SELECT
+// falla y el ROLLBACK deja la base como estaba (mejor no arrancar que
+// inventar de qué empresa es una fila). sqlite_sequence se conserva: el
+// INSERT..SELECT la dejaría en el id más alto que queda, y el id de una fila
+// borrada se volvería a usar.
+const ORGANIZACION_NULLABLE = /organizacion_id\s+INTEGER\s+REFERENCES\s+organizaciones\s*\(\s*id\s*\)/gi;
+const ORGANIZACION_NOT_NULL = /organizacion_id\s+INTEGER\s+NOT\s+NULL\s+REFERENCES\s+organizaciones\s*\(\s*id\s*\)/gi;
+const SKU_UNICO_GLOBAL = /\bsku\s+TEXT\s+UNIQUE\b/gi;
+const FK_VARIANTE_EMPRESA = 'FOREIGN KEY (producto_id, organizacion_id) REFERENCES productos(id, organizacion_id)';
+const cuantas = (sql, regex) => (sql.match(regex) ?? []).length;
+
+function definicionConEmpresaObligatoria(tabla, sql) {
+  let nueva = sql;
+  if (cuantas(nueva, ORGANIZACION_NULLABLE) === 1) {
+    nueva = nueva.replace(ORGANIZACION_NULLABLE, 'organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)');
+  }
+  if (cuantas(nueva, ORGANIZACION_NULLABLE) || cuantas(nueva, ORGANIZACION_NOT_NULL) !== 1) {
+    throw new Error(`${tabla}: no se reconoce su organizacion_id para pasarla a NOT NULL`);
+  }
+  if (tabla === 'productos' || tabla === 'producto_variantes') {
+    if (cuantas(nueva, SKU_UNICO_GLOBAL) > 1) throw new Error(`${tabla}: más de un "sku TEXT UNIQUE"`);
+    nueva = nueva.replace(SKU_UNICO_GLOBAL, 'sku TEXT');
+  }
+  if (tabla === 'producto_variantes' && !nueva.includes(FK_VARIANTE_EMPRESA)) {
+    nueva = nueva.replace(/\)\s*$/, `,\n  ${FK_VARIANTE_EMPRESA}\n)`);
+  }
+  return nueva;
+}
+
+const EMPRESA_OBLIGATORIA = [
+  // productos antes que producto_variantes: la FK compuesta de la variante
+  // necesita idx_productos_id_org, que vuelve con el rebuild de productos.
+  'productos',
+  'producto_variantes',
+  'clientes',
+  'proveedores',
+  'ventas',
+  'compras',
+  'presupuestos',
+  'facturas',
+  'devoluciones',
+  'devoluciones_proveedor',
+  'gastos',
+  'movimientos_stock',
+  'transferencias',
+  'movimientos_tesoreria',
+  'asistente_mensajes'
+];
+const rebuildsEmpresa = EMPRESA_OBLIGATORIA.map((tabla) => {
+  const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tabla);
+  return { tabla, actual: sql, nueva: definicionConEmpresaObligatoria(tabla, sql) };
+}).filter(({ actual, nueva }) => actual !== nueva);
+if (rebuildsEmpresa.length) {
+  const vistas = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' ORDER BY rowid").all();
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    for (const { name } of vistas) {
+      db.exec(`DROP VIEW ${name}`);
+    }
+    for (const { tabla, nueva } of rebuildsEmpresa) {
+      const crear = nueva.replace(/^CREATE TABLE\s+("?)\w+\1/, `CREATE TABLE ${tabla}_nueva`);
+      if (!crear.startsWith(`CREATE TABLE ${tabla}_nueva`)) {
+        throw new Error(`${tabla}: no se reconoce el encabezado de su CREATE TABLE`);
+      }
+      const dependientes = db
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger') AND tbl_name = ? AND sql IS NOT NULL ORDER BY rowid"
+        )
+        .all(tabla);
+      const columnas = db
+        .prepare(`PRAGMA table_info(${tabla})`)
+        .all()
+        .map((col) => col.name)
+        .join(', ');
+      const secuencia = db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(tabla);
+      db.exec(crear);
+      db.exec(`INSERT INTO ${tabla}_nueva (${columnas}) SELECT ${columnas} FROM ${tabla}`);
+      db.exec(`DROP TABLE ${tabla}`);
+      db.exec(`ALTER TABLE ${tabla}_nueva RENAME TO ${tabla}`);
+      for (const { sql } of dependientes) {
+        db.exec(sql);
+      }
+      // El INSERT..SELECT deja la fila en el id más alto que sobrevive, y
+      // en una tabla vacía la crea en 0 aunque antes no estuviera.
+      db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tabla);
+      if (secuencia) {
+        db.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)').run(tabla, secuencia.seq);
+      }
+    }
+    for (const { sql } of vistas) {
+      db.exec(sql);
+    }
+    const huerfanas = rebuildsEmpresa.flatMap(({ tabla }) => db.prepare(`PRAGMA foreign_key_check(${tabla})`).all());
+    if (huerfanas.length) {
+      throw new Error(`organizacion_id NOT NULL: ${huerfanas.length} fila(s) con FK rota, ej. ${JSON.stringify(huerfanas[0])}`);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+// SKU único por empresa (ver schema.sql, comentario de productos). Después
+// del rebuild y no en schema.sql: en una base vieja, organizacion_id todavía
+// no existe cuando corre ese archivo. Un SKU NULL se puede repetir.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_org_sku ON productos(organizacion_id, sku)');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_org_sku ON producto_variantes(organizacion_id, sku)');
 
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
