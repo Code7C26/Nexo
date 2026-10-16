@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §65);
+    siguiente número (hoy el último es §66);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -24,8 +24,10 @@
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` tiene los commits de las Fases 3 a 6 de la auditoría (hist.
-  §58–§61) sin pushear.
+- `solla` está pusheada hasta el cierre de la auditoría (hist. §65). El PR
+  `solla` → `main` se abre desde
+  https://github.com/Code7C26/Nexo/compare/main...solla (no hay `gh`). Va a
+  ser la primera corrida del CI en GitHub.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
@@ -299,25 +301,24 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
-Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
-§38).
+El orden de trabajo es el **plan hasta la presentación**, al final de esta
+sección. Ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 
 **Auditoría general del 6 de octubre (hist. §57–§65): hechas las Fases 0 a 7**
 (git, respaldo automático, backend, frontend, herramientas, scripts de verificación, limpieza
 del repo, documentación al día y esquema).
 Decidido con el usuario: seguridad y datos primero, antes de seguir con F6–F13.
-`LICENSE` sigue sin agregarse hasta que el equipo decida cuál. Falta:
+`LICENSE` sigue sin agregarse hasta que el equipo decida cuál.
 - **Fase 7: hecha** (hist. §64–§65). `schema.sql` tiene la forma final de cada
   tabla, `verificar-migracion` corre en el CI, `organizacion_id` es `NOT NULL` y
   el SKU es único por empresa. **La base real todavía no se migró:** lo hace el
   próximo `npm start`, con el respaldo automático antes. Si el arranque falla,
   el `ROLLBACK` la deja como estaba y se restaura el respaldo si hiciera falta.
-Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 a 6, no.
-El CI todavía no corrió nunca en GitHub: la primera corrida real va a ser al abrir el
-próximo PR `solla` → `main` (en local se probó en un clon limpio, en Windows; Docker
-Desktop estaba apagado y no se probó en Linux).
+El CI todavía no corrió nunca en GitHub: en local se probó en un clon limpio, en
+Windows, y no en Linux (Docker Desktop estaba apagado).
 
-**Etapa B, siguiente paso: F6** (otro dominio sin acoplamiento con estado ajeno;
+**Etapa B, F6 en adelante (después de la presentación, o cuando una etapa del
+plan toque ese dominio)** (otro dominio sin acoplamiento con estado ajeno;
 candidatos: Proveedores o Clientes, que dejan su tabla, ficha y modal en el
 dominio y siguen fijando el maestro con `fijarProveedores()` de
 `core/maestros.js`; Caja también fija `cuentasTesoreria` ahí). Los maestros
@@ -349,46 +350,88 @@ están, hist. §65):
    email (hist. §45).
 
 **Pendientes chicos conocidos:**
-5. Decidir en `permisos.js` si listas, depósitos y categorías de gasto pasan a
-   ser solo admin.
-6. Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
-   sensibles. Solo hace falta si se reabre ese endpoint al rol empleado.
-7. `obtenerPreciosPorProducto` y `obtenerPreciosPorVariante` leen los precios
-   de todas las empresas. No hay fuga, pero no escala.
-8. `POST /api/facturas` no valida `condicion` (ni `neto`, `tipo`, `letra`, ya
-   anotado en hist. §57): un valor fuera del `CHECK` de la tabla
-   (`efectivo`/`transferencia`/`mercadopago`) da 500 en vez de 400
-   (hist. §58).
-9. `POST /api/ventas` sin `cliente` ni `cliente_id` da 500 en vez de 400
-   (`resolverCliente` enlaza `undefined`). La UI siempre manda cliente, pero el
-   POS va a necesitar decidir qué es una venta sin cliente (hist. §63).
-10. **A decidir con el equipo:** un producto con variantes tiene `precio_costo`
-    0 (el costo vive en cada variante), así que su costo promedio y su
-    valorizado salen en $0 en la ficha y en Reportes de stock, y el valorizado
-    total queda corto (hist. §63).
+- Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
+  sensibles. Solo hace falta si se reabre ese endpoint al rol empleado.
+- `gh` (GitHub CLI) no está instalado en la máquina de Santino. Los PR se
+  abren desde el link de comparación de GitHub.
 
-**Diseño (hist. §62–§63):** todas las pantallas ya se revisaron en el navegador,
-en claro, en oscuro y a 390 px. El gráfico del Resumen se rehízo (ancho real,
-tooltip, teclado) y el asistente tiene sugerencias que se pueden tocar. Queda,
-para decidir:
+**Diseño (hist. §62–§63, §66).** Todas las pantallas se revisaron en claro, en
+oscuro y a 390 px, y las fechas ya se muestran en dd/mm/aaaa. Quedan para la
+pasada final del plan:
 - en el celular, la tabla de evolución del Resumen es una tarjeta por período y
   alarga mucho la pantalla;
-- las fechas se muestran en ISO (`2026-10-14`) en toda la app;
 - las fichas repiten el título arriba y en el primer panel.
 
-**Pendiente pedido por el usuario (14 de octubre de 2026): landing page pública.**
-Una página de entrada, previa al login, donde el visitante vea qué es Nexo y los
-planes, y pueda ingresar o crear su cuenta. Requiere definir con el equipo los
-planes (qué incluye cada uno y su precio), que hoy no existen en el sistema: las
-suscripciones por empresa son una etapa aparte (CLAUDE.md §28). Se sirve desde el
-mismo Express, sin hosting extra.
+**Plan hasta la presentación (~1 de diciembre de 2026, hist. §66).**
+- **Quién decide:** el usuario delegó las decisiones técnicas y las básicas de
+  negocio. Este plan es la planificación que piden CLAUDE.md §27 y §38: no hace
+  falta confirmar etapa por etapa. Solo se le pregunta lo que el cliente final
+  ve con precio, lo que cuesta plata y los trámites a su nombre.
+- **Tamaño:** cada etapa se recorta a lo que entra en una o dos sesiones y se ve
+  en una demo, completa y funcionando. Lo que queda afuera se anota como
+  "después de la presentación".
 
-**Roadmap** (CLAUDE.md §38):
-- B: modularizar `app.js` y la base de la PWA (en paralelo con A).
-- C: IVA.
-- D: POS y turno de caja.
-- E: ARCA.
-- F: perfiles de rubro.
-- G: integraciones.
-- H: reportes avanzados.
-- I: voz y WhatsApp.
+1. **D: punto de venta y turno de caja** (2 sesiones). Decidido:
+   - **Venta sin cliente:** va al cliente "Consumidor final" de la empresa, que
+     se crea solo la primera vez.
+   - **Pantalla de mostrador:**
+     - es un módulo propio en `frontend/js/dominios/`, mobile-first;
+     - busca por nombre, SKU o código de barras (el lector físico tipea y manda
+       Enter), y con la cámara vía `BarcodeDetector` donde el navegador lo
+       soporte;
+     - cobra con un medio o con varios (cobro mixto).
+     - Reusa `crearVenta` y `registrarCobro`, sin circuito de datos nuevo
+       (CLAUDE.md §30).
+   - **Turno de caja:**
+     - es por usuario y por cuenta de tesorería de tipo efectivo, en una tabla
+       nueva `turnos_caja`;
+     - abre con un monto inicial;
+     - cierra con arqueo (lo contado contra lo esperado según los movimientos
+       del turno);
+     - si hay diferencia, se registra como movimiento de tesorería, para que el
+       saldo de la caja dé lo contado.
+   - El POS exige un turno abierto.
+2. **B2: PWA** (1 sesión).
+   - Manifest, íconos y service worker con caché del shell: se instala desde el
+     celular.
+   - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión
+     (CLAUDE.md §31).
+3. **C: IVA** (2 sesiones).
+   - Condición fiscal de la empresa (responsable inscripto, monotributo o
+     exento) y del cliente.
+   - Alícuota por producto, 21% por defecto. `precio_unitario` sigue siendo el
+     precio final con IVA incluido.
+   - Cada renglón guarda su alícuota y su IVA.
+   - Letra automática: A de inscripto a inscripto, B de inscripto a cualquier
+     otro, C si el emisor es monotributista. La factura A discrimina el IVA.
+   - Reporte de IVA ventas y compras.
+   - La retención de Mercado Pago queda para después de la presentación.
+4. **Landing pública con planes** (1 sesión). Se sirve desde el mismo Express.
+   La única pregunta para el usuario es qué precios mostrar; si no hay
+   respuesta, va "consultanos".
+5. **I: voz en el asistente** (1–2 sesiones).
+   - Dictado con la Web Speech API del navegador (es-AR, sin costo), con el
+     mismo flujo de confirmación.
+   - Consultas de solo lectura en lenguaje natural ("¿cuánto vendí este
+     mes?").
+6. **F: unidades fraccionables y perfil de rubro** (1 sesión).
+   - Unidades kg, g y l, con cantidades decimales.
+   - El perfil de rubro preconfigura la unidad por defecto y qué módulos se ven
+     (CLAUDE.md §29).
+7. **H: reportes** (1 sesión). Ventas por vendedor y comparación contra el mismo
+   período del año anterior.
+8. **Cierre** (1 sesión).
+   - Datos de demo realistas.
+   - Pasada final de diseño, con los dos puntos de arriba.
+   - Ensayo de la demo.
+   - Decidir dónde corre la presentación: local o hosting gratis, a confirmar
+     con el usuario.
+
+**Después de la presentación:**
+- **E: ARCA real.** Necesita el certificado del contribuyente, un trámite del
+  usuario. Si lo consigue antes, se puede mostrar en homologación.
+- **G: Mercado Libre y Tienda Nube.** Necesitan apps registradas en cada
+  plataforma.
+- **Modularización F6–F13.** Se avanza cuando una etapa toca un dominio.
+- **Migrar a Postgres.**
+- **Registro público:** poder apagarlo y sumarle verificación.

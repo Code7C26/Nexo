@@ -7183,3 +7183,66 @@ antes.
 La auditoría general (§57) queda cerrada. Lo próximo es F6 de la Etapa B, o pushear `solla` y
 abrir el PR a `main`, que es también la primera corrida del CI. De la Etapa A queda solo lo
 que requiere decisión del equipo (registro público configurable y su verificación).
+
+## 66. Plan hasta la presentación y arreglos chicos pendientes, 16 de octubre de 2026
+
+Pedido del usuario: tomar las decisiones por mi cuenta ("vos sabés más y vos podés averiguar
+más"). Quiere que la app ande bien y sea razonablemente escalable, y la presenta en un mes y
+medio, alrededor del 1 de diciembre: hace falta un MVP muy bueno, sin trabajos de meses y
+cerrando las etapas en distintas sesiones. El PR queda a criterio.
+
+**Git.** `solla` pusheada (29 commits, hasta `2392125`). `gh` no está instalado, así que el
+PR a `main` se abre desde el link de comparación de GitHub (ver handoff.md).
+
+**Plan.** Ver "Plan hasta la presentación" en handoff.md. Las decisiones de cada etapa (venta
+sin cliente → "Consumidor final", turno de caja con arqueo, letra automática del comprobante,
+voz con la Web Speech API) quedaron escritas ahí. Lo que depende de trámites o apps de
+terceros (ARCA real, Mercado Libre, Tienda Nube) queda para después de la presentación.
+
+**Arreglos.**
+- **Errores 500 que eran de validación** (pendientes 8 y 9 de §58 y §63):
+  - `POST /api/facturas` valida concepto, importe (número > 0), medio de pago, tipo, letra
+    y punto de venta.
+  - `resolverCliente` lanza `ErrorValidacion` sin nombre ni id, o con un `cliente_id` de
+    otra empresa. Ese id responde igual que uno inexistente y no filtra su nombre.
+  - `ErrorValidacion` es una clase nueva: su mensaje llega como 400 por `mensajeDeError` y
+    por el manejador final, aunque se lance adentro de una transacción. El resto de los
+    errores sigue saliendo como 500 genérico.
+  - El nombre del cliente se recorta antes de buscarlo o crearlo.
+- **Valorizado de productos con variantes** (pendiente 10). Lo decidí yo:
+  - valorizado = stock sin variante × costo del producto + Σ stock de cada variante × su
+    costo;
+  - el costo que se muestra de un producto con variantes es el promedio ponderado
+    (valorizado / stock);
+  - aplica a `GET /api/productos`, `GET /api/stock` y `GET /api/reportes/stock`;
+  - los dos campos auxiliares de la consulta se sacan de la respuesta: el filtro de campos
+    sensibles corta por nombre de clave (CLAUDE.md §35) y no los conoce.
+- **Precios por empresa** (pendiente 7): `obtenerPreciosPorProducto(organizacionId)` y
+  `obtenerPreciosPorVariante(productoId)` ya no leen todas las filas de la base.
+- **Catálogos solo admin** (pendiente 5). Lo decidí yo:
+  - crear y editar listas de precios, depósitos y categorías de gasto pasa a ser `soloAdmin`
+    (`permisos.js` y `server.js`), igual que las categorías de producto;
+  - los `GET` siguen abiertos a los dos roles;
+  - en la UI, los cuatro botones de gestión llevan `col-admin`. El de categorías de producto
+    ya le daba 403 al empleado.
+  - El seed creaba la categoría de gasto con el empleado; ahora la crea el admin.
+- **Fechas en dd/mm/aaaa** (pendiente de diseño de §63):
+  - `fechaAR()` en `core/formato.js`, aplicada en 35 lugares: tablas, fichas, historial de
+    pagos y el comprobante impreso;
+  - la API, los `<input type="date">` y los CSV siguen en ISO.
+
+**Verificación.**
+- `npm test`: 49 de 49, con tres casos nuevos (factura con datos inválidos, venta sin
+  cliente o con cliente ajeno, más el de SKU de §65). `npm run lint` verde.
+- `npm run regresion`: 3 diferencias, todas del arreglo del valorizado y solo para el admin.
+  La "Gorra" del seed pasa de costo $0, valorizado $0 y margen 100% a $1.546,39, $10.824,74
+  (7 unidades) y 55,8%, y el total del inventario sube en esa cifra.
+- **Navegador** (playwright-core con el Chrome instalado, base sembrada, los dos roles, 8
+  vistas):
+  - todas las fechas visibles en dd/mm/aaaa, ninguna en ISO;
+  - los cuatro botones de catálogos visibles para el admin y ocultos para el empleado;
+  - ningún error de consola ni de página.
+
+### Qué sigue
+
+Etapa D del plan: punto de venta y turno de caja.
