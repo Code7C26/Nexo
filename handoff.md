@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §63);
+    siguiente número (hoy el último es §64);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,7 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (14 de octubre de 2026)
+## Estado actual (16 de octubre de 2026)
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
@@ -59,8 +59,10 @@ incluido.
   §57): se aplicó §37–§49 de una vez. Los conteos de las 36 tablas dieron
   idénticos antes y después (solo bajó `sesiones`, que el arranque limpia),
   `integrity_check` ok, `foreign_key_check` sin filas y ninguna fila sin
-  `organizacion_id`. md5 de la base migrada: `8dc00857…` (la referencia para
-  "la base real no cambió" en las verificaciones de ahora en adelante).
+  `organizacion_id`. md5 de la base recién migrada: `8dc00857…`. Ya no sirve
+  de referencia porque cambia con el uso (el 16 de octubre era `b10b3a94…`):
+  "la base real no cambió" se controla con el md5 de antes y de después de
+  cada verificación, que los scripts calculan solos.
 - Copias de la base **anterior** a la migración (md5 `a25ce51d…`):
   `backend/db/nexo.db.backup-antes-etapa-a-20261005-210622` y, fuera del repo,
   `~/Documents/nexo-backups/`. Para volver atrás, restaurar una de las dos.
@@ -132,6 +134,15 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - todo `ALTER` nuevo va **después del último rebuild de su tabla**;
   - `schema.sql` tiene que reflejar la forma final de cada tabla, incluido
     cada valor de sus `CHECK`. Si no, una base nueva dispara rebuilds viejos.
+  - Por eso una columna nueva va en los dos lugares: en el `CREATE TABLE` de
+    `schema.sql`, al final, y como `ALTER` en `db/index.js` para las bases
+    existentes (hist. §64).
+  - Los `CREATE INDEX` y las vistas que usan una columna sumada por `ALTER`
+    van en `db/index.js`, después de ese `ALTER`. En `schema.sql`, que corre
+    antes, una base vieja fallaría con "no such column".
+  - `npm run verificar-migracion` (también en el CI) falla si la definición
+    de una tabla en `schema.sql` (columnas, FK, `CHECK`, `UNIQUE`) no es la
+    final.
 
 **Stock, precios y vencimientos**
 - **El costo promedio ponderado es global por producto**, no por depósito. El
@@ -249,9 +260,9 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    - que migren en un solo arranque y que el segundo no cambie nada;
    - integridad y FKs;
    - que el esquema final sea igual en todas y que no se pierdan filas;
-   - que `schema.sql` no tenga `CHECK` atrasados.
+   - que `schema.sql` tenga la forma final de cada tabla (hist. §64).
 
-   El aviso `!` de `schema.sql` incompleto es conocido (Fase 7).
+   En el CI corre solo el caso de base nueva, porque las bases no se versionan.
 5. **`npm test` y `npm run lint` desde la raíz** (los mismos que corre el CI;
    `npm install` en la raíz trae ESLint). `npm test` es el inventario estático de rutas contra
    `permisos.js`): toda ruta nueva tiene que estar clasificada ahí, declarada
@@ -283,12 +294,14 @@ Ninguna etapa se arranca sin planificarla antes con el equipo (CLAUDE.md §27,
 del repo y documentación al día).
 Decidido con el usuario: seguridad y datos primero, antes de seguir con F6–F13.
 `LICENSE` sigue sin agregarse hasta que el equipo decida cuál. Falta:
-- **Fase 7:** consolidar este backlog; ver abajo "Para cerrar la Etapa A" (sumar
-  SKU único por empresa e índices en la misma pasada de rebuilds).
-  - Alinear `schema.sql` con la forma final: hoy le faltan 13 columnas, 7 índices
-    y 4 vistas que suma `db/index.js` (lista en hist. §60). Es lo que
-    `verificar-migracion` muestra como aviso.
-  - Evaluar llevar `verificar-migracion` (al menos el caso de base nueva) al CI.
+- **Fase 7, en curso** (hist. §64). Ya están `schema.sql` con la forma final de
+  cada tabla y `verificar-migracion` en el CI. Falta la pasada de rebuilds, que
+  **espera el visto bueno del usuario** porque reescribe tablas de la base real:
+  - `organizacion_id NOT NULL` (ver abajo "Para cerrar la Etapa A");
+  - SKU único por empresa, no en todo Nexo. Hoy una empresa recibe "Ya existe
+    un producto con ese SKU" por el SKU de otra: es un dato que cruza de una
+    empresa a otra (CLAUDE.md §28);
+  - índices que hagan falta en la misma pasada.
 Los commits de las Fases 1 y 2 ya están en `origin/solla`; los de las Fases 3 a 6, no.
 El CI todavía no corrió nunca en GitHub: la primera corrida real va a ser al abrir el
 próximo PR `solla` → `main` (en local se probó en un clon limpio, en Windows; Docker
@@ -316,8 +329,10 @@ instalado). ESLint ya no: `npm run lint` desde la raíz (hist. §59).
 Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
 
 **Para cerrar la Etapa A:**
-1. Pasar `organizacion_id` a `NOT NULL` en las 15 tablas que lo tienen
-   nullable. Cada una requiere rebuild; los catálogos ya nacen así.
+1. Pasar `organizacion_id` a `NOT NULL` en las 14 tablas que lo tienen
+   nullable. Cada una requiere rebuild; los catálogos ya nacen así. La tabla 15,
+   `auditoria`, queda nullable a propósito: un `login_fallido` con un usuario
+   inexistente no tiene empresa (hist. §46).
 2. Poder apagar el registro público por configuración (por ejemplo, en una
    instalación de un solo comercio) y sumarle verificación de email o captcha.
    Ninguna de las dos se hizo: requieren decisión y, la segunda, un servicio

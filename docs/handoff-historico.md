@@ -7024,3 +7024,72 @@ Las dos cuestiones de arriba, con el equipo. En diseño quedan:
   diario) y alarga mucho la pantalla;
 - las fechas se muestran en ISO (`2026-10-14`) en toda la app;
 - las fichas repiten el título arriba y en el primer panel.
+
+## 64. Auditoría general — Fase 7, primera parte (`schema.sql` con la forma final), 16 de octubre de 2026
+
+Pedido del usuario: "seguir" → la Fase 7 de §57, empezando por la parte que no reescribe
+tablas. La pasada de rebuilds (`organizacion_id NOT NULL`, SKU por empresa) queda propuesta y
+espera el visto bueno del usuario.
+
+**`schema.sql` con la forma final de cada tabla.** Hallazgo 2 de §60. Se sumaron al final
+de cada `CREATE TABLE` las 11 columnas que hasta acá solo sumaba un `ALTER` de `db/index.js`,
+en el mismo orden en que quedaban:
+- `clientes.lista_precio_id` y `clientes.condicion_pago`;
+- `proveedores.condicion_pago`;
+- `facturas.venta_id` y `facturas.devolucion_id`;
+- `ventas.deposito_id` y `ventas.lista_precio_id`;
+- `presupuestos.lista_precio_id`;
+- `deposito_id` en `compras`, `devoluciones` y `devoluciones_proveedor`.
+
+(§60 hablaba de 13 columnas porque contaba también las FK.) Los `ALTER` siguen en
+`db/index.js` para las bases existentes. Ningún guard de rebuild mira estas columnas: los de
+`compras` y `movimientos_stock` miran el `CHECK`.
+
+**Lo que queda en `db/index.js` a propósito:** 6 `CREATE INDEX` (`idx_facturas_venta_id`,
+`idx_facturas_devolucion_id`, `idx_facturas_numeracion`, `idx_presupuestos_venta_id`,
+`idx_movimientos_stock_producto_deposito`, `idx_auditoria_org_fecha`) y 4 vistas
+(`stock_por_deposito`, `saldo_tesoreria`, `stock_variante_actual`,
+`stock_variante_por_deposito`). Casi todos referencian columnas que una base vieja recibe por
+`ALTER`. En `schema.sql`, que corre antes, esa base fallaría con "no such column", como ya
+explicaban los comentarios de `stock_por_deposito`. `idx_presupuestos_venta_id` podría
+moverse, pero no se tocó para no partir el criterio.
+
+**`verificar-migracion`.**
+- El aviso `!` pasó a ser un error. La definición de cada tabla en `schema.sql` (columnas,
+  FK, `CHECK` y los `UNIQUE`/PK automáticos) tiene que ser igual a la de la base nueva
+  migrada.
+- Los `CREATE INDEX` y las vistas quedan afuera de ese control y los sigue cubriendo el
+  control 4.
+- Cada índice guarda ahora su `origen` (`c`, `u` o `pk`) para poder separarlos.
+
+**CI.** `.github/workflows/ci.yml` suma `npm run verificar-migracion` después de `npm test`.
+Sin `nexo.db` ni backups corre solo el caso de base nueva: probado en una copia mínima del
+repo en el scratchpad, sin bases, con "1 de 1 casos OK".
+
+**Verificación.**
+- `verificar-migracion`: 24 de 24 OK, sin avisos. md5 de la base real sin cambios
+  (`b10b3a94…`; ya no es `8dc00857…` porque cambió con el uso, y el handoff dejó de tomarlo
+  como referencia fija).
+- Controles negativos, todos revertidos con `cmp` contra la copia:
+  - sin `clientes.lista_precio_id` en `schema.sql`: "✘ nueva … tabla clientes: difieren
+    columnas, fks";
+  - sin `'deposito'` en el `CHECK` de `entidad` de `auditoria` (lo agrega un rebuild): "✘
+    nueva … tabla auditoria: difieren checks";
+  - un `CHECK` cambiado sin rebuild (`'anulada'` fuera de `estado`): la base nueva pasa,
+    porque coincide con `schema.sql`, y lo marca el control 4 en la real y los backups. En el
+    CI ese caso no se ve: hace falta una base existente.
+- Base nueva con el `schema.sql` de `HEAD` contra la base nueva con el de ahora: iguales los
+  60 objetos, columna por columna y en el mismo orden.
+- `npm run regresion`: 112 comparaciones, 0 distintas. `npm run lint` (37 archivos) y
+  `npm test` (46 de 46) verdes.
+
+**Correcciones al handoff.** Las tablas con `organizacion_id` nullable son 14 y no 15:
+`auditoria` queda nullable a propósito (hist. §46). Sumada al handoff la regla de "una
+columna nueva va en `schema.sql` y como `ALTER`".
+
+### Qué sigue
+
+Fase 7, segunda parte, con el visto bueno del usuario: una pasada de rebuilds para
+`organizacion_id NOT NULL` en las 14 tablas y SKU único por empresa en `productos` (y una
+decisión sobre `producto_variantes`, que no tiene columna de empresa). Después, F6 de la
+Etapa B.
