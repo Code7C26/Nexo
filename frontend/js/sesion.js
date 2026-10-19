@@ -200,11 +200,12 @@
     const nombre = document.getElementById("registroNombre").value.trim();
     const usuario = document.getElementById("registroUsuario").value.trim();
     const password = document.getElementById("registroPassword").value;
+    const rubro = document.getElementById("registroRubro").value;
     try {
       const res = await fetchOriginal("/api/auth/registro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ empresa, usuario, nombre, password })
+        body: JSON.stringify({ empresa, usuario, nombre, password, rubro })
       });
       const datos = await res.json();
       if (!res.ok) {

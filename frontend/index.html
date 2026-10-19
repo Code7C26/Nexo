@@ -80,10 +80,10 @@
         </div>
         <div class="nav-seccion">
           <p class="nav-grupo">Ventas</p>
-          <a href="#" class="nav-item" data-view="pos">
+          <a href="#" class="nav-item" data-view="pos" data-modulo="pos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg> Punto de venta
           </a>
-          <a href="#" class="nav-item" data-view="presupuestos">
+          <a href="#" class="nav-item" data-view="presupuestos" data-modulo="presupuestos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg> Presupuestos
           </a>
           <a href="#" class="nav-item" data-view="ventas">
@@ -96,7 +96,7 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Facturas
           </a>
         </div>
-        <div class="nav-seccion nav-seccion-admin">
+        <div class="nav-seccion nav-seccion-admin" data-modulo="compras">
           <p class="nav-grupo">Compras</p>
           <a href="#" class="nav-item" data-view="compras">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-bag"></use></svg> Compras
@@ -105,7 +105,7 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package-minus"></use></svg> Dev. a proveedor
           </a>
         </div>
-        <div class="nav-seccion">
+        <div class="nav-seccion" data-modulo="stock">
           <p class="nav-grupo">Stock</p>
           <a href="#" class="nav-item" data-view="stock">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#boxes"></use></svg> Stock
@@ -1930,6 +1930,16 @@
         <label>Nombre del negocio
           <input type="text" id="registroEmpresa" autocomplete="organization" required />
         </label>
+        <label>Tipo de negocio
+          <select id="registroRubro">
+            <option value="comercio">Comercio general</option>
+            <option value="carniceria">Carnicería</option>
+            <option value="verduleria">Verdulería</option>
+            <option value="kiosco">Kiosco / almacén</option>
+            <option value="servicios">Servicios</option>
+            <option value="gimnasio">Gimnasio</option>
+          </select>
+        </label>
         <label>Tu nombre
           <input type="text" id="registroNombre" autocomplete="name" required />
         </label>
@@ -2659,6 +2669,24 @@
             <option value="">Sin categoría</option>
           </select>
         </label>
+        <div class="form-fila">
+          <label>Se vende por
+            <select name="unidad">
+              <option value="unidad">Unidad</option>
+              <option value="kg">Kilo (kg)</option>
+              <option value="g">Gramo (g)</option>
+              <option value="l">Litro (l)</option>
+              <option value="ml">Mililitro (ml)</option>
+              <option value="m">Metro (m)</option>
+            </select>
+          </label>
+          <label>Tipo
+            <select name="tipo">
+              <option value="producto">Producto (con stock)</option>
+              <option value="servicio">Servicio (sin stock)</option>
+            </select>
+          </label>
+        </div>
         <label>Precio de venta (lista predeterminada)
           <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
         </label>
@@ -2674,12 +2702,14 @@
         <label>Margen objetivo (%)
           <input type="number" name="margen_objetivo" step="0.01" min="0" max="99.99" placeholder="Sin objetivo" />
         </label>
-        <label>Stock mínimo
-          <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
-        </label>
-        <label>Stock máximo
-          <input type="number" name="stock_maximo" step="0.01" min="0" placeholder="Sin tope" />
-        </label>
+        <div class="form-fila" id="productoStockCampos">
+          <label>Stock mínimo
+            <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
+          </label>
+          <label>Stock máximo
+            <input type="number" name="stock_maximo" step="0.01" min="0" placeholder="Sin tope" />
+          </label>
+        </div>
         <label class="form-check">
           <input type="checkbox" name="activo" checked /> Activo
         </label>
@@ -2979,6 +3009,24 @@
         <label>Nombre del negocio *
           <input type="text" name="nombre" required maxlength="120" />
         </label>
+
+        <label>Tipo de negocio
+          <select name="rubro" id="negocioRubro">
+            <option value="comercio">Comercio general</option>
+            <option value="carniceria">Carnicería</option>
+            <option value="verduleria">Verdulería</option>
+            <option value="kiosco">Kiosco / almacén</option>
+            <option value="servicios">Servicios</option>
+            <option value="gimnasio">Gimnasio</option>
+          </select>
+        </label>
+        <fieldset class="form-modulos" id="negocioModulos">
+          <legend>Secciones que se ven en el menú</legend>
+          <label class="form-check"><input type="checkbox" name="modulo" value="pos" /> Punto de venta</label>
+          <label class="form-check"><input type="checkbox" name="modulo" value="presupuestos" /> Presupuestos</label>
+          <label class="form-check"><input type="checkbox" name="modulo" value="compras" /> Compras</label>
+          <label class="form-check"><input type="checkbox" name="modulo" value="stock" /> Stock</label>
+        </fieldset>
         <label>CUIT
           <input type="text" name="documento" maxlength="20" placeholder="30-12345678-9" />
         </label>
@@ -3131,6 +3179,30 @@
         <p class="form-note" id="posExitoNota" hidden></p>
         <button type="button" class="btn btn-primary btn-full" id="btnPosNuevaVenta">Nueva venta</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Punto de venta: cuánto de un producto por peso, volumen o largo
+       (dominios/pos.js). Se carga la cantidad o el importe, y se calcula la
+       otra. -->
+  <div class="modal" id="modalPosCantidad" role="dialog" aria-modal="true" aria-labelledby="modalPosCantidadTitulo" hidden>
+    <div class="modal-card pos-modal">
+      <div class="modal-head">
+        <h3 id="modalPosCantidadTitulo">Cantidad</h3>
+        <button class="modal-close" id="modalPosCantidadClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPosCantidad" class="form">
+        <p class="form-note" id="posCantidadPrecio"></p>
+        <div class="form-fila">
+          <label><span id="posCantidadEtiqueta">Cantidad</span>
+            <input type="number" name="cantidad" id="posCantidadValor" step="any" min="0" inputmode="decimal" required />
+          </label>
+          <label>Importe
+            <input type="number" name="importe" id="posCantidadImporte" step="0.01" min="0" inputmode="decimal" />
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Agregar</button>
+      </form>
     </div>
   </div>
 

@@ -5,7 +5,22 @@
  */
 
 import { esAdmin } from "./formato.js";
+import { moduloActivo } from "./negocio.js";
 import { entrarEnVista } from "./registro.js";
+
+// Vistas que pertenecen a un módulo opcional del tipo de negocio (CLAUDE.md
+// §29, PERFILES_RUBRO en server.js): con el módulo apagado no se entra.
+const MODULO_DE_VISTA = {
+  pos: "pos",
+  presupuestos: "presupuestos",
+  "presupuesto-detalle": "presupuestos",
+  compras: "compras",
+  "compra-detalle": "compras",
+  "devoluciones-proveedor": "compras",
+  "devolucion-proveedor-detalle": "compras",
+  stock: "stock",
+  "reportes-stock": "stock"
+};
 
 // Un título y un dominio por vista, para que la topbar diga siempre
 // dónde está el usuario (antes su <h1> era la fecha de hoy en las 14
@@ -86,6 +101,9 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
   // "ventas" es donde arranca un empleado al loguearse (ver el boot, más
   // abajo), así que es el destino natural también acá.
   if (VISTAS_SOLO_ADMIN.has(viewId) && !esAdmin()) {
+    viewId = "ventas";
+  }
+  if (MODULO_DE_VISTA[viewId] && !moduloActivo(MODULO_DE_VISTA[viewId])) {
     viewId = "ventas";
   }
 

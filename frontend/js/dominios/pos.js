@@ -6,7 +6,7 @@
  * venta común con sus cobros, colgada del turno abierto de la caja.
  */
 
-import { camposFicha, esc, fechaHoraAR, money, numero } from "../core/formato.js";
+import { camposFicha, cantidad, esFraccionable, esc, fechaHoraAR, money, numero } from "../core/formato.js";
 import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -41,6 +41,20 @@ const modalPosCierre = document.getElementById("modalPosCierre");
 const modalPosCamara = document.getElementById("modalPosCamara");
 
 const redondear = (n) => Math.round(n * 100) / 100;
+const redondearCantidad = (n) => Math.round(n * 1000) / 1000;
+// Un servicio no tiene tope de stock: el catálogo lo manda con stock null.
+const tope = (item) => item.stock ?? Infinity;
+const hayStock = (item) => tope(item) > 0;
+// Lo que no se vende por unidad (kg, litro, metro, gramo) pide cuánto: el
+// peso o el importe.
+const pideCantidad = (item) => Boolean(item.unidad) && item.unidad !== "unidad";
+// Cuánto suma o resta el − y el + de un renglón.
+const paso = (item) => (esFraccionable(item.unidad) ? 0.1 : item.unidad === "g" || item.unidad === "ml" ? 100 : 1);
+const porUnidad = (item) => (pideCantidad(item) ? `/ ${item.unidad}` : "c/u");
+const sinStock = (item) =>
+  item.stock > 0
+    ? `No hay más stock de "${item.nombre}" (disponible: ${cantidad(item.stock, item.unidad)}).`
+    : `No hay stock de "${item.nombre}".`;
 const claveDe = (item) => `${item.producto_id}:${item.variante_id ?? ""}`;
 const normalizar = (s) =>
   String(s ?? "")
@@ -276,7 +290,7 @@ function renderCatalogo() {
   const consulta = posBuscar.value.trim();
   // Lo que se puede vender primero; el orden alfabético del backend se
   // mantiene dentro de cada grupo (sort es estable).
-  const lista = filtrar(consulta).sort((a, b) => (b.stock > 0) - (a.stock > 0));
+  const lista = filtrar(consulta).sort((a, b) => hayStock(b) - hayStock(a));
   const mas = document.getElementById("posItemsMas");
   mas.hidden = lista.length <= MAX_RESULTADOS;
   mas.textContent = `Y ${numero(lista.length - MAX_RESULTADOS)} más: refiná la búsqueda.`;
@@ -293,14 +307,15 @@ function renderCatalogo() {
     .slice(0, MAX_RESULTADOS)
     .map((i) => {
       const enCarrito = cantidadEnCarrito(i.clave);
-      const disponible = i.stock - enCarrito;
+      const stock =
+        i.stock === null ? "Servicio" : i.stock > 0 ? `${cantidad(redondearCantidad(i.stock - enCarrito), i.unidad)} disp.` : "Sin stock";
       return `
-        <button type="button" class="pos-item" data-clave="${esc(i.clave)}" ${i.stock > 0 ? "" : "disabled"}>
+        <button type="button" class="pos-item" data-clave="${esc(i.clave)}" ${hayStock(i) ? "" : "disabled"}>
           <span class="pos-item-nombre">${esc(i.nombre)}</span>
           <span class="pos-item-meta">${esc([i.sku, i.categoria].filter(Boolean).join(" · "))}</span>
           <span class="pos-item-pie">
-            <span class="pos-item-precio mono">${money(i.precio)}</span>
-            <span class="pos-item-stock">${i.stock > 0 ? `${numero(disponible)} disp.` : "Sin stock"}</span>
+            <span class="pos-item-precio mono">${money(i.precio)}${pideCantidad(i) ? `<small> / ${esc(i.unidad)}</small>` : ""}</span>
+            <span class="pos-item-stock">${esc(stock)}</span>
           </span>
           ${enCarrito ? `<span class="pos-item-en-venta mono" aria-label="En la venta">${numero(enCarrito)}</span>` : ""}
         </button>`;
@@ -331,7 +346,7 @@ posBuscar.addEventListener("keydown", (e) => {
 function agregarPorCodigo(codigo) {
   const buscado = codigo.toLowerCase();
   const exacto = catalogo.find((i) => i.sku && i.sku.trim().toLowerCase() === buscado);
-  const candidatos = exacto ? [exacto] : filtrar(codigo).filter((i) => i.stock > 0);
+  const candidatos = exacto ? [exacto] : filtrar(codigo).filter(hayStock);
   if (candidatos.length === 1) {
     posBuscar.value = "";
     agregar(candidatos[0].clave);
@@ -345,40 +360,91 @@ function agregarPorCodigo(codigo) {
   renderCatalogo();
 }
 
+// Tocar un producto o leer su código: por unidad suma uno; por peso, volumen
+// o largo pregunta cuánto.
 function agregar(clave) {
   const item = porClave.get(clave);
   if (!item) return;
+  if (pideCantidad(item)) abrirCantidad(item);
+  else sumar(clave, 1);
+}
+
+function sumar(clave, delta) {
+  const item = porClave.get(clave);
   const renglon = carrito.find((r) => r.clave === clave);
-  const cantidad = (renglon?.cantidad ?? 0) + 1;
-  if (cantidad > item.stock) {
-    avisar(
-      item.stock > 0
-        ? `No hay más stock de "${item.nombre}" (disponible: ${numero(item.stock)}).`
-        : `No hay stock de "${item.nombre}".`,
-      "atencion"
-    );
+  const nueva = redondearCantidad((renglon?.cantidad ?? 0) + delta);
+  if (nueva > tope(item)) {
+    avisar(sinStock(item), "atencion");
     return;
   }
-  if (renglon) renglon.cantidad = cantidad;
-  else carrito.push({ clave, cantidad });
+  if (renglon) renglon.cantidad = nueva;
+  else carrito.push({ clave, cantidad: nueva });
   ultimaAgregada = clave;
   cambioElCarrito();
 }
 
-function fijarCantidad(clave, cantidad) {
+function fijarCantidad(clave, valor) {
   const item = porClave.get(clave);
   const renglon = carrito.find((r) => r.clave === clave);
   if (!item || !renglon) return;
-  if (!(cantidad > 0)) {
+  const nueva = redondearCantidad(valor);
+  if (!(nueva > 0)) {
     carrito = carrito.filter((r) => r.clave !== clave);
-  } else if (cantidad > item.stock) {
-    avisar(`No hay más stock de "${item.nombre}" (disponible: ${numero(item.stock)}).`, "atencion");
+  } else if (nueva > tope(item)) {
+    avisar(sinStock(item), "atencion");
     renglon.cantidad = item.stock;
   } else {
-    renglon.cantidad = cantidad;
+    renglon.cantidad = nueva;
   }
   cambioElCarrito();
 }
+
+/* --- Cuánto de un producto por peso, volumen o largo --- */
+
+const modalPosCantidad = document.getElementById("modalPosCantidad");
+const posCantidadValor = document.getElementById("posCantidadValor");
+const posCantidadImporte = document.getElementById("posCantidadImporte");
+let itemCantidad = null;
+
+function abrirCantidad(item) {
+  itemCantidad = item;
+  document.getElementById("modalPosCantidadTitulo").textContent = item.nombre;
+  document.getElementById("posCantidadPrecio").textContent = `${money(item.precio)} ${porUnidad(item)}`;
+  document.getElementById("posCantidadEtiqueta").textContent = `Cantidad (${item.unidad})`;
+  posCantidadValor.step = esFraccionable(item.unidad) ? "0.001" : "1";
+  document.getElementById("formPosCantidad").reset();
+  modalPosCantidad.hidden = false;
+}
+
+// Se carga uno y se calcula el otro: "$5.000 de asado" o "0,750 kg".
+posCantidadValor.addEventListener("input", () => {
+  const valor = Number(posCantidadValor.value);
+  posCantidadImporte.value = valor > 0 ? String(redondear(valor * itemCantidad.precio)) : "";
+});
+posCantidadImporte.addEventListener("input", () => {
+  const importe = Number(posCantidadImporte.value);
+  if (!(importe > 0) || !(itemCantidad.precio > 0)) return;
+  const valor = importe / itemCantidad.precio;
+  posCantidadValor.value = String(esFraccionable(itemCantidad.unidad) ? redondearCantidad(valor) : Math.round(valor));
+});
+
+document.getElementById("formPosCantidad").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const valor = Number(posCantidadValor.value);
+  if (!(valor > 0)) {
+    avisar("Cargá cuánto llevás.", "atencion");
+    return;
+  }
+  modalPosCantidad.hidden = true;
+  sumar(itemCantidad.clave, valor);
+  enfocarBusqueda();
+});
+document.getElementById("modalPosCantidadClose").addEventListener("click", () => {
+  modalPosCantidad.hidden = true;
+});
+modalPosCantidad.addEventListener("click", (e) => {
+  if (e.target === modalPosCantidad) modalPosCantidad.hidden = true;
+});
 
 function cambioElCarrito() {
   guardarCarrito();
@@ -405,8 +471,8 @@ function leerCarrito() {
     guardado = [];
   }
   carrito = (Array.isArray(guardado) ? guardado : [])
-    .filter((r) => porClave.get(r.clave)?.stock > 0 && r.cantidad > 0)
-    .map((r) => ({ clave: r.clave, cantidad: Math.min(r.cantidad, porClave.get(r.clave).stock) }));
+    .filter((r) => porClave.has(r.clave) && hayStock(porClave.get(r.clave)) && r.cantidad > 0)
+    .map((r) => ({ clave: r.clave, cantidad: Math.min(r.cantidad, tope(porClave.get(r.clave))) }));
 }
 
 const totalCarrito = () =>
@@ -414,7 +480,6 @@ const totalCarrito = () =>
 
 function renderTicket() {
   const total = totalCarrito();
-  const unidades = carrito.reduce((acc, r) => acc + r.cantidad, 0);
 
   if (carrito.length === 0) {
     posRenglones.innerHTML = `<li class="pos-ticket-vacio">Buscá un producto o pasá el lector para empezar.</li>`;
@@ -427,12 +492,12 @@ function renderTicket() {
           <li class="pos-renglon${nuevo}" data-clave="${esc(r.clave)}">
             <div class="pos-renglon-info">
               <span class="pos-renglon-nombre">${esc(item.nombre)}</span>
-              <span class="pos-renglon-precio mono">${money(item.precio)} c/u</span>
+              <span class="pos-renglon-precio mono">${money(item.precio)} ${esc(porUnidad(item))}</span>
             </div>
             <div class="pos-cantidad">
-              <button type="button" class="pos-cantidad-btn" data-accion="menos" aria-label="Uno menos">${icono("minus")}</button>
+              <button type="button" class="pos-cantidad-btn" data-accion="menos" aria-label="Menos">${icono("minus")}</button>
               <input type="number" class="pos-cantidad-input" value="${Number(r.cantidad)}" min="0" step="any" inputmode="decimal" aria-label="Cantidad de ${esc(item.nombre)}" />
-              <button type="button" class="pos-cantidad-btn" data-accion="mas" aria-label="Uno más">${icono("plus")}</button>
+              <button type="button" class="pos-cantidad-btn" data-accion="mas" aria-label="Más">${icono("plus")}</button>
             </div>
             <span class="pos-renglon-subtotal mono">${money(r.cantidad * item.precio)}</span>
             <button type="button" class="btn-icon pos-renglon-quitar" data-accion="quitar" aria-label="Quitar ${esc(item.nombre)}">${icono("trash-2")}</button>
@@ -444,8 +509,9 @@ function renderTicket() {
 
   document.getElementById("posTotal").textContent = money(total);
   document.getElementById("posBarraTotal").textContent = money(total);
+  // Se cuentan renglones, no unidades: 0,750 kg de asado es un producto.
   document.getElementById("posBarraCantidad").textContent =
-    unidades === 0 ? "Sin productos" : `${numero(unidades)} ${unidades === 1 ? "unidad" : "unidades"}`;
+    carrito.length === 0 ? "Sin productos" : `${numero(carrito.length)} ${carrito.length === 1 ? "producto" : "productos"}`;
   document.getElementById("btnPosVaciar").hidden = carrito.length === 0;
   document.getElementById("btnPosCobrar").disabled = carrito.length === 0;
   document.getElementById("btnPosBarraCobrar").disabled = carrito.length === 0;
@@ -456,8 +522,9 @@ posRenglones.addEventListener("click", (e) => {
   if (!boton) return;
   const clave = boton.closest(".pos-renglon").dataset.clave;
   const actual = cantidadEnCarrito(clave);
-  if (boton.dataset.accion === "mas") agregar(clave);
-  if (boton.dataset.accion === "menos") fijarCantidad(clave, actual - 1);
+  const item = porClave.get(clave);
+  if (boton.dataset.accion === "mas") sumar(clave, paso(item));
+  if (boton.dataset.accion === "menos") fijarCantidad(clave, actual - paso(item));
   if (boton.dataset.accion === "quitar") fijarCantidad(clave, 0);
 });
 

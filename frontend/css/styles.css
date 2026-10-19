@@ -1538,6 +1538,43 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
   flex: 1;
 }
 
+/* Dos campos lado a lado (unidad y tipo del producto, cantidad e importe). */
+.form-fila {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.form-fila[hidden] { display: none; }
+
+/* Casillas de los módulos del tipo de negocio, en Configuración. */
+.form-modulos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.form-modulos legend {
+  padding: 0 var(--sp-1);
+  font-size: var(--txt-xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+/* Módulos del tipo de negocio (CLAUDE.md §29): una sección opcional del menú
+   se ve solo si está en <html data-modulos>, que pone core/negocio.js. Hasta
+   que llega el negocio no se ve ninguna: así aparecen, pero no desaparecen. */
+:root:not([data-modulos~="pos"]) [data-modulo="pos"],
+:root:not([data-modulos~="presupuestos"]) [data-modulo="presupuestos"],
+:root:not([data-modulos~="compras"]) [data-modulo="compras"],
+:root:not([data-modulos~="stock"]) [data-modulo="stock"] {
+  display: none;
+}
+
 /* Sección "Atributos" del modal de variantes: una tarjeta por atributo,
    con sus valores como chips y un alta inline de valor nuevo. */
 .atributos-lista {
@@ -2554,9 +2591,10 @@ input.precio-sin-configurar::placeholder {
 
 .pos-item-pie {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--sp-2);
+  gap: 0 var(--sp-2);
   margin-top: auto;
 }
 
@@ -2565,6 +2603,15 @@ input.precio-sin-configurar::placeholder {
   font-size: var(--txt-lg);
   font-weight: 700;
   letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* "/ kg" al lado del precio, chico: es el precio de qué. */
+.pos-item-precio small {
+  font-size: var(--txt-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-muted);
 }
 
 .pos-item-stock {
@@ -3556,7 +3603,15 @@ input.precio-sin-configurar::placeholder {
   min-height: 46px;
 }
 
-.sesion-card .form input:hover { border-color: #8C8C8C; }
+.sesion-card .form select {
+  background: #FFFFFF;
+  border-color: #CBCBCB;
+  color: #121212;
+  min-height: 46px;
+}
+
+.sesion-card .form input:hover,
+.sesion-card .form select:hover { border-color: #8C8C8C; }
 
 .sesion-card .form input:focus {
   border-color: #2D4BE0;

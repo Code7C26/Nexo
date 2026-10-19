@@ -23,18 +23,32 @@ import { registrar } from "../core/registro.js";
 const modalConfiguracion = document.getElementById("modalConfiguracion");
 const formNegocio = document.getElementById("formNegocio");
 
+const casillasModulos = () => [...formNegocio.querySelectorAll('input[name="modulo"]')];
+
+function marcarModulos(modulos = []) {
+  for (const casilla of casillasModulos()) casilla.checked = modulos.includes(casilla.value);
+}
+
 function pintarFormNegocio() {
   for (const campo of ["nombre", "documento", "condicion_iva", "direccion", "telefono", "email", "pie_comprobante"]) {
     if (formNegocio[campo]) formNegocio[campo].value = negocio[campo] ?? "";
   }
+  formNegocio.rubro.value = negocio.rubro ?? "comercio";
+  marcarModulos(negocio.modulos);
   // Gating por rol: es UI, no seguridad — el servidor responde 403 igual si un
   // empleado llama al endpoint directo (mismo criterio que la vista Usuarios).
   const esAdmin = document.documentElement.dataset.rol === "admin";
   document.getElementById("negocioSoloLectura").hidden = esAdmin;
-  for (const control of formNegocio.querySelectorAll("input, textarea, button")) {
+  for (const control of formNegocio.querySelectorAll("input, textarea, select, button")) {
     control.disabled = !esAdmin;
   }
 }
+
+// Elegir otro tipo de negocio propone sus módulos; las casillas se pueden
+// cambiar igual antes de guardar.
+formNegocio.rubro.addEventListener("change", () => {
+  marcarModulos(negocio.perfiles?.[formNegocio.rubro.value]?.modulos);
+});
 
 async function cargarNegocio() {
   fijarNegocio(await api("/api/negocio", { error: "No se pudieron cargar los datos del negocio." }));
@@ -44,6 +58,10 @@ async function cargarNegocio() {
 formNegocio.addEventListener("submit", async (e) => {
   e.preventDefault();
   const datos = Object.fromEntries(new FormData(formNegocio).entries());
+  delete datos.modulo;
+  datos.modulos = casillasModulos()
+    .filter((c) => c.checked)
+    .map((c) => c.value);
   if (!datos.nombre?.trim()) {
     avisar("El negocio necesita un nombre.", "atencion");
     return;

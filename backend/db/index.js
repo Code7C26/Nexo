@@ -1637,6 +1637,24 @@ if (!ventasColumnasTurno.some((col) => col.name === 'turno_caja_id')) {
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_ventas_turno_caja ON ventas(turno_caja_id) WHERE turno_caja_id IS NOT NULL');
 
+// Unidad y tipo de producto, tipo de negocio y módulos (CLAUDE.md §4, §29; ver
+// schema.sql). Aditivos y con default: los productos que ya existen quedan
+// "por unidad" y con stock, y las empresas, como comercio general con los
+// módulos de su preset. Después de los rebuilds de arriba, como todo ALTER.
+const productosColumnasUnidad = db.prepare('PRAGMA table_info(productos)').all();
+if (!productosColumnasUnidad.some((col) => col.name === 'unidad')) {
+  db.exec("ALTER TABLE productos ADD COLUMN unidad TEXT NOT NULL DEFAULT 'unidad'");
+}
+if (!productosColumnasUnidad.some((col) => col.name === 'tipo')) {
+  db.exec("ALTER TABLE productos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'producto'");
+}
+const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
+for (const columna of ['rubro', 'modulos']) {
+  if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {
+    db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna} TEXT`);
+  }
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

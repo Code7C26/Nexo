@@ -19,6 +19,19 @@ export const money = (n) =>
 
 export const numero = (n) => (n == null ? "—" : n.toLocaleString("es-AR"));
 
+// Unidades en que se vende un producto (UNIDADES en server.js). Por kg, litro
+// o metro la cantidad lleva decimales; por gramo o mililitro, no.
+export const UNIDADES = { unidad: "Unidad", kg: "Kilo (kg)", g: "Gramo (g)", l: "Litro (l)", ml: "Mililitro (ml)", m: "Metro (m)" };
+export const esFraccionable = (unidad) => unidad === "kg" || unidad === "l" || unidad === "m";
+
+// Una cantidad con su unidad: "3", "1,25 kg", "500 g". Por unidad va el número
+// solo, como hasta ahora.
+export function cantidad(n, unidad) {
+  if (n == null) return "—";
+  const texto = n.toLocaleString("es-AR", { maximumFractionDigits: 3 });
+  return !unidad || unidad === "unidad" ? texto : `${texto} ${unidad}`;
+}
+
 // sesion.js escribe data-rol en <html> antes de inyectar este archivo (ver
 // escribirDatosUsuario en sesion.js), así que ya está disponible en la
 // primera línea que corre acá. Es la misma fuente que ya usa styles.css

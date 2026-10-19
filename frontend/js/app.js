@@ -13,15 +13,18 @@ import {
   badge,
   botonEditarFila,
   camposFicha,
+  cantidad,
   columnasVisibles,
   esAdmin,
+  esFraccionable,
   esc,
   fechaAR,
   hoyISO,
   html,
   money,
   moneyCorto,
-  numero
+  numero,
+  UNIDADES
 } from "./core/formato.js";
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
@@ -32,6 +35,7 @@ import { icono } from "./core/iconos.js";
 import { mostrarVista, vistaDesdeHash } from "./core/router.js";
 import { alEntrarEnVista, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
+import { negocio } from "./core/negocio.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -1150,6 +1154,18 @@ async function variantesDeProducto(productoId) {
   return variantesPorProductoCache.get(productoId);
 }
 
+// La cantidad de un renglón sigue la unidad del producto: por unidad, enteros;
+// por kg, litro o metro, con decimales (CLAUDE.md §4).
+function ajustarCantidadSegunUnidad(input, producto) {
+  const fraccion = esFraccionable(producto?.unidad);
+  input.step = fraccion ? "0.001" : "1";
+  input.min = fraccion ? "0.001" : "1";
+  input.placeholder = producto && producto.unidad !== "unidad" ? `Cant. (${producto.unidad})` : "Cant.";
+}
+
+// Un servicio se vende sin tope de stock.
+const topeDeStock = (producto) => (producto.tipo === "servicio" ? null : producto.stock);
+
 function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   const fila = document.createElement("div");
   fila.className = "item-row";
@@ -1181,6 +1197,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     // vender un producto que no existe.
     const buscado = productoInput.value.trim().toLowerCase();
     const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
+    ajustarCantidadSegunUnidad(cantidad, producto);
     if (producto) {
       productoIdInput.value = producto.id;
       // Si el producto todavía no tiene precio configurado en la lista
@@ -1207,7 +1224,8 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
         variantesFila = [];
         varianteSelect.hidden = true;
         varianteSelect.value = "";
-        if (limitarStock) cantidad.max = producto.stock;
+        if (limitarStock && topeDeStock(producto) !== null) cantidad.max = producto.stock;
+        else cantidad.removeAttribute("max");
       }
     } else {
       productoIdInput.value = "";
@@ -1286,6 +1304,7 @@ function agregarFilaItemCompra(contenedor, listaProductos) {
     const buscado = productoInput.value.trim().toLowerCase();
     const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
     productoIdInput.value = producto?.id ?? "";
+    ajustarCantidadSegunUnidad(fila.querySelector(".item-cantidad"), producto);
     if (producto?.tiene_variantes) {
       const variantes = await variantesDeProducto(producto.id);
       varianteSelect.innerHTML =
@@ -1535,7 +1554,7 @@ function renderProductos(lista) {
       <td data-label="Precio" class="align-right mono">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Objetivo" class="align-right col-admin">${badgeMargenObjetivo(p, true)}</td>
-      <td data-label="Stock" class="align-right mono">${numero(p.stock)}</td>
+      <td data-label="Stock" class="align-right mono">${p.tipo === "servicio" ? "Servicio" : esc(cantidad(p.stock, p.unidad))}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
       }</span></td>
@@ -1658,9 +1677,14 @@ async function abrirFichaProducto(id) {
           ["Vs. objetivo", producto.margen_objetivo == null ? null : html(badgeMargenObjetivo(producto))]
         ]
       : []),
-    ["Stock mínimo", numero(producto.stock_minimo)],
-    ["Stock máximo", producto.stock_maximo === null ? null : numero(producto.stock_maximo)],
-    ["Estado de stock", badge(STOCK_CLASE[producto.estado_stock], STOCK_LABEL[producto.estado_stock])],
+    ["Se vende por", UNIDADES[producto.unidad] ?? producto.unidad],
+    ...(producto.tipo === "servicio"
+      ? [["Tipo", "Servicio (sin stock)"]]
+      : [
+          ["Stock mínimo", cantidad(producto.stock_minimo, producto.unidad)],
+          ["Stock máximo", producto.stock_maximo === null ? null : cantidad(producto.stock_maximo, producto.unidad)],
+          ["Estado de stock", badge(STOCK_CLASE[producto.estado_stock], STOCK_LABEL[producto.estado_stock])]
+        ]),
     ["Activo", producto.activo ? "Sí" : "No"]
   ];
   document.getElementById("fichaProductoDatos").innerHTML = camposFicha(campos);
@@ -2069,9 +2093,21 @@ function abrirModalProducto(producto = null) {
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
   form.activo.checked = producto ? !!producto.activo : true;
+  // Un producto nuevo nace con la unidad y el tipo del tipo de negocio (una
+  // carnicería vende por kg, un gimnasio vende servicios).
+  form.unidad.value = producto?.unidad ?? negocio.unidad_defecto ?? "unidad";
+  form.tipo.value = producto?.tipo ?? negocio.tipo_defecto ?? "producto";
+  mostrarCamposStockProducto();
   poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
 }
+
+// Un servicio no maneja stock: no tiene mínimo ni máximo que cargar.
+function mostrarCamposStockProducto() {
+  document.getElementById("productoStockCampos").hidden =
+    document.getElementById("formProducto").tipo.value === "servicio";
+}
+document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposStockProducto);
 
 document.getElementById("btnNuevoProducto").addEventListener("click", () => abrirModalProducto());
 document.getElementById("btnEditarProducto").addEventListener("click", () => {
@@ -2096,7 +2132,9 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     margen_objetivo: form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value),
     stock_minimo: form.stock_minimo.value,
     stock_maximo: form.stock_maximo.value,
-    activo: form.activo.checked
+    activo: form.activo.checked,
+    unidad: form.unidad.value,
+    tipo: form.tipo.value
   };
   // precios por lista: solo en edición (ver poblarPreciosPorLista). Un
   // input vacío significa "sin precio propio en esa lista", no se manda —
@@ -2687,8 +2725,8 @@ function renderStock(lista) {
       <td data-label="Producto">${esc(p.nombre)}</td>
       <td data-label="Depósito">${esc(p.deposito ?? "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
-      <td data-label="Stock en depósito" class="align-right mono">${numero(p.stock)}</td>
-      <td data-label="Stock total" class="align-right mono">${numero(p.stock_total)}</td>
+      <td data-label="Stock en depósito" class="align-right mono">${esc(cantidad(p.stock, p.unidad))}</td>
+      <td data-label="Stock total" class="align-right mono">${esc(cantidad(p.stock_total, p.unidad))}</td>
       <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
         STOCK_LABEL[p.estado_stock]
       }</span></td>
@@ -3819,7 +3857,7 @@ async function abrirModalVenta(venta = null) {
         // venta): si no, al editar sin cambiar nada el tope quedaría más
         // bajo que la cantidad ya cargada.
         const productoCache = productos.find((p) => p.id === item.producto_id);
-        if (productoCache) {
+        if (productoCache && topeDeStock(productoCache) !== null) {
           fila.querySelector(".item-cantidad").max = productoCache.stock + item.cantidad;
         }
       }

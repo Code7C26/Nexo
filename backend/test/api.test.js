@@ -362,6 +362,54 @@ test('?limit negativo en un listado con tope no devuelve todo sin límite', asyn
 });
 
 // Va último a propósito: bloquea la IP local durante la ventana del límite.
+test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)', async () => {
+  // Por kg: se vende con decimales y el stock baja en kg.
+  const vacio = await adminA.post('/api/productos', { nombre: 'Vacío', precio_venta: 8000, unidad: 'kg' });
+  assert.equal(vacio.status, 201, vacio.texto);
+  assert.equal((await adminA.post('/api/productos', { nombre: 'Huevos', unidad: 'docena' })).status, 400);
+  await adminA.post('/api/stock/ajuste', { producto_id: vacio.json.id, cantidad: 10 });
+  const porKilo = await empleadoA.post('/api/ventas', venta([{ producto_id: vacio.json.id, cantidad: 1.25, precio_unitario: 8000 }]));
+  assert.equal(porKilo.status, 201, porKilo.texto);
+  assert.equal(await stockDe(adminA, vacio.json.id), 8.75);
+
+  // Un servicio se vende sin stock y no lo mueve; no se compra ni se ajusta.
+  const clase = await adminA.post('/api/productos', { nombre: 'Clase suelta', precio_venta: 5000, tipo: 'servicio' });
+  assert.equal(clase.status, 201, clase.texto);
+  const deServicio = await empleadoA.post('/api/ventas', venta([{ producto_id: clase.json.id, cantidad: 2, precio_unitario: 5000 }]));
+  assert.equal(deServicio.status, 201, deServicio.texto);
+  assert.equal(await stockDe(adminA, clase.json.id), 0);
+  assert.equal((await adminA.post(`/api/ventas/${deServicio.json.id}/anular`, {})).status, 200);
+  assert.equal(await stockDe(adminA, clase.json.id), 0, 'anular un servicio tampoco mueve stock');
+  assert.equal((await adminA.post('/api/stock/ajuste', { producto_id: clase.json.id, cantidad: 1 })).status, 400);
+  const compra = await adminA.post('/api/compras', {
+    proveedor: 'Proveedor servicios',
+    items: [{ producto: 'Clase suelta', cantidad: 1, precio_unitario: 100 }]
+  });
+  assert.equal(compra.status, 400, compra.texto);
+  // Con stock no se pasa a servicio: se perdería de vista.
+  assert.equal((await adminA.patch(`/api/productos/${vacio.json.id}`, { tipo: 'servicio' })).status, 400);
+
+  // Tipo de negocio: preset de módulos y de unidad para lo que se da de alta.
+  const negocio = (await adminA.get('/api/negocio')).json;
+  assert.equal(negocio.rubro, 'comercio');
+  assert.deepEqual(negocio.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+  const comoCarniceria = await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'carniceria' });
+  assert.equal(comoCarniceria.status, 200, comoCarniceria.texto);
+  const carniceria = (await empleadoA.get('/api/negocio')).json;
+  assert.deepEqual(carniceria.modulos, ['pos', 'compras', 'stock']);
+  assert.equal(carniceria.unidad_defecto, 'kg');
+  const asado = await adminA.post('/api/productos', { nombre: 'Asado', precio_venta: 9000 });
+  assert.equal((await adminA.get('/api/productos')).json.find((p) => p.id === asado.json.id).unidad, 'kg');
+  await adminA.put('/api/negocio', { nombre: negocio.nombre, modulos: ['pos'] });
+  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos']);
+  assert.equal((await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'astronauta' })).status, 400);
+  assert.equal((await adminA.put('/api/negocio', { nombre: negocio.nombre, modulos: ['naves'] })).status, 400);
+  assert.equal((await empleadoA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'comercio' })).status, 403);
+  // Volver a comercio sin mandar módulos vuelve a los del preset.
+  await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'comercio' });
+  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+});
+
 test('muchos logins fallidos con usuarios distintos bloquean la IP (A6)', async () => {
   const anonimo = crearCliente(servidor.url);
   let ultimo;

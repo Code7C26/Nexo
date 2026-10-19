@@ -475,8 +475,12 @@ app.post('/api/auth/registro', (req, res) => {
   const usuario = String(req.body?.usuario ?? '').trim();
   const nombre = String(req.body?.nombre ?? '').trim();
   const password = String(req.body?.password ?? '');
+  const rubro = req.body?.rubro ?? RUBRO_POR_DEFECTO;
   if (!empresa || !usuario || !nombre || !password) {
     return res.status(400).json({ error: 'Negocio, usuario, nombre y contraseña son obligatorios.' });
+  }
+  if (!PERFILES_RUBRO[rubro]) {
+    return res.status(400).json({ error: 'El tipo de negocio no es válido.' });
   }
   if (/\s/.test(usuario)) {
     return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
@@ -502,9 +506,11 @@ app.post('/api/auth/registro', (req, res) => {
     let orgId;
     if (count === 0) {
       orgId = organizacionUnica();
-      db.prepare('UPDATE organizaciones SET nombre = ? WHERE id = ?').run(empresa, orgId);
+      db.prepare('UPDATE organizaciones SET nombre = ?, rubro = ? WHERE id = ?').run(empresa, rubro, orgId);
     } else {
-      orgId = Number(db.prepare('INSERT INTO organizaciones (nombre) VALUES (?)').run(empresa).lastInsertRowid);
+      orgId = Number(
+        db.prepare('INSERT INTO organizaciones (nombre, rubro) VALUES (?, ?)').run(empresa, rubro).lastInsertRowid
+      );
       sembrarCatalogosBase(orgId);
     }
     const info = db
@@ -520,7 +526,7 @@ app.post('/api/auth/registro', (req, res) => {
       entidad_id: orgId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Empresa "${empresa}" creada`
+      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[rubro].nombre})`
     });
     registrarAuditoria({
       accion: 'crear',
@@ -1514,7 +1520,7 @@ const SELECT_PRODUCTO = `
          productos.precio_venta, productos.activo,
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
-         productos.margen_objetivo,
+         productos.margen_objetivo, productos.unidad, productos.tipo,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
            WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count,
@@ -1583,7 +1589,8 @@ function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precio
     valorizado,
     margen,
     margen_bajo_objetivo: p.margen_objetivo != null && margen != null ? margen < p.margen_objetivo : null,
-    estado_stock: estadoStock(p.stock, p.stock_minimo, p.stock_maximo),
+    // Un servicio no tiene stock que vigilar.
+    estado_stock: p.tipo === 'servicio' ? null : estadoStock(p.stock, p.stock_minimo, p.stock_maximo),
     tiene_variantes: p.variantes_count > 0
   };
 }
@@ -1620,12 +1627,26 @@ function normalizarMargenObjetivo(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
 }
 
+// Unidades en las que se vende un producto (CLAUDE.md §4, §29): las que no
+// son 'unidad' admiten cantidades con decimales (1,250 kg). Se validan acá y
+// no con un CHECK, para no reconstruir la tabla si se suma una.
+const UNIDADES = ['unidad', 'kg', 'g', 'l', 'ml', 'm'];
+// Un servicio no maneja stock: se vende sin control de stock y no genera
+// movimientos (ver esServicio).
+const TIPOS_PRODUCTO = ['producto', 'servicio'];
+
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo }, organizacionId) {
+function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo }, organizacionId) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
+  }
+  if (unidad != null && !UNIDADES.includes(unidad)) {
+    return 'La unidad de medida no es válida.';
+  }
+  if (tipo != null && !TIPOS_PRODUCTO.includes(tipo)) {
+    return 'El tipo de producto no es válido.';
   }
   const venta = normalizarPrecio(precio_venta);
   if (Number.isNaN(venta) || venta < 0) {
@@ -1662,8 +1683,10 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     return res.status(400).json({ error });
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo } = req.body;
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo } = req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
+  // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
+  const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
 
   let lastInsertRowid;
   try {
@@ -1672,8 +1695,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     // primera compra que lo incluya.
     ({ lastInsertRowid } = db
       .prepare(
-        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -1684,7 +1707,9 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         normalizarStockMaximo(stock_maximo),
         normalizarCategoriaId(categoria_id),
         normalizarMargenObjetivo(margen_objetivo),
-        req.usuario.organizacion_id
+        req.usuario.organizacion_id,
+        unidad ?? perfil.unidad_defecto,
+        tipo ?? perfil.tipo_defecto
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -1703,7 +1728,7 @@ app.post('/api/productos', soloAdmin, (req, res) => {
 // porcentaje una lista puntual (ej. "+10% en Mayorista") sobre todo el
 // catálogo filtrado es exactamente el caso de uso que el bulk existe para
 // cubrir.
-const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'margen_objetivo', 'precios'];
+const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'margen_objetivo', 'precios', 'unidad'];
 
 // `cambios.precio_venta` puede venir como número (valor fijo) o como
 // { modo: 'porcentaje', valor: N } (ajuste sobre el precio actual DE ESE
@@ -1746,7 +1771,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // id de otra organización tiene que dar 404, igual que "no existe".
   const producto = db
     .prepare(
-      'SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo FROM productos WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo FROM productos WHERE id = ? AND organizacion_id = ?'
     )
     .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
@@ -1810,8 +1835,18 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     stock_minimo: normalizarPrecio(fusionado.stock_minimo),
     stock_maximo: normalizarStockMaximo(fusionado.stock_maximo),
     categoria_id: normalizarCategoriaId(fusionado.categoria_id),
-    margen_objetivo: normalizarMargenObjetivo(fusionado.margen_objetivo)
+    margen_objetivo: normalizarMargenObjetivo(fusionado.margen_objetivo),
+    unidad: fusionado.unidad ?? 'unidad',
+    tipo: fusionado.tipo ?? 'producto'
   };
+  // Pasar a servicio deja de controlar el stock: si todavía tiene, se perdería
+  // de vista. Primero se ajusta a 0.
+  if (producto.tipo !== 'servicio' && nuevo.tipo === 'servicio') {
+    const stock = db.prepare('SELECT cantidad FROM stock_actual WHERE producto_id = ?').get(productoId)?.cantidad ?? 0;
+    if (Math.abs(stock) > 0.0005) {
+      throw new ErrorBulk(`"${producto.nombre}" tiene stock: ajustalo a 0 antes de pasarlo a servicio.`);
+    }
+  }
   // Si el pedido tocó el precio de la lista PREDETERMINADA vía `precios`,
   // ese valor también pisa precio_venta — son la misma cosa vista desde dos
   // lugares (columna suelta vs. fila de producto_precios), y no deben poder
@@ -1829,7 +1864,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
-    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo'
+    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo'
   ]);
 
   withTransaction(() => {
@@ -1838,7 +1873,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     // trazabilidad del costo real.
     db.prepare(
       `UPDATE productos
-          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?
+          SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
+              unidad = ?, tipo = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -1849,6 +1885,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.stock_maximo,
       nuevo.categoria_id,
       nuevo.margen_objetivo,
+      nuevo.unidad,
+      nuevo.tipo,
       productoId
     );
     if (preciosPorLista) {
@@ -2654,6 +2692,13 @@ app.patch('/api/proveedores/:id', (req, res) => {
 // llama ya tiene que haber decidido "el predeterminado" o uno puntual
 // antes de esto, para que la decisión quede en un solo lugar por operación
 // y no repetida acá adentro.
+// Un servicio no maneja stock (CLAUDE.md §4): no se valida ni se mueve.
+function esServicio(productoId) {
+  return db.prepare("SELECT 1 FROM productos WHERE id = ? AND tipo = 'servicio'").get(productoId) !== undefined;
+}
+
+const errorServicioSinStock = (nombre) => `"${nombre}" es un servicio: no maneja stock.`;
+
 function registrarMovimientoStock({
   producto_id,
   variante_id = null,
@@ -2670,6 +2715,9 @@ function registrarMovimientoStock({
   nota = null,
   organizacion_id
 }) {
+  // Es el único punto que escribe stock, así que cortar acá cubre venta,
+  // edición, anulación y devolución de un servicio sin tocar cada una.
+  if (esServicio(producto_id)) return { changes: 0, lastInsertRowid: null };
   return db
     .prepare(
       `INSERT INTO movimientos_stock
@@ -2705,13 +2753,13 @@ function registrarMovimientoStock({
 app.get('/api/stock', (req, res) => {
   const productos = db
     .prepare(
-      `SELECT productos.id, productos.nombre, productos.precio_costo,
+      `SELECT productos.id, productos.nombre, productos.precio_costo, productos.unidad,
               productos.stock_minimo, productos.stock_maximo,
               COALESCE(stock_actual.cantidad, 0) AS stock_total,
               sv.stock_variantes, sv.valorizado_variantes
        FROM productos
        LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id${JOIN_STOCK_VARIANTES}
-       WHERE productos.organizacion_id = ?
+       WHERE productos.organizacion_id = ? AND productos.tipo = 'producto'
        ORDER BY productos.nombre`
     )
     .all(req.usuario.organizacion_id)
@@ -2755,6 +2803,7 @@ app.get('/api/stock', (req, res) => {
       resultado.push({
         producto_id: p.id,
         nombre: p.nombre,
+        unidad: p.unidad,
         precio_costo: p.precio_costo,
         stock_minimo: p.stock_minimo,
         stock_maximo: p.stock_maximo,
@@ -2771,6 +2820,7 @@ app.get('/api/stock', (req, res) => {
       resultado.push({
         producto_id: p.id,
         nombre: p.nombre,
+        unidad: p.unidad,
         precio_costo: p.precio_costo,
         stock_minimo: p.stock_minimo,
         stock_maximo: p.stock_maximo,
@@ -2790,10 +2840,13 @@ app.post('/api/stock/ajuste', soloAdmin, (req, res) => {
   const { producto_id, deposito_id, cantidad, nota } = req.body;
 
   const producto = db
-    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .prepare('SELECT id, nombre, tipo FROM productos WHERE id = ? AND organizacion_id = ?')
     .get(producto_id, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
+  }
+  if (producto.tipo === 'servicio') {
+    return res.status(400).json({ error: errorServicioSinStock(producto.nombre) });
   }
   if (!Number(cantidad) || Number(cantidad) === 0) {
     return res.status(400).json({ error: 'La cantidad del ajuste no puede ser 0.' });
@@ -2938,10 +2991,13 @@ app.post('/api/transferencias', (req, res) => {
     return res.status(400).json({ error: 'El depósito de destino no existe o está inactivo.' });
   }
   const producto = db
-    .prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?')
+    .prepare('SELECT id, nombre, tipo FROM productos WHERE id = ? AND organizacion_id = ?')
     .get(producto_id, req.usuario.organizacion_id);
   if (!producto) {
     return res.status(400).json({ error: 'El producto no existe.' });
+  }
+  if (producto.tipo === 'servicio') {
+    return res.status(400).json({ error: errorServicioSinStock(producto.nombre) });
   }
   if (!Number(cantidad) || Number(cantidad) <= 0) {
     return res.status(400).json({ error: 'La cantidad a transferir tiene que ser mayor a 0.' });
@@ -3240,7 +3296,7 @@ function validarItemsVenta(items) {
 }
 
 function validarStockDisponible(items, depositoId, organizacionId) {
-  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const buscarProducto = db.prepare('SELECT nombre, tipo FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivas = db.prepare(
     'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
@@ -3278,6 +3334,7 @@ function validarStockDisponible(items, depositoId, organizacionId) {
     if (!variante_id && tieneVariantes) {
       return `"${producto.nombre}" tiene variantes: elegí una para vender.`;
     }
+    if (producto.tipo === 'servicio') continue;
     if (variante_id) {
       const variante = buscarVarianteStock.get(depositoId, variante_id, producto_id);
       if (!variante) {
@@ -3563,7 +3620,7 @@ app.put('/api/ventas/:id', (req, res) => {
     : new Map();
   // Mismo filtro de organización que validarStockDisponible: un producto de
   // otra empresa tiene que dar el mismo error que uno inexistente.
-  const buscarProductoEdicion = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const buscarProductoEdicion = db.prepare('SELECT nombre, tipo FROM productos WHERE id = ? AND organizacion_id = ?');
   const contarVariantesActivasEdicion = db.prepare(
     'SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1'
   );
@@ -3590,6 +3647,7 @@ app.put('/api/ventas/:id', (req, res) => {
     if (!varianteId && tieneVariantes) {
       return res.status(400).json({ error: `"${producto.nombre}" tiene variantes: elegí una para vender.` });
     }
+    if (producto.tipo === 'servicio') continue;
     const liberado = liberadoEnDepositoResuelto.get(clave) ?? 0;
     if (varianteId) {
       const variante = buscarVarianteStockEdicion.get(depositoResuelto, varianteId, productoId);
@@ -3996,6 +4054,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
     'SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?'
   );
   for (const item of items) {
+    if (esServicio(item.producto_id)) continue;
     const stockActual = item.variante_id
       ? buscarStockVarianteDeposito.get(item.variante_id, depositoVenta)?.cantidad ?? 0
       : buscarStockDeposito.get(item.producto_id, depositoVenta)?.cantidad ?? 0;
@@ -4871,7 +4930,7 @@ app.post('/api/devoluciones/:id/restaurar', soloAdmin, (req, res) => {
     'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
   );
   for (const item of items) {
-    if (!item.vuelve_stock) continue;
+    if (!item.vuelve_stock || esServicio(item.producto_id)) continue;
     const stockActual = buscarStockDeposito.get(item.producto_id, depositoDevolucionVentaRestaurar)?.cantidad ?? 0;
     if (stockActual - item.cantidad < 0) {
       return res.status(400).json({
@@ -5114,6 +5173,7 @@ function crearCompra({
       const { lastInsertRowid } = crearProducto.run(item.producto, organizacion_id);
       productoRow = { id: lastInsertRowid };
     }
+    if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
     if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
       throw new ErrorBulk(`La variante elegida para "${item.producto}" no existe o no le pertenece.`);
     }
@@ -5287,6 +5347,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
     );
     for (const item of itemsViejos) {
+      if (esServicio(item.producto_id)) continue;
       const stockActual = buscarStockDeposito.get(item.producto_id, depositoCompraOriginal)?.cantidad ?? 0;
       if (stockActual - item.cantidad < 0) {
         return res.status(400).json({
@@ -5385,6 +5446,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
         const { lastInsertRowid } = crearProducto.run(item.producto, req.usuario.organizacion_id);
         productoRow = { id: lastInsertRowid };
       }
+      if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
       if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
         throw new ErrorBulk(`La variante elegida para "${item.producto}" no existe o no le pertenece.`);
       }
@@ -5711,6 +5773,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
       'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
     );
     for (const item of items) {
+      if (esServicio(item.producto_id)) continue;
       const stockActual = buscarStockDeposito.get(item.producto_id, depositoCompraAnular)?.cantidad ?? 0;
       if (stockActual - item.cantidad < 0) {
         return res.status(400).json({
@@ -6480,6 +6543,7 @@ app.post('/api/devoluciones-proveedor/:id/restaurar', soloAdmin, (req, res) => {
     'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
   );
   for (const item of items) {
+    if (esServicio(item.producto_id)) continue;
     const stockActual = buscarStockDeposito.get(item.producto_id, depositoDevolucionRestaurar)?.cantidad ?? 0;
     if (stockActual - item.cantidad < 0) {
       return res.status(400).json({
@@ -8248,7 +8312,7 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
   );
 
   const productosBase = db
-    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
+    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? AND productos.tipo = 'producto' ORDER BY productos.nombre`)
     .all(req.usuario.organizacion_id)
     .map(decorarProducto);
 
@@ -9071,6 +9135,34 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   res.status(204).end();
 });
 
+/* ---------- Tipo de negocio y módulos (CLAUDE.md §29) ---------- */
+
+// Cada tipo de negocio es un preset de datos —la unidad y el tipo con que nace
+// un producto nuevo, y qué módulos se ven—, nunca un camino de código propio.
+// Los módulos son las secciones opcionales del menú; el núcleo (productos,
+// clientes, ventas, caja, cuentas corrientes, gastos) se ve siempre. Ocultar
+// un módulo es de la interfaz: los permisos siguen siendo los de permisos.js.
+const MODULOS = ['pos', 'presupuestos', 'compras', 'stock'];
+const PERFILES_RUBRO = {
+  comercio: { nombre: 'Comercio general', unidad_defecto: 'unidad', tipo_defecto: 'producto', modulos: ['pos', 'presupuestos', 'compras', 'stock'] },
+  carniceria: { nombre: 'Carnicería', unidad_defecto: 'kg', tipo_defecto: 'producto', modulos: ['pos', 'compras', 'stock'] },
+  verduleria: { nombre: 'Verdulería', unidad_defecto: 'kg', tipo_defecto: 'producto', modulos: ['pos', 'compras', 'stock'] },
+  kiosco: { nombre: 'Kiosco / almacén', unidad_defecto: 'unidad', tipo_defecto: 'producto', modulos: ['pos', 'compras', 'stock'] },
+  servicios: { nombre: 'Servicios', unidad_defecto: 'unidad', tipo_defecto: 'servicio', modulos: ['presupuestos'] },
+  gimnasio: { nombre: 'Gimnasio', unidad_defecto: 'unidad', tipo_defecto: 'servicio', modulos: ['pos', 'stock'] }
+};
+const RUBRO_POR_DEFECTO = 'comercio';
+
+// organizaciones.modulos NULL = los del preset del rubro; si no, la lista que
+// eligió el admin, separada por espacios.
+function perfilDeEmpresa(organizacionId) {
+  const fila = db.prepare('SELECT rubro, modulos FROM organizaciones WHERE id = ?').get(organizacionId);
+  const rubro = PERFILES_RUBRO[fila?.rubro] ? fila.rubro : RUBRO_POR_DEFECTO;
+  const perfil = PERFILES_RUBRO[rubro];
+  const modulos = fila?.modulos == null ? perfil.modulos : fila.modulos.split(' ').filter((m) => MODULOS.includes(m));
+  return { rubro, unidad_defecto: perfil.unidad_defecto, tipo_defecto: perfil.tipo_defecto, modulos };
+}
+
 /* ---------- Datos del negocio (membrete de los comprobantes) ---------- */
 
 // Quién es el negocio: lo que va impreso en el encabezado de un presupuesto o
@@ -9088,7 +9180,9 @@ const CAMPOS_NEGOCIO = [
   'telefono',
   'email',
   'condicion_iva',
-  'pie_comprobante'
+  'pie_comprobante',
+  'rubro',
+  'modulos'
 ];
 
 app.get('/api/negocio', (req, res) => {
@@ -9104,7 +9198,12 @@ app.get('/api/negocio', (req, res) => {
     // organizaciones, así que la empresa de la sesión siempre existe.
     return res.status(404).json({ error: 'No hay datos de negocio cargados.' });
   }
-  res.json(negocio);
+  // Con el perfil efectivo y los presets, así la pantalla de Configuración
+  // muestra qué módulos trae cada tipo de negocio sin repetir la tabla.
+  const perfiles = Object.fromEntries(
+    Object.entries(PERFILES_RUBRO).map(([clave, p]) => [clave, { nombre: p.nombre, modulos: p.modulos }])
+  );
+  res.json({ ...negocio, ...perfilDeEmpresa(req.usuario.organizacion_id), perfiles });
 });
 
 app.put('/api/negocio', soloAdmin, (req, res) => {
@@ -9114,10 +9213,29 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   const id = req.usuario.organizacion_id;
   const anterior = db
     .prepare(
-      `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
+      `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante, rubro, modulos
          FROM organizaciones WHERE id = ?`
     )
     .get(id);
+
+  // Tipo de negocio y módulos son opcionales en el pedido: si no vienen, quedan
+  // como estaban. Cambiar el tipo sin mandar módulos vuelve a los del preset.
+  let rubro = anterior?.rubro ?? null;
+  let modulos = anterior?.modulos ?? null;
+  if (req.body?.rubro !== undefined) {
+    if (!PERFILES_RUBRO[req.body.rubro]) {
+      return res.status(400).json({ error: 'El tipo de negocio no es válido.' });
+    }
+    if (req.body.rubro !== (anterior?.rubro ?? RUBRO_POR_DEFECTO)) modulos = null;
+    rubro = req.body.rubro;
+  }
+  if (req.body?.modulos !== undefined) {
+    const lista = req.body.modulos;
+    if (!Array.isArray(lista) || lista.some((m) => !MODULOS.includes(m))) {
+      return res.status(400).json({ error: 'Los módulos no son válidos.' });
+    }
+    modulos = MODULOS.filter((m) => lista.includes(m)).join(' ');
+  }
 
   // nombre es el único obligatorio: es lo que encabeza el comprobante, y un
   // papel sin nombre de quien lo emite no sirve para nada. El resto puede
@@ -9141,7 +9259,9 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
     telefono: opcional(req.body?.telefono),
     email: opcional(req.body?.email),
     condicion_iva: opcional(req.body?.condicion_iva),
-    pie_comprobante: opcional(req.body?.pie_comprobante)
+    pie_comprobante: opcional(req.body?.pie_comprobante),
+    rubro,
+    modulos
   };
 
   const cambios = diffCampos(anterior, nuevo, CAMPOS_NEGOCIO);
@@ -9156,7 +9276,7 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
     db.prepare(
       `UPDATE organizaciones
           SET nombre = ?, documento = ?, direccion = ?, telefono = ?,
-              email = ?, condicion_iva = ?, pie_comprobante = ?
+              email = ?, condicion_iva = ?, pie_comprobante = ?, rubro = ?, modulos = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -9166,6 +9286,8 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
       nuevo.email,
       nuevo.condicion_iva,
       nuevo.pie_comprobante,
+      nuevo.rubro,
+      nuevo.modulos,
       id
     );
     // Se audita solo si algo cambió de verdad (diffCampos devuelve null si
@@ -9386,7 +9508,7 @@ app.get('/api/pos/catalogo', (req, res) => {
     .prepare(
       `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku,
               productos.precio_venta AS precio, COALESCE(stock_por_deposito.cantidad, 0) AS stock,
-              categorias.nombre AS categoria
+              categorias.nombre AS categoria, productos.unidad, productos.tipo
          FROM productos
          LEFT JOIN stock_por_deposito
            ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
@@ -9401,7 +9523,8 @@ app.get('/api/pos/catalogo', (req, res) => {
       `SELECT productos.id AS producto_id, producto_variantes.id AS variante_id, productos.nombre,
               producto_variantes.sku,
               COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio,
-              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, categorias.nombre AS categoria
+              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, categorias.nombre AS categoria,
+              productos.unidad, productos.tipo
          FROM producto_variantes
          JOIN productos ON productos.id = producto_variantes.producto_id
          LEFT JOIN variante_precios
@@ -9414,7 +9537,12 @@ app.get('/api/pos/catalogo', (req, res) => {
     )
     .all(listaId ?? null, depositoId, organizacionId)
     .map((v) => ({ ...v, nombre: `${v.nombre} — ${combinacionVariante(v.variante_id)}` }));
-  res.json([...productos, ...variantes].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+  // Un servicio no tiene tope: stock null.
+  res.json(
+    [...productos, ...variantes]
+      .map((i) => (i.tipo === 'servicio' ? { ...i, stock: null } : i))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  );
 });
 
 // Venta de mostrador: la venta y sus cobros (uno o varios medios) en una sola

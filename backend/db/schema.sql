@@ -166,7 +166,12 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_maximo REAL,
   categoria_id INTEGER REFERENCES categorias(id),
   margen_objetivo REAL,
-  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- Unidad en que se vende (unidad, kg, g, l, ml, m) y si es un producto con
+  -- stock o un servicio sin stock (CLAUDE.md §4, §29). Los valores los valida
+  -- server.js (UNIDADES, TIPOS_PRODUCTO), sin CHECK.
+  unidad TEXT NOT NULL DEFAULT 'unidad',
+  tipo TEXT NOT NULL DEFAULT 'producto'
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -904,7 +909,11 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   telefono TEXT,
   email TEXT,
   condicion_iva TEXT,
-  pie_comprobante TEXT    -- condiciones/validez al pie del comprobante
+  pie_comprobante TEXT,   -- condiciones/validez al pie del comprobante
+  -- Tipo de negocio y módulos visibles (CLAUDE.md §29, PERFILES_RUBRO en
+  -- server.js). NULL = comercio general / los módulos del preset del tipo.
+  rubro TEXT,
+  modulos TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
