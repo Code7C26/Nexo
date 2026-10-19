@@ -20,22 +20,14 @@
 
 /* Fuentes alojadas en el propio servidor (no Google Fonts): cargan sin
    depender de un tercero, funcionan en la PWA sin conexión y dejan lista
-   una CSP sin dominios externos. Las dos son variables (un archivo por
-   familia, todos los pesos) y tienen cifras tabulares (tnum). Licencia
-   SIL Open Font License. Solo el subconjunto latino, que cubre el
-   castellano completo. */
+   una CSP sin dominios externos. Geist (Vercel, v5.3 de Fontsource) es
+   variable (un archivo, todos los pesos) y tiene cifras tabulares (tnum).
+   Licencia SIL Open Font License. Solo el subconjunto latino, que cubre
+   el castellano completo. */
 @font-face {
-  font-family: "Bricolage Grotesque";
-  src: url("../fonts/bricolage-grotesque.woff2") format("woff2");
-  font-weight: 400 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Instrument Sans";
-  src: url("../fonts/instrument-sans.woff2") format("woff2");
-  font-weight: 400 700;
+  font-family: "Geist";
+  src: url("../fonts/geist.woff2") format("woff2");
+  font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
@@ -103,17 +95,16 @@
   --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
 
-  /* Tipografía. Dos familias con roles claros:
-     - Bricolage Grotesque (--font-display): títulos y cifras grandes. Es
-       una grotesca con carácter (contraste de trazo, terminaciones
-       vivas) que le da voz a la pantalla sin volverse decorativa.
-     - Instrument Sans (--font-body): todo lo demás, tablas incluidas.
-     --font-mono se conserva como nombre (lo usan .mono y varias reglas)
-     pero ya no es monoespaciada: es la misma familia del texto, y lo
-     que alinea las cifras en columna es font-variant-numeric. */
-  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-  --font-body:    "Instrument Sans", "Segoe UI", system-ui, sans-serif;
-  --font-mono:    "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  /* Tipografía: una sola familia, Geist, para títulos, texto y cifras.
+     Las cifras grandes en una grotesca con carácter (Bricolage) se leían
+     como decoración; con una sans neutra se leen como datos. Los tres
+     nombres se conservan porque los usan decenas de reglas: --font-display
+     marca títulos y cifras grandes (más peso, tracking cerrado), y
+     --font-mono ya no es monoespaciada: lo que alinea las cifras en
+     columna es font-variant-numeric. */
+  --font-display: "Geist", "Segoe UI", system-ui, sans-serif;
+  --font-body:    "Geist", "Segoe UI", system-ui, sans-serif;
+  --font-mono:    "Geist", "Segoe UI", system-ui, sans-serif;
 
   /* Escala tipográfica. Las etiquetas ya no van en mayúsculas: el
      tamaño chico se compensa con peso y color, no con versalitas. */
@@ -835,40 +826,60 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ---------- Ledger strip (elemento firma) ---------- */
 
+/* Cada cifra es una tarjeta de indicador propia (etiqueta, cifra y, en el
+   Resumen, la variación contra el período anterior), en una grilla que se
+   reacomoda sola según cuántas haya. Antes era una sola tira con
+   divisores; .ledger-divider queda en el HTML pero ya no se dibuja. */
 .ledger-strip {
-  display: flex;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--sp-3);
   margin-bottom: var(--sp-5);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
 }
 
 .ledger-item {
-  flex: 1;
-  padding: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
   min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
 }
 
+/* Etiqueta con un ícono chico adelante, donde la pantalla lo pone. */
 .ledger-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   font-size: var(--txt-xs);
   font-weight: 500;
   color: var(--ink-muted);
 }
 
-/* Las cifras del resumen van en la familia de títulos: son el contenido
-   principal de la pantalla, no un dato más de una tabla. */
+.ledger-icono {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  color: var(--ink-muted);
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+}
+
+.ledger-icono .ico { width: 15px; height: 15px; }
+
 .ledger-value {
   font-family: var(--font-display);
   font-size: var(--txt-xl);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.15;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .ledger-warn   { color: var(--accent-warn); }
@@ -879,27 +890,18 @@ button { font-family: inherit; cursor: pointer; }
    observer de core/ui.js cuando la cifra vale cero. */
 .ledger-value.ledger-cero { color: var(--ink); }
 
-.ledger-divider {
-  width: 1px;
-  background: var(--line);
-}
+.ledger-divider { display: none; }
 
-/* El Resultado es la conclusión de la tira, no un insumo más: en un
-   libro mayor real el total de la cuenta se destaca del resto de los
-   renglones. Mismo tratamiento que .topbar h1 (tamaño + tracking), para
-   que se lea como "el número final" y no como una caja más. */
-.ledger-item-total {
-  flex: 1.3;
-}
+/* Dos tiras seguidas (Resumen) se leen como una sola grilla. */
+.ledger-strip:has(+ .ledger-strip) { margin-bottom: var(--sp-3); }
 
-/* La cifra que concluye: más grande y con doble raya debajo, como se
-   subraya el total en un libro de cuentas. */
+/* El Resultado es la conclusión de la tira, no un insumo más: se destaca
+   por tamaño y peso, sin color ni subrayado (el azul es solo de las
+   acciones). */
 .ledger-item-total .ledger-value {
-  font-size: var(--txt-3xl);
+  font-size: var(--txt-2xl);
+  font-weight: 650;
   letter-spacing: -0.035em;
-  align-self: flex-start;
-  padding-bottom: 4px;
-  border-bottom: 5px double var(--accent);
 }
 
 .ledger-item-total .ledger-label {
@@ -1120,9 +1122,29 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
 
 .ledger-delta .ico { width: 14px; height: 14px; vertical-align: -2px; }
 
-.ledger-delta-ok     { color: var(--accent-ok); }
-.ledger-delta-mal    { color: var(--accent-danger); }
+/* La variación va en una pastilla (verde si mejoró, roja si empeoró),
+   seguida de contra qué se compara. */
+.ledger-delta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ledger-delta-ok,
+.ledger-delta-mal {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  font-weight: 600;
+  border-radius: var(--r-full);
+}
+
+.ledger-delta-ok     { color: var(--accent-ok); background: var(--accent-ok-bg); }
+.ledger-delta-mal    { color: var(--accent-danger); background: var(--accent-danger-bg); }
 .ledger-delta-neutro { color: var(--ink-muted); }
+.ledger-delta-ref    { color: var(--ink-faint); }
 
 /* ---------- Gráfico de evolución (Resumen) ---------- */
 
@@ -1470,6 +1492,13 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
   padding: 10px var(--sp-3);
   border-radius: var(--r-sm);
   margin: 0;
+}
+
+/* Una línea de contexto sin caja (el rango de fechas del Resumen). */
+.nota-plana {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
 }
 
 /* La nota explicativa de una vista y el bloque de filtros (o la tabla,
@@ -2309,11 +2338,9 @@ input.precio-sin-configurar::placeholder {
 .asistente-enviar:disabled { opacity: 0.5; cursor: default; }
 
 /* ---------- Punto de venta (dominios/pos.js) ----------
-   La pantalla de mostrador. Lo que hace de "visor" de la caja (el turno
-   arriba, el total del cobro, la barra del celular) va en el negro de la
-   marca, como la sidebar, y en los dos temas: es la misma superficie que
-   el comercio ve todo el día. El único color de acción sigue siendo el
-   azul birome. */
+   La pantalla de mostrador, con las mismas superficies que el resto de la
+   app (el negro de marca queda en la sidebar y el login). El único color
+   de acción sigue siendo el azul birome. */
 
 /* pos.js prende y apaga con hidden elementos que tienen display propio:
    sin esto le ganarían al [hidden] del navegador (mismo caso que
@@ -2361,9 +2388,8 @@ input.precio-sin-configurar::placeholder {
   gap: var(--sp-5);
   margin-bottom: var(--sp-4);
   padding: var(--sp-4) var(--sp-5);
-  background: var(--sidebar-bg);
-  color: var(--sidebar-ink);
-  border: 1px solid var(--sidebar-line);
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-sm);
 }
@@ -2382,17 +2408,17 @@ input.precio-sin-configurar::placeholder {
   gap: 6px;
   font-size: var(--txt-2xs);
   font-weight: 600;
-  color: var(--sidebar-ink-2);
+  color: var(--accent-ok);
 }
 
-/* Prendida, con el mismo azul que marca la sección activa del menú. */
+/* Prendida: el verde de lo que está en orden. */
 .pos-turno-estado::before {
   content: "";
   width: 8px;
   height: 8px;
   border-radius: var(--r-full);
-  background: var(--accent-on-dark);
-  box-shadow: 0 0 0 3px rgba(143, 163, 255, 0.22);
+  background: var(--accent-ok);
+  box-shadow: 0 0 0 3px var(--accent-ok-bg);
 }
 
 .pos-turno-caja strong {
@@ -2405,7 +2431,7 @@ input.precio-sin-configurar::placeholder {
 
 .pos-turno-meta {
   font-size: var(--txt-xs);
-  color: var(--sidebar-ink-3);
+  color: var(--ink-muted);
 }
 
 .pos-turno-cifras {
@@ -2423,7 +2449,7 @@ input.precio-sin-configurar::placeholder {
 .pos-turno-cifras dt {
   font-size: var(--txt-2xs);
   font-weight: 500;
-  color: var(--sidebar-ink-3);
+  color: var(--ink-muted);
 }
 
 .pos-turno-cifras dd {
@@ -2432,17 +2458,6 @@ input.precio-sin-configurar::placeholder {
   font-size: var(--txt-lg);
   font-weight: 700;
   letter-spacing: -0.02em;
-}
-
-.pos-turno .btn-secundario {
-  background: transparent;
-  color: var(--sidebar-ink);
-  border-color: var(--sidebar-line);
-}
-
-.pos-turno .btn-secundario:hover {
-  background: var(--sidebar-hover);
-  border-color: var(--sidebar-ink-3);
 }
 
 /* Productos a la izquierda, la venta en curso a la derecha. */
@@ -2737,7 +2752,7 @@ input.precio-sin-configurar::placeholder {
 }
 
 /* El total cierra la venta como la cifra que concluye de las tiras:
-   grande y con la doble raya azul. */
+   por tamaño y peso. */
 .pos-total {
   display: flex;
   align-items: baseline;
@@ -2748,11 +2763,10 @@ input.precio-sin-configurar::placeholder {
 }
 
 .pos-total-valor {
-  padding-bottom: 4px;
   font-family: var(--font-display);
   font-size: var(--txt-2xl);
-  letter-spacing: -0.03em;
-  border-bottom: 5px double var(--accent);
+  font-weight: 650;
+  letter-spacing: -0.035em;
 }
 
 .pos-btn-cobrar {
@@ -2764,17 +2778,15 @@ input.precio-sin-configurar::placeholder {
 /* Solo en el celular (ver el bloque responsive de abajo). */
 .pos-barra { display: none; }
 
-/* Modal de cobro: el total en el visor negro, los medios y lo que falta
-   o el vuelto. */
+/* Modal de cobro: el total arriba, los medios y lo que falta o el
+   vuelto. */
 .pos-cobro-total {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   padding: var(--sp-4);
-  color: var(--sidebar-ink);
-  background: var(--sidebar-bg);
-  border: 1px solid var(--sidebar-line);
+  background: var(--surface-sunk);
   border-radius: var(--r-md);
 }
 
@@ -2782,7 +2794,7 @@ input.precio-sin-configurar::placeholder {
   max-width: 100%;
   overflow: hidden;
   font-size: var(--txt-xs);
-  color: var(--sidebar-ink-2);
+  color: var(--ink-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -2790,7 +2802,7 @@ input.precio-sin-configurar::placeholder {
 .pos-cobro-total strong {
   font-family: var(--font-display);
   font-size: var(--txt-3xl);
-  font-weight: 700;
+  font-weight: 650;
   letter-spacing: -0.035em;
 }
 
@@ -2924,13 +2936,11 @@ input.precio-sin-configurar::placeholder {
 }
 
 .pos-exito-vuelto strong {
-  padding-bottom: 6px;
   font-family: var(--font-display);
   font-size: 56px;
-  font-weight: 700;
+  font-weight: 650;
   line-height: 1;
   letter-spacing: -0.04em;
-  border-bottom: 5px double var(--accent);
 }
 
 .pos-exito .btn-full { min-height: 52px; font-size: var(--txt-md); }
@@ -3082,9 +3092,9 @@ input.precio-sin-configurar::placeholder {
 
   .panel { padding: var(--sp-4); }
 
-  .ledger-item { padding: var(--sp-4); }
+  .ledger-item { padding: var(--sp-3) var(--sp-4); }
 
-  .ledger-item-total .ledger-value { font-size: 32px; }
+  .ledger-item-total .ledger-value { font-size: 28px; }
 
   /* En el celular cada fila de tabla es una tarjeta: se separan con aire
      en vez de con una línea. */
@@ -3096,14 +3106,19 @@ input.precio-sin-configurar::placeholder {
 
   .sidebar { box-shadow: var(--shadow-lg); }
 
+  /* De a dos tarjetas por renglón; la cifra que concluye ocupa el
+     renglón entero. */
   .ledger-strip {
-    flex-direction: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
   }
 
-  .ledger-divider {
-    width: 100%;
-    height: 1px;
-  }
+  .ledger-item:last-child:nth-child(odd of .ledger-item),
+  .ledger-strip:has(.ledger-item-total) .ledger-item { grid-column: 1 / -1; }
+
+  .ledger-strip:has(+ .ledger-strip) { margin-bottom: var(--sp-2); }
+
+  .ledger-value { font-size: 20px; }
 
   .panel-head {
     flex-direction: column;
@@ -3228,7 +3243,7 @@ input.precio-sin-configurar::placeholder {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--sp-3);
     padding-top: var(--sp-3);
-    border-top: 1px solid var(--sidebar-line);
+    border-top: 1px solid var(--line);
   }
 
   .pos-turno-cifras dd { font-size: var(--txt-md); }
@@ -3268,9 +3283,8 @@ input.precio-sin-configurar::placeholder {
     gap: var(--sp-2);
     height: 56px;
     padding: 0 var(--sp-2) 0 var(--sp-4);
-    color: var(--sidebar-ink);
-    background: var(--sidebar-bg);
-    border: 1px solid var(--sidebar-line);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
     border-radius: var(--r-full);
     box-shadow: var(--shadow-lg);
   }
@@ -3289,7 +3303,7 @@ input.precio-sin-configurar::placeholder {
     border: none;
   }
 
-  .pos-barra-resumen span { font-size: var(--txt-2xs); color: var(--sidebar-ink-2); }
+  .pos-barra-resumen span { font-size: var(--txt-2xs); color: var(--ink-muted); }
 
   .pos-barra-resumen strong {
     font-family: var(--font-display);
@@ -3471,10 +3485,7 @@ input.precio-sin-configurar::placeholder {
 .sesion-pantalla {
   position: fixed;
   inset: 0;
-  background:
-    radial-gradient(1100px 560px at 88% -12%, rgba(45, 75, 224, 0.20), transparent 62%),
-    radial-gradient(800px 480px at -12% 112%, rgba(143, 163, 255, 0.06), transparent 62%),
-    #000000;
+  background: #000000;
   z-index: 100;
   display: flex;
   align-items: center;
@@ -3490,22 +3501,17 @@ input.precio-sin-configurar::placeholder {
   display: none;
 }
 
-/* Colores fijos, no var(--surface)/var(--ink): esta pantalla no sigue el
-   tema (ver comentario en .sesion-pantalla), así que tampoco puede
-   depender de tokens que se invierten con él — en tema claro, --surface
-   es blanco (invisible contra el fondo negro fijo) y --ink es casi negro
-   (invisible sobre esta card). --sidebar-line ya está pensado para
-   funcionar como borde sobre negro puro, por eso se reusa acá. */
+/* La tarjeta es blanca sobre el negro de marca, en los dos temas: esta
+   pantalla no sigue el tema (ver .sesion-pantalla), así que los colores
+   son fijos y no var(--surface)/var(--ink), que se invierten con él. Son
+   los valores del tema claro. */
 .sesion-card {
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  color: #F2F2F2;
+  background: #FFFFFF;
+  color: #121212;
   border-radius: var(--r-lg);
-  width: min(420px, 92vw);
+  width: min(400px, 92vw);
   padding: var(--sp-6) var(--sp-6) var(--sp-5);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3514,23 +3520,23 @@ input.precio-sin-configurar::placeholder {
 }
 
 .sesion-logo {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
 }
 
 .sesion-card h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
   color: inherit;
 }
 
 .sesion-bajada {
   margin: -6px 0 var(--sp-3);
   font-size: var(--txt-sm);
-  color: #9A9A9A;
+  color: #5E5E5E;
   text-wrap: balance;
 }
 
@@ -3540,47 +3546,84 @@ input.precio-sin-configurar::placeholder {
 }
 
 .sesion-card .form label {
-  color: #C2C2C2;
+  color: #5E5E5E;
 }
 
 .sesion-card .form input {
-  background: rgba(0, 0, 0, 0.6);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #F2F2F2;
-  min-height: 44px;
+  background: #FFFFFF;
+  border-color: #CBCBCB;
+  color: #121212;
+  min-height: 46px;
 }
+
+.sesion-card .form input:hover { border-color: #8C8C8C; }
 
 .sesion-card .form input:focus {
-  border-color: #8097FF;
-  box-shadow: 0 0 0 3px rgba(128, 151, 255, 0.25);
+  border-color: #2D4BE0;
+  box-shadow: 0 0 0 3px #E9EDFD;
 }
 
-/* .btn-primary usa var(--ink)/var(--bg), que se invierten con el tema —
-   en modo claro sería negro sobre la card ya negra fijada arriba,
-   invisible. Fijo también, mismo criterio. */
 .sesion-card .btn-primary {
-  background: #FFFFFF;
-  color: #000000;
+  background: #2D4BE0;
+  color: #FFFFFF;
   min-height: 46px;
+  margin-top: var(--sp-1);
   font-size: var(--txt-md);
-  box-shadow: none;
 }
 
-.sesion-card .btn-primary:hover { background: #E6E6E6; }
+.sesion-card .btn-primary:hover { background: #2340C8; }
 
-/* .btn-link usa var(--ink), que se invierte con el tema: en claro sería negro
-   sobre la card negra fija. Mismo criterio que .btn-primary de arriba. */
 .sesion-card .btn-link {
-  color: #C2C2C2;
-  text-decoration-color: rgba(185, 191, 214, 0.5);
+  color: #5E5E5E;
+  text-decoration-color: rgba(0, 0, 0, 0.25);
 }
 
-/* .form-note (mensajes de error de login/registro) usa var(--surface-sunk),
-   que en claro es casi blanco — ilegible sobre esta card negra fija. */
 .sesion-card .form-note {
-  background: rgba(0, 0, 0, 0.6);
-  color: #C2C2C2;
+  background: #EFEFEF;
+  color: #5E5E5E;
 }
+
+/* Campo con ícono adelante (y, en las contraseñas, el botón para verla). */
+.campo-icono {
+  position: relative;
+  display: block;
+}
+
+.campo-icono > .ico {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  color: #8C8C8C;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.form .campo-icono input {
+  width: 100%;
+  padding-left: 42px;
+}
+
+.form .campo-icono input:has(+ .campo-ver-clave) { padding-right: 46px; }
+
+.campo-ver-clave {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: #8C8C8C;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  transform: translateY(-50%);
+}
+
+.campo-ver-clave:hover { color: #121212; }
+.campo-ver-clave[aria-pressed="true"] { color: #2D4BE0; }
 
 /* Ocultar la app entera (no solo .app: #navToggle vive fuera de .app en
    el HTML, como botón hermano para el drawer mobile — si no se incluye

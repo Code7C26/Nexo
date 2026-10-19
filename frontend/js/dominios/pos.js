@@ -176,9 +176,7 @@ document.getElementById("posCaja").addEventListener("change", (e) => {
 function renderApertura() {
   const caja = cajas.find((c) => c.id === cajaId);
   document.getElementById("posAperturaTitulo").textContent = `Abrir caja: ${caja.nombre}`;
-  document.getElementById("posAperturaSaldo").textContent =
-    `Según el sistema, en ${caja.nombre} hay ${money(caja.saldo)}. Contá el efectivo y cargá lo que hay: ` +
-    "si no coincide, la diferencia queda registrada.";
+  document.getElementById("posAperturaSaldo").textContent = `Según el sistema hay ${money(caja.saldo)}.`;
   refrescar([cargarCierres()]);
 }
 

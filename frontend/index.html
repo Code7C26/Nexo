@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nexo — Gestión para tu negocio</title>
   <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
-  <!-- Las fuentes se sirven desde frontend/fonts/ (ver @font-face en
-       styles.css): sin Google Fonts. Se precarga la del texto, que es la
-       que más se ve apenas abre la app. -->
-  <link rel="preload" href="fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- La fuente se sirve desde frontend/fonts/ (ver @font-face en
+       styles.css): sin Google Fonts. Es una sola familia para todo, así
+       que se precarga entera. -->
+  <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
   <meta name="theme-color" content="#000000" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
@@ -195,23 +195,23 @@
       <section class="view" data-view="dashboard">
 
         <div class="filtros" id="filtrosResumen"></div>
-        <p class="form-note" id="resumenRangoNota"></p>
+        <p class="nota-plana" id="resumenRangoNota"></p>
 
         <!-- Ledger summary strip: el elemento firma del diseño -->
         <section class="ledger-strip" aria-label="Resultado del período">
           <div class="ledger-item">
-            <span class="ledger-label">Ventas</span>
+            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg></span>Ventas</span>
             <span class="ledger-value mono" id="sumVentas">$0,00</span>
             <span class="ledger-delta" id="deltaVentas"></span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
-            <span class="ledger-label">Costo de mercadería</span>
+            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg></span>Costo de mercadería</span>
             <span class="ledger-value mono" id="sumCosto">$0,00</span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
-            <span class="ledger-label">Ganancia bruta</span>
+            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Ganancia bruta</span>
             <span class="ledger-value mono ledger-ok" id="sumGananciaBruta">$0,00</span>
             <span class="ledger-delta" id="deltaGananciaBruta"></span>
           </div>
@@ -219,13 +219,13 @@
 
         <section class="ledger-strip" aria-label="Gastos y resultado">
           <div class="ledger-item">
-            <span class="ledger-label">Gastos operativos</span>
+            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg></span>Gastos operativos</span>
             <span class="ledger-value mono ledger-warn" id="sumGastosOperativos">$0,00</span>
             <span class="ledger-delta" id="deltaGastosOperativos"></span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item ledger-item-total">
-            <span class="ledger-label">Resultado</span>
+            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chart-column"></use></svg></span>Resultado</span>
             <span class="ledger-value mono" id="sumResultado">$0,00</span>
             <span class="ledger-delta" id="deltaResultado"></span>
           </div>
@@ -1620,7 +1620,6 @@
             <tbody id="ccCobrarBody"></tbody>
           </table>
           </div>
-          <p class="form-note">La antigüedad se cuenta desde la fecha de la venta: Nexo todavía no maneja vencimientos pactados.</p>
         </section>
 
         <section class="panel">
@@ -1645,7 +1644,6 @@
             <tbody id="ccPagarBody"></tbody>
           </table>
           </div>
-          <p class="form-note">La antigüedad se cuenta desde la fecha de la compra: Nexo todavía no maneja vencimientos pactados.</p>
         </section>
       </section>
 
@@ -1789,9 +1787,7 @@
           <div class="panel-head">
             <h2>Papelera</h2>
           </div>
-          <p class="form-note">
-            Documentos anulados. Restaurar vuelve a aplicar su efecto sobre el stock y las cuentas corrientes.
-          </p>
+          <p class="form-note">Restaurar un documento vuelve a aplicar su efecto sobre el stock y las cuentas.</p>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
@@ -1821,10 +1817,6 @@
             <h2>Registro de actividad</h2>
             <button type="button" class="btn btn-secundario" id="btnActualizarAuditoria"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Actualizar</button>
           </div>
-          <p class="form-note">
-            Qué se hizo y cuándo, en orden de más reciente a más antiguo. Este registro empieza en esta etapa: no
-            incluye lo que pasó antes — para eso está el panel de movimientos contables, más abajo.
-          </p>
           <div class="filtros" id="filtrosAuditoria"></div>
           <div class="tabla-scroll">
           <table class="ledger-table">
@@ -1848,10 +1840,6 @@
           <div class="panel-head">
             <h2>Movimientos contables</h2>
           </div>
-          <p class="form-note">
-            Efectos sobre stock, tesorería y cuentas corrientes. A diferencia del registro de arriba, esto sí tiene
-            historia previa a esta etapa.
-          </p>
           <div class="filtros" id="filtrosAuditoriaMov"></div>
           <div class="tabla-scroll">
           <table class="ledger-table">
@@ -1920,17 +1908,17 @@
        sesion.js alterna cuál se muestra con hidden. -->
   <div class="sesion-pantalla" id="sesionPantalla" hidden>
     <div class="sesion-card">
-      <img src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" class="sesion-logo" />
+      <img src="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" alt="" class="sesion-logo" />
       <h1>Nexo</h1>
       <p class="sesion-bajada">Stock, ventas, caja y cuentas de tu negocio, en un solo lugar.</p>
 
       <form id="formLogin" class="form">
         <p class="form-note" id="loginError" hidden></p>
         <label>Usuario
-          <input type="text" id="loginUsuario" autocomplete="username" required />
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg><input type="text" id="loginUsuario" autocomplete="username" required /></span>
         </label>
         <label>Contraseña
-          <input type="password" id="loginPassword" autocomplete="current-password" required />
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="loginPassword" autocomplete="current-password" required /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
         </label>
         <button type="submit" class="btn btn-primary">Ingresar</button>
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
@@ -1949,7 +1937,7 @@
           <input type="text" id="registroUsuario" autocomplete="username" required />
         </label>
         <label>Contraseña
-          <input type="password" id="registroPassword" autocomplete="new-password" minlength="8" required />
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="registroPassword" autocomplete="new-password" minlength="8" required /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
         </label>
         <button type="submit" class="btn btn-primary">Crear cuenta</button>
         <button type="button" class="btn-link" id="irALogin">Ya tengo cuenta, ingresar</button>
@@ -2009,7 +1997,7 @@
         <label>Punto de venta
           <input type="number" name="punto_venta" value="1" min="1" step="1" />
         </label>
-        <p class="form-note">Esta factura no está asociada a ninguna venta: no descuenta stock, no genera cuenta corriente y no entra en el resultado del negocio.</p>
+        <p class="form-note">Factura suelta: no descuenta stock ni entra en el resultado.</p>
         <button type="submit" class="btn btn-primary btn-full">Registrar factura</button>
       </form>
     </div>
@@ -2035,7 +2023,6 @@
         <label>Cantidad
           <input type="number" name="cantidad" required placeholder="Ej: 5 o -2" step="0.01" />
         </label>
-        <p class="form-note">Usá un número positivo para sumar stock y negativo para restarlo.</p>
         <label>Nota
           <input type="text" name="nota" placeholder="Motivo del ajuste (opcional)" />
         </label>
@@ -2100,7 +2087,6 @@
         <label>Nota
           <input type="text" name="nota" placeholder="Opcional" />
         </label>
-        <p class="form-note">Mueve stock real entre depósitos. No cambia el costo del producto ni el stock total.</p>
         <button type="submit" class="btn btn-primary btn-full">Transferir</button>
       </form>
     </div>
@@ -2129,13 +2115,12 @@
         <label>Válido hasta
           <input type="date" name="vencimiento" />
         </label>
-        <p class="form-note">Si dejás la fecha vacía, el presupuesto no vence. Pasada esa fecha sin respuesta, figura como vencido.</p>
+        <p class="form-note">Sin fecha, el presupuesto no vence.</p>
         <div class="item-rows" id="presupuestoItems"></div>
         <button type="button" class="btn-add-item" id="btnAgregarItemPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
         <label>Notas
           <input type="text" name="notas" placeholder="Condiciones, plazo de entrega…" />
         </label>
-        <p class="form-note">Un presupuesto no descuenta stock ni genera deuda: podés cotizar algo que todavía no tenés. Eso pasa recién al convertirlo en venta.</p>
         <p class="item-total">Total: <span class="mono" id="presupuestoTotal">$0,00</span></p>
         <button type="submit" class="btn btn-primary btn-full" id="formPresupuestoSubmit">Guardar presupuesto</button>
       </form>
@@ -2234,7 +2219,7 @@
         <label>Costo de envío
           <input type="number" name="costo_envio" id="compraCostoEnvio" step="0.01" min="0" placeholder="0.00" />
         </label>
-        <p class="form-note">El envío se reparte entre los productos según cuánto vale cada uno.</p>
+        <p class="form-note">El envío se reparte entre los productos según su valor.</p>
         <p class="item-total">Total: <span class="mono" id="compraTotal">$0,00</span></p>
         <p class="form-note" id="compraFormNota">Se guarda como borrador: no toca stock ni deuda hasta que efectúes el pedido.</p>
         <button type="submit" class="btn btn-primary btn-full" id="formCompraSubmit">Guardar borrador</button>
@@ -2402,7 +2387,6 @@
             <option value="retiro">Retiro — no resta del resultado</option>
           </select>
         </label>
-        <p class="form-note">El tipo se completa solo con el de la categoría. Cambialo acá solo si este gasto puntual es una excepción.</p>
         <label>Importe
           <input type="number" name="importe" step="0.01" min="0" required placeholder="0.00" />
         </label>
@@ -2445,7 +2429,6 @@
             <option value="retiro">Retiro — no resta del resultado</option>
           </select>
         </label>
-        <p class="form-note">Cambiar el tipo afecta solo a los gastos futuros: los ya cargados conservan el suyo, para no reescribir resultados de meses cerrados.</p>
         <button type="submit" class="btn btn-primary btn-full" id="formCategoriaSubmit">Agregar categoría</button>
       </form>
       <div class="tabla-scroll">
@@ -2589,7 +2572,7 @@
         <label>Saldo inicial
           <input type="number" name="saldo_inicial" step="0.01" placeholder="0.00" />
         </label>
-        <p class="form-note">La plata que ya había en esta cuenta antes de empezar a usar Nexo. No genera un movimiento.</p>
+        <p class="form-note">Lo que había en la cuenta antes de usar Nexo.</p>
         <button type="submit" class="btn btn-primary btn-full">Guardar cuenta</button>
       </form>
     </div>
@@ -2621,7 +2604,6 @@
         <label>Concepto
           <input type="text" name="concepto" placeholder="Aporte del dueño, retiro, alquiler…" />
         </label>
-        <p class="form-note">Para plata que entra o sale sin una venta ni una compra detrás.</p>
         <button type="submit" class="btn btn-primary btn-full">Registrar movimiento</button>
       </form>
     </div>
@@ -2650,7 +2632,6 @@
         <label>Concepto
           <input type="text" name="concepto" placeholder="Opcional" />
         </label>
-        <p class="form-note">Mover plata entre cuentas propias no cambia el total: sale de una y entra en la otra.</p>
         <button type="submit" class="btn btn-primary btn-full">Transferir</button>
       </form>
     </div>
@@ -2688,7 +2669,6 @@
              input queda vacío y ese producto cae al fallback de
              precio_venta en esa lista (CLAUDE.md §18). -->
         <div id="preciosPorListaProducto" class="form-precios-lista"></div>
-        <p class="form-note">El costo no se carga acá: lo define la compra al proveedor.</p>
         <!-- Solo informativo/alerta: compara contra el margen real de la
              lista predeterminada, no sugiere ni fuerza ningún precio. -->
         <label>Margen objetivo (%)
@@ -2835,7 +2815,7 @@
       </div>
       <form id="formDevolucion" class="form">
         <div id="devolucionItems" class="item-rows"></div>
-        <p class="form-note">La cantidad tope es lo que todavía no se devolvió de esa venta. Destildá "vuelve al stock" si la mercadería llegó fallada: no reingresa al depósito y su costo queda como pérdida.</p>
+        <p class="form-note">Destildá "vuelve al stock" si la mercadería llegó fallada.</p>
         <label>Motivo
           <input type="text" name="motivo" placeholder="Opcional" />
         </label>
@@ -2845,7 +2825,7 @@
         <label id="devolucionCuentaLabel" hidden>Cuenta de tesorería
           <select name="cuenta_tesoreria_id"></select>
         </label>
-        <p class="form-note">Si no la marcás, la devolución queda como crédito a favor del cliente para su próxima compra.</p>
+        <p class="form-note">Si no la marcás, queda como crédito a favor del cliente.</p>
         <p class="item-total">Total a devolver: <span class="mono" id="devolucionTotal">$0,00</span></p>
         <button type="submit" class="btn btn-primary btn-full">Registrar devolución</button>
       </form>
@@ -2861,7 +2841,6 @@
       </div>
       <form id="formDevolucionProveedor" class="form">
         <div id="devolucionProveedorItems" class="item-rows"></div>
-        <p class="form-note">La cantidad tope es lo que todavía no se devolvió de esta compra, y nunca más de lo que sigue en stock (por si ya se vendió).</p>
         <label>Motivo
           <input type="text" name="motivo" placeholder="Opcional" />
         </label>
@@ -2871,7 +2850,7 @@
         <label id="devolucionProveedorCuentaLabel" hidden>Cuenta de tesorería
           <select name="cuenta_tesoreria_id"></select>
         </label>
-        <p class="form-note">Si no lo marcás, la devolución queda como crédito con el proveedor para la próxima compra.</p>
+        <p class="form-note">Si no lo marcás, queda como crédito con el proveedor.</p>
         <p class="item-total">Total a devolver: <span class="mono" id="devolucionProveedorTotal">$0,00</span></p>
         <button type="submit" class="btn btn-primary btn-full">Registrar devolución</button>
       </form>
@@ -3019,10 +2998,7 @@
           <textarea name="pie_comprobante" rows="2" maxlength="300" placeholder="Ej: Gracias por su compra."></textarea>
         </label>
 
-        <p class="form-note">
-          Estos datos encabezan los presupuestos y facturas que imprimís. El logo
-          del negocio se va a poder subir más adelante.
-        </p>
+        <p class="form-note">Encabezan los presupuestos y facturas que imprimís.</p>
 
         <button type="submit" class="btn btn-primary btn-full" id="formNegocioSubmit">Guardar</button>
       </form>
@@ -3189,7 +3165,7 @@
         <button class="modal-close" id="modalPosCamaraClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <video class="pos-camara-video" id="posCamaraVideo" playsinline muted></video>
-      <p class="form-note">Apuntá al código de barras del producto. Se agrega solo apenas se lee.</p>
+      <p class="form-note">Apuntá al código de barras del producto.</p>
     </div>
   </div>
 

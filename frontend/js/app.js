@@ -108,31 +108,31 @@ const MEJOR_SI_SUBE = {
 
 function formatearDelta(campo, delta) {
   if (!delta || !delta.comparable) {
-    return `<span class="ledger-delta-neutro">— sin período anterior</span>`;
+    return `<span class="ledger-delta-neutro">Sin período anterior</span>`;
   }
   const mejoro = MEJOR_SI_SUBE[campo] ? delta.abs >= 0 : delta.abs <= 0;
   const clase = delta.abs === 0 ? "ledger-delta-neutro" : mejoro ? "ledger-delta-ok" : "ledger-delta-mal";
-  const flecha = delta.abs > 0 ? icono("trending-up") : delta.abs < 0 ? icono("trending-down") : "—";
-  const abs = money(Math.abs(delta.abs));
+  const flecha = delta.abs > 0 ? icono("arrow-up-right") : delta.abs < 0 ? icono("arrow-down-right") : "";
+  // La pastilla lleva el porcentaje; el importe del cambio queda en el
+  // tooltip, para no apilar dos cifras debajo de la cifra principal.
+  const abs = `${delta.abs > 0 ? "+" : delta.abs < 0 ? "−" : ""}${money(Math.abs(delta.abs))}`;
+  const ref = `<span class="ledger-delta-ref">vs. período anterior</span>`;
   if (delta.cruza_cero) {
     // Un porcentaje acá sería técnicamente correcto pero absurdo de leer
-    // (de -1000 a +10 da +101%): se muestra solo el cambio absoluto, con
+    // (de -1000 a +10 da +101%): se muestra el cambio absoluto, con
     // texto explícito de qué cruzó.
     const texto = delta.abs > 0 ? "de pérdida a ganancia" : "de ganancia a pérdida";
-    return `<span class="${clase}">${flecha} ${abs} (${texto})</span>`;
+    return `<span class="${clase}" title="${esc(texto)}">${flecha} ${esc(abs)}</span>${ref}`;
   }
-  return `<span class="${clase}">${flecha} ${abs} (${porcentaje(Math.abs(delta.pct))})</span>`;
+  return `<span class="${clase}" title="${esc(abs)}">${flecha} ${porcentaje(Math.abs(delta.pct))}</span>${ref}`;
 }
 
 function renderDeltas(data) {
   const nota = document.getElementById("resumenRangoNota");
-  if (!data.delta) {
-    nota.textContent = data.rango.acotado
-      ? `Del ${data.rango.desde} al ${data.rango.hasta}.`
-      : `Del ${data.rango.desde} al ${data.rango.hasta} (todo lo cargado hasta hoy).`;
-  } else {
-    nota.textContent = `Del ${data.rango.desde} al ${data.rango.hasta}, comparado contra el ${data.anterior.rango.desde} al ${data.anterior.rango.hasta}.`;
-  }
+  const rango = (r) => `${fechaAR(r.desde)} al ${fechaAR(r.hasta)}`;
+  nota.textContent = data.delta
+    ? `Del ${rango(data.rango)}. Período anterior: ${rango(data.anterior.rango)}.`
+    : `Del ${rango(data.rango)}${data.rango.acotado ? "" : ", todo lo cargado hasta hoy"}.`;
 
   for (const [campo, id] of [
     ["ventas", "deltaVentas"],

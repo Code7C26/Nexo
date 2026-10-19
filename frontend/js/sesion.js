@@ -181,6 +181,18 @@
   document.getElementById("irARegistro").addEventListener("click", () => mostrarPantalla("registro"));
   irALogin.addEventListener("click", () => mostrarPantalla("login"));
 
+  // El ojo de cada contraseña la muestra u oculta.
+  pantalla.querySelectorAll(".campo-ver-clave").forEach((boton) => {
+    boton.addEventListener("click", () => {
+      const input = boton.parentElement.querySelector("input");
+      const ver = input.type === "password";
+      input.type = ver ? "text" : "password";
+      boton.setAttribute("aria-pressed", String(ver));
+      boton.setAttribute("aria-label", ver ? "Ocultar contraseña" : "Mostrar contraseña");
+      input.focus();
+    });
+  });
+
   formRegistro.addEventListener("submit", async (e) => {
     e.preventDefault();
     ocultarErrorEn("registroError");

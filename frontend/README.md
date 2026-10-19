@@ -22,7 +22,7 @@ suelta — sin la API detrás, todas las pantallas van a fallar al pedir datos
 frontend/
 ├── index.html        → estructura de la página (todas las vistas)
 ├── css/styles.css     → sistema de diseño (colores, tipografía, layout)
-├── fonts/            → Bricolage Grotesque e Instrument Sans (woff2 + licencia OFL)
+├── fonts/            → Geist (woff2 variable + licencia OFL)
 ├── img/iconos.svg    → sprite de íconos (Lucide, ISC); se usan con icono() de core/iconos.js
 └── js/
     ├── sesion.js       → login y gate: recién logueado inyecta app.js (módulo ES)
@@ -74,10 +74,11 @@ explicados al principio de `css/styles.css`. En corto:
 
 - Blanco y negro de marca con un solo acento: azul birome (`--accent`) para
   toda acción, y su versión clara (`--accent-on-dark`) sobre la sidebar
-  negra. La cifra que concluye (Resultado, Posición neta) lleva doble raya
-  azul, como el total de un libro de cuentas.
-- Bricolage Grotesque para títulos y cifras grandes; Instrument Sans para el
-  resto, con cifras tabulares (`.mono`) en importes y cantidades.
+  negra. La cifra que concluye (Resultado, Posición neta) se destaca por
+  tamaño y peso, sin color ni subrayado.
+- Las cifras van en tarjetas de indicadores (`.ledger-strip` / `.ledger-item`).
+- Una sola familia, Geist, para títulos, texto y cifras, con cifras tabulares
+  (`.mono`) en importes y cantidades.
 - Íconos: un ícono nuevo se baja de `lucide-static` y se agrega como
   `<symbol>` a `img/iconos.svg`. Nada de emojis ni caracteres sueltos (✕, ▸)
   como íconos.

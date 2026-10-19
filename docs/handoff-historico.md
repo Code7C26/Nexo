@@ -7434,3 +7434,55 @@ con aserción nueva en el caso de POS de `api.test.js`.
 ### Qué sigue
 
 B2, la PWA (plan de handoff.md).
+
+## 69. Rediseño visual, primera parte, 19 de octubre de 2026
+
+Pedido del usuario: "me sigue sin convencer", "no me gusta la tipografía, sobre todo de los
+números, hay cosas que parecen muy IA" y "sacar el subrayado en azul de números". Dijo que lo
+que más le suena a IA son las cifras grandes, las tiras y tarjetas negras y los textos
+explicativos. Como referencia mostró los dashboards y logins de topmate.io/code_xr: tarjetas
+de indicadores con ícono, cifra en una sans neutra y variación en pastilla, y login en
+tarjeta con campos con ícono. En el mismo pedido adelantó el plazo: producto casi terminado
+en dos semanas (plan nuevo en handoff.md).
+
+**Qué cambió.**
+- **Tipografía:** una sola familia, Geist (Fontsource 5.3, OFL, variable,
+  `frontend/fonts/geist.woff2`), para títulos, texto y cifras. Se borraron Bricolage
+  Grotesque e Instrument Sans. Los nombres `--font-display`/`--font-body`/`--font-mono` se
+  conservan porque los usan decenas de reglas. Las cifras grandes van en peso 600–650.
+- **Sin doble raya azul:** el Resultado, el total del POS y el vuelto se destacan por tamaño
+  y peso.
+- **Tiras de cifras → tarjetas de indicadores**, en todas las vistas que usan
+  `.ledger-strip`:
+  - una grilla `auto-fit`, donde cada `.ledger-item` es una tarjeta y `.ledger-divider` ya
+    no se dibuja;
+  - en el celular van de a dos, y la que queda sola o la del total ocupan el renglón
+    (`:nth-child(odd of .ledger-item)`);
+  - el Resumen suma un ícono por tarjeta (`.ledger-icono`, gris, sin color nuevo);
+  - la variación es una pastilla verde o roja con el porcentaje, el importe en el tooltip y
+    "vs. período anterior" (`formatearDelta` en `app.js`).
+- **Sin bloques negros en el tema claro:** la tira del turno, el visor del cobro y la barra
+  del celular del POS pasaron a superficies. "Caja abierta" va en verde.
+- **Login:**
+  - tarjeta blanca sobre el negro de marca (el fondo sigue siendo #000, sin el brillo azul);
+  - logo negro y botón azul;
+  - campos con ícono y botón para ver la contraseña (`.campo-icono`, `.campo-ver-clave`,
+    manejado en `sesion.js`).
+- **Textos explicativos:** de 49 notas `.form-note` quedan 36. Se sacaron las que contaban
+  el funcionamiento interno (dos decían "Nexo todavía no maneja vencimientos pactados", que
+  ya no es cierto) y se acortaron las demás. El rango del Resumen es una línea simple
+  (`.nota-plana`) con fechas dd/mm/aaaa.
+
+**Verificación.** `npm test` 50 de 50 y `npm run lint` verde. Capturas del login, el
+Resumen, Ventas y el POS en claro, en oscuro y a 390 px, sin errores de página.
+
+### Qué sigue
+
+Segunda parte del rediseño:
+- que el usuario lo vea y diga qué sigue sin convencerle;
+- la tabla de evolución en el celular;
+- el título repetido de las fichas;
+- revisar el resto de las vistas con la misma vara (listas con etiquetas de estado como en
+  la referencia).
+
+Después, B2 (PWA).
