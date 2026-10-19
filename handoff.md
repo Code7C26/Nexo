@@ -640,11 +640,26 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     - Como es monotributista, las facturas de prueba salen C.
     - Para mostrar también A y B, probar si homologación lo permite con su
       CUIT.
-  - **En producción (después de la presentación):** cada negocio emite con su
-    CUIT. Lo normal es que delegue el servicio wsfe al CUIT de Nexo, que firma
-    con un único certificado propio. Esto choca con CLAUDE.md §33 ("su propio
-    certificado, nunca con uno compartido"): está pendiente que el usuario lo
-    confirme antes de cambiar §33.
+  - **Cómo se ve en la demo (decidido con el usuario el 19 de octubre):** es
+    una presentación escolar pero seria, con directivos y padres.
+    - La factura impresa lleva los datos del negocio de demo cargados en
+      Configuración, no los del padre: su CUIT es solo un dato interno.
+    - Todo comprobante emitido en homologación lleva la leyenda "Comprobante
+      de prueba – sin validez fiscal".
+    - Se intenta emitir A, B y C. Homologación en general no controla la
+      condición fiscal; se confirma en la primera prueba.
+    - Se factura en vivo, con un video grabado antes de respaldo (los
+      servidores de prueba de ARCA a veces se caen) y el CAE simulado como
+      última red.
+  - **En producción (decidido por el usuario el 19 de octubre):**
+    - Nexo se inscribe en ARCA con su propio CUIT, clave fiscal nivel 3 y un
+      certificado de producción;
+    - cada cliente le delega el servicio wsfe a Nexo y emite con su propio
+      CUIT, sin tener certificado.
+    - Seguir soportando que un negocio suba su propio certificado.
+    - CLAUDE.md §33 quedó corregido en ese sentido.
+    - Que Nexo facture sus suscripciones (inscripción fiscal de Nexo) es
+      aparte: hay que charlarlo con un contador.
 - **Dirección pública con HTTPS (etapa 11):** Mercado Libre, Tienda Nube y
   WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
   ngrok con su dominio fijo, apuntando al servidor local.

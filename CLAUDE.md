@@ -1300,9 +1300,16 @@ en Argentina requiere:
 - **Ambiente de homologación antes que producción**: ARCA (ex AFIP) exige
   probar contra su ambiente de testing con datos ficticios antes de habilitar
   el ambiente real. No se apunta a producción sin haber homologado.
-- **Certificado y credenciales por empresa** (o por punto de venta dentro de
-  una empresa), consistente con el aislamiento de §28: cada negocio factura
-  con su propio CUIT y su propio certificado, nunca con uno compartido.
+- **Cada negocio factura con su propio CUIT**, consistente con el aislamiento
+  de §28. Hay dos formas de autenticarse, y la normal es la delegación
+  (decidido por el usuario el 19 de octubre de 2026):
+  - **Delegación:** Nexo tiene su propio CUIT y un certificado de producción.
+    Cada cliente le delega el servicio de factura electrónica (wsfe) desde
+    el Administrador de Relaciones de ARCA, y no necesita certificado.
+  - **Certificado propio:** el negocio carga en Nexo su propio certificado y
+    su clave (por empresa o por punto de venta).
+
+  En los dos casos, ningún negocio factura con el CUIT de otro.
 - **CAE real**: número, vencimiento y respuesta del organismo persistidos tal
   cual los devuelve ARCA (los campos ya están en el esquema, ver §16); una
   venta sin CAE no se presenta como facturada ante el organismo, aunque tenga
