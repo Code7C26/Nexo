@@ -7567,3 +7567,39 @@ unidad y con stock; las empresas, como comercio general.
 ### Qué sigue
 
 Socios, cuotas e ingreso (plan en handoff.md).
+
+## 71. Cierre de la sesión del 19 de octubre: visión de tipos de negocio y referencia de diseño
+
+No hubo código: el usuario pidió documentar todo para seguir en otra sesión ("esta ya se hizo
+muy larga"). Lo que definió, en sus palabras:
+
+- **Tipos de negocio:**
+  - "Cuando vos creás una cuenta, te pregunte qué tipo de negocio tenés y a partir de eso
+    puedas gestionar el tuyo."
+  - "Una cuenta podría tener más de un negocio sin problema."
+  - "Un gimnasio que maneja socios también puede vender productos y tener una parte
+    comercial... todos los gimnasios que conozco venden productos. Compran y venden."
+  - Para la presentación: algunos tipos terminados y otros que aparezcan con "Próximamente".
+    Barbería, con calendario y mensajes a clientes, y restaurante, con comandas y mesas
+    ("muy, muy complejo"), quedan para próximamente.
+  - "Vi que se hicieron bastantes. Pero bastante complejo. Así que mejoraría eso." Se tomó como
+    simplificar la elección (tarjetas en vez de select y casillas).
+- **Diseño:**
+  - Referencias: https://dub.co/ y la ficha de Refero
+    https://styles.refero.design/style/b0d80806-b724-4ed1-a1d1-074edd3c9bc9.
+  - Lo que busca: "un estilo moderno, simple, que tenga colores, que tenga una tipografía
+    simple, y que se pueda aplicar a cualquier cosa. Obviamente en su modo oscuro, adaptado a
+    Nexo".
+  - Quiere que se mire la app de Dub (las fotos y la demo), no solo la página web.
+  - Mientras se documentaba agregó: "Acordate que ese estilo hay que adaptarlo a Nexo. No tiene
+    que ser blanco." De Dub se toma la estructura, no el lienzo blanco: la base es el negro de
+    marca, y la versión principal es la oscura.
+
+**Lo que se dejó escrito:**
+- `handoff.md`: el plan con tres etapas nuevas (rediseño segunda parte, tipos de negocio
+  segunda parte, varios negocios por cuenta). El resumen de la ficha de Refero quedó en el
+  punto del rediseño.
+- CLAUDE.md §28 (multi-negocio decidido) y §29 (gimnasio = comercio + socios; tipos
+  complejos "Próximamente").
+- La ficha de Refero se leyó con WebFetch. De dub.co solo se pudo leer el texto (sin CSS ni
+  capturas): las capturas se sacan con playwright en la próxima sesión.

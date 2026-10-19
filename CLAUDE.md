@@ -1121,9 +1121,11 @@ Diseño que se siguió (y que rige para toda tabla o consulta nueva):
 - Ninguna consulta puede cruzar datos de dos empresas. Esto es una regla de
   integridad, no una preferencia: un error acá es una fuga de datos entre
   clientes de Nexo.
-- Un usuario puede pertenecer a una empresa (caso simple) o eventualmente a
-  varias con cambio de contexto (caso multi-sucursal de un mismo dueño) — a
-  definir con el equipo antes de implementar la segunda variante.
+- Un usuario puede pertenecer a una empresa (caso simple) o a varias con
+  cambio de contexto (caso multi-negocio de un mismo dueño). La segunda
+  variante quedó decidida el 19 de octubre de 2026 ("una cuenta podría tener
+  más de un negocio sin problema"). El diseño está en `handoff.md` y se
+  explica antes de tocar el esquema.
 - Suscripciones/planes por empresa (qué módulos tiene activos, límites de uso)
   se apoyan en esta misma columna, pero son una etapa aparte.
 
@@ -1171,7 +1173,10 @@ Implementado hoy (Etapa F, §38):
   módulos opcionales se ven (punto de venta, presupuestos, compras y stock).
   El admin puede prender o apagar cada módulo.
 - **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
-  `handoff.md`).
+  `handoff.md`). Un gimnasio también compra y vende productos: su preset
+  combina comercio con socios.
+- **Tipos más complejos** (barbería con turnos y mensajes, restaurante con
+  mesas y comandas): se muestran como "Próximamente" hasta tener su módulo.
 
 ---
 

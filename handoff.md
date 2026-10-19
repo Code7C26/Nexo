@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §70);
+    siguiente número (hoy el último es §71);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,10 @@
   reescribe nada.
 
 ## Estado actual (19 de octubre de 2026)
+
+**Próxima sesión:** empezar por el rediseño, segunda parte (punto 3 del plan,
+en "Qué sigue"), con la referencia de estilo que mandó el usuario. Después,
+tipos de negocio (segunda parte), socios y varios negocios por cuenta.
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
@@ -422,7 +426,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 - **Tamaño:** cada etapa se recorta a lo que entra en una o dos sesiones y se ve
   en una demo, completa y funcionando. Lo que queda afuera se anota como
   "después".
-- **Cuenta:** suman unas 17 sesiones en 14 días. Si no da, se recortan desde
+- **Cuenta:** suman unas 20 sesiones en 14 días. Si no da, se recortan desde
   el final: Tienda Nube, Mercado Libre y reportes (decidido por el usuario el
   19 de octubre: Mercado Libre y Tienda Nube van al final).
 
@@ -434,8 +438,103 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    Prioridad del usuario del 19 de octubre. Tipos: comercio general (incluye
    indumentaria y ferretería), carnicería, verdulería, kiosco o almacén,
    servicios y gimnasio.
-3. **Socios, cuotas e ingreso** (2 sesiones). **Es lo siguiente.** Módulo
-   `socios`, activable en cualquier negocio y prendido en el gimnasio.
+3. **Rediseño visual, segunda parte** (1–2 sesiones). **Es lo siguiente:**
+   el usuario la pidió para arrancar la próxima sesión. La primera parte está
+   en hist. §69.
+   - **Referencia que mandó el 19 de octubre:**
+     - https://dub.co/ (la app de Dub, no solo su página web);
+     - la ficha de estilo de Refero:
+       https://styles.refero.design/style/b0d80806-b724-4ed1-a1d1-074edd3c9bc9.
+     - Lo que pidió: "un estilo moderno, simple, que tenga colores, que tenga
+       una tipografía simple, y que se pueda aplicar a cualquier cosa.
+       Obviamente en su modo oscuro, adaptado a Nexo. Igualmente esa
+       tipografía me gusta bastante".
+     - No quiere copiar todo.
+     - **"Ese estilo hay que adaptarlo a Nexo. No tiene que ser blanco."**
+       (19 de octubre). De Dub se toma la estructura: bordes finos en vez de
+       sombras, tarjetas limpias, densidad compacta, pastillas de color,
+       cifras claras y tipografía simple. El fondo blanco no se toma.
+     - La base es la identidad de Nexo: el negro de marca. La versión
+       principal que se diseña y se muestra es la oscura (fondo negro,
+       superficies gris muy oscuro, bordes finos), y la clara va adaptada,
+       sin el lienzo blanco de Dub.
+   - **Lo que dice la ficha de Refero (estilo Dub, en claro; hay que llevarlo
+     a la base negra de Nexo):**
+     - **Superficies:** fondo casi blanco; contenedores con borde de 1 px
+       `#e5e5e5` en vez de sombra; tarjetas de 12 px de radio y sin sombra
+       (16 px las grandes); densidad compacta sobre una grilla de 4 px.
+     - **Tipografía:** monocroma, gris `#171717` para el texto (no negro
+       puro) y `#737373` para lo apagado.
+     - **Color:**
+       - un solo azul eléctrico (`#2563eb`) para enlaces, métricas clave y
+         estados activos;
+       - el botón primario va relleno en negro, que coincide con el negro de
+         marca de Nexo;
+       - pastillas de color chicas para categorías y estados: verde
+         `#16a34a`/`#dcfce7`, naranja `#ea580c`, violeta `#7c3aed`, y el
+         pendiente en un tono amarillo o naranja suave.
+     - **Componentes:**
+       - sección activa del menú con fondo celeste `#dbeaff` y radio de 8 px,
+         sin raya lateral;
+       - badges en pastilla (9999 px), con punto;
+       - inputs de 6 px de radio, botones de 8 px y botones fantasma o con
+         contorno;
+       - filas de tabla separadas por una línea de 1 px.
+     - **Fuentes:** Satoshi para títulos y cifras grandes (solo peso 500, de
+       36 a 48 px), Inter para todo lo demás (400, 500 y 600; 14 a 16 px el
+       texto) y Geist Mono para el código.
+     - **Cifras de los dashboards:** abreviadas (254K, $12K), en tríos
+       (clics, leads, ventas), con embudo y tablas de eventos con íconos.
+   - **Primer paso de la sesión:**
+     - sacar capturas de dub.co (y de la demo de la app si es accesible) con
+       playwright y mirarlas;
+     - después proponer los tokens y aplicarlos a toda la app, empezando por
+       el oscuro: negro de marca (#000) con superficies `#0a0a0a`/`#171717` y
+       bordes `#262626`, y el azul y las pastillas de color encima;
+     - el claro va adaptado, sin el lienzo blanco de Dub;
+     - mostrarle capturas al usuario antes de cerrar.
+   - **Tipografía, a decidir:** al usuario le gusta la de Dub.
+     - **Satoshi** es de Fontshare (licencia gratuita de ITF). Antes de usarla
+       hay que confirmar que permite alojar el woff2 en el propio servidor,
+       como las demás (sin Google Fonts).
+     - **Inter** es OFL.
+     - Geist, la de hoy, está en la misma línea que Inter.
+   - **Se mantienen:**
+     - negro de marca en la sidebar y el login;
+     - sin amarillo como acento;
+     - sin doble raya bajo las cifras;
+     - sin bloques negros sueltos en el tema claro.
+     - Ver la memoria `nexo-marca-negro` y las decisiones de diseño de arriba.
+   - **Pendientes de pasadas anteriores:** la tabla de evolución del Resumen
+     en el celular y el título repetido de las fichas.
+4. **Tipos de negocio, segunda parte** (1 sesión). Pedido del usuario el 19
+   de octubre: "cuando vos creás una cuenta, te pregunte qué tipo de negocio
+   tenés y a partir de eso puedas gestionar el tuyo". También: "Vi que se
+   hicieron bastantes. Pero bastante complejo. Así que mejoraría eso."
+   - **Elegir el tipo con tarjetas**, con ícono, nombre y una línea de qué
+     trae, en el registro y en Configuración. Reemplaza al select, y las
+     casillas de módulos se esconden detrás de "Personalizar".
+   - **Tipos terminados para la presentación:**
+     - comercio general, que incluye indumentaria y ferretería;
+     - carnicería;
+     - verdulería;
+     - kiosco o almacén;
+     - servicios;
+     - gimnasio, cuando esté el módulo de socios.
+   - **Tipos con "Próximamente"** (se ven, pero no se pueden elegir):
+     - barbería o peluquería: turnos con calendario y mensajes a clientes;
+     - restaurante o bar: mesas y comandas. El usuario lo marcó como "muy,
+       muy complejo";
+     - se pueden sumar otros complejos (taller, consultorio, farmacia con
+       lotes y vencimientos). Cada uno va a ser un módulo reusable
+       (CLAUDE.md §29), no un camino propio.
+   - **Gimnasio = comercio + socios.** El usuario: "todos los gimnasios que
+     conozco venden productos. Compran y venden". Su preset pasa a
+     `pos compras stock socios`, con `tipo_defecto` producto. Los planes son
+     servicios que crea el módulo de socios.
+5. **Socios, cuotas e ingreso** (2 sesiones). Módulo
+   `socios`, activable en cualquier negocio y prendido en el gimnasio, que
+   además compra y vende como un comercio.
    Decidido con el usuario el 19 de octubre:
    - planes con precio y duración (mensual, trimestral, anual);
    - la cuota vence desde la fecha de alta del socio;
@@ -445,27 +544,32 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - cada cuota es una venta del servicio del plan, cobrada con el circuito
        existente;
      - cuotas generadas de forma idempotente por período, sin cron.
-4. **Rediseño visual** (2 sesiones). **Primera parte hecha (hist. §69); falta la segunda.** Pedido del usuario
-   el 19 de octubre: "me sigue sin convencer". Referencia: los dashboards y
-   logins de topmate.io/code_xr.
-   - Tipografía nueva, sobre todo en los números: sale Bricolage Grotesque.
-   - Sin la doble raya azul bajo las cifras.
-   - Sin bloques negros sueltos en el tema claro.
-   - Menos textos explicativos.
-   - Resumen con tarjetas de indicadores (ícono, cifra y variación).
-   - Login en tarjeta.
-   - Los dos pendientes de la pasada de diseño de arriba.
-5. **B2: PWA** (1 sesión).
+6. **Varios negocios por cuenta** (1–2 sesiones). Decidido por el usuario el
+   19 de octubre: "una cuenta podría tener más de un negocio sin problema".
+   - Es la variante "un usuario en varias empresas con cambio de contexto" de
+     CLAUDE.md §28, que estaba a definir y ahora está definida.
+   - **Diseño a proponer antes de tocar el esquema** (CLAUDE.md §34):
+     - una tabla `usuario_organizaciones` (`usuario_id`, `organizacion_id`,
+       `rol`);
+     - la empresa activa vive en la sesión (`sesiones.organizacion_id`) y se
+       cambia con un selector arriba del menú;
+     - "Agregar negocio" crea otra empresa con el mismo usuario como admin.
+   - **Restricciones:**
+     - el nombre de usuario sigue siendo único en todo Nexo y el login sigue
+       sin pedir empresa (hist. §45);
+     - el aislamiento por `organizacion_id` de la sesión no cambia: solo
+       cambia de dónde sale.
+7. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.
    - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión
      (CLAUDE.md §31).
-6. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
+8. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
    porque el marketing necesita una dirección pública. La landing se sirve
    desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
    no hay respuesta, va "consultanos") y dónde se publica (hosting gratis o
    pago, y si se compra un dominio).
-7. **C: IVA** (2 sesiones).
+9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
    - Alícuota por producto, 21% por defecto. `precio_unitario` sigue siendo el
@@ -475,7 +579,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      otro, C si el emisor es monotributista. La factura A discrimina el IVA.
    - Reporte de IVA ventas y compras.
    - La retención de Mercado Pago queda para después.
-8. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
+10. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
    electrónica real contra el ambiente de prueba de ARCA, con CAE de prueba.
    - Gratis.
    - WSAA + WSFEv1 implementados directo en el backend. No se usa AfipSDK: su
@@ -485,7 +589,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Certificado y clave por empresa (CLAUDE.md §33).
    - Reintento sin duplicar: antes de emitir se consulta el último número
      autorizado.
-9. **I: voz y WhatsApp** (2 sesiones).
+11. **I: voz y WhatsApp** (2 sesiones).
    - Dictado con la Web Speech API del navegador (es-AR, sin costo), con el
      mismo flujo de confirmación.
    - WhatsApp Cloud API como canal del asistente, con el número de prueba que
@@ -497,14 +601,14 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Las notas de voz de WhatsApp se transcriben con Gemini, que ya se usa.
    - Consultas de solo lectura en lenguaje natural ("¿cuánto vendí este
      mes?").
-10. **H: reportes** (1 sesión, segundo en recortarse): ventas por vendedor y
+12. **H: reportes** (1 sesión, segundo en recortarse): ventas por vendedor y
     comparación contra el mismo período del año anterior.
-11. **Cierre** (1 sesión).
+13. **Cierre** (1 sesión).
     - Datos de demo realistas.
     - Pasada final de diseño.
     - Ensayo de la demo.
 
-12. **G: Mercado Libre** (2 sesiones). Arma también la base común de
+14. **G: Mercado Libre** (2 sesiones). Arma también la base común de
    integraciones de CLAUDE.md §32:
    - credenciales OAuth por empresa;
    - tabla de vínculos publicación ↔ producto o variante;
@@ -515,7 +619,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        la misma lógica que una venta cargada a mano, y sin duplicarse.
    - Para la demo, usuarios de prueba de Mercado Libre (se crean por API).
    - Gratis.
-13. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
+15. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
    partners, con una tienda demo.
 
 **Lo que no es el producto** (después de la lista de arriba): las tareas extra
@@ -524,19 +628,19 @@ siguen la publicidad, el marketing y la presentación presencial.
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
-- **ARCA (etapa 8):**
+- **ARCA (etapa 10):**
   - clave fiscal nivel 3, la suya o la de un adulto; la app de ARCA la da
     validando el DNI;
   - adherir el servicio "WSASS – Autogestión Certificados Homologación";
   - generar el certificado de prueba con el pedido (CSR) que se prepara acá.
-- **Dirección pública con HTTPS (etapa 9):** Mercado Libre, Tienda Nube y
+- **Dirección pública con HTTPS (etapa 11):** Mercado Libre, Tienda Nube y
   WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
   ngrok con su dominio fijo, apuntando al servidor local.
-- **Mercado Libre (etapa 12):** cuenta propia de Mercado Libre y crear la app
+- **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
   en su portal de desarrolladores.
-- **Tienda Nube (etapa 13):** registrarse en el programa de partners, crear una
+- **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
   tienda demo y la app.
-- **Meta (etapa 9):**
+- **Meta (etapa 11):**
   - cuenta de Meta for Developers;
   - una app con el producto WhatsApp;
   - cargar hasta 5 teléfonos de prueba.
