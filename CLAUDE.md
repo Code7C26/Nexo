@@ -318,8 +318,9 @@ Cuando sea necesario guardar un valor histórico, conservarlo en la operación c
 
 Implementado hoy: productos con atributos y variantes (combinaciones
 vendibles con su propio SKU y precio por lista), categorías, listas de
-precios, margen objetivo con alerta. Unidad de medida fraccionable y
-condición fiscal son las ampliaciones pendientes (§29, §33).
+precios, margen objetivo con alerta, unidad de medida (unidad, kg, g, l,
+ml, m, con cantidades decimales) y tipo producto/servicio (un servicio no
+maneja stock). La condición fiscal es la ampliación pendiente (§33).
 
 ---
 
@@ -1161,6 +1162,17 @@ una rama exclusiva de un rubro.
 El comercio general (el que ya está construido) es el primer perfil y sigue
 siendo el foco hasta que el núcleo esté maduro (§38).
 
+Implementado hoy (Etapa F, §38):
+- **Tipos de negocio:** comercio general (incluye indumentaria y ferretería),
+  carnicería, verdulería, kiosco o almacén, servicios y gimnasio. Se eligen al
+  crear la empresa y se cambian en Configuración.
+- **Cada tipo es un preset** (`PERFILES_RUBRO` en `server.js`): la unidad y el
+  tipo con que nace un producto (kg en carnicería, servicio en gimnasio) y qué
+  módulos opcionales se ven (punto de venta, presupuestos, compras y stock).
+  El admin puede prender o apagar cada módulo.
+- **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
+  `handoff.md`).
+
 ---
 
 # 30. PUNTO DE VENTA (POS) Y TURNO DE CAJA
@@ -1421,7 +1433,7 @@ excepciones).
 | C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio | Pendiente |
 | D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Hecha |
 | E | ARCA: homologación → producción (§33) | Depende de C | Pendiente |
-| F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Pendiente |
+| F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Hecha (socios y cuotas, en curso) |
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Pendiente |
 | H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
 | I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | Pendiente |

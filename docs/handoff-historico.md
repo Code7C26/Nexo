@@ -7486,3 +7486,84 @@ Segunda parte del rediseño:
   la referencia).
 
 Después, B2 (PWA).
+
+## 70. Tipos de negocio, unidades de medida y servicios, 19 de octubre de 2026
+
+Pedido del usuario: "agregar tipos de negocio dónde se pueda elegir el tipo de negocio (para
+carnicería, verdulería, gym o uno que sea con sistema de socios y cuotas)". También pidió que
+Mercado Libre y Tienda Nube vayan al final del plan. Sobre los tipos, aclaró que indumentaria y
+ferretería son comercio general, y que el Nexo base tiene que manejar variantes y medir
+productos "no solo por unidades". Decidió las reglas del gimnasio (ver el plan en handoff.md).
+Esta sesión cubre la primera parte; socios y cuotas es la siguiente.
+
+**Esquema.** Aditivo, por ALTER con default y sin rebuild. Va en `schema.sql` y en
+`db/index.js`, después del último ALTER:
+- `productos.unidad TEXT NOT NULL DEFAULT 'unidad'`;
+- `productos.tipo TEXT NOT NULL DEFAULT 'producto'`;
+- `organizaciones.rubro TEXT` y `organizaciones.modulos TEXT`, nullable.
+
+Sin `CHECK`: los valores los validan `UNIDADES`, `TIPOS_PRODUCTO` y `PERFILES_RUBRO` en
+`server.js`, para no reconstruir tablas al sumar uno. Los productos que ya existían quedan por
+unidad y con stock; las empresas, como comercio general.
+
+**Backend (`server.js`).**
+- `PERFILES_RUBRO` y `perfilDeEmpresa()`.
+  - `GET /api/negocio` devuelve `rubro`, `modulos`, `unidad_defecto`, `tipo_defecto` y
+    `perfiles`.
+  - `PUT /api/negocio` acepta `rubro` y `modulos`, validados. Cambiar el tipo sin mandar
+    módulos vuelve a los del preset.
+  - `POST /api/auth/registro` acepta `rubro`.
+- **Productos:** POST, PATCH y el lote aceptan `unidad`, y POST y PATCH también `tipo`. Sin
+  esos datos, un producto nuevo toma los del tipo de negocio.
+- **Servicios:**
+  - `esServicio()`: `registrarMovimientoStock` no escribe nada para un servicio. Es el único
+    punto que escribe stock, así que cubre venta, edición, anulación y devolución.
+  - Las validaciones de stock y los cinco chequeos de "no queda negativo" lo saltean.
+  - Ajuste, transferencia y compra lo rechazan con 400.
+  - `/api/stock` y `/api/reportes/stock` excluyen los servicios, y `estado_stock` es null.
+  - Un producto con stock no pasa a servicio.
+- `GET /api/pos/catalogo` suma `unidad` y `tipo`, con `stock: null` para un servicio.
+
+**Frontend.**
+- `core/formato.js`: `UNIDADES`, `esFraccionable()` y `cantidad(n, unidad)`.
+- `core/negocio.js`: `fijarNegocio()` pone `<html data-modulos>`; `moduloActivo()`.
+- **Menú:** `data-modulo` en los ítems de punto de venta y presupuestos y en las secciones
+  Compras y Stock. El CSS las oculta si el módulo no está en `data-modulos`, y el router
+  (`MODULO_DE_VISTA`) manda a Ventas una vista de un módulo apagado.
+- **Producto:** "Se vende por" y "Tipo" en el modal. El stock mínimo y máximo se ocultan para
+  un servicio. La tabla, la ficha y Stock muestran la cantidad con su unidad.
+- **Renglones de venta y compra:** el `step` sigue la unidad, y un servicio no tiene tope de
+  stock.
+- **Punto de venta:**
+  - un producto que no va por unidad abre "Cantidad", donde se carga el peso o el importe y
+    se calcula el otro;
+  - el − y el + mueven 0,1 en kg, l y m, y 100 en g y ml;
+  - un servicio dice "Servicio" y no tiene tope;
+  - la barra cuenta productos, no unidades.
+- **Registro y Configuración:** el select "Tipo de negocio" y, en Configuración, las
+  casillas de módulos.
+
+**Verificación.**
+- `npm test` 51 de 51, con un caso nuevo en `api.test.js`:
+  - venta de 1,25 kg;
+  - un servicio que se vende y se anula sin mover stock;
+  - un servicio en un ajuste o una compra da 400;
+  - pasar a servicio con stock da 400;
+  - el tipo de negocio y los módulos, con su validación y el 403 para el empleado.
+- `npm run lint` verde y `verificar-migracion` 24 de 24 (base real sin cambios).
+- `npm run regresion`: 8 diferencias, todas por los campos nuevos (`unidad`, `tipo`, `rubro`,
+  `modulos`, `unidad_defecto`, `tipo_defecto`, `perfiles`) en productos, stock, catálogo del
+  POS y negocio. Ningún dato existente cambia.
+- **Navegador:**
+  - el recorrido del POS de §68 sigue todo ok;
+  - uno nuevo, todo ok:
+    - una carnicería registrada desde la API, con el POS por kg ($4.000 = 0,5 kg y el + suma
+      100 g) y el stock en el backend 9,4 kg;
+    - un producto nuevo nace por kg;
+    - en Configuración, pasar a kiosco y apagar Compras la saca del menú y bloquea la vista;
+    - en un gimnasio, un producto nuevo es servicio y no tiene tope en el POS;
+    - el registro pide el tipo.
+
+### Qué sigue
+
+Socios, cuotas e ingreso (plan en handoff.md).

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §69);
+    siguiente número (hoy el último es §70);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -278,6 +278,25 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   columnas distintas a propósito (hist. §14, §16).
 - **El asistente IA no opera productos con variantes activas** (hist. §34).
 
+**Tipos de negocio, unidades y servicios (hist. §70)**
+- **El tipo de negocio es un preset de datos** (`PERFILES_RUBRO` en
+  `server.js`): unidad y tipo con que nace un producto, y qué módulos se ven.
+  Nunca `if (rubro === …)` con lógica (CLAUDE.md §29).
+- **Módulos:** `pos`, `presupuestos`, `compras` y `stock`. Ocultarlos es de la
+  interfaz (`<html data-modulos>` y el router); los permisos siguen en
+  `permisos.js`. `organizaciones.modulos` NULL = los del preset; cambiar el tipo
+  sin mandar módulos vuelve al preset.
+- **Unidad del producto:** `unidad`, `kg`, `g`, `l`, `ml` o `m`, validada en
+  `server.js` y sin `CHECK`. Las cantidades ya eran REAL: el backend nunca
+  exigió enteros.
+- **Un servicio no maneja stock:**
+  - `registrarMovimientoStock` no escribe nada para un servicio, y es el único
+    punto que escribe stock;
+  - las validaciones de stock lo saltean;
+  - compras, ajustes y transferencias lo rechazan;
+  - no aparece en Stock ni en los reportes de stock;
+  - con stock, no se puede pasar a servicio.
+
 ## Cómo verificar un cambio (procedimiento de hist. §40–§49, scripts de §60)
 
 1. **Nunca contra `backend/db/nexo.db`:**
@@ -403,14 +422,30 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 - **Tamaño:** cada etapa se recorta a lo que entra en una o dos sesiones y se ve
   en una demo, completa y funcionando. Lo que queda afuera se anota como
   "después".
-- **Cuenta:** suman unas 15 sesiones en 14 días. Si no da, se recortan primero
-  la 10 y la 11, y después Tienda Nube (la 8).
+- **Cuenta:** suman unas 17 sesiones en 14 días. Si no da, se recortan desde
+  el final: Tienda Nube, Mercado Libre y reportes (decidido por el usuario el
+  19 de octubre: Mercado Libre y Tienda Nube van al final).
 
 **Producto, en orden:**
 1. ~~D: punto de venta y turno de caja~~ **hecha** (hist. §67 y §68). Para
    después: descuentos y precio editable en el mostrador, alta rápida de
    cliente y venta sin conexión.
-2. **Rediseño visual** (2 sesiones). **Primera parte hecha (hist. §69); falta la segunda.** Pedido del usuario
+2. **F: tipos de negocio, unidades y servicios: hecha** (hist. §70).
+   Prioridad del usuario del 19 de octubre. Tipos: comercio general (incluye
+   indumentaria y ferretería), carnicería, verdulería, kiosco o almacén,
+   servicios y gimnasio.
+3. **Socios, cuotas e ingreso** (2 sesiones). **Es lo siguiente.** Módulo
+   `socios`, activable en cualquier negocio y prendido en el gimnasio.
+   Decidido con el usuario el 19 de octubre:
+   - planes con precio y duración (mensual, trimestral, anual);
+   - la cuota vence desde la fecha de alta del socio;
+   - control de ingreso en la recepción, que avisa si debe.
+   - Diseño (CLAUDE.md §29):
+     - el socio es un cliente;
+     - cada cuota es una venta del servicio del plan, cobrada con el circuito
+       existente;
+     - cuotas generadas de forma idempotente por período, sin cron.
+4. **Rediseño visual** (2 sesiones). **Primera parte hecha (hist. §69); falta la segunda.** Pedido del usuario
    el 19 de octubre: "me sigue sin convencer". Referencia: los dashboards y
    logins de topmate.io/code_xr.
    - Tipografía nueva, sobre todo en los números: sale Bricolage Grotesque.
@@ -420,17 +455,17 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Resumen con tarjetas de indicadores (ícono, cifra y variación).
    - Login en tarjeta.
    - Los dos pendientes de la pasada de diseño de arriba.
-3. **B2: PWA** (1 sesión).
+5. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.
    - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión
      (CLAUDE.md §31).
-4. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
+6. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
    porque el marketing necesita una dirección pública. La landing se sirve
    desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
    no hay respuesta, va "consultanos") y dónde se publica (hosting gratis o
    pago, y si se compra un dominio).
-5. **C: IVA** (2 sesiones).
+7. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
    - Alícuota por producto, 21% por defecto. `precio_unitario` sigue siendo el
@@ -440,7 +475,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      otro, C si el emisor es monotributista. La factura A discrimina el IVA.
    - Reporte de IVA ventas y compras.
    - La retención de Mercado Pago queda para después.
-6. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
+8. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
    electrónica real contra el ambiente de prueba de ARCA, con CAE de prueba.
    - Gratis.
    - WSAA + WSFEv1 implementados directo en el backend. No se usa AfipSDK: su
@@ -450,19 +485,6 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Certificado y clave por empresa (CLAUDE.md §33).
    - Reintento sin duplicar: antes de emitir se consulta el último número
      autorizado.
-7. **G: Mercado Libre** (2 sesiones). Arma también la base común de
-   integraciones de CLAUDE.md §32:
-   - credenciales OAuth por empresa;
-   - tabla de vínculos publicación ↔ producto o variante;
-   - log de sincronización.
-   - Funciones:
-     - Nexo empuja stock y precio de las publicaciones vinculadas;
-     - las ventas de Mercado Libre entran por webhook como ventas de Nexo, por
-       la misma lógica que una venta cargada a mano, y sin duplicarse.
-   - Para la demo, usuarios de prueba de Mercado Libre (se crean por API).
-   - Gratis.
-8. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
-   partners, con una tienda demo.
 9. **I: voz y WhatsApp** (2 sesiones).
    - Dictado con la Web Speech API del navegador (es-AR, sin costo), con el
      mismo flujo de confirmación.
@@ -475,17 +497,26 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Las notas de voz de WhatsApp se transcriben con Gemini, que ya se usa.
    - Consultas de solo lectura en lenguaje natural ("¿cuánto vendí este
      mes?").
-10. **F: unidades fraccionables y perfil de rubro** (1 sesión). Es lo primero
-    que se recorta si no da el tiempo.
-    - Unidades kg, g y l, con cantidades decimales.
-    - El perfil de rubro preconfigura la unidad por defecto y qué módulos se ven
-      (CLAUDE.md §29).
-11. **H: reportes** (1 sesión, segundo en recortarse): ventas por vendedor y
+10. **H: reportes** (1 sesión, segundo en recortarse): ventas por vendedor y
     comparación contra el mismo período del año anterior.
-12. **Cierre** (1 sesión).
+11. **Cierre** (1 sesión).
     - Datos de demo realistas.
     - Pasada final de diseño.
     - Ensayo de la demo.
+
+12. **G: Mercado Libre** (2 sesiones). Arma también la base común de
+   integraciones de CLAUDE.md §32:
+   - credenciales OAuth por empresa;
+   - tabla de vínculos publicación ↔ producto o variante;
+   - log de sincronización.
+   - Funciones:
+     - Nexo empuja stock y precio de las publicaciones vinculadas;
+     - las ventas de Mercado Libre entran por webhook como ventas de Nexo, por
+       la misma lógica que una venta cargada a mano, y sin duplicarse.
+   - Para la demo, usuarios de prueba de Mercado Libre (se crean por API).
+   - Gratis.
+13. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
+   partners, con una tienda demo.
 
 **Lo que no es el producto** (después de la lista de arriba): las tareas extra
 de la materia que pide el Classroom. El usuario las va a mostrar. Después
@@ -493,17 +524,17 @@ siguen la publicidad, el marketing y la presentación presencial.
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
-- **ARCA (etapa 6):**
+- **ARCA (etapa 8):**
   - clave fiscal nivel 3, la suya o la de un adulto; la app de ARCA la da
     validando el DNI;
   - adherir el servicio "WSASS – Autogestión Certificados Homologación";
   - generar el certificado de prueba con el pedido (CSR) que se prepara acá.
-- **Dirección pública con HTTPS (etapa 7):** Mercado Libre, Tienda Nube y
+- **Dirección pública con HTTPS (etapa 9):** Mercado Libre, Tienda Nube y
   WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
   ngrok con su dominio fijo, apuntando al servidor local.
-- **Mercado Libre (etapa 7):** cuenta propia de Mercado Libre y crear la app
+- **Mercado Libre (etapa 12):** cuenta propia de Mercado Libre y crear la app
   en su portal de desarrolladores.
-- **Tienda Nube (etapa 8):** registrarse en el programa de partners, crear una
+- **Tienda Nube (etapa 13):** registrarse en el programa de partners, crear una
   tienda demo y la app.
 - **Meta (etapa 9):**
   - cuenta de Meta for Developers;
