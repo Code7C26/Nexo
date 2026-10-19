@@ -632,7 +632,19 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   - clave fiscal nivel 3, la suya o la de un adulto; la app de ARCA la da
     validando el DNI;
   - adherir el servicio "WSASS – Autogestión Certificados Homologación";
-  - generar el certificado de prueba con el pedido (CSR) que se prepara acá.
+  - generar el certificado de prueba con el pedido (CSR) que se prepara acá, y
+    autorizarlo para el servicio "wsfe".
+  - **Quién (19 de octubre):** lo va a hacer el padre del usuario, que es
+    monotributista. Es un solo certificado de prueba para todos los negocios
+    de la demo, y no toca su monotributo real.
+    - Como es monotributista, las facturas de prueba salen C.
+    - Para mostrar también A y B, probar si homologación lo permite con su
+      CUIT.
+  - **En producción (después de la presentación):** cada negocio emite con su
+    CUIT. Lo normal es que delegue el servicio wsfe al CUIT de Nexo, que firma
+    con un único certificado propio. Esto choca con CLAUDE.md §33 ("su propio
+    certificado, nunca con uno compartido"): está pendiente que el usuario lo
+    confirme antes de cambiar §33.
 - **Dirección pública con HTTPS (etapa 11):** Mercado Libre, Tienda Nube y
   WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
   ngrok con su dominio fijo, apuntando al servidor local.
