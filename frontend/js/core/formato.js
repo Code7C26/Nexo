@@ -48,6 +48,18 @@ export function fechaAR(valor) {
   return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : (valor ?? "");
 }
 
+// Fecha y hora de un momento que el backend guardó con datetime('now'):
+// "AAAA-MM-DD hh:mm:ss" en UTC y sin zona. Se muestra en la hora local del
+// navegador como "dd/mm/aaaa hh:mm"; lo que no tenga ese formato pasa por
+// fechaAR().
+export function fechaHoraAR(valor) {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(valor ?? "");
+  if (!partes) return fechaAR(valor);
+  const d = new Date(Date.UTC(partes[1], partes[2] - 1, partes[3], partes[4], partes[5]));
+  const dos = (n) => String(n).padStart(2, "0");
+  return `${dos(d.getDate())}/${dos(d.getMonth() + 1)}/${d.getFullYear()} ${dos(d.getHours())}:${dos(d.getMinutes())}`;
+}
+
 // Versión abreviada de money(), para las etiquetas del eje del gráfico de
 // evolución: "$450.000,00" no entra en la canaleta angosta del eje.
 // Conserva el signo, y un decimal en miles: con marcas cada $500, redondear

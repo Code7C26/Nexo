@@ -37,6 +37,7 @@ import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
+import "./dominios/pos.js";
 
 let facturas = [];
 
@@ -7077,6 +7078,13 @@ function renderPapelera() {
 registrar("cargar:caja", cargarCaja);
 registrar("cargar:panelResumen", cargarPanelResumen);
 registrar("render:papelera", renderPapelera);
+// Las que refresca dominios/pos.js después de cada venta de mostrador: las
+// mismas que recarga el alta de venta de acá.
+registrar("cargar:ventas", cargarVentas);
+registrar("cargar:stock", cargarStock);
+registrar("cargar:productos", cargarProductos);
+registrar("cargar:clientes", cargarClientes);
+registrar("cargar:reporteStock", cargarReporteStock);
 
 // El orden importa en dos puntos: Caja llena `cuentasTesoreria`, que
 // Gastos necesita para su filtro y su modal; y el Resumen va último

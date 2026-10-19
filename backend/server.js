@@ -9449,7 +9449,12 @@ app.post('/api/pos/ventas', (req, res) => {
   if (cobrado > total) {
     return res.status(400).json({ error: 'Los cobros superan el total de la venta.' });
   }
-  if (cobrado < total && !cliente_id) {
+  // Tampoco se le fía si llega el id del propio "Consumidor final".
+  const esConsumidorFinal =
+    cliente_id &&
+    db.prepare('SELECT nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(cliente_id), organizacionId)
+      ?.nombre === CONSUMIDOR_FINAL;
+  if (cobrado < total && (!cliente_id || esConsumidorFinal)) {
     return res.status(400).json({ error: 'Para dejar saldo en cuenta corriente, elegí un cliente.' });
   }
 

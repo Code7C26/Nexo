@@ -2308,6 +2308,696 @@ input.precio-sin-configurar::placeholder {
 
 .asistente-enviar:disabled { opacity: 0.5; cursor: default; }
 
+/* ---------- Punto de venta (dominios/pos.js) ----------
+   La pantalla de mostrador. Lo que hace de "visor" de la caja (el turno
+   arriba, el total del cobro, la barra del celular) va en el negro de la
+   marca, como la sidebar, y en los dos temas: es la misma superficie que
+   el comercio ve todo el día. El único color de acción sigue siendo el
+   azul birome. */
+
+/* pos.js prende y apaga con hidden elementos que tienen display propio:
+   sin esto le ganarían al [hidden] del navegador (mismo caso que
+   .form label[hidden]). */
+.view[data-view="pos"] [hidden],
+.pos-modal [hidden] { display: none; }
+
+.pos-elegir-caja {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.pos-elegir-caja select { min-height: 36px; font-size: var(--txt-sm); }
+
+.pos-apertura {
+  max-width: 560px;
+  margin-bottom: var(--sp-5);
+}
+
+/* Segundo renglón de una celda del historial de cierres: quién abrió y
+   cerró, cuántas ventas. */
+.pos-celda-detalle {
+  display: block;
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
+}
+
+.pos-contado {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.pos-contado label { flex: 1; }
+
+/* El turno abierto: caja, quién la abrió y las cifras del día. */
+.pos-turno {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-ink);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-turno-caja {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.pos-turno-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--txt-2xs);
+  font-weight: 600;
+  color: var(--sidebar-ink-2);
+}
+
+/* Prendida, con el mismo azul que marca la sección activa del menú. */
+.pos-turno-estado::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--accent-on-dark);
+  box-shadow: 0 0 0 3px rgba(143, 163, 255, 0.22);
+}
+
+.pos-turno-caja strong {
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.pos-turno-meta {
+  font-size: var(--txt-xs);
+  color: var(--sidebar-ink-3);
+}
+
+.pos-turno-cifras {
+  display: flex;
+  gap: var(--sp-5);
+  margin: 0;
+}
+
+.pos-turno-cifras div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pos-turno-cifras dt {
+  font-size: var(--txt-2xs);
+  font-weight: 500;
+  color: var(--sidebar-ink-3);
+}
+
+.pos-turno-cifras dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pos-turno .btn-secundario {
+  background: transparent;
+  color: var(--sidebar-ink);
+  border-color: var(--sidebar-line);
+}
+
+.pos-turno .btn-secundario:hover {
+  background: var(--sidebar-hover);
+  border-color: var(--sidebar-ink-3);
+}
+
+/* Productos a la izquierda, la venta en curso a la derecha. */
+.pos-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.pos-buscar {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.pos-buscar .search {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  font-size: var(--txt-md);
+  border-radius: var(--r-md);
+}
+
+.pos-btn-camara {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: var(--r-md);
+}
+
+.pos-btn-camara .ico { width: 22px; height: 22px; }
+
+.pos-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--sp-3);
+}
+
+.pos-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-1);
+  min-height: 112px;
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease, transform var(--dur-1) ease;
+}
+
+.pos-item:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.pos-item:active { transform: scale(0.98); }
+
+.pos-item:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.pos-item:disabled {
+  cursor: default;
+  opacity: 0.55;
+  background: var(--surface-sunk);
+  box-shadow: none;
+  transform: none;
+}
+
+.pos-item:disabled:hover { border-color: var(--line); }
+
+.pos-item-nombre {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pos-item-meta {
+  overflow: hidden;
+  font-size: var(--txt-2xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pos-item-pie {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: auto;
+}
+
+.pos-item-precio {
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pos-item-stock {
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+/* Cuántas unidades de ese producto ya están en la venta. */
+.pos-item-en-venta {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: var(--txt-2xs);
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: var(--r-full);
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-vacio,
+.pos-items-mas {
+  grid-column: 1 / -1;
+  margin: var(--sp-3) 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+/* La venta en curso acompaña el scroll de la grilla en escritorio. */
+.pos-ticket {
+  position: sticky;
+  top: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  max-height: calc(100vh - var(--sp-6));
+}
+
+.pos-ticket .panel-head { margin-bottom: 0; }
+
+.pos-cliente {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--txt-xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+.pos-cliente input,
+.pos-cantidad-input {
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  font-size: var(--txt-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+
+.pos-cliente input:focus,
+.pos-cantidad-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.pos-renglones {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.pos-ticket-vacio {
+  padding: var(--sp-5) var(--sp-3);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.pos-renglon {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "info quitar"
+    "cantidad subtotal";
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pos-renglon-nuevo { animation: pos-renglon-entra 900ms var(--ease-out); }
+
+@keyframes pos-renglon-entra {
+  from { background: var(--accent-bg); }
+  to   { background: transparent; }
+}
+
+.pos-renglon-info {
+  grid-area: info;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pos-renglon-nombre {
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pos-renglon-precio {
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
+}
+
+.pos-renglon-quitar {
+  grid-area: quitar;
+  justify-self: end;
+}
+
+.btn-icon.pos-renglon-quitar,
+.btn-icon.pos-cobro-quitar { min-width: 44px; min-height: 44px; }
+
+.pos-cantidad {
+  grid-area: cantidad;
+  justify-self: start;
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+
+.pos-cantidad-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border: none;
+}
+
+.pos-cantidad-btn:hover { color: var(--accent); background: var(--accent-bg); }
+
+.pos-cantidad .pos-cantidad-input {
+  width: 60px;
+  min-height: 0;
+  padding: 0 var(--sp-1);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  border: none;
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+  border-radius: 0;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.pos-cantidad-input::-webkit-inner-spin-button,
+.pos-cantidad-input::-webkit-outer-spin-button,
+.pos-cobro-importe::-webkit-inner-spin-button,
+.pos-cobro-importe::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.pos-renglon-subtotal {
+  grid-area: subtotal;
+  justify-self: end;
+  font-size: var(--txt-md);
+  font-weight: 700;
+}
+
+/* El total cierra la venta como la cifra que concluye de las tiras:
+   grande y con la doble raya azul. */
+.pos-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-1);
+  font-weight: 700;
+}
+
+.pos-total-valor {
+  padding-bottom: 4px;
+  font-family: var(--font-display);
+  font-size: var(--txt-2xl);
+  letter-spacing: -0.03em;
+  border-bottom: 5px double var(--accent);
+}
+
+.pos-btn-cobrar {
+  min-height: 52px;
+  margin-top: 0;
+  font-size: var(--txt-md);
+}
+
+/* Solo en el celular (ver el bloque responsive de abajo). */
+.pos-barra { display: none; }
+
+/* Modal de cobro: el total en el visor negro, los medios y lo que falta
+   o el vuelto. */
+.pos-cobro-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-4);
+  color: var(--sidebar-ink);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+}
+
+.pos-cobro-total span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--txt-xs);
+  color: var(--sidebar-ink-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pos-cobro-total strong {
+  font-family: var(--font-display);
+  font-size: var(--txt-3xl);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.pos-cobros {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.pos-cobro-fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 160px) auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.form .pos-cobro-fila select,
+.form .pos-cobro-fila input { min-height: 48px; }
+
+.form .pos-cobro-fila .pos-cobro-importe {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  text-align: right;
+  font-size: var(--txt-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-medios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pos-medio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  font: inherit;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: none;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-full);
+}
+
+.pos-medio:hover {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.pos-cobro-cuentas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  margin: 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.pos-cobro-cuentas div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pos-cobro-cuentas .pos-cobro-resto { align-items: flex-end; text-align: right; }
+
+.pos-cobro-cuentas dt {
+  font-size: var(--txt-2xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+.pos-cobro-cuentas dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--txt-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* El vuelto es lo que el cajero tiene que leer de un vistazo. */
+.pos-cobro-vuelto dt { font-weight: 700; color: var(--ink); }
+.pos-cobro-vuelto dd { color: var(--accent); }
+
+.form-note.pos-nota-error {
+  color: var(--accent-danger);
+  background: var(--accent-danger-bg);
+}
+
+#formPosCobroSubmit { min-height: 52px; font-size: var(--txt-md); }
+
+.pos-exito {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+
+.pos-exito .ico.pos-exito-ico {
+  width: 48px;
+  height: 48px;
+  color: var(--accent-ok);
+}
+
+.pos-exito-titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--txt-lg);
+  font-weight: 700;
+}
+
+.pos-exito-vuelto {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.pos-exito-vuelto span {
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.pos-exito-vuelto strong {
+  padding-bottom: 6px;
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  border-bottom: 5px double var(--accent);
+}
+
+.pos-exito .btn-full { min-height: 52px; font-size: var(--txt-md); }
+
+/* Modal de cierre: el resumen del turno y el arqueo en vivo. */
+.ficha-datos.pos-cierre-datos { grid-template-columns: 1fr 1fr; }
+
+.pos-cierre-subtitulo {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--txt-2xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+.pos-cierre-lista {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pos-cierre-lista li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 6px 0;
+  font-size: var(--txt-sm);
+  border-bottom: 1px solid var(--line);
+}
+
+.pos-cierre-esperado {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+}
+
+.pos-cierre-esperado span { font-size: var(--txt-sm); font-weight: 600; }
+
+.pos-cierre-esperado strong {
+  font-family: var(--font-display);
+  font-size: var(--txt-xl);
+  letter-spacing: -0.02em;
+}
+
+.pos-diferencia {
+  min-height: 1.4em;
+  margin: 0;
+  font-size: var(--txt-md);
+  font-weight: 700;
+}
+
+.pos-camara-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  margin-bottom: var(--sp-3);
+  object-fit: cover;
+  background: var(--brand);
+  border-radius: var(--r-md);
+}
+
 /* ============================================================
    Responsive — mobile / tablet
    ============================================================ */
@@ -2516,6 +3206,106 @@ input.precio-sin-configurar::placeholder {
     bottom: var(--sp-4);
   }
 
+  /* Punto de venta: una columna, el turno en dos renglones (caja y botón,
+     después las cifras) y la barra fija para cobrar sin bajar hasta el
+     ticket. La barra termina antes del lanzador del asistente (56px a
+     --sp-4 del borde) para no taparlo. */
+  .pos-layout { grid-template-columns: 1fr; }
+
+  .pos-turno {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+  }
+
+  .pos-turno .btn { order: 2; }
+
+  .pos-turno-cifras {
+    order: 3;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--sidebar-line);
+  }
+
+  .pos-turno-cifras dd { font-size: var(--txt-md); }
+
+  .pos-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+  }
+
+  .pos-item { min-height: 104px; padding: var(--sp-3); }
+
+  .pos-ticket {
+    position: static;
+    max-height: none;
+    scroll-margin-top: 100px;
+  }
+
+  .pos-ticket .pos-btn-cobrar { display: none; }
+
+  /* "Venta" y "Vaciar" en el mismo renglón: el .panel-head de mobile apila. */
+  .pos-ticket .panel-head { flex-direction: row; align-items: center; }
+
+  /* En la tarjeta del celular el detalle va debajo del valor, no de la
+     etiqueta (que mide 110px, ver .ledger-table td::before). */
+  .ledger-table td .pos-celda-detalle { padding-left: 110px; }
+
+  .pos-contado { flex-direction: column; align-items: stretch; }
+
+  .pos-barra {
+    position: fixed;
+    left: var(--sp-4);
+    right: calc(var(--sp-4) + 56px + var(--sp-3));
+    bottom: var(--sp-4);
+    z-index: 44;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: 56px;
+    padding: 0 var(--sp-2) 0 var(--sp-4);
+    color: var(--sidebar-ink);
+    background: var(--sidebar-bg);
+    border: 1px solid var(--sidebar-line);
+    border-radius: var(--r-full);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .pos-barra-resumen {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+  }
+
+  .pos-barra-resumen span { font-size: var(--txt-2xs); color: var(--sidebar-ink-2); }
+
+  .pos-barra-resumen strong {
+    font-family: var(--font-display);
+    font-size: var(--txt-lg);
+    letter-spacing: -0.02em;
+  }
+
+  .pos-barra .btn {
+    min-height: 44px;
+    padding: 0 var(--sp-5);
+    border-radius: var(--r-full);
+  }
+
+  .pos-cobro-fila { grid-template-columns: minmax(0, 1fr) minmax(0, 130px) auto; }
+  .pos-exito-vuelto strong { font-size: 48px; }
+
   .barra-seleccion {
     left: var(--sp-3);
     right: var(--sp-3);
@@ -2582,6 +3372,12 @@ input.precio-sin-configurar::placeholder {
        encima del botón del asistente (z-index 45) y bloquea el click
        mientras el aviso está en pantalla. */
     max-width: min(360px, calc(100vw - var(--sp-4) * 2 - 56px - var(--sp-3)));
+  }
+
+  /* Con la barra de cobro del punto de venta a la vista, el aviso sube por
+     encima de ella en vez de taparle el total. */
+  body:has(.view[data-view="pos"]:not([hidden]) #posMostrador:not([hidden])) .avisos {
+    bottom: calc(var(--sp-4) + 56px + var(--sp-2));
   }
 }
 

@@ -80,6 +80,9 @@
         </div>
         <div class="nav-seccion">
           <p class="nav-grupo">Ventas</p>
+          <a href="#" class="nav-item" data-view="pos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg> Punto de venta
+          </a>
           <a href="#" class="nav-item" data-view="presupuestos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg> Presupuestos
           </a>
@@ -558,6 +561,115 @@
           </div>
         </section>
       </section>
+      <!-- Vista: Punto de venta (dominios/pos.js, CLAUDE.md §30). Tiene dos
+           estados según la caja elegida: sin turno abierto (abrir caja y
+           últimos cierres) y con turno abierto (el mostrador). -->
+      <section class="view" data-view="pos" hidden>
+        <p class="form-note" id="posSinCajas" hidden>Para vender desde el mostrador hace falta una cuenta de tesorería de tipo efectivo. Se crea desde Caja.</p>
+
+        <div class="pos-elegir-caja" id="posElegirCaja" hidden>
+          <label for="posCaja">Caja</label>
+          <select id="posCaja" class="select-inline"></select>
+        </div>
+
+        <div id="posApertura" hidden>
+          <section class="panel pos-apertura">
+            <div class="panel-head">
+              <h2 id="posAperturaTitulo">Abrir caja</h2>
+            </div>
+            <form id="formPosApertura" class="form">
+              <p class="form-note" id="posAperturaSaldo"></p>
+              <div class="pos-contado">
+                <label>Efectivo contado
+                  <input type="number" name="contado" id="posAperturaContado" step="0.01" min="0" required inputmode="decimal" placeholder="0.00" />
+                </label>
+                <button type="button" class="btn btn-secundario" id="btnPosCoincide">Coincide con el sistema</button>
+              </div>
+              <label>Nota (opcional)
+                <input type="text" name="nota" maxlength="200" placeholder="Cambio que dejó el turno anterior…" />
+              </label>
+              <button type="submit" class="btn btn-primary btn-full">Abrir caja</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Últimos cierres</h2>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th scope="col">Caja</th>
+                  <th scope="col">Turno</th>
+                  <th scope="col" class="align-right">Vendido</th>
+                  <th scope="col" class="align-right">Esperado</th>
+                  <th scope="col" class="align-right">Contado</th>
+                  <th scope="col" class="align-right">Diferencia</th>
+                </tr>
+              </thead>
+              <tbody id="posCierresBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+
+        <div id="posMostrador" hidden>
+          <section class="pos-turno" aria-label="Turno de caja">
+            <div class="pos-turno-caja">
+              <span class="pos-turno-estado">Caja abierta</span>
+              <strong id="posTurnoCaja"></strong>
+              <span class="pos-turno-meta" id="posTurnoMeta"></span>
+            </div>
+            <dl class="pos-turno-cifras">
+              <div><dt>Ventas</dt><dd class="mono" id="posTurnoVentas">0</dd></div>
+              <div><dt>Vendido</dt><dd class="mono" id="posTurnoVendido">$0,00</dd></div>
+              <div><dt>En caja</dt><dd class="mono" id="posTurnoEsperado">$0,00</dd></div>
+            </dl>
+            <button type="button" class="btn btn-secundario" id="btnPosCerrarCaja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg> Cerrar caja</button>
+          </section>
+
+          <div class="pos-layout">
+            <section class="pos-catalogo" aria-label="Productos">
+              <div class="pos-buscar">
+                <label class="visualmente-oculto" for="posBuscar">Buscar producto</label>
+                <input type="search" id="posBuscar" class="search" placeholder="Nombre, SKU o código de barras" autocomplete="off" enterkeyhint="enter" title="Buscar (F2)" />
+                <button type="button" class="btn btn-secundario pos-btn-camara" id="btnPosCamara" aria-label="Escanear con la cámara" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#scan-barcode"></use></svg></button>
+              </div>
+              <div class="pos-items" id="posItems"></div>
+              <p class="pos-items-mas" id="posItemsMas" hidden></p>
+            </section>
+
+            <aside class="panel pos-ticket" id="posTicket" aria-label="Venta en curso">
+              <div class="panel-head">
+                <h2>Venta</h2>
+                <button type="button" class="btn-link" id="btnPosVaciar" hidden>Vaciar</button>
+              </div>
+              <label class="pos-cliente">Cliente
+                <input type="text" id="posCliente" list="posClientes" placeholder="Consumidor final" autocomplete="off" />
+              </label>
+              <datalist id="posClientes"></datalist>
+              <ul class="pos-renglones" id="posRenglones"></ul>
+              <div class="pos-total">
+                <span>Total</span>
+                <span class="pos-total-valor mono" id="posTotal">$0,00</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-full pos-btn-cobrar" id="btnPosCobrar" title="Cobrar (F9)" disabled>Cobrar</button>
+            </aside>
+          </div>
+
+          <!-- En el celular el ticket queda debajo de los productos: esta
+               barra fija muestra el total y cobra sin tener que bajar. -->
+          <div class="pos-barra" id="posBarra">
+            <button type="button" class="pos-barra-resumen" id="posBarraResumen">
+              <span id="posBarraCantidad">Sin productos</span>
+              <strong class="mono" id="posBarraTotal">$0,00</strong>
+            </button>
+            <button type="button" class="btn btn-primary" id="btnPosBarraCobrar" disabled>Cobrar</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Vista: Ventas -->
       <section class="view" data-view="ventas" hidden>
         <section class="ledger-strip" aria-label="Totales de lo filtrado">
@@ -3008,6 +3120,77 @@
     <span class="barra-seleccion-conteo" id="barraSeleccionConteo"></span>
     <div class="barra-seleccion-acciones" id="barraSeleccionAcciones"></div>
     <button type="button" class="btn-link" id="barraSeleccionLimpiar">Limpiar</button>
+  </div>
+
+  <!-- Punto de venta: cobro de la venta en curso (dominios/pos.js). El
+       formulario y el estado de éxito comparten el modal: después de
+       confirmar se muestra el vuelto y "Nueva venta" sin cerrarlo. -->
+  <div class="modal" id="modalPosCobro" role="dialog" aria-modal="true" aria-labelledby="modalPosCobroTitulo" hidden>
+    <div class="modal-card pos-modal">
+      <div class="modal-head">
+        <h3 id="modalPosCobroTitulo">Cobrar</h3>
+        <button class="modal-close" id="modalPosCobroClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPosCobro" class="form">
+        <div class="pos-cobro-total">
+          <span id="posCobroCliente">Consumidor final</span>
+          <strong class="mono" id="posCobroTotal">$0,00</strong>
+        </div>
+        <div class="pos-cobros" id="posCobros"></div>
+        <div class="pos-medios" id="posMedios" role="group" aria-label="Sumar un medio de pago"></div>
+        <dl class="pos-cobro-cuentas">
+          <div><dt>Pagado</dt><dd class="mono" id="posCobroPagado">$0,00</dd></div>
+          <div class="pos-cobro-resto"><dt id="posCobroRestoEtiqueta">Falta</dt><dd class="mono" id="posCobroResto">$0,00</dd></div>
+        </dl>
+        <p class="form-note" id="posCobroNota" aria-live="polite" hidden></p>
+        <button type="submit" class="btn btn-primary btn-full" id="formPosCobroSubmit">Confirmar venta</button>
+      </form>
+      <div class="pos-exito" id="posExito" hidden>
+        <svg class="ico pos-exito-ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg>
+        <p class="pos-exito-titulo" id="posExitoTitulo"></p>
+        <div class="pos-exito-vuelto" id="posExitoVueltoWrap">
+          <span>Vuelto</span>
+          <strong class="mono" id="posExitoVuelto"></strong>
+        </div>
+        <p class="form-note" id="posExitoNota" hidden></p>
+        <button type="button" class="btn btn-primary btn-full" id="btnPosNuevaVenta">Nueva venta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Punto de venta: cierre del turno con arqueo (dominios/pos.js). -->
+  <div class="modal" id="modalPosCierre" role="dialog" aria-modal="true" aria-labelledby="modalPosCierreTitulo" hidden>
+    <div class="modal-card pos-modal">
+      <div class="modal-head">
+        <h3 id="modalPosCierreTitulo">Cerrar caja</h3>
+        <button class="modal-close" id="modalPosCierreClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPosCierre" class="form">
+        <dl class="ficha-datos pos-cierre-datos" id="posCierreDatos"></dl>
+        <div class="pos-cierre-medios" id="posCierreMedios"></div>
+        <label>Efectivo contado
+          <input type="number" name="contado" id="posCierreContado" step="0.01" min="0" required inputmode="decimal" placeholder="0.00" />
+        </label>
+        <p class="pos-diferencia" id="posCierreDiferencia" aria-live="polite"></p>
+        <label>Nota (opcional)
+          <input type="text" name="nota" maxlength="200" placeholder="Motivo de la diferencia, si la hay" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full" id="formPosCierreSubmit">Cerrar caja</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Punto de venta: lector con la cámara, solo donde el navegador tiene
+       BarcodeDetector (dominios/pos.js oculta el botón si no). -->
+  <div class="modal" id="modalPosCamara" role="dialog" aria-modal="true" aria-labelledby="modalPosCamaraTitulo" hidden>
+    <div class="modal-card pos-modal">
+      <div class="modal-head">
+        <h3 id="modalPosCamaraTitulo">Escanear código</h3>
+        <button class="modal-close" id="modalPosCamaraClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <video class="pos-camara-video" id="posCamaraVideo" playsinline muted></video>
+      <p class="form-note">Apuntá al código de barras del producto. Se agrega solo apenas se lee.</p>
+    </div>
   </div>
 
   <!-- Avisos (toasts) — reemplaza alert() nativo. Ver avisar() en app.js. -->

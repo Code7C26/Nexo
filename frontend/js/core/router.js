@@ -25,6 +25,7 @@ const VISTAS_CONSTRUIDAS = {
   productos: { titulo: "Productos", dominio: "Maestros" },
   clientes: { titulo: "Clientes", dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
+  pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
   ventas: { titulo: "Ventas", dominio: "Embudo de venta" },
   devoluciones: { titulo: "Devoluciones", dominio: "Embudo de venta" },

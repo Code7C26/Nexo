@@ -256,6 +256,9 @@ test('punto de venta: turno de caja con arqueo, cobro mixto y aislamiento (hist.
   assert.equal((await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, items: [item], cobros: cobrosDeMas })).status, 400);
   const parcial = [{ cuenta_tesoreria_id: efectivo.id, importe: 30 }];
   assert.equal((await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, items: [item], cobros: parcial })).status, 400);
+  const conIdDeConsumidorFinal = { turno_caja_id: turno.id, cliente_id: venta.cliente_id, items: [item], cobros: parcial };
+  assert.ok(venta.cliente_id);
+  assert.equal((await empleadoA.post('/api/pos/ventas', conIdDeConsumidorFinal)).status, 400, 'tampoco se le fía con su id');
   const cliente = await empleadoA.post('/api/clientes', { nombre: 'Cliente POS' });
   const fiado = await empleadoA.post('/api/pos/ventas', { turno_caja_id: turno.id, cliente_id: cliente.json.id, items: [item], cobros: parcial });
   assert.equal(fiado.status, 201, fiado.texto);
