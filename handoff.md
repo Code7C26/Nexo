@@ -622,9 +622,22 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 15. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
    partners, con una tienda demo.
 
-**Lo que no es el producto** (después de la lista de arriba): las tareas extra
-de la materia que pide el Classroom. El usuario las va a mostrar. Después
-siguen la publicidad, el marketing y la presentación presencial.
+**Lo que no es el producto: trabajos del Classroom** (decidido el 19 de
+octubre).
+- **Qué son:** los documentos que pide la profesora en el Classroom de la
+  materia; por ejemplo, contabilidad, modelo Canvas de negocio y manual de
+  usuario. El usuario va a pasar la lista completa.
+- **Cómo se hacen:**
+  - en **sesiones aparte**, sin mezclarlas con las del producto;
+  - con **commits específicos de cada trabajo**: el usuario les saca captura
+    para entregar en el Classroom. Un commit por documento, con un mensaje
+    claro (por ejemplo `docs(classroom): modelo Canvas de negocio`), sin
+    código del producto en el mismo commit.
+  - Los documentos van en `docs/classroom/`.
+- **Prioridad:** terminar el producto lo antes posible, así esos documentos
+  describen un producto ya definido. Igual, algunos se van haciendo en estos
+  días, intercalados.
+- **Después:** publicidad, marketing y la presentación presencial.
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
