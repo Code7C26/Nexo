@@ -33,7 +33,8 @@ frontend/
     │   ├── configuracion.js  datos del negocio
     │   ├── perfil.js         Mi cuenta: contraseña y cerrar sesión
     │   ├── cuentas-corrientes.js  a cobrar y a pagar, con aging
-    │   └── gastos.js         gastos y sus categorías
+    │   ├── gastos.js         gastos y sus categorías
+    │   └── pos.js            punto de venta: turno de caja, mostrador y cobro
     ├── core/           → lo que comparten todas las pantallas
     │   ├── api.js          api(): toda llamada al backend, con aviso de error
     │   ├── formato.js      money, numero, esc, esAdmin, hoyISO

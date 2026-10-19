@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §67);
+    siguiente número (hoy el último es §68);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,7 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (16 de octubre de 2026)
+## Estado actual (19 de octubre de 2026)
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
@@ -34,6 +34,9 @@ Joaquín.
 
 **Construido.** El núcleo de CLAUDE.md §1–§27 está completo (ver "Estado real
 del sistema" en `CLAUDE.md`). Facturación de monto simple, sin IVA ni ARCA.
+
+**Etapa D (punto de venta, CLAUDE.md §30): hecha** (hist. §67 el backend, §68 la
+pantalla `frontend/js/dominios/pos.js`).
 
 **Etapa A del roadmap (multi-empresa, CLAUDE.md §28): núcleo hecho** (hist.
 §37–§49). Todas las tablas de negocio tienen `organizacion_id` y todas las
@@ -253,7 +256,14 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   `cambiar_estado`, `operacion_tipo turno_caja`. Así no hizo falta
   reconstruir `auditoria` para sumar una entidad nueva a su `CHECK`.
 - **Venta de mostrador sin cliente:** va al cliente "Consumidor final" de la
-  empresa, y a ese cliente no se le fía.
+  empresa, y a ese cliente no se le fía, tampoco si llega su id (hist. §68).
+- **Pantalla (hist. §68):**
+  - el precio sale del catálogo y no se edita;
+  - el vuelto sale solo del efectivo, y el efectivo es siempre la caja del
+    turno;
+  - la caja elegida se recuerda por dispositivo y la venta en curso por
+    pestaña;
+  - el POS no crea clientes.
 
 **Comprobantes, catálogo y auditoría**
 - **Comprobantes:** los datos del membrete viven en `organizaciones` (no hay
@@ -388,45 +398,11 @@ pasada final del plan:
   en una demo, completa y funcionando. Lo que queda afuera se anota como
   "después de la presentación".
 
-1. **D: punto de venta y turno de caja** (2 sesiones). **Backend hecho (hist.
-   §67); falta la pantalla**, que es lo siguiente. Decidido:
-   - **Venta sin cliente:** va al cliente "Consumidor final" de la empresa, que
-     se crea solo la primera vez.
-   - **Pantalla de mostrador:**
-     - es un módulo propio en `frontend/js/dominios/`, mobile-first;
-     - busca por nombre, SKU o código de barras (el lector físico tipea y manda
-       Enter), y con la cámara vía `BarcodeDetector` donde el navegador lo
-       soporte;
-     - cobra con un medio o con varios (cobro mixto).
-     - Reusa `crearVenta` y `registrarCobro`, sin circuito de datos nuevo
-       (CLAUDE.md §30).
-   - **Turno de caja:**
-     - es por usuario y por cuenta de tesorería de tipo efectivo, en una tabla
-       nueva `turnos_caja`;
-     - abre con un monto inicial;
-     - cierra con arqueo (lo contado contra lo esperado según los movimientos
-       del turno);
-     - si hay diferencia, se registra como movimiento de tesorería, para que el
-       saldo de la caja dé lo contado.
-   - El POS exige un turno abierto.
-   - **Lo que la pantalla tiene que respetar** (rutas en `server.js`, sección
-     "Punto de venta y turno de caja"):
-     - `GET /api/turnos-caja?estado=abierto` dice si hay caja abierta; si no
-       hay, se abre con `POST /api/turnos-caja` (`cuenta_tesoreria_id` de
-       tipo efectivo, `contado`). La respuesta trae `esperado_apertura`
-       para mostrar la diferencia.
-     - `GET /api/pos/catalogo` trae los ítems vendibles: cada variante como
-       ítem propio, con `sku`, `precio` y `stock`.
-     - `POST /api/pos/ventas` recibe `turno_caja_id`, `cliente_id`
-       opcional, `items` y `cobros` (`[{cuenta_tesoreria_id, importe}]`).
-       Los cobros no pueden superar el total, así que el vuelto lo calcula la
-       pantalla. El cobro en efectivo va a la cuenta del turno. Si los cobros
-       suman menos que el total, el resto queda en la cuenta corriente, y para
-       eso hace falta elegir un cliente.
-     - `POST /api/turnos-caja/:id/cerrar` (`contado`) devuelve el resumen
-       con `diferencia_cierre`. `GET /api/turnos-caja/:id` da el resumen en
-       vivo: ventas, cobros por medio, ingresos, egresos y esperado.
-2. **B2: PWA** (1 sesión).
+1. **D: punto de venta y turno de caja: hecha** (hist. §67 y §68). El turno es
+   por cuenta de efectivo, no por usuario (ver "Punto de venta" en las
+   decisiones vigentes). Para después de la presentación: descuentos y precio
+   editable en el mostrador, alta rápida de cliente y venta sin conexión.
+2. **B2: PWA** (1 sesión). **Es lo siguiente.**
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.
    - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión

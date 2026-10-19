@@ -29,8 +29,9 @@ listas de precios, cuentas corrientes de cliente y proveedor con vencimientos y
 aging, tesorería, gastos, facturación de monto simple, devoluciones (de venta y
 a proveedor) con nota de crédito, reportes y dashboard, dos roles (admin/
 empleado) con filtrado de campos sensibles en el backend, auditoría completa
-(incluido login/logout), y un asistente por texto que interpreta lenguaje
-natural con Gemini y propone operaciones para confirmación humana.
+(incluido login/logout), un asistente por texto que interpreta lenguaje
+natural con Gemini y propone operaciones para confirmación humana, y un punto
+de venta de mostrador con turno de caja y arqueo (§30).
 
 Antes de asumir que algo "queda para después", revisar §38 (roadmap) y, si hay
 duda, `handoff.md` (en la raíz del repo, no en `docs/`) o el grafo del MCP
@@ -1164,10 +1165,9 @@ siendo el foco hasta que el núcleo esté maduro (§38).
 
 # 30. PUNTO DE VENTA (POS) Y TURNO DE CAJA
 
-Falta hoy y es, en la práctica, lo más usado de un sistema de gestión de
-comercio: una pantalla de mostrador rápida para vender parado frente al
-cliente, distinta de la pantalla de "alta de venta" administrativa que ya
-existe.
+Es, en la práctica, lo más usado de un sistema de gestión de comercio: una
+pantalla de mostrador rápida para vender parado frente al cliente, distinta
+de la pantalla de "alta de venta" administrativa.
 
 Conceptos que intervienen:
 
@@ -1178,13 +1178,24 @@ Conceptos que intervienen:
 - **Turno de caja**: apertura con monto inicial, cierre con arqueo (efectivo
   contado vs. esperado según movimientos del turno) y diferencia registrada.
   Se relaciona con tesorería (§13): un turno pertenece a una cuenta de
-  tesorería (normalmente "Efectivo") y a un usuario/operador.
+  tesorería de tipo efectivo (la caja) y registra qué usuario lo abrió y
+  cuál lo cerró.
 - **Cobro mixto**: dividir el cobro de una venta entre varios medios de pago
   en el momento (ya existe la relación venta → N cobros en §9; el POS solo
   necesita una interfaz rápida para cargarlos).
 
 No modifica el modelo de ventas ni de cobros: es una superficie de uso nueva
-sobre datos que ya existen. Ver §38 para cuándo se planifica.
+sobre datos que ya existen.
+
+Implementado hoy (Etapa D, §38): tabla `turnos_caja` (un turno abierto por
+caja, arqueo al abrir y al cerrar con la diferencia como movimiento de
+tesorería) y la pantalla `frontend/js/dominios/pos.js`, para los dos roles.
+La pantalla busca por nombre o SKU, y toma el SKU que tipea el lector físico
+con Enter o la cámara donde el navegador tiene `BarcodeDetector`. Cobra con
+uno o varios medios, con vuelto (solo en efectivo), y deja saldo en cuenta
+corriente solo si hay un cliente real ("Consumidor final" no fía). Queda
+para después: descuentos y precio editable en el mostrador, alta rápida de
+cliente y venta sin conexión.
 
 ---
 
@@ -1382,8 +1393,8 @@ gestión para PyMEs que ya se usan en Argentina (referencias anotadas por el
 equipo: Dux Software, Contagram — `docs/competencia.txt`).
 
 Capacidades típicas de esos sistemas que Nexo todavía no tiene, y que por eso
-están en el roadmap (§38): facturación electrónica con CAE real, punto de
-venta de mostrador, multi-empresa/multi-sucursal, integración con
+están en el roadmap (§38): facturación electrónica con CAE real,
+multi-empresa/multi-sucursal, integración con
 marketplaces y e-commerce, app o acceso móvil instalable, reportes
 comparativos entre períodos.
 
@@ -1408,7 +1419,7 @@ excepciones).
 | A | Multi-empresa: `organizacion_id`, aislamiento, resolución desde sesión (§28) | Cuanto más crezca el esquema, más caro se vuelve; conviene hacerlo temprano | Núcleo hecho; faltan los detalles de §28 |
 | B | Modularizar `app.js` por dominio + base de PWA (§31) | Habilita todas las pantallas que siguen y el uso desde el celular; en paralelo con A | En curso |
 | C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio | Pendiente |
-| D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Pendiente |
+| D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Hecha |
 | E | ARCA: homologación → producción (§33) | Depende de C | Pendiente |
 | F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Pendiente |
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Pendiente |

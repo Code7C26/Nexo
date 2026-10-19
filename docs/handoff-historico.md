@@ -7332,3 +7332,105 @@ La pantalla del punto de venta, segunda parte de la Etapa D (ver el plan en hand
 - búsqueda por nombre, SKU o lector de código de barras;
 - carrito, cobro mixto con vuelto y cliente opcional;
 - recorrido en el navegador con los dos roles y a 390 px.
+
+## 68. Etapa D, segunda parte: la pantalla del punto de venta, 19 de octubre de 2026
+
+Cierra la Etapa D del plan de §66. La pantalla está sobre las rutas de §67, sin circuito de
+datos nuevo.
+
+**Archivos.**
+- `frontend/js/dominios/pos.js` (nuevo): todo el dominio. Se registra con
+  `alEntrarEnVista("pos", ...)` y `app.js` lo importa por efecto.
+- `index.html`:
+  - ítem "Punto de venta", el primero del grupo Ventas;
+  - la vista `pos`;
+  - los modales `modalPosCobro`, `modalPosCierre` y `modalPosCamara`, en el HTML estático
+    porque `core/ui.js` solo engancha foco y Escape a los `.modal` que existen al cargar.
+- `styles.css`: bloque "Punto de venta" y sus reglas dentro del responsive.
+- `core/formato.js`: `fechaHoraAR()`. `abierto_en`/`cerrado_en` vienen de
+  `datetime('now')`, en UTC y sin zona, y se muestran en hora local.
+- `core/router.js`: `pos` en `VISTAS_CONSTRUIDAS`. No es solo de admin.
+- `app.js`: registra `cargar:ventas`, `cargar:stock`, `cargar:productos`, `cargar:clientes` y
+  `cargar:reporteStock`. El POS los recarga después de cada venta, sin `await`, así no frena
+  la venta siguiente.
+- `img/iconos.svg`: `scan-barcode` y `minus` (lucide-static 1.57.0). `minus` se escribió a
+  mano porque unpkg no respondió: es un solo trazo, `M5 12h14`.
+
+**Cómo funciona.**
+- **Al entrar** pide juntos el turno abierto, `/api/tesoreria`, el catálogo y los clientes.
+  - Las cajas son las cuentas de tipo efectivo.
+  - La caja elegida se recuerda por dispositivo (`localStorage nexo.pos.caja`). Si no hay,
+    se toma la que tiene turno abierto o la primera.
+  - Con más de una caja aparece un selector.
+- **Sin turno:** "Abrir caja" con el saldo del sistema, el contado obligatorio y un botón
+  "Coincide con el sistema". Debajo, los últimos 10 cierres con su diferencia (verde si cuadra,
+  rojo si falta, tinta si sobra).
+- **Con turno:**
+  - Arriba, la tira negra del turno: caja, desde cuándo, quién, ventas, vendido, efectivo
+    esperado y "Cerrar caja".
+  - **Búsqueda:** cada palabra tiene que ser el comienzo de una palabra del nombre, la
+    categoría o el SKU, sin acentos y en cualquier orden. Al principio se buscaba "contiene",
+    pero "gorra m" encontraba las dos gorras porque la "m" aparece adentro de "Indumentaria".
+  - **Enter** agrega el SKU exacto, o el único resultado vendible si hay uno solo. Es lo que
+    manda el lector físico. Si el foco quedó en un botón, lo que se tipea va a la búsqueda.
+  - **Atajos:** F2 enfoca la búsqueda y F9 cobra. El foco automático es solo con mouse
+    (`pointer: fine`): en el celular abriría el teclado.
+  - **Cámara:** solo donde existe `BarcodeDetector` (Chrome en Android; no en Windows). Lee
+    cada 250 ms, la lectura entra por el mismo camino que Enter, y la cámara se apaga al
+    cerrarse el modal de cualquier forma (observer de `hidden`).
+  - **Ticket:** cantidad con −/+ y tope en el stock del depósito predeterminado. El precio
+    sale del catálogo y no se edita. El carrito se guarda en `sessionStorage` por turno, con
+    solo claves y cantidades: un F5 no pierde la venta.
+  - **Celular:** una columna y una barra negra fija con unidades, total y "Cobrar". La barra
+    termina antes del lanzador del asistente, y los avisos suben por encima de ella (`:has`).
+- **Cobro:**
+  - Arranca con una fila de efectivo por el total y el texto seleccionado: tipear "20000" es
+    "paga con".
+  - Los chips de cada medio suman una fila por lo que falta. Si no falta nada y hay un solo
+    medio, lo reemplazan ("todo con Mercado Pago").
+  - El efectivo es siempre la caja del turno, porque un cobro en efectivo a otra cuenta no
+    entraría en el arqueo.
+  - **El vuelto sale solo del efectivo.** Si el excedente supera lo pagado en efectivo, no se
+    puede confirmar. Antes de mandar, el vuelto se descuenta del efectivo (el backend rechaza
+    cobros mayores al total) y se juntan las filas de una misma cuenta.
+  - Si falta plata, hace falta un cliente, y el aviso dice cuánto queda en su cuenta corriente.
+  - El cliente se elige por nombre exacto. "Consumidor final" no se ofrece en la lista. El POS
+    no crea clientes.
+  - Al confirmar, el mismo modal muestra "Venta #N registrada" y el vuelto en grande, con
+    "Nueva venta" enfocado.
+- **Cierre:**
+  - Muestra el resumen en vivo: apertura, ventas, cobros en efectivo, otros ingresos,
+    egresos, lo vendido por medio (más lo que quedó a cuenta) y "Tendría que haber en la
+    caja".
+  - La diferencia se calcula en vivo mientras se tipea lo contado.
+  - Con una venta en curso, pide confirmar antes de descartarla.
+
+**Backend.** `POST /api/pos/ventas` dejaba fiar al "Consumidor final" si llegaba su
+`cliente_id` (solo controlaba que faltara el id). Ahora también responde 400 en ese caso,
+con aserción nueva en el caso de POS de `api.test.js`.
+
+**Verificación.**
+- `npm test` 50 de 50 y `npm run lint` verde.
+- `npm run regresion`: 122 comparaciones, 0 distintas.
+- md5 de la base real sin cambios (`b10b3a94…`).
+- **Navegador:** playwright-core contra el Chrome instalado, base del seed más un producto,
+  una categoría y un cliente con `<img onerror>` en el nombre. 51 controles, todos ok:
+  - admin en escritorio claro: apertura con $100 de más, búsqueda sin acentos, variante, SKU
+    con Enter, tope de stock, lector con el foco en un botón, recarga con el carrito guardado,
+    F9, cobro mixto con vuelto (el backend recibió $10.000 en efectivo y $9.500 en Mercado
+    Pago), bloqueo sin cliente, fiado a Juan Pérez, cliente inexistente y cierre con $10 de
+    menos (el saldo quedó en lo contado);
+  - empleado en celular oscuro: el circuito completo, la barra sin tapar el asistente y
+    "todo con Mercado Pago";
+  - cámara con `BarcodeDetector` simulado y `--use-fake-device-for-media-stream`;
+  - escritorio oscuro;
+  - `window.__xss` sin definir en todos los casos.
+- Capturas revisadas en claro, en oscuro y a 390 px. Por ellas se cambió:
+  - la tabla de cierres pasó a "Turno" (rango horario y quién) y "Vendido" (con la cantidad
+    de ventas), porque en escritorio la diferencia quedaba cortada;
+  - se sacaron las flechitas de los importes del cobro;
+  - en el celular, "Vaciar" quedó al lado de "Venta".
+
+### Qué sigue
+
+B2, la PWA (plan de handoff.md).
