@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §72);
+    siguiente número (hoy el último es §73);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,10 +21,10 @@
 
 ## Estado actual (19 de octubre de 2026)
 
-**Próxima sesión:** alta de cuenta guiada en pasos y Configuración como
-sección propia de la app (punto 4 del plan, en "Qué sigue"), con lo que
-pidió el usuario el 19 de octubre. El rediseño, segunda parte, quedó hecho
-(hist. §72). Después, socios y varios negocios por cuenta.
+**Próxima sesión:** socios, cuotas e ingreso (punto 5 del plan, en "Qué
+sigue"). El alta de cuenta guiada y Configuración como sección propia
+quedaron hechas (hist. §73): falta que el usuario las vea y diga qué
+cambiaría. Después, varios negocios por cuenta.
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
@@ -264,6 +264,31 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Menú:** grupos `.nav-seccion`; los que son solo de admin llevan
   `.nav-seccion-admin` y se ocultan enteros para el empleado.
 
+**Alta guiada y Configuración (hist. §73)**
+- **Los tipos de negocio viven en un solo lugar:** `PERFILES_RUBRO`,
+  `RUBROS_PROXIMAMENTE` y `MODULOS_INFO` en `server.js` (nombre, descripción e
+  ícono). El frontend los pide: `GET /api/auth/tipos-negocio` (pública) o
+  `perfiles` de `GET /api/negocio`. Un tipo nuevo no se escribe en el HTML.
+- **`PUT /api/negocio` es parcial:** escribe solo los campos que vienen.
+  Configuración manda solo lo que cambió.
+- **Módulos iguales a los del tipo se guardan como NULL** (en el alta y en el
+  `PUT`): la empresa sigue al preset.
+- **Condición fiscal del negocio:** lista fija de claves (`responsable_inscripto`,
+  `monotributo`, `exento`; `CONDICIONES_IVA` en `server.js`, `core/fiscal.js`).
+  Un texto viejo que no se reconoció queda como estaba y se imprime tal cual.
+  El CUIT se valida con su dígito verificador y se guarda con guiones.
+- **Router con subrutas** (`#/vista/subruta`): el handler de `alEntrarEnVista`
+  recibe la subruta.
+- **Configuración es una vista con páginas** (`dominios/configuracion.js`,
+  `PAGINAS`). Sumar una página es su ítem del menú, su `<section>` y su
+  entrada. El empleado ve solo Apariencia.
+  - Los catálogos son páginas, pero su lógica sigue en `app.js` y `gastos.js`
+    (leen estado privado): registran `pintar:<catálogo>`.
+  - Las cuentas de tesorería siguen en Caja.
+- **El alta guiada es `frontend/js/alta.js`:** `sesion.js` la baja con
+  `import()`. `#/crear-cuenta` es su enlace (para la landing).
+- **El tema** pasa por `core/tema.js` (botón de la sidebar y página Apariencia).
+
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
   incluidos atributos `value="…"`. Lo exige `npm test`
@@ -492,85 +517,20 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    Satoshi, oscuro de partida y marco negro. Falta que el usuario lo vea y
    diga qué cambiaría.
 
-4. **Alta de cuenta guiada y Configuración como sección propia** (1–2
-   sesiones). **Es lo siguiente.** Amplía lo que era "tipos de negocio,
-   segunda parte". Pedidos del usuario del 19 de octubre:
-   - "cuando vos creás una cuenta, te pregunte qué tipo de negocio tenés y a
-     partir de eso puedas gestionar el tuyo";
-   - "Vi que se hicieron bastantes. Pero bastante complejo. Así que mejoraría
-     eso";
-   - después del rediseño de hist. §72: "me gustaría ver bien el tema para
-     crear una cuenta, las cosas que te pide, cómo te las pide, el tema de la
-     configuración", y "que elegir el tipo de negocio no sea simplemente que
-     tengas que poner todos los datos en una sola pantallita";
-   - "que haya una interfaz aparte, que salgan bien, que sea lindo", y "que
-     esté bien estructurada como una aplicación real", "no simplemente un
-     cuadradito que se abre";
-   - "con eso también vamos a tener que llenar de otro tipo de
-     configuraciones".
+4. ~~Alta de cuenta guiada y Configuración como sección propia~~ **hecha**
+   (hist. §73):
+   - alta en cinco pasos a pantalla completa, con tarjetas de tipo y
+     "Próximamente";
+   - Configuración como vista con páginas (negocio, tipo y secciones,
+     comprobantes con vista previa, usuarios, cuatro catálogos y apariencia).
+   - Falta que el usuario lo vea.
+   - Para después:
+     - las cuentas de tesorería como página (hoy en Caja, con sus saldos);
+     - el logo del negocio;
+     - avisar al salir de una página con cambios sin guardar (hoy se
+       conservan, pero no se avisa);
+     - una guía de primeros pasos en el Resumen para una cuenta nueva.
 
-   **Cómo está hoy:**
-   - **Registro:** un solo formulario dentro de la tarjeta del login
-     (`#formRegistro` en `index.html`, manejado por `sesion.js`), con negocio,
-     tipo (un `select`), tu nombre, usuario y contraseña.
-     `POST /api/auth/registro` recibe `empresa`, `usuario`, `nombre`,
-     `password` y `rubro`.
-   - **Configuración:** un modal (`#modalConfiguracion`, `dominios/configuracion.js`,
-     que se abre con el engranaje de la sidebar). Mezcla datos del negocio,
-     tipo, casillas de módulos, CUIT, condición de IVA (texto libre),
-     dirección, teléfono, email y pie de comprobante.
-     `GET`/`PUT /api/negocio`.
-
-   **Qué se hace:**
-   - **Alta en pasos, a pantalla completa** (no dentro de la tarjeta del
-     login), con indicador de paso y "Atrás":
-     1. tu cuenta: nombre, usuario y contraseña;
-     2. tu negocio: nombre;
-     3. **tipo de negocio con tarjetas grandes** (ícono, nombre y una línea de
-        qué trae; los complejos con "Próximamente");
-     4. qué secciones querés usar, ya marcadas según el tipo, con
-        "Personalizar";
-     5. datos para los comprobantes (CUIT, condición fiscal, dirección,
-        contacto), con "Completar después".
-     - Al terminar entra directo a la app.
-     - El backend sigue creando todo en una sola transacción al final: los
-       pasos son de la interfaz. Si hace falta, `/api/auth/registro` suma
-       campos opcionales.
-   - **Configuración como sección de la app** (vista propia con su ruta
-     `#/configuracion`, no un modal), con menú lateral de secciones
-     (subrutas, por ejemplo `#/configuracion/negocio`). Cada sección es una
-     página con paneles y su propio "Guardar". Arranca con:
-     - Negocio: nombre, logo a futuro y datos de contacto;
-     - Tipo de negocio y secciones: las mismas tarjetas del alta;
-     - Comprobantes y datos fiscales: CUIT, condición fiscal (pasa a lista
-       fija, base para la Etapa C) y pie;
-     - Usuarios: lo que hoy es la vista Usuarios, o un enlace a ella;
-     - Catálogos (listas de precios, depósitos, categorías y cuentas): hoy
-       están repartidos en modales de cada pantalla;
-     - Apariencia: tema claro u oscuro.
-     - Tiene que quedar lista para sumar secciones (IVA, ARCA,
-       integraciones, socios) sin rediseñarla.
-   - Mismo sistema visual de hist. §72 y mobile-first: en el celular, el menú
-     de secciones es una lista que lleva a cada página.
-   - Mostrar capturas al usuario antes de cerrar.
-   - **Tipos terminados para la presentación:**
-     - comercio general, que incluye indumentaria y ferretería;
-     - carnicería;
-     - verdulería;
-     - kiosco o almacén;
-     - servicios;
-     - gimnasio, cuando esté el módulo de socios.
-   - **Tipos con "Próximamente"** (se ven, pero no se pueden elegir):
-     - barbería o peluquería: turnos con calendario y mensajes a clientes;
-     - restaurante o bar: mesas y comandas. El usuario lo marcó como "muy,
-       muy complejo";
-     - se pueden sumar otros complejos (taller, consultorio, farmacia con
-       lotes y vencimientos). Cada uno va a ser un módulo reusable
-       (CLAUDE.md §29), no un camino propio.
-   - **Gimnasio = comercio + socios.** El usuario: "todos los gimnasios que
-     conozco venden productos. Compran y venden". Su preset pasa a
-     `pos compras stock socios`, con `tipo_defecto` producto. Los planes son
-     servicios que crea el módulo de socios.
 5. **Socios, cuotas e ingreso** (2 sesiones). Módulo
    `socios`, activable en cualquier negocio y prendido en el gimnasio, que
    además compra y vende como un comercio.
@@ -583,6 +543,11 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - cada cuota es una venta del servicio del plan, cobrada con el circuito
        existente;
      - cuotas generadas de forma idempotente por período, sin cron.
+   - Al sumarlo (hist. §73):
+     - `socios` va a `MODULOS` y `MODULOS_INFO` y al preset del gimnasio (hoy
+       `pos compras stock`);
+     - se saca el "muy pronto" de la descripción del gimnasio;
+     - la página de Configuración del módulo es una entrada más de `PAGINAS`.
 6. **Varios negocios por cuenta** (1–2 sesiones). Decidido por el usuario el
    19 de octubre: "una cuenta podría tener más de un negocio sin problema".
    - Es la variante "un usuario en varias empresas con cambio de contexto" de

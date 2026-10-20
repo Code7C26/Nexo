@@ -7691,3 +7691,104 @@ dub.co, de su página de analytics y de una página pública de estadísticas de
 - Que el usuario vea las capturas y diga qué cambiaría. El botón primario en tinta es la
   decisión más visible y se revierte con los tres tokens `--primario-*`.
 - Tipos de negocio, segunda parte (punto 4 del plan).
+
+## 73. Alta de cuenta guiada y Configuración como sección propia, 19 de octubre de 2026
+
+Punto 4 del plan, con lo que pidió el usuario el 19 de octubre: elegir el tipo de negocio
+"no en una sola pantallita", una interfaz aparte "bien estructurada como una aplicación real,
+no un cuadradito que se abre", y una Configuración que se pueda seguir llenando.
+
+**Backend (`server.js`, `permisos.js`, `db/index.js`).**
+- **El catálogo de tipos vive en un solo lugar.** `PERFILES_RUBRO` suma `descripcion` e
+  `icono`, y hay dos listas nuevas:
+  - `RUBROS_PROXIMAMENTE` (barbería o peluquería, restaurante o bar): se muestran, pero la
+    validación no los acepta;
+  - `MODULOS_INFO`: nombre, descripción e ícono de cada módulo.
+  - `catalogoTiposNegocio()` los arma, y los devuelven la ruta nueva
+    `GET /api/auth/tipos-negocio` (pública, para el alta) y `GET /api/negocio` en
+    `perfiles`, que cambió de forma.
+- **Gimnasio:** su preset pasa a `pos compras stock`, con productos que nacen como
+  producto. Los socios se suman con su módulo, en la etapa 5.
+- **`validarDatosNegocio(cuerpo, { parcial })`**, compartida por el registro y
+  `PUT /api/negocio`:
+  - CUIT con dígito verificador (módulo 11), guardado como `20-12345678-6`;
+  - condición fiscal de una lista fija (`responsable_inscripto`, `monotributo`, `exento`);
+  - email con formato básico y topes de largo;
+  - el tipo con `Object.hasOwn`: antes `"constructor"` o un array pasaban.
+- **`PUT /api/negocio` es parcial:** escribe solo lo que viene. Antes, un campo que faltaba
+  se borraba.
+- **Módulos iguales a los del tipo se guardan como NULL**, en el alta y en el `PUT`
+  (`modulosDelPreset()`): la empresa sigue al tipo.
+- **El registro acepta** `modulos`, `documento`, `condicion_iva`, `direccion`, `telefono` y
+  `email`, en las dos ramas de la transacción, con topes de largo como el login.
+- **`condicion_iva` del negocio (sin cambio de esquema):** un backfill idempotente en
+  `db/index.js` pasa a clave el texto que reconoce ("inscripto", salvo "no inscripto";
+  "monotrib"; "exent"). El que no reconoce queda como estaba: Configuración lo muestra como
+  "dato anterior" y el comprobante lo imprime tal cual. No se borró nada.
+- `permisos.js`: la ruta nueva y el comentario de cabecera corregido (los cinco catálogos ya
+  eran admin).
+
+**Frontend.**
+- **`core/` nuevo:**
+  - `tipos-negocio.js`: las tarjetas, con un radio o un checkbox nativo adentro;
+  - `fiscal.js`: condiciones, CUIT y etiqueta;
+  - `campos.js`: el error debajo del campo, con `aria-invalid`;
+  - `tema.js`: sale de `app.js` y avisa con el evento `nexo:tema`.
+- **Router con subrutas:**
+  - `#/vista/subruta`, con `subrutaDesdeHash()`, y el handler de `alEntrarEnVista` recibe
+    la subruta;
+  - `data-subruta` en los ítems del menú;
+  - `#/usuarios` va a `configuracion/usuarios`.
+- **Alta guiada (`frontend/js/alta.js`):**
+  - cinco pasos a pantalla completa: tu cuenta, tu negocio, tipo, secciones y
+    comprobantes (con "Completar después");
+  - `sesion.js` la baja con `import()` desde "Creá una cuenta", desde `#/crear-cuenta` o en
+    una instalación nueva;
+  - cada paso entra al historial y Adelante no saltea pasos;
+  - un 409 vuelve al paso 1 con el error en el usuario;
+  - con teclado el foco va al primer campo, y en una pantalla táctil al título, para no
+    abrir el teclado del celular;
+  - se borró `#formRegistro`.
+- **Configuración es una vista**, con un menú de páginas y cada página con su "Guardar
+  cambios":
+  - el botón se habilita con cambios y se manda solo lo que cambió;
+  - lo editado sin guardar no se pisa al volver.
+  - **Páginas:** Datos del negocio; Tipo de negocio y secciones; Comprobantes (con vista
+    previa del membrete); Usuarios (el panel se movió desde su vista); los cuatro catálogos;
+    Apariencia.
+  - En el celular es una lista que lleva a cada página.
+  - El empleado ve solo Apariencia.
+  - Se borraron `#modalConfiguracion` y la vista Usuarios. El ítem Usuarios del menú pasó a
+    ser Configuración.
+- **Catálogos (listas de precios, depósitos y categorías de producto y de gasto):**
+  - sus modales pasaron a páginas;
+  - la lógica quedó en `app.js` y `gastos.js`, que registran `pintar:<catálogo>`;
+  - la página recarga productos o gastos antes de pintar;
+  - los botones de Productos, Stock y Gastos llevan ahí;
+  - Depósitos depende del módulo `stock`;
+  - las cuentas de tesorería siguen en Caja.
+- **Ocho íconos de Lucide** al sprite: `beef`, `briefcase`, `carrot`, `cup-soda`,
+  `dumbbell`, `palette`, `scissors` y `utensils`.
+
+**Verificación.**
+- `npm test` 55 de 55:
+  - `registro.test.js` es nuevo y tiene su propio servidor, por el tope de 5 altas por IP;
+  - en `api.test.js` hay un caso nuevo de actualización parcial, CUIT, condición y
+    gimnasio.
+- `npm run lint` verde.
+- `verificar-migracion` 24 de 24, con la base real sin cambios (md5 `0cbdaa9d…`).
+- `npm run regresion`: 4 diferencias, todas por la ruta pública nueva y la forma nueva de
+  `perfiles` en `GET /api/negocio`.
+- **Navegador** (base nueva en el scratchpad):
+  - el alta completa con errores, Atrás y Adelante, 409 y "Completar después";
+  - Configuración en escritorio y celular, en oscuro y claro;
+  - los cuatro catálogos desde su botón: alta, lápiz y "Marcar";
+  - deep-links con recarga real, y un módulo apagado redirige.
+  - No hubo ningún `pageerror`.
+  - Un arreglo que salió de esa prueba: la página se decide después de cargar el negocio
+    (antes, un deep-link a Depósitos con `stock` apagado se abría).
+
+### Qué sigue
+
+- Que el usuario vea las capturas.
+- Socios, cuotas e ingreso (punto 5 del plan).

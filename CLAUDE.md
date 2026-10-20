@@ -58,8 +58,8 @@ no aplica.
 - Multi-empresa: Nexo es **multi-tenant** (varios negocios sobre la misma
   instalación, con sus datos aislados). Ver §28 — el aislamiento por empresa
   ya está implementado en todo el esquema y el backend, y una empresa nueva
-  se da de alta desde la pantalla de login; falta cerrar los detalles que
-  lista §28.
+  se da de alta con el alta guiada en pasos (desde el login o con el enlace
+  `#/crear-cuenta`); falta cerrar los detalles que lista §28.
 - Adaptación a rubros (comercio, carnicería, gastronomía, etc.): **un solo
   sistema configurable** por perfil de rubro, nunca versiones de código
   separadas por vertical. Ver §29.
@@ -1100,8 +1100,10 @@ una instancia por negocio.
   - Los catálogos (categorías, listas de precios, depósitos, cuentas de
     tesorería, categorías de gasto) son propios de cada empresa, con nombre
     único dentro de ella.
-- Una empresa nueva se crea desde la pantalla de login
-  (`POST /api/auth/registro`): el registro es público, con un tope de
+- Una empresa nueva se crea con el alta guiada (`frontend/js/alta.js`):
+  cinco pasos a pantalla completa, que se abren desde el login o con el
+  enlace `#/crear-cuenta`. El backend crea todo junto al final con
+  `POST /api/auth/registro`. El registro es público, con un tope de
   intentos por IP.
 - `organizacion_id` es `NOT NULL` en todas las tablas de negocio, salvo
   `auditoria` (un login fallido con un usuario inexistente no tiene empresa).
