@@ -7603,3 +7603,91 @@ muy larga"). Lo que definió, en sus palabras:
   complejos "Próximamente").
 - La ficha de Refero se leyó con WebFetch. De dub.co solo se pudo leer el texto (sin CSS ni
   capturas): las capturas se sacan con playwright en la próxima sesión.
+
+## 72. Rediseño visual, segunda parte: estructura de Dub sobre el negro de Nexo, 19 de octubre de 2026
+
+Pedido del usuario (hist. §71): "un estilo moderno, simple, que tenga colores, que tenga una
+tipografía simple, y que se pueda aplicar a cualquier cosa. Obviamente en su modo oscuro,
+adaptado a Nexo", y "no tiene que ser blanco". La referencia es Dub. Se sacaron capturas de
+dub.co, de su página de analytics y de una página pública de estadísticas de la app
+(`app.dub.co/share/...`). Se tomó la estructura y no el lienzo blanco.
+
+**Qué cambió (`frontend/css/styles.css`, salvo donde se indica).**
+- **Tokens nuevos**, con el oscuro como base (`:root`) y el claro en `[data-tema="claro"]`:
+  - se borraron los dos bloques `@media (prefers-color-scheme: dark)`;
+  - `--frame`, `--sheet-line`, `--primario-*`, `--info`, `--violeta` y `--naranja` (cada
+    uno con su `-bg`), `--r-xs` y `--control-h`;
+  - `--shadow-sm` se borró con sus seis usos.
+- **Oscuro de partida.** Sin elección guardada la app es oscura: `temaActual()` en `app.js`
+  cae en `"oscuro"` y el ícono por defecto es la luna. El script del `<head>` no cambió: solo
+  pone `data-tema` si hay algo guardado.
+- **Marco de marca:**
+  - `html`, `body` y `.app` pintan `--frame`;
+  - `.main` es la hoja, con margen `--marco`, borde `--sheet-line` y radio 16;
+  - el ancho de lectura (1200 px) pasó de `.main` a `.main > .topbar` y `.main > .view`;
+  - con la sidebar colapsada, la hoja suma el margen izquierdo;
+  - en el celular, sin marco.
+- **Menú:** ítems de 34 px y sección activa con tinte azul. Sin la raya `::before` y sin
+  negrita.
+- **Botones:** primario en tinta (blanco en oscuro, negro en claro), 36 px, peso 500.
+- **Inputs y buscador:** 36 px y radio 6.
+- **Filtros:** el botón de filtro es un contorno de 8 px (ya no una pastilla punteada) y los
+  chips tienen radio 8.
+- **Paneles y tablas:** paneles sin sombra con 20 px de padding, y celdas más bajas (11 px).
+  El `h2` de panel pasó a Inter 600.
+- **Tarjetas de indicadores:** cifras en Inter y mínimo de 180 px, así las cinco del Resumen
+  entran en un renglón. Íconos del Resumen con color por métrica (`.ledger-icono-*` en
+  `index.html`).
+- **Pastillas:** peso 500. Tres clases nuevas, `status-info`, `status-ia` y `status-aviso`.
+  En `app.js`:
+  - "Stock alto" pasó del contorno rojo al naranja (no es urgente);
+  - presupuesto "Enviado" y "Predeterminada/o" de los catálogos, a azul;
+  - el actor "Asistente IA" de Auditoría, a violeta.
+- **Tipografía:** Inter reemplaza a Geist (se borraron `geist.woff2` y `OFL-geist.txt`), y
+  Satoshi queda solo para los títulos.
+  - De los 21 usos de `--font-display`, quedan seis: marca, h1, título del POS, login y los
+    dos del membrete.
+  - Los demás (cifras, títulos de modal, tooltip del gráfico) pasaron a `--font-body`.
+- **Satoshi y su licencia.** La licencia de Fontshare (ITF FFL v2.0) permite alojar la fuente
+  en el servidor propio, pero prohíbe redistribuirla y subsetearla, y el repo
+  `Code7C26/Nexo` es público.
+  - Por eso los woff2 no se versionan. Los baja `scripts/fuentes.mjs` (`npm run fuentes`),
+    que lee el CSS de la API de Fontshare y guarda los archivos oficiales tal cual.
+  - `backend/package.json` lo corre en `prestart`/`predev` con `--si-falta`: sin conexión
+    solo avisa y sale con 0.
+  - Si la fuente falta, los títulos caen a Inter. Se probó sacando los archivos.
+- **Login:** la tarjeta sigue al tema (oscura con borde en el oscuro, blanca en el claro) y
+  se borraron los colores fijos del tema claro. El logo negro se invierte en el oscuro.
+- **Avisos:** fondo `--pill-bg` (antes negro, que no se despegaba de la hoja oscura) y los
+  colores nuevos.
+- **Contraste:** `--ink-faint` subió a `#808080` en oscuro y `#767676` en claro, para que
+  sus dos usos de texto (`.ledger-delta-ref`, `.pos-item-meta`) pasen AA.
+  - El resto ya pasaba: textos y pastillas, entre 4,5 y 11.
+  - Lo midió un script en el scratchpad, con los fondos rgba compuestos sobre la
+    superficie.
+- **Pendientes viejos, cerrados:**
+  - **Título repetido de las fichas:** en las nueve fichas, el `h2` del primer panel decía
+    lo mismo que la topbar. Se oculta por CSS
+    (`[data-view$="-detalle"] > section.panel:first-of-type > .panel-head > h2`), sin tocar
+    el router ni el JS que lo completa.
+  - **Evolución del Resumen en el celular:** con `.tabla-compacta` deja de ser una tarjeta
+    por período. Queda como tabla con scroll horizontal y el período fijo a la izquierda.
+- **Arreglo de paso:** "Última compra" (fichas de cliente y proveedor, y reportes) salía
+  `AAAA-MM-DD`; ahora pasa por `fechaAR`.
+
+**Verificación.**
+- `npm test` 51 de 51 y `npm run lint` verde.
+  - El test de escape marcó un `esc()` sobre una constante en mayúsculas dentro de un
+    template anidado. Se sacó: las constantes del código no se escapan, y el test de mutación
+    lo exige.
+- Capturas de las 19 vistas, cuatro fichas y el modal de venta, en oscuro, claro y 390 px.
+  También el POS en uso (mostrador y cobro), el filtro abierto, el asistente con una consulta
+  y el login. No hubo ningún `pageerror`.
+- El servidor de prueba usó una base sembrada en el scratchpad: `backend/db/nexo.db` no se
+  tocó. No hubo cambios de backend, así que `npm run regresion` no aplicaba.
+
+### Qué sigue
+
+- Que el usuario vea las capturas y diga qué cambiaría. El botón primario en tinta es la
+  decisión más visible y se revierte con los tres tokens `--primario-*`.
+- Tipos de negocio, segunda parte (punto 4 del plan).

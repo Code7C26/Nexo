@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §71);
+    siguiente número (hoy el último es §72);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,9 +21,10 @@
 
 ## Estado actual (19 de octubre de 2026)
 
-**Próxima sesión:** empezar por el rediseño, segunda parte (punto 3 del plan,
-en "Qué sigue"), con la referencia de estilo que mandó el usuario. Después,
-tipos de negocio (segunda parte), socios y varios negocios por cuenta.
+**Próxima sesión:** tipos de negocio, segunda parte (punto 4 del plan, en
+"Qué sigue"). El rediseño, segunda parte, quedó hecho (hist. §72): falta que
+el usuario lo vea y diga qué cambiaría. Después, socios y varios negocios por
+cuenta.
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
@@ -89,6 +90,9 @@ incluido.
 - Tiene una sola organización ("Mi negocio") y un solo usuario, admin.
 
 **Servidor**: `cd backend && npm start`, en el puerto 3000 (`PORT` lo cambia).
+- Antes de arrancar, `npm start` y `npm run dev` bajan Satoshi si falta
+  (`scripts/fuentes.mjs --si-falta`, hist. §72). Sin conexión solo avisa y el
+  servidor arranca igual.
 - Node 22.13+ (`engines`, `.nvmrc`). `npm start`, `npm run dev` y
   `npm run backup` leen `.env` de la raíz si existe (`--env-file-if-exists`;
   plantilla en `.env.example`, hist. §59). Lo que ya está en el entorno le gana
@@ -182,20 +186,42 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - la condición de pago habitual de un cliente o proveedor solo se propone,
     no pisa lo que ya se cargó (hist. §26).
 
-**Diseño visual (hist. §62, §69)**
-- **Tipografía (hist. §69):** una sola familia, Geist, también para las
-  cifras. Nada de grotescas "con carácter" en los números.
-- **Sin bloques negros sueltos en el tema claro ni doble raya bajo las cifras**
-  (hist. §69): el total se destaca por tamaño y peso.
+**Diseño visual (hist. §62, §69, §72)**
+- **Estructura de Dub, base negra de Nexo (hist. §72):**
+  - bordes finos en vez de sombras: paneles y tarjetas sin sombra;
+    `--shadow-md`/`--shadow-lg` solo para lo que flota;
+  - densidad compacta (`--control-h` 36 px en escritorio; 44 px en el
+    celular, el POS y el login);
+  - radios de Dub: 6 inputs, 8 botones, 12 tarjetas, 16 modal y hoja.
+- **Marco de marca (hist. §72):** la sidebar y un marco de 8 px (`--marco`)
+  alrededor del contenido son negros (`--frame`) en los dos temas. El
+  contenido vive en una hoja (`.main`) con borde fino. En el celular no hay
+  marco. El scroll sigue siendo el del documento.
+- **El tema de partida es el oscuro** (hist. §72): sin elección guardada no se
+  sigue al sistema operativo. El claro va adaptado: hoja gris `#F5F5F5` y
+  tarjetas blancas, nunca el lienzo blanco de Dub.
 - **El negro es el color de marca** (el logo es blanco y negro): sidebar,
-  fondo del login, tinta, avisos y fondo del tema oscuro son negros, con
-  grises neutros. El rediseño lo había cambiado por azul noche y el usuario lo
-  corrigió (hist. §62, addendum). Los acentos van encima, no en su lugar.
-- **Sistema visual:** blanco y negro con **un solo acento**, el azul
-  birome (`--accent`), para toda acción. Sobre negro va su versión clara
-  (`--accent-on-dark`, la sección activa del menú). El amarillo resaltador del
-  primer rediseño se sacó porque al usuario no le gusta negro con amarillo:
-  no sumar un segundo color de acento sin preguntar.
+  marco, fondo del login y avisos son negros, con grises neutros. El rediseño
+  lo había cambiado por azul noche y el usuario lo corrigió (hist. §62,
+  addendum). Los acentos van encima, no en su lugar.
+- **Botón primario en tinta, como Dub** (hist. §72): `--primario-bg`, blanco
+  en oscuro y negro en claro. Reemplaza al "azul para toda acción" de hist.
+  §62: volver atrás es cambiar los tres tokens `--primario-*`.
+- **Un solo acento, el azul** (`--accent`): enlaces, foco, sección activa
+  (tinte `--sidebar-active`, sin raya al costado), selección y datos clave.
+  Sobre negro va `--accent-on-dark`. El amarillo del primer rediseño se sacó
+  porque al usuario no le gusta negro con amarillo: no sumar un segundo color
+  de acento sin preguntar.
+- **Tipografía (hist. §72):** Inter (OFL, `frontend/fonts/inter.woff2`) para
+  texto y cifras, y Satoshi solo para títulos (`--font-display`: marca, h1 de
+  la página, login, título del POS y membrete). Nada de grotescas "con
+  carácter" en los números (hist. §69).
+  - **Satoshi no se versiona:** su licencia (ITF Free Font License) permite
+    alojarla pero no redistribuirla, y el repo es público. La baja
+    `npm run fuentes` (`.gitignore`: `frontend/fonts/satoshi-*.woff2`); si
+    falta, cae a Inter.
+- **Sin doble raya bajo las cifras ni bloques negros sueltos en el tema
+  claro** (hist. §69): el total se destaca por tamaño y peso.
 - **Fuentes propias** en `frontend/fonts/` (sin Google Fonts, pensado para
   la PWA y una CSP sin dominios externos). `--font-mono` ya no es
   monoespaciada: las cifras se alinean con `tabular-nums`.
@@ -203,13 +229,24 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   (`core/iconos.js`) o `<use href="/img/iconos.svg#…">` en el HTML. Un ícono
   nuevo se baja de `lucide-static` y se agrega como `<symbol>`. Nada de
   emojis ni caracteres sueltos (✕, ▸, ←) como íconos.
-- **Colores de estado (hist. §63):**
+- **Colores de estado (hist. §63, §72):**
   - verde para lo resuelto y rojo lleno (`status-vencido`) para lo urgente;
   - `status-pendiente` es el mismo rojo, pero con contorno y sin relleno;
+  - sin color de plata (hist. §72): azul `status-info` (en curso o
+    predeterminado: presupuesto enviado, lista y depósito predeterminados),
+    violeta `status-ia` (lo que hizo el asistente, en Auditoría) y naranja
+    `status-aviso` (conviene mirarlo, no es urgente: stock alto);
   - lo que no es bueno ni urgente va en gris, con `.status` sin clase: un borrador, un rol,
     "Editó", una factura suelta o un gasto de inversión;
   - una cifra `.ledger-value` verde o roja que vale cero pasa sola a tinta (observer de
     `core/ui.js`).
+  - Los íconos de las tarjetas del Resumen llevan color por métrica
+    (`.ledger-icono-azul`, `-naranja`, `-verde`, `-violeta`); el Resultado
+    queda neutro.
+- **Contraste:** todo texto pasa AA (4,5:1) sobre su superficie, incluido
+  `--ink-faint` (hist. §72).
+- **Fichas:** el título va solo en la topbar; el `h2` del primer panel queda
+  en el HTML pero se oculta por CSS (hist. §72).
 - **Menú:** grupos `.nav-seccion`; los que son solo de admin llevan
   `.nav-seccion-admin` y se ocultan enteros para el empleado.
 
@@ -408,12 +445,10 @@ están, hist. §65):
 - `gh` (GitHub CLI) no está instalado en la máquina de Santino. Los PR se
   abren desde el link de comparación de GitHub.
 
-**Diseño (hist. §62–§63, §66).** Todas las pantallas se revisaron en claro, en
-oscuro y a 390 px, y las fechas ya se muestran en dd/mm/aaaa. Quedan para la
-pasada final del plan:
-- en el celular, la tabla de evolución del Resumen es una tarjeta por período y
-  alarga mucho la pantalla;
-- las fichas repiten el título arriba y en el primer panel.
+**Diseño (hist. §62–§63, §66, §72).** Todas las pantallas se revisaron en
+claro, en oscuro y a 390 px, y las fechas ya se muestran en dd/mm/aaaa. Los
+dos pendientes viejos (la tabla de evolución en el celular y el título
+repetido de las fichas) quedaron resueltos en hist. §72.
 
 **Plan en dos semanas (decidido el 19 de octubre de 2026).** El usuario adelantó
 el plazo: el producto tiene que estar casi terminado hacia el **2 de noviembre
@@ -438,75 +473,11 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    Prioridad del usuario del 19 de octubre. Tipos: comercio general (incluye
    indumentaria y ferretería), carnicería, verdulería, kiosco o almacén,
    servicios y gimnasio.
-3. **Rediseño visual, segunda parte** (1–2 sesiones). **Es lo siguiente:**
-   el usuario la pidió para arrancar la próxima sesión. La primera parte está
-   en hist. §69.
-   - **Referencia que mandó el 19 de octubre:**
-     - https://dub.co/ (la app de Dub, no solo su página web);
-     - la ficha de estilo de Refero:
-       https://styles.refero.design/style/b0d80806-b724-4ed1-a1d1-074edd3c9bc9.
-     - Lo que pidió: "un estilo moderno, simple, que tenga colores, que tenga
-       una tipografía simple, y que se pueda aplicar a cualquier cosa.
-       Obviamente en su modo oscuro, adaptado a Nexo. Igualmente esa
-       tipografía me gusta bastante".
-     - No quiere copiar todo.
-     - **"Ese estilo hay que adaptarlo a Nexo. No tiene que ser blanco."**
-       (19 de octubre). De Dub se toma la estructura: bordes finos en vez de
-       sombras, tarjetas limpias, densidad compacta, pastillas de color,
-       cifras claras y tipografía simple. El fondo blanco no se toma.
-     - La base es la identidad de Nexo: el negro de marca. La versión
-       principal que se diseña y se muestra es la oscura (fondo negro,
-       superficies gris muy oscuro, bordes finos), y la clara va adaptada,
-       sin el lienzo blanco de Dub.
-   - **Lo que dice la ficha de Refero (estilo Dub, en claro; hay que llevarlo
-     a la base negra de Nexo):**
-     - **Superficies:** fondo casi blanco; contenedores con borde de 1 px
-       `#e5e5e5` en vez de sombra; tarjetas de 12 px de radio y sin sombra
-       (16 px las grandes); densidad compacta sobre una grilla de 4 px.
-     - **Tipografía:** monocroma, gris `#171717` para el texto (no negro
-       puro) y `#737373` para lo apagado.
-     - **Color:**
-       - un solo azul eléctrico (`#2563eb`) para enlaces, métricas clave y
-         estados activos;
-       - el botón primario va relleno en negro, que coincide con el negro de
-         marca de Nexo;
-       - pastillas de color chicas para categorías y estados: verde
-         `#16a34a`/`#dcfce7`, naranja `#ea580c`, violeta `#7c3aed`, y el
-         pendiente en un tono amarillo o naranja suave.
-     - **Componentes:**
-       - sección activa del menú con fondo celeste `#dbeaff` y radio de 8 px,
-         sin raya lateral;
-       - badges en pastilla (9999 px), con punto;
-       - inputs de 6 px de radio, botones de 8 px y botones fantasma o con
-         contorno;
-       - filas de tabla separadas por una línea de 1 px.
-     - **Fuentes:** Satoshi para títulos y cifras grandes (solo peso 500, de
-       36 a 48 px), Inter para todo lo demás (400, 500 y 600; 14 a 16 px el
-       texto) y Geist Mono para el código.
-     - **Cifras de los dashboards:** abreviadas (254K, $12K), en tríos
-       (clics, leads, ventas), con embudo y tablas de eventos con íconos.
-   - **Primer paso de la sesión:**
-     - sacar capturas de dub.co (y de la demo de la app si es accesible) con
-       playwright y mirarlas;
-     - después proponer los tokens y aplicarlos a toda la app, empezando por
-       el oscuro: negro de marca (#000) con superficies `#0a0a0a`/`#171717` y
-       bordes `#262626`, y el azul y las pastillas de color encima;
-     - el claro va adaptado, sin el lienzo blanco de Dub;
-     - mostrarle capturas al usuario antes de cerrar.
-   - **Tipografía, a decidir:** al usuario le gusta la de Dub.
-     - **Satoshi** es de Fontshare (licencia gratuita de ITF). Antes de usarla
-       hay que confirmar que permite alojar el woff2 en el propio servidor,
-       como las demás (sin Google Fonts).
-     - **Inter** es OFL.
-     - Geist, la de hoy, está en la misma línea que Inter.
-   - **Se mantienen:**
-     - negro de marca en la sidebar y el login;
-     - sin amarillo como acento;
-     - sin doble raya bajo las cifras;
-     - sin bloques negros sueltos en el tema claro.
-     - Ver la memoria `nexo-marca-negro` y las decisiones de diseño de arriba.
-   - **Pendientes de pasadas anteriores:** la tabla de evolución del Resumen
-     en el celular y el título repetido de las fichas.
+3. ~~Rediseño visual, segunda parte~~ **hecha** (hist. §72): estructura de Dub
+   (https://dub.co/ y su ficha de Refero) sobre el negro de Nexo, Inter y
+   Satoshi, oscuro de partida y marco negro. Falta que el usuario lo vea y
+   diga qué cambiaría.
+
 4. **Tipos de negocio, segunda parte** (1 sesión). Pedido del usuario el 19
    de octubre: "cuando vos creás una cuenta, te pregunte qué tipo de negocio
    tenés y a partir de eso puedas gestionar el tuyo". También: "Vi que se
