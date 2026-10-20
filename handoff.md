@@ -25,8 +25,8 @@
 "Qué sigue"); después el CRM (6b) y recién ahí la PWA (7). Los dos los pidió
 el usuario el 20 de octubre.
 - Varios negocios por cuenta (hist. §77) está hecho y commiteado: selector
-  arriba del menú, "Agregar negocio" y el rol por negocio. Falta que el
-  usuario lo vea.
+  arriba del menú, "Agregar negocio" y el rol por negocio. El usuario lo vio
+  y le gustó (20 de octubre): "que se vaya manejando por cuenta".
   - La base real se migra en el próximo `npm start`, con respaldo antes: el
     rol y la baja pasan a `usuario_organizaciones`.
 - Socios, cuotas e ingreso (hist. §74) y planes con varias duraciones, varios
