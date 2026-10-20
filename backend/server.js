@@ -475,12 +475,12 @@ app.post('/api/auth/registro', (req, res) => {
   const usuario = String(req.body?.usuario ?? '').trim();
   const nombre = String(req.body?.nombre ?? '').trim();
   const password = String(req.body?.password ?? '');
-  const rubro = req.body?.rubro ?? RUBRO_POR_DEFECTO;
   if (!empresa || !usuario || !nombre || !password) {
     return res.status(400).json({ error: 'Negocio, usuario, nombre y contraseña son obligatorios.' });
   }
-  if (!PERFILES_RUBRO[rubro]) {
-    return res.status(400).json({ error: 'El tipo de negocio no es válido.' });
+  // Mismos topes que el login para el usuario y la contraseña.
+  if (usuario.length > 100 || password.length > 1000 || nombre.length > 120) {
+    return res.status(400).json({ error: 'El nombre, el usuario o la contraseña son demasiado largos.' });
   }
   if (/\s/.test(usuario)) {
     return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
@@ -488,6 +488,29 @@ app.post('/api/auth/registro', (req, res) => {
   if (password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
+  // El alta guiada puede traer también los módulos y los datos de los
+  // comprobantes: se validan igual que en Configuración. `nombre` acá es el de
+  // la persona; el del negocio llega como `empresa`.
+  const { error, datos } = validarDatosNegocio(
+    {
+      nombre: empresa,
+      rubro: req.body?.rubro ?? RUBRO_POR_DEFECTO,
+      modulos: req.body?.modulos,
+      documento: req.body?.documento,
+      condicion_iva: req.body?.condicion_iva,
+      direccion: req.body?.direccion,
+      telefono: req.body?.telefono,
+      email: req.body?.email
+    },
+    { parcial: false }
+  );
+  if (error) {
+    return res.status(400).json({ error });
+  }
+  const rubro = datos.rubro;
+  // Si los módulos elegidos son justo los del tipo, se guarda NULL: la empresa
+  // sigue al preset, igual que una creada sin elegirlos.
+  const modulos = datos.modulos === undefined || datos.modulos === modulosDelPreset(rubro) ? null : datos.modulos;
 
   // Global a propósito: el nombre de usuario es único en todo Nexo y el login
   // no pide empresa (hist. §45).
@@ -503,13 +526,33 @@ app.post('/api/auth/registro', (req, res) => {
     // organización que db/index.js sembró al arrancar en vez de dejarla
     // huérfana. Revalidado acá adentro, nunca confiar en el frontend.
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+    const valoresOrg = [
+      datos.nombre,
+      rubro,
+      modulos,
+      datos.documento ?? null,
+      datos.condicion_iva ?? null,
+      datos.direccion ?? null,
+      datos.telefono ?? null,
+      datos.email ?? null
+    ];
     let orgId;
     if (count === 0) {
       orgId = organizacionUnica();
-      db.prepare('UPDATE organizaciones SET nombre = ?, rubro = ? WHERE id = ?').run(empresa, rubro, orgId);
+      db.prepare(
+        `UPDATE organizaciones
+            SET nombre = ?, rubro = ?, modulos = ?, documento = ?, condicion_iva = ?,
+                direccion = ?, telefono = ?, email = ?
+          WHERE id = ?`
+      ).run(...valoresOrg, orgId);
     } else {
       orgId = Number(
-        db.prepare('INSERT INTO organizaciones (nombre, rubro) VALUES (?, ?)').run(empresa, rubro).lastInsertRowid
+        db
+          .prepare(
+            `INSERT INTO organizaciones (nombre, rubro, modulos, documento, condicion_iva, direccion, telefono, email)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(...valoresOrg).lastInsertRowid
       );
       sembrarCatalogosBase(orgId);
     }
@@ -543,9 +586,16 @@ app.post('/api/auth/registro', (req, res) => {
   res.status(201).json({ usuario: { id: usuarioId, usuario, nombre, rol: 'admin', debe_cambiar_password: false } });
 });
 
-// A partir de acá, TODO /api/* requiere sesión — los únicos tres
-// endpoints que no la necesitan son los de arriba (estado/login/
-// bootstrap), declarados antes de este montaje. Los ~115 endpoints de
+// Los tipos de negocio y los módulos, para el alta guiada, que los muestra
+// antes de que exista una sesión. Es el mismo catálogo para todos y no tiene
+// ningún dato de una empresa.
+app.get('/api/auth/tipos-negocio', (req, res) => {
+  res.json(catalogoTiposNegocio());
+});
+
+// A partir de acá, TODO /api/* requiere sesión — los únicos endpoints que no
+// la necesitan son los de arriba (estado, login, registro y tipos de
+// negocio), declarados antes de este montaje. Los ~115 endpoints de
 // negocio son app.METHOD planos bajo /api, así que este único middleware
 // los cubre a todos, y cualquier ruta nueva que se agregue en el futuro
 // nace protegida por default sin tener que acordarse de nada.
@@ -9142,22 +9192,100 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
 // Los módulos son las secciones opcionales del menú; el núcleo (productos,
 // clientes, ventas, caja, cuentas corrientes, gastos) se ve siempre. Ocultar
 // un módulo es de la interfaz: los permisos siguen siendo los de permisos.js.
+//
+// `descripcion` e `icono` (id del sprite del frontend) son lo que muestran las
+// tarjetas del alta guiada y de Configuración: viven acá para que la lista de
+// tipos esté en un solo lugar.
 const MODULOS = ['pos', 'presupuestos', 'compras', 'stock'];
+const MODULOS_INFO = {
+  pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
+  presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
+  compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
+  stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' }
+};
 const PERFILES_RUBRO = {
-  comercio: { nombre: 'Comercio general', unidad_defecto: 'unidad', tipo_defecto: 'producto', modulos: ['pos', 'presupuestos', 'compras', 'stock'] },
-  carniceria: { nombre: 'Carnicería', unidad_defecto: 'kg', tipo_defecto: 'producto', modulos: ['pos', 'compras', 'stock'] },
-  verduleria: { nombre: 'Verdulería', unidad_defecto: 'kg', tipo_defecto: 'producto', modulos: ['pos', 'compras', 'stock'] },
-  kiosco: { nombre: 'Kiosco / almacén', unidad_defecto: 'unidad', tipo_defecto: 'producto', modulos: ['pos', 'compras', 'stock'] },
-  servicios: { nombre: 'Servicios', unidad_defecto: 'unidad', tipo_defecto: 'servicio', modulos: ['presupuestos'] },
-  gimnasio: { nombre: 'Gimnasio', unidad_defecto: 'unidad', tipo_defecto: 'servicio', modulos: ['pos', 'stock'] }
+  comercio: {
+    nombre: 'Comercio general',
+    descripcion: 'Ropa, ferretería, librería o regalería: productos con talles, colores y códigos.',
+    icono: 'store',
+    unidad_defecto: 'unidad',
+    tipo_defecto: 'producto',
+    modulos: ['pos', 'presupuestos', 'compras', 'stock']
+  },
+  carniceria: {
+    nombre: 'Carnicería',
+    descripcion: 'Cortes y fiambres por kilo, con venta rápida en el mostrador.',
+    icono: 'beef',
+    unidad_defecto: 'kg',
+    tipo_defecto: 'producto',
+    modulos: ['pos', 'compras', 'stock']
+  },
+  verduleria: {
+    nombre: 'Verdulería',
+    descripcion: 'Frutas y verduras por kilo o por unidad.',
+    icono: 'carrot',
+    unidad_defecto: 'kg',
+    tipo_defecto: 'producto',
+    modulos: ['pos', 'compras', 'stock']
+  },
+  kiosco: {
+    nombre: 'Kiosco / almacén',
+    descripcion: 'Golosinas, bebidas y almacén, cobrando rápido con el lector.',
+    icono: 'cup-soda',
+    unidad_defecto: 'unidad',
+    tipo_defecto: 'producto',
+    modulos: ['pos', 'compras', 'stock']
+  },
+  servicios: {
+    nombre: 'Servicios',
+    descripcion: 'Trabajos y servicios con presupuesto, sin manejar stock.',
+    icono: 'briefcase',
+    unidad_defecto: 'unidad',
+    tipo_defecto: 'servicio',
+    modulos: ['presupuestos']
+  },
+  // Un gimnasio también compra y vende productos (hist. §71): es un comercio
+  // al que se le suman los socios y sus cuotas.
+  gimnasio: {
+    nombre: 'Gimnasio',
+    descripcion: 'Venta de suplementos, bebidas y ropa. Socios y cuotas, muy pronto.',
+    icono: 'dumbbell',
+    unidad_defecto: 'unidad',
+    tipo_defecto: 'producto',
+    modulos: ['pos', 'compras', 'stock']
+  }
 };
 const RUBRO_POR_DEFECTO = 'comercio';
+// Se muestran en el alta con "Próximamente", pero no se pueden elegir: cada uno
+// espera su módulo (turnos, mesas y comandas), que se va a poder sumar a
+// cualquier negocio (CLAUDE.md §29).
+const RUBROS_PROXIMAMENTE = {
+  peluqueria: { nombre: 'Barbería / peluquería', descripcion: 'Turnos con calendario y recordatorios a tus clientes.', icono: 'scissors' },
+  restaurante: { nombre: 'Restaurante / bar', descripcion: 'Mesas, comandas y pedidos a la cocina.', icono: 'utensils' }
+};
+
+// Los módulos del tipo, como se guardan en organizaciones.modulos (en el orden
+// de MODULOS, separados por espacios). Un tipo desconocido es comercio, igual
+// que en perfilDeEmpresa().
+function modulosDelPreset(rubro) {
+  const perfil = PERFILES_RUBRO[Object.hasOwn(PERFILES_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO];
+  return MODULOS.filter((m) => perfil.modulos.includes(m)).join(' ');
+}
+
+function catalogoTiposNegocio() {
+  const lista = (tabla) => Object.entries(tabla).map(([clave, datos]) => ({ clave, ...datos }));
+  return {
+    tipos: lista(PERFILES_RUBRO),
+    proximamente: lista(RUBROS_PROXIMAMENTE),
+    modulos: MODULOS.map((clave) => ({ clave, ...MODULOS_INFO[clave] }))
+  };
+}
 
 // organizaciones.modulos NULL = los del preset del rubro; si no, la lista que
 // eligió el admin, separada por espacios.
 function perfilDeEmpresa(organizacionId) {
   const fila = db.prepare('SELECT rubro, modulos FROM organizaciones WHERE id = ?').get(organizacionId);
-  const rubro = PERFILES_RUBRO[fila?.rubro] ? fila.rubro : RUBRO_POR_DEFECTO;
+  const rubro = Object.hasOwn(PERFILES_RUBRO, fila?.rubro ?? '') ? fila.rubro : RUBRO_POR_DEFECTO;
   const perfil = PERFILES_RUBRO[rubro];
   const modulos = fila?.modulos == null ? perfil.modulos : fila.modulos.split(' ').filter((m) => MODULOS.includes(m));
   return { rubro, unidad_defecto: perfil.unidad_defecto, tipo_defecto: perfil.tipo_defecto, modulos };
@@ -9185,6 +9313,95 @@ const CAMPOS_NEGOCIO = [
   'modulos'
 ];
 
+// La condición fiscal del negocio es una lista fija desde Configuración en
+// páginas (hist. §73): es la base de la letra del comprobante en la Etapa C.
+// El texto libre de antes lo pasa a clave db/index.js cuando lo reconoce.
+const CONDICIONES_IVA = ['responsable_inscripto', 'monotributo', 'exento'];
+const LARGOS_NEGOCIO = { nombre: 120, direccion: 160, telefono: 40, email: 120, pie_comprobante: 300 };
+const NOMBRES_CAMPO_NEGOCIO = {
+  nombre: 'El nombre del negocio',
+  direccion: 'La dirección',
+  telefono: 'El teléfono',
+  email: 'El email',
+  pie_comprobante: 'El pie de los comprobantes'
+};
+
+// Dígito verificador del CUIT (módulo 11, el cálculo de ARCA). Un resto de 1
+// da 9: es el caso de los prefijos 23 y 33.
+function cuitValido(digitos) {
+  if (!/^\d{11}$/.test(digitos)) return false;
+  const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const suma = pesos.reduce((total, peso, i) => total + peso * Number(digitos[i]), 0);
+  const resto = suma % 11;
+  const verificador = resto === 0 ? 0 : resto === 1 ? 9 : 11 - resto;
+  return verificador === Number(digitos[10]);
+}
+
+// Valida y normaliza los datos del negocio, para el alta (POST
+// /api/auth/registro) y para Configuración (PUT /api/negocio). Con `parcial`
+// solo mira los campos que vienen, porque cada página de Configuración guarda
+// lo suyo; sin `parcial`, el nombre es obligatorio. Devuelve { error } o
+// { datos } con los campos presentes. Un texto vacío pasa a NULL, para que el
+// membrete distinga "no hay dato" de una línea en blanco.
+function validarDatosNegocio(cuerpo, { parcial }) {
+  const viene = (campo) => cuerpo?.[campo] !== undefined;
+  const datos = {};
+
+  for (const campo of ['nombre', 'direccion', 'telefono', 'email', 'pie_comprobante', 'documento', 'condicion_iva']) {
+    if (!viene(campo)) continue;
+    const valor = cuerpo[campo];
+    if (valor !== null && typeof valor !== 'string' && typeof valor !== 'number') {
+      return { error: 'Los datos del negocio no son válidos.' };
+    }
+    const texto = String(valor ?? '').trim();
+    datos[campo] = texto === '' ? null : texto;
+    const largo = LARGOS_NEGOCIO[campo];
+    if (largo && texto.length > largo) {
+      return { error: `${NOMBRES_CAMPO_NEGOCIO[campo]} no puede pasar de ${largo} caracteres.` };
+    }
+  }
+
+  // nombre es el único obligatorio: es lo que encabeza el comprobante, y un
+  // papel sin nombre de quien lo emite no sirve para nada. El resto puede
+  // quedar vacío (un monotributista sin local no tiene dirección que poner).
+  if ((!parcial || viene('nombre')) && !datos.nombre) {
+    return { error: 'El negocio necesita un nombre.' };
+  }
+  if (datos.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.email)) {
+    return { error: 'El email no es válido.' };
+  }
+  if (datos.documento) {
+    const digitos = datos.documento.replace(/[\s.-]/g, '');
+    if (!/^\d{11}$/.test(digitos)) {
+      return { error: 'El CUIT tiene que tener 11 números.' };
+    }
+    if (!cuitValido(digitos)) {
+      return { error: 'El CUIT no es válido: revisá el último número.' };
+    }
+    datos.documento = `${digitos.slice(0, 2)}-${digitos.slice(2, 10)}-${digitos.slice(10)}`;
+  }
+  if (datos.condicion_iva && !CONDICIONES_IVA.includes(datos.condicion_iva)) {
+    return { error: 'Elegí una condición fiscal de la lista.' };
+  }
+
+  // Object.hasOwn y no PERFILES_RUBRO[rubro]: "constructor" o "toString"
+  // pasaban como tipo de negocio, y un array se convertía a texto.
+  if (viene('rubro')) {
+    if (typeof cuerpo.rubro !== 'string' || !Object.hasOwn(PERFILES_RUBRO, cuerpo.rubro)) {
+      return { error: 'El tipo de negocio no es válido.' };
+    }
+    datos.rubro = cuerpo.rubro;
+  }
+  if (viene('modulos')) {
+    const lista = cuerpo.modulos;
+    if (!Array.isArray(lista) || lista.some((m) => !MODULOS.includes(m))) {
+      return { error: 'Los módulos no son válidos.' };
+    }
+    datos.modulos = MODULOS.filter((m) => lista.includes(m)).join(' ');
+  }
+  return { datos };
+}
+
 app.get('/api/negocio', (req, res) => {
   const negocio = db
     .prepare(
@@ -9198,12 +9415,9 @@ app.get('/api/negocio', (req, res) => {
     // organizaciones, así que la empresa de la sesión siempre existe.
     return res.status(404).json({ error: 'No hay datos de negocio cargados.' });
   }
-  // Con el perfil efectivo y los presets, así la pantalla de Configuración
-  // muestra qué módulos trae cada tipo de negocio sin repetir la tabla.
-  const perfiles = Object.fromEntries(
-    Object.entries(PERFILES_RUBRO).map(([clave, p]) => [clave, { nombre: p.nombre, modulos: p.modulos }])
-  );
-  res.json({ ...negocio, ...perfilDeEmpresa(req.usuario.organizacion_id), perfiles });
+  // Con el perfil efectivo y el catálogo de tipos y módulos, así las tarjetas
+  // de Configuración no repiten la tabla.
+  res.json({ ...negocio, ...perfilDeEmpresa(req.usuario.organizacion_id), perfiles: catalogoTiposNegocio() });
 });
 
 app.put('/api/negocio', soloAdmin, (req, res) => {
@@ -9218,51 +9432,22 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
     )
     .get(id);
 
-  // Tipo de negocio y módulos son opcionales en el pedido: si no vienen, quedan
-  // como estaban. Cambiar el tipo sin mandar módulos vuelve a los del preset.
-  let rubro = anterior?.rubro ?? null;
-  let modulos = anterior?.modulos ?? null;
-  if (req.body?.rubro !== undefined) {
-    if (!PERFILES_RUBRO[req.body.rubro]) {
-      return res.status(400).json({ error: 'El tipo de negocio no es válido.' });
-    }
-    if (req.body.rubro !== (anterior?.rubro ?? RUBRO_POR_DEFECTO)) modulos = null;
-    rubro = req.body.rubro;
+  // Actualización parcial: lo que no viene en el pedido queda como estaba.
+  // Cada página de Configuración manda solo lo suyo, y antes un campo que no
+  // venía se borraba.
+  const { error, datos } = validarDatosNegocio(req.body, { parcial: true });
+  if (error) {
+    return res.status(400).json({ error });
   }
-  if (req.body?.modulos !== undefined) {
-    const lista = req.body.modulos;
-    if (!Array.isArray(lista) || lista.some((m) => !MODULOS.includes(m))) {
-      return res.status(400).json({ error: 'Los módulos no son válidos.' });
-    }
-    modulos = MODULOS.filter((m) => lista.includes(m)).join(' ');
+  // Cambiar el tipo sin mandar módulos vuelve a los del preset, y mandar justo
+  // los del preset también: la empresa sigue al tipo, como en el alta.
+  if (datos.rubro !== undefined && datos.modulos === undefined && datos.rubro !== (anterior?.rubro ?? RUBRO_POR_DEFECTO)) {
+    datos.modulos = null;
   }
-
-  // nombre es el único obligatorio: es lo que encabeza el comprobante, y un
-  // papel sin nombre de quien lo emite no sirve para nada. El resto puede
-  // quedar vacío (un monotributista sin local no tiene dirección que poner).
-  const nombre = String(req.body?.nombre ?? '').trim();
-  if (!nombre) {
-    return res.status(400).json({ error: 'El negocio necesita un nombre.' });
+  if (datos.modulos && datos.modulos === modulosDelPreset(datos.rubro ?? anterior?.rubro)) {
+    datos.modulos = null;
   }
-
-  // Los opcionales se normalizan a NULL cuando vienen vacíos, para no guardar
-  // cadenas vacías que después el membrete tendría que distinguir de "no hay
-  // dato" al decidir si imprime la línea o no.
-  const opcional = (v) => {
-    const texto = String(v ?? '').trim();
-    return texto === '' ? null : texto;
-  };
-  const nuevo = {
-    nombre,
-    documento: opcional(req.body?.documento),
-    direccion: opcional(req.body?.direccion),
-    telefono: opcional(req.body?.telefono),
-    email: opcional(req.body?.email),
-    condicion_iva: opcional(req.body?.condicion_iva),
-    pie_comprobante: opcional(req.body?.pie_comprobante),
-    rubro,
-    modulos
-  };
+  const nuevo = { ...anterior, ...datos };
 
   const cambios = diffCampos(anterior, nuevo, CAMPOS_NEGOCIO);
   // diffCampos devuelve los valores YA serializados a JSON (string), así que

@@ -32,7 +32,8 @@ import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion
 import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
-import { mostrarVista, vistaDesdeHash } from "./core/router.js";
+import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
+import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
 import { negocio } from "./core/negocio.js";
@@ -2425,12 +2426,14 @@ document.getElementById("btnGenerarVariantes").addEventListener("click", async (
 
 /* ---------- Categorías de productos ---------- */
 //
-// Calcado del modal de categorías de gasto (Gastos, más abajo): mismo
-// patrón de formulario inline + tabla editable, sin campo Tipo. La baja es
-// lógica (activa = 0) desde el mismo PATCH que edita, nunca DELETE — un
-// producto con esa categoría no puede quedar apuntando a una fila borrada.
-
-const modalCategoriasProductos = document.getElementById("modalCategoriasProductos");
+// Calcado de categorías de gasto (dominios/gastos.js): mismo patrón de
+// formulario + tabla editable, sin campo Tipo. La baja es lógica (activa = 0)
+// desde el mismo PATCH que edita, nunca DELETE — un producto con esa
+// categoría no puede quedar apuntando a una fila borrada.
+//
+// Los cuatro catálogos de abajo (este, listas, depósitos y categorías de
+// gasto) son páginas de Configuración (hist. §73): su botón en cada pantalla
+// lleva ahí, y la página los pinta con invocar("pintar:<catálogo>").
 
 function renderCategoriasProductos() {
   const body = document.getElementById("categoriasProductosBody");
@@ -2456,22 +2459,19 @@ function renderCategoriasProductos() {
       form.id.value = categoria.id;
       form.nombre.value = categoria.nombre;
       document.getElementById("formCategoriaProductoSubmit").textContent = "Guardar cambios";
+      form.nombre.focus();
     });
   });
 }
 
-document.getElementById("btnCategoriasProductos").addEventListener("click", () => {
+registrar("pintar:categorias-productos", () => {
   document.getElementById("formCategoriaProducto").reset();
   document.getElementById("formCategoriaProducto").id.value = "";
   document.getElementById("formCategoriaProductoSubmit").textContent = "Agregar categoría";
   renderCategoriasProductos();
-  modalCategoriasProductos.hidden = false;
 });
-document.getElementById("modalCategoriasProductosClose").addEventListener("click", () => {
-  modalCategoriasProductos.hidden = true;
-});
-modalCategoriasProductos.addEventListener("click", (e) => {
-  if (e.target === modalCategoriasProductos) modalCategoriasProductos.hidden = true;
+document.getElementById("btnCategoriasProductos").addEventListener("click", () => {
+  mostrarVista("configuracion", { subruta: "categorias-productos" });
 });
 
 document.getElementById("formCategoriaProducto").addEventListener("submit", async (e) => {
@@ -2498,12 +2498,10 @@ document.getElementById("formCategoriaProducto").addEventListener("submit", asyn
 
 /* ---------- Listas de precios (CLAUDE.md §18) ---------- */
 //
-// Calcado del modal de categorías de productos de arriba: mismo patrón de
-// formulario inline + tabla editable. Columna propia "Predeterminada": un
-// botón "Marcar" por cada lista que no lo es, en vez de un radio — evita
-// mandar un PATCH por cada fila al cambiar la predeterminada.
-
-const modalListasPrecios = document.getElementById("modalListasPrecios");
+// Calcado de categorías de productos de arriba: mismo patrón de formulario +
+// tabla editable. Columna propia "Predeterminada": un botón "Marcar" por cada
+// lista que no lo es, en vez de un radio — evita mandar un PATCH por cada
+// fila al cambiar la predeterminada.
 
 function renderListasPrecios() {
   const body = document.getElementById("listasPreciosBody");
@@ -2534,6 +2532,7 @@ function renderListasPrecios() {
       form.id.value = lista.id;
       form.nombre.value = lista.nombre;
       document.getElementById("formListaPrecioSubmit").textContent = "Guardar cambios";
+      form.nombre.focus();
     });
   });
 
@@ -2552,18 +2551,14 @@ function renderListasPrecios() {
   });
 }
 
-document.getElementById("btnListasPrecios").addEventListener("click", () => {
+registrar("pintar:listas-precios", () => {
   document.getElementById("formListaPrecio").reset();
   document.getElementById("formListaPrecio").id.value = "";
   document.getElementById("formListaPrecioSubmit").textContent = "Agregar lista";
   renderListasPrecios();
-  modalListasPrecios.hidden = false;
 });
-document.getElementById("modalListasPreciosClose").addEventListener("click", () => {
-  modalListasPrecios.hidden = true;
-});
-modalListasPrecios.addEventListener("click", (e) => {
-  if (e.target === modalListasPrecios) modalListasPrecios.hidden = true;
+document.getElementById("btnListasPrecios").addEventListener("click", () => {
+  mostrarVista("configuracion", { subruta: "listas-precios" });
 });
 
 document.getElementById("formListaPrecio").addEventListener("submit", async (e) => {
@@ -2590,11 +2585,9 @@ document.getElementById("formListaPrecio").addEventListener("submit", async (e) 
 
 /* ---------- Depósitos (CLAUDE.md §5/§19) ---------- */
 //
-// Calcado del modal de listas de precios de arriba: mismo patrón de
-// formulario inline + tabla editable + "exactamente uno predeterminado"
-// con botón "Marcar" en vez de radio.
-
-const modalDepositos = document.getElementById("modalDepositos");
+// Calcado de listas de precios de arriba: mismo patrón de formulario + tabla
+// editable + "exactamente uno predeterminado" con botón "Marcar" en vez de
+// radio.
 
 function renderDepositos() {
   const body = document.getElementById("depositosBody");
@@ -2626,6 +2619,7 @@ function renderDepositos() {
       form.nombre.value = deposito.nombre;
       form.direccion.value = deposito.direccion ?? "";
       document.getElementById("formDepositoSubmit").textContent = "Guardar cambios";
+      form.nombre.focus();
     });
   });
 
@@ -2644,18 +2638,14 @@ function renderDepositos() {
   });
 }
 
-document.getElementById("btnDepositos").addEventListener("click", () => {
+registrar("pintar:depositos", () => {
   document.getElementById("formDeposito").reset();
   document.getElementById("formDeposito").id.value = "";
   document.getElementById("formDepositoSubmit").textContent = "Agregar depósito";
   renderDepositos();
-  modalDepositos.hidden = false;
 });
-document.getElementById("modalDepositosClose").addEventListener("click", () => {
-  modalDepositos.hidden = true;
-});
-modalDepositos.addEventListener("click", (e) => {
-  if (e.target === modalDepositos) modalDepositos.hidden = true;
+document.getElementById("btnDepositos").addEventListener("click", () => {
+  mostrarVista("configuracion", { subruta: "depositos" });
 });
 
 document.getElementById("formDeposito").addEventListener("submit", async (e) => {
@@ -7149,25 +7139,10 @@ refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negoci
 
 /* ---------- Tema claro / oscuro ---------- */
 
-// La elección explícita (si existe) ya se aplicó al <html> antes de que
-// esta página pintara nada (ver el script inline en el <head>). Sin
-// elección, la app es oscura: es el tema principal de Nexo, no se sigue al
-// sistema operativo. Acá solo hace falta el botón para cambiarla.
-const btnTema = document.getElementById("btnTema");
-
-function temaActual() {
-  return localStorage.getItem("nexo.tema") || "oscuro";
-}
-
-btnTema.addEventListener("click", () => {
-  const nuevo = temaActual() === "oscuro" ? "claro" : "oscuro";
-  document.documentElement.setAttribute("data-tema", nuevo);
-  try {
-    localStorage.setItem("nexo.tema", nuevo);
-  } catch {
-    // Sin storage disponible, el tema sigue cambiado para esta sesión,
-    // solo no se recuerda la próxima vez.
-  }
+// El botón de la sidebar alterna; la página Apariencia de Configuración elige
+// uno. Los dos pasan por core/tema.js.
+document.getElementById("btnTema").addEventListener("click", () => {
+  aplicarTema(temaActual() === "oscuro" ? "claro" : "oscuro");
 });
 
 /* ---------- Colapsar sidebar (pantalla completa en desktop) ---------- */
@@ -7216,8 +7191,8 @@ navToggle.addEventListener("click", () => {
 
 // Al entrar: si la URL ya trae una vista puesta (F5, o volver con el
 // botón Atrás), arrancar ahí en vez de siempre en Resumen.
-// Auditoría se carga al entrar (ver mostrarVista en core/router.js); Usuarios
-// hace lo mismo desde dominios/usuarios.js.
+// Auditoría se carga al entrar (ver mostrarVista en core/router.js);
+// Configuración hace lo mismo desde dominios/configuracion.js.
 alEntrarEnVista("auditoria", cargarAuditoria);
 
 // Acciones que dominios/cuentas-corrientes.js invoca por nombre (solo con un
@@ -7227,4 +7202,4 @@ registrar("abrirFicha:proveedor", abrirFichaProveedor);
 registrar("cobrar:venta", abrirModalCobrarVenta);
 registrar("pagar:compra", abrirModalPagarCompra);
 
-mostrarVista(vistaDesdeHash() ?? "dashboard", { actualizarHash: false });
+mostrarVista(vistaDesdeHash() ?? "dashboard", { actualizarHash: false, subruta: subrutaDesdeHash() });

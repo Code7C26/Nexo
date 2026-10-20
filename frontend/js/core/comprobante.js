@@ -5,6 +5,7 @@
  */
 
 import { esc, fechaAR, money, numero } from "./formato.js";
+import { condicionFiscal } from "./fiscal.js";
 import { negocio } from "./negocio.js";
 import { avisar } from "./ui.js";
 
@@ -52,7 +53,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
         <div class="hoja-negocio">
           <h1>${esc(negocio.nombre || "—")}</h1>
           ${lineaSiHay("CUIT:", negocio.documento)}
-          ${lineaSiHay("", negocio.condicion_iva)}
+          ${lineaSiHay("", condicionFiscal(negocio.condicion_iva))}
           ${lineaSiHay("", negocio.direccion)}
           ${lineaSiHay("Tel:", negocio.telefono)}
           ${lineaSiHay("", negocio.email)}

@@ -9,7 +9,8 @@
 //
 //   registrar('x', fn)         invocar('x', ...args)
 //   registrar('cargar:x', fn)  recargar('x', 'y')  -> corre cargar:x y cargar:y
-//   alEntrarEnVista('v', fn)   entrarEnVista('v')  (la llama el router)
+//   alEntrarEnVista('v', fn)   entrarEnVista('v', subruta)  (la llama el router;
+//                              fn recibe la subruta del hash, o null)
 
 const acciones = new Map();
 const alEntrar = new Map();
@@ -35,6 +36,6 @@ export function alEntrarEnVista(vista, fn) {
   alEntrar.set(vista, fn);
 }
 
-export function entrarEnVista(vista) {
-  alEntrar.get(vista)?.();
+export function entrarEnVista(vista, ...args) {
+  alEntrar.get(vista)?.(...args);
 }

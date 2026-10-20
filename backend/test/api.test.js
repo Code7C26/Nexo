@@ -361,7 +361,6 @@ test('?limit negativo en un listado con tope no devuelve todo sin límite', asyn
   assert.equal(r.status, 200, r.texto);
 });
 
-// Va último a propósito: bloquea la IP local durante la ventana del límite.
 test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)', async () => {
   // Por kg: se vende con decimales y el stock baja en kg.
   const vacio = await adminA.post('/api/productos', { nombre: 'Vacío', precio_venta: 8000, unidad: 'kg' });
@@ -410,6 +409,57 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
 });
 
+test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist. §73)', async () => {
+  const completo = await adminB.put('/api/negocio', {
+    nombre: 'Empresa B',
+    documento: '20 12345678 6',
+    condicion_iva: 'monotributo',
+    direccion: 'Av. Siempreviva 742',
+    telefono: '11 5555-0000',
+    email: 'hola@empresab.com.ar',
+    pie_comprobante: 'Gracias por su compra'
+  });
+  assert.equal(completo.status, 200, completo.texto);
+  // Cada página de Configuración manda solo lo suyo: antes, lo que no venía se
+  // borraba.
+  assert.equal((await adminB.put('/api/negocio', { telefono: '11 4444-0000' })).status, 200);
+  const negocio = (await adminB.get('/api/negocio')).json;
+  assert.equal(negocio.telefono, '11 4444-0000');
+  assert.equal(negocio.nombre, 'Empresa B');
+  assert.equal(negocio.documento, '20-12345678-6', 'el CUIT se guarda con guiones');
+  assert.equal(negocio.condicion_iva, 'monotributo');
+  assert.equal(negocio.direccion, 'Av. Siempreviva 742');
+  assert.equal(negocio.pie_comprobante, 'Gracias por su compra');
+  await adminB.put('/api/negocio', { pie_comprobante: '  ' });
+  assert.equal((await adminB.get('/api/negocio')).json.pie_comprobante, null, 'vaciar un campo lo pasa a NULL');
+
+  for (const [cuerpo, motivo] of [
+    [{ documento: '20-12345678-5' }, 'dígito verificador malo'],
+    [{ documento: '20-1234567-6' }, 'CUIT corto'],
+    [{ condicion_iva: 'Responsable Inscripto' }, 'condición fuera de la lista'],
+    [{ email: 'sin-arroba' }, 'email'],
+    [{ nombre: '' }, 'nombre vacío'],
+    [{ nombre: 'x'.repeat(121) }, 'nombre largo'],
+    [{ direccion: { calle: 'Falsa' } }, 'tipo inválido'],
+    [{ rubro: 'constructor' }, 'clave del prototipo'],
+    [{ rubro: ['comercio'] }, 'array'],
+    [{ rubro: 'peluqueria' }, 'tipo "Próximamente"']
+  ]) {
+    assert.equal((await adminB.put('/api/negocio', cuerpo)).status, 400, motivo);
+  }
+  assert.equal((await adminB.get('/api/negocio')).json.documento, '20-12345678-6', 'un PUT rechazado no cambia nada');
+
+  // Un gimnasio también compra y vende (hist. §71): sus productos nacen como
+  // producto, no como servicio.
+  await adminB.put('/api/negocio', { rubro: 'gimnasio' });
+  const gimnasio = (await adminB.get('/api/negocio')).json;
+  assert.deepEqual(gimnasio.modulos, ['pos', 'compras', 'stock']);
+  assert.equal(gimnasio.tipo_defecto, 'producto');
+  assert.ok(gimnasio.perfiles.tipos.some((t) => t.clave === 'gimnasio' && t.icono && t.descripcion));
+  await adminB.put('/api/negocio', { rubro: 'comercio' });
+});
+
+// Va último a propósito: bloquea la IP local durante la ventana del límite.
 test('muchos logins fallidos con usuarios distintos bloquean la IP (A6)', async () => {
   const anonimo = crearCliente(servidor.url);
   let ultimo;

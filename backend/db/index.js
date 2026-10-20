@@ -1655,6 +1655,21 @@ for (const columna of ['rubro', 'modulos']) {
   }
 }
 
+// La condición fiscal del negocio pasó de texto libre a una lista fija
+// (hist. §73, CONDICIONES_IVA en server.js). Sin cambio de esquema: el texto
+// que se reconoce pasa a su clave y el que no, queda como estaba hasta que el
+// admin elija uno de la lista en Configuración. Re-ejecutable: lo que ya es
+// clave no matchea ningún patrón distinto del suyo.
+db.exec(`
+  UPDATE organizaciones SET condicion_iva = 'responsable_inscripto'
+   WHERE LOWER(condicion_iva) LIKE '%inscript%' AND LOWER(condicion_iva) NOT LIKE '%no inscript%'
+     AND condicion_iva <> 'responsable_inscripto';
+  UPDATE organizaciones SET condicion_iva = 'monotributo'
+   WHERE LOWER(condicion_iva) LIKE '%monotrib%' AND condicion_iva <> 'monotributo';
+  UPDATE organizaciones SET condicion_iva = 'exento'
+   WHERE LOWER(condicion_iva) LIKE '%exent%' AND condicion_iva <> 'exento';
+`);
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

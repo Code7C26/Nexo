@@ -1,0 +1,282 @@
+/**
+ * alta.js
+ * Alta guiada de una cuenta (hist. §73): tu cuenta, tu negocio, el tipo de
+ * negocio, sus secciones y los datos de los comprobantes, en cinco pasos a
+ * pantalla completa. El backend crea todo junto al final, en una sola
+ * transacción (POST /api/auth/registro): los pasos son solo de la interfaz.
+ *
+ * Lo carga sesion.js con import() recién cuando hace falta, así quien entra
+ * con su cuenta nunca lo baja. Corre sin sesión: no usa api() ni nada que
+ * dependa de la app, solo los módulos de core/ que no tocan la app.
+ *
+ * Cada paso entra al historial (#/crear-cuenta/N): el Atrás del navegador, o
+ * el gesto de volver del celular, vuelve un paso.
+ */
+
+import { marcarModulosDelTipo, tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "./core/tipos-negocio.js";
+import { CONDICIONES_FISCALES, errorCuit, formatearCuit } from "./core/fiscal.js";
+import { limpiarError, limpiarErrores, marcarError } from "./core/campos.js";
+
+const NOMBRES_PASO = ["Tu cuenta", "Tu negocio", "Tipo de negocio", "Secciones", "Comprobantes"];
+const RUTA = /^#\/crear-cuenta(?:\/(\d))?$/;
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const pantalla = document.getElementById("altaPantalla");
+const formularios = [...pantalla.querySelectorAll(".alta-paso")];
+const campo = (id) => document.getElementById(id);
+const contenedorTipos = campo("altaTipos");
+const contenedorModulos = campo("altaModulos");
+const tactil = window.matchMedia("(pointer: coarse)");
+
+let paso = 1;
+let alcanzado = 1;
+let catalogo = null;
+let rubroDeLosModulos = null;
+let alVolverAlPrimero = null;
+let opciones = {};
+
+const formDelPaso = (n) => formularios[n - 1];
+
+campo("altaCondicion").innerHTML = `<option value="">Todavía no lo sé</option>${Object.entries(CONDICIONES_FISCALES)
+  .map(([clave, etiqueta]) => `<option value="${clave}">${etiqueta}</option>`)
+  .join("")}`;
+
+/* ---------- Navegación entre pasos ---------- */
+
+function irAPaso(n, { historial = true } = {}) {
+  paso = n;
+  alcanzado = Math.max(alcanzado, n);
+  for (const form of formularios) form.hidden = Number(form.dataset.paso) !== n;
+  campo("altaProgreso").textContent = `Paso ${n} de ${NOMBRES_PASO.length} · ${NOMBRES_PASO[n - 1]}`;
+  campo("altaPasos")
+    .querySelectorAll("li")
+    .forEach((li, i) => {
+      li.classList.toggle("is-hecho", i < n - 1);
+      li.classList.toggle("is-actual", i === n - 1);
+    });
+  if (historial) history.pushState(null, "", `#/crear-cuenta/${n}`);
+  pantalla.scrollTo(0, 0);
+  // Con teclado, el foco va al primer campo (o a la tarjeta elegida): se
+  // sigue sin buscar dónde quedó. En una pantalla táctil va al título, porque
+  // enfocar un campo abre el teclado del celular y tapa la explicación del
+  // paso. El cambio de paso lo lee el lector de pantalla desde #altaProgreso
+  // (aria-live).
+  const form = formDelPaso(n);
+  const primero = form.querySelector("input:checked:not([disabled])") ?? form.querySelector("input:not([disabled]), select");
+  (tactil.matches ? form.querySelector("h1") : primero ?? form.querySelector("h1")).focus();
+}
+
+function errorEn(control, texto) {
+  marcarError(control, texto);
+  control.focus();
+}
+
+// Atrás/Adelante del navegador. Adelante no deja saltear un paso que todavía
+// no se completó.
+window.addEventListener("popstate", () => {
+  if (pantalla.hidden) return;
+  const ruta = location.hash.match(RUTA);
+  if (!ruta) {
+    // Salió del alta: en una instalación nueva no hay a dónde ir, se queda.
+    if (opciones.instalacionNueva) history.pushState(null, "", `#/crear-cuenta/${paso}`);
+    else cerrar(opciones.alVolver);
+    return;
+  }
+  const destino = Math.min(Number(ruta[1] ?? 1), alcanzado);
+  irAPaso(destino, { historial: false });
+  if (destino === 1 && alVolverAlPrimero) {
+    alVolverAlPrimero();
+    alVolverAlPrimero = null;
+  }
+});
+
+for (const boton of pantalla.querySelectorAll("[data-atras]")) {
+  boton.addEventListener("click", () => history.back());
+}
+
+campo("altaIrALogin").addEventListener("click", () => {
+  history.replaceState(null, "", location.pathname + location.search);
+  cerrar(opciones.alVolver);
+});
+
+function cerrar(despues) {
+  pantalla.hidden = true;
+  despues?.();
+}
+
+// El ojo de la contraseña la muestra u oculta (el del login lo maneja
+// sesion.js, que solo mira su propia pantalla).
+for (const boton of pantalla.querySelectorAll(".campo-ver-clave")) {
+  boton.addEventListener("click", () => {
+    const input = boton.parentElement.querySelector("input");
+    const ver = input.type === "password";
+    input.type = ver ? "text" : "password";
+    boton.setAttribute("aria-pressed", String(ver));
+    boton.setAttribute("aria-label", ver ? "Ocultar contraseña" : "Mostrar contraseña");
+    input.focus();
+  });
+}
+
+// Un error se va apenas se empieza a corregir.
+pantalla.addEventListener("input", (e) => limpiarError(e.target));
+pantalla.addEventListener("change", (e) => {
+  if (e.target.name === "rubro") limpiarError(contenedorTipos);
+});
+
+/* ---------- Catálogo de tipos de negocio ---------- */
+
+async function cargarCatalogo() {
+  if (catalogo) return;
+  try {
+    const res = await fetch("/api/auth/tipos-negocio");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    catalogo = await res.json();
+    contenedorTipos.innerHTML = tarjetasTipo(catalogo, null);
+  } catch {
+    contenedorTipos.innerHTML = `
+      <p class="opciones-cargando">No se pudieron cargar los tipos de negocio. Revisá la conexión.
+        <button type="button" class="btn-link" id="altaReintentarTipos">Reintentar</button></p>`;
+    campo("altaReintentarTipos").addEventListener("click", cargarCatalogo);
+  }
+}
+
+/* ---------- Validación de cada paso ---------- */
+
+// Cada una devuelve true si el paso está completo; si no, marca el error.
+const VALIDAR = {
+  1() {
+    const nombre = campo("altaNombre");
+    const usuario = campo("altaUsuario");
+    const password = campo("altaPassword");
+    if (!nombre.value.trim()) return errorEn(nombre, "Escribí tu nombre.");
+    if (!usuario.value.trim()) return errorEn(usuario, "Elegí un nombre de usuario.");
+    if (/\s/.test(usuario.value.trim())) return errorEn(usuario, "El usuario no puede tener espacios.");
+    if (password.value.length < 8) return errorEn(password, "La contraseña tiene que tener al menos 8 caracteres.");
+    return true;
+  },
+  2() {
+    const empresa = campo("altaEmpresa");
+    if (!empresa.value.trim()) return errorEn(empresa, "Escribí el nombre de tu negocio.");
+    return true;
+  },
+  3() {
+    if (!catalogo) return false;
+    if (!formDelPaso(3).querySelector('input[name="rubro"]:checked')) {
+      marcarError(contenedorTipos, "Elegí el tipo que más se parezca a tu negocio.");
+      contenedorTipos.querySelector("input:not([disabled])")?.focus();
+      return false;
+    }
+    return true;
+  },
+  4: () => true,
+  5() {
+    const cuit = campo("altaCuit");
+    const email = campo("altaEmail");
+    const error = errorCuit(cuit.value);
+    if (error) return errorEn(cuit, error);
+    if (email.value.trim() && !EMAIL_VALIDO.test(email.value.trim())) {
+      return errorEn(email, "Revisá el email: tiene que ser como nombre@dominio.com.");
+    }
+    return true;
+  }
+};
+
+// Al llegar a las secciones se marcan las del tipo elegido, salvo que se
+// vuelva sin haber cambiado de tipo: ahí se respeta lo que ya se tocó.
+function prepararModulos() {
+  const rubro = formDelPaso(3).querySelector('input[name="rubro"]:checked').value;
+  if (rubro === rubroDeLosModulos) return;
+  rubroDeLosModulos = rubro;
+  contenedorModulos.innerHTML = tarjetasModulos(catalogo, []);
+  marcarModulosDelTipo(contenedorModulos, catalogo, rubro);
+  campo("altaModulosBajada").textContent =
+    `Marcamos las que suele usar un negocio como el tuyo (${tipoDeNegocio(catalogo, rubro).nombre}). ` +
+    "Cambialas ahora o cuando quieras desde Configuración.";
+}
+
+for (const form of formularios) {
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    limpiarErrores(form);
+    if (VALIDAR[paso]() !== true) return;
+    if (paso === 3) prepararModulos();
+    if (paso < NOMBRES_PASO.length) irAPaso(paso + 1);
+    else crearCuenta({ conComprobantes: true });
+  });
+}
+
+campo("altaDespues").addEventListener("click", () => crearCuenta({ conComprobantes: false }));
+
+/* ---------- Crear la cuenta ---------- */
+
+const valor = (id) => campo(id).value.trim();
+
+async function crearCuenta({ conComprobantes }) {
+  const error = campo("altaError");
+  error.hidden = true;
+  const cuerpo = {
+    nombre: valor("altaNombre"),
+    usuario: valor("altaUsuario"),
+    password: campo("altaPassword").value,
+    empresa: valor("altaEmpresa"),
+    rubro: formDelPaso(3).querySelector('input[name="rubro"]:checked').value,
+    modulos: [...contenedorModulos.querySelectorAll('input[name="modulo"]:checked')].map((c) => c.value)
+  };
+  if (conComprobantes) {
+    Object.assign(cuerpo, {
+      documento: formatearCuit(valor("altaCuit")),
+      condicion_iva: valor("altaCondicion"),
+      direccion: valor("altaDireccion"),
+      telefono: valor("altaTelefono"),
+      email: valor("altaEmail")
+    });
+  }
+
+  const crear = campo("altaCrear");
+  const botones = [crear, campo("altaDespues"), ...formDelPaso(5).querySelectorAll("[data-atras]")];
+  botones.forEach((b) => (b.disabled = true));
+  crear.textContent = "Creando tu cuenta…";
+  try {
+    const res = await fetch("/api/auth/registro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo)
+    });
+    const datos = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // Usuario ya tomado: de vuelta al primer paso, con el error en el campo.
+      if (res.status === 409) {
+        alVolverAlPrimero = () => errorEn(campo("altaUsuario"), `${datos.error} Probá con otro.`);
+        history.go(1 - paso);
+        return;
+      }
+      error.textContent = datos.error || "No se pudo crear la cuenta. Probá de nuevo.";
+      error.hidden = false;
+      return;
+    }
+    history.replaceState(null, "", location.pathname + location.search);
+    cerrar(() => opciones.alTerminar(datos.usuario));
+  } catch {
+    error.textContent = "No se pudo conectar con Nexo. Revisá la conexión y probá de nuevo.";
+    error.hidden = false;
+  } finally {
+    botones.forEach((b) => (b.disabled = false));
+    crear.textContent = "Crear cuenta";
+  }
+}
+
+/* ---------- Entrada ---------- */
+
+// alTerminar(usuario) entra a la app; alVolver() vuelve al login. En una
+// instalación nueva no hay cuenta a la que volver.
+export function montarAlta({ alTerminar, alVolver, instalacionNueva = false }) {
+  opciones = { alTerminar, alVolver, instalacionNueva };
+  campo("altaYaTengo").hidden = instalacionNueva;
+  pantalla.hidden = false;
+  alcanzado = 1;
+  // Recargar a mitad de camino vuelve al primer paso: la contraseña vive
+  // solo en memoria.
+  history.replaceState(null, "", "#/crear-cuenta/1");
+  irAPaso(1, { historial: false });
+  cargarCatalogo();
+}

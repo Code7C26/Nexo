@@ -27,8 +27,6 @@
   // Explícitos: antes se leían como globales implícitas del navegador (cada
   // id del DOM es una propiedad de window), que se rompen sin aviso si otro
   // script declara una variable con el mismo nombre.
-  const formRegistro = document.getElementById("formRegistro");
-  const irALogin = document.getElementById("irALogin");
   const formCambioForzado = document.getElementById("formCambioForzado");
 
   let appInyectada = false;
@@ -72,8 +70,22 @@
   function mostrarPantalla(cual) {
     pantalla.hidden = false;
     formLogin.hidden = cual !== "login";
-    formRegistro.hidden = cual !== "registro";
     formCambioForzado.hidden = cual !== "cambio";
+  }
+
+  // El alta guiada (hist. §73) es un módulo aparte, js/alta.js, que se baja
+  // recién cuando hace falta: quien entra con su cuenta nunca la carga. Si no
+  // carga, se vuelve al login con el motivo, como con app.js.
+  async function abrirAlta({ instalacionNueva = false } = {}) {
+    pantalla.hidden = true;
+    try {
+      const { montarAlta } = await import("./alta.js");
+      montarAlta({ instalacionNueva, alTerminar: arrancarApp, alVolver: () => mostrarPantalla("login") });
+    } catch (e) {
+      console.error("No se pudo cargar js/alta.js (o alguno de los módulos que importa).", e);
+      mostrarPantalla("login");
+      mostrarErrorEn("loginError", "No se pudo abrir el alta de cuenta. Recargá la página.");
+    }
   }
 
   function mostrarErrorEn(idParrafo, mensaje) {
@@ -178,8 +190,12 @@
     }
   });
 
-  document.getElementById("irARegistro").addEventListener("click", () => mostrarPantalla("registro"));
-  irALogin.addEventListener("click", () => mostrarPantalla("login"));
+  // Entra al historial: el Atrás del navegador, desde el primer paso del
+  // alta, vuelve al login.
+  document.getElementById("irARegistro").addEventListener("click", () => {
+    history.pushState(null, "", "#/crear-cuenta");
+    abrirAlta();
+  });
 
   // El ojo de cada contraseña la muestra u oculta.
   pantalla.querySelectorAll(".campo-ver-clave").forEach((boton) => {
@@ -191,31 +207,6 @@
       boton.setAttribute("aria-label", ver ? "Ocultar contraseña" : "Mostrar contraseña");
       input.focus();
     });
-  });
-
-  formRegistro.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    ocultarErrorEn("registroError");
-    const empresa = document.getElementById("registroEmpresa").value.trim();
-    const nombre = document.getElementById("registroNombre").value.trim();
-    const usuario = document.getElementById("registroUsuario").value.trim();
-    const password = document.getElementById("registroPassword").value;
-    const rubro = document.getElementById("registroRubro").value;
-    try {
-      const res = await fetchOriginal("/api/auth/registro", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ empresa, usuario, nombre, password, rubro })
-      });
-      const datos = await res.json();
-      if (!res.ok) {
-        mostrarErrorEn("registroError", datos.error || "No se pudo crear la cuenta.");
-        return;
-      }
-      arrancarApp(datos.usuario);
-    } catch {
-      mostrarErrorEn("registroError", "No se pudo conectar con el servidor.");
-    }
   });
 
   formCambioForzado.addEventListener("submit", async (e) => {
@@ -247,13 +238,15 @@
       const res = await fetchOriginal("/api/auth/estado");
       const estado = await res.json();
       if (estado.requiere_bootstrap) {
-        // Instalación nueva: no hay cuenta a la que volver, así que se saca
-        // el link "Ya tengo cuenta".
-        irALogin.hidden = true;
-        mostrarPantalla("registro");
+        // Instalación nueva: no hay cuenta a la que volver, así que el alta
+        // no ofrece "Ya tengo cuenta".
+        abrirAlta({ instalacionNueva: true });
       } else if (!estado.autenticado) {
         cerrarSesionLocal();
-        mostrarPantalla("login");
+        // #/crear-cuenta es el enlace para crear una cuenta (por ejemplo,
+        // desde la página pública).
+        if (location.hash.startsWith("#/crear-cuenta")) abrirAlta();
+        else mostrarPantalla("login");
       } else if (estado.usuario.debe_cambiar_password) {
         window.__usuarioPendienteCambio = estado.usuario;
         mostrarPantalla("cambio");

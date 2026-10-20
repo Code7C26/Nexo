@@ -23,18 +23,14 @@
 // trabajo diario. Auditoría (GET /api/auditoria) pasó de 'ambos' a admin
 // en la Etapa A de multi-tenant (CLAUDE.md §28): valor_anterior/valor_nuevo
 // traen costo/margen/ganancia sin filtrar, que es justo lo que §35 le
-// esconde al empleado en el resto de las respuestas.
-//
-// Gap conocido, no resuelto todavía (preguntar antes de restringir, no
-// inventar): el ABM de listas de precios, depósitos y categorías de gasto
-// quedó 'ambos' porque no se decidió explícitamente con el usuario si
-// deberían ser admin, a diferencia de categorías de producto y productos
-// que sí se decidieron. Son maestros de la misma naturaleza; revisar en la
-// próxima sesión de permisos.
+// esconde al empleado en el resto de las respuestas. El alta y la edición de
+// los cinco catálogos (categorías de producto y de gasto, listas de precios,
+// depósitos y cuentas de tesorería) también son admin; leerlos es de los dos.
 export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
   'POST /api/auth/registro': 'publico',
+  'GET /api/auth/tipos-negocio': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',

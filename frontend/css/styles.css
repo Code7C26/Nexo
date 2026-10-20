@@ -1585,24 +1585,6 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .form-fila[hidden] { display: none; }
 
-/* Casillas de los módulos del tipo de negocio, en Configuración. */
-.form-modulos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2) var(--sp-4);
-  margin: 0;
-  padding: var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-
-.form-modulos legend {
-  padding: 0 var(--sp-1);
-  font-size: var(--txt-xs);
-  font-weight: 500;
-  color: var(--ink-muted);
-}
-
 /* Módulos del tipo de negocio (CLAUDE.md §29): una sección opcional del menú
    se ve solo si está en <html data-modulos>, que pone core/negocio.js. Hasta
    que llega el negocio no se ve ninguna: así aparecen, pero no desaparecen. */
@@ -3596,7 +3578,7 @@ input.precio-sin-configurar::placeholder {
   * { transition: none !important; animation: none !important; }
 }
 
-/* ---------- Sesión (login, primer arranque, cambio forzado) ---------- */
+/* ---------- Sesión (login y cambio forzado; el alta guiada es .alta) ---------- */
 
 /* No reusa .modal a propósito (ver el comentario en index.html): esta
    pantalla tiene que ser bloqueante de verdad, sin Escape ni
@@ -3737,6 +3719,738 @@ input.precio-sin-configurar::placeholder {
 .campo-ver-clave:hover { color: var(--ink); }
 .campo-ver-clave[aria-pressed="true"] { color: var(--accent); }
 
+/* ============================================================
+   Alta guiada, Configuración y tarjetas de opciones (hist. §73)
+   ============================================================ */
+
+/* Ayuda y error debajo de un campo (core/campos.js). */
+.campo-ayuda {
+  font-size: var(--txt-2xs);
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.campo-error {
+  margin: 0;
+  font-size: var(--txt-xs);
+  font-weight: 500;
+  color: var(--accent-danger);
+}
+
+.form input[aria-invalid="true"],
+.form select[aria-invalid="true"] { border-color: var(--accent-danger); }
+
+/* Grupo de tarjetas: un fieldset sin el marco del navegador. */
+.opciones {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.opciones legend {
+  padding: 0;
+  margin-bottom: var(--sp-3);
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.opciones-nota {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.opciones-tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-3);
+}
+
+/* Las cuatro secciones, de a dos: en tres columnas quedaba una sola abajo. */
+.opciones-tarjetas-compactas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.opciones-cargando {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--sp-5);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+/* La tarjeta elegible: un <label> con su radio o checkbox adentro
+   (core/tipos-negocio.js). El input no se ve pero sigue en el teclado; el
+   foco se dibuja en la tarjeta entera. Gana a .form label por especificidad. */
+.opciones-tarjetas .opcion-tarjeta {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  padding-right: 44px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-size: var(--txt-sm);
+  font-weight: 400;
+  cursor: pointer;
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease, transform var(--dur-1) ease;
+}
+
+.opciones-tarjetas .opcion-tarjeta > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.opciones-tarjetas .opcion-tarjeta:hover { border-color: var(--ink-faint); }
+.opciones-tarjetas .opcion-tarjeta:active { transform: scale(0.99); }
+
+.opcion-tarjeta-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  color: var(--ink-muted);
+  transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+}
+
+.opcion-tarjeta-icono .ico { width: 20px; height: 20px; }
+
+.opcion-tarjeta-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.opcion-tarjeta-nombre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--txt-md);
+  font-weight: 600;
+}
+
+.opcion-tarjeta-desc {
+  font-size: var(--txt-xs);
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* El círculo (o cuadrado, en las casillas) que se llena al elegir. */
+.opcion-tarjeta-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  color: transparent;
+  transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease, color var(--dur-1) ease;
+}
+
+.opcion-tarjeta:has(> input[type="checkbox"]) .opcion-tarjeta-check { border-radius: 5px; }
+.opcion-tarjeta-check .ico { width: 12px; height: 12px; stroke-width: 3; }
+
+.opciones-tarjetas .opcion-tarjeta:has(> input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.opcion-tarjeta:has(> input:checked) .opcion-tarjeta-icono {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.opcion-tarjeta:has(> input:checked) .opcion-tarjeta-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.opciones-tarjetas .opcion-tarjeta:has(> input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* "Próximamente": se ve, pero no se elige. */
+.opciones-tarjetas .opcion-tarjeta.is-deshabilitada {
+  cursor: not-allowed;
+  border-style: dashed;
+  background: transparent;
+}
+
+.opciones-tarjetas .opcion-tarjeta.is-deshabilitada:hover { border-color: var(--line-strong); }
+.opciones-tarjetas .opcion-tarjeta.is-deshabilitada:active { transform: none; }
+.opcion-tarjeta.is-deshabilitada .opcion-tarjeta-icono { opacity: 0.6; }
+.opcion-tarjeta.is-deshabilitada .opcion-tarjeta-check { display: none; }
+
+/* Apariencia: una miniatura de la app en cada tema (marco negro, hoja y
+   la sección activa en azul). */
+.opciones-temas { grid-template-columns: repeat(auto-fill, minmax(200px, 260px)); }
+
+.tema-muestra {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 84px;
+  padding: 6px 6px 6px 26%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #000000;
+  overflow: hidden;
+}
+
+.tema-muestra > span:first-child {
+  flex: 1;
+  border-radius: 5px;
+}
+
+.tema-muestra > span:last-child {
+  position: absolute;
+  top: 14px;
+  left: 6px;
+  width: calc(26% - 12px);
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(96, 165, 250, 0.55);
+}
+
+.tema-muestra-oscuro > span:first-child {
+  border: 1px solid #1F1F1F;
+  background:
+    linear-gradient(#383838, #383838) 10px 10px / 40% 6px no-repeat,
+    linear-gradient(#171717, #171717) 10px 24px / 75% 30px no-repeat,
+    #0A0A0A;
+}
+
+.tema-muestra-claro > span:first-child {
+  background:
+    linear-gradient(#D4D4D4, #D4D4D4) 10px 10px / 40% 6px no-repeat,
+    linear-gradient(#FFFFFF, #FFFFFF) 10px 24px / 75% 30px no-repeat,
+    #F5F5F5;
+}
+
+/* ---------- Configuración (#/configuracion/<página>) ---------- */
+
+.config {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+.config-menu {
+  position: sticky;
+  top: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.config-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.config-grupo-titulo {
+  margin: 0 0 var(--sp-1);
+  padding: 0 10px;
+  font-size: var(--txt-2xs);
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  color: var(--ink-muted);
+  font-size: var(--txt-sm);
+  text-decoration: none;
+  transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+}
+
+.config-item:hover { background: var(--surface-hover); color: var(--ink); }
+.config-item.is-active { background: var(--accent-bg); color: var(--ink); }
+
+.config-item-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--ink-faint);
+}
+
+.config-item.is-active .config-item-icono { color: var(--accent); }
+.config-item-icono .ico { width: 16px; height: 16px; }
+
+.config-item-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* La descripción y el chevron son de la lista del celular. */
+.config-item-desc,
+.config-item-chevron,
+.config-volver { display: none; }
+
+.config-contenido {
+  min-width: 0;
+  max-width: 760px;
+}
+
+.config-pagina {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.config-pagina[hidden] { display: none; }
+
+.config-pagina-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-4);
+}
+
+.config-pagina-head h2 {
+  grid-column: 1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* El foco llega acá solo por código (al abrir la página en el celular),
+   para que el lector de pantalla arranque por el título. */
+.config-pagina-head h2:focus { outline: none; }
+
+.config-pagina-head p {
+  grid-column: 1;
+  margin: 4px 0 0;
+  max-width: 62ch;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.config-pagina-head > .btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+/* Cada página: una tarjeta con el formulario y un pie con la nota y el
+   botón de guardar, como los ajustes de Dub. */
+.form.config-tarjeta {
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.config-tarjeta-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+}
+
+.config-tarjeta-cuerpo > label,
+.config-tarjeta-cuerpo > .form-fila { max-width: 560px; }
+
+.config-tarjeta-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--surface-sunk);
+  border-top: 1px solid var(--line);
+}
+
+.config-tarjeta-pie p {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.config-con-previa {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.config-campos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* La vista previa del membrete: un papel blanco en los dos temas, porque
+   es lo que se imprime. */
+.membrete-previa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.membrete-previa-rotulo {
+  margin: 0;
+  font-size: var(--txt-2xs);
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.membrete-previa-hoja {
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #FFFFFF;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.membrete-previa-hoja p {
+  margin: 0;
+  color: #525252;
+  overflow-wrap: anywhere;
+}
+
+.membrete-previa-hoja .membrete-previa-nombre {
+  margin-bottom: 4px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: #0A0A0A;
+}
+
+.membrete-previa-hoja .membrete-previa-pie {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px dashed #D4D4D4;
+  font-style: italic;
+}
+
+@keyframes aparecer-arriba {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Alta guiada (js/alta.js) ---------- */
+
+/* Como la app: marco negro y una hoja adentro. Scrollea la pantalla
+   entera, así un paso largo (las tarjetas de tipos) entra en cualquier
+   celular. */
+.alta {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow-y: auto;
+  padding: var(--marco);
+  background: var(--frame);
+}
+
+.alta[hidden] { display: none; }
+
+.alta-hoja {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg);
+  border: 1px solid var(--sheet-line);
+  border-radius: var(--r-lg);
+  color: var(--ink);
+}
+
+.alta-cabecera {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.alta-marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.alta-marca .sesion-logo { width: 28px; height: 28px; }
+
+.alta-progreso {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.alta-progreso-texto {
+  margin: 0;
+  font-size: var(--txt-2xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+.alta-pasos {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alta-pasos li {
+  width: 36px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--line-strong);
+  transition: background-color var(--dur-2) ease;
+}
+
+.alta-pasos li.is-hecho,
+.alta-pasos li.is-actual { background: var(--accent); }
+
+.alta-ya-tengo {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.alta-ya-tengo[hidden] { display: none; }
+.alta-ya-tengo .btn-link { padding: 0; font-size: var(--txt-xs); }
+
+.alta-cuerpo {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-7) var(--sp-5);
+}
+
+.alta-paso {
+  width: 100%;
+  max-width: 480px;
+  gap: var(--sp-4);
+  animation: aparecer-arriba var(--dur-3) var(--ease-out);
+}
+
+.alta-paso-ancho { max-width: 760px; }
+
+.alta-encabezado { margin-bottom: var(--sp-2); }
+
+.alta-encabezado h1 {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--txt-2xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.alta-encabezado h1:focus { outline: none; }
+
+.alta-encabezado p {
+  margin: 0;
+  max-width: 56ch;
+  font-size: var(--txt-md);
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+/* Campos y botones de 44 px, como el login: es la primera pantalla, y
+   muchas veces se usa desde el celular. */
+.alta .form input,
+.alta .form select { min-height: 44px; font-size: var(--txt-md); }
+.alta .form input.alta-campo-grande { min-height: 52px; font-size: 18px; }
+
+.alta-siempre {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.alta-siempre .ico { flex: none; color: var(--accent-ok); }
+
+.alta .alta-error {
+  color: var(--accent-danger);
+  background: var(--accent-danger-bg);
+}
+
+.alta-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.alta-acciones > .btn-primary:only-child { margin-left: auto; }
+
+.alta-acciones .btn {
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: var(--txt-md);
+}
+
+.alta-acciones-fin {
+  display: flex;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+@media (max-width: 860px) {
+  .opciones-tarjetas { grid-template-columns: 1fr; gap: var(--sp-2); }
+
+  /* En una columna, la tarjeta pasa a fila: ícono, texto y check. */
+  .opciones-tarjetas .opcion-tarjeta {
+    flex-direction: row;
+    align-items: center;
+    padding: 14px 48px 14px var(--sp-4);
+  }
+
+  .opcion-tarjeta-check { top: 50%; transform: translateY(-50%); }
+
+  .opciones-temas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .opciones-temas .opcion-tarjeta { flex-direction: column; align-items: flex-start; }
+  .opciones-temas .opcion-tarjeta-check { top: 14px; transform: none; }
+
+  /* Configuración: la lista de páginas o una página, nunca las dos. */
+  .config { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .config-menu { position: static; }
+  .config:not([data-pagina=""]) .config-menu { display: none; }
+  .config[data-pagina=""] .config-contenido { display: none; }
+  .config-volver { display: inline-flex; margin-bottom: var(--sp-3); }
+
+  .config-grupo {
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+
+  .config-grupo-titulo { margin: 0; padding: var(--sp-3) var(--sp-4) var(--sp-1); }
+
+  .config-item {
+    min-height: 60px;
+    padding: 10px var(--sp-4);
+    border-radius: 0;
+    color: var(--ink);
+  }
+
+  .config-item + .config-item { border-top: 1px solid var(--line); }
+  .config-item.is-active { background: none; }
+
+  .config-item-icono {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-sm);
+    background: var(--surface-sunk);
+    color: var(--ink-muted);
+  }
+
+  .config-item-desc { display: block; font-size: var(--txt-xs); color: var(--ink-muted); }
+  .config-item-chevron { display: block; flex: none; margin-left: auto; color: var(--ink-faint); }
+
+  .config-con-previa { grid-template-columns: minmax(0, 1fr); }
+  .config-tarjeta-cuerpo { padding: var(--sp-4); }
+
+  .config-tarjeta-pie {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  .config-tarjeta-pie .btn { min-height: 44px; }
+
+  .config-pagina-head > .btn {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    margin-top: var(--sp-3);
+  }
+
+  /* El alta en el celular: sin marco, y los botones fijos abajo. */
+  .alta { padding: 0; }
+  .alta-hoja { border: none; border-radius: 0; }
+
+  .alta-cabecera {
+    grid-template-columns: 1fr auto;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  .alta-progreso {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-items: stretch;
+  }
+
+  .alta-pasos li { flex: 1; width: auto; }
+  .alta-cuerpo { padding: var(--sp-5) var(--sp-4) 0; }
+  .alta-encabezado h1 { font-size: 24px; }
+  .alta .form-fila { grid-template-columns: minmax(0, 1fr); }
+
+  .alta-acciones {
+    position: sticky;
+    bottom: 0;
+    flex-wrap: wrap;
+    margin: var(--sp-3) calc(-1 * var(--sp-4)) 0;
+    padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom));
+    background: var(--bg);
+  }
+
+  .alta-acciones .btn-primary { flex: 1; }
+  .alta-acciones-fin { flex: 1 1 100%; order: -1; }
+  .alta-acciones-fin .btn { flex: 1; }
+}
+
 /* Ocultar la app entera (no solo .app: #navToggle vive fuera de .app en
    el HTML, como botón hermano para el drawer mobile — si no se incluye
    acá, la hamburguesa queda flotando sola encima del login). Es UI nada
@@ -3759,7 +4473,6 @@ input.precio-sin-configurar::placeholder {
 /* Grupos del menú con solo pantallas de admin: se oculta el grupo entero,
    título incluido. */
 :root:not([data-rol="admin"]) .nav-seccion-admin,
-:root:not([data-rol="admin"]) .nav-item[data-view="usuarios"],
 :root:not([data-rol="admin"]) .nav-item[data-view="dashboard"],
 :root:not([data-rol="admin"]) .nav-item[data-view="reportes-stock"],
 :root:not([data-rol="admin"]) .nav-item[data-view="papelera"],

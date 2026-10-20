@@ -54,7 +54,7 @@ const VISTAS_CONSTRUIDAS = {
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
   papelera: { titulo: "Papelera", dominio: "Papelera" },
   auditoria: { titulo: "Auditoría", dominio: "Auditoría" },
-  usuarios: { titulo: "Usuarios", dominio: "Administración" },
+  configuracion: { titulo: "Configuración", dominio: "Administración" },
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
@@ -75,8 +75,7 @@ const VISTAS_CONSTRUIDAS = {
 };
 
 // Vistas cuyo contenido depende de al menos un endpoint admin-only
-// (permisos.js): Usuarios (administración), dashboard (Estadísticas:
-// GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
+// (permisos.js): dashboard (Estadísticas: GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
 // (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
 // todo el circuito de compras y sus devoluciones a proveedor, fichas
 // incluidas, y auditoria (GET /api/auditoria, admin desde la Etapa A de
@@ -84,8 +83,9 @@ const VISTAS_CONSTRUIDAS = {
 // empleado (el nav-item ya está oculto por CSS, pero el hash se puede
 // tipear igual) cae al mismo destino que un click normal — es solo UI, el
 // servidor responde 403 igual si se llama al endpoint directo.
+// Configuración no está: el empleado entra a su página Apariencia, y las de
+// admin las filtra dominios/configuracion.js.
 const VISTAS_SOLO_ADMIN = new Set([
-  "usuarios",
   "dashboard",
   "reportes-stock",
   "papelera",
@@ -96,7 +96,9 @@ const VISTAS_SOLO_ADMIN = new Set([
   "auditoria"
 ]);
 
-export function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
+// `subruta` es lo que va después de la vista en el hash (#/configuracion/negocio):
+// la recibe el handler de alEntrarEnVista y queda en el deep-link.
+export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = null } = {}) {
   // El fallback ya no puede ser "dashboard": pasó a ser admin-only (arriba).
   // "ventas" es donde arranca un empleado al loguearse (ver el boot, más
   // abajo), así que es el destino natural también acá.
@@ -126,7 +128,7 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
   // archivo) a propósito — un empleado recibiría 403 en cada arranque si
   // estuviera ahí.
   // Qué vistas cargan al entrar lo registra app.js con alEntrarEnVista().
-  entrarEnVista(viewId);
+  entrarEnVista(viewId, subruta);
 
   const info = VISTAS_CONSTRUIDAS[viewId];
   const tituloFinal = titulo ?? info?.titulo;
@@ -154,28 +156,36 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true } = {}) {
   // lo pasa quien ya está respondiendo a un cambio de hash, para no
   // generar un loop de escritura.
   if (actualizarHash && info && !info.esFicha) {
-    const hash = `#/${viewId}`;
+    const hash = subruta ? `#/${viewId}/${subruta}` : `#/${viewId}`;
     if (location.hash !== hash) history.pushState(null, "", hash);
   }
 }
 
 // Vistas que existieron con otro nombre y se fusionaron/renombraron: un
 // bookmark o un link viejo a "reportes-ventas" debe abrir Resumen en vez
-// de quedar muerto.
-const VISTAS_RENOMBRADAS = { "reportes-ventas": "dashboard" };
+// de quedar muerto. Usuarios pasó a ser una página de Configuración.
+const VISTAS_RENOMBRADAS = { "reportes-ventas": "dashboard", usuarios: "configuracion/usuarios" };
+
+function rutaDesdeHash() {
+  const ruta = (location.hash || "").replace(/^#\/?/, "");
+  const [id, ...resto] = (VISTAS_RENOMBRADAS[ruta] ?? ruta).split("/");
+  return { id, subruta: resto.join("/") || null };
+}
 
 // Vuelve del hash a una vista válida (no de ficha, que no alcanza para
 // reconstruir cuál registro mostrar), o null si no hay nada aprovechable.
 export function vistaDesdeHash() {
-  const id = (location.hash || "").replace(/^#\/?/, "");
-  const idResuelto = VISTAS_RENOMBRADAS[id] ?? id;
-  return VISTAS_CONSTRUIDAS[idResuelto] && !VISTAS_CONSTRUIDAS[idResuelto].esFicha ? idResuelto : null;
+  const { id } = rutaDesdeHash();
+  return VISTAS_CONSTRUIDAS[id] && !VISTAS_CONSTRUIDAS[id].esFicha ? id : null;
 }
 
-// Botón Atrás/Adelante del navegador entre vistas del nav.
+export const subrutaDesdeHash = () => rutaDesdeHash().subruta;
+
+// Botón Atrás/Adelante del navegador entre vistas del nav, y los enlaces
+// <a href="#/vista/subruta"> de adentro de una vista.
 window.addEventListener("hashchange", () => {
   const view = vistaDesdeHash();
-  if (view) mostrarVista(view, { actualizarHash: false });
+  if (view) mostrarVista(view, { actualizarHash: false, subruta: subrutaDesdeHash() });
 });
 
 document.querySelectorAll(".nav-item").forEach((item) => {
@@ -183,6 +193,6 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     e.preventDefault();
     document.getElementById("sidebar").classList.remove("is-open");
     const view = item.dataset.view;
-    mostrarVista(VISTAS_CONSTRUIDAS[view] ? view : "placeholder");
+    mostrarVista(VISTAS_CONSTRUIDAS[view] ? view : "placeholder", { subruta: item.dataset.subruta ?? null });
   });
 });

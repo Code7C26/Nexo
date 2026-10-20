@@ -6,7 +6,7 @@
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { esc, fechaAR } from "../core/formato.js";
-import { alEntrarEnVista } from "../core/registro.js";
+import { registrar } from "../core/registro.js";
 
 /* ---------- Usuarios (solo admin) ---------- */
 // Calcada del ABM de Cuentas de tesorería (arriba, misma estructura:
@@ -184,5 +184,6 @@ async function resetearPasswordUsuario(id) {
   avisar(`Contraseña reseteada. Se le va a pedir que la cambie en su próximo ingreso.`, "ok");
 }
 
-// Se carga al entrar en la vista (ver mostrarVista en core/router.js).
-alEntrarEnVista("usuarios", cargarUsuarios);
+// Es una página de Configuración (hist. §73): se carga al entrar en ella, con
+// recargar("usuarios") desde dominios/configuracion.js.
+registrar("cargar:usuarios", cargarUsuarios);

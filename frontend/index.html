@@ -135,9 +135,9 @@
              el widget flotante al final de este archivo (ver
              #asistenteLauncher). -->
         <!-- Administración: vistas de revisión, no de operación diaria
-             (Auditoría es CLAUDE.md §22). Usuarios además está oculta por
-             CSS con data-rol — el servidor igual responde 403 si un
-             empleado llama a /api/usuarios directo. -->
+             (Auditoría es CLAUDE.md §22), y Configuración, donde están
+             también los usuarios (hist. §73). El empleado entra a
+             Configuración por el engranaje del pie, a su página Apariencia. -->
         <div class="nav-seccion nav-seccion-admin">
           <p class="nav-grupo">Administración</p>
           <a href="#" class="nav-item" data-view="papelera">
@@ -146,8 +146,8 @@
           <a href="#" class="nav-item" data-view="auditoria">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Auditoría
           </a>
-          <a href="#" class="nav-item" data-view="usuarios">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-cog"></use></svg> Usuarios
+          <a href="#" class="nav-item" data-view="configuracion">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#settings"></use></svg> Configuración
           </a>
         </div>
       </nav>
@@ -166,12 +166,9 @@
           <strong id="businessName" data-usuario-nombre>Tu Pyme</strong>
         </div>
         <div class="sidebar-foot-botones">
-          <!-- El engranaje sigue abriendo el modal de Configuración, sin
-               ocultarlo por rol: no protege nada (está vacío, sin datos
-               del negocio), así que ocultarlo sería ruido sin beneficio.
-               La regla "el empleado no ve administración" se cumple
-               ocultando la vista Usuarios, no este botón. Cuando este
-               modal tenga preferencias reales, ahí se decide su gating. -->
+          <!-- El engranaje lleva a la vista Configuración (hist. §73), para
+               los dos roles: el empleado ve ahí solo Apariencia, y las
+               páginas de admin las filtra dominios/configuracion.js. -->
           <button type="button" class="btn-tema" id="btnConfiguracion" title="Configuración" aria-label="Configuración">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
@@ -1859,34 +1856,377 @@
         </section>
       </section>
 
-      <!-- Usuarios (solo admin): quién puede entrar a Nexo y con qué rol.
-           Oculta del nav por CSS para un empleado (ver styles.css), y el
-           servidor responde 403 igual si se llama a mano. -->
-      <section class="view" data-view="usuarios" hidden>
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Usuarios</h2>
-            <div class="panel-acciones">
-              <button type="button" class="btn btn-primary" id="btnNuevoUsuario"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Usuario</button>
+      <!-- Configuración (hist. §73): una sección con su menú y una página por
+           tema, en vez del modal de antes. Cada página es su propio
+           formulario con su "Guardar cambios". Las páginas de admin llevan
+           .col-admin: el empleado ve solo Apariencia. Sumar una página (IVA,
+           ARCA, socios) es agregar su ítem al menú, su <section> y su
+           entrada en SECCIONES de dominios/configuracion.js.
+           En el celular, #/configuracion es la lista y cada ítem lleva a su
+           página, con "Configuración" para volver. -->
+      <section class="view" data-view="configuracion" hidden>
+        <div class="config" id="config">
+          <nav class="config-menu" aria-label="Páginas de configuración">
+            <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Tu negocio</p>
+              <a class="config-item" href="#/configuracion/negocio" data-seccion="negocio">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#building-2"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Datos del negocio</span><span class="config-item-desc">Nombre, dirección y contacto</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/tipo" data-seccion="tipo">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Tipo de negocio y secciones</span><span class="config-item-desc">Qué secciones ves en el menú</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/comprobantes" data-seccion="comprobantes">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
             </div>
+            <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Equipo</p>
+              <a class="config-item" href="#/configuracion/usuarios" data-seccion="usuarios">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Usuarios</span><span class="config-item-desc">Quién entra a Nexo y con qué rol</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
+            <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Catálogos</p>
+              <a class="config-item" href="#/configuracion/listas-precios" data-seccion="listas-precios">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Listas de precios</span><span class="config-item-desc">Minorista, mayorista y otras</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/depositos" data-seccion="depositos" data-modulo="stock">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#warehouse"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Depósitos</span><span class="config-item-desc">Dónde guardás la mercadería</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/categorias-productos" data-seccion="categorias-productos">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#boxes"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Categorías de productos</span><span class="config-item-desc">Para ordenar y filtrar tu catálogo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/categorias-gastos" data-seccion="categorias-gastos">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Categorías de gastos</span><span class="config-item-desc">Alquiler, servicios, sueldos…</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
+            <div class="config-grupo">
+              <p class="config-grupo-titulo">Preferencias</p>
+              <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema oscuro o claro</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
+          </nav>
+
+          <div class="config-contenido">
+            <a class="btn-link config-volver" href="#/configuracion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Configuración</a>
+
+            <section class="config-pagina col-admin" data-seccion="negocio" aria-labelledby="configNegocioTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configNegocioTitulo" tabindex="-1">Datos del negocio</h2>
+                <p>Así se presenta tu negocio en Nexo y en los comprobantes que imprimís.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigNegocio" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <label>Nombre del negocio
+                    <input type="text" name="nombre" id="configNombre" maxlength="120" autocomplete="organization" />
+                  </label>
+                  <label>Dirección
+                    <input type="text" name="direccion" maxlength="160" autocomplete="street-address" placeholder="Ej: Av. Belgrano 1234, Rosario" />
+                  </label>
+                  <div class="form-fila">
+                    <label>Teléfono
+                      <input type="tel" name="telefono" maxlength="40" autocomplete="tel" />
+                    </label>
+                    <label>Email
+                      <input type="email" name="email" id="configEmail" maxlength="120" autocomplete="email" />
+                    </label>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>La dirección y el contacto salen en el encabezado de tus comprobantes.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="tipo" aria-labelledby="configTipoTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configTipoTitulo" tabindex="-1">Tipo de negocio y secciones</h2>
+                <p>Nexo se arma según tu tipo de negocio. Cambiarlo no borra nada: cambia con qué unidad nacen los productos nuevos y qué secciones ves en el menú.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigTipo" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <fieldset class="opciones">
+                    <legend>Tipo de negocio</legend>
+                    <div class="opciones-tarjetas" id="configTipos"></div>
+                  </fieldset>
+                  <fieldset class="opciones">
+                    <legend>Secciones que usás</legend>
+                    <p class="opciones-nota" id="configModulosNota" aria-live="polite">Ventas, clientes, caja, gastos, cuentas corrientes y reportes están siempre.</p>
+                    <div class="opciones-tarjetas opciones-tarjetas-compactas" id="configModulos"></div>
+                  </fieldset>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Las secciones apagadas solo se ocultan del menú: lo que cargaste sigue ahí.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="comprobantes" aria-labelledby="configComprobantesTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configComprobantesTitulo" tabindex="-1">Comprobantes y datos fiscales</h2>
+                <p>Encabezan los presupuestos y las facturas que imprimís.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigComprobantes" novalidate>
+                <div class="config-tarjeta-cuerpo config-con-previa">
+                  <div class="config-campos">
+                    <label>CUIT
+                      <input type="text" name="documento" id="configCuit" maxlength="13" inputmode="numeric" placeholder="20-12345678-9" />
+                    </label>
+                    <label>Condición frente al IVA
+                      <select name="condicion_iva" id="configCondicion"></select>
+                    </label>
+                    <label>Texto al pie
+                      <textarea name="pie_comprobante" rows="3" maxlength="300" placeholder="Ej: Gracias por su compra."></textarea>
+                    </label>
+                  </div>
+                  <div class="membrete-previa">
+                    <p class="membrete-previa-rotulo">Así se ve en tus comprobantes</p>
+                    <div class="membrete-previa-hoja" id="configMembrete"></div>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>La condición fiscal define qué factura podés emitir.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Usuarios (solo admin): quién puede entrar a Nexo y con qué
+                 rol. Era su propia vista; el servidor responde 403 igual si
+                 un empleado llama a /api/usuarios a mano. -->
+            <section class="config-pagina col-admin" data-seccion="usuarios" aria-labelledby="configUsuariosTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configUsuariosTitulo" tabindex="-1">Usuarios</h2>
+                <p>Quién puede entrar a Nexo. Un empleado vende y cobra, pero no ve costos ni ganancias.</p>
+                <button type="button" class="btn btn-primary" id="btnNuevoUsuario"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Usuario</button>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Usuario</th>
+                      <th scope="col">Nombre</th>
+                      <th scope="col">Rol</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col">Alta</th>
+                      <th scope="col">Último acceso</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="usuariosBody"></tbody>
+                </table>
+                </div>
+              </section>
+            </section>
+
+            <!-- Catálogos: eran modales de Productos, Stock y Gastos. Su
+                 lógica sigue en app.js y dominios/gastos.js (leen estado de
+                 esos dominios), que registran pintar:<catálogo>; los botones
+                 de esas pantallas ahora traen a estas páginas. Arriba la
+                 lista y abajo el formulario, que el lápiz de cada fila pasa
+                 a modo edición. -->
+            <section class="config-pagina col-admin" data-seccion="listas-precios" aria-labelledby="configListasTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configListasTitulo" tabindex="-1">Listas de precios</h2>
+                <p>Para tener precios distintos de un mismo producto; por ejemplo, minorista y mayorista. La predeterminada es la que se usa si no elegís otra.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Lista</th>
+                      <th scope="col">Predeterminada</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="listasPreciosBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formListaPrecio" class="form config-tarjeta">
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <label>Nombre de la lista
+                    <input type="text" name="nombre" required maxlength="80" placeholder="Minorista, Mayorista, Tarjeta…" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Para cambiarle el nombre a una lista, tocá el lápiz de su fila.</p>
+                  <button type="submit" class="btn btn-primary" id="formListaPrecioSubmit">Agregar lista</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="depositos" aria-labelledby="configDepositosTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configDepositosTitulo" tabindex="-1">Depósitos</h2>
+                <p>Los lugares donde guardás mercadería: el local, un depósito, otra sucursal. Cada uno lleva su propio stock, y el predeterminado es del que sale lo que vendés.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Depósito</th>
+                      <th scope="col">Predeterminado</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="depositosBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formDeposito" class="form config-tarjeta">
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <div class="form-fila">
+                    <label>Nombre
+                      <input type="text" name="nombre" required maxlength="80" placeholder="Depósito principal, Sucursal Centro…" />
+                    </label>
+                    <label>Dirección
+                      <input type="text" name="direccion" maxlength="160" placeholder="Opcional" />
+                    </label>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Para editar un depósito, tocá el lápiz de su fila.</p>
+                  <button type="submit" class="btn btn-primary" id="formDepositoSubmit">Agregar depósito</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="categorias-productos" aria-labelledby="configCategoriasProductosTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configCategoriasProductosTitulo" tabindex="-1">Categorías de productos</h2>
+                <p>Agrupan tu catálogo para encontrar rápido un producto y ver qué se vende más.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Categoría</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="categoriasProductosBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formCategoriaProducto" class="form config-tarjeta">
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <label>Nombre de la categoría
+                    <input type="text" name="nombre" required maxlength="80" placeholder="Perfumes, Accesorios, Repuestos…" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Para cambiarle el nombre a una categoría, tocá el lápiz de su fila.</p>
+                  <button type="submit" class="btn btn-primary" id="formCategoriaProductoSubmit">Agregar categoría</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="categorias-gastos" aria-labelledby="configCategoriasGastosTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configCategoriasGastosTitulo" tabindex="-1">Categorías de gastos</h2>
+                <p>Ordenan tus gastos. Los operativos restan del resultado del negocio; una inversión o un retiro no.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Categoría</th>
+                      <th scope="col">Tipo</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="categoriasBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formCategoria" class="form config-tarjeta">
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <div class="form-fila">
+                    <label>Nombre
+                      <input type="text" name="nombre" required maxlength="80" placeholder="Alquiler, Servicios, Sueldos…" />
+                    </label>
+                    <label>Tipo
+                      <select name="tipo" required>
+                        <option value="operativo">Operativo — resta del resultado</option>
+                        <option value="inversion">Inversión — no resta del resultado</option>
+                        <option value="retiro">Retiro — no resta del resultado</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Para editar una categoría, tocá el lápiz de su fila.</p>
+                  <button type="submit" class="btn btn-primary" id="formCategoriaSubmit">Agregar categoría</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina" data-seccion="apariencia" aria-labelledby="configAparienciaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configAparienciaTitulo" tabindex="-1">Apariencia</h2>
+                <p>Se guarda en este dispositivo: cada persona elige el suyo.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigApariencia">
+                <div class="config-tarjeta-cuerpo">
+                  <fieldset class="opciones">
+                    <legend>Tema</legend>
+                    <div class="opciones-tarjetas opciones-temas">
+                      <label class="opcion-tarjeta opcion-tema">
+                        <input type="radio" name="tema" value="oscuro" />
+                        <span class="tema-muestra tema-muestra-oscuro" aria-hidden="true"><span></span><span></span></span>
+                        <span class="opcion-tarjeta-texto">
+                          <span class="opcion-tarjeta-nombre">Oscuro</span>
+                          <span class="opcion-tarjeta-desc">El de Nexo. Descansa la vista.</span>
+                        </span>
+                        <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                      </label>
+                      <label class="opcion-tarjeta opcion-tema">
+                        <input type="radio" name="tema" value="claro" />
+                        <span class="tema-muestra tema-muestra-claro" aria-hidden="true"><span></span><span></span></span>
+                        <span class="opcion-tarjeta-texto">
+                          <span class="opcion-tarjeta-nombre">Claro</span>
+                          <span class="opcion-tarjeta-desc">Para lugares con mucha luz.</span>
+                        </span>
+                        <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                      </label>
+                    </div>
+                  </fieldset>
+                </div>
+              </form>
+            </section>
           </div>
-          <div class="tabla-scroll">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th scope="col">Usuario</th>
-                <th scope="col">Nombre</th>
-                <th scope="col">Rol</th>
-                <th scope="col">Estado</th>
-                <th scope="col">Alta</th>
-                <th scope="col">Último acceso</th>
-                <th scope="col"></th>
-              </tr>
-            </thead>
-            <tbody id="usuariosBody"></tbody>
-          </table>
-          </div>
-        </section>
+        </div>
       </section>
 
       <!-- Vista: secciones todavía no construidas -->
@@ -1899,15 +2239,15 @@
     </main>
   </div>
 
-  <!-- Pantalla de sesión: login / primer arranque / cambio forzado de
-       contraseña. Hermana de .app (no adentro): .app es un grid de
-       240px 1fr, así que cualquier cosa metida ahí caería con la sidebar
-       al lado. No reusa .modal a propósito: .modal trae Escape-cierra y
-       click-afuera-cierra, que juegan en contra de una pantalla
-       bloqueante, y el observer de accesibilidad de modales se instala
-       sobre los .modal que ya existen al cargar app.js — que con este
-       gate carga después. Los tres formularios son hermanos, y
-       sesion.js alterna cuál se muestra con hidden. -->
+  <!-- Pantalla de sesión: login y cambio forzado de contraseña. Hermana
+       de .app (no adentro): .app es un grid de 240px 1fr, así que
+       cualquier cosa metida ahí caería con la sidebar al lado. No reusa
+       .modal a propósito: .modal trae Escape-cierra y click-afuera-cierra,
+       que juegan en contra de una pantalla bloqueante, y el observer de
+       accesibilidad de modales se instala sobre los .modal que ya existen
+       al cargar app.js — que con este gate carga después. Los dos
+       formularios son hermanos, y sesion.js alterna cuál se muestra con
+       hidden. Crear una cuenta es la pantalla de abajo (#altaPantalla). -->
   <div class="sesion-pantalla" id="sesionPantalla" hidden>
     <div class="sesion-card">
       <img src="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" alt="" class="sesion-logo" />
@@ -1926,35 +2266,6 @@
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
       </form>
 
-      <form id="formRegistro" class="form" hidden>
-        <p class="form-note">Creá la cuenta de tu negocio. Vas a quedar como administrador.</p>
-        <p class="form-note" id="registroError" hidden></p>
-        <label>Nombre del negocio
-          <input type="text" id="registroEmpresa" autocomplete="organization" required />
-        </label>
-        <label>Tipo de negocio
-          <select id="registroRubro">
-            <option value="comercio">Comercio general</option>
-            <option value="carniceria">Carnicería</option>
-            <option value="verduleria">Verdulería</option>
-            <option value="kiosco">Kiosco / almacén</option>
-            <option value="servicios">Servicios</option>
-            <option value="gimnasio">Gimnasio</option>
-          </select>
-        </label>
-        <label>Tu nombre
-          <input type="text" id="registroNombre" autocomplete="name" required />
-        </label>
-        <label>Usuario
-          <input type="text" id="registroUsuario" autocomplete="username" required />
-        </label>
-        <label>Contraseña
-          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="registroPassword" autocomplete="new-password" minlength="8" required /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
-        </label>
-        <button type="submit" class="btn btn-primary">Crear cuenta</button>
-        <button type="button" class="btn-link" id="irALogin">Ya tengo cuenta, ingresar</button>
-      </form>
-
       <form id="formCambioForzado" class="form" hidden>
         <p class="form-note">Tenés que elegir una contraseña propia antes de seguir.</p>
         <p class="form-note" id="cambioForzadoError" hidden></p>
@@ -1966,6 +2277,132 @@
         </label>
         <button type="submit" class="btn btn-primary">Cambiar contraseña</button>
       </form>
+    </div>
+  </div>
+
+  <!-- Alta guiada de una cuenta (hist. §73): cinco pasos a pantalla
+       completa, en vez de un formulario dentro de la tarjeta del login. La
+       maneja js/alta.js, que sesion.js baja recién cuando hace falta. Como
+       la app, es un marco negro con una hoja adentro. Cada paso es su
+       propio <form>, así Enter avanza. El backend crea todo junto al
+       final, en una sola transacción: los pasos son solo de la interfaz. -->
+  <div class="alta" id="altaPantalla" hidden>
+    <div class="alta-hoja">
+      <header class="alta-cabecera">
+        <div class="alta-marca">
+          <img src="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" alt="" class="sesion-logo" />
+          <span>Nexo</span>
+        </div>
+        <div class="alta-progreso">
+          <p class="alta-progreso-texto" id="altaProgreso" aria-live="polite">Paso 1 de 5 · Tu cuenta</p>
+          <ol class="alta-pasos" id="altaPasos" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li></ol>
+        </div>
+        <p class="alta-ya-tengo" id="altaYaTengo">¿Ya tenés cuenta? <button type="button" class="btn-link" id="altaIrALogin">Ingresá</button></p>
+      </header>
+
+      <div class="alta-cuerpo">
+        <form class="form alta-paso" data-paso="1" novalidate>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1">Creá tu cuenta</h1>
+            <p>Con ella vas a entrar a Nexo. Vas a ser quien administra tu negocio, y después podés sumar a tu equipo.</p>
+          </div>
+          <label>Tu nombre
+            <input type="text" id="altaNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
+          </label>
+          <label>Usuario
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg><input type="text" id="altaUsuario" autocomplete="username" maxlength="100" autocapitalize="none" spellcheck="false" aria-describedby="altaUsuarioAyuda" /></span>
+            <span class="campo-ayuda" id="altaUsuarioAyuda">Con él vas a ingresar. Sin espacios; por ejemplo, marta.</span>
+          </label>
+          <label>Contraseña
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+            <span class="campo-ayuda" id="altaPasswordAyuda">Al menos 8 caracteres.</span>
+          </label>
+          <div class="alta-acciones">
+            <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+          </div>
+        </form>
+
+        <form class="form alta-paso" data-paso="2" novalidate hidden>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1">¿Cómo se llama tu negocio?</h1>
+            <p>Es el nombre que va a salir en tus presupuestos y facturas. Lo podés cambiar cuando quieras.</p>
+          </div>
+          <label>Nombre del negocio
+            <input type="text" id="altaEmpresa" class="alta-campo-grande" autocomplete="organization" maxlength="120" placeholder="Ej: Almacén Don José" />
+          </label>
+          <div class="alta-acciones">
+            <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
+            <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+          </div>
+        </form>
+
+        <form class="form alta-paso alta-paso-ancho" data-paso="3" novalidate hidden>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1">¿Qué tipo de negocio tenés?</h1>
+            <p>Así Nexo se arma para vos: en una carnicería los productos se venden por kilo, y en un estudio de servicios no hace falta stock.</p>
+          </div>
+          <fieldset class="opciones">
+            <legend class="visualmente-oculto">Tipo de negocio</legend>
+            <div class="opciones-tarjetas" id="altaTipos">
+              <p class="opciones-cargando">Cargando los tipos de negocio…</p>
+            </div>
+          </fieldset>
+          <div class="alta-acciones">
+            <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
+            <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+          </div>
+        </form>
+
+        <form class="form alta-paso alta-paso-ancho" data-paso="4" novalidate hidden>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1">¿Qué secciones vas a usar?</h1>
+            <p id="altaModulosBajada">Las marcamos según tu tipo de negocio. Cambialas ahora o cuando quieras desde Configuración.</p>
+          </div>
+          <fieldset class="opciones">
+            <legend class="visualmente-oculto">Secciones</legend>
+            <div class="opciones-tarjetas opciones-tarjetas-compactas" id="altaModulos"></div>
+          </fieldset>
+          <p class="alta-siempre"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg> Siempre incluidas: Ventas, Clientes, Caja, Gastos, Cuentas corrientes y Reportes.</p>
+          <div class="alta-acciones">
+            <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
+            <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+          </div>
+        </form>
+
+        <form class="form alta-paso" data-paso="5" novalidate hidden>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1">Datos para tus comprobantes</h1>
+            <p>Encabezan los presupuestos y las facturas que imprimas. Si no los tenés a mano, completalos después en Configuración.</p>
+          </div>
+          <p class="form-note alta-error" id="altaError" role="alert" hidden></p>
+          <div class="form-fila">
+            <label>CUIT
+              <input type="text" id="altaCuit" maxlength="13" inputmode="numeric" placeholder="20-12345678-9" />
+            </label>
+            <label>Condición frente al IVA
+              <select id="altaCondicion"></select>
+            </label>
+          </div>
+          <label>Dirección
+            <input type="text" id="altaDireccion" maxlength="160" autocomplete="street-address" placeholder="Ej: Av. Belgrano 1234, Rosario" />
+          </label>
+          <div class="form-fila">
+            <label>Teléfono
+              <input type="tel" id="altaTelefono" maxlength="40" autocomplete="tel" />
+            </label>
+            <label>Email
+              <input type="email" id="altaEmail" maxlength="120" autocomplete="email" />
+            </label>
+          </div>
+          <div class="alta-acciones">
+            <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
+            <div class="alta-acciones-fin">
+              <button type="button" class="btn btn-secundario" id="altaDespues">Completar después</button>
+              <button type="submit" class="btn btn-primary" id="altaCrear">Crear cuenta</button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -2040,39 +2477,6 @@
         </label>
         <button type="submit" class="btn btn-primary btn-full">Guardar ajuste</button>
       </form>
-    </div>
-  </div>
-
-  <!-- Modal gestión de depósitos (CLAUDE.md §19): calcado del de listas de
-       precios, con la misma regla de "exactamente uno predeterminado". -->
-  <div class="modal" id="modalDepositos" role="dialog" aria-modal="true" aria-labelledby="modalDepositosTitulo" hidden>
-    <div class="modal-card modal-card-ancha">
-      <div class="modal-head">
-        <h3 id="modalDepositosTitulo">Depósitos</h3>
-        <button class="modal-close" id="modalDepositosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
-      </div>
-      <form id="formDeposito" class="form">
-        <input type="hidden" name="id" />
-        <label>Nombre
-          <input type="text" name="nombre" required placeholder="Depósito principal, Sucursal Centro…" />
-        </label>
-        <label>Dirección
-          <input type="text" name="direccion" placeholder="Opcional" />
-        </label>
-        <button type="submit" class="btn btn-primary btn-full" id="formDepositoSubmit">Agregar depósito</button>
-      </form>
-      <div class="tabla-scroll">
-          <table class="ledger-table">
-        <thead>
-          <tr>
-            <th scope="col">Depósito</th>
-            <th scope="col">Predeterminado</th>
-            <th scope="col"></th>
-          </tr>
-        </thead>
-        <tbody id="depositosBody"></tbody>
-      </table>
-          </div>
     </div>
   </div>
 
@@ -2422,72 +2826,6 @@
     </div>
   </div>
 
-  <!-- Modal categorías de gasto -->
-  <div class="modal" id="modalCategorias" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasTitulo" hidden>
-    <div class="modal-card modal-card-ancha">
-      <div class="modal-head">
-        <h3 id="modalCategoriasTitulo">Categorías de gasto</h3>
-        <button class="modal-close" id="modalCategoriasClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
-      </div>
-      <form id="formCategoria" class="form">
-        <input type="hidden" name="id" />
-        <label>Nombre
-          <input type="text" name="nombre" required placeholder="Alquiler, Servicios, Sueldos…" />
-        </label>
-        <label>Tipo
-          <select name="tipo" required>
-            <option value="operativo">Operativo — resta del resultado</option>
-            <option value="inversion">Inversión — no resta del resultado</option>
-            <option value="retiro">Retiro — no resta del resultado</option>
-          </select>
-        </label>
-        <button type="submit" class="btn btn-primary btn-full" id="formCategoriaSubmit">Agregar categoría</button>
-      </form>
-      <div class="tabla-scroll">
-          <table class="ledger-table">
-        <thead>
-          <tr>
-            <th scope="col">Categoría</th>
-            <th scope="col">Tipo</th>
-            <th scope="col"></th>
-          </tr>
-        </thead>
-        <tbody id="categoriasBody"></tbody>
-      </table>
-          </div>
-    </div>
-  </div>
-
-  <!-- Modal categorías de productos (alta y edición) — calcado del de
-       categorías de gasto de arriba, sin el campo Tipo (acá no hay una
-       razón contable que lo justifique). -->
-  <div class="modal" id="modalCategoriasProductos" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasProductosTitulo" hidden>
-    <div class="modal-card modal-card-ancha">
-      <div class="modal-head">
-        <h3 id="modalCategoriasProductosTitulo">Categorías de productos</h3>
-        <button class="modal-close" id="modalCategoriasProductosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
-      </div>
-      <form id="formCategoriaProducto" class="form">
-        <input type="hidden" name="id" />
-        <label>Nombre
-          <input type="text" name="nombre" required placeholder="Perfumes, Accesorios, Repuestos…" />
-        </label>
-        <button type="submit" class="btn btn-primary btn-full" id="formCategoriaProductoSubmit">Agregar categoría</button>
-      </form>
-      <div class="tabla-scroll">
-          <table class="ledger-table">
-        <thead>
-          <tr>
-            <th scope="col">Categoría</th>
-            <th scope="col"></th>
-          </tr>
-        </thead>
-        <tbody id="categoriasProductosBody"></tbody>
-      </table>
-          </div>
-    </div>
-  </div>
-
   <!-- Modal atributos y variantes de un producto (Talle/Color/etc.), solo
        accesible desde la ficha de un producto ya guardado. Dos secciones:
        atributos (con sus valores) y variantes (combinaciones concretas). La
@@ -2528,37 +2866,6 @@
           <tbody id="variantesProductoBody"></tbody>
         </table>
       </div>
-    </div>
-  </div>
-
-  <!-- Modal listas de precios (CLAUDE.md §18): calcado del de categorías de
-       productos de arriba, con dos columnas propias (Predeterminada, Activa)
-       que categorías no necesita. -->
-  <div class="modal" id="modalListasPrecios" role="dialog" aria-modal="true" aria-labelledby="modalListasPreciosTitulo" hidden>
-    <div class="modal-card modal-card-ancha">
-      <div class="modal-head">
-        <h3 id="modalListasPreciosTitulo">Listas de precios</h3>
-        <button class="modal-close" id="modalListasPreciosClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
-      </div>
-      <form id="formListaPrecio" class="form">
-        <input type="hidden" name="id" />
-        <label>Nombre
-          <input type="text" name="nombre" required placeholder="Minorista, Mayorista, Tarjeta…" />
-        </label>
-        <button type="submit" class="btn btn-primary btn-full" id="formListaPrecioSubmit">Agregar lista</button>
-      </form>
-      <div class="tabla-scroll">
-          <table class="ledger-table">
-        <thead>
-          <tr>
-            <th scope="col">Lista</th>
-            <th scope="col">Predeterminada</th>
-            <th scope="col"></th>
-          </tr>
-        </thead>
-        <tbody id="listasPreciosBody"></tbody>
-      </table>
-          </div>
     </div>
   </div>
 
@@ -2984,80 +3291,9 @@
     </form>
   </div>
 
-  <!-- Modal de configuración. Primer contenido real: el probador de
-       tipografías (temporal, ver el comentario "Probador de tipografías"
-       en styles.css). El resto sigue siendo el punto de entrada para
-       cuando se sumen más preferencias (foto de perfil, datos del
-       negocio, etc.). Desde la etapa de usuarios lo abre solo el botón de
-       engranaje: el círculo de perfil pasó a abrir #modalPerfil, que sí
-       tiene contenido real (ver más abajo). -->
-  <div class="modal" id="modalConfiguracion" role="dialog" aria-modal="true" aria-labelledby="modalConfiguracionTitulo" hidden>
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3 id="modalConfiguracionTitulo">Configuración</h3>
-        <button class="modal-close" id="modalConfiguracionClose" aria-label="Cerrar">
-          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
-        </button>
-      </div>
-      <!-- Estos datos son el membrete de todo comprobante impreso: quién
-           emite el presupuesto o la factura que se le entrega al cliente.
-           Solo el admin puede editarlos (el servidor responde 403 a un
-           empleado); el formulario se deshabilita por rol desde app.js. -->
-      <form class="form" id="formNegocio">
-        <p class="form-note" id="negocioSoloLectura" hidden>
-          Solo un administrador puede cambiar los datos del negocio.
-        </p>
-
-        <label>Nombre del negocio *
-          <input type="text" name="nombre" required maxlength="120" />
-        </label>
-
-        <label>Tipo de negocio
-          <select name="rubro" id="negocioRubro">
-            <option value="comercio">Comercio general</option>
-            <option value="carniceria">Carnicería</option>
-            <option value="verduleria">Verdulería</option>
-            <option value="kiosco">Kiosco / almacén</option>
-            <option value="servicios">Servicios</option>
-            <option value="gimnasio">Gimnasio</option>
-          </select>
-        </label>
-        <fieldset class="form-modulos" id="negocioModulos">
-          <legend>Secciones que se ven en el menú</legend>
-          <label class="form-check"><input type="checkbox" name="modulo" value="pos" /> Punto de venta</label>
-          <label class="form-check"><input type="checkbox" name="modulo" value="presupuestos" /> Presupuestos</label>
-          <label class="form-check"><input type="checkbox" name="modulo" value="compras" /> Compras</label>
-          <label class="form-check"><input type="checkbox" name="modulo" value="stock" /> Stock</label>
-        </fieldset>
-        <label>CUIT
-          <input type="text" name="documento" maxlength="20" placeholder="30-12345678-9" />
-        </label>
-        <label>Condición frente al IVA
-          <input type="text" name="condicion_iva" maxlength="60" placeholder="Monotributo / Responsable Inscripto" />
-        </label>
-        <label>Dirección
-          <input type="text" name="direccion" maxlength="160" />
-        </label>
-        <label>Teléfono
-          <input type="text" name="telefono" maxlength="40" />
-        </label>
-        <label>Email
-          <input type="email" name="email" maxlength="120" />
-        </label>
-        <label>Texto al pie (aparece en todos los comprobantes)
-          <textarea name="pie_comprobante" rows="2" maxlength="300" placeholder="Ej: Gracias por su compra."></textarea>
-        </label>
-
-        <p class="form-note">Encabezan los presupuestos y facturas que imprimís.</p>
-
-        <button type="submit" class="btn btn-primary btn-full" id="formNegocioSubmit">Guardar</button>
-      </form>
-    </div>
-  </div>
-
   <!-- Menú de perfil: quién sos, tu rol, cambiar tu propia contraseña y
-       cerrar sesión. Reemplaza el uso que #btnPerfil le daba antes a
-       #modalConfiguracion (ver comentario ahí arriba). -->
+       cerrar sesión. Antes #btnPerfil abría el modal de Configuración,
+       que hoy es una vista propia (hist. §73). -->
   <div class="modal" id="modalPerfil" role="dialog" aria-modal="true" aria-labelledby="modalPerfilTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

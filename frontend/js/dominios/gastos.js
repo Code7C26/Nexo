@@ -12,6 +12,7 @@ import { crearFiltros } from "../core/filtros.js";
 import { descargarCSV } from "../core/csv.js";
 import { cuentasTesoreria, poblarSelectCuentas, proveedores } from "../core/maestros.js";
 import { invocar, recargar, registrar } from "../core/registro.js";
+import { mostrarVista } from "../core/router.js";
 
 /* ---------- Gastos ---------- */
 
@@ -261,9 +262,7 @@ document.getElementById("formGasto").addEventListener("submit", async (e) => {
   avisar(eraEdicion ? "Gasto actualizado." : "Gasto registrado.", "ok");
 });
 
-/* --- Modal de categorías --- */
-
-const modalCategorias = document.getElementById("modalCategorias");
+/* --- Categorías de gasto (página de Configuración, hist. §73) --- */
 
 function renderCategorias() {
   const body = document.getElementById("categoriasBody");
@@ -293,22 +292,19 @@ function renderCategorias() {
       form.nombre.value = categoria.nombre;
       form.tipo.value = categoria.tipo;
       document.getElementById("formCategoriaSubmit").textContent = "Guardar cambios";
+      form.nombre.focus();
     });
   });
 }
 
-document.getElementById("btnCategoriasGasto").addEventListener("click", () => {
+registrar("pintar:categorias-gastos", () => {
   document.getElementById("formCategoria").reset();
   document.getElementById("formCategoria").id.value = "";
   document.getElementById("formCategoriaSubmit").textContent = "Agregar categoría";
   renderCategorias();
-  modalCategorias.hidden = false;
 });
-document.getElementById("modalCategoriasClose").addEventListener("click", () => {
-  modalCategorias.hidden = true;
-});
-modalCategorias.addEventListener("click", (e) => {
-  if (e.target === modalCategorias) modalCategorias.hidden = true;
+document.getElementById("btnCategoriasGasto").addEventListener("click", () => {
+  mostrarVista("configuracion", { subruta: "categorias-gastos" });
 });
 
 document.getElementById("formCategoria").addEventListener("submit", async (e) => {
