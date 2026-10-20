@@ -21,7 +21,9 @@
 
 ## Estado actual (20 de octubre de 2026)
 
-**Próxima sesión:** B2, la PWA (punto 7 del plan, en "Qué sigue").
+**Próxima sesión:** Servicios con funciones propias (punto 6a del plan, en
+"Qué sigue"); después el CRM (6b) y recién ahí la PWA (7). Los dos los pidió
+el usuario el 20 de octubre.
 - Varios negocios por cuenta (hist. §77) está hecho y commiteado: selector
   arriba del menú, "Agregar negocio" y el rol por negocio. Falta que el
   usuario lo vea.
@@ -449,6 +451,13 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   interfaz (`<html data-modulos>` y el router); los permisos siguen en
   `permisos.js`. `organizaciones.modulos` NULL = los del preset; cambiar el tipo
   sin mandar módulos vuelve al preset.
+- **Cambiar el tipo de negocio no borra nada** (respondido al usuario el 20 de
+  octubre):
+  - solo cambia el menú y con qué unidad y tipo nace un producto nuevo. Los
+    productos que ya existen quedan como estaban;
+  - los socios siguen siendo clientes y sus planes siguen en Productos;
+  - con Socios apagado no se generan cuotas. Si se vuelve a prender, se generan
+    de una las de los meses que pasaron a los planes que siguen activos.
 - **Unidad del producto:** `unidad`, `kg`, `g`, `l`, `ml` o `m`, validada en
   `server.js` y sin `CHECK`. Las cantidades ya eran REAL: el backend nunca
   exigió enteros.
