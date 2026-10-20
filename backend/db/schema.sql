@@ -958,3 +958,133 @@ CREATE TABLE IF NOT EXISTS sesiones (
   expira TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id);
+
+-- Socios, planes, descuentos y cuotas (CLAUDE.md §29, hist. §74 y §75): un
+-- módulo que cualquier negocio puede prender y que el gimnasio trae prendido.
+-- No es un circuito de datos propio: el socio es un cliente, el plan es un
+-- servicio del catálogo y cada cuota es una venta de ese servicio, cobrada
+-- como cualquier venta. Estas tablas guardan solo lo que el resto del sistema
+-- no tiene: los precios por duración, los descuentos, qué planes hace cada
+-- socio, qué período cubre cada cuota y quién entró.
+--
+-- planes_socio: la actividad o el pase (musculación, funcional, pase libre).
+-- Su nombre y si se ofrece son los del producto; el precio, el de cada
+-- duración (planes_socio_opciones).
+CREATE TABLE IF NOT EXISTS planes_socio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL UNIQUE REFERENCES productos(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+
+-- Cada duración de un plan con su precio: mensual, de dos meses, anual o la
+-- cantidad de meses que se quiera (la valida server.js, sin CHECK). Una por
+-- cantidad de meses: la que se saca del plan se pausa (activo 0) y no se
+-- borra, porque puede tener socios y cuotas. Hija de planes_socio.
+CREATE TABLE IF NOT EXISTS planes_socio_opciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL REFERENCES planes_socio(id),
+  meses INTEGER NOT NULL,
+  precio REAL NOT NULL,
+  activo INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (plan_id, meses)
+);
+
+-- Un descuento en porcentaje que baja el precio de cada cuota al generarla.
+-- aplica (sin CHECK, lo valida server.js) dice cuándo: 'combo', si el socio
+-- tiene todos los planes de descuento_socio_planes; 'cantidad', si tiene
+-- minimo_planes o más; 'manual', si se le eligió en su ficha (familiar,
+-- estudiante). Si le tocan varios, se aplica el mayor, nunca la suma.
+CREATE TABLE IF NOT EXISTS descuentos_socio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  porcentaje REAL NOT NULL,
+  aplica TEXT NOT NULL,
+  minimo_planes INTEGER,
+  activo INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
+);
+
+-- Los planes de un combo. Hija de descuentos_socio.
+CREATE TABLE IF NOT EXISTS descuento_socio_planes (
+  descuento_id INTEGER NOT NULL REFERENCES descuentos_socio(id),
+  plan_id INTEGER NOT NULL REFERENCES planes_socio(id),
+  PRIMARY KEY (descuento_id, plan_id)
+);
+
+-- numero: el número de socio, correlativo por empresa (el que se tipea en la
+-- recepción). Lo calcula server.js en la misma transacción del alta, y el
+-- UNIQUE es la garantía. descuento_id: su descuento a mano, si tiene.
+CREATE TABLE IF NOT EXISTS socios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL UNIQUE REFERENCES clientes(id),
+  numero INTEGER NOT NULL,
+  fecha_alta TEXT NOT NULL,
+  descuento_id INTEGER REFERENCES descuentos_socio(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, numero)
+);
+
+-- Cada plan que hace un socio, con su duración: puede tener varios a la vez,
+-- y cada uno lleva su ciclo y sus cuotas. Un socio de baja es uno sin ningún
+-- plan activo. Hija de socios.
+-- plan_id repite el plan de opcion_id a propósito: es lo que deja tener un
+-- índice único de "un mismo plan activo una sola vez por socio". server.js
+-- escribe siempre los dos juntos.
+-- fecha_alta: desde cuándo hace ese plan. Las cuotas vencen ese mismo día de
+-- cada período (decisión del usuario, 19 de octubre de 2026).
+-- ciclo_desde: desde dónde se cuentan los períodos: la fecha de alta, o la de
+-- la reactivación después de una baja.
+-- cobrar_desde: el primer período que se cobra es el que contiene esta fecha.
+-- En un alta de hoy es la misma; en un alta cargada hacia atrás (un socio que
+-- ya venía) es el día en que se lo cargó, así Nexo no le inventa meses de
+-- deuda de antes de estar en el sistema.
+CREATE TABLE IF NOT EXISTS inscripciones_socio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  socio_id INTEGER NOT NULL REFERENCES socios(id),
+  plan_id INTEGER NOT NULL REFERENCES planes_socio(id),
+  opcion_id INTEGER NOT NULL REFERENCES planes_socio_opciones(id),
+  fecha_alta TEXT NOT NULL,
+  ciclo_desde TEXT NOT NULL,
+  cobrar_desde TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa', 'baja')),
+  fecha_baja TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inscripciones_socio_activa
+  ON inscripciones_socio(socio_id, plan_id) WHERE estado = 'activa';
+
+-- Una fila por período de un plan: [desde, hasta] y la venta que lo cobra.
+-- Las arma server.js cada vez que mira a un socio, sin cron: el UNIQUE de
+-- (inscripcion_id, desde) es lo que impide cobrar dos veces el mismo período.
+-- precio_lista, descuento_pct y descuento_id son la foto del momento (como el
+-- costo histórico de una venta, CLAUDE.md §8): cambiar el precio o el
+-- descuento después no reescribe lo que ya se generó. Una cuota cuya venta se
+-- anula queda bonificada: el período está cubierto y no se vuelve a generar.
+-- Hija de inscripciones_socio.
+CREATE TABLE IF NOT EXISTS cuotas_socio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inscripcion_id INTEGER NOT NULL REFERENCES inscripciones_socio(id),
+  opcion_id INTEGER NOT NULL REFERENCES planes_socio_opciones(id),
+  venta_id INTEGER NOT NULL UNIQUE REFERENCES ventas(id),
+  desde TEXT NOT NULL,
+  hasta TEXT NOT NULL,
+  meses INTEGER NOT NULL,
+  precio_lista REAL NOT NULL,
+  descuento_pct REAL NOT NULL DEFAULT 0,
+  descuento_id INTEGER REFERENCES descuentos_socio(id),
+  UNIQUE (inscripcion_id, desde)
+);
+
+-- Cada vez que un socio entra por la recepción: quién lo dejó pasar, cuándo y
+-- si estaba al día. Es su propio registro de quién y cuándo (CLAUDE.md §22),
+-- sin una fila de auditoría por ingreso. al_dia en 0 es alguien que entró
+-- debiendo porque lo dejaron pasar igual, y deuda es lo que debía.
+CREATE TABLE IF NOT EXISTS ingresos_socio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  socio_id INTEGER NOT NULL REFERENCES socios(id),
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  al_dia INTEGER NOT NULL CHECK (al_dia IN (0, 1)),
+  deuda REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ingresos_socio ON ingresos_socio(socio_id, fecha);

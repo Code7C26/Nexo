@@ -4,7 +4,7 @@
  * (#/configuracion/<página>), en vez del modal de antes. Cada página guarda lo
  * suyo con PUT /api/negocio, que es parcial: manda solo lo que cambió.
  *
- * Para sumar una página (IVA, ARCA, socios): su ítem del menú y su <section>
+ * Para sumar una página (IVA, ARCA): su ítem del menú y su <section>
  * en index.html, y su entrada en PAGINAS.
  */
 

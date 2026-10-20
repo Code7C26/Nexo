@@ -43,6 +43,7 @@ import "./dominios/perfil.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
+import "./dominios/socios.js";
 
 let facturas = [];
 
@@ -7199,6 +7200,7 @@ alEntrarEnVista("auditoria", cargarAuditoria);
 // click, después del boot).
 registrar("abrirFicha:cliente", abrirFichaCliente);
 registrar("abrirFicha:proveedor", abrirFichaProveedor);
+registrar("abrirFicha:venta", abrirFichaVenta);
 registrar("cobrar:venta", abrirModalCobrarVenta);
 registrar("pagar:compra", abrirModalPagarCompra);
 

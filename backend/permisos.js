@@ -26,6 +26,9 @@
 // esconde al empleado en el resto de las respuestas. El alta y la edición de
 // los cinco catálogos (categorías de producto y de gasto, listas de precios,
 // depósitos y cuentas de tesorería) también son admin; leerlos es de los dos.
+// Socios (hist. §74 y §75): la recepción da de alta, suma planes, elige el
+// descuento a mano, cobra y registra ingresos, que es su trabajo diario; crear
+// y editar los planes y los descuentos (los precios) es admin.
 export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
@@ -78,6 +81,22 @@ export const RUTAS_PERMISOS = {
   'POST /api/turnos-caja/:id/cerrar': 'ambos',
   'GET /api/pos/catalogo': 'ambos',
   'POST /api/pos/ventas': 'ambos',
+  'GET /api/planes-socio': 'ambos',
+  'POST /api/planes-socio': 'admin',
+  'PATCH /api/planes-socio/:id': 'admin',
+  'GET /api/descuentos-socio': 'ambos',
+  'POST /api/descuentos-socio': 'admin',
+  'PATCH /api/descuentos-socio/:id': 'admin',
+  'GET /api/socios': 'ambos',
+  'GET /api/socios/ingresos': 'ambos',
+  'GET /api/socios/:id': 'ambos',
+  'POST /api/socios/cotizacion': 'ambos',
+  'POST /api/socios': 'ambos',
+  'PATCH /api/socios/:id': 'ambos',
+  'POST /api/socios/:id/planes': 'ambos',
+  'PATCH /api/socios/:id/planes/:inscripcionId': 'ambos',
+  'POST /api/socios/:id/cobros': 'ambos',
+  'POST /api/socios/:id/ingresos': 'ambos',
   'GET /api/ventas': 'ambos',
   'GET /api/ventas/:id': 'ambos',
   'POST /api/ventas': 'ambos',

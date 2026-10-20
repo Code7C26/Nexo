@@ -453,10 +453,197 @@ test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist.
   // producto, no como servicio.
   await adminB.put('/api/negocio', { rubro: 'gimnasio' });
   const gimnasio = (await adminB.get('/api/negocio')).json;
-  assert.deepEqual(gimnasio.modulos, ['pos', 'compras', 'stock']);
+  assert.deepEqual(gimnasio.modulos, ['pos', 'compras', 'stock', 'socios']);
   assert.equal(gimnasio.tipo_defecto, 'producto');
   assert.ok(gimnasio.perfiles.tipos.some((t) => t.clave === 'gimnasio' && t.icono && t.descripcion));
   await adminB.put('/api/negocio', { rubro: 'comercio' });
+});
+
+test('socios: planes con duraciones, cuotas sin cron, cobro, ingreso, baja y aislamiento (hist. §74 y §75)', async () => {
+  const hoy = new Date().toLocaleDateString('sv-SE');
+  const haceDias = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toLocaleDateString('sv-SE');
+  };
+  const opcion = (plan, meses) => plan.opciones.find((o) => o.meses === meses);
+
+  // El plan es admin y nace con su servicio y sus duraciones.
+  const pedido = { nombre: 'Pase libre', opciones: [{ meses: 1, precio: 30000 }, { meses: 3, precio: 81000 }] };
+  assert.equal((await empleadoA.post('/api/planes-socio', pedido)).status, 403);
+  for (const cuerpo of [
+    { nombre: '', opciones: [{ meses: 1, precio: 30000 }] },
+    { nombre: 'Sin duraciones', opciones: [] },
+    { nombre: 'Gratis', opciones: [{ meses: 1, precio: 0 }] },
+    { nombre: 'Larguísimo', opciones: [{ meses: 37, precio: 1000 }] },
+    { nombre: 'Medio mes', opciones: [{ meses: 0.5, precio: 1000 }] },
+    { nombre: 'Repetido', opciones: [{ meses: 2, precio: 1000 }, { meses: 2, precio: 1500 }] },
+    { nombre: 'Texto', opciones: [{ meses: 1, precio: '30000' }] }
+  ]) {
+    assert.equal((await adminA.post('/api/planes-socio', cuerpo)).status, 400, JSON.stringify(cuerpo));
+  }
+  const pase = (await adminA.post('/api/planes-socio', pedido)).json;
+  assert.deepEqual(pase.opciones.map((o) => o.duracion), ['Mensual', 'Trimestral']);
+  assert.equal((await adminA.post('/api/planes-socio', { ...pedido, nombre: 'pase libre' })).status, 400, 'nombre repetido');
+  const funcional = (await adminA.post('/api/planes-socio', { nombre: 'Funcional', opciones: [{ meses: 1, precio: 20000 }, { meses: 2, precio: 38000 }] })).json;
+  const productos = (await adminA.get('/api/productos')).json;
+  const servicio = productos.find((p) => p.id === pase.producto_id);
+  assert.equal(servicio.tipo, 'servicio');
+  assert.equal(servicio.precio_venta, 30000, 'el catálogo muestra el precio de la duración más corta');
+  // El servicio de un plan no pasa a tener stock ni cambia de precio desde Productos.
+  assert.equal((await adminA.patch(`/api/productos/${pase.producto_id}`, { tipo: 'producto' })).status, 400);
+  assert.equal((await adminA.patch(`/api/productos/${pase.producto_id}`, { precio_venta: 1 })).status, 400);
+  assert.equal((await adminA.patch(`/api/productos/${pase.producto_id}`, { nombre: 'Pase libre', precio_venta: 30000 })).status, 200);
+  assert.ok(!(await empleadoA.get('/api/pos/catalogo')).json.some((i) => i.producto_id === pase.producto_id));
+
+  // Editar las duraciones: una nueva, otra que cambia de precio y una que se
+  // saca (queda pausada, no se borra).
+  const editado = await adminA.patch(`/api/planes-socio/${pase.id}`, {
+    opciones: [{ meses: 1, precio: 32000 }, { meses: 12, precio: 300000 }]
+  });
+  assert.equal(editado.status, 200, editado.texto);
+  assert.deepEqual(editado.json.opciones.map((o) => [o.meses, o.precio, o.activo]), [[1, 32000, true], [3, 81000, false], [12, 300000, true]]);
+  await adminA.patch(`/api/planes-socio/${pase.id}`, { opciones: [{ meses: 1, precio: 32000 }, { meses: 3, precio: 85000 }, { meses: 12, precio: 300000 }] });
+  const planes = (await empleadoA.get('/api/planes-socio')).json;
+  const paseLibre = planes.find((p) => p.id === pase.id);
+
+  // Descuentos: combo, por cantidad y a mano. Son admin.
+  const combo = { nombre: 'Combo pase + funcional', porcentaje: 15, aplica: 'combo', planes: [pase.id, funcional.id] };
+  assert.equal((await empleadoA.post('/api/descuentos-socio', combo)).status, 403);
+  for (const cuerpo of [
+    { ...combo, planes: [pase.id] },
+    { ...combo, planes: [pase.id, pase.id] },
+    { ...combo, porcentaje: 0 },
+    { ...combo, porcentaje: 101 },
+    { nombre: 'Muchos', porcentaje: 10, aplica: 'cantidad', minimo_planes: 1 },
+    { nombre: 'Raro', porcentaje: 10, aplica: 'siempre' }
+  ]) {
+    assert.equal((await adminA.post('/api/descuentos-socio', cuerpo)).status, 400, JSON.stringify(cuerpo));
+  }
+  assert.equal((await adminA.post('/api/descuentos-socio', combo)).status, 201);
+  const familiar = (await adminA.post('/api/descuentos-socio', { nombre: 'Familiar', porcentaje: 20, aplica: 'manual' })).json;
+
+  // Alta con dos planes: el combo baja las dos cuotas, y la cotización dice
+  // lo mismo antes de confirmar.
+  const planesDeLucia = [{ opcion_id: opcion(paseLibre, 1).id }, { opcion_id: opcion(funcional, 2).id }];
+  const cotizacion = (await empleadoA.post('/api/socios/cotizacion', { planes: planesDeLucia })).json;
+  assert.deepEqual(cotizacion.lineas.map((l) => [l.precio, l.descuento?.porcentaje]), [[27200, 15], [32300, 15]]);
+  assert.equal(cotizacion.total, 59500);
+  const alta = await empleadoA.post('/api/socios', {
+    cliente: { nombre: 'Lucía Gómez', documento: '30111222', telefono: '341 555-0101' },
+    planes: planesDeLucia
+  });
+  assert.equal(alta.status, 201, alta.texto);
+  const socio = alta.json;
+  assert.equal(socio.numero, 1);
+  assert.equal(socio.situacion, 'debe');
+  assert.equal(socio.deuda, 59500);
+  assert.equal(socio.planes.length, 2);
+  assert.deepEqual(socio.cuotas.map((c) => c.desde), [hoy, hoy]);
+  assert.ok(socio.cuotas.every((c) => c.descuento_pct === 15));
+  assert.equal(socio.saldo_cuenta, 59500, 'las cuotas son ventas en su cuenta corriente');
+
+  // Mirarlo muchas veces no genera cuotas de más.
+  await empleadoA.get('/api/socios');
+  await empleadoA.get('/api/socios');
+  assert.equal((await empleadoA.get(`/api/socios/${socio.id}`)).json.cuotas.length, 2);
+
+  // Rechazos del alta: mismo documento, ya es socio, el mismo plan dos veces,
+  // sin planes y un plan de otra empresa.
+  const otraVez = (cuerpo) => empleadoA.post('/api/socios', { cliente: { nombre: 'Otra' }, ...cuerpo });
+  assert.equal((await otraVez({ cliente: { nombre: 'Otra', documento: '30111222' }, planes: planesDeLucia })).status, 400);
+  assert.equal((await empleadoA.post('/api/socios', { cliente_id: socio.cliente_id, planes: planesDeLucia })).status, 400);
+  assert.equal((await otraVez({ planes: [{ opcion_id: opcion(paseLibre, 1).id }, { opcion_id: opcion(paseLibre, 3).id }] })).status, 400);
+  assert.equal((await otraVez({ planes: [] })).status, 400);
+  const planB = (await adminB.post('/api/planes-socio', { nombre: 'Plan B', opciones: [{ meses: 1, precio: 1000 }] })).json;
+  assert.equal((await otraVez({ planes: [{ opcion_id: planB.opciones[0].id }] })).status, 400);
+
+  // Entra debiendo (lo dejan pasar igual), después paga y entra al día.
+  const entra = await empleadoA.post(`/api/socios/${socio.id}/ingresos`, {});
+  assert.equal(entra.status, 201, entra.texto);
+  assert.equal(entra.json.al_dia, false);
+  const efectivo = (await adminA.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'efectivo');
+  const cobro = await empleadoA.post(`/api/socios/${socio.id}/cobros`, { cuenta_tesoreria_id: efectivo.id });
+  assert.equal(cobro.status, 201, cobro.texto);
+  assert.equal(cobro.json.cobrado, 59500);
+  assert.equal(cobro.json.socio.situacion, 'al_dia');
+  assert.ok(cobro.json.socio.al_dia_hasta > hoy);
+  assert.equal(cobro.json.socio.saldo_cuenta, 0);
+  assert.equal((await empleadoA.post(`/api/socios/${socio.id}/cobros`, { cuenta_tesoreria_id: efectivo.id })).status, 400, 'no debe nada');
+  assert.equal((await empleadoA.post(`/api/socios/${socio.id}/ingresos`, {})).json.al_dia, true);
+  assert.deepEqual((await empleadoA.get('/api/socios/ingresos')).json.map((i) => i.al_dia), [true, false]);
+
+  // Cambiar la duración de un plan rige desde la próxima cuota: la de hoy no cambia.
+  const planPase = socio.planes.find((p) => p.plan_id === pase.id);
+  const cambio = await empleadoA.patch(`/api/socios/${socio.id}/planes/${planPase.id}`, { opcion_id: opcion(paseLibre, 3).id });
+  assert.equal(cambio.status, 200, cambio.texto);
+  assert.equal(cambio.json.planes.find((p) => p.id === planPase.id).duracion, 'Trimestral');
+  assert.equal(cambio.json.cuotas.length, 2);
+  assert.equal(cambio.json.deuda, 0);
+
+  // Dejar un plan corta el combo para el otro; sumar uno que ya tiene activo
+  // no se puede.
+  const deja = await empleadoA.patch(`/api/socios/${socio.id}/planes/${planPase.id}`, { estado: 'baja' });
+  assert.equal(deja.json.planes.find((p) => p.plan_id === funcional.id).descuento, null);
+  assert.equal(deja.json.situacion, 'al_dia');
+  assert.equal((await empleadoA.post(`/api/socios/${socio.id}/planes`, { opcion_id: opcion(funcional, 1).id })).status, 400, 'ya tiene funcional');
+
+  // Descuento a mano: el mayor gana, nunca la suma.
+  const conFamiliar = await empleadoA.patch(`/api/socios/${socio.id}`, { descuento_id: familiar.id });
+  assert.equal(conFamiliar.status, 200, conFamiliar.texto);
+  assert.equal(conFamiliar.json.planes.find((p) => p.plan_id === funcional.id).descuento.porcentaje, 20);
+  const vuelvePase = await empleadoA.patch(`/api/socios/${socio.id}/planes/${planPase.id}`, { estado: 'activa' });
+  assert.equal(vuelvePase.status, 200, vuelvePase.texto);
+  const activos = vuelvePase.json.planes.filter((p) => p.estado === 'activa');
+  assert.ok(activos.every((p) => p.descuento.porcentaje === 20), 'familiar 20% le gana al combo 15%');
+  assert.equal(vuelvePase.json.cuotas.length, 2, 'no le cobra de nuevo el período que ya pagó');
+  assert.equal((await empleadoA.patch(`/api/socios/${socio.id}`, { descuento_id: 999999 })).status, 400);
+
+  // Por cantidad: 2 planes o más, 25%, le gana a los otros dos.
+  await adminA.post('/api/descuentos-socio', { nombre: 'Dos o más', porcentaje: 25, aplica: 'cantidad', minimo_planes: 2 });
+  const conCantidad = (await empleadoA.get(`/api/socios/${socio.id}`)).json;
+  assert.ok(conCantidad.planes.every((p) => p.descuento.nombre === 'Dos o más'));
+
+  // Un socio que ya venía: se cobra el período de hoy, no los meses de antes.
+  const viejo = await empleadoA.post('/api/socios', {
+    cliente: { nombre: 'Martín Ruiz' },
+    planes: [{ opcion_id: opcion(paseLibre, 1).id }],
+    fecha_alta: haceDias(75)
+  });
+  assert.equal(viejo.status, 201, viejo.texto);
+  assert.equal(viejo.json.cuotas.length, 1);
+  assert.ok(viejo.json.cuotas[0].desde <= hoy && viejo.json.cuotas[0].hasta >= hoy, JSON.stringify(viejo.json.cuotas[0]));
+  for (const fecha of ['1999-12-31', '2026-13-01', 'mañana']) {
+    const r = await otraVez({ planes: [{ opcion_id: opcion(paseLibre, 1).id }], fecha_alta: fecha });
+    assert.equal(r.status, 400, fecha);
+  }
+
+  // Baja del socio entero: no entra, y vuelve con los mismos planes.
+  const baja = await empleadoA.patch(`/api/socios/${socio.id}`, { estado: 'baja' });
+  assert.equal(baja.status, 200, baja.texto);
+  assert.equal(baja.json.situacion, 'baja');
+  assert.equal((await empleadoA.post(`/api/socios/${socio.id}/ingresos`, {})).status, 400);
+  const vuelve = await empleadoA.patch(`/api/socios/${socio.id}`, { estado: 'activo' });
+  assert.equal(vuelve.status, 200, vuelve.texto);
+  assert.equal(vuelve.json.planes.filter((p) => p.estado === 'activa').length, 2);
+  assert.equal(vuelve.json.situacion, 'al_dia');
+
+  // Plan pausado: no se ofrece a socios nuevos.
+  assert.equal((await adminA.patch(`/api/planes-socio/${pase.id}`, { activo: false })).status, 200);
+  assert.equal((await otraVez({ planes: [{ opcion_id: opcion(paseLibre, 1).id }] })).status, 400);
+  await adminA.patch(`/api/planes-socio/${pase.id}`, { activo: true });
+
+  // Otra empresa no ve ni toca nada de esto.
+  assert.equal((await adminB.get(`/api/socios/${socio.id}`)).status, 404);
+  assert.equal((await adminB.post(`/api/socios/${viejo.json.id}/cobros`, { cuenta_tesoreria_id: efectivo.id })).status, 404);
+  assert.equal((await adminB.post(`/api/socios/${socio.id}/ingresos`, {})).status, 404);
+  assert.equal((await adminB.patch(`/api/socios/${socio.id}/planes/${planPase.id}`, { estado: 'baja' })).status, 404);
+  assert.equal((await adminB.patch(`/api/planes-socio/${pase.id}`, { nombre: 'Robado' })).status, 404);
+  assert.equal((await adminB.patch(`/api/descuentos-socio/${familiar.id}`, { activo: false })).status, 404);
+  assert.deepEqual((await adminB.get('/api/socios')).json, []);
+  assert.equal((await adminB.post('/api/descuentos-socio', { ...combo, nombre: 'Ajeno' })).status, 400, 'combo con planes de otra empresa');
+  const efectivoB = (await adminB.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'efectivo');
+  assert.equal((await empleadoA.post(`/api/socios/${viejo.json.id}/cobros`, { cuenta_tesoreria_id: efectivoB.id })).status, 400);
 });
 
 // Va último a propósito: bloquea la IP local durante la ventana del límite.

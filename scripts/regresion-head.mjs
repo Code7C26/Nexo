@@ -50,6 +50,7 @@ const LISTADO_DE = {
   '/api/proveedores/:id': '/api/proveedores',
   '/api/ventas/:id': '/api/ventas',
   '/api/turnos-caja/:id': '/api/turnos-caja',
+  '/api/socios/:id': '/api/socios',
   '/api/ventas/:id/cobros': '/api/ventas',
   '/api/presupuestos/:id': '/api/presupuestos',
   '/api/devoluciones/:id': '/api/devoluciones',

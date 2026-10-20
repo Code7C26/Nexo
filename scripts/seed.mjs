@@ -190,6 +190,30 @@ export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '' } = {
   }));
   await paso('cerrar la caja', empleado.post(`/api/turnos-caja/${caja.id}/cerrar`, { contado: saldoCaja + 5000 }));
 
+  // Socios (hist. §74 y §75): dos planes con varias duraciones, un combo, una
+  // socia con los dos planes al día y un cliente que ya existía y queda
+  // debiendo. Sin ingresos: guardan la hora y cambiarían entre dos corridas.
+  const pase = await paso('plan de socios', admin.post('/api/planes-socio', {
+    nombre: 'Pase libre',
+    opciones: [{ meses: 1, precio: 30000 }, { meses: 3, precio: 81000 }]
+  }));
+  const funcional = await paso('segundo plan', admin.post('/api/planes-socio', {
+    nombre: 'Funcional',
+    opciones: [{ meses: 1, precio: 20000 }, { meses: 2, precio: 38000 }]
+  }));
+  await paso('combo', admin.post('/api/descuentos-socio', {
+    nombre: 'Combo pase + funcional',
+    porcentaje: 15,
+    aplica: 'combo',
+    planes: [pase.id, funcional.id]
+  }));
+  const socia = await paso('alta de socia', empleado.post('/api/socios', {
+    cliente: { nombre: 'Lucía Gómez', documento: '30111222' },
+    planes: [{ opcion_id: pase.opciones[0].id }, { opcion_id: funcional.opciones[1].id }]
+  }));
+  await paso('cobro de las cuotas', empleado.post(`/api/socios/${socia.id}/cobros`, { cuenta_tesoreria_id: efectivo.id }));
+  await paso('cliente que pasa a socio', empleado.post('/api/socios', { cliente_id: ana.id, planes: [{ opcion_id: pase.opciones[1].id }] }));
+
   return { empresa, usuarios, admin, empleado };
 }
 

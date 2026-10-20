@@ -1591,7 +1591,8 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="pos"]) [data-modulo="pos"],
 :root:not([data-modulos~="presupuestos"]) [data-modulo="presupuestos"],
 :root:not([data-modulos~="compras"]) [data-modulo="compras"],
-:root:not([data-modulos~="stock"]) [data-modulo="stock"] {
+:root:not([data-modulos~="stock"]) [data-modulo="stock"],
+:root:not([data-modulos~="socios"]) [data-modulo="socios"] {
   display: none;
 }
 
@@ -4735,4 +4736,908 @@ input.precio-sin-configurar::placeholder {
   .hoja-encabezado {
     page-break-inside: avoid;
   }
+}
+
+/* ---------- Socios: ingreso, lista, alta y ficha (hist. §74) ---------- */
+
+/* Botones de a varios donde se elige uno (qué socios mostrar, si el socio
+   nuevo ya es cliente): aria-pressed marca el elegido. */
+.segmentos {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.segmento {
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  font: inherit;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  transition: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease;
+}
+
+.segmento:hover { color: var(--ink); }
+
+.segmento[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+
+.segmento:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+/* Ingreso: la recepción. Una columna centrada con la búsqueda grande arriba:
+   se usa parado, muchas veces desde una tablet o el celular. */
+.ingreso {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.ingreso-buscar { position: relative; }
+
+.ingreso-buscar .search {
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding-left: 44px;
+  font-size: var(--txt-lg);
+  border-radius: var(--r-md);
+  background-position: 16px 50%;
+}
+
+.ingreso-resultados {
+  position: absolute;
+  inset: calc(100% + 6px) 0 auto;
+  z-index: 20;
+  max-height: 420px;
+  margin: 0;
+  padding: var(--sp-1);
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  animation: aparecer-arriba var(--dur-1) var(--ease-out);
+}
+
+.ingreso-resultados[hidden] { display: none; }
+
+.ingreso-opcion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.ingreso-opcion[aria-selected="true"] { background: var(--accent-bg); }
+
+.ingreso-opcion-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ingreso-opcion-nombre {
+  font-size: var(--txt-md);
+  font-weight: 600;
+}
+
+.ingreso-opcion-meta {
+  overflow: hidden;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ingreso-sin-resultados {
+  padding: var(--sp-4);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+/* Antes de buscar: qué se hace acá, para quien entra por primera vez. */
+.ingreso-inicio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-7) var(--sp-5);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+.ingreso-inicio[hidden] { display: none; }
+.ingreso-inicio p { margin: 0; max-width: 46ch; }
+
+.ingreso-inicio-icono {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--sp-1);
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border-radius: var(--r-md);
+}
+
+.ingreso-inicio-icono .ico { width: 24px; height: 24px; }
+
+.ingreso-inicio-titulo {
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* El socio que llega. El color dice, antes que el texto, si pasa (verde),
+   si debe (rojo), si hay algo para mirar (naranja) o si está de baja (gris). */
+.ingreso-tarjeta {
+  --tono: var(--ink-muted);
+  --tono-bg: var(--surface-sunk);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  background: var(--tono-bg);
+  border: 1px solid color-mix(in srgb, var(--tono) 35%, transparent);
+  border-radius: var(--r-md);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.ingreso-tarjeta[hidden] { display: none; }
+.ingreso-tarjeta-ok    { --tono: var(--accent-ok);     --tono-bg: var(--accent-ok-bg); }
+.ingreso-tarjeta-debe  { --tono: var(--accent-danger); --tono-bg: var(--accent-danger-bg); }
+.ingreso-tarjeta-aviso { --tono: var(--naranja);       --tono-bg: var(--naranja-bg); }
+.ingreso-tarjeta-baja  { --tono: var(--ink-muted);     --tono-bg: var(--surface-sunk); }
+
+.ingreso-tarjeta-cuerpo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.ingreso-tarjeta-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  color: var(--surface);
+  background: var(--tono);
+  border-radius: var(--r-full);
+}
+
+.ingreso-tarjeta-icono .ico { width: 28px; height: 28px; }
+
+.ingreso-tarjeta-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ingreso-tarjeta-texto p { margin: 0; }
+
+.ingreso-tarjeta-estado {
+  font-size: var(--txt-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--tono);
+}
+
+.ingreso-tarjeta-nombre {
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ingreso-tarjeta-meta {
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.ingreso-tarjeta-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.ingreso-tarjeta-acciones .btn { min-height: 44px; }
+
+.ingreso-tarjeta-acciones .btn-link {
+  align-self: center;
+  margin-left: auto;
+  font-size: var(--txt-sm);
+}
+
+/* Quién entró hoy: hora, nombre y cómo estaba. */
+.ingreso-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ingreso-fila {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.ingreso-fila:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.ingreso-fila-hora {
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.ingreso-fila-texto {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.ingreso-fila-texto .btn-link {
+  padding: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink);
+}
+
+.ingreso-fila-meta {
+  font-size: var(--txt-2xs);
+  color: var(--ink-faint);
+}
+
+.panel-head-cuenta {
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ingreso-lista-vacia {
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+/* Lista de socios. */
+.socios-herramientas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.socios-herramientas .search {
+  flex: 1;
+  max-width: 420px;
+}
+
+.celda-principal {
+  display: block;
+  font-weight: 600;
+}
+
+.celda-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--txt-2xs);
+  color: var(--ink-faint);
+}
+
+.fila-pausada td { color: var(--ink-muted); }
+
+/* Alta: tres tarjetas numeradas en una página, no un modal. */
+.socio-alta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 760px;
+}
+
+.socio-alta[hidden] { display: none; }
+
+.socio-alta-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.socio-alta-paso {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  font-size: var(--txt-md);
+  font-weight: 600;
+}
+
+.socio-alta-numero {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-size: var(--txt-xs);
+  font-weight: 700;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+}
+
+.socio-alta-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.socio-alta-grupo[hidden] { display: none; }
+
+.socio-alta-grupo > label,
+.socio-alta-grupo > .form-fila { max-width: 560px; }
+
+.config-tarjeta-botones {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.config-tarjeta-botones .btn-link { align-self: center; }
+.config-tarjeta-botones .btn-link[hidden] { display: none; }
+
+/* Ficha: el cobro de lo que debe, un botón por cuenta. */
+.panel.socio-cobro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  background: var(--accent-danger-bg);
+  border-color: color-mix(in srgb, var(--accent-danger) 35%, transparent);
+}
+
+.panel.socio-cobro[hidden] { display: none; }
+.socio-cobro-texto p { margin: 0; }
+
+.socio-cobro-titulo {
+  font-size: var(--txt-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-danger);
+}
+
+.socio-cobro-texto .socio-cobro-nota {
+  max-width: 60ch;
+  margin-top: 2px;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.socio-cobro-cuentas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* Planes y descuentos (hist. §75), en su propia vista desde hist. §76. */
+
+.planes-vista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.planes-pestana {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.planes-pestana[hidden] { display: none; }
+
+/* Las pestañas son enlaces (#/planes-socio/…): se ven como .segmento. */
+a.segmento {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.segmento[aria-current="page"] {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+
+.config-tarjeta-titulo {
+  margin: 0;
+  font-size: var(--txt-md);
+  font-weight: 600;
+}
+
+
+.opciones[hidden] { display: none; }
+
+/* Alta: cada plan es una tarjeta con su casilla; marcada, abre sus duraciones. */
+.planes-elegir {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-3);
+}
+
+.plan-elegir {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease;
+}
+
+.plan-elegir:hover { border-color: var(--ink-faint); }
+
+.plan-elegir:has(.plan-elegir-cabeza input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.plan-elegir:has(.plan-elegir-cabeza input:focus-visible) { box-shadow: 0 0 0 3px var(--accent-bg); }
+
+/* Gana a .form label por especificidad, como .opcion-tarjeta. */
+.form .plan-elegir-cabeza {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  padding-right: 44px;
+  font-weight: 400;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.form .plan-elegir-cabeza > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.plan-elegir-cabeza .opcion-tarjeta-check { border-radius: 5px; }
+
+.plan-elegir-cabeza:has(input:checked) .opcion-tarjeta-check {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.plan-elegir-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  color: var(--ink-muted);
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+}
+
+.plan-elegir-cabeza:has(input:checked) .plan-elegir-icono { color: var(--accent); background: var(--accent-bg); }
+.plan-elegir-icono .ico { width: 20px; height: 20px; }
+
+.plan-elegir-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-elegir-nombre {
+  font-size: var(--txt-md);
+  font-weight: 600;
+}
+
+.plan-elegir-desde {
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.plan-elegir-duraciones {
+  display: none;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+
+.plan-elegir:has(.plan-elegir-cabeza input:checked) .plan-elegir-duraciones {
+  display: flex;
+  animation: aparecer-arriba var(--dur-1) var(--ease-out);
+}
+
+.form .duracion-chip {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 6px var(--sp-3);
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease;
+}
+
+.form .duracion-chip > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.form .duracion-chip:hover { border-color: var(--ink-faint); }
+
+.form .duracion-chip:has(input:checked) {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.form .duracion-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--accent-bg); }
+
+.duracion-chip-nombre {
+  font-size: var(--txt-xs);
+  font-weight: 600;
+}
+
+.duracion-chip-precio {
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+/* Cotización: cada plan con su primer período y su precio con descuento. */
+.cotizacion {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.cotizacion[hidden] { display: none; }
+
+.cotizacion-linea {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.cotizacion-linea + .cotizacion-linea { border-top: 1px solid var(--line); }
+.cotizacion-cambia { background: var(--surface-sunk); }
+
+.cotizacion-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+}
+
+.cotizacion-meta {
+  font-size: var(--txt-2xs);
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.cotizacion-precio {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 2px var(--sp-2);
+  font-size: var(--txt-sm);
+  text-align: right;
+}
+
+.cotizacion-precio s { color: var(--ink-faint); }
+
+.cotizacion-descuento {
+  flex-basis: 100%;
+  font-size: var(--txt-2xs);
+  font-weight: 600;
+  color: var(--accent-ok);
+}
+
+/* Ficha: los planes del socio. */
+.socio-planes {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  list-style: none;
+}
+
+.socio-plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.socio-plan:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.socio-plan.is-baja .socio-plan-nombre,
+.socio-plan.is-baja .cotizacion-precio { color: var(--ink-muted); }
+
+.socio-plan-texto p { margin: 0; }
+
+.socio-plan-nombre {
+  font-size: var(--txt-md);
+  font-weight: 600;
+}
+
+.socio-plan-meta {
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.socio-plan-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.socio-plan-acciones .btn-link { align-self: center; }
+
+.socio-planes-vacio {
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.form.socio-sumar {
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.socio-sumar-titulo {
+  margin: 0;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+}
+
+.socio-sumar-campos {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1.4fr);
+  gap: var(--sp-3);
+}
+
+.socio-sumar-botones {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.socio-sumar-botones .btn-link { align-self: center; }
+
+.form.socio-descuento {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: var(--sp-2);
+}
+
+.form.socio-descuento label {
+  flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+/* Configuración → Planes: una fila por duración. */
+.plan-duraciones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 640px;
+}
+
+.plan-duraciones-cabeza,
+.plan-duracion {
+  display: grid;
+  grid-template-columns: 96px 160px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.plan-duraciones-cabeza {
+  font-size: var(--txt-2xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.plan-duracion-info {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.plan-duracion-meses { grid-column: 1; grid-row: 1; }
+.plan-duracion-precio { grid-column: 2; grid-row: 1; }
+.plan-duracion-info { grid-column: 3; grid-row: 1; }
+.plan-duracion-quitar { grid-column: 4; grid-row: 1; }
+.plan-duracion .campo-error { grid-column: 1 / -1; grid-row: 2; }
+.plan-duracion-quitar:disabled { opacity: 0.35; cursor: default; }
+
+.duraciones-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+}
+
+.duracion-etiqueta {
+  padding: 2px var(--sp-2);
+  font-size: var(--txt-xs);
+  white-space: nowrap;
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+}
+
+/* Configuración → Descuentos: los planes del combo, de a casilla. */
+.chips-elegir {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.form .chip-elegir {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+
+.form .chip-elegir input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.form .chip-elegir:has(input:checked) {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.campo-sufijo {
+  position: relative;
+  display: block;
+}
+
+.form .campo-sufijo input { width: 100%; padding-right: 32px; }
+
+.campo-sufijo > span {
+  position: absolute;
+  top: 50%;
+  right: var(--sp-3);
+  transform: translateY(-50%);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+@media (max-width: 860px) {
+  /* En el celular el precio no entra al lado del nombre: va debajo. */
+  .socio-plan {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+
+  .socio-plan .cotizacion-precio { justify-content: flex-start; text-align: left; }
+  .socio-plan-acciones .select-inline { flex: 1; min-width: 0; }
+  .socio-sumar-campos { grid-template-columns: 1fr; }
+
+  .plan-duraciones-cabeza,
+  .plan-duracion { grid-template-columns: 72px minmax(0, 1fr) 32px; }
+
+  .plan-duracion-info { grid-column: 1 / 3; grid-row: 2; }
+  .plan-duracion-quitar { grid-column: 3; grid-row: 1; }
+  .plan-duracion-meses { grid-column: 1; }
+  .plan-duracion-precio { grid-column: 2; }
+  .plan-duracion .campo-error { grid-row: 3; }
+  .plan-duraciones-cabeza span:nth-child(2) { grid-column: 2; }
+}
+
+@media (max-width: 860px) {
+  .ingreso-tarjeta { padding: var(--sp-4); }
+  .ingreso-tarjeta-cuerpo { align-items: flex-start; }
+  .ingreso-tarjeta-icono { width: 44px; height: 44px; }
+  .ingreso-tarjeta-icono .ico { width: 22px; height: 22px; }
+  .ingreso-tarjeta-estado { font-size: var(--txt-xl); }
+
+  .ingreso-tarjeta-acciones .btn,
+  .socio-cobro-cuentas .btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  .ingreso-tarjeta-acciones .btn-link { margin: 0 auto; }
+
+  .socios-herramientas .search {
+    flex-basis: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .segmento { min-height: 36px; }
 }

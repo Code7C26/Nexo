@@ -98,6 +98,21 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Facturas
           </a>
         </div>
+        <!-- Socios y cuotas (hist. §74): un módulo que se prende por negocio
+             (lo trae el gimnasio). Ingreso es la recepción; Socios, la lista;
+             Planes, los precios y descuentos (solo admin, hist. §76). -->
+        <div class="nav-seccion" data-modulo="socios">
+          <p class="nav-grupo">Socios</p>
+          <a href="#" class="nav-item" data-view="ingreso">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#door-open"></use></svg> Ingreso
+          </a>
+          <a href="#" class="nav-item" data-view="socios">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg> Socios
+          </a>
+          <a href="#" class="nav-item col-admin" data-view="planes-socio">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Planes
+          </a>
+        </div>
         <div class="nav-seccion nav-seccion-admin" data-modulo="compras">
           <p class="nav-grupo">Compras</p>
           <a href="#" class="nav-item" data-view="compras">
@@ -667,6 +682,415 @@
             <button type="button" class="btn btn-primary" id="btnPosBarraCobrar" disabled>Cobrar</button>
           </div>
         </div>
+      </section>
+
+      <!-- Vista: Ingreso (dominios/socios.js, hist. §74). La recepción busca
+           al socio que llega: si está al día, el ingreso se anota solo; si
+           debe, se ve cuánto y se cobra ahí mismo o se lo deja pasar igual. -->
+      <section class="view" data-view="ingreso" hidden>
+        <div class="ingreso">
+          <div class="ingreso-buscar">
+            <label class="visualmente-oculto" for="ingresoBuscar">Buscar socio</label>
+            <input type="search" id="ingresoBuscar" class="search" placeholder="Nombre, DNI o número de socio" autocomplete="off" enterkeyhint="go" role="combobox" aria-expanded="false" aria-controls="ingresoResultados" aria-autocomplete="list" />
+            <ul class="ingreso-resultados" id="ingresoResultados" role="listbox" aria-label="Socios que coinciden" hidden></ul>
+          </div>
+
+          <div class="ingreso-inicio" id="ingresoInicio">
+            <span class="ingreso-inicio-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#door-open"></use></svg></span>
+            <p class="ingreso-inicio-titulo">¿Quién llega?</p>
+            <p id="ingresoInicioTexto">Escribí su nombre, DNI o número de socio. Si está al día, el ingreso queda anotado solo; si debe, te avisamos antes.</p>
+          </div>
+
+          <section class="ingreso-tarjeta" id="ingresoTarjeta" aria-live="polite" hidden></section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Ingresos de hoy</h2>
+              <span class="panel-head-cuenta" id="ingresosHoyCantidad"></span>
+            </div>
+            <ul class="ingreso-lista" id="ingresosHoy"></ul>
+          </section>
+        </div>
+      </section>
+
+      <!-- Vista: Socios (dominios/socios.js). #/socios es la lista y
+           #/socios/nuevo, el alta: una página aparte, no un modal. -->
+      <section class="view" data-view="socios" hidden>
+        <div id="sociosLista">
+          <section class="ledger-strip" aria-label="Socios">
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg></span>Socios activos</span>
+              <span class="ledger-value mono" id="sociosActivos">0</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Al día</span>
+              <span class="ledger-value mono" id="sociosAlDia">0</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Deben</span>
+              <span class="ledger-value mono" id="sociosDeben">0</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label">Deuda de cuotas</span>
+              <span class="ledger-value mono ledger-warn" id="sociosDeuda">$0,00</span>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Socios</h2>
+              <a class="btn btn-primary" id="btnNuevoSocio" href="#/socios/nuevo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg> Nuevo socio</a>
+            </div>
+            <div class="socios-herramientas">
+              <input type="search" class="search" placeholder="Buscar por nombre, DNI o número" id="sociosBuscar" aria-label="Buscar socios" />
+              <div class="segmentos" role="group" aria-label="Mostrar" id="sociosFiltro">
+                <button type="button" class="segmento" data-filtro="activos" aria-pressed="true">Activos</button>
+                <button type="button" class="segmento" data-filtro="debe" aria-pressed="false">Deben</button>
+                <button type="button" class="segmento" data-filtro="al_dia" aria-pressed="false">Al día</button>
+                <button type="button" class="segmento" data-filtro="baja" aria-pressed="false">De baja</button>
+              </div>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th scope="col">N°</th>
+                  <th scope="col">Socio</th>
+                  <th scope="col">Planes</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Cuota</th>
+                  <th scope="col" class="align-right">Debe</th>
+                </tr>
+              </thead>
+              <tbody id="sociosBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="socio-alta" id="socioAlta" hidden>
+          <a class="btn-link" href="#/socios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Socios</a>
+          <form class="socio-alta-form" id="formSocioAlta" novalidate>
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Quién es?</p>
+                <div class="segmentos" role="group" aria-label="Quién es" id="socioAltaQuien">
+                  <button type="button" class="segmento" data-quien="nuevo" aria-pressed="true">Es alguien nuevo</button>
+                  <button type="button" class="segmento" data-quien="cliente" aria-pressed="false">Ya es cliente</button>
+                </div>
+                <div class="socio-alta-grupo" id="socioAltaNuevo">
+                  <label>Nombre y apellido
+                    <input type="text" name="nombre" maxlength="120" autocomplete="off" placeholder="Ej: Lucía Gómez" />
+                  </label>
+                  <div class="form-fila">
+                    <label>DNI
+                      <input type="text" name="documento" maxlength="20" inputmode="numeric" autocomplete="off" placeholder="Opcional" />
+                    </label>
+                    <label>Teléfono
+                      <input type="tel" name="telefono" maxlength="40" autocomplete="off" placeholder="Opcional" />
+                    </label>
+                  </div>
+                  <label>Email
+                    <input type="email" name="email" maxlength="120" autocomplete="off" placeholder="Opcional" />
+                  </label>
+                </div>
+                <div class="socio-alta-grupo" id="socioAltaCliente" hidden>
+                  <label>Cliente
+                    <input type="text" name="cliente" list="socioAltaClientes" autocomplete="off" placeholder="Empezá a escribir su nombre o DNI" />
+                  </label>
+                  <datalist id="socioAltaClientes"></datalist>
+                </div>
+              </div>
+            </div>
+
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> Planes</p>
+                <p class="opciones-nota">Elegí uno o varios, y cuánto dura cada uno. Si combinan con descuento, lo vas a ver abajo.</p>
+                <div class="planes-elegir" id="socioAltaPlanes"></div>
+              </div>
+            </div>
+
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">3</span> ¿Desde cuándo?</p>
+                <div class="form-fila">
+                  <label>Socio desde
+                    <input type="date" name="fecha_alta" required />
+                  </label>
+                  <label id="socioAltaDescuentoCampo" hidden>Descuento a mano
+                    <select name="descuento_id" id="socioAltaDescuento"></select>
+                  </label>
+                </div>
+                <p class="opciones-nota" id="socioAltaVencimiento" aria-live="polite"></p>
+                <ul class="cotizacion" id="socioAltaCotizacion" aria-live="polite" hidden></ul>
+              </div>
+              <div class="config-tarjeta-pie">
+                <p id="socioAltaResumen">Elegí un plan para ver la primera cuota.</p>
+                <button type="submit" class="btn btn-primary">Dar de alta</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Vista: Planes de socios (dominios/socios.js, hist. §75 y §76). Era
+           una página de Configuración; ahora está en el menú, con Socios.
+           Solo admin, porque son los precios. #/planes-socio son los planes
+           y #/planes-socio/descuentos, los descuentos y combos. -->
+      <section class="view" data-view="planes-socio" hidden>
+        <div class="planes-vista">
+          <nav class="segmentos planes-menu" aria-label="Planes y descuentos">
+            <a class="segmento" href="#/planes-socio" data-pestana="planes">Planes</a>
+            <a class="segmento" href="#/planes-socio/descuentos" data-pestana="descuentos">Descuentos y combos</a>
+          </nav>
+
+          <section class="planes-pestana" data-pestana="planes" aria-labelledby="planesSocioTitulo">
+            <header class="config-pagina-head">
+              <h2 id="planesSocioTitulo">Planes de socios</h2>
+              <p>Cada plan es una actividad o un pase, con un precio para cada duración: por mes, por dos o tres meses, por año o lo que quieras. La cuota se genera sola al empezar cada período y vence ese mismo día.</p>
+            </header>
+            <section class="panel">
+              <div class="tabla-scroll">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Plan</th>
+                    <th scope="col">Duraciones y precios</th>
+                    <th scope="col" class="align-right">Socios</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col"></th>
+                  </tr>
+                </thead>
+                <tbody id="planesSocioBody"></tbody>
+              </table>
+              </div>
+            </section>
+            <form id="formPlanSocio" class="form config-tarjeta" novalidate>
+              <input type="hidden" name="id" />
+              <div class="config-tarjeta-cuerpo">
+                <p class="config-tarjeta-titulo" id="formPlanSocioTitulo">Nuevo plan</p>
+                <label>Nombre del plan
+                  <input type="text" name="nombre" maxlength="80" placeholder="Pase libre, Musculación 3 veces, Funcional…" />
+                </label>
+                <fieldset class="opciones">
+                  <legend>Duraciones y precios</legend>
+                  <p class="opciones-nota">Cada duración tiene su precio: de 1 a 36 meses. Por ejemplo, mensual a $30.000 y trimestral a $80.000.</p>
+                  <div class="plan-duraciones" id="planDuraciones"></div>
+                  <button type="button" class="btn-link" id="btnAgregarDuracion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Agregar otra duración</button>
+                </fieldset>
+              </div>
+              <div class="config-tarjeta-pie">
+                <p id="formPlanSocioNota">Un precio nuevo rige desde la próxima cuota de cada socio. Una duración que sacás deja de ofrecerse, pero quien la tiene la sigue pagando.</p>
+                <div class="config-tarjeta-botones">
+                  <button type="button" class="btn-link" id="formPlanSocioCancelar" hidden>Cancelar</button>
+                  <button type="submit" class="btn btn-primary" id="formPlanSocioSubmit">Agregar plan</button>
+                </div>
+              </div>
+            </form>
+          </section>
+
+          <section class="planes-pestana" data-pestana="descuentos" aria-labelledby="descuentosSocioTitulo" hidden>
+            <header class="config-pagina-head">
+              <h2 id="descuentosSocioTitulo">Descuentos y combos</h2>
+              <p>Bajan solos el precio de las cuotas: cuando un socio combina ciertos planes, cuando hace varios, o el que le elijas a mano (familiar, estudiante). Si le tocan dos, se aplica el mayor.</p>
+            </header>
+            <section class="panel">
+              <div class="tabla-scroll">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Descuento</th>
+                    <th scope="col">Cuándo se aplica</th>
+                    <th scope="col" class="align-right">Porcentaje</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col"></th>
+                  </tr>
+                </thead>
+                <tbody id="descuentosSocioBody"></tbody>
+              </table>
+              </div>
+            </section>
+            <form id="formDescuentoSocio" class="form config-tarjeta" novalidate>
+              <input type="hidden" name="id" />
+              <div class="config-tarjeta-cuerpo">
+                <p class="config-tarjeta-titulo" id="formDescuentoSocioTitulo">Nuevo descuento</p>
+                <div class="form-fila">
+                  <label>Nombre
+                    <input type="text" name="nombre" maxlength="80" placeholder="Combo musculación + funcional, Familiar…" />
+                  </label>
+                  <label>Porcentaje de descuento
+                    <span class="campo-sufijo"><input type="number" name="porcentaje" min="1" max="100" step="0.5" inputmode="decimal" placeholder="10" /><span aria-hidden="true">%</span></span>
+                  </label>
+                </div>
+                <fieldset class="opciones">
+                  <legend>Cuándo se aplica</legend>
+                  <div class="opciones-tarjetas" id="descuentoAplica">
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="aplica" value="combo" checked />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Al combinar planes</span>
+                        <span class="opcion-tarjeta-desc">Cuando el socio tiene todos los planes que elijas. Baja esos planes.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="aplica" value="cantidad" />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Por cantidad de planes</span>
+                        <span class="opcion-tarjeta-desc">Cuando hace varios planes, sean cuales sean. Baja todos.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="aplica" value="manual" />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">A mano</span>
+                        <span class="opcion-tarjeta-desc">Se lo elegís a cada socio, en el alta o en su ficha: familiar, estudiante.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                  </div>
+                </fieldset>
+                <fieldset class="opciones" id="descuentoCombo">
+                  <legend>Planes del combo</legend>
+                  <div class="chips-elegir" id="descuentoPlanes"></div>
+                </fieldset>
+                <label id="descuentoCantidad" hidden>Desde cuántos planes
+                  <input type="number" name="minimo_planes" min="2" max="10" step="1" value="2" inputmode="numeric" />
+                </label>
+              </div>
+              <div class="config-tarjeta-pie">
+                <p id="formDescuentoSocioNota">Un descuento nuevo o editado rige desde la próxima cuota de cada socio.</p>
+                <div class="config-tarjeta-botones">
+                  <button type="button" class="btn-link" id="formDescuentoSocioCancelar" hidden>Cancelar</button>
+                  <button type="submit" class="btn btn-primary" id="formDescuentoSocioSubmit">Agregar descuento</button>
+                </div>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <!-- Vista: ficha de un socio -->
+      <section class="view" data-view="socio-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverSocios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a socios</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaSocioNombre">—</h2>
+            <div class="panel-acciones">
+              <button type="button" class="btn btn-secundario" id="btnSocioContacto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg> Datos de contacto</button>
+              <button type="button" class="btn btn-secundario" id="btnSocioEstado"></button>
+            </div>
+          </div>
+          <dl class="ficha-datos" id="fichaSocioDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Cuotas del socio">
+          <div class="ledger-item">
+            <span class="ledger-label">Al día hasta</span>
+            <span class="ledger-value mono" id="fichaSocioAlDia">—</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Debe de cuotas</span>
+            <span class="ledger-value mono ledger-warn" id="fichaSocioDeuda">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Ingresos del último mes</span>
+            <span class="ledger-value mono" id="fichaSocioIngresos">0</span>
+          </div>
+        </section>
+
+        <section class="panel socio-cobro" id="fichaSocioCobro" hidden>
+          <div class="socio-cobro-texto">
+            <p class="socio-cobro-titulo" id="fichaSocioCobroTitulo"></p>
+            <p class="socio-cobro-nota" id="fichaSocioCobroNota"></p>
+          </div>
+          <div class="socio-cobro-cuentas" id="fichaSocioCobroCuentas"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Planes</h2>
+            <button type="button" class="btn btn-secundario" id="btnSocioSumarPlan"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar plan</button>
+          </div>
+          <ul class="socio-planes" id="fichaSocioPlanes"></ul>
+
+          <form class="form socio-sumar" id="formSocioSumarPlan" novalidate hidden>
+            <p class="socio-sumar-titulo">Sumar un plan</p>
+            <div class="socio-sumar-campos">
+              <label>Plan
+                <select name="plan_id" id="socioSumarPlan"></select>
+              </label>
+              <label>Duración
+                <select name="opcion_id" id="socioSumarDuracion"></select>
+              </label>
+              <label>Desde
+                <input type="date" name="fecha_alta" />
+              </label>
+            </div>
+            <ul class="cotizacion" id="socioSumarCotizacion" aria-live="polite" hidden></ul>
+            <div class="socio-sumar-botones">
+              <button type="button" class="btn-link" id="btnSocioSumarCancelar">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Sumar plan</button>
+            </div>
+          </form>
+
+          <form class="form socio-descuento" id="formSocioDescuento" hidden>
+            <label>Descuento a mano
+              <select name="descuento_id" id="fichaSocioDescuento"></select>
+            </label>
+            <button type="submit" class="btn btn-secundario" disabled>Guardar</button>
+          </form>
+          <p class="form-note">Un cambio de duración o de descuento rige desde la próxima cuota: lo que ya se generó queda con su precio. Si le tocan varios descuentos, se aplica el mayor.</p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Cuotas</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Período</th>
+                <th scope="col">Plan</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Venta</th>
+              </tr>
+            </thead>
+            <tbody id="fichaSocioCuotas"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Últimos ingresos</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Cuándo</th>
+                <th scope="col">Cómo estaba</th>
+                <th scope="col">Lo atendió</th>
+              </tr>
+            </thead>
+            <tbody id="fichaSocioIngresosBody"></tbody>
+          </table>
+          </div>
+        </section>
       </section>
 
       <!-- Vista: Ventas -->
@@ -1860,7 +2284,7 @@
            tema, en vez del modal de antes. Cada página es su propio
            formulario con su "Guardar cambios". Las páginas de admin llevan
            .col-admin: el empleado ve solo Apariencia. Sumar una página (IVA,
-           ARCA, socios) es agregar su ítem al menú, su <section> y su
+           ARCA) es agregar su ítem al menú, su <section> y su
            entrada en SECCIONES de dominios/configuracion.js.
            En el celular, #/configuracion es la lista y cada ítem lleva a su
            página, con "Configuración" para volver. -->

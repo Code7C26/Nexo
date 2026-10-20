@@ -19,7 +19,11 @@ const MODULO_DE_VISTA = {
   "devoluciones-proveedor": "compras",
   "devolucion-proveedor-detalle": "compras",
   stock: "stock",
-  "reportes-stock": "stock"
+  "reportes-stock": "stock",
+  ingreso: "socios",
+  socios: "socios",
+  "socio-detalle": "socios",
+  "planes-socio": "socios"
 };
 
 // Un título y un dominio por vista, para que la topbar diga siempre
@@ -45,6 +49,9 @@ const VISTAS_CONSTRUIDAS = {
   ventas: { titulo: "Ventas", dominio: "Embudo de venta" },
   devoluciones: { titulo: "Devoluciones", dominio: "Embudo de venta" },
   facturas: { titulo: "Facturas", dominio: "Embudo de venta" },
+  ingreso: { titulo: "Ingreso", dominio: "Socios" },
+  socios: { titulo: "Socios", dominio: "Socios" },
+  "planes-socio": { titulo: "Planes", dominio: "Socios" },
   compras: { titulo: "Compras", dominio: "Embudo de compra" },
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
   stock: { titulo: "Stock", dominio: "Stock" },
@@ -70,6 +77,7 @@ const VISTAS_CONSTRUIDAS = {
   "producto-detalle": { titulo: "Producto", dominio: "Maestros", nav: "productos", esFicha: true },
   "cliente-detalle": { titulo: "Cliente", dominio: "Maestros", nav: "clientes", esFicha: true },
   "proveedor-detalle": { titulo: "Proveedor", dominio: "Maestros", nav: "proveedores", esFicha: true },
+  "socio-detalle": { titulo: "Socio", dominio: "Socios", nav: "socios", esFicha: true },
 
   placeholder: { titulo: "Próximamente", dominio: "Nexo", esFicha: true }
 };
@@ -93,7 +101,8 @@ const VISTAS_SOLO_ADMIN = new Set([
   "compra-detalle",
   "devoluciones-proveedor",
   "devolucion-proveedor-detalle",
-  "auditoria"
+  "auditoria",
+  "planes-socio"
 ]);
 
 // `subruta` es lo que va después de la vista en el hash (#/configuracion/negocio):
@@ -163,8 +172,14 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
 
 // Vistas que existieron con otro nombre y se fusionaron/renombraron: un
 // bookmark o un link viejo a "reportes-ventas" debe abrir Resumen en vez
-// de quedar muerto. Usuarios pasó a ser una página de Configuración.
-const VISTAS_RENOMBRADAS = { "reportes-ventas": "dashboard", usuarios: "configuracion/usuarios" };
+// de quedar muerto. Usuarios pasó a ser una página de Configuración, y los
+// planes y descuentos de socios salieron de ahí a su propia vista (hist. §76).
+const VISTAS_RENOMBRADAS = {
+  "reportes-ventas": "dashboard",
+  usuarios: "configuracion/usuarios",
+  "configuracion/planes-socio": "planes-socio",
+  "configuracion/descuentos-socio": "planes-socio/descuentos"
+};
 
 function rutaDesdeHash() {
   const ruta = (location.hash || "").replace(/^#\/?/, "");

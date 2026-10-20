@@ -34,7 +34,8 @@ if (process.env.NEXO_BACKUP !== 'off') {
 
 const db = new DatabaseSync(dbPath);
 
-db.exec(readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+const schemaSql = readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+db.exec(schemaSql);
 
 // organizaciones: no es un dato de ejemplo, es infraestructura real —
 // usuarios.organizacion_id la necesita para existir, y desde la Etapa A
@@ -1669,6 +1670,98 @@ db.exec(`
   UPDATE organizaciones SET condicion_iva = 'exento'
    WHERE LOWER(condicion_iva) LIKE '%exent%' AND condicion_iva <> 'exento';
 `);
+
+// Socios con varias duraciones por plan, varios planes por socio y descuentos
+// (hist. §75). La primera versión del módulo (hist. §74) guardaba una sola
+// duración en planes_socio y un solo plan en socios. Si la base todavía tiene
+// esa forma, pasa a la nueva sin perder nada, en una transacción:
+// - cada plan conserva su id, y su duración pasa a ser su primera opción, con
+//   el precio de su servicio; una duración vieja que solo quedó en alguna
+//   cuota entra pausada, con el precio que se cobró;
+// - cada socio conserva su id, y su plan pasa a ser una inscripción con ese
+//   mismo id (activo pasa a activa);
+// - cada cuota conserva su id y su venta, cuelga de esa inscripción y guarda
+//   como precio de lista el que se cobró (no había descuentos);
+// - ingresos_socio no cambia.
+// Las tablas nuevas ya las creó schema.sql al principio de este archivo; las
+// tres que cambian se reconstruyen con su definición de schema.sql, así no hay
+// una segunda copia que se pueda desincronizar.
+if (db.prepare('PRAGMA table_info(planes_socio)').all().some((col) => col.name === 'duracion_meses')) {
+  const definicion = (tabla) => {
+    const encontrada = new RegExp(`CREATE TABLE IF NOT EXISTS ${tabla} \\(([\\s\\S]*?)\\n\\);`).exec(schemaSql);
+    if (!encontrada) throw new Error(`schema.sql no tiene la tabla ${tabla}`);
+    return encontrada[1];
+  };
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      INSERT INTO planes_socio_opciones (plan_id, meses, precio, activo)
+      SELECT planes_socio.id, planes_socio.duracion_meses, productos.precio_venta, 1
+        FROM planes_socio JOIN productos ON productos.id = planes_socio.producto_id;
+      INSERT INTO planes_socio_opciones (plan_id, meses, precio, activo)
+      SELECT DISTINCT cuotas_socio.plan_id, cuotas_socio.meses,
+             (SELECT venta_items.precio_unitario FROM cuotas_socio anterior
+                JOIN venta_items ON venta_items.venta_id = anterior.venta_id
+               WHERE anterior.plan_id = cuotas_socio.plan_id AND anterior.meses = cuotas_socio.meses
+               ORDER BY anterior.desde DESC LIMIT 1),
+             0
+        FROM cuotas_socio
+       WHERE NOT EXISTS (SELECT 1 FROM planes_socio_opciones
+                          WHERE planes_socio_opciones.plan_id = cuotas_socio.plan_id
+                            AND planes_socio_opciones.meses = cuotas_socio.meses);
+      INSERT INTO inscripciones_socio (id, socio_id, plan_id, opcion_id, fecha_alta, ciclo_desde, cobrar_desde, estado, fecha_baja)
+      SELECT socios.id, socios.id, socios.plan_id,
+             (SELECT planes_socio_opciones.id FROM planes_socio_opciones
+                JOIN planes_socio ON planes_socio.id = planes_socio_opciones.plan_id
+               WHERE planes_socio_opciones.plan_id = socios.plan_id
+                 AND planes_socio_opciones.meses = planes_socio.duracion_meses),
+             socios.fecha_alta, socios.ciclo_desde, socios.cobrar_desde,
+             CASE socios.estado WHEN 'baja' THEN 'baja' ELSE 'activa' END, socios.fecha_baja
+        FROM socios;
+    `);
+    db.exec(`CREATE TABLE cuotas_socio_nueva (${definicion('cuotas_socio')})`);
+    db.exec(`
+      INSERT INTO cuotas_socio_nueva (id, inscripcion_id, opcion_id, venta_id, desde, hasta, meses, precio_lista, descuento_pct, descuento_id)
+      SELECT cuotas_socio.id, cuotas_socio.socio_id,
+             (SELECT planes_socio_opciones.id FROM planes_socio_opciones
+               WHERE planes_socio_opciones.plan_id = cuotas_socio.plan_id
+                 AND planes_socio_opciones.meses = cuotas_socio.meses),
+             cuotas_socio.venta_id, cuotas_socio.desde, cuotas_socio.hasta, cuotas_socio.meses,
+             COALESCE((SELECT venta_items.precio_unitario FROM venta_items
+                        WHERE venta_items.venta_id = cuotas_socio.venta_id ORDER BY venta_items.id LIMIT 1), 0),
+             0, NULL
+        FROM cuotas_socio;
+      DROP TABLE cuotas_socio;
+      ALTER TABLE cuotas_socio_nueva RENAME TO cuotas_socio;
+    `);
+    db.exec(`CREATE TABLE socios_nueva (${definicion('socios')})`);
+    db.exec(`
+      INSERT INTO socios_nueva (id, cliente_id, numero, fecha_alta, descuento_id, organizacion_id)
+      SELECT id, cliente_id, numero, fecha_alta, NULL, organizacion_id FROM socios;
+      DROP TABLE socios;
+      ALTER TABLE socios_nueva RENAME TO socios;
+    `);
+    db.exec(`CREATE TABLE planes_socio_nueva (${definicion('planes_socio')})`);
+    db.exec(`
+      INSERT INTO planes_socio_nueva (id, producto_id, organizacion_id)
+      SELECT id, producto_id, organizacion_id FROM planes_socio;
+      DROP TABLE planes_socio;
+      ALTER TABLE planes_socio_nueva RENAME TO planes_socio;
+    `);
+    const huerfanas = ['planes_socio', 'planes_socio_opciones', 'socios', 'inscripciones_socio', 'cuotas_socio', 'ingresos_socio'].flatMap(
+      (tabla) => db.prepare(`PRAGMA foreign_key_check(${tabla})`).all()
+    );
+    if (huerfanas.length) {
+      throw new Error(`socios: ${huerfanas.length} fila(s) con FK rota, ej. ${JSON.stringify(huerfanas[0])}`);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
 
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de

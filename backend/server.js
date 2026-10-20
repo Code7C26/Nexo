@@ -1849,6 +1849,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // un ajuste porcentual lea el precio real que tiene el producto en esa
   // lista en este momento, no un valor ya modificado por este mismo pedido.
   let preciosPorLista = null;
+  let cambiaPrecioDeLista = false;
   if (cambios.precios && typeof cambios.precios === 'object') {
     const preciosActuales = db
       .prepare('SELECT lista_precio_id, precio FROM producto_precios WHERE producto_id = ?')
@@ -1873,6 +1874,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
         throw new ErrorBulk('El precio debe ser un número mayor o igual a 0.');
       }
       preciosPorLista[listaId] = precioNuevo;
+      if (precioNuevo !== precioBase) cambiaPrecioDeLista = true;
     }
   }
 
@@ -1897,6 +1899,13 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       throw new ErrorBulk(`"${producto.nombre}" tiene stock: ajustalo a 0 antes de pasarlo a servicio.`);
     }
   }
+  // El servicio de un plan de socios se vende como cuota (hist. §74): con
+  // stock, cada cuota sacaría mercadería que no existe. Y su precio es el de
+  // cada duración del plan (hist. §75): se cambia desde Configuración.
+  const esPlanDeSocios = Boolean(db.prepare('SELECT 1 FROM planes_socio WHERE producto_id = ?').get(productoId));
+  if (esPlanDeSocios && nuevo.tipo !== 'servicio') {
+    throw new ErrorBulk(`"${producto.nombre}" es un plan de socios: tiene que seguir siendo un servicio.`);
+  }
   // Si el pedido tocó el precio de la lista PREDETERMINADA vía `precios`,
   // ese valor también pisa precio_venta — son la misma cosa vista desde dos
   // lugares (columna suelta vs. fila de producto_precios), y no deben poder
@@ -1908,6 +1917,9 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     .get(req.usuario.organizacion_id);
   if (preciosPorLista && listaPredeterminada && preciosPorLista[listaPredeterminada.id] !== undefined) {
     nuevo.precio_venta = preciosPorLista[listaPredeterminada.id];
+  }
+  if (esPlanDeSocios && (cambiaPrecioDeLista || nuevo.precio_venta !== producto.precio_venta)) {
+    throw new ErrorBulk(`El precio de "${producto.nombre}" se cambia en Socios → Planes: cada duración tiene el suyo.`);
   }
   // precio_costo no entra en este diff: es el promedio ponderado que
   // recalculan las compras (recalcularCostoProducto), no algo que este
@@ -9196,12 +9208,13 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
 // `descripcion` e `icono` (id del sprite del frontend) son lo que muestran las
 // tarjetas del alta guiada y de Configuración: viven acá para que la lista de
 // tipos esté en un solo lugar.
-const MODULOS = ['pos', 'presupuestos', 'compras', 'stock'];
+const MODULOS = ['pos', 'presupuestos', 'compras', 'stock', 'socios'];
 const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
   compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
-  stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' }
+  stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
+  socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
 };
 const PERFILES_RUBRO = {
   comercio: {
@@ -9245,14 +9258,14 @@ const PERFILES_RUBRO = {
     modulos: ['presupuestos']
   },
   // Un gimnasio también compra y vende productos (hist. §71): es un comercio
-  // al que se le suman los socios y sus cuotas.
+  // al que se le suman los socios y sus cuotas (hist. §74).
   gimnasio: {
     nombre: 'Gimnasio',
-    descripcion: 'Venta de suplementos, bebidas y ropa. Socios y cuotas, muy pronto.',
+    descripcion: 'Socios con planes, cuotas e ingreso en la recepción, y venta de suplementos, bebidas y ropa.',
     icono: 'dumbbell',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
+    modulos: ['pos', 'compras', 'stock', 'socios']
   }
 };
 const RUBRO_POR_DEFECTO = 'comercio';
@@ -9682,7 +9695,9 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
 // lo que lee el lector de código de barras). Precio de la lista
 // predeterminada, con la misma cadena que la pantalla de ventas (variante →
 // precio propio de la variante → producto), y stock del depósito
-// predeterminado, que es de donde sale una venta de mostrador.
+// predeterminado, que es de donde sale una venta de mostrador. Los planes de
+// socios no están: una cuota se cobra desde Socios, colgada de su período
+// (hist. §74), no como una venta suelta.
 app.get('/api/pos/catalogo', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const depositoId = depositoPredeterminadoId(organizacionId);
@@ -9700,7 +9715,8 @@ app.get('/api/pos/catalogo', (req, res) => {
          LEFT JOIN categorias ON categorias.id = productos.categoria_id
         WHERE productos.organizacion_id = ? AND productos.activo = 1
           AND NOT EXISTS (SELECT 1 FROM producto_variantes
-                           WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1)`
+                           WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1)
+          AND NOT EXISTS (SELECT 1 FROM planes_socio WHERE planes_socio.producto_id = productos.id)`
     )
     .all(depositoId, organizacionId);
   const variantes = db
@@ -9718,7 +9734,8 @@ app.get('/api/pos/catalogo', (req, res) => {
            ON stock_variante_por_deposito.variante_id = producto_variantes.id
           AND stock_variante_por_deposito.deposito_id = ?
          LEFT JOIN categorias ON categorias.id = productos.categoria_id
-        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND producto_variantes.activo = 1`
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND producto_variantes.activo = 1
+          AND NOT EXISTS (SELECT 1 FROM planes_socio WHERE planes_socio.producto_id = productos.id)`
     )
     .all(listaId ?? null, depositoId, organizacionId)
     .map((v) => ({ ...v, nombre: `${v.nombre} — ${combinacionVariante(v.variante_id)}` }));
@@ -9807,6 +9824,1210 @@ app.post('/api/pos/ventas', (req, res) => {
     return res.status(400).json({ error: mensajeDeError(err) });
   }
   res.status(201).json({ id: ventaId, total, cobrado });
+});
+
+/* ---------- Socios, planes y cuotas (CLAUDE.md §29, hist. §74 y §75) ---------- */
+
+// El módulo `socios` (ver planes_socio y las tablas que la siguen en
+// schema.sql). El socio es un cliente; cada plan es un servicio del catálogo
+// con un precio por duración, y cada cuota es una venta de ese servicio: la
+// cobran los cobros de siempre, y la ven las cuentas corrientes, la caja y los
+// reportes sin saber que este módulo existe. Un socio puede hacer varios planes
+// a la vez (inscripciones_socio), cada uno con su ciclo y sus cuotas, y los
+// descuentos (descuentos_socio) bajan el precio de cada cuota al generarla.
+//
+// Las cuotas se generan cuando se mira a un socio (el listado, la ficha, el
+// ingreso, el cobro), sin cron: ponerCuotasAlDia() es idempotente y arma solo
+// los períodos que faltan hasta hoy. "Hoy" es el día local (fechaDeHoy), el de
+// la recepción, y no el de UTC.
+
+const NOMBRES_DURACION = { 1: 'Mensual', 2: 'Bimestral', 3: 'Trimestral', 4: 'Cuatrimestral', 6: 'Semestral', 12: 'Anual' };
+const MAX_MESES_PLAN = 36;
+const MAX_DURACIONES_PLAN = 12;
+const MAX_PLANES_SOCIO = 10;
+// Cuándo se aplica un descuento (descuentos_socio.aplica, sin CHECK).
+const APLICA_DESCUENTO = ['combo', 'cantidad', 'manual'];
+// Un alta muy vieja haría recorrer cientos de períodos en cada consulta; un
+// alta a futuro sirve para anotar a alguien que empieza la semana que viene.
+const FECHA_MINIMA_SOCIO = '2000-01-01';
+const DIAS_ALTA_ADELANTADA = 90;
+const MAX_PERIODOS_SOCIO = 400;
+const LARGOS_SOCIO = { nombre: 120, documento: 20, telefono: 40, email: 120 };
+const fechaLegible = (iso) => iso.split('-').reverse().join('/');
+const nombreDuracion = (meses) => NOMBRES_DURACION[meses] ?? (meses % 12 === 0 ? `${meses / 12} años` : `${meses} meses`);
+const planYDuracion = (plan, meses) => `${plan} (${nombreDuracion(meses).toLowerCase()})`;
+
+// La misma fecha n meses después; si ese mes no tiene el día (31 de enero más
+// un mes), el último del mes. Se cuenta siempre desde el inicio del ciclo y no
+// encadenado: el 31 de enero da 28 de febrero y después 31 de marzo.
+function sumarMeses(iso, n) {
+  const { y, m, d } = partesISO(iso);
+  const ultimoDia = partesISO(fechaISO(y, m + n + 1, 0)).d;
+  return fechaISO(y, m + n, Math.min(d, ultimoDia));
+}
+
+/* Planes y sus duraciones */
+
+// Los planes de la empresa con sus duraciones, de la más corta a la más larga.
+// Las duraciones pausadas vienen igual: un socio puede seguir en una.
+function planesDeLaEmpresa(organizacionId, planId = null) {
+  const planes = db
+    .prepare(
+      `SELECT planes_socio.id, planes_socio.producto_id, productos.nombre, productos.activo,
+              (SELECT COUNT(DISTINCT inscripciones_socio.socio_id) FROM inscripciones_socio
+                WHERE inscripciones_socio.plan_id = planes_socio.id
+                  AND inscripciones_socio.estado = 'activa') AS socios_activos
+         FROM planes_socio
+         JOIN productos ON productos.id = planes_socio.producto_id
+        WHERE planes_socio.organizacion_id = ? AND (? IS NULL OR planes_socio.id = ?)
+        ORDER BY productos.activo DESC, productos.nombre`
+    )
+    .all(organizacionId, planId, planId);
+  const opciones = db
+    .prepare(
+      `SELECT planes_socio_opciones.id, planes_socio_opciones.plan_id, planes_socio_opciones.meses,
+              planes_socio_opciones.precio, planes_socio_opciones.activo
+         FROM planes_socio_opciones
+         JOIN planes_socio ON planes_socio.id = planes_socio_opciones.plan_id
+        WHERE planes_socio.organizacion_id = ? AND (? IS NULL OR planes_socio.id = ?)
+        ORDER BY planes_socio_opciones.meses`
+    )
+    .all(organizacionId, planId, planId);
+  return planes.map((p) => ({
+    ...p,
+    activo: Boolean(p.activo),
+    opciones: opciones
+      .filter((o) => o.plan_id === p.id)
+      .map((o) => ({ ...o, activo: Boolean(o.activo), duracion: nombreDuracion(o.meses) }))
+  }));
+}
+
+// esIdValido primero: con un id que no es número, el "? IS NULL" de arriba
+// devolvería todos los planes.
+const planDeLaEmpresa = (id, organizacionId) => (esIdValido(id) ? planesDeLaEmpresa(organizacionId, id)[0] ?? null : null);
+
+function opcionDeLaEmpresa(opcionId, organizacionId) {
+  if (!esIdValido(opcionId)) return null;
+  return (
+    db
+      .prepare(
+        `SELECT planes_socio_opciones.id, planes_socio_opciones.plan_id, planes_socio_opciones.meses,
+                planes_socio_opciones.precio, planes_socio_opciones.activo, productos.nombre AS plan,
+                productos.activo AS plan_activo
+           FROM planes_socio_opciones
+           JOIN planes_socio ON planes_socio.id = planes_socio_opciones.plan_id
+           JOIN productos ON productos.id = planes_socio.producto_id
+          WHERE planes_socio_opciones.id = ? AND planes_socio.organizacion_id = ?`
+      )
+      .get(opcionId, organizacionId) ?? null
+  );
+}
+
+const textoOpciones = (opciones) => opciones.map((o) => `${nombreDuracion(o.meses)} $${o.precio}`).join(', ');
+
+// Nombre y duraciones de un plan, para el alta y la edición. Con `parcial`
+// solo mira lo que viene.
+function validarPlan(cuerpo, { parcial }) {
+  const viene = (campo) => cuerpo?.[campo] !== undefined;
+  const datos = {};
+  if (!parcial || viene('nombre')) {
+    const nombre = typeof cuerpo?.nombre === 'string' ? cuerpo.nombre.trim() : '';
+    if (!nombre) return { error: 'El plan necesita un nombre.' };
+    if (nombre.length > 80) return { error: 'El nombre del plan no puede pasar de 80 caracteres.' };
+    datos.nombre = nombre;
+  }
+  if (!parcial || viene('opciones')) {
+    const lista = cuerpo?.opciones;
+    if (!Array.isArray(lista) || lista.length === 0) {
+      return { error: 'El plan necesita al menos una duración con su precio.' };
+    }
+    if (lista.length > MAX_DURACIONES_PLAN) return { error: `Un plan puede tener hasta ${MAX_DURACIONES_PLAN} duraciones.` };
+    const opciones = [];
+    for (const opcion of lista) {
+      if (!Number.isInteger(opcion?.meses) || opcion.meses < 1 || opcion.meses > MAX_MESES_PLAN) {
+        return { error: `Cada duración tiene que ser de 1 a ${MAX_MESES_PLAN} meses.` };
+      }
+      // Una cuota de $0 quedaría "pendiente" para siempre: no hay cobro de $0.
+      // Un plan gratis se arma con un descuento del 100%.
+      if (!esNumeroValido(opcion.precio) || !(opcion.precio > 0)) {
+        return { error: `El precio de "${nombreDuracion(opcion.meses)}" tiene que ser un número mayor a 0.` };
+      }
+      if (opciones.some((o) => o.meses === opcion.meses)) {
+        return { error: `La duración "${nombreDuracion(opcion.meses)}" está dos veces.` };
+      }
+      opciones.push({ meses: opcion.meses, precio: redondear2(opcion.precio) });
+    }
+    datos.opciones = opciones.sort((a, b) => a.meses - b.meses);
+  }
+  if (viene('activo')) {
+    if (typeof cuerpo.activo !== 'boolean') return { error: 'El estado del plan no es válido.' };
+    datos.activo = cuerpo.activo ? 1 : 0;
+  }
+  return { datos };
+}
+
+function nombreDePlanRepetido(nombre, organizacionId, excluirPlanId = 0) {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM planes_socio JOIN productos ON productos.id = planes_socio.producto_id
+          WHERE planes_socio.organizacion_id = ? AND LOWER(productos.nombre) = LOWER(?) AND planes_socio.id <> ?`
+      )
+      .get(organizacionId, nombre, excluirPlanId)
+  );
+}
+
+// Las duraciones que llegan reemplazan a las de antes: la misma cantidad de
+// meses actualiza su precio, una nueva se crea y la que falta se pausa, sin
+// borrarse (puede tener socios y cuotas). Va DENTRO de una transacción.
+function guardarOpciones(planId, opciones) {
+  const existentes = db.prepare('SELECT id, meses FROM planes_socio_opciones WHERE plan_id = ?').all(planId);
+  const actualizar = db.prepare('UPDATE planes_socio_opciones SET precio = ?, activo = 1 WHERE id = ?');
+  const insertar = db.prepare('INSERT INTO planes_socio_opciones (plan_id, meses, precio) VALUES (?, ?, ?)');
+  const pausar = db.prepare('UPDATE planes_socio_opciones SET activo = 0 WHERE id = ?');
+  for (const opcion of opciones) {
+    const existente = existentes.find((e) => e.meses === opcion.meses);
+    if (existente) actualizar.run(opcion.precio, existente.id);
+    else insertar.run(planId, opcion.meses, opcion.precio);
+  }
+  for (const existente of existentes) {
+    if (!opciones.some((o) => o.meses === existente.meses)) pausar.run(existente.id);
+  }
+}
+
+// El precio del servicio en el catálogo es el de la duración más corta (lo que
+// se lee "desde $…"): es solo de referencia, lo que se cobra sale de la
+// duración de cada socio. Como precio_venta y el de la lista predeterminada son
+// el mismo dato (CLAUDE.md §18), van los dos. Va DENTRO de una transacción.
+function sincronizarPrecioPlan(planId, productoId, organizacionId) {
+  const { precio } = db
+    .prepare('SELECT precio FROM planes_socio_opciones WHERE plan_id = ? AND activo = 1 ORDER BY meses LIMIT 1')
+    .get(planId);
+  db.prepare('UPDATE productos SET precio_venta = ? WHERE id = ?').run(precio, productoId);
+  db.prepare(
+    `UPDATE producto_precios SET precio = ?
+      WHERE producto_id = ?
+        AND lista_precio_id = (SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?)`
+  ).run(precio, productoId, organizacionId);
+}
+
+/* Descuentos */
+
+function descuentosDeLaEmpresa(organizacionId) {
+  const descuentos = db
+    .prepare(
+      `SELECT id, nombre, porcentaje, aplica, minimo_planes, activo FROM descuentos_socio
+        WHERE organizacion_id = ? ORDER BY activo DESC, nombre`
+    )
+    .all(organizacionId);
+  const planes = db
+    .prepare(
+      `SELECT descuento_socio_planes.descuento_id, planes_socio.id, productos.nombre
+         FROM descuento_socio_planes
+         JOIN planes_socio ON planes_socio.id = descuento_socio_planes.plan_id
+         JOIN productos ON productos.id = planes_socio.producto_id
+        WHERE planes_socio.organizacion_id = ?
+        ORDER BY productos.nombre`
+    )
+    .all(organizacionId);
+  return descuentos.map((d) => ({
+    ...d,
+    activo: Boolean(d.activo),
+    planes: planes.filter((p) => p.descuento_id === d.id).map(({ id, nombre }) => ({ id, nombre }))
+  }));
+}
+
+// El descuento que le toca a un plan, según los planes que el socio tiene
+// activos y su descuento a mano: el mayor de los que se aplican, nunca la suma.
+function mejorDescuento(planId, planesActivos, descuentoManualId, descuentos) {
+  let mejor = null;
+  for (const d of descuentos) {
+    if (!d.activo) continue;
+    const seAplica =
+      (d.aplica === 'manual' && d.id === descuentoManualId) ||
+      (d.aplica === 'cantidad' && planesActivos.size >= d.minimo_planes) ||
+      (d.aplica === 'combo' && d.planes.some((p) => p.id === planId) && d.planes.every((p) => planesActivos.has(p.id)));
+    if (seAplica && (!mejor || d.porcentaje > mejor.porcentaje)) mejor = d;
+  }
+  return mejor;
+}
+
+const conDescuento = (precio, porcentaje) => redondear2(precio * (1 - porcentaje / 100));
+const resumenDescuento = (d) => (d ? { id: d.id, nombre: d.nombre, porcentaje: d.porcentaje } : null);
+function textoAplica(d) {
+  if (d.aplica === 'combo') return `combo de ${d.planes.map((p) => p.nombre).join(' + ')}`;
+  if (d.aplica === 'cantidad') return `desde ${d.minimo_planes} planes`;
+  return 'a mano';
+}
+
+function validarDescuento(cuerpo, organizacionId) {
+  const nombre = typeof cuerpo?.nombre === 'string' ? cuerpo.nombre.trim() : '';
+  if (!nombre) return { error: 'El descuento necesita un nombre.' };
+  if (nombre.length > 80) return { error: 'El nombre del descuento no puede pasar de 80 caracteres.' };
+  if (!esNumeroValido(cuerpo.porcentaje) || !(cuerpo.porcentaje > 0) || cuerpo.porcentaje > 100) {
+    return { error: 'El porcentaje tiene que ser un número de más de 0 y hasta 100.' };
+  }
+  if (!APLICA_DESCUENTO.includes(cuerpo.aplica)) return { error: 'Elegí cuándo se aplica el descuento.' };
+  const datos = { nombre, porcentaje: redondear2(cuerpo.porcentaje), aplica: cuerpo.aplica, minimo_planes: null, planes: [] };
+  if (cuerpo.aplica === 'combo') {
+    const ids = cuerpo.planes;
+    if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.length < 2 || ids.length > MAX_PLANES_SOCIO) {
+      return { error: 'Un combo necesita al menos dos planes distintos.' };
+    }
+    const planes = planesDeLaEmpresa(organizacionId);
+    for (const id of ids) {
+      const plan = planes.find((p) => p.id === id);
+      if (!plan) return { error: 'Uno de los planes del combo no existe.' };
+      datos.planes.push({ id: plan.id, nombre: plan.nombre });
+    }
+  }
+  if (cuerpo.aplica === 'cantidad') {
+    const minimo = cuerpo.minimo_planes;
+    if (!Number.isInteger(minimo) || minimo < 2 || minimo > MAX_PLANES_SOCIO) {
+      return { error: `Indicá desde cuántos planes se aplica: de 2 a ${MAX_PLANES_SOCIO}.` };
+    }
+    datos.minimo_planes = minimo;
+  }
+  return { datos };
+}
+
+function nombreDeDescuentoRepetido(nombre, organizacionId, excluirId = 0) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM descuentos_socio WHERE organizacion_id = ? AND LOWER(nombre) = LOWER(?) AND id <> ?')
+      .get(organizacionId, nombre, excluirId)
+  );
+}
+
+// El descuento a mano que se le elige a un socio: ninguno (null) o uno de la
+// empresa, de los que se aplican a mano y están activos.
+function descuentoManualPedido(valor, organizacionId) {
+  if (valor == null || valor === '') return { id: null };
+  const descuento = esIdValido(valor)
+    ? db
+        .prepare("SELECT id, nombre FROM descuentos_socio WHERE id = ? AND organizacion_id = ? AND aplica = 'manual' AND activo = 1")
+        .get(valor, organizacionId)
+    : null;
+  return descuento ? { id: descuento.id, nombre: descuento.nombre } : { error: 'Ese descuento no existe o no se elige a mano.' };
+}
+
+/* Inscripciones y cuotas */
+
+const SELECT_INSCRIPCION = `
+  SELECT inscripciones_socio.id, inscripciones_socio.socio_id, inscripciones_socio.plan_id,
+         inscripciones_socio.opcion_id, inscripciones_socio.fecha_alta, inscripciones_socio.ciclo_desde,
+         inscripciones_socio.cobrar_desde, inscripciones_socio.estado, inscripciones_socio.fecha_baja,
+         planes_socio.producto_id, productos.nombre AS plan, planes_socio_opciones.meses,
+         planes_socio_opciones.precio AS precio_lista
+    FROM inscripciones_socio
+    JOIN socios ON socios.id = inscripciones_socio.socio_id
+    JOIN planes_socio ON planes_socio.id = inscripciones_socio.plan_id
+    JOIN productos ON productos.id = planes_socio.producto_id
+    JOIN planes_socio_opciones ON planes_socio_opciones.id = inscripciones_socio.opcion_id`;
+
+const planesActivosDe = (socioId) =>
+  new Set(
+    db
+      .prepare("SELECT plan_id FROM inscripciones_socio WHERE socio_id = ? AND estado = 'activa'")
+      .all(socioId)
+      .map((f) => f.plan_id)
+  );
+
+// Arma las cuotas que le faltan a un plan de un socio hasta hoy. Los períodos
+// se cuentan desde ciclo_desde: cada cuota que ya existe ocupa sus meses (los
+// de su duración en ese momento) y cada una nueva usa la duración de hoy, así
+// un cambio de duración rige desde la cuota siguiente. Lo que termina antes de
+// cobrar_desde no se cobra. El descuento es el que le toca hoy con los planes
+// que tiene activos. La venta lleva la fecha en que empieza el período y vence
+// ese mismo día: la cuota se paga por adelantado. Va DENTRO de una transacción,
+// después de anotar todos los planes del socio (un combo los mira a todos).
+function generarCuotasDe(inscripcionId, hoy) {
+  const plan = db.prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.id = ?`).get(inscripcionId);
+  const socio = db.prepare('SELECT id, cliente_id, numero, descuento_id, organizacion_id FROM socios WHERE id = ?').get(plan.socio_id);
+  const descuento = mejorDescuento(plan.plan_id, planesActivosDe(socio.id), socio.descuento_id, descuentosDeLaEmpresa(socio.organizacion_id));
+  const porcentaje = descuento?.porcentaje ?? 0;
+  const existentes = new Map(
+    db
+      .prepare('SELECT desde, meses FROM cuotas_socio WHERE inscripcion_id = ? AND desde >= ?')
+      .all(plan.id, plan.ciclo_desde)
+      .map((c) => [c.desde, c.meses])
+  );
+  const insertarCuota = db.prepare(
+    `INSERT INTO cuotas_socio (inscripcion_id, opcion_id, venta_id, desde, hasta, meses, precio_lista, descuento_pct, descuento_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  let meses = 0;
+  for (let vuelta = 0; vuelta < MAX_PERIODOS_SOCIO; vuelta++) {
+    const desde = sumarMeses(plan.ciclo_desde, meses);
+    if (desde > hoy) return;
+    if (existentes.has(desde)) {
+      meses += existentes.get(desde);
+      continue;
+    }
+    meses += plan.meses;
+    const hasta = sumarDias(sumarMeses(plan.ciclo_desde, meses), -1);
+    if (hasta < plan.cobrar_desde) continue;
+    const ventaId = crearVenta({
+      cliente_id: socio.cliente_id,
+      items: [{ producto_id: plan.producto_id, cantidad: 1, precio_unitario: conDescuento(plan.precio_lista, porcentaje) }],
+      fecha: desde,
+      organizacion_id: socio.organizacion_id
+    });
+    insertarCuota.run(plan.id, plan.opcion_id, ventaId, desde, hasta, plan.meses, plan.precio_lista, porcentaje, descuento?.id ?? null);
+    // Actor sistema y sin usuario: nadie la cargó, la generó Nexo al empezar
+    // el período (CLAUDE.md §22).
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      operacion_tipo: 'socio',
+      operacion_id: socio.id,
+      detalle:
+        `Cuota del socio N° ${socio.numero}, ${planYDuracion(plan.plan, plan.meses)}, del ${fechaLegible(desde)} al ${fechaLegible(hasta)}` +
+        (porcentaje ? `, con ${porcentaje}% de descuento (${descuento.nombre})` : ''),
+      organizacion_id: socio.organizacion_id
+    });
+  }
+}
+
+// Genera lo que falte a los planes activos de la empresa, o de un socio. Solo
+// abre una transacción si a alguno le falta el período de hoy, que es lo raro:
+// el listado se mira muchas veces por día.
+function ponerCuotasAlDia(organizacionId, socioId = null) {
+  const hoy = fechaDeHoy();
+  const pendientes = db
+    .prepare(
+      `SELECT inscripciones_socio.id FROM inscripciones_socio
+         JOIN socios ON socios.id = inscripciones_socio.socio_id
+        WHERE socios.organizacion_id = ? AND (? IS NULL OR socios.id = ?)
+          AND inscripciones_socio.estado = 'activa' AND inscripciones_socio.ciclo_desde <= ?
+          AND NOT EXISTS (SELECT 1 FROM cuotas_socio
+                           WHERE cuotas_socio.inscripcion_id = inscripciones_socio.id
+                             AND cuotas_socio.desde >= inscripciones_socio.ciclo_desde
+                             AND cuotas_socio.hasta >= ?)`
+    )
+    .all(organizacionId, socioId, socioId, hoy, hoy);
+  if (pendientes.length === 0) return;
+  withTransaction(() => {
+    for (const { id } of pendientes) generarCuotasDe(id, hoy);
+  });
+}
+
+// Lo que se debe de cada cuota: el neto de su venta (lo devuelto ya no se
+// reclama) menos lo cobrado. La de una venta anulada no se debe: quedó
+// bonificada. El plan es el de la duración de la cuota, por si después cambió.
+const SELECT_CUOTAS = `
+  SELECT cuotas_socio.id, inscripciones_socio.socio_id, cuotas_socio.inscripcion_id, cuotas_socio.venta_id,
+         cuotas_socio.desde, cuotas_socio.hasta, cuotas_socio.meses, cuotas_socio.precio_lista,
+         cuotas_socio.descuento_pct, descuentos_socio.nombre AS descuento, productos.nombre AS plan,
+         ventas.estado AS estado_venta,
+         (SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
+            FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA} AS importe,
+         (SELECT COALESCE(SUM(cobros.importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado
+    FROM cuotas_socio
+    JOIN inscripciones_socio ON inscripciones_socio.id = cuotas_socio.inscripcion_id
+    JOIN socios ON socios.id = inscripciones_socio.socio_id
+    JOIN ventas ON ventas.id = cuotas_socio.venta_id
+    JOIN planes_socio_opciones ON planes_socio_opciones.id = cuotas_socio.opcion_id
+    JOIN planes_socio ON planes_socio.id = planes_socio_opciones.plan_id
+    JOIN productos ON productos.id = planes_socio.producto_id
+    LEFT JOIN descuentos_socio ON descuentos_socio.id = cuotas_socio.descuento_id`;
+
+function decorarCuota({ estado_venta, ...cuota }) {
+  const importe = redondear2(cuota.importe);
+  const cobrado = redondear2(cuota.cobrado);
+  const saldo = estado_venta === 'activa' && importe - cobrado > 0.005 ? redondear2(importe - cobrado) : 0;
+  let estado = 'pagada';
+  if (estado_venta !== 'activa') estado = 'bonificada';
+  else if (importe === 0) estado = 'sin_cargo';
+  else if (saldo > 0) estado = cobrado > 0 ? 'parcial' : 'pendiente';
+  return { ...cuota, duracion: nombreDuracion(cuota.meses), importe, cobrado, saldo, estado };
+}
+
+const SELECT_SOCIO = `
+  SELECT socios.id, socios.numero, socios.cliente_id, clientes.nombre, clientes.documento,
+         clientes.telefono, clientes.email, socios.fecha_alta, socios.descuento_id,
+         descuentos_socio.nombre AS descuento, descuentos_socio.porcentaje AS descuento_porcentaje,
+         (SELECT MAX(fecha) FROM ingresos_socio WHERE ingresos_socio.socio_id = socios.id) AS ultimo_ingreso
+    FROM socios
+    JOIN clientes ON clientes.id = socios.cliente_id
+    LEFT JOIN descuentos_socio ON descuentos_socio.id = socios.descuento_id`;
+
+// En qué está un socio, para la lista y la recepción:
+// - de baja: no tiene ningún plan activo;
+// - debe: alguna cuota con saldo, que vence el día en que empieza su período;
+// - por empezar: ningún plan activo cubre hoy (todos arrancan a futuro);
+// - al día: hasta el primer vencimiento de los planes que cubren hoy.
+// La deuda se informa también de un socio de baja: sigue en su cuenta. Cada
+// plan lleva el precio que va a pagar en su próxima cuota, con su descuento.
+function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
+  const planesActivos = new Set(inscripciones.filter((i) => i.estado === 'activa').map((i) => i.plan_id));
+  const planes = inscripciones.map((i) => {
+    const descuento = i.estado === 'activa' ? mejorDescuento(i.plan_id, planesActivos, socio.descuento_id, descuentos) : null;
+    return {
+      id: i.id,
+      plan_id: i.plan_id,
+      plan: i.plan,
+      opcion_id: i.opcion_id,
+      meses: i.meses,
+      duracion: nombreDuracion(i.meses),
+      precio_lista: i.precio_lista,
+      descuento: resumenDescuento(descuento),
+      precio: conDescuento(i.precio_lista, descuento?.porcentaje ?? 0),
+      fecha_alta: i.fecha_alta,
+      ciclo_desde: i.ciclo_desde,
+      estado: i.estado,
+      fecha_baja: i.fecha_baja,
+      cubierto_hasta: cuotas.filter((c) => c.inscripcion_id === i.id).reduce((max, c) => (max && max > c.hasta ? max : c.hasta), null)
+    };
+  });
+  const activos = planes.filter((p) => p.estado === 'activa');
+  const vigentes = activos.filter((p) => p.cubierto_hasta >= hoy);
+  const impagas = cuotas.filter((c) => c.saldo > 0);
+  const deuda = redondear2(impagas.reduce((acc, c) => acc + c.saldo, 0));
+  let situacion = 'al_dia';
+  if (activos.length === 0) situacion = 'baja';
+  else if (deuda > 0) situacion = 'debe';
+  else if (vigentes.length === 0) situacion = 'por_empezar';
+  const primera = (fechas) => fechas.filter(Boolean).sort()[0] ?? null;
+  return {
+    ...socio,
+    planes,
+    cuotas,
+    situacion,
+    deuda,
+    cuotas_impagas: impagas.length,
+    debe_desde: impagas[0]?.desde ?? null,
+    al_dia_hasta: situacion === 'al_dia' ? primera(vigentes.map((p) => p.cubierto_hasta)) : null,
+    empieza: situacion === 'por_empezar' ? primera(activos.map((p) => p.ciclo_desde)) : null,
+    fecha_baja: situacion === 'baja' ? (planes.map((p) => p.fecha_baja).filter(Boolean).sort().at(-1) ?? null) : null
+  };
+}
+
+function sociosConSituacion(organizacionId, socioId = null) {
+  const hoy = fechaDeHoy();
+  const filtro = 'WHERE socios.organizacion_id = ? AND (? IS NULL OR socios.id = ?)';
+  const parametros = [organizacionId, socioId, socioId];
+  const socios = db.prepare(`${SELECT_SOCIO} ${filtro} ORDER BY socios.numero`).all(...parametros);
+  const agrupar = (filas) => {
+    const porSocio = new Map();
+    for (const fila of filas) {
+      if (!porSocio.has(fila.socio_id)) porSocio.set(fila.socio_id, []);
+      porSocio.get(fila.socio_id).push(fila);
+    }
+    return porSocio;
+  };
+  const inscripciones = agrupar(
+    db.prepare(`${SELECT_INSCRIPCION} ${filtro} ORDER BY inscripciones_socio.estado, productos.nombre, inscripciones_socio.id`).all(...parametros)
+  );
+  const cuotas = agrupar(
+    db.prepare(`${SELECT_CUOTAS} ${filtro} ORDER BY cuotas_socio.desde, cuotas_socio.id`).all(...parametros).map(decorarCuota)
+  );
+  const descuentos = descuentosDeLaEmpresa(organizacionId);
+  return socios.map((s) => conSituacion(s, inscripciones.get(s.id) ?? [], cuotas.get(s.id) ?? [], descuentos, hoy));
+}
+
+// La ficha: el socio con sus planes, todas sus cuotas (la más nueva primero),
+// sus últimos ingresos y el saldo de toda su cuenta corriente, que puede tener
+// deudas que no son cuotas (algo que compró y no pagó).
+function detalleSocio(socioId, organizacionId) {
+  const [socio] = sociosConSituacion(organizacionId, socioId);
+  if (!socio) return null;
+  const ingresos = db
+    .prepare(
+      `SELECT ingresos_socio.id, ingresos_socio.fecha, ingresos_socio.al_dia, ingresos_socio.deuda,
+              usuarios.nombre AS usuario
+         FROM ingresos_socio JOIN usuarios ON usuarios.id = ingresos_socio.usuario_id
+        WHERE ingresos_socio.socio_id = ?
+        ORDER BY ingresos_socio.id DESC LIMIT 30`
+    )
+    .all(socioId)
+    .map((i) => ({ ...i, al_dia: Boolean(i.al_dia) }));
+  const saldoCuenta = db.prepare('SELECT saldo FROM saldo_cc_clientes WHERE cliente_id = ?').get(socio.cliente_id)?.saldo ?? 0;
+  return { ...socio, cuotas: [...socio.cuotas].reverse(), ingresos, saldo_cuenta: redondear2(saldoCuenta) };
+}
+
+function socioDeLaEmpresa(id, organizacionId) {
+  if (!esIdValido(id)) return null;
+  return db
+    .prepare(
+      `SELECT socios.*, clientes.nombre FROM socios JOIN clientes ON clientes.id = socios.cliente_id
+        WHERE socios.id = ? AND socios.organizacion_id = ?`
+    )
+    .get(id, organizacionId);
+}
+
+// Los planes que se piden para un socio ([{ opcion_id }]): cada duración tiene
+// que ser de la empresa y estar ofreciéndose, y no puede haber dos del mismo
+// plan. Devuelve { error } o { opciones }.
+function opcionesPedidas(lista, organizacionId) {
+  if (!Array.isArray(lista) || lista.length === 0) return { error: 'Elegí al menos un plan.' };
+  if (lista.length > MAX_PLANES_SOCIO) return { error: `Un socio puede tener hasta ${MAX_PLANES_SOCIO} planes.` };
+  const opciones = [];
+  for (const pedido of lista) {
+    const opcion = opcionDeLaEmpresa(pedido?.opcion_id, organizacionId);
+    if (!opcion) return { error: 'Uno de los planes elegidos no existe.' };
+    if (!opcion.plan_activo || !opcion.activo) {
+      return { error: `${planYDuracion(opcion.plan, opcion.meses)} no se está ofreciendo: elegí otro.` };
+    }
+    if (opciones.some((o) => o.plan_id === opcion.plan_id)) return { error: `"${opcion.plan}" está dos veces.` };
+    opciones.push(opcion);
+  }
+  return { opciones };
+}
+
+// La fecha desde la que se hace un plan. validarFecha mira solo el formato: un
+// 2026-13-01 lo pasa, y de él salen los vencimientos de todas las cuotas. Una
+// fecha real vuelve igual de sumarDias.
+function fechaDeAlta(valor, hoy) {
+  const fecha = valor == null || valor === '' ? hoy : validarFecha(valor);
+  if (!fecha || sumarDias(fecha, 0) !== fecha) return { error: 'La fecha de alta no es válida.' };
+  if (fecha < FECHA_MINIMA_SOCIO) return { error: 'La fecha de alta es demasiado vieja.' };
+  if (fecha > sumarDias(hoy, DIAS_ALTA_ADELANTADA)) {
+    return { error: `La fecha de alta puede ser hasta ${DIAS_ALTA_ADELANTADA} días para adelante.` };
+  }
+  return { fecha };
+}
+
+// Anota un plan de un socio; sus cuotas las arma después generarCuotasDe. Va
+// DENTRO de una transacción.
+function inscribir(socioId, opcion, desde, hoy) {
+  const { lastInsertRowid } = db
+    .prepare(
+      `INSERT INTO inscripciones_socio (socio_id, plan_id, opcion_id, fecha_alta, ciclo_desde, cobrar_desde)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(socioId, opcion.plan_id, opcion.id, desde, desde, maxISO(desde, hoy));
+  return Number(lastInsertRowid);
+}
+
+// Vuelve a activar un plan dado de baja: un ciclo nuevo hoy, o al terminar el
+// período que ya tenía pagado, sin cobrar los meses de baja. Devuelve desde
+// cuándo cobra. Va DENTRO de una transacción.
+function reactivarInscripcion(inscripcionId, hoy) {
+  const { ciclo_desde: cicloDesde } = db.prepare('SELECT ciclo_desde FROM inscripciones_socio WHERE id = ?').get(inscripcionId);
+  const { ultimo } = db.prepare('SELECT MAX(hasta) AS ultimo FROM cuotas_socio WHERE inscripcion_id = ?').get(inscripcionId);
+  const ciclo = maxISO(hoy, ultimo ? sumarDias(ultimo, 1) : cicloDesde);
+  db.prepare(
+    "UPDATE inscripciones_socio SET estado = 'activa', fecha_baja = NULL, ciclo_desde = ?, cobrar_desde = ? WHERE id = ?"
+  ).run(ciclo, ciclo, inscripcionId);
+  return ciclo;
+}
+
+// La primera cuota de cada plan pedido, con el descuento que le tocaría, para
+// mostrarla antes de confirmar. Es el mismo cálculo de generarCuotasDe:
+// mejorDescuento sobre los planes que quedarían activos. `existentes` son los
+// planes que el socio ya tiene, que también pueden cambiar de descuento (un
+// combo que se completa): van en `cambian`.
+function cotizar(opciones, existentes, descuentoManualId, organizacionId) {
+  const descuentos = descuentosDeLaEmpresa(organizacionId);
+  const antes = new Set(existentes.map((e) => e.plan_id));
+  const despues = new Set([...antes, ...opciones.map((o) => o.plan_id)]);
+  const lineas = opciones.map((o) => {
+    const descuento = mejorDescuento(o.plan_id, despues, descuentoManualId, descuentos);
+    return {
+      opcion_id: o.id,
+      plan_id: o.plan_id,
+      plan: o.plan,
+      meses: o.meses,
+      duracion: nombreDuracion(o.meses),
+      precio_lista: o.precio,
+      descuento: resumenDescuento(descuento),
+      precio: conDescuento(o.precio, descuento?.porcentaje ?? 0)
+    };
+  });
+  const cambian = [];
+  for (const e of existentes) {
+    const previo = mejorDescuento(e.plan_id, antes, descuentoManualId, descuentos);
+    const nuevo = mejorDescuento(e.plan_id, despues, descuentoManualId, descuentos);
+    if (previo?.id === nuevo?.id) continue;
+    cambian.push({
+      plan: e.plan,
+      duracion: nombreDuracion(e.meses),
+      descuento: resumenDescuento(nuevo),
+      precio: conDescuento(e.precio_lista, nuevo?.porcentaje ?? 0)
+    });
+  }
+  return { lineas, total: redondear2(lineas.reduce((acc, l) => acc + l.precio, 0)), cambian };
+}
+
+/* Rutas: planes y descuentos */
+
+app.get('/api/planes-socio', (req, res) => {
+  res.json(planesDeLaEmpresa(req.usuario.organizacion_id));
+});
+
+// El plan nace con su servicio: el producto que vende cada cuota. El nombre y
+// si se ofrece viven en el producto; el precio, en cada duración.
+app.post('/api/planes-socio', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarPlan(req.body, { parcial: false });
+  if (error) return res.status(400).json({ error });
+  if (nombreDePlanRepetido(datos.nombre, organizacionId)) {
+    return res.status(400).json({ error: 'Ya hay un plan con ese nombre.' });
+  }
+  const planId = withTransaction(() => {
+    const { lastInsertRowid: productoId } = db
+      .prepare(
+        `INSERT INTO productos (nombre, precio_venta, organizacion_id, unidad, tipo)
+         VALUES (?, ?, ?, 'unidad', 'servicio')`
+      )
+      .run(datos.nombre, datos.opciones[0].precio, organizacionId);
+    const id = Number(
+      db.prepare('INSERT INTO planes_socio (producto_id, organizacion_id) VALUES (?, ?)').run(productoId, organizacionId).lastInsertRowid
+    );
+    guardarOpciones(id, datos.opciones);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'producto',
+      entidad_id: Number(productoId),
+      operacion_tipo: 'plan_socio',
+      operacion_id: id,
+      detalle: `Plan de socios "${datos.nombre}" creado: ${textoOpciones(datos.opciones)}`
+    });
+    return id;
+  });
+  res.status(201).json(planDeLaEmpresa(planId, organizacionId));
+});
+
+// Cambiar un precio o una duración rige desde la próxima cuota: las que ya se
+// generaron son ventas con su precio congelado (CLAUDE.md §8). Pausar un plan o
+// una duración no da de baja a nadie: deja de ofrecerse a los socios nuevos.
+app.patch('/api/planes-socio/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const plan = planDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!plan) return res.status(404).json({ error: 'Plan no encontrado.' });
+  const { error, datos } = validarPlan(req.body, { parcial: true });
+  if (error) return res.status(400).json({ error });
+  if (datos.nombre && nombreDePlanRepetido(datos.nombre, organizacionId, plan.id)) {
+    return res.status(400).json({ error: 'Ya hay un plan con ese nombre.' });
+  }
+  const anterior = { nombre: plan.nombre, activo: plan.activo ? 1 : 0, opciones: textoOpciones(plan.opciones.filter((o) => o.activo)) };
+  const nuevo = {
+    nombre: datos.nombre ?? anterior.nombre,
+    activo: datos.activo ?? anterior.activo,
+    opciones: datos.opciones ? textoOpciones(datos.opciones) : anterior.opciones
+  };
+  const cambios = diffCampos(anterior, nuevo, ['nombre', 'activo', 'opciones']);
+  if (cambios) {
+    withTransaction(() => {
+      db.prepare('UPDATE productos SET nombre = ?, activo = ? WHERE id = ?').run(nuevo.nombre, nuevo.activo, plan.producto_id);
+      if (datos.opciones) guardarOpciones(plan.id, datos.opciones);
+      sincronizarPrecioPlan(plan.id, plan.producto_id, organizacionId);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'producto',
+        entidad_id: plan.producto_id,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        operacion_tipo: 'plan_socio',
+        operacion_id: plan.id,
+        detalle: `Plan de socios "${nuevo.nombre}" editado`
+      });
+    });
+  }
+  res.json(planDeLaEmpresa(plan.id, organizacionId));
+});
+
+// Los lee también la recepción: el alta ofrece los que se eligen a mano.
+app.get('/api/descuentos-socio', (req, res) => {
+  res.json(descuentosDeLaEmpresa(req.usuario.organizacion_id));
+});
+
+// Los planes de un combo se reemplazan enteros. Va DENTRO de una transacción.
+function guardarPlanesDelDescuento(descuentoId, planes) {
+  db.prepare('DELETE FROM descuento_socio_planes WHERE descuento_id = ?').run(descuentoId);
+  const insertar = db.prepare('INSERT INTO descuento_socio_planes (descuento_id, plan_id) VALUES (?, ?)');
+  for (const plan of planes) insertar.run(descuentoId, plan.id);
+}
+
+// Los descuentos son configuración del negocio: se auditan como entidad
+// organizacion, con operacion_tipo descuento_socio, sin reconstruir auditoria.
+app.post('/api/descuentos-socio', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarDescuento(req.body, organizacionId);
+  if (error) return res.status(400).json({ error });
+  if (nombreDeDescuentoRepetido(datos.nombre, organizacionId)) {
+    return res.status(400).json({ error: 'Ya hay un descuento con ese nombre.' });
+  }
+  const id = withTransaction(() => {
+    const nuevoId = Number(
+      db
+        .prepare(
+          `INSERT INTO descuentos_socio (nombre, porcentaje, aplica, minimo_planes, organizacion_id)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(datos.nombre, datos.porcentaje, datos.aplica, datos.minimo_planes, organizacionId).lastInsertRowid
+    );
+    guardarPlanesDelDescuento(nuevoId, datos.planes);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'descuento_socio',
+      operacion_id: nuevoId,
+      detalle: `Descuento de socios "${datos.nombre}" creado: ${datos.porcentaje}%, ${textoAplica(datos)}`
+    });
+    return nuevoId;
+  });
+  res.status(201).json(descuentosDeLaEmpresa(organizacionId).find((d) => d.id === id));
+});
+
+// Con solo { activo } lo pausa o lo vuelve a activar; si no, lo reemplaza
+// entero, como lo manda el formulario. Rige desde la próxima cuota.
+app.patch('/api/descuentos-socio/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const descuento = descuentosDeLaEmpresa(organizacionId).find((d) => d.id === Number(req.params.id));
+  if (!descuento) return res.status(404).json({ error: 'Descuento no encontrado.' });
+  const soloEstado = req.body && Object.keys(req.body).length === 1 && Object.hasOwn(req.body, 'activo');
+  let datos;
+  if (soloEstado) {
+    if (typeof req.body.activo !== 'boolean') return res.status(400).json({ error: 'El estado del descuento no es válido.' });
+    datos = { ...descuento, activo: req.body.activo };
+  } else {
+    const validado = validarDescuento(req.body, organizacionId);
+    if (validado.error) return res.status(400).json({ error: validado.error });
+    datos = { ...validado.datos, activo: descuento.activo };
+    if (nombreDeDescuentoRepetido(datos.nombre, organizacionId, descuento.id)) {
+      return res.status(400).json({ error: 'Ya hay un descuento con ese nombre.' });
+    }
+    // Uno que se elige a mano y ya tienen socios no pasa a ser automático:
+    // esos socios quedarían con un descuento elegido que no se les aplica.
+    const conSocios = db.prepare('SELECT COUNT(*) AS n FROM socios WHERE descuento_id = ?').get(descuento.id).n;
+    if (descuento.aplica === 'manual' && datos.aplica !== 'manual' && conSocios > 0) {
+      const quienes = conSocios === 1 ? 'Un socio lo tiene' : `${conSocios} socios lo tienen`;
+      return res.status(400).json({ error: `${quienes} elegido a mano: para un combo, creá otro descuento.` });
+    }
+  }
+  const campos = (d) => ({ nombre: d.nombre, porcentaje: d.porcentaje, aplica: textoAplica(d), activo: d.activo ? 1 : 0 });
+  const cambios = diffCampos(campos(descuento), campos(datos), ['nombre', 'porcentaje', 'aplica', 'activo']);
+  if (cambios) {
+    let detalle = `Descuento de socios "${datos.nombre}" editado`;
+    if (soloEstado) detalle = `Descuento de socios "${datos.nombre}" ${datos.activo ? 'activado' : 'pausado'}`;
+    withTransaction(() => {
+      db.prepare('UPDATE descuentos_socio SET nombre = ?, porcentaje = ?, aplica = ?, minimo_planes = ?, activo = ? WHERE id = ?').run(
+        datos.nombre,
+        datos.porcentaje,
+        datos.aplica,
+        datos.minimo_planes,
+        datos.activo ? 1 : 0,
+        descuento.id
+      );
+      guardarPlanesDelDescuento(descuento.id, datos.planes);
+      auditar(req, {
+        accion: soloEstado ? 'cambiar_estado' : 'editar',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        operacion_tipo: 'descuento_socio',
+        operacion_id: descuento.id,
+        detalle
+      });
+    });
+  }
+  res.json(descuentosDeLaEmpresa(organizacionId).find((d) => d.id === descuento.id));
+});
+
+/* Rutas: socios */
+
+app.get('/api/socios', (req, res) => {
+  ponerCuotasAlDia(req.usuario.organizacion_id);
+  // La lista no lleva las cuotas de cada uno: eso es de la ficha.
+  const socios = sociosConSituacion(req.usuario.organizacion_id);
+  for (const socio of socios) delete socio.cuotas;
+  res.json(socios);
+});
+
+// Quién entró hoy (el día local del servidor, que es el de la recepción).
+// Antes que /api/socios/:id, que si no tomaría "ingresos" como un id.
+app.get('/api/socios/ingresos', (req, res) => {
+  const inicioDelDia = new Date(new Date().setHours(0, 0, 0, 0)).toISOString().slice(0, 19).replace('T', ' ');
+  const ingresos = db
+    .prepare(
+      `SELECT ingresos_socio.id, ingresos_socio.socio_id, ingresos_socio.fecha, ingresos_socio.al_dia,
+              ingresos_socio.deuda, socios.numero, clientes.nombre, usuarios.nombre AS usuario
+         FROM ingresos_socio
+         JOIN socios ON socios.id = ingresos_socio.socio_id
+         JOIN clientes ON clientes.id = socios.cliente_id
+         JOIN usuarios ON usuarios.id = ingresos_socio.usuario_id
+        WHERE socios.organizacion_id = ? AND ingresos_socio.fecha >= ?
+        ORDER BY ingresos_socio.id DESC LIMIT 200`
+    )
+    .all(req.usuario.organizacion_id, inicioDelDia);
+  res.json(ingresos.map((i) => ({ ...i, al_dia: Boolean(i.al_dia) })));
+});
+
+app.get('/api/socios/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  ponerCuotasAlDia(organizacionId, socio.id);
+  res.json(detalleSocio(socio.id, organizacionId));
+});
+
+// Lo que pagaría en la primera cuota de cada plan, con sus descuentos, antes
+// de confirmar el alta o un plan nuevo. No escribe nada. Con socio_id cuenta
+// también los planes que ya tiene (y su descuento a mano, si no viene otro).
+app.post('/api/socios/cotizacion', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { planes, descuento_id, socio_id } = req.body ?? {};
+  const { error, opciones } = opcionesPedidas(planes, organizacionId);
+  if (error) return res.status(400).json({ error });
+  let existentes = [];
+  let manualId = null;
+  if (socio_id != null) {
+    const socio = socioDeLaEmpresa(socio_id, organizacionId);
+    if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+    existentes = db
+      .prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.estado = 'activa'`)
+      .all(socio.id)
+      .filter((e) => !opciones.some((o) => o.plan_id === e.plan_id));
+    manualId = socio.descuento_id;
+  }
+  if (descuento_id !== undefined) {
+    const manual = descuentoManualPedido(descuento_id, organizacionId);
+    if (manual.error) return res.status(400).json({ error: manual.error });
+    manualId = manual.id;
+  }
+  res.json(cotizar(opciones, existentes, manualId, organizacionId));
+});
+
+// Alta de un socio: un cliente que ya existe (cliente_id) o uno nuevo con sus
+// datos (cliente: { nombre, documento, telefono, email }), uno o varios planes
+// ([{ opcion_id }], la duración de cada uno), desde cuándo y, si tiene, su
+// descuento a mano. Las primeras cuotas se generan en la misma transacción.
+app.post('/api/socios', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { cliente_id, cliente, planes, fecha_alta, descuento_id } = req.body ?? {};
+  const hoy = fechaDeHoy();
+
+  const { error: errorPlanes, opciones } = opcionesPedidas(planes, organizacionId);
+  if (errorPlanes) return res.status(400).json({ error: errorPlanes });
+  const { error: errorFecha, fecha: alta } = fechaDeAlta(fecha_alta, hoy);
+  if (errorFecha) return res.status(400).json({ error: errorFecha });
+  const manual = descuentoManualPedido(descuento_id, organizacionId);
+  if (manual.error) return res.status(400).json({ error: manual.error });
+
+  let existente = null;
+  let datosNuevo = null;
+  if (cliente_id != null) {
+    existente = esIdValido(cliente_id)
+      ? db.prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(cliente_id, organizacionId)
+      : null;
+    if (!existente) return res.status(400).json({ error: 'El cliente no existe.' });
+    if (existente.nombre === CONSUMIDOR_FINAL) {
+      return res.status(400).json({ error: '"Consumidor final" no puede ser socio: cargá a la persona.' });
+    }
+    const yaEsSocio = db.prepare('SELECT numero FROM socios WHERE cliente_id = ?').get(existente.id);
+    if (yaEsSocio) return res.status(400).json({ error: `${existente.nombre} ya es socio (N° ${yaEsSocio.numero}).` });
+  } else {
+    datosNuevo = {};
+    for (const campo of ['nombre', 'documento', 'telefono', 'email']) {
+      const valor = cliente?.[campo];
+      if (valor != null && typeof valor !== 'string') return res.status(400).json({ error: 'Los datos del socio no son válidos.' });
+      const texto = (valor ?? '').trim();
+      if (texto.length > LARGOS_SOCIO[campo]) {
+        return res.status(400).json({ error: `El campo ${campo} no puede pasar de ${LARGOS_SOCIO[campo]} caracteres.` });
+      }
+      datosNuevo[campo] = texto || null;
+    }
+    if (!datosNuevo.nombre) return res.status(400).json({ error: 'El socio necesita un nombre.' });
+    if (datosNuevo.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datosNuevo.email)) {
+      return res.status(400).json({ error: 'El email no es válido.' });
+    }
+    // El mismo documento es la misma persona: se la elige de la lista en vez
+    // de duplicarla.
+    if (datosNuevo.documento) {
+      const mismo = db
+        .prepare('SELECT nombre FROM clientes WHERE organizacion_id = ? AND documento = ?')
+        .get(organizacionId, datosNuevo.documento);
+      if (mismo) {
+        return res.status(400).json({ error: `Ya hay un cliente con ese documento: ${mismo.nombre}. Buscalo en la lista.` });
+      }
+    }
+  }
+
+  const socioId = withTransaction(() => {
+    let clienteId = existente?.id;
+    const nombre = existente?.nombre ?? datosNuevo.nombre;
+    if (!clienteId) {
+      clienteId = Number(
+        db
+          .prepare('INSERT INTO clientes (nombre, documento, telefono, email, organizacion_id) VALUES (?, ?, ?, ?, ?)')
+          .run(nombre, datosNuevo.documento, datosNuevo.telefono, datosNuevo.email, organizacionId).lastInsertRowid
+      );
+      auditar(req, { accion: 'crear', entidad: 'cliente', entidad_id: clienteId, detalle: `Cliente "${nombre}" creado` });
+    }
+    const { numero } = db
+      .prepare('SELECT COALESCE(MAX(numero), 0) + 1 AS numero FROM socios WHERE organizacion_id = ?')
+      .get(organizacionId);
+    const id = Number(
+      db
+        .prepare('INSERT INTO socios (cliente_id, numero, fecha_alta, descuento_id, organizacion_id) VALUES (?, ?, ?, ?, ?)')
+        .run(clienteId, numero, alta, manual.id, organizacionId).lastInsertRowid
+    );
+    // Todos los planes anotados antes de generar cuotas: un combo los mira a todos.
+    const inscripciones = opciones.map((opcion) => inscribir(id, opcion, alta, hoy));
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cliente',
+      entidad_id: clienteId,
+      operacion_tipo: 'socio',
+      operacion_id: id,
+      detalle:
+        `Alta del socio N° ${numero}, ${nombre}: ${opciones.map((o) => planYDuracion(o.plan, o.meses)).join(', ')}, desde el ${fechaLegible(alta)}` +
+        (manual.id ? `, con el descuento "${manual.nombre}"` : '')
+    });
+    for (const inscripcionId of inscripciones) generarCuotasDe(inscripcionId, hoy);
+    return id;
+  });
+  res.status(201).json(detalleSocio(socioId, organizacionId));
+});
+
+// El descuento a mano ({ descuento_id }, null para sacarlo) y la baja o la
+// vuelta del socio entero ({ estado }):
+// - el descuento rige desde la próxima cuota: antes se genera lo que venció;
+// - la baja da de baja todos sus planes, sin tocar las cuotas que ya hay: lo
+//   que debe sigue en su cuenta corriente, y una cuota que no corresponde se
+//   anula como cualquier venta;
+// - volver reactiva los planes que tenía cuando se fue.
+app.patch('/api/socios/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  const { descuento_id, estado } = req.body ?? {};
+  if (descuento_id === undefined && estado === undefined) return res.status(400).json({ error: 'No hay nada para cambiar.' });
+  if (estado !== undefined && estado !== 'activo' && estado !== 'baja') return res.status(400).json({ error: 'El estado no es válido.' });
+  const manual = descuento_id === undefined ? null : descuentoManualPedido(descuento_id, organizacionId);
+  if (manual?.error) return res.status(400).json({ error: manual.error });
+
+  const hoy = fechaDeHoy();
+  const activos = planesActivosDe(socio.id);
+  if (estado === 'baja' && activos.size === 0) return res.status(400).json({ error: `${socio.nombre} ya está de baja.` });
+  // Los que se reactivan: los que dio de baja la última vez, salvo que ya
+  // tenga ese plan activo por otro lado.
+  let aReactivar = [];
+  if (estado === 'activo') {
+    const { ultima } = db
+      .prepare("SELECT MAX(fecha_baja) AS ultima FROM inscripciones_socio WHERE socio_id = ? AND estado = 'baja'")
+      .get(socio.id);
+    aReactivar = db
+      .prepare(
+        `${SELECT_INSCRIPCION} WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.estado = 'baja'
+            AND inscripciones_socio.fecha_baja = ?`
+      )
+      .all(socio.id, ultima)
+      .filter((i) => !activos.has(i.plan_id));
+    if (aReactivar.length === 0) return res.status(400).json({ error: 'No tiene planes para reactivar: sumale uno.' });
+  }
+
+  ponerCuotasAlDia(organizacionId, socio.id);
+  withTransaction(() => {
+    if (manual && manual.id !== socio.descuento_id) {
+      const anterior = socio.descuento_id
+        ? db.prepare('SELECT nombre FROM descuentos_socio WHERE id = ?').get(socio.descuento_id).nombre
+        : null;
+      db.prepare('UPDATE socios SET descuento_id = ? WHERE id = ?').run(manual.id, socio.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: socio.cliente_id,
+        valor_anterior: JSON.stringify({ descuento: anterior }),
+        valor_nuevo: JSON.stringify({ descuento: manual.nombre ?? null }),
+        operacion_tipo: 'socio',
+        operacion_id: socio.id,
+        detalle: manual.id
+          ? `El socio N° ${socio.numero} tiene el descuento "${manual.nombre}" desde la próxima cuota`
+          : `El socio N° ${socio.numero} ya no tiene descuento a mano`
+      });
+    }
+    if (estado === 'baja') {
+      db.prepare("UPDATE inscripciones_socio SET estado = 'baja', fecha_baja = ? WHERE socio_id = ? AND estado = 'activa'").run(hoy, socio.id);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'cliente',
+        entidad_id: socio.cliente_id,
+        operacion_tipo: 'socio',
+        operacion_id: socio.id,
+        detalle: `Baja del socio N° ${socio.numero}, ${socio.nombre}`
+      });
+    }
+    if (estado === 'activo') {
+      const desde = aReactivar.map((i) => reactivarInscripcion(i.id, hoy)).sort()[0];
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'cliente',
+        entidad_id: socio.cliente_id,
+        operacion_tipo: 'socio',
+        operacion_id: socio.id,
+        detalle: `El socio N° ${socio.numero}, ${socio.nombre}, volvió (cuotas desde el ${fechaLegible(desde)})`
+      });
+      for (const i of aReactivar) generarCuotasDe(i.id, hoy);
+    }
+  });
+  res.json(detalleSocio(socio.id, organizacionId));
+});
+
+// Suma un plan a un socio ({ opcion_id, fecha_alta }), con su propio ciclo.
+// Antes se genera lo que venció de los otros: un combo que se completa recién
+// rige en sus próximas cuotas.
+app.post('/api/socios/:id/planes', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  const { error, opciones } = opcionesPedidas([{ opcion_id: req.body?.opcion_id }], organizacionId);
+  if (error) return res.status(400).json({ error });
+  const [opcion] = opciones;
+  if (planesActivosDe(socio.id).has(opcion.plan_id)) {
+    return res.status(400).json({ error: `${socio.nombre} ya tiene "${opcion.plan}".` });
+  }
+  const hoy = fechaDeHoy();
+  const { error: errorFecha, fecha } = fechaDeAlta(req.body?.fecha_alta, hoy);
+  if (errorFecha) return res.status(400).json({ error: errorFecha });
+
+  ponerCuotasAlDia(organizacionId, socio.id);
+  withTransaction(() => {
+    const inscripcionId = inscribir(socio.id, opcion, fecha, hoy);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'cliente',
+      entidad_id: socio.cliente_id,
+      operacion_tipo: 'socio',
+      operacion_id: socio.id,
+      detalle: `El socio N° ${socio.numero} suma ${planYDuracion(opcion.plan, opcion.meses)}, desde el ${fechaLegible(fecha)}`
+    });
+    generarCuotasDe(inscripcionId, hoy);
+  });
+  res.status(201).json(detalleSocio(socio.id, organizacionId));
+});
+
+// Un plan del socio: cambiar su duración, o pasarlo a otro plan, desde la
+// próxima cuota ({ opcion_id }); darlo de baja o reactivarlo ({ estado }).
+app.patch('/api/socios/:id/planes/:inscripcionId', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  const inscripcion = db
+    .prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.id = ? AND inscripciones_socio.socio_id = ?`)
+    .get(Number(req.params.inscripcionId), socio.id);
+  if (!inscripcion) return res.status(404).json({ error: 'Ese plan no es de este socio.' });
+  const { opcion_id, estado } = req.body ?? {};
+  if (opcion_id === undefined && estado === undefined) return res.status(400).json({ error: 'No hay nada para cambiar.' });
+  if (estado !== undefined && estado !== 'activa' && estado !== 'baja') return res.status(400).json({ error: 'El estado no es válido.' });
+
+  const activos = planesActivosDe(socio.id);
+  let opcion = null;
+  if (opcion_id !== undefined && opcion_id !== inscripcion.opcion_id) {
+    opcion = opcionDeLaEmpresa(opcion_id, organizacionId);
+    if (!opcion) return res.status(400).json({ error: 'Esa duración no existe.' });
+    if (!opcion.activo || !opcion.plan_activo) {
+      return res.status(400).json({ error: `${planYDuracion(opcion.plan, opcion.meses)} no se está ofreciendo: elegí otro.` });
+    }
+    if (opcion.plan_id !== inscripcion.plan_id && activos.has(opcion.plan_id)) {
+      return res.status(400).json({ error: `${socio.nombre} ya tiene "${opcion.plan}".` });
+    }
+  }
+  const reactiva = estado === 'activa' && inscripcion.estado === 'baja';
+  if (reactiva && activos.has(opcion?.plan_id ?? inscripcion.plan_id)) {
+    return res.status(400).json({ error: `${socio.nombre} ya tiene ese plan activo.` });
+  }
+
+  ponerCuotasAlDia(organizacionId, socio.id);
+  const hoy = fechaDeHoy();
+  withTransaction(() => {
+    if (opcion) {
+      db.prepare('UPDATE inscripciones_socio SET opcion_id = ?, plan_id = ? WHERE id = ?').run(opcion.id, opcion.plan_id, inscripcion.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: socio.cliente_id,
+        valor_anterior: JSON.stringify({ plan: planYDuracion(inscripcion.plan, inscripcion.meses) }),
+        valor_nuevo: JSON.stringify({ plan: planYDuracion(opcion.plan, opcion.meses) }),
+        operacion_tipo: 'socio',
+        operacion_id: socio.id,
+        detalle: `El socio N° ${socio.numero} pasa a ${planYDuracion(opcion.plan, opcion.meses)} desde la próxima cuota`
+      });
+    }
+    if (estado === 'baja' && inscripcion.estado === 'activa') {
+      db.prepare("UPDATE inscripciones_socio SET estado = 'baja', fecha_baja = ? WHERE id = ?").run(hoy, inscripcion.id);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'cliente',
+        entidad_id: socio.cliente_id,
+        operacion_tipo: 'socio',
+        operacion_id: socio.id,
+        detalle: `El socio N° ${socio.numero} deja "${inscripcion.plan}"`
+      });
+    }
+    if (reactiva) {
+      const desde = reactivarInscripcion(inscripcion.id, hoy);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'cliente',
+        entidad_id: socio.cliente_id,
+        operacion_tipo: 'socio',
+        operacion_id: socio.id,
+        detalle: `El socio N° ${socio.numero} vuelve a "${opcion?.plan ?? inscripcion.plan}" (cuotas desde el ${fechaLegible(desde)})`
+      });
+      generarCuotasDe(inscripcion.id, hoy);
+    }
+  });
+  res.json(detalleSocio(socio.id, organizacionId));
+});
+
+// Cobra todo lo que debe de cuotas, de la más vieja a la más nueva, en una
+// cuenta de tesorería: un cobro común por cada cuota (CLAUDE.md §9), en una
+// sola transacción.
+app.post('/api/socios/:id/cobros', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  const cuenta = db
+    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(req.body?.cuenta_tesoreria_id), organizacionId);
+  if (!cuenta) return res.status(400).json({ error: 'Elegí en qué cuenta entra la plata.' });
+
+  ponerCuotasAlDia(organizacionId, socio.id);
+  const [{ cuotas }] = sociosConSituacion(organizacionId, socio.id);
+  const impagas = cuotas.filter((c) => c.saldo > 0);
+  if (impagas.length === 0) return res.status(400).json({ error: `${socio.nombre} no debe ninguna cuota.` });
+
+  const total = withTransaction(() => {
+    for (const cuota of impagas) {
+      const cobroId = registrarCobro(cuota.venta_id, socio.cliente_id, cuota.saldo, cuenta.id, `Cuota de socio N° ${socio.numero}`, organizacionId);
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'cobro',
+        entidad_id: cobroId,
+        operacion_tipo: 'venta',
+        operacion_id: cuota.venta_id,
+        detalle: `Cobro #${cobroId} de $${cuota.saldo} de la cuota del socio N° ${socio.numero} (${cuenta.nombre})`
+      });
+    }
+    return redondear2(impagas.reduce((acc, c) => acc + c.saldo, 0));
+  });
+  res.status(201).json({ cobrado: total, cuotas: impagas.length, socio: detalleSocio(socio.id, organizacionId) });
+});
+
+// Registra que el socio entró, con lo que debía en ese momento. Avisar y
+// decidir si pasa es de la recepción: si debe, la pantalla primero lo muestra
+// y recién manda esto cuando cobra o lo dejan pasar igual.
+app.post('/api/socios/:id/ingresos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+
+  ponerCuotasAlDia(organizacionId, socio.id);
+  const [situacion] = sociosConSituacion(organizacionId, socio.id);
+  delete situacion.cuotas;
+  if (situacion.situacion === 'baja') return res.status(400).json({ error: `${socio.nombre} está dado de baja.` });
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda) VALUES (?, ?, ?, ?)')
+    .run(socio.id, req.usuario.id, situacion.deuda > 0 ? 0 : 1, situacion.deuda);
+  const ingreso = db.prepare('SELECT id, fecha FROM ingresos_socio WHERE id = ?').get(lastInsertRowid);
+  res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion });
 });
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
