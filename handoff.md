@@ -649,6 +649,24 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      por negocio. Falta que el usuario lo vea.
    - Lo que quedó para después está en hist. §77. Por ejemplo: invitar a otro
      negocio a alguien que ya tiene usuario, y dar de baja un negocio entero.
+6a. **Servicios con funciones propias** (1–2 sesiones). Pedido del usuario del
+   20 de octubre: "que en vez de productos se puedan agregar servicios" y que
+   el tipo Servicios tenga más funciones. Diseño e investigación en
+   `docs/investigacion-crm-servicios.md` §3:
+   - catálogo de servicios, con el nombre de la sección según el preset;
+   - formulario propio (precio fijo o por hora, duración, unidad `hora`);
+   - trabajos (presupuesto aceptado → trabajo → venta);
+   - abonos mensuales, con el mecanismo de las cuotas de socios.
+6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
+   del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
+   clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:
+   - módulo `crm` con etapas por preset;
+   - oportunidades y actividades;
+   - pasar a cliente, presupuesto, socio o venta sin volver a cargar;
+   - la lista "Para hoy";
+   - clientes que dejaron de comprar.
+   - Ni Dux ni Contagram tienen CRM: es diferencial.
+   - WhatsApp lo alimenta después, en la etapa 11.
 7. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.
