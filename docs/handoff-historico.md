@@ -7792,3 +7792,303 @@ no un cuadradito que se abre", y una Configuración que se pueda seguir llenando
 
 - Que el usuario vea las capturas.
 - Socios, cuotas e ingreso (punto 5 del plan).
+
+## 74. Socios, cuotas e ingreso, 20 de octubre de 2026
+
+Punto 5 del plan, con lo decidido con el usuario el 19 de octubre:
+- planes con precio y duración (mensual, trimestral, anual);
+- la cuota vence desde la fecha de alta del socio;
+- un control de ingreso en la recepción que avisa si debe.
+
+**Diseño (CLAUDE.md §29).** Es un módulo `socios` reusable, sin circuito de datos propio:
+- el socio es un cliente (`socios.cliente_id`, uno por cliente);
+- el plan es un servicio del catálogo (`planes_socio.producto_id`): su nombre, su precio y si
+  está activo son los del producto;
+- cada cuota es una venta de ese servicio. Lleva la fecha del día en que empieza el período
+  y vence ese mismo día (se paga por adelantado). La cobran los cobros de siempre, y la ven
+  las cuentas corrientes, la caja y los reportes.
+
+**Esquema.** Aditivo: cuatro tablas nuevas al final de `schema.sql`, sin tocar ninguna
+existente.
+- `planes_socio`: el producto y la duración en meses (la valida `server.js`, sin `CHECK`).
+- `socios`: número correlativo por empresa, `fecha_alta`, `ciclo_desde`, `cobrar_desde` y
+  estado (activo o baja).
+- `cuotas_socio`: el período (`desde` y `hasta`) y su venta, con `UNIQUE(socio_id, desde)`.
+  Es hija de `socios`.
+- `ingresos_socio`: quién lo dejó pasar, cuándo, si estaba al día y cuánto debía. También es
+  hija de `socios`, y es su propio registro de quién y cuándo, sin fila de auditoría.
+
+**Backend (`server.js`, sección "Socios, planes y cuotas").**
+- **Cuotas sin cron.** `ponerCuotasAlDia()` corre cada vez que se mira a un socio (listado,
+  ficha, ingreso, cobro, cambio de plan).
+  - Genera solo los períodos que faltan hasta hoy, con el día local (`fechaDeHoy`).
+  - Abre una transacción solo si a alguien le falta el período de hoy.
+- **Períodos.** Se cuentan desde `ciclo_desde` y no encadenados (`sumarMeses()`: del 31/1
+  sale el 28/2 y después el 31/3). Cada cuota que existe ocupa sus meses y una nueva usa el
+  plan de hoy: un cambio de plan rige desde la cuota siguiente.
+- **Alta hacia atrás** (un socio que ya venía): `cobrar_desde` es el día de la carga, así
+  que se cobra el período que corre y no los anteriores.
+- **Baja:** deja de generar cuotas y no toca las generadas. Reactivar empieza un ciclo nuevo
+  hoy, o al terminar el período ya pagado; los meses de baja no se cobran.
+- **Bonificar:** una cuota cuya venta se anula queda bonificada, y el período cuenta como
+  cubierto.
+- **Cobro:** `POST /api/socios/:id/cobros` salda todas las cuotas impagas, de la más vieja a
+  la más nueva, en una cuenta. Es un cobro común por cuota, en una sola transacción.
+- **Situación de cada socio:** al día (y hasta cuándo), debe (cuánto y desde cuándo), por
+  empezar o de baja.
+- **Rutas:**
+  - `GET` y `POST /api/planes-socio`, y `PATCH /api/planes-socio/:id`. Crear y editar
+    planes es admin.
+  - `GET /api/socios`, `GET /api/socios/ingresos` (los de hoy), `GET /api/socios/:id`,
+    `POST /api/socios`, `PATCH /api/socios/:id` (plan o estado),
+    `POST /api/socios/:id/cobros` y `POST /api/socios/:id/ingresos`. Son de los dos roles:
+    es el trabajo de la recepción.
+- **Auditoría sin reconstruir `auditoria`** (el mismo recurso que el turno de caja):
+  - alta, baja, reactivación y cambio de plan van como `entidad cliente`, con
+    `operacion_tipo socio`;
+  - los planes van como `entidad producto`, con `operacion_tipo plan_socio`;
+  - cada cuota generada es una venta con `actor sistema` y sin usuario.
+- **Módulo:** `socios` entra a `MODULOS`, a `MODULOS_INFO` y al preset del gimnasio
+  (`pos compras stock socios`). La descripción del gimnasio ya no dice "muy pronto".
+- **Guardas:**
+  - el servicio de un plan no puede pasar a producto con stock, y los planes no aparecen en
+    el catálogo del punto de venta;
+  - el precio de un plan tiene que ser mayor a 0;
+  - la fecha de alta tiene que existir (`validarFecha` solo mira el formato y dejaba pasar
+    un 2026-13-01), desde el año 2000 y hasta 90 días para adelante;
+  - el mismo documento no crea un cliente duplicado, y "Consumidor final" no puede ser
+    socio.
+
+**Frontend (`frontend/js/dominios/socios.js`).**
+- **Menú y router:** el grupo "Socios" (módulo `socios`) con Ingreso y Socios. Vistas
+  `ingreso`, `socios` y `socio-detalle`.
+- **Ingreso:** una búsqueda grande por nombre, DNI o número, con flechas y Enter.
+  - Al día: el ingreso se anota solo y la tarjeta sale verde.
+  - Debe: tarjeta roja con un botón de cobro por cuenta y "Dejar pasar igual".
+  - Por empezar (naranja) y de baja (gris).
+  - Debajo, la lista de los ingresos de hoy.
+- **Socios:** la tira de cifras (activos, al día, deben y deuda), la búsqueda y filtros por
+  segmentos. "Deben" incluye a los de baja con deuda, para que la cifra cierre con la lista.
+- **Alta** en `#/socios/nuevo`, como página y no como modal: tres tarjetas numeradas (quién
+  es, nuevo o un cliente existente; el plan; desde cuándo) y un resumen que dice qué día
+  vence la cuota y qué período se cobra primero.
+- **Ficha:** datos, cobro, cambio de plan, baja o reactivación, cuotas e ingresos. Cada
+  cuota lleva a su venta (`abrirFicha:venta`, registrado en `app.js`).
+- **Configuración → Planes de socios** (admin, con el módulo prendido): la lista, el lápiz y
+  pausar o activar.
+- **Cuatro íconos de Lucide** al sprite: `calendar-clock`, `door-open`, `id-card` y
+  `user-plus`.
+
+**Verificación.**
+- `npm test` 56 de 56:
+  - el caso nuevo de `api.test.js` cubre planes, cuotas sin duplicarse, cobro, ingreso,
+    alta hacia atrás, fechas inválidas, baja y reactivación, plan pausado y aislamiento
+    entre empresas;
+  - se actualizaron dos asserts que fijaban la lista vieja de módulos.
+- `sumarMeses` se probó en los bordes: 31/1, año bisiesto y cambio de año.
+- `npm run lint` verde y `verificar-migracion` 24 de 24.
+- `npm run regresion`: 10 diferencias, todas esperadas (las rutas nuevas y el catálogo de
+  tipos y módulos). `seed.mjs` suma un plan y dos socios: `/api/socios/:id` se compara
+  desde el commit siguiente.
+- **Navegador** (base en el scratchpad, `playwright-core` con el Chrome instalado):
+  - planes en Configuración, alta, ficha con cobro;
+  - ingreso al día, con deuda, "Dejar pasar igual", de baja y sin resultados;
+  - escritorio y 390 px, oscuro y claro;
+  - sin ningún `pageerror` ni error de consola.
+  - Arreglos que salieron de esa prueba: la deuda total no cerraba con "Deben", los botones
+    de cobro repetían el monto y el contador de ingresos llevaba el punto de estado.
+- **Base real:** el `npm start` creó las cuatro tablas vacías, con el respaldo de antes en
+  `OneDrive/Nexo-respaldos/nexo-20261020-114932.db`, y `integrity_check` da ok. La empresa
+  real es un comercio general: el módulo se prende en Configuración → Tipo de negocio y
+  secciones.
+
+### Para después
+
+- Cobrar una parte de la deuda, o adelantar cuotas: hoy se salda todo junto, y una cuota
+  recién se genera al empezar su período.
+- Congelar un plan (vacaciones) en vez de dar de baja.
+- Avisos de vencimiento por WhatsApp (etapa 11).
+- Un carnet con código para el lector de la recepción.
+- Días de gracia antes de que figure que debe (hoy debe desde el primer día del período):
+  a definir con el usuario.
+
+### Qué sigue
+
+- Que el usuario lo pruebe y vea las capturas.
+- Varios negocios por cuenta (punto 6 del plan).
+
+## 75. Planes con varias duraciones, varios planes por socio y descuentos, 20 de octubre de 2026
+
+**Pedido del usuario:**
+- un mismo plan con "distintas variantes por cuánto dura": mensual,
+  trimestral, anual, dos meses, "muy personalizable";
+- "combinar planes y hacer descuentos, por si una persona quiere hacer varias
+  actividades".
+
+Cambia el modelo de §74, que tenía una duración por plan y un plan por socio.
+
+**Modelo.**
+- **El plan sigue siendo un servicio del catálogo,** con su nombre y si se
+  ofrece. Cada duración es una fila de `planes_socio_opciones`:
+  - meses de 1 a 36 y su precio, una por cantidad de meses;
+  - la que se saca se pausa, no se borra.
+- **El precio del servicio en Productos** es de referencia: el de la duración
+  más corta. `aplicarEdicionProducto` rechaza cambiarlo; compara valores,
+  porque el modal de Productos manda siempre el precio de cada lista.
+- **Un socio hace uno o varios planes** (`inscripciones_socio`), cada uno con
+  su duración, su ciclo y sus cuotas:
+  - el ciclo, `cobrar_desde`, la baja y la reactivación son los de §74, ahora
+    por plan;
+  - un índice parcial impide el mismo plan activo dos veces;
+  - el socio está de baja cuando no tiene ningún plan activo.
+- **Descuentos (`descuentos_socio` y `descuento_socio_planes`),** siempre en
+  porcentaje (de más de 0 a 100):
+  - **combo:** cuando el socio tiene todos los planes elegidos; baja esos;
+  - **por cantidad:** desde N planes; baja todos;
+  - **a mano:** se elige en el alta o en la ficha (`socios.descuento_id`).
+  - Si se aplican varios, gana el mayor y no se suman: es un default razonable,
+    falta confirmarlo con el usuario.
+  - Se calcula al generar cada cuota, con los planes activos de ese momento.
+    La cuota guarda la foto: `precio_lista`, `descuento_pct` y `descuento_id`.
+  - Un 100% da una cuota "sin cargo".
+- **Descartado:**
+  - **Duraciones como variantes de producto:** ataba los socios a los
+    atributos, y Productos podía desarmar la relación con los meses.
+  - **Descuentos por monto fijo:** con planes de distinta duración no tiene un
+    reparto claro. Un precio fijo de combo se arma como un plan propio
+    ("Musculación + Funcional").
+
+**Esquema.** Las tablas de §74 nunca se commitearon. En la base real el usuario
+ya había probado la primera versión: un plan, un socio, una cuota cobrada (venta
+#11) y dos ingresos. Por eso no se borraron.
+- `schema.sql` tiene la forma nueva: `planes_socio` sin `duracion_meses`,
+  `socios` sin plan ni estado, y `cuotas_socio` por inscripción. Suma las
+  tablas nuevas: opciones, descuentos, planes de un combo e inscripciones.
+- `db/index.js` migra la forma de §74 si la encuentra (`planes_socio` con
+  `duracion_meses`), en una transacción con `foreign_keys` OFF:
+  - cada plan conserva su id y su duración pasa a ser su primera opción, con
+    el precio del servicio; una duración que solo quedó en cuotas entra
+    pausada, con lo cobrado;
+  - cada socio conserva su id y su plan pasa a ser una inscripción con el
+    mismo id;
+  - cada cuota conserva su id y su venta, y toma como precio de lista lo que
+    se cobró;
+  - `ingresos_socio` no cambia.
+  - Las tres tablas que cambian se reconstruyen con su `CREATE` de
+    `schema.sql`, leído con una regex (`schemaSql`): no hay una segunda copia
+    de la definición.
+  - Al final controla las claves foráneas de las seis tablas.
+- **Antes de migrar se intentó otra cosa:** borrar las tablas, creyendo que
+  estaban vacías. Una guarda del script controlaba que estuvieran vacías,
+  encontró los dos ingresos y no tocó nada.
+  - La migración se probó primero en una copia de la base real.
+  - Respaldo manual antes de arrancar: `nexo-20261020-123807.db`, en
+    OneDrive.
+
+**Backend (`server.js`, sección de socios reescrita).**
+- **Rutas nuevas:**
+  - `GET`, `POST` y `PATCH /api/descuentos-socio` (escribir es admin);
+  - `POST /api/socios/cotizacion`, que no escribe y devuelve las líneas, el
+    total y los planes que ya tenía y cambian de descuento;
+  - `POST /api/socios/:id/planes` (sumar);
+  - `PATCH /api/socios/:id/planes/:inscripcionId` (duración, dejar,
+    reactivar).
+- **Rutas que cambian:**
+  - `POST /api/planes-socio` y su `PATCH` reciben `opciones: [{ meses, precio }]`;
+  - `POST /api/socios` recibe `planes: [{ opcion_id }]` y `descuento_id`;
+  - `PATCH /api/socios/:id` cambia el descuento a mano, o da de baja y
+    reactiva al socio entero (vuelven los planes de su última baja).
+- **Cada socio trae** sus planes con el precio de la próxima cuota y su
+  descuento. `empieza` reemplaza al uso de `ciclo_desde` para "por empezar".
+
+**Frontend (`dominios/socios.js` reescrito).**
+- **Configuración → Planes:** una fila por duración (meses y precio), con su
+  nombre y cuánto sale por mes, comparado con el mensual. Se agregan y se
+  quitan duraciones.
+- **Configuración → Descuentos y combos** (página nueva): tres tarjetas para
+  elegir el tipo, los planes del combo en casillas y la cantidad mínima.
+- **Alta:** cada plan es una tarjeta con su casilla; marcada, muestra sus
+  duraciones. Abajo, la cotización: precio de lista tachado, precio final, el
+  descuento y el primer período. Se puede elegir el descuento a mano.
+- **Ficha:**
+  - el panel "Planes": duración (con confirmación), Dejar, Reactivar y "Sumar
+    plan", con la cotización y los planes que cambian de descuento;
+  - el descuento a mano;
+  - el detalle de la cuota: duración y descuento.
+- **Lista e ingreso:** muestran todos los planes del socio.
+
+**Verificación.**
+- `npm test` 56 de 56. El caso de socios se reescribió:
+  - duraciones inválidas o repetidas, editar y pausar duraciones, y el precio
+    del servicio que no se cambia desde Productos;
+  - combo, cantidad y a mano, con "gana el mayor";
+  - cotización igual a la cuota generada;
+  - alta con dos planes, sumar uno, cambiar duración, dejar y reactivar;
+  - baja y vuelta del socio entero, y aislamiento.
+- `npm run lint` verde y `verificar-migracion` 24 de 24, incluida la copia de
+  la base real.
+- `npm run regresion`: 12 diferencias, todas por rutas nuevas y el catálogo de
+  módulos.
+- **Navegador:** escritorio, 390 px, oscuro y claro, sin errores de consola.
+  Arreglos que salieron de la prueba:
+  - el error de una duración rompía su fila;
+  - "Pausar" quedaba fuera de la tabla de descuentos;
+  - elegir la misma duración avisaba un cambio que no hubo;
+  - en el celular, el nombre del plan quedaba apretado contra el precio.
+- **Base real:** migrada al arrancar, con `integrity_check` ok y sin claves
+  rotas.
+
+### Para después
+
+- Descuentos de monto fijo, o un precio fijo de combo que se reparta.
+- Que se sumen dos descuentos (hoy gana el mayor), si el usuario lo prefiere.
+- Alinear el vencimiento de un plan sumado con el de los otros (hoy cada plan
+  vence el día en que se sumó).
+- Pases por día o por semana: hoy son un servicio que se vende en el punto de
+  venta.
+- Lo pendiente de §74: cobro parcial, congelar un plan, avisos por WhatsApp,
+  carnet con código y días de gracia.
+
+### Qué sigue
+
+- Que el usuario lo vea y confirme "gana el mayor".
+- Varios negocios por cuenta (punto 6 del plan).
+
+## 76. Planes y descuentos de socios, del menú de Configuración al menú principal, 20 de octubre de 2026
+
+**Pedido del usuario:** "la configuración de planes también tiene que estar en
+el apartado principal, no en Configuración".
+
+**Qué cambió.**
+- **Vista nueva `planes-socio`:** "Planes" en el menú, dentro del grupo Socios.
+  - Tiene dos pestañas, que son enlaces con su dirección: `#/planes-socio`
+    (los planes) y `#/planes-socio/descuentos` (descuentos y combos). Los
+    descuentos se mudaron con los planes porque van atados a ellos.
+  - Es solo admin: `col-admin` en el ítem del menú y `VISTAS_SOLO_ADMIN` en el
+    router, porque son los precios. Pertenece al módulo `socios`.
+  - El HTML de las dos páginas se movió tal cual, con los mismos ids.
+    Sumó un título en cada formulario ("Nuevo plan" o `Editar "…"`).
+- **Configuración** ya no tiene el grupo Socios ni sus entradas en `PAGINAS`.
+  - `dominios/socios.js` cambió `registrar("pintar:…")` por
+    `alEntrarEnVista("planes-socio", abrirPlanes)`, que elige la pestaña por la
+    subruta.
+  - Los enlaces viejos `#/configuracion/planes-socio` y
+    `…/descuentos-socio` llevan a la vista nueva (`VISTAS_RENOMBRADAS`).
+- **Textos:** los avisos que decían "Configuración → Planes de socios" ahora
+  dicen "Socios → Planes", también el error de `server.js` al tocar el precio
+  de un plan desde Productos.
+
+**Verificación.**
+- `npm test` 56 de 56 y `npm run lint` verde.
+- **Navegador** (base nueva en el scratchpad):
+  - el ítem del menú y las dos pestañas, con su dirección y el título del
+    formulario al editar;
+  - el enlace viejo y Configuración sin el grupo Socios;
+  - 390 px;
+  - el empleado no ve "Planes", y con la dirección escrita a mano no entra.
+  - Sin errores de consola.
+- El servidor real se reinició para tomar el texto nuevo.
+
+### Qué sigue
+
+- Lo mismo que §75: que el usuario lo vea y confirme "gana el mayor".

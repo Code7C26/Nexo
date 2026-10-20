@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §73);
+    siguiente número (hoy el último es §76);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,12 +19,17 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (19 de octubre de 2026)
+## Estado actual (20 de octubre de 2026)
 
-**Próxima sesión:** socios, cuotas e ingreso (punto 5 del plan, en "Qué
-sigue"). El alta de cuenta guiada y Configuración como sección propia
-quedaron hechas (hist. §73): falta que el usuario las vea y diga qué
-cambiaría. Después, varios negocios por cuenta.
+**Próxima sesión:** varios negocios por cuenta (punto 6 del plan, en "Qué
+sigue").
+- Socios, cuotas e ingreso (hist. §74) y planes con varias duraciones, varios
+  planes por socio y descuentos (hist. §75) están hechos y commiteados.
+- El usuario ya probó la primera versión de socios en la base real, que es un
+  gimnasio desde Configuración. Sus datos pasaron a la forma de §75 con la
+  migración de `db/index.js`.
+- Falta que vea §75 y diga qué cambiaría. Los planes y descuentos ya no
+  están en Configuración: son "Planes", en el menú, dentro de Socios (hist. §76).
 
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
@@ -289,6 +294,56 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   `import()`. `#/crear-cuenta` es su enlace (para la landing).
 - **El tema** pasa por `core/tema.js` (botón de la sidebar y página Apariencia).
 
+**Socios y cuotas (hist. §74 a §76)**
+- **Dónde está cada cosa:** el menú Socios tiene Ingreso, Socios y Planes.
+  Planes es solo admin y tiene dos pestañas: `#/planes-socio` y
+  `#/planes-socio/descuentos`. Configuración no tiene nada de socios, por
+  pedido del usuario (hist. §76).
+- **Sin circuito propio:** el socio es un cliente, cada plan es un servicio del
+  catálogo y cada cuota es una venta de ese servicio, cobrada con los cobros de
+  siempre.
+  - Del producto salen el nombre del plan y si se ofrece. El precio sale de cada
+    duración (`planes_socio_opciones`).
+  - El `precio_venta` del servicio es solo de referencia, el de la duración más
+    corta. Productos no lo deja cambiar.
+- **Duraciones:** de 1 a 36 meses, una por cantidad de meses. La que se saca
+  del plan se pausa y no se borra.
+- **Varios planes por socio** (`inscripciones_socio`): cada uno tiene su ciclo y
+  sus cuotas. Un socio de baja es uno sin planes activos. El mismo plan no puede
+  estar activo dos veces (índice parcial).
+- **Descuentos** (`descuentos_socio`), siempre en porcentaje:
+  - tres tipos: combo de ciertos planes, por cantidad de planes, o a mano en la
+    ficha del socio;
+  - si le tocan varios, se aplica **el mayor, nunca la suma** (decisión
+    tomada sin el usuario, a revisar);
+  - se calculan al generar la cuota, y la cuota guarda `precio_lista`,
+    `descuento_pct` y `descuento_id`;
+  - la pantalla pide `POST /api/socios/cotizacion`, el mismo cálculo, antes de
+    confirmar.
+- **Cuotas sin cron:** `ponerCuotasAlDia()` corre al mirar a un socio. El
+  `UNIQUE(inscripcion_id, desde)` de `cuotas_socio` impide cobrar dos veces un
+  período. Hay `GET` que escriben a propósito.
+- **Vencimiento:** la cuota vence el día en que empieza su período, el mismo día
+  del mes que el alta, contado desde `ciclo_desde` y no encadenado. Debe desde
+  ese día: no hay días de gracia (a definir con el usuario).
+- **Un alta hacia atrás** cobra el período que corre, no los anteriores
+  (`cobrar_desde`).
+- **Baja:** no genera más cuotas y no toca las que ya hay. Reactivar empieza un
+  ciclo nuevo, sin cobrar los meses de baja.
+- **Bonificar:** se anula la venta de la cuota, y el período queda cubierto.
+- **Cobro:** salda todas las cuotas impagas juntas. Cobrar una parte se hace desde
+  la venta.
+- **Auditoría, sin reconstruir `auditoria`:**
+  - los socios van como `entidad cliente` con `operacion_tipo socio`;
+  - los planes, como `producto` con `plan_socio`;
+  - los descuentos, como `organizacion` con `descuento_socio`;
+  - la cuota generada lleva `actor sistema` y no tiene usuario.
+- **Permisos y catálogo:**
+  - crear y editar planes y descuentos es admin;
+  - la recepción (alta, sumar plan, descuento a mano, cobro, ingreso, baja) es
+    de los dos roles;
+  - los planes no salen en el catálogo del punto de venta.
+
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
   incluidos atributos `value="…"`. Lo exige `npm test`
@@ -531,7 +586,9 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        conservan, pero no se avisa);
      - una guía de primeros pasos en el Resumen para una cuenta nueva.
 
-5. **Socios, cuotas e ingreso** (2 sesiones). Módulo
+5. ~~Socios, cuotas e ingreso~~ **hecha** (hist. §74, ampliada en §75 con
+   duraciones, varios planes y descuentos). Falta que el usuario vea §75. Lo que quedó para después está en hist. §75. Lo que sigue
+   es lo que se decidió para la etapa. Módulo
    `socios`, activable en cualquier negocio y prendido en el gimnasio, que
    además compra y vende como un comercio.
    Decidido con el usuario el 19 de octubre:
@@ -547,7 +604,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - `socios` va a `MODULOS` y `MODULOS_INFO` y al preset del gimnasio (hoy
        `pos compras stock`);
      - se saca el "muy pronto" de la descripción del gimnasio;
-     - la página de Configuración del módulo es una entrada más de `PAGINAS`.
+     - sus planes y descuentos eran páginas de Configuración; desde hist. §76
+       son su propia vista, "Planes", en el menú principal.
 6. **Varios negocios por cuenta** (1–2 sesiones). Decidido por el usuario el
    19 de octubre: "una cuenta podría tener más de un negocio sin problema".
    - Es la variante "un usuario en varias empresas con cambio de contexto" de
