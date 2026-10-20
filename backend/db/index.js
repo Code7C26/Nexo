@@ -1763,6 +1763,41 @@ if (db.prepare('PRAGMA table_info(planes_socio)').all().some((col) => col.name =
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Varios negocios por cuenta (CLAUDE.md §28, hist. §77). La sesión guarda el
+// negocio en el que se está trabajando: las que ya estaban abiertas pasan al
+// negocio de su usuario, así nadie queda afuera por la migración.
+// Re-ejecutable: el UPDATE solo toca las que todavía no tienen negocio.
+if (!db.prepare('PRAGMA table_info(sesiones)').all().some((col) => col.name === 'organizacion_id')) {
+  db.exec('ALTER TABLE sesiones ADD COLUMN organizacion_id INTEGER REFERENCES organizaciones(id)');
+}
+db.exec(`
+  UPDATE sesiones
+     SET organizacion_id = (SELECT organizacion_id FROM usuarios WHERE usuarios.id = sesiones.usuario_id)
+   WHERE organizacion_id IS NULL
+`);
+
+// El rol y la baja pasan de usuarios a usuario_organizaciones (que ya creó
+// schema.sql): cada usuario queda en el negocio que tenía, con su rol, su baja
+// y sus fechas. Después rol y activo se borran de usuarios, porque serían una
+// segunda fuente del rol, y una baja en un negocio no puede tocar el acceso a
+// otro. DROP COLUMN (SQL estándar, SQLite 3.35+) en vez de reconstruir la
+// tabla: ninguna vista, índice ni trigger usa esas columnas, cada CHECK es de
+// su propia columna, y usuarios tiene FKs desde cuatro tablas. En una
+// transacción: si algo falla, la base queda como estaba.
+if (db.prepare('PRAGMA table_info(usuarios)').all().some((col) => col.name === 'rol')) {
+  withTransaction(() => {
+    db.exec(`
+      INSERT INTO usuario_organizaciones (usuario_id, organizacion_id, rol, activo, fecha_alta, ultimo_acceso)
+      SELECT id, organizacion_id, rol, activo, fecha_alta, ultimo_acceso
+        FROM usuarios
+       WHERE NOT EXISTS (SELECT 1 FROM usuario_organizaciones m
+                          WHERE m.usuario_id = usuarios.id AND m.organizacion_id = usuarios.organizacion_id);
+      ALTER TABLE usuarios DROP COLUMN rol;
+      ALTER TABLE usuarios DROP COLUMN activo;
+    `);
+  });
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

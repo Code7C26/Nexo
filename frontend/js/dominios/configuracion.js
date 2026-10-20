@@ -88,7 +88,8 @@ async function guardar(form, cuerpo, pintar) {
   } finally {
     boton.textContent = "Guardar cambios";
   }
-  await refrescar([cargarNegocio()]);
+  // También el selector de negocio, que muestra el nombre y el tipo.
+  await refrescar([cargarNegocio(), recargar("negocios")]);
   pintar();
   avisar("Cambios guardados.", "ok");
 }

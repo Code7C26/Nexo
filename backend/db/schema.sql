@@ -884,12 +884,10 @@ CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria(entidad, entidad_i
 -- Usuarios, login y roles. Nexo pasa de "un solo operador sin identidad"
 -- a admin/empleado con sesión propia.
 --
--- organizaciones arranca con UNA sola fila: es la preparación para vender
--- Nexo a más de un negocio (usuarios.organizacion_id ya apunta acá), pero
--- las ~30 tablas de datos del sistema (ventas, clientes, stock...) NO se
--- tocan en esta etapa. El día que exista un segundo negocio, alcanza con
--- agregar organizacion_id a esas tablas y filtrar por ella — usuarios y
--- login no necesitan rehacerse.
+-- organizaciones es cada negocio de Nexo (CLAUDE.md §28): todas las tablas
+-- de datos tienen organizacion_id y toda consulta filtra por el negocio de
+-- la sesión. Un usuario puede trabajar en varios (usuario_organizaciones,
+-- más abajo).
 -- Los campos de contacto/fiscales son los datos que van en el membrete de un
 -- comprobante impreso (presupuesto, factura). Viven acá y no en una tabla
 -- aparte porque "la organización" YA es el negocio: una tabla paralela
@@ -921,11 +919,15 @@ CREATE TABLE IF NOT EXISTS organizaciones (
 -- "jtosi". password_hash/password_salt van en columnas propias en vez de
 -- un único string con formato PHC: el proyecto no tiene parser para ese
 -- formato, y dos columnas es más explícito e inspeccionable con SQL
--- directo. activo es baja lógica, nunca DELETE: auditoria.usuario_id
--- tiene que poder seguir resolviendo el nombre de un usuario dado de
--- baja. debe_cambiar_password se usa cuando el admin resetea la
+-- directo. debe_cambiar_password se usa cuando el admin resetea la
 -- contraseña de otro usuario, para forzar que la cambie en el próximo
 -- login antes de dejarlo operar.
+--
+-- Esta tabla es solo la identidad (hist. §77): el rol y la baja son de
+-- cada negocio y viven en usuario_organizaciones. organizacion_id es el
+-- negocio donde se creó la cuenta y ya no decide ningún permiso; queda
+-- porque sacarla pide reconstruir la tabla (es una FK). Un usuario nunca se
+-- borra: auditoria.usuario_id tiene que seguir resolviendo su nombre.
 CREATE TABLE IF NOT EXISTS usuarios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
@@ -933,8 +935,6 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nombre TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
-  rol TEXT NOT NULL DEFAULT 'empleado' CHECK (rol IN ('admin','empleado')),
-  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
   debe_cambiar_password INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar_password IN (0,1)),
   fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
   ultimo_acceso TEXT
@@ -944,6 +944,22 @@ CREATE TABLE IF NOT EXISTS usuarios (
 -- distintas.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_usuario ON usuarios(LOWER(usuario));
 
+-- En qué negocios trabaja cada usuario, y con qué rol en cada uno (CLAUDE.md
+-- §28, hist. §77): un dueño con un comercio y un gimnasio entra con un solo
+-- usuario y cambia de negocio. activo es la baja en ESE negocio, nunca
+-- DELETE: dar de baja a alguien en A no le toca el acceso a B.
+-- ultimo_acceso es el de este negocio: el login entra al último que se usó.
+CREATE TABLE IF NOT EXISTS usuario_organizaciones (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  rol TEXT NOT NULL DEFAULT 'empleado' CHECK (rol IN ('admin','empleado')),
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
+  fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
+  ultimo_acceso TEXT,
+  PRIMARY KEY (usuario_id, organizacion_id)
+);
+CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
+
 -- Tabla de sesiones en vez de un token firmado (JWT). Con JWT, dar de
 -- baja a un empleado no lo echa del sistema hasta que el token expire
 -- por su cuenta. Con esta tabla, DELETE FROM sesiones WHERE usuario_id=?
@@ -951,11 +967,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_usuario ON usuarios(LOWER(usuario
 -- audita todo, eso no es negociable. También evita elegir un algoritmo
 -- de firma y gestionar un secreto. Las sesiones sobreviven al reinicio
 -- del proceso porque están en disco, que es lo correcto con `--watch`.
+--
+-- organizacion_id es el negocio en el que está trabajando esa sesión (hist.
+-- §77): de acá sale req.usuario.organizacion_id. Es nullable porque en las
+-- bases viejas la suma un ALTER; el código siempre la carga, y una sesión
+-- sin negocio no pasa el JOIN de sesionValida().
 CREATE TABLE IF NOT EXISTS sesiones (
   token TEXT PRIMARY KEY,
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
   creada TEXT NOT NULL DEFAULT (datetime('now')),
-  expira TEXT NOT NULL
+  expira TEXT NOT NULL,
+  organizacion_id INTEGER REFERENCES organizaciones(id)
 );
 CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id);
 

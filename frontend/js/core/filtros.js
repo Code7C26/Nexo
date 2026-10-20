@@ -200,7 +200,9 @@ function aplicarFiltros(lista, filtros, campos) {
 
 export function crearFiltros(contenedorId, campos, onCambio) {
   const contenedor = document.getElementById(contenedorId);
-  const claveGuardado = `nexo.filtros.${contenedorId}`;
+  // Por negocio (hist. §77): un filtro guarda ids de categorías, depósitos o
+  // cuentas, que en otro negocio no existen o son otra cosa.
+  const claveGuardado = `nexo.filtros.${document.documentElement.dataset.organizacion}.${contenedorId}`;
 
   // Los filtros sobreviven a recargar la página. Se descartan los que
   // apuntan a un campo que ya no existe, para que un cambio de config no

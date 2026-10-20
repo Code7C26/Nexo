@@ -46,15 +46,31 @@
   // vía manejarError. El 401 en cambio tiene exactamente una respuesta
   // correcta en los 78 sitios — no hay ninguna decisión por call site
   // que se esté escondiendo al centralizarla acá.
+  //
+  // También marca cada llamada a la API con el negocio que muestra esta
+  // pestaña (hist. §77). La sesión es una sola por navegador: si en otra
+  // pestaña se cambió de negocio, el backend frena a esta con un 409 en vez de
+  // dejarla escribir en el negocio equivocado, y acá se recarga con un aviso.
   const fetchOriginal = window.fetch.bind(window);
   window.fetch = async (...args) => {
+    const url = typeof args[0] === "string" ? args[0] : args[0]?.url ?? "";
+    const negocio = document.documentElement.dataset.organizacion;
+    if (negocio && url.startsWith("/api/")) {
+      const init = args[1] ?? {};
+      args[1] = { ...init, headers: { ...init.headers, "X-Nexo-Negocio": negocio } };
+    }
     const res = await fetchOriginal(...args);
     if (res.status === 401) {
-      const url = typeof args[0] === "string" ? args[0] : args[0]?.url ?? "";
       if (!url.includes("/api/auth/")) {
         cerrarSesionLocal();
         mostrarPantalla("login");
       }
+    }
+    if (res.status === 409 && res.headers.get("X-Nexo-Negocio-Cambiado")) {
+      try {
+        sessionStorage.setItem("nexo.aviso", "Cambiaste de negocio en otra pestaña. Esta se actualizó para mostrar en el que estás.");
+      } catch {}
+      location.replace(location.pathname);
     }
     return res;
   };
@@ -101,8 +117,12 @@
   // arrancarApp() escribe estos datos en el pie de la sidebar para que
   // app.js (que todavía no cargó en este punto) los pueda leer del DOM
   // en vez de pedirlos de nuevo con un fetch propio.
+  // data-organizacion es el negocio de la sesión: separa por negocio lo que se
+  // guarda en el navegador (filtros, la caja del punto de venta) y marca las
+  // llamadas a la API (ver el interceptor de arriba).
   function escribirDatosUsuario(usuario) {
     document.documentElement.setAttribute("data-rol", usuario.rol);
+    document.documentElement.setAttribute("data-organizacion", usuario.organizacion_id);
     const nombreEl = document.querySelector("[data-usuario-nombre]");
     if (nombreEl) nombreEl.textContent = usuario.nombre;
     const rolEl = document.querySelector("[data-usuario-rol]");
@@ -117,13 +137,17 @@
       localStorage.setItem("nexo.sesion", "activa");
     } catch {}
 
-    // Guarda de idempotencia: si el usuario cierra sesión y entra de
-    // nuevo sin recargar la página (ver cerrarSesion() más abajo, que
-    // por eso mismo hace location.reload() en vez de intentar volver acá
-    // sin recargar), nunca se inyecta app.js dos veces — eso duplicaría
-    // sus ~90 listeners, el MutationObserver de accesibilidad de
-    // modales, y las olas de fetch del boot.
-    if (appInyectada) return;
+    // Nunca se inyecta app.js dos veces: eso duplicaría sus ~90 listeners,
+    // el MutationObserver de accesibilidad de modales, y las olas de fetch
+    // del boot. Cerrar sesión ya recarga la página (ver nexoCerrarSesion
+    // más abajo); la única forma de llegar acá con la app cargada es volver
+    // a entrar después de un 401, y ahí lo que tiene en memoria es de la
+    // sesión anterior, que puede ser de otro usuario o de otro negocio
+    // (hist. §77). Recargar arranca de cero con la sesión nueva.
+    if (appInyectada) {
+      location.reload();
+      return;
+    }
     appInyectada = true;
 
     // app.js es un módulo ES (CLAUDE.md §31): carga diferida, modo estricto y

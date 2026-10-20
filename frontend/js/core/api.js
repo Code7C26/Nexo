@@ -45,7 +45,9 @@ export async function api(url, { method = "GET", body, error = "No se pudo compl
   }
 
   if (!res.ok) {
-    if (res.status !== 401) await manejarError(res, error);
+    // El 409 de "otra pestaña cambió de negocio" lo resuelve sesion.js
+    // recargando la página con su propio aviso (hist. §77).
+    if (res.status !== 401 && !res.headers.get("X-Nexo-Negocio-Cambiado")) await manejarError(res, error);
     throw new ErrorApi(`HTTP ${res.status}: ${method} ${url}`);
   }
 

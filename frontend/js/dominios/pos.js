@@ -15,7 +15,8 @@ import { alEntrarEnVista, recargar } from "../core/registro.js";
 const CONSUMIDOR_FINAL = "Consumidor final";
 const MAX_RESULTADOS = 40;
 const CENTAVO = 0.005;
-const CLAVE_CAJA = "nexo.pos.caja";
+// Por negocio (hist. §77): la caja elegida en uno no es una caja del otro.
+const CLAVE_CAJA = `nexo.pos.caja.${document.documentElement.dataset.organizacion}`;
 const ICONO_TIPO_CUENTA = { efectivo: "banknote", banco: "building-2", mercadopago: "wallet", otro: "wallet" };
 
 let cuentas = []; // todas las cuentas de tesorería, con saldo

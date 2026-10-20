@@ -28,8 +28,8 @@ function puertoLibre() {
 // tests pueden afirmar sobre el código de error.
 export function crearCliente(url) {
   const cookies = new Map();
-  async function pedir(metodo, ruta, cuerpo) {
-    const headers = { 'content-type': 'application/json' };
+  async function pedir(metodo, ruta, cuerpo, cabeceras = {}) {
+    const headers = { 'content-type': 'application/json', ...cabeceras };
     if (cookies.size) headers.cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     const res = await fetch(url + ruta, {
       method: metodo,
@@ -58,7 +58,9 @@ export function crearCliente(url) {
     post: (ruta, cuerpo = {}) => pedir('POST', ruta, cuerpo),
     put: (ruta, cuerpo = {}) => pedir('PUT', ruta, cuerpo),
     patch: (ruta, cuerpo = {}) => pedir('PATCH', ruta, cuerpo),
-    del: (ruta) => pedir('DELETE', ruta)
+    del: (ruta) => pedir('DELETE', ruta),
+    // Con cabeceras propias, como la del negocio que muestra la pestaña.
+    pedir
   };
 }
 
@@ -140,9 +142,10 @@ export async function registrarEmpresa(url, { empresa, usuario, nombre = 'Admin'
 }
 
 // Alta de un empleado por el admin y primer login con cambio de contraseña
-// obligatorio. Devuelve el cliente ya logueado como empleado.
-export async function crearEmpleado(url, admin, { usuario, nombre = 'Empleado', password = 'clave-segura-2' }) {
-  const alta = await admin.post('/api/usuarios', { usuario, nombre, password: 'clave-temporal-1', rol: 'empleado' });
+// obligatorio. Devuelve el cliente ya logueado como empleado (o como otro
+// admin, con `rol`).
+export async function crearEmpleado(url, admin, { usuario, nombre = 'Empleado', password = 'clave-segura-2', rol = 'empleado' }) {
+  const alta = await admin.post('/api/usuarios', { usuario, nombre, password: 'clave-temporal-1', rol });
   if (alta.status !== 201) throw new Error(`Alta de empleado falló (${alta.status}): ${alta.texto}`);
   const cliente = crearCliente(url);
   const login = await cliente.post('/api/auth/login', { usuario, password: 'clave-temporal-1' });

@@ -347,6 +347,138 @@ button { font-family: inherit; cursor: pointer; }
   letter-spacing: -0.02em;
 }
 
+/* ---------- Selector de negocio (hist. §77) ---------- */
+
+/* Como el selector de espacios de Dub: el negocio en el que se trabaja, con
+   su inicial en un cuadradito, el nombre y el tipo. Pegado a la marca (el
+   gap de la sidebar lo separaba demasiado) y negro como ella en los dos
+   temas. */
+.negocio-selector { margin-top: calc(var(--sp-3) * -1); }
+
+.negocio-actual {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px var(--sp-2);
+  background: none;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-sm);
+  color: var(--sidebar-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) ease;
+}
+
+.negocio-actual:hover:not(:disabled),
+.negocio-actual[aria-expanded="true"] { background: var(--sidebar-hover); }
+.negocio-actual:focus-visible { outline: 2px solid var(--accent-on-dark); outline-offset: 2px; }
+/* Un empleado de un solo negocio ve el nombre, sin menú ni flechas. */
+.negocio-actual:disabled { cursor: default; opacity: 1; }
+.sin-menu .negocio-flechas { display: none; }
+
+.negocio-inicial {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-xs);
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.negocio-inicial .ico { width: 16px; height: 16px; }
+
+.negocio-textos {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.negocio-nombre,
+.negocio-tipo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.negocio-nombre { font-size: var(--txt-sm); font-weight: 600; }
+.negocio-tipo { font-size: var(--txt-2xs); color: var(--sidebar-ink-2); }
+.negocio-flechas { flex: none; width: 16px; height: 16px; color: var(--sidebar-ink-3); }
+
+/* El menú vive en el <body> (lo muda negocios.js) y se ubica fijo debajo del
+   botón: adentro de la sidebar lo cortaba su scroll, y en el celular el
+   cajón tiene un transform que corre cualquier position: fixed. Por encima
+   del cajón (55) y debajo de la hamburguesa (60). */
+.negocio-menu {
+  position: fixed;
+  z-index: 58;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(420px, calc(100vh - 96px));
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--pill-bg);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--sidebar-ink);
+  animation: flota-entra var(--dur-2) var(--ease-out);
+}
+
+.negocio-menu[hidden] { display: none; }
+
+.negocio-menu-titulo {
+  margin: 4px 8px 6px;
+  font-size: var(--txt-2xs);
+  font-weight: 600;
+  color: var(--sidebar-ink-2);
+}
+
+.negocio-opcion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--sidebar-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.negocio-opcion:hover:not(:disabled),
+.negocio-opcion:focus-visible { background: var(--sidebar-hover); outline: none; }
+.negocio-opcion:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-on-dark); }
+.negocio-opcion.is-actual { background: var(--sidebar-active); }
+/* Mientras cambia, las demás se apagan y la elegida dice "Cambiando…". */
+.negocio-opcion:disabled { cursor: progress; opacity: 0.55; }
+.negocio-opcion[aria-busy="true"] { opacity: 1; }
+.negocio-check { flex: none; width: 16px; height: 16px; color: var(--accent-on-dark); }
+
+.negocio-menu-separador {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--sidebar-line);
+}
+
+.negocio-agregar .negocio-inicial {
+  background: none;
+  border: 1px solid var(--sidebar-line);
+  color: var(--sidebar-ink-2);
+}
+
 .nav {
   display: flex;
   flex-direction: column;
@@ -4261,6 +4393,46 @@ input.precio-sin-configurar::placeholder {
 .alta-ya-tengo[hidden] { display: none; }
 .alta-ya-tengo .btn-link { padding: 0; font-size: var(--txt-xs); }
 
+/* "Agregar negocio" (hist. §77) va con Cancelar donde la cuenta nueva tiene
+   "¿Ya tenés cuenta?", y una nota que explica qué es un negocio aparte. */
+.alta-cancelar { justify-self: end; }
+.alta-cancelar[hidden] { display: none; }
+
+.alta-nota {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.alta-nota[hidden] { display: none; }
+.alta-nota .ico { flex: none; margin-top: 2px; color: var(--accent); }
+
+/* "Agregar negocio" (hist. §77) va con Cancelar donde la cuenta nueva tiene
+   "¿Ya tenés cuenta?", y una nota que explica qué es un negocio aparte. */
+.alta-cancelar { justify-self: end; }
+.alta-cancelar[hidden] { display: none; }
+
+.alta-nota {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.alta-nota[hidden] { display: none; }
+.alta-nota .ico { flex: none; margin-top: 2px; color: var(--accent); }
+
 .alta-cuerpo {
   flex: 1;
   display: flex;
@@ -4332,6 +4504,10 @@ input.precio-sin-configurar::placeholder {
 }
 
 .alta-acciones > .btn-primary:only-child { margin-left: auto; }
+/* En "Agregar negocio" el primer paso no tiene Atrás: para salir está
+   Cancelar, arriba. */
+.alta-acciones > [data-atras][hidden] { display: none; }
+.alta-acciones > [data-atras][hidden] + .btn-primary { margin-left: auto; }
 
 .alta-acciones .btn {
   min-height: 44px;

@@ -647,6 +647,97 @@ test('socios: planes con duraciones, cuotas sin cron, cobro, ingreso, baja y ais
 });
 
 // Va último a propósito: bloquea la IP local durante la ventana del límite.
+test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la contraseña (hist. §77)', async () => {
+  const idDe = async (cliente) => (await cliente.get('/api/auth/estado')).json.usuario;
+  const orgA = (await idDe(adminA)).organizacion_id;
+  const orgB = (await idDe(adminB)).organizacion_id;
+  assert.ok(orgA && orgB && orgA !== orgB);
+
+  // El empleado no crea negocios, y un tipo inválido no crea nada.
+  assert.equal((await empleadoA.post('/api/negocios', { nombre: 'Kiosco del empleado' })).status, 403);
+  const invalido = await adminA.post('/api/negocios', { nombre: 'Sin tipo', rubro: 'constructor' });
+  assert.equal(invalido.status, 400, invalido.texto);
+  assert.equal((await adminA.get('/api/negocios')).json.length, 1);
+
+  // adminA crea un gimnasio: la sesión pasa a él, con el preset y sus catálogos.
+  const alta = await adminA.post('/api/negocios', { nombre: 'Gimnasio A', rubro: 'gimnasio' });
+  assert.equal(alta.status, 201, alta.texto);
+  const orgG = alta.json.id;
+  const negocio = await adminA.get('/api/negocio');
+  assert.equal(negocio.json.id, orgG);
+  assert.equal(negocio.json.nombre, 'Gimnasio A');
+  assert.ok(negocio.json.modulos.includes('socios'));
+  assert.equal((await idDe(adminA)).organizacion_id, orgG);
+  assert.ok((await adminA.get('/api/depositos')).json.length >= 1);
+  const lista = (await adminA.get('/api/negocios')).json;
+  assert.equal(lista.length, 2);
+  assert.deepEqual(
+    lista.find((n) => n.id === orgG),
+    { id: orgG, nombre: 'Gimnasio A', rubro: 'gimnasio', tipo: 'Gimnasio', rol: 'admin', actual: true }
+  );
+  assert.equal(lista.find((n) => n.id === orgA).actual, false);
+
+  // En el negocio nuevo no hay nada de A: ni productos ni usuarios.
+  assert.deepEqual((await adminA.get('/api/productos')).json, []);
+  assert.deepEqual((await adminA.get('/api/usuarios')).json.map((u) => u.usuario), ['admin-a']);
+
+  // De vuelta en A se ven sus productos.
+  assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
+  assert.ok((await adminA.get('/api/productos')).json.some((p) => p.id === productoA));
+
+  // Un negocio ajeno o inexistente es 404, y la sesión sigue donde estaba.
+  assert.equal((await adminA.post(`/api/negocios/${orgB}/entrar`)).status, 404);
+  assert.equal((await adminA.post('/api/negocios/999999/entrar')).status, 404);
+  assert.equal((await adminA.get('/api/negocio')).json.id, orgA);
+  assert.equal((await empleadoA.post(`/api/negocios/${orgG}/entrar`)).status, 404);
+  assert.equal((await empleadoA.get('/api/negocio')).json.id, orgA);
+  assert.deepEqual((await empleadoA.get('/api/negocios')).json.map((n) => n.id), [orgA]);
+
+  // El login entra al último negocio usado.
+  assert.equal((await adminA.post(`/api/negocios/${orgG}/entrar`)).status, 204);
+  const login = await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'admin-a', password: 'clave-segura-1' });
+  assert.equal(login.status, 200, login.texto);
+  assert.equal(login.json.usuario.organizacion_id, orgG);
+  assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
+
+  // Pestaña vieja: el negocio que muestra no es el de la sesión.
+  const vieja = await adminA.pedir('POST', '/api/clientes', { nombre: 'Cliente de la pestaña vieja' }, { 'X-Nexo-Negocio': String(orgG) });
+  assert.equal(vieja.status, 409, vieja.texto);
+  assert.equal(vieja.headers.get('x-nexo-negocio-cambiado'), '1');
+  assert.ok(!(await adminA.get('/api/clientes')).json.some((c) => c.nombre === 'Cliente de la pestaña vieja'));
+  assert.equal((await adminA.pedir('GET', '/api/clientes', undefined, { 'X-Nexo-Negocio': String(orgA) })).status, 200);
+  // Lo que no depende del negocio activo no se corta.
+  assert.equal((await adminA.pedir('GET', '/api/negocios', undefined, { 'X-Nexo-Negocio': String(orgG) })).status, 200);
+  assert.equal((await adminA.pedir('POST', `/api/negocios/${orgA}/entrar`, {}, { 'X-Nexo-Negocio': String(orgG) })).status, 204);
+
+  // Y es admin de A y se arma su propio negocio C.
+  const y = await crearEmpleado(servidor.url, adminA, { usuario: 'y-a', nombre: 'Ye', rol: 'admin' });
+  const yId = (await idDe(y)).id;
+  const altaC = await y.post('/api/negocios', { nombre: 'Negocio de Ye', rubro: 'kiosco' });
+  assert.equal(altaC.status, 201, altaC.texto);
+  const orgC = altaC.json.id;
+
+  // adminA no le cambia la contraseña ni el nombre: con eso entraría a C.
+  const reset = await adminA.post(`/api/usuarios/${yId}/resetear-password`, { password: 'otra-clave-123' });
+  assert.equal(reset.status, 409, reset.texto);
+  assert.equal((await adminA.patch(`/api/usuarios/${yId}`, { nombre: 'Otro nombre' })).status, 409);
+  assert.equal((await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'y-a', password: 'clave-segura-2' })).status, 200);
+
+  // El rol y la baja en A son solo de A: en C sigue siendo admin y trabajando.
+  assert.equal((await adminA.patch(`/api/usuarios/${yId}`, { rol: 'empleado' })).status, 204);
+  assert.equal((await y.get('/api/usuarios')).status, 200);
+  assert.equal((await adminA.patch(`/api/usuarios/${yId}`, { activo: false })).status, 204);
+  assert.equal((await y.get('/api/negocio')).json.id, orgC);
+  assert.equal((await y.post(`/api/negocios/${orgA}/entrar`)).status, 404);
+  assert.deepEqual((await y.get('/api/negocios')).json.map((n) => n.id), [orgC]);
+  const loginY = await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'y-a', password: 'clave-segura-2' });
+  assert.equal(loginY.json?.usuario.organizacion_id, orgC, loginY.texto);
+
+  // El último admin activo se cuenta por negocio: en A queda solo adminA.
+  const yo = (await idDe(adminA)).id;
+  assert.equal((await adminA.patch(`/api/usuarios/${yo}`, { rol: 'empleado' })).status, 409);
+});
+
 test('muchos logins fallidos con usuarios distintos bloquean la IP (A6)', async () => {
   const anonimo = crearCliente(servidor.url);
   let ultimo;

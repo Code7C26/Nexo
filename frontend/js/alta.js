@@ -11,6 +11,10 @@
  *
  * Cada paso entra al historial (#/crear-cuenta/N): el Atrás del navegador, o
  * el gesto de volver del celular, vuelve un paso.
+ *
+ * El mismo alta sirve para "Agregar negocio" (modo "negocio", hist. §77):
+ * quien ya tiene cuenta suma otro negocio sin el paso "Tu cuenta", en
+ * #/agregar-negocio/N y con POST /api/negocios. Lo abre dominios/negocios.js.
  */
 
 import { marcarModulosDelTipo, tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "./core/tipos-negocio.js";
@@ -18,8 +22,14 @@ import { CONDICIONES_FISCALES, errorCuit, formatearCuit } from "./core/fiscal.js
 import { limpiarError, limpiarErrores, marcarError } from "./core/campos.js";
 
 const NOMBRES_PASO = ["Tu cuenta", "Tu negocio", "Tipo de negocio", "Secciones", "Comprobantes"];
-const RUTA = /^#\/crear-cuenta(?:\/(\d))?$/;
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Lo que cambia entre crear una cuenta y agregar un negocio a la que ya se
+// tiene: desde qué paso arranca, la dirección y los textos del final.
+const MODOS = {
+  cuenta: { primero: 1, ruta: "crear-cuenta", crear: "Crear cuenta", creando: "Creando tu cuenta…" },
+  negocio: { primero: 2, ruta: "agregar-negocio", crear: "Crear negocio", creando: "Creando el negocio…" }
+};
 
 const pantalla = document.getElementById("altaPantalla");
 const formularios = [...pantalla.querySelectorAll(".alta-paso")];
@@ -34,8 +44,14 @@ let catalogo = null;
 let rubroDeLosModulos = null;
 let alVolverAlPrimero = null;
 let opciones = {};
+let modo = MODOS.cuenta;
 
 const formDelPaso = (n) => formularios[n - 1];
+// El número que ve quien completa el alta, y el de la dirección: en "Agregar
+// negocio" el primer paso que se muestra es el 2 de los formularios.
+const pasoVisible = (n) => n - modo.primero + 1;
+const totalVisible = () => NOMBRES_PASO.length - modo.primero + 1;
+const rutaDelPaso = (n) => `#/${modo.ruta}/${pasoVisible(n)}`;
 
 campo("altaCondicion").innerHTML = `<option value="">Todavía no lo sé</option>${Object.entries(CONDICIONES_FISCALES)
   .map(([clave, etiqueta]) => `<option value="${clave}">${etiqueta}</option>`)
@@ -47,14 +63,15 @@ function irAPaso(n, { historial = true } = {}) {
   paso = n;
   alcanzado = Math.max(alcanzado, n);
   for (const form of formularios) form.hidden = Number(form.dataset.paso) !== n;
-  campo("altaProgreso").textContent = `Paso ${n} de ${NOMBRES_PASO.length} · ${NOMBRES_PASO[n - 1]}`;
+  campo("altaProgreso").textContent = `Paso ${pasoVisible(n)} de ${totalVisible()} · ${NOMBRES_PASO[n - 1]}`;
   campo("altaPasos")
     .querySelectorAll("li")
     .forEach((li, i) => {
+      li.hidden = i < modo.primero - 1;
       li.classList.toggle("is-hecho", i < n - 1);
       li.classList.toggle("is-actual", i === n - 1);
     });
-  if (historial) history.pushState(null, "", `#/crear-cuenta/${n}`);
+  if (historial) history.pushState(null, "", rutaDelPaso(n));
   pantalla.scrollTo(0, 0);
   // Con teclado, el foco va al primer campo (o a la tarjeta elegida): se
   // sigue sin buscar dónde quedó. En una pantalla táctil va al título, porque
@@ -75,14 +92,14 @@ function errorEn(control, texto) {
 // no se completó.
 window.addEventListener("popstate", () => {
   if (pantalla.hidden) return;
-  const ruta = location.hash.match(RUTA);
+  const ruta = location.hash.match(new RegExp(`^#\\/${modo.ruta}(?:\\/(\\d))?$`));
   if (!ruta) {
     // Salió del alta: en una instalación nueva no hay a dónde ir, se queda.
-    if (opciones.instalacionNueva) history.pushState(null, "", `#/crear-cuenta/${paso}`);
+    if (opciones.instalacionNueva) history.pushState(null, "", rutaDelPaso(paso));
     else cerrar(opciones.alVolver);
     return;
   }
-  const destino = Math.min(Number(ruta[1] ?? 1), alcanzado);
+  const destino = Math.min(Math.max(Number(ruta[1] ?? 1) + modo.primero - 1, modo.primero), alcanzado);
   irAPaso(destino, { historial: false });
   if (destino === 1 && alVolverAlPrimero) {
     alVolverAlPrimero();
@@ -98,6 +115,10 @@ campo("altaIrALogin").addEventListener("click", () => {
   history.replaceState(null, "", location.pathname + location.search);
   cerrar(opciones.alVolver);
 });
+
+// "Agregar negocio" se cancela volviendo por el historial hasta antes del
+// primer paso: así el Atrás del navegador no lo vuelve a abrir.
+campo("altaCancelar").addEventListener("click", () => history.go(-pasoVisible(paso)));
 
 function cerrar(despues) {
   pantalla.hidden = true;
@@ -214,14 +235,22 @@ const valor = (id) => campo(id).value.trim();
 async function crearCuenta({ conComprobantes }) {
   const error = campo("altaError");
   error.hidden = true;
-  const cuerpo = {
-    nombre: valor("altaNombre"),
-    usuario: valor("altaUsuario"),
-    password: campo("altaPassword").value,
-    empresa: valor("altaEmpresa"),
+  const delNegocio = {
     rubro: formDelPaso(3).querySelector('input[name="rubro"]:checked').value,
     modulos: [...contenedorModulos.querySelectorAll('input[name="modulo"]:checked')].map((c) => c.value)
   };
+  // Una cuenta nueva lleva la persona y el negocio (que ahí se llama
+  // `empresa`); un negocio más, solo el negocio.
+  const cuerpo =
+    modo === MODOS.negocio
+      ? { nombre: valor("altaEmpresa"), ...delNegocio }
+      : {
+          nombre: valor("altaNombre"),
+          usuario: valor("altaUsuario"),
+          password: campo("altaPassword").value,
+          empresa: valor("altaEmpresa"),
+          ...delNegocio
+        };
   if (conComprobantes) {
     Object.assign(cuerpo, {
       documento: formatearCuit(valor("altaCuit")),
@@ -235,9 +264,9 @@ async function crearCuenta({ conComprobantes }) {
   const crear = campo("altaCrear");
   const botones = [crear, campo("altaDespues"), ...formDelPaso(5).querySelectorAll("[data-atras]")];
   botones.forEach((b) => (b.disabled = true));
-  crear.textContent = "Creando tu cuenta…";
+  crear.textContent = modo.creando;
   try {
-    const res = await fetch("/api/auth/registro", {
+    const res = await fetch(modo === MODOS.negocio ? "/api/negocios" : "/api/auth/registro", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(cuerpo)
@@ -250,33 +279,59 @@ async function crearCuenta({ conComprobantes }) {
         history.go(1 - paso);
         return;
       }
-      error.textContent = datos.error || "No se pudo crear la cuenta. Probá de nuevo.";
+      error.textContent = datos.error || `No se pudo ${modo === MODOS.negocio ? "crear el negocio" : "crear la cuenta"}. Probá de nuevo.`;
       error.hidden = false;
       return;
     }
     history.replaceState(null, "", location.pathname + location.search);
-    cerrar(() => opciones.alTerminar(datos.usuario));
+    cerrar(() => opciones.alTerminar(modo === MODOS.negocio ? { id: datos.id, nombre: cuerpo.nombre } : datos.usuario));
   } catch {
     error.textContent = "No se pudo conectar con Nexo. Revisá la conexión y probá de nuevo.";
     error.hidden = false;
   } finally {
     botones.forEach((b) => (b.disabled = false));
-    crear.textContent = "Crear cuenta";
+    crear.textContent = modo.crear;
   }
+}
+
+// Agregar un negocio arranca con los pasos vacíos, aunque en esta misma página
+// ya se haya empezado otro y cancelado.
+function limpiarPasosDelNegocio() {
+  for (const form of formularios.slice(1)) {
+    form.reset();
+    limpiarErrores(form);
+  }
+  if (catalogo) contenedorTipos.innerHTML = tarjetasTipo(catalogo, null);
+  contenedorModulos.innerHTML = "";
+  rubroDeLosModulos = null;
+  campo("altaError").hidden = true;
 }
 
 /* ---------- Entrada ---------- */
 
 // alTerminar(usuario) entra a la app; alVolver() vuelve al login. En una
 // instalación nueva no hay cuenta a la que volver.
-export function montarAlta({ alTerminar, alVolver, instalacionNueva = false }) {
+//
+// Con modo "negocio" (hist. §77), desde la app: alTerminar({ id, nombre })
+// recibe el negocio creado, al que la sesión ya pasó, y alVolver() es
+// cancelar. Entra al historial encima de la vista en la que se estaba, así
+// el Atrás del primer paso vuelve a ella.
+export function montarAlta({ alTerminar, alVolver, instalacionNueva = false, modo: nombreModo = "cuenta" }) {
   opciones = { alTerminar, alVolver, instalacionNueva };
-  campo("altaYaTengo").hidden = instalacionNueva;
+  modo = MODOS[nombreModo];
+  const agregaNegocio = modo === MODOS.negocio;
+  campo("altaYaTengo").hidden = instalacionNueva || agregaNegocio;
+  campo("altaCancelar").hidden = !agregaNegocio;
+  campo("altaNotaNegocio").hidden = !agregaNegocio;
+  formDelPaso(2).querySelector("[data-atras]").hidden = agregaNegocio;
+  campo("altaCrear").textContent = modo.crear;
+  if (agregaNegocio) limpiarPasosDelNegocio();
   pantalla.hidden = false;
-  alcanzado = 1;
+  alcanzado = modo.primero;
   // Recargar a mitad de camino vuelve al primer paso: la contraseña vive
   // solo en memoria.
-  history.replaceState(null, "", "#/crear-cuenta/1");
-  irAPaso(1, { historial: false });
+  if (agregaNegocio) history.pushState(null, "", rutaDelPaso(modo.primero));
+  else history.replaceState(null, "", rutaDelPaso(modo.primero));
+  irAPaso(modo.primero, { historial: false });
   cargarCatalogo();
 }

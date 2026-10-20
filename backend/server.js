@@ -120,12 +120,14 @@ function borrarCookieSesion(res) {
   res.clearCookie(COOKIE_SESION, { path: '/' });
 }
 
-function crearSesion(usuarioId) {
+// La sesión nace en un negocio: el que se acaba de crear en el registro, o el
+// último que usó quien entra (hist. §77).
+function crearSesion(usuarioId, organizacionId) {
   const token = randomBytes(32).toString('hex');
   db.prepare(
-    `INSERT INTO sesiones (token, usuario_id, expira)
-     VALUES (?, ?, datetime('now', '+${SESION_HORAS} hours'))`
-  ).run(token, usuarioId);
+    `INSERT INTO sesiones (token, usuario_id, organizacion_id, expira)
+     VALUES (?, ?, ?, datetime('now', '+${SESION_HORAS} hours'))`
+  ).run(token, usuarioId, organizacionId);
   return token;
 }
 
@@ -134,20 +136,47 @@ function crearSesion(usuarioId) {
 // eso lo saca del sistema en el próximo request — con un JWT seguiría
 // operando hasta que el token expirara por su cuenta. En un sistema que
 // maneja plata y audita todo, esa demora no es aceptable.
+//
+// El negocio sale de la sesión y el rol, de lo que el usuario es en ese
+// negocio (usuario_organizaciones, hist. §77). Llegan a req.usuario con los
+// nombres de siempre, organizacion_id y rol, así ningún handler cambia. La
+// baja en ese negocio corta la sesión en el próximo request.
 function sesionValida(token) {
   if (!token) return null;
   const fila = db
     .prepare(
-      `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.rol,
-              usuarios.debe_cambiar_password, usuarios.organizacion_id
+      `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
+              usuarios.debe_cambiar_password, sesiones.organizacion_id
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
+         JOIN usuario_organizaciones pertenencia
+           ON pertenencia.usuario_id = sesiones.usuario_id
+          AND pertenencia.organizacion_id = sesiones.organizacion_id
         WHERE sesiones.token = ?
           AND sesiones.expira > datetime('now')
-          AND usuarios.activo = 1`
+          AND pertenencia.activo = 1`
     )
     .get(token);
   return fila ?? null;
+}
+
+// Lo que el frontend sabe del usuario de la sesión, con la misma forma en
+// estado, login y registro. organizacion_id es el negocio activo: sesion.js lo
+// marca en <html> para separar por negocio lo que se guarda en el navegador y
+// para darse cuenta si otra pestaña cambió de negocio.
+function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id }) {
+  return { id, usuario, nombre, rol, debe_cambiar_password: !!debe_cambiar_password, organizacion_id };
+}
+
+// Cuándo entró por última vez a un negocio: el login vuelve al último. Con
+// milésimas y no con datetime('now'), porque cambiar de negocio y volver a
+// entrar pueden caer en el mismo segundo. Los formatos de fecha del frontend
+// leen solo el principio, así que la cola no se ve.
+function marcarAcceso(usuarioId, organizacionId) {
+  db.prepare(
+    `UPDATE usuario_organizaciones SET ultimo_acceso = strftime('%Y-%m-%d %H:%M:%f', 'now')
+      WHERE usuario_id = ? AND organizacion_id = ?`
+  ).run(usuarioId, organizacionId);
 }
 
 function renovarSesion(token) {
@@ -303,11 +332,12 @@ function limpiarIntentos(usuario) {
 // Por organización y no global: con multi-empresa (CLAUDE.md §28) la
 // salvaguarda del último admin tiene que mirar solo la empresa que se está
 // tocando. Global, la empresa B podría quedarse sin ningún admin porque la
-// empresa A todavía tiene los suyos.
+// empresa A todavía tiene los suyos. El rol y la baja son de cada negocio
+// (hist. §77): se cuentan en usuario_organizaciones.
 function contarAdminsActivos(organizacionId) {
   return db
     .prepare(
-      `SELECT COUNT(*) AS count FROM usuarios
+      `SELECT COUNT(*) AS count FROM usuario_organizaciones
         WHERE rol = 'admin' AND activo = 1 AND organizacion_id = ?`
     )
     .get(organizacionId).count;
@@ -338,17 +368,7 @@ app.get('/api/auth/estado', (req, res) => {
     return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null });
   }
   renovarSesion(token);
-  res.json({
-    requiere_bootstrap: false,
-    autenticado: true,
-    usuario: {
-      id: sesion.id,
-      usuario: sesion.usuario,
-      nombre: sesion.nombre,
-      rol: sesion.rol,
-      debe_cambiar_password: !!sesion.debe_cambiar_password
-    }
-  });
+  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion) });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -366,11 +386,19 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(429).json({ error: 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.' });
   }
 
+  // El usuario con el negocio en el que entra: el último que usó entre los que
+  // tiene activos (hist. §77). Sin ninguno activo es como si no existiera, igual
+  // que antes un usuario dado de baja.
   const fila = db
     .prepare(
-      `SELECT id, nombre, rol, password_hash, password_salt, debe_cambiar_password, organizacion_id
+      `SELECT usuarios.id, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
+              usuarios.debe_cambiar_password, pertenencia.organizacion_id, pertenencia.rol
          FROM usuarios
-        WHERE LOWER(usuario) = LOWER(?) AND activo = 1`
+         JOIN usuario_organizaciones pertenencia
+           ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
+        WHERE LOWER(usuarios.usuario) = LOWER(?)
+        ORDER BY pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
+        LIMIT 1`
     )
     .get(usuario);
 
@@ -415,9 +443,10 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   limpiarIntentos(usuario);
-  const token = crearSesion(fila.id);
+  const token = crearSesion(fila.id, fila.organizacion_id);
   ponerCookieSesion(res, token);
   db.prepare("UPDATE usuarios SET ultimo_acceso = datetime('now') WHERE id = ?").run(fila.id);
+  marcarAcceso(fila.id, fila.organizacion_id);
   registrarAuditoria({
     accion: 'login',
     entidad: 'usuario',
@@ -427,15 +456,7 @@ app.post('/api/auth/login', (req, res) => {
     detalle: 'Inició sesión'
   });
 
-  res.json({
-    usuario: {
-      id: fila.id,
-      usuario: usuario,
-      nombre: fila.nombre,
-      rol: fila.rol,
-      debe_cambiar_password: !!fila.debe_cambiar_password
-    }
-  });
+  res.json({ usuario: datosUsuario({ ...fila, usuario }) });
 });
 
 // Rate limit del registro, por IP y en memoria (mismo criterio que
@@ -456,6 +477,67 @@ function registroExcedido(ip) {
   }
   registro.cuenta += 1;
   return registro.cuenta > REGISTROS_MAX;
+}
+
+// Los datos de un negocio nuevo, del alta de cuenta y de "Agregar negocio"
+// (POST /api/negocios): se validan igual que en Configuración, con el nombre
+// obligatorio. Si los módulos elegidos son justo los del tipo se guarda NULL:
+// el negocio sigue al preset, igual que uno creado sin elegirlos.
+function validarNegocioNuevo(cuerpo) {
+  const { error, datos } = validarDatosNegocio(
+    {
+      nombre: cuerpo.nombre,
+      rubro: cuerpo.rubro ?? RUBRO_POR_DEFECTO,
+      modulos: cuerpo.modulos,
+      documento: cuerpo.documento,
+      condicion_iva: cuerpo.condicion_iva,
+      direccion: cuerpo.direccion,
+      telefono: cuerpo.telefono,
+      email: cuerpo.email
+    },
+    { parcial: false }
+  );
+  if (error) return { error };
+  const modulos = datos.modulos === undefined || datos.modulos === modulosDelPreset(datos.rubro) ? null : datos.modulos;
+  return { datos: { ...datos, modulos } };
+}
+
+// En el orden de las columnas de los INSERT y UPDATE de abajo.
+function valoresNegocio(datos) {
+  return [
+    datos.nombre,
+    datos.rubro,
+    datos.modulos,
+    datos.documento ?? null,
+    datos.condicion_iva ?? null,
+    datos.direccion ?? null,
+    datos.telefono ?? null,
+    datos.email ?? null
+  ];
+}
+
+// Crea el negocio con sus catálogos base (depósito, lista, cuentas). Va
+// adentro de la transacción de quien lo llama, que después le suma su admin.
+function insertarNegocio(datos) {
+  const orgId = Number(
+    db
+      .prepare(
+        `INSERT INTO organizaciones (nombre, rubro, modulos, documento, condicion_iva, direccion, telefono, email)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(...valoresNegocio(datos)).lastInsertRowid
+  );
+  sembrarCatalogosBase(orgId);
+  return orgId;
+}
+
+// Suma a un usuario a un negocio con su rol en él (hist. §77).
+function sumarAlNegocio(usuarioId, organizacionId, rol) {
+  db.prepare('INSERT INTO usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES (?, ?, ?)').run(
+    usuarioId,
+    organizacionId,
+    rol
+  );
 }
 
 // Alta de empresa (CLAUDE.md §28): cualquiera crea su negocio y queda como su
@@ -489,28 +571,12 @@ app.post('/api/auth/registro', (req, res) => {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
   // El alta guiada puede traer también los módulos y los datos de los
-  // comprobantes: se validan igual que en Configuración. `nombre` acá es el de
-  // la persona; el del negocio llega como `empresa`.
-  const { error, datos } = validarDatosNegocio(
-    {
-      nombre: empresa,
-      rubro: req.body?.rubro ?? RUBRO_POR_DEFECTO,
-      modulos: req.body?.modulos,
-      documento: req.body?.documento,
-      condicion_iva: req.body?.condicion_iva,
-      direccion: req.body?.direccion,
-      telefono: req.body?.telefono,
-      email: req.body?.email
-    },
-    { parcial: false }
-  );
+  // comprobantes. `nombre` acá es el de la persona; el del negocio llega como
+  // `empresa`.
+  const { error, datos } = validarNegocioNuevo({ ...req.body, nombre: empresa });
   if (error) {
     return res.status(400).json({ error });
   }
-  const rubro = datos.rubro;
-  // Si los módulos elegidos son justo los del tipo, se guarda NULL: la empresa
-  // sigue al preset, igual que una creada sin elegirlos.
-  const modulos = datos.modulos === undefined || datos.modulos === modulosDelPreset(rubro) ? null : datos.modulos;
 
   // Global a propósito: el nombre de usuario es único en todo Nexo y el login
   // no pide empresa (hist. §45).
@@ -520,23 +586,13 @@ app.post('/api/auth/registro', (req, res) => {
   }
 
   let usuarioId;
+  let orgId;
   withTransaction(() => {
     const { hash, salt } = hashPassword(password);
     // Instalación nueva: todavía no hay ningún usuario, así que se adopta la
     // organización que db/index.js sembró al arrancar en vez de dejarla
     // huérfana. Revalidado acá adentro, nunca confiar en el frontend.
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
-    const valoresOrg = [
-      datos.nombre,
-      rubro,
-      modulos,
-      datos.documento ?? null,
-      datos.condicion_iva ?? null,
-      datos.direccion ?? null,
-      datos.telefono ?? null,
-      datos.email ?? null
-    ];
-    let orgId;
     if (count === 0) {
       orgId = organizacionUnica();
       db.prepare(
@@ -544,32 +600,26 @@ app.post('/api/auth/registro', (req, res) => {
             SET nombre = ?, rubro = ?, modulos = ?, documento = ?, condicion_iva = ?,
                 direccion = ?, telefono = ?, email = ?
           WHERE id = ?`
-      ).run(...valoresOrg, orgId);
+      ).run(...valoresNegocio(datos), orgId);
     } else {
-      orgId = Number(
-        db
-          .prepare(
-            `INSERT INTO organizaciones (nombre, rubro, modulos, documento, condicion_iva, direccion, telefono, email)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          )
-          .run(...valoresOrg).lastInsertRowid
-      );
-      sembrarCatalogosBase(orgId);
+      orgId = insertarNegocio(datos);
     }
     const info = db
       .prepare(
-        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, rol, debe_cambiar_password)
-         VALUES (?, ?, ?, ?, ?, 'admin', 0)`
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
+         VALUES (?, ?, ?, ?, ?, 0)`
       )
       .run(orgId, usuario, nombre, hash, salt);
     usuarioId = Number(info.lastInsertRowid);
+    sumarAlNegocio(usuarioId, orgId, 'admin');
+    marcarAcceso(usuarioId, orgId);
     registrarAuditoria({
       accion: 'crear',
       entidad: 'organizacion',
       entidad_id: orgId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[rubro].nombre})`
+      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[datos.rubro].nombre})`
     });
     registrarAuditoria({
       accion: 'crear',
@@ -581,9 +631,11 @@ app.post('/api/auth/registro', (req, res) => {
     });
   });
 
-  const token = crearSesion(usuarioId);
+  const token = crearSesion(usuarioId, orgId);
   ponerCookieSesion(res, token);
-  res.status(201).json({ usuario: { id: usuarioId, usuario, nombre, rol: 'admin', debe_cambiar_password: false } });
+  res.status(201).json({
+    usuario: datosUsuario({ id: usuarioId, usuario, nombre, rol: 'admin', debe_cambiar_password: 0, organizacion_id: orgId })
+  });
 });
 
 // Los tipos de negocio y los módulos, para el alta guiada, que los muestra
@@ -605,6 +657,24 @@ app.get('/api/auth/tipos-negocio', (req, res) => {
 // servir la pantalla de login por una vía separada del resto de la app.
 // Todos los datos reales están detrás de /api.
 app.use('/api', autenticar);
+
+// Una pestaña que quedó mostrando otro negocio (hist. §77). La sesión es una
+// sola por navegador: si en otra pestaña se cambió de negocio, esta seguiría
+// mostrando el anterior pero escribiendo en el nuevo (un cliente cargado ahí
+// iría a parar al otro negocio sin aviso). El frontend manda en cada llamada
+// el negocio que está mostrando; si no es el de la sesión, 409 con una
+// cabecera que sesion.js reconoce para recargar la pestaña. No autoriza nada:
+// el negocio sigue saliendo solo de la sesión. Quedan afuera las rutas que no
+// dependen del negocio activo: las de la sesión y las de cambiar de negocio.
+app.use('/api', (req, res, next) => {
+  const negocio = req.get('X-Nexo-Negocio');
+  if (!negocio || req.path.startsWith('/auth/') || req.path.startsWith('/negocios')) return next();
+  if (Number(negocio) !== req.usuario.organizacion_id) {
+    res.set('X-Nexo-Negocio-Cambiado', '1');
+    return res.status(409).json({ error: 'Cambiaste de negocio en otra pestaña.' });
+  }
+  next();
+});
 
 // Permisos por rol, segunda mitad (la primera es `soloAdmin` en cada
 // endpoint que lo necesita — ver permisos.js): el empleado no tiene que
@@ -9035,16 +9105,54 @@ app.post('/api/auth/cambiar-password', (req, res) => {
 
 app.get('/api/usuarios', soloAdmin, (req, res) => {
   // Nunca SELECT *: password_hash/password_salt no deben salir del backend.
+  // Los de este negocio, con su rol, su baja, su alta y su último acceso EN
+  // este negocio (hist. §77).
   const usuarios = db
     .prepare(
-      `SELECT id, usuario, nombre, rol, activo, debe_cambiar_password, fecha_alta, ultimo_acceso
-         FROM usuarios
-        WHERE organizacion_id = ?
-        ORDER BY nombre`
+      `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol, pertenencia.activo,
+              usuarios.debe_cambiar_password, pertenencia.fecha_alta, pertenencia.ultimo_acceso
+         FROM usuario_organizaciones pertenencia
+         JOIN usuarios ON usuarios.id = pertenencia.usuario_id
+        WHERE pertenencia.organizacion_id = ?
+        ORDER BY usuarios.nombre`
     )
     .all(req.usuario.organizacion_id);
   res.json(usuarios);
 });
+
+// El usuario y lo que es en este negocio, o undefined si no trabaja en él: un
+// usuario de otro negocio cae en el mismo 404 que un id que no existe.
+function usuarioDelNegocio(usuarioId, organizacionId) {
+  return db
+    .prepare(
+      `SELECT usuarios.id, usuarios.nombre, pertenencia.rol, pertenencia.activo
+         FROM usuario_organizaciones pertenencia
+         JOIN usuarios ON usuarios.id = pertenencia.usuario_id
+        WHERE pertenencia.usuario_id = ? AND pertenencia.organizacion_id = ?`
+    )
+    .get(usuarioId, organizacionId);
+}
+
+// La contraseña y el nombre son de la persona, no de un negocio: la misma
+// contraseña entra a todos sus negocios (hist. §77). Por eso un admin solo los
+// cambia si administra todos los negocios de esa persona, también los que la
+// dieron de baja (la podrían reactivar). Sin esto, el admin de A le resetea la
+// contraseña a alguien que se armó su propio negocio C y entra a C.
+function administraTodosSusNegocios(adminId, usuarioId) {
+  const ajeno = db
+    .prepare(
+      `SELECT 1 FROM usuario_organizaciones suya
+        WHERE suya.usuario_id = ?
+          AND NOT EXISTS (SELECT 1 FROM usuario_organizaciones mia
+                           WHERE mia.usuario_id = ? AND mia.organizacion_id = suya.organizacion_id
+                             AND mia.rol = 'admin' AND mia.activo = 1)
+        LIMIT 1`
+    )
+    .get(usuarioId, adminId);
+  return !ajeno;
+}
+const MENSAJE_USA_OTRO_NEGOCIO =
+  'Esta persona también usa Nexo en otro negocio, así que su nombre y su contraseña no se cambian desde acá. La contraseña la puede cambiar ella desde Mi cuenta.';
 
 app.post('/api/usuarios', soloAdmin, (req, res) => {
   const { usuario, nombre, password, rol } = req.body ?? {};
@@ -9080,11 +9188,12 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
     // la cuenta — se lo obliga a elegir la suya en el primer login.
     const info = db
       .prepare(
-        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, rol, debe_cambiar_password)
-         VALUES (?, ?, ?, ?, ?, ?, 1)`
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
+         VALUES (?, ?, ?, ?, ?, 1)`
       )
-      .run(orgId, usuario, nombre, hash, salt, rolFinal);
+      .run(orgId, usuario, nombre, hash, salt);
     usuarioId = Number(info.lastInsertRowid);
+    sumarAlNegocio(usuarioId, orgId, rolFinal);
     auditar(req, {
       accion: 'crear',
       entidad: 'usuario',
@@ -9104,9 +9213,7 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   // les mata la sesión en el acto). Un usuario de otra empresa cae en el
   // mismo 404 que un id inexistente, sin revelar que existe en otra parte.
   const organizacionId = req.usuario.organizacion_id;
-  const anterior = db
-    .prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ? AND organizacion_id = ?')
-    .get(id, organizacionId);
+  const anterior = usuarioDelNegocio(id, organizacionId);
   if (!anterior) return res.status(404).json({ error: 'Usuario no encontrado.' });
 
   const nuevo = {
@@ -9130,18 +9237,24 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   if (id === req.usuario.id && nuevo.activo === 0) {
     return res.status(409).json({ error: 'No podés darte de baja a vos mismo.' });
   }
+  if (nuevo.nombre !== anterior.nombre && !administraTodosSusNegocios(req.usuario.id, id)) {
+    return res.status(409).json({ error: MENSAJE_USA_OTRO_NEGOCIO });
+  }
 
   withTransaction(() => {
-    // organizacion_id también en el WHERE de la escritura (defensa en
-    // profundidad), aunque el lookup de arriba ya validó que el id es de esta
-    // empresa — mismo criterio que el resto de la Etapa A.
+    if (nuevo.nombre !== anterior.nombre) {
+      db.prepare('UPDATE usuarios SET nombre = ? WHERE id = ?').run(nuevo.nombre, id);
+    }
+    // El rol y la baja son de este negocio: en los otros del usuario no cambia
+    // nada (hist. §77). organizacion_id en el WHERE, como en toda la Etapa A.
     db.prepare(
-      'UPDATE usuarios SET nombre = ?, rol = ?, activo = ? WHERE id = ? AND organizacion_id = ?'
-    ).run(nuevo.nombre, nuevo.rol, nuevo.activo, id, organizacionId);
-    // Dar de baja echa al usuario en el acto: sin esto seguiría operando
-    // con su sesión actual hasta que expirara sola (hasta 12hs).
+      'UPDATE usuario_organizaciones SET rol = ?, activo = ? WHERE usuario_id = ? AND organizacion_id = ?'
+    ).run(nuevo.rol, nuevo.activo, id, organizacionId);
+    // Dar de baja lo echa de este negocio en el acto: sin esto seguiría
+    // operando con su sesión actual hasta que expirara sola (hasta 12hs). Sus
+    // sesiones en otros negocios siguen.
     if (nuevo.activo === 0) {
-      db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(id);
+      db.prepare('DELETE FROM sesiones WHERE usuario_id = ? AND organizacion_id = ?').run(id, organizacionId);
     }
     const diff = diffCampos(anterior, nuevo, ['nombre', 'rol', 'activo']);
     if (diff) {
@@ -9170,20 +9283,21 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   // después loguearse como él, o sea tomar control de otra empresa entera
   // (CLAUDE.md §28) — era el agujero más grave que tuvo el sistema.
   const organizacionId = req.usuario.organizacion_id;
-  const usuario = db
-    .prepare('SELECT id, nombre FROM usuarios WHERE id = ? AND organizacion_id = ?')
-    .get(id, organizacionId);
+  const usuario = usuarioDelNegocio(id, organizacionId);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (!administraTodosSusNegocios(req.usuario.id, id)) {
+    return res.status(409).json({ error: MENSAJE_USA_OTRO_NEGOCIO });
+  }
 
   withTransaction(() => {
     const { hash, salt } = hashPassword(password);
     db.prepare(
-      `UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1
-        WHERE id = ? AND organizacion_id = ?`
-    ).run(hash, salt, id, organizacionId);
+      'UPDATE usuarios SET password_hash = ?, password_salt = ?, debe_cambiar_password = 1 WHERE id = ?'
+    ).run(hash, salt, id);
     // Igual que la baja: resetear la contraseña echa al usuario en el
     // acto, para que la sesión vieja no siga viva con la contraseña
-    // anterior todavía en la cabeza de quien la tenía.
+    // anterior todavía en la cabeza de quien la tenía. De todos sus
+    // negocios, porque la contraseña es una sola.
     db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(id);
     // La contraseña nueva nunca entra en la auditoría.
     auditar(req, {
@@ -9424,8 +9538,8 @@ app.get('/api/negocio', (req, res) => {
     )
     .get(req.usuario.organizacion_id);
   if (!negocio) {
-    // No debería pasar: usuarios.organizacion_id es NOT NULL con FK a
-    // organizaciones, así que la empresa de la sesión siempre existe.
+    // No debería pasar: la sesión solo vale con una fila de
+    // usuario_organizaciones, que tiene FK a organizaciones.
     return res.status(404).json({ error: 'No hay datos de negocio cargados.' });
   }
   // Con el perfil efectivo y el catálogo de tipos y módulos, así las tarjetas
@@ -9503,6 +9617,103 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   });
 
   res.json({ id });
+});
+
+/* ---------- Varios negocios por cuenta (CLAUDE.md §28, hist. §77) ---------- */
+
+// Pasa la sesión a otro negocio del mismo usuario: solo cambia de dónde sale
+// req.usuario.organizacion_id en los próximos requests. Queda en la auditoría
+// de los dos negocios como salida y entrada, sin nombrar al otro: los admins
+// de uno no tienen por qué saber del otro. Va adentro de la transacción de
+// quien lo llama.
+function entrarANegocio(req, token, organizacionId, detalleEntrada) {
+  db.prepare('UPDATE sesiones SET organizacion_id = ? WHERE token = ?').run(organizacionId, token);
+  marcarAcceso(req.usuario.id, organizacionId);
+  auditar(req, { accion: 'logout', entidad: 'usuario', entidad_id: req.usuario.id, detalle: 'Pasó a otro de sus negocios' });
+  registrarAuditoria({
+    accion: 'login',
+    entidad: 'usuario',
+    entidad_id: req.usuario.id,
+    usuario_id: req.usuario.id,
+    organizacion_id: organizacionId,
+    detalle: detalleEntrada
+  });
+}
+
+// Los negocios en los que trabaja el usuario de la sesión, para el selector de
+// arriba del menú. Solo los activos: uno donde lo dieron de baja ya no es
+// suyo. Para los dos roles: un empleado de dos negocios también cambia.
+app.get('/api/negocios', (req, res) => {
+  const filas = db
+    .prepare(
+      `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, pertenencia.rol
+         FROM usuario_organizaciones pertenencia
+         JOIN organizaciones ON organizaciones.id = pertenencia.organizacion_id
+        WHERE pertenencia.usuario_id = ? AND pertenencia.activo = 1
+        ORDER BY organizaciones.nombre, organizaciones.id`
+    )
+    .all(req.usuario.id);
+  res.json(
+    filas.map((fila) => {
+      const rubro = Object.hasOwn(PERFILES_RUBRO, fila.rubro ?? '') ? fila.rubro : RUBRO_POR_DEFECTO;
+      return {
+        id: fila.id,
+        nombre: fila.nombre,
+        rubro,
+        tipo: PERFILES_RUBRO[rubro].nombre,
+        rol: fila.rol,
+        actual: fila.id === req.usuario.organizacion_id
+      };
+    })
+  );
+});
+
+// "Agregar negocio": otro negocio para la misma cuenta, con quien lo crea como
+// su admin, y la sesión pasa a él. Solo un admin: un empleado no arma negocios
+// propios desde la cuenta que le dio su empleador (para eso se crea la suya).
+// Mismo tope que el registro, contado por usuario.
+app.post('/api/negocios', soloAdmin, (req, res) => {
+  if (registroExcedido(`usuario:${req.usuario.id}`)) {
+    return res.status(429).json({ error: 'Creaste varios negocios seguidos. Probá de nuevo más tarde.' });
+  }
+  const { error, datos } = validarNegocioNuevo(req.body ?? {});
+  if (error) {
+    return res.status(400).json({ error });
+  }
+
+  const token = leerCookie(req, COOKIE_SESION);
+  const id = withTransaction(() => {
+    const orgId = insertarNegocio(datos);
+    sumarAlNegocio(req.usuario.id, orgId, 'admin');
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: orgId,
+      usuario_id: req.usuario.id,
+      organizacion_id: orgId,
+      detalle: `Negocio "${datos.nombre}" creado (${PERFILES_RUBRO[datos.rubro].nombre})`
+    });
+    entrarANegocio(req, token, orgId, 'Entró al negocio que acaba de crear');
+    return orgId;
+  });
+  res.status(201).json({ id });
+});
+
+// Cambiar de negocio. Uno donde no trabaja (o donde lo dieron de baja) es el
+// mismo 404 que uno que no existe: no revela negocios ajenos.
+app.post('/api/negocios/:id/entrar', (req, res) => {
+  const id = Number(req.params.id);
+  const trabajaAhi = db
+    .prepare('SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1')
+    .get(req.usuario.id, id);
+  if (!trabajaAhi) {
+    return res.status(404).json({ error: 'Negocio no encontrado.' });
+  }
+  if (id !== req.usuario.organizacion_id) {
+    const token = leerCookie(req, COOKIE_SESION);
+    withTransaction(() => entrarANegocio(req, token, id, 'Entró desde otro de sus negocios'));
+  }
+  res.status(204).end();
 });
 
 /* ---------- Errores ---------- */

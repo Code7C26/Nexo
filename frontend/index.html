@@ -53,6 +53,22 @@
         </button>
       </div>
 
+      <!-- Selector de negocio (hist. §77), como el de espacios de Dub: el
+           negocio en el que se está trabajando y, al tocarlo, los otros de la
+           cuenta y "Agregar negocio". Lo arma dominios/negocios.js, que muda
+           el menú al <body> y lo ubica fijo debajo del botón. -->
+      <div class="negocio-selector" id="negocioSelector">
+        <button type="button" class="negocio-actual" id="negocioActual" aria-haspopup="menu" aria-expanded="false" aria-controls="negocioMenu" disabled>
+          <span class="negocio-inicial" aria-hidden="true"></span>
+          <span class="negocio-textos">
+            <strong class="negocio-nombre">Cargando…</strong>
+            <span class="negocio-tipo"></span>
+          </span>
+          <svg class="ico negocio-flechas" aria-hidden="true"><use href="/img/iconos.svg#chevrons-up-down"></use></svg>
+        </button>
+        <div class="negocio-menu" id="negocioMenu" role="menu" aria-label="Tus negocios" hidden></div>
+      </div>
+
       <!-- Orden por dominio, no por cuándo se construyó cada pantalla:
            Resumen -> maestros (lo que hace falta cargado ANTES de operar)
            -> embudo de venta -> embudo de compra -> Stock (consecuencia de
@@ -2722,6 +2738,7 @@
           <ol class="alta-pasos" id="altaPasos" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li></ol>
         </div>
         <p class="alta-ya-tengo" id="altaYaTengo">¿Ya tenés cuenta? <button type="button" class="btn-link" id="altaIrALogin">Ingresá</button></p>
+        <button type="button" class="btn btn-secundario alta-cancelar" id="altaCancelar" hidden>Cancelar</button>
       </header>
 
       <div class="alta-cuerpo">
@@ -2751,6 +2768,7 @@
             <h1 tabindex="-1">¿Cómo se llama tu negocio?</h1>
             <p>Es el nombre que va a salir en tus presupuestos y facturas. Lo podés cambiar cuando quieras.</p>
           </div>
+          <p class="alta-nota" id="altaNotaNegocio" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#info"></use></svg> Va a ser un negocio aparte, con sus propios productos, clientes y caja. Entrás con el mismo usuario y pasás de uno a otro desde arriba del menú.</p>
           <label>Nombre del negocio
             <input type="text" id="altaEmpresa" class="alta-campo-grande" autocomplete="organization" maxlength="120" placeholder="Ej: Almacén Don José" />
           </label>

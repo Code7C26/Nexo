@@ -44,6 +44,7 @@ import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
 import "./dominios/socios.js";
+import "./dominios/negocios.js";
 
 let facturas = [];
 
@@ -7124,11 +7125,12 @@ registrar("cargar:reporteStock", cargarReporteStock);
 // fetch), así que entran en el mismo último grupo que Resumen.
 // recargar("negocio") va en la primera ola: no depende de nada y la impresión de
 // comprobantes necesita el membrete listo antes del primer click en Imprimir.
-// Facturas tampoco depende de ningún caché.
+// recargar("negocios"), el selector de arriba del menú, tampoco depende de
+// nada y es lo primero que se ve. Facturas tampoco depende de ningún caché.
 // Cada ola usa refrescar(): si una carga falla, api() ya la avisó con un toast
 // y las demás siguen (la pantalla de esa carga queda vacía, no toda la app).
 // Solo un error inesperado (un bug al pintar) corta la cadena.
-refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), cargarFacturas()])
+refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), recargar("negocios"), cargarFacturas()])
   .then(() => refrescar([recargar("gastos"), cargarProductos()]))
   .then(() => refrescar([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
   .then(() => refrescar([cargarDevolucionesProveedor()]))
