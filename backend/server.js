@@ -1641,6 +1641,7 @@ const SELECT_PRODUCTO = `
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
          productos.margen_objetivo, productos.unidad, productos.tipo,
+         productos.descripcion, productos.duracion_minutos,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
            WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count,
@@ -1749,18 +1750,44 @@ function normalizarMargenObjetivo(valor) {
 
 // Unidades en las que se vende un producto (CLAUDE.md §4, §29): las que no
 // son 'unidad' admiten cantidades con decimales (1,250 kg). Se validan acá y
-// no con un CHECK, para no reconstruir la tabla si se suma una.
-const UNIDADES = ['unidad', 'kg', 'g', 'l', 'ml', 'm'];
+// no con un CHECK, para no reconstruir la tabla si se suma una. 'hora' es la
+// de un servicio que se cobra por tiempo (hist. §78): 1,5 horas.
+const UNIDADES = ['unidad', 'kg', 'g', 'l', 'ml', 'm', 'hora'];
 // Un servicio no maneja stock: se vende sin control de stock y no genera
 // movimientos (ver esServicio).
 const TIPOS_PRODUCTO = ['producto', 'servicio'];
+const MAX_DESCRIPCION_PRODUCTO = 500;
+// Una semana: más que eso ya no es la duración de un servicio, es un trabajo.
+const MAX_DURACION_MINUTOS = 7 * 24 * 60;
+
+// descripcion y duracion_minutos son opcionales de verdad: vacío es NULL.
+function normalizarDescripcion(valor) {
+  const texto = typeof valor === 'string' ? valor.trim() : '';
+  return texto === '' ? null : texto;
+}
+function normalizarDuracion(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
 
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto({ nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo }, organizacionId) {
+function validarProducto(
+  { nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos },
+  organizacionId
+) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
+  }
+  if (descripcion != null && typeof descripcion !== 'string') {
+    return 'La descripción no es válida.';
+  }
+  if (normalizarDescripcion(descripcion)?.length > MAX_DESCRIPCION_PRODUCTO) {
+    return `La descripción no puede pasar de ${MAX_DESCRIPCION_PRODUCTO} caracteres.`;
+  }
+  const duracion = normalizarDuracion(duracion_minutos);
+  if (duracion !== null && (!Number.isInteger(duracion) || duracion < 1 || duracion > MAX_DURACION_MINUTOS)) {
+    return 'La duración tiene que ser una cantidad entera de minutos, de 1 a una semana.';
   }
   if (unidad != null && !UNIDADES.includes(unidad)) {
     return 'La unidad de medida no es válida.';
@@ -1803,7 +1830,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     return res.status(400).json({ error });
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo } = req.body;
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos } =
+    req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
@@ -1815,8 +1843,9 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     // primera compra que lo incluya.
     ({ lastInsertRowid } = db
       .prepare(
-        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
+                                descripcion, duracion_minutos)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -1829,7 +1858,9 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         normalizarMargenObjetivo(margen_objetivo),
         req.usuario.organizacion_id,
         unidad ?? perfil.unidad_defecto,
-        tipo ?? perfil.tipo_defecto
+        tipo ?? perfil.tipo_defecto,
+        normalizarDescripcion(descripcion),
+        normalizarDuracion(duracion_minutos)
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -1891,7 +1922,9 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // id de otra organización tiene que dar 404, igual que "no existe".
   const producto = db
     .prepare(
-      'SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo FROM productos WHERE id = ? AND organizacion_id = ?'
+      `SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo,
+              descripcion, duracion_minutos
+         FROM productos WHERE id = ? AND organizacion_id = ?`
     )
     .get(productoId, req.usuario.organizacion_id);
   if (!producto) {
@@ -1959,7 +1992,9 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     categoria_id: normalizarCategoriaId(fusionado.categoria_id),
     margen_objetivo: normalizarMargenObjetivo(fusionado.margen_objetivo),
     unidad: fusionado.unidad ?? 'unidad',
-    tipo: fusionado.tipo ?? 'producto'
+    tipo: fusionado.tipo ?? 'producto',
+    descripcion: normalizarDescripcion(fusionado.descripcion),
+    duracion_minutos: normalizarDuracion(fusionado.duracion_minutos)
   };
   // Pasar a servicio deja de controlar el stock: si todavía tiene, se perdería
   // de vista. Primero se ajusta a 0.
@@ -1996,7 +2031,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
-    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo'
+    'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo',
+    'descripcion', 'duracion_minutos'
   ]);
 
   withTransaction(() => {
@@ -2006,7 +2042,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     db.prepare(
       `UPDATE productos
           SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
-              unidad = ?, tipo = ?
+              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -2019,6 +2055,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.margen_objetivo,
       nuevo.unidad,
       nuevo.tipo,
+      nuevo.descripcion,
+      nuevo.duracion_minutos,
       productoId
     );
     if (preciosPorLista) {
@@ -4244,6 +4282,10 @@ const SELECT_PRESUPUESTO = `
          clientes.email AS cliente_email, clientes.telefono AS cliente_telefono,
          presupuestos.fecha, presupuestos.vencimiento, presupuestos.estado,
          presupuestos.venta_id, presupuestos.notas,
+         -- El trabajo que salió de este presupuesto, si hay uno sin cancelar
+         -- (hist. §78): mientras exista, se termina desde ahí.
+         (SELECT trabajos.id FROM trabajos
+           WHERE trabajos.presupuesto_id = presupuestos.id AND trabajos.estado <> 'cancelado') AS trabajo_id,
          (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
             FROM presupuesto_items WHERE presupuesto_items.presupuesto_id = presupuestos.id) AS total,
          (SELECT GROUP_CONCAT(
@@ -4327,6 +4369,13 @@ function validarPresupuesto(body, organizacionId) {
   if (!Array.isArray(items) || items.length === 0) {
     return 'El presupuesto necesita al menos un item.';
   }
+  return errorEnItemsCotizados(items, organizacionId);
+}
+
+// Los renglones de un presupuesto o de un trabajo (hist. §78): un producto de
+// esta empresa, cantidad mayor a 0 y precio no negativo. Sin stock: se cotiza
+// lo que todavía no está, y el tope se valida al pasar a venta.
+function errorEnItemsCotizados(items, organizacionId) {
   for (const item of items) {
     if (!esIdValido(item?.producto_id)) {
       return 'Todos los items necesitan un producto.';
@@ -4338,7 +4387,7 @@ function validarPresupuesto(body, organizacionId) {
       return 'El precio unitario de cada item debe ser un número, y no puede ser negativo.';
     }
     if (!existeId('productos', item.producto_id, organizacionId)) {
-      return 'Uno de los productos del presupuesto no existe.';
+      return 'Uno de los productos no existe.';
     }
     if (item.variante_id) {
       const variante = db
@@ -4554,6 +4603,11 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       .status(400)
       .json({ error: 'Este presupuesto está rechazado. Reabrilo antes de convertirlo.' });
   }
+  // Con un trabajo en marcha, la venta sale al terminarlo: convertir acá
+  // cobraría dos veces lo mismo.
+  if (trabajoVivoDelPresupuesto(presupuestoId)) {
+    return res.status(400).json({ error: 'Este presupuesto tiene un trabajo: la venta sale al terminarlo.' });
+  }
 
   const items = db
     .prepare(
@@ -4613,6 +4667,388 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
   res.status(201).json({ id: presupuestoId, venta_id: ventaId });
 });
 
+
+/* ---------- Trabajos (órdenes de trabajo, CLAUDE.md §29, hist. §78) ---------- */
+
+// El módulo `trabajos` (ver la tabla en schema.sql): lo que hay que hacer para
+// un cliente, cuándo y quién. Sale de un presupuesto aceptado o se carga
+// directo, y al terminarlo pasa a una venta con sus renglones, que cobran los
+// cobros de siempre. Hasta ese momento no toca stock ni cuenta corriente, como
+// un presupuesto. Es de los dos roles: programar y cerrar trabajos es el día a
+// día. La auditoría va como entidad cliente con operacion_tipo trabajo, igual
+// que los socios (sin reconstruir auditoria).
+
+const LARGOS_TRABAJO = { titulo: 120, notas: 1000 };
+const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
+// Lo que se cambia a mano; 'terminado' solo lo pone POST .../terminar.
+const ESTADOS_TRABAJO_A_MANO = ['pendiente', 'en_curso', 'cancelado'];
+const NOMBRES_ESTADO_TRABAJO = { pendiente: 'pendiente', en_curso: 'en curso', terminado: 'terminado', cancelado: 'cancelado' };
+
+const SELECT_TRABAJO = `
+  SELECT trabajos.id, trabajos.cliente_id, clientes.nombre AS cliente,
+         clientes.telefono AS cliente_telefono, clientes.direccion AS cliente_direccion,
+         trabajos.presupuesto_id, trabajos.titulo, trabajos.fecha, trabajos.hora,
+         trabajos.responsable_id, usuarios.nombre AS responsable, trabajos.estado, trabajos.notas,
+         trabajos.lista_precio_id, trabajos.venta_id, trabajos.fecha_creacion,
+         (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
+            FROM trabajo_items WHERE trabajo_items.trabajo_id = trabajos.id) AS total,
+         (SELECT GROUP_CONCAT(
+                   (CASE WHEN trabajo_items.cantidad = CAST(trabajo_items.cantidad AS INTEGER)
+                         THEN CAST(trabajo_items.cantidad AS INTEGER)
+                         ELSE trabajo_items.cantidad END) || ' × ' || productos.nombre, ', ')
+            FROM trabajo_items JOIN productos ON productos.id = trabajo_items.producto_id
+           WHERE trabajo_items.trabajo_id = trabajos.id) AS items_resumen
+    FROM trabajos
+    JOIN clientes ON clientes.id = trabajos.cliente_id
+    LEFT JOIN usuarios ON usuarios.id = trabajos.responsable_id`;
+
+const trabajoVivoDelPresupuesto = (presupuestoId) =>
+  db.prepare("SELECT id FROM trabajos WHERE presupuesto_id = ? AND estado <> 'cancelado'").get(presupuestoId)?.id ?? null;
+
+function trabajoDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_TRABAJO} WHERE trabajos.id = ? AND trabajos.organizacion_id = ?`).get(id, organizacionId);
+}
+
+function itemsDelTrabajo(trabajoId) {
+  return db
+    .prepare(
+      `SELECT trabajo_items.id, trabajo_items.producto_id, trabajo_items.variante_id, productos.nombre AS producto,
+              productos.unidad, productos.tipo, trabajo_items.cantidad, trabajo_items.precio_unitario
+         FROM trabajo_items JOIN productos ON productos.id = trabajo_items.producto_id
+        WHERE trabajo_items.trabajo_id = ?
+        ORDER BY trabajo_items.id`
+    )
+    .all(trabajoId)
+    .map((i) => ({
+      ...i,
+      combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
+      subtotal: i.cantidad * i.precio_unitario
+    }));
+}
+
+// Los renglones se reemplazan enteros, como los de un presupuesto: un trabajo
+// no tiene efectos que revertir hasta que se termina.
+function guardarItemsTrabajo(trabajoId, items) {
+  db.prepare('DELETE FROM trabajo_items WHERE trabajo_id = ?').run(trabajoId);
+  const insertar = db.prepare(
+    'INSERT INTO trabajo_items (trabajo_id, producto_id, variante_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?, ?)'
+  );
+  for (const item of items) {
+    insertar.run(
+      trabajoId,
+      Number(item.producto_id),
+      item.variante_id ? Number(item.variante_id) : null,
+      Number(item.cantidad),
+      Number(item.precio_unitario)
+    );
+  }
+}
+
+// Valida lo que se carga a mano de un trabajo, para el alta y la edición.
+// Devuelve { error } o { datos }. Con `parcial` el título puede faltar: el de
+// un trabajo que sale de un presupuesto lo pone el servidor. Los renglones
+// pueden quedar vacíos hasta terminarlo.
+function validarTrabajo(cuerpo, organizacionId, { parcial }) {
+  const datos = {};
+  for (const campo of ['titulo', 'notas']) {
+    const valor = cuerpo?.[campo];
+    if (valor !== undefined && valor !== null && typeof valor !== 'string') {
+      return { error: 'Los datos del trabajo no son válidos.' };
+    }
+    const texto = (valor ?? '').trim();
+    if (texto.length > LARGOS_TRABAJO[campo]) {
+      return { error: `${campo === 'titulo' ? 'El título' : 'Las notas'} no puede pasar de ${LARGOS_TRABAJO[campo]} caracteres.` };
+    }
+    datos[campo] = texto === '' ? null : texto;
+  }
+  if (!parcial && !datos.titulo) return { error: 'Contá qué hay que hacer: el trabajo necesita un título.' };
+
+  const fecha = cuerpo?.fecha || null;
+  const hora = cuerpo?.hora || null;
+  if (fecha !== null && !validarFecha(fecha)) return { error: 'La fecha no es válida.' };
+  if (hora !== null && (typeof hora !== 'string' || !HORA_VALIDA.test(hora))) return { error: 'La hora no es válida.' };
+  if (hora && !fecha) return { error: 'Elegí también el día del trabajo.' };
+  datos.fecha = fecha;
+  datos.hora = hora;
+
+  const responsable = cuerpo?.responsable_id ?? null;
+  datos.responsable_id = null;
+  if (responsable !== null && responsable !== '') {
+    const activo = db
+      .prepare('SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1')
+      .get(Number(responsable), organizacionId);
+    if (!activo) return { error: 'El responsable no es un usuario de este negocio.' };
+    datos.responsable_id = Number(responsable);
+  }
+
+  if (cuerpo?.items !== undefined) {
+    if (!Array.isArray(cuerpo.items)) return { error: 'Los renglones del trabajo no son válidos.' };
+    const error = errorEnItemsCotizados(cuerpo.items, organizacionId);
+    if (error) return { error };
+    datos.items = cuerpo.items;
+  }
+  return { datos };
+}
+
+// El título de un trabajo que sale de un presupuesto: su primer renglón, y
+// cuántos más tiene.
+function tituloDesdeItems(items) {
+  const primero = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(items[0].producto_id).nombre;
+  return items.length > 1 ? `${primero} y ${items.length - 1} más` : primero;
+}
+
+// Los que tienen fecha primero, del más próximo al más lejano; los que no, al
+// final, del más nuevo al más viejo.
+app.get('/api/trabajos', (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `${SELECT_TRABAJO} WHERE trabajos.organizacion_id = ?
+          ORDER BY trabajos.fecha IS NULL, trabajos.fecha, trabajos.hora IS NULL, trabajos.hora, trabajos.id DESC`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+// Quiénes pueden quedar a cargo: los usuarios activos del negocio. Aparte de
+// GET /api/usuarios, que es de admin y trae el rol y los accesos.
+app.get('/api/trabajos/responsables', (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT usuarios.id, usuarios.nombre
+           FROM usuario_organizaciones JOIN usuarios ON usuarios.id = usuario_organizaciones.usuario_id
+          WHERE usuario_organizaciones.organizacion_id = ? AND usuario_organizaciones.activo = 1
+          ORDER BY usuarios.nombre`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+app.get('/api/trabajos/:id', (req, res) => {
+  const trabajo = trabajoDeLaEmpresa(Number(req.params.id), req.usuario.organizacion_id);
+  if (!trabajo) return res.status(404).json({ error: 'Trabajo no encontrado.' });
+  res.json({ ...trabajo, items: itemsDelTrabajo(trabajo.id) });
+});
+
+// Alta directa (cliente, título, renglones) o desde un presupuesto
+// (presupuesto_id): ahí el cliente, los renglones y la lista son los del
+// presupuesto, que pasa a aceptado si todavía no lo estaba.
+app.post('/api/trabajos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const desdePresupuesto = req.body?.presupuesto_id != null;
+  const { error, datos } = validarTrabajo(req.body, organizacionId, { parcial: desdePresupuesto });
+  if (error) return res.status(400).json({ error });
+
+  let presupuesto = null;
+  let items = datos.items ?? [];
+  let listaPrecioId = null;
+  if (desdePresupuesto) {
+    presupuesto = db
+      .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ? AND organizacion_id = ?')
+      .get(Number(req.body.presupuesto_id), organizacionId);
+    if (!presupuesto) return res.status(404).json({ error: 'Presupuesto no encontrado.' });
+    if (presupuesto.estado === 'convertido') {
+      return res.status(400).json({ error: 'Este presupuesto ya se convirtió en venta.' });
+    }
+    if (presupuesto.estado === 'rechazado') {
+      return res.status(400).json({ error: 'Este presupuesto está rechazado. Reabrilo antes de programar el trabajo.' });
+    }
+    if (trabajoVivoDelPresupuesto(presupuesto.id)) {
+      return res.status(400).json({ error: 'Este presupuesto ya tiene un trabajo.' });
+    }
+    items = db
+      .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM presupuesto_items WHERE presupuesto_id = ? ORDER BY id')
+      .all(presupuesto.id);
+    if (items.length === 0) return res.status(400).json({ error: 'El presupuesto no tiene renglones.' });
+    listaPrecioId = presupuesto.lista_precio_id;
+  } else if (req.body.lista_precio_id) {
+    listaPrecioId = Number(req.body.lista_precio_id);
+    if (!listaPrecioValida(listaPrecioId, organizacionId)) {
+      return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
+    }
+  }
+
+  const id = withTransaction(() => {
+    const clienteId = presupuesto
+      ? presupuesto.cliente_id
+      : resolverCliente(req.body.cliente, req.body.cliente_id, organizacionId).id;
+    const titulo = datos.titulo ?? tituloDesdeItems(items);
+    const { lastInsertRowid: nuevoId } = db
+      .prepare(
+        `INSERT INTO trabajos (cliente_id, presupuesto_id, titulo, fecha, hora, responsable_id, notas, lista_precio_id, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(clienteId, presupuesto?.id ?? null, titulo, datos.fecha, datos.hora, datos.responsable_id, datos.notas, listaPrecioId, organizacionId);
+    guardarItemsTrabajo(nuevoId, items);
+    if (presupuesto && presupuesto.estado !== 'aceptado') {
+      db.prepare("UPDATE presupuestos SET estado = 'aceptado' WHERE id = ?").run(presupuesto.id);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'presupuesto',
+        entidad_id: presupuesto.id,
+        valor_anterior: JSON.stringify({ estado: presupuesto.estado }),
+        valor_nuevo: JSON.stringify({ estado: 'aceptado' }),
+        operacion_tipo: 'trabajo',
+        operacion_id: nuevoId,
+        detalle: `Presupuesto #${presupuesto.id} aceptado al programar el trabajo #${nuevoId}`
+      });
+    }
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cliente',
+      entidad_id: clienteId,
+      operacion_tipo: 'trabajo',
+      operacion_id: nuevoId,
+      detalle: `Trabajo #${nuevoId} "${titulo}" ` + (presupuesto ? `programado desde el presupuesto #${presupuesto.id}` : 'creado')
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Editar lo que falta hacer: título, fecha, responsable, notas y renglones (las
+// horas reales, un material de más). El cliente se cambia solo si el trabajo
+// no salió de un presupuesto. Uno terminado o cancelado no se edita.
+app.put('/api/trabajos/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const trabajo = trabajoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!trabajo) return res.status(404).json({ error: 'Trabajo no encontrado.' });
+  if (trabajo.estado === 'terminado' || trabajo.estado === 'cancelado') {
+    return res.status(400).json({ error: `Este trabajo está ${NOMBRES_ESTADO_TRABAJO[trabajo.estado]}: ya no se edita.` });
+  }
+  const { error, datos } = validarTrabajo(req.body, organizacionId, { parcial: false });
+  if (error) return res.status(400).json({ error });
+  const cambiaCliente = !trabajo.presupuesto_id && (req.body.cliente_id != null || req.body.cliente != null);
+
+  withTransaction(() => {
+    const clienteId = cambiaCliente ? resolverCliente(req.body.cliente, req.body.cliente_id, organizacionId).id : trabajo.cliente_id;
+    const nuevo = { ...datos, cliente_id: clienteId };
+    db.prepare(
+      'UPDATE trabajos SET cliente_id = ?, titulo = ?, fecha = ?, hora = ?, responsable_id = ?, notas = ? WHERE id = ?'
+    ).run(clienteId, nuevo.titulo, nuevo.fecha, nuevo.hora, nuevo.responsable_id, nuevo.notas, trabajo.id);
+    if (datos.items) guardarItemsTrabajo(trabajo.id, datos.items);
+    const diff = diffCampos(trabajo, nuevo, ['cliente_id', 'titulo', 'fecha', 'hora', 'responsable_id', 'notas']);
+    if (diff || datos.items) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: clienteId,
+        valor_anterior: diff?.anterior ?? null,
+        valor_nuevo: diff?.nuevo ?? null,
+        operacion_tipo: 'trabajo',
+        operacion_id: trabajo.id,
+        detalle: `Trabajo #${trabajo.id} "${nuevo.titulo}" editado`
+      });
+    }
+  });
+  res.json({ id: trabajo.id });
+});
+
+// Empezar, volver a pendiente, cancelar o retomar uno cancelado. Terminar va
+// aparte, porque crea la venta.
+app.patch('/api/trabajos/:id/estado', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const trabajo = trabajoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!trabajo) return res.status(404).json({ error: 'Trabajo no encontrado.' });
+  const estado = req.body?.estado;
+  if (!ESTADOS_TRABAJO_A_MANO.includes(estado)) return res.status(400).json({ error: 'El estado no es válido.' });
+  if (trabajo.estado === 'terminado') {
+    return res.status(400).json({ error: 'Este trabajo ya está terminado: lo que cambie, cambialo en su venta.' });
+  }
+  if (trabajo.estado === estado) return res.json({ id: trabajo.id, estado });
+  // Retomar uno cancelado: su presupuesto puede tener ya otro trabajo, o
+  // haberse convertido en venta mientras tanto.
+  if (trabajo.estado === 'cancelado' && trabajo.presupuesto_id) {
+    const presupuesto = db.prepare('SELECT estado FROM presupuestos WHERE id = ?').get(trabajo.presupuesto_id);
+    if (presupuesto.estado === 'convertido' || trabajoVivoDelPresupuesto(trabajo.presupuesto_id)) {
+      return res.status(400).json({ error: 'Su presupuesto ya tiene otro trabajo o se convirtió en venta.' });
+    }
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE trabajos SET estado = ? WHERE id = ?').run(estado, trabajo.id);
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'cliente',
+      entidad_id: trabajo.cliente_id,
+      valor_anterior: JSON.stringify({ estado: trabajo.estado }),
+      valor_nuevo: JSON.stringify({ estado }),
+      operacion_tipo: 'trabajo',
+      operacion_id: trabajo.id,
+      detalle: `Trabajo #${trabajo.id} "${trabajo.titulo}" ${NOMBRES_ESTADO_TRABAJO[estado]}`
+    });
+  });
+  res.json({ id: trabajo.id, estado });
+});
+
+// Terminar: la venta con los renglones del trabajo, desde el depósito
+// predeterminado (como la conversión de un presupuesto) y con la lista del
+// trabajo. Su presupuesto, si tiene, queda convertido en esa misma venta. Todo
+// en una transacción: no queda una venta sin su trabajo terminado.
+app.post('/api/trabajos/:id/terminar', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const trabajo = trabajoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!trabajo) return res.status(404).json({ error: 'Trabajo no encontrado.' });
+  if (trabajo.estado === 'terminado') return res.status(400).json({ error: 'Este trabajo ya está terminado.' });
+  if (trabajo.estado === 'cancelado') {
+    return res.status(400).json({ error: 'Este trabajo está cancelado: retomalo antes de terminarlo.' });
+  }
+  const items = db
+    .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM trabajo_items WHERE trabajo_id = ? ORDER BY id')
+    .all(trabajo.id);
+  if (items.length === 0) {
+    return res.status(400).json({ error: 'Cargale al trabajo lo que se cobra antes de terminarlo.' });
+  }
+  const deposito = depositoPredeterminadoId(organizacionId);
+  const errorStock = validarStockDisponible(items, deposito, organizacionId);
+  if (errorStock) return res.status(400).json({ error: errorStock });
+
+  const ventaId = withTransaction(() => {
+    const nuevaVentaId = crearVenta({
+      cliente_id: trabajo.cliente_id,
+      items,
+      fecha: null,
+      deposito_id: deposito,
+      lista_precio_id: trabajo.lista_precio_id,
+      organizacion_id: organizacionId
+    });
+    db.prepare("UPDATE trabajos SET estado = 'terminado', venta_id = ? WHERE id = ?").run(nuevaVentaId, trabajo.id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'venta',
+      entidad_id: nuevaVentaId,
+      operacion_tipo: 'trabajo',
+      operacion_id: trabajo.id,
+      detalle: `Venta #${nuevaVentaId} creada al terminar el trabajo #${trabajo.id} "${trabajo.titulo}"`
+    });
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'cliente',
+      entidad_id: trabajo.cliente_id,
+      valor_anterior: JSON.stringify({ estado: trabajo.estado }),
+      valor_nuevo: JSON.stringify({ estado: 'terminado' }),
+      operacion_tipo: 'trabajo',
+      operacion_id: trabajo.id,
+      detalle: `Trabajo #${trabajo.id} "${trabajo.titulo}" terminado, en la venta #${nuevaVentaId}`
+    });
+    if (trabajo.presupuesto_id) {
+      const { estado } = db.prepare('SELECT estado FROM presupuestos WHERE id = ?').get(trabajo.presupuesto_id);
+      db.prepare("UPDATE presupuestos SET estado = 'convertido', venta_id = ? WHERE id = ?").run(nuevaVentaId, trabajo.presupuesto_id);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'presupuesto',
+        entidad_id: trabajo.presupuesto_id,
+        valor_anterior: JSON.stringify({ estado }),
+        valor_nuevo: JSON.stringify({ estado: 'convertido' }),
+        operacion_tipo: 'venta',
+        operacion_id: nuevaVentaId,
+        detalle: `Presupuesto #${trabajo.presupuesto_id} convertido en la venta #${nuevaVentaId} al terminar su trabajo`
+      });
+    }
+    return nuevaVentaId;
+  });
+  res.status(201).json({ id: trabajo.id, venta_id: ventaId });
+});
 
 /* ---------- Devoluciones ---------- */
 
@@ -9321,11 +9757,13 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
 //
 // `descripcion` e `icono` (id del sprite del frontend) son lo que muestran las
 // tarjetas del alta guiada y de Configuración: viven acá para que la lista de
-// tipos esté en un solo lugar.
-const MODULOS = ['pos', 'presupuestos', 'compras', 'stock', 'socios'];
+// tipos esté en un solo lugar. `catalogo` es cómo se llama la sección de lo que
+// se vende, en plural y en singular (hist. §78); sin él, "productos".
+const MODULOS = ['pos', 'presupuestos', 'trabajos', 'compras', 'stock', 'socios'];
 const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
+  trabajos: { nombre: 'Trabajos', descripcion: 'Lo que tenés que hacer para cada cliente: cuándo, quién y, al terminar, la venta.', icono: 'clipboard-list' },
   compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
   stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
@@ -9365,11 +9803,12 @@ const PERFILES_RUBRO = {
   },
   servicios: {
     nombre: 'Servicios',
-    descripcion: 'Trabajos y servicios con presupuesto, sin manejar stock.',
+    descripcion: 'Trabajos y servicios con presupuesto, agenda de trabajos y sin manejar stock.',
     icono: 'briefcase',
     unidad_defecto: 'unidad',
     tipo_defecto: 'servicio',
-    modulos: ['presupuestos']
+    catalogo: { plural: 'servicios', singular: 'servicio' },
+    modulos: ['presupuestos', 'trabajos']
   },
   // Un gimnasio también compra y vende productos (hist. §71): es un comercio
   // al que se le suman los socios y sus cuotas (hist. §74).
@@ -9383,6 +9822,7 @@ const PERFILES_RUBRO = {
   }
 };
 const RUBRO_POR_DEFECTO = 'comercio';
+const CATALOGO_POR_DEFECTO = { plural: 'productos', singular: 'producto' };
 // Se muestran en el alta con "Próximamente", pero no se pueden elegir: cada uno
 // espera su módulo (turnos, mesas y comandas), que se va a poder sumar a
 // cualquier negocio (CLAUDE.md §29).
@@ -9415,7 +9855,13 @@ function perfilDeEmpresa(organizacionId) {
   const rubro = Object.hasOwn(PERFILES_RUBRO, fila?.rubro ?? '') ? fila.rubro : RUBRO_POR_DEFECTO;
   const perfil = PERFILES_RUBRO[rubro];
   const modulos = fila?.modulos == null ? perfil.modulos : fila.modulos.split(' ').filter((m) => MODULOS.includes(m));
-  return { rubro, unidad_defecto: perfil.unidad_defecto, tipo_defecto: perfil.tipo_defecto, modulos };
+  return {
+    rubro,
+    unidad_defecto: perfil.unidad_defecto,
+    tipo_defecto: perfil.tipo_defecto,
+    catalogo: perfil.catalogo ?? CATALOGO_POR_DEFECTO,
+    modulos
+  };
 }
 
 /* ---------- Datos del negocio (membrete de los comprobantes) ---------- */

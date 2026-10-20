@@ -5,7 +5,7 @@
  */
 
 import { esAdmin } from "./formato.js";
-import { moduloActivo } from "./negocio.js";
+import { moduloActivo, termino } from "./negocio.js";
 import { entrarEnVista } from "./registro.js";
 
 // Vistas que pertenecen a un módulo opcional del tipo de negocio (CLAUDE.md
@@ -14,6 +14,8 @@ const MODULO_DE_VISTA = {
   pos: "pos",
   presupuestos: "presupuestos",
   "presupuesto-detalle": "presupuestos",
+  trabajos: "trabajos",
+  "trabajo-detalle": "trabajos",
   compras: "compras",
   "compra-detalle": "compras",
   "devoluciones-proveedor": "compras",
@@ -41,11 +43,12 @@ const MODULO_DE_VISTA = {
 // apenas sabe qué registro es.
 const VISTAS_CONSTRUIDAS = {
   dashboard: { titulo: "Resumen", dominio: "Resumen" },
-  productos: { titulo: "Productos", dominio: "Maestros" },
+  productos: { titulo: "Productos", termino: "Plural", dominio: "Maestros" },
   clientes: { titulo: "Clientes", dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
+  trabajos: { titulo: "Trabajos", dominio: "Embudo de venta" },
   ventas: { titulo: "Ventas", dominio: "Embudo de venta" },
   devoluciones: { titulo: "Devoluciones", dominio: "Embudo de venta" },
   facturas: { titulo: "Facturas", dominio: "Embudo de venta" },
@@ -65,6 +68,7 @@ const VISTAS_CONSTRUIDAS = {
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
+  "trabajo-detalle": { titulo: "Trabajo", dominio: "Embudo de venta", nav: "trabajos", esFicha: true },
   "devolucion-detalle": { titulo: "Devolución", dominio: "Embudo de venta", nav: "devoluciones", esFicha: true },
   "factura-detalle": { titulo: "Factura", dominio: "Embudo de venta", nav: "facturas", esFicha: true },
   "compra-detalle": { titulo: "Compra", dominio: "Embudo de compra", nav: "compras", esFicha: true },
@@ -140,12 +144,19 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
   entrarEnVista(viewId, subruta);
 
   const info = VISTAS_CONSTRUIDAS[viewId];
-  const tituloFinal = titulo ?? info?.titulo;
+  // `termino`: el título es el nombre del catálogo del tipo de negocio. Con un
+  // deep-link el negocio llega después: el data-termino del título hace que
+  // fijarNegocio() lo corrija.
+  const conTermino = !titulo && info?.termino;
+  const tituloFinal = titulo ?? (conTermino ? termino(info.termino) : info?.titulo);
   // El texto chico "RESUMEN"/"ADMINISTRACIÓN" sobre el título se sacó del
   // HTML por decisión de diseño. El campo `dominio` de VISTAS_CONSTRUIDAS se
   // conserva igual: documenta a qué dominio pertenece cada vista.
   if (tituloFinal) {
-    document.getElementById("vistaTitulo").textContent = tituloFinal;
+    const h1 = document.getElementById("vistaTitulo");
+    h1.textContent = tituloFinal;
+    if (conTermino) h1.dataset.termino = info.termino;
+    else delete h1.dataset.termino;
     document.title = `${tituloFinal} · Nexo`;
   }
 

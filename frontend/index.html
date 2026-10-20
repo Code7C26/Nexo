@@ -87,7 +87,7 @@
         <div class="nav-seccion">
           <p class="nav-grupo">Maestros</p>
           <a href="#" class="nav-item" data-view="productos">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Productos
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> <span data-termino="Plural">Productos</span>
           </a>
           <a href="#" class="nav-item" data-view="clientes">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> Clientes
@@ -103,6 +103,9 @@
           </a>
           <a href="#" class="nav-item" data-view="presupuestos" data-modulo="presupuestos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg> Presupuestos
+          </a>
+          <a href="#" class="nav-item" data-view="trabajos" data-modulo="trabajos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#clipboard-list"></use></svg> Trabajos
           </a>
           <a href="#" class="nav-item" data-view="ventas">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg> Ventas
@@ -548,6 +551,101 @@
               </tr>
             </thead>
             <tbody id="presupuestosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Trabajos (hist. §78, dominios/trabajos.js) -->
+      <section class="view" data-view="trabajos" hidden>
+        <section class="ledger-strip" aria-label="Trabajos">
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg></span>Para hoy</span>
+            <span class="ledger-value mono" id="trabajosHoy">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar"></use></svg></span>Próximos 7 días</span>
+            <span class="ledger-value mono" id="trabajosSemana">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Atrasados</span>
+            <span class="ledger-value mono" id="trabajosAtrasados">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">A cobrar al terminar</span>
+            <span class="ledger-value mono" id="trabajosACobrar">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Trabajos</h2>
+            <button class="btn btn-primary" id="btnNuevoTrabajo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo trabajo</button>
+          </div>
+          <div class="socios-herramientas">
+            <input type="search" class="search" placeholder="Buscar por trabajo, cliente o responsable" id="trabajosBuscar" aria-label="Buscar trabajos" />
+            <div class="segmentos" role="group" aria-label="Mostrar" id="trabajosFiltro">
+              <button type="button" class="segmento" data-filtro="por_hacer" aria-pressed="true">Por hacer</button>
+              <button type="button" class="segmento" data-filtro="terminados" aria-pressed="false">Terminados</button>
+              <button type="button" class="segmento" data-filtro="cancelados" aria-pressed="false">Cancelados</button>
+              <button type="button" class="segmento" data-filtro="todos" aria-pressed="false">Todos</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Cuándo</th>
+                <th scope="col">Trabajo</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Responsable</th>
+                <th scope="col">Estado</th>
+                <th scope="col" class="align-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="trabajosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de un trabajo -->
+      <section class="view" data-view="trabajo-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverTrabajos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a trabajos</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaTrabajoTitulo">—</h2>
+            <div class="panel-acciones" id="fichaTrabajoAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaTrabajoDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Total del trabajo">
+          <div class="ledger-item">
+            <span class="ledger-label">Total a cobrar</span>
+            <span class="ledger-value mono" id="fichaTrabajoTotal">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Lo que se cobra</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Servicio o producto</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right">Precio unit.</th>
+                <th scope="col" class="align-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody id="fichaTrabajoItems"></tbody>
           </table>
           </div>
         </section>
@@ -1672,11 +1770,11 @@
       <section class="view" data-view="productos" hidden>
         <section class="panel">
           <div class="panel-head">
-            <h2>Productos</h2>
+            <h2 data-termino="Plural">Productos</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnCategoriasProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
               <button class="btn btn-secundario col-admin" id="btnListasPrecios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Listas de precios</button>
-              <button class="btn btn-primary" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo producto</button>
+              <button class="btn btn-primary" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span data-termino="singular">producto</span></span></button>
             </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
@@ -1686,14 +1784,14 @@
             <thead>
               <tr>
                 <th scope="col">Nombre</th>
-                <th scope="col">SKU</th>
+                <th scope="col" class="col-sku">SKU</th>
                 <th scope="col">Categoría</th>
                 <th scope="col" class="align-right col-admin">Costo</th>
-                <th scope="col" class="align-right col-admin">Valorizado</th>
+                <th scope="col" class="align-right col-admin" data-modulo="stock">Valorizado</th>
                 <th scope="col" class="align-right">Precio</th>
                 <th scope="col" class="align-right col-admin">Margen</th>
                 <th scope="col" class="align-right col-admin">Objetivo</th>
-                <th scope="col" class="align-right">Stock</th>
+                <th scope="col" class="align-right" data-modulo="stock">Stock</th>
                 <th scope="col">Activo</th>
                 <th scope="col"></th>
               </tr>
@@ -1706,7 +1804,7 @@
 
       <!-- Vista: ficha de un producto -->
       <section class="view" data-view="producto-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a productos</button>
+        <button type="button" class="btn-link" id="btnVolverProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a <span data-termino="plural">productos</span></span></button>
 
         <section class="panel">
           <div class="panel-head">
@@ -1719,7 +1817,7 @@
           <dl class="ficha-datos" id="fichaProductoDatos"></dl>
         </section>
 
-        <section class="ledger-strip" aria-label="Resumen del producto">
+        <section class="ledger-strip" aria-label="Resumen del producto" id="fichaProductoStrip">
           <div class="ledger-item col-admin">
             <span class="ledger-label">Costo promedio</span>
             <span class="ledger-value mono" id="fichaProductoCosto">$0,00</span>
@@ -1760,7 +1858,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" id="fichaProductoMovimientosPanel">
           <div class="panel-head">
             <h2>Movimientos de stock</h2>
           </div>
@@ -2984,6 +3082,46 @@
       </form>
     </div>
   </div>
+  <!-- Modal nuevo/editar trabajo (dominios/trabajos.js). Desde un
+       presupuesto no lleva cliente ni renglones: son los del presupuesto. -->
+  <div class="modal" id="modalTrabajo" role="dialog" aria-modal="true" aria-labelledby="modalTrabajoTitulo" hidden>
+    <div class="modal-card modal-card-ancha">
+      <div class="modal-head">
+        <h3 id="modalTrabajoTitulo">Nuevo trabajo</h3>
+        <button class="modal-close" id="modalTrabajoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formTrabajo" class="form">
+        <label id="trabajoClienteCampo">Cliente
+          <input type="text" name="cliente" list="clientesSugeridos" placeholder="Buscar o crear cliente…" />
+        </label>
+        <label>Qué hay que hacer
+          <input type="text" name="titulo" maxlength="120" />
+        </label>
+        <div class="form-fila">
+          <label>Día
+            <input type="date" name="fecha" />
+          </label>
+          <label>Hora
+            <input type="time" name="hora" />
+          </label>
+        </div>
+        <p class="form-note">Sin día, queda en "Sin fecha" hasta que lo programes.</p>
+        <label>Responsable
+          <select name="responsable_id"></select>
+        </label>
+        <div class="form-bloque" id="trabajoRenglones">
+          <div class="item-rows" id="trabajoItems"></div>
+          <button type="button" class="btn-add-item" id="btnAgregarItemTrabajo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar lo que se cobra</button>
+          <p class="item-total">Total: <span class="mono" id="trabajoTotal">$0,00</span></p>
+        </div>
+        <p class="form-note" id="trabajoRenglonesNota" hidden></p>
+        <label>Notas
+          <textarea name="notas" rows="2" maxlength="1000" placeholder="Qué llevar, cómo entrar, a quién preguntar…"></textarea>
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar trabajo</button>
+      </form>
+    </div>
+  </div>
   <!-- Modal nueva/editar venta -->
   <div class="modal" id="modalVenta" role="dialog" aria-modal="true" aria-labelledby="modalVentaTitulo" hidden>
     <div class="modal-card modal-card-ancha">
@@ -3409,8 +3547,13 @@
         <label>Nombre
           <input type="text" name="nombre" required placeholder="Nombre del producto" />
         </label>
-        <label>SKU
+        <!-- Un servicio no lleva SKU, stock ni variantes, y sí qué incluye y
+             cuánto tarda (hist. §78): mostrarCamposSegunTipo() en app.js. -->
+        <label id="productoSkuCampo">SKU
           <input type="text" name="sku" placeholder="Opcional" />
+        </label>
+        <label>Descripción
+          <textarea name="descripcion" rows="2" maxlength="500" placeholder="Opcional: qué incluye"></textarea>
         </label>
         <!-- Las opciones se llenan en runtime (poblarSelectCategorias en
              app.js) con las categorías activas — igual que el select de
@@ -3421,7 +3564,7 @@
           </select>
         </label>
         <div class="form-fila">
-          <label>Se vende por
+          <label><span id="productoUnidadEtiqueta">Se vende por</span>
             <select name="unidad">
               <option value="unidad">Unidad</option>
               <option value="kg">Kilo (kg)</option>
@@ -3429,6 +3572,7 @@
               <option value="l">Litro (l)</option>
               <option value="ml">Mililitro (ml)</option>
               <option value="m">Metro (m)</option>
+              <option value="hora">Hora</option>
             </select>
           </label>
           <label>Tipo
@@ -3453,6 +3597,9 @@
         <label>Margen objetivo (%)
           <input type="number" name="margen_objetivo" step="0.01" min="0" max="99.99" placeholder="Sin objetivo" />
         </label>
+        <label id="productoDuracionCampo" hidden>Duración estimada (minutos)
+          <input type="number" name="duracion_minutos" step="1" min="1" max="10080" placeholder="Opcional" />
+        </label>
         <div class="form-fila" id="productoStockCampos">
           <label>Stock mínimo
             <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
@@ -3464,7 +3611,7 @@
         <label class="form-check">
           <input type="checkbox" name="activo" checked /> Activo
         </label>
-        <button type="submit" class="btn btn-primary btn-full">Guardar producto</button>
+        <button type="submit" class="btn btn-primary btn-full"><span>Guardar <span data-termino="singular">producto</span></span></button>
       </form>
     </div>
   </div>

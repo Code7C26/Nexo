@@ -20,16 +20,35 @@ export const money = (n) =>
 export const numero = (n) => (n == null ? "—" : n.toLocaleString("es-AR"));
 
 // Unidades en que se vende un producto (UNIDADES en server.js). Por kg, litro
-// o metro la cantidad lleva decimales; por gramo o mililitro, no.
-export const UNIDADES = { unidad: "Unidad", kg: "Kilo (kg)", g: "Gramo (g)", l: "Litro (l)", ml: "Mililitro (ml)", m: "Metro (m)" };
-export const esFraccionable = (unidad) => unidad === "kg" || unidad === "l" || unidad === "m";
+// o metro la cantidad lleva decimales; por gramo o mililitro, no. Por hora es
+// la de un servicio que se cobra por tiempo, y también admite 1,5.
+export const UNIDADES = {
+  unidad: "Unidad",
+  kg: "Kilo (kg)",
+  g: "Gramo (g)",
+  l: "Litro (l)",
+  ml: "Mililitro (ml)",
+  m: "Metro (m)",
+  hora: "Hora"
+};
+export const esFraccionable = (unidad) => unidad === "kg" || unidad === "l" || unidad === "m" || unidad === "hora";
+const ABREVIATURAS = { hora: "h" };
 
-// Una cantidad con su unidad: "3", "1,25 kg", "500 g". Por unidad va el número
-// solo, como hasta ahora.
+// Una cantidad con su unidad: "3", "1,25 kg", "500 g", "1,5 h". Por unidad va
+// el número solo, como hasta ahora.
 export function cantidad(n, unidad) {
   if (n == null) return "—";
   const texto = n.toLocaleString("es-AR", { maximumFractionDigits: 3 });
-  return !unidad || unidad === "unidad" ? texto : `${texto} ${unidad}`;
+  return !unidad || unidad === "unidad" ? texto : `${texto} ${ABREVIATURAS[unidad] ?? unidad}`;
+}
+
+// Cuánto tarda un servicio, en minutos: "45 min", "2 h", "1 h 30 min".
+export function duracion(minutos) {
+  if (!minutos) return "—";
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  if (horas === 0) return `${resto} min`;
+  return resto === 0 ? `${horas} h` : `${horas} h ${resto} min`;
 }
 
 // sesion.js escribe data-rol en <html> antes de inyectar este archivo (ver

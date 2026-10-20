@@ -171,7 +171,12 @@ CREATE TABLE IF NOT EXISTS productos (
   -- stock o un servicio sin stock (CLAUDE.md §4, §29). Los valores los valida
   -- server.js (UNIDADES, TIPOS_PRODUCTO), sin CHECK.
   unidad TEXT NOT NULL DEFAULT 'unidad',
-  tipo TEXT NOT NULL DEFAULT 'producto'
+  tipo TEXT NOT NULL DEFAULT 'producto',
+  -- Qué incluye y cuánto tarda, pensados para un servicio (hist. §78). La
+  -- duración es estimada, en minutos: informa, no se cobra (lo que se cobra
+  -- por tiempo es la unidad 'hora').
+  descripcion TEXT,
+  duracion_minutos INTEGER
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -1110,3 +1115,49 @@ CREATE TABLE IF NOT EXISTS ingresos_socio (
   deuda REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_ingresos_socio ON ingresos_socio(socio_id, fecha);
+
+-- Trabajos, u órdenes de trabajo (CLAUDE.md §29, hist. §78): lo que un negocio
+-- de servicios tiene que hacer para un cliente, con fecha, responsable y
+-- estado. El módulo `trabajos` lo puede prender cualquier negocio. No es un
+-- circuito de datos propio: al terminarse pasa a una venta con sus renglones,
+-- que se cobra y se factura como cualquier otra (venta_id). Puede salir de un
+-- presupuesto aceptado (presupuesto_id): ese presupuesto queda convertido en
+-- la misma venta. El índice parcial deja un solo trabajo vivo por presupuesto;
+-- uno cancelado no cuenta, así se puede volver a programar.
+-- estado: pendiente → en_curso → terminado, o cancelado. 'terminado' solo lo
+-- pone el cierre, junto con la venta.
+-- fecha y hora: cuándo se hace. NULL = todavía sin fecha.
+-- lista_precio_id: la del presupuesto, para la venta (mismo criterio que
+-- ventas.lista_precio_id).
+CREATE TABLE IF NOT EXISTS trabajos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  presupuesto_id INTEGER REFERENCES presupuestos(id),
+  titulo TEXT NOT NULL,
+  fecha TEXT,
+  hora TEXT,
+  responsable_id INTEGER REFERENCES usuarios(id),
+  estado TEXT NOT NULL DEFAULT 'pendiente'
+    CHECK (estado IN ('pendiente', 'en_curso', 'terminado', 'cancelado')),
+  notas TEXT,
+  lista_precio_id INTEGER REFERENCES listas_precios(id),
+  venta_id INTEGER UNIQUE REFERENCES ventas(id),
+  fecha_creacion TEXT NOT NULL DEFAULT (datetime('now')),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_trabajos_presupuesto_vivo
+  ON trabajos(presupuesto_id) WHERE presupuesto_id IS NOT NULL AND estado <> 'cancelado';
+CREATE INDEX IF NOT EXISTS idx_trabajos_org_fecha ON trabajos(organizacion_id, fecha);
+
+-- Lo que se va a cobrar por el trabajo: la copia de los renglones del
+-- presupuesto, o los que se cargan a mano. Se pueden corregir hasta terminarlo
+-- (las horas reales, un material de más). Hija de trabajos.
+CREATE TABLE IF NOT EXISTS trabajo_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trabajo_id INTEGER NOT NULL REFERENCES trabajos(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  precio_unitario REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trabajo_items_trabajo ON trabajo_items(trabajo_id);

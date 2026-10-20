@@ -15,6 +15,7 @@ import {
   camposFicha,
   cantidad,
   columnasVisibles,
+  duracion,
   esAdmin,
   esFraccionable,
   esc,
@@ -34,9 +35,9 @@ import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
 import { aplicarTema, temaActual } from "./core/tema.js";
-import { alEntrarEnVista, recargar, registrar } from "./core/registro.js";
+import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
-import { negocio } from "./core/negocio.js";
+import { negocio, termino } from "./core/negocio.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -44,6 +45,7 @@ import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
 import "./dominios/socios.js";
+import "./dominios/trabajos.js";
 import "./dominios/negocios.js";
 
 let facturas = [];
@@ -1517,13 +1519,17 @@ function renderProductos(lista) {
   const body = document.getElementById("productosBody");
   body.innerHTML = "";
   selProductos.sincronizar(lista);
+  body.closest("table").classList.toggle("sin-sku", !productos.some((p) => p.sku));
 
   if (lista.length === 0) {
     if (filtrosProductos.filtros.length > 0) {
       body.innerHTML = filaVaciaFiltrada(selProductos.colspan(10));
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtrosProductos.limpiar());
     } else {
-      body.innerHTML = filaVacia(selProductos.colspan(10), "Todavía no hay productos cargados.", { accionTexto: "+ Nuevo producto", accionId: "btnNuevoProducto" });
+      body.innerHTML = filaVacia(selProductos.colspan(10), `Todavía no hay ${termino("plural")} cargados.`, {
+        accionTexto: `+ Nuevo ${termino("singular")}`,
+        accionId: "btnNuevoProducto"
+      });
     }
     return;
   }
@@ -1550,14 +1556,14 @@ function renderProductos(lista) {
     tr.innerHTML = `
       ${selProductos.celda(p.id)}
       <td data-label="Nombre">${esc(p.nombre)}</td>
-      <td data-label="SKU">${esc(p.sku || "—")}</td>
+      <td data-label="SKU" class="col-sku">${esc(p.sku || "—")}</td>
       <td data-label="Categoría">${esc(p.categoria || "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
-      <td data-label="Valorizado" class="align-right mono col-admin">${money(p.valorizado)}</td>
+      <td data-label="Valorizado" class="align-right mono col-admin" data-modulo="stock">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right mono">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Objetivo" class="align-right col-admin">${badgeMargenObjetivo(p, true)}</td>
-      <td data-label="Stock" class="align-right mono">${p.tipo === "servicio" ? "Servicio" : esc(cantidad(p.stock, p.unidad))}</td>
+      <td data-label="Stock" class="align-right mono" data-modulo="stock">${p.tipo === "servicio" ? "Servicio" : esc(cantidad(p.stock, p.unidad))}</td>
       <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
       }</span></td>
@@ -1660,9 +1666,17 @@ async function abrirFichaProducto(id) {
   document.getElementById("fichaProductoStock").textContent = numero(producto.stock);
   document.getElementById("fichaProductoValorizado").textContent = money(producto.valorizado);
 
+  // Un servicio no tiene stock, movimientos ni variantes (hist. §78): la ficha
+  // muestra qué incluye y cuánto tarda.
+  const esServicio = producto.tipo === "servicio";
+  document.getElementById("fichaProductoStrip").hidden = esServicio;
+  document.getElementById("fichaProductoMovimientosPanel").hidden = esServicio;
+  document.getElementById("btnVariantesProducto").hidden = esServicio;
+
   const campos = [
-    ["SKU", producto.sku],
+    ...(esServicio ? [] : [["SKU", producto.sku]]),
     ["Categoría", producto.categoria],
+    ...(producto.descripcion ? [["Descripción", producto.descripcion]] : []),
     [
       "Precio de venta",
       producto.precio_venta > 0
@@ -1680,9 +1694,12 @@ async function abrirFichaProducto(id) {
           ["Vs. objetivo", producto.margen_objetivo == null ? null : html(badgeMargenObjetivo(producto))]
         ]
       : []),
-    ["Se vende por", UNIDADES[producto.unidad] ?? producto.unidad],
-    ...(producto.tipo === "servicio"
-      ? [["Tipo", "Servicio (sin stock)"]]
+    [esServicio ? "Se cobra por" : "Se vende por", UNIDADES[producto.unidad] ?? producto.unidad],
+    ...(esServicio
+      ? [
+          ["Tipo", "Servicio (sin stock)"],
+          ["Duración estimada", duracion(producto.duracion_minutos)]
+        ]
       : [
           ["Stock mínimo", cantidad(producto.stock_minimo, producto.unidad)],
           ["Stock máximo", producto.stock_maximo === null ? null : cantidad(producto.stock_maximo, producto.unidad)],
@@ -2087,9 +2104,12 @@ function poblarPreciosPorLista(producto) {
 function abrirModalProducto(producto = null) {
   productoEditandoId = producto?.id ?? null;
   const form = document.getElementById("formProducto");
-  document.getElementById("modalProductoTitulo").textContent = producto ? "Editar producto" : "Nuevo producto";
+  document.getElementById("modalProductoTitulo").textContent = `${producto ? "Editar" : "Nuevo"} ${termino("singular")}`;
   form.nombre.value = producto?.nombre ?? "";
+  form.nombre.placeholder = `Nombre del ${termino("singular")}`;
   form.sku.value = producto?.sku ?? "";
+  form.descripcion.value = producto?.descripcion ?? "";
+  form.duracion_minutos.value = producto?.duracion_minutos ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
   form.precio_venta.value = producto?.precio_venta ?? "";
   form.margen_objetivo.value = producto?.margen_objetivo ?? "";
@@ -2100,17 +2120,23 @@ function abrirModalProducto(producto = null) {
   // carnicería vende por kg, un gimnasio vende servicios).
   form.unidad.value = producto?.unidad ?? negocio.unidad_defecto ?? "unidad";
   form.tipo.value = producto?.tipo ?? negocio.tipo_defecto ?? "producto";
-  mostrarCamposStockProducto();
+  mostrarCamposSegunTipo();
   poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
 }
 
-// Un servicio no maneja stock: no tiene mínimo ni máximo que cargar.
-function mostrarCamposStockProducto() {
-  document.getElementById("productoStockCampos").hidden =
-    document.getElementById("formProducto").tipo.value === "servicio";
+// Un servicio no maneja stock (no tiene mínimo ni máximo que cargar) y no
+// lleva SKU, pero sí una duración estimada (hist. §78). El SKU que ya tenga
+// sigue viéndose, para poder borrarlo.
+function mostrarCamposSegunTipo() {
+  const form = document.getElementById("formProducto");
+  const esServicio = form.tipo.value === "servicio";
+  document.getElementById("productoStockCampos").hidden = esServicio;
+  document.getElementById("productoSkuCampo").hidden = esServicio && !form.sku.value;
+  document.getElementById("productoDuracionCampo").hidden = !esServicio;
+  document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
-document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposStockProducto);
+document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
 
 document.getElementById("btnNuevoProducto").addEventListener("click", () => abrirModalProducto());
 document.getElementById("btnEditarProducto").addEventListener("click", () => {
@@ -2130,6 +2156,9 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   const datos = {
     nombre: form.nombre.value,
     sku: form.sku.value || null,
+    descripcion: form.descripcion.value,
+    // La duración es de un servicio: un producto no la manda.
+    duracion_minutos: form.tipo.value === "servicio" && form.duracion_minutos.value !== "" ? Number(form.duracion_minutos.value) : null,
     categoria_id: form.categoria_id.value || null,
     precio_venta: form.precio_venta.value,
     margen_objetivo: form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value),
@@ -2153,7 +2182,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   await api(productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos", {
     method: productoEditandoId ? "PATCH" : "POST",
     body: datos,
-    error: "No se pudo guardar el producto."
+    error: `No se pudo guardar el ${termino("singular")}.`
   });
 
   const eraEdicion = productoEditandoId !== null;
@@ -2166,7 +2195,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
   form.reset();
   modalProducto.hidden = true;
-  avisar(eraEdicion ? "Producto actualizado." : "Producto creado.", "ok");
+  avisar(`${termino("Singular")} ${eraEdicion ? "actualizado" : "creado"}.`, "ok");
 });
 
 /* ---------- Atributos y variantes de producto ---------- */
@@ -3307,17 +3336,26 @@ async function abrirFichaPresupuesto(id) {
         ? ""
         : `<button type="button" class="btn ${clase} btn-estado-presu" data-estado="${estado}">${texto}</button>`;
 
+    // Con un trabajo en marcha (hist. §78), la venta sale al terminarlo: en vez
+    // de convertir, se va al trabajo. Sin trabajo y con el módulo prendido, se
+    // puede programar uno (no a un rechazado, que primero se reabre).
+    const final = p.trabajo_id
+      ? `<button type="button" class="btn btn-primary" id="btnVerTrabajoPresu">Ver el trabajo</button>`
+      : `${p.estado === "rechazado" ? "" : '<button type="button" class="btn btn-secundario" id="btnProgramarTrabajo" data-modulo="trabajos">Programar trabajo</button>'}
+         <button type="button" class="btn btn-primary" id="btnConvertirPresupuesto">Convertir en venta</button>`;
     acciones.innerHTML = `
       <button type="button" class="btn btn-secundario" id="btnEditarPresupuesto">Editar</button>
       ${botonEstado("enviado", "Marcar enviado")}
-      ${botonEstado("aceptado", "Aceptar")}
-      ${botonEstado("rechazado", "Rechazar")}
-      <button type="button" class="btn btn-primary" id="btnConvertirPresupuesto">Convertir en venta</button>
+      ${p.trabajo_id ? "" : botonEstado("aceptado", "Aceptar")}
+      ${p.trabajo_id ? "" : botonEstado("rechazado", "Rechazar")}
+      ${final}
     `;
 
     acciones.querySelector("#btnEditarPresupuesto").addEventListener("click", () =>
       abrirModalPresupuesto(p)
     );
+    acciones.querySelector("#btnVerTrabajoPresu")?.addEventListener("click", () => invocar("abrirFicha:trabajo", p.trabajo_id));
+    acciones.querySelector("#btnProgramarTrabajo")?.addEventListener("click", () => invocar("programar:trabajo", p));
 
     acciones.querySelectorAll(".btn-estado-presu").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -3331,7 +3369,7 @@ async function abrirFichaPresupuesto(id) {
       });
     });
 
-    acciones.querySelector("#btnConvertirPresupuesto").addEventListener("click", async () => {
+    acciones.querySelector("#btnConvertirPresupuesto")?.addEventListener("click", async () => {
       if (
         !(await confirmar({
           cuerpo: "¿Convertir este presupuesto en venta? Se va a descontar el stock y generar la deuda del cliente.",
@@ -3396,6 +3434,35 @@ document.getElementById("btnVolverPresupuestos").addEventListener("click", () =>
 const modalPresupuesto = document.getElementById("modalPresupuesto");
 const presupuestoItemsEl = document.getElementById("presupuestoItems");
 
+// Un renglón por cada item ya guardado de un presupuesto o un trabajo, con su
+// variante. limitarStock en false: se puede cotizar más de lo que hay en el
+// depósito, y el tope se valida al pasar a venta.
+async function cargarFilasItems(contenedor, items) {
+  for (const item of items) {
+    agregarFilaItemVenta(contenedor, productos, false);
+    const fila = contenedor.lastElementChild;
+    fila.querySelector(".item-producto").value = item.producto;
+    fila.querySelector(".item-producto-id").value = item.producto_id;
+    fila.querySelector(".item-cantidad").value = item.cantidad;
+    fila.querySelector(".item-precio").value = item.precio_unitario;
+    ajustarCantidadSegunUnidad(fila.querySelector(".item-cantidad"), productos.find((p) => p.id === item.producto_id));
+    if (item.variante_id) {
+      const varianteSelect = fila.querySelector(".item-variante-id");
+      const variantes = await variantesDeProducto(item.producto_id);
+      varianteSelect.innerHTML = variantes
+        .filter((v) => v.activo || v.id === item.variante_id)
+        .map(
+          (v) =>
+            `<option value="${v.id}" data-stock="${esc(v.stock)}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`
+        )
+        .join("");
+      varianteSelect.value = item.variante_id;
+      varianteSelect.hidden = false;
+    }
+    actualizarSubtotalFila(fila);
+  }
+}
+
 function actualizarTotalPresupuesto() {
   document.getElementById("presupuestoTotal").textContent = money(totalItems(presupuestoItemsEl));
 }
@@ -3428,30 +3495,7 @@ async function abrirModalPresupuesto(presupuesto = null) {
 
   presupuestoItemsEl.innerHTML = "";
   if (presupuesto) {
-    for (const item of presupuesto.items) {
-      // limitarStock en false: un presupuesto puede cotizar más de lo que
-      // hay en el depósito.
-      agregarFilaItemVenta(presupuestoItemsEl, productos, false);
-      const fila = presupuestoItemsEl.lastElementChild;
-      fila.querySelector(".item-producto").value = item.producto;
-      fila.querySelector(".item-producto-id").value = item.producto_id;
-      fila.querySelector(".item-cantidad").value = item.cantidad;
-      fila.querySelector(".item-precio").value = item.precio_unitario;
-      if (item.variante_id) {
-        const varianteSelect = fila.querySelector(".item-variante-id");
-        const variantes = await variantesDeProducto(item.producto_id);
-        varianteSelect.innerHTML = variantes
-          .filter((v) => v.activo || v.id === item.variante_id)
-          .map(
-            (v) =>
-              `<option value="${v.id}" data-stock="${esc(v.stock)}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`
-          )
-          .join("");
-        varianteSelect.value = item.variante_id;
-        varianteSelect.hidden = false;
-      }
-      actualizarSubtotalFila(fila);
-    }
+    await cargarFilasItems(presupuestoItemsEl, presupuesto.items);
   } else {
     agregarFilaItemVenta(presupuestoItemsEl, productos, false);
   }
@@ -7203,6 +7247,14 @@ alEntrarEnVista("auditoria", cargarAuditoria);
 registrar("abrirFicha:cliente", abrirFichaCliente);
 registrar("abrirFicha:proveedor", abrirFichaProveedor);
 registrar("abrirFicha:venta", abrirFichaVenta);
+registrar("abrirFicha:presupuesto", abrirFichaPresupuesto);
+registrar("cargar:presupuestos", cargarPresupuestos);
+// Las filas de renglones de venta, para los trabajos (dominios/trabajos.js):
+// leen el catálogo, que vive acá.
+registrar("items:agregarFila", (contenedor) => agregarFilaItemVenta(contenedor, productos, false));
+registrar("items:cargar", cargarFilasItems);
+registrar("items:leer", leerItemsVenta);
+registrar("items:total", totalItems);
 registrar("cobrar:venta", abrirModalCobrarVenta);
 registrar("pagar:compra", abrirModalPagarCompra);
 

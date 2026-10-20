@@ -1179,8 +1179,12 @@ Implementado hoy (Etapa F, §38):
   crear la empresa y se cambian en Configuración.
 - **Cada tipo es un preset** (`PERFILES_RUBRO` en `server.js`): la unidad y el
   tipo con que nace un producto (kg en carnicería, servicio en gimnasio) y qué
-  módulos opcionales se ven (punto de venta, presupuestos, compras y stock).
-  El admin puede prender o apagar cada módulo.
+  módulos opcionales se ven (punto de venta, presupuestos, trabajos, compras
+  y stock). El admin puede prender o apagar cada módulo. El tipo también puede
+  nombrar distinto su catálogo ("Servicios" en vez de "Productos").
+- **Trabajos (órdenes de trabajo):** módulo reusable, prendido en Servicios.
+  Un presupuesto aceptado pasa a trabajo, con día, responsable y estado, y al
+  terminarlo pasa a una venta (ver `handoff.md`).
 - **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
   `handoff.md`). Un gimnasio también compra y vende productos: su preset
   combina comercio con socios.

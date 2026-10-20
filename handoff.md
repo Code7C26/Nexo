@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §77);
+    siguiente número (hoy el último es §78);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,9 +21,16 @@
 
 ## Estado actual (20 de octubre de 2026)
 
-**Próxima sesión:** Servicios con funciones propias (punto 6a del plan, en
-"Qué sigue"); después el CRM (6b) y recién ahí la PWA (7). Los dos los pidió
-el usuario el 20 de octubre.
+**Próxima sesión:** abonos mensuales, lo que falta del punto 6a (en "Qué
+sigue"); después el CRM (6b) y recién ahí la PWA (7). Los dos los pidió el
+usuario el 20 de octubre.
+- Servicios con funciones propias, primera parte (hist. §78): hecha y
+  commiteada. El catálogo se llama "Servicios" en ese tipo de negocio, con
+  formulario propio (descripción, duración, unidad `hora`), y el módulo nuevo
+  `trabajos`: presupuesto → trabajo con día, responsable y estado → venta.
+  Falta que el usuario lo vea.
+  - La base real suma dos columnas en `productos` y las tablas `trabajos` y
+    `trabajo_items` en el próximo `npm start` (aditivo, con respaldo antes).
 - Varios negocios por cuenta (hist. §77) está hecho y commiteado: selector
   arriba del menú, "Agregar negocio" y el rol por negocio. El usuario lo vio
   y le gustó (20 de octubre): "que se vaya manejando por cuenta".
@@ -350,6 +357,20 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     de los dos roles;
   - los planes no salen en el catálogo del punto de venta.
 
+**Servicios y trabajos (hist. §78)**
+- **El nombre del catálogo es dato del preset** (`PERFILES_RUBRO.catalogo`),
+  nunca un `if`: en el HTML va en `[data-termino]` y en el JS, `termino()` de
+  `core/negocio.js`.
+- **Un trabajo no es un circuito propio:** al terminarlo crea la venta con sus
+  renglones, que se cobra como siempre. Hasta ahí no mueve stock ni cuenta
+  corriente.
+- **Un presupuesto con trabajo sin cancelar no se convierte directo:** la venta
+  sale al terminar el trabajo, y el presupuesto queda convertido en ella.
+- **Trabajos es de los dos roles.** La auditoría va como entidad `cliente` con
+  `operacion_tipo trabajo`, igual que los socios.
+- **Los renglones del trabajo usan las filas de venta de `app.js`**
+  (`items:*` del registro): un dominio no conoce el catálogo.
+
 **Varios negocios por cuenta (hist. §77)**
 - **El rol y la baja son de cada negocio** (`usuario_organizaciones`).
   `usuarios` es solo la identidad: ya no tiene `rol` ni `activo`.
@@ -653,10 +674,16 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    20 de octubre: "que en vez de productos se puedan agregar servicios" y que
    el tipo Servicios tenga más funciones. Diseño e investigación en
    `docs/investigacion-crm-servicios.md` §3:
-   - catálogo de servicios, con el nombre de la sección según el preset;
-   - formulario propio (precio fijo o por hora, duración, unidad `hora`);
-   - trabajos (presupuesto aceptado → trabajo → venta);
-   - abonos mensuales, con el mecanismo de las cuotas de socios.
+   - ~~catálogo de servicios, con el nombre de la sección según el preset~~
+     **hecho** (hist. §78);
+   - ~~formulario propio (precio fijo o por hora, duración, unidad `hora`)~~
+     **hecho** (hist. §78);
+   - ~~trabajos (presupuesto aceptado → trabajo → venta)~~ **hecho** (hist.
+     §78, módulo `trabajos`);
+   - **falta:** abonos mensuales, con el mecanismo de las cuotas de socios
+     (reusar la cuenta de períodos de `generarCuotasDe()`, no escribir otra);
+   - **falta:** recordatorio de presupuestos enviados sin respuesta, que se
+     comparte con "Para hoy" del CRM.
 6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
    del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
    clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:

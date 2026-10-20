@@ -738,6 +738,110 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
   assert.equal((await adminA.patch(`/api/usuarios/${yo}`, { rol: 'empleado' })).status, 409);
 });
 
+test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en venta (hist. §78)', async () => {
+  // Un servicio por hora, con qué incluye y cuánto tarda.
+  const servicio = await adminA.post('/api/productos', {
+    nombre: 'Service de aire',
+    precio_venta: 15000,
+    tipo: 'servicio',
+    unidad: 'hora',
+    descripcion: 'Limpieza de filtros y carga de gas',
+    duracion_minutos: 90
+  });
+  assert.equal(servicio.status, 201, servicio.texto);
+  const enLista = (await adminA.get('/api/productos')).json.find((p) => p.id === servicio.json.id);
+  assert.equal(enLista.unidad, 'hora');
+  assert.equal(enLista.duracion_minutos, 90);
+  assert.equal(enLista.descripcion, 'Limpieza de filtros y carga de gas');
+  for (const duracion_minutos of [0, 1.5, 'mucho', 20000]) {
+    const r = await adminA.patch(`/api/productos/${servicio.json.id}`, { duracion_minutos });
+    assert.equal(r.status, 400, `duración ${duracion_minutos}: ${r.texto}`);
+  }
+
+  // El tipo Servicios llama "servicios" a su catálogo y trae los trabajos.
+  const nombreB = (await adminB.get('/api/negocio')).json.nombre;
+  await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'servicios' });
+  const servicios = (await adminB.get('/api/negocio')).json;
+  assert.deepEqual(servicios.catalogo, { plural: 'servicios', singular: 'servicio' });
+  assert.deepEqual(servicios.modulos, ['presupuestos', 'trabajos']);
+  await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'comercio' });
+  assert.deepEqual((await adminB.get('/api/negocio')).json.catalogo, { plural: 'productos', singular: 'producto' });
+
+  // Del presupuesto sale el trabajo: el presupuesto queda aceptado y ya no se
+  // convierte directo, ni se le programa un segundo trabajo.
+  const presupuesto = await empleadoA.post('/api/presupuestos', {
+    cliente: 'Lucía',
+    items: [{ producto_id: servicio.json.id, cantidad: 2, precio_unitario: 15000 }]
+  });
+  assert.equal(presupuesto.status, 201, presupuesto.texto);
+  const idEmpleado = (await empleadoA.get('/api/auth/estado')).json.usuario.id;
+  assert.ok((await empleadoA.get('/api/trabajos/responsables')).json.some((r) => r.id === idEmpleado));
+  const trabajo = await empleadoA.post('/api/trabajos', {
+    presupuesto_id: presupuesto.json.id,
+    fecha: '2026-11-02',
+    hora: '10:30',
+    responsable_id: idEmpleado
+  });
+  assert.equal(trabajo.status, 201, trabajo.texto);
+  const programado = (await empleadoA.get(`/api/trabajos/${trabajo.json.id}`)).json;
+  assert.equal(programado.titulo, 'Service de aire');
+  assert.equal(programado.total, 30000);
+  assert.equal(programado.items.length, 1);
+  const presupuestoAceptado = (await empleadoA.get(`/api/presupuestos/${presupuesto.json.id}`)).json;
+  assert.equal(presupuestoAceptado.estado, 'aceptado');
+  assert.equal(presupuestoAceptado.trabajo_id, trabajo.json.id);
+  assert.equal((await empleadoA.post(`/api/presupuestos/${presupuesto.json.id}/convertir`)).status, 400);
+  assert.equal((await empleadoA.post('/api/trabajos', { presupuesto_id: presupuesto.json.id })).status, 400);
+
+  // Validación: hora sin día, un responsable de otro negocio, un producto ajeno.
+  const base = { cliente: 'Pedro', titulo: 'Revisar caldera' };
+  const idAdminB = (await adminB.get('/api/auth/estado')).json.usuario.id;
+  assert.equal((await empleadoA.post('/api/trabajos', { ...base, hora: '09:00' })).status, 400);
+  assert.equal((await empleadoA.post('/api/trabajos', { ...base, responsable_id: idAdminB })).status, 400);
+  const ajeno = { ...base, items: [{ producto_id: productoB, cantidad: 1, precio_unitario: 1 }] };
+  assert.equal((await empleadoA.post('/api/trabajos', ajeno)).status, 400);
+  assert.equal((await empleadoA.post('/api/trabajos', { cliente: 'Pedro' })).status, 400, 'sin título');
+
+  // Otro negocio no lo ve ni lo toca.
+  assert.equal((await adminB.get(`/api/trabajos/${trabajo.json.id}`)).status, 404);
+  assert.equal((await adminB.patch(`/api/trabajos/${trabajo.json.id}/estado`, { estado: 'cancelado' })).status, 404);
+  assert.equal((await adminB.post(`/api/trabajos/${trabajo.json.id}/terminar`)).status, 404);
+  assert.ok(!(await adminB.get('/api/trabajos')).json.some((t) => t.id === trabajo.json.id));
+
+  // Se corrigen las horas reales, se empieza y se termina: la venta es por lo
+  // del trabajo y el presupuesto queda convertido en esa misma venta.
+  const corregido = await empleadoA.put(`/api/trabajos/${trabajo.json.id}`, {
+    titulo: 'Service de aire, dos equipos',
+    fecha: '2026-11-02',
+    hora: '10:30',
+    responsable_id: idEmpleado,
+    items: [{ producto_id: servicio.json.id, cantidad: 2.5, precio_unitario: 15000 }]
+  });
+  assert.equal(corregido.status, 200, corregido.texto);
+  assert.equal((await empleadoA.patch(`/api/trabajos/${trabajo.json.id}/estado`, { estado: 'en_curso' })).status, 200);
+  assert.equal((await empleadoA.patch(`/api/trabajos/${trabajo.json.id}/estado`, { estado: 'terminado' })).status, 400);
+  const terminado = await empleadoA.post(`/api/trabajos/${trabajo.json.id}/terminar`);
+  assert.equal(terminado.status, 201, terminado.texto);
+  const ventaDelTrabajo = (await empleadoA.get(`/api/ventas/${terminado.json.venta_id}`)).json;
+  assert.equal(ventaDelTrabajo.cliente, 'Lucía');
+  assert.equal(ventaDelTrabajo.items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0), 37500);
+  const convertido = (await empleadoA.get(`/api/presupuestos/${presupuesto.json.id}`)).json;
+  assert.equal(convertido.estado, 'convertido');
+  assert.equal(convertido.venta_id, terminado.json.venta_id);
+  assert.equal((await empleadoA.post(`/api/trabajos/${trabajo.json.id}/terminar`)).status, 400);
+  assert.equal((await empleadoA.patch(`/api/trabajos/${trabajo.json.id}/estado`, { estado: 'pendiente' })).status, 400);
+  assert.equal((await empleadoA.put(`/api/trabajos/${trabajo.json.id}`, { titulo: 'Otro' })).status, 400);
+
+  // Un trabajo sin renglones no se termina; cancelado no se edita, y se retoma.
+  const suelto = await empleadoA.post('/api/trabajos', base);
+  assert.equal(suelto.status, 201, suelto.texto);
+  assert.equal((await empleadoA.post(`/api/trabajos/${suelto.json.id}/terminar`)).status, 400);
+  assert.equal((await empleadoA.patch(`/api/trabajos/${suelto.json.id}/estado`, { estado: 'cancelado' })).status, 200);
+  assert.equal((await empleadoA.put(`/api/trabajos/${suelto.json.id}`, base)).status, 400);
+  assert.equal((await empleadoA.post(`/api/trabajos/${suelto.json.id}/terminar`)).status, 400);
+  assert.equal((await empleadoA.patch(`/api/trabajos/${suelto.json.id}/estado`, { estado: 'pendiente' })).status, 200);
+});
+
 test('muchos logins fallidos con usuarios distintos bloquean la IP (A6)', async () => {
   const anonimo = crearCliente(servidor.url);
   let ultimo;

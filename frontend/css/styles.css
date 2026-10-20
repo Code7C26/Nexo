@@ -1722,11 +1722,20 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
    que llega el negocio no se ve ninguna: así aparecen, pero no desaparecen. */
 :root:not([data-modulos~="pos"]) [data-modulo="pos"],
 :root:not([data-modulos~="presupuestos"]) [data-modulo="presupuestos"],
+:root:not([data-modulos~="trabajos"]) [data-modulo="trabajos"],
 :root:not([data-modulos~="compras"]) [data-modulo="compras"],
 :root:not([data-modulos~="stock"]) [data-modulo="stock"],
 :root:not([data-modulos~="socios"]) [data-modulo="socios"] {
   display: none;
 }
+
+/* La columna SKU de Productos, solo si alguno tiene (hist. §78): en un negocio
+   de servicios sería una columna de guiones. */
+.sin-sku .col-sku { display: none; }
+/* La ficha de un servicio no tiene stock ni variantes: su franja y su botón
+   se ocultan con hidden, que pierde contra el display de su clase. */
+.btn[hidden],
+.ledger-strip[hidden] { display: none; }
 
 /* Sección "Atributos" del modal de variantes: una tarjeta por atributo,
    con sus valores como chips y un alta inline de valor nuevo. */
@@ -5224,6 +5233,17 @@ input.precio-sin-configurar::placeholder {
   max-width: 420px;
 }
 
+/* Un trabajo que se pasó de su día sin terminarse (dominios/trabajos.js). Con
+   .celda-meta, para ganarle a su gris. */
+.celda-meta.trabajo-atrasado {
+  color: var(--accent-danger);
+  font-weight: 600;
+}
+
+/* Los renglones del modal de trabajo, que se ocultan juntos cuando salen de
+   un presupuesto. */
+.form-bloque[hidden] { display: none; }
+
 .celda-principal {
   display: block;
   font-weight: 600;
@@ -5813,6 +5833,19 @@ a.segmento {
     flex-basis: 100%;
     max-width: none;
     min-width: 0;
+  }
+
+  /* Los filtros de Socios y Trabajos, en un solo renglón de lado a lado. */
+  .socios-herramientas .segmentos {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  .socios-herramientas .segmento {
+    flex: 1 1 auto;
+    padding: 0 var(--sp-2);
+    white-space: nowrap;
   }
 
   .segmento { min-height: 36px; }

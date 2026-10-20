@@ -1649,6 +1649,13 @@ if (!productosColumnasUnidad.some((col) => col.name === 'unidad')) {
 if (!productosColumnasUnidad.some((col) => col.name === 'tipo')) {
   db.exec("ALTER TABLE productos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'producto'");
 }
+// Descripción y duración estimada (en minutos) de un servicio (hist. §78, ver
+// schema.sql): nullable, los productos que ya existen quedan sin ninguna.
+for (const columna of ['descripcion TEXT', 'duracion_minutos INTEGER']) {
+  if (!productosColumnasUnidad.some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE productos ADD COLUMN ${columna}`);
+  }
+}
 const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
 for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {

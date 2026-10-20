@@ -29,6 +29,8 @@
 // Socios (hist. §74 y §75): la recepción da de alta, suma planes, elige el
 // descuento a mano, cobra y registra ingresos, que es su trabajo diario; crear
 // y editar los planes y los descuentos (los precios) es admin.
+// Trabajos (hist. §78): programarlos, editarlos y terminarlos es de los dos
+// roles, como un presupuesto o una venta.
 export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
@@ -75,6 +77,13 @@ export const RUTAS_PERMISOS = {
   'GET /api/transferencias': 'ambos',
   'POST /api/transferencias': 'ambos',
   'POST /api/transferencias/:id/anular': 'admin',
+  'GET /api/trabajos': 'ambos',
+  'GET /api/trabajos/responsables': 'ambos',
+  'GET /api/trabajos/:id': 'ambos',
+  'POST /api/trabajos': 'ambos',
+  'PUT /api/trabajos/:id': 'ambos',
+  'PATCH /api/trabajos/:id/estado': 'ambos',
+  'POST /api/trabajos/:id/terminar': 'ambos',
   'GET /api/turnos-caja': 'ambos',
   'GET /api/turnos-caja/:id': 'ambos',
   'POST /api/turnos-caja': 'ambos',

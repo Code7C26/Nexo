@@ -8225,3 +8225,119 @@ commits aparte.
 
 - Que el usuario lo vea.
 - B2: PWA (punto 7 del plan).
+
+## 78. Servicios con funciones propias: catálogo y trabajos, 20 de octubre de 2026
+
+**Pedido:** punto 6a del plan en dos semanas. "Que en vez de productos se
+puedan agregar servicios" y que el tipo Servicios tenga más funciones (usuario,
+20 de octubre). Diseño en `docs/investigacion-crm-servicios.md` §3. Esta etapa
+hace los dos primeros puntos (catálogo y trabajos); los abonos y el
+recordatorio de presupuestos quedan para la siguiente.
+
+**Esquema** (CLAUDE.md §34, todo aditivo):
+- `productos.descripcion` (texto) y `productos.duracion_minutos` (entero, de 1
+  a una semana), nullable, con `ALTER` en `db/index.js` después de los
+  rebuilds.
+- Tablas nuevas `trabajos` y `trabajo_items` (hija), con un índice único
+  parcial: un solo trabajo sin cancelar por presupuesto.
+- Unidad nueva `hora` en `UNIDADES` (sin `CHECK`, no hubo rebuild). Admite
+  decimales, como kg.
+
+**Catálogo.**
+- Cada tipo de negocio puede llamar distinto a su catálogo:
+  `PERFILES_RUBRO.<tipo>.catalogo = { plural, singular }`, que sale en
+  `GET /api/negocio`. Solo Servicios lo usa ("servicios"); el resto sigue con
+  "productos" (`CATALOGO_POR_DEFECTO`).
+- En el frontend, `termino(clave)` de `core/negocio.js` da la palabra
+  ("Plural" en mayúscula, "singular" en minúscula). `fijarNegocio()` la pone en
+  cada `[data-termino]`: el menú, el título de la vista (el router le pone
+  `data-termino` al `h1`, así se corrige con un deep-link), los botones y el
+  modal.
+  - En un botón flex, la palabra va dentro de un `<span>` que envuelve todo el
+    texto: si no, el `gap` deja un espacio doble.
+- **Formulario de servicio:** sin SKU (si ya tenía, se ve para poder borrarlo)
+  ni stock; con descripción, duración estimada y "Se cobra por" (unidad u
+  hora). Las unidades no se recortan para un servicio: una lavandería cobra por
+  kilo.
+- **Ficha de servicio:** sin franja de stock, movimientos ni botón Variantes;
+  con descripción y duración (`duracion()` de `core/formato.js`: "1 h 30 min").
+- **Tabla:** la columna SKU solo aparece si algún producto tiene (`.sin-sku`).
+  Stock y Valorizado van con el módulo de stock (`data-modulo="stock"`).
+
+**Trabajos** (módulo `trabajos`, nuevo en `MODULOS`; viene prendido en
+Servicios y cualquier negocio lo puede prender).
+- Un trabajo es lo que hay que hacer para un cliente: título, día y hora
+  opcionales, responsable (un usuario activo del negocio), estado (pendiente,
+  en curso, terminado o cancelado), notas y renglones.
+- **Sin circuito propio:** al terminarlo pasa a una venta con sus renglones,
+  desde el depósito predeterminado y con la lista del trabajo, igual que la
+  conversión de un presupuesto. Se cobra con el cobro de siempre.
+- **Desde un presupuesto:** "Programar trabajo" en su ficha. Copia cliente,
+  renglones y lista, y el presupuesto pasa a aceptado. Mientras tenga un
+  trabajo sin cancelar, el presupuesto no se convierte directo (400) y su ficha
+  muestra "Ver el trabajo". Al terminar el trabajo, el presupuesto queda
+  convertido en la misma venta.
+- Los renglones se corrigen hasta terminarlo (las horas reales). Uno sin
+  renglones no se termina. Uno cancelado no se edita y se puede retomar, salvo
+  que su presupuesto ya tenga otro trabajo o se haya convertido.
+- **Rutas** (todas de los dos roles, como presupuestos y ventas):
+  `GET /api/trabajos`, `GET /api/trabajos/responsables` (los usuarios activos
+  del negocio, aparte de `GET /api/usuarios`, que es de admin),
+  `GET /api/trabajos/:id`, `POST /api/trabajos`, `PUT /api/trabajos/:id`,
+  `PATCH /api/trabajos/:id/estado` y `POST /api/trabajos/:id/terminar`.
+- **Auditoría:** como los socios, sin reconstruir `auditoria`: entidad
+  `cliente` con `operacion_tipo trabajo`; la venta, entidad `venta` con
+  `operacion_tipo trabajo`.
+- `validarPresupuesto` se partió: `errorEnItemsCotizados()` valida los
+  renglones de los dos. Un producto ajeno ahora dice "Uno de los productos no
+  existe." (antes nombraba al presupuesto).
+- **Pantallas** (`frontend/js/dominios/trabajos.js`, nuevo):
+  - lista con "Para hoy", "Próximos 7 días", "Atrasados" y "A cobrar al
+    terminar", búsqueda y filtros (por hacer, terminados, cancelados, todos);
+    "Cuándo" dice "Hoy, 15:00", "Mañana", "El jueves" o la fecha;
+  - ficha con las acciones según el estado; "Terminar y cobrar" crea la venta y
+    abre el cobro;
+  - alta y edición en un modal como el del presupuesto. Las filas de renglones
+    son las de venta de `app.js`, que las registra como `items:agregarFila`,
+    `items:cargar`, `items:leer` e `items:total` (el dominio no conoce el
+    catálogo). `cargarFilasItems()` salió del modal del presupuesto y lo usan
+    los dos.
+- Íconos nuevos del sprite (Lucide): `clipboard-list` (trabajos) y `repeat`
+  (para los abonos).
+- En el celular, los filtros de Socios y de Trabajos van en un renglón de lado
+  a lado.
+
+**Verificación.**
+- `npm test` 58 de 58, con un caso nuevo: servicio por hora con duración, el
+  catálogo del tipo Servicios, trabajo desde presupuesto (aceptado, sin
+  convertir directo, sin segundo trabajo), validaciones (hora sin día,
+  responsable de otro negocio, producto ajeno, sin título), aislamiento (404
+  desde otro negocio), corregir horas, terminar en una venta por 37.500 con el
+  presupuesto convertido, y el ciclo cancelar y retomar.
+- `npm run lint` verde.
+- `verificar-migracion` 24 de 24; md5 de la base real igual antes y después.
+- `npm run regresion`: 14 diferencias, todas esperadas: las rutas nuevas de
+  trabajos, `descripcion` y `duracion_minutos` en productos, `trabajo_id` en
+  presupuestos y el módulo y el catálogo nuevos en los tipos de negocio. Se
+  sumó `/api/trabajos/:id` a `LISTADO_DE`.
+- **Navegador** (base nueva, negocio de servicios): menú y título
+  "Servicios", formulario sin SKU y con duración, ficha de servicio, presupuesto
+  → programar → ficha del trabajo → terminar → cobro de la venta, lista en la
+  compu y a 390 px, sin errores de consola.
+  - Un recorrido que crea la cuenta por API con el alta guiada abierta en la
+    página pierde el hash: el alta lo borra al cerrarse (`alta.js`). Es del
+    script, no de Nexo.
+
+### Para después
+
+- Abonos mensuales (punto 3 del diseño), con el mecanismo de las cuotas de
+  socios.
+- Recordatorio de presupuestos enviados sin respuesta, compartido con el CRM.
+- Agenda con turnos, horas por cliente y portal del cliente (diseño §3).
+- Asignar el responsable a varios trabajos de una vez, y una vista de
+  calendario.
+
+### Qué sigue
+
+- Que el usuario lo vea.
+- Abonos (sigue el punto 6a) y después el CRM (6b).
