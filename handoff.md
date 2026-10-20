@@ -187,6 +187,20 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     no pisa lo que ya se cargó (hist. §26).
 
 **Diseño visual (hist. §62, §69, §72)**
+- **Principio del usuario (19 de octubre), por encima de los demás:** la
+  interfaz se diseña para alguien que nunca usó Nexo. "No quiero que
+  simplemente cumpla la función": él entiende el programa a la perfección,
+  "pero alguien que no conoce Nexo, ni nunca lo probó, no va a tener ni
+  idea". Pide foco en los pequeños detalles que separan una aplicación
+  pensada y estética de "una aplicación sencilla hecha con inteligencia
+  artificial", que "se pueda interactuar bien" y que las cosas sean simples.
+  Lo que se configura va en pasos y páginas aparte, "bien estructurada como
+  una aplicación real", nunca en "un cuadradito que se abre".
+  - En la práctica, antes de dar por terminada una pantalla o un flujo:
+    - qué ve y qué entiende quien entra por primera vez;
+    - estados vacío, cargando, error y éxito;
+    - foco y teclado, transiciones y textos;
+    - y capturas al usuario.
 - **Estructura de Dub, base negra de Nexo (hist. §72):**
   - bordes finos en vez de sombras: paneles y tarjetas sin sombra;
     `--shadow-md`/`--shadow-lg` solo para lo que flota;
