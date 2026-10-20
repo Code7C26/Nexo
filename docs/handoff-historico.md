@@ -8092,3 +8092,136 @@ el apartado principal, no en Configuración".
 ### Qué sigue
 
 - Lo mismo que §75: que el usuario lo vea y confirme "gana el mayor".
+
+## 77. Varios negocios por cuenta, 20 de octubre de 2026
+
+**Pedido:** punto 6 del plan en dos semanas. "Una cuenta podría tener más de un
+negocio sin problema" (decisión del usuario del 19 de octubre, CLAUDE.md §28).
+Antes se commitearon socios, cuotas, planes y descuentos (§74–§76), en dos
+commits aparte.
+
+**Esquema** (CLAUDE.md §34):
+- **`usuario_organizaciones`** (tabla nueva): en qué negocios trabaja cada
+  usuario.
+  - Columnas `usuario_id`, `organizacion_id`, `rol`, `activo`, `fecha_alta` y
+    `ultimo_acceso`, con PK compuesta.
+  - Un índice por `organizacion_id`.
+- **`usuarios` quedó como la identidad.**
+  - Se borraron `rol` y `activo` con `DROP COLUMN`, después de copiarlos a la
+    pertenencia en la misma transacción.
+  - Es SQL estándar; ninguna vista, índice ni trigger los usaba, y cada
+    `CHECK` era de su propia columna. Reconstruir la tabla (cuatro tablas
+    tienen FK hacia ella) era más riesgo para nada.
+  - Es una variante nueva del patrón de §34: sirve para sacar una columna sin
+    FK ni índice.
+  - `usuarios.organizacion_id` queda como "negocio donde se creó la cuenta" y
+    no decide permisos. Sacarla pide reconstruir la tabla, porque es una FK.
+- **`sesiones.organizacion_id`**: el negocio activo de la sesión.
+  - Nullable, porque la suma un `ALTER`.
+  - Las sesiones abiertas se rellenan con el negocio de su usuario, así nadie
+    queda afuera al migrar.
+
+**Backend (`server.js`).**
+- **Sesión:**
+  - `sesionValida` hace `JOIN` a la pertenencia activa del negocio de la
+    sesión;
+  - `req.usuario.rol` y `req.usuario.organizacion_id` mantienen los nombres,
+    así que ningún handler cambió.
+- **Respuesta del usuario:** `datosUsuario()` arma la misma respuesta en
+  estado, login y registro, que ahora suma `organizacion_id`.
+- **Login:** entra al último negocio usado (`ultimo_acceso` de la
+  pertenencia, con milésimas).
+  - El orden es `ultimo_acceso IS NULL, ultimo_acceso DESC`, portable.
+  - Sin ninguna pertenencia activa responde igual que un usuario que no existe.
+- **Registro:** se separaron `validarNegocioNuevo`, `valoresNegocio`,
+  `insertarNegocio` y `sumarAlNegocio`, que también usa el alta de negocio.
+- **Rutas nuevas:**
+  - `GET /api/negocios` (los dos roles): los negocios activos del usuario.
+  - `POST /api/negocios` (admin): crea uno con quien lo crea como admin y
+    pasa la sesión a él.
+    - Tiene el tope del registro, contado por usuario.
+    - El empleado no crea negocios desde la cuenta de su empleador.
+  - `POST /api/negocios/:id/entrar` (los dos roles): cambia de negocio.
+    - Uno ajeno o de baja da 404, igual que uno inexistente.
+    - Se audita como `logout` en el que deja y `login` en el que entra, sin
+      nombrar al otro.
+- **Pestaña vieja:** el frontend manda `X-Nexo-Negocio` con el negocio que
+  muestra.
+  - Si no es el de la sesión, el backend responde 409 con
+    `X-Nexo-Negocio-Cambiado`.
+  - Sin esto, una pestaña que seguía mostrando A escribía en B después de
+    cambiar en otra.
+  - Quedan exentas `/auth/*` y `/negocios*`. No autoriza nada.
+- **Usuarios:** el rol y la baja se escriben en la pertenencia del negocio
+  actual.
+  - La baja borra solo las sesiones de ese negocio.
+  - El último admin se cuenta por negocio.
+  - **Regla nueva:** el nombre y la contraseña son de la persona, así que un
+    admin solo los cambia si administra **todos** los negocios de esa persona,
+    también los que la dieron de baja. Si no, responde 409 con un mensaje.
+    - Sin esta regla, el admin de A le resetea la clave a alguien que se armó
+      su negocio C y entra a C.
+
+**Frontend.**
+- **Sesión (`sesion.js`):**
+  - marca `<html data-organizacion>`;
+  - su interceptor suma la cabecera y, ante el 409 de la pestaña vieja,
+    recarga con un aviso;
+  - volver a entrar después de un 401 recarga, en vez de seguir con la
+    memoria de la sesión anterior.
+- **Claves locales por negocio:**
+  - `nexo.filtros.<org>.<contenedor>`, porque guardan ids de categorías,
+    depósitos y cuentas;
+  - `nexo.pos.caja.<org>`.
+- **`dominios/negocios.js` (nuevo):** el selector arriba del menú, con la
+  estructura del de espacios de Dub (inicial en un cuadradito, nombre, tipo,
+  `chevrons-up-down`).
+  - **Menú:** el negocio actual con check y "Agregar negocio" solo para el
+    admin.
+    - Lo muda al `<body>` y lo ubica fijo debajo del botón: el cajón del
+      celular tiene un `transform` que corre cualquier `position: fixed`.
+    - Teclado: flechas, Inicio, Fin, Escape y Tab.
+  - **Cambiar de negocio:** recarga en la vista de inicio con el aviso
+    "Estás en «X»".
+  - **Empleado de un solo negocio:** ve el nombre sin menú.
+- **"Agregar negocio" es `alta.js` en modo `negocio`:**
+  - arranca en "Tu negocio" ("Paso 1 de 4") con la ruta `#/agregar-negocio/N`;
+  - tiene Cancelar en la cabecera, sin Atrás en su primer paso, y una nota
+    que explica qué es un negocio aparte;
+  - el botón final dice "Crear negocio";
+  - llama a `POST /api/negocios`.
+
+**Verificación.**
+- `npm test` 57 de 57, con un caso nuevo:
+  - crear, cambiar y volver;
+  - 404 a un negocio ajeno, con la sesión que no se mueve;
+  - el empleado no crea negocios;
+  - el login entra al último negocio;
+  - la cabecera de la pestaña vieja;
+  - la regla de nombre y contraseña;
+  - la baja en un negocio que no toca el otro;
+  - el último admin por negocio.
+- `npm run lint` verde.
+- `verificar-migracion` 24 de 24, con la copia de la base real.
+- `npm run regresion`: 4 diferencias, todas esperadas. Son `organizacion_id` en
+  `/api/auth/estado` y la ruta nueva `GET /api/negocios`, con los dos roles;
+  `/api/usuarios` dio igual.
+- **Navegador** (34 controles, base nueva): selector, teclado, alta con
+  Cancelar y Atrás, nombre con XSS, cambio en las dos direcciones, filtros
+  separados, dos pestañas, claro, 390 px y empleado.
+  - El único error de consola es el 409 esperado de la pestaña vieja, que
+    Chrome registra como recurso fallido.
+
+### Para después
+
+- Invitar a una persona que ya tiene usuario a otro negocio. Hoy cada negocio
+  crea sus propios usuarios, y el nombre de usuario sigue siendo único en todo
+  Nexo.
+- Pasar un negocio a otro dueño, o darlo de baja entero.
+- Un límite de negocios por cuenta, cuando haya planes (CLAUDE.md §28).
+- El logo del negocio en el cuadradito del selector, cuando exista el logo.
+
+### Qué sigue
+
+- Que el usuario lo vea.
+- B2: PWA (punto 7 del plan).

@@ -1109,10 +1109,17 @@ una instancia por negocio.
   `auditoria` (un login fallido con un usuario inexistente no tiene empresa).
   El SKU de producto y de variante es único dentro de cada empresa, no en todo
   Nexo.
+- **Varios negocios por cuenta** (hist. §77):
+  - un usuario trabaja en uno o más negocios (`usuario_organizaciones`, con su
+    rol y su baja en cada uno);
+  - la sesión guarda el negocio activo, y se cambia con el selector de arriba
+    del menú;
+  - "Agregar negocio" (solo el admin) reusa el alta guiada sin el paso de la
+    cuenta.
 - Lo que falta: poder apagar el registro público por configuración y sumarle
   verificación (email o captcha). Las dos requieren decisión del equipo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
-  `docs/handoff-historico.md` (§37–§51).
+  `docs/handoff-historico.md` (§37–§51, §77).
 
 Diseño que se siguió (y que rige para toda tabla o consulta nueva):
 
@@ -1126,8 +1133,8 @@ Diseño que se siguió (y que rige para toda tabla o consulta nueva):
 - Un usuario puede pertenecer a una empresa (caso simple) o a varias con
   cambio de contexto (caso multi-negocio de un mismo dueño). La segunda
   variante quedó decidida el 19 de octubre de 2026 ("una cuenta podría tener
-  más de un negocio sin problema"). El diseño está en `handoff.md` y se
-  explica antes de tocar el esquema.
+  más de un negocio sin problema") y está implementada (hist. §77): el rol es
+  de cada empresa, y la empresa activa sale de la sesión.
 - Suscripciones/planes por empresa (qué módulos tiene activos, límites de uso)
   se apoyan en esta misma columna, pero son una etapa aparte.
 

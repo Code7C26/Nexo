@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §76);
+    siguiente número (hoy el último es §77);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,12 @@
 
 ## Estado actual (20 de octubre de 2026)
 
-**Próxima sesión:** varios negocios por cuenta (punto 6 del plan, en "Qué
-sigue").
+**Próxima sesión:** B2, la PWA (punto 7 del plan, en "Qué sigue").
+- Varios negocios por cuenta (hist. §77) está hecho y commiteado: selector
+  arriba del menú, "Agregar negocio" y el rol por negocio. Falta que el
+  usuario lo vea.
+  - La base real se migra en el próximo `npm start`, con respaldo antes: el
+    rol y la baja pasan a `usuario_organizaciones`.
 - Socios, cuotas e ingreso (hist. §74) y planes con varias duraciones, varios
   planes por socio y descuentos (hist. §75) están hechos y commiteados.
 - El usuario ya probó la primera versión de socios en la base real, que es un
@@ -344,6 +348,30 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     de los dos roles;
   - los planes no salen en el catálogo del punto de venta.
 
+**Varios negocios por cuenta (hist. §77)**
+- **El rol y la baja son de cada negocio** (`usuario_organizaciones`).
+  `usuarios` es solo la identidad: ya no tiene `rol` ni `activo`.
+  - `usuarios.organizacion_id` es el negocio donde se creó la cuenta y no
+    decide nada.
+  - El negocio de cada request sale de `sesiones.organizacion_id`.
+- **El nombre de usuario sigue siendo único en todo Nexo** y el login no pide
+  negocio: entra al último que se usó.
+- **Nombre y contraseña son de la persona.** Un admin solo los cambia si
+  administra todos los negocios de esa persona (409 si no). Sacar esa regla
+  deja tomar el negocio de otro.
+- **Solo el admin agrega negocios.** El negocio nuevo nace con quien lo crea
+  como admin, y la sesión pasa a él.
+- **Pestaña vieja:**
+  - toda llamada a `/api/` lleva `X-Nexo-Negocio` (lo suma `sesion.js`);
+  - si no coincide con la sesión, el backend responde 409 y la pestaña
+    recarga;
+  - `/auth/*` y `/negocios*` quedan exentas.
+- **Lo que se guarda en el navegador y tiene ids lleva el negocio en la
+  clave:** `nexo.filtros.<org>.<contenedor>` y `nexo.pos.caja.<org>`. Una
+  clave nueva de ese tipo sigue la misma regla.
+- **Cambiar de negocio recarga la página** en la vista de inicio. Es el
+  reseteo de la memoria de la app, como en el logout.
+
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
   incluidos atributos `value="…"`. Lo exige `npm test`
@@ -606,21 +634,12 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - se saca el "muy pronto" de la descripción del gimnasio;
      - sus planes y descuentos eran páginas de Configuración; desde hist. §76
        son su propia vista, "Planes", en el menú principal.
-6. **Varios negocios por cuenta** (1–2 sesiones). Decidido por el usuario el
+6. ~~Varios negocios por cuenta~~ **hecha** (hist. §77). Pedido del usuario del
    19 de octubre: "una cuenta podría tener más de un negocio sin problema".
-   - Es la variante "un usuario en varias empresas con cambio de contexto" de
-     CLAUDE.md §28, que estaba a definir y ahora está definida.
-   - **Diseño a proponer antes de tocar el esquema** (CLAUDE.md §34):
-     - una tabla `usuario_organizaciones` (`usuario_id`, `organizacion_id`,
-       `rol`);
-     - la empresa activa vive en la sesión (`sesiones.organizacion_id`) y se
-       cambia con un selector arriba del menú;
-     - "Agregar negocio" crea otra empresa con el mismo usuario como admin.
-   - **Restricciones:**
-     - el nombre de usuario sigue siendo único en todo Nexo y el login sigue
-       sin pedir empresa (hist. §45);
-     - el aislamiento por `organizacion_id` de la sesión no cambia: solo
-       cambia de dónde sale.
+   - Selector arriba del menú, "Agregar negocio" con el alta guiada y el rol
+     por negocio. Falta que el usuario lo vea.
+   - Lo que quedó para después está en hist. §77. Por ejemplo: invitar a otro
+     negocio a alguien que ya tiene usuario, y dar de baja un negocio entero.
 7. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.
