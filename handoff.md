@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §78);
+    siguiente número (hoy el último es §79);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,9 +21,15 @@
 
 ## Estado actual (20 de octubre de 2026)
 
-**Próxima sesión:** abonos mensuales, lo que falta del punto 6a (en "Qué
-sigue"); después el CRM (6b) y recién ahí la PWA (7). Los dos los pidió el
-usuario el 20 de octubre.
+**Próxima sesión:** el CRM (punto 6b, en "Qué sigue"), con su lista "Para
+hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
+abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
+20 de octubre.
+- Abonos mensuales (hist. §79): hechos y commiteados. Módulo `abonos`, con las
+  cuotas armadas por el mismo `periodosPendientes()` que las de socios. Falta
+  que el usuario lo vea.
+  - La base real suma las tablas `abonos` y `cuotas_abono` en el próximo
+    `npm start` (aditivo).
 - Servicios con funciones propias, primera parte (hist. §78): hecha y
   commiteada. El catálogo se llama "Servicios" en ese tipo de negocio, con
   formulario propio (descripción, duración, unidad `hora`), y el módulo nuevo
@@ -370,6 +376,11 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   `operacion_tipo trabajo`, igual que los socios.
 - **Los renglones del trabajo usan las filas de venta de `app.js`**
   (`items:*` del registro): un dominio no conoce el catálogo.
+- **Abonos y cuotas de socios comparten `periodosPendientes()`** (hist. §79):
+  una sola cuenta de períodos. Un abono no es un socio (sin número, ingreso ni
+  descuentos), por eso tiene su tabla. Alta y precio son admin; verlos y
+  cobrarlos, de los dos roles. El modal de cobro avisa con el evento
+  `cobro-registrado`.
 
 **Varios negocios por cuenta (hist. §77)**
 - **El rol y la baja son de cada negocio** (`usuario_organizaciones`).
@@ -680,10 +691,10 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      **hecho** (hist. §78);
    - ~~trabajos (presupuesto aceptado → trabajo → venta)~~ **hecho** (hist.
      §78, módulo `trabajos`);
-   - **falta:** abonos mensuales, con el mecanismo de las cuotas de socios
-     (reusar la cuenta de períodos de `generarCuotasDe()`, no escribir otra);
-   - **falta:** recordatorio de presupuestos enviados sin respuesta, que se
-     comparte con "Para hoy" del CRM.
+   - ~~abonos mensuales, con el mecanismo de las cuotas de socios~~ **hecho**
+     (hist. §79, `periodosPendientes()` compartido);
+   - el recordatorio de presupuestos enviados sin respuesta pasa al CRM (6b),
+     dentro de "Para hoy".
 6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
    del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
    clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:

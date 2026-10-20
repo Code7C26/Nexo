@@ -763,7 +763,7 @@ test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en
   await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'servicios' });
   const servicios = (await adminB.get('/api/negocio')).json;
   assert.deepEqual(servicios.catalogo, { plural: 'servicios', singular: 'servicio' });
-  assert.deepEqual(servicios.modulos, ['presupuestos', 'trabajos']);
+  assert.deepEqual(servicios.modulos, ['presupuestos', 'trabajos', 'abonos']);
   await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'comercio' });
   assert.deepEqual((await adminB.get('/api/negocio')).json.catalogo, { plural: 'productos', singular: 'producto' });
 
@@ -840,6 +840,64 @@ test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en
   assert.equal((await empleadoA.put(`/api/trabajos/${suelto.json.id}`, base)).status, 400);
   assert.equal((await empleadoA.post(`/api/trabajos/${suelto.json.id}/terminar`)).status, 400);
   assert.equal((await empleadoA.patch(`/api/trabajos/${suelto.json.id}/estado`, { estado: 'pendiente' })).status, 200);
+});
+
+test('abonos: la cuota del período, alta hacia atrás, precio desde la siguiente, baja y aislamiento (hist. §79)', async () => {
+  const hoy = new Date().toLocaleDateString('sv-SE');
+  const haceDias = (n) => new Date(Date.now() - n * 86400000).toLocaleDateString('sv-SE');
+  const mantenimiento = await adminA.post('/api/productos', { nombre: 'Mantenimiento mensual', precio_venta: 20000, tipo: 'servicio' });
+  assert.equal(mantenimiento.status, 201, mantenimiento.texto);
+  const base = { cliente: 'Estudio Ríos', producto_id: mantenimiento.json.id, precio: 20000, meses: 1 };
+
+  // Validación: solo servicios, de 1 a 12 meses, precio no negativo, y es admin.
+  assert.equal((await adminA.post('/api/abonos', { ...base, producto_id: productoA })).status, 400, 'un producto con stock');
+  assert.equal((await adminA.post('/api/abonos', { ...base, producto_id: productoB })).status, 400, 'un servicio ajeno');
+  for (const meses of [0, 13, 1.5]) assert.equal((await adminA.post('/api/abonos', { ...base, meses })).status, 400);
+  assert.equal((await adminA.post('/api/abonos', { ...base, precio: -1 })).status, 400);
+  assert.equal((await empleadoA.post('/api/abonos', base)).status, 403);
+
+  // El alta de hoy genera la cuota del período que empieza hoy, una sola vez.
+  const abono = await adminA.post('/api/abonos', base);
+  assert.equal(abono.status, 201, abono.texto);
+  await empleadoA.get('/api/abonos');
+  const recien = (await empleadoA.get(`/api/abonos/${abono.json.id}`)).json;
+  assert.equal(recien.cuotas.length, 1);
+  assert.equal(recien.cuotas[0].desde, hoy);
+  assert.equal(recien.deuda, 20000);
+  assert.ok(recien.proxima > hoy);
+
+  // Un alta hacia atrás cobra el período que corre, no los anteriores.
+  const viejo = await adminA.post('/api/abonos', { ...base, cliente: 'Consorcio Sur', fecha_alta: haceDias(75) });
+  assert.equal(viejo.status, 201, viejo.texto);
+  const deAntes = (await adminA.get(`/api/abonos/${viejo.json.id}`)).json;
+  assert.equal(deAntes.cuotas.length, 1);
+  assert.ok(deAntes.cuotas[0].desde <= hoy && deAntes.cuotas[0].hasta >= hoy, JSON.stringify(deAntes.cuotas[0]));
+
+  // El precio nuevo rige desde la cuota siguiente; la cuota se cobra como venta.
+  assert.equal((await adminA.patch(`/api/abonos/${abono.json.id}`, { precio: 25000 })).status, 200);
+  const conPrecioNuevo = (await adminA.get(`/api/abonos/${abono.json.id}`)).json;
+  assert.equal(conPrecioNuevo.precio, 25000);
+  assert.equal(conPrecioNuevo.cuotas[0].importe, 20000);
+  const efectivo = (await adminA.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'efectivo');
+  const cobro = await empleadoA.post(`/api/ventas/${conPrecioNuevo.cuotas[0].venta_id}/cobros`, { importe: 20000, cuenta_tesoreria_id: efectivo.id });
+  assert.ok(cobro.status < 300, cobro.texto);
+  assert.equal((await adminA.get(`/api/abonos/${abono.json.id}`)).json.deuda, 0);
+
+  // Baja y reactivar: no se cobran los meses de baja ni se duplica la cuota.
+  assert.equal((await adminA.patch(`/api/abonos/${abono.json.id}`, { estado: 'baja' })).status, 200);
+  const deBaja = (await adminA.get(`/api/abonos/${abono.json.id}`)).json;
+  assert.equal(deBaja.estado, 'baja');
+  assert.equal(deBaja.proxima, null);
+  assert.equal((await adminA.patch(`/api/abonos/${abono.json.id}`, { estado: 'activo' })).status, 200);
+  const reactivado = (await adminA.get(`/api/abonos/${abono.json.id}`)).json;
+  assert.equal(reactivado.estado, 'activo');
+  assert.equal(reactivado.cuotas.length, 1);
+  assert.equal((await empleadoA.patch(`/api/abonos/${abono.json.id}`, { precio: 1 })).status, 403);
+
+  // Otro negocio no lo ve ni lo toca.
+  assert.equal((await adminB.get(`/api/abonos/${abono.json.id}`)).status, 404);
+  assert.equal((await adminB.patch(`/api/abonos/${abono.json.id}`, { estado: 'baja' })).status, 404);
+  assert.ok(!(await adminB.get('/api/abonos')).json.some((a) => a.id === abono.json.id));
 });
 
 test('muchos logins fallidos con usuarios distintos bloquean la IP (A6)', async () => {

@@ -31,6 +31,8 @@
 // y editar los planes y los descuentos (los precios) es admin.
 // Trabajos (hist. §78): programarlos, editarlos y terminarlos es de los dos
 // roles, como un presupuesto o una venta.
+// Abonos (hist. §79): verlos es de los dos roles; darlos de alta y cambiarles el
+// precio es admin, como los planes de socios. Cada cuota se cobra como venta.
 export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
@@ -84,6 +86,10 @@ export const RUTAS_PERMISOS = {
   'PUT /api/trabajos/:id': 'ambos',
   'PATCH /api/trabajos/:id/estado': 'ambos',
   'POST /api/trabajos/:id/terminar': 'ambos',
+  'GET /api/abonos': 'ambos',
+  'GET /api/abonos/:id': 'ambos',
+  'POST /api/abonos': 'admin',
+  'PATCH /api/abonos/:id': 'admin',
   'GET /api/turnos-caja': 'ambos',
   'GET /api/turnos-caja/:id': 'ambos',
   'POST /api/turnos-caja': 'ambos',

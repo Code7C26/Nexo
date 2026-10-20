@@ -107,6 +107,9 @@
           <a href="#" class="nav-item" data-view="trabajos" data-modulo="trabajos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#clipboard-list"></use></svg> Trabajos
           </a>
+          <a href="#" class="nav-item" data-view="abonos" data-modulo="abonos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg> Abonos
+          </a>
           <a href="#" class="nav-item" data-view="ventas">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg> Ventas
           </a>
@@ -646,6 +649,103 @@
               </tr>
             </thead>
             <tbody id="fichaTrabajoItems"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: Abonos (hist. §79, dominios/abonos.js) -->
+      <section class="view" data-view="abonos" hidden>
+        <section class="ledger-strip" aria-label="Abonos">
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg></span>Abonos activos</span>
+            <span class="ledger-value mono" id="abonosActivos">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Entra por mes</span>
+            <span class="ledger-value mono" id="abonosPorMes">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Deben</span>
+            <span class="ledger-value mono" id="abonosConDeuda">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Deuda de abonos</span>
+            <span class="ledger-value mono ledger-warn" id="abonosDeuda">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Abonos</h2>
+            <button class="btn btn-primary col-admin" id="btnNuevoAbono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo abono</button>
+          </div>
+          <div class="socios-herramientas">
+            <input type="search" class="search" placeholder="Buscar por cliente o servicio" id="abonosBuscar" aria-label="Buscar abonos" />
+            <div class="segmentos" role="group" aria-label="Mostrar" id="abonosFiltro">
+              <button type="button" class="segmento" data-filtro="activos" aria-pressed="true">Activos</button>
+              <button type="button" class="segmento" data-filtro="deben" aria-pressed="false">Deben</button>
+              <button type="button" class="segmento" data-filtro="baja" aria-pressed="false">De baja</button>
+              <button type="button" class="segmento" data-filtro="todos" aria-pressed="false">Todos</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Cliente</th>
+                <th scope="col">Servicio</th>
+                <th scope="col">Se cobra</th>
+                <th scope="col" class="align-right">Precio</th>
+                <th scope="col">Próxima cuota</th>
+                <th scope="col" class="align-right">Debe</th>
+                <th scope="col">Estado</th>
+              </tr>
+            </thead>
+            <tbody id="abonosBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: ficha de un abono -->
+      <section class="view" data-view="abono-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverAbonos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a abonos</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaAbonoTitulo">—</h2>
+            <div class="panel-acciones" id="fichaAbonoAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaAbonoDatos"></dl>
+        </section>
+
+        <section class="ledger-strip" aria-label="Deuda del abono">
+          <div class="ledger-item">
+            <span class="ledger-label">Debe</span>
+            <span class="ledger-value mono" id="fichaAbonoDeuda">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Cuotas</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Período</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col" class="align-right">Cobrado</th>
+                <th scope="col">Estado</th>
+                <th scope="col"></th>
+              </tr>
+            </thead>
+            <tbody id="fichaAbonoCuotas"></tbody>
           </table>
           </div>
         </section>
@@ -3119,6 +3219,47 @@
           <textarea name="notas" rows="2" maxlength="1000" placeholder="Qué llevar, cómo entrar, a quién preguntar…"></textarea>
         </label>
         <button type="submit" class="btn btn-primary btn-full">Guardar trabajo</button>
+      </form>
+    </div>
+  </div>
+  <!-- Modal nuevo/editar abono (dominios/abonos.js, admin). Al editar solo
+       cambian precio, cada cuántos meses y notas. -->
+  <div class="modal" id="modalAbono" role="dialog" aria-modal="true" aria-labelledby="modalAbonoTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalAbonoTitulo">Nuevo abono</h3>
+        <button class="modal-close" id="modalAbonoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formAbono" class="form">
+        <label id="abonoClienteCampo">Cliente
+          <input type="text" name="cliente" list="clientesSugeridos" placeholder="Buscar o crear cliente…" />
+        </label>
+        <label id="abonoServicioCampo">Servicio
+          <select name="producto_id"></select>
+        </label>
+        <p class="form-note" id="abonoSinServicios" hidden>Todavía no tenés servicios: cargá uno en el catálogo, con tipo "Servicio".</p>
+        <div class="form-fila">
+          <label>Precio
+            <input type="number" name="precio" step="0.01" min="0" required placeholder="0.00" autocomplete="off" />
+          </label>
+          <label>Se cobra
+            <select name="meses">
+              <option value="1">Todos los meses</option>
+              <option value="2">Cada 2 meses</option>
+              <option value="3">Cada 3 meses</option>
+              <option value="6">Cada 6 meses</option>
+              <option value="12">Una vez por año</option>
+            </select>
+          </label>
+        </div>
+        <label id="abonoDesdeCampo">Desde
+          <input type="date" name="fecha_alta" />
+        </label>
+        <p class="form-note">Cada cuota se arma sola el día que empieza su período, y queda en la cuenta del cliente hasta que la cobres.</p>
+        <label>Notas
+          <textarea name="notas" rows="2" maxlength="500" placeholder="Qué incluye, día de visita…"></textarea>
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Guardar abono</button>
       </form>
     </div>
   </div>

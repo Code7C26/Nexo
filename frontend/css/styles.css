@@ -1723,6 +1723,7 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="pos"]) [data-modulo="pos"],
 :root:not([data-modulos~="presupuestos"]) [data-modulo="presupuestos"],
 :root:not([data-modulos~="trabajos"]) [data-modulo="trabajos"],
+:root:not([data-modulos~="abonos"]) [data-modulo="abonos"],
 :root:not([data-modulos~="compras"]) [data-modulo="compras"],
 :root:not([data-modulos~="stock"]) [data-modulo="stock"],
 :root:not([data-modulos~="socios"]) [data-modulo="socios"] {

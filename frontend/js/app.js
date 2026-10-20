@@ -46,6 +46,7 @@ import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
 import "./dominios/socios.js";
 import "./dominios/trabajos.js";
+import "./dominios/abonos.js";
 import "./dominios/negocios.js";
 
 let facturas = [];
@@ -4173,6 +4174,9 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
   form.reset();
   modalCobrarVenta.hidden = true;
   avisar("Cobro registrado.", "ok");
+  // Para las pantallas que muestran lo que se debe de una venta (las cuotas
+  // de un abono, hist. §79) sin conocer este modal.
+  document.dispatchEvent(new CustomEvent("cobro-registrado", { detail: { ventaId: ventaACobrarId } }));
 });
 
 /* ---------- Devoluciones ---------- */

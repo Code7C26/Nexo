@@ -1161,3 +1161,41 @@ CREATE TABLE IF NOT EXISTS trabajo_items (
   precio_unitario REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_trabajo_items_trabajo ON trabajo_items(trabajo_id);
+
+-- Abonos (CLAUDE.md §29, hist. §79): un servicio que un cliente paga cada
+-- tantos meses (mantenimiento, honorarios, una agencia). El módulo `abonos` lo
+-- puede prender cualquier negocio. Es el mismo mecanismo que las cuotas de
+-- socios: cada período es una venta del servicio, que se cobra como cualquier
+-- venta, y server.js las arma al mirar, sin cron (periodosPendientes()).
+-- precio y meses: lo que se cobra y cada cuántos meses; cambiarlos rige desde
+-- la cuota siguiente, porque cada cuota guarda los suyos.
+-- fecha_alta, ciclo_desde y cobrar_desde: lo mismo que en inscripciones_socio.
+CREATE TABLE IF NOT EXISTS abonos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  precio REAL NOT NULL,
+  meses INTEGER NOT NULL,
+  fecha_alta TEXT NOT NULL,
+  ciclo_desde TEXT NOT NULL,
+  cobrar_desde TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'baja')),
+  fecha_baja TEXT,
+  notas TEXT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE INDEX IF NOT EXISTS idx_abonos_org ON abonos(organizacion_id, estado);
+
+-- Una fila por período de un abono, con la venta que lo cobra. El UNIQUE de
+-- (abono_id, desde) impide cobrar dos veces el mismo período, como en
+-- cuotas_socio. Una cuota cuya venta se anula queda bonificada. Hija de abonos.
+CREATE TABLE IF NOT EXISTS cuotas_abono (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  abono_id INTEGER NOT NULL REFERENCES abonos(id),
+  venta_id INTEGER NOT NULL UNIQUE REFERENCES ventas(id),
+  desde TEXT NOT NULL,
+  hasta TEXT NOT NULL,
+  meses INTEGER NOT NULL,
+  precio REAL NOT NULL,
+  UNIQUE (abono_id, desde)
+);

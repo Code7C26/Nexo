@@ -8341,3 +8341,70 @@ Servicios y cualquier negocio lo puede prender).
 
 - Que el usuario lo vea.
 - Abonos (sigue el punto 6a) y después el CRM (6b).
+
+## 79. Abonos mensuales, 20 de octubre de 2026
+
+**Pedido:** el resto del punto 6a del plan (`docs/investigacion-crm-servicios.md`
+§3, punto 3): un servicio que un cliente paga cada tantos meses
+(mantenimiento, honorarios, una agencia). Lo tienen Dux y Contagram.
+
+**Decisión:** el mismo mecanismo que las cuotas de socios, no uno nuevo.
+- La cuenta de períodos salió de `generarCuotasDe()` a
+  **`periodosPendientes()`**, que usan socios y abonos. Mismo comportamiento:
+  los 59 tests (incluido el de socios, §74–§75) siguen pasando.
+- Cada cuota es una venta del servicio; `decorarCuota()` decide su estado
+  (pagada, parcial, vencida, bonificada) también para los abonos.
+- Un abono no es un socio: no tiene número, ingreso ni descuentos. Por eso va
+  en su propia tabla y no en `inscripciones_socio`.
+
+**Esquema** (aditivo): tablas `abonos` (cliente, servicio, precio, cada cuántos
+meses de 1 a 12, `fecha_alta`, `ciclo_desde`, `cobrar_desde`, estado, notas) y
+`cuotas_abono` (hija, con `UNIQUE(abono_id, desde)` y la venta).
+
+**Backend** (módulo `abonos`, nuevo en `MODULOS`, prendido en Servicios).
+- `GET /api/abonos` y `GET /api/abonos/:id` (los dos roles) arman las cuotas que
+  falten (`ponerAbonosAlDia()`, sin cron, igual que `ponerCuotasAlDia()`).
+  `GET /api/cuentas-corrientes` también las arma, así la deuda aparece aunque
+  nadie haya entrado a Abonos.
+- `POST /api/abonos` y `PATCH /api/abonos/:id` son admin, como los planes de
+  socios: cambian lo que se cobra.
+  - Solo un servicio activo de la empresa: con stock, cada cuota sacaría
+    mercadería.
+  - Un alta hacia atrás cobra el período que corre, no los anteriores.
+  - El precio o la frecuencia nuevos rigen desde la cuota siguiente: antes de
+    guardarlos se arma lo que falte con el precio de antes.
+  - Baja y reactivar, como un plan de socio: no se cobran los meses de baja.
+- Auditoría: entidad `cliente` con `operacion_tipo abono`; la cuota generada,
+  `actor sistema`.
+
+**Frontend** (`frontend/js/dominios/abonos.js`, nuevo):
+- lista con "Abonos activos", "Entra por mes" (un trimestral suma un tercio),
+  "Deben" y la deuda, búsqueda y filtros;
+- ficha con las cuotas: "Cobrar" abre el cobro de ventas de siempre, y el modal
+  de cobro de `app.js` ahora avisa con el evento `cobro-registrado` para que la
+  ficha se repinte sin conocerlo;
+- alta y edición en un modal (admin), que propone el precio del servicio.
+
+**Verificación.**
+- `npm test` 59 de 59, con un caso nuevo: validaciones (producto con stock,
+  servicio ajeno, meses fuera de rango, precio negativo, empleado 403), la cuota
+  de hoy una sola vez, el alta hacia atrás, precio desde la siguiente, cobro,
+  baja y reactivar sin duplicar, y aislamiento.
+- `npm run lint` verde; `verificar-migracion` 24 de 24, con el md5 de la base
+  real igual antes y después.
+- `npm run regresion`: 6 diferencias esperadas (la ruta nueva y el módulo nuevo
+  en los tipos de negocio). Se sumó `/api/abonos/:id` a `LISTADO_DE`.
+- Navegador (base nueva): alta desde el modal con precio propuesto, ficha,
+  cobro de la cuota (queda "Pagada" y la deuda en $0), lista en la compu y a
+  390 px, sin errores de consola.
+
+### Para después
+
+- Aviso de abonos con cuotas vencidas en "Para hoy" del CRM (6b).
+- Cobrar varias cuotas juntas desde la ficha, como en socios.
+- Ajuste de precio en lote (por ejemplo, +10% a todos los abonos de un servicio).
+
+### Qué sigue
+
+- Que el usuario vea §78 y §79.
+- El recordatorio de presupuestos sin respuesta va con "Para hoy" del CRM (6b).

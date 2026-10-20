@@ -7882,6 +7882,9 @@ function agruparPorEntidad(saldos, tablaEntidad, hoy, organizacionId) {
 
 app.get('/api/cuentas-corrientes', (req, res) => {
   const hoy = fechaDeHoy();
+  // La cuota de un abono que empezó hoy ya se debe (hist. §79): se arma antes
+  // de mirar los saldos, aunque nadie haya entrado a Abonos.
+  ponerAbonosAlDia(req.usuario.organizacion_id);
 
   const entidadesClientes = agruparPorEntidad(
     saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', req.usuario.organizacion_id),
@@ -9759,11 +9762,12 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
 // tarjetas del alta guiada y de Configuración: viven acá para que la lista de
 // tipos esté en un solo lugar. `catalogo` es cómo se llama la sección de lo que
 // se vende, en plural y en singular (hist. §78); sin él, "productos".
-const MODULOS = ['pos', 'presupuestos', 'trabajos', 'compras', 'stock', 'socios'];
+const MODULOS = ['pos', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios'];
 const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
   trabajos: { nombre: 'Trabajos', descripcion: 'Lo que tenés que hacer para cada cliente: cuándo, quién y, al terminar, la venta.', icono: 'clipboard-list' },
+  abonos: { nombre: 'Abonos', descripcion: 'Servicios que tus clientes pagan todos los meses, con la cuota que se arma sola.', icono: 'repeat' },
   compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
   stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
@@ -9803,12 +9807,12 @@ const PERFILES_RUBRO = {
   },
   servicios: {
     nombre: 'Servicios',
-    descripcion: 'Trabajos y servicios con presupuesto, agenda de trabajos y sin manejar stock.',
+    descripcion: 'Presupuestos, agenda de trabajos y abonos mensuales, sin manejar stock.',
     icono: 'briefcase',
     unidad_defecto: 'unidad',
     tipo_defecto: 'servicio',
     catalogo: { plural: 'servicios', singular: 'servicio' },
-    modulos: ['presupuestos', 'trabajos']
+    modulos: ['presupuestos', 'trabajos', 'abonos']
   },
   // Un gimnasio también compra y vende productos (hist. §71): es un comercio
   // al que se le suman los socios y sus cuotas (hist. §74).
@@ -10782,6 +10786,28 @@ const SELECT_INSCRIPCION = `
     JOIN productos ON productos.id = planes_socio.producto_id
     JOIN planes_socio_opciones ON planes_socio_opciones.id = inscripciones_socio.opcion_id`;
 
+// Los períodos que le faltan a un ciclo hasta hoy, para las cuotas de socios y
+// las de los abonos (hist. §79): la misma cuenta, no dos. Se cuentan desde
+// cicloDesde: cada cuota que ya existe (`existentes`, desde → meses) ocupa sus
+// meses, y cada una nueva usa `meses`, así un cambio de duración rige desde la
+// cuota siguiente. Lo que termina antes de cobrarDesde no se cobra.
+function periodosPendientes({ cicloDesde, cobrarDesde, meses, existentes, hoy }) {
+  const pendientes = [];
+  let corridos = 0;
+  for (let vuelta = 0; vuelta < MAX_PERIODOS_SOCIO; vuelta++) {
+    const desde = sumarMeses(cicloDesde, corridos);
+    if (desde > hoy) break;
+    if (existentes.has(desde)) {
+      corridos += existentes.get(desde);
+      continue;
+    }
+    corridos += meses;
+    const hasta = sumarDias(sumarMeses(cicloDesde, corridos), -1);
+    if (hasta >= cobrarDesde) pendientes.push({ desde, hasta });
+  }
+  return pendientes;
+}
+
 const planesActivosDe = (socioId) =>
   new Set(
     db
@@ -10790,12 +10816,9 @@ const planesActivosDe = (socioId) =>
       .map((f) => f.plan_id)
   );
 
-// Arma las cuotas que le faltan a un plan de un socio hasta hoy. Los períodos
-// se cuentan desde ciclo_desde: cada cuota que ya existe ocupa sus meses (los
-// de su duración en ese momento) y cada una nueva usa la duración de hoy, así
-// un cambio de duración rige desde la cuota siguiente. Lo que termina antes de
-// cobrar_desde no se cobra. El descuento es el que le toca hoy con los planes
-// que tiene activos. La venta lleva la fecha en que empieza el período y vence
+// Arma las cuotas que le faltan a un plan de un socio hasta hoy, con los
+// períodos de periodosPendientes(): cada una nueva usa la duración de hoy. El
+// descuento es el que le toca hoy con los planes que tiene activos. La venta lleva la fecha en que empieza el período y vence
 // ese mismo día: la cuota se paga por adelantado. Va DENTRO de una transacción,
 // después de anotar todos los planes del socio (un combo los mira a todos).
 function generarCuotasDe(inscripcionId, hoy) {
@@ -10813,17 +10836,14 @@ function generarCuotasDe(inscripcionId, hoy) {
     `INSERT INTO cuotas_socio (inscripcion_id, opcion_id, venta_id, desde, hasta, meses, precio_lista, descuento_pct, descuento_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  let meses = 0;
-  for (let vuelta = 0; vuelta < MAX_PERIODOS_SOCIO; vuelta++) {
-    const desde = sumarMeses(plan.ciclo_desde, meses);
-    if (desde > hoy) return;
-    if (existentes.has(desde)) {
-      meses += existentes.get(desde);
-      continue;
-    }
-    meses += plan.meses;
-    const hasta = sumarDias(sumarMeses(plan.ciclo_desde, meses), -1);
-    if (hasta < plan.cobrar_desde) continue;
+  const periodos = periodosPendientes({
+    cicloDesde: plan.ciclo_desde,
+    cobrarDesde: plan.cobrar_desde,
+    meses: plan.meses,
+    existentes,
+    hoy
+  });
+  for (const { desde, hasta } of periodos) {
     const ventaId = crearVenta({
       cliente_id: socio.cliente_id,
       items: [{ producto_id: plan.producto_id, cantidad: 1, precio_unitario: conDescuento(plan.precio_lista, porcentaje) }],
@@ -11685,6 +11705,268 @@ app.post('/api/socios/:id/ingresos', (req, res) => {
     .run(socio.id, req.usuario.id, situacion.deuda > 0 ? 0 : 1, situacion.deuda);
   const ingreso = db.prepare('SELECT id, fecha FROM ingresos_socio WHERE id = ?').get(lastInsertRowid);
   res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion });
+});
+
+/* ---------- Abonos (CLAUDE.md §29, hist. §79) ---------- */
+
+// El módulo `abonos` (ver la tabla en schema.sql): un servicio que un cliente
+// paga cada tantos meses. Es el mecanismo de las cuotas de socios, no uno
+// nuevo: cada período es una venta del servicio, los períodos salen de
+// periodosPendientes() y cada cuota se decora con decorarCuota(). Se generan al
+// mirar los abonos o las cuentas corrientes, sin cron. Darlos de alta y cambiar
+// el precio es admin, como los planes de socios; verlos, de los dos roles. La
+// auditoría va como entidad cliente con operacion_tipo abono.
+
+const MAX_MESES_ABONO = 12;
+
+const SELECT_ABONO = `
+  SELECT abonos.id, abonos.cliente_id, clientes.nombre AS cliente, clientes.telefono AS cliente_telefono,
+         abonos.producto_id, productos.nombre AS servicio, abonos.precio, abonos.meses, abonos.fecha_alta,
+         abonos.ciclo_desde, abonos.cobrar_desde, abonos.estado, abonos.fecha_baja, abonos.notas
+    FROM abonos
+    JOIN clientes ON clientes.id = abonos.cliente_id
+    JOIN productos ON productos.id = abonos.producto_id`;
+
+// Lo que se debe de cada cuota, con el mismo cálculo que SELECT_CUOTAS de
+// socios: el neto de su venta menos lo cobrado.
+const SELECT_CUOTAS_ABONO = `
+  SELECT cuotas_abono.id, cuotas_abono.abono_id, cuotas_abono.venta_id, cuotas_abono.desde,
+         cuotas_abono.hasta, cuotas_abono.meses, cuotas_abono.precio, ventas.estado AS estado_venta,
+         (SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
+            FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA} AS importe,
+         (SELECT COALESCE(SUM(cobros.importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado
+    FROM cuotas_abono
+    JOIN abonos ON abonos.id = cuotas_abono.abono_id
+    JOIN ventas ON ventas.id = cuotas_abono.venta_id`;
+
+// Arma las cuotas que le faltan a un abono hasta hoy. Como las de socios, la
+// venta lleva la fecha en que empieza el período y vence ese día. Va DENTRO de
+// una transacción.
+function generarCuotasAbono(abonoId, hoy) {
+  const abono = db.prepare(`${SELECT_ABONO} WHERE abonos.id = ?`).get(abonoId);
+  const { organizacion_id: organizacionId } = db.prepare('SELECT organizacion_id FROM abonos WHERE id = ?').get(abonoId);
+  const existentes = new Map(
+    db
+      .prepare('SELECT desde, meses FROM cuotas_abono WHERE abono_id = ? AND desde >= ?')
+      .all(abono.id, abono.ciclo_desde)
+      .map((c) => [c.desde, c.meses])
+  );
+  const insertar = db.prepare('INSERT INTO cuotas_abono (abono_id, venta_id, desde, hasta, meses, precio) VALUES (?, ?, ?, ?, ?, ?)');
+  const periodos = periodosPendientes({
+    cicloDesde: abono.ciclo_desde,
+    cobrarDesde: abono.cobrar_desde,
+    meses: abono.meses,
+    existentes,
+    hoy
+  });
+  for (const { desde, hasta } of periodos) {
+    const ventaId = crearVenta({
+      cliente_id: abono.cliente_id,
+      items: [{ producto_id: abono.producto_id, cantidad: 1, precio_unitario: abono.precio }],
+      fecha: desde,
+      organizacion_id: organizacionId
+    });
+    insertar.run(abono.id, ventaId, desde, hasta, abono.meses, abono.precio);
+    // Actor sistema y sin usuario: la generó Nexo al empezar el período.
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      operacion_tipo: 'abono',
+      operacion_id: abono.id,
+      detalle: `Cuota del abono #${abono.id} (${abono.servicio}, ${nombreDuracion(abono.meses).toLowerCase()}), del ${fechaLegible(desde)} al ${fechaLegible(hasta)}`,
+      organizacion_id: organizacionId
+    });
+  }
+}
+
+// Genera lo que falte a los abonos activos de la empresa, o a uno. Solo abre
+// una transacción si a alguno le falta el período de hoy, como
+// ponerCuotasAlDia().
+function ponerAbonosAlDia(organizacionId, abonoId = null) {
+  const hoy = fechaDeHoy();
+  const pendientes = db
+    .prepare(
+      `SELECT abonos.id FROM abonos
+        WHERE abonos.organizacion_id = ? AND (? IS NULL OR abonos.id = ?)
+          AND abonos.estado = 'activo' AND abonos.ciclo_desde <= ?
+          AND NOT EXISTS (SELECT 1 FROM cuotas_abono
+                           WHERE cuotas_abono.abono_id = abonos.id
+                             AND cuotas_abono.desde >= abonos.ciclo_desde
+                             AND cuotas_abono.hasta >= ?)`
+    )
+    .all(organizacionId, abonoId, abonoId, hoy, hoy);
+  if (pendientes.length === 0) return;
+  withTransaction(() => {
+    for (const { id } of pendientes) generarCuotasAbono(id, hoy);
+  });
+}
+
+// La deuda y la próxima cuota de un abono. La próxima es el día siguiente a la
+// última cuota del ciclo (o su inicio, si arranca a futuro), y un abono de baja
+// no tiene. La deuda se informa también de uno de baja: sigue en la cuenta del
+// cliente.
+function conCuotas(abono, cuotas) {
+  const decoradas = cuotas.map(decorarCuota);
+  const ultima = decoradas.filter((c) => c.desde >= abono.ciclo_desde).reduce((max, c) => (c.hasta > max ? c.hasta : max), '');
+  return {
+    ...abono,
+    duracion: nombreDuracion(abono.meses),
+    deuda: redondear2(decoradas.reduce((acc, c) => acc + c.saldo, 0)),
+    cuotas_impagas: decoradas.filter((c) => c.saldo > 0).length,
+    proxima: abono.estado === 'activo' ? (ultima ? sumarDias(ultima, 1) : abono.ciclo_desde) : null,
+    cuotas: decoradas.sort((a, b) => (a.desde < b.desde ? 1 : -1))
+  };
+}
+
+function abonoDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_ABONO} WHERE abonos.id = ? AND abonos.organizacion_id = ?`).get(id, organizacionId);
+}
+
+// Valida el precio, cada cuántos meses y las notas, para el alta y la edición.
+// Con `parcial` solo mira lo que viene. Devuelve { error } o { datos }.
+function validarAbono(cuerpo, { parcial }) {
+  const datos = {};
+  if (!parcial || cuerpo?.precio !== undefined) {
+    const precio = cuerpo?.precio;
+    if (!esNumeroValido(precio) || Number(precio) < 0) return { error: 'El precio tiene que ser un número, y no puede ser negativo.' };
+    datos.precio = redondear2(Number(precio));
+  }
+  if (!parcial || cuerpo?.meses !== undefined) {
+    const meses = Number(cuerpo?.meses);
+    if (!Number.isInteger(meses) || meses < 1 || meses > MAX_MESES_ABONO) {
+      return { error: `Cada cuántos meses se cobra: un número entero de 1 a ${MAX_MESES_ABONO}.` };
+    }
+    datos.meses = meses;
+  }
+  if (cuerpo?.notas !== undefined) {
+    if (cuerpo.notas !== null && typeof cuerpo.notas !== 'string') return { error: 'Las notas no son válidas.' };
+    const notas = (cuerpo.notas ?? '').trim();
+    if (notas.length > 500) return { error: 'Las notas no pueden pasar de 500 caracteres.' };
+    datos.notas = notas || null;
+  }
+  return { datos };
+}
+
+app.get('/api/abonos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  ponerAbonosAlDia(organizacionId);
+  const cuotas = db.prepare(`${SELECT_CUOTAS_ABONO} WHERE abonos.organizacion_id = ?`).all(organizacionId);
+  const porAbono = Map.groupBy(cuotas, (c) => c.abono_id);
+  const abonos = db
+    .prepare(`${SELECT_ABONO} WHERE abonos.organizacion_id = ? ORDER BY abonos.estado, clientes.nombre, abonos.id`)
+    .all(organizacionId);
+  res.json(abonos.map((a) => conCuotas(a, porAbono.get(a.id) ?? [])));
+});
+
+app.get('/api/abonos/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const abono = abonoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!abono) return res.status(404).json({ error: 'Abono no encontrado.' });
+  ponerAbonosAlDia(organizacionId, abono.id);
+  res.json(conCuotas(abono, db.prepare(`${SELECT_CUOTAS_ABONO} WHERE cuotas_abono.abono_id = ?`).all(abono.id)));
+});
+
+// Alta: cliente (id o nombre, como en una venta), un servicio del catálogo,
+// precio, cada cuántos meses y desde cuándo. Un alta hacia atrás cobra el
+// período que corre, no los anteriores, como la de un socio.
+app.post('/api/abonos', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarAbono(req.body, { parcial: false });
+  if (error) return res.status(400).json({ error });
+  const servicio = db
+    .prepare('SELECT id, nombre, tipo, activo FROM productos WHERE id = ? AND organizacion_id = ?')
+    .get(Number(req.body?.producto_id), organizacionId);
+  if (!servicio) return res.status(400).json({ error: 'Elegí el servicio que se cobra.' });
+  // Con stock, cada cuota sacaría mercadería sin que nadie la entregue.
+  if (servicio.tipo !== 'servicio') return res.status(400).json({ error: `"${servicio.nombre}" no es un servicio.` });
+  if (!servicio.activo) return res.status(400).json({ error: `"${servicio.nombre}" está inactivo.` });
+  const hoy = fechaDeHoy();
+  const alta = fechaDeAlta(req.body?.fecha_alta, hoy);
+  if (alta.error) return res.status(400).json({ error: alta.error });
+
+  const id = withTransaction(() => {
+    const clienteId = resolverCliente(req.body.cliente, req.body.cliente_id, organizacionId).id;
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO abonos (cliente_id, producto_id, precio, meses, fecha_alta, ciclo_desde, cobrar_desde, notas, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(clienteId, servicio.id, datos.precio, datos.meses, alta.fecha, alta.fecha, maxISO(alta.fecha, hoy), datos.notas ?? null, organizacionId);
+    const nuevoId = Number(lastInsertRowid);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cliente',
+      entidad_id: clienteId,
+      operacion_tipo: 'abono',
+      operacion_id: nuevoId,
+      detalle: `Abono #${nuevoId}: ${servicio.nombre}, ${nombreDuracion(datos.meses).toLowerCase()}, desde el ${fechaLegible(alta.fecha)}`
+    });
+    generarCuotasAbono(nuevoId, hoy);
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Editar precio, cada cuántos meses y notas (rigen desde la cuota siguiente), o
+// dar de baja y reactivar. La baja no toca las cuotas que ya hay; reactivar
+// empieza un ciclo nuevo sin cobrar los meses de baja, como un plan de socio.
+app.patch('/api/abonos/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const abono = abonoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!abono) return res.status(404).json({ error: 'Abono no encontrado.' });
+  const { error, datos } = validarAbono(req.body, { parcial: true });
+  if (error) return res.status(400).json({ error });
+  const estado = req.body?.estado;
+  if (estado !== undefined && estado !== 'activo' && estado !== 'baja') return res.status(400).json({ error: 'El estado no es válido.' });
+  const hoy = fechaDeHoy();
+
+  withTransaction(() => {
+    // Lo que falta hasta hoy se arma con el precio de antes: un cambio rige
+    // desde la cuota siguiente.
+    if (abono.estado === 'activo') generarCuotasAbono(abono.id, hoy);
+    const nuevo = { ...abono, ...datos };
+    db.prepare('UPDATE abonos SET precio = ?, meses = ?, notas = ? WHERE id = ?').run(nuevo.precio, nuevo.meses, nuevo.notas, abono.id);
+    const diff = diffCampos(abono, nuevo, ['precio', 'meses', 'notas']);
+    if (diff) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: abono.cliente_id,
+        valor_anterior: diff.anterior,
+        valor_nuevo: diff.nuevo,
+        operacion_tipo: 'abono',
+        operacion_id: abono.id,
+        detalle: `Abono #${abono.id} (${abono.servicio}) editado`
+      });
+    }
+    if (estado && estado !== abono.estado) {
+      if (estado === 'baja') {
+        db.prepare("UPDATE abonos SET estado = 'baja', fecha_baja = ? WHERE id = ?").run(hoy, abono.id);
+      } else {
+        const { ultimo } = db.prepare('SELECT MAX(hasta) AS ultimo FROM cuotas_abono WHERE abono_id = ?').get(abono.id);
+        const ciclo = maxISO(hoy, ultimo ? sumarDias(ultimo, 1) : abono.ciclo_desde);
+        db.prepare("UPDATE abonos SET estado = 'activo', fecha_baja = NULL, ciclo_desde = ?, cobrar_desde = ? WHERE id = ?").run(
+          ciclo,
+          ciclo,
+          abono.id
+        );
+        generarCuotasAbono(abono.id, hoy);
+      }
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'cliente',
+        entidad_id: abono.cliente_id,
+        valor_anterior: JSON.stringify({ estado: abono.estado }),
+        valor_nuevo: JSON.stringify({ estado }),
+        operacion_tipo: 'abono',
+        operacion_id: abono.id,
+        detalle: `Abono #${abono.id} (${abono.servicio}) ${estado === 'baja' ? 'dado de baja' : 'reactivado'}`
+      });
+    }
+  });
+  res.json({ id: abono.id });
 });
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
