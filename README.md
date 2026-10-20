@@ -82,6 +82,12 @@ descomentar lo que haga falta (puerto, clave de Gemini, carpeta de respaldos,
 etc.). `npm start`, `npm run dev` y `npm run backup` lo leen solos; sin `.env`
 el servidor arranca igual.
 
+Antes de arrancar, `npm start` y `npm run dev` bajan una sola vez Satoshi, la
+fuente de los títulos, de Fontshare (`scripts/fuentes.mjs`; a mano:
+`npm run fuentes` desde la raíz). Su licencia no permite redistribuirla, así
+que no está en el repo. Si no hay conexión, los títulos se ven con Inter y la
+app funciona igual.
+
 El frontend es estático: `backend/server.js` lo sirve directamente desde
 `/frontend`, así que con el backend arriba ya está disponible en el mismo
 puerto — no hace falta un segundo proceso ni build.

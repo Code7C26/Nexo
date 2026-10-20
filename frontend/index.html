@@ -5,15 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nexo — Gestión para tu negocio</title>
   <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
-  <!-- La fuente se sirve desde frontend/fonts/ (ver @font-face en
-       styles.css): sin Google Fonts. Es una sola familia para todo, así
-       que se precarga entera. -->
-  <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- Las fuentes se sirven desde frontend/fonts/ (ver @font-face en
+       styles.css): sin Google Fonts. Inter es la de todo el texto y se
+       precarga; Satoshi (títulos) no, porque puede no estar instalada
+       (scripts/fuentes.mjs) y entonces cae a Inter. -->
+  <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
   <meta name="theme-color" content="#000000" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
     // Se aplica antes de pintar la página (no en app.js, que carga después)
-    // para que no haya un flash de tema claro al entrar con oscuro elegido.
+    // para que no haya un flash de tema oscuro (el de partida, sin atributo)
+    // al entrar con claro elegido.
     try {
       const guardado = localStorage.getItem("nexo.tema");
       if (guardado) document.documentElement.setAttribute("data-tema", guardado);
@@ -200,18 +202,18 @@
         <!-- Ledger summary strip: el elemento firma del diseño -->
         <section class="ledger-strip" aria-label="Resultado del período">
           <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg></span>Ventas</span>
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg></span>Ventas</span>
             <span class="ledger-value mono" id="sumVentas">$0,00</span>
             <span class="ledger-delta" id="deltaVentas"></span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg></span>Costo de mercadería</span>
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg></span>Costo de mercadería</span>
             <span class="ledger-value mono" id="sumCosto">$0,00</span>
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Ganancia bruta</span>
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Ganancia bruta</span>
             <span class="ledger-value mono ledger-ok" id="sumGananciaBruta">$0,00</span>
             <span class="ledger-delta" id="deltaGananciaBruta"></span>
           </div>
@@ -219,7 +221,7 @@
 
         <section class="ledger-strip" aria-label="Gastos y resultado">
           <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg></span>Gastos operativos</span>
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-violeta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg></span>Gastos operativos</span>
             <span class="ledger-value mono ledger-warn" id="sumGastosOperativos">$0,00</span>
             <span class="ledger-delta" id="deltaGastosOperativos"></span>
           </div>
@@ -250,7 +252,7 @@
           </div>
           <div class="grafico" id="graficoResultado"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table tabla-compacta">
             <thead>
               <tr>
                 <th scope="col">Período</th>

@@ -22,7 +22,8 @@ suelta — sin la API detrás, todas las pantallas van a fallar al pedir datos
 frontend/
 ├── index.html        → estructura de la página (todas las vistas)
 ├── css/styles.css     → sistema de diseño (colores, tipografía, layout)
-├── fonts/            → Geist (woff2 variable + licencia OFL)
+├── fonts/            → Inter (woff2 variable + licencia OFL) y Satoshi, que
+│                       no se versiona: la baja scripts/fuentes.mjs
 ├── img/iconos.svg    → sprite de íconos (Lucide, ISC); se usan con icono() de core/iconos.js
 └── js/
     ├── sesion.js       → login y gate: recién logueado inyecta app.js (módulo ES)
@@ -72,13 +73,22 @@ los importa a ellos): lo verifica `backend/test/frontend-modulos.test.js`
 El concepto y los tokens (color, tipografía, espaciado, movimiento) están
 explicados al principio de `css/styles.css`. En corto:
 
-- Blanco y negro de marca con un solo acento: azul birome (`--accent`) para
-  toda acción, y su versión clara (`--accent-on-dark`) sobre la sidebar
-  negra. La cifra que concluye (Resultado, Posición neta) se destaca por
-  tamaño y peso, sin color ni subrayado.
+- La estructura de Dub (bordes finos en vez de sombras, densidad compacta,
+  pastillas de color) sobre el negro de marca. La sidebar y un marco
+  alrededor del contenido son negros en los dos temas; el contenido vive en
+  una hoja con borde fino. El tema de partida es el oscuro.
+- El botón primario va en tinta (`--primario-bg`: blanco en oscuro, negro en
+  claro). Un solo acento, el azul (`--accent`), para enlaces, foco, la
+  sección activa y la selección.
+- El color con significado va en piezas chicas: pastillas `.status` (verde
+  resuelto, rojo urgente, contorno rojo parcial, azul `status-info`,
+  violeta `status-ia`, naranja `status-aviso`, gris sin clase) y los
+  íconos de las tarjetas del Resumen. Nada de amarillo.
+- La cifra que concluye (Resultado, Posición neta) se destaca por tamaño y
+  peso, sin color ni subrayado.
 - Las cifras van en tarjetas de indicadores (`.ledger-strip` / `.ledger-item`).
-- Una sola familia, Geist, para títulos, texto y cifras, con cifras tabulares
-  (`.mono`) en importes y cantidades.
+- Inter para texto y cifras, con cifras tabulares (`.mono`) en importes y
+  cantidades. Satoshi solo para los títulos (`--font-display`).
 - Íconos: un ícono nuevo se baja de `lucide-static` y se agrega como
   `<symbol>` a `img/iconos.svg`. Nada de emojis ni caracteres sueltos (✕, ▸)
   como íconos.

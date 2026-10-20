@@ -561,7 +561,7 @@ function renderReporteClientes(lista) {
       <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
       <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
       <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
-      <td data-label="Última compra">${esc(c.ultima_compra ?? "—")}</td>
+      <td data-label="Última compra">${esc(fechaAR(c.ultima_compra) || "—")}</td>
     </tr>`
     )
     .join("");
@@ -618,7 +618,7 @@ function renderReporteComprasProveedores(lista) {
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
       <td data-label="Total" class="align-right mono">${money(p.compras)}</td>
       <td data-label="Ticket promedio" class="align-right mono">${money(p.ticket_promedio)}</td>
-      <td data-label="Última compra">${esc(p.ultima_compra ?? "—")}</td>
+      <td data-label="Última compra">${esc(fechaAR(p.ultima_compra) || "—")}</td>
     </tr>`
     )
     .join("");
@@ -2519,7 +2519,7 @@ function renderListasPrecios() {
       <td data-label="Lista">${esc(l.nombre)}</td>
       <td data-label="Predeterminada">${
         l.es_predeterminada
-          ? `<span class="status status-cobrado">Predeterminada</span>`
+          ? `<span class="status status-info">Predeterminada</span>`
           : `<button type="button" class="btn-link btn-marcar-predeterminada" data-id="${l.id}">Marcar</button>`
       }</td>
       <td data-label="">${botonEditarFila("btn-editar-lista-precio", l.id, "lista de precios")}</td>
@@ -2610,7 +2610,7 @@ function renderDepositos() {
       <td data-label="Depósito">${esc(d.nombre)}</td>
       <td data-label="Predeterminado">${
         d.es_predeterminado
-          ? `<span class="status status-cobrado">Predeterminado</span>`
+          ? `<span class="status status-info">Predeterminado</span>`
           : `<button type="button" class="btn-link btn-marcar-deposito-predeterminado" data-id="${d.id}">Marcar</button>`
       }</td>
       <td data-label="">${botonEditarFila("btn-editar-deposito", d.id, "depósito")}</td>
@@ -2688,7 +2688,8 @@ const STOCK_CLASE = {
   sin_stock: "status-vencido",
   bajo: "status-vencido",
   normal: "status-cobrado",
-  alto: "status-pendiente"
+  // Por encima del máximo no es urgente: conviene mirarlo (naranja).
+  alto: "status-aviso"
 };
 const STOCK_LABEL = {
   sin_stock: "Sin stock",
@@ -3069,11 +3070,11 @@ const PRESUPUESTO_LABEL = {
   convertido: "Convertido"
 };
 
-// Borrador y enviado van en gris: no piden nada todavía, y en rojo se
-// leían como un problema.
+// Borrador va en gris y enviado en azul (está en curso, esperando al
+// cliente): ninguno pide nada todavía, y en rojo se leían como un problema.
 const PRESUPUESTO_CLASE = {
   borrador: "",
-  enviado: "",
+  enviado: "status-info",
   aceptado: "status-cobrado",
   rechazado: "status-vencido",
   vencido: "status-vencido",
@@ -5576,7 +5577,7 @@ async function abrirFichaCliente(id) {
     ["Teléfono", cliente.telefono],
     ["Dirección", cliente.direccion],
     ["CUIT / DNI", cliente.documento],
-    ["Última compra", cliente.ultima_compra],
+    ["Última compra", fechaAR(cliente.ultima_compra)],
     ["Notas", cliente.notas]
   ];
   document.getElementById("fichaClienteDatos").innerHTML = camposFicha(campos);
@@ -5790,7 +5791,7 @@ async function abrirFichaProveedor(id) {
     ["Teléfono", proveedor.telefono],
     ["Dirección", proveedor.direccion],
     ["CUIT / DNI", proveedor.documento],
-    ["Última compra", proveedor.ultima_compra],
+    ["Última compra", fechaAR(proveedor.ultima_compra)],
     ["Notas", proveedor.notas]
   ];
   document.getElementById("fichaProveedorDatos").innerHTML = camposFicha(campos);
@@ -6862,7 +6863,7 @@ function renderAuditoria(registros) {
           <td data-label="Entidad">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}</td>
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
           <td data-label="Detalle" class="celda-wrap">${esc(detalle)}</td>
-          <td data-label="Origen" class="mono">${esc(AUDITORIA_ACTOR_LABEL[r.actor] || r.actor)}</td>
+          <td data-label="Origen">${r.actor === "asistente" ? `<span class="status status-ia">${AUDITORIA_ACTOR_LABEL.asistente}</span>` : esc(AUDITORIA_ACTOR_LABEL[r.actor] || r.actor)}</td>
           <td data-label="Usuario">${esc(r.usuario_nombre ?? "—")}</td>
         </tr>`;
     })
@@ -7149,14 +7150,13 @@ refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negoci
 /* ---------- Tema claro / oscuro ---------- */
 
 // La elección explícita (si existe) ya se aplicó al <html> antes de que
-// esta página pintara nada (ver el script inline en el <head>, que evita
-// el flash de tema claro). Acá solo hace falta el botón para cambiarla.
+// esta página pintara nada (ver el script inline en el <head>). Sin
+// elección, la app es oscura: es el tema principal de Nexo, no se sigue al
+// sistema operativo. Acá solo hace falta el botón para cambiarla.
 const btnTema = document.getElementById("btnTema");
 
 function temaActual() {
-  const guardado = localStorage.getItem("nexo.tema");
-  if (guardado) return guardado;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro";
+  return localStorage.getItem("nexo.tema") || "oscuro";
 }
 
 btnTema.addEventListener("click", () => {

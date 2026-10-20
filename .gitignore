@@ -10,3 +10,6 @@ nexo-app.zip
 # Config local de Claude Code: son permisos por máquina, no del proyecto.
 .claude/
 backend/*.log
+# Satoshi (ITF Free Font License) no se puede redistribuir: la baja
+# scripts/fuentes.mjs en cada instalación.
+frontend/fonts/satoshi-*.woff2
