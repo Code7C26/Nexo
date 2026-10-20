@@ -818,6 +818,8 @@ test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en
     items: [{ producto_id: servicio.json.id, cantidad: 2.5, precio_unitario: 15000 }]
   });
   assert.equal(corregido.status, 200, corregido.texto);
+  // La agenda (hist. §80): lo que se cobra por hora dura esas horas.
+  assert.equal((await empleadoA.get(`/api/trabajos/${trabajo.json.id}`)).json.duracion_estimada, 150);
   assert.equal((await empleadoA.patch(`/api/trabajos/${trabajo.json.id}/estado`, { estado: 'en_curso' })).status, 200);
   assert.equal((await empleadoA.patch(`/api/trabajos/${trabajo.json.id}/estado`, { estado: 'terminado' })).status, 400);
   const terminado = await empleadoA.post(`/api/trabajos/${trabajo.json.id}/terminar`);

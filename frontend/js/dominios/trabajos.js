@@ -5,8 +5,11 @@
  * prendido.
  *
  * Pantallas sobre las rutas de server.js, sección "Trabajos":
- * - Trabajos (#/trabajos): lo que hay que hacer, del más próximo al más lejano,
- *   con lo de hoy, lo de la semana y lo atrasado arriba.
+ * - Trabajos (#/trabajos/lista): lo que hay que hacer, del más próximo al más
+ *   lejano, con lo de hoy, lo de la semana y lo atrasado arriba.
+ * - La agenda (#/trabajos/semana y #/trabajos/mes, hist. §80): la semana con
+ *   sus horas, o el mes, con las cuotas de abonos que vencen. En el celular la
+ *   semana es una lista por día.
  * - La ficha de un trabajo: empezarlo, cancelarlo o terminarlo. Terminar crea
  *   la venta y abre el cobro de siempre.
  * - El alta y la edición, en un modal como el del presupuesto. Desde la ficha
@@ -20,6 +23,8 @@
 import { badge, camposFicha, cantidad, esc, fechaAR, hoyISO, money } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
+import { icono } from "../core/iconos.js";
+import { moduloActivo } from "../core/negocio.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 
@@ -78,9 +83,17 @@ function cuando(t, hoy) {
 const badgeEstado = (t) => badge(ESTADOS[t.estado].clase, ESTADOS[t.estado].texto).html;
 
 async function cargarTrabajos() {
-  tablaCargando("trabajosBody", 6);
-  trabajos = await api("/api/trabajos");
+  const enAgenda = pestana !== "lista";
+  if (!enAgenda) tablaCargando("trabajosBody", 6);
+  // Las cuotas de abonos que vencen se ven en la agenda, si el módulo está.
+  const [lista, deAbonos] = await Promise.all([
+    api("/api/trabajos"),
+    enAgenda && moduloActivo("abonos") ? api("/api/abonos") : null
+  ]);
+  trabajos = lista;
+  if (deAbonos) abonosAgenda = deAbonos.filter((a) => a.proxima);
   renderLista();
+  if (enAgenda) renderAgenda();
 }
 
 // Lo que cambia cuando un trabajo termina: su venta mueve todo lo demás.
@@ -292,8 +305,9 @@ async function poblarResponsables(elegido) {
 }
 
 // trabajo: el que se edita. presupuesto: aquel del que sale uno nuevo (sus
-// renglones los copia el servidor, así que acá no se cargan).
-async function abrirModal(trabajo = null, presupuesto = null) {
+// renglones los copia el servidor, así que acá no se cargan). sugerido: el día,
+// la hora y el responsable de un hueco de la agenda.
+async function abrirModal(trabajo = null, presupuesto = null, sugerido = null) {
   editando = trabajo;
   desdePresupuesto = presupuesto;
   form.reset();
@@ -312,8 +326,8 @@ async function abrirModal(trabajo = null, presupuesto = null) {
   form.titulo.placeholder = presupuesto
     ? `Si lo dejás vacío: ${presupuesto.items[0]?.producto ?? "el primer renglón"}`
     : "Ej.: Instalación del aire en el living";
-  form.fecha.value = trabajo ? trabajo.fecha ?? "" : presupuesto ? "" : hoyISO();
-  form.hora.value = trabajo?.hora ?? "";
+  form.fecha.value = trabajo ? trabajo.fecha ?? "" : sugerido?.fecha ?? (presupuesto ? "" : hoyISO());
+  form.hora.value = trabajo?.hora ?? sugerido?.hora ?? "";
   form.notas.value = trabajo?.notas ?? "";
 
   const nota = document.getElementById("trabajoRenglonesNota");
@@ -327,7 +341,7 @@ async function abrirModal(trabajo = null, presupuesto = null) {
   if (trabajo?.items.length) await invocar("items:cargar", itemsEl, trabajo.items);
   else if (!presupuesto) invocar("items:agregarFila", itemsEl);
   actualizarTotal();
-  await poblarResponsables(trabajo?.responsable_id);
+  await poblarResponsables(trabajo ? trabajo.responsable_id : sugerido?.responsable_id);
   modal.hidden = false;
   form.titulo.focus();
 }
@@ -373,7 +387,355 @@ form.addEventListener("submit", async (e) => {
   await abrirFicha(id);
 });
 
-alEntrarEnVista("trabajos", cargarTrabajos);
+/* ---------- Pestañas y agenda (hist. §80) ---------- */
+
+const PESTANAS = ["lista", "semana", "mes"];
+const CLAVE_PESTANA = "nexo.trabajos.vista";
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const DIAS_CORTOS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+const DIAS_LARGOS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+// Un trabajo sin duración ocupa una hora, y ninguno menos de media.
+const DURACION_SIN_DATO = 60;
+const DURACION_MINIMA = 30;
+// Las horas que se ven siempre; se amplían si hay algo antes o después.
+const HORA_DESDE = 8;
+const HORA_HASTA = 20;
+const MAX_EN_EL_DIA = 3;
+
+const celular = window.matchMedia("(max-width: 860px)");
+const agendaCuerpo = document.getElementById("agendaCuerpo");
+const agendaDia = document.getElementById("agendaDia");
+const agendaSinFecha = document.getElementById("agendaSinFecha");
+const agendaResponsable = document.getElementById("agendaResponsable");
+
+let pestana = "lista";
+// Un día de la semana o del mes que se está mirando.
+let referencia = hoyISO();
+// En el mes, el día elegido: su lista va abajo de la grilla.
+let diaElegido = null;
+let abonosAgenda = [];
+let responsablesCargados = false;
+
+// Fechas AAAA-MM-DD en UTC al mediodía: sumar días no cruza el cambio de hora.
+const sumarDiasISO = (iso, n) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const dosCifras = (n) => String(n).padStart(2, "0");
+// 0 es el lunes: la semana arranca el lunes, como en la Argentina.
+const diaDeLaSemana = (iso) => (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7;
+const inicioSemana = (iso) => sumarDiasISO(iso, -diaDeLaSemana(iso));
+const primeroDelMes = (iso, desplazar = 0) => {
+  const [y, m] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + desplazar, 1, 12)).toISOString().slice(0, 10);
+};
+const minutosDe = (hora) => {
+  const [h, m] = hora.split(":").map(Number);
+  return h * 60 + m;
+};
+const horaDeMinutos = (min) => `${dosCifras(Math.floor(min / 60))}:${dosCifras(min % 60)}`;
+const duracionDe = (t) => Math.max(t.duracion_estimada || DURACION_SIN_DATO, DURACION_MINIMA);
+
+function fechaLarga(iso, { mes = true, anio = true, dia = false } = {}) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${dia ? `${DIAS_LARGOS[diaDeLaSemana(iso)]} ` : ""}${d}${mes ? ` de ${MESES[m - 1]}` : ""}${anio ? ` de ${y}` : ""}`;
+}
+const tituloDia = (fecha, hoy) =>
+  fecha === hoy ? `Hoy, ${fechaLarga(fecha, { anio: false })}` : fechaLarga(fecha, { anio: false, dia: true });
+
+function tituloSemana(lunes, domingo) {
+  if (lunes.slice(0, 4) !== domingo.slice(0, 4)) return `${fechaLarga(lunes)} al ${fechaLarga(domingo)}`;
+  if (lunes.slice(5, 7) !== domingo.slice(5, 7)) return `${fechaLarga(lunes, { anio: false })} al ${fechaLarga(domingo)}`;
+  return `${fechaLarga(lunes, { mes: false, anio: false })} al ${fechaLarga(domingo)}`;
+}
+
+// Lo que muestra la agenda: todo menos lo cancelado, del responsable elegido.
+function trabajosDeAgenda() {
+  const elegido = agendaResponsable.value;
+  return trabajos.filter(
+    (t) =>
+      t.estado !== "cancelado" &&
+      (elegido === "" || (elegido === "sin" ? !t.responsable_id : t.responsable_id === Number(elegido)))
+  );
+}
+const delDia = (lista, fecha) =>
+  lista.filter((t) => t.fecha === fecha).sort((a, b) => (a.hora ?? "").localeCompare(b.hora ?? ""));
+const abonosDelDia = (fecha) => abonosAgenda.filter((a) => a.proxima === fecha);
+
+// Un trabajo en la agenda: su color es su estado (como en la lista), y uno
+// atrasado lleva además un borde rojo.
+function bloque(t, hoy, estilo = "", corto = false) {
+  const atraso = atrasado(t, hoy);
+  const clase = `agenda-trabajo agenda-${t.estado}${atraso ? " agenda-atrasado" : ""}${corto ? " es-corto" : ""}`;
+  // El título completo al pasar el mouse: dos trabajos que se pisan quedan angostos.
+  const completo = `${t.hora ? `${esc(t.hora)} ` : ""}${esc(t.titulo)} · ${esc(t.cliente)}`;
+  return `<button type="button" class="${clase}" data-trabajo="${t.id}" title="${completo}"${estilo ? ` style="${estilo}"` : ""}>
+      ${t.hora ? `<span class="agenda-trabajo-hora mono">${esc(t.hora)}</span>` : ""}
+      <span class="agenda-trabajo-titulo">${esc(t.titulo)}</span>
+      <span class="agenda-trabajo-meta">${esc(t.cliente)}${atraso ? " · Atrasado" : ""}</span>
+    </button>`;
+}
+
+const bloqueAbono = (a) =>
+  `<button type="button" class="agenda-trabajo agenda-abono" data-abono="${a.id}">
+      <span class="agenda-trabajo-titulo">${icono("repeat")} Cuota de ${esc(a.cliente)}</span>
+      <span class="agenda-trabajo-meta">${esc(a.servicio)} · ${money(a.precio)}</span>
+    </button>`;
+
+// Los trabajos que se pisan en un mismo día van lado a lado: cada grupo de
+// trabajos que se solapan se reparte en carriles.
+function enCarriles(lista, desde, hasta) {
+  const orden = lista
+    .map((t) => {
+      const inicio = Math.max(minutosDe(t.hora), desde);
+      return { t, inicio, fin: Math.min(inicio + duracionDe(t), hasta) };
+    })
+    .sort((a, b) => a.inicio - b.inicio);
+  const resultado = [];
+  let grupo = [];
+  let finGrupo = -1;
+  const cerrar = () => {
+    const carriles = Math.max(...grupo.map((g) => g.carril)) + 1;
+    for (const g of grupo) resultado.push({ ...g, carriles });
+    grupo = [];
+    finGrupo = -1;
+  };
+  for (const item of orden) {
+    if (grupo.length && item.inicio >= finGrupo) cerrar();
+    const ocupados = new Set(grupo.filter((g) => g.fin > item.inicio).map((g) => g.carril));
+    let carril = 0;
+    while (ocupados.has(carril)) carril++;
+    grupo.push({ ...item, carril });
+    finGrupo = Math.max(finGrupo, item.fin);
+  }
+  if (grupo.length) cerrar();
+  return resultado;
+}
+
+// Un día como lista: la semana en el celular y el día elegido del mes.
+function listaDelDia(fecha, lista, hoy, { titulo = true } = {}) {
+  const items = [...delDia(lista, fecha).map((t) => bloque(t, hoy)), ...abonosDelDia(fecha).map(bloqueAbono)];
+  return `
+    <section class="agenda-lista-dia${fecha === hoy ? " es-hoy" : ""}">
+      ${titulo ? `<h3>${esc(tituloDia(fecha, hoy))}</h3>` : ""}
+      ${items.length ? items.join("") : '<p class="agenda-vacio">Nada programado.</p>'}
+      <button type="button" class="btn-link agenda-agregar" data-nuevo-dia="${fecha}">${icono("plus")} Agregar un trabajo</button>
+    </section>`;
+}
+
+function renderSemana(hoy) {
+  const lunes = inicioSemana(referencia);
+  const dias = Array.from({ length: 7 }, (_, i) => sumarDiasISO(lunes, i));
+  document.getElementById("agendaTitulo").textContent = tituloSemana(lunes, dias[6]);
+  const lista = trabajosDeAgenda().filter((t) => t.fecha >= lunes && t.fecha <= dias[6]);
+  agendaDia.hidden = true;
+
+  // En el celular, siete columnas no entran: una lista por día.
+  if (celular.matches) {
+    agendaCuerpo.innerHTML = `<div class="agenda-lista">${dias.map((d) => listaDelDia(d, lista, hoy)).join("")}</div>`;
+    return;
+  }
+
+  const conHora = lista.filter((t) => t.hora);
+  const desde = Math.min(HORA_DESDE, ...conHora.map((t) => Math.floor(minutosDe(t.hora) / 60)));
+  const hasta = Math.min(24, Math.max(HORA_HASTA, ...conHora.map((t) => Math.ceil((minutosDe(t.hora) + duracionDe(t)) / 60))));
+  const cantidadHoras = hasta - desde;
+  const horas = Array.from({ length: cantidadHoras }, (_, i) => desde + i);
+  const sinHora = (d) => [
+    ...lista.filter((t) => t.fecha === d && !t.hora).map((t) => bloque(t, hoy)),
+    ...abonosDelDia(d).map(bloqueAbono)
+  ];
+  const haySinHora = dias.some((d) => sinHora(d).length > 0);
+  const ahora = new Date();
+  const minutoAhora = ahora.getHours() * 60 + ahora.getMinutes();
+
+  const columna = (d) => {
+    const bloques = enCarriles(
+      conHora.filter((t) => t.fecha === d),
+      desde * 60,
+      hasta * 60
+    ).map(({ t, inicio, fin, carril, carriles }) =>
+      bloque(
+        t,
+        hoy,
+        `--inicio: ${(inicio - desde * 60) / 60}; --largo: ${(fin - inicio) / 60}; --carril: ${carril}; --carriles: ${carriles}`,
+        fin - inicio <= 60
+      )
+    );
+    const lineaAhora =
+      d === hoy && minutoAhora >= desde * 60 && minutoAhora < hasta * 60
+        ? `<span class="agenda-ahora" style="--inicio: ${(minutoAhora - desde * 60) / 60}" aria-hidden="true"></span>`
+        : "";
+    return `<div class="agenda-columna${d === hoy ? " es-hoy" : ""}" data-fecha="${d}" data-desde="${desde}" data-horas="${cantidadHoras}">${lineaAhora}${bloques.join("")}</div>`;
+  };
+
+  agendaCuerpo.innerHTML = `
+    <div class="agenda-semana" style="--horas: ${cantidadHoras}">
+      <div class="agenda-fila agenda-cabecera">
+        <span></span>
+        ${dias
+          .map(
+            (d, i) =>
+              `<span class="agenda-dia-cab${d === hoy ? " es-hoy" : ""}"><span>${DIAS_CORTOS[i]}</span><strong>${Number(d.slice(8))}</strong></span>`
+          )
+          .join("")}
+      </div>
+      ${
+        haySinHora
+          ? `<div class="agenda-fila agenda-sin-hora">
+        <span class="agenda-hora-etiqueta">Sin hora</span>
+        ${dias.map((d) => `<div class="agenda-celda" data-fecha="${d}">${sinHora(d).join("")}</div>`).join("")}
+      </div>`
+          : ""
+      }
+      <div class="agenda-fila agenda-grilla">
+        <div class="agenda-horas" aria-hidden="true">${horas.map((h) => `<span>${horaDeMinutos(h * 60)}</span>`).join("")}</div>
+        ${dias.map(columna).join("")}
+      </div>
+    </div>`;
+}
+
+function renderMes(hoy) {
+  const primero = primeroDelMes(referencia);
+  const ultimo = sumarDiasISO(primeroDelMes(referencia, 1), -1);
+  const desde = inicioSemana(primero);
+  const hasta = sumarDiasISO(inicioSemana(ultimo), 6);
+  const dias = [];
+  for (let d = desde; d <= hasta; d = sumarDiasISO(d, 1)) dias.push(d);
+  const [y, m] = primero.split("-").map(Number);
+  document.getElementById("agendaTitulo").textContent = `${MESES[m - 1][0].toUpperCase()}${MESES[m - 1].slice(1)} de ${y}`;
+  const lista = trabajosDeAgenda().filter((t) => t.fecha >= desde && t.fecha <= hasta);
+  if (diaElegido && (diaElegido < primero || diaElegido > ultimo)) diaElegido = null;
+
+  const chip = (x) =>
+    x.servicio
+      ? `<button type="button" class="agenda-chip agenda-abono" data-abono="${x.id}">${icono("repeat")} ${esc(x.cliente)}</button>`
+      : `<button type="button" class="agenda-chip agenda-${esc(x.estado)}${atrasado(x, hoy) ? " agenda-atrasado" : ""}" data-trabajo="${x.id}">${
+          x.hora ? `<span class="mono">${esc(x.hora)}</span> ` : ""
+        }${esc(x.titulo)}</button>`;
+  const celda = (d) => {
+    const items = [...delDia(lista, d), ...abonosDelDia(d)];
+    const total = items.length;
+    const visibles = items.slice(0, MAX_EN_EL_DIA).map(chip).join("");
+    const clases = ["agenda-mes-dia", d < primero || d > ultimo ? "es-fuera" : "", d === hoy ? "es-hoy" : "", d === diaElegido ? "es-elegido" : ""];
+    const cuantos = total === 0 ? "nada programado" : total === 1 ? "1 programado" : `${total} programados`;
+    return `
+      <div class="${clases.filter(Boolean).join(" ")}" data-dia="${d}">
+        <button type="button" class="agenda-mes-numero" data-dia="${d}" aria-label="${esc(fechaLarga(d, { dia: true }))}, ${cuantos}">${Number(d.slice(8))}</button>
+        <div class="agenda-mes-items">${visibles}${total > MAX_EN_EL_DIA ? `<span class="agenda-mas">+${total - MAX_EN_EL_DIA} más</span>` : ""}</div>
+        ${total ? `<span class="agenda-mes-puntos" aria-hidden="true">${"<i></i>".repeat(Math.min(total, 3))}</span>` : ""}
+      </div>`;
+  };
+
+  agendaCuerpo.innerHTML = `
+    <div class="agenda-mes">
+      <div class="agenda-mes-cab" aria-hidden="true">${DIAS_CORTOS.map((d) => `<span>${d}</span>`).join("")}</div>
+      <div class="agenda-mes-grilla">${dias.map(celda).join("")}</div>
+    </div>`;
+
+  agendaDia.hidden = !diaElegido;
+  if (diaElegido) agendaDia.innerHTML = `<h3>${esc(tituloDia(diaElegido, hoy))}</h3>${listaDelDia(diaElegido, lista, hoy, { titulo: false })}`;
+}
+
+// Lo que todavía no tiene día, para no perderlo de vista al mirar la agenda.
+function renderSinFecha(hoy) {
+  const sinFecha = trabajosDeAgenda().filter((t) => !t.fecha && porHacer(t));
+  const cantidad = sinFecha.length;
+  agendaSinFecha.hidden = cantidad === 0;
+  agendaSinFecha.innerHTML = `
+    <h3>Sin fecha <span class="agenda-cuenta">${cantidad}</span></h3>
+    <p class="agenda-vacio">Abrí uno y ponele día con Editar para que aparezca en la agenda.</p>
+    <div class="agenda-sin-fecha">${sinFecha.map((t) => bloque(t, hoy)).join("")}</div>`;
+}
+
+function renderAgenda() {
+  const hoy = hoyISO();
+  if (pestana === "semana") renderSemana(hoy);
+  else renderMes(hoy);
+  renderSinFecha(hoy);
+}
+
+async function poblarResponsablesAgenda() {
+  if (responsablesCargados) return;
+  const lista = await api("/api/trabajos/responsables");
+  agendaResponsable.innerHTML =
+    '<option value="">Todos</option><option value="sin">Sin asignar</option>' +
+    lista.map((r) => `<option value="${r.id}">${esc(r.nombre)}</option>`).join("");
+  responsablesCargados = true;
+}
+
+// Sin subruta (el menú, Volver), la última pestaña que se usó.
+async function entrarATrabajos(subruta) {
+  const guardada = localStorage.getItem(CLAVE_PESTANA);
+  const elegida = PESTANAS.includes(subruta) ? subruta : PESTANAS.includes(guardada) ? guardada : "lista";
+  if (subruta !== elegida) history.replaceState(null, "", `#/trabajos/${elegida}`);
+  localStorage.setItem(CLAVE_PESTANA, elegida);
+  if (elegida !== pestana) diaElegido = null;
+  pestana = elegida;
+  const enAgenda = pestana !== "lista";
+  for (const seccion of document.querySelectorAll(".trabajos-pestana")) {
+    seccion.hidden = seccion.dataset.pestana !== (enAgenda ? "agenda" : "lista");
+  }
+  for (const enlace of document.querySelectorAll("#trabajosMenu .segmento")) {
+    if (enlace.dataset.pestana === pestana) enlace.setAttribute("aria-current", "page");
+    else enlace.removeAttribute("aria-current");
+  }
+  if (enAgenda) {
+    if (pestana === "mes" && !diaElegido) diaElegido = hoyISO();
+    await poblarResponsablesAgenda();
+  }
+  await cargarTrabajos();
+}
+
+const sugerencia = (extra) => ({
+  ...extra,
+  responsable_id: agendaResponsable.value && agendaResponsable.value !== "sin" ? Number(agendaResponsable.value) : null
+});
+
+document.querySelector('.trabajos-pestana[data-pestana="agenda"]').addEventListener("click", (e) => {
+  const trabajo = e.target.closest("[data-trabajo]");
+  const abono = e.target.closest("[data-abono]");
+  const nuevo = e.target.closest("[data-nuevo-dia]");
+  const dia = e.target.closest("[data-dia]");
+  const columna = e.target.closest(".agenda-columna");
+  const celda = e.target.closest(".agenda-celda");
+  if (trabajo) abrirFicha(Number(trabajo.dataset.trabajo));
+  else if (abono) invocar("abrirFicha:abono", Number(abono.dataset.abono));
+  else if (nuevo) abrirModal(null, null, sugerencia({ fecha: nuevo.dataset.nuevoDia }));
+  else if (dia) {
+    diaElegido = dia.dataset.dia;
+    renderAgenda();
+  } else if (columna) {
+    // La media hora del hueco tocado.
+    const { top, height } = columna.getBoundingClientRect();
+    const mediasHoras = Math.floor(((e.clientY - top) / height) * Number(columna.dataset.horas) * 2);
+    const minutos = Math.min(Number(columna.dataset.desde) * 60 + mediasHoras * 30, 23 * 60 + 30);
+    abrirModal(null, null, sugerencia({ fecha: columna.dataset.fecha, hora: horaDeMinutos(minutos) }));
+  } else if (celda) abrirModal(null, null, sugerencia({ fecha: celda.dataset.fecha }));
+});
+
+function mover(sentido) {
+  referencia = pestana === "semana" ? sumarDiasISO(referencia, 7 * sentido) : primeroDelMes(referencia, sentido);
+  diaElegido = null;
+  renderAgenda();
+}
+document.getElementById("agendaAnterior").addEventListener("click", () => mover(-1));
+document.getElementById("agendaSiguiente").addEventListener("click", () => mover(1));
+document.getElementById("agendaHoy").addEventListener("click", () => {
+  referencia = hoyISO();
+  diaElegido = pestana === "mes" ? referencia : null;
+  renderAgenda();
+});
+document.getElementById("btnNuevoTrabajoAgenda").addEventListener("click", () =>
+  abrirModal(null, null, sugerencia({ fecha: pestana === "mes" && diaElegido ? diaElegido : hoyISO() }))
+);
+agendaResponsable.addEventListener("change", renderAgenda);
+celular.addEventListener("change", () => {
+  if (pestana !== "lista") renderAgenda();
+});
+
+alEntrarEnVista("trabajos", entrarATrabajos);
 registrar("cargar:trabajos", cargarTrabajos);
 registrar("abrirFicha:trabajo", abrirFicha);
 registrar("programar:trabajo", (presupuesto) => abrirModal(null, presupuesto));

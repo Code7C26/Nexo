@@ -293,3 +293,4 @@ form.addEventListener("submit", async (e) => {
 
 alEntrarEnVista("abonos", cargarAbonos);
 registrar("cargar:abonos", cargarAbonos);
+registrar("abrirFicha:abono", abrirFicha);

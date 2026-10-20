@@ -559,8 +559,18 @@
         </section>
       </section>
 
-      <!-- Vista: Trabajos (hist. §78, dominios/trabajos.js) -->
+      <!-- Vista: Trabajos (hist. §78, dominios/trabajos.js). Tres pestañas:
+           #/trabajos/lista, #/trabajos/semana y #/trabajos/mes (la agenda,
+           hist. §80). Sin subruta, la última que se usó. -->
       <section class="view" data-view="trabajos" hidden>
+        <div class="trabajos-vista">
+        <nav class="segmentos planes-menu" aria-label="Cómo ver los trabajos" id="trabajosMenu">
+          <a class="segmento" href="#/trabajos/lista" data-pestana="lista">Lista</a>
+          <a class="segmento" href="#/trabajos/semana" data-pestana="semana">Semana</a>
+          <a class="segmento" href="#/trabajos/mes" data-pestana="mes">Mes</a>
+        </nav>
+
+        <div class="trabajos-pestana" data-pestana="lista">
         <section class="ledger-strip" aria-label="Trabajos">
           <div class="ledger-item">
             <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg></span>Para hoy</span>
@@ -613,6 +623,31 @@
           </table>
           </div>
         </section>
+        </div>
+
+        <!-- La agenda: la semana con sus horas o el mes. Tocar un trabajo abre
+             su ficha; tocar un hueco de la semana, uno nuevo a esa hora. -->
+        <section class="panel trabajos-pestana" data-pestana="agenda" hidden>
+          <div class="agenda-head">
+            <div class="agenda-navegacion">
+              <button type="button" class="btn-icon" id="agendaAnterior" aria-label="Anterior"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg></button>
+              <button type="button" class="btn btn-secundario" id="agendaHoy">Hoy</button>
+              <button type="button" class="btn-icon" id="agendaSiguiente" aria-label="Siguiente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+              <h2 id="agendaTitulo" aria-live="polite">—</h2>
+            </div>
+            <div class="panel-acciones">
+              <label class="visualmente-oculto" for="agendaResponsable">Ver los trabajos de</label>
+              <select id="agendaResponsable" class="select-inline agenda-filtro">
+                <option value="">Todos</option>
+              </select>
+              <button type="button" class="btn btn-primary" id="btnNuevoTrabajoAgenda"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo trabajo</button>
+            </div>
+          </div>
+          <div class="agenda-cuerpo" id="agendaCuerpo"></div>
+          <div class="agenda-detalle" id="agendaDia" hidden></div>
+          <div class="agenda-detalle" id="agendaSinFecha" hidden></div>
+        </section>
+        </div>
       </section>
 
       <!-- Vista: ficha de un trabajo -->

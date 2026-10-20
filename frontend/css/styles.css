@@ -5234,6 +5234,381 @@ input.precio-sin-configurar::placeholder {
   max-width: 420px;
 }
 
+/* Agenda de trabajos (dominios/trabajos.js, hist. §80): la semana con sus
+   horas y el mes. Cada trabajo lleva el color de su estado, como en la lista:
+   naranja pendiente, azul en curso, verde terminado; uno atrasado, borde rojo. */
+.agenda-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.agenda-navegacion {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.agenda-navegacion h2 {
+  margin: 0 0 0 var(--sp-2);
+  font-size: var(--txt-lg);
+}
+
+.agenda-filtro { min-height: 36px; }
+
+.agenda-cuerpo { overflow-x: auto; }
+
+.agenda-trabajo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  font: inherit;
+  font-size: var(--txt-xs);
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border: 0;
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  overflow: hidden;
+  transition: filter var(--dur-1) ease;
+}
+
+.agenda-trabajo:hover { filter: brightness(1.15); }
+.agenda-trabajo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.agenda-trabajo-hora { color: var(--ink-muted); }
+.agenda-trabajo-titulo {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agenda-trabajo-titulo .ico { width: 12px; height: 12px; vertical-align: -1px; }
+.agenda-trabajo-meta {
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenda-pendiente { background: var(--naranja-bg); border-left-color: var(--naranja); }
+.agenda-en_curso { background: var(--info-bg); border-left-color: var(--info); }
+.agenda-terminado { background: var(--accent-ok-bg); border-left-color: var(--accent-ok); opacity: 0.75; }
+.agenda-atrasado { box-shadow: inset 0 0 0 1px var(--accent-danger); }
+.agenda-abono { border-left-style: dashed; }
+
+/* Semana: una columna de horas y siete días. */
+.agenda-semana {
+  --alto-hora: 52px;
+  min-width: 820px;
+}
+
+.agenda-fila {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+}
+
+.agenda-cabecera { border-bottom: 1px solid var(--line); }
+
+.agenda-dia-cab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-2) 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.agenda-dia-cab strong {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: var(--txt-md);
+  color: var(--ink);
+  border-radius: var(--r-full);
+  letter-spacing: 0;
+}
+
+.agenda-dia-cab.es-hoy { color: var(--info); }
+.agenda-dia-cab.es-hoy strong { color: var(--info); background: var(--info-bg); }
+
+.agenda-sin-hora { border-bottom: 1px solid var(--line); }
+
+.agenda-hora-etiqueta {
+  align-self: center;
+  padding-right: var(--sp-2);
+  font-size: var(--txt-2xs);
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+.agenda-celda {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 36px;
+  padding: 3px;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.agenda-horas {
+  display: grid;
+  grid-auto-rows: var(--alto-hora);
+}
+
+/* Aire arriba, para que la etiqueta de la primera hora no se monte en la fila
+   de arriba. */
+.agenda-grilla { padding-top: var(--sp-2); }
+
+.agenda-horas span {
+  padding-right: var(--sp-2);
+  font-size: var(--txt-2xs);
+  color: var(--ink-faint);
+  text-align: right;
+  transform: translateY(-0.6em);
+}
+
+.agenda-columna {
+  position: relative;
+  height: calc(var(--alto-hora) * var(--horas));
+  border-left: 1px solid var(--line);
+  background-image: repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--alto-hora));
+  cursor: pointer;
+}
+
+.agenda-columna.es-hoy { background-color: color-mix(in srgb, var(--info) 5%, transparent); }
+
+/* Un bloque de una hora o menos: la hora y el título en un mismo renglón. */
+.agenda-columna .agenda-trabajo.es-corto {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  column-gap: var(--sp-1);
+}
+.agenda-trabajo.es-corto .agenda-trabajo-meta { grid-column: 1 / -1; }
+
+.agenda-columna .agenda-trabajo {
+  position: absolute;
+  top: calc(var(--alto-hora) * var(--inicio) + 1px);
+  height: calc(var(--alto-hora) * var(--largo) - 2px);
+  left: calc((100% - 4px) / var(--carriles) * var(--carril) + 2px);
+  width: calc((100% - 4px) / var(--carriles) - 2px);
+}
+
+/* La hora de ahora, en la columna de hoy. */
+.agenda-ahora {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--alto-hora) * var(--inicio));
+  z-index: 1;
+  height: 2px;
+  background: var(--accent-danger);
+  pointer-events: none;
+}
+
+.agenda-ahora::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  background: var(--accent-danger);
+  border-radius: var(--r-full);
+}
+
+/* Mes: siete columnas; cada día muestra hasta tres cosas. */
+.agenda-mes-cab,
+.agenda-mes-grilla {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.agenda-mes-cab span {
+  padding: var(--sp-2);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.agenda-mes-grilla {
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.agenda-mes-dia {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  min-height: 108px;
+  padding: var(--sp-1);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.agenda-mes-dia:hover { background: var(--surface-hover); }
+.agenda-mes-dia.es-fuera { opacity: 0.45; }
+.agenda-mes-dia.es-elegido { box-shadow: inset 0 0 0 2px var(--accent); }
+
+.agenda-mes-numero {
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+
+.agenda-mes-dia.es-hoy .agenda-mes-numero { color: var(--info); background: var(--info-bg); }
+
+.agenda-mes-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agenda-chip {
+  display: block;
+  width: 100%;
+  padding: 1px var(--sp-1);
+  font: inherit;
+  font-size: var(--txt-2xs);
+  text-align: left;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--surface-sunk);
+  border: 0;
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+
+.agenda-chip .ico { width: 11px; height: 11px; vertical-align: -1px; }
+
+.agenda-mas {
+  padding-left: var(--sp-1);
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
+}
+
+.agenda-mes-puntos { display: none; }
+
+/* El día elegido del mes, lo que no tiene fecha y la semana del celular. */
+.agenda-detalle {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.agenda-detalle[hidden] { display: none; }
+
+.agenda-detalle h3,
+.agenda-lista-dia h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--txt-md);
+}
+
+.agenda-cuenta {
+  margin-left: var(--sp-1);
+  padding: 0 var(--sp-2);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  background: var(--surface-sunk);
+  border-radius: var(--r-full);
+}
+
+.agenda-vacio {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.agenda-sin-fecha {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-2);
+}
+
+.agenda-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.agenda-lista-dia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.agenda-lista-dia.es-hoy h3 { color: var(--info); }
+
+.agenda-lista-dia .agenda-trabajo,
+.agenda-sin-fecha .agenda-trabajo {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--txt-sm);
+}
+
+.agenda-agregar {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--txt-sm);
+}
+
+@media (max-width: 860px) {
+  .agenda-head { align-items: stretch; }
+  .agenda-navegacion { flex-wrap: wrap; }
+  .agenda-navegacion h2 { flex-basis: 100%; margin: var(--sp-1) 0 0; }
+  .agenda-head .panel-acciones { width: 100%; }
+  .agenda-head .panel-acciones > * { flex: 1 1 auto; }
+
+  /* En el celular el mes muestra puntos; lo del día, abajo de la grilla. */
+  .agenda-mes-dia { min-height: 56px; align-items: center; }
+  .agenda-mes-numero { align-self: center; }
+  .agenda-mes-items { display: none; }
+  .agenda-mes-puntos {
+    display: flex;
+    gap: 3px;
+  }
+  .agenda-mes-puntos i {
+    width: 5px;
+    height: 5px;
+    background: var(--info);
+    border-radius: var(--r-full);
+  }
+  .agenda-mes-cab span { padding: var(--sp-1); text-align: center; }
+}
+
 /* Un trabajo que se pasó de su día sin terminarse (dominios/trabajos.js). Con
    .celda-meta, para ganarle a su gris. */
 .celda-meta.trabajo-atrasado {
@@ -5353,20 +5728,23 @@ input.precio-sin-configurar::placeholder {
 
 /* Planes y descuentos (hist. §75), en su propia vista desde hist. §76. */
 
-.planes-vista {
+.planes-vista,
+.trabajos-vista {
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
 }
 
-.planes-pestana {
+.planes-pestana,
+.trabajos-pestana {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
   animation: aparecer-arriba var(--dur-2) var(--ease-out);
 }
 
-.planes-pestana[hidden] { display: none; }
+.planes-pestana[hidden],
+.trabajos-pestana[hidden] { display: none; }
 
 /* Las pestañas son enlaces (#/planes-socio/…): se ven como .segmento. */
 a.segmento {

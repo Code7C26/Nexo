@@ -8408,3 +8408,54 @@ meses de 1 a 12, `fecha_alta`, `ciclo_desde`, `cobrar_desde`, estado, notas) y
 
 - Que el usuario vea §78 y §79.
 - El recordatorio de presupuestos sin respuesta va con "Para hoy" del CRM (6b).
+
+## 80. Agenda de trabajos: semana y mes, 20 de octubre de 2026
+
+**Pedido:** "¿hay algún tipo de calendario/agenda semanal y mensual para los
+servicios?" No había; el usuario pidió hacerlo antes del CRM.
+
+**Sin cambio de esquema.** Los trabajos ya guardaban día, hora y responsable.
+`SELECT_TRABAJO` suma `duracion_estimada` (minutos): lo que se cobra por hora
+dura esas horas; el resto, la duración estimada de cada servicio por su
+cantidad. NULL si no hay dato.
+
+**Pantalla** (`dominios/trabajos.js`): Trabajos tiene tres pestañas,
+`#/trabajos/lista`, `#/trabajos/semana` y `#/trabajos/mes`. Sin subruta abre la
+última que se usó (`localStorage` `nexo.trabajos.vista`), así "Volver a
+trabajos" vuelve a la agenda.
+- **Semana:** columnas de lunes a domingo, de 8 a 20 h (se amplía si hay algo
+  antes o después).
+  - Cada trabajo es un bloque a su hora, con el largo de su duración (1 h sin
+    dato, nunca menos de media).
+  - Los que se pisan van lado a lado, en carriles por grupo.
+  - Arriba van los que tienen día sin hora y las cuotas de abonos que empiezan
+    ese día. Una línea roja marca la hora actual en la columna de hoy.
+  - Tocar un hueco abre el alta con ese día y esa media hora.
+- **Mes:** la grilla con hasta tres cosas por día y "+N más"; tocar un día
+  muestra su lista abajo, con "Agregar un trabajo".
+- **Los dos:** el color de cada bloque es su estado, como en la lista
+  (naranja, azul, verde; borde rojo si está atrasado); los cancelados no se
+  ven. Filtro por responsable (también "Sin asignar"), que se propone al crear
+  desde la agenda. Abajo, "Sin fecha", con lo que todavía no tiene día.
+- **Celular:** la semana pasa a una lista por día y el mes muestra puntos; lo
+  del día elegido va abajo.
+- `abonos.js` registra `abrirFicha:abono` para abrir una cuota desde la agenda.
+
+**Verificación.**
+- `npm test` 59 de 59; el caso de trabajos suma `duracion_estimada` (2,5 h por
+  hora dan 150 minutos). `npm run lint` verde.
+- `npm run regresion`: 0 diferencias (el seed no tiene trabajos).
+- Navegador (base nueva, negocio de servicios): semana con dos trabajos que se
+  pisan, uno sin hora, el abono del domingo y "Sin fecha"; un hueco de mañana
+  propone 13:00; el mes, el día elegido y uno atrasado con borde rojo; el
+  celular en semana y mes; volver por el menú abre la pestaña recordada. Sin
+  errores de consola.
+- Arreglado en la pasada: el texto de un bloque de una hora se cortaba (ahora
+  hora y título van en un renglón), la etiqueta de las 8 se montaba en la fila
+  de arriba y el selector de responsable tenía el estilo del sistema.
+
+### Para después
+
+- Arrastrar un bloque para cambiarle el día o la hora.
+- Vista de día con columnas por responsable.
+- Turnos que reserva el cliente (el módulo que espera la barbería).

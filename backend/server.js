@@ -4692,6 +4692,13 @@ const SELECT_TRABAJO = `
          trabajos.lista_precio_id, trabajos.venta_id, trabajos.fecha_creacion,
          (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
             FROM trabajo_items WHERE trabajo_items.trabajo_id = trabajos.id) AS total,
+         -- Cuánto lleva, en minutos, para el largo del bloque en la agenda
+         -- (hist. §80): lo que se cobra por hora son esas horas; el resto, la
+         -- duración estimada de cada servicio por su cantidad. NULL = sin dato.
+         (SELECT SUM(CASE WHEN productos.unidad = 'hora' THEN trabajo_items.cantidad * 60
+                          ELSE productos.duracion_minutos * trabajo_items.cantidad END)
+            FROM trabajo_items JOIN productos ON productos.id = trabajo_items.producto_id
+           WHERE trabajo_items.trabajo_id = trabajos.id) AS duracion_estimada,
          (SELECT GROUP_CONCAT(
                    (CASE WHEN trabajo_items.cantidad = CAST(trabajo_items.cantidad AS INTEGER)
                          THEN CAST(trabajo_items.cantidad AS INTEGER)
