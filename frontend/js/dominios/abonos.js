@@ -19,6 +19,7 @@ import { badge, camposFicha, esAdmin, esc, fechaAR, hoyISO, money } from "../cor
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
+import { icono } from "../core/iconos.js";
 import { mostrarVista } from "../core/router.js";
 import { moduloActivo } from "../core/negocio.js";
 
@@ -29,7 +30,10 @@ const FILTROS = {
   todos: () => true
 };
 
+const ICONO_TIPO_CUENTA = { efectivo: "banknote", banco: "building-2", mercadopago: "wallet", otro: "wallet" };
+
 let abonos = [];
+let cuentas = [];
 let filtro = "activos";
 let fichaAbono = null;
 let editando = null;
@@ -127,6 +131,9 @@ function pintarFicha(a) {
   fichaAbono = a;
   document.getElementById("fichaAbonoTitulo").textContent = `${a.servicio} · ${a.cliente}`;
   document.getElementById("fichaAbonoDeuda").textContent = money(a.deuda);
+  // Con deuda, el monto ya lo dice el panel de cobro: la franja sobra.
+  document.getElementById("fichaAbonoDeuda").closest(".ledger-strip").hidden = a.deuda > 0;
+  pintarCobro(a);
   // Editar, dar de baja y reactivar son de admin: cambian lo que se cobra.
   document.getElementById("fichaAbonoAcciones").innerHTML = esAdmin()
     ? `<button type="button" class="btn btn-secundario" data-accion="editar">Editar</button>
@@ -167,7 +174,30 @@ function pintarFicha(a) {
           .join("");
 }
 
+// Un botón por cuenta, la de efectivo primero, como en la ficha de un socio.
+function pintarCobro(a) {
+  const panel = document.getElementById("fichaAbonoCobro");
+  panel.hidden = a.deuda <= 0;
+  if (a.deuda <= 0) return;
+  document.getElementById("fichaAbonoCobroTitulo").textContent = `Debe ${money(a.deuda)}`;
+  document.getElementById("fichaAbonoCobroNota").textContent =
+    a.cuotas_impagas === 1 ? "Una cuota sin pagar." : `${a.cuotas_impagas} cuotas sin pagar: se cobran todas juntas.`;
+  const orden = [...cuentas].sort((x, y) => Number(y.tipo === "efectivo") - Number(x.tipo === "efectivo"));
+  document.getElementById("fichaAbonoCobroCuentas").innerHTML = orden
+    .map(
+      (c, i) => `
+    <button type="button" class="btn ${i === 0 ? "btn-primary" : "btn-secundario"}" data-cobrar-en="${c.id}">
+      ${icono(ICONO_TIPO_CUENTA[c.tipo] ?? "wallet")} Cobrar en ${esc(c.nombre)}
+    </button>`
+    )
+    .join("");
+}
+
 async function abrirFicha(id) {
+  if (cuentas.length === 0) {
+    const todas = await api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." });
+    cuentas = todas.filter((c) => c.activa !== 0 && c.activa !== false);
+  }
   pintarFicha(await api(`/api/abonos/${id}`, { error: "No se pudo cargar el abono." }));
   mostrarVista("abono-detalle", { titulo: fichaAbono.servicio });
 }
@@ -209,6 +239,34 @@ document.querySelector('[data-view="abono-detalle"]').addEventListener("click", 
   else if (boton) cambiarEstado(boton.dataset.accion, boton);
 });
 document.getElementById("btnVolverAbonos").addEventListener("click", () => mostrarVista("abonos"));
+
+document.getElementById("fichaAbonoCobroCuentas").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-cobrar-en]");
+  if (!boton || !fichaAbono) return;
+  const cuenta = cuentas.find((c) => c.id === Number(boton.dataset.cobrarEn));
+  const cuotas = fichaAbono.cuotas_impagas === 1 ? "la cuota" : `las ${fichaAbono.cuotas_impagas} cuotas`;
+  const ok = await confirmar({
+    titulo: "Cobrar cuotas",
+    cuerpo: `¿Cobrarle ${money(fichaAbono.deuda)} a ${fichaAbono.cliente} en ${cuenta.nombre}? Salda ${cuotas}.`,
+    aceptar: `Cobrar ${money(fichaAbono.deuda)}`
+  });
+  if (!ok) return;
+  boton.disabled = true;
+  let resultado;
+  try {
+    resultado = await api(`/api/abonos/${fichaAbono.id}/cobros`, {
+      method: "POST",
+      body: { cuenta_tesoreria_id: cuenta.id },
+      error: "No se pudo registrar el cobro."
+    });
+  } finally {
+    boton.disabled = false;
+  }
+  avisar(`Cobrado ${money(resultado.cobrado)} en ${cuenta.nombre}.`, "ok");
+  // El cobro entra en la caja y baja la cuenta corriente del cliente.
+  await refrescar([cargarAbonos(), recargar("ventas", "caja", "clientes", "cuentasCorrientes")]);
+  await abrirFicha(fichaAbono.id);
+});
 
 // Un cobro desde la ficha baja la deuda de su cuota.
 document.addEventListener("cobro-registrado", async (e) => {

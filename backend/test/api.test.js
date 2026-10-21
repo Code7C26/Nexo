@@ -896,6 +896,15 @@ test('abonos: la cuota del período, alta hacia atrás, precio desde la siguient
   assert.equal(reactivado.cuotas.length, 1);
   assert.equal((await empleadoA.patch(`/api/abonos/${abono.json.id}`, { precio: 1 })).status, 403);
 
+  // Cobrar todo lo que debe un abono de una vez (hist. §84), de los dos roles.
+  assert.equal((await adminB.post(`/api/abonos/${viejo.json.id}/cobros`, { cuenta_tesoreria_id: efectivo.id })).status, 404);
+  assert.equal((await empleadoA.post(`/api/abonos/${viejo.json.id}/cobros`, { cuenta_tesoreria_id: 999999 })).status, 400);
+  const todo = await empleadoA.post(`/api/abonos/${viejo.json.id}/cobros`, { cuenta_tesoreria_id: efectivo.id });
+  assert.equal(todo.status, 201, todo.texto);
+  assert.equal(todo.json.cobrado, 20000);
+  assert.equal((await adminA.get(`/api/abonos/${viejo.json.id}`)).json.deuda, 0);
+  assert.equal((await empleadoA.post(`/api/abonos/${viejo.json.id}/cobros`, { cuenta_tesoreria_id: efectivo.id })).status, 400);
+
   // Otro negocio no lo ve ni lo toca.
   assert.equal((await adminB.get(`/api/abonos/${abono.json.id}`)).status, 404);
   assert.equal((await adminB.patch(`/api/abonos/${abono.json.id}`, { estado: 'baja' })).status, 404);

@@ -90,6 +90,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/abonos/:id': 'ambos',
   'POST /api/abonos': 'admin',
   'PATCH /api/abonos/:id': 'admin',
+  'POST /api/abonos/:id/cobros': 'ambos',
   'GET /api/turnos-caja': 'ambos',
   'GET /api/turnos-caja/:id': 'ambos',
   'POST /api/turnos-caja': 'ambos',

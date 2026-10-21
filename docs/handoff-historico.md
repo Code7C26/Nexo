@@ -8545,3 +8545,16 @@ compras.
 - Verificación: `npm test` 62 de 62, lint verde y un recorrido en Chrome
   (un trabajo y un abono en la ficha, el alta con el cliente propuesto y la
   ficha del abono desde la fila), sin errores de consola.
+
+## 84. Cobrar todas las cuotas de un abono juntas, 20 de octubre de 2026
+
+**Pendiente de §79.** `POST /api/abonos/:id/cobros` (los dos roles, como cobrar
+una venta) salda todas las cuotas impagas en una cuenta, con un cobro por
+cuota, igual que el cobro de un socio. En la ficha del abono, un panel con
+"Debe $X" y un botón por cuenta (efectivo primero), con confirmación; con
+deuda, la franja "Debe" se oculta porque el panel ya lo dice. Cobrar una parte
+sigue siendo desde la cuota.
+- Verificación: el caso de abonos suma el cobro de todo (404 desde otro
+  negocio, 400 con una cuenta ajena, deuda en 0 después y 400 si no hay nada
+  que cobrar); `npm test` 62 de 62; recorrido en Chrome (panel, confirmación,
+  cuota pagada y deuda en $0), sin errores de consola.

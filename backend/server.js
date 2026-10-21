@@ -11932,6 +11932,41 @@ app.post('/api/abonos', soloAdmin, (req, res) => {
   res.status(201).json({ id });
 });
 
+// Cobra de una vez todas las cuotas impagas de un abono, en una cuenta (hist.
+// §84), como el cobro de un socio: un cobro por cuota, con el circuito de
+// siempre. Es de los dos roles, como cobrar una venta. Cobrar una parte se
+// hace desde la cuota.
+app.post('/api/abonos/:id/cobros', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const abono = abonoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!abono) return res.status(404).json({ error: 'Abono no encontrado.' });
+  const cuenta = db
+    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(req.body?.cuenta_tesoreria_id), organizacionId);
+  if (!cuenta) return res.status(400).json({ error: 'Elegí en qué cuenta entra la plata.' });
+
+  ponerAbonosAlDia(organizacionId, abono.id);
+  const { cuotas } = conCuotas(abono, db.prepare(`${SELECT_CUOTAS_ABONO} WHERE cuotas_abono.abono_id = ?`).all(abono.id));
+  const impagas = cuotas.filter((c) => c.saldo > 0);
+  if (impagas.length === 0) return res.status(400).json({ error: 'Este abono no tiene cuotas por cobrar.' });
+
+  const total = withTransaction(() => {
+    for (const cuota of impagas) {
+      const cobroId = registrarCobro(cuota.venta_id, abono.cliente_id, cuota.saldo, cuenta.id, `Cuota del abono #${abono.id}`, organizacionId);
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'cobro',
+        entidad_id: cobroId,
+        operacion_tipo: 'venta',
+        operacion_id: cuota.venta_id,
+        detalle: `Cobro #${cobroId} de $${cuota.saldo} de la cuota del abono #${abono.id} (${cuenta.nombre})`
+      });
+    }
+    return redondear2(impagas.reduce((acc, c) => acc + c.saldo, 0));
+  });
+  res.status(201).json({ cobrado: total, cuotas: impagas.length });
+});
+
 // Editar precio, cada cuántos meses y notas (rigen desde la cuota siguiente), o
 // dar de baja y reactivar. La baja no toca las cuotas que ya hay; reactivar
 // empieza un ciclo nuevo sin cobrar los meses de baja, como un plan de socio.
