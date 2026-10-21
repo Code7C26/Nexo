@@ -1417,7 +1417,8 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
    por eso queda afuera. En las fichas, la tira de cifras que sigue al
    panel de datos quedaba pegada a él (ledger-strip solo separa abajo). */
 .panel + .panel,
-.panel + .ledger-strip { margin-top: var(--sp-5); }
+.panel + .ledger-strip,
+.ledger-strip[hidden] + .panel { margin-top: var(--sp-5); }
 [data-view="dashboard"] .panel + .panel { margin-top: 0; }
 
 /* La nota del período va pegada arriba de las cifras: necesita aire. */
@@ -5417,11 +5418,13 @@ input.precio-sin-configurar::placeholder {
   text-overflow: ellipsis;
 }
 
-.agenda-pendiente { background: var(--naranja-bg); border-left-color: var(--naranja); }
-.agenda-en_curso { background: var(--info-bg); border-left-color: var(--info); }
-.agenda-terminado { background: var(--accent-ok-bg); border-left-color: var(--accent-ok); opacity: 0.75; }
-.agenda-atrasado { box-shadow: inset 0 0 0 1px var(--accent-danger); }
-.agenda-abono { border-left-style: dashed; }
+/* Con la clase de base delante: si no, la regla de .agenda-chip, que va más
+   abajo, les pisaba el color a los chips del mes. */
+:is(.agenda-trabajo, .agenda-chip).agenda-pendiente { background: var(--naranja-bg); border-left-color: var(--naranja); }
+:is(.agenda-trabajo, .agenda-chip).agenda-en_curso { background: var(--info-bg); border-left-color: var(--info); }
+:is(.agenda-trabajo, .agenda-chip).agenda-terminado { background: var(--accent-ok-bg); border-left-color: var(--accent-ok); opacity: 0.75; }
+:is(.agenda-trabajo, .agenda-chip).agenda-atrasado { box-shadow: inset 0 0 0 1px var(--accent-danger); }
+:is(.agenda-trabajo, .agenda-chip).agenda-abono { border-left-style: dashed; }
 
 /* Semana: una columna de horas y siete días. */
 .agenda-semana {
@@ -5863,6 +5866,10 @@ input.precio-sin-configurar::placeholder {
 
 .planes-pestana[hidden],
 .trabajos-pestana[hidden] { display: none; }
+
+/* Dentro de una pestaña la separación la da el gap: el margen propio de la
+   franja la duplicaba. */
+.trabajos-pestana > .ledger-strip { margin-bottom: 0; }
 
 /* Las pestañas son enlaces (#/planes-socio/…): se ven como .segmento. */
 a.segmento {

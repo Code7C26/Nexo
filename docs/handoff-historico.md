@@ -8592,3 +8592,16 @@ desapercibidos (`dominios/configuracion.js`):
 - Verificación: recorrido en Chrome con un negocio de servicios ("agregar
   servicio", "Buscar servicio…", columna "Servicios") y uno de comercio (los
   mismos con "producto"), sin errores; lint y `npm test` 62 de 62.
+
+## 87. Pasada en tema claro de las pantallas nuevas, 20 de octubre de 2026
+
+Regla de diseño: toda pantalla se revisa en claro, en oscuro y a 390 px. Se
+recorrieron en claro el Resumen con la guía, Trabajos (lista, semana y mes),
+Abonos (lista y ficha con cobro) y la semana en el celular. Arreglado:
+- **Los chips del mes salían grises** (también en oscuro): la regla de
+  `.agenda-chip` iba después de los colores de estado y se los pisaba. Los
+  estados van ahora con `:is(.agenda-trabajo, .agenda-chip)` delante.
+- **El panel de cobro del abono quedaba pegado al de arriba** con la franja
+  oculta: `.ledger-strip[hidden] + .panel` recupera el margen.
+- **Doble separación entre la franja y la lista de Trabajos** (gap de la
+  pestaña más el margen de la franja).
