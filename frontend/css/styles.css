@@ -4152,6 +4152,19 @@ input.precio-sin-configurar::placeholder {
 }
 
 .config-item.is-active .config-item-icono { color: var(--accent); }
+
+/* Una página con cambios sin guardar (dominios/configuracion.js, hist. §85):
+   un punto naranja al final del ítem, en lugar de la flecha. */
+.config-item.sin-guardar::after {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  background: var(--naranja);
+  border-radius: var(--r-full);
+}
+.config-item.sin-guardar .config-item-chevron { display: none; }
 .config-item-icono .ico { width: 16px; height: 16px; }
 
 .config-item-texto {

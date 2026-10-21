@@ -8558,3 +8558,20 @@ sigue siendo desde la cuota.
   negocio, 400 con una cuenta ajena, deuda en 0 después y 400 si no hay nada
   que cobrar); `npm test` 62 de 62; recorrido en Chrome (panel, confirmación,
   cuota pagada y deuda en $0), sin errores de consola.
+
+## 85. Cambios sin guardar en Configuración, 20 de octubre de 2026
+
+**Pendiente de §73** ("avisar al salir de una página con cambios sin guardar").
+Los cambios ya se conservaban al cambiar de página; ahora no pasan
+desapercibidos (`dominios/configuracion.js`):
+- la página con cambios lleva un punto naranja en el menú de Configuración (en
+  lugar de la flecha), que se va al guardar o al deshacer el cambio;
+- salir de Configuración por el menú principal no se frena, pero avisa en qué
+  páginas quedaron cambios y que siguen ahí al volver;
+- cerrar o recargar la pestaña pide confirmación al navegador
+  (`beforeunload`).
+- Cubre las tres páginas con formulario (negocio, tipo y secciones,
+  comprobantes); los catálogos guardan al momento.
+- Verificación: recorrido en Chrome (punto, aviso al salir, el dato que sigue
+  al volver y el punto que se va al guardar), sin errores de consola; lint y
+  `npm test` 62 de 62.

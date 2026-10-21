@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §84);
+    siguiente número (hoy el último es §85);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -32,6 +32,7 @@ abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 - Guía de primeros pasos en el Resumen (hist. §81): hecha y commiteada.
 - La ficha del cliente muestra sus trabajos y abonos (hist. §83).
 - Un abono cobra todas sus cuotas pendientes de una vez (hist. §84).
+- Configuración marca y avisa los cambios sin guardar (hist. §85).
 - Agenda de trabajos, semana y mes (hist. §80): hecha y commiteada, pedida por
   el usuario el 20 de octubre. Pestañas en Trabajos; sin cambio de esquema.
 - Abonos mensuales (hist. §79): hechos y commiteados. Módulo `abonos`, con las
@@ -666,9 +667,10 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Para después:
      - las cuentas de tesorería como página (hoy en Caja, con sus saldos);
      - el logo del negocio;
-     - avisar al salir de una página con cambios sin guardar (hoy se
-       conservan, pero no se avisa);
-     - una guía de primeros pasos en el Resumen para una cuenta nueva.
+     - ~~avisar al salir de una página con cambios sin guardar~~ hecho
+       (hist. §85);
+     - ~~una guía de primeros pasos en el Resumen para una cuenta nueva~~
+       hecha (hist. §81).
 
 5. ~~Socios, cuotas e ingreso~~ **hecha** (hist. §74, ampliada en §75 con
    duraciones, varios planes y descuentos). Falta que el usuario vea §75. Lo que quedó para después está en hist. §75. Lo que sigue

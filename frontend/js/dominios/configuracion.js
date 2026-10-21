@@ -55,6 +55,7 @@ const botonGuardar = (form) => form.querySelector('button[type="submit"]');
 function marcarSinCambios(form) {
   form.dataset.inicial = JSON.stringify(valores(form));
   botonGuardar(form).disabled = true;
+  marcarEnElMenu(form);
 }
 
 function cambios(form) {
@@ -67,7 +68,47 @@ function cambios(form) {
 const tieneCambios = (form) => form.dataset.inicial !== undefined && Object.keys(cambios(form)).length > 0;
 const actualizarBoton = (form) => {
   botonGuardar(form).disabled = !tieneCambios(form);
+  marcarEnElMenu(form);
 };
+
+/* ---------- Cambios sin guardar (hist. §85) ---------- */
+
+// Lo que no se guardó se conserva al cambiar de página (hist. §73), pero no
+// tiene que pasar desapercibido: la página lleva un punto en el menú, salir
+// de Configuración por el menú avisa, y cerrar o recargar la pestaña pregunta.
+const formularios = [formNegocio, formTipo, formComprobantes];
+const seccionDe = (form) => form.closest(".config-pagina")?.dataset.seccion;
+
+function marcarEnElMenu(form) {
+  const item = config.querySelector(`.config-item[data-seccion="${seccionDe(form)}"]`);
+  if (!item) return;
+  const sinGuardar = tieneCambios(form);
+  item.classList.toggle("sin-guardar", sinGuardar);
+  if (sinGuardar) item.setAttribute("title", "Tiene cambios sin guardar");
+  else item.removeAttribute("title");
+}
+
+const paginasSinGuardar = () =>
+  formularios
+    .filter(tieneCambios)
+    .map((form) => config.querySelector(`.config-item[data-seccion="${seccionDe(form)}"] .config-item-nombre`)?.textContent ?? "");
+
+window.addEventListener("beforeunload", (e) => {
+  if (paginasSinGuardar().length) e.preventDefault();
+});
+
+// Salir por el menú no se frena (los cambios siguen ahí al volver), pero se
+// avisa adónde quedaron.
+document.addEventListener(
+  "click",
+  (e) => {
+    if (!e.target.closest(".nav-item") || config.closest(".view").hidden) return;
+    const pendientes = paginasSinGuardar();
+    if (pendientes.length === 0) return;
+    avisar(`Quedaron cambios sin guardar en ${pendientes.join(" y ")}. Siguen ahí cuando vuelvas a Configuración.`, "atencion");
+  },
+  true
+);
 
 for (const form of [formNegocio, formTipo, formComprobantes]) {
   form.addEventListener("input", () => actualizarBoton(form));
