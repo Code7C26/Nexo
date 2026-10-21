@@ -14,6 +14,7 @@
 // nada. Devuelve una propuesta con nombres (no IDs) que server.js todavía
 // tiene que resolver y validar antes de poder ejecutarse.
 import { GoogleGenAI, FunctionCallingConfigMode } from '@google/genai';
+import { fechaDeHoy } from './fecha.js';
 
 export class InterpreteError extends Error {
   constructor(message, status = 503) {
@@ -213,7 +214,8 @@ async function interpretarConGemini(texto, contexto) {
     );
   }
   const client = new GoogleGenAI({ apiKey });
-  const hoy = new Date().toISOString().slice(0, 10);
+  // El día del negocio (fecha.js): en UTC, después de las 21 h "hoy" era mañana.
+  const hoy = fechaDeHoy();
 
   let response;
   try {

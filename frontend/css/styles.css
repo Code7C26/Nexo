@@ -5234,6 +5234,111 @@ input.precio-sin-configurar::placeholder {
   max-width: 420px;
 }
 
+/* Guía de primeros pasos del Resumen (dominios/primeros-pasos.js, hist. §81):
+   el paso que sigue resaltado y los hechos tildados y apagados. */
+.primeros-pasos[hidden] { display: none; }
+
+.primeros-pasos-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.primeros-pasos-head h2 { margin: 0; }
+
+.primeros-pasos-sub {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.primeros-pasos-barra {
+  height: 6px;
+  margin: var(--sp-4) 0;
+  overflow: hidden;
+  background: var(--surface-sunk);
+  border-radius: var(--r-full);
+}
+
+.primeros-pasos-barra span {
+  display: block;
+  height: 100%;
+  background: var(--accent-ok);
+  border-radius: inherit;
+  transition: width var(--dur-3) var(--ease-out);
+}
+
+.primeros-pasos-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.primeros-paso {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.primeros-paso.es-siguiente {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--accent-bg);
+}
+
+.primeros-paso-marca {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink-muted);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+}
+
+.primeros-paso.es-hecho .primeros-paso-marca {
+  color: var(--accent-ok);
+  background: var(--accent-ok-bg);
+  border-color: transparent;
+}
+
+.primeros-paso-marca .ico { width: 16px; height: 16px; }
+
+.primeros-paso-texto {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.primeros-paso-texto span {
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.primeros-paso.es-hecho .primeros-paso-texto strong {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+
+.primeros-paso .btn { flex: none; }
+
+@media (max-width: 860px) {
+  .primeros-pasos-head { flex-direction: column; }
+  .primeros-paso { flex-wrap: wrap; }
+  .primeros-paso .btn { width: 100%; justify-content: center; min-height: 44px; }
+}
+
 /* Agenda de trabajos (dominios/trabajos.js, hist. §80): la semana con sus
    horas y el mes. Cada trabajo lleva el color de su estado, como en la lista:
    naranja pendiente, azul en curso, verde terminado; uno atrasado, borde rojo. */

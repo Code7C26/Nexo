@@ -182,6 +182,7 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/usuarios/:id': 'admin',
   'POST /api/usuarios/:id/resetear-password': 'admin',
   'GET /api/negocio': 'ambos',
+  'GET /api/negocio/primeros-pasos': 'admin',
   'PUT /api/negocio': 'admin',
   // Varios negocios por cuenta (hist. §77): ver los suyos y cambiar es de los
   // dos roles; crear otro negocio, solo del admin.

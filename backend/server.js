@@ -4,10 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
+import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// "Hoy" es el día en la zona del negocio (fecha.js, hist. §81), nunca el
+// date('now') de SQLite, que es UTC. Todo INSERT pasa la fecha explícita (el
+// DEFAULT (date('now')) de las tablas ya no se usa): desde JS con fechaDeHoy(),
+// y dentro del SQL con HOY_SQL, una función registrada en la conexión que
+// llama a la misma fechaDeHoy(), así las dos no pueden dar distinto.
+db.function('fecha_de_hoy', { deterministic: false }, () => fechaDeHoy());
+const HOY_SQL = 'fecha_de_hoy()';
 
 // Cabeceras de seguridad básicas (CLAUDE.md §35). No se agrega CSP todavía:
 // index.html tiene un script inline en el <head> y carga fuentes de Google, así
@@ -1203,8 +1212,8 @@ app.post('/api/facturas', (req, res) => {
     const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id)
-         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`
+        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id, fecha)
+         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ${HOY_SQL})`
       )
       .run(
         clienteRow.id,
@@ -2892,8 +2901,8 @@ function registrarMovimientoStock({
     .prepare(
       `INSERT INTO movimientos_stock
          (producto_id, variante_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
-          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota, organizacion_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota, organizacion_id, fecha)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
     )
     .run(
       producto_id,
@@ -3185,7 +3194,7 @@ app.post('/api/transferencias', (req, res) => {
   withTransaction(() => {
     ({ lastInsertRowid } = db
       .prepare(
-        'INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota, organizacion_id) VALUES (?, ?, ?, ?)'
+        `INSERT INTO transferencias (deposito_origen_id, deposito_destino_id, nota, organizacion_id, fecha) VALUES (?, ?, ?, ?, ${HOY_SQL})`
       )
       .run(Number(deposito_origen_id), Number(deposito_destino_id), nota ?? null, req.usuario.organizacion_id));
     registrarMovimientoStock({
@@ -3569,10 +3578,9 @@ function crearVenta({
   const depositoResuelto = depositoId ?? depositoPredeterminadoId(organizacion_id);
 
   // El vencimiento se calcula sobre la fecha real de la venta, así que hay
-  // que resolverla antes del INSERT: sin fecha explícita la columna usaría
-  // el DEFAULT date('now') de la tabla, y el vencimiento tiene que salir de
-  // esa misma fecha y no de otra.
-  const fechaVenta = fecha ?? db.prepare("SELECT date('now') AS hoy").get().hoy;
+  // que resolverla antes del INSERT: el vencimiento tiene que salir de esa
+  // misma fecha y no de otra.
+  const fechaVenta = fecha ?? fechaDeHoy();
   const venc = calcularVencimiento(fechaVenta, condicion_pago, fecha_vencimiento);
 
   const { lastInsertRowid: nuevaVentaId } = db
@@ -3624,7 +3632,7 @@ function crearVenta({
   // hace falta un flag "es a crédito": una venta cobrada al instante
   // simplemente tiene su cobro registrado enseguida.
   db.prepare(
-    "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'venta', ?, ?)"
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'venta', ?, ?, ${HOY_SQL})`
   ).run(clienteRow.id, total, nuevaVentaId);
 
   return nuevaVentaId;
@@ -3927,7 +3935,7 @@ app.put('/api/ventas/:id', (req, res) => {
     // proveedores distintos). Cuando el cliente no cambia, los dos caen
     // sobre la misma entidad y la suma neta es idéntica a un solo ajuste.
     const insertAjusteCC = db.prepare(
-      "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     );
     insertAjusteCC.run(venta.cliente_id, -totalViejo, ventaId);
     insertAjusteCC.run(clienteRow.id, total, ventaId);
@@ -4028,15 +4036,15 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
 // cuenta. Asume que se la llama DENTRO de una transacción.
 function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId) {
   const { lastInsertRowid: nuevoCobroId } = db
-    .prepare('INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota) VALUES (?, ?, ?, ?)')
+    .prepare(`INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, fecha) VALUES (?, ?, ?, ?, ${HOY_SQL})`)
     .run(ventaId, importe, cuentaTesoreriaId, nota ?? null);
 
   db.prepare(
-    "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen, organizacion_id) VALUES (?, 'ingreso', ?, ?, 'cobro', ?)"
+    `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen, organizacion_id, fecha) VALUES (?, 'ingreso', ?, ?, 'cobro', ?, ${HOY_SQL})`
   ).run(cuentaTesoreriaId, importe, nuevoCobroId, organizacionId);
 
   db.prepare(
-    "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id) VALUES (?, 'cobro', ?, ?, ?)"
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id, fecha) VALUES (?, 'cobro', ?, ?, ?, ${HOY_SQL})`
   ).run(clienteId, -importe, ventaId, nuevoCobroId);
 
   return nuevoCobroId;
@@ -4076,8 +4084,8 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
       const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id)
-           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
         )
         .run(
           venta.cliente_id,
@@ -4177,7 +4185,7 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
     }
 
     db.prepare(
-      "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(venta.cliente_id, -total, ventaId);
 
     auditar(req, {
@@ -4255,7 +4263,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
     }
 
     db.prepare(
-      "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(venta.cliente_id, total, ventaId);
 
     auditar(req, {
@@ -4310,8 +4318,6 @@ function estadoEfectivoPresupuesto(presupuesto, hoy) {
   }
   return presupuesto.estado;
 }
-
-const fechaDeHoy = () => new Date().toLocaleDateString('sv-SE');
 
 function decorarPresupuesto(p, hoy) {
   return { ...p, estado_efectivo: estadoEfectivoPresupuesto(p, hoy) };
@@ -4467,10 +4473,8 @@ app.post('/api/presupuestos', (req, res) => {
       listaPrecioId,
       req.usuario.organizacion_id
     ];
-    if (fecha) {
-      columnas.push('fecha');
-      valores.push(fecha);
-    }
+    columnas.push('fecha');
+      valores.push(fecha || fechaDeHoy());
     const { lastInsertRowid: nuevoId } = db
       .prepare(
         `INSERT INTO presupuestos (${columnas.join(', ')}) VALUES (${columnas
@@ -5191,7 +5195,7 @@ function aplicarDevolucion(devolucionId) {
 
   // Crédito a favor del cliente: baja la deuda, igual signo que un cobro.
   db.prepare(
-    "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
   ).run(devolucion.cliente_id, -total, devolucion.venta_id);
 
   if (devolucion.cuenta_tesoreria_id) {
@@ -5200,11 +5204,11 @@ function aplicarDevolucion(devolucionId) {
     // -total de arriba) quedaría un saldo a favor fantasma en la cuenta
     // corriente del cliente ADEMÁS de la plata que ya salió de la caja.
     db.prepare(
-      "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(devolucion.cliente_id, total, devolucion.venta_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id) VALUES (?, 'egreso', ?, 'devolucion', ?, ?)"
+      `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id, fecha) VALUES (?, 'egreso', ?, 'devolucion', ?, ?, ${HOY_SQL})`
     ).run(devolucion.cuenta_tesoreria_id, total, devolucionId, devolucion.organizacion_id);
   }
 }
@@ -5248,18 +5252,18 @@ function revertirDevolucion(devolucionId) {
 
   // Vuelve a subir la deuda del cliente (se había bajado al aplicar).
   db.prepare(
-    "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
   ).run(devolucion.cliente_id, total, devolucion.venta_id);
 
   if (devolucion.cuenta_tesoreria_id) {
     // Espejo del ajuste de reintegro en aplicarDevolucion: vuelve a bajar
     // la cuenta corriente para deshacer la reconciliación de arriba.
     db.prepare(
-      "INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(devolucion.cliente_id, -total, devolucion.venta_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id) VALUES (?, 'ingreso', ?, 'devolucion', ?, ?)"
+      `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_id, organizacion_id, fecha) VALUES (?, 'ingreso', ?, 'devolucion', ?, ?, ${HOY_SQL})`
     ).run(devolucion.cuenta_tesoreria_id, total, devolucionId, devolucion.organizacion_id);
   }
 }
@@ -5326,7 +5330,7 @@ app.post('/api/devoluciones', (req, res) => {
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
       .prepare(
-        'INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+        `INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id, fecha) VALUES (?, ?, ?, ?, ?, ${HOY_SQL})`
       )
       .run(ventaId, cuenta_tesoreria_id || null, motivo?.trim() || null, depositoDevolucion, req.usuario.organizacion_id);
 
@@ -5403,8 +5407,8 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
       const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, 'nota_credito', letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id)
-           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?)`
+          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?, ${HOY_SQL})`
         )
         .run(
           devolucion.cliente_id,
@@ -5702,7 +5706,7 @@ function crearCompra({
 
   // Igual que en crearVenta: la fecha se resuelve antes del INSERT porque el
   // vencimiento tiene que calcularse sobre la fecha real de esta compra.
-  const fechaCompra = fecha ?? db.prepare("SELECT date('now') AS hoy").get().hoy;
+  const fechaCompra = fecha ?? fechaDeHoy();
   const venc = calcularVencimiento(fechaCompra, condicion_pago, fecha_vencimiento);
 
   const { lastInsertRowid: nuevaCompraId } = db
@@ -5967,7 +5971,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
         )
         .get(compraId);
       db.prepare(
-        "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+        `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
       ).run(compra.proveedor_id, -(subtotalViejo + compra.costo_envio), compraId);
     }
 
@@ -6048,7 +6052,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
         )
         .get(compraId);
       db.prepare(
-        "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'compra', ?, ?)"
+        `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'compra', ?, ?, ${HOY_SQL})`
       ).run(proveedorRow.id, subtotalNuevo + costoEnvio, compraId);
     }
 
@@ -6114,7 +6118,7 @@ function confirmarCompra(compraId) {
     .get(compraId);
 
   db.prepare(
-    "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'compra', ?, ?)"
+    `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'compra', ?, ?, ${HOY_SQL})`
   ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
 }
 
@@ -6385,7 +6389,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
     if (compra.estado === 'activa') {
       const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
       db.prepare(
-        "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+        `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
       ).run(compra.proveedor_id, -(subtotal + compra.costo_envio), compraId);
     }
 
@@ -6449,7 +6453,7 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
       )
       .get(compraId);
     db.prepare(
-      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
 
     if (compra.estado_envio === 'recibido') {
@@ -6632,15 +6636,15 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
 
   const pagoId = withTransaction(() => {
     const { lastInsertRowid: nuevoPagoId } = db
-      .prepare('INSERT INTO pagos (compra_id, importe, cuenta_tesoreria_id, nota) VALUES (?, ?, ?, ?)')
+      .prepare(`INSERT INTO pagos (compra_id, importe, cuenta_tesoreria_id, nota, fecha) VALUES (?, ?, ?, ?, ${HOY_SQL})`)
       .run(compraId, importe, cuenta_tesoreria_id, nota ?? null);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, pago_id, origen, organizacion_id) VALUES (?, 'egreso', ?, ?, 'pago', ?)"
+      `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, pago_id, origen, organizacion_id, fecha) VALUES (?, 'egreso', ?, ?, 'pago', ?, ${HOY_SQL})`
     ).run(cuenta_tesoreria_id, importe, nuevoPagoId, req.usuario.organizacion_id);
 
     db.prepare(
-      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, pago_id) VALUES (?, 'pago', ?, ?, ?)"
+      `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, pago_id, fecha) VALUES (?, 'pago', ?, ?, ?, ${HOY_SQL})`
     ).run(compra.proveedor_id, -importe, compraId, nuevoPagoId);
 
     auditar(req, {
@@ -6817,7 +6821,7 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
 
   // Crédito a favor con el proveedor: baja la deuda, igual signo que un pago.
   db.prepare(
-    "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+    `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
   ).run(devolucion.proveedor_id, -total, devolucion.compra_id);
 
   if (devolucion.cuenta_tesoreria_id) {
@@ -6827,11 +6831,11 @@ function aplicarDevolucionProveedor(devolucionProveedorId) {
     // que entró a caja quedaría un saldo a favor fantasma en la cuenta
     // corriente del proveedor.
     db.prepare(
-      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(devolucion.proveedor_id, total, devolucion.compra_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id) VALUES (?, 'ingreso', ?, 'devolucion_proveedor', ?, ?)"
+      `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id, fecha) VALUES (?, 'ingreso', ?, 'devolucion_proveedor', ?, ?, ${HOY_SQL})`
     ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId, devolucion.organizacion_id);
   }
 }
@@ -6883,18 +6887,18 @@ function revertirDevolucionProveedor(devolucionProveedorId) {
 
   // Vuelve a subir la deuda del proveedor (se había bajado al aplicar).
   db.prepare(
-    "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+    `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
   ).run(devolucion.proveedor_id, total, devolucion.compra_id);
 
   if (devolucion.cuenta_tesoreria_id) {
     // Espejo del ajuste de reintegro en aplicarDevolucionProveedor: vuelve
     // a bajar la cuenta corriente para deshacer la reconciliación de arriba.
     db.prepare(
-      "INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id) VALUES (?, 'ajuste', ?, ?)"
+      `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
     ).run(devolucion.proveedor_id, -total, devolucion.compra_id);
 
     db.prepare(
-      "INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id) VALUES (?, 'egreso', ?, 'devolucion_proveedor', ?, ?)"
+      `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, devolucion_proveedor_id, organizacion_id, fecha) VALUES (?, 'egreso', ?, 'devolucion_proveedor', ?, ?, ${HOY_SQL})`
     ).run(devolucion.cuenta_tesoreria_id, total, devolucionProveedorId, devolucion.organizacion_id);
   }
 }
@@ -6979,7 +6983,7 @@ app.post('/api/devoluciones-proveedor', soloAdmin, (req, res) => {
   const devolucionId = withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
       .prepare(
-        'INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+        `INSERT INTO devoluciones_proveedor (compra_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id, fecha) VALUES (?, ?, ?, ?, ?, ${HOY_SQL})`
       )
       .run(
         compraId,
@@ -7340,10 +7344,8 @@ app.post('/api/tesoreria/movimientos', soloAdmin, (req, res) => {
 
   const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto', 'organizacion_id'];
   const valores = [cuenta.id, tipo, monto, 'manual', concepto?.trim() || null, req.usuario.organizacion_id];
-  if (fecha) {
-    columnas.push('fecha');
-    valores.push(fecha);
-  }
+  columnas.push('fecha');
+    valores.push(fecha || fechaDeHoy());
 
   let lastInsertRowid;
   withTransaction(() => {
@@ -7390,10 +7392,8 @@ app.post('/api/tesoreria/transferencias', soloAdmin, (req, res) => {
     const insertMovimiento = (cuentaId, tipo, grupo) => {
       const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'concepto', 'organizacion_id'];
       const valores = [cuentaId, tipo, monto, 'transferencia', concepto?.trim() || null, req.usuario.organizacion_id];
-      if (fecha) {
-        columnas.push('fecha');
-        valores.push(fecha);
-      }
+      columnas.push('fecha');
+        valores.push(fecha || fechaDeHoy());
       if (grupo !== null) {
         columnas.push('transferencia_id');
         valores.push(grupo);
@@ -7641,10 +7641,8 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
     comprobante?.trim() || null,
     organizacionId
   ];
-  if (fecha) {
-    columnas.push('fecha');
-    valores.push(fecha);
-  }
+  columnas.push('fecha');
+    valores.push(fecha || fechaDeHoy());
   const { lastInsertRowid: nuevoGastoId } = db
     .prepare(`INSERT INTO gastos (${columnas.join(', ')}) VALUES (${columnas.map(() => '?').join(', ')})`)
     .run(...valores);
@@ -7656,10 +7654,8 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
 function insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion, organizacionId) {
   const columnas = ['cuenta_tesoreria_id', 'tipo', 'importe', 'origen', 'gasto_id', 'concepto', 'organizacion_id'];
   const valores = [cuentaId, 'egreso', monto, 'gasto', gastoId, descripcion?.trim() || null, organizacionId];
-  if (fecha) {
-    columnas.push('fecha');
-    valores.push(fecha);
-  }
+  columnas.push('fecha');
+    valores.push(fecha || fechaDeHoy());
   db.prepare(
     `INSERT INTO movimientos_tesoreria (${columnas.join(', ')}) VALUES (${columnas
       .map(() => '?')
@@ -8060,10 +8056,6 @@ const SQL_LIMITES_OPERACIONES = db.prepare(
      UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa' AND organizacion_id = ?
    )`
 );
-// "Hoy" se pide a SQLite (no a `new Date()` de JS) para quedar consistente
-// con el resto del esquema, que ya usa date('now') como default de fecha
-// en ventas/compras/gastos/etc.
-const SQL_HOY = db.prepare("SELECT date('now') AS hoy");
 
 const FECHA_VALIDA = /^\d{4}-\d{2}-\d{2}$/;
 function validarFecha(valor) {
@@ -8279,7 +8271,7 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
     organizacionId,
     organizacionId
   );
-  const hoy = SQL_HOY.get().hoy;
+  const hoy = fechaDeHoy();
 
   // Cuando falta un extremo (el caso por defecto: el filtro del Resumen
   // arranca sin fecha), se acota contra la primera/última operación
@@ -8505,7 +8497,7 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     organizacionId,
     organizacionId
   );
-  const hoy = SQL_HOY.get().hoy;
+  const hoy = fechaDeHoy();
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
@@ -8766,7 +8758,7 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
     organizacionId,
     organizacionId
   );
-  const hoy = SQL_HOY.get().hoy;
+  const hoy = fechaDeHoy();
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
@@ -8874,7 +8866,7 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
     organizacionId,
     organizacionId
   );
-  const hoy = SQL_HOY.get().hoy;
+  const hoy = fechaDeHoy();
   const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
   const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
   const acotado = Boolean(desdeParam && hastaParam);
@@ -10004,6 +9996,30 @@ app.get('/api/negocio', (req, res) => {
   res.json({ ...negocio, ...perfilDeEmpresa(req.usuario.organizacion_id), perfiles: catalogoTiposNegocio() });
 });
 
+// Cuánto tiene cargado el negocio, para la guía de primeros pasos del Resumen
+// (hist. §81): el frontend arma los pasos según los módulos y los da por hechos
+// con estos conteos. Es admin, como el Resumen. Los servicios de los planes de
+// socios no cuentan como catálogo (los crea el plan), ni "Consumidor final"
+// como cliente (lo crea el punto de venta).
+app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
+  const id = req.usuario.organizacion_id;
+  const contar = (sql, ...extra) => db.prepare(sql).get(id, ...extra).n;
+  const negocio = db.prepare('SELECT documento, direccion, telefono FROM organizaciones WHERE id = ?').get(id);
+  res.json({
+    datos_negocio: Boolean(negocio.documento || negocio.direccion || negocio.telefono),
+    catalogo: contar(
+      'SELECT COUNT(*) AS n FROM productos WHERE organizacion_id = ? AND activo = 1 AND id NOT IN (SELECT producto_id FROM planes_socio)'
+    ),
+    clientes: contar('SELECT COUNT(*) AS n FROM clientes WHERE organizacion_id = ? AND nombre <> ?', CONSUMIDOR_FINAL),
+    ventas: contar('SELECT COUNT(*) AS n FROM ventas WHERE organizacion_id = ?'),
+    usuarios: contar('SELECT COUNT(*) AS n FROM usuario_organizaciones WHERE organizacion_id = ? AND activo = 1'),
+    planes: contar('SELECT COUNT(*) AS n FROM planes_socio WHERE organizacion_id = ?'),
+    socios: contar('SELECT COUNT(*) AS n FROM socios WHERE organizacion_id = ?'),
+    trabajos: contar('SELECT COUNT(*) AS n FROM trabajos WHERE organizacion_id = ?'),
+    abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?')
+  });
+});
+
 app.put('/api/negocio', soloAdmin, (req, res) => {
   // La empresa sale de la sesión: con organizacionUnica() un admin de la
   // empresa B leía y sobrescribía el membrete de comprobantes de la empresa A
@@ -10200,8 +10216,8 @@ const SELECT_TURNO = `
 function ajustarArqueo(cuentaId, diferencia, concepto, organizacionId) {
   if (Math.abs(diferencia) < 0.005) return;
   db.prepare(
-    `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, concepto, organizacion_id)
-     VALUES (?, ?, ?, 'manual', ?, ?)`
+    `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, origen, concepto, organizacion_id, fecha)
+     VALUES (?, ?, ?, 'manual', ?, ?, ${HOY_SQL})`
   ).run(cuentaId, diferencia > 0 ? 'ingreso' : 'egreso', redondear2(Math.abs(diferencia)), concepto, organizacionId);
 }
 
@@ -11327,7 +11343,7 @@ app.get('/api/socios', (req, res) => {
 // Quién entró hoy (el día local del servidor, que es el de la recepción).
 // Antes que /api/socios/:id, que si no tomaría "ingresos" como un id.
 app.get('/api/socios/ingresos', (req, res) => {
-  const inicioDelDia = new Date(new Date().setHours(0, 0, 0, 0)).toISOString().slice(0, 19).replace('T', ' ');
+  const inicioDelDia = inicioDeHoyUTC();
   const ingresos = db
     .prepare(
       `SELECT ingresos_socio.id, ingresos_socio.socio_id, ingresos_socio.fecha, ingresos_socio.al_dia,

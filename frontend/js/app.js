@@ -47,6 +47,7 @@ import "./dominios/pos.js";
 import "./dominios/socios.js";
 import "./dominios/trabajos.js";
 import "./dominios/abonos.js";
+import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
 
 let facturas = [];

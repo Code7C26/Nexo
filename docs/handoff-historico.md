@@ -8459,3 +8459,71 @@ trabajos" vuelve a la agenda.
 - Arrastrar un bloque para cambiarle el día o la hora.
 - Vista de día con columnas por responsable.
 - Turnos que reserva el cliente (el módulo que espera la barbería).
+
+## 81. Guía de primeros pasos en el Resumen, 20 de octubre de 2026
+
+**Pedido:** pendiente de §73 ("una guía de primeros pasos en el Resumen para
+una cuenta nueva"), dentro de "seguí con cosas más chicas" del usuario.
+
+- `GET /api/negocio/primeros-pasos` (admin, como el Resumen) devuelve cuánto
+  hay cargado: datos del negocio, catálogo (sin los servicios de los planes de
+  socios), clientes (sin "Consumidor final"), ventas, usuarios activos, planes,
+  socios, trabajos y abonos.
+- `frontend/js/dominios/primeros-pasos.js` arma los pasos según los módulos:
+  datos del negocio, primer producto o servicio (con `termino()`), planes y
+  primer socio si hay socios, un cliente, primer trabajo y un abono si están
+  esos módulos, la primera venta (en el mostrador si hay punto de venta) y
+  sumar a alguien del equipo.
+  - Cada paso se da por hecho con los conteos, no con un tilde a mano.
+  - El que sigue va resaltado con "Empezar"; los demás, con "Ir". Llevan a la
+    vista y abren su alta, o a la página de Configuración.
+  - Barra de progreso; "Ocultar la guía" queda guardado por negocio en el
+    navegador (`nexo.primerosPasos.oculto.<org>`), y se oculta sola al
+    completarse.
+- Verificación: un caso de API (cuenta lo de A sin los planes, B no ve lo de A,
+  empleado 403) y un recorrido en Chrome con una cuenta nueva de servicios
+  (siete pasos, "Empezar" a Configuración, un paso que queda hecho al cargar un
+  servicio, celular y ocultar después de recargar), sin errores de consola.
+
+## 82. "Hoy" es el día del negocio, no el de UTC, 20 de octubre de 2026
+
+**Hallazgo** (al probar §81 a las 21 h): el Resumen decía "Del 21/10" con la
+barra en "Martes, 20 de octubre". El servidor tomaba "hoy" con `date('now')` de
+SQLite, que es UTC: **desde las 21 h de la Argentina, toda venta, cobro, pago,
+gasto, movimiento de caja o de cuenta corriente quedaba con la fecha del día
+siguiente**, y el asistente le decía a Gemini que hoy era mañana.
+
+**Arreglo** (sin cambio de esquema):
+- `backend/fecha.js` (nuevo): `fechaDeHoy()` en la zona del negocio con Intl,
+  `America/Argentina/Buenos_Aires` por defecto o `NEXO_ZONA_HORARIA` (en
+  `.env.example`). No depende de la hora del servidor, así un hosting en UTC
+  fecha bien; una zona inválida corta el arranque. `inicioDeHoyUTC()` para
+  comparar contra columnas con hora en UTC (los ingresos del día de socios).
+  - Se descartó usar la variable `TZ`: Node en Windows la ignora.
+  - Lo usa también `interprete.js`, que sigue sin importar la base.
+- `server.js`: los 35 INSERTs que dependían del `DEFAULT (date('now'))` de 14
+  tablas pasan la fecha explícita con `HOY_SQL` (`fecha_de_hoy()`, una función
+  registrada en la conexión que llama a `fechaDeHoy()`), y los 5 que arman sus
+  columnas a mano ponen siempre `fecha || fechaDeHoy()`. Se fueron `SQL_HOY` y
+  los `SELECT date('now')`. El `DEFAULT` de las tablas queda (cambiarlo pide
+  reconstruir 14 tablas), pero ya nada lo usa.
+  - Las columnas con fecha y hora (`datetime('now')`: auditoría, ingresos,
+    sesiones) siguen en UTC, que es correcto: el frontend las muestra en hora
+    local.
+
+**Verificación.**
+- `backend/test/fecha.test.js` (nuevo): un servidor en una zona que ahora
+  mismo está en otro día que UTC (Pago Pago o Kiritimati según la hora) fecha
+  la venta, el cobro y el movimiento de caja con el día de esa zona; una zona
+  inválida no arranca. **Control:** contra HEAD (worktree) fallan los dos.
+- A mano, a las 21:06 de la Argentina (00:06 UTC del 21): venta, cobro y
+  movimientos con fecha 20.
+- `npm test` 62 de 62, `npm run lint`, `verificar-migracion` 24 de 24 (md5 de
+  la base real igual) y `npm run regresion` con solo la ruta nueva de §81.
+
+### Para después
+
+- **Datos que ya quedaron mal:** lo cargado antes de este arreglo entre las 21
+  y las 24 h tiene la fecha del día siguiente. Se podría corregir con la hora
+  UTC de su fila de auditoría, pero cambia fechas de operaciones reales: lo
+  decide el usuario.

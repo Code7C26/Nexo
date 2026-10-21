@@ -902,6 +902,21 @@ test('abonos: la cuota del período, alta hacia atrás, precio desde la siguient
   assert.ok(!(await adminB.get('/api/abonos')).json.some((a) => a.id === abono.json.id));
 });
 
+test('primeros pasos: cuenta lo cargado del negocio, sin planes de socios, y es de admin (hist. §81)', async () => {
+  const r = await adminA.get('/api/negocio/primeros-pasos');
+  assert.equal(r.status, 200, r.texto);
+  const productos = (await adminA.get('/api/productos')).json.filter((p) => p.activo);
+  const planes = new Set((await adminA.get('/api/planes-socio')).json.map((p) => p.producto_id));
+  assert.ok(planes.size > 0, 'el caso de socios dejó planes');
+  assert.equal(r.json.catalogo, productos.filter((p) => !planes.has(p.id)).length);
+  assert.ok(r.json.ventas > 0 && r.json.clientes > 0 && r.json.usuarios >= 2 && r.json.trabajos > 0 && r.json.abonos > 0);
+  // Otro negocio cuenta lo suyo, no lo de A.
+  const deB = (await adminB.get('/api/negocio/primeros-pasos')).json;
+  assert.equal(deB.trabajos, 0);
+  assert.equal(deB.abonos, 0);
+  assert.equal((await empleadoA.get('/api/negocio/primeros-pasos')).status, 403);
+});
+
 test('muchos logins fallidos con usuarios distintos bloquean la IP (A6)', async () => {
   const anonimo = crearCliente(servidor.url);
   let ultimo;

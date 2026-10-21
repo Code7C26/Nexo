@@ -67,8 +67,9 @@ export function crearCliente(url) {
 // Sin argumentos: este backend contra una base nueva en una carpeta temporal.
 // `backendDir` levanta otro árbol (un worktree de HEAD, en regresion-head);
 // `dbPath` usa una base que ya existe. Esa base no se borra al cerrar: solo
-// la carpeta temporal propia del arnés.
-export async function levantarServidor({ backendDir = backendPropio, dbPath } = {}) {
+// la carpeta temporal propia del arnés. `env` suma variables (por ejemplo,
+// NEXO_ZONA_HORARIA).
+export async function levantarServidor({ backendDir = backendPropio, dbPath, env = {} } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'nexo-api-'));
   const puerto = await puertoLibre();
   const url = `http://127.0.0.1:${puerto}`;
@@ -80,7 +81,8 @@ export async function levantarServidor({ backendDir = backendPropio, dbPath } = 
       NEXO_DB_PATH: dbPath ?? path.join(dir, 'nexo.db'),
       NEXO_BACKUP: 'off',
       NEXO_INTERPRETE: 'stub',
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      ...env
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });

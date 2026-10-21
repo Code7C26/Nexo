@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §80);
+    siguiente número (hoy el último es §82);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -25,6 +25,11 @@
 hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
 abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 20 de octubre.
+- **Arreglado un error de fechas** (hist. §82): desde las 21 h, toda operación
+  quedaba con la fecha del día siguiente (el servidor usaba UTC). Ahora "hoy"
+  es el día de la Argentina (`backend/fecha.js`). **Para decidir con el
+  usuario:** si se corrigen las operaciones viejas que quedaron corridas.
+- Guía de primeros pasos en el Resumen (hist. §81): hecha y commiteada.
 - Agenda de trabajos, semana y mes (hist. §80): hecha y commiteada, pedida por
   el usuario el 20 de octubre. Pestañas en Trabajos; sin cambio de esquema.
 - Abonos mensuales (hist. §79): hechos y commiteados. Módulo `abonos`, con las
@@ -378,6 +383,9 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   `operacion_tipo trabajo`, igual que los socios.
 - **Los renglones del trabajo usan las filas de venta de `app.js`**
   (`items:*` del registro): un dominio no conoce el catálogo.
+- **"Hoy" sale de `backend/fecha.js`** (hist. §82): `fechaDeHoy()` en JS y
+  `HOY_SQL` dentro del SQL; todo INSERT pasa la fecha, nunca el `DEFAULT
+  (date('now'))`, que es UTC. Una tabla nueva con fecha sigue esta regla.
 - **La agenda es una pestaña de Trabajos** (hist. §80), no una vista aparte:
   `#/trabajos/lista|semana|mes`, y sin subruta, la última usada. El largo del
   bloque sale de `duracion_estimada` del backend.
