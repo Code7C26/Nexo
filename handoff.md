@@ -21,7 +21,8 @@
 
 ## Estado actual (20 de octubre de 2026)
 
-**Próxima sesión:** el CRM (punto 6b, en "Qué sigue"), con su lista "Para
+**Próxima sesión:** tipo de negocio fijo y funciones que se suman (punto 6a2,
+en "Qué sigue"), pedido por el usuario el 20 de octubre; después el CRM (6b), con su lista "Para
 hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
 abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 20 de octubre.
@@ -716,6 +717,31 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      (hist. §79, `periodosPendientes()` compartido);
    - el recordatorio de presupuestos enviados sin respuesta pasa al CRM (6b),
      dentro de "Para hoy".
+6a2. **Tipo de negocio fijo y funciones que se suman** (1 sesión, la próxima).
+   Pedido del usuario del 20 de octubre, después de pasar su gimnasio a
+   Servicios en la base real (sigue así: `rubro = servicios`, módulos NULL).
+   - **Qué pasó** (sin pérdida de datos: sus 3 productos siguen con
+     `tipo = producto`, sus socios y cuotas están):
+     - el catálogo pasó a llamarse "Servicios", y con él sus productos;
+     - sus módulos siguen al preset (`modulos` NULL), así que se apagaron
+       socios, punto de venta, compras y stock, y se prendieron trabajos y
+       abonos;
+     - sin el módulo de stock, la tabla de productos esconde Stock y
+       Valorizado.
+   - **Lo que quiere:**
+     - el tipo de negocio se elige al crear el negocio y no se cambia tan
+       fácil (hoy son dos clics en Configuración); quien quiere otro tipo,
+       crea otro negocio;
+     - sí poder **sumarle funciones** a su tipo (un comercio con servicios,
+       un gimnasio con comercio), sin que se mezclen las cosas;
+     - que nada parezca perderse ni cambiar de nombre por tocar una opción.
+   - **Ideas para planificar (a confirmar):** sacar el cambio de tipo de
+     Configuración, o dejarlo con una confirmación que muestre qué cambia;
+     guardar los módulos elegidos al crear (no NULL), así un cambio de preset
+     no los apaga; separar "Productos" y "Servicios" en el catálogo cuando
+     el negocio tiene los dos, en vez de renombrar la sección entera.
+   - Antes de empezar, preguntarle si su negocio real vuelve a Gimnasio (lo
+     puede hacer él desde Configuración; no se toca su base sin pedirlo).
 6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
    del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
    clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:
