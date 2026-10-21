@@ -8527,3 +8527,21 @@ siguiente**, y el asistente le decía a Gemini que hoy era mañana.
   y las 24 h tiene la fecha del día siguiente. Se podría corregir con la hora
   UTC de su fila de auditoría, pero cambia fechas de operaciones reales: lo
   decide el usuario.
+
+## 83. Trabajos y abonos en la ficha del cliente, 20 de octubre de 2026
+
+**Por qué:** que la ficha de un cliente muestre todo lo suyo, no solo sus
+compras.
+- Dos paneles nuevos en la ficha, "Trabajos" y "Abonos", con
+  `data-modulo` (no se ven con el módulo apagado). Los pinta cada dominio:
+  `app.js` invoca `pintar:trabajosDelCliente` y `pintar:abonosDelCliente`.
+- Trabajos: lo que falta hacer primero, con "Cuándo", estado y total; "Nuevo
+  trabajo" abre el alta con el cliente ya cargado.
+- Abonos: servicio, cada cuánto, precio, próxima cuota, deuda y estado; "Nuevo
+  abono" (admin) propone el cliente.
+- Filtran en el navegador `GET /api/trabajos` y `GET /api/abonos`: para una
+  base grande va a hacer falta filtrar por cliente en el servidor (la
+  paginación sigue pendiente, CLAUDE.md §35).
+- Verificación: `npm test` 62 de 62, lint verde y un recorrido en Chrome
+  (un trabajo y un abono en la ficha, el alta con el cliente propuesto y la
+  ficha del abono desde la fila), sin errores de consola.

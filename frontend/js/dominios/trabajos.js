@@ -320,7 +320,7 @@ async function abrirModal(trabajo = null, presupuesto = null, sugerido = null) {
   const clienteFijo = Boolean(presupuesto || trabajo?.presupuesto_id);
   document.getElementById("trabajoClienteCampo").hidden = clienteFijo;
   form.cliente.required = !clienteFijo;
-  form.cliente.value = trabajo?.cliente ?? "";
+  form.cliente.value = trabajo?.cliente ?? sugerido?.cliente ?? "";
   form.titulo.value = trabajo?.titulo ?? "";
   form.titulo.required = !presupuesto;
   form.titulo.placeholder = presupuesto
@@ -735,6 +735,44 @@ celular.addEventListener("change", () => {
   if (pestana !== "lista") renderAgenda();
 });
 
+/* ---------- En la ficha del cliente (hist. §83) ---------- */
+
+let clienteDeLaFicha = null;
+
+async function pintarTrabajosDelCliente(cliente) {
+  clienteDeLaFicha = cliente;
+  if (!moduloActivo("trabajos")) return;
+  const body = document.getElementById("fichaClienteTrabajos");
+  tablaCargando("fichaClienteTrabajos", 4, 2);
+  const hoy = hoyISO();
+  const suyos = (await api("/api/trabajos")).filter((t) => t.cliente_id === cliente.id);
+  // Lo que falta hacer primero; después, lo terminado y lo cancelado.
+  suyos.sort((a, b) => Number(!porHacer(a)) - Number(!porHacer(b)));
+  body.innerHTML =
+    suyos.length === 0
+      ? filaVacia(4, "Este cliente todavía no tiene trabajos.")
+      : suyos
+          .map(
+            (t) => `
+    <tr class="fila-clickeable" data-trabajo="${t.id}">
+      <td data-label="Cuándo">${esc(cuando(t, hoy))}${atrasado(t, hoy) ? ' <span class="celda-meta trabajo-atrasado">Atrasado</span>' : ""}</td>
+      <td data-label="Trabajo">${esc(t.titulo)}</td>
+      <td data-label="Estado">${badgeEstado(t)}</td>
+      <td data-label="Total" class="align-right mono">${t.total > 0 ? money(t.total) : "—"}</td>
+    </tr>`
+          )
+          .join("");
+}
+
+document.getElementById("fichaClienteTrabajos").addEventListener("click", (e) => {
+  const fila = e.target.closest("tr[data-trabajo]");
+  if (fila) abrirFicha(Number(fila.dataset.trabajo));
+});
+document.getElementById("btnTrabajoDelCliente").addEventListener("click", () => {
+  if (clienteDeLaFicha) abrirModal(null, null, { cliente: clienteDeLaFicha.nombre });
+});
+
+registrar("pintar:trabajosDelCliente", pintarTrabajosDelCliente);
 alEntrarEnVista("trabajos", entrarATrabajos);
 registrar("cargar:trabajos", cargarTrabajos);
 registrar("abrirFicha:trabajo", abrirFicha);

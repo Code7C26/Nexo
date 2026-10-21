@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §82);
+    siguiente número (hoy el último es §83);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -30,6 +30,7 @@ abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
   es el día de la Argentina (`backend/fecha.js`). **Para decidir con el
   usuario:** si se corrigen las operaciones viejas que quedaron corridas.
 - Guía de primeros pasos en el Resumen (hist. §81): hecha y commiteada.
+- La ficha del cliente muestra sus trabajos y abonos (hist. §83).
 - Agenda de trabajos, semana y mes (hist. §80): hecha y commiteada, pedida por
   el usuario el 20 de octubre. Pestañas en Trabajos; sin cambio de esquema.
 - Abonos mensuales (hist. §79): hechos y commiteados. Módulo `abonos`, con las

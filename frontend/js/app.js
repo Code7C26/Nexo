@@ -5642,6 +5642,9 @@ async function abrirFichaCliente(id) {
           })
           .join("");
 
+  // Sus trabajos y sus abonos los pinta cada dominio (hist. §83).
+  invocar("pintar:trabajosDelCliente", cliente);
+  invocar("pintar:abonosDelCliente", cliente);
   mostrarVista("cliente-detalle", { titulo: cliente.nombre });
 }
 

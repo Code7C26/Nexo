@@ -20,6 +20,7 @@ import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
+import { moduloActivo } from "../core/negocio.js";
 
 const FILTROS = {
   activos: (a) => a.estado === "activo",
@@ -231,7 +232,8 @@ async function poblarServicios() {
   document.getElementById("abonoSinServicios").hidden = servicios.length > 0;
 }
 
-async function abrirModal(abono = null) {
+// cliente: el nombre que se propone, desde la ficha de un cliente.
+async function abrirModal(abono = null, cliente = "") {
   editando = abono;
   form.reset();
   document.getElementById("modalAbonoTitulo").textContent = abono ? "Editar abono" : "Nuevo abono";
@@ -242,13 +244,14 @@ async function abrirModal(abono = null) {
   document.getElementById("abonoSinServicios").hidden = true;
   form.cliente.required = !abono;
   form.producto_id.required = !abono;
+  form.cliente.value = cliente;
   form.precio.value = abono?.precio ?? "";
   form.meses.value = abono?.meses ?? 1;
   form.fecha_alta.value = hoyISO();
   form.notas.value = abono?.notas ?? "";
   if (!abono) await poblarServicios();
   modal.hidden = false;
-  (abono ? form.precio : form.cliente).focus();
+  (abono ? form.precio : cliente ? form.producto_id : form.cliente).focus();
 }
 
 // Elegir el servicio propone su precio de lista, si todavía no se escribió uno.
@@ -291,6 +294,43 @@ form.addEventListener("submit", async (e) => {
   await abrirFicha(id);
 });
 
+/* ---------- En la ficha del cliente (hist. §83) ---------- */
+
+let clienteDeLaFicha = null;
+
+async function pintarAbonosDelCliente(cliente) {
+  clienteDeLaFicha = cliente;
+  if (!moduloActivo("abonos")) return;
+  const body = document.getElementById("fichaClienteAbonos");
+  tablaCargando("fichaClienteAbonos", 6, 2);
+  const suyos = (await api("/api/abonos")).filter((a) => a.cliente_id === cliente.id);
+  body.innerHTML =
+    suyos.length === 0
+      ? filaVacia(6, "Este cliente todavía no tiene abonos.")
+      : suyos
+          .map(
+            (a) => `
+    <tr class="fila-clickeable" data-abono="${a.id}">
+      <td data-label="Servicio">${esc(a.servicio)}</td>
+      <td data-label="Se cobra">${esc(a.duracion)}</td>
+      <td data-label="Precio" class="align-right mono">${money(a.precio)}</td>
+      <td data-label="Próxima cuota">${a.proxima ? esc(fechaAR(a.proxima)) : "—"}</td>
+      <td data-label="Debe" class="align-right mono">${a.deuda > 0 ? money(a.deuda) : "—"}</td>
+      <td data-label="Estado">${badgeAbono(a)}</td>
+    </tr>`
+          )
+          .join("");
+}
+
+document.getElementById("fichaClienteAbonos").addEventListener("click", (e) => {
+  const fila = e.target.closest("tr[data-abono]");
+  if (fila) abrirFicha(Number(fila.dataset.abono));
+});
+document.getElementById("btnAbonoDelCliente").addEventListener("click", () => {
+  if (clienteDeLaFicha) abrirModal(null, clienteDeLaFicha.nombre);
+});
+
+registrar("pintar:abonosDelCliente", pintarAbonosDelCliente);
 alEntrarEnVista("abonos", cargarAbonos);
 registrar("cargar:abonos", cargarAbonos);
 registrar("abrirFicha:abono", abrirFicha);
