@@ -25,6 +25,8 @@
 hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
 abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 20 de octubre.
+- **Falta que el usuario vea §78 a §87** (servicios, trabajos, agenda, abonos,
+  primeros pasos y lo demás). Son 9 commits en `solla`, sin pushear.
 - **Arreglado un error de fechas** (hist. §82): desde las 21 h, toda operación
   quedaba con la fecha del día siguiente (el servidor usaba UTC). Ahora "hoy"
   es el día de la Argentina (`backend/fecha.js`). **Para decidir con el
