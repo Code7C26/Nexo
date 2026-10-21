@@ -1178,7 +1178,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   fila.className = "item-row";
 
   fila.innerHTML = `
-    <input type="text" class="item-producto" list="productosVenta" placeholder="Buscar producto…" />
+    <input type="text" class="item-producto" list="productosVenta" placeholder="Buscar ${termino("singular")}…" />
     <input type="hidden" class="item-producto-id" />
     <select class="item-variante-id" hidden><option value="">Elegí una variante…</option></select>
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
@@ -3537,7 +3537,7 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
   const items = leerItemsVenta(presupuestoItemsEl);
 
   if (items.length === 0) {
-    avisar("Agregá al menos un producto al presupuesto.", "atencion");
+    avisar(`Agregá al menos un ${termino("singular")} al presupuesto.`, "atencion");
     return;
   }
 
@@ -3964,7 +3964,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   const items = leerItemsVenta(ventaItemsEl);
 
   if (items.length === 0) {
-    avisar("Agregá al menos un producto a la venta.", "atencion");
+    avisar(`Agregá al menos un ${termino("singular")} a la venta.`, "atencion");
     return;
   }
 

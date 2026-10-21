@@ -8575,3 +8575,20 @@ desapercibidos (`dominios/configuracion.js`):
 - Verificación: recorrido en Chrome (punto, aviso al salir, el dato que sigue
   al volver y el punto que se va al guardar), sin errores de consola; lint y
   `npm test` 62 de 62.
+
+## 86. El vocabulario del catálogo en presupuestos y ventas, 20 de octubre de 2026
+
+**Por qué:** en un negocio de servicios, el circuito de venta seguía diciendo
+"producto". Ahora sigue a `termino()` (§78), con `data-termino` en el HTML:
+- Resumen: "Servicios más vendidos" y su columna;
+- Presupuestos: la columna de la lista, "Servicios cotizados" y su columna,
+  "agregar servicio" y el aviso de renglón vacío;
+- Ventas: la columna de la lista, "Servicios vendidos" y su columna, "agregar
+  servicio" y el aviso de renglón vacío;
+- Factura: "Servicios facturados" y su columna;
+- el buscador de cada renglón: "Buscar servicio…".
+- Compras, stock, devoluciones y el punto de venta siguen diciendo "producto":
+  un servicio no se compra ni tiene stock.
+- Verificación: recorrido en Chrome con un negocio de servicios ("agregar
+  servicio", "Buscar servicio…", columna "Servicios") y uno de comercio (los
+  mismos con "producto"), sin errores; lint y `npm test` 62 de 62.

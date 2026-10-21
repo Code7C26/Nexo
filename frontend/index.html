@@ -363,13 +363,13 @@
              mucho volumen. -->
         <section class="panel">
           <div class="panel-head">
-            <h2>Productos más vendidos</h2>
+            <h2><span data-termino="Plural">Productos</span> más vendidos</h2>
           </div>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th scope="col">Producto</th>
+                <th scope="col" data-termino="Singular">Producto</th>
                 <th scope="col" class="align-right">Unidades</th>
                 <th scope="col" class="align-right">Ventas</th>
                 <th scope="col" class="align-right">Ganancia</th>
@@ -547,7 +547,7 @@
               <tr>
                 <th scope="col">N°</th>
                 <th scope="col">Cliente</th>
-                <th scope="col">Productos</th>
+                <th scope="col" data-termino="Plural">Productos</th>
                 <th scope="col">Fecha</th>
                 <th scope="col">Vence</th>
                 <th scope="col" class="align-right">Total</th>
@@ -819,13 +819,13 @@
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Productos cotizados</h2>
+            <h2><span data-termino="Plural">Productos</span> cotizados</h2>
           </div>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th scope="col">Producto</th>
+                <th scope="col" data-termino="Singular">Producto</th>
                 <th scope="col" class="align-right">Cantidad</th>
                 <th scope="col" class="align-right">Precio unit.</th>
                 <th scope="col" class="align-right">Subtotal</th>
@@ -1390,7 +1390,7 @@
               <tr>
                 <th scope="col">N°</th>
                 <th scope="col">Cliente</th>
-                <th scope="col">Productos</th>
+                <th scope="col" data-termino="Plural">Productos</th>
                 <th scope="col">Fecha</th>
                 <th scope="col" class="align-right col-admin">Costo</th>
                 <th scope="col" class="align-right">Total</th>
@@ -1449,13 +1449,13 @@
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Productos vendidos</h2>
+            <h2><span data-termino="Plural">Productos</span> vendidos</h2>
           </div>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th scope="col">Producto</th>
+                <th scope="col" data-termino="Singular">Producto</th>
                 <th scope="col" class="align-right">Cantidad</th>
                 <th scope="col" class="align-right">Precio unit.</th>
                 <th scope="col" class="align-right">Subtotal</th>
@@ -2491,14 +2491,14 @@
              suelta no tiene items que listar. -->
         <section class="panel" id="fichaFacturaItemsPanel" hidden>
           <div class="panel-head">
-            <h2>Productos facturados</h2>
+            <h2><span data-termino="Plural">Productos</span> facturados</h2>
             <a href="#" class="btn-link" id="fichaFacturaVerVenta">Ver la venta</a>
           </div>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
               <tr>
-                <th scope="col">Producto</th>
+                <th scope="col" data-termino="Singular">Producto</th>
                 <th scope="col" class="align-right">Cantidad</th>
                 <th scope="col" class="align-right">Precio unit.</th>
                 <th scope="col" class="align-right">Subtotal</th>
@@ -3265,7 +3265,7 @@
         </label>
         <p class="form-note">Sin fecha, el presupuesto no vence.</p>
         <div class="item-rows" id="presupuestoItems"></div>
-        <button type="button" class="btn-add-item" id="btnAgregarItemPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
+        <button type="button" class="btn-add-item" id="btnAgregarItemPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>agregar <span data-termino="singular">producto</span></span></button>
         <label>Notas
           <input type="text" name="notas" placeholder="Condiciones, plazo de entrega…" />
         </label>
@@ -3401,7 +3401,7 @@
           <input type="date" name="fecha_vencimiento" id="ventaVencimiento" />
         </label>
         <div class="item-rows" id="ventaItems"></div>
-        <button type="button" class="btn-add-item" id="btnAgregarItemVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
+        <button type="button" class="btn-add-item" id="btnAgregarItemVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>agregar <span data-termino="singular">producto</span></span></button>
         <datalist id="productosVenta"></datalist>
         <p class="item-total">Total: <span class="mono" id="ventaTotal">$0,00</span></p>
         <button type="submit" class="btn btn-primary btn-full" id="formVentaSubmit">Registrar venta</button>
