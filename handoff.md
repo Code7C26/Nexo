@@ -758,6 +758,12 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
    no hay respuesta, va "consultanos") y dónde se publica (hosting gratis o
    pago, y si se compra un dominio).
+   - **Planes (pedido del usuario del 25 de octubre):** se definen en esta
+     etapa, con él. Hay que decidir en base a qué se cobra, qué suma cada
+     plan más caro y cómo es la demo para probarlo.
+   - El plan base va más barato que la competencia. El trabajo del Classroom
+     de punto de equilibrio usó $ 19.900 por mes como provisorio (Dux desde
+     $ 36.000 + IVA; Contagram, $ 58.900 + IVA): no es un precio decidido.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
