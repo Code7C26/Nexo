@@ -37,7 +37,7 @@ import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
-import { negocio, termino } from "./core/negocio.js";
+import { catalogoMixto, fijarTiposDelCatalogo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -1775,6 +1775,8 @@ async function cargarProductos() {
   categorias = listaCategorias;
   listasPrecios = listaListasPrecios;
   depositos = listaDepositos;
+  // El nombre del catálogo y las pestañas salen de lo que hay (hist. §88).
+  fijarTiposDelCatalogo(productos.map(tipoDeProducto));
   poblarDatalistProductos();
   poblarSelectCategorias();
 
@@ -1848,22 +1850,57 @@ function poblarSelectCategorias(selector = '#formProducto [name="categoria_id"]'
 }
 
 function filtrarProductos() {
-  const q = document.getElementById("productosSearch").value.trim().toLowerCase();
-  const porTexto = productos.filter((p) =>
-    [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
-  );
-  renderProductos(filtrosProductos.aplicar(porTexto));
+  renderProductos(listaProductosVisible());
 }
 
-// Misma expresión que filtrarProductos (búsqueda + filtros + orden), para
-// que el CSV coincida con lo que la tabla muestra.
+// Lo que la tabla muestra (pestaña + búsqueda + filtros + orden): lo usan la
+// tabla y el CSV, para que coincidan.
 function listaProductosVisible() {
   const q = document.getElementById("productosSearch").value.trim().toLowerCase();
-  const porTexto = productos.filter((p) =>
-    [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  const porTexto = productos.filter(
+    (p) =>
+      (!catalogoMixto() || tipoDeProducto(p) === pestanaProductos) &&
+      [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
   return filtrosProductos.aplicar(porTexto);
 }
+
+/* ---------- Pestañas Productos | Servicios (hist. §88) ---------- */
+
+// Con productos y servicios cargados, el catálogo se ve en dos pestañas, para
+// que no se mezclen: cada una con su "Nuevo", y la de servicios sin Stock ni
+// Valorizado. Con un solo tipo no hay pestañas y la sección lleva su nombre
+// (termino() en core/negocio.js).
+const tipoDeProducto = (p) => (p.tipo === "servicio" ? "servicio" : "producto");
+const PESTANA_DE_SUBRUTA = { productos: "producto", servicios: "servicio" };
+let pestanaProductos = "producto";
+
+function pintarPestanasProductos() {
+  const mixto = catalogoMixto();
+  document.getElementById("productosMenu").hidden = !mixto;
+  for (const enlace of document.querySelectorAll("#productosMenu .segmento")) {
+    if (enlace.dataset.pestana === pestanaProductos) enlace.setAttribute("aria-current", "page");
+    else enlace.removeAttribute("aria-current");
+  }
+  document.getElementById("productosTabla").classList.toggle("solo-servicios", mixto && pestanaProductos === "servicio");
+  document.getElementById("productosTitulo").textContent = mixto ? terminoDeTipo(pestanaProductos, "Plural") : termino("Plural");
+  document.getElementById("btnNuevoProductoTermino").textContent = mixto ? terminoDeTipo(pestanaProductos) : termino("singular");
+  // La barra de direcciones sigue a la pestaña (también cuando la cambia el
+  // guardado de un producto), sin sumar una entrada al historial.
+  if (mixto && location.hash.startsWith("#/productos")) {
+    history.replaceState(null, "", `#/productos/${terminoDeTipo(pestanaProductos, "plural")}`);
+  }
+}
+
+document.addEventListener("nexo:catalogo", pintarPestanasProductos);
+
+alEntrarEnVista("productos", (subruta) => {
+  const elegida = PESTANA_DE_SUBRUTA[subruta];
+  if (!elegida || elegida === pestanaProductos) return;
+  pestanaProductos = elegida;
+  pintarPestanasProductos();
+  filtrarProductos();
+});
 
 const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Nombre", valor: (p) => p.nombre },
@@ -2103,12 +2140,12 @@ function poblarPreciosPorLista(producto) {
     .join("");
 }
 
-function abrirModalProducto(producto = null) {
+// `tipo` es con qué tipo nace uno nuevo: el de la pestaña, o si no hay
+// pestañas, el del tipo de negocio.
+function abrirModalProducto(producto = null, { tipo } = {}) {
   productoEditandoId = producto?.id ?? null;
   const form = document.getElementById("formProducto");
-  document.getElementById("modalProductoTitulo").textContent = `${producto ? "Editar" : "Nuevo"} ${termino("singular")}`;
   form.nombre.value = producto?.nombre ?? "";
-  form.nombre.placeholder = `Nombre del ${termino("singular")}`;
   form.sku.value = producto?.sku ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
@@ -2121,7 +2158,7 @@ function abrirModalProducto(producto = null) {
   // Un producto nuevo nace con la unidad y el tipo del tipo de negocio (una
   // carnicería vende por kg, un gimnasio vende servicios).
   form.unidad.value = producto?.unidad ?? negocio.unidad_defecto ?? "unidad";
-  form.tipo.value = producto?.tipo ?? negocio.tipo_defecto ?? "producto";
+  form.tipo.value = producto?.tipo ?? tipo ?? negocio.tipo_defecto ?? "producto";
   mostrarCamposSegunTipo();
   poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
@@ -2129,10 +2166,14 @@ function abrirModalProducto(producto = null) {
 
 // Un servicio no maneja stock (no tiene mínimo ni máximo que cargar) y no
 // lleva SKU, pero sí una duración estimada (hist. §78). El SKU que ya tenga
-// sigue viéndose, para poder borrarlo.
+// sigue viéndose, para poder borrarlo. El título dice lo que se está cargando
+// (hist. §88): "Nuevo servicio" aunque el catálogo sea de productos.
 function mostrarCamposSegunTipo() {
   const form = document.getElementById("formProducto");
   const esServicio = form.tipo.value === "servicio";
+  const palabra = terminoDeTipo(esServicio ? "servicio" : "producto");
+  document.getElementById("modalProductoTitulo").textContent = `${productoEditandoId ? "Editar" : "Nuevo"} ${palabra}`;
+  form.nombre.placeholder = `Nombre del ${palabra}`;
   document.getElementById("productoStockCampos").hidden = esServicio;
   document.getElementById("productoSkuCampo").hidden = esServicio && !form.sku.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
@@ -2140,7 +2181,9 @@ function mostrarCamposSegunTipo() {
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
 
-document.getElementById("btnNuevoProducto").addEventListener("click", () => abrirModalProducto());
+document.getElementById("btnNuevoProducto").addEventListener("click", () =>
+  abrirModalProducto(null, { tipo: catalogoMixto() ? pestanaProductos : undefined })
+);
 document.getElementById("btnEditarProducto").addEventListener("click", () => {
   abrirModalProducto(productos.find((p) => p.id === productoFichaId));
 });
@@ -2184,10 +2227,13 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   await api(productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos", {
     method: productoEditandoId ? "PATCH" : "POST",
     body: datos,
-    error: `No se pudo guardar el ${termino("singular")}.`
+    error: `No se pudo guardar el ${terminoDeTipo(datos.tipo)}.`
   });
 
   const eraEdicion = productoEditandoId !== null;
+  // Con productos y servicios, la tabla queda en la pestaña de lo que se
+  // acaba de guardar (hist. §88).
+  pestanaProductos = datos.tipo === "servicio" ? "servicio" : "producto";
   // categoria_id también puede cambiar acá, y "Ventas por categoría" (en
   // Qué se vende) agrupa por la categoría ACTUAL del producto, no por una
   // foto histórica — así que también hay que refrescarlo.
@@ -2197,7 +2243,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
   form.reset();
   modalProducto.hidden = true;
-  avisar(`${termino("Singular")} ${eraEdicion ? "actualizado" : "creado"}.`, "ok");
+  avisar(`${terminoDeTipo(datos.tipo, "Singular")} ${eraEdicion ? "actualizado" : "creado"}.`, "ok");
 });
 
 /* ---------- Atributos y variantes de producto ---------- */

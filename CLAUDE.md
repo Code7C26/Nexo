@@ -1176,12 +1176,17 @@ siendo el foco hasta que el núcleo esté maduro (§38).
 Implementado hoy (Etapa F, §38):
 - **Tipos de negocio:** comercio general (incluye indumentaria y ferretería),
   carnicería, verdulería, kiosco o almacén, servicios y gimnasio. Se eligen al
-  crear la empresa y se cambian en Configuración.
-- **Cada tipo es un preset** (`PERFILES_RUBRO` en `server.js`): la unidad y el
-  tipo con que nace un producto (kg en carnicería, servicio en gimnasio) y qué
-  módulos opcionales se ven (punto de venta, presupuestos, trabajos, abonos,
-  compras y stock). El admin puede prender o apagar cada módulo. El tipo también puede
-  nombrar distinto su catálogo ("Servicios" en vez de "Productos").
+  crear la empresa. Cambiarlo después es una página aparte de Configuración
+  que avisa qué cambia: solo con qué unidad y tipo nace un producto nuevo.
+- **Cada tipo es un preset** (`PERFILES_RUBRO` en `backend/perfiles.js`): la
+  unidad y el tipo con que nace un producto (kg en carnicería, servicio en
+  gimnasio) y qué módulos opcionales trae al crear la empresa (punto de venta,
+  presupuestos, trabajos, abonos, compras, stock y socios).
+  - Los módulos quedan guardados por empresa. El admin los suma o los saca en
+    Configuración → Funciones, y cambiar el tipo no los toca.
+  - El catálogo se llama según lo que tiene cargado: "Productos", "Servicios"
+    o "Productos y servicios", con una pestaña para cada uno. Vacío, toma el
+    nombre del tipo.
 - **Trabajos (órdenes de trabajo):** módulo reusable, prendido en Servicios.
   Un presupuesto aceptado pasa a trabajo, con día, responsable y estado, y al
   terminarlo pasa a una venta (ver `handoff.md`).

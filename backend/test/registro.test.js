@@ -75,6 +75,13 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
   assert.deepEqual(kiosco.modulos, ['pos', 'compras', 'stock']);
   assert.equal(kiosco.condicion_iva, 'responsable_inscripto');
   assert.equal(kiosco.documento, null);
+
+  // Quedan guardados, no "los del tipo" (hist. §88): pasar el kiosco a
+  // Servicios no le apaga el punto de venta ni le prende los trabajos.
+  assert.equal((await pepe.put('/api/negocio', { rubro: 'servicios' })).status, 200);
+  const comoServicios = (await pepe.get('/api/negocio')).json;
+  assert.equal(comoServicios.tipo_defecto, 'servicio');
+  assert.deepEqual(comoServicios.modulos, ['pos', 'compras', 'stock']);
 });
 
 test('el alta rechaza un tipo que no se puede elegir y un CUIT inválido', async () => {

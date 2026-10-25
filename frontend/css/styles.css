@@ -1727,7 +1727,9 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="abonos"]) [data-modulo="abonos"],
 :root:not([data-modulos~="compras"]) [data-modulo="compras"],
 :root:not([data-modulos~="stock"]) [data-modulo="stock"],
-:root:not([data-modulos~="socios"]) [data-modulo="socios"] {
+:root:not([data-modulos~="socios"]) [data-modulo="socios"],
+/* La pestaña Servicios de Productos (hist. §88): un servicio no tiene stock. */
+.solo-servicios [data-modulo="stock"] {
   display: none;
 }
 
@@ -4261,6 +4263,86 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 
+/* Funciones (hist. §88): el tipo del negocio, fijo, con su botón para
+   cambiarlo en otra página. */
+.config-tipo-actual {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.config-tipo-actual .config-tarjeta-cuerpo {
+  flex-direction: row;
+  align-items: center;
+}
+
+.config-tipo-actual-texto {
+  flex: 1;
+  min-width: 0;
+}
+
+.config-tipo-actual-texto p { margin: 0; }
+
+.config-tipo-actual-etiqueta {
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+.config-tipo-actual-nombre {
+  font-weight: 600;
+}
+
+.config-tipo-actual-desc {
+  margin-top: 2px;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+/* Cambiar el tipo: qué cambia, antes de confirmar. */
+.config-subpagina-volver { align-self: flex-start; }
+
+.config-tipo-cambios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.config-tipo-cambios[hidden] { display: none; }
+
+.config-tipo-cambios-titulo {
+  margin: 0;
+  font-weight: 600;
+}
+
+.config-tipo-cambios-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--txt-sm);
+}
+
+.config-tipo-cambios-lista li {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.config-tipo-cambios-lista .ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--accent-ok);
+}
+
 .config-con-previa {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
@@ -4567,6 +4649,10 @@ input.precio-sin-configurar::placeholder {
   .config:not([data-pagina=""]) .config-menu { display: none; }
   .config[data-pagina=""] .config-contenido { display: none; }
   .config-volver { display: inline-flex; margin-bottom: var(--sp-3); }
+  /* "Cambiar el tipo" vuelve a Funciones con su propio enlace. */
+  .config[data-pagina="cambiar-tipo"] .config-volver { display: none; }
+  .config-tipo-actual .config-tarjeta-cuerpo { flex-wrap: wrap; }
+  .config-tipo-actual .config-tarjeta-cuerpo > .btn { width: 100%; }
 
   .config-grupo {
     gap: 0;

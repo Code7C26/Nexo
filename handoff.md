@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §87);
+    siguiente número (hoy el último es §88);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,13 +19,18 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (20 de octubre de 2026)
+## Estado actual (25 de octubre de 2026)
 
-**Próxima sesión:** tipo de negocio fijo y funciones que se suman (punto 6a2,
-en "Qué sigue"), pedido por el usuario el 20 de octubre; después el CRM (6b), con su lista "Para
-hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
-abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
-20 de octubre.
+**Próxima sesión:** el CRM (6b, en "Qué sigue"), con su lista "Para hoy", que
+también lleva el recordatorio de presupuestos sin respuesta y los abonos que
+deben; después la PWA (7). Los dos los pidió el usuario el 20 de octubre.
+- **Tipo de negocio fijo y funciones que se suman (hist. §88): hecho y
+  commiteado en `solla`, sin pushear.** Configuración tiene "Funciones" y una
+  página aparte para cambiar el tipo; el catálogo se llama según lo cargado,
+  con pestañas Productos | Servicios cuando hay de los dos. Falta que el
+  usuario lo vea. Su base real (Servicios) migra en el próximo `npm start` a
+  `presupuestos trabajos abonos`, lo mismo que ve hoy: él le suma Socios, punto
+  de venta, Compras y Stock desde Funciones si los quiere.
 - **Falta que el usuario vea §78 a §87** (servicios, trabajos, agenda, abonos,
   primeros pasos y lo demás). Ya están pusheados y en `main`.
 - **Arreglado un error de fechas** (hist. §82): desde las 21 h, toda operación
@@ -301,13 +306,15 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Alta guiada y Configuración (hist. §73)**
 - **Los tipos de negocio viven en un solo lugar:** `PERFILES_RUBRO`,
-  `RUBROS_PROXIMAMENTE` y `MODULOS_INFO` en `server.js` (nombre, descripción e
+  `RUBROS_PROXIMAMENTE` y `MODULOS_INFO` en `backend/perfiles.js` (nombre, descripción e
   ícono). El frontend los pide: `GET /api/auth/tipos-negocio` (pública) o
   `perfiles` de `GET /api/negocio`. Un tipo nuevo no se escribe en el HTML.
 - **`PUT /api/negocio` es parcial:** escribe solo los campos que vienen.
   Configuración manda solo lo que cambió.
-- **Módulos iguales a los del tipo se guardan como NULL** (en el alta y en el
-  `PUT`): la empresa sigue al preset.
+- **Los módulos de cada negocio quedan guardados** (hist. §88): el alta guarda
+  los elegidos (o los del tipo), y ni el `PUT` ni un cambio de tipo los mueven.
+  Volver al NULL = "los del tipo" reintroduce el problema de §88: cambiar el
+  tipo apagaba secciones solo.
 - **Condición fiscal del negocio:** lista fija de claves (`responsable_inscripto`,
   `monotributo`, `exento`; `CONDICIONES_IVA` en `server.js`, `core/fiscal.js`).
   Un texto viejo que no se reconoció queda como estaba y se imprime tal cual.
@@ -375,9 +382,11 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - los planes no salen en el catálogo del punto de venta.
 
 **Servicios y trabajos (hist. §78)**
-- **El nombre del catálogo es dato del preset** (`PERFILES_RUBRO.catalogo`),
-  nunca un `if`: en el HTML va en `[data-termino]` y en el JS, `termino()` de
-  `core/negocio.js`.
+- **El nombre del catálogo sale de lo cargado** (hist. §88), nunca de un `if`:
+  solo productos, solo servicios, o "productos y servicios" con pestañas en
+  Productos. Con el catálogo vacío, el del preset (`PERFILES_RUBRO.catalogo`).
+  En el HTML va en `[data-termino]` y en el JS, `termino()` de
+  `core/negocio.js`; para un tipo puntual, `terminoDeTipo()`.
 - **Un trabajo no es un circuito propio:** al terminarlo crea la venta con sus
   renglones, que se cobra como siempre. Hasta ahí no mueve stock ni cuenta
   corriente.
@@ -494,15 +503,17 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Tipos de negocio, unidades y servicios (hist. §70)**
 - **El tipo de negocio es un preset de datos** (`PERFILES_RUBRO` en
-  `server.js`): unidad y tipo con que nace un producto, y qué módulos se ven.
+  `backend/perfiles.js`, hist. §88): unidad y tipo con que nace un producto, y
+  qué módulos trae al crear el negocio.
   Nunca `if (rubro === …)` con lógica (CLAUDE.md §29).
 - **Módulos:** `pos`, `presupuestos`, `compras` y `stock`. Ocultarlos es de la
   interfaz (`<html data-modulos>` y el router); los permisos siguen en
-  `permisos.js`. `organizaciones.modulos` NULL = los del preset; cambiar el tipo
-  sin mandar módulos vuelve al preset.
+  `permisos.js`. Se eligen al crear el negocio y se suman o sacan en
+  Configuración → Funciones.
 - **Cambiar el tipo de negocio no borra nada** (respondido al usuario el 20 de
   octubre):
-  - solo cambia el menú y con qué unidad y tipo nace un producto nuevo. Los
+  - desde hist. §88 solo cambia con qué unidad y tipo nace un producto nuevo
+    (el menú ya no). Es una página aparte que lo dice antes de confirmar. Los
     productos que ya existen quedan como estaban;
   - los socios siguen siendo clientes y sus planes siguen en Productos;
   - con Socios apagado no se generan cuotas. Si se vuelve a prender, se generan
@@ -713,31 +724,11 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      (hist. §79, `periodosPendientes()` compartido);
    - el recordatorio de presupuestos enviados sin respuesta pasa al CRM (6b),
      dentro de "Para hoy".
-6a2. **Tipo de negocio fijo y funciones que se suman** (1 sesión, la próxima).
-   Pedido del usuario del 20 de octubre, después de pasar su gimnasio a
-   Servicios en la base real (sigue así: `rubro = servicios`, módulos NULL).
-   - **Qué pasó** (sin pérdida de datos: sus 3 productos siguen con
-     `tipo = producto`, sus socios y cuotas están):
-     - el catálogo pasó a llamarse "Servicios", y con él sus productos;
-     - sus módulos siguen al preset (`modulos` NULL), así que se apagaron
-       socios, punto de venta, compras y stock, y se prendieron trabajos y
-       abonos;
-     - sin el módulo de stock, la tabla de productos esconde Stock y
-       Valorizado.
-   - **Lo que quiere:**
-     - el tipo de negocio se elige al crear el negocio y no se cambia tan
-       fácil (hoy son dos clics en Configuración); quien quiere otro tipo,
-       crea otro negocio;
-     - sí poder **sumarle funciones** a su tipo (un comercio con servicios,
-       un gimnasio con comercio), sin que se mezclen las cosas;
-     - que nada parezca perderse ni cambiar de nombre por tocar una opción.
-   - **Ideas para planificar (a confirmar):** sacar el cambio de tipo de
-     Configuración, o dejarlo con una confirmación que muestre qué cambia;
-     guardar los módulos elegidos al crear (no NULL), así un cambio de preset
-     no los apaga; separar "Productos" y "Servicios" en el catálogo cuando
-     el negocio tiene los dos, en vez de renombrar la sección entera.
-   - Antes de empezar, preguntarle si su negocio real vuelve a Gimnasio (lo
-     puede hacer él desde Configuración; no se toca su base sin pedirlo).
+6a2. ~~Tipo de negocio fijo y funciones que se suman~~ **hecha** (hist. §88).
+   Pedido del usuario del 20 de octubre; decidido con él el 25 de octubre: el
+   cambio de tipo queda en una página aparte que dice qué cambia, el nombre del
+   catálogo sale de lo cargado, y su base real no se toca (le suma las
+   funciones él). Falta que lo vea.
 6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
    del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
    clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:

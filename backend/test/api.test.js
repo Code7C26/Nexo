@@ -388,14 +388,15 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   // Con stock no se pasa a servicio: se perdería de vista.
   assert.equal((await adminA.patch(`/api/productos/${vacio.json.id}`, { tipo: 'servicio' })).status, 400);
 
-  // Tipo de negocio: preset de módulos y de unidad para lo que se da de alta.
+  // Tipo de negocio: preset de unidad para lo que se da de alta. Cambiarlo no
+  // toca los módulos (hist. §88): siguen los que tenía.
   const negocio = (await adminA.get('/api/negocio')).json;
   assert.equal(negocio.rubro, 'comercio');
   assert.deepEqual(negocio.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
   const comoCarniceria = await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'carniceria' });
   assert.equal(comoCarniceria.status, 200, comoCarniceria.texto);
   const carniceria = (await empleadoA.get('/api/negocio')).json;
-  assert.deepEqual(carniceria.modulos, ['pos', 'compras', 'stock']);
+  assert.deepEqual(carniceria.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
   assert.equal(carniceria.unidad_defecto, 'kg');
   const asado = await adminA.post('/api/productos', { nombre: 'Asado', precio_venta: 9000 });
   assert.equal((await adminA.get('/api/productos')).json.find((p) => p.id === asado.json.id).unidad, 'kg');
@@ -404,9 +405,12 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   assert.equal((await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'astronauta' })).status, 400);
   assert.equal((await adminA.put('/api/negocio', { nombre: negocio.nombre, modulos: ['naves'] })).status, 400);
   assert.equal((await empleadoA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'comercio' })).status, 403);
-  // Volver a comercio sin mandar módulos vuelve a los del preset.
+  // Volver a comercio tampoco los toca, y apagarlos todos es un valor válido.
   await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'comercio' });
-  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos']);
+  await adminA.put('/api/negocio', { modulos: [] });
+  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, []);
+  await adminA.put('/api/negocio', { modulos: ['pos', 'presupuestos', 'compras', 'stock'] });
 });
 
 test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist. §73)', async () => {
@@ -451,7 +455,8 @@ test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist.
 
   // Un gimnasio también compra y vende (hist. §71): sus productos nacen como
   // producto, no como servicio.
-  await adminB.put('/api/negocio', { rubro: 'gimnasio' });
+  // Los módulos del tipo nuevo se suman a mano (hist. §88).
+  await adminB.put('/api/negocio', { rubro: 'gimnasio', modulos: ['pos', 'compras', 'stock', 'socios'] });
   const gimnasio = (await adminB.get('/api/negocio')).json;
   assert.deepEqual(gimnasio.modulos, ['pos', 'compras', 'stock', 'socios']);
   assert.equal(gimnasio.tipo_defecto, 'producto');
@@ -758,9 +763,10 @@ test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en
     assert.equal(r.status, 400, `duración ${duracion_minutos}: ${r.texto}`);
   }
 
-  // El tipo Servicios llama "servicios" a su catálogo y trae los trabajos.
+  // El tipo Servicios llama "servicios" a su catálogo (mientras está vacío,
+  // hist. §88) y sus trabajos se suman con el cambio de tipo.
   const nombreB = (await adminB.get('/api/negocio')).json.nombre;
-  await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'servicios' });
+  await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'servicios', modulos: ['presupuestos', 'trabajos', 'abonos'] });
   const servicios = (await adminB.get('/api/negocio')).json;
   assert.deepEqual(servicios.catalogo, { plural: 'servicios', singular: 'servicio' });
   assert.deepEqual(servicios.modulos, ['presupuestos', 'trabajos', 'abonos']);

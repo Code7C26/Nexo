@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { respaldarBase, rutasDeRespaldo } from './respaldo.js';
+import { modulosDelPreset } from '../perfiles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1661,6 +1662,14 @@ for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {
     db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna} TEXT`);
   }
+}
+// Los módulos de cada empresa quedan guardados (hist. §88): NULL era "los del
+// tipo", y cambiar el tipo prendía y apagaba secciones solo. Sin cambio de
+// esquema: cada NULL pasa a los módulos que esa empresa ve hoy, los del preset
+// de su tipo. Re-ejecutable: solo toca las que siguen en NULL.
+const completarModulos = db.prepare('UPDATE organizaciones SET modulos = ? WHERE id = ? AND modulos IS NULL');
+for (const { id, rubro } of db.prepare('SELECT id, rubro FROM organizaciones WHERE modulos IS NULL').all()) {
+  completarModulos.run(modulosDelPreset(rubro), id);
 }
 
 // La condición fiscal del negocio pasó de texto libre a una lista fija

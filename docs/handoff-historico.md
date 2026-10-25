@@ -8605,3 +8605,62 @@ Abonos (lista y ficha con cobro) y la semana en el celular. Arreglado:
   oculta: `.ledger-strip[hidden] + .panel` recupera el margen.
 - **Doble separación entre la franja y la lista de Trabajos** (gap de la
   pestaña más el margen de la franja).
+
+## 88. Tipo de negocio fijo y funciones que se suman, 25 de octubre de 2026
+
+**Por qué:** el usuario pasó su gimnasio a Servicios desde Configuración y, con
+dos clics, se le apagaron Socios, punto de venta, Compras y Stock (los módulos
+en NULL seguían al preset) y todo el catálogo pasó a llamarse "Servicios".
+Pidió que el tipo no se cambie tan fácil, poder sumarle funciones a su tipo y
+que nada parezca perderse ni renombrarse por tocar una opción. Decidido con él
+el 25 de octubre: el cambio de tipo queda en una página aparte que dice qué
+cambia; el nombre del catálogo sale de lo cargado; su base real no se toca (él
+le suma las funciones que quiera).
+
+**Backend, sin cambio de esquema:**
+- `backend/perfiles.js` (nuevo): `MODULOS`, `MODULOS_INFO`, `PERFILES_RUBRO`,
+  `RUBROS_PROXIMAMENTE` y `modulosDelPreset()` salieron de `server.js`, para
+  que `db/index.js` también los lea.
+- `organizaciones.modulos` se guarda siempre: el alta y "Agregar negocio"
+  guardan los elegidos (o los del tipo si no vienen), y `PUT /api/negocio` ya
+  no los pasa a NULL. **Cambiar el tipo no toca los módulos:** solo con qué
+  unidad y tipo nace un producto nuevo. `''` (todos apagados) es válido.
+- Migración de datos en `db/index.js`: cada `modulos IS NULL` pasa a los del
+  preset de su tipo (lo que esa empresa ya veía). Re-ejecutable. La base real
+  queda con `presupuestos trabajos abonos`, como la ve hoy.
+- `perfilDeEmpresa()` conserva el NULL → preset por si acaso.
+
+**Configuración** (`dominios/configuracion.js`, `index.html`):
+- "Tipo de negocio y secciones" pasó a **Funciones**
+  (`#/configuracion/funciones`; `#/configuracion/tipo` redirige): el tipo se ve
+  fijo en una tarjeta con "Cambiar el tipo", y abajo las funciones, con la
+  pastilla "Viene con {tipo}" en las que trae (`tarjetasModulos(..., tipo)`).
+- **Cambiar el tipo** (`#/configuracion/cambiar-tipo`, sin ítem propio: marca
+  Funciones con `menu` en `PAGINAS`): las tarjetas de tipo, un panel "Qué
+  cambia" (cómo nace lo nuevo, y que nada se borra, renombra ni apaga), una
+  casilla opcional para sumar las funciones del tipo nuevo que faltan, "Crear
+  otro negocio" (`invocar("agregar:negocio")`, que registra `negocios.js`) y
+  el botón "Cambiar a {tipo}", deshabilitado hasta elegir otro.
+- `guardar()` devuelve al botón su texto propio.
+
+**Catálogo** (`core/negocio.js`, `app.js`):
+- `termino()` sale de lo cargado (`fijarTiposDelCatalogo`, que llama
+  `cargarProductos()`): solo productos, "productos"; solo servicios,
+  "servicios"; los dos, "productos y servicios" / "producto o servicio"; vacío,
+  el del tipo. `terminoDeTipo()` da la palabra de un tipo puntual.
+  `pintarTerminos()` avisa con el evento `nexo:catalogo`.
+- Con los dos tipos, Productos tiene pestañas **Productos | Servicios**
+  (`#/productos/productos|servicios`): la lista, el CSV, el título del panel y
+  "Nuevo producto/servicio" siguen a la pestaña; en Servicios se ocultan Stock
+  y Valorizado (`.solo-servicios`). Al guardar, la pestaña pasa al tipo
+  guardado. El modal se titula según su tipo.
+- Los planes de socio son servicios: un gimnasio con productos ve "Productos y
+  servicios", con los planes en la pestaña Servicios.
+
+**Verificación:** `npm test` 62 de 62 (el cambio de tipo mantiene los
+módulos; el alta los guarda explícitos; apagar todos es válido), lint,
+`verificar-migracion` 24 de 24, `regresion` 0 diferencias en 172, md5 de la
+base real igual. Recorrido en Chrome con un negocio de Servicios con un
+producto y un servicio: pestañas, "Nuevo servicio", sumar Socios, cambiar a
+Carnicería (módulos intactos, producto nuevo en kg), en oscuro, claro y 390 px,
+sin errores de consola.

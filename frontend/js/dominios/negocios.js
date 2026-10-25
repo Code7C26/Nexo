@@ -232,3 +232,6 @@ if (location.hash.startsWith("#/agregar-negocio")) {
 // Lo pide el boot de app.js en su primera ola, y Configuración al guardar
 // (por si cambió el nombre o el tipo del negocio).
 registrar("cargar:negocios", cargarNegocios);
+// Lo ofrece "Cambiar el tipo" de Configuración (hist. §88): otro tipo de
+// negocio suele ser otro negocio.
+registrar("agregar:negocio", agregarNegocio);

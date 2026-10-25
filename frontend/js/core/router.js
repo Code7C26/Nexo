@@ -9,7 +9,7 @@ import { moduloActivo, termino } from "./negocio.js";
 import { entrarEnVista } from "./registro.js";
 
 // Vistas que pertenecen a un módulo opcional del tipo de negocio (CLAUDE.md
-// §29, PERFILES_RUBRO en server.js): con el módulo apagado no se entra.
+// §29, PERFILES_RUBRO en backend/perfiles.js): con el módulo apagado no se entra.
 const MODULO_DE_VISTA = {
   pos: "pos",
   presupuestos: "presupuestos",
@@ -193,7 +193,9 @@ const VISTAS_RENOMBRADAS = {
   "reportes-ventas": "dashboard",
   usuarios: "configuracion/usuarios",
   "configuracion/planes-socio": "planes-socio",
-  "configuracion/descuentos-socio": "planes-socio/descuentos"
+  "configuracion/descuentos-socio": "planes-socio/descuentos",
+  // "Tipo de negocio y secciones" pasó a Funciones (hist. §88).
+  "configuracion/tipo": "configuracion/funciones"
 };
 
 function rutaDesdeHash() {

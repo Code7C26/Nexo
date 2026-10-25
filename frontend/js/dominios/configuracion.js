@@ -8,13 +8,14 @@
  * en index.html, y su entrada en PAGINAS.
  */
 
-import { fijarNegocio, moduloActivo, negocio } from "../core/negocio.js";
+import { fijarNegocio, moduloActivo, negocio, terminoDeTipo } from "../core/negocio.js";
 import { avisar } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
-import { esAdmin, esc } from "../core/formato.js";
+import { UNIDADES, esAdmin, esc } from "../core/formato.js";
+import { icono } from "../core/iconos.js";
 import { mostrarVista } from "../core/router.js";
-import { marcarModulosDelTipo, tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "../core/tipos-negocio.js";
+import { tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "../core/tipos-negocio.js";
 import { CONDICIONES_FISCALES, condicionFiscal, errorCuit, esCondicionFiscal, formatearCuit } from "../core/fiscal.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { aplicarTema, temaActual } from "../core/tema.js";
@@ -28,11 +29,10 @@ async function cargarNegocio() {
 
 const config = document.getElementById("config");
 const formNegocio = document.getElementById("formConfigNegocio");
-const formTipo = document.getElementById("formConfigTipo");
+const formFunciones = document.getElementById("formConfigFunciones");
+const formCambiarTipo = document.getElementById("formConfigCambiarTipo");
 const formComprobantes = document.getElementById("formConfigComprobantes");
 const formApariencia = document.getElementById("formConfigApariencia");
-const notaModulos = document.getElementById("configModulosNota");
-const NOTA_MODULOS = notaModulos.textContent;
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* ---------- Guardar solo lo que cambió ---------- */
@@ -76,8 +76,11 @@ const actualizarBoton = (form) => {
 // Lo que no se guardó se conserva al cambiar de página (hist. §73), pero no
 // tiene que pasar desapercibido: la página lleva un punto en el menú, salir
 // de Configuración por el menú avisa, y cerrar o recargar la pestaña pregunta.
-const formularios = [formNegocio, formTipo, formComprobantes];
-const seccionDe = (form) => form.closest(".config-pagina")?.dataset.seccion;
+const formularios = [formNegocio, formFunciones, formCambiarTipo, formComprobantes];
+// La página del menú: "Cambiar el tipo" no tiene ítem propio y marca el de
+// Funciones.
+const itemDelMenu = (clave) => PAGINAS[clave]?.menu ?? clave;
+const seccionDe = (form) => itemDelMenu(form.closest(".config-pagina")?.dataset.seccion);
 
 function marcarEnElMenu(form) {
   const item = config.querySelector(`.config-item[data-seccion="${seccionDe(form)}"]`);
@@ -110,7 +113,7 @@ document.addEventListener(
   true
 );
 
-for (const form of [formNegocio, formTipo, formComprobantes]) {
+for (const form of formularios) {
   form.addEventListener("input", () => actualizarBoton(form));
   form.addEventListener("change", () => actualizarBoton(form));
 }
@@ -119,6 +122,7 @@ for (const form of [formNegocio, formTipo, formComprobantes]) {
 // aviso (api()) y el botón vuelve a quedar habilitado para reintentar.
 async function guardar(form, cuerpo, pintar) {
   const boton = botonGuardar(form);
+  const texto = boton.textContent;
   boton.disabled = true;
   boton.textContent = "Guardando…";
   try {
@@ -127,7 +131,7 @@ async function guardar(form, cuerpo, pintar) {
     boton.disabled = false;
     throw e;
   } finally {
-    boton.textContent = "Guardar cambios";
+    boton.textContent = texto;
   }
   // También el selector de negocio, que muestra el nombre y el tipo.
   await refrescar([cargarNegocio(), recargar("negocios")]);
@@ -163,33 +167,99 @@ formNegocio.addEventListener("submit", async (e) => {
   await guardar(formNegocio, cambios(formNegocio), pintarNegocio);
 });
 
-/* ---------- Tipo de negocio y secciones ---------- */
+/* ---------- Funciones y tipo de negocio (hist. §88) ---------- */
 
-function pintarTipo() {
-  document.getElementById("configTipos").innerHTML = tarjetasTipo(negocio.perfiles, negocio.rubro);
-  document.getElementById("configModulos").innerHTML = tarjetasModulos(negocio.perfiles, negocio.modulos);
-  notaModulos.textContent = NOTA_MODULOS;
-  marcarSinCambios(formTipo);
+// El tipo se eligió al crear el negocio y se ve fijo; lo que se toca son las
+// funciones. Cambiar el tipo no prende ni apaga ninguna (el servidor ya no las
+// mueve): es otra página, que dice qué cambia antes de confirmar.
+const tipoActual = () => tipoDeNegocio(negocio.perfiles, negocio.rubro) ?? negocio.perfiles.tipos[0];
+
+function pintarFunciones() {
+  const tipo = tipoActual();
+  document.getElementById("configTipoActual").innerHTML = `
+    <span class="opcion-tarjeta-icono">${icono(esc(tipo.icono))}</span>
+    <div class="config-tipo-actual-texto">
+      <p class="config-tipo-actual-etiqueta">Tipo de negocio</p>
+      <p class="config-tipo-actual-nombre">${esc(tipo.nombre)}</p>
+      <p class="config-tipo-actual-desc">${esc(tipo.descripcion)}</p>
+    </div>
+    <a class="btn btn-secundario" href="#/configuracion/cambiar-tipo">Cambiar el tipo</a>`;
+  document.getElementById("configModulos").innerHTML = tarjetasModulos(negocio.perfiles, negocio.modulos, tipo);
+  marcarSinCambios(formFunciones);
 }
 
-// Elegir otro tipo vuelve a marcar sus secciones; se pueden cambiar igual
-// antes de guardar.
-formTipo.addEventListener("change", (e) => {
-  if (e.target.name !== "rubro") return;
-  marcarModulosDelTipo(formTipo, negocio.perfiles, e.target.value);
-  const tipo = tipoDeNegocio(negocio.perfiles, e.target.value);
-  notaModulos.textContent = `Marcamos las secciones que trae "${tipo.nombre}". Podés cambiarlas antes de guardar.`;
-  actualizarBoton(formTipo);
+formFunciones.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!tieneCambios(formFunciones)) return;
+  await guardar(formFunciones, { modulos: valores(formFunciones).modulo }, pintarFunciones);
 });
 
-formTipo.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!tieneCambios(formTipo)) return;
-  // Van los dos juntos: si las secciones son las del tipo, el servidor guarda
-  // que la empresa sigue al tipo.
-  const { rubro, modulo } = valores(formTipo);
-  await guardar(formTipo, { rubro, modulos: modulo }, pintarTipo);
+// Las funciones del tipo elegido que el negocio todavía no tiene.
+function funcionesQueFaltan(tipo) {
+  return negocio.perfiles.modulos.filter((m) => tipo.modulos.includes(m.clave) && !negocio.modulos.includes(m.clave));
+}
+
+const unidadEnTexto = (unidad) => (UNIDADES[unidad] ?? unidad).toLowerCase();
+const listaConY = (nombres) => (nombres.length < 2 ? nombres.join("") : `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}`);
+
+function pintarCambiosDelTipo() {
+  const caja = document.getElementById("configTipoCambios");
+  const boton = botonGuardar(formCambiarTipo);
+  const tipo = tipoDeNegocio(negocio.perfiles, valores(formCambiarTipo).rubro);
+  if (!tipo || tipo.clave === negocio.rubro) {
+    caja.hidden = true;
+    caja.innerHTML = "";
+    boton.disabled = true;
+    boton.textContent = "Cambiar el tipo";
+    return;
+  }
+  const faltan = funcionesQueFaltan(tipo);
+  const sumar = formCambiarTipo.querySelector('input[name="sumar"]')?.checked ?? false;
+  caja.hidden = false;
+  caja.innerHTML = `
+    <p class="config-tipo-cambios-titulo">Qué cambia si pasás a ${esc(tipo.nombre)}</p>
+    <ul class="config-tipo-cambios-lista">
+      <li>${icono("check")} <span>Lo nuevo que cargues va a nacer como ${esc(terminoDeTipo(tipo.tipo_defecto))}, por ${esc(unidadEnTexto(tipo.unidad_defecto))}.</span></li>
+      <li>${icono("check")} <span>Lo que ya cargaste queda igual: no se borra, no cambia de nombre y no se apaga ninguna función.</span></li>
+    </ul>
+    ${
+      faltan.length
+        ? `<label class="form-check">
+             <input type="checkbox" name="sumar" value="si"${sumar ? " checked" : ""} />
+             Sumar también ${esc(listaConY(faltan.map((m) => m.nombre)))}, que vienen con ${esc(tipo.nombre)}
+           </label>`
+        : ""
+    }`;
+  boton.disabled = false;
+  boton.textContent = `Cambiar a ${tipo.nombre}`;
+}
+
+function pintarCambiarTipo() {
+  document.getElementById("configTipos").innerHTML = tarjetasTipo(negocio.perfiles, negocio.rubro);
+  pintarCambiosDelTipo();
+  marcarSinCambios(formCambiarTipo);
+}
+
+formCambiarTipo.addEventListener("change", (e) => {
+  if (e.target.name === "rubro") pintarCambiosDelTipo();
 });
+
+formCambiarTipo.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const tipo = tipoDeNegocio(negocio.perfiles, valores(formCambiarTipo).rubro);
+  if (!tipo || tipo.clave === negocio.rubro) return;
+  const cuerpo = { rubro: tipo.clave };
+  if (formCambiarTipo.querySelector('input[name="sumar"]')?.checked) {
+    cuerpo.modulos = [...negocio.modulos, ...funcionesQueFaltan(tipo).map((m) => m.clave)];
+  }
+  // De vuelta en Funciones, que ya muestra el tipo nuevo.
+  await guardar(formCambiarTipo, cuerpo, () => {
+    marcarSinCambios(formCambiarTipo);
+    mostrarVista("configuracion", { subruta: "funciones" });
+  });
+});
+
+document.getElementById("btnConfigOtroNegocio").addEventListener("click", () => invocar("agregar:negocio"));
 
 /* ---------- Comprobantes y datos fiscales ---------- */
 
@@ -272,7 +342,8 @@ document.addEventListener("nexo:tema", pintarApariencia);
 
 const PAGINAS = {
   negocio: { admin: true, form: formNegocio, alEntrar: pintarNegocio },
-  tipo: { admin: true, form: formTipo, alEntrar: pintarTipo },
+  funciones: { admin: true, form: formFunciones, alEntrar: pintarFunciones },
+  "cambiar-tipo": { admin: true, form: formCambiarTipo, alEntrar: pintarCambiarTipo, menu: "funciones" },
   comprobantes: { admin: true, form: formComprobantes, alEntrar: pintarComprobantes },
   usuarios: { admin: true, alEntrar: () => recargar("usuarios") },
   // Los catálogos los pinta su dominio (leen su estado), después de traerlos
@@ -314,7 +385,7 @@ async function abrirPagina(subruta) {
   config.dataset.pagina = clave ?? "";
   for (const pagina of config.querySelectorAll(".config-pagina")) pagina.hidden = pagina.dataset.seccion !== clave;
   for (const item of config.querySelectorAll(".config-item")) {
-    const activo = item.dataset.seccion === clave;
+    const activo = item.dataset.seccion === itemDelMenu(clave);
     item.classList.toggle("is-active", activo);
     if (activo) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");

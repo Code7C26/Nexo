@@ -5,6 +5,7 @@ import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
+import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -490,8 +491,8 @@ function registroExcedido(ip) {
 
 // Los datos de un negocio nuevo, del alta de cuenta y de "Agregar negocio"
 // (POST /api/negocios): se validan igual que en Configuración, con el nombre
-// obligatorio. Si los módulos elegidos son justo los del tipo se guarda NULL:
-// el negocio sigue al preset, igual que uno creado sin elegirlos.
+// obligatorio. Los módulos quedan guardados siempre (hist. §88): sin elegirlos,
+// los del tipo. Así un cambio de tipo después no prende ni apaga nada.
 function validarNegocioNuevo(cuerpo) {
   const { error, datos } = validarDatosNegocio(
     {
@@ -507,8 +508,7 @@ function validarNegocioNuevo(cuerpo) {
     { parcial: false }
   );
   if (error) return { error };
-  const modulos = datos.modulos === undefined || datos.modulos === modulosDelPreset(datos.rubro) ? null : datos.modulos;
-  return { datos: { ...datos, modulos } };
+  return { datos: { ...datos, modulos: datos.modulos ?? modulosDelPreset(datos.rubro) } };
 }
 
 // En el orden de las columnas de los INSERT y UPDATE de abajo.
@@ -9751,96 +9751,7 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
 
 /* ---------- Tipo de negocio y módulos (CLAUDE.md §29) ---------- */
 
-// Cada tipo de negocio es un preset de datos —la unidad y el tipo con que nace
-// un producto nuevo, y qué módulos se ven—, nunca un camino de código propio.
-// Los módulos son las secciones opcionales del menú; el núcleo (productos,
-// clientes, ventas, caja, cuentas corrientes, gastos) se ve siempre. Ocultar
-// un módulo es de la interfaz: los permisos siguen siendo los de permisos.js.
-//
-// `descripcion` e `icono` (id del sprite del frontend) son lo que muestran las
-// tarjetas del alta guiada y de Configuración: viven acá para que la lista de
-// tipos esté en un solo lugar. `catalogo` es cómo se llama la sección de lo que
-// se vende, en plural y en singular (hist. §78); sin él, "productos".
-const MODULOS = ['pos', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios'];
-const MODULOS_INFO = {
-  pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
-  presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
-  trabajos: { nombre: 'Trabajos', descripcion: 'Lo que tenés que hacer para cada cliente: cuándo, quién y, al terminar, la venta.', icono: 'clipboard-list' },
-  abonos: { nombre: 'Abonos', descripcion: 'Servicios que tus clientes pagan todos los meses, con la cuota que se arma sola.', icono: 'repeat' },
-  compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
-  stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
-  socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
-};
-const PERFILES_RUBRO = {
-  comercio: {
-    nombre: 'Comercio general',
-    descripcion: 'Ropa, ferretería, librería o regalería: productos con talles, colores y códigos.',
-    icono: 'store',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'presupuestos', 'compras', 'stock']
-  },
-  carniceria: {
-    nombre: 'Carnicería',
-    descripcion: 'Cortes y fiambres por kilo, con venta rápida en el mostrador.',
-    icono: 'beef',
-    unidad_defecto: 'kg',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
-  },
-  verduleria: {
-    nombre: 'Verdulería',
-    descripcion: 'Frutas y verduras por kilo o por unidad.',
-    icono: 'carrot',
-    unidad_defecto: 'kg',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
-  },
-  kiosco: {
-    nombre: 'Kiosco / almacén',
-    descripcion: 'Golosinas, bebidas y almacén, cobrando rápido con el lector.',
-    icono: 'cup-soda',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
-  },
-  servicios: {
-    nombre: 'Servicios',
-    descripcion: 'Presupuestos, agenda de trabajos y abonos mensuales, sin manejar stock.',
-    icono: 'briefcase',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'servicio',
-    catalogo: { plural: 'servicios', singular: 'servicio' },
-    modulos: ['presupuestos', 'trabajos', 'abonos']
-  },
-  // Un gimnasio también compra y vende productos (hist. §71): es un comercio
-  // al que se le suman los socios y sus cuotas (hist. §74).
-  gimnasio: {
-    nombre: 'Gimnasio',
-    descripcion: 'Socios con planes, cuotas e ingreso en la recepción, y venta de suplementos, bebidas y ropa.',
-    icono: 'dumbbell',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock', 'socios']
-  }
-};
-const RUBRO_POR_DEFECTO = 'comercio';
-const CATALOGO_POR_DEFECTO = { plural: 'productos', singular: 'producto' };
-// Se muestran en el alta con "Próximamente", pero no se pueden elegir: cada uno
-// espera su módulo (turnos, mesas y comandas), que se va a poder sumar a
-// cualquier negocio (CLAUDE.md §29).
-const RUBROS_PROXIMAMENTE = {
-  peluqueria: { nombre: 'Barbería / peluquería', descripcion: 'Turnos con calendario y recordatorios a tus clientes.', icono: 'scissors' },
-  restaurante: { nombre: 'Restaurante / bar', descripcion: 'Mesas, comandas y pedidos a la cocina.', icono: 'utensils' }
-};
-
-// Los módulos del tipo, como se guardan en organizaciones.modulos (en el orden
-// de MODULOS, separados por espacios). Un tipo desconocido es comercio, igual
-// que en perfilDeEmpresa().
-function modulosDelPreset(rubro) {
-  const perfil = PERFILES_RUBRO[Object.hasOwn(PERFILES_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO];
-  return MODULOS.filter((m) => perfil.modulos.includes(m)).join(' ');
-}
+// Los tipos y sus presets viven en perfiles.js, que también lee db/index.js.
 
 function catalogoTiposNegocio() {
   const lista = (tabla) => Object.entries(tabla).map(([clave, datos]) => ({ clave, ...datos }));
@@ -9851,8 +9762,9 @@ function catalogoTiposNegocio() {
   };
 }
 
-// organizaciones.modulos NULL = los del preset del rubro; si no, la lista que
-// eligió el admin, separada por espacios.
+// organizaciones.modulos es la lista que eligió el admin, separada por
+// espacios. Desde hist. §88 siempre está cargada (db/index.js completó las
+// viejas): el NULL al preset queda solo por si acaso.
 function perfilDeEmpresa(organizacionId) {
   const fila = db.prepare('SELECT rubro, modulos FROM organizaciones WHERE id = ?').get(organizacionId);
   const rubro = Object.hasOwn(PERFILES_RUBRO, fila?.rubro ?? '') ? fila.rubro : RUBRO_POR_DEFECTO;
@@ -10039,14 +9951,9 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
-  // Cambiar el tipo sin mandar módulos vuelve a los del preset, y mandar justo
-  // los del preset también: la empresa sigue al tipo, como en el alta.
-  if (datos.rubro !== undefined && datos.modulos === undefined && datos.rubro !== (anterior?.rubro ?? RUBRO_POR_DEFECTO)) {
-    datos.modulos = null;
-  }
-  if (datos.modulos && datos.modulos === modulosDelPreset(datos.rubro ?? anterior?.rubro)) {
-    datos.modulos = null;
-  }
+  // Cambiar el tipo no toca los módulos (hist. §88): solo cambia con qué
+  // unidad y tipo nace un producto nuevo. Antes volvía a los del preset, y un
+  // gimnasio pasado a Servicios perdía de vista sus socios.
   const nuevo = { ...anterior, ...datos };
 
   const cambios = diffCampos(anterior, nuevo, CAMPOS_NEGOCIO);

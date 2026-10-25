@@ -1913,21 +1913,27 @@
         </section>
       </section>
 
-      <!-- Vista: Productos -->
+      <!-- Vista: Productos. Con productos y servicios cargados, dos pestañas
+           (#/productos/productos y #/productos/servicios, hist. §88); con uno
+           solo, no hay pestañas. -->
       <section class="view" data-view="productos" hidden>
+        <nav class="segmentos planes-menu" aria-label="Qué ver del catálogo" id="productosMenu" hidden>
+          <a class="segmento" href="#/productos/productos" data-pestana="producto">Productos</a>
+          <a class="segmento" href="#/productos/servicios" data-pestana="servicio">Servicios</a>
+        </nav>
         <section class="panel">
           <div class="panel-head">
-            <h2 data-termino="Plural">Productos</h2>
+            <h2 id="productosTitulo" data-termino="Plural">Productos</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnCategoriasProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
               <button class="btn btn-secundario col-admin" id="btnListasPrecios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Listas de precios</button>
-              <button class="btn btn-primary" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span data-termino="singular">producto</span></span></button>
+              <button class="btn btn-primary" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span id="btnNuevoProductoTermino">producto</span></span></button>
             </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
           <div class="filtros" id="filtrosProductos"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table" id="productosTabla">
             <thead>
               <tr>
                 <th scope="col">Nombre</th>
@@ -2604,9 +2610,9 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Datos del negocio</span><span class="config-item-desc">Nombre, dirección y contacto</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
-              <a class="config-item" href="#/configuracion/tipo" data-seccion="tipo">
+              <a class="config-item" href="#/configuracion/funciones" data-seccion="funciones">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg></span>
-                <span class="config-item-texto"><span class="config-item-nombre">Tipo de negocio y secciones</span><span class="config-item-desc">Qué secciones ves en el menú</span></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Funciones</span><span class="config-item-desc">Qué secciones ves en el menú</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
               <a class="config-item" href="#/configuracion/comprobantes" data-seccion="comprobantes">
@@ -2688,26 +2694,50 @@
               </form>
             </section>
 
-            <section class="config-pagina col-admin" data-seccion="tipo" aria-labelledby="configTipoTitulo" hidden>
+            <!-- Funciones (hist. §88): el tipo se ve fijo y las funciones se
+                 suman o se sacan. Cambiar el tipo es una página aparte. -->
+            <section class="config-pagina col-admin" data-seccion="funciones" aria-labelledby="configFuncionesTitulo" hidden>
               <header class="config-pagina-head">
-                <h2 id="configTipoTitulo" tabindex="-1">Tipo de negocio y secciones</h2>
-                <p>Nexo se arma según tu tipo de negocio. Cambiarlo no borra nada: cambia con qué unidad nacen los productos nuevos y qué secciones ves en el menú.</p>
+                <h2 id="configFuncionesTitulo" tabindex="-1">Funciones</h2>
+                <p>Sumale a tu negocio lo que necesites, aunque no venga con su tipo: un comercio que también da servicios, un gimnasio que vende en el mostrador.</p>
               </header>
-              <form class="form config-tarjeta" id="formConfigTipo" novalidate>
+              <div class="config-tarjeta config-tipo-actual">
+                <div class="config-tarjeta-cuerpo" id="configTipoActual"></div>
+              </div>
+              <form class="form config-tarjeta" id="formConfigFunciones" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <fieldset class="opciones">
+                    <legend>Funciones que usás</legend>
+                    <p class="opciones-nota">Ventas, clientes, caja, gastos, cuentas corrientes y reportes están siempre.</p>
+                    <div class="opciones-tarjetas opciones-tarjetas-compactas" id="configModulos"></div>
+                  </fieldset>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Las funciones apagadas solo se ocultan del menú: lo que cargaste sigue ahí.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Cambiar el tipo (hist. §88): fuera del menú, se llega desde
+                 Funciones. Dice qué cambia antes de confirmar. -->
+            <section class="config-pagina col-admin" data-seccion="cambiar-tipo" aria-labelledby="configCambiarTipoTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/funciones"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Funciones</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configCambiarTipoTitulo" tabindex="-1">Cambiar el tipo de negocio</h2>
+                <p>El tipo es con qué arrancó tu negocio. Si lo que querés es llevar otro negocio, conviene crearlo aparte: cada uno con sus productos, clientes y caja.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigCambiarTipo" novalidate>
                 <div class="config-tarjeta-cuerpo">
                   <fieldset class="opciones">
                     <legend>Tipo de negocio</legend>
                     <div class="opciones-tarjetas" id="configTipos"></div>
                   </fieldset>
-                  <fieldset class="opciones">
-                    <legend>Secciones que usás</legend>
-                    <p class="opciones-nota" id="configModulosNota" aria-live="polite">Ventas, clientes, caja, gastos, cuentas corrientes y reportes están siempre.</p>
-                    <div class="opciones-tarjetas opciones-tarjetas-compactas" id="configModulos"></div>
-                  </fieldset>
+                  <div class="config-tipo-cambios" id="configTipoCambios" aria-live="polite"></div>
                 </div>
                 <div class="config-tarjeta-pie">
-                  <p>Las secciones apagadas solo se ocultan del menú: lo que cargaste sigue ahí.</p>
-                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                  <button type="button" class="btn btn-secundario" id="btnConfigOtroNegocio"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Crear otro negocio</span></button>
+                  <button type="submit" class="btn btn-primary" disabled>Cambiar el tipo</button>
                 </div>
               </form>
             </section>

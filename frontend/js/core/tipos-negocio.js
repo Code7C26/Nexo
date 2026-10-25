@@ -46,9 +46,20 @@ export function tarjetasTipo(catalogo, elegido) {
   return [...disponibles, ...proximamente].join("");
 }
 
-export function tarjetasModulos(catalogo, marcados = []) {
+// Con `tipo` (Configuración, hist. §88), las que trae ese tipo de negocio
+// llevan "Viene con …": se ve qué es de base y qué se sumó.
+export function tarjetasModulos(catalogo, marcados = [], tipo = null) {
   return catalogo.modulos
-    .map((m) => tarjeta({ tipo: "checkbox", nombre: "modulo", valor: m.clave, elegida: marcados.includes(m.clave), datos: m }))
+    .map((m) =>
+      tarjeta({
+        tipo: "checkbox",
+        nombre: "modulo",
+        valor: m.clave,
+        elegida: marcados.includes(m.clave),
+        datos: m,
+        pastilla: tipo?.modulos.includes(m.clave) ? ` <span class="status">Viene con ${esc(tipo.nombre)}</span>` : ""
+      })
+    )
     .join("");
 }
 
