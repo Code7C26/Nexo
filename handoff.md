@@ -27,7 +27,7 @@ hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
 abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 20 de octubre.
 - **Falta que el usuario vea §78 a §87** (servicios, trabajos, agenda, abonos,
-  primeros pasos y lo demás). Son 9 commits en `solla`, sin pushear.
+  primeros pasos y lo demás). Ya están pusheados y en `main`.
 - **Arreglado un error de fechas** (hist. §82): desde las 21 h, toda operación
   quedaba con la fecha del día siguiente (el servidor usaba UTC). Ahora "hoy"
   es el día de la Argentina (`backend/fecha.js`). **Para decidir con el
@@ -43,20 +43,14 @@ abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 - Abonos mensuales (hist. §79): hechos y commiteados. Módulo `abonos`, con las
   cuotas armadas por el mismo `periodosPendientes()` que las de socios. Falta
   que el usuario lo vea.
-  - La base real suma las tablas `abonos` y `cuotas_abono` en el próximo
-    `npm start` (aditivo).
 - Servicios con funciones propias, primera parte (hist. §78): hecha y
   commiteada. El catálogo se llama "Servicios" en ese tipo de negocio, con
   formulario propio (descripción, duración, unidad `hora`), y el módulo nuevo
   `trabajos`: presupuesto → trabajo con día, responsable y estado → venta.
   Falta que el usuario lo vea.
-  - La base real suma dos columnas en `productos` y las tablas `trabajos` y
-    `trabajo_items` en el próximo `npm start` (aditivo, con respaldo antes).
 - Varios negocios por cuenta (hist. §77) está hecho y commiteado: selector
   arriba del menú, "Agregar negocio" y el rol por negocio. El usuario lo vio
   y le gustó (20 de octubre): "que se vaya manejando por cuenta".
-  - La base real se migra en el próximo `npm start`, con respaldo antes: el
-    rol y la baja pasan a `usuario_organizaciones`.
 - Socios, cuotas e ingreso (hist. §74) y planes con varias duraciones, varios
   planes por socio y descuentos (hist. §75) están hechos y commiteados.
 - El usuario ya probó la primera versión de socios en la base real, que es un
@@ -104,6 +98,8 @@ Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
 incluido.
 
 **Base de datos real** (`backend/db/nexo.db`, en `.gitignore`):
+- Migrada a §77–§79 el 25 de octubre de 2026 en un `npm start` (respaldo
+  `nexo-20261025-225132.db` en OneDrive).
 - **Ya migrada a la Etapa A** (6 de octubre de 2026, primer arranque real, hist.
   §57): se aplicó §37–§49 de una vez. Los conteos de las 36 tablas dieron
   idénticos antes y después (solo bajó `sesiones`, que el arranque limpia),
@@ -762,6 +758,12 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
    no hay respuesta, va "consultanos") y dónde se publica (hosting gratis o
    pago, y si se compra un dominio).
+   - **Planes (pedido del usuario del 25 de octubre):** se definen en esta
+     etapa, con él. Hay que decidir en base a qué se cobra, qué suma cada
+     plan más caro y cómo es la demo para probarlo.
+   - El plan base va más barato que la competencia. El trabajo del Classroom
+     de punto de equilibrio usó $ 19.900 por mes como provisorio (Dux desde
+     $ 36.000 + IVA; Contagram, $ 58.900 + IVA): no es un precio decidido.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
@@ -826,7 +828,8 @@ octubre).
     para entregar en el Classroom. Un commit por documento, con un mensaje
     claro (por ejemplo `docs(classroom): modelo Canvas de negocio`), sin
     código del producto en el mismo commit.
-  - Los documentos van en `docs/classroom/`.
+  - Los documentos van directo en `docs/`, junto a los otros trabajos (pedido
+    del usuario del 25 de octubre: no hay carpeta `docs/classroom/`).
 - **Prioridad:** terminar el producto lo antes posible, así esos documentos
   describen un producto ya definido. Igual, algunos se van haciendo en estos
   días, intercalados.
