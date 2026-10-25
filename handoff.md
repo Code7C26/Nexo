@@ -830,6 +830,17 @@ octubre).
     código del producto en el mismo commit.
   - Los documentos van directo en `docs/`, junto a los otros trabajos (pedido
     del usuario del 25 de octubre: no hay carpeta `docs/classroom/`).
+- **Hechos y entregados** (un PDF cada uno en `docs/`; el HTML de origen no
+  se versiona):
+  - informe económico, monetización y marco legal;
+  - punto de equilibrio: plan base provisorio de $ 19.900 por mes, 84
+    clientes con sueldos y 5 sin sueldos;
+  - TAM, SAM y SOM:
+    - TAM: 476.750 empresas empleadoras;
+    - SAM: unos 2.770 negocios de Alta Gracia, la ciudad del equipo;
+    - SOM: el 3%, unos 83 clientes.
+  - Un trabajo nuevo que use estos números los toma de ahí, para que no se
+    contradigan.
 - **Prioridad:** terminar el producto lo antes posible, así esos documentos
   describen un producto ya definido. Igual, algunos se van haciendo en estos
   días, intercalados.
