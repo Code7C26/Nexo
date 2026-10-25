@@ -744,6 +744,22 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      celular.
    - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión
      (CLAUDE.md §31).
+7b. **Celular de verdad: investigar antes de hacer** (pedido del usuario del 25
+   de octubre; todavía no se hace, pero es muy importante). Hoy en el celular
+   todo tiene el mismo tamaño que en la compu, solo más apretado: en Productos
+   entran uno o dos renglones por pantalla (cada fila de tabla se vuelve una
+   tarjeta alta con todas las columnas) y hay que deslizar todo el tiempo. Le
+   pasó lo mismo con el sistema de su negocio de perfumes.
+   - **Investigar primero, con capturas:** cómo resuelven las listas, las
+     fichas, los formularios y la navegación en el celular otros sistemas de
+     gestión y apps de comercio (Dux, Contagram, Mercado Pago, Tienda Nube,
+     Shopify, Square, Loyverse y otros).
+   - **Ideas a validar con esa investigación:** lista compacta de una o dos
+     líneas por renglón (nombre, el dato clave y el estado, y lo demás en la
+     ficha); barra de navegación abajo con las secciones de uso diario; botón
+     flotante para "Nuevo"; filtros en una hoja que sube desde abajo; formularios
+     a pantalla completa en vez de modales.
+   - Va junto con la PWA: la app instalada es esta misma vista.
 8. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
    porque el marketing necesita una dirección pública. La landing se sirve
    desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
@@ -755,6 +771,20 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - El plan base va más barato que la competencia. El trabajo del Classroom
      de punto de equilibrio usó $ 19.900 por mes como provisorio (Dux desde
      $ 36.000 + IVA; Contagram, $ 58.900 + IVA): no es un precio decidido.
+   - **Plan gratis (pedido del usuario del 25 de octubre):** Nexo tiene que
+     servirle a cualquier negocio, también a un chico que vende medialunas en
+     el colegio y quiere saber cuánto vende y cuánto gana. Quiere invitar a los
+     emprendedores de su colegio. El plan gratis tiene límites, a definir en
+     esta etapa (por ejemplo, cantidad de productos o de ventas por mes, un
+     solo usuario, sin facturación electrónica). Para ese usuario, una
+     entrada más simple (un tipo "Emprendimiento" con pocas secciones) se
+     piensa en esta misma etapa.
+   - **Publicidad de terceros en el plan gratis: recomendado no ponerla**
+     (respondido al usuario el 25 de octubre; la decisión es suya): paga muy
+     poco, mete scripts de terceros donde están los datos de los negocios, y
+     Google restringe los anuncios a menores. La alternativa propuesta: el
+     plan gratis funciona como vidriera, invita a pasar a un plan pago y lleva
+     la marca "Hecho con Nexo".
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
