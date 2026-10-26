@@ -19,10 +19,27 @@ const PORT = process.env.PORT || 3000;
 db.function('fecha_de_hoy', { deterministic: false }, () => fechaDeHoy());
 const HOY_SQL = 'fecha_de_hoy()';
 
-// Cabeceras de seguridad básicas (CLAUDE.md §35). No se agrega CSP todavía:
-// index.html tiene un script inline en el <head> y carga fuentes de Google, así
-// que un CSP útil necesita antes autoalojar las fuentes y mover ese script
-// (se hace junto con la PWA, Etapa B2).
+// Cabeceras de seguridad básicas (CLAUDE.md §35), y la CSP desde la PWA (hist.
+// §94): las fuentes ya se sirven desde frontend/fonts/ y el script del <head>
+// salió a js/arranque.js, así que todo lo que carga la app es del mismo origen.
+// Sin script inline: un XSS que lograra meter HTML no podría ejecutar nada.
+// style-src permite inline porque las plantillas de la app arman atributos
+// style="" (anchos de barras, colores). img-src suma data: (los íconos de los
+// avisos en styles.css) y blob: (lo que arma el PDF de un comprobante).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
 app.disable('x-powered-by');
 // Detrás de un proxy inverso (HTTPS en producción) `req.ip` sería siempre la IP
 // del proxy y los límites por IP agruparían a todos los clientes. NEXO_TRUST_PROXY
@@ -38,6 +55,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Content-Security-Policy', CSP);
   next();
 });
 

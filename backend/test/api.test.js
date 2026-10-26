@@ -305,6 +305,24 @@ test('las respuestas no anuncian Express y llevan cabeceras de seguridad (A5)', 
   assert.equal(r.headers.get('x-powered-by'), null);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  // CSP sin scripts inline ni de otro origen (hist. §94).
+  const csp = r.headers.get('content-security-policy') ?? '';
+  assert.match(csp, /script-src 'self'(;|$)/);
+  assert.match(csp, /frame-ancestors 'none'/);
+});
+
+test('la PWA: el manifest y el service worker se sirven con su tipo (hist. §94)', async () => {
+  const cliente = crearCliente(servidor.url);
+  const manifest = await cliente.get('/manifest.webmanifest');
+  assert.equal(manifest.status, 200);
+  assert.match(manifest.headers.get('content-type'), /application\/manifest\+json/);
+  assert.equal(manifest.json?.start_url, '/');
+  const sw = await cliente.get('/sw.js');
+  assert.equal(sw.status, 200);
+  assert.match(sw.headers.get('content-type'), /javascript/);
+  // La página de inicio también lleva la CSP: es la que la aplica.
+  const inicio = await cliente.get('/');
+  assert.match(inicio.headers.get('content-security-policy') ?? '', /default-src 'self'/);
 });
 
 test('el envío de una compra se puede pagar, y un borrador no se paga (A2)', async () => {

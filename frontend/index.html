@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Nexo — Gestión para tu negocio</title>
   <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
   <!-- Las fuentes se sirven desde frontend/fonts/ (ver @font-face en
@@ -11,29 +11,17 @@
        (scripts/fuentes.mjs) y entonces cae a Inter. -->
   <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
   <meta name="theme-color" content="#000000" />
+  <!-- PWA (hist. §94): se instala desde el navegador del celular. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/img/app/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Nexo" />
   <link rel="stylesheet" href="css/styles.css" />
-  <script>
-    // Se aplica antes de pintar la página (no en app.js, que carga después)
-    // para que no haya un flash de tema oscuro (el de partida, sin atributo)
-    // al entrar con claro elegido.
-    try {
-      const guardado = localStorage.getItem("nexo.tema");
-      if (guardado) document.documentElement.setAttribute("data-tema", guardado);
-      const sidebarGuardada = localStorage.getItem("nexo.sidebar");
-      if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
-      // Marca cosmética para evitar el flash de la app antes de que
-      // sesion.js confirme con el servidor si hay sesión de verdad. Esto
-      // NO es seguridad: el servidor decide con la cookie httpOnly, que
-      // este script ni siquiera puede leer. Si alguien borra esta marca a
-      // mano, lo único que pasa es que ve un parpadeo — sesion.js igual
-      // pide /api/auth/estado y muestra el login si corresponde.
-      if (localStorage.getItem("nexo.sesion") !== "activa") {
-        document.documentElement.setAttribute("data-sesion", "cerrada");
-      }
-    } catch {}
-  </script>
+  <script src="js/arranque.js"></script>
 </head>
 <body>
+
+  <!-- Aviso de sin conexión (hist. §94): lo muestra sesion.js. -->
+  <div class="aviso-conexion" id="avisoConexion" role="status" hidden></div>
 
   <button class="nav-toggle" id="navToggle" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">
     <span></span><span></span><span></span>
@@ -2852,7 +2840,7 @@
               </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
-                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema oscuro o claro</span></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema e instalar como app</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
@@ -3248,6 +3236,23 @@
                       </label>
                     </div>
                   </fieldset>
+                </div>
+              </form>
+              <!-- Instalar como app (PWA, hist. §94): el texto y el botón dependen
+                   del navegador y de si ya está instalada (dominios/configuracion.js). -->
+              <form class="form config-tarjeta" id="formConfigInstalar">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="instalar">
+                    <img class="instalar-icono" src="/img/app/icono-192.png" alt="" width="56" height="56" />
+                    <div class="instalar-texto">
+                      <h3>Nexo como app</h3>
+                      <p id="instalarEstado"></p>
+                    </div>
+                  </div>
+                  <button class="btn btn-primary instalar-boton" id="btnInstalar" type="button" hidden>
+                    <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg>
+                    Instalar Nexo
+                  </button>
                 </div>
               </form>
             </section>

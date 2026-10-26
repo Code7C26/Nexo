@@ -1271,6 +1271,16 @@ sin pagar cuenta de desarrollador ni mantener un código separado:
 - Acceso a cámara para lector de código de barras (relevante para POS, §30) y
   a almacenamiento local para el caso offline.
 
+Implementado hoy (hist. §94):
+- Manifest, íconos y service worker (`frontend/sw.js`): se instala desde el
+  navegador, con un botón en Configuración → Apariencia.
+- Sin conexión abre y muestra lo último que cargó, con un aviso arriba, y no
+  escribe. Lo guardado se borra al entrar y al salir de la cuenta.
+- CSP sin scripts inline.
+- Faltan las notificaciones (Web Push).
+- El diseño propio del celular es la etapa 7b de `handoff.md`
+  (`docs/investigacion-celular.md`).
+
 **Regla de diseño: mobile-first en toda pantalla nueva.** El sistema ya tiene
 responsive real (drawer de navegación, tema claro/oscuro, layouts que se
 apilan en mobile) — la pantalla nueva se diseña primero para el celular y

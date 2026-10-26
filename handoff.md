@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §93);
+    siguiente número (hoy el último es §94);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,17 @@
 
 ## Estado actual (26 de octubre de 2026)
 
-**Próxima sesión:** la PWA (7) junto con "celular de verdad" (7b, que pide
-investigar antes). Los dos están en "Qué sigue".
+**Próxima sesión:** seguir con "celular de verdad" (7b), fase 2: la base del
+celular (barra inferior, formularios a pantalla completa, controles de 44 px).
+El plan de las fases 2 a 4 está en "Qué sigue", 7b.
+- **PWA hecha** (hist. §94), commiteada en `solla`. Se instala (botón en
+  Configuración → Apariencia) y sin conexión abre con lo último que cargó, con
+  un aviso, sin escribir. También suma la CSP. Falta que el usuario la pruebe
+  en su celular: hace falta https o localhost, así que en la red de la casa,
+  por IP, no se instala (ver "Qué sigue", 8).
+- **La investigación del celular** está en `docs/investigacion-celular.md`
+  (Shopify, Square, Loyverse, Tienda Nube, Mercado Pago, Material, Apple), con
+  el diseño elegido. Falta que el usuario la lea.
 - **La auditoría es también del empleado** (hist. §93), sin costos ni filas
   de compras. Commiteado en `solla`; falta que el usuario lo vea.
 - **Cuenta de demo para el profe (26 de octubre), en la base real:** usuario
@@ -466,6 +475,21 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Cambiar de negocio recarga la página** en la vista de inicio. Es el
   reseteo de la memoria de la app, como en el logout.
 
+**PWA (hist. §94)**
+- **Primero la red, y lo guardado solo si falla** (`frontend/sw.js`). No pasar
+  a "primero lo guardado": sin build step serviría código viejo.
+- **Un `.js` nuevo va a `PRECACHE` de `sw.js`**, y `npm test` falla si
+  falta. Si cambia la forma de lo guardado, se sube `VERSION`: el service
+  worker borra al activarse los cachés de otra versión.
+- **Lo guardado de la API es de quien lo cargó:** la clave lleva el negocio y
+  `sesion.js` lo borra en el login, el logout y el 401. Nunca guardar
+  `/api/auth/*` (salvo `estado`) ni algo que no sea 200.
+- **Sin conexión no se escribe** (CLAUDE.md §31): no hay cola de escrituras.
+- **CSP sin scripts inline:** todo script va en un archivo. `arranque.js` es
+  el que corre en el `<head>` antes de pintar.
+- **`eslint.config.mjs` está protegido** por el hook `config-protection` del
+  plugin ecc. `sw.js` declara sus globales con `/* global */`.
+
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
   incluidos atributos `value="…"`. Lo exige `npm test`
@@ -608,7 +632,9 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    scratchpad contra el Chrome de `C:/Program Files/Google/Chrome`, servidor
    con base nueva (`NEXO_DB_PATH` al scratchpad, `NEXO_BACKUP=off`,
    `NEXO_INTERPRETE=stub`), empresa creada con `POST /api/auth/registro`.
-   Para XSS: sembrar `<img src=x onerror="window.__xss=…">'"` en cada campo de
+   Para XSS: el contexto va con `bypassCSP: true` (con la CSP de hist. §94 el
+   `onerror` no correría aunque faltara el escape, y la prueba no probaría
+   nada). Sembrar `<img src=x onerror="window.__xss=…">'"` en cada campo de
    texto, recorrer vistas, fichas, modales, filtros y asistente, y mirar
    `window.__xss`. Correr lo mismo contra el commit anterior (`git worktree`
    + junction de `node_modules`) como control: si ahí tampoco salta, la
@@ -775,13 +801,29 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      asistente que la anote ("me consultó Juan por…"), un formulario de
      contacto en la landing, mensajes por lote y automatizaciones de
      seguimiento.
-7. **B2: PWA** (1 sesión).
-   - Manifest, íconos y service worker con caché del shell: se instala desde el
-     celular.
-   - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión
-     (CLAUDE.md §31).
-7b. **Celular de verdad: investigar antes de hacer** (pedido del usuario del 25
-   de octubre; todavía no se hace, pero es muy importante). Hoy en el celular
+7. ~~B2: PWA~~ **hecha** (hist. §94). Para después: notificaciones con Web
+   Push.
+7b. **Celular de verdad** (pedido del usuario del 25 de octubre, muy
+   importante). **Investigación hecha** (`docs/investigacion-celular.md`), y
+   de ahí salen las fases que siguen, un commit y un § cada una:
+   - **Fase 2, base:**
+     - barra inferior con Resumen, las tres primeras funciones prendidas de
+       `ingreso, socios, pos, trabajos, ventas, productos, clientes`, y
+       "Más", que abre el cajón de siempre; se va la hamburguesa;
+     - el asistente pasa a la topbar y las fichas llevan "volver";
+     - los modales a pantalla completa, y el "atrás" los cierra;
+     - `--control-h` de 44 px e inputs de 16 px;
+     - un token `--abajo` para todo lo fijo abajo.
+   - **Fase 3, listas compactas:**
+     - la tabla con `lista-movil`; las celdas con `m-titulo`, `m-valor` y
+       `m-estado`, más una `<td class="m-sub">` armada con `celdaMovil()`
+       (`core/formato.js`), que en la compu no se ve;
+     - dos líneas por fila;
+     - sin selección múltiple ni precio editable en el celular.
+   - **Fase 4:** filtros en hoja desde abajo, un "Nuevo" flotante por vista
+     (`btn-nuevo`) y una pasada visual con capturas para el usuario.
+
+   El pedido original, como referencia: Hoy en el celular
    todo tiene el mismo tamaño que en la compu, solo más apretado: en Productos
    entran uno o dos renglones por pantalla (cada fila de tabla se vuelve una
    tarjeta alta con todas las columnas) y hay que deslizar todo el tiempo. Le

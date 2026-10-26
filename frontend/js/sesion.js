@@ -51,6 +51,9 @@
   // pestaña (hist. §77). La sesión es una sola por navegador: si en otra
   // pestaña se cambió de negocio, el backend frena a esta con un 409 en vez de
   // dejarla escribir en el negocio equivocado, y acá se recarga con un aviso.
+  //
+  // Y es donde se ve si una respuesta salió de lo guardado sin conexión (ver
+  // "Sin conexión" más abajo).
   const fetchOriginal = window.fetch.bind(window);
   window.fetch = async (...args) => {
     const url = typeof args[0] === "string" ? args[0] : args[0]?.url ?? "";
@@ -59,7 +62,14 @@
       const init = args[1] ?? {};
       args[1] = { ...init, headers: { ...init.headers, "X-Nexo-Negocio": negocio } };
     }
-    const res = await fetchOriginal(...args);
+    let res;
+    try {
+      res = await fetchOriginal(...args);
+    } catch (e) {
+      if (url.startsWith("/api/")) mostrarSinConexion();
+      throw e;
+    }
+    if (url.startsWith("/api/")) revisarConexion(res);
     if (res.status === 401) {
       if (!url.includes("/api/auth/")) {
         cerrarSesionLocal();
@@ -79,9 +89,81 @@
     try {
       localStorage.removeItem("nexo.sesion");
     } catch {}
+    borrarDatosGuardados();
     document.documentElement.setAttribute("data-sesion", "cerrada");
     pantalla.hidden = false;
   }
+
+  // ---------- PWA y sin conexión (CLAUDE.md §31, hist. §94) ----------
+  // sw.js guarda una copia de lo que se cargó para poder abrir la app sin
+  // conexión. Solo con HTTPS o en localhost: el navegador no registra un
+  // service worker en otro caso, y la app sigue igual sin él.
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("No se pudo registrar el service worker.", e));
+    });
+  }
+
+  // Lo guardado de la API es de quien lo cargó: se borra al entrar, al salir y
+  // cuando vence la sesión, así otra persona en el mismo dispositivo nunca ve
+  // datos ajenos sin conexión. El nombre es el de DATOS en sw.js.
+  async function borrarDatosGuardados() {
+    try {
+      if (!("caches" in window)) return;
+      const nombres = await caches.keys();
+      await Promise.all(nombres.filter((n) => n.startsWith("nexo-datos-")).map((n) => caches.delete(n)));
+    } catch {}
+  }
+
+  // El aviso de arriba. Sin conexión no se guarda nada (no hay escritura
+  // diferida): el aviso lo dice antes de que alguien cargue una venta entera.
+  const avisoConexion = document.getElementById("avisoConexion");
+  // Una llamada que falla después no trae hora: se mantiene la última conocida.
+  let ultimoGuardadoEn = 0;
+  function mostrarSinConexion(guardadoEn) {
+    if (guardadoEn) ultimoGuardadoEn = guardadoEn;
+    let cuando = "lo último que se cargó";
+    if (ultimoGuardadoEn) {
+      const fecha = new Date(ultimoGuardadoEn);
+      const hora = fecha.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+      const esHoy = fecha.toDateString() === new Date().toDateString();
+      cuando = esHoy
+        ? `lo que se cargó a las ${hora}`
+        : `lo que se cargó el ${fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })} a las ${hora}`;
+    }
+    avisoConexion.textContent = `Sin conexión. Estás viendo ${cuando}; no se puede guardar nada hasta que vuelva.`;
+    avisoConexion.hidden = false;
+    document.documentElement.setAttribute("data-conexion", "no");
+    // En el celular el aviso es fijo y la topbar baja lo que mide (styles.css).
+    document.documentElement.style.setProperty("--aviso-conexion-h", `${avisoConexion.offsetHeight}px`);
+  }
+  function ocultarSinConexion() {
+    ultimoGuardadoEn = 0;
+    avisoConexion.hidden = true;
+    document.documentElement.removeAttribute("data-conexion");
+  }
+  // Una respuesta guardada trae X-Nexo-Guardado-En (la pone sw.js); una que
+  // llegó del servidor muestra que la conexión volvió.
+  function revisarConexion(res) {
+    const guardadoEn = Number(res.headers.get("X-Nexo-Guardado-En"));
+    if (guardadoEn) mostrarSinConexion(guardadoEn);
+    else if (navigator.onLine) ocultarSinConexion();
+  }
+  window.addEventListener("offline", () => mostrarSinConexion());
+  window.addEventListener("online", ocultarSinConexion);
+
+  // El navegador avisa que se puede instalar apenas carga la página, antes de
+  // que exista app.js: se guarda el pedido para el botón "Instalar Nexo" de
+  // Configuración → Apariencia (dominios/configuracion.js), que lo usa después.
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    window.nexoPedidoInstalar = e;
+    document.dispatchEvent(new Event("nexo:instalable"));
+  });
+  window.addEventListener("appinstalled", () => {
+    window.nexoPedidoInstalar = null;
+    document.dispatchEvent(new Event("nexo:instalable"));
+  });
 
   function mostrarPantalla(cual) {
     pantalla.hidden = false;
@@ -149,6 +231,10 @@
       return;
     }
     appInyectada = true;
+    // Después de un login lo guardado está vacío: sin esto, el próximo arranque
+    // sin conexión no tendría el estado de la sesión y mostraría el login. Con
+    // fetchOriginal, como el arranque, así la copia queda con la misma clave.
+    fetchOriginal("/api/auth/estado").catch(() => {});
 
     // app.js es un módulo ES (CLAUDE.md §31): carga diferida, modo estricto y
     // su propio scope en vez del global. Inyectarlo con type="module" desde
@@ -184,6 +270,7 @@
     try {
       localStorage.removeItem("nexo.sesion");
     } catch {}
+    await borrarDatosGuardados();
     location.reload();
   };
 
@@ -203,6 +290,8 @@
         mostrarErrorEn("loginError", datos.error || "No se pudo iniciar sesión.");
         return;
       }
+      // Lo guardado antes de este login puede ser de otra persona.
+      await borrarDatosGuardados();
       if (datos.usuario.debe_cambiar_password) {
         window.__usuarioPendienteCambio = datos.usuario;
         mostrarPantalla("cambio");
@@ -210,9 +299,17 @@
       }
       arrancarApp(datos.usuario);
     } catch {
-      mostrarErrorEn("loginError", "No se pudo conectar con el servidor.");
+      mostrarErrorEn("loginError", sinRedNiSesion());
     }
   });
+
+  // Sin conexión y sin nada guardado (nunca se entró desde este dispositivo, o
+  // se cerró la sesión) no hay qué mostrar.
+  function sinRedNiSesion() {
+    return navigator.onLine
+      ? "No se pudo conectar con el servidor."
+      : "Sin conexión. Para usar Nexo sin conexión, primero entrá una vez con conexión desde este dispositivo.";
+  }
 
   // Entra al historial: el Atrás del navegador, desde el primer paso del
   // alta, vuelve al login.
@@ -260,6 +357,7 @@
   (async () => {
     try {
       const res = await fetchOriginal("/api/auth/estado");
+      revisarConexion(res);
       const estado = await res.json();
       if (estado.requiere_bootstrap) {
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
@@ -279,7 +377,7 @@
       }
     } catch {
       // Backend caído o inalcanzable: nunca dejar la pantalla en blanco.
-      mostrarErrorEn("loginError", "No se pudo conectar con el servidor.");
+      mostrarErrorEn("loginError", sinRedNiSesion());
       mostrarPantalla("login");
     }
   })();

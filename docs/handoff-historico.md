@@ -8925,3 +8925,91 @@ filtro no habría cambiado nada; el usuario eligió abrirla al empleado.
 **Verificación:** `npm test` 64 de 64 (test nuevo en `api.test.js`: margen
 objetivo podado para el empleado y visible para el admin, sin filas de
 compras), lint. No se probó en el navegador.
+
+## 94. PWA: se instala y abre sin conexión, 26 de octubre de 2026
+
+Etapa 7 del plan (B2, CLAUDE.md §31), junto con 7b ("celular de verdad"). La
+investigación de 7b quedó en `docs/investigacion-celular.md` (commit aparte);
+esta etapa es solo la PWA.
+
+**Qué se hizo:**
+- `frontend/manifest.webmanifest`: nombre, `start_url` "/", standalone, negro
+  de marca. Los íconos (`frontend/img/app/`: 192, 512, 512 maskable y el 180 de
+  Apple) se generaron una sola vez con `playwright-core` en el scratchpad: el
+  logo blanco de `assets/logo/01-icono/` centrado sobre negro (72 % del lado, y
+  56 % el maskable, dentro de su zona segura). No se versiona el script ni se
+  suma dependencia.
+- `frontend/sw.js`, en la raíz para que su alcance sea "/":
+  - **primero la red, y lo guardado solo si falla**, para el shell y para los
+    `GET /api`. No hay build step que versione los archivos: un caché "primero
+    lo guardado" serviría código viejo;
+  - la API espera hasta 6 s antes de mostrar lo guardado. El shell no tiene
+    tope: un `index.html` viejo con un `app.js` nuevo rompería la pantalla;
+  - `PRECACHE` lista todo `frontend/js`, `styles.css`, Inter, el sprite, los
+    logos y los íconos. Satoshi va en `OPCIONALES`, que tolera que falte. Los
+    vendor del PDF se guardan al usarse;
+  - en `DATOS`, solo las respuestas 200, con la clave más el negocio
+    (`__negocio`, de `X-Nexo-Negocio`) y la cabecera `X-Nexo-Guardado-En`;
+  - nunca `/api/auth/*`, salvo `estado`, que hace falta para arrancar sin red.
+- `js/sesion.js`:
+  - registra el service worker, solo en contexto seguro (localhost o https);
+  - **borra lo guardado de la API** (`nexo-datos-*`) en el login, el logout y
+    `cerrarSesionLocal` (401 o arranque sin sesión);
+  - después de un login vuelve a pedir `/api/auth/estado` con `fetchOriginal`,
+    para que el próximo arranque sin conexión tenga la sesión, con la misma
+    clave que usa el arranque;
+  - aviso naranja arriba (`#avisoConexion`): "Sin conexión. Estás viendo lo que
+    se cargó a las 14:55; no se puede guardar nada hasta que vuelva". Lo
+    dispara una respuesta con `X-Nexo-Guardado-En`, un fetch a `/api/` que
+    falla o el evento `offline`. Lo saca una respuesta del servidor o el evento
+    `online`;
+  - sin conexión y sin nada guardado, el login lo explica en vez de "No se
+    pudo conectar con el servidor";
+  - guarda el `beforeinstallprompt` en `window.nexoPedidoInstalar`, porque
+    llega antes que `app.js`.
+- Configuración → Apariencia: tarjeta "Nexo como app".
+  - Con el pedido del navegador, botón "Instalar Nexo". En iOS, los pasos;
+    instalada, "ya está instalada". Sin https, lo explica.
+  - En el menú de Configuración, Apariencia pasó a decir "Tema e instalar como
+    app".
+- **CSP** (`server.js`): `script-src 'self'`, sin inline; `style-src` con
+  `'unsafe-inline'`, porque las plantillas arman `style=""`; `img-src` con
+  `data:` y `blob:`; `frame-ancestors 'none'`.
+  - El script inline del `<head>` salió a `js/arranque.js`, que sigue siendo
+    bloqueante y corre antes de pintar.
+  - `viewport-fit=cover` en el viewport, para los safe areas de la fase
+    siguiente.
+- Tests y lint:
+  - `api.test.js`: la CSP, y el manifest y `sw.js` con su tipo;
+  - `frontend-modulos.test.js`, test nuevo: `PRECACHE` (más `OPCIONALES`)
+    contiene todo `frontend/js` y todo `src`/`href` local de `index.html` y
+    `url()` de `styles.css`, y todo lo de `PRECACHE` existe en disco. Mutado
+    (sacando dos entradas), falla y las nombra;
+  - `scripts/lint.mjs` lintea `frontend/sw.js` (`SUELTOS`).
+  - **`eslint.config.mjs` no se pudo tocar:** el hook `config-protection` del
+    plugin ecc lo bloquea. Por eso `sw.js` declara sus globales con
+    `/* global */`, y `arranque.js` se lintea como módulo, sin diferencia
+    para ese código.
+
+**Ojo para la prueba de XSS en el navegador** (procedimiento 7 del handoff):
+con la CSP, un `onerror=` sembrado ya no corre aunque el HTML esté sin
+escapar. Para probar el escape hay que crear el contexto con
+`bypassCSP: true`; si no, la prueba no prueba nada.
+
+**Verificación:** `npm test` 66 de 66, lint (56 archivos), `npm run regresion`
+con 196 comparaciones y 0 distintas. La base real no cambió (md5 `e8df3009…`).
+En Chrome a 390 px, contra una base sembrada:
+- el service worker queda activo y controla la página; el manifest no tiene
+  errores, y el único error de instalabilidad es "in-incognito", propio del
+  contexto de prueba;
+- sin conexión: abre con la sesión, Productos sale de lo guardado, el aviso
+  tiene la hora, y un POST falla sin escribir. Con conexión, el aviso se va;
+- el logout deja solo `nexo-shell-v1`;
+- el empleado: 21 respuestas guardadas, ninguna con costos. Control: con el
+  admin hay 5 que sí los tienen;
+- cero violaciones de CSP en las 24 vistas del menú, y el PDF de una factura
+  se descarga con la CSP puesta.
+
+**Lo que muestra la captura sin conexión:** Productos, en el celular, con un
+producto por pantalla. Es el problema de 7b, que se resuelve en las fases
+siguientes.

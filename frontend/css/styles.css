@@ -6982,3 +6982,40 @@ a.segmento {
   .barra { grid-template-columns: 1fr auto; }
   .barra-pista { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ---------- Sin conexión (PWA, hist. §94) ----------
+   El aviso de arriba cuando la app muestra lo guardado. Naranja de
+   "conviene mirarlo": no es un error, pero no se puede guardar nada. En la
+   compu va en el flujo, arriba de todo; en el celular, fijo arriba, y la
+   topbar baja lo que mide (--aviso-conexion-h, lo mide sesion.js). */
+.aviso-conexion {
+  position: relative;
+  z-index: 70;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--naranja);
+  color: var(--bg);
+  font-size: var(--txt-sm);
+  font-weight: 500;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .aviso-conexion {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding-top: calc(var(--sp-2) + env(safe-area-inset-top));
+  }
+  html[data-conexion="no"] .topbar { top: var(--aviso-conexion-h, 0px); }
+  html[data-conexion="no"] .nav-toggle { top: calc(16px + var(--aviso-conexion-h, 0px)); }
+  html[data-conexion="no"] .main { padding-top: calc(92px + var(--aviso-conexion-h, 0px)); }
+}
+
+/* Instalar como app (Configuración → Apariencia). El ícono es el mismo que
+   queda en el celular: se ve qué se va a instalar. */
+.instalar { display: flex; align-items: center; gap: var(--sp-4); max-width: 560px; }
+.instalar-icono { flex: none; width: 56px; height: 56px; border-radius: var(--r-md); border: 1px solid var(--line); }
+.instalar-texto h3 { margin: 0 0 var(--sp-1); font-size: var(--txt-md); }
+.instalar-texto p { margin: 0; color: var(--ink-muted); font-size: var(--txt-sm); }
+.instalar-boton { align-self: flex-start; }

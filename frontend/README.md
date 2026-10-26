@@ -66,7 +66,11 @@ los importa a ellos): lo verifica `backend/test/frontend-modulos.test.js`
   flotante del final de `index.html` (`#asistenteLauncher`).
 - IVA y retención de Mercado Pago no tienen cálculo ni pantalla todavía: son
   la Etapa C del roadmap (CLAUDE.md §16, §33, §38).
-- Falta la PWA (manifest, service worker, offline de lectura; CLAUDE.md §31).
+- PWA (CLAUDE.md §31, hist. §94): `manifest.webmanifest`, los íconos de
+  `img/app/` y el service worker `sw.js` en la raíz, que registra
+  `js/sesion.js`. Sin conexión abre y muestra lo último que cargó, sin
+  escribir. Un `.js` nuevo va también a `PRECACHE` de `sw.js` (lo controla
+  `npm test`).
 
 ## Sistema visual
 

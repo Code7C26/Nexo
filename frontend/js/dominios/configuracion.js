@@ -338,6 +338,49 @@ formApariencia.addEventListener("submit", (e) => e.preventDefault());
 // El botón de la sidebar también cambia el tema.
 document.addEventListener("nexo:tema", pintarApariencia);
 
+/* ---------- Instalar como app (PWA, hist. §94) ---------- */
+
+// sesion.js guarda el pedido de instalación del navegador en
+// window.nexoPedidoInstalar (llega antes de que cargue este módulo) y avisa con
+// "nexo:instalable" cuando aparece o cuando ya se instaló.
+const instalarEstado = document.getElementById("instalarEstado");
+const btnInstalar = document.getElementById("btnInstalar");
+
+function estaInstalada() {
+  return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+}
+
+function pintarInstalar() {
+  const esIos = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  btnInstalar.hidden = true;
+  if (estaInstalada()) {
+    instalarEstado.textContent = "Ya está instalada en este dispositivo: se abre desde su ícono, como cualquier app.";
+  } else if (window.nexoPedidoInstalar) {
+    instalarEstado.textContent =
+      "Instalala para abrirla desde un ícono, a pantalla completa, y ver lo último que cargaste aunque no haya conexión.";
+    btnInstalar.hidden = false;
+  } else if (esIos) {
+    instalarEstado.textContent = "En el iPhone o el iPad, abrí Nexo en Safari, tocá Compartir y después “Agregar a inicio”.";
+  } else if (!window.isSecureContext) {
+    instalarEstado.textContent = "Para instalarla, Nexo tiene que abrirse desde una dirección segura (https).";
+  } else {
+    instalarEstado.textContent =
+      "Para instalarla, abrí Nexo en Chrome o Edge, en el celular o en la compu, y elegí “Instalar” en el menú del navegador.";
+  }
+}
+
+btnInstalar.addEventListener("click", async () => {
+  const pedido = window.nexoPedidoInstalar;
+  if (!pedido) return;
+  // El navegador deja usar cada pedido una sola vez.
+  window.nexoPedidoInstalar = null;
+  pedido.prompt();
+  const { outcome } = await pedido.userChoice;
+  if (outcome === "accepted") avisar("Nexo quedó instalada. La vas a encontrar con su ícono.");
+  pintarInstalar();
+});
+document.addEventListener("nexo:instalable", pintarInstalar);
+
 /* ---------- Páginas ---------- */
 
 const PAGINAS = {
@@ -358,7 +401,13 @@ const PAGINAS = {
   },
   "categorias-gastos": { admin: true, alEntrar: () => recargar("gastos").then(() => invocar("pintar:categorias-gastos")) },
   cuenta: { admin: false, alEntrar: () => invocar("pintar:cuenta") },
-  apariencia: { admin: false, alEntrar: pintarApariencia }
+  apariencia: {
+    admin: false,
+    alEntrar: () => {
+      pintarApariencia();
+      pintarInstalar();
+    }
+  }
 };
 
 // Una página de admin no se abre para el empleado (es UI: el servidor
