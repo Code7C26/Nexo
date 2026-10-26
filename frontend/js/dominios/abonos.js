@@ -15,7 +15,7 @@
  * (cobrar:venta), que avisa con el evento "cobro-registrado" para repintar.
  */
 
-import { badge, camposFicha, esAdmin, esc, fechaAR, hoyISO, money } from "../core/formato.js";
+import { badge, camposFicha, celdaMovil, esAdmin, esc, fechaAR, hoyISO, money } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
@@ -100,13 +100,18 @@ function renderLista() {
     .map(
       (a) => `
     <tr class="fila-clickeable" data-id="${a.id}">
-      <td data-label="Cliente"><span class="celda-principal">${esc(a.cliente)}</span></td>
+      <td data-label="Cliente" class="m-titulo"><span class="celda-principal">${esc(a.cliente)}</span></td>
+      ${celdaMovil(
+        a.servicio,
+        a.duracion,
+        a.deuda > 0 ? `debe ${money(a.deuda)}` : ["próxima", fechaAR(a.proxima)]
+      )}
       <td data-label="Servicio">${esc(a.servicio)}</td>
       <td data-label="Se cobra">${esc(a.duracion)}</td>
-      <td data-label="Precio" class="align-right mono">${money(a.precio)}</td>
+      <td data-label="Precio" class="align-right mono m-valor">${money(a.precio)}</td>
       <td data-label="Próxima cuota">${a.proxima ? esc(fechaAR(a.proxima)) : "—"}</td>
       <td data-label="Debe" class="align-right mono">${a.deuda > 0 ? money(a.deuda) : "—"}</td>
-      <td data-label="Estado">${badgeAbono(a)}</td>
+      <td data-label="Estado" class="m-estado">${badgeAbono(a)}</td>
     </tr>`
     )
     .join("");

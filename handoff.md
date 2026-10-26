@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §95);
+    siguiente número (hoy el último es §96);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,12 @@
 
 ## Estado actual (26 de octubre de 2026)
 
-**Próxima sesión:** seguir con "celular de verdad" (7b), fase 3: las listas
-compactas de dos líneas. El plan de las fases 3 y 4 está en "Qué sigue", 7b.
+**Próxima sesión:** terminar "celular de verdad" (7b) con la fase 4: los
+filtros en una hoja desde abajo, un "Nuevo" flotante por vista y la pasada
+visual con capturas para el usuario. Está en "Qué sigue", 7b.
+- **Celular, fase 3, hecha** (hist. §96), commiteada en `solla`: las listas
+  de dos líneas, unos 10 productos por pantalla en vez de uno. Son 21 listas
+  migradas; la tabla con qué muestra cada una está en hist. §96.
 - **Celular, fase 2, hecha** (hist. §95), commiteada en `solla`:
   - barra de abajo con las secciones del negocio y "Más", sin hamburguesa;
   - el asistente en la topbar y la flecha "volver" en las fichas;
@@ -505,6 +509,12 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   es el botón que queda fijo abajo.
 - **El "atrás" de los modales** vive en el observer de `core/ui.js`. Abrir un
   modal sin cambiar `hidden` (por ejemplo, con una clase) lo deja afuera.
+- **Una lista nueva va en dos líneas en el celular** (hist. §96):
+  - `lista-movil` en la tabla;
+  - `m-titulo`, `m-valor` y `m-estado` en sus celdas;
+  - la segunda línea con `celdaMovil()`, que escapa cada parte.
+  - Una parte con prefijo va como `["vence", fecha]`, no con un template
+    anidado: el chequeo de escape lo vería como HTML crudo.
 
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
@@ -830,7 +840,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - los modales a pantalla completa, y el "atrás" los cierra;
      - `--control-h` de 44 px e inputs de 16 px;
      - un token `--abajo` para todo lo fijo abajo.
-   - **Fase 3, listas compactas:**
+   - ~~**Fase 3, listas compactas:**~~ **hecha** (hist. §96):
      - la tabla con `lista-movil`; las celdas con `m-titulo`, `m-valor` y
        `m-estado`, más una `<td class="m-sub">` armada con `celdaMovil()`
        (`core/formato.js`), que en la compu no se ve;

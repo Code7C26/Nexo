@@ -9083,3 +9083,79 @@ sembrada:
 - la hoja de confirmar;
 - en la compu (1440), ni la barra ni la hamburguesa.
 - Sin errores de consola.
+
+## 96. Celular, fase 3: listas de dos líneas, 26 de octubre de 2026
+
+El pedido que abrió 7b: en el celular cada fila de tabla era una tarjeta con
+una línea por columna (Productos, 11 líneas por producto, y uno o dos por
+pantalla). Ahora cada fila son dos líneas de 64 px, como en Shopify o Tienda
+Nube: **unos 10 productos por pantalla.**
+
+**Cómo se hizo (sin un segundo render):** el mismo `<tr>`, con marcas en sus
+celdas.
+- La tabla lleva `lista-movil` en `index.html`, y cada celda lleva una marca:
+  - `m-titulo`: lo que nombra la fila;
+  - `m-valor`: el importe, a la derecha;
+  - `m-estado`: el estado, abajo a la derecha;
+  - `m-accion`: un botón a la derecha, para las listas sin ficha.
+- **`celdaMovil(...partes)`** (`core/formato.js`) suma una `<td class="m-sub">`
+  con la segunda línea: las partes unidas por " · ", sin las vacías, cada una
+  escapada. Una parte puede ser `[prefijo, valor]` ("vence" y la fecha): sale
+  solo si hay valor.
+  - **En la compu `m-sub` no se ve:** se controló que en las 16 listas las
+    celdas visibles por fila sean las mismas columnas del encabezado.
+- En el celular, la fila es una grilla `"titulo valor accion" / "sub estado
+  accion"`, y lo que no está marcado se oculta. Solo cambian las filas con
+  `m-titulo`: la vacía, la de "cargando" y la de detalle de Cuentas corrientes
+  quedan como antes.
+- La selección múltiple y su "Seleccionar todo" no se ven en esas tablas
+  (como en Polaris), y el precio editable de Productos lleva a la ficha
+  (`pointer-events: none`).
+- `.solo-celular`: lo que en la compu ya tiene su columna y en el celular va
+  pegado al título (el N° de Auditoría).
+- `backend/test/plantillas-html.js`: `celdaMovil` está en `FUNCIONES_SEGURAS`
+  (escapa lo que recibe). Una parte armada con un template anidado
+  (`` `vence ${fechaAR(x)}` ``) el chequeo la ve como HTML aparte: por eso
+  existe la forma `[prefijo, valor]`.
+
+**Las 21 listas migradas, con lo que muestra cada una (título · segunda
+línea · estado):**
+
+| Lista | Título | Segunda línea | Importe | Estado |
+|---|---|---|---|---|
+| Productos | nombre | SKU · categoría · stock (o "Servicio") | precio | solo si está inactivo |
+| Ventas | cliente | N° · fecha · productos | total | cobro |
+| Presupuestos | cliente | N° · fecha · vence | total | estado |
+| Compras | proveedor | N° · fecha · envío | total | pago |
+| Clientes | nombre | contacto · compras · "debe $" | total gastado | — |
+| Proveedores | nombre | contacto · compras · "le debés $" | total comprado | — |
+| Stock | producto | depósito · total si difiere | stock | estado, "Ajustar" |
+| Mov. de stock | producto | fecha · origen · depósito · nota | cantidad | — |
+| Facturas | cliente | comprobante · tipo · fecha | importe | cobro |
+| Devoluciones (las dos) | cliente o proveedor | N° · fecha · productos | total | plata |
+| Caja: cuentas | cuenta | tipo · saldo inicial | saldo | lápiz |
+| Caja: movimientos | concepto | fecha · cuenta | importe | — |
+| Cuentas corrientes (las dos) | nombre | operaciones · vence | deuda | tramo |
+| Gastos | categoría | fecha · descripción · cuenta | importe | tipo, botones |
+| Auditoría | entidad #N° | fecha y hora · usuario · detalle | — | acción |
+| Socios | nombre | N° · planes · cuota | deuda, si hay | situación |
+| Trabajos | trabajo | cuándo · atrasado · cliente · responsable | total, si hay | estado |
+| Abonos | cliente | servicio · cada cuánto · debe o próxima | precio | estado |
+| CRM, Dejaron de comprar | cliente | hace N días · compras · teléfono | total comprado | seguimiento |
+
+**Quedan como tarjeta, a propósito:** Usuarios (cuatro botones por fila, en una
+página de Configuración), las tablas de las fichas (renglones de una venta,
+historiales) y los catálogos de Configuración. Si alguna se usa en el celular,
+se migra igual.
+
+**Verificación:** `npm test` 66 de 66, lint (57 archivos). La base real no
+cambió (md5 `e8df3009…`). En Chrome:
+- **a 390 px**, con 33 productos: filas de 64 px y diez a la vista. Las otras
+  12 listas, con capturas: cada una con su primera fila de 64 px (67 en
+  Cuentas corrientes);
+- **XSS:** un producto y una categoría con `<img onerror>` en el nombre, el
+  SKU y la categoría, con `bypassCSP: true`. `window.__xss` no se escribió, y
+  el texto se ve escapado en las dos líneas;
+- **a 1440 px:** las celdas visibles por fila son igual a las columnas del
+  encabezado en las 16 listas;
+- sin errores de consola.

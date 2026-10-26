@@ -7199,3 +7199,84 @@ a.segmento {
   from { transform: translateY(100%); }
   to   { transform: none; }
 }
+
+/* ---------- Listas compactas del celular (hist. §96) ----------
+   En el celular una tabla .lista-movil no se vuelve una tarjeta con una
+   línea por columna: cada fila es de dos líneas, como en Shopify o Tienda
+   Nube. Arriba, lo que la nombra (m-titulo) y su importe (m-valor); abajo,
+   los datos secundarios (m-sub, la celda de celdaMovil()) y el estado
+   (m-estado). m-accion es un botón que queda a la derecha, para las listas
+   sin ficha. Lo demás se ve en la ficha o en la compu. Solo cambian las filas
+   con un m-titulo: la fila vacía, la de "cargando" y las de detalle quedan
+   como antes. */
+.ledger-table td.m-sub { display: none; }
+/* Un dato que en la compu ya tiene su columna (el N° de Auditoría) y en la
+   fila de dos líneas del celular va pegado al título. */
+.solo-celular { display: none; }
+@media (max-width: 860px) {
+  .solo-celular { display: inline; }
+}
+
+@media (max-width: 860px) {
+  .ledger-table.lista-movil tbody tr:has(> td.m-titulo) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "titulo valor accion"
+      "sub estado accion";
+    align-items: center;
+    column-gap: var(--sp-3);
+    row-gap: 2px;
+    min-height: 64px;
+    padding: var(--sp-2) 0;
+  }
+  .ledger-table.lista-movil tr:has(> td.m-titulo) > td {
+    display: none;
+    padding: 0;
+    white-space: nowrap;
+  }
+  .ledger-table.lista-movil tr:has(> td.m-titulo) > td::before { content: none; }
+  .ledger-table.lista-movil tr:has(> td.m-titulo) > :is(td.m-titulo, td.m-valor, td.m-sub, td.m-estado, td.m-accion) {
+    display: block;
+    min-width: 0;
+  }
+  .ledger-table.lista-movil td.m-titulo {
+    grid-area: titulo;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .ledger-table.lista-movil td.m-valor {
+    grid-area: valor;
+    text-align: right !important;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .ledger-table.lista-movil td.m-sub {
+    grid-area: sub;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--txt-sm);
+    color: var(--ink-muted);
+  }
+  /* Un título con su dato de abajo (.celda-meta: el DNI, el teléfono) muestra
+     solo el nombre: ese dato pasa a la segunda línea. */
+  .ledger-table.lista-movil td.m-titulo .celda-meta { display: none; }
+  .ledger-table.lista-movil td.m-titulo .celda-principal { display: inline; }
+  .ledger-table.lista-movil td.m-estado { grid-area: estado; justify-self: end; }
+  .ledger-table.lista-movil td.m-estado:empty { display: none; }
+  .ledger-table.lista-movil td.m-accion { grid-area: accion; }
+  .ledger-table.lista-movil td.m-accion .btn-icon { width: 44px; height: 44px; }
+  /* El título ocupa las dos columnas si la fila no tiene importe. */
+  .ledger-table.lista-movil tr:not(:has(> td.m-valor)) > td.m-titulo { grid-column: 1 / 3; }
+  .ledger-table.lista-movil tr:not(:has(> td.m-estado)) > td.m-sub { grid-column: 1 / 3; }
+
+  /* La selección múltiple, el "Seleccionar todo" y lo que se edita en la
+     fila (el precio de Productos) quedan para la ficha y la compu, como en
+     Polaris. */
+  .panel:has(.ledger-table.lista-movil) .btn-sel-todo-mobile { display: none; }
+  /* El precio editable de Productos: tocarlo abre la ficha, como el resto de
+     la fila (el toque pasa a la celda). */
+  .ledger-table.lista-movil .precio-venta-texto { pointer-events: none; }
+}

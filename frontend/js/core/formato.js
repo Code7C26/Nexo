@@ -132,6 +132,23 @@ export function esc(valor) {
     .replaceAll("'", "&#39;");
 }
 
+// La segunda línea de una fila en el celular (hist. §96): los datos que en la
+// compu son columnas aparte, unidos por " · ". Va como una celda más del <tr>,
+// que en la compu no se ve (.m-sub en styles.css); en una tabla .lista-movil
+// el celular muestra solo las celdas marcadas (m-titulo, m-valor, m-estado,
+// m-accion y esta). Una parte puede ser [prefijo, valor] ("vence" y la fecha):
+// sale "vence 12/11", o nada si el valor está vacío. Lo vacío se saltea, y
+// cada parte se escapa.
+export function celdaMovil(...partes) {
+  const vacio = (v) => v == null || v === "" || v === "—";
+  const texto = partes
+    .map((p) => (Array.isArray(p) ? (vacio(p[1]) ? null : `${p[0]} ${p[1]}`) : p))
+    .filter((p) => !vacio(p))
+    .map(esc)
+    .join(" · ");
+  return `<td class="m-sub">${texto}</td>`;
+}
+
 // Marca un valor de camposFicha() como HTML ya armado (un badge): se
 // imprime tal cual, así que quien lo arma escapa lo que lleva adentro.
 export const html = (s) => ({ html: s });

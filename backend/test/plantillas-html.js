@@ -146,7 +146,8 @@ const FUNCIONES_SEGURAS = new Set([
   'lineaSiHay', // core/comprobante.js
   'asistenteBadge', // app.js: solo lee ref.estado para elegir un texto fijo
   'ccTextoDias', // dominios/cuentas-corrientes.js: recibe un número
-  'inputValor' // core/filtros.js: escapa el valor del input; en el select solo lo compara
+  'inputValor', // core/filtros.js: escapa el valor del input; en el select solo lo compara
+  'celdaMovil' // core/formato.js: escapa cada parte de la segunda línea del celular (hist. §96)
 ]);
 const esFuncionSegura = (nombre) => FUNCIONES_SEGURAS.has(nombre) || /^Math\.\w+$/.test(nombre);
 const COMPARACION_DESPUES = /^\s*(\?(?![.?])|===|!==|==|!=|>=|<=|>|<|&&)/;

@@ -14,6 +14,7 @@ import {
   botonEditarFila,
   camposFicha,
   cantidad,
+  celdaMovil,
   columnasVisibles,
   duracion,
   esAdmin,
@@ -37,7 +38,7 @@ import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
-import { catalogoMixto, fijarTiposDelCatalogo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
+import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -879,14 +880,15 @@ function renderFacturas(lista) {
       <td data-label="Comprobante" class="mono">${esc(f.comprobante)}</td>
       <td data-label="Tipo">${esc(TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo)}</td>
       <td data-label="Fecha">${esc(fechaAR(f.fecha))}</td>
-      <td data-label="Cliente">${esc(f.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(f.cliente)}</td>
+      ${celdaMovil(f.comprobante, TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo, fechaAR(f.fecha))}
       <td data-label="Origen">${
         f.venta_id
           ? `<a href="#" class="btn-link ficha-factura-ver-venta" data-venta-id="${f.venta_id}">Venta #${f.venta_id}</a>`
           : `<span class="status">Suelta</span>`
       }</td>
-      <td data-label="Importe" class="align-right mono">${money(f.total)}</td>
-      <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[f.estado_cobro]}">${ESTADO_COBRO_LABEL[f.estado_cobro]}</span></td>
+      <td data-label="Importe" class="align-right mono m-valor">${money(f.total)}</td>
+      <td data-label="Cobro" class="m-estado"><span class="status ${ESTADO_COBRO_CLASE[f.estado_cobro]}">${ESTADO_COBRO_LABEL[f.estado_cobro]}</span></td>
     </tr>`
     )
     .join("");
@@ -1559,16 +1561,21 @@ function renderProductos(lista) {
       : `<span class="mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}">${precioTexto}</span>`;
     tr.innerHTML = `
       ${selProductos.celda(p.id)}
-      <td data-label="Nombre">${esc(p.nombre)}</td>
+      <td data-label="Nombre" class="m-titulo">${esc(p.nombre)}</td>
+      ${celdaMovil(
+        p.sku,
+        p.categoria,
+        p.tipo === "servicio" ? "Servicio" : moduloActivo("stock") ? ["Stock", cantidad(p.stock, p.unidad)] : null
+      )}
       <td data-label="SKU" class="col-sku">${esc(p.sku || "—")}</td>
       <td data-label="Categoría">${esc(p.categoria || "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
       <td data-label="Valorizado" class="align-right mono col-admin" data-modulo="stock">${money(p.valorizado)}</td>
-      <td data-label="Precio" class="align-right mono">${precioCelda}</td>
+      <td data-label="Precio" class="align-right mono m-valor">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Objetivo" class="align-right col-admin">${badgeMargenObjetivo(p, true)}</td>
       <td data-label="Stock" class="align-right mono" data-modulo="stock">${p.tipo === "servicio" ? "Servicio" : esc(cantidad(p.stock, p.unidad))}</td>
-      <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
+      <td data-label="Activo"${p.activo ? "" : ' class="m-estado"'}><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
       }</span></td>
       <td data-label="">${botonEditarFila("btn-editar-producto", p.id, "producto")}</td>
@@ -2794,15 +2801,19 @@ function renderStock(lista) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       ${selStock.celda(`${p.producto_id}-${p.deposito_id}`)}
-      <td data-label="Producto">${esc(p.nombre)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(p.nombre)}</td>
+      ${celdaMovil(
+        p.deposito,
+        p.stock_total !== p.stock ? ["en total", cantidad(p.stock_total, p.unidad)] : null
+      )}
       <td data-label="Depósito">${esc(p.deposito ?? "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
-      <td data-label="Stock en depósito" class="align-right mono">${esc(cantidad(p.stock, p.unidad))}</td>
+      <td data-label="Stock en depósito" class="align-right mono m-valor">${esc(cantidad(p.stock, p.unidad))}</td>
       <td data-label="Stock total" class="align-right mono">${esc(cantidad(p.stock_total, p.unidad))}</td>
-      <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
+      <td data-label="Estado" class="m-estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
         STOCK_LABEL[p.estado_stock]
       }</span></td>
-      <td data-label=""><button type="button" class="btn-fila btn-ajustar-stock" data-producto="${p.producto_id}" data-deposito="${p.deposito_id ?? ""}">Ajustar</button></td>
+      <td data-label="" class="m-accion"><button type="button" class="btn-fila btn-ajustar-stock" data-producto="${p.producto_id}" data-deposito="${p.deposito_id ?? ""}">Ajustar</button></td>
     `;
     body.appendChild(tr);
   }
@@ -2847,10 +2858,11 @@ function renderMovimientosStock(movimientos) {
       return `
     <tr>
       <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
-      <td data-label="Producto">${esc(m.producto)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(m.producto)}</td>
+      ${celdaMovil(fechaAR(m.fecha), origen, m.deposito, m.nota)}
       <td data-label="Depósito">${esc(m.deposito ?? "—")}</td>
       <td data-label="Origen">${origen}</td>
-      <td data-label="Cantidad" class="align-right mono">${signo}${numero(Math.abs(m.cantidad))}</td>
+      <td data-label="Cantidad" class="align-right mono m-valor">${signo}${numero(Math.abs(m.cantidad))}</td>
       <td data-label="Nota">${esc(m.nota || "—")}</td>
     </tr>`;
     })
@@ -3240,12 +3252,13 @@ function renderPresupuestos(lista) {
     <tr class="fila-clickeable" data-id="${p.id}">
       ${selPresupuestos.celda(p.id)}
       <td data-label="N°" class="mono">#${p.id}</td>
-      <td data-label="Cliente">${esc(p.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(p.cliente)}</td>
+      ${celdaMovil(`#${p.id}`, fechaAR(p.fecha), ["vence", fechaAR(p.vencimiento)])}
       <td data-label="Productos" class="celda-wrap">${esc(p.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(p.fecha))}</td>
       <td data-label="Vence">${esc(fechaAR(p.vencimiento) || "—")}</td>
-      <td data-label="Total" class="align-right mono">${money(p.total)}</td>
-      <td data-label="Estado"><span class="status ${PRESUPUESTO_CLASE[p.estado_efectivo]}">${
+      <td data-label="Total" class="align-right mono m-valor">${money(p.total)}</td>
+      <td data-label="Estado" class="m-estado"><span class="status ${PRESUPUESTO_CLASE[p.estado_efectivo]}">${
         PRESUPUESTO_LABEL[p.estado_efectivo]
       }</span></td>
       <td data-label="">${
@@ -3667,13 +3680,14 @@ function renderVentas(lista) {
     tr.innerHTML = `
       ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
-      <td data-label="Cliente">${esc(v.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(v.cliente)}</td>
+      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), v.items_resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(v.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
-      <td data-label="Total" class="align-right mono">${money(v.total)}</td>
+      <td data-label="Total" class="align-right mono m-valor">${money(v.total)}</td>
       <td data-label="Ganancia" class="align-right mono col-admin">${money(v.margen)}</td>
-      <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[v.estado_cobro]}">${ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
+      <td data-label="Cobro" class="m-estado"><span class="status ${ESTADO_COBRO_CLASE[v.estado_cobro]}">${ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
       <td data-label=""><div class="fila-acciones">${accionFactura} ${accionCobro} ${accionAnular}</div></td>
     `;
     tr.addEventListener("click", (e) => {
@@ -4279,11 +4293,12 @@ function renderDevoluciones(lista) {
       (d) => `
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Cliente">${esc(d.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(d.cliente)}</td>
+      ${celdaMovil(`#${d.id}`, fechaAR(d.fecha), d.items_resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
-      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
-      <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
+      <td data-label="Total" class="align-right mono m-valor">${money(d.total)}</td>
+      <td data-label="Plata" class="m-estado"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
       }</span></td>
       <td data-label="">${
@@ -4642,10 +4657,11 @@ function renderCompras(lista) {
       tr.innerHTML = `
         ${selCompras.celda(c.id)}
         <td data-label="N°" class="mono">#${c.id}</td>
-        <td data-label="Proveedor">${esc(c.proveedor)}</td>
+        <td data-label="Proveedor" class="m-titulo">${esc(c.proveedor)}</td>
+        ${celdaMovil(`#${c.id}`, fechaAR(c.fecha))}
         <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
-        <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-        <td data-label="Pago"><span class="status">Borrador</span></td>
+        <td data-label="Total" class="align-right mono m-valor">${money(c.total)}</td>
+        <td data-label="Pago" class="m-estado"><span class="status">Borrador</span></td>
         <td data-label="Envío">—</td>
         <td data-label=""><div class="fila-acciones"><button type="button" class="btn-fila btn-confirmar-compra" data-id="${c.id}">Efectuar pedido</button> ${accionAnular}</div></td>
       `;
@@ -4672,10 +4688,11 @@ function renderCompras(lista) {
     tr.innerHTML = `
       ${selCompras.celda(c.id)}
       <td data-label="N°" class="mono">#${c.id}</td>
-      <td data-label="Proveedor">${esc(c.proveedor)}</td>
+      <td data-label="Proveedor" class="m-titulo">${esc(c.proveedor)}</td>
+      ${celdaMovil(`#${c.id}`, fechaAR(c.fecha), ENVIO_LABEL[c.estado_envio])}
       <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
-      <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-      <td data-label="Pago"><span class="status ${ESTADO_PAGO_CLASE[c.estado_pago]}">${ESTADO_PAGO_LABEL[c.estado_pago]}</span></td>
+      <td data-label="Total" class="align-right mono m-valor">${money(c.total)}</td>
+      <td data-label="Pago" class="m-estado"><span class="status ${ESTADO_PAGO_CLASE[c.estado_pago]}">${ESTADO_PAGO_LABEL[c.estado_pago]}</span></td>
       <td data-label="Envío">${celdaEnvio}</td>
       <td data-label=""><div class="fila-acciones">${accionPago} ${accionAnular}</div></td>
     `;
@@ -5235,11 +5252,12 @@ function renderDevolucionesProveedor(lista) {
       (d) => `
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Proveedor">${esc(d.proveedor)}</td>
+      <td data-label="Proveedor" class="m-titulo">${esc(d.proveedor)}</td>
+      ${celdaMovil(`#${d.id}`, fechaAR(d.fecha), d.items_resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
-      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
-      <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
+      <td data-label="Total" class="align-right mono m-valor">${money(d.total)}</td>
+      <td data-label="Plata" class="m-estado"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
       }</span></td>
       <td data-label="">${
@@ -5574,10 +5592,15 @@ function renderClientes(lista) {
     const contacto = [c.telefono, c.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
       ${selClientes.celda(c.id)}
-      <td data-label="Nombre">${esc(c.nombre)}</td>
+      <td data-label="Nombre" class="m-titulo">${esc(c.nombre)}</td>
+      ${celdaMovil(
+        contacto,
+        `${numero(c.cantidad_compras)} compra${c.cantidad_compras === 1 ? "" : "s"}`,
+        c.deuda > 0 ? `debe ${money(c.deuda)}` : null
+      )}
       <td data-label="Contacto">${esc(contacto)}</td>
       <td data-label="Compras" class="align-right mono">${numero(c.cantidad_compras)}</td>
-      <td data-label="Total gastado" class="align-right mono">${money(c.total_gastado)}</td>
+      <td data-label="Total gastado" class="align-right mono m-valor">${money(c.total_gastado)}</td>
       <td data-label="Deuda" class="align-right mono">${money(c.deuda)}</td>
       <td data-label="">${botonEditarFila("btn-editar-cliente", c.id, "cliente")}</td>
     `;
@@ -5803,10 +5826,15 @@ function renderProveedores(lista) {
     const contacto = [p.telefono, p.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
       ${selProveedores.celda(p.id)}
-      <td data-label="Nombre">${esc(p.nombre)}</td>
+      <td data-label="Nombre" class="m-titulo">${esc(p.nombre)}</td>
+      ${celdaMovil(
+        contacto,
+        `${numero(p.cantidad_compras)} compra${p.cantidad_compras === 1 ? "" : "s"}`,
+        p.deuda > 0 ? `le debés ${money(p.deuda)}` : null
+      )}
       <td data-label="Contacto">${esc(contacto)}</td>
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
-      <td data-label="Total comprado" class="align-right mono">${money(p.total_comprado)}</td>
+      <td data-label="Total comprado" class="align-right mono m-valor">${money(p.total_comprado)}</td>
       <td data-label="Deuda" class="align-right mono">${money(p.deuda)}</td>
       <td data-label="">${botonEditarFila("btn-editar-proveedor", p.id, "proveedor")}</td>
     `;
@@ -6026,13 +6054,14 @@ function renderCuentasTesoreria(cuentas) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Cuenta">${esc(c.nombre)}</td>
+      <td data-label="Cuenta" class="m-titulo">${esc(c.nombre)}</td>
+      ${celdaMovil(TIPO_LABEL[c.tipo] ?? c.tipo, `saldo inicial ${money(c.saldo_inicial)}`)}
       <td data-label="Tipo">${esc(TIPO_LABEL[c.tipo] ?? c.tipo)}</td>
       <td data-label="Saldo inicial" class="align-right mono">${money(c.saldo_inicial)}</td>
-      <td data-label="Saldo actual" class="align-right mono ${
+      <td data-label="Saldo actual" class="align-right mono m-valor ${
         c.saldo < 0 ? "saldo-negativo" : ""
       }">${money(c.saldo)}</td>
-      <td data-label="">${botonEditarFila("btn-editar-cuenta", c.id, "cuenta")}</td>
+      <td data-label="" class="m-accion">${botonEditarFila("btn-editar-cuenta", c.id, "cuenta")}</td>
     </tr>`
     )
     .join("");
@@ -6087,8 +6116,9 @@ function renderMovimientosTesoreria(movimientos) {
         <tr>
           <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
           <td data-label="Cuenta">${esc(m.cuenta)}</td>
-          <td data-label="Concepto">${esc(concepto)}</td>
-          <td data-label="Importe" class="align-right mono ${
+          <td data-label="Concepto" class="m-titulo">${esc(concepto)}</td>
+          ${celdaMovil(fechaAR(m.fecha), m.cuenta)}
+          <td data-label="Importe" class="align-right mono m-valor ${
             m.tipo === "egreso" ? "saldo-negativo" : ""
           }">${signo}${money(m.importe)}</td>
         </tr>`;
@@ -6967,8 +6997,9 @@ function renderAuditoria(registros) {
       return `
         <tr>
           <td data-label="Fecha">${esc(fechaAR(fecha) || "—")}${hora ? ` <span class="mono">${esc(hora)}</span>` : ""}</td>
-          <td data-label="Acción"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${esc(AUDITORIA_ACCION_LABEL[r.accion] || r.accion)}</span></td>
-          <td data-label="Entidad">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}</td>
+          <td data-label="Acción" class="m-estado"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${esc(AUDITORIA_ACCION_LABEL[r.accion] || r.accion)}</span></td>
+          <td data-label="Entidad" class="m-titulo">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}${r.entidad_id ? ` <span class="mono solo-celular">#${r.entidad_id}</span>` : ""}</td>
+          ${celdaMovil([fechaAR(fecha), hora?.slice(0, 5)].filter(Boolean).join(" "), r.usuario_nombre ?? AUDITORIA_ACTOR_LABEL[r.actor], detalle)}
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
           <td data-label="Detalle" class="celda-wrap">${esc(detalle)}</td>
           <td data-label="Origen">${r.actor === "asistente" ? `<span class="status status-ia">${AUDITORIA_ACTOR_LABEL.asistente}</span>` : esc(AUDITORIA_ACTOR_LABEL[r.actor] || r.actor)}</td>

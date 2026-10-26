@@ -5,7 +5,7 @@
  * otros dominios (fichas, cobrar, pagar) se invocan por nombre.
  */
 
-import { esc, fechaAR, money, numero } from "../core/formato.js";
+import { celdaMovil, esc, fechaAR, money, numero } from "../core/formato.js";
 import { api } from "../core/api.js";
 import { filaVacia, filaVaciaFiltrada, tablaCargando } from "../core/ui.js";
 import { crearFiltros } from "../core/filtros.js";
@@ -73,11 +73,15 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
     const fila = document.createElement("tr");
     fila.className = "fila-clickeable";
     fila.innerHTML = `
-      <td data-label="${tipoLabel}"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${esc(e.nombre)}</button></td>
-      <td data-label="Deuda" class="align-right mono">${money(e.saldo)}</td>
+      <td data-label="${tipoLabel}" class="m-titulo"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${esc(e.nombre)}</button></td>
+      ${celdaMovil(
+        `${numero(e.operaciones.length)} operaci${e.operaciones.length === 1 ? "ón" : "ones"}`,
+        ["vence", fechaAR(masVieja.vencimiento)]
+      )}
+      <td data-label="Deuda" class="align-right mono m-valor">${money(e.saldo)}</td>
       <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
       <td data-label="Vence">${esc(fechaAR(masVieja.vencimiento))}</td>
-      <td data-label="Estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
+      <td data-label="Estado" class="m-estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
       <td data-label="" class="cc-chevron">${icono("chevron-right")}</td>
     `;
 

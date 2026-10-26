@@ -20,7 +20,7 @@
  * catálogo; este módulo no lo conoce.
  */
 
-import { badge, camposFicha, cantidad, esc, fechaAR, hoyISO, money } from "../core/formato.js";
+import { badge, camposFicha, cantidad, celdaMovil, esc, fechaAR, hoyISO, money } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -145,14 +145,15 @@ function renderLista() {
         <span class="celda-principal">${esc(cuando(t, hoy))}</span>
         ${atrasado(t, hoy) ? '<span class="celda-meta trabajo-atrasado">Atrasado</span>' : ""}
       </td>
-      <td data-label="Trabajo">
+      <td data-label="Trabajo" class="m-titulo">
         <span class="celda-principal">${esc(t.titulo)}</span>
         ${t.items_resumen ? `<span class="celda-meta">${esc(t.items_resumen)}</span>` : ""}
       </td>
+      ${celdaMovil(cuando(t, hoy), atrasado(t, hoy) ? "atrasado" : null, t.cliente, t.responsable)}
       <td data-label="Cliente">${esc(t.cliente)}</td>
       <td data-label="Responsable">${esc(t.responsable ?? "Sin asignar")}</td>
-      <td data-label="Estado">${badgeEstado(t)}</td>
-      <td data-label="Total" class="align-right mono">${t.total > 0 ? money(t.total) : "—"}</td>
+      <td data-label="Estado" class="m-estado">${badgeEstado(t)}</td>
+      <td data-label="Total" class="align-right mono${t.total > 0 ? " m-valor" : ""}">${t.total > 0 ? money(t.total) : "—"}</td>
     </tr>`
     )
     .join("");

@@ -21,7 +21,7 @@
  * servidor: la pantalla pide una cotización antes de confirmar.
  */
 
-import { ICONO_TACHO, badge, botonEditarFila, camposFicha, esAdmin, esc, fechaAR, fechaHoraAR, hoyISO, money } from "../core/formato.js";
+import { ICONO_TACHO, badge, botonEditarFila, camposFicha, celdaMovil, esAdmin, esc, fechaAR, fechaHoraAR, hoyISO, money } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -274,14 +274,15 @@ function renderLista() {
       (s) => `
     <tr class="fila-clickeable" data-id="${s.id}">
       <td data-label="N°" class="mono">${esc(s.numero)}</td>
-      <td data-label="Socio">
+      <td data-label="Socio" class="m-titulo">
         <span class="celda-principal">${esc(s.nombre)}</span>
         ${s.documento ? `<span class="celda-meta">DNI ${esc(s.documento)}</span>` : ""}
       </td>
+      ${celdaMovil(["N°", s.numero], nombresDePlanes(s), textoCuota(s))}
       <td data-label="Planes">${esc(nombresDePlanes(s) || "—")}<span class="celda-meta">${esc(duracionesDePlanes(s))}</span></td>
-      <td data-label="Estado">${badgeSituacion(s)}</td>
+      <td data-label="Estado" class="m-estado">${badgeSituacion(s)}</td>
       <td data-label="Cuota">${esc(textoCuota(s))}</td>
-      <td data-label="Debe" class="align-right mono">${s.deuda > 0 ? money(s.deuda) : "—"}</td>
+      <td data-label="Debe" class="align-right mono${s.deuda > 0 ? " m-valor" : ""}">${s.deuda > 0 ? money(s.deuda) : "—"}</td>
     </tr>`
     )
     .join("");

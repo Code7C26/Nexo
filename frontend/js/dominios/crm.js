@@ -25,7 +25,7 @@
  *   Configuración, las etapas del embudo.
  */
 
-import { badge, botonEditarFila, camposFicha, esc, fechaAR, hoyISO, money, numero } from "../core/formato.js";
+import { badge, botonEditarFila, camposFicha, celdaMovil, esc, fechaAR, hoyISO, money, numero } from "../core/formato.js";
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -941,17 +941,18 @@ async function cargarDejaron() {
         .map(
           (c) => `
     <tr class="fila-clickeable" data-cliente="${c.id}">
-      <td data-label="Cliente">
+      <td data-label="Cliente" class="m-titulo">
         <span class="celda-principal">${esc(c.nombre)}</span>
         ${c.telefono ? `<span class="celda-meta">${esc(c.telefono)}</span>` : ""}
       </td>
+      ${celdaMovil(`hace ${numero(c.dias)} días`, `${numero(c.compras)} compra${c.compras === 1 ? "" : "s"}`, c.telefono)}
       <td data-label="Última compra">
         <span class="celda-principal">${esc(fechaAR(c.ultima_compra))}</span>
         <span class="celda-meta">hace ${numero(c.dias)} días</span>
       </td>
       <td data-label="Compras" class="align-right mono">${numero(c.compras)}</td>
-      <td data-label="Compró en total" class="align-right mono">${money(c.total_comprado)}</td>
-      <td data-label="Seguimiento" class="align-right">${
+      <td data-label="Compró en total" class="align-right mono m-valor">${money(c.total_comprado)}</td>
+      <td data-label="Seguimiento" class="align-right m-estado">${
         c.con_seguimiento
           ? badge("status-info", "Agendado").html
           : `<button type="button" class="btn btn-secundario btn-chico" data-seguir="${c.id}">${icono("plus")} Anotar seguimiento</button>`
