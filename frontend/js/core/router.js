@@ -97,8 +97,8 @@ const VISTAS_CONSTRUIDAS = {
 // (permisos.js): dashboard (Estadísticas: GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
 // (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
 // todo el circuito de compras y sus devoluciones a proveedor, fichas
-// incluidas, y auditoria (GET /api/auditoria, admin desde la Etapa A de
-// multi-tenant — ver permisos.js). Un deep-link escrito a mano por un
+// incluidas. Auditoría ya no: es de los dos roles (hist. §93). Un
+// deep-link escrito a mano por un
 // empleado (el nav-item ya está oculto por CSS, pero el hash se puede
 // tipear igual) cae al mismo destino que un click normal — es solo UI, el
 // servidor responde 403 igual si se llama al endpoint directo.
@@ -112,7 +112,6 @@ const VISTAS_SOLO_ADMIN = new Set([
   "compra-detalle",
   "devoluciones-proveedor",
   "devolucion-proveedor-detalle",
-  "auditoria",
   "planes-socio"
 ]);
 

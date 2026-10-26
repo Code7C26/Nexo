@@ -4757,9 +4757,10 @@ input.precio-sin-configurar::placeholder {
    (permisos.js): Usuarios, Estadísticas (vista "dashboard"), Reportes de
    stock, Papelera (mezcla ventas/gastos con compras y devoluciones a
    proveedor, que ya son admin), Compras y Devoluciones a proveedor (el
-   circuito de compras entero, valorizado al costo), y Auditoría (admin
-   desde la Etapa A de multi-tenant: valor_anterior/valor_nuevo traen costo/
-   margen/ganancia sin filtrar). Es UI, no seguridad — el servidor igual
+   circuito de compras entero, valorizado al costo). Auditoría ya no está:
+   es de los dos roles, con los costos podados en el servidor (hist. §93).
+   Configuración se le oculta del menú porque el empleado entra por el
+   engranaje del pie. Es UI, no seguridad — el servidor igual
    responde 403 si un empleado llama a esos endpoints directo; esto solo
    evita que entre a una vista que va a quedar vacía o rota porque sus
    loaders ya cortan antes del fetch (ver esAdmin() en app.js). */
@@ -4771,7 +4772,7 @@ input.precio-sin-configurar::placeholder {
 :root:not([data-rol="admin"]) .nav-item[data-view="papelera"],
 :root:not([data-rol="admin"]) .nav-item[data-view="compras"],
 :root:not([data-rol="admin"]) .nav-item[data-view="devoluciones-proveedor"],
-:root:not([data-rol="admin"]) .nav-item[data-view="auditoria"] {
+:root:not([data-rol="admin"]) .nav-item[data-view="configuracion"] {
   display: none;
 }
 

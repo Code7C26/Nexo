@@ -8901,3 +8901,27 @@ debería estar en configuración también".
 con la cuenta de demo: el círculo abre Mi cuenta, la contraseña equivocada
 muestra el error en la página, Cerrar sesión vuelve al login, el empleado ve
 solo Mi cuenta y Apariencia, y a 390 px se ve bien.
+
+## 93. La auditoría, también para el empleado, 26 de octubre de 2026
+
+Pendiente chico del handoff: filtrar `valor_anterior`/`valor_nuevo` de
+`GET /api/auditoria` por campos sensibles. Como el endpoint era solo admin, el
+filtro no habría cambiado nada; el usuario eligió abrirla al empleado.
+- `server.js`: el endpoint ya no lleva `soloAdmin`. Para el empleado, cada
+  JSON de valor se parsea y pasa por `podarSensibles` (el filtro de `res.json`
+  no entra en un string); si queda vacío o roto, va `null`. Las filas de
+  `compra`, `pago` y `devolucion_proveedor` no le llegan
+  (`ENTIDADES_AUDITORIA_SOLO_ADMIN`): ahí `precio_unitario` es un costo y el
+  filtro por nombre de clave no lo distingue. Ningún `detalle` arma texto con
+  costos, así que no se tocó.
+- `permisos.js`: `'ambos'`.
+- Frontend: la sección "Administración" del menú dejó de ser
+  `nav-seccion-admin`; al empleado se le ocultan Papelera y Configuración una
+  por una y ve solo Auditoría. `auditoria` salió de `VISTAS_SOLO_ADMIN` y
+  `cargarAuditoria` ya no corta por rol. El filtro "Entidad" sigue ofreciendo
+  Compra y Pago (se arma antes de conocer el rol): para el empleado filtran a
+  vacío.
+
+**Verificación:** `npm test` 64 de 64 (test nuevo en `api.test.js`: margen
+objetivo podado para el empleado y visible para el admin, sin filas de
+compras), lint. No se probó en el navegador.

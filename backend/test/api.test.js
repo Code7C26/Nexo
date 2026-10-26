@@ -356,6 +356,31 @@ test('el alta de clientes y de proveedores queda en la auditoría (§22)', async
   assert.ok(tiene('proveedor', proveedor.json.id), 'falta la fila de auditoría del proveedor');
 });
 
+test('el empleado ve la auditoría sin márgenes ni filas de compras (hist. §93)', async () => {
+  const id = await crearProducto(adminA, 'Gorra auditada', 'SKU-AUD1', 0);
+  const edicion = await adminA.patch(`/api/productos/${id}`, { precio_venta: 120, margen_objetivo: 40 });
+  assert.equal(edicion.status, 200, edicion.texto);
+  const compra = await adminA.post('/api/compras', {
+    proveedor: 'Proveedor auditado',
+    items: [{ producto: 'Gorra auditada', cantidad: 1, precio_unitario: 60 }]
+  });
+  assert.equal(compra.status, 201, compra.texto);
+
+  const deEmpleado = await empleadoA.get('/api/auditoria');
+  assert.equal(deEmpleado.status, 200, deEmpleado.texto);
+  const SOLO_ADMIN = ['compra', 'pago', 'devolucion_proveedor'];
+  assert.ok(!deEmpleado.json.some((f) => SOLO_ADMIN.includes(f.entidad)), 'al empleado le llegó una fila de compras');
+  const filaEmpleado = deEmpleado.json.find((f) => f.entidad === 'producto' && f.entidad_id === id && f.valor_nuevo);
+  assert.ok(filaEmpleado, 'falta la edición del producto');
+  assert.equal(JSON.parse(filaEmpleado.valor_nuevo).precio_venta, 120);
+  assert.ok(!('margen_objetivo' in JSON.parse(filaEmpleado.valor_nuevo)), 'al empleado le llegó el margen objetivo');
+
+  const deAdmin = (await adminA.get('/api/auditoria')).json;
+  const filaAdmin = deAdmin.find((f) => f.id === filaEmpleado.id);
+  assert.equal(JSON.parse(filaAdmin.valor_nuevo).margen_objetivo, 40);
+  assert.ok(deAdmin.some((f) => f.entidad === 'compra' && f.entidad_id === compra.json.id), 'el admin dejó de ver la compra');
+});
+
 test('?limit negativo en un listado con tope no devuelve todo sin límite', async () => {
   const r = await adminA.get('/api/auditoria?limit=-1');
   assert.equal(r.status, 200, r.texto);

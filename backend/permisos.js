@@ -20,10 +20,11 @@
 // (pagos incluidos) y sus devoluciones a proveedor, y las 5 vistas de
 // análisis (resumen y reportes) son admin. Cobros de venta y creación de
 // devoluciones de venta quedan del lado del empleado a propósito: es su
-// trabajo diario. Auditoría (GET /api/auditoria) pasó de 'ambos' a admin
-// en la Etapa A de multi-tenant (CLAUDE.md §28): valor_anterior/valor_nuevo
-// traen costo/margen/ganancia sin filtrar, que es justo lo que §35 le
-// esconde al empleado en el resto de las respuestas. El alta y la edición de
+// trabajo diario. Auditoría (GET /api/auditoria) fue admin desde la Etapa A
+// de multi-tenant porque valor_anterior/valor_nuevo traían costo/margen/
+// ganancia sin filtrar; volvió a 'ambos' en hist. §93, con esos JSON podados
+// para el empleado y sin las filas de compras, pagos y devoluciones a
+// proveedor (ver el endpoint en server.js). El alta y la edición de
 // los cinco catálogos (categorías de producto y de gasto, listas de precios,
 // depósitos y cuentas de tesorería) también son admin; leerlos es de los dos.
 // Socios (hist. §74 y §75): la recepción da de alta, suma planes, elige el
@@ -197,7 +198,7 @@ export const RUTAS_PERMISOS = {
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',
   'POST /api/asistente/ejecutar': 'ambos',
-  'GET /api/auditoria': 'admin',
+  'GET /api/auditoria': 'ambos',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
   'GET /api/usuarios': 'admin',

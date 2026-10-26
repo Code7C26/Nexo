@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §92);
+    siguiente número (hoy el último es §93);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -23,6 +23,8 @@
 
 **Próxima sesión:** la PWA (7) junto con "celular de verdad" (7b, que pide
 investigar antes). Los dos están en "Qué sigue".
+- **La auditoría es también del empleado** (hist. §93), sin costos ni filas
+  de compras. Commiteado en `solla`; falta que el usuario lo vea.
 - **Cuenta de demo para el profe (26 de octubre), en la base real:** usuario
   `prueba` / `prueba1234`, con dos negocios: "Comercio prueba" (#3) y "Gym
   prueba" (#4). Empleados: `vendedor.prueba` / `vendedor1234` (comercio) y
@@ -216,8 +218,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **`auditoria` no está en el backfill de arranque** de `organizacion_id`: su
   NULL de `login_fallido` es legítimo. Volver a sumarla al array de
   `db/index.js` reintroduce el bug de hist. §51.
-- **`GET /api/auditoria` es solo admin**, porque los JSON de valor
-  anterior/nuevo traen costos. Un `login_fallido` con un usuario inexistente
+- **`GET /api/auditoria` es de los dos roles** (hist. §93). Al empleado se le
+  podan los JSON de valor anterior/nuevo con `podarSensibles` (el filtro de
+  `res.json` no entra en un string) y no le llegan las filas de `compra`,
+  `pago` ni `devolucion_proveedor`. Un `login_fallido` con un usuario inexistente
   queda con `organizacion_id NULL`, invisible para todas las empresas
   (hist. §46).
 
@@ -661,8 +665,6 @@ están, hist. §65):
    email (hist. §45).
 
 **Pendientes chicos conocidos:**
-- Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
-  sensibles. Solo hace falta si se reabre ese endpoint al rol empleado.
 - `gh` (GitHub CLI) no está instalado en la máquina de Santino. Los PR se
   abren desde el link de comparación de GitHub.
 

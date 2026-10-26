@@ -9476,15 +9476,32 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 // que llega al frontend podría terminar siendo el del usuario, no el de
 // la fila de auditoría.
 //
-// soloAdmin (Etapa A, CLAUDE.md §28): valor_anterior/valor_nuevo traen el
-// JSON crudo de la operación, que para productos/ventas incluye costo,
-// margen y ganancia — justo los campos que el rol empleado no debería ver
-// en ningún otro endpoint (§35). Antes era 'ambos'; pasa a admin acá para
-// cerrar esa deuda. Filtro por organizacion_id: las filas con NULL (ver el
-// comentario de login_fallido más arriba) quedan afuera del listado de
-// cualquier empresa, por diseño.
-app.get('/api/auditoria', soloAdmin, (req, res) => {
+// Es de los dos roles (hist. §93). valor_anterior/valor_nuevo son texto JSON
+// y el filtro de campos sensibles de res.json no entra en un string: para el
+// empleado se parsean y se podan acá con el mismo podarSensibles (CLAUDE.md
+// §35). Las filas del circuito de compras no le llegan: ahí precio_unitario
+// es un costo, y el filtro por nombre de clave no lo distingue del precio de
+// venta (por eso ese circuito ya es admin entero). Filtro por
+// organizacion_id: las filas con NULL (ver el comentario de login_fallido más
+// arriba) quedan afuera del listado de cualquier empresa, por diseño.
+const ENTIDADES_AUDITORIA_SOLO_ADMIN = ['compra', 'pago', 'devolucion_proveedor'];
+
+function podarValorAuditoria(json) {
+  if (!json) return json;
+  try {
+    const podado = podarSensibles(JSON.parse(json));
+    return podado && typeof podado === 'object' && Object.keys(podado).length === 0 ? null : JSON.stringify(podado);
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/auditoria', (req, res) => {
   const limite = limiteDeConsulta(req.query.limit);
+  const esAdmin = req.usuario.rol === 'admin';
+  const sinCompras = esAdmin
+    ? ''
+    : `AND auditoria.entidad NOT IN (${ENTIDADES_AUDITORIA_SOLO_ADMIN.map(() => '?').join(', ')})`;
   const registros = db
     .prepare(
       `SELECT auditoria.id, auditoria.fecha, auditoria.actor, auditoria.accion,
@@ -9494,12 +9511,19 @@ app.get('/api/auditoria', soloAdmin, (req, res) => {
               auditoria.operacion_tipo, auditoria.operacion_id, auditoria.detalle
          FROM auditoria
          LEFT JOIN usuarios ON usuarios.id = auditoria.usuario_id
-        WHERE auditoria.organizacion_id = ?
+        WHERE auditoria.organizacion_id = ? ${sinCompras}
         ORDER BY auditoria.fecha DESC, auditoria.id DESC
         LIMIT ?`
     )
-    .all(req.usuario.organizacion_id, limite);
-  res.json(registros);
+    .all(req.usuario.organizacion_id, ...(esAdmin ? [] : ENTIDADES_AUDITORIA_SOLO_ADMIN), limite);
+  if (esAdmin) return res.json(registros);
+  res.json(
+    registros.map((r) => ({
+      ...r,
+      valor_anterior: podarValorAuditoria(r.valor_anterior),
+      valor_nuevo: podarValorAuditoria(r.valor_nuevo)
+    }))
+  );
 });
 
 /* ---------- Auth: sesión en curso (requieren estar logueado) ---------- */

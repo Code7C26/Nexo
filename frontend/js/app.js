@@ -7102,12 +7102,8 @@ const filtrosAuditoriaMov = crearFiltros(
 );
 
 async function cargarAuditoria() {
-  // GET /api/auditoria es admin-only en el servidor desde la Etapa A de
-  // multi-tenant (valor_anterior/valor_nuevo traen costo/margen/ganancia sin
-  // filtrar). El nav-item ya está oculto por CSS y VISTAS_SOLO_ADMIN manda a
-  // un empleado a Ventas antes de llegar acá, pero se corta igual por si
-  // alguien llama a esta función directo — mismo criterio que cargarCompras.
-  if (!esAdmin()) return;
+  // Es de los dos roles (hist. §93): al empleado el servidor le saca los
+  // costos de valor_anterior/valor_nuevo y las filas de compras.
   tablaCargando("auditoriaBody", 7);
   tablaCargando("auditoriaMovBody", 4);
 
