@@ -87,6 +87,57 @@ modalConfirmar.addEventListener("click", (e) => {
 const FOCUSABLES_MODAL =
   'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex]:not([tabindex="-1"])';
 
+/* ---------- El "atrás" del celular cierra el modal (hist. §95) ----------
+   En el celular un modal ocupa la pantalla entera y se siente una pantalla
+   más: el "atrás" de Android (o el gesto) tiene que cerrarlo, no salir de la
+   sección. Al abrir se suma una entrada al historial con la misma dirección
+   (no cambia el hash, así que el router no se entera), y el "atrás" la saca y
+   cierra el modal. Si se cierra con su botón, se saca esa entrada con
+   history.back(). Ese back es asíncrono: un modal que se abre antes de que
+   termine espera para sumar la suya, si no el back se la llevaría a ella. */
+const celularModal = window.matchMedia("(max-width: 860px)");
+const conHistoria = [];
+const esperandoAtras = [];
+let atrasPendiente = false;
+
+function sumarHistoria(modal) {
+  if (atrasPendiente) {
+    esperandoAtras.push(modal);
+    return;
+  }
+  history.pushState({ ...history.state, nexoModal: modal.id }, "");
+  conHistoria.push(modal);
+}
+
+function sacarHistoria(modal) {
+  const espera = esperandoAtras.indexOf(modal);
+  if (espera >= 0) esperandoAtras.splice(espera, 1);
+  const i = conHistoria.indexOf(modal);
+  if (i < 0) return;
+  conHistoria.splice(i, 1);
+  if (modal.dataset.cerradoPorAtras) {
+    delete modal.dataset.cerradoPorAtras;
+    return;
+  }
+  atrasPendiente = true;
+  history.back();
+}
+
+window.addEventListener("popstate", () => {
+  if (atrasPendiente) {
+    atrasPendiente = false;
+    esperandoAtras.splice(0).forEach((m) => {
+      if (!m.hidden) sumarHistoria(m);
+    });
+    return;
+  }
+  const modal = conHistoria.at(-1);
+  if (modal && !modal.hidden) {
+    modal.dataset.cerradoPorAtras = "1";
+    modal.hidden = true;
+  }
+});
+
 document.querySelectorAll(".modal").forEach((modal) => {
   if (modal.id === "modalConfirmar") return;
 
@@ -94,8 +145,10 @@ document.querySelectorAll(".modal").forEach((modal) => {
 
   new MutationObserver(() => {
     if (modal.hidden) {
+      sacarHistoria(modal);
       trigger?.focus();
     } else {
+      if (celularModal.matches) sumarHistoria(modal);
       trigger = document.activeElement;
       // El botón ✕ es siempre el primer focusable en el DOM (va al
       // principio del modal-head), pero no es un buen destino de foco

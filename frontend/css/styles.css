@@ -3235,7 +3235,8 @@ input.precio-sin-configurar::placeholder {
     grid-template-columns: 1fr;
   }
 
-  .nav-toggle { display: flex; }
+  /* Sin hamburguesa en el celular: el cajón lo abre "Más", de la barra de
+     abajo (hist. §95). */
 
   .sidebar {
     position: fixed;
@@ -3248,10 +3249,9 @@ input.precio-sin-configurar::placeholder {
 
   .sidebar.is-open { transform: translateX(0); }
 
-  /* La hamburguesa (fixed, arriba a la izquierda) queda encima del drawer
-     abierto: el logo se corre a su derecha. Ocultar la barra lateral es
-     cosa de escritorio; en el celular el drawer ya se cierra solo. */
-  .brand { padding-left: 60px; min-height: 42px; }
+  /* Ocultar la barra lateral es cosa de escritorio; en el celular el drawer
+     ya se cierra solo. */
+  .brand { min-height: 42px; padding-top: env(safe-area-inset-top); }
 
   /* Velo sobre el contenido mientras el drawer está abierto: una sombra
      extendida, sin un elemento extra en el HTML. */
@@ -3274,8 +3274,9 @@ input.precio-sin-configurar::placeholder {
     align-items: stretch;
     gap: 2px;
     margin: 0;
-    /* padding-left despeja el hamburger (40px de ancho, arranca en 16px). */
-    padding: 14px 20px 14px 64px;
+    /* padding-right despeja el botón del asistente, que en el celular vive
+       arriba a la derecha (hist. §95). */
+    padding: calc(12px + env(safe-area-inset-top)) 64px 12px 16px;
     border-bottom: 1px solid var(--line);
   }
 
@@ -3290,14 +3291,13 @@ input.precio-sin-configurar::placeholder {
     white-space: nowrap;
   }
 
-  .topbar-fecha {
-    align-self: flex-start;
-  }
+  /* La fecha no entra: la topbar queda en un renglón, el del título. */
+  .topbar-fecha { display: none; }
 
   .main {
     /* El padding-top tiene que despejar la topbar fixed de arriba, no
        solo el hamburger — mismo motivo que el ajuste de arriba. */
-    padding: 92px 16px 88px;
+    padding: calc(var(--topbar-h) + var(--sp-4)) 16px calc(var(--abajo) + 88px);
     /* En el celular la hoja ocupa la pantalla entera: sin marco. */
     margin: 0;
     border: 0;
@@ -3471,10 +3471,18 @@ input.precio-sin-configurar::placeholder {
 
   .ledger-table.tabla-compacta th:first-child { z-index: 2; background: var(--surface-sunk); }
 
+  /* El asistente sube a la topbar, arriba a la derecha: abajo están la barra
+     de secciones y el botón de "Nuevo" (hist. §95). */
   .asistente-launcher {
-    right: var(--sp-4);
-    bottom: var(--sp-4);
+    top: calc(8px + env(safe-area-inset-top));
+    right: 12px;
+    bottom: auto;
+    z-index: 51;
+    width: 40px;
+    height: 40px;
+    box-shadow: none;
   }
+  .asistente-launcher svg { width: 20px; height: 20px; }
 
   /* Punto de venta: una columna, el turno en dos renglones (caja y botón,
      después las cifras) y la barra fija para cobrar sin bajar hasta el
@@ -3530,8 +3538,8 @@ input.precio-sin-configurar::placeholder {
   .pos-barra {
     position: fixed;
     left: var(--sp-4);
-    right: calc(var(--sp-4) + 56px + var(--sp-3));
-    bottom: var(--sp-4);
+    right: var(--sp-4);
+    bottom: calc(var(--abajo) + var(--sp-3));
     z-index: 44;
     display: flex;
     align-items: center;
@@ -3578,7 +3586,7 @@ input.precio-sin-configurar::placeholder {
   .barra-seleccion {
     left: var(--sp-3);
     right: var(--sp-3);
-    bottom: var(--sp-3);
+    bottom: calc(var(--abajo) + var(--sp-3));
     transform: none;
     flex-wrap: wrap;
     justify-content: center;
@@ -3596,12 +3604,16 @@ input.precio-sin-configurar::placeholder {
      el media query aplique — quedaba sin efecto. Ver el bloque
      "@media (max-width: 860px) { .avisos {" que sigue a la base. */
 
+  /* El asistente, a pantalla completa: arriba de todo menos los modales. */
   .asistente-panel {
-    right: var(--sp-3);
-    left: var(--sp-3);
-    bottom: var(--sp-3);
+    inset: 0;
+    z-index: 57;
     width: auto;
-    max-height: min(80vh, 640px);
+    max-height: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    border: 0;
+    border-radius: 0;
   }
 }
 
@@ -3635,18 +3647,17 @@ input.precio-sin-configurar::placeholder {
 @media (max-width: 860px) {
   .avisos {
     left: var(--sp-4);
-    bottom: var(--sp-4);
-    /* Reserva el ancho del launcher (56px) + su margen + separación: sin
-       esto, en viewports de 375-414px el toast (z-index 65) se monta
-       encima del botón del asistente (z-index 45) y bloquea el click
-       mientras el aviso está en pantalla. */
-    max-width: min(360px, calc(100vw - var(--sp-4) * 2 - 56px - var(--sp-3)));
+    right: var(--sp-4);
+    /* Arriba de la barra de abajo. El asistente ya no está en esa esquina
+       (subió a la topbar, hist. §95): el aviso ocupa el ancho. */
+    bottom: calc(var(--abajo) + var(--sp-3));
+    max-width: none;
   }
 
   /* Con la barra de cobro del punto de venta a la vista, el aviso sube por
      encima de ella en vez de taparle el total. */
   body:has(.view[data-view="pos"]:not([hidden]) #posMostrador:not([hidden])) .avisos {
-    bottom: calc(var(--sp-4) + 56px + var(--sp-2));
+    bottom: calc(var(--abajo) + var(--sp-3) + 56px + var(--sp-2));
   }
 }
 
@@ -6930,9 +6941,9 @@ a.segmento {
   /* El alta rápida, a mano del pulgar: flota abajo a la derecha. */
   .consultas-nueva {
     position: fixed;
-    /* A la izquierda del asistente, que flota en la esquina (56 px). */
-    right: calc(var(--sp-4) + 56px + var(--sp-3));
-    bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+    /* Arriba de la barra de abajo (hist. §95). */
+    right: var(--sp-4);
+    bottom: calc(var(--abajo) + var(--sp-4));
     z-index: 30;
     min-height: 48px;
     padding: 0 var(--sp-5);
@@ -7008,8 +7019,8 @@ a.segmento {
     padding-top: calc(var(--sp-2) + env(safe-area-inset-top));
   }
   html[data-conexion="no"] .topbar { top: var(--aviso-conexion-h, 0px); }
-  html[data-conexion="no"] .nav-toggle { top: calc(16px + var(--aviso-conexion-h, 0px)); }
-  html[data-conexion="no"] .main { padding-top: calc(92px + var(--aviso-conexion-h, 0px)); }
+  html[data-conexion="no"] .asistente-launcher { top: calc(8px + env(safe-area-inset-top) + var(--aviso-conexion-h, 0px)); }
+  html[data-conexion="no"] .main { padding-top: calc(var(--topbar-h) + var(--sp-4) + var(--aviso-conexion-h, 0px)); }
 }
 
 /* Instalar como app (Configuración → Apariencia). El ícono es el mismo que
@@ -7019,3 +7030,172 @@ a.segmento {
 .instalar-texto h3 { margin: 0 0 var(--sp-1); font-size: var(--txt-md); }
 .instalar-texto p { margin: 0; color: var(--ink-muted); font-size: var(--txt-sm); }
 .instalar-boton { align-self: flex-start; }
+
+/* ============================================================
+   Celular (hist. §95, docs/investigacion-celular.md)
+   ============================================================
+   Barra de abajo con las secciones de uso diario, formularios a pantalla
+   completa y controles de 44 px. --abajo es lo que ocupa la barra (con el
+   safe area del iPhone): todo lo que flota abajo (barra del POS, de
+   selección, avisos, botón de "Nuevo") se apoya encima. En la compu vale 0. */
+:root { --abajo: 0px; --topbar-h: 0px; }
+
+.barra-inferior { display: none; }
+
+/* La flecha de la topbar es del celular: en la compu la ficha ya tiene su
+   "Volver a …" a la vista. */
+.topbar-titulo { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.topbar-volver { display: none; }
+
+@media (max-width: 860px) {
+  :root {
+    --abajo: calc(64px + env(safe-area-inset-bottom));
+    /* La topbar fija: un renglón de título (ver .topbar en el bloque de
+       860px de arriba). */
+    --topbar-h: calc(52px + env(safe-area-inset-top));
+    /* Toques de 44 px (Apple; Material pide 48 con su margen). */
+    --control-h: 44px;
+  }
+
+  /* 16 px: con menos, iOS hace zoom al enfocar el campo. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea { font-size: 16px; }
+
+  .barra-inferior {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 48;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    height: var(--abajo);
+    padding: 0 var(--sp-1) env(safe-area-inset-bottom);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+  }
+  :root[data-sesion="cerrada"] .barra-inferior { display: none; }
+
+  .barra-inferior-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    padding: 0;
+    font: inherit;
+    font-size: var(--txt-2xs);
+    font-weight: 500;
+    color: var(--ink-muted);
+    background: none;
+    border: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .barra-inferior-item span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* El ícono va en una píldora que se tiñe en la sección activa (el
+     indicador de Material 3), con el azul de acento de siempre. */
+  .barra-inferior-item .ico {
+    box-sizing: content-box;
+    width: 22px;
+    height: 22px;
+    padding: 4px 16px;
+    border-radius: var(--r-full);
+    transition: background-color var(--dur-2) ease, color var(--dur-2) ease;
+  }
+  .barra-inferior-item.is-active { color: var(--ink); }
+  .barra-inferior-item.is-active .ico { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .barra-inferior-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: var(--r-sm); }
+
+  /* La flecha "volver" de las fichas, y el "Volver a …" de la ficha se va:
+     la flecha hace lo mismo y no se pierde al scrollear. */
+  .topbar-volver {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    margin-left: -8px;
+    padding: 0;
+    color: var(--ink);
+    background: none;
+    border: 0;
+    border-radius: var(--r-full);
+  }
+  .topbar-volver[hidden] { display: none; }
+  .topbar-volver .ico { width: 24px; height: 24px; }
+  .view > .btn-link[id^="btnVolver"] { display: none; }
+
+  /* Formularios a pantalla completa: en el celular una tarjeta centrada
+     deja poco lugar y se siente frágil. Título fijo arriba y el botón de
+     guardar fijo abajo, siempre a la vista. z-index 52: por encima del
+     asistente de la topbar (51). */
+  .modal {
+    z-index: 52;
+    padding: 0;
+    align-items: stretch;
+  }
+  .modal-card,
+  .modal-card-ancha {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    padding: 0 var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0 calc(var(--sp-4) * -1) var(--sp-4);
+    padding: calc(var(--sp-2) + env(safe-area-inset-top)) var(--sp-2) var(--sp-2) var(--sp-4);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .modal-close { width: 44px; height: 44px; }
+  .modal-card > .form > .btn-full:last-child {
+    position: sticky;
+    bottom: calc(var(--sp-3) + env(safe-area-inset-bottom));
+    z-index: 2;
+    min-height: 48px;
+    /* Un fondo alrededor del botón: lo que scrollea por debajo no se
+       mezcla con él. */
+    box-shadow: 0 0 0 var(--sp-3) var(--surface), 0 -16px 20px 4px var(--surface);
+  }
+
+  /* Las confirmaciones cortas ("¿Anular la venta?") no son una pantalla: van
+     en una hoja desde abajo, con los dos botones a mano del pulgar. */
+  #modalConfirmar { align-items: flex-end; }
+  #modalConfirmar .modal-card {
+    height: auto;
+    padding: var(--sp-5) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    animation: hoja-sube var(--dur-3) var(--ease-out);
+  }
+  #modalConfirmar .modal-head {
+    position: static;
+    margin: 0 0 var(--sp-2);
+    padding: 0;
+    background: none;
+    border: 0;
+  }
+  #modalConfirmar .confirmar-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); margin-top: var(--sp-4); }
+  #modalConfirmar .confirmar-acciones .btn { min-height: 48px; }
+}
+
+@keyframes hoja-sube {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}

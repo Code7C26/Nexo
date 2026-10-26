@@ -178,6 +178,10 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
     else item.removeAttribute("aria-current");
   });
 
+  // La flecha de la topbar, en una ficha (hist. §95). Se ve en el celular, donde
+  // la topbar es fija y el "Volver a …" de la ficha se va al scrollear.
+  document.getElementById("btnVolver").hidden = !(info?.esFicha && info.nav);
+
   // Deep-link: F5 o el botón Atrás vuelven a esta misma pantalla. Las
   // fichas quedan afuera (ver "esFicha" arriba); actualizarHash en false
   // lo pasa quien ya está respondiendo a un cambio de hash, para no
@@ -227,6 +231,15 @@ export const subrutaDesdeHash = () => rutaDesdeHash().subruta;
 window.addEventListener("hashchange", () => {
   const view = vistaDesdeHash();
   if (view) mostrarVista(view, { actualizarHash: false, subruta: subrutaDesdeHash() });
+});
+
+// La flecha hace lo mismo que el "Volver a …" de la ficha abierta (cada una
+// sabe a qué pestaña volver); si una ficha no lo tuviera, vuelve a su lista.
+document.getElementById("btnVolver").addEventListener("click", () => {
+  const ficha = [...document.querySelectorAll(".view")].find((sec) => !sec.hidden);
+  const propio = ficha?.querySelector(':scope > .btn-link[id^="btnVolver"]');
+  if (propio) propio.click();
+  else mostrarVista(VISTAS_CONSTRUIDAS[ficha?.dataset.view]?.nav ?? "ventas");
 });
 
 document.querySelectorAll(".nav-item").forEach((item) => {

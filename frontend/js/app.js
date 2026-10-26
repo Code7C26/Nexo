@@ -50,6 +50,7 @@ import "./dominios/abonos.js";
 import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
+import "./core/barra-inferior.js";
 
 let facturas = [];
 
@@ -7287,7 +7288,9 @@ new MutationObserver(() => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented || !sidebar.classList.contains("is-open")) return;
   sidebar.classList.remove("is-open");
-  navToggle.focus();
+  // En el celular el cajón lo abre "Más", de la barra de abajo (hist. §95).
+  const barraMas = document.getElementById("barraMas");
+  (barraMas?.checkVisibility?.() ? barraMas : navToggle).focus();
 });
 
 navToggle.addEventListener("click", () => {

@@ -211,7 +211,12 @@
     <main class="main">
 
       <header class="topbar">
-        <div>
+        <div class="topbar-titulo">
+          <!-- En una ficha, vuelve a la lista de la que salió (hist. §95; lo
+               muestra core/router.js). -->
+          <button type="button" class="topbar-volver" id="btnVolver" aria-label="Volver" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg>
+          </button>
           <h1 id="vistaTitulo">Resumen</h1>
         </div>
         <p class="topbar-fecha mono" id="todayDate">—</p>
@@ -4448,6 +4453,10 @@
       </form>
     </div>
   </div>
+
+  <!-- Barra de abajo del celular (hist. §95): la arma core/barra-inferior.js
+       con las secciones de uso diario del negocio y "Más". En la compu no se ve. -->
+  <nav class="barra-inferior" id="barraInferior" aria-label="Secciones principales"></nav>
 
   <!-- Asistente flotante — operaciones por texto (CLAUDE.md §21). No es
        una vista más del nav: está disponible desde cualquier pantalla.

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §94);
+    siguiente número (hoy el último es §95);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,9 +21,14 @@
 
 ## Estado actual (26 de octubre de 2026)
 
-**Próxima sesión:** seguir con "celular de verdad" (7b), fase 2: la base del
-celular (barra inferior, formularios a pantalla completa, controles de 44 px).
-El plan de las fases 2 a 4 está en "Qué sigue", 7b.
+**Próxima sesión:** seguir con "celular de verdad" (7b), fase 3: las listas
+compactas de dos líneas. El plan de las fases 3 y 4 está en "Qué sigue", 7b.
+- **Celular, fase 2, hecha** (hist. §95), commiteada en `solla`:
+  - barra de abajo con las secciones del negocio y "Más", sin hamburguesa;
+  - el asistente en la topbar y la flecha "volver" en las fichas;
+  - los formularios a pantalla completa, y el "atrás" los cierra;
+  - controles de 44 px.
+  - Falta que el usuario la vea en su celular.
 - **PWA hecha** (hist. §94), commiteada en `solla`. Se instala (botón en
   Configuración → Apariencia) y sin conexión abre con lo último que cargó, con
   un aviso, sin escribir. También suma la CSP. Falta que el usuario la pruebe
@@ -490,6 +495,17 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **`eslint.config.mjs` está protegido** por el hook `config-protection` del
   plugin ecc. `sw.js` declara sus globales con `/* global */`.
 
+**Celular (hist. §95)**
+- **Lo fijo abajo se apoya en `--abajo`** (la barra con el safe area; 0 en la
+  compu). Un elemento flotante nuevo usa `bottom: calc(var(--abajo) + …)`.
+- **Los destinos de la barra salen del menú lateral** (`PRIORIDAD` en
+  `core/barra-inferior.js`), nunca del tipo de negocio. Una sección nueva de
+  uso diario se suma a esa lista.
+- **Un modal nuevo termina su formulario en `.btn-full`:** en el celular ese
+  es el botón que queda fijo abajo.
+- **El "atrás" de los modales** vive en el observer de `core/ui.js`. Abrir un
+  modal sin cambiar `hidden` (por ejemplo, con una clase) lo deja afuera.
+
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
   incluidos atributos `value="…"`. Lo exige `npm test`
@@ -806,7 +822,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 7b. **Celular de verdad** (pedido del usuario del 25 de octubre, muy
    importante). **Investigación hecha** (`docs/investigacion-celular.md`), y
    de ahí salen las fases que siguen, un commit y un § cada una:
-   - **Fase 2, base:**
+   - ~~**Fase 2, base:**~~ **hecha** (hist. §95):
      - barra inferior con Resumen, las tres primeras funciones prendidas de
        `ingreso, socios, pos, trabajos, ventas, productos, clientes`, y
        "Más", que abre el cajón de siempre; se va la hamburguesa;

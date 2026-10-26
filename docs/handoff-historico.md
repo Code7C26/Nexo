@@ -9013,3 +9013,73 @@ En Chrome a 390 px, contra una base sembrada:
 **Lo que muestra la captura sin conexión:** Productos, en el celular, con un
 producto por pantalla. Es el problema de 7b, que se resuelve en las fases
 siguientes.
+
+## 95. Celular, fase 2: barra de abajo y formularios a pantalla completa, 26 de octubre de 2026
+
+Primera fase de 7b (`docs/investigacion-celular.md`). Todo es del frontend y
+solo cambia hasta 860 px: en la compu no se ve nada nuevo.
+
+**Qué se hizo:**
+- **Barra de abajo** (`core/barra-inferior.js`, `#barraInferior`):
+  - cuatro destinos y "Más". Los destinos son los primeros de `PRIORIDAD`
+    (`dashboard, ingreso, socios, pos, trabajos, ventas, productos, clientes`)
+    que el menú lateral muestra (`checkVisibility`): los módulos y el rol ya
+    se resuelven ahí, sin `if (rubro)`;
+  - según el negocio queda así:
+    - comercio: Resumen · Vender · Ventas · Catálogo;
+    - gimnasio: Resumen · Ingreso · Socios · Vender;
+    - servicios: Resumen · Trabajos · Ventas · Catálogo (o Servicios);
+    - el empleado no tiene Resumen: Vender · Ventas · Catálogo · CRM;
+  - textos cortos: `pos` dice "Vender", y el catálogo dice "Catálogo" cuando
+    el nombre tiene más de una palabra;
+  - tocar un destino es hacer `click()` en su ítem del menú: navega igual,
+    con su subruta;
+  - un observer repinta cuando cambian los módulos, el rol o la sección activa
+    (el router marca `.is-active` en el menú). **Solo se rearma si cambian los
+    destinos;** lo activo se marca aparte, porque si no "Más" perdía el foco
+    al abrir el cajón.
+- **"Más" abre el cajón de siempre**, y la hamburguesa ya no se ve en el
+  celular.
+  - Tocar afuera del cajón lo cierra, y ese toque no hace nada más (click en
+    captura). No cuentan como afuera el menú de negocios (vive en el `<body>`)
+    ni los modales.
+  - Escape devuelve el foco a "Más".
+- **El asistente sube a la topbar**, arriba a la derecha (40 px), y su panel
+  ocupa la pantalla. Libera la esquina de abajo.
+- **Topbar de un renglón:** sin la fecha. `--topbar-h` es
+  `52px + safe area`. En las fichas, la flecha `#btnVolver` hace `click()` en
+  el "Volver a …" de la ficha abierta (cada una sabe a qué pestaña volver), y
+  ese botón interno se oculta en el celular.
+- **Modales a pantalla completa:** la cabecera fija arriba y el botón de
+  guardar fijo abajo (todos los formularios terminan en `.btn-full`; se
+  revisaron los 34). `#modalConfirmar` va como hoja desde abajo, con los dos
+  botones de 48 px.
+  - Modales en z-index 52, por encima del asistente de la topbar (51).
+- **El "atrás" de Android cierra el modal** (`core/ui.js`):
+  - al abrir, en el celular, un `pushState` con la misma dirección (no cambia
+    el hash, así que el router no se entera);
+  - el `popstate` cierra el último modal abierto;
+  - cerrar con la X hace `history.back()`. Como es asíncrono, un modal que se
+    abre mientras tanto espera para sumar su entrada (`esperandoAtras`): si
+    no, ese back se la llevaría.
+  - `#modalConfirmar` queda afuera, como en el observer.
+- **`--abajo`** (64 px + safe area; 0 en la compu): lo usan la barra del POS,
+  la de selección, los avisos, el alta rápida del CRM y el padding de `.main`.
+  La barra del POS y los avisos ya no dejan el lugar del asistente.
+- **`--control-h: 44px`** en el celular, y los inputs de 16 px (iOS hacía
+  zoom con 14).
+
+**Verificación:** `npm test` 66 de 66, lint (57 archivos). La base real no
+cambió (md5 `e8df3009…`). En Chrome a 390 px (táctil), contra la base
+sembrada:
+- la barra por negocio (cambiando los módulos con `PUT /api/negocio` y
+  restaurándolos) y para el empleado, como arriba;
+- "Más" abre (`aria-expanded`), y tocar afuera cierra sin cambiar el hash;
+- la ficha de un producto con la flecha, que vuelve a la lista;
+- "Nuevo cliente" a 390 × 844, y el "atrás" lo cierra sin salir de
+  `#/clientes/lista`;
+- cerrar con la X y después "atrás" lleva a la vista anterior (no queda una
+  entrada muerta);
+- la hoja de confirmar;
+- en la compu (1440), ni la barra ni la hamburguesa.
+- Sin errores de consola.
