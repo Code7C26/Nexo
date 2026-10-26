@@ -1188,8 +1188,9 @@ Implementado hoy (Etapa F, §38):
   - El catálogo se llama según lo que tiene cargado: "Productos", "Servicios"
     o "Productos y servicios", con una pestaña para cada uno. Vacío, toma el
     nombre del tipo.
-- **Consultas (CRM):** módulo reusable, prendido en comercio, servicios y
-  gimnasio. Consultas y clientes potenciales en un embudo con etapas por
+- **CRM:** módulo reusable, prendido en comercio, servicios y gimnasio. En
+  el menú es "CRM" y une en una sola página la base de clientes y las
+  consultas: clientes potenciales en un embudo con etapas por
   negocio, seguimiento con próxima acción, "Para hoy", clientes que dejaron de
   comprar y números. Una consulta pasa a cliente, presupuesto, venta o socio
   con las altas de siempre, y se gana sola (ver `handoff.md`).

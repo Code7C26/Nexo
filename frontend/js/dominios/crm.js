@@ -5,13 +5,16 @@
  * de dónde llegaron, en qué quedó y qué falta hacer.
  *
  * Pantallas sobre las rutas de server.js, sección "Consultas (CRM)":
- * - Embudo (#/consultas/embudo): columnas por etapa, con arrastrar y soltar en
+ * Todo vive en la página del CRM, junto con la base de clientes (hist. §91):
+ * la vista `clientes`, con pestañas. Con el módulo apagado se ve solo la
+ * lista de clientes, que pinta app.js.
+ * - Consultas (#/clientes/consultas): el embudo, en columnas por etapa, con arrastrar y soltar en
  *   la compu (también a Ganada o Perdida, para cerrarla); en el celular, una
  *   etapa por pestaña.
- * - Para hoy (#/consultas/hoy): lo que vence hoy o ya venció, las consultas
+ * - Para hoy (#/clientes/hoy): lo que vence hoy o ya venció, las consultas
  *   sin próximo paso, los presupuestos sin respuesta y los abonos que deben.
  *   Las primeras también van en el Resumen.
- * - Dejaron de comprar (#/consultas/dejaron) y Números (#/consultas/numeros).
+ * - Dejaron de comprar (#/clientes/dejaron) y Números (#/clientes/numeros).
  * - La ficha de una consulta: su seguimiento y "Cuando decide", que la pasa a
  *   cliente, presupuesto, venta o socio con las altas de siempre
  *   (nuevo:presupuesto y nuevo:venta de app.js, nuevo:socio de socios.js).
@@ -43,8 +46,9 @@ const ESTADOS = {
   ganada: { texto: "Ganada", clase: "status-cobrado" },
   perdida: { texto: "Perdida", clase: "" }
 };
-const PESTANAS = ["embudo", "hoy", "dejaron", "numeros"];
-const CLAVE_PESTANA = "nexo.consultas.vista";
+// "lista" es la base de clientes (app.js); las demás son de este módulo.
+const PESTANAS = ["lista", "consultas", "hoy", "dejaron", "numeros"];
+const CLAVE_PESTANA = "nexo.crm.vista";
 // Las cerradas que se ven en el embudo: las de los últimos días.
 const DIAS_CERRADAS = 30;
 
@@ -52,7 +56,7 @@ let etapas = [];
 let consultas = [];
 let origenes = null;
 let responsables = null;
-let pestana = "embudo";
+let pestana = "lista";
 // En el celular, la etapa que se está mirando (un id, "ganada" o "perdida").
 let etapaCelular = null;
 let ficha = null;
@@ -128,7 +132,7 @@ async function cargarConsultas() {
     api("/api/crm/etapas", { error: "No se pudieron cargar las etapas." }),
     api("/api/crm/oportunidades", { error: "No se pudieron cargar las consultas." })
   ]);
-  if (pestana === "embudo") renderEmbudo();
+  if (pestana === "consultas") renderEmbudo();
 }
 
 /* ---------- Embudo ---------- */
@@ -251,7 +255,7 @@ embudoEtapas.addEventListener("click", (e) => {
   renderEmbudo();
 });
 celular.addEventListener("change", () => {
-  if (pestana === "embudo") renderEmbudo();
+  if (pestana === "consultas") renderEmbudo();
 });
 
 embudo.addEventListener("click", (e) => {
@@ -761,7 +765,7 @@ vistaFicha.addEventListener("change", async (e) => {
   await refrescar([cargarConsultas()]);
   await abrirFicha(ficha.id);
 });
-document.getElementById("btnVolverConsultas").addEventListener("click", () => mostrarVista("consultas"));
+document.getElementById("btnVolverConsultas").addEventListener("click", () => mostrarVista("clientes", { subruta: "consultas" }));
 
 /* ---------- Para hoy ---------- */
 
@@ -917,7 +921,7 @@ async function pintarParaHoyResumen() {
   resumenEl.innerHTML = `
     <div class="panel-head">
       <h2 id="paraHoyResumenTitulo">Para hoy <span class="para-hoy-cuenta">${numero(renglones.length)}</span></h2>
-      <a class="btn-link" href="#/consultas/hoy">Ver todo ${icono("chevron-right")}</a>
+      <a class="btn-link" href="#/clientes/hoy">Ver todo ${icono("chevron-right")}</a>
     </div>
     <ul class="para-hoy-lista">${primeros}</ul>`;
 }
@@ -1042,31 +1046,48 @@ numerosPeriodo.addEventListener("click", (e) => {
 
 /* ---------- Pestañas ---------- */
 
-// Sin subruta (el menú, Volver), la última pestaña que se usó.
-async function entrarAConsultas(subruta) {
+// La página del CRM: la base de clientes y las consultas, en pestañas. Sin
+// subruta (el menú, Volver), la última que se usó. Con el módulo apagado, solo
+// la lista de clientes y sin pestañas.
+async function entrarAlCrm(subruta) {
+  if (!negocio.id) await recargar("negocio");
+  const conCrm = moduloActivo("crm");
   let guardada = null;
   try {
     guardada = localStorage.getItem(CLAVE_PESTANA);
   } catch {
-    // Sin almacenamiento (ventana privada): se abre el embudo.
+    // Sin almacenamiento (ventana privada): se abre la lista.
   }
-  const elegida = PESTANAS.includes(subruta) ? subruta : PESTANAS.includes(guardada) ? guardada : "embudo";
-  if (subruta !== elegida) history.replaceState(null, "", `#/consultas/${elegida}`);
-  try {
-    localStorage.setItem(CLAVE_PESTANA, elegida);
-  } catch {
-    // Idem: la próxima vez arranca en el embudo.
+  const elegida = !conCrm ? "lista" : PESTANAS.includes(subruta) ? subruta : PESTANAS.includes(guardada) ? guardada : "lista";
+  // La dirección queda siempre en la del CRM, también si se llegó por un link
+  // viejo de Consultas (#/consultas/hoy, core/router.js).
+  const destino = conCrm ? `#/clientes/${elegida}` : "#/clientes";
+  if (location.hash !== destino) history.replaceState(null, "", destino);
+  if (conCrm) {
+    try {
+      localStorage.setItem(CLAVE_PESTANA, elegida);
+    } catch {
+      // Idem: la próxima vez arranca en la lista.
+    }
   }
+  // Con un deep-link el negocio llega después que el título del router.
+  const titulo = conCrm ? "CRM" : "Clientes";
+  document.getElementById("vistaTitulo").textContent = titulo;
+  document.title = `${titulo} · Nexo`;
   pestana = elegida;
-  for (const seccion of document.querySelectorAll('[data-view="consultas"] .trabajos-pestana')) {
+  for (const seccion of document.querySelectorAll('[data-view="clientes"] .crm-pestana')) {
     seccion.hidden = seccion.dataset.pestana !== pestana;
   }
   for (const enlace of document.querySelectorAll("#consultasMenu .segmento")) {
     if (enlace.dataset.pestana === pestana) enlace.setAttribute("aria-current", "page");
     else enlace.removeAttribute("aria-current");
   }
+  // En la lista de clientes, el alta es "Nuevo cliente", la del panel.
+  document.getElementById("btnNuevaConsulta").hidden = pestana === "lista";
+  if (!conCrm) return;
   // "Para hoy" se carga siempre: su cuenta va en la pestaña.
-  if (pestana === "embudo") {
+  if (pestana === "lista") await refrescar([recargar("clientes"), cargarParaHoy()]);
+  else if (pestana === "consultas") {
     if (consultas.length === 0) embudo.innerHTML = '<p class="embudo-cargando">Cargando consultas…</p>';
     await refrescar([cargarConsultas(), cargarParaHoy()]);
   } else if (pestana === "hoy") await cargarParaHoy();
@@ -1241,7 +1262,7 @@ formEtapa.addEventListener("submit", async (e) => {
 
 /* ---------- Registro ---------- */
 
-alEntrarEnVista("consultas", entrarAConsultas);
+alEntrarEnVista("clientes", entrarAlCrm);
 registrar("cargar:consultas", cargarConsultas);
 registrar("abrirFicha:consulta", (id) => abrirFicha(id));
 registrar("pintar:crmDelCliente", pintarCrmDelCliente);

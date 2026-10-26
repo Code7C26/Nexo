@@ -12,7 +12,6 @@ import { entrarEnVista } from "./registro.js";
 // §29, PERFILES_RUBRO en backend/perfiles.js): con el módulo apagado no se entra.
 const MODULO_DE_VISTA = {
   pos: "pos",
-  consultas: "crm",
   "consulta-detalle": "crm",
   presupuestos: "presupuestos",
   "presupuesto-detalle": "presupuestos",
@@ -48,10 +47,10 @@ const MODULO_DE_VISTA = {
 const VISTAS_CONSTRUIDAS = {
   dashboard: { titulo: "Resumen", dominio: "Resumen" },
   productos: { titulo: "Productos", termino: "Plural", dominio: "Maestros" },
-  clientes: { titulo: "Clientes", dominio: "Maestros" },
+  // Con el módulo crm, la página de clientes es el CRM (hist. §91).
+  clientes: { titulo: "Clientes", tituloConModulo: ["crm", "CRM"], dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
-  consultas: { titulo: "Consultas", dominio: "Embudo de venta" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
   trabajos: { titulo: "Trabajos", dominio: "Embudo de venta" },
   abonos: { titulo: "Abonos", dominio: "Embudo de venta" },
@@ -74,7 +73,7 @@ const VISTAS_CONSTRUIDAS = {
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
-  "consulta-detalle": { titulo: "Consulta", dominio: "Embudo de venta", nav: "consultas", esFicha: true },
+  "consulta-detalle": { titulo: "Consulta", dominio: "Maestros", nav: "clientes", esFicha: true },
   "trabajo-detalle": { titulo: "Trabajo", dominio: "Embudo de venta", nav: "trabajos", esFicha: true },
   "abono-detalle": { titulo: "Abono", dominio: "Embudo de venta", nav: "abonos", esFicha: true },
   "devolucion-detalle": { titulo: "Devolución", dominio: "Embudo de venta", nav: "devoluciones", esFicha: true },
@@ -156,7 +155,8 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
   // deep-link el negocio llega después: el data-termino del título hace que
   // fijarNegocio() lo corrija.
   const conTermino = !titulo && info?.termino;
-  const tituloFinal = titulo ?? (conTermino ? termino(info.termino) : info?.titulo);
+  const conModulo = info?.tituloConModulo && moduloActivo(info.tituloConModulo[0]);
+  const tituloFinal = titulo ?? (conTermino ? termino(info.termino) : conModulo ? info.tituloConModulo[1] : info?.titulo);
   // El texto chico "RESUMEN"/"ADMINISTRACIÓN" sobre el título se sacó del
   // HTML por decisión de diseño. El campo `dominio` de VISTAS_CONSTRUIDAS se
   // conserva igual: documenta a qué dominio pertenece cada vista.
@@ -199,7 +199,13 @@ const VISTAS_RENOMBRADAS = {
   "configuracion/planes-socio": "planes-socio",
   "configuracion/descuentos-socio": "planes-socio/descuentos",
   // "Tipo de negocio y secciones" pasó a Funciones (hist. §88).
-  "configuracion/tipo": "configuracion/funciones"
+  "configuracion/tipo": "configuracion/funciones",
+  // Consultas pasó a ser parte del CRM, junto con los clientes (hist. §91).
+  consultas: "clientes/consultas",
+  "consultas/embudo": "clientes/consultas",
+  "consultas/hoy": "clientes/hoy",
+  "consultas/dejaron": "clientes/dejaron",
+  "consultas/numeros": "clientes/numeros"
 };
 
 function rutaDesdeHash() {

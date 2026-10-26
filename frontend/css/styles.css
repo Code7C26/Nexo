@@ -6467,6 +6467,10 @@ a.segmento {
   border-radius: var(--r-full);
 }
 .segmento-cuenta[hidden] { display: none; }
+
+/* El ítem del menú dice "CRM" con el módulo prendido y "Clientes" sin él (hist. §91). */
+:root[data-modulos~="crm"] .sin-crm,
+:root:not([data-modulos~="crm"]) .con-crm { display: none; }
 /* En las etapas del celular, una por botón: en gris, sin competir con la elegida. */
 .embudo-etapas .segmento-cuenta { color: var(--ink); background: var(--line); }
 
@@ -6929,7 +6933,7 @@ a.segmento {
     border-radius: var(--r-full);
     box-shadow: var(--shadow-lg);
   }
-  [data-view="consultas"] .trabajos-vista { padding-bottom: 72px; }
+  [data-view="clientes"] .trabajos-vista { padding-bottom: 72px; }
 
   .embudo-ayuda { display: none; }
   .embudo-etapas {

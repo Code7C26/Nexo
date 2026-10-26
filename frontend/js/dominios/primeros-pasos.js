@@ -60,7 +60,7 @@ function pasos(c) {
       titulo: "Anotá tu primera consulta",
       detalle: "Quién te preguntó, qué busca y cuándo volver a escribirle: Nexo te lo recuerda.",
       hecho: c.consultas > 0,
-      vista: "consultas",
+      vista: "clientes",
       boton: "btnNuevaConsulta"
     });
   }

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §90);
+    siguiente número (hoy el último es §91);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -23,8 +23,13 @@
 
 **Próxima sesión:** la PWA (7) junto con "celular de verdad" (7b, que pide
 investigar antes). Los dos están en "Qué sigue".
-- **Consultas (CRM): hecho y commiteado en `solla`** (hist. §89 el backend,
-  §90 la pantalla). En el menú es "Consultas", en Ventas:
+- **CRM: hecho y commiteado en `solla`** (hist. §89 el backend, §90 la
+  pantalla, §91 la unión con Clientes). **En el menú es "CRM"**, en el lugar
+  de Clientes, y es una sola página con pestañas: Clientes (la base de
+  siempre), Consultas, Para hoy, Dejaron de comprar y Números. Pedido del
+  usuario del 26 de octubre: "se tiene que llamar CRM y tiene que estar
+  combinado con la base de datos de clientes, todo en la misma página". Con
+  el módulo apagado vuelve a decir "Clientes", sin pestañas. Tiene:
   - embudo con arrastrar y soltar, y en el celular una etapa por pestaña;
   - "Para hoy", también en el Resumen;
   - Dejaron de comprar, Números y alta rápida de tres campos;
@@ -32,9 +37,10 @@ investigar antes). Los dos están en "Qué sigue".
     sola;
   - en la ficha del cliente, sus consultas y su seguimiento;
   - las etapas, en Configuración.
-  - **Falta que el usuario lo vea.** Su base real (gimnasio) lo recibe
-    prendido en el próximo `npm start`, con las etapas Consulta → Clase de
-    prueba → Seguimiento.
+  - **Falta que el usuario lo vea.** Su base real (gimnasio) ya lo tiene
+    prendido (migrada el 26 de octubre, respaldo
+    `nexo-20261026-120237.db` en OneDrive), con las etapas Consulta → Clase
+    de prueba → Seguimiento.
 - **Tipo de negocio fijo y funciones que se suman (hist. §88): hecho y
   commiteado en `solla`, sin pushear.** Configuración tiene "Funciones" y una
   página aparte para cambiar el tipo; el catálogo se llama según lo cargado,

@@ -90,7 +90,7 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> <span data-termino="Plural">Productos</span>
           </a>
           <a href="#" class="nav-item" data-view="clientes">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> Clientes
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> <span class="con-crm">CRM</span><span class="sin-crm">Clientes</span>
           </a>
           <a href="#" class="nav-item" data-view="proveedores">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg> Proveedores
@@ -100,9 +100,6 @@
           <p class="nav-grupo">Ventas</p>
           <a href="#" class="nav-item" data-view="pos" data-modulo="pos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg> Punto de venta
-          </a>
-          <a href="#" class="nav-item" data-view="consultas" data-modulo="crm">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#funnel"></use></svg> Consultas
           </a>
           <a href="#" class="nav-item" data-view="presupuestos" data-modulo="presupuestos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg> Presupuestos
@@ -568,136 +565,8 @@
       <!-- Vista: Trabajos (hist. §78, dominios/trabajos.js). Tres pestañas:
            #/trabajos/lista, #/trabajos/semana y #/trabajos/mes (la agenda,
            hist. §80). Sin subruta, la última que se usó. -->
-      <!-- Vista: Consultas (CRM, hist. §89 y §90; dominios/crm.js). Cuatro
-           pestañas con subruta (#/consultas/embudo|hoy|dejaron|numeros), como
-           Trabajos. El embudo se arma en JS: columnas por etapa en la compu, y
-           una etapa por pestaña en el celular. -->
-      <section class="view" data-view="consultas" hidden>
-        <div class="trabajos-vista">
-        <div class="consultas-cabecera">
-          <nav class="segmentos planes-menu" aria-label="Qué ver de las consultas" id="consultasMenu">
-            <a class="segmento" href="#/consultas/embudo" data-pestana="embudo">Embudo</a>
-            <a class="segmento" href="#/consultas/hoy" data-pestana="hoy">Para hoy <span class="segmento-cuenta" id="consultasHoyCuenta" hidden></span></a>
-            <a class="segmento" href="#/consultas/dejaron" data-pestana="dejaron">Dejaron de comprar</a>
-            <a class="segmento" href="#/consultas/numeros" data-pestana="numeros">Números</a>
-          </nav>
-          <button type="button" class="btn btn-primary consultas-nueva" id="btnNuevaConsulta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nueva consulta</span></button>
-        </div>
-
-        <div class="trabajos-pestana" data-pestana="embudo">
-        <section class="ledger-strip" aria-label="Consultas">
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#funnel"></use></svg></span>Abiertas</span>
-            <span class="ledger-value mono" id="consultasAbiertas">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">En juego</span>
-            <span class="ledger-value mono" id="consultasValor">$0,00</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Sin próximo paso</span>
-            <span class="ledger-value mono" id="consultasSinAccion">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Ganadas este mes</span>
-            <span class="ledger-value mono" id="consultasGanadas">0</span>
-          </div>
-        </section>
-
-        <section class="panel embudo-panel">
-          <div class="socios-herramientas">
-            <input type="search" class="search" placeholder="Buscar por nombre, teléfono o qué busca" id="consultasBuscar" aria-label="Buscar consultas" />
-            <p class="embudo-ayuda">Arrastrá una tarjeta para pasarla de etapa, o soltala en Ganada o Perdida para cerrarla.</p>
-          </div>
-          <div class="segmentos embudo-etapas" role="group" aria-label="Etapa" id="embudoEtapas"></div>
-          <div class="embudo" id="embudo"></div>
-        </section>
-        </div>
-
-        <div class="trabajos-pestana" data-pestana="hoy" hidden>
-          <div class="para-hoy" id="paraHoy"></div>
-        </div>
-
-        <div class="trabajos-pestana" data-pestana="dejaron" hidden>
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Dejaron de comprar</h2>
-              <p class="panel-sub">Te compraron dos veces o más y hace un tiempo que no vuelven. Un mensaje a tiempo los trae de vuelta.</p>
-            </div>
-            <div class="segmentos" role="group" aria-label="Sin comprar hace más de" id="dejaronDias">
-              <button type="button" class="segmento" data-dias="60" aria-pressed="false">60 días</button>
-              <button type="button" class="segmento" data-dias="90" aria-pressed="true">90 días</button>
-              <button type="button" class="segmento" data-dias="180" aria-pressed="false">6 meses</button>
-            </div>
-          </div>
-          <div class="tabla-scroll">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th scope="col">Cliente</th>
-                <th scope="col">Última compra</th>
-                <th scope="col" class="align-right">Compras</th>
-                <th scope="col" class="align-right">Compró en total</th>
-                <th scope="col"><span class="visualmente-oculto">Seguimiento</span></th>
-              </tr>
-            </thead>
-            <tbody id="dejaronBody"></tbody>
-          </table>
-          </div>
-        </section>
-        </div>
-
-        <div class="trabajos-pestana" data-pestana="numeros" hidden>
-        <div class="segmentos numeros-periodo" role="group" aria-label="Período" id="numerosPeriodo">
-          <button type="button" class="segmento" data-periodo="mes" aria-pressed="false">Este mes</button>
-          <button type="button" class="segmento" data-periodo="trimestre" aria-pressed="true">Últimos 3 meses</button>
-          <button type="button" class="segmento" data-periodo="todo" aria-pressed="false">Desde siempre</button>
-        </div>
-        <section class="ledger-strip" aria-label="Números de las consultas">
-          <div class="ledger-item">
-            <span class="ledger-label">Consultas</span>
-            <span class="ledger-value mono" id="numerosTotal">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Ganadas</span>
-            <span class="ledger-value mono" id="numerosGanadas">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Perdidas</span>
-            <span class="ledger-value mono" id="numerosPerdidas">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>De las cerradas, ganadas</span>
-            <span class="ledger-value mono" id="numerosConversion">—</span>
-          </div>
-        </section>
-        <div class="numeros-grilla">
-          <section class="panel">
-            <div class="panel-head"><h2>De dónde llegan</h2></div>
-            <div class="barras" id="numerosOrigen"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-head"><h2>Cómo está el embudo hoy</h2></div>
-            <div class="barras" id="numerosEtapas"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-head"><h2>Por qué se pierden</h2></div>
-            <div class="barras" id="numerosMotivos"></div>
-          </section>
-        </div>
-        </div>
-        </div>
-      </section>
-
       <section class="view" data-view="consulta-detalle" hidden>
-        <button type="button" class="btn-link" id="btnVolverConsultas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a consultas</button>
+        <button type="button" class="btn-link" id="btnVolverConsultas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver al CRM</button>
 
         <section class="panel">
           <div class="panel-head">
@@ -2208,8 +2077,134 @@
         </section>
       </section>
 
-      <!-- Vista: Clientes (CRM) -->
+      <!-- Vista: CRM (hist. §91). La base de clientes y las consultas en una sola
+           página, con pestañas (#/clientes/lista|consultas|hoy|dejaron|numeros).
+           Con el módulo crm apagado se ve solo la lista: el menú dice
+           "Clientes" y no hay pestañas (dominios/crm.js). -->
       <section class="view" data-view="clientes" hidden>
+        <div class="trabajos-vista">
+        <div class="consultas-cabecera" data-modulo="crm">
+          <nav class="segmentos planes-menu" aria-label="Qué ver del CRM" id="consultasMenu">
+            <a class="segmento" href="#/clientes/lista" data-pestana="lista">Clientes</a>
+            <a class="segmento" href="#/clientes/consultas" data-pestana="consultas">Consultas</a>
+            <a class="segmento" href="#/clientes/hoy" data-pestana="hoy">Para hoy <span class="segmento-cuenta" id="consultasHoyCuenta" hidden></span></a>
+            <a class="segmento" href="#/clientes/dejaron" data-pestana="dejaron">Dejaron de comprar</a>
+            <a class="segmento" href="#/clientes/numeros" data-pestana="numeros">Números</a>
+          </nav>
+          <button type="button" class="btn btn-primary consultas-nueva" id="btnNuevaConsulta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nueva consulta</span></button>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="consultas" hidden>
+        <section class="ledger-strip" aria-label="Consultas">
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#funnel"></use></svg></span>Abiertas</span>
+            <span class="ledger-value mono" id="consultasAbiertas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">En juego</span>
+            <span class="ledger-value mono" id="consultasValor">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Sin próximo paso</span>
+            <span class="ledger-value mono" id="consultasSinAccion">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Ganadas este mes</span>
+            <span class="ledger-value mono" id="consultasGanadas">0</span>
+          </div>
+        </section>
+
+        <section class="panel embudo-panel">
+          <div class="socios-herramientas">
+            <input type="search" class="search" placeholder="Buscar por nombre, teléfono o qué busca" id="consultasBuscar" aria-label="Buscar consultas" />
+            <p class="embudo-ayuda">Arrastrá una tarjeta para pasarla de etapa, o soltala en Ganada o Perdida para cerrarla.</p>
+          </div>
+          <div class="segmentos embudo-etapas" role="group" aria-label="Etapa" id="embudoEtapas"></div>
+          <div class="embudo" id="embudo"></div>
+        </section>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="hoy" hidden>
+          <div class="para-hoy" id="paraHoy"></div>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="dejaron" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Dejaron de comprar</h2>
+              <p class="panel-sub">Te compraron dos veces o más y hace un tiempo que no vuelven. Un mensaje a tiempo los trae de vuelta.</p>
+            </div>
+            <div class="segmentos" role="group" aria-label="Sin comprar hace más de" id="dejaronDias">
+              <button type="button" class="segmento" data-dias="60" aria-pressed="false">60 días</button>
+              <button type="button" class="segmento" data-dias="90" aria-pressed="true">90 días</button>
+              <button type="button" class="segmento" data-dias="180" aria-pressed="false">6 meses</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Cliente</th>
+                <th scope="col">Última compra</th>
+                <th scope="col" class="align-right">Compras</th>
+                <th scope="col" class="align-right">Compró en total</th>
+                <th scope="col"><span class="visualmente-oculto">Seguimiento</span></th>
+              </tr>
+            </thead>
+            <tbody id="dejaronBody"></tbody>
+          </table>
+          </div>
+        </section>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="numeros" hidden>
+        <div class="segmentos numeros-periodo" role="group" aria-label="Período" id="numerosPeriodo">
+          <button type="button" class="segmento" data-periodo="mes" aria-pressed="false">Este mes</button>
+          <button type="button" class="segmento" data-periodo="trimestre" aria-pressed="true">Últimos 3 meses</button>
+          <button type="button" class="segmento" data-periodo="todo" aria-pressed="false">Desde siempre</button>
+        </div>
+        <section class="ledger-strip" aria-label="Números de las consultas">
+          <div class="ledger-item">
+            <span class="ledger-label">Consultas</span>
+            <span class="ledger-value mono" id="numerosTotal">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Ganadas</span>
+            <span class="ledger-value mono" id="numerosGanadas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Perdidas</span>
+            <span class="ledger-value mono" id="numerosPerdidas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>De las cerradas, ganadas</span>
+            <span class="ledger-value mono" id="numerosConversion">—</span>
+          </div>
+        </section>
+        <div class="numeros-grilla">
+          <section class="panel">
+            <div class="panel-head"><h2>De dónde llegan</h2></div>
+            <div class="barras" id="numerosOrigen"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Cómo está el embudo hoy</h2></div>
+            <div class="barras" id="numerosEtapas"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Por qué se pierden</h2></div>
+            <div class="barras" id="numerosMotivos"></div>
+          </section>
+        </div>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="lista">
         <section class="panel">
           <div class="panel-head">
             <h2>Clientes</h2>
@@ -2233,6 +2228,8 @@
           </table>
           </div>
         </section>
+        </div>
+        </div>
       </section>
 
       <!-- Vista: ficha de un cliente -->

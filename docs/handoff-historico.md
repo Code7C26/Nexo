@@ -8844,3 +8844,32 @@ Arreglado con las capturas:
 
 El arrastre de Playwright falló dos veces por tiempos de la prueba, cuando se
 arrastra apenas carga la página; después anduvo siempre.
+
+## 91. El CRM junto con los clientes, en una sola página, 26 de octubre de 2026
+
+Pedido del usuario después de ver §90: "en el panel se tiene que llamar CRM y
+tiene que estar combinado con la base de datos de clientes, tiene que estar
+todo en la misma página".
+
+- **Una sola vista:** la de `clientes`. Las pestañas de Consultas pasaron
+  adentro: `#/clientes/lista|consultas|hoy|dejaron|numeros`. "Clientes" es la
+  lista de siempre (la pinta `app.js`) y va primero; sin subruta abre la
+  última usada (`nexo.crm.vista`). El embudo pasó a llamarse "Consultas".
+- **El menú tiene un solo ítem**, en el lugar de Clientes (Maestros). Dice
+  "CRM" con el módulo prendido y "Clientes" sin él (`.con-crm` /
+  `.sin-crm`), y el título lo mismo (`tituloConModulo` en
+  `core/router.js`, y `entrarAlCrm` lo corrige cuando el negocio llega
+  después). Sin el módulo no hay pestañas: solo la lista.
+- "Nueva consulta" no se ve en la pestaña Clientes, que tiene "Nuevo cliente".
+- Los links viejos (`#/consultas`, `#/consultas/hoy`…) redirigen
+  (`VISTAS_RENOMBRADAS`), y la dirección queda en la nueva.
+- La ficha de una consulta marca CRM en el menú; "Volver al CRM" vuelve a
+  Consultas.
+- **La vista `consultas` ya no existe.** No hay cambios en el backend ni en
+  el módulo: sigue siendo `crm`.
+
+**Verificación:** `npm test` 63 de 63, lint. En Chrome (servidor de prueba):
+- menú y título "CRM", la lista primero y sin ítem aparte;
+- la pestaña Consultas, el link viejo y "Volver al CRM";
+- con el módulo apagado, "Clientes" sin pestañas;
+- a 390 px, sin scroll horizontal y sin errores de consola.
