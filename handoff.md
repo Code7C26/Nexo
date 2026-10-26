@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §96);
+    siguiente número (hoy el último es §97);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,26 +21,24 @@
 
 ## Estado actual (26 de octubre de 2026)
 
-**Próxima sesión:** terminar "celular de verdad" (7b) con la fase 4: los
-filtros en una hoja desde abajo, un "Nuevo" flotante por vista y la pasada
-visual con capturas para el usuario. Está en "Qué sigue", 7b.
-- **Celular, fase 3, hecha** (hist. §96), commiteada en `solla`: las listas
-  de dos líneas, unos 10 productos por pantalla en vez de uno. Son 21 listas
-  migradas; la tabla con qué muestra cada una está en hist. §96.
-- **Celular, fase 2, hecha** (hist. §95), commiteada en `solla`:
-  - barra de abajo con las secciones del negocio y "Más", sin hamburguesa;
-  - el asistente en la topbar y la flecha "volver" en las fichas;
-  - los formularios a pantalla completa, y el "atrás" los cierra;
-  - controles de 44 px.
-  - Falta que el usuario la vea en su celular.
-- **PWA hecha** (hist. §94), commiteada en `solla`. Se instala (botón en
-  Configuración → Apariencia) y sin conexión abre con lo último que cargó, con
-  un aviso, sin escribir. También suma la CSP. Falta que el usuario la pruebe
-  en su celular: hace falta https o localhost, así que en la red de la casa,
-  por IP, no se instala (ver "Qué sigue", 8).
-- **La investigación del celular** está en `docs/investigacion-celular.md`
-  (Shopify, Square, Loyverse, Tienda Nube, Mercado Pago, Material, Apple), con
-  el diseño elegido. Falta que el usuario la lea.
+**Próxima sesión:** la landing pública con planes y hosting (8 en "Qué sigue").
+Pide decisiones del usuario: qué precios mostrar y dónde se publica.
+- **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
+  `solla`, sin pushear. El diseño y la investigación están en
+  `docs/investigacion-celular.md`.
+  - **PWA:** se instala, y sin conexión abre con lo último que cargó. Suma la
+    CSP.
+  - **Navegación:** barra de abajo con las secciones del negocio y "Más".
+  - **Pantallas:** formularios a pantalla completa, y el "atrás" los cierra.
+  - **Listas:** de dos líneas, unos 10 renglones por pantalla en vez de 1.
+  - **Filtros y alta:** los filtros en una hoja y un "Nuevo" flotante por
+    vista.
+  - **Falta que el usuario lo pruebe en su celular.** Para instalarla hace
+    falta https o localhost: entrando a la compu por IP en la red de la casa
+    se ve el diseño nuevo, pero no se instala ni abre sin conexión. Las
+    opciones son ngrok (gratis, ver "Trámites"), o en Chrome del celular
+    `chrome://flags` → "Insecure origins treated as secure" con la IP de la
+    compu.
 - **La auditoría es también del empleado** (hist. §93), sin costos ni filas
   de compras. Commiteado en `solla`; falta que el usuario lo vea.
 - **Cuenta de demo para el profe (26 de octubre), en la base real:** usuario
@@ -507,6 +505,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   uso diario se suma a esa lista.
 - **Un modal nuevo termina su formulario en `.btn-full`:** en el celular ese
   es el botón que queda fijo abajo.
+- **El botón de alta de una vista nueva lleva `btn-nuevo`** (hist. §97): en
+  el celular flota arriba de la barra. Uno solo por vista visible.
 - **El "atrás" de los modales** vive en el observer de `core/ui.js`. Abrir un
   modal sin cambiar `hidden` (por ejemplo, con una clase) lo deja afuera.
 - **Una lista nueva va en dos líneas en el celular** (hist. §96):
@@ -829,8 +829,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      seguimiento.
 7. ~~B2: PWA~~ **hecha** (hist. §94). Para después: notificaciones con Web
    Push.
-7b. **Celular de verdad** (pedido del usuario del 25 de octubre, muy
-   importante). **Investigación hecha** (`docs/investigacion-celular.md`), y
+7b. ~~**Celular de verdad**~~ **hecho** (hist. §94 a §97; pedido del usuario
+   del 25 de octubre, muy importante). **Investigación hecha** (`docs/investigacion-celular.md`), y
    de ahí salen las fases que siguen, un commit y un § cada una:
    - ~~**Fase 2, base:**~~ **hecha** (hist. §95):
      - barra inferior con Resumen, las tres primeras funciones prendidas de
@@ -846,8 +846,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        (`core/formato.js`), que en la compu no se ve;
      - dos líneas por fila;
      - sin selección múltiple ni precio editable en el celular.
-   - **Fase 4:** filtros en hoja desde abajo, un "Nuevo" flotante por vista
-     (`btn-nuevo`) y una pasada visual con capturas para el usuario.
+   - ~~**Fase 4:**~~ **hecha** (hist. §97): filtros en hoja desde abajo, un
+     "Nuevo" flotante por vista (`btn-nuevo`) y la pasada visual.
 
    El pedido original, como referencia: Hoy en el celular
    todo tiene el mismo tamaño que en la compu, solo más apretado: en Productos

@@ -9159,3 +9159,48 @@ cambió (md5 `e8df3009…`). En Chrome:
 - **a 1440 px:** las celdas visibles por fila son igual a las columnas del
   encabezado en las 16 listas;
 - sin errores de consola.
+
+## 97. Celular, fase 4: filtros en una hoja, "Nuevo" flotante y pasada visual, 26 de octubre de 2026
+
+Última fase de 7b. Con esta, el celular queda como se diseñó en
+`docs/investigacion-celular.md`.
+
+**Qué se hizo:**
+- **Filtros** (`core/filtros.js`, `styles.css`):
+  - en el celular, la ventanita de "Filtrar" es una hoja desde abajo, con
+    velo, opciones de 48 px y campos de 44. El `left` que le pone el JS para
+    la compu se pisa con `!important`;
+  - los chips van en una fila que se desliza;
+  - tocar el velo solo cierra la hoja: un listener en captura, que solo actúa
+    en el celular. Antes, ese toque habría abierto la fila de atrás.
+- **"Nuevo" flotante:** el botón primario de 13 vistas lleva `btn-nuevo`
+  (presupuestos, trabajos con su agenda, abonos, socios, productos, clientes,
+  proveedores, caja, gastos, ventas, compras y facturas).
+  - En el celular es una píldora de 56 px con su texto ("+ Nuevo producto"),
+    arriba de la barra de abajo. Es el mismo botón, que se muda.
+  - Se esconde mientras está la barra de selección.
+  - Usuarios no lo lleva: es una página de Configuración.
+- **Renglones de venta, compra y presupuesto** (`.item-row`): el producto va
+  en su línea y abajo la cantidad, el precio, el subtotal y quitar. Antes, a
+  390 px cada campo quedaba de tres letras.
+- **Bug de antes, que ahora se veía:** el cajón cerrado, justo fuera de la
+  pantalla, derramaba su sombra sobre el borde izquierdo. Con los formularios
+  a pantalla completa se veía como un degradé sobre el botón de guardar (y en
+  claro, a lo largo de todo el formulario). Ahora la sombra va solo con el
+  cajón abierto.
+
+**Verificación:** `npm test` 66 de 66, lint. La base real no cambió (md5
+`e8df3009…`). En Chrome a 390 px, en oscuro y en claro:
+- un solo flotante por vista en las 12 recorridas (Stock y Cuentas
+  corrientes no tienen alta, y no lo llevan);
+- la hoja de filtros (elegir campo y editor), y tocar el velo la cierra sin
+  cambiar de vista;
+- al final de Productos, la última fila termina arriba del botón (675 contra
+  708 px);
+- el formulario de venta con sus renglones en dos líneas, y el botón sin el
+  degradé (y en la compu, igual que antes);
+- POS, CRM con la pestaña Consultas y el Resumen;
+- sin errores de consola.
+
+**Para después** (anotado en `docs/investigacion-celular.md` §4): encabezados
+por día en Ventas y Caja, acciones deslizando la fila, Web Push.

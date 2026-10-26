@@ -3326,7 +3326,10 @@ input.precio-sin-configurar::placeholder {
 
   .search { min-width: 0; width: 100%; }
 
-  .sidebar { box-shadow: var(--shadow-lg); }
+  /* Solo abierto: cerrado, el cajón queda justo fuera de la pantalla y su
+     sombra se derramaba sobre el borde izquierdo (se veía en los
+     formularios a pantalla completa, hist. §97). */
+  .sidebar:not(.is-open) { box-shadow: none; }
 
   /* De a dos tarjetas por renglón; la cifra que concluye ocupa el
      renglón entero. */
@@ -7279,4 +7282,84 @@ a.segmento {
   /* El precio editable de Productos: tocarlo abre la ficha, como el resto de
      la fila (el toque pasa a la celda). */
   .ledger-table.lista-movil .precio-venta-texto { pointer-events: none; }
+}
+
+/* ---------- Filtros y "Nuevo" en el celular (hist. §97) ---------- */
+@media (max-width: 860px) {
+  /* Los chips en una fila que se desliza, en vez de varios renglones que
+     empujan la lista para abajo. */
+  .filtros {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: calc(var(--sp-4) * -1);
+    padding-inline: var(--sp-4);
+  }
+  .filtros::-webkit-scrollbar { display: none; }
+  .filtro-chip,
+  .btn-agregar-filtro,
+  .btn-limpiar-filtros { flex: none; min-height: 40px; }
+  .filtro-chip-texto,
+  .filtro-chip-x { font-size: var(--txt-sm); }
+  .filtro-chip-x { padding: 0 12px; min-width: 40px; justify-content: center; }
+
+  /* La ventanita de filtrar pasa a ser una hoja desde abajo, a mano del
+     pulgar. core/filtros.js le pone un left para la compu: acá se pisa. El
+     velo es una sombra extendida, como la del cajón; tocar el velo cierra la
+     hoja (filtros.js) y no toca lo de atrás. */
+  .filtro-popover {
+    position: fixed;
+    top: auto;
+    left: 0 !important;
+    right: 0;
+    bottom: 0;
+    z-index: 53;
+    min-width: 0;
+    max-height: min(70vh, 520px);
+    gap: var(--sp-3);
+    padding: var(--sp-5) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    border-bottom: 0;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5);
+    animation: hoja-sube var(--dur-3) var(--ease-out);
+  }
+  .filtro-popover-titulo { font-size: var(--txt-md); }
+  .filtro-popover .filtro-opcion { min-height: 48px; font-size: var(--txt-md); }
+  .filtro-popover .filtro-input { min-height: 44px; }
+  .filtro-popover .btn { min-height: 48px; }
+
+  /* Un solo botón de crear por pantalla, flotando arriba de la barra de abajo
+     (el botón flotante de Material, con texto: quien nunca usó Nexo tiene que
+     saber qué hace). Es el mismo botón de la cabecera del panel, que se muda. */
+  .btn-nuevo {
+    position: fixed;
+    right: var(--sp-4);
+    bottom: calc(var(--abajo) + var(--sp-4));
+    z-index: 30;
+    min-height: 56px;
+    padding: 0 var(--sp-5);
+    border-radius: var(--r-full);
+    box-shadow: var(--shadow-lg);
+  }
+  /* Con la barra de selección o la de cobro a la vista, el botón se corre
+     para no taparlas. */
+  body:has(#barraSeleccion:not([hidden])) .btn-nuevo { display: none; }
+
+  /* Los renglones de venta, compra y presupuesto: el producto en su propia
+     línea y abajo cantidad, precio, subtotal y quitar. En un solo renglón,
+     a 390 px cada campo quedaba de tres letras. */
+  .item-row:not(.item-row-devolucion) {
+    flex-wrap: wrap;
+    row-gap: var(--sp-2);
+    padding-bottom: var(--sp-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .item-row .item-producto,
+  .item-row .item-variante-id { flex: 1 1 100%; }
+  .item-row input,
+  .item-row select { min-height: 44px; }
+  .item-row .item-cantidad { flex: 0 0 88px; }
+  .item-row .item-precio { flex: 1 1 0; }
+  .item-row .item-subtotal { flex: 0 0 auto; min-width: 80px; text-align: right; }
+  .item-row-remove { display: grid; place-items: center; width: 44px; height: 44px; }
 }
