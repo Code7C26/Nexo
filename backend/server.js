@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
-import db, { withTransaction, registrarAuditoria, sembrarCatalogosBase } from './db/index.js';
+import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
@@ -610,6 +610,7 @@ app.post('/api/auth/registro', (req, res) => {
                 direccion = ?, telefono = ?, email = ?
           WHERE id = ?`
       ).run(...valoresNegocio(datos), orgId);
+      resembrarEtapasCrm(orgId);
     } else {
       orgId = insertarNegocio(datos);
     }
@@ -3657,6 +3658,8 @@ app.post('/api/ventas', (req, res) => {
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
+  // Desde una consulta (hist. §89): la venta la gana.
+  const oportunidad = oportunidadParaVincular(req.body.crm_oportunidad_id, req.usuario.organizacion_id);
 
   let ventaId;
   try {
@@ -3673,6 +3676,10 @@ app.post('/api/ventas', (req, res) => {
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
+      if (oportunidad) {
+        const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
+        vincularOportunidad(req, oportunidad, { cliente_id: clienteId, venta_id: id });
+      }
       return id;
     });
   } catch (err) {
@@ -4461,6 +4468,8 @@ app.post('/api/presupuestos', (req, res) => {
   if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
+  // Desde una consulta (hist. §89): queda vinculada al presupuesto.
+  const oportunidad = oportunidadParaVincular(req.body.crm_oportunidad_id, req.usuario.organizacion_id);
 
   const presupuestoId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
@@ -4490,6 +4499,7 @@ app.post('/api/presupuestos', (req, res) => {
       entidad_id: nuevoId,
       detalle: `Presupuesto #${nuevoId} creado`
     });
+    vincularOportunidad(req, oportunidad, { cliente_id: Number(clienteRow.id), presupuesto_id: nuevoId });
     return nuevoId;
   });
 
@@ -4665,6 +4675,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       operacion_id: nuevaVentaId,
       detalle: `Presupuesto #${presupuestoId} convertido en la venta #${nuevaVentaId}`
     });
+    ganarOportunidadesDelPresupuesto(req, presupuestoId, nuevaVentaId);
     return nuevaVentaId;
   });
 
@@ -5055,6 +5066,7 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
         operacion_id: nuevaVentaId,
         detalle: `Presupuesto #${trabajo.presupuesto_id} convertido en la venta #${nuevaVentaId} al terminar su trabajo`
       });
+      ganarOportunidadesDelPresupuesto(req, trabajo.presupuesto_id, nuevaVentaId);
     }
     return nuevaVentaId;
   });
@@ -9928,7 +9940,8 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
     planes: contar('SELECT COUNT(*) AS n FROM planes_socio WHERE organizacion_id = ?'),
     socios: contar('SELECT COUNT(*) AS n FROM socios WHERE organizacion_id = ?'),
     trabajos: contar('SELECT COUNT(*) AS n FROM trabajos WHERE organizacion_id = ?'),
-    abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?')
+    abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?'),
+    consultas: contar('SELECT COUNT(*) AS n FROM crm_oportunidades WHERE organizacion_id = ?')
   });
 });
 
@@ -11316,6 +11329,8 @@ app.post('/api/socios', (req, res) => {
   if (errorFecha) return res.status(400).json({ error: errorFecha });
   const manual = descuentoManualPedido(descuento_id, organizacionId);
   if (manual.error) return res.status(400).json({ error: manual.error });
+  // Desde una consulta (hist. §89): el alta del socio la gana.
+  const oportunidad = oportunidadParaVincular(req.body?.crm_oportunidad_id, organizacionId);
 
   let existente = null;
   let datosNuevo = null;
@@ -11388,6 +11403,7 @@ app.post('/api/socios', (req, res) => {
         (manual.id ? `, con el descuento "${manual.nombre}"` : '')
     });
     for (const inscripcionId of inscripciones) generarCuotasDe(inscripcionId, hoy);
+    vincularOportunidad(req, oportunidad, { cliente_id: clienteId, socio_id: id });
     return id;
   });
   res.status(201).json(detalleSocio(socioId, organizacionId));
@@ -11932,6 +11948,910 @@ app.patch('/api/abonos/:id', soloAdmin, (req, res) => {
     }
   });
   res.json({ id: abono.id });
+});
+
+/* ---------- Consultas (CRM) ---------- */
+// Consultas y clientes potenciales (CLAUDE.md §29, hist. §89; el diseño está
+// en docs/investigacion-crm-servicios.md §2). Es un módulo que puede prender
+// cualquier negocio: el tipo solo decide con qué etapas nace el embudo (datos
+// de perfiles.js). No es un circuito propio:
+// - una consulta pasa a cliente, presupuesto, venta o socio con las altas de
+//   siempre, que reciben `crm_oportunidad_id` y la dejan vinculada;
+// - se gana sola cuando sale su venta o su socio, o cuando su presupuesto se
+//   convierte en venta (también al terminar el trabajo que lo convierte).
+// Es de los dos roles, salvo las etapas, que se editan en Configuración. La
+// auditoría va como entidad cliente (u organizacion, si todavía es un
+// contacto suelto) con operacion_tipo oportunidad, sin reconstruir auditoria.
+
+// De dónde llegó la consulta. La clave es lo que se guarda.
+const ORIGENES_CRM = {
+  whatsapp: 'WhatsApp',
+  instagram: 'Instagram',
+  local: 'Pasó por el local',
+  conocido: 'Un conocido',
+  web: 'La web',
+  otro: 'Otro'
+};
+const TIPOS_ACTIVIDAD = ['llamada', 'mensaje', 'visita', 'nota', 'tarea'];
+const LARGOS_OPORTUNIDAD = { nombre: 120, telefono: 40, email: 120, interes: 300 };
+const LARGO_MOTIVO_PERDIDA = 300;
+const LARGO_ACTIVIDAD = 1000;
+const LARGO_ETAPA = 40;
+// "Para hoy" avisa los presupuestos enviados hace al menos estos días que
+// siguen sin respuesta.
+const DIAS_PRESUPUESTO_SIN_RESPUESTA = 7;
+// "Dejaron de comprar": los que no compran hace más de estos días.
+const DIAS_INACTIVO_POR_DEFECTO = 90;
+
+// La próxima acción no se guarda (hist. §89): es la actividad pendiente más
+// próxima. Una pendiente siempre tiene fecha. Nombre, teléfono y email salen
+// del cliente cuando ya lo es, así un cambio en su ficha se ve acá.
+const SELECT_OPORTUNIDAD = `
+  SELECT o.id, o.cliente_id, COALESCE(clientes.nombre, o.contacto_nombre) AS nombre,
+         COALESCE(clientes.telefono, o.contacto_telefono) AS telefono,
+         COALESCE(clientes.email, o.contacto_email) AS email,
+         o.origen, o.interes, o.valor_estimado, o.responsable_id, usuarios.nombre AS responsable,
+         o.etapa_id, crm_etapas.nombre AS etapa, o.estado, o.motivo_perdida, o.fecha_cierre,
+         o.presupuesto_id, o.venta_id, o.socio_id, o.fecha, o.fecha_creacion,
+         proxima.id AS proxima_id, proxima.tipo AS proxima_tipo,
+         proxima.descripcion AS proxima_descripcion, proxima.fecha AS proxima_fecha
+    FROM crm_oportunidades o
+    JOIN crm_etapas ON crm_etapas.id = o.etapa_id
+    LEFT JOIN clientes ON clientes.id = o.cliente_id
+    LEFT JOIN usuarios ON usuarios.id = o.responsable_id
+    LEFT JOIN crm_actividades proxima ON proxima.id = (
+      SELECT a.id FROM crm_actividades a
+       WHERE a.oportunidad_id = o.id AND a.hecha = 0
+       ORDER BY a.fecha, a.id LIMIT 1)`;
+
+const SELECT_ACTIVIDAD = `
+  SELECT a.id, a.oportunidad_id, a.cliente_id, a.tipo, a.descripcion, a.fecha, a.hecha, a.fecha_hecha,
+         a.usuario_id, usuarios.nombre AS usuario, a.fecha_creacion,
+         COALESCE(clientes.nombre, o.contacto_nombre) AS nombre
+    FROM crm_actividades a
+    LEFT JOIN crm_oportunidades o ON o.id = a.oportunidad_id
+    LEFT JOIN clientes ON clientes.id = COALESCE(a.cliente_id, o.cliente_id)
+    LEFT JOIN usuarios ON usuarios.id = a.usuario_id`;
+
+function oportunidadDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_OPORTUNIDAD} WHERE o.id = ? AND o.organizacion_id = ?`).get(id, organizacionId);
+}
+
+function actividadDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_ACTIVIDAD} WHERE a.id = ? AND a.organizacion_id = ?`).get(id, organizacionId);
+}
+
+function etapaDeLaEmpresa(id, organizacionId) {
+  return db.prepare('SELECT id, nombre, orden, activa FROM crm_etapas WHERE id = ? AND organizacion_id = ?').get(id, organizacionId);
+}
+
+// Cómo está la consulta para el que la mira: sin próxima acción, con la acción
+// vencida, para hoy o al día. Solo de una abierta.
+function conAviso(oportunidad, hoy) {
+  let aviso = null;
+  if (oportunidad.estado === 'abierta') {
+    if (!oportunidad.proxima_id) aviso = 'sin_accion';
+    else if (oportunidad.proxima_fecha < hoy) aviso = 'vencida';
+    else if (oportunidad.proxima_fecha === hoy) aviso = 'hoy';
+  }
+  return { ...oportunidad, origen_nombre: ORIGENES_CRM[oportunidad.origen] ?? null, aviso };
+}
+
+// Audita sobre el cliente si ya lo es, y sobre el negocio si todavía es un
+// contacto suelto: las dos entidades ya están en el CHECK de auditoria.
+function auditarOportunidad(req, oportunidad, datos) {
+  auditar(req, {
+    entidad: oportunidad.cliente_id ? 'cliente' : 'organizacion',
+    entidad_id: oportunidad.cliente_id ?? req.usuario.organizacion_id,
+    operacion_tipo: 'oportunidad',
+    operacion_id: oportunidad.id,
+    ...datos
+  });
+}
+
+function usuarioActivoDelNegocio(usuarioId, organizacionId) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1')
+      .get(usuarioId, organizacionId)
+  );
+}
+
+// Valida los datos de una consulta, para el alta y la edición. Devuelve
+// { error } o { datos }. Con un cliente (cliente_id) el nombre es el suyo; si
+// no, hace falta el del contacto. El alta rápida manda solo nombre, teléfono y
+// qué busca.
+function validarOportunidad(cuerpo, organizacionId) {
+  const datos = {};
+  for (const campo of Object.keys(LARGOS_OPORTUNIDAD)) {
+    const valor = cuerpo?.[campo];
+    if (valor != null && typeof valor !== 'string') return { error: 'Los datos de la consulta no son válidos.' };
+    const texto = (valor ?? '').trim();
+    if (texto.length > LARGOS_OPORTUNIDAD[campo]) {
+      return { error: `El campo ${campo === 'interes' ? '"qué busca"' : campo} no puede pasar de ${LARGOS_OPORTUNIDAD[campo]} caracteres.` };
+    }
+    datos[campo] = texto || null;
+  }
+  if (datos.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.email)) return { error: 'El email no es válido.' };
+
+  datos.cliente_id = null;
+  if (cuerpo?.cliente_id != null && cuerpo.cliente_id !== '') {
+    const cliente = db
+      .prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?')
+      .get(Number(cuerpo.cliente_id), organizacionId);
+    if (!cliente) return { error: 'El cliente no existe.' };
+    if (cliente.nombre === CONSUMIDOR_FINAL) return { error: '"Consumidor final" no puede tener consultas: cargá a la persona.' };
+    datos.cliente_id = cliente.id;
+    datos.nombre = cliente.nombre;
+  }
+  if (!datos.nombre) return { error: 'Anotá el nombre de quien consulta.' };
+
+  const origen = cuerpo?.origen ?? null;
+  if (origen !== null && origen !== '' && !Object.hasOwn(ORIGENES_CRM, origen)) return { error: 'El origen no es válido.' };
+  datos.origen = origen || null;
+
+  const valor = cuerpo?.valor_estimado;
+  datos.valor_estimado = null;
+  if (valor != null && valor !== '') {
+    const numero = Number(valor);
+    if (!Number.isFinite(numero) || numero < 0) return { error: 'El valor estimado tiene que ser un número positivo.' };
+    datos.valor_estimado = redondear2(numero);
+  }
+
+  const responsable = cuerpo?.responsable_id ?? null;
+  datos.responsable_id = null;
+  if (responsable !== null && responsable !== '') {
+    if (!usuarioActivoDelNegocio(Number(responsable), organizacionId)) {
+      return { error: 'El responsable no es un usuario de este negocio.' };
+    }
+    datos.responsable_id = Number(responsable);
+  }
+
+  datos.etapa_id = null;
+  if (cuerpo?.etapa_id != null && cuerpo.etapa_id !== '') {
+    const etapa = etapaDeLaEmpresa(Number(cuerpo.etapa_id), organizacionId);
+    if (!etapa || !etapa.activa) return { error: 'La etapa no existe.' };
+    datos.etapa_id = etapa.id;
+  }
+  return { datos };
+}
+
+// La consulta que llega con un alta de presupuesto, venta o socio
+// (`crm_oportunidad_id`). Se valida antes de la transacción del alta; null si
+// no vino ninguna.
+function oportunidadParaVincular(valor, organizacionId) {
+  if (valor == null || valor === '') return null;
+  const oportunidad = db
+    .prepare('SELECT id, cliente_id, estado FROM crm_oportunidades WHERE id = ? AND organizacion_id = ?')
+    .get(Number(valor), organizacionId);
+  if (!oportunidad) throw new ErrorValidacion('La consulta no existe.');
+  return oportunidad;
+}
+
+function ganarOportunidad(req, oportunidad, motivo) {
+  db.prepare("UPDATE crm_oportunidades SET estado = 'ganada', motivo_perdida = NULL, fecha_cierre = ? WHERE id = ?").run(
+    fechaDeHoy(),
+    oportunidad.id
+  );
+  auditarOportunidad(req, oportunidad, {
+    accion: 'cambiar_estado',
+    valor_anterior: JSON.stringify({ estado: oportunidad.estado }),
+    valor_nuevo: JSON.stringify({ estado: 'ganada' }),
+    detalle: `Consulta #${oportunidad.id} ganada: ${motivo}`
+  });
+}
+
+// Deja la consulta vinculada a lo que generó, adentro de la transacción del
+// alta. El cliente se toma si todavía no tenía. Una venta o un socio la ganan
+// (si sigue abierta); un presupuesto no, porque todavía puede no aceptarse.
+function vincularOportunidad(req, oportunidad, { cliente_id = null, presupuesto_id = null, venta_id = null, socio_id = null }) {
+  if (!oportunidad) return;
+  // Una venta de mostrador va a "Consumidor final": ese no pasa a ser el cliente de la consulta.
+  if (cliente_id && db.prepare('SELECT nombre FROM clientes WHERE id = ?').get(cliente_id)?.nombre === CONSUMIDOR_FINAL) cliente_id = null;
+  db.prepare(
+    `UPDATE crm_oportunidades
+        SET cliente_id = COALESCE(cliente_id, ?), presupuesto_id = COALESCE(?, presupuesto_id),
+            venta_id = COALESCE(?, venta_id), socio_id = COALESCE(?, socio_id)
+      WHERE id = ?`
+  ).run(cliente_id, presupuesto_id, venta_id, socio_id, oportunidad.id);
+  const vinculada = { ...oportunidad, cliente_id: oportunidad.cliente_id ?? cliente_id };
+  const que = presupuesto_id ? `el presupuesto #${presupuesto_id}` : venta_id ? `la venta #${venta_id}` : `el socio #${socio_id}`;
+  auditarOportunidad(req, vinculada, { accion: 'editar', detalle: `Consulta #${oportunidad.id} pasó a ${que}` });
+  if ((venta_id || socio_id) && oportunidad.estado === 'abierta') ganarOportunidad(req, vinculada, `pasó a ${que}`);
+}
+
+// Un presupuesto que se convierte en venta gana las consultas abiertas que lo
+// generaron, y les deja la venta. Adentro de la transacción de la conversión.
+function ganarOportunidadesDelPresupuesto(req, presupuestoId, ventaId) {
+  const abiertas = db
+    .prepare("SELECT id, cliente_id, estado FROM crm_oportunidades WHERE presupuesto_id = ? AND estado = 'abierta'")
+    .all(presupuestoId);
+  for (const oportunidad of abiertas) {
+    db.prepare('UPDATE crm_oportunidades SET venta_id = COALESCE(venta_id, ?) WHERE id = ?').run(ventaId, oportunidad.id);
+    ganarOportunidad(req, oportunidad, `su presupuesto #${presupuestoId} pasó a la venta #${ventaId}`);
+  }
+}
+
+// --- Etapas ---
+
+app.get('/api/crm/etapas', (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT crm_etapas.id, crm_etapas.nombre, crm_etapas.orden, crm_etapas.activa,
+                (SELECT COUNT(*) FROM crm_oportunidades o
+                  WHERE o.etapa_id = crm_etapas.id AND o.estado = 'abierta') AS abiertas
+           FROM crm_etapas WHERE crm_etapas.organizacion_id = ?
+          ORDER BY crm_etapas.orden, crm_etapas.id`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+function nombreDeEtapa(valor) {
+  if (typeof valor !== 'string' || !valor.trim()) return { error: 'La etapa necesita un nombre.' };
+  const nombre = valor.trim();
+  if (nombre.length > LARGO_ETAPA) return { error: `El nombre de la etapa no puede pasar de ${LARGO_ETAPA} caracteres.` };
+  // Ganada y Perdida son los cierres de toda consulta: una etapa con ese
+  // nombre confundiría el embudo.
+  if (['ganada', 'perdida'].includes(nombre.toLowerCase())) {
+    return { error: 'Ganada y Perdida ya son los cierres de toda consulta: elegí otro nombre.' };
+  }
+  return { nombre };
+}
+
+function etapaRepetida(nombre, organizacionId, salvoId = 0) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM crm_etapas WHERE organizacion_id = ? AND nombre = ? COLLATE NOCASE AND id <> ?')
+      .get(organizacionId, nombre, salvoId)
+  );
+}
+
+app.post('/api/crm/etapas', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, nombre } = nombreDeEtapa(req.body?.nombre);
+  if (error) return res.status(400).json({ error });
+  if (etapaRepetida(nombre, organizacionId)) return res.status(400).json({ error: `Ya hay una etapa "${nombre}".` });
+  const id = withTransaction(() => {
+    const { orden } = db
+      .prepare('SELECT COALESCE(MAX(orden), 0) + 1 AS orden FROM crm_etapas WHERE organizacion_id = ?')
+      .get(organizacionId);
+    const nuevoId = Number(
+      db.prepare('INSERT INTO crm_etapas (nombre, orden, organizacion_id) VALUES (?, ?, ?)').run(nombre, orden, organizacionId)
+        .lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'crm_etapa',
+      operacion_id: nuevoId,
+      detalle: `Etapa de consultas "${nombre}" creada`
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Renombrarla o pausarla ({ nombre?, activa? }). Una pausada no se ofrece para
+// mover, pero lo que está en ella sigue ahí. Siempre queda al menos una
+// activa: es donde entra una consulta nueva.
+app.put('/api/crm/etapas/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const etapa = etapaDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!etapa) return res.status(404).json({ error: 'Etapa no encontrada.' });
+  let nombre = etapa.nombre;
+  if (req.body?.nombre !== undefined) {
+    const resultado = nombreDeEtapa(req.body.nombre);
+    if (resultado.error) return res.status(400).json({ error: resultado.error });
+    nombre = resultado.nombre;
+    if (etapaRepetida(nombre, organizacionId, etapa.id)) return res.status(400).json({ error: `Ya hay una etapa "${nombre}".` });
+  }
+  let activa = etapa.activa;
+  if (req.body?.activa !== undefined) {
+    if (typeof req.body.activa !== 'boolean') return res.status(400).json({ error: 'Los datos de la etapa no son válidos.' });
+    activa = req.body.activa ? 1 : 0;
+  }
+  if (!activa && etapa.activa) {
+    const { count } = db
+      .prepare('SELECT COUNT(*) AS count FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 AND id <> ?')
+      .get(organizacionId, etapa.id);
+    if (count === 0) return res.status(400).json({ error: 'Tiene que quedar al menos una etapa activa: ahí entran las consultas nuevas.' });
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE crm_etapas SET nombre = ?, activa = ? WHERE id = ?').run(nombre, activa, etapa.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      valor_anterior: JSON.stringify({ nombre: etapa.nombre, activa: etapa.activa }),
+      valor_nuevo: JSON.stringify({ nombre, activa }),
+      operacion_tipo: 'crm_etapa',
+      operacion_id: etapa.id,
+      detalle: `Etapa de consultas "${nombre}" editada`
+    });
+  });
+  res.json({ id: etapa.id });
+});
+
+// El orden del embudo: { ids } con todas las etapas del negocio, en el orden
+// nuevo.
+app.patch('/api/crm/etapas/orden', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const ids = req.body?.ids;
+  const actuales = db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? ORDER BY orden, id').all(organizacionId).map((e) => e.id);
+  const pedidos = Array.isArray(ids) ? ids.map(Number) : [];
+  if (pedidos.length !== actuales.length || new Set(pedidos).size !== pedidos.length || !pedidos.every((id) => actuales.includes(id))) {
+    return res.status(400).json({ error: 'Mandá todas las etapas del negocio, cada una una vez.' });
+  }
+  withTransaction(() => {
+    const actualizar = db.prepare('UPDATE crm_etapas SET orden = ? WHERE id = ?');
+    pedidos.forEach((id, i) => actualizar.run(i + 1, id));
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      valor_anterior: JSON.stringify({ orden: actuales }),
+      valor_nuevo: JSON.stringify({ orden: pedidos }),
+      operacion_tipo: 'crm_etapa',
+      detalle: 'Orden de las etapas de consultas cambiado'
+    });
+  });
+  res.json({ ids: pedidos });
+});
+
+// --- Oportunidades ---
+
+// Los orígenes que se pueden elegir, en el orden en que se muestran.
+app.get('/api/crm/origenes', (req, res) => {
+  res.json(Object.entries(ORIGENES_CRM).map(([clave, nombre]) => ({ clave, nombre })));
+});
+
+// Todas las del negocio, o las de un estado (?estado=abierta|ganada|perdida)
+// o de un cliente (?cliente_id=). Las abiertas primero, de la más nueva a la
+// más vieja.
+app.get('/api/crm/oportunidades', (req, res) => {
+  const filtros = ['o.organizacion_id = ?'];
+  const valores = [req.usuario.organizacion_id];
+  const { estado, cliente_id } = req.query;
+  if (estado !== undefined) {
+    if (!['abierta', 'ganada', 'perdida'].includes(estado)) return res.status(400).json({ error: 'El estado no es válido.' });
+    filtros.push('o.estado = ?');
+    valores.push(estado);
+  }
+  if (cliente_id !== undefined) {
+    filtros.push('o.cliente_id = ?');
+    valores.push(Number(cliente_id));
+  }
+  const hoy = fechaDeHoy();
+  res.json(
+    db
+      .prepare(`${SELECT_OPORTUNIDAD} WHERE ${filtros.join(' AND ')} ORDER BY o.estado <> 'abierta', o.id DESC`)
+      .all(...valores)
+      .map((o) => conAviso(o, hoy))
+  );
+});
+
+app.get('/api/crm/oportunidades/:id', (req, res) => {
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), req.usuario.organizacion_id);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  const actividades = db
+    .prepare(`${SELECT_ACTIVIDAD} WHERE a.oportunidad_id = ? ORDER BY a.hecha, a.fecha DESC, a.id DESC`)
+    .all(oportunidad.id);
+  const presupuesto = oportunidad.presupuesto_id
+    ? db.prepare('SELECT id, estado, fecha FROM presupuestos WHERE id = ?').get(oportunidad.presupuesto_id)
+    : null;
+  const socio = oportunidad.socio_id ? db.prepare('SELECT id, numero FROM socios WHERE id = ?').get(oportunidad.socio_id) : null;
+  res.json({ ...conAviso(oportunidad, fechaDeHoy()), actividades, presupuesto, socio });
+});
+
+app.post('/api/crm/oportunidades', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarOportunidad(req.body, organizacionId);
+  if (error) return res.status(400).json({ error });
+  const etapaId =
+    datos.etapa_id ??
+    db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 ORDER BY orden, id LIMIT 1').get(organizacionId)?.id;
+  if (!etapaId) return res.status(400).json({ error: 'El embudo no tiene ninguna etapa activa. Sumá una en Configuración.' });
+  const id = withTransaction(() => {
+    const nuevoId = Number(
+      db
+        .prepare(
+          `INSERT INTO crm_oportunidades
+             (cliente_id, contacto_nombre, contacto_telefono, contacto_email, origen, interes, valor_estimado,
+              responsable_id, etapa_id, fecha, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          datos.cliente_id,
+          datos.nombre,
+          datos.telefono,
+          datos.email,
+          datos.origen,
+          datos.interes,
+          datos.valor_estimado,
+          datos.responsable_id,
+          etapaId,
+          fechaDeHoy(),
+          organizacionId
+        ).lastInsertRowid
+    );
+    auditarOportunidad(req, { id: nuevoId, cliente_id: datos.cliente_id }, {
+      accion: 'crear',
+      detalle: `Consulta #${nuevoId} de ${datos.nombre}` + (datos.interes ? `: ${datos.interes}` : '')
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Editar los datos (los mismos del alta). La etapa se mueve con PATCH .../etapa.
+app.put('/api/crm/oportunidades/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  // Una que ya es cliente sigue siéndolo: el nombre es el de su ficha.
+  const cuerpo = { ...req.body, cliente_id: oportunidad.cliente_id ?? req.body?.cliente_id, etapa_id: undefined };
+  const { error, datos } = validarOportunidad(cuerpo, organizacionId);
+  if (error) return res.status(400).json({ error });
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE crm_oportunidades
+          SET cliente_id = ?, contacto_nombre = ?, contacto_telefono = ?, contacto_email = ?, origen = ?, interes = ?,
+              valor_estimado = ?, responsable_id = ?
+        WHERE id = ?`
+    ).run(
+      datos.cliente_id,
+      datos.nombre,
+      datos.telefono,
+      datos.email,
+      datos.origen,
+      datos.interes,
+      datos.valor_estimado,
+      datos.responsable_id,
+      oportunidad.id
+    );
+    auditarOportunidad(req, { ...oportunidad, cliente_id: datos.cliente_id }, {
+      accion: 'editar',
+      valor_anterior: JSON.stringify({ interes: oportunidad.interes, valor_estimado: oportunidad.valor_estimado, origen: oportunidad.origen }),
+      valor_nuevo: JSON.stringify({ interes: datos.interes, valor_estimado: datos.valor_estimado, origen: datos.origen }),
+      detalle: `Consulta #${oportunidad.id} de ${datos.nombre} editada`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Mover de etapa (arrastrar en el embudo). Solo una abierta, y a una etapa
+// activa del negocio.
+app.patch('/api/crm/oportunidades/:id/etapa', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.estado !== 'abierta') return res.status(400).json({ error: 'Esta consulta está cerrada: reabrila para moverla.' });
+  const etapa = etapaDeLaEmpresa(Number(req.body?.etapa_id), organizacionId);
+  if (!etapa || !etapa.activa) return res.status(400).json({ error: 'La etapa no existe.' });
+  if (etapa.id === oportunidad.etapa_id) return res.json({ id: oportunidad.id });
+  withTransaction(() => {
+    db.prepare('UPDATE crm_oportunidades SET etapa_id = ? WHERE id = ?').run(etapa.id, oportunidad.id);
+    auditarOportunidad(req, oportunidad, {
+      accion: 'cambiar_estado',
+      valor_anterior: JSON.stringify({ etapa: oportunidad.etapa }),
+      valor_nuevo: JSON.stringify({ etapa: etapa.nombre }),
+      detalle: `Consulta #${oportunidad.id} de ${oportunidad.nombre} pasó a "${etapa.nombre}"`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Cerrarla a mano: { resultado: 'ganada' | 'perdida', motivo }. Perdida pide el
+// motivo, que es lo que después se cuenta en los números.
+app.post('/api/crm/oportunidades/:id/cerrar', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.estado !== 'abierta') return res.status(400).json({ error: 'Esta consulta ya está cerrada.' });
+  const { resultado, motivo } = req.body ?? {};
+  if (!['ganada', 'perdida'].includes(resultado)) return res.status(400).json({ error: 'Elegí si se ganó o se perdió.' });
+  if (motivo != null && typeof motivo !== 'string') return res.status(400).json({ error: 'El motivo no es válido.' });
+  const texto = (motivo ?? '').trim();
+  if (resultado === 'perdida' && !texto) {
+    return res.status(400).json({ error: 'Contá por qué se perdió: es lo que después te muestra qué mejorar.' });
+  }
+  if (texto.length > LARGO_MOTIVO_PERDIDA) {
+    return res.status(400).json({ error: `El motivo no puede pasar de ${LARGO_MOTIVO_PERDIDA} caracteres.` });
+  }
+  withTransaction(() => {
+    if (resultado === 'ganada') {
+      ganarOportunidad(req, oportunidad, texto || 'cerrada a mano');
+      return;
+    }
+    db.prepare("UPDATE crm_oportunidades SET estado = 'perdida', motivo_perdida = ?, fecha_cierre = ? WHERE id = ?").run(
+      texto,
+      fechaDeHoy(),
+      oportunidad.id
+    );
+    auditarOportunidad(req, oportunidad, {
+      accion: 'cambiar_estado',
+      valor_anterior: JSON.stringify({ estado: oportunidad.estado }),
+      valor_nuevo: JSON.stringify({ estado: 'perdida', motivo: texto }),
+      detalle: `Consulta #${oportunidad.id} de ${oportunidad.nombre} perdida: ${texto}`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Volver a abrir una cerrada, en la etapa en que estaba. Lo que generó queda
+// vinculado.
+app.post('/api/crm/oportunidades/:id/reabrir', (req, res) => {
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), req.usuario.organizacion_id);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.estado === 'abierta') return res.status(400).json({ error: 'Esta consulta ya está abierta.' });
+  withTransaction(() => {
+    db.prepare("UPDATE crm_oportunidades SET estado = 'abierta', motivo_perdida = NULL, fecha_cierre = NULL WHERE id = ?").run(
+      oportunidad.id
+    );
+    auditarOportunidad(req, oportunidad, {
+      accion: 'cambiar_estado',
+      valor_anterior: JSON.stringify({ estado: oportunidad.estado }),
+      valor_nuevo: JSON.stringify({ estado: 'abierta' }),
+      detalle: `Consulta #${oportunidad.id} de ${oportunidad.nombre} reabierta`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Pasarla a cliente: con { cliente_id } se vincula uno que ya existe; sin él,
+// se da de alta con el nombre, el teléfono y el email del contacto. Si ya hay
+// un cliente con ese nombre no se duplica: se avisa, y la respuesta trae su id
+// para vincularlo.
+app.post('/api/crm/oportunidades/:id/cliente', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.cliente_id) return res.status(400).json({ error: `${oportunidad.nombre} ya es cliente.` });
+
+  let existente = null;
+  if (req.body?.cliente_id != null) {
+    existente = db
+      .prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?')
+      .get(Number(req.body.cliente_id), organizacionId);
+    if (!existente) return res.status(400).json({ error: 'El cliente no existe.' });
+    if (existente.nombre === CONSUMIDOR_FINAL) return res.status(400).json({ error: '"Consumidor final" no puede tener consultas.' });
+  } else {
+    const mismo = db
+      .prepare('SELECT id FROM clientes WHERE organizacion_id = ? AND nombre = ? COLLATE NOCASE')
+      .get(organizacionId, oportunidad.nombre);
+    if (mismo) {
+      return res.status(400).json({
+        error: `Ya hay un cliente que se llama ${oportunidad.nombre}. Si es la misma persona, vinculalo.`,
+        cliente_id: mismo.id
+      });
+    }
+  }
+
+  const clienteId = withTransaction(() => {
+    let id = existente?.id;
+    if (!id) {
+      id = Number(
+        db
+          .prepare('INSERT INTO clientes (nombre, telefono, email, organizacion_id) VALUES (?, ?, ?, ?)')
+          .run(oportunidad.nombre, oportunidad.telefono, oportunidad.email, organizacionId).lastInsertRowid
+      );
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'cliente',
+        entidad_id: id,
+        detalle: `Cliente "${oportunidad.nombre}" creado desde la consulta #${oportunidad.id}`
+      });
+    }
+    db.prepare('UPDATE crm_oportunidades SET cliente_id = ? WHERE id = ?').run(id, oportunidad.id);
+    // Las actividades que ya tenía pasan también a la ficha del cliente.
+    db.prepare('UPDATE crm_actividades SET cliente_id = ? WHERE oportunidad_id = ? AND cliente_id IS NULL').run(id, oportunidad.id);
+    auditarOportunidad(req, { ...oportunidad, cliente_id: id }, {
+      accion: 'editar',
+      detalle: `Consulta #${oportunidad.id} vinculada al cliente "${existente?.nombre ?? oportunidad.nombre}"`
+    });
+    return id;
+  });
+  res.json({ id: oportunidad.id, cliente_id: clienteId });
+});
+
+// --- Actividades ---
+
+// Valida una actividad. Una nota es un registro y nace hecha; lo demás puede
+// ser algo que ya pasó (hecha) o algo que falta, que pide para cuándo. Con
+// `actual` (edición) lo que no viene queda como estaba.
+function validarActividad(cuerpo, actual = null) {
+  const datos = {};
+  const tipo = cuerpo?.tipo ?? actual?.tipo;
+  if (!TIPOS_ACTIVIDAD.includes(tipo)) return { error: 'Elegí qué es: llamada, mensaje, visita, nota o tarea.' };
+  datos.tipo = tipo;
+  if (!actual || cuerpo?.descripcion !== undefined) {
+    if (typeof cuerpo?.descripcion !== 'string' || !cuerpo.descripcion.trim()) return { error: 'Contá de qué se trata.' };
+    if (cuerpo.descripcion.trim().length > LARGO_ACTIVIDAD) {
+      return { error: `La descripción no puede pasar de ${LARGO_ACTIVIDAD} caracteres.` };
+    }
+    datos.descripcion = cuerpo.descripcion.trim();
+  } else {
+    datos.descripcion = actual.descripcion;
+  }
+  if (cuerpo?.hecha !== undefined && typeof cuerpo.hecha !== 'boolean') return { error: 'Los datos de la actividad no son válidos.' };
+  datos.hecha = tipo === 'nota' ? true : (cuerpo?.hecha ?? Boolean(actual?.hecha));
+  const fecha = cuerpo?.fecha !== undefined ? cuerpo.fecha || null : (actual?.fecha ?? null);
+  if (fecha !== null && !validarFecha(fecha)) return { error: 'La fecha no es válida.' };
+  if (!datos.hecha && !fecha) return { error: 'Elegí para cuándo es.' };
+  datos.fecha = fecha ?? fechaDeHoy();
+  return { datos };
+}
+
+// Las actividades de un cliente (las suyas y las de sus consultas), para su
+// ficha: ?cliente_id=.
+app.get('/api/crm/actividades', (req, res) => {
+  const clienteId = Number(req.query.cliente_id);
+  if (!esIdValido(clienteId)) return res.status(400).json({ error: 'Indicá el cliente.' });
+  res.json(
+    db
+      .prepare(
+        `${SELECT_ACTIVIDAD} WHERE a.organizacion_id = ? AND COALESCE(a.cliente_id, o.cliente_id) = ?
+          ORDER BY a.hecha, a.fecha DESC, a.id DESC LIMIT 100`
+      )
+      .all(req.usuario.organizacion_id, clienteId)
+  );
+});
+
+// Alta: { oportunidad_id?, cliente_id?, tipo, descripcion, fecha?, hecha? }.
+// Cuelga de una consulta o de un cliente; la de una consulta que ya es cliente
+// sale también en su ficha.
+app.post('/api/crm/actividades', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarActividad(req.body);
+  if (error) return res.status(400).json({ error });
+  let oportunidad = null;
+  let clienteId = null;
+  if (req.body?.oportunidad_id != null) {
+    oportunidad = oportunidadDeLaEmpresa(Number(req.body.oportunidad_id), organizacionId);
+    if (!oportunidad) return res.status(400).json({ error: 'La consulta no existe.' });
+    clienteId = oportunidad.cliente_id;
+  } else if (req.body?.cliente_id != null) {
+    const cliente = db.prepare('SELECT id FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(req.body.cliente_id), organizacionId);
+    if (!cliente) return res.status(400).json({ error: 'El cliente no existe.' });
+    clienteId = cliente.id;
+  } else {
+    return res.status(400).json({ error: 'La actividad tiene que ser de una consulta o de un cliente.' });
+  }
+  const id = withTransaction(() => {
+    const nuevoId = Number(
+      db
+        .prepare(
+          `INSERT INTO crm_actividades (oportunidad_id, cliente_id, tipo, descripcion, fecha, hecha, fecha_hecha, usuario_id, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          oportunidad?.id ?? null,
+          clienteId,
+          datos.tipo,
+          datos.descripcion,
+          datos.fecha,
+          datos.hecha ? 1 : 0,
+          datos.hecha ? fechaDeHoy() : null,
+          req.usuario.id,
+          organizacionId
+        ).lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: clienteId ? 'cliente' : 'organizacion',
+      entidad_id: clienteId ?? organizacionId,
+      operacion_tipo: 'actividad',
+      operacion_id: nuevoId,
+      detalle: `${datos.hecha ? 'Anotó' : 'Agendó'} ${datos.tipo}: ${datos.descripcion}` + (oportunidad ? ` (consulta #${oportunidad.id})` : '')
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Marcarla hecha o pendiente, o corregirla.
+app.patch('/api/crm/actividades/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const actividad = actividadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
+  const { error, datos } = validarActividad(req.body, actividad);
+  if (error) return res.status(400).json({ error });
+  const fechaHecha = datos.hecha ? (actividad.hecha ? actividad.fecha_hecha : fechaDeHoy()) : null;
+  withTransaction(() => {
+    db.prepare('UPDATE crm_actividades SET tipo = ?, descripcion = ?, fecha = ?, hecha = ?, fecha_hecha = ? WHERE id = ?').run(
+      datos.tipo,
+      datos.descripcion,
+      datos.fecha,
+      datos.hecha ? 1 : 0,
+      fechaHecha,
+      actividad.id
+    );
+    const cambioDeEstado = datos.hecha !== Boolean(actividad.hecha);
+    auditar(req, {
+      accion: cambioDeEstado ? 'cambiar_estado' : 'editar',
+      entidad: actividad.cliente_id ? 'cliente' : 'organizacion',
+      entidad_id: actividad.cliente_id ?? organizacionId,
+      valor_anterior: JSON.stringify({ hecha: Boolean(actividad.hecha), fecha: actividad.fecha, descripcion: actividad.descripcion }),
+      valor_nuevo: JSON.stringify({ hecha: datos.hecha, fecha: datos.fecha, descripcion: datos.descripcion }),
+      operacion_tipo: 'actividad',
+      operacion_id: actividad.id,
+      detalle: `${datos.tipo}: ${datos.descripcion} (${cambioDeEstado ? (datos.hecha ? 'hecha' : 'otra vez pendiente') : 'editada'})`
+    });
+  });
+  res.json({ id: actividad.id });
+});
+
+app.delete('/api/crm/actividades/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const actividad = actividadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
+  withTransaction(() => {
+    db.prepare('DELETE FROM crm_actividades WHERE id = ?').run(actividad.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: actividad.cliente_id ? 'cliente' : 'organizacion',
+      entidad_id: actividad.cliente_id ?? organizacionId,
+      valor_anterior: JSON.stringify({
+        tipo: actividad.tipo,
+        descripcion: actividad.descripcion,
+        fecha: actividad.fecha,
+        hecha: Boolean(actividad.hecha)
+      }),
+      operacion_tipo: 'actividad',
+      operacion_id: actividad.id,
+      detalle: `Borró ${actividad.tipo}: ${actividad.descripcion}`
+    });
+  });
+  res.status(204).end();
+});
+
+// --- Para hoy ---
+
+// Lo que hay que hacer hoy: las actividades vencidas o de hoy, las consultas
+// abiertas sin próxima acción, los presupuestos enviados que siguen sin
+// respuesta (por su fecha: el presupuesto no guarda cuándo se envió) y los
+// abonos que deben. Pone los abonos al día, como GET /api/abonos: un GET que
+// escribe a propósito (hist. §74).
+app.get('/api/crm/para-hoy', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const actividades = db
+    .prepare(`${SELECT_ACTIVIDAD} WHERE a.organizacion_id = ? AND a.hecha = 0 AND a.fecha <= ? ORDER BY a.fecha, a.id`)
+    .all(organizacionId, hoy)
+    .map((a) => ({ ...a, vencida: a.fecha < hoy }));
+  const sinAccion = db
+    .prepare(`${SELECT_OPORTUNIDAD} WHERE o.organizacion_id = ? AND o.estado = 'abierta' AND proxima.id IS NULL ORDER BY o.id DESC`)
+    .all(organizacionId)
+    .map((o) => conAviso(o, hoy));
+  const presupuestos = db
+    .prepare(
+      `SELECT presupuestos.id, presupuestos.fecha, presupuestos.cliente_id, clientes.nombre AS cliente,
+              clientes.telefono AS cliente_telefono,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM presupuesto_items
+                WHERE presupuesto_items.presupuesto_id = presupuestos.id) AS total
+         FROM presupuestos JOIN clientes ON clientes.id = presupuestos.cliente_id
+        WHERE presupuestos.organizacion_id = ? AND presupuestos.estado = 'enviado' AND presupuestos.fecha <= ?
+          AND (presupuestos.vencimiento IS NULL OR presupuestos.vencimiento >= ?)
+        ORDER BY presupuestos.fecha, presupuestos.id`
+    )
+    .all(organizacionId, sumarDias(hoy, -DIAS_PRESUPUESTO_SIN_RESPUESTA), hoy)
+    .map((p) => ({ ...p, dias: diffDias(p.fecha, hoy) }));
+
+  ponerAbonosAlDia(organizacionId);
+  const cuotas = db.prepare(`${SELECT_CUOTAS_ABONO} WHERE abonos.organizacion_id = ?`).all(organizacionId);
+  const porAbono = Map.groupBy(cuotas, (c) => c.abono_id);
+  const abonos = db
+    .prepare(`${SELECT_ABONO} WHERE abonos.organizacion_id = ? ORDER BY clientes.nombre, abonos.id`)
+    .all(organizacionId)
+    .map((a) => conCuotas(a, porAbono.get(a.id) ?? []))
+    .filter((a) => a.deuda > 0)
+    .map(({ id, cliente_id, cliente, cliente_telefono, servicio, deuda, cuotas_impagas }) => ({
+      id,
+      cliente_id,
+      cliente,
+      cliente_telefono,
+      servicio,
+      deuda,
+      cuotas_impagas
+    }));
+
+  res.json({
+    hoy,
+    actividades,
+    sin_accion: sinAccion,
+    presupuestos,
+    abonos,
+    total: actividades.length + sinAccion.length + presupuestos.length + abonos.length
+  });
+});
+
+// --- Dejaron de comprar ---
+
+// Los clientes que compraban (dos ventas o más) y no compran hace más de
+// ?dias= (90 si no viene). Sale de las ventas, no se carga a mano. Dice si ya
+// tienen un seguimiento agendado, para no llamarlos dos veces.
+app.get('/api/crm/inactivos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const dias = req.query.dias === undefined ? DIAS_INACTIVO_POR_DEFECTO : Number(req.query.dias);
+  if (!Number.isInteger(dias) || dias < 1 || dias > 3650) return res.status(400).json({ error: 'La cantidad de días no es válida.' });
+  const hoy = fechaDeHoy();
+  res.json(
+    db
+      .prepare(
+        `SELECT clientes.id, clientes.nombre, clientes.telefono, clientes.email,
+                COUNT(ventas.id) AS compras, MAX(ventas.fecha) AS ultima_compra,
+                SUM((SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
+                       FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA}) AS total_comprado,
+                EXISTS (SELECT 1 FROM crm_actividades a
+                          LEFT JOIN crm_oportunidades o ON o.id = a.oportunidad_id
+                         WHERE a.organizacion_id = clientes.organizacion_id AND a.hecha = 0
+                           AND COALESCE(a.cliente_id, o.cliente_id) = clientes.id) AS con_seguimiento
+           FROM clientes JOIN ventas ON ventas.cliente_id = clientes.id AND ventas.estado = 'activa'
+          WHERE clientes.organizacion_id = ? AND clientes.nombre <> ?
+          GROUP BY clientes.id
+         HAVING COUNT(ventas.id) >= 2 AND MAX(ventas.fecha) < ?
+          ORDER BY MAX(ventas.fecha) DESC
+          LIMIT 200`
+      )
+      .all(organizacionId, CONSUMIDOR_FINAL, sumarDias(hoy, -dias))
+      .map((c) => ({
+        ...c,
+        total_comprado: redondear2(c.total_comprado),
+        con_seguimiento: Boolean(c.con_seguimiento),
+        dias: diffDias(c.ultima_compra, hoy)
+      }))
+  );
+});
+
+// --- Números ---
+
+// Consultas por origen (cuántas y cuántas se ganaron), cómo está el embudo
+// (abiertas y valor en juego por etapa) y por qué se pierden. Con ?desde=,
+// solo las consultas que entraron desde ese día.
+app.get('/api/crm/reporte', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const desde = req.query.desde === undefined ? '0000-01-01' : validarFecha(req.query.desde);
+  if (!desde) return res.status(400).json({ error: 'La fecha no es válida.' });
+  const porOrigen = db
+    .prepare(
+      `SELECT origen, COUNT(*) AS total, SUM(estado = 'ganada') AS ganadas, SUM(estado = 'perdida') AS perdidas
+         FROM crm_oportunidades WHERE organizacion_id = ? AND fecha >= ?
+        GROUP BY origen ORDER BY total DESC`
+    )
+    .all(organizacionId, desde)
+    .map((o) => ({ ...o, origen_nombre: ORIGENES_CRM[o.origen] ?? 'Sin anotar' }));
+  const porEtapa = db
+    .prepare(
+      `SELECT crm_etapas.id, crm_etapas.nombre, crm_etapas.activa,
+              COUNT(o.id) AS abiertas, COALESCE(SUM(o.valor_estimado), 0) AS valor
+         FROM crm_etapas
+         LEFT JOIN crm_oportunidades o ON o.etapa_id = crm_etapas.id AND o.estado = 'abierta'
+        WHERE crm_etapas.organizacion_id = ?
+        GROUP BY crm_etapas.id ORDER BY crm_etapas.orden, crm_etapas.id`
+    )
+    .all(organizacionId);
+  const motivos = db
+    .prepare(
+      `SELECT MIN(motivo_perdida) AS motivo, COUNT(*) AS total FROM crm_oportunidades
+        WHERE organizacion_id = ? AND estado = 'perdida' AND fecha >= ?
+        GROUP BY motivo_perdida COLLATE NOCASE ORDER BY total DESC LIMIT 10`
+    )
+    .all(organizacionId, desde);
+  const ganadas = porOrigen.reduce((acc, o) => acc + o.ganadas, 0);
+  const perdidas = porOrigen.reduce((acc, o) => acc + o.perdidas, 0);
+  res.json({
+    total: porOrigen.reduce((acc, o) => acc + o.total, 0),
+    ganadas,
+    perdidas,
+    // Sobre las cerradas: de las abiertas todavía no se sabe.
+    conversion: ganadas + perdidas > 0 ? redondear2((ganadas / (ganadas + perdidas)) * 100) : null,
+    por_origen: porOrigen,
+    por_etapa: porEtapa,
+    motivos
+  });
 });
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { respaldarBase, rutasDeRespaldo } from './respaldo.js';
-import { modulosDelPreset } from '../perfiles.js';
+import { MODULOS, etapasCrmDelPreset, modulosDelPreset } from '../perfiles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +36,10 @@ if (process.env.NEXO_BACKUP !== 'off') {
 const db = new DatabaseSync(dbPath);
 
 const schemaSql = readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+// Se mira antes de que schema.sql cree las tablas nuevas: la migración de
+// módulos de hist. §89 (más abajo) corre una sola vez, en el arranque que trae
+// las consultas, y no vuelve a prender el módulo si después el admin lo apaga.
+const crmYaExistia = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'crm_etapas'").get());
 db.exec(schemaSql);
 
 // organizaciones: no es un dato de ejemplo, es infraestructura real —
@@ -1671,6 +1675,19 @@ const completarModulos = db.prepare('UPDATE organizaciones SET modulos = ? WHERE
 for (const { id, rubro } of db.prepare('SELECT id, rubro FROM organizaciones WHERE modulos IS NULL').all()) {
   completarModulos.run(modulosDelPreset(rubro), id);
 }
+// Las consultas (hist. §89) son un módulo nuevo: a cada empresa que ya existía
+// se le prende si su tipo lo trae, como si hubiera nacido con él. Solo en el
+// arranque que crea las tablas (crmYaExistia), así un admin que lo apaga no lo
+// vuelve a ver prendido. Sin cambio de esquema.
+if (!crmYaExistia) {
+  for (const { id, rubro, modulos } of db.prepare('SELECT id, rubro, modulos FROM organizaciones').all()) {
+    const actuales = (modulos ?? '').split(' ').filter(Boolean);
+    if (actuales.includes('crm') || !modulosDelPreset(rubro).split(' ').includes('crm')) continue;
+    const conCrm = MODULOS.filter((m) => m === 'crm' || actuales.includes(m));
+    const desconocidos = actuales.filter((m) => !MODULOS.includes(m));
+    db.prepare('UPDATE organizaciones SET modulos = ? WHERE id = ?').run([...conCrm, ...desconocidos].join(' '), id);
+  }
+}
 
 // La condición fiscal del negocio pasó de texto libre a una lista fija
 // (hist. §73, CONDICIONES_IVA en server.js). Sin cambio de esquema: el texto
@@ -1853,6 +1870,27 @@ export function sembrarCatalogosBase(organizacionId) {
        SELECT id, ?, precio_venta FROM productos WHERE organizacion_id = ?`
     ).run(listaPredeterminadaId, organizacionId);
   }
+  // Las etapas del embudo de consultas (hist. §89), las del tipo de negocio.
+  // Se siembran aunque el módulo esté apagado: así prenderlo en Funciones ya
+  // trae su embudo armado.
+  if (contar('crm_etapas') === 0) {
+    const { rubro } = db.prepare('SELECT rubro FROM organizaciones WHERE id = ?').get(organizacionId);
+    const insertEtapa = db.prepare('INSERT INTO crm_etapas (nombre, orden, organizacion_id) VALUES (?, ?, ?)');
+    etapasCrmDelPreset(rubro).forEach((nombre, i) => insertEtapa.run(nombre, i + 1, organizacionId));
+  }
+}
+
+// La instalación nueva adopta la organización que se sembró al arrancar, sin
+// tipo todavía (POST /api/auth/registro): sus etapas nacieron con las de
+// comercio y se vuelven a sembrar con las del tipo elegido. Solo si todavía
+// no tiene ninguna consulta, que en ese momento nunca tiene.
+export function resembrarEtapasCrm(organizacionId) {
+  const { count } = db
+    .prepare('SELECT COUNT(*) AS count FROM crm_oportunidades WHERE organizacion_id = ?')
+    .get(organizacionId);
+  if (count > 0) return;
+  db.prepare('DELETE FROM crm_etapas WHERE organizacion_id = ?').run(organizacionId);
+  sembrarCatalogosBase(organizacionId);
 }
 for (const { id } of db.prepare('SELECT id FROM organizaciones ORDER BY id').all()) {
   sembrarCatalogosBase(id);

@@ -12,9 +12,12 @@
 // tarjetas del alta guiada y de Configuración: viven acá para que la lista de
 // tipos esté en un solo lugar. `catalogo` es cómo se llama la sección de lo que
 // se vende mientras no hay nada cargado (hist. §78, §88); sin él, "productos".
-export const MODULOS = ['pos', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios'];
+// `etapas_crm` son las etapas abiertas con que nace el embudo de consultas
+// (hist. §89); Ganada y Perdida son comunes a todos y no se listan.
+export const MODULOS = ['pos', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios'];
 export const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
+  crm: { nombre: 'Consultas', descripcion: 'Los que preguntan y todavía no compraron: de dónde llegaron, en qué quedó y qué falta hacer.', icono: 'funnel' },
   presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
   trabajos: { nombre: 'Trabajos', descripcion: 'Lo que tenés que hacer para cada cliente: cuándo, quién y, al terminar, la venta.', icono: 'clipboard-list' },
   abonos: { nombre: 'Abonos', descripcion: 'Servicios que tus clientes pagan todos los meses, con la cuota que se arma sola.', icono: 'repeat' },
@@ -29,7 +32,8 @@ export const PERFILES_RUBRO = {
     icono: 'store',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'presupuestos', 'compras', 'stock']
+    modulos: ['pos', 'crm', 'presupuestos', 'compras', 'stock'],
+    etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   carniceria: {
     nombre: 'Carnicería',
@@ -37,7 +41,8 @@ export const PERFILES_RUBRO = {
     icono: 'beef',
     unidad_defecto: 'kg',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
+    modulos: ['pos', 'compras', 'stock'],
+    etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   verduleria: {
     nombre: 'Verdulería',
@@ -45,7 +50,8 @@ export const PERFILES_RUBRO = {
     icono: 'carrot',
     unidad_defecto: 'kg',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
+    modulos: ['pos', 'compras', 'stock'],
+    etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   kiosco: {
     nombre: 'Kiosco / almacén',
@@ -53,7 +59,8 @@ export const PERFILES_RUBRO = {
     icono: 'cup-soda',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
+    modulos: ['pos', 'compras', 'stock'],
+    etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   servicios: {
     nombre: 'Servicios',
@@ -62,7 +69,8 @@ export const PERFILES_RUBRO = {
     unidad_defecto: 'unidad',
     tipo_defecto: 'servicio',
     catalogo: { plural: 'servicios', singular: 'servicio' },
-    modulos: ['presupuestos', 'trabajos', 'abonos']
+    modulos: ['crm', 'presupuestos', 'trabajos', 'abonos'],
+    etapas_crm: ['Consulta', 'Visita o relevamiento', 'Presupuesto enviado']
   },
   // Un gimnasio también compra y vende productos (hist. §71): es un comercio
   // al que se le suman los socios y sus cuotas (hist. §74).
@@ -72,7 +80,8 @@ export const PERFILES_RUBRO = {
     icono: 'dumbbell',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock', 'socios']
+    modulos: ['pos', 'crm', 'compras', 'stock', 'socios'],
+    etapas_crm: ['Consulta', 'Clase de prueba', 'Seguimiento']
   }
 };
 export const RUBRO_POR_DEFECTO = 'comercio';
@@ -91,4 +100,10 @@ export const RUBROS_PROXIMAMENTE = {
 export function modulosDelPreset(rubro) {
   const perfil = PERFILES_RUBRO[Object.hasOwn(PERFILES_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO];
   return MODULOS.filter((m) => perfil.modulos.includes(m)).join(' ');
+}
+
+// Las etapas abiertas con que nace el embudo de consultas de un negocio de
+// ese tipo (hist. §89). Un tipo desconocido es comercio.
+export function etapasCrmDelPreset(rubro) {
+  return PERFILES_RUBRO[Object.hasOwn(PERFILES_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO].etapas_crm;
 }

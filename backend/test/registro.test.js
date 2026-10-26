@@ -28,7 +28,7 @@ test('los tipos de negocio se leen sin sesión', async () => {
   assert.ok(r.json.proximamente.some((t) => t.clave === 'restaurante' && t.icono));
   assert.deepEqual(
     r.json.modulos.map((m) => m.clave),
-    ['pos', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios']
+    ['pos', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios']
   );
 });
 

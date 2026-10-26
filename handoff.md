@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §88);
+    siguiente número (hoy el último es §89);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,18 +19,21 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (25 de octubre de 2026)
+## Estado actual (26 de octubre de 2026)
 
-**Próxima sesión:** el CRM (6b, en "Qué sigue"), con su lista "Para hoy", que
-también lleva el recordatorio de presupuestos sin respuesta y los abonos que
-deben; después la PWA (7). Los dos los pidió el usuario el 20 de octubre.
+**Próxima sesión:** la pantalla de Consultas (CRM, 6b segunda parte, hist.
+§90): el plan está en "Qué sigue". Después la PWA (7).
+- **Consultas (CRM), backend: hecho y commiteado en `solla`** (hist. §89).
+  Módulo `crm` ("Consultas"), etapas por tipo, consultas, actividades, "Para
+  hoy", "Dejaron de comprar" y números; presupuesto, venta y socio aceptan
+  `crm_oportunidad_id` y la consulta se gana sola. Falta toda la pantalla.
 - **Tipo de negocio fijo y funciones que se suman (hist. §88): hecho y
   commiteado en `solla`, sin pushear.** Configuración tiene "Funciones" y una
   página aparte para cambiar el tipo; el catálogo se llama según lo cargado,
   con pestañas Productos | Servicios cuando hay de los dos. Falta que el
-  usuario lo vea. Su base real (Servicios) migra en el próximo `npm start` a
-  `presupuestos trabajos abonos`, lo mismo que ve hoy: él le suma Socios, punto
-  de venta, Compras y Stock desde Funciones si los quiere.
+  usuario lo vea. **Su base real es un gimnasio** (no Servicios, como decía
+  esto antes) con `modulos` en NULL: el próximo `npm start` la deja en
+  `pos crm compras stock socios` (hist. §89).
 - **Falta que el usuario vea §78 a §87** (servicios, trabajos, agenda, abonos,
   primeros pasos y lo demás). Ya están pusheados y en `main`.
 - **Arreglado un error de fechas** (hist. §82): desde las 21 h, toda operación
@@ -729,15 +732,33 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    cambio de tipo queda en una página aparte que dice qué cambia, el nombre del
    catálogo sale de lo cargado, y su base real no se toca (le suma las
    funciones él). Falta que lo vea.
-6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
-   del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
-   clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:
+6b. **CRM adaptado a cada tipo de negocio** (2 sesiones; **el backend está
+   hecho**, hist. §89). Pedido del usuario del 20 de octubre, **que llegue a la
+   presentación**: consultas, clientes y clientes potenciales. Diseño en
+   `docs/investigacion-crm-servicios.md` §2:
    - módulo `crm` con etapas por preset;
    - oportunidades y actividades;
    - pasar a cliente, presupuesto, socio o venta sin volver a cargar;
    - la lista "Para hoy";
    - clientes que dejaron de comprar.
    - Ni Dux ni Contagram tienen CRM: es diferencial.
+   - **Falta la pantalla** (`frontend/js/dominios/crm.js`, patrón de
+     `trabajos.js`). En el menú se llama "Consultas", en la sección Ventas:
+     - cableado: import en `app.js`, `MODULO_DE_VISTA` y
+       `VISTAS_CONSTRUIDAS` (`oportunidad-detalle` como ficha) en
+       `core/router.js`, regla `data-modulos~="crm"` en `styles.css` e
+       íconos `funnel`, `phone` y `message-circle` de `lucide-static`;
+     - pestañas `#/crm/embudo|hoy|dejaron|numeros`. El embudo va en columnas
+       con arrastrar y soltar nativo en el escritorio, y en el celular una
+       etapa por pestaña con lista compacta;
+     - alta rápida en un modal de tres campos, y la ficha como página, con la
+       línea de tiempo de actividades y "pasar a" cliente, presupuesto, venta
+       o socio (`invocar("nuevo:presupuesto" / "nuevo:venta")`, registrados
+       en `app.js`, con `crm_oportunidad_id`);
+     - "Para hoy" en el Resumen, invocado desde el handler de dashboard que
+       ya existe: `alEntrarEnVista` guarda uno solo por vista;
+     - la ficha del cliente con `pintar:crmDelCliente`, la página "Etapas de
+       las consultas" en Configuración y el paso en primeros pasos.
    - WhatsApp lo alimenta después, en la etapa 11.
 7. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el

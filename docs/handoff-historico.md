@@ -8664,3 +8664,95 @@ base real igual. Recorrido en Chrome con un negocio de Servicios con un
 producto y un servicio: pestañas, "Nuevo servicio", sumar Socios, cambiar a
 Carnicería (módulos intactos, producto nuevo en kg), en oscuro, claro y 390 px,
 sin errores de consola.
+
+## 89. Consultas (CRM), primera parte: el backend, 26 de octubre de 2026
+
+Punto 6b del plan, pedido por el usuario el 20 de octubre ("que llegue a la
+presentación"). Diseño en `docs/investigacion-crm-servicios.md` §2. Esta parte
+es el backend entero, con sus tests; la pantalla es hist. §90.
+
+**Módulo y presets** (`backend/perfiles.js`):
+- `crm` entra en `MODULOS` (después de `pos`) y en `MODULOS_INFO` como
+  "Consultas", con el ícono `funnel` (el sprite lo suma en §90).
+- Cada preset tiene `etapas_crm` (solo las abiertas; Ganada y Perdida son el
+  estado de la consulta): comercio, carnicería, verdulería y kiosco "Consulta →
+  Presupuesto enviado → Negociación"; servicios "Consulta → Visita o
+  relevamiento → Presupuesto enviado"; gimnasio "Consulta → Clase de prueba →
+  Seguimiento". `etapasCrmDelPreset()` las da.
+- Viene prendido en comercio, servicios y gimnasio. En carnicería, verdulería y
+  kiosco (venta de paso) queda para sumar desde Funciones.
+
+**Esquema** (solo tablas nuevas, en `schema.sql` con su forma final):
+- `crm_etapas` (por negocio, `UNIQUE(organizacion_id, nombre)`, `orden`,
+  `activa`).
+- `crm_oportunidades`: cliente o contacto suelto (el nombre se guarda
+  siempre), origen (clave de `ORIGENES_CRM`, sin CHECK), qué busca, valor
+  estimado, responsable, etapa, `estado` abierta/ganada/perdida con motivo y
+  fecha de cierre, y lo que generó (`presupuesto_id`, `venta_id`,
+  `socio_id`).
+- `crm_actividades`: llamada, mensaje, visita, nota o tarea, de una consulta o
+  de un cliente, con `organizacion_id` propio. Una pendiente siempre tiene
+  fecha; una nota nace hecha.
+- **La próxima acción no se guarda:** es la actividad pendiente más próxima
+  (`SELECT_OPORTUNIDAD`). De ahí sale el aviso `sin_accion` / `vencida` /
+  `hoy`.
+
+**Migración** (`db/index.js`):
+- `crmYaExistia` se mide antes de `db.exec(schemaSql)`. Solo en el arranque
+  que crea las tablas, a cada negocio cuyo tipo trae `crm` se le suma a
+  `modulos`. Si después el admin lo apaga, no vuelve.
+- `sembrarCatalogosBase` siembra las etapas del tipo (aunque el módulo esté
+  apagado, así prenderlo ya trae el embudo).
+- `resembrarEtapasCrm()`: la instalación nueva adopta la organización
+  sembrada sin tipo (con las etapas de comercio); el registro las vuelve a
+  sembrar con las del tipo elegido.
+- **La base real es un gimnasio con `modulos` en NULL** (no arrancó desde
+  §88; el handoff decía Servicios por error). El próximo `npm start` la deja
+  en `pos crm compras stock socios` con las etapas del gimnasio. Probado sobre
+  una copia: un segundo arranque con `crm` apagado no lo vuelve a prender.
+
+**Rutas** (`server.js`, sección "Consultas (CRM)"; `permisos.js`):
+- Etapas: `GET` de los dos roles; alta, `PUT` (nombre, pausar) y
+  `PATCH /orden` del admin. "Ganada" y "Perdida" no se aceptan como nombre, y
+  siempre queda una activa.
+- Consultas: listado (`?estado`, `?cliente_id`), ficha con actividades y lo
+  vinculado, alta (la rápida es nombre, teléfono y qué busca; entra en la
+  primera etapa activa), edición, `PATCH /etapa`, `/cerrar` (perdida pide
+  motivo), `/reabrir` y `/cliente` (crea el cliente desde el contacto o
+  vincula uno; si ya hay uno con el mismo nombre, 400 con su `cliente_id`
+  para ofrecer vincularlo). `GET /api/crm/origenes`.
+- Actividades: alta, `PATCH` (hecha o corregir), `DELETE` y
+  `GET ?cliente_id=` para la ficha del cliente.
+- `GET /api/crm/para-hoy`: actividades vencidas o de hoy, consultas abiertas
+  sin próxima acción, presupuestos `enviado` con fecha de hace 7 días o más
+  (el presupuesto no guarda cuándo se envió) y sin vencer, y abonos que deben
+  (pone los abonos al día, como `GET /api/abonos`).
+- `GET /api/crm/inactivos?dias=` (90 por defecto): clientes con dos ventas o
+  más y la última hace más de esos días, con si ya tienen seguimiento.
+- `GET /api/crm/reporte`: por origen, embudo por etapa y motivos de pérdida;
+  la conversión es sobre las cerradas.
+- **Pasar a presupuesto, venta o socio no duplica circuitos:**
+  `POST /api/presupuestos`, `/api/ventas` y `/api/socios` aceptan
+  `crm_oportunidad_id` (`oportunidadParaVincular`, 400 si es ajena) y, en su
+  transacción, `vincularOportunidad()` deja el vínculo y el cliente (nunca
+  "Consumidor final"). La venta y el socio la ganan.
+- **Se gana sola** al convertir su presupuesto o al terminar el trabajo que lo
+  convierte (`ganarOportunidadesDelPresupuesto`).
+- Auditoría sin reconstruir `auditoria`: entidad `cliente` (u
+  `organizacion`, si es un contacto suelto) con `operacion_tipo`
+  `oportunidad`, `actividad` o `crm_etapa`.
+- `primeros-pasos` cuenta `consultas`.
+
+**Seed:** cuatro pasos nuevos (una consulta con llamada vencida y nota, una que
+pasa a cliente y a presupuesto, una perdida). `LISTADO_DE` suma
+`/api/crm/oportunidades/:id`.
+
+**Verificación:** `npm test` 63 de 63 (test nuevo de consultas: etapas del tipo,
+también del gimnasio; orden y pausa; alta rápida; próxima acción y "Para hoy";
+mover de etapa; presupuesto → venta la gana; perdida con motivo y números;
+pasar a cliente sin duplicar; venta y socio desde la consulta; dejaron de
+comprar; aislamiento). Se ajustaron dos tests que fijaban la lista de módulos.
+Lint, `verificar-migracion` 24 de 24, `regresion` con 19 diferencias, todas
+de lo nuevo (rutas `/api/crm/*`, `crm` en los módulos, `etapas_crm` en los
+perfiles y `consultas` en primeros pasos). md5 de la base real igual
+(`d4a84eef…`).

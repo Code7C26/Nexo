@@ -392,11 +392,11 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   // toca los módulos (hist. §88): siguen los que tenía.
   const negocio = (await adminA.get('/api/negocio')).json;
   assert.equal(negocio.rubro, 'comercio');
-  assert.deepEqual(negocio.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual(negocio.modulos, ['pos', 'crm', 'presupuestos', 'compras', 'stock']);
   const comoCarniceria = await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'carniceria' });
   assert.equal(comoCarniceria.status, 200, comoCarniceria.texto);
   const carniceria = (await empleadoA.get('/api/negocio')).json;
-  assert.deepEqual(carniceria.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual(carniceria.modulos, ['pos', 'crm', 'presupuestos', 'compras', 'stock']);
   assert.equal(carniceria.unidad_defecto, 'kg');
   const asado = await adminA.post('/api/productos', { nombre: 'Asado', precio_venta: 9000 });
   assert.equal((await adminA.get('/api/productos')).json.find((p) => p.id === asado.json.id).unidad, 'kg');
@@ -410,7 +410,7 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos']);
   await adminA.put('/api/negocio', { modulos: [] });
   assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, []);
-  await adminA.put('/api/negocio', { modulos: ['pos', 'presupuestos', 'compras', 'stock'] });
+  await adminA.put('/api/negocio', { modulos: ['pos', 'crm', 'presupuestos', 'compras', 'stock'] });
 });
 
 test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist. §73)', async () => {
@@ -917,6 +917,209 @@ test('abonos: la cuota del período, alta hacia atrás, precio desde la siguient
   assert.ok(!(await adminB.get('/api/abonos')).json.some((a) => a.id === abono.json.id));
 });
 
+test('consultas: etapas del tipo, próxima acción, pasar a presupuesto, venta y socio, y aislamiento (hist. §89)', async () => {
+  // "Hoy" es el día de la Argentina, como en el servidor (backend/fecha.js).
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const haceDias = (n) => {
+    const d = new Date(`${hoy}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const item = [{ producto_id: productoA, cantidad: 1, precio_unitario: 100 }];
+
+  // Cada negocio nace con las etapas de su tipo y con el módulo prendido.
+  const etapas = (await empleadoA.get('/api/crm/etapas')).json;
+  assert.deepEqual(etapas.map((e) => e.nombre), ['Consulta', 'Presupuesto enviado', 'Negociación']);
+  assert.ok((await adminA.get('/api/negocio')).json.modulos.includes('crm'));
+  const negocios = (await adminA.get('/api/negocios')).json;
+  const orgA = negocios.find((n) => n.actual).id;
+  const gimnasio = negocios.find((n) => n.rubro === 'gimnasio');
+  assert.ok(gimnasio, 'el caso de varios negocios dejó un gimnasio');
+  assert.equal((await adminA.post(`/api/negocios/${gimnasio.id}/entrar`)).status, 204);
+  assert.deepEqual((await adminA.get('/api/crm/etapas')).json.map((e) => e.nombre), ['Consulta', 'Clase de prueba', 'Seguimiento']);
+  assert.ok((await adminA.get('/api/negocio')).json.modulos.includes('crm'));
+  assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
+
+  // Las etapas son de admin; los cierres no son etapas.
+  assert.equal((await empleadoA.post('/api/crm/etapas', { nombre: 'Visita' })).status, 403);
+  assert.equal((await adminA.post('/api/crm/etapas', { nombre: 'Perdida' })).status, 400);
+  assert.equal((await adminA.post('/api/crm/etapas', { nombre: 'consulta' })).status, 400, 'nombre repetido');
+  const visita = await adminA.post('/api/crm/etapas', { nombre: 'Visita' });
+  assert.equal(visita.status, 201, visita.texto);
+  const orden = [visita.json.id, ...etapas.map((e) => e.id)];
+  assert.equal((await adminA.patch('/api/crm/etapas/orden', { ids: orden.slice(1) })).status, 400, 'faltan etapas');
+  assert.equal((await adminA.patch('/api/crm/etapas/orden', { ids: orden })).status, 200);
+  assert.equal((await empleadoA.get('/api/crm/etapas')).json[0].nombre, 'Visita');
+  assert.equal((await adminA.patch('/api/crm/etapas/orden', { ids: [...orden.slice(1), visita.json.id] })).status, 200);
+  assert.equal((await adminA.put(`/api/crm/etapas/${visita.json.id}`, { activa: false })).status, 200);
+  assert.equal((await adminB.put(`/api/crm/etapas/${etapas[0].id}`, { nombre: 'Robada' })).status, 404);
+
+  // Alta rápida: nombre, teléfono y qué busca. Entra en la primera etapa activa
+  // y, sin próxima acción, avisa.
+  assert.equal((await empleadoA.post('/api/crm/oportunidades', { telefono: '351 555-0000' })).status, 400, 'sin nombre');
+  assert.equal((await empleadoA.post('/api/crm/oportunidades', { nombre: 'X', origen: 'diario' })).status, 400, 'origen inventado');
+  assert.equal((await empleadoA.post('/api/crm/oportunidades', { nombre: 'X', etapa_id: visita.json.id })).status, 400, 'etapa pausada');
+  const alta = await empleadoA.post('/api/crm/oportunidades', {
+    nombre: 'Paula Ferreyra',
+    telefono: '351 555-0101',
+    interes: 'Dos remeras para regalar',
+    origen: 'instagram',
+    valor_estimado: 200
+  });
+  assert.equal(alta.status, 201, alta.texto);
+  const id = alta.json.id;
+  let paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.etapa, 'Consulta');
+  assert.equal(paula.estado, 'abierta');
+  assert.equal(paula.aviso, 'sin_accion');
+  assert.equal(paula.origen_nombre, 'Instagram');
+  let paraHoy = (await empleadoA.get('/api/crm/para-hoy')).json;
+  assert.ok(paraHoy.sin_accion.some((o) => o.id === id));
+
+  // Una actividad pendiente necesita fecha; vencida, sale en "Para hoy".
+  assert.equal((await empleadoA.post('/api/crm/actividades', { oportunidad_id: id, tipo: 'llamada', descripcion: 'Llamarla' })).status, 400);
+  assert.equal((await empleadoA.post('/api/crm/actividades', { tipo: 'llamada', descripcion: 'Suelta', fecha: hoy })).status, 400);
+  const llamada = await empleadoA.post('/api/crm/actividades', {
+    oportunidad_id: id,
+    tipo: 'llamada',
+    descripcion: 'Preguntarle el talle',
+    fecha: haceDias(1)
+  });
+  assert.equal(llamada.status, 201, llamada.texto);
+  const nota = await empleadoA.post('/api/crm/actividades', { oportunidad_id: id, tipo: 'nota', descripcion: 'Prefiere negro' });
+  assert.equal(nota.status, 201, nota.texto);
+  paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.aviso, 'vencida');
+  assert.equal(paula.proxima_id, llamada.json.id);
+  assert.equal(paula.actividades.length, 2);
+  assert.ok(paula.actividades.find((a) => a.id === nota.json.id).hecha, 'una nota nace hecha');
+  paraHoy = (await empleadoA.get('/api/crm/para-hoy')).json;
+  assert.ok(paraHoy.actividades.some((a) => a.id === llamada.json.id && a.vencida));
+  assert.ok(!paraHoy.sin_accion.some((o) => o.id === id));
+  assert.equal((await empleadoA.patch(`/api/crm/actividades/${llamada.json.id}`, { hecha: true })).status, 200);
+  assert.equal((await empleadoA.get(`/api/crm/oportunidades/${id}`)).json.aviso, 'sin_accion');
+
+  // Mover de etapa: a una del negocio y activa.
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: visita.json.id })).status, 400);
+  const etapasB = (await adminB.get('/api/crm/etapas')).json;
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: etapasB[1].id })).status, 400, 'etapa ajena');
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: etapas[1].id })).status, 200);
+  assert.equal((await empleadoA.get(`/api/crm/oportunidades/${id}`)).json.etapa, 'Presupuesto enviado');
+
+  // Pasar a presupuesto la deja vinculada y le da el cliente; convertirlo en
+  // venta la gana sola.
+  const presupuesto = await empleadoA.post('/api/presupuestos', {
+    cliente: 'Paula Ferreyra',
+    crm_oportunidad_id: id,
+    items: [{ producto_id: productoA, cantidad: 2, precio_unitario: 100 }]
+  });
+  assert.equal(presupuesto.status, 201, presupuesto.texto);
+  paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.presupuesto_id, presupuesto.json.id);
+  assert.ok(paula.cliente_id, 'tomó el cliente del presupuesto');
+  assert.equal(paula.estado, 'abierta');
+  const deCliente = (await empleadoA.get(`/api/crm/actividades?cliente_id=${paula.cliente_id}`)).json;
+  assert.equal(deCliente.length, 2, 'sus actividades salen en la ficha del cliente');
+  const convertido = await empleadoA.post(`/api/presupuestos/${presupuesto.json.id}/convertir`);
+  assert.equal(convertido.status, 201, convertido.texto);
+  paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.estado, 'ganada');
+  assert.equal(paula.venta_id, convertido.json.venta_id);
+  assert.equal(paula.fecha_cierre, hoy);
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: etapas[0].id })).status, 400, 'cerrada');
+
+  // Perderla pide el motivo, y cuenta en los números.
+  const otra = (await empleadoA.post('/api/crm/oportunidades', { nombre: 'Ramiro Paz', origen: 'instagram' })).json;
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cerrar`, { resultado: 'perdida' })).status, 400);
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cerrar`, { resultado: 'perdida', motivo: 'Precio' })).status, 200);
+  const numeros = (await empleadoA.get('/api/crm/reporte')).json;
+  assert.equal(numeros.conversion, 50);
+  assert.deepEqual(numeros.por_origen.find((o) => o.origen === 'instagram'), {
+    origen: 'instagram',
+    total: 2,
+    ganadas: 1,
+    perdidas: 1,
+    origen_nombre: 'Instagram'
+  });
+  assert.deepEqual(numeros.motivos, [{ motivo: 'Precio', total: 1 }]);
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/reabrir`)).status, 200);
+
+  // Pasar a cliente no duplica uno con el mismo nombre: avisa con su id.
+  const repetida = (await empleadoA.post('/api/crm/oportunidades', { nombre: 'paula ferreyra' })).json;
+  const choque = await empleadoA.post(`/api/crm/oportunidades/${repetida.id}/cliente`);
+  assert.equal(choque.status, 400);
+  assert.equal(choque.json.cliente_id, paula.cliente_id);
+  const vinculo = await empleadoA.post(`/api/crm/oportunidades/${repetida.id}/cliente`, { cliente_id: paula.cliente_id });
+  assert.equal(vinculo.status, 200, vinculo.texto);
+  const nuevoCliente = await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cliente`);
+  assert.equal(nuevoCliente.status, 200, nuevoCliente.texto);
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cliente`)).status, 400, 'ya es cliente');
+
+  // Una venta desde la consulta la gana; desde una que no existe, 400.
+  const clienteRamiro = nuevoCliente.json.cliente_id;
+  assert.equal((await empleadoA.post('/api/ventas', { cliente_id: clienteRamiro, crm_oportunidad_id: 999999, items: item })).status, 400);
+  const ventaRamiro = await empleadoA.post('/api/ventas', { cliente_id: clienteRamiro, crm_oportunidad_id: otra.id, items: item });
+  assert.equal(ventaRamiro.status, 201, ventaRamiro.texto);
+  const ramiro = (await empleadoA.get(`/api/crm/oportunidades/${otra.id}`)).json;
+  assert.equal(ramiro.estado, 'ganada');
+  assert.equal(ramiro.venta_id, ventaRamiro.json.id);
+
+  // Un socio desde la consulta también la gana.
+  const plan = (await adminA.post('/api/planes-socio', { nombre: 'Plan consulta', opciones: [{ meses: 1, precio: 10000 }] })).json;
+  const interesado = (await empleadoA.post('/api/crm/oportunidades', { nombre: 'Sofía Luna', telefono: '351 555-0202' })).json;
+  const socio = await empleadoA.post('/api/socios', {
+    cliente: { nombre: 'Sofía Luna', telefono: '351 555-0202' },
+    planes: [{ opcion_id: plan.opciones[0].id }],
+    crm_oportunidad_id: interesado.id
+  });
+  assert.equal(socio.status, 201, socio.texto);
+  const sofia = (await empleadoA.get(`/api/crm/oportunidades/${interesado.id}`)).json;
+  assert.equal(sofia.estado, 'ganada');
+  assert.equal(sofia.socio_id, socio.json.id);
+  assert.ok(sofia.cliente_id);
+
+  // Dejaron de comprar: dos compras o más, la última hace más de los días.
+  const habitual = (await adminA.post('/api/clientes', { nombre: 'Cliente habitual' })).json.id;
+  for (const fecha of [haceDias(200), haceDias(120)]) {
+    const r = await empleadoA.post('/api/ventas', { cliente_id: habitual, fecha, items: item });
+    assert.equal(r.status, 201, r.texto);
+  }
+  const fila = (await empleadoA.get('/api/crm/inactivos')).json.find((c) => c.id === habitual);
+  assert.ok(fila, 'sale en la lista');
+  assert.equal(fila.compras, 2);
+  assert.equal(fila.ultima_compra, haceDias(120));
+  assert.equal(fila.dias, 120);
+  assert.equal(fila.con_seguimiento, false);
+  assert.ok(!(await empleadoA.get('/api/crm/inactivos?dias=150')).json.some((c) => c.id === habitual));
+  assert.equal((await empleadoA.get('/api/crm/inactivos?dias=cero')).status, 400);
+  const seguimiento = await empleadoA.post('/api/crm/actividades', {
+    cliente_id: habitual,
+    tipo: 'mensaje',
+    descripcion: 'Avisarle de lo nuevo',
+    fecha: hoy
+  });
+  assert.equal(seguimiento.status, 201, seguimiento.texto);
+  assert.equal((await empleadoA.get('/api/crm/inactivos')).json.find((c) => c.id === habitual).con_seguimiento, true);
+
+  // Otro negocio no ve ni toca nada.
+  assert.equal((await adminB.get(`/api/crm/oportunidades/${id}`)).status, 404);
+  assert.equal((await adminB.put(`/api/crm/oportunidades/${id}`, { nombre: 'Otra' })).status, 404);
+  assert.equal((await adminB.post(`/api/crm/oportunidades/${id}/reabrir`)).status, 404);
+  assert.equal((await adminB.patch(`/api/crm/actividades/${llamada.json.id}`, { hecha: false })).status, 404);
+  assert.equal((await adminB.del(`/api/crm/actividades/${llamada.json.id}`)).status, 404);
+  assert.equal((await adminB.post('/api/crm/actividades', { oportunidad_id: id, tipo: 'nota', descripcion: 'x' })).status, 400);
+  const presupuestoAjeno = { cliente: 'X', crm_oportunidad_id: id, items: [{ producto_id: productoB, cantidad: 1, precio_unitario: 1 }] };
+  assert.equal((await adminB.post('/api/presupuestos', presupuestoAjeno)).status, 400);
+  assert.ok(!(await adminB.get('/api/crm/oportunidades')).json.some((o) => o.id === id));
+  assert.ok(!(await adminB.get('/api/crm/inactivos')).json.some((c) => c.id === habitual));
+  const deB = (await adminB.get('/api/crm/para-hoy')).json;
+  assert.equal(deB.actividades.length + deB.sin_accion.length, 0);
+
+  // Borrar una actividad.
+  assert.equal((await empleadoA.del(`/api/crm/actividades/${nota.json.id}`)).status, 204);
+  assert.equal((await empleadoA.get(`/api/crm/oportunidades/${id}`)).json.actividades.length, 1);
+});
+
 test('primeros pasos: cuenta lo cargado del negocio, sin planes de socios, y es de admin (hist. §81)', async () => {
   const r = await adminA.get('/api/negocio/primeros-pasos');
   assert.equal(r.status, 200, r.texto);
@@ -924,11 +1127,12 @@ test('primeros pasos: cuenta lo cargado del negocio, sin planes de socios, y es 
   const planes = new Set((await adminA.get('/api/planes-socio')).json.map((p) => p.producto_id));
   assert.ok(planes.size > 0, 'el caso de socios dejó planes');
   assert.equal(r.json.catalogo, productos.filter((p) => !planes.has(p.id)).length);
-  assert.ok(r.json.ventas > 0 && r.json.clientes > 0 && r.json.usuarios >= 2 && r.json.trabajos > 0 && r.json.abonos > 0);
+  assert.ok(r.json.ventas > 0 && r.json.clientes > 0 && r.json.usuarios >= 2 && r.json.trabajos > 0 && r.json.abonos > 0 && r.json.consultas > 0);
   // Otro negocio cuenta lo suyo, no lo de A.
   const deB = (await adminB.get('/api/negocio/primeros-pasos')).json;
   assert.equal(deB.trabajos, 0);
   assert.equal(deB.abonos, 0);
+  assert.equal(deB.consultas, 0);
   assert.equal((await empleadoA.get('/api/negocio/primeros-pasos')).status, 403);
 });
 

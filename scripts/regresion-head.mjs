@@ -53,6 +53,7 @@ const LISTADO_DE = {
   '/api/socios/:id': '/api/socios',
   '/api/trabajos/:id': '/api/trabajos',
   '/api/abonos/:id': '/api/abonos',
+  '/api/crm/oportunidades/:id': '/api/crm/oportunidades',
   '/api/ventas/:id/cobros': '/api/ventas',
   '/api/presupuestos/:id': '/api/presupuestos',
   '/api/devoluciones/:id': '/api/devoluciones',
