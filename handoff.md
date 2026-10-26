@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §89);
+    siguiente número (hoy el último es §90);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,12 +21,20 @@
 
 ## Estado actual (26 de octubre de 2026)
 
-**Próxima sesión:** la pantalla de Consultas (CRM, 6b segunda parte, hist.
-§90): el plan está en "Qué sigue". Después la PWA (7).
-- **Consultas (CRM), backend: hecho y commiteado en `solla`** (hist. §89).
-  Módulo `crm` ("Consultas"), etapas por tipo, consultas, actividades, "Para
-  hoy", "Dejaron de comprar" y números; presupuesto, venta y socio aceptan
-  `crm_oportunidad_id` y la consulta se gana sola. Falta toda la pantalla.
+**Próxima sesión:** la PWA (7) junto con "celular de verdad" (7b, que pide
+investigar antes). Los dos están en "Qué sigue".
+- **Consultas (CRM): hecho y commiteado en `solla`** (hist. §89 el backend,
+  §90 la pantalla). En el menú es "Consultas", en Ventas:
+  - embudo con arrastrar y soltar, y en el celular una etapa por pestaña;
+  - "Para hoy", también en el Resumen;
+  - Dejaron de comprar, Números y alta rápida de tres campos;
+  - la ficha pasa la consulta a cliente, presupuesto, venta o socio, y se gana
+    sola;
+  - en la ficha del cliente, sus consultas y su seguimiento;
+  - las etapas, en Configuración.
+  - **Falta que el usuario lo vea.** Su base real (gimnasio) lo recibe
+    prendido en el próximo `npm start`, con las etapas Consulta → Clase de
+    prueba → Seguimiento.
 - **Tipo de negocio fijo y funciones que se suman (hist. §88): hecho y
   commiteado en `solla`, sin pushear.** Configuración tiene "Funciones" y una
   página aparte para cambiar el tipo; el catálogo se llama según lo cargado,
@@ -732,9 +740,9 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    cambio de tipo queda en una página aparte que dice qué cambia, el nombre del
    catálogo sale de lo cargado, y su base real no se toca (le suma las
    funciones él). Falta que lo vea.
-6b. **CRM adaptado a cada tipo de negocio** (2 sesiones; **el backend está
-   hecho**, hist. §89). Pedido del usuario del 20 de octubre, **que llegue a la
-   presentación**: consultas, clientes y clientes potenciales. Diseño en
+6b. ~~CRM adaptado a cada tipo de negocio~~ **hecho** (hist. §89 y §90).
+   Pedido del usuario del 20 de octubre, **que llegue a la presentación**:
+   consultas, clientes y clientes potenciales. Diseño en
    `docs/investigacion-crm-servicios.md` §2:
    - módulo `crm` con etapas por preset;
    - oportunidades y actividades;
@@ -742,24 +750,10 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - la lista "Para hoy";
    - clientes que dejaron de comprar.
    - Ni Dux ni Contagram tienen CRM: es diferencial.
-   - **Falta la pantalla** (`frontend/js/dominios/crm.js`, patrón de
-     `trabajos.js`). En el menú se llama "Consultas", en la sección Ventas:
-     - cableado: import en `app.js`, `MODULO_DE_VISTA` y
-       `VISTAS_CONSTRUIDAS` (`oportunidad-detalle` como ficha) en
-       `core/router.js`, regla `data-modulos~="crm"` en `styles.css` e
-       íconos `funnel`, `phone` y `message-circle` de `lucide-static`;
-     - pestañas `#/crm/embudo|hoy|dejaron|numeros`. El embudo va en columnas
-       con arrastrar y soltar nativo en el escritorio, y en el celular una
-       etapa por pestaña con lista compacta;
-     - alta rápida en un modal de tres campos, y la ficha como página, con la
-       línea de tiempo de actividades y "pasar a" cliente, presupuesto, venta
-       o socio (`invocar("nuevo:presupuesto" / "nuevo:venta")`, registrados
-       en `app.js`, con `crm_oportunidad_id`);
-     - "Para hoy" en el Resumen, invocado desde el handler de dashboard que
-       ya existe: `alEntrarEnVista` guarda uno solo por vista;
-     - la ficha del cliente con `pintar:crmDelCliente`, la página "Etapas de
-       las consultas" en Configuración y el paso en primeros pasos.
-   - WhatsApp lo alimenta después, en la etapa 11.
+   - Para después: que WhatsApp cree la consulta sola (etapa 11), el
+     asistente que la anote ("me consultó Juan por…"), un formulario de
+     contacto en la landing, mensajes por lote y automatizaciones de
+     seguimiento.
 7. **B2: PWA** (1 sesión).
    - Manifest, íconos y service worker con caché del shell: se instala desde el
      celular.

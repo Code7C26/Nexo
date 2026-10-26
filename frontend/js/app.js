@@ -47,6 +47,7 @@ import "./dominios/pos.js";
 import "./dominios/socios.js";
 import "./dominios/trabajos.js";
 import "./dominios/abonos.js";
+import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
 
@@ -3129,6 +3130,8 @@ document.getElementById("formTransferenciaDeposito").addEventListener("submit", 
 // genera deuda. Todo eso pasa recién al convertirlo en venta.
 let presupuestos = [];
 let presupuestoEditandoId = null;
+// La consulta de la que sale un presupuesto nuevo (hist. §90): queda vinculada.
+let presupuestoDeConsulta = null;
 
 const PRESUPUESTO_LABEL = {
   borrador: "Borrador",
@@ -3516,8 +3519,10 @@ function actualizarTotalPresupuesto() {
 }
 presupuestoItemsEl.addEventListener("item-change", actualizarTotalPresupuesto);
 
-async function abrirModalPresupuesto(presupuesto = null) {
+// desde: { cliente, crm_oportunidad_id } cuando sale de una consulta.
+async function abrirModalPresupuesto(presupuesto = null, desde = null) {
   presupuestoEditandoId = presupuesto?.id ?? null;
+  presupuestoDeConsulta = desde?.crm_oportunidad_id ?? null;
   document.getElementById("modalPresupuestoTitulo").textContent = presupuesto
     ? "Editar presupuesto"
     : "Nuevo presupuesto";
@@ -3526,7 +3531,7 @@ async function abrirModalPresupuesto(presupuesto = null) {
     : "Guardar presupuesto";
 
   const form = document.getElementById("formPresupuesto");
-  form.cliente.value = presupuesto?.cliente ?? "";
+  form.cliente.value = presupuesto?.cliente ?? desde?.cliente ?? "";
   form.fecha.value = presupuesto?.fecha ?? hoyISO();
   form.vencimiento.value = presupuesto?.vencimiento ?? "";
   form.notas.value = presupuesto?.notas ?? "";
@@ -3601,6 +3606,8 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
     items,
     lista_precio_id: form.lista_precio_id.value || null
   };
+  const consultaId = presupuestoEditandoId ? null : presupuestoDeConsulta;
+  if (consultaId) body.crm_oportunidad_id = consultaId;
 
   await api(presupuestoEditandoId ? `/api/presupuestos/${presupuestoEditandoId}` : "/api/presupuestos", {
     method: presupuestoEditandoId ? "PUT" : "POST",
@@ -3614,6 +3621,7 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
   form.reset();
   modalPresupuesto.hidden = true;
   if (idEditado) await abrirFichaPresupuesto(idEditado);
+  if (consultaId) await invocar("abrirFicha:consulta", consultaId);
   avisar(idEditado ? "Presupuesto actualizado." : "Presupuesto creado.", "ok");
 });
 
@@ -3800,6 +3808,8 @@ async function cargarVentas() {
 let ventas = [];
 let ventaAFacturarId = null;
 let ventaEditandoId = null;
+// La consulta de la que sale una venta nueva (hist. §90): la venta la gana.
+let ventaDeConsulta = null;
 let ventaFichaId = null;
 
 const modalVenta = document.getElementById("modalVenta");
@@ -3866,14 +3876,16 @@ function poblarSelectCondicionPago(selector) {
 // casos — hace falta esta bandera aparte).
 let ventaCondicionTocada = false;
 
-async function abrirModalVenta(venta = null) {
+// desde: { cliente, crm_oportunidad_id } cuando sale de una consulta.
+async function abrirModalVenta(venta = null, desde = null) {
   ventaEditandoId = venta?.id ?? null;
+  ventaDeConsulta = desde?.crm_oportunidad_id ?? null;
   ventaCondicionTocada = false;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
   document.getElementById("formVentaSubmit").textContent = venta ? "Guardar cambios" : "Registrar venta";
 
   const form = document.getElementById("formVenta");
-  form.cliente.value = venta?.cliente ?? "";
+  form.cliente.value = venta?.cliente ?? desde?.cliente ?? "";
   form.fecha.value = venta?.fecha ?? hoyISO();
 
   poblarSelectListasPrecios("#ventaListaPrecio");
@@ -4031,6 +4043,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     deposito_id: form.deposito_id.value || null,
     ...datosCondicionPago(form)
   };
+  const consultaId = ventaEditandoId ? null : ventaDeConsulta;
+  if (consultaId) body.crm_oportunidad_id = consultaId;
 
   await api(ventaEditandoId ? `/api/ventas/${ventaEditandoId}` : "/api/ventas", {
     method: ventaEditandoId ? "PUT" : "POST",
@@ -4045,7 +4059,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   // Si se estaba editando desde la ficha, volver a esa ficha con los
   // datos ya actualizados en vez de dejar al usuario en la lista.
   if (idEditado) await abrirFichaVenta(idEditado);
-  avisar(idEditado ? `Venta #${idEditado} actualizada.` : "Venta registrada.", "ok");
+  if (consultaId) await invocar("abrirFicha:consulta", consultaId);
+  avisar(idEditado ? `Venta #${idEditado} actualizada.` : consultaId ? "Venta registrada: la consulta quedó ganada." : "Venta registrada.", "ok");
 });
 
 async function abrirFichaVenta(id) {
@@ -5688,7 +5703,9 @@ async function abrirFichaCliente(id) {
           })
           .join("");
 
-  // Sus trabajos y sus abonos los pinta cada dominio (hist. §83).
+  // Sus consultas, sus trabajos y sus abonos los pinta cada dominio (hist.
+  // §83, §90).
+  invocar("pintar:crmDelCliente", cliente);
   invocar("pintar:trabajosDelCliente", cliente);
   invocar("pintar:abonosDelCliente", cliente);
   mostrarVista("cliente-detalle", { titulo: cliente.nombre });
@@ -7303,6 +7320,9 @@ registrar("abrirFicha:proveedor", abrirFichaProveedor);
 registrar("abrirFicha:venta", abrirFichaVenta);
 registrar("abrirFicha:presupuesto", abrirFichaPresupuesto);
 registrar("cargar:presupuestos", cargarPresupuestos);
+// Las altas que salen de una consulta (dominios/crm.js, hist. §90).
+registrar("nuevo:presupuesto", (desde) => abrirModalPresupuesto(null, desde));
+registrar("nuevo:venta", (desde) => abrirModalVenta(null, desde));
 // Las filas de renglones de venta, para los trabajos (dominios/trabajos.js):
 // leen el catálogo, que vive acá.
 registrar("items:agregarFila", (contenedor) => agregarFilaItemVenta(contenedor, productos, false));

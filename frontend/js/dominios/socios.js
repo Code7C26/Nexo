@@ -25,7 +25,7 @@ import { ICONO_TACHO, badge, botonEditarFila, camposFicha, esAdmin, esc, fechaAR
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
-import { alEntrarEnVista, invocar, recargar } from "../core/registro.js";
+import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 
@@ -309,6 +309,11 @@ const altaCotizacion = document.getElementById("socioAltaCotizacion");
 const altaDescuento = document.getElementById("socioAltaDescuento");
 let quien = "nuevo";
 let cotizacionAlta = 0;
+// La consulta de la que sale el alta (hist. §90): sus datos vienen cargados y,
+// al darlo de alta, el servidor la gana. Se toma al abrir el alta y se suelta
+// al guardar.
+let consultaPendiente = null;
+let consultaDelAlta = null;
 
 const etiquetaCliente = (c) => (c.documento ? `${c.nombre} — DNI ${c.documento}` : c.nombre);
 
@@ -458,6 +463,21 @@ async function abrirAlta() {
   altaDescuento.innerHTML = opcionesDescuento(manuales);
   pintarPlanesAlta();
   pintarResumenAlta();
+  consultaDelAlta = consultaPendiente;
+  consultaPendiente = null;
+  if (consultaDelAlta) {
+    const cliente = clientesLibres.find((c) => c.id === consultaDelAlta.cliente_id);
+    if (cliente) {
+      quien = "cliente";
+      pintarQuien();
+      formAlta.cliente.value = etiquetaCliente(cliente);
+    } else {
+      formAlta.nombre.value = consultaDelAlta.nombre ?? "";
+      formAlta.telefono.value = consultaDelAlta.telefono ?? "";
+      formAlta.email.value = consultaDelAlta.email ?? "";
+    }
+    return;
+  }
   if (conMouse()) formAlta.nombre.focus();
 }
 
@@ -470,6 +490,7 @@ formAlta.addEventListener("submit", async (e) => {
     fecha_alta: formAlta.fecha_alta.value,
     descuento_id: valorDescuento(altaDescuento)
   };
+  if (consultaDelAlta) cuerpo.crm_oportunidad_id = consultaDelAlta.crm_oportunidad_id;
   if (quien === "nuevo") {
     const nombre = formAlta.nombre.value.trim();
     if (!nombre) {
@@ -507,6 +528,7 @@ formAlta.addEventListener("submit", async (e) => {
   const socio = await enviando(boton, () =>
     api("/api/socios", { method: "POST", body: cuerpo, error: "No se pudo dar de alta al socio." })
   );
+  consultaDelAlta = null;
   await refrescar([cargarSocios(), recargarOtrasVistas()]);
   avisar(`Alta lista: N° ${socio.numero}, ${socio.nombre}.`, "ok");
   // La ficha no cambia el hash: sin esto, un F5 volvería a abrir el alta.
@@ -1511,6 +1533,15 @@ async function abrirPlanes(subruta) {
 
 alEntrarEnVista("ingreso", entrarAIngreso);
 alEntrarEnVista("planes-socio", abrirPlanes);
+
+// Hacer socio a una consulta (dominios/crm.js): el alta de siempre, con sus
+// datos ya puestos.
+registrar("nuevo:socio", (consulta) => {
+  consultaPendiente = consulta;
+  // Con el alta ya abierta el hash no cambia: se la vuelve a abrir a mano.
+  if (location.hash === "#/socios/nuevo") abrirAlta();
+  else location.hash = "#/socios/nuevo";
+});
 
 alEntrarEnVista("socios", async (subruta) => {
   if (subruta === "nuevo") {

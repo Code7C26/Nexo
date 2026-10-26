@@ -13,7 +13,7 @@ import { esAdmin, esc } from "../core/formato.js";
 import { api } from "../core/api.js";
 import { icono } from "../core/iconos.js";
 import { moduloActivo, negocio, termino } from "../core/negocio.js";
-import { alEntrarEnVista, recargar } from "../core/registro.js";
+import { alEntrarEnVista, invocar, recargar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 
 const panel = document.getElementById("primerosPasos");
@@ -55,6 +55,15 @@ function pasos(c) {
     vista: "clientes",
     boton: "btnNuevoCliente"
   });
+  if (moduloActivo("crm")) {
+    lista.push({
+      titulo: "Anotá tu primera consulta",
+      detalle: "Quién te preguntó, qué busca y cuándo volver a escribirle: Nexo te lo recuerda.",
+      hecho: c.consultas > 0,
+      vista: "consultas",
+      boton: "btnNuevaConsulta"
+    });
+  }
   if (moduloActivo("trabajos")) {
     lista.push({
       titulo: "Programá tu primer trabajo",
@@ -178,4 +187,9 @@ async function cargarPrimerosPasos() {
   pintar(lista);
 }
 
-alEntrarEnVista("dashboard", cargarPrimerosPasos);
+// El Resumen tiene un solo handler de entrada (core/registro.js guarda uno por
+// vista): también pinta "Para hoy" de las consultas (dominios/crm.js).
+alEntrarEnVista("dashboard", () => {
+  cargarPrimerosPasos();
+  invocar("pintar:paraHoyResumen");
+});

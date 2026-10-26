@@ -8756,3 +8756,91 @@ Lint, `verificar-migracion` 24 de 24, `regresion` con 19 diferencias, todas
 de lo nuevo (rutas `/api/crm/*`, `crm` en los módulos, `etapas_crm` en los
 perfiles y `consultas` en primeros pasos). md5 de la base real igual
 (`d4a84eef…`).
+
+## 90. Consultas (CRM), segunda parte: la pantalla, 26 de octubre de 2026
+
+Sigue a hist. §89 (el backend). Todo en `frontend/js/dominios/crm.js`, con el
+patrón de `trabajos.js`. En el menú se llama **"Consultas"** (no "CRM": quien
+nunca usó Nexo no conoce la sigla), primero en la sección Ventas.
+
+**Vista `consultas`** (`#/consultas/embudo|hoy|dejaron|numeros`; sin subruta,
+la última usada, `nexo.consultas.vista`, con try/catch):
+- **Embudo:**
+  - en la compu, columnas por etapa (las pausadas solo si tienen consultas),
+    más Ganadas y Perdidas de los últimos 30 días;
+  - arrastrar y soltar nativo de HTML5, sin librería. Soltar en una etapa la
+    mueve (optimista, vuelve si el servidor no acepta); en Ganada, confirma;
+    en Perdida, pide el motivo;
+  - con teclado, lo mismo se hace desde la ficha (selector de etapa);
+  - no se repinta a mitad de un arrastre (`repintarAlSoltar`): soltaba la
+    tarjeta;
+  - en el celular, una etapa por pestaña (`.segmentos` con la cuenta) y una
+    lista de dos renglones por consulta.
+  - Cada tarjeta muestra el próximo paso siempre con texto ("Venció hace 2
+    días: …", "Sin próximo paso"); el color solo acompaña. La clase es
+    `.proximo`: **`.aviso` ya era la del toast**.
+  - Vacío: explica qué es una consulta y ofrece cargar la primera.
+- **Para hoy:** grupos (atrasado, para hoy, consultas sin próximo paso,
+  presupuestos sin respuesta si está el módulo, abonos que deben si está el
+  módulo). Las actividades se marcan "Hecha" ahí; lo demás lleva a su ficha.
+  La cuenta va en la pestaña.
+- **Dejaron de comprar:** 60, 90 días o 6 meses, con "Anotar seguimiento".
+- **Números:** este mes, 3 meses o siempre; consultas, ganadas, perdidas y "De
+  las cerradas, ganadas"; barras de un color con el número al lado (por
+  origen, embudo hoy y motivos de pérdida).
+
+**Alta rápida:** un modal de tres campos (nombre, teléfono, qué busca) y "Más
+datos" plegado (origen, valor, quién la sigue, email). En el celular el botón
+flota abajo, a la izquierda del asistente. Al guardar abre la ficha con el foco
+en el seguimiento (en el celular no: abriría el teclado).
+
+**Ficha `consulta-detalle`:** datos con `camposFicha` (teléfono con `tel:` y
+WhatsApp si el número argentino se puede armar con seguridad, `linkWhatsApp`),
+selector de etapa, Editar, Ganada y Perdida (o Reabrir). "Cuando decide":
+- pasarla a cliente (si ya hay uno con ese nombre, pregunta si es la misma
+  persona y lo vincula);
+- hacerle un presupuesto o registrar la venta: asegura el cliente y abre el
+  alta de siempre con `invocar("nuevo:presupuesto" | "nuevo:venta")`,
+  registrados en `app.js`, que mandan `crm_oportunidad_id` y vuelven a la
+  ficha;
+- hacerlo socio: `invocar("nuevo:socio")`, que registra `socios.js`: el alta
+  de `#/socios/nuevo` con los datos puestos.
+- El seguimiento es una línea de tiempo con un formulario arriba (llamada,
+  mensaje, visita, tarea o nota; una nota no lleva fecha).
+
+**Integraciones:**
+- Ficha del cliente: panel "Consultas y seguimiento"
+  (`pintar:crmDelCliente`) con sus consultas, su seguimiento y "Anotar
+  seguimiento" (modal `modalSeguimiento`, el mismo de Dejaron de comprar).
+- Resumen: panel "Para hoy" con los 5 primeros y "Ver todo"; no se ve si no hay
+  nada. Lo invoca el handler de dashboard de `primeros-pasos.js`, porque
+  `alEntrarEnVista` guarda uno solo por vista.
+- Primeros pasos: "Anotá tu primera consulta".
+- Configuración: página "Etapas de las consultas" (admin, `modulo: "crm"`):
+  agregar, renombrar, subir y bajar, pausar y activar.
+- Íconos nuevos de `lucide-static` 1.57.0: `funnel`, `phone` y
+  `message-circle`.
+
+**Verificación:** `npm test` 63 de 63, lint, `regresion` 0 diferencias en 196,
+`verificar-migracion` 24 de 24, md5 de la base real igual. En Chrome
+(playwright-core, base sembrada en el scratchpad) a 1440 y 390 px, oscuro y
+claro:
+- embudo y arrastre;
+- alta rápida → ficha;
+- "Para hoy" en la vista y en el Resumen;
+- Números y página de etapas;
+- pasar a presupuesto (queda vinculado) y a venta (la gana);
+- seguimiento desde la ficha del cliente y Dejaron de comprar;
+- el empleado ve el embudo y no las etapas;
+- XSS sembrado en nombre, teléfono, qué busca, actividad, etapa y motivo, sin
+  ejecutar (no se corrió el control contra el commit anterior);
+- sin errores de consola y sin scroll horizontal a 390 px.
+
+Arreglado con las capturas:
+- nombres cortados en las tarjetas;
+- el botón flotante tapado por el del asistente;
+- el selector de etapa pisado en el celular;
+- la cuenta de la pestaña ilegible en claro.
+
+El arrastre de Playwright falló dos veces por tiempos de la prueba, cuando se
+arrastra apenas carga la página; después anduvo siempre.

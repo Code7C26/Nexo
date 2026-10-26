@@ -344,6 +344,8 @@ const PAGINAS = {
   negocio: { admin: true, form: formNegocio, alEntrar: pintarNegocio },
   funciones: { admin: true, form: formFunciones, alEntrar: pintarFunciones },
   "cambiar-tipo": { admin: true, form: formCambiarTipo, alEntrar: pintarCambiarTipo, menu: "funciones" },
+  // Las etapas del embudo de consultas las pinta dominios/crm.js (hist. §90).
+  "etapas-consultas": { admin: true, modulo: "crm", alEntrar: () => invocar("pintar:etapasConsultas") },
   comprobantes: { admin: true, form: formComprobantes, alEntrar: pintarComprobantes },
   usuarios: { admin: true, alEntrar: () => recargar("usuarios") },
   // Los catálogos los pinta su dominio (leen su estado), después de traerlos

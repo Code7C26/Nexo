@@ -12,6 +12,8 @@ import { entrarEnVista } from "./registro.js";
 // §29, PERFILES_RUBRO en backend/perfiles.js): con el módulo apagado no se entra.
 const MODULO_DE_VISTA = {
   pos: "pos",
+  consultas: "crm",
+  "consulta-detalle": "crm",
   presupuestos: "presupuestos",
   "presupuesto-detalle": "presupuestos",
   trabajos: "trabajos",
@@ -49,6 +51,7 @@ const VISTAS_CONSTRUIDAS = {
   clientes: { titulo: "Clientes", dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
+  consultas: { titulo: "Consultas", dominio: "Embudo de venta" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
   trabajos: { titulo: "Trabajos", dominio: "Embudo de venta" },
   abonos: { titulo: "Abonos", dominio: "Embudo de venta" },
@@ -71,6 +74,7 @@ const VISTAS_CONSTRUIDAS = {
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
+  "consulta-detalle": { titulo: "Consulta", dominio: "Embudo de venta", nav: "consultas", esFicha: true },
   "trabajo-detalle": { titulo: "Trabajo", dominio: "Embudo de venta", nav: "trabajos", esFicha: true },
   "abono-detalle": { titulo: "Abono", dominio: "Embudo de venta", nav: "abonos", esFicha: true },
   "devolucion-detalle": { titulo: "Devolución", dominio: "Embudo de venta", nav: "devoluciones", esFicha: true },

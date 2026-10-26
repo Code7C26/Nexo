@@ -1180,13 +1180,19 @@ Implementado hoy (Etapa F, §38):
   que avisa qué cambia: solo con qué unidad y tipo nace un producto nuevo.
 - **Cada tipo es un preset** (`PERFILES_RUBRO` en `backend/perfiles.js`): la
   unidad y el tipo con que nace un producto (kg en carnicería, servicio en
-  gimnasio) y qué módulos opcionales trae al crear la empresa (punto de venta,
-  presupuestos, trabajos, abonos, compras, stock y socios).
+  gimnasio), con qué etapas nace su embudo de consultas y qué módulos
+  opcionales trae al crear la empresa (punto de venta, consultas, presupuestos,
+  trabajos, abonos, compras, stock y socios).
   - Los módulos quedan guardados por empresa. El admin los suma o los saca en
     Configuración → Funciones, y cambiar el tipo no los toca.
   - El catálogo se llama según lo que tiene cargado: "Productos", "Servicios"
     o "Productos y servicios", con una pestaña para cada uno. Vacío, toma el
     nombre del tipo.
+- **Consultas (CRM):** módulo reusable, prendido en comercio, servicios y
+  gimnasio. Consultas y clientes potenciales en un embudo con etapas por
+  negocio, seguimiento con próxima acción, "Para hoy", clientes que dejaron de
+  comprar y números. Una consulta pasa a cliente, presupuesto, venta o socio
+  con las altas de siempre, y se gana sola (ver `handoff.md`).
 - **Trabajos (órdenes de trabajo):** módulo reusable, prendido en Servicios.
   Un presupuesto aceptado pasa a trabajo, con día, responsable y estado, y al
   terminarlo pasa a una venta (ver `handoff.md`).
