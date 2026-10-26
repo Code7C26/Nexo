@@ -4264,6 +4264,11 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 
+/* Mi cuenta: la identidad va dentro de la tarjeta (el gap ya separa), y
+   "Cerrar sesión" es una tarjeta que es solo pie, sin la raya de arriba. */
+.config-tarjeta-cuerpo > .perfil-identidad { margin-bottom: 0; max-width: 560px; }
+.config-cuenta-salir { border-top: 0; }
+
 /* Funciones (hist. §88): el tipo del negocio, fijo, con su botón para
    cambiarlo en otra página. */
 .config-tipo-actual {

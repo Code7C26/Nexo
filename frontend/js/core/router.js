@@ -102,7 +102,7 @@ const VISTAS_CONSTRUIDAS = {
 // empleado (el nav-item ya está oculto por CSS, pero el hash se puede
 // tipear igual) cae al mismo destino que un click normal — es solo UI, el
 // servidor responde 403 igual si se llama al endpoint directo.
-// Configuración no está: el empleado entra a su página Apariencia, y las de
+// Configuración no está: el empleado entra a Mi cuenta y Apariencia, y las de
 // admin las filtra dominios/configuracion.js.
 const VISTAS_SOLO_ADMIN = new Set([
   "dashboard",

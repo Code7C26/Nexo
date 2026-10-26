@@ -8873,3 +8873,31 @@ todo en la misma página".
 - la pestaña Consultas, el link viejo y "Volver al CRM";
 - con el módulo apagado, "Clientes" sin pestañas;
 - a 390 px, sin scroll horizontal y sin errores de consola.
+
+## 92. Mi cuenta en Configuración, y la demo para el profe, 26 de octubre de 2026
+
+**Demo.** Pedido del usuario: "creá un comercio y un gym de prueba y usá la
+mayoría de las funciones, para mostrarle a mi profe". Cuenta nueva en la base
+real (`prueba` / `prueba1234`) con "Comercio prueba" y "Gym prueba", cargada
+toda por la API con un script del scratchpad: primero corrió limpio contra una
+base temporal y después, con respaldo previo (`nexo-20261026-124111.db`),
+contra el servidor real. Los negocios #1 y #2 del usuario no se tocaron.
+Trampas de la API que aparecieron: el alta de producto devuelve solo el `id`;
+el punto de venta no acepta cobrar de más (el vuelto lo calcula la pantalla);
+los orígenes del CRM son `whatsapp|instagram|local|conocido|web|otro`.
+
+**Mi cuenta.** El usuario no encontraba cómo cerrar sesión (estaba en un
+modal que abría el círculo de perfil) y pidió: "la configuración de cuenta
+debería estar en configuración también".
+- Página nueva `#/configuracion/cuenta`, en el grupo "Tu cuenta" junto con
+  Apariencia, para los dos roles: nombre y rol, cambiar la contraseña y una
+  tarjeta aparte para cerrar sesión.
+- El círculo de perfil ahora lleva a esa página. **El modal `#modalPerfil` ya
+  no existe:** un solo lugar, y configuración en páginas, no en modales.
+- `dominios/perfil.js` registra `pintar:cuenta`, que `configuracion.js` llama
+  al entrar. Sin cambios en el backend.
+
+**Verificación:** `npm test` 63 de 63, lint. En Chrome contra el servidor real
+con la cuenta de demo: el círculo abre Mi cuenta, la contraseña equivocada
+muestra el error en la página, Cerrar sesión vuelve al login, el empleado ve
+solo Mi cuenta y Apariencia, y a 390 px se ve bien.

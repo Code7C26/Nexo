@@ -191,7 +191,7 @@
 
       <div class="sidebar-foot">
         <!-- Círculo de perfil: hoy es un ícono genérico, más adelante
-             podría llevar una foto. Abre el menú de perfil real (nombre,
+             podría llevar una foto. Abre Mi cuenta en Configuración (nombre,
              rol, cambiar contraseña, cerrar sesión) — antes de la etapa
              de usuarios abría el mismo modal vacío que el engranaje de
              al lado; ahora tienen roles distintos. -->
@@ -204,7 +204,7 @@
         </div>
         <div class="sidebar-foot-botones">
           <!-- El engranaje lleva a la vista Configuración (hist. §73), para
-               los dos roles: el empleado ve ahí solo Apariencia, y las
+               los dos roles: el empleado ve ahí solo Mi cuenta y Apariencia, y las
                páginas de admin las filtra dominios/configuracion.js. -->
           <button type="button" class="btn-tema" id="btnConfiguracion" title="Configuración" aria-label="Configuración">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -2779,7 +2779,7 @@
       <!-- Configuración (hist. §73): una sección con su menú y una página por
            tema, en vez del modal de antes. Cada página es su propio
            formulario con su "Guardar cambios". Las páginas de admin llevan
-           .col-admin: el empleado ve solo Apariencia. Sumar una página (IVA,
+           .col-admin: el empleado ve solo Mi cuenta y Apariencia. Sumar una página (IVA,
            ARCA) es agregar su ítem al menú, su <section> y su
            entrada en SECCIONES de dominios/configuracion.js.
            En el celular, #/configuracion es la lista y cada ítem lleva a su
@@ -2842,7 +2842,12 @@
               </a>
             </div>
             <div class="config-grupo">
-              <p class="config-grupo-titulo">Preferencias</p>
+              <p class="config-grupo-titulo">Tu cuenta</p>
+              <a class="config-item" href="#/configuracion/cuenta" data-seccion="cuenta">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Mi cuenta</span><span class="config-item-desc">Contraseña y cerrar sesión</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema oscuro o claro</span></span>
@@ -3173,6 +3178,42 @@
                   <button type="submit" class="btn btn-primary" id="formEtapaConsultaSubmit">Agregar etapa</button>
                 </div>
               </form>
+            </section>
+
+            <!-- Mi cuenta: la persona, no el negocio. La ven los dos roles, y
+                 también la abre el círculo de perfil del pie del menú. -->
+            <section class="config-pagina" data-seccion="cuenta" aria-labelledby="configCuentaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configCuentaTitulo" tabindex="-1">Mi cuenta</h2>
+                <p>Tu usuario es el mismo en todos tus negocios.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCambioPassword">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="perfil-identidad">
+                    <strong id="perfilNombre">—</strong>
+                    <span class="status" id="perfilRol">—</span>
+                  </div>
+                  <p class="form-note" id="cambioPasswordError" hidden></p>
+                  <label>Contraseña actual
+                    <input type="password" id="perfilPasswordActual" autocomplete="current-password" required />
+                  </label>
+                  <label>Contraseña nueva
+                    <input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" required />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Al menos 8 caracteres.</p>
+                  <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
+                </div>
+              </form>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-pie config-cuenta-salir">
+                  <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el usuario y la contraseña.</p>
+                  <button type="button" class="btn btn-secundario" id="btnCerrarSesion">
+                    <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#log-out"></use></svg> Cerrar sesión
+                  </button>
+                </div>
+              </div>
             </section>
 
             <section class="config-pagina" data-seccion="apariencia" aria-labelledby="configAparienciaTitulo" hidden>
@@ -4452,37 +4493,6 @@
         </svg>
       </button>
     </form>
-  </div>
-
-  <!-- Menú de perfil: quién sos, tu rol, cambiar tu propia contraseña y
-       cerrar sesión. Antes #btnPerfil abría el modal de Configuración,
-       que hoy es una vista propia (hist. §73). -->
-  <div class="modal" id="modalPerfil" role="dialog" aria-modal="true" aria-labelledby="modalPerfilTitulo" hidden>
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3 id="modalPerfilTitulo">Mi cuenta</h3>
-        <button class="modal-close" id="modalPerfilClose" aria-label="Cerrar">
-          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
-        </button>
-      </div>
-      <div class="perfil-identidad">
-        <strong id="perfilNombre">—</strong>
-        <span class="status" id="perfilRol">—</span>
-      </div>
-      <form id="formCambioPassword" class="form">
-        <p class="form-note" id="cambioPasswordError" hidden></p>
-        <label>Contraseña actual
-          <input type="password" id="perfilPasswordActual" autocomplete="current-password" required />
-        </label>
-        <label>Contraseña nueva
-          <input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" required />
-        </label>
-        <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
-      </form>
-      <div class="panel-acciones">
-        <button type="button" class="btn btn-secundario" id="btnCerrarSesion">Cerrar sesión</button>
-      </div>
-    </div>
   </div>
 
   <!-- Modal de alta/edición de usuario (solo admin). -->

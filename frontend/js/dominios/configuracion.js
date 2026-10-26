@@ -357,6 +357,7 @@ const PAGINAS = {
     alEntrar: () => recargar("productos").then(() => invocar("pintar:categorias-productos"))
   },
   "categorias-gastos": { admin: true, alEntrar: () => recargar("gastos").then(() => invocar("pintar:categorias-gastos")) },
+  cuenta: { admin: false, alEntrar: () => invocar("pintar:cuenta") },
   apariencia: { admin: false, alEntrar: pintarApariencia }
 };
 

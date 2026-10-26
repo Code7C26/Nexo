@@ -1,31 +1,30 @@
 /**
  * dominios/perfil.js
- * Menú de perfil (mi cuenta): cambio de contraseña y cerrar sesión. Movido tal
- * cual desde app.js (CLAUDE.md §31, Etapa B / F3).
+ * Mi cuenta: cambio de contraseña y cerrar sesión. Es una página de
+ * Configuración (#/configuracion/cuenta) para los dos roles, y la abre también
+ * el círculo de perfil del pie del menú. Antes era un modal aparte.
  */
 
 import { avisar } from "../core/ui.js";
+import { registrar } from "../core/registro.js";
+import { mostrarVista } from "../core/router.js";
 
-/* ---------- Menú de perfil (mi cuenta) ---------- */
-
-const modalPerfil = document.getElementById("modalPerfil");
-document.getElementById("btnPerfil").addEventListener("click", () => {
-  // Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
-  // data-usuario-nombre/data-usuario-rol en el pie de la sidebar) —
-  // leerlos de ahí evita un fetch propio solo para mostrar el modal.
+// Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
+// data-usuario-nombre/data-usuario-rol en el pie de la sidebar): leerlos de
+// ahí evita un fetch propio solo para mostrarlos.
+function pintarCuenta() {
   document.getElementById("perfilNombre").textContent =
     document.querySelector("[data-usuario-nombre]")?.textContent ?? "—";
-  const rol = document.documentElement.dataset.rol;
   const perfilRolEl = document.getElementById("perfilRol");
-  perfilRolEl.textContent = rol === "admin" ? "Administrador" : "Empleado";
+  perfilRolEl.textContent = document.documentElement.dataset.rol === "admin" ? "Administrador" : "Empleado";
   perfilRolEl.className = "status"; // un rol no es bueno ni malo: gris, como en Usuarios
-  modalPerfil.hidden = false;
-});
-document.getElementById("modalPerfilClose").addEventListener("click", () => {
-  modalPerfil.hidden = true;
-});
-modalPerfil.addEventListener("click", (e) => {
-  if (e.target === modalPerfil) modalPerfil.hidden = true;
+  document.getElementById("cambioPasswordError").hidden = true;
+}
+registrar("pintar:cuenta", pintarCuenta);
+
+document.getElementById("btnPerfil").addEventListener("click", () => {
+  document.getElementById("sidebar").classList.remove("is-open");
+  mostrarVista("configuracion", { subruta: "cuenta" });
 });
 
 document.getElementById("formCambioPassword").addEventListener("submit", async (e) => {
@@ -34,7 +33,7 @@ document.getElementById("formCambioPassword").addEventListener("submit", async (
   const errorEl = document.getElementById("cambioPasswordError");
   errorEl.hidden = true;
 
-  // No usa api(): el error se muestra en el propio modal, no en un toast.
+  // No usa api(): el error se muestra en la propia página, no en un toast.
   let res;
   try {
     res = await fetch("/api/auth/cambiar-password", {
@@ -58,7 +57,6 @@ document.getElementById("formCambioPassword").addEventListener("submit", async (
   }
 
   form.reset();
-  modalPerfil.hidden = true;
   avisar("Contraseña actualizada.", "ok");
 });
 

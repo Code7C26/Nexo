@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §91);
+    siguiente número (hoy el último es §92);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -23,6 +23,19 @@
 
 **Próxima sesión:** la PWA (7) junto con "celular de verdad" (7b, que pide
 investigar antes). Los dos están en "Qué sigue".
+- **Cuenta de demo para el profe (26 de octubre), en la base real:** usuario
+  `prueba` / `prueba1234`, con dos negocios: "Comercio prueba" (#3) y "Gym
+  prueba" (#4). Empleados: `vendedor.prueba` / `vendedor1234` (comercio) y
+  `recepcion.prueba` / `recepcion1234` (gym, debe cambiar la clave al entrar).
+  Todo se cargó por la API: productos con talles, lista mayorista, compras
+  recibidas con envío, ventas de contado y a cuenta corriente, presupuestos,
+  devolución, gastos, turnos de caja (uno cerrado con $500 de faltante y otro
+  abierto), CRM en todas las etapas, y socios con cuotas e ingresos en el gym.
+  Respaldo previo: `nexo-20261026-124111.db` en OneDrive. Los negocios #1 y #2
+  del usuario no se tocaron (hist. §92).
+- **Mi cuenta es una página de Configuración** (hist. §92): contraseña y
+  cerrar sesión, para los dos roles. El círculo de perfil lleva ahí; el modal
+  de antes se sacó.
 - **CRM: hecho y commiteado en `solla`** (hist. §89 el backend, §90 la
   pantalla, §91 la unión con Clientes). **En el menú es "CRM"**, en el lugar
   de Clientes, y es una sola página con pestañas: Clientes (la base de
