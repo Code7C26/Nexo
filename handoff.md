@@ -25,7 +25,36 @@
 (`deploy/`, Caddy, DuckDNS y la guía), adelantada por pedido del usuario del
 27 de octubre: quiere probar en un servidor y no depender de su compu. Se
 publica para pruebas, con `noindex` hasta que estén los términos (Fase 3 de
-8b), y se actualiza solo cuando cambia `main`. Después sigue la **Fase 1b de
+8b), y se actualiza solo cuando cambia `main`.
+- **El servidor ya existe** (27 de octubre, creado por el usuario):
+  - Oracle Cloud, cuenta "Nexoapp" en la región Brazil East (São Paulo),
+    todavía en los 30 días de prueba (después pasa sola a Always Free);
+  - instancia `nexo`, una VM.Standard.E2.1.Micro (AMD x86_64, 2 núcleos,
+    1 GB de memoria, 45 GB de disco) con Ubuntu 24.04.5. El Ampere no tenía
+    capacidad;
+  - IP pública `137.131.218.182`, ephemeral: se mantiene mientras exista la
+    instancia;
+  - los puertos 80 y 443 están abiertos en la Default Security List. El
+    firewall de adentro de Ubuntu (iptables de Oracle) todavía no;
+  - **DuckDNS:** `nexosystem.duckdns.org` → esa IP, verificado contra
+    1.1.1.1, 8.8.8.8 y ns1.duckdns.org. El token lo tiene el usuario y nunca
+    pasa por el chat;
+  - **SSH:** `ssh -i "C:\Users\HP ULTRA 5\.ssh\nexo-oracle.key" ubuntu@137.131.218.182`.
+    La llave tiene los permisos restringidos con icacls y ya entra; no se
+    versiona ni se comparte.
+- **Para la instalación** (`deploy/`):
+  - swap de 2 GB, por el 1 GB de memoria;
+  - abrir el 80 y el 443 en iptables;
+  - Node 22.13+, Caddy con https, el servicio systemd y `.env` en el
+    servidor (`NEXO_URL_PUBLICA=https://nexosystem.duckdns.org`,
+    `NEXO_TRUST_PROXY=1`, `NODE_ENV=production`, SMTP);
+  - el cron de DuckDNS, el respaldo diario a Object Storage y
+    `X-Robots-Tag: noindex` hasta la Fase 3 de 8b;
+  - la actualización desde `main` (decidida en la próxima sesión: el
+    servidor la busca solo cada 5 minutos, o GitHub Actions por SSH);
+  - copiar la base real (con el usuario parando su `npm start` antes).
+- **Oracle recupera las instancias gratis que pasan una semana casi sin uso.**
+  Pasar a Pay As You Go lo evita, pero es una decisión de plata del usuario. Después sigue la **Fase 1b de
 la etapa 8b** (invitaciones por mail, cuentas sin negocio y el rebuild de
 `usuarios`), con el diseño de la sección 5 de
 `docs/investigacion-login-legal.md`. La Fase 1 (mail en la
