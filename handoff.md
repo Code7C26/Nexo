@@ -21,9 +21,14 @@
 
 ## Estado actual (27 de octubre de 2026)
 
-**Para retomar (próxima sesión): la Fase 1b de la etapa 8b** (invitaciones
-por mail, cuentas sin negocio y el rebuild de `usuarios`), con el diseño de la
-sección 5 de `docs/investigacion-login-legal.md`. La Fase 1 (mail en la
+**Para retomar (próxima sesión): la Fase 4 de la etapa 8, la publicación**
+(`deploy/`, Caddy, DuckDNS y la guía), adelantada por pedido del usuario del
+27 de octubre: quiere probar en un servidor y no depender de su compu. Se
+publica para pruebas, con `noindex` hasta que estén los términos (Fase 3 de
+8b), y se actualiza solo cuando cambia `main`. Después sigue la **Fase 1b de
+la etapa 8b** (invitaciones por mail, cuentas sin negocio y el rebuild de
+`usuarios`), con el diseño de la sección 5 de
+`docs/investigacion-login-legal.md`. La Fase 1 (mail en la
 cuenta, verificación y login con mail) está hecha y commiteada (hist. §102).
 - **Lo que tiene que hacer el usuario:**
   - **reiniciar su `npm start`**: el que corría desde la mañana tiene el
