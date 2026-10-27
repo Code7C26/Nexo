@@ -9650,3 +9650,76 @@ Primera fase de la etapa 8b, con el diseño de la sección 5 de
   - `recepcion.prueba` quedó sin mail a propósito: tiene el cambio de
     contraseña forzado, y sumarle el mail por la API pedía cambiarle la clave
     de la demo. Al entrar pasa por las dos páginas.
+
+## 103. La publicación en Oracle (etapa 8, Fase 4), 27 de octubre de 2026
+
+Adelantada por pedido del usuario ("que pueda entrar desde internet con el
+dominio de DuckDNS"), antes de la Fase 1b de 8b. Se hizo sola mientras el
+usuario no estaba, con su autorización para mergear (PR #27 y #28).
+
+**Qué se agregó (`deploy/`, guía en `docs/publicar.md`):**
+- **`instalar.sh`**: idempotente, se corre con `sudo bash instalar.sh [base.db]`.
+  - swap de 2 GB, el 80 y el 443 en iptables (antes del REJECT de Oracle,
+    guardado con `netfilter-persistent`);
+  - Node 22 de NodeSource, Caddy del repo oficial y el usuario de sistema
+    `nexo`;
+  - el clon de `main` en `/opt/nexo`, la base y los respaldos en
+    `/var/lib/nexo` y las variables en `/etc/nexo/nexo.env` (root:nexo, 640);
+  - la base inicial solo si no hay una, con `integrity_check` antes.
+- **`actualizar.sh`** + `nexo-actualizar.timer`, cada 5 minutos:
+  - trae `main` solo si el CI de ese commit está en verde (API pública de
+    GitHub, sin token);
+  - corre `npm ci` si cambió el lock y copia las unidades y el `Caddyfile` si
+    cambiaron;
+  - reinicia, y si Nexo no responde en 30 s, vuelve al commit anterior y anota
+    el fallido en `/var/lib/nexo/.commit-fallido`;
+  - todo dentro de `main()`, porque git reemplaza el script mientras corre.
+- **`Caddyfile`**: https de Let's Encrypt, HSTS de un año y
+  `X-Robots-Tag: noindex, nofollow` hasta los términos (Fase 3 de 8b).
+- **`nexo.service`** endurecido: corre como `nexo`, con `ProtectSystem=strict`,
+  y solo escribe en `/var/lib/nexo`. Heap de 384 MB.
+- **`nexo-respaldo.timer`**: respaldo diario a las 3:30 de la Argentina.
+  Se guardan 60 (`NEXO_BACKUP_KEEP`), sumados a los de cada arranque.
+- **`nexo-duckdns`**: avisa la IP cada 30 minutos, solo si existe
+  `/etc/nexo/duckdns.env` con el token. No está creado: el token es del
+  usuario, y la IP no cambia mientras exista la instancia.
+- **`server.js`:** `NEXO_HOST` (127.0.0.1 en el servidor) para que Node no
+  escuche en todas las interfaces. Va documentada en `.env.example`, junto con
+  `NEXO_URL_PUBLICA`.
+- **`.gitattributes`:** `deploy/**` siempre en LF, también en Windows.
+
+**Instalación real:**
+- **La base real:** copiada con `VACUUM INTO` desde una conexión de solo
+  lectura, sin parar el `npm start` del usuario. `integrity_check` ok, sin
+  errores de FK; tiene 4 negocios, 4 usuarios, 21 productos y 33 ventas.
+- **Las variables:** `/etc/nexo/nexo.env` salió del `.env` de la compu (solo
+  las de SMTP, sin mostrarlas) más las fijas del servidor.
+- **`NEXO_NEGOCIO_VENTAS=1`:** "Mi negocio" de `Solla_FAT`. Lo decidí yo, a
+  confirmar con el usuario: su decisión era "un negocio suyo".
+- **Versiones:** Node v22.23.4 y Caddy del repo estable.
+
+**Verificación:**
+- **Desde afuera:**
+  - `http://` da 308 a `https://`, y la landing responde 200 con HSTS,
+    `noindex` y la CSP de Nexo;
+  - responden `/app`, `sw.js`, Satoshi y `robots.txt`, con la URL pública;
+  - un login fallido da 401 JSON;
+  - el 3000 no se ve desde afuera.
+- **En el servidor:**
+  - `nexo` y `caddy` activos, Node en 127.0.0.1:3000;
+  - el respaldo del primer arranque está en `/var/lib/nexo/respaldos`;
+  - el mail sale: `probar-mail` mandó uno a la casilla de Nexo.
+- **En Chrome, a 390 px:** la landing y el login de `/app` se ven bien, sin
+  errores de consola.
+- **La actualización sola:** se probó con el commit de este mismo handoff, que
+  fue de PR a `main` y de ahí al servidor (ver el resultado en `handoff.md`).
+
+**Problemas en el camino:**
+- No hay `gh`: los PR se abren y se mergean con la API REST y el token de
+  `git credential fill`, sin mostrarlo.
+- La primera llamada a la API con el cuerpo como argumento dio "Problems
+  parsing JSON", por la codificación en Windows. Se arregló mandando el JSON
+  desde un archivo (`-d @archivo`).
+- El loop local que seguía la instalación nunca cortaba, porque `pgrep -f` se
+  encontraba a sí mismo. La instalación terminó bien igual, en unos 7
+  minutos.
