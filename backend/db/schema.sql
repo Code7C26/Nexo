@@ -947,12 +947,38 @@ CREATE TABLE IF NOT EXISTS usuarios (
   password_salt TEXT NOT NULL,
   debe_cambiar_password INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar_password IN (0,1)),
   fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
-  ultimo_acceso TEXT
+  ultimo_acceso TEXT,
+  -- Mail de la cuenta (hist. §102): se entra con él y es la forma de
+  -- recuperarla. NULL en las cuentas anteriores a §102, que lo cargan al
+  -- entrar. Se guarda en minúsculas; email_verificado es la fecha en que se
+  -- tocó el enlace, y vuelve a NULL si el mail cambia. El índice único va en
+  -- db/index.js, después del ALTER que suma estas columnas.
+  email TEXT,
+  email_verificado TEXT
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas
 -- distintas.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_usuario ON usuarios(LOWER(usuario));
+
+-- Enlaces de un solo uso que se mandan por mail (hist. §102): verificar el
+-- mail y, desde la Fase 2, recuperar la contraseña. Se guarda solo el
+-- SHA-256 del token: quien lea la base no puede usar un enlace vigente.
+-- email es a qué mail se mandó: un enlace de verificación deja de servir si
+-- la cuenta cambió de mail. Es de la cuenta, no de un negocio, por eso no
+-- lleva organizacion_id (igual que sesiones). Las horas van en UTC, como
+-- sesiones.expira: no son fechas de una operación.
+CREATE TABLE IF NOT EXISTS tokens_cuenta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('verificar_email','recuperar')),
+  token_hash TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  creado TEXT NOT NULL DEFAULT (datetime('now')),
+  vence TEXT NOT NULL,
+  usado TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tokens_cuenta_usuario ON tokens_cuenta(usuario_id, tipo);
 
 -- En qué negocios trabaja cada usuario, y con qué rol en cada uno (CLAUDE.md
 -- §28, hist. §77): un dueño con un comercio y un gimnasio entra con un solo

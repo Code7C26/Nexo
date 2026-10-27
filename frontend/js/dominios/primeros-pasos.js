@@ -101,7 +101,7 @@ function pasos(c) {
         },
     {
       titulo: "Sumá a alguien de tu equipo",
-      detalle: "Cada persona entra con su usuario, y ve lo que le corresponde a su rol.",
+      detalle: "Cada persona entra con su mail, y ve lo que le corresponde a su rol.",
       hecho: c.usuarios > 1,
       hash: "#/configuracion/usuarios"
     }

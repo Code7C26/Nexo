@@ -1842,6 +1842,17 @@ if (db.prepare('PRAGMA table_info(usuarios)').all().some((col) => col.name === '
   });
 }
 
+// Mail de la cuenta (hist. §102). Nulables: las cuentas de antes no tienen y
+// lo cargan al entrar. El índice único va acá y no en schema.sql, porque en
+// una base vieja schema.sql corre antes de que exista la columna. Parcial:
+// todas las cuentas viejas comparten el NULL.
+for (const columna of ['email TEXT', 'email_verificado TEXT']) {
+  if (!db.prepare('PRAGMA table_info(usuarios)').all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE usuarios ADD COLUMN ${columna}`);
+  }
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(LOWER(email)) WHERE email IS NOT NULL');
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

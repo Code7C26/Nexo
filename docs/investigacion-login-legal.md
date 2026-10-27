@@ -267,7 +267,8 @@ de este plan:
   casos ("le mandamos la invitación"), así Configuración no sirve para
   averiguar quién tiene cuenta en Nexo.
 
-**Fase 1 — mail en la cuenta y login con mail**
+**Fase 1 — mail en la cuenta y login con mail** (hecha, hist. §102; el alta
+lo recibe como `email_cuenta`, porque `email` ya era el mail del negocio)
 - `backend/mail.js`: hecho (sección 4).
 - `usuarios`: `email` (único sin importar mayúsculas cuando no es NULL) y
   `email_verificado` (fecha). Las dos nulables: las cuentas de hoy no tienen.

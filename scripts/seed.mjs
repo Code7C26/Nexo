@@ -270,8 +270,9 @@ async function principal() {
   try {
     const r = await sembrar(url, { empresa: op.empresa, prefijo: op.prefijo });
     console.log(`Empresa "${r.empresa}" sembrada en ${op.db ? path.resolve(op.db) : url}.`);
-    console.log(`  admin:    ${r.usuarios.admin} / ${PASSWORD_ADMIN}`);
-    console.log(`  empleado: ${r.usuarios.empleado} / ${PASSWORD_EMPLEADO}`);
+    // Se entra con el mail (hist. §102): el arnés le pone <usuario>@nexo.test.
+    console.log(`  admin:    ${r.usuarios.admin}@nexo.test / ${PASSWORD_ADMIN}`);
+    console.log(`  empleado: ${r.usuarios.empleado}@nexo.test / ${PASSWORD_EMPLEADO}`);
   } finally {
     await servidor?.cerrar();
   }

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §101);
+    siguiente número (hoy el último es §102);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,14 +21,18 @@
 
 ## Estado actual (27 de octubre de 2026)
 
-**Para retomar (próxima sesión): la Fase 1 de la etapa 8b**, con el diseño
-de la sección 5 de `docs/investigacion-login-legal.md`: el mail en la cuenta,
-`tokens_cuenta`, la verificación, el login con mail, la página obligatoria
-"Sumá tu mail" y los mails "+" de las cuentas de la demo. Lo hecho hasta acá
-está en hist. §101, **sin commitear** (mail.js, su test, probar-mail, el
-documento, el logo de perfil y los cambios de `.env.example`, `package.json`
-y estos dos handoffs). Falta que el usuario confirme que el mail de prueba
-llegó bien.
+**Para retomar (próxima sesión): la Fase 1b de la etapa 8b** (invitaciones
+por mail, cuentas sin negocio y el rebuild de `usuarios`), con el diseño de la
+sección 5 de `docs/investigacion-login-legal.md`. La Fase 1 (mail en la
+cuenta, verificación y login con mail) está hecha y commiteada (hist. §102).
+- **Lo que tiene que hacer el usuario:**
+  - **reiniciar su `npm start`**: el que corría desde la mañana tiene el
+    código viejo, aunque la base real ya está migrada;
+  - después, tocar los dos enlaces que llegaron a `nexosystem.app@gmail.com`
+    (cuentas `prueba` y `vendedor.prueba`);
+  - al entrar con su propia cuenta (`Solla_FAT`) va a ver "Sumá tu mail".
+- **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
+  y cómo se ve.
 
 **Nuevo: etapa 8b, login, mail, términos y edad** (8b en "Qué sigue").
 Pedida por el usuario el 27 de octubre, después de ver la landing ("quedó
@@ -45,15 +49,20 @@ la contraseña pierde su negocio.
   un cliente SMTP propio sobre `node:tls`, sin dependencia, con
   `plantillaMail()` para el cuerpo y `NEXO_MAIL=stub` para los tests
   (`backend/test/mail.test.js`, servidor SMTP falso). `npm run probar-mail`
-  manda uno de prueba; el primero salió bien. Falta todo lo demás de la
-  Fase 1: el mail en la cuenta, la verificación y entrar con el mail.
+  manda uno de prueba (hist. §101).
+- **Fase 1, hecha (hist. §102):**
+  - el mail en la cuenta, con verificación por enlace;
+  - el login y el alta con mail;
+  - la página obligatoria "Sumá tu mail" para las cuentas de antes;
+  - en Mi cuenta, cambiar el mail;
+  - el aviso en el Resumen.
 - **Decisión del usuario (27 de octubre): cada persona tiene su cuenta con
   mail y se entra con el mail.** El admin ya no crea empleados con usuario y
   contraseña: los invita por mail desde Configuración, y la persona acepta la
-  solicitud (solo a mails verificados). Diseño, migración (incluido un
-  rebuild de `usuarios`) y qué pasa con las cuentas de hoy y las de la demo:
-  sección 5 del documento, Fases 1 y 1b. Cuando se implemente, corregir acá
-  las decisiones vigentes de hist. §45 y §77 sobre el usuario único y el login.
+  solicitud (solo a mails verificados). Eso es la Fase 1b (diseño y rebuild
+  de `usuarios` en la sección 5 del documento). Hasta entonces,
+  `POST /api/usuarios` sigue creando empleados con usuario y contraseña, y
+  ellos suman su mail al entrar.
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
   frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
   topes.
@@ -97,6 +106,11 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
   `prueba` / `prueba1234`, con dos negocios: "Comercio prueba" (#3) y "Gym
   prueba" (#4). Empleados: `vendedor.prueba` / `vendedor1234` (comercio) y
   `recepcion.prueba` / `recepcion1234` (gym, debe cambiar la clave al entrar).
+  - **Mails (hist. §102):** `prueba` tiene `nexosystem.app+prueba@gmail.com` y
+    `vendedor.prueba` tiene `nexosystem.app+vendedor@gmail.com`. Entran con el
+    mail o con el usuario de siempre.
+  - `recepcion.prueba` no tiene mail: al entrar pide la clave nueva y después
+    el mail. Si se prueba, conviene usar `nexosystem.app+recepcion@gmail.com`.
   Todo se cargó por la API: productos con talles, lista mayorista, compras
   recibidas con envío, ventas de contado y a cuenta corriente, presupuestos,
   devolución, gastos, turnos de caja (uno cerrado con $500 de faltante y otro
@@ -239,7 +253,8 @@ incluido.
 - Node 22.13+ (`engines`, `.nvmrc`). `npm start`, `npm run dev` y
   `npm run backup` leen `.env` de la raíz si existe (`--env-file-if-exists`;
   plantilla en `.env.example`, hist. §59). Lo que ya está en el entorno le gana
-  al archivo. `npm test` no lo lee. Hoy no hay `.env` en la máquina de Santino.
+  al archivo. `npm test` no lo lee. En la máquina de Santino, `.env` tiene la
+  clave del mail (hist. §101).
 - `GEMINI_API_KEY`: sin ella el asistente responde 503 y el resto funciona
   igual.
 - `NEXO_TRUST_PROXY=<n>` (cantidad de proxies de confianza delante, normalmente
@@ -259,9 +274,11 @@ con su admin (adopta la organización sembrada).
 Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Multi-empresa y seguridad**
-- **El nombre de usuario es único en todo Nexo** y el login no pide empresa
-  (hist. §45). Por eso el chequeo de duplicado de `POST /api/usuarios` es
-  global a propósito.
+- **Se entra con el mail, y es único en todo Nexo** (hist. §102, reemplaza al
+  "usuario único" de §45). El login no pide empresa. El nombre de usuario
+  sigue siendo único y global (`POST /api/usuarios` lo controla así a
+  propósito). En una cuenta nueva el usuario es su mail; las de antes entran
+  también con el usuario viejo.
 - **Aislamiento entre empresas:** filtro plano `AND organizacion_id = ?` con la
   empresa de la sesión, nunca `(? IS NULL OR ...)`. Un id de otra empresa da el
   mismo 404/400 que uno inexistente (hist. §40–§49).
@@ -519,8 +536,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - `usuarios.organizacion_id` es el negocio donde se creó la cuenta y no
     decide nada.
   - El negocio de cada request sale de `sesiones.organizacion_id`.
-- **El nombre de usuario sigue siendo único en todo Nexo** y el login no pide
-  negocio: entra al último que se usó.
+- **El login no pide negocio** (con el mail o el usuario viejo, hist. §102):
+  entra al último que se usó.
 - **Nombre y contraseña son de la persona.** Un admin solo los cambia si
   administra todos los negocios de esa persona (409 si no). Sacar esa regla
   deja tomar el negocio de otro.
@@ -536,6 +553,37 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   clave nueva de ese tipo sigue la misma regla.
 - **Cambiar de negocio recarga la página** en la vista de inicio. Es el
   reseteo de la memoria de la app, como en el logout.
+
+**Cuenta y mail (hist. §102)**
+- **Se entra con el mail:**
+  - el login acepta `email` o `usuario` y busca por los dos; si coinciden
+    cuentas distintas, gana la del mail;
+  - el alta lo recibe como `email_cuenta`, porque `email` es el del negocio
+    (comprobantes), en el alta y en "Agregar negocio".
+- **En una cuenta nueva, `usuarios.usuario` es su mail.** Al cambiar el mail,
+  si el usuario era el mail viejo, pasa al nuevo: si no, el viejo seguiría
+  entrando y nadie más podría usarlo.
+- **Una cuenta sin mail no opera** (403 `falta_email` en `autenticar`, salvo
+  `/auth/email`, `/auth/logout` y `/auth/cambiar-password`). `sesion.js` la
+  manda a "Sumá tu mail" con `seguirCon()`: primero la contraseña forzada,
+  después el mail.
+- **Sin verificar se trabaja igual**, con el aviso en el Resumen y en Mi
+  cuenta. La verificación es un `GET /verificar-mail?token=`:
+  - vale 48 h, y solo el último enlace;
+  - deja de valer si la cuenta cambió de mail;
+  - un enlace ya usado sigue diciendo "verificado".
+- **Los tokens de mail se guardan como SHA-256** en `tokens_cuenta`, sin
+  `organizacion_id` (es de la cuenta). La Fase 2 (recuperar) usa la misma
+  tabla con `tipo = 'recuperar'`.
+- **Los mails salen después de responder** (`mandarSinEsperar`): un fallo de
+  Gmail no corta la operación y queda en el log. Los enlaces usan
+  `urlPublica(req)`. Fuera del navegador (un script contra otro puerto),
+  definir `NEXO_URL_PUBLICA`.
+- **Topes:** 5 envíos por hora y por cuenta (cambio y reenvío juntos), con
+  `registroExcedido('mail:<id>')`.
+- **Tests:** el arnés corre con `NEXO_MAIL=stub` y lee los mails con
+  `leerMails()` y `ultimoEnlace()`. Cada cuenta del arnés es
+  `<usuario>@nexo.test`.
 
 **Planes de Nexo (hist. §98)**
 - **Precios, textos y topes viven solo en `backend/planes.js`.** La landing
@@ -721,7 +769,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    - anotar el md5 de la base real antes y después (los scripts lo hacen
      solos).
    - Para una base con datos: `npm run seed -- --db <ruta>` (empresa "Baseline
-     SA", `admin1`/`clave-segura-1` y `emp1`/`clave-segura-2`).
+     SA", `admin1@nexo.test`/`clave-segura-1` y
+     `emp1@nexo.test`/`clave-segura-2`).
 2. **Regresión:** `npm run regresion`. Compara el árbol de trabajo contra
    `HEAD` (`-- --ref <ref>` para otra) con la misma base sembrada, en todos los
    `GET` y con los dos roles. `-- --db <ruta>` parte de una copia de esa base.
@@ -1017,7 +1066,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    antes de la Fase 4 de publicación: sin esto la landing no se abre al
    público). Investigación y plan en `docs/investigacion-login-legal.md`:
    - ~~`backend/mail.js`~~ hecho (hist. §101).
-   - Fase 1: mail en la cuenta, verificado, y login con mail.
+   - ~~Fase 1: mail en la cuenta, verificado, y login con mail~~ hecha (hist.
+     §102).
    - Fase 1b: invitaciones por mail desde Configuración, cuentas sin negocio
      y rebuild de `usuarios` (`organizacion_id` nulable).
    - Fase 2: recuperar la contraseña (`tokens_cuenta`, enlace de un solo uso

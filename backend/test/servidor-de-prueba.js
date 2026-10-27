@@ -5,7 +5,7 @@
 // scripts/ (seed, regresion-head) lo reusan con otro backend o una base dada.
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -68,9 +68,11 @@ export function crearCliente(url) {
 // `backendDir` levanta otro árbol (un worktree de HEAD, en regresion-head);
 // `dbPath` usa una base que ya existe. Esa base no se borra al cerrar: solo
 // la carpeta temporal propia del arnés. `env` suma variables (por ejemplo,
-// NEXO_ZONA_HORARIA).
+// NEXO_ZONA_HORARIA). Los mails no salen: NEXO_MAIL=stub los guarda en
+// `<dir>/mails`, y leerMails() los devuelve (hist. §102).
 export async function levantarServidor({ backendDir = backendPropio, dbPath, env = {} } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'nexo-api-'));
+  const carpetaMails = path.join(dir, 'mails');
   const puerto = await puertoLibre();
   const url = `http://127.0.0.1:${puerto}`;
   const hijo = spawn(process.execPath, ['server.js'], {
@@ -82,6 +84,8 @@ export async function levantarServidor({ backendDir = backendPropio, dbPath, env
       NEXO_BACKUP: 'off',
       NEXO_INTERPRETE: 'stub',
       NODE_ENV: 'test',
+      NEXO_MAIL: 'stub',
+      NEXO_MAIL_DIR: carpetaMails,
       ...env
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -131,24 +135,56 @@ export async function levantarServidor({ backendDir = backendPropio, dbPath, env
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 
-  return { url, dir, cerrar, salida: () => salida };
+  // Los mails guardados, del más viejo al más nuevo; con `para`, solo los de
+  // ese destinatario.
+  function leerMails(para) {
+    let archivos;
+    try {
+      archivos = readdirSync(carpetaMails).sort();
+    } catch {
+      return [];
+    }
+    const mails = archivos.map((a) => JSON.parse(readFileSync(path.join(carpetaMails, a), 'utf8')));
+    return para ? mails.filter((m) => m.para === para) : mails;
+  }
+
+  return { url, dir, cerrar, salida: () => salida, leerMails };
+}
+
+// El token del último enlace que se mandó a un mail (`ruta` sin la barra:
+// 'verificar-mail').
+export function ultimoEnlace(servidor, para, ruta = 'verificar-mail') {
+  const mails = servidor.leerMails(para);
+  const texto = mails.at(-1)?.texto ?? '';
+  const encontrado = texto.match(new RegExp(`/${ruta}[?]token=([A-Za-z0-9_-]+)`));
+  return encontrado?.[1] ?? null;
 }
 
 // Crea una empresa con su admin por el registro público y devuelve el cliente
 // ya logueado como ese admin. Nace en Pro (la prueba de 14 días, hist. §98)
 // para que los topes de Gratis no se crucen con lo que prueba cada test; los
-// de planes piden `plan: 'gratis'`.
-export async function registrarEmpresa(url, { empresa, usuario, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro' }) {
+// de planes piden `plan: 'gratis'`. La cuenta se crea con el mail (hist.
+// §102): sin `email`, `<usuario>@nexo.test`, así los tests siguen nombrando a
+// cada cuenta por su usuario de siempre.
+export async function registrarEmpresa(
+  url,
+  { empresa, usuario, email = `${usuario}@nexo.test`, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro' }
+) {
   const cliente = crearCliente(url);
-  const r = await cliente.post('/api/auth/registro', { empresa, usuario, nombre, password, plan });
+  const r = await cliente.post('/api/auth/registro', { empresa, email_cuenta: email, nombre, password, plan });
   if (r.status !== 201) throw new Error(`Registro falló (${r.status}): ${r.texto}`);
   return cliente;
 }
 
 // Alta de un empleado por el admin y primer login con cambio de contraseña
-// obligatorio. Devuelve el cliente ya logueado como empleado (o como otro
-// admin, con `rol`).
-export async function crearEmpleado(url, admin, { usuario, nombre = 'Empleado', password = 'clave-segura-2', rol = 'empleado' }) {
+// obligatorio, y después "Sumá tu mail" (hist. §102), con `<usuario>@nexo.test`
+// si no viene `email`. Devuelve el cliente ya logueado como empleado (o como
+// otro admin, con `rol`).
+export async function crearEmpleado(
+  url,
+  admin,
+  { usuario, email = `${usuario}@nexo.test`, nombre = 'Empleado', password = 'clave-segura-2', rol = 'empleado' }
+) {
   const alta = await admin.post('/api/usuarios', { usuario, nombre, password: 'clave-temporal-1', rol });
   if (alta.status !== 201) throw new Error(`Alta de empleado falló (${alta.status}): ${alta.texto}`);
   const cliente = crearCliente(url);
@@ -156,5 +192,7 @@ export async function crearEmpleado(url, admin, { usuario, nombre = 'Empleado', 
   if (login.status !== 200) throw new Error(`Login del empleado falló (${login.status}): ${login.texto}`);
   const cambio = await cliente.post('/api/auth/cambiar-password', { actual: 'clave-temporal-1', nueva: password });
   if (cambio.status >= 300) throw new Error(`Cambio de contraseña falló (${cambio.status}): ${cambio.texto}`);
+  const mail = await cliente.post('/api/auth/email', { email });
+  if (mail.status !== 200) throw new Error(`Sumar el mail falló (${mail.status}): ${mail.texto}`);
   return cliente;
 }

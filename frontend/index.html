@@ -226,6 +226,8 @@
       <section class="view" data-view="dashboard">
         <!-- La prueba que termina o un tope del plan que se acerca (dominios/plan.js). -->
         <div class="aviso-plan" id="avisoPlan" role="status" hidden></div>
+        <!-- El mail de la cuenta sin confirmar (hist. §102, dominios/perfil.js). -->
+        <div class="aviso-plan" id="avisoMail" role="status" hidden></div>
         <!-- Guía de primeros pasos para una cuenta nueva (dominios/primeros-pasos.js). -->
         <section class="panel primeros-pasos" id="primerosPasos" aria-label="Primeros pasos" hidden></section>
         <section class="panel para-hoy-resumen" id="paraHoyResumen" data-modulo="crm" aria-labelledby="paraHoyResumenTitulo" hidden></section>
@@ -2985,7 +2987,7 @@
                 <table class="ledger-table">
                   <thead>
                     <tr>
-                      <th scope="col">Usuario</th>
+                      <th scope="col">Mail</th>
                       <th scope="col">Nombre</th>
                       <th scope="col">Rol</th>
                       <th scope="col">Estado</th>
@@ -3218,8 +3220,34 @@
             <section class="config-pagina" data-seccion="cuenta" aria-labelledby="configCuentaTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configCuentaTitulo" tabindex="-1">Mi cuenta</h2>
-                <p>Tu usuario es el mismo en todos tus negocios.</p>
+                <p>Tu cuenta es la misma en todos tus negocios.</p>
               </header>
+              <!-- El mail de la cuenta (hist. §102): con él se entra y se
+                   recupera la cuenta. Cambiarlo pide la contraseña. -->
+              <form class="form config-tarjeta" id="formCambioMail" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Mail</p>
+                  <div class="perfil-identidad">
+                    <strong id="perfilEmail">—</strong>
+                    <span class="status" id="perfilEmailEstado" hidden></span>
+                  </div>
+                  <p class="form-note" id="perfilEmailNota" hidden>
+                    Te mandamos un enlace para confirmarlo. Si no lo ves, buscalo en el correo no deseado.
+                    <button type="button" class="btn-link" id="btnReenviarMail">Mandarlo de nuevo</button>
+                  </p>
+                  <p class="form-note" id="cambioMailError" hidden></p>
+                  <label>Mail nuevo
+                    <input type="email" id="perfilEmailNuevo" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" />
+                  </label>
+                  <label>Tu contraseña
+                    <input type="password" id="perfilEmailPassword" autocomplete="current-password" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Te mandamos un enlace al mail nuevo, y un aviso al de ahora.</p>
+                  <button type="submit" class="btn btn-primary">Cambiar mi mail</button>
+                </div>
+              </form>
               <form class="form config-tarjeta" id="formCambioPassword">
                 <div class="config-tarjeta-cuerpo">
                   <div class="perfil-identidad">
@@ -3241,7 +3269,7 @@
               </form>
               <div class="form config-tarjeta">
                 <div class="config-tarjeta-pie config-cuenta-salir">
-                  <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el usuario y la contraseña.</p>
+                  <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el mail y la contraseña.</p>
                   <button type="button" class="btn btn-secundario" id="btnCerrarSesion">
                     <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#log-out"></use></svg> Cerrar sesión
                   </button>
@@ -3321,7 +3349,9 @@
        accesibilidad de modales se instala sobre los .modal que ya existen
        al cargar app.js — que con este gate carga después. Los dos
        formularios son hermanos, y sesion.js alterna cuál se muestra con
-       hidden. Crear una cuenta es la pantalla de abajo (#altaPantalla). -->
+       hidden. Crear una cuenta es la pantalla de abajo (#altaPantalla).
+       Se entra con el mail (hist. §102). El campo no es type="email" a
+       propósito: una cuenta de antes de §102 todavía entra con su usuario. -->
   <div class="sesion-pantalla" id="sesionPantalla" hidden>
     <div class="sesion-card">
       <img src="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" alt="" class="sesion-logo" />
@@ -3329,9 +3359,10 @@
       <p class="sesion-bajada">Stock, ventas, caja y cuentas de tu negocio, en un solo lugar.</p>
 
       <form id="formLogin" class="form">
+        <p class="sesion-aviso" id="loginAviso" role="status" hidden></p>
         <p class="form-note" id="loginError" hidden></p>
-        <label>Usuario
-          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg><input type="text" id="loginUsuario" autocomplete="username" required /></span>
+        <label>Mail
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="text" id="loginUsuario" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" required /></span>
         </label>
         <label>Contraseña
           <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="loginPassword" autocomplete="current-password" required /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
@@ -3350,6 +3381,21 @@
           <input type="password" id="cambioForzadoNueva" autocomplete="new-password" minlength="8" required />
         </label>
         <button type="submit" class="btn btn-primary">Cambiar contraseña</button>
+      </form>
+
+      <!-- Obligatoria para una cuenta de antes de §102: el backend no la
+           deja operar sin mail (403 falta_email). -->
+      <form id="formSumarMail" class="form" hidden novalidate>
+        <div class="sesion-paso">
+          <h2>Sumá tu mail</h2>
+          <p>Desde ahora entrás a Nexo con tu mail, y es la forma de recuperar tu cuenta si algún día te olvidás la contraseña. Te mandamos un enlace para confirmarlo.</p>
+        </div>
+        <p class="form-note" id="sumarMailError" hidden></p>
+        <label>Tu mail
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="sumarMailEmail" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" required /></span>
+        </label>
+        <button type="submit" class="btn btn-primary">Guardar y seguir</button>
+        <button type="button" class="btn-link" id="sumarMailSalir">Cerrar sesión</button>
       </form>
     </div>
   </div>
@@ -3385,9 +3431,9 @@
           <label>Tu nombre
             <input type="text" id="altaNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
           </label>
-          <label>Usuario
-            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg><input type="text" id="altaUsuario" autocomplete="username" maxlength="100" autocapitalize="none" spellcheck="false" aria-describedby="altaUsuarioAyuda" /></span>
-            <span class="campo-ayuda" id="altaUsuarioAyuda">Con él vas a ingresar. Sin espacios; por ejemplo, marta.</span>
+          <label>Tu mail
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="altaEmailCuenta" autocomplete="email" maxlength="254" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" aria-describedby="altaEmailCuentaAyuda" /></span>
+            <span class="campo-ayuda" id="altaEmailCuentaAyuda">Con él vas a ingresar, y te mandamos un enlace para confirmarlo.</span>
           </label>
           <label>Contraseña
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>

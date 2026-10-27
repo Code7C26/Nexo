@@ -2,9 +2,10 @@ import express from 'express';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
+import { esMailValido, mandarMail, plantillaMail } from './mail.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
@@ -119,6 +120,49 @@ app.get('/', (req, res) => {
 app.get('/app', (req, res) => res.sendFile(path.join(FRONTEND, 'index.html')));
 app.get('/index.html', (req, res) => res.redirect(301, '/app'));
 app.get('/privacidad', (req, res) => res.sendFile(path.join(FRONTEND, 'privacidad.html')));
+
+// El enlace del mail de verificación (hist. §102). Es un GET porque se toca
+// desde el programa de mail; si un antivirus del mail lo abre antes, solo
+// verifica antes de tiempo, y quien lo toque después ve "verificado" igual.
+// Vale si no venció y si la cuenta sigue teniendo el mismo mail al que se
+// mandó. Redirige a la app, que muestra el resultado (sesion.js).
+app.get('/verificar-mail', (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  const fila = token
+    ? db
+        .prepare(
+          `SELECT t.id, t.usuario_id, t.usado, u.email_verificado
+             FROM tokens_cuenta t
+             JOIN usuarios u ON u.id = t.usuario_id
+            WHERE t.token_hash = ? AND t.tipo = 'verificar_email'
+              AND t.vence > datetime('now') AND u.email = t.email`
+        )
+        .get(hashToken(token))
+    : null;
+  if (!fila) return res.redirect(302, '/app?mail=invalido');
+  if (fila.usado) return res.redirect(302, fila.email_verificado ? '/app?mail=verificado' : '/app?mail=invalido');
+
+  withTransaction(() => {
+    db.prepare("UPDATE tokens_cuenta SET usado = datetime('now') WHERE id = ?").run(fila.id);
+    db.prepare("UPDATE usuarios SET email_verificado = datetime('now') WHERE id = ?").run(fila.usuario_id);
+    // Sin sesión: va al último negocio que usó, para que se vea en su auditoría.
+    const negocio = db
+      .prepare(
+        `SELECT organizacion_id FROM usuario_organizaciones WHERE usuario_id = ?
+          ORDER BY ultimo_acceso IS NULL, ultimo_acceso DESC LIMIT 1`
+      )
+      .get(fila.usuario_id);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: fila.usuario_id,
+      usuario_id: fila.usuario_id,
+      organizacion_id: negocio?.organizacion_id ?? null,
+      detalle: 'Verificó su mail'
+    });
+  });
+  res.redirect(302, '/app?mail=verificado');
+});
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\n\nSitemap: ${urlPublica(req)}/sitemap.xml\n`);
 });
@@ -244,7 +288,8 @@ function sesionValida(token) {
   const fila = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
-              usuarios.debe_cambiar_password, sesiones.organizacion_id
+              usuarios.debe_cambiar_password, sesiones.organizacion_id,
+              usuarios.email, usuarios.email_verificado
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
          JOIN usuario_organizaciones pertenencia
@@ -261,9 +306,19 @@ function sesionValida(token) {
 // Lo que el frontend sabe del usuario de la sesión, con la misma forma en
 // estado, login y registro. organizacion_id es el negocio activo: sesion.js lo
 // marca en <html> para separar por negocio lo que se guarda en el navegador y
-// para darse cuenta si otra pestaña cambió de negocio.
-function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id }) {
-  return { id, usuario, nombre, rol, debe_cambiar_password: !!debe_cambiar_password, organizacion_id };
+// para darse cuenta si otra pestaña cambió de negocio. Sin email, sesion.js
+// muestra "Sumá tu mail" antes de arrancar la app (hist. §102).
+function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id, email, email_verificado }) {
+  return {
+    id,
+    usuario,
+    nombre,
+    rol,
+    debe_cambiar_password: !!debe_cambiar_password,
+    organizacion_id,
+    email: email ?? null,
+    email_verificado: !!email_verificado
+  };
 }
 
 // Cuándo entró por última vez a un negocio: el login vuelve al último. Con
@@ -281,6 +336,57 @@ function renovarSesion(token) {
   db.prepare(`UPDATE sesiones SET expira = datetime('now', '+${SESION_HORAS} hours') WHERE token = ?`).run(
     token
   );
+}
+
+/* ---------- Mail de la cuenta (hist. §102) ---------- */
+
+// Se entra con el mail (docs/investigacion-login-legal.md, sección 5). Se
+// guarda en minúsculas: nadie distingue "Ana@" de "ana@" al tipear.
+const normalizarMail = (valor) => (typeof valor === 'string' ? valor.trim().toLowerCase() : '');
+
+// Un mail que ya usa otra cuenta, como mail o como nombre de usuario: el login
+// busca por los dos, y una cuenta nueva tiene su mail como usuario.
+function mailEnUso(email, usuarioId = 0) {
+  return !!db
+    .prepare('SELECT 1 FROM usuarios WHERE id != ? AND (LOWER(email) = ? OR LOWER(usuario) = ?)')
+    .get(usuarioId, email, email);
+}
+
+const VERIFICACION_HORAS = 48;
+const hashToken = (token) => createHash('sha256').update(token).digest('hex');
+
+// Un enlace nuevo reemplaza a los anteriores del mismo tipo que no se usaron:
+// solo vale el último mail.
+function crearTokenCuenta(usuarioId, tipo, email, horas) {
+  const token = randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM tokens_cuenta WHERE usuario_id = ? AND tipo = ? AND usado IS NULL').run(usuarioId, tipo);
+  db.prepare(
+    `INSERT INTO tokens_cuenta (usuario_id, tipo, token_hash, email, vence)
+     VALUES (?, ?, ?, ?, datetime('now', ?))`
+  ).run(usuarioId, tipo, hashToken(token), email, `+${horas} hours`);
+  return token;
+}
+
+// El mail sale después de responder: Gmail tarda un par de segundos, y si
+// falla (o no está configurado) la operación ya quedó hecha. Queda en el log;
+// la persona puede pedir otro desde Mi cuenta.
+function mandarSinEsperar(datos) {
+  mandarMail(datos).catch((err) => console.error(`No se pudo mandar el mail "${datos.asunto}": ${err.message}`));
+}
+
+function mandarVerificacion(req, { usuarioId, nombre, email }) {
+  const token = crearTokenCuenta(usuarioId, 'verificar_email', email, VERIFICACION_HORAS);
+  const { texto, html } = plantillaMail({
+    titulo: 'Confirmá tu mail',
+    parrafos: [
+      `Hola, ${nombre}.`,
+      'Tocá el botón para confirmar que este mail es tuyo. Con él entrás a Nexo y, si algún día te olvidás la contraseña, recuperás tu cuenta.',
+      `El enlace vence en ${VERIFICACION_HORAS} horas.`
+    ],
+    boton: { texto: 'Confirmar mi mail', url: `${urlPublica(req)}/verificar-mail?token=${token}` },
+    pie: 'Si no creaste una cuenta en Nexo, podés ignorar este mail.'
+  });
+  mandarSinEsperar({ para: email, asunto: 'Confirmá tu mail de Nexo', texto, html });
 }
 
 // Wrapper de registrarAuditoria que agrega automáticamente quién operó.
@@ -317,6 +423,9 @@ function auditar(req, datos) {
   });
 }
 
+// Lo único que puede hacer una cuenta sin mail (ver autenticar).
+const RUTAS_SIN_MAIL = new Set(['/auth/email', '/auth/logout', '/auth/cambiar-password']);
+
 function autenticar(req, res, next) {
   const token = leerCookie(req, COOKIE_SESION);
   const sesion = sesionValida(token);
@@ -335,6 +444,12 @@ function autenticar(req, res, next) {
   // adentro (es el remanente después del mount de app.use('/api', ...)).
   if (sesion.debe_cambiar_password && req.path !== '/auth/cambiar-password' && req.path !== '/auth/logout') {
     return res.status(403).json({ error: 'Tenés que cambiar tu contraseña antes de seguir.' });
+  }
+  // Lo mismo con el mail (hist. §102): una cuenta de antes de §102 lo carga
+  // antes de operar, porque sin mail no puede recuperar la cuenta. El código
+  // le dice al frontend que muestre "Sumá tu mail".
+  if (!sesion.email && !RUTAS_SIN_MAIL.has(req.path)) {
+    return res.status(403).json({ error: 'Sumá tu mail antes de seguir.', codigo: 'falta_email' });
   }
   next();
 }
@@ -470,15 +585,19 @@ app.get('/api/auth/estado', (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
-  const { usuario, password } = req.body ?? {};
+  // Se entra con el mail (hist. §102). Las cuentas de antes de §102 también
+  // con su nombre de usuario, para no dejar a nadie afuera: llega en el mismo
+  // campo, como `email` o como `usuario`.
+  const { password } = req.body ?? {};
+  const usuario = req.body?.email || req.body?.usuario;
   if (!usuario || !password) {
-    return res.status(400).json({ error: 'Usuario y contraseña son obligatorios.' });
+    return res.status(400).json({ error: 'Mail y contraseña son obligatorios.' });
   }
   // Sin sesión todavía: un tipo inesperado (`usuario: 123`) reventaba en
   // `.toLowerCase()` como 500 con stack en el log, y un usuario de 90 KB se
   // guardaba entero como clave del mapa de intentos y en la auditoría.
-  if (typeof usuario !== 'string' || typeof password !== 'string' || usuario.length > 100 || password.length > 1000) {
-    return res.status(400).json({ error: 'Usuario o contraseña inválidos.' });
+  if (typeof usuario !== 'string' || typeof password !== 'string' || usuario.length > 254 || password.length > 1000) {
+    return res.status(400).json({ error: 'Mail o contraseña inválidos.' });
   }
   if (bloqueado(usuario) || ipBloqueada(req.ip)) {
     return res.status(429).json({ error: 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.' });
@@ -486,25 +605,28 @@ app.post('/api/auth/login', (req, res) => {
 
   // El usuario con el negocio en el que entra: el último que usó entre los que
   // tiene activos (hist. §77). Sin ninguno activo es como si no existiera, igual
-  // que antes un usuario dado de baja.
+  // que antes un usuario dado de baja. Por el mail o por el usuario viejo; si
+  // las dos cosas coinciden con cuentas distintas, gana la del mail.
   const fila = db
     .prepare(
-      `SELECT usuarios.id, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
-              usuarios.debe_cambiar_password, pertenencia.organizacion_id, pertenencia.rol
+      `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
+              usuarios.debe_cambiar_password, usuarios.email, usuarios.email_verificado,
+              pertenencia.organizacion_id, pertenencia.rol
          FROM usuarios
          JOIN usuario_organizaciones pertenencia
            ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
-        WHERE LOWER(usuarios.usuario) = LOWER(?)
-        ORDER BY pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
+        WHERE LOWER(usuarios.email) = LOWER(?1) OR LOWER(usuarios.usuario) = LOWER(?1)
+        ORDER BY COALESCE(LOWER(usuarios.email) = LOWER(?1), 0) DESC,
+                 pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
         LIMIT 1`
     )
-    .get(usuario);
+    .get(usuario.trim());
 
   // Mensaje idéntico para "no existe" y "contraseña mala" — no hay que
   // darle a quien intenta loguearse ninguna pista de cuál de las dos fue.
   // Se verifica igual contra HASH_DUMMY cuando no existe, para que el
   // tiempo de respuesta tampoco lo revele.
-  const MENSAJE_ERROR = 'Usuario o contraseña incorrectos.';
+  const MENSAJE_ERROR = 'Mail o contraseña incorrectos.';
 
   if (!fila) {
     verificarPassword(password, HASH_DUMMY.hash, HASH_DUMMY.salt);
@@ -554,7 +676,7 @@ app.post('/api/auth/login', (req, res) => {
     detalle: 'Inició sesión'
   });
 
-  res.json({ usuario: datosUsuario({ ...fila, usuario }) });
+  res.json({ usuario: datosUsuario(fila) });
 });
 
 // Rate limit del registro, por IP y en memoria (mismo criterio que
@@ -641,29 +763,35 @@ function sumarAlNegocio(usuarioId, organizacionId, rol) {
 // primer admin. Reemplaza al viejo /api/auth/bootstrap, que era el caso
 // particular "instalación nueva, primera empresa".
 //
-// Riesgo aceptado y documentado acá para que no se lea como un olvido: no hay
-// verificación de email ni captcha (requieren un servicio externo), solo el
-// rate limit por IP de arriba. Tampoco hay forma de apagar el registro
-// público; ver "Qué sigue" en handoff.md.
+// Riesgo aceptado y documentado acá para que no se lea como un olvido: la
+// cuenta se crea y se usa antes de verificar el mail (el enlace llega por
+// mail y la app avisa hasta que se toca, hist. §102), y no hay captcha, solo
+// el rate limit por IP de arriba. Apagar el registro público es la Fase 4 de
+// la etapa 8b (handoff.md).
 app.post('/api/auth/registro', (req, res) => {
   if (registroExcedido(req.ip)) {
     return res.status(429).json({ error: 'Demasiados intentos de registro. Probá de nuevo más tarde.' });
   }
 
   const empresa = String(req.body?.empresa ?? '').trim();
-  const usuario = String(req.body?.usuario ?? '').trim();
+  // La cuenta se crea con el mail (hist. §102). Llega como `email_cuenta`
+  // porque `email` es el del negocio, el que va en los comprobantes (igual que
+  // en "Agregar negocio"). Por dentro, el nombre de usuario de una cuenta nueva
+  // es su mail: la columna sigue NOT NULL UNIQUE sin reconstruir la tabla.
+  const email = normalizarMail(req.body?.email_cuenta);
   const nombre = String(req.body?.nombre ?? '').trim();
   const password = String(req.body?.password ?? '');
-  if (!empresa || !usuario || !nombre || !password) {
-    return res.status(400).json({ error: 'Negocio, usuario, nombre y contraseña son obligatorios.' });
+  if (!empresa || !email || !nombre || !password) {
+    return res.status(400).json({ error: 'Negocio, mail, nombre y contraseña son obligatorios.' });
   }
-  // Mismos topes que el login para el usuario y la contraseña.
-  if (usuario.length > 100 || password.length > 1000 || nombre.length > 120) {
-    return res.status(400).json({ error: 'El nombre, el usuario o la contraseña son demasiado largos.' });
+  // Mismos topes que el login para la contraseña.
+  if (password.length > 1000 || nombre.length > 120) {
+    return res.status(400).json({ error: 'El nombre o la contraseña son demasiado largos.' });
   }
-  if (/\s/.test(usuario)) {
-    return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
+  if (!esMailValido(email)) {
+    return res.status(400).json({ error: 'El mail no es válido.' });
   }
+  const usuario = email;
   if (password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
@@ -682,11 +810,10 @@ app.post('/api/auth/registro', (req, res) => {
   }
   const planVence = PLANES[plan].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null;
 
-  // Global a propósito: el nombre de usuario es único en todo Nexo y el login
-  // no pide empresa (hist. §45).
-  const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
-  if (existe) {
-    return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
+  // Global a propósito: el mail es único en todo Nexo y el login no pide
+  // empresa (hist. §45, §102).
+  if (mailEnUso(email)) {
+    return res.status(409).json({ error: 'Ya hay una cuenta con ese mail. Entrá con él, o usá otro.' });
   }
 
   let usuarioId;
@@ -712,10 +839,10 @@ app.post('/api/auth/registro', (req, res) => {
     db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, planVence, orgId);
     const info = db
       .prepare(
-        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
-         VALUES (?, ?, ?, ?, ?, 0)`
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email)
+         VALUES (?, ?, ?, ?, ?, 0, ?)`
       )
-      .run(orgId, usuario, nombre, hash, salt);
+      .run(orgId, usuario, nombre, hash, salt, email);
     usuarioId = Number(info.lastInsertRowid);
     sumarAlNegocio(usuarioId, orgId, 'admin');
     marcarAcceso(usuarioId, orgId);
@@ -741,8 +868,18 @@ app.post('/api/auth/registro', (req, res) => {
 
   const token = crearSesion(usuarioId, orgId);
   ponerCookieSesion(res, token);
+  mandarVerificacion(req, { usuarioId, nombre, email });
   res.status(201).json({
-    usuario: datosUsuario({ id: usuarioId, usuario, nombre, rol: 'admin', debe_cambiar_password: 0, organizacion_id: orgId })
+    usuario: datosUsuario({
+      id: usuarioId,
+      usuario,
+      nombre,
+      rol: 'admin',
+      debe_cambiar_password: 0,
+      organizacion_id: orgId,
+      email,
+      email_verificado: null
+    })
   });
 });
 
@@ -9795,6 +9932,89 @@ app.post('/api/auth/cambiar-password', (req, res) => {
   res.status(204).end();
 });
 
+// Sumar o cambiar el mail de la cuenta (hist. §102). La primera vez es la
+// página obligatoria "Sumá tu mail" y no pide la contraseña (recién entró con
+// ella); cambiarlo sí, porque con el mail se recupera la cuenta: alguien que
+// encuentra una sesión abierta no puede quedársela. El mail nuevo queda sin
+// verificar, y al anterior le llega un aviso.
+app.post('/api/auth/email', (req, res) => {
+  const email = normalizarMail(req.body?.email);
+  if (!esMailValido(email)) {
+    return res.status(400).json({ error: 'Escribí un mail válido.' });
+  }
+  const cuenta = db
+    .prepare('SELECT id, nombre, email, password_hash, password_salt FROM usuarios WHERE id = ?')
+    .get(req.usuario.id);
+  if (cuenta.email === email) {
+    return res.status(400).json({ error: 'Ese ya es el mail de tu cuenta.' });
+  }
+  // Antes del scrypt: cada intento con contraseña cuesta ~100 ms de servidor.
+  if (registroExcedido(`mail:${cuenta.id}`)) {
+    return res.status(429).json({ error: 'Pediste demasiados cambios de mail. Probá de nuevo en una hora.' });
+  }
+  if (cuenta.email) {
+    const password = req.body?.password;
+    if (typeof password !== 'string' || !password || password.length > 1000) {
+      return res.status(400).json({ error: 'Escribí tu contraseña para cambiar el mail.' });
+    }
+    if (!verificarPassword(password, cuenta.password_hash, cuenta.password_salt)) {
+      return res.status(401).json({ error: 'La contraseña no es correcta.' });
+    }
+  }
+  if (mailEnUso(email, cuenta.id)) {
+    return res.status(409).json({ error: 'Ese mail ya lo usa otra cuenta de Nexo.' });
+  }
+
+  withTransaction(() => {
+    // En una cuenta nueva el usuario es el mail (ver el alta): si no lo sigue,
+    // el mail viejo seguiría entrando y nadie más podría usarlo. El usuario de
+    // una cuenta de antes de §102 ("dani") no se toca.
+    db.prepare(
+      `UPDATE usuarios
+          SET email = ?1, email_verificado = NULL,
+              usuario = CASE WHEN LOWER(usuario) = LOWER(email) THEN ?1 ELSE usuario END
+        WHERE id = ?2`
+    ).run(email, cuenta.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: cuenta.id,
+      valor_anterior: cuenta.email ? JSON.stringify({ email: cuenta.email }) : null,
+      valor_nuevo: JSON.stringify({ email }),
+      detalle: cuenta.email ? 'Cambió su mail' : 'Sumó su mail'
+    });
+  });
+
+  mandarVerificacion(req, { usuarioId: cuenta.id, nombre: cuenta.nombre, email });
+  if (cuenta.email) {
+    const { texto, html } = plantillaMail({
+      titulo: 'Cambió el mail de tu cuenta',
+      parrafos: [
+        `Hola, ${cuenta.nombre}.`,
+        `El mail de tu cuenta de Nexo pasó a ser ${email}. Desde ahora entrás con ese mail.`,
+        'Si no fuiste vos, respondé este mail y te ayudamos a recuperar la cuenta.'
+      ],
+      pie: 'Es un aviso de seguridad: te lo mandamos a tu mail anterior.'
+    });
+    mandarSinEsperar({ para: cuenta.email, asunto: 'Cambió el mail de tu cuenta de Nexo', texto, html });
+  }
+  res.json({ usuario: datosUsuario({ ...req.usuario, email, email_verificado: null }) });
+});
+
+// Otro enlace de verificación, desde el aviso del Resumen o Mi cuenta. Mismo
+// tope que el cambio de mail: es el mismo envío.
+app.post('/api/auth/email/reenviar', (req, res) => {
+  const cuenta = db.prepare('SELECT id, nombre, email, email_verificado FROM usuarios WHERE id = ?').get(req.usuario.id);
+  if (cuenta.email_verificado) {
+    return res.status(400).json({ error: 'Tu mail ya está confirmado.' });
+  }
+  if (registroExcedido(`mail:${cuenta.id}`)) {
+    return res.status(429).json({ error: 'Ya te mandamos varios enlaces. Probá de nuevo en una hora.' });
+  }
+  mandarVerificacion(req, { usuarioId: cuenta.id, nombre: cuenta.nombre, email: cuenta.email });
+  res.status(204).end();
+});
+
 /* ---------- Usuarios (ABM, solo admin) ---------- */
 
 app.get('/api/usuarios', soloAdmin, (req, res) => {
@@ -9804,7 +10024,8 @@ app.get('/api/usuarios', soloAdmin, (req, res) => {
   const usuarios = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol, pertenencia.activo,
-              usuarios.debe_cambiar_password, pertenencia.fecha_alta, pertenencia.ultimo_acceso
+              usuarios.debe_cambiar_password, pertenencia.fecha_alta, pertenencia.ultimo_acceso,
+              usuarios.email, usuarios.email_verificado
          FROM usuario_organizaciones pertenencia
          JOIN usuarios ON usuarios.id = pertenencia.usuario_id
         WHERE pertenencia.organizacion_id = ?

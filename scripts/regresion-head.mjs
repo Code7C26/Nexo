@@ -100,10 +100,26 @@ function git(...args) {
   return r.stdout.trim();
 }
 
+// Se entra con el mail desde hist. §102. La base la siembra el seed de la ref:
+// desde §102 sus cuentas tienen <usuario>@nexo.test, y antes solo el usuario.
+// Si la cuenta no tiene mail y el servidor lo pide (el árbol con una base de
+// antes de §102), se lo suma, como haría la persona al entrar: eso deja sus
+// filas en la auditoría y el mail en Usuarios, diferencias esperadas.
 async function login(url, usuario, password) {
-  const cliente = crearCliente(url);
-  const r = await cliente.post('/api/auth/login', { usuario, password });
+  const email = `${usuario}@nexo.test`;
+  let cliente = crearCliente(url);
+  let r = await cliente.post('/api/auth/login', { email, password });
+  // 401: la cuenta todavía no tiene mail; 400: una ref anterior a §102, que
+  // no conoce el campo.
+  if (r.status === 401 || r.status === 400) {
+    cliente = crearCliente(url);
+    r = await cliente.post('/api/auth/login', { usuario, password });
+  }
   if (r.status !== 200) throw new Error(`Login de ${usuario} falló en ${url} (${r.status}): ${r.texto}`);
+  if (r.json.usuario.email === null) {
+    const suma = await cliente.post('/api/auth/email', { email });
+    if (suma.status !== 200) throw new Error(`Sumar el mail de ${usuario} falló en ${url} (${suma.status}): ${suma.texto}`);
+  }
   return cliente;
 }
 

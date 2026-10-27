@@ -203,6 +203,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/auditoria': 'ambos',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
+  // El mail de la cuenta propia (hist. §102).
+  'POST /api/auth/email': 'ambos',
+  'POST /api/auth/email/reenviar': 'ambos',
   'GET /api/usuarios': 'admin',
   'POST /api/usuarios': 'admin',
   'PATCH /api/usuarios/:id': 'admin',

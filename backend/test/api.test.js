@@ -730,7 +730,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
 
   // En el negocio nuevo no hay nada de A: ni productos ni usuarios.
   assert.deepEqual((await adminA.get('/api/productos')).json, []);
-  assert.deepEqual((await adminA.get('/api/usuarios')).json.map((u) => u.usuario), ['admin-a']);
+  assert.deepEqual((await adminA.get('/api/usuarios')).json.map((u) => u.email), ['admin-a@nexo.test']);
 
   // De vuelta en A se ven sus productos.
   assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
@@ -746,7 +746,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
 
   // El login entra al último negocio usado.
   assert.equal((await adminA.post(`/api/negocios/${orgG}/entrar`)).status, 204);
-  const login = await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'admin-a', password: 'clave-segura-1' });
+  const login = await crearCliente(servidor.url).post('/api/auth/login', { email: 'admin-a@nexo.test', password: 'clave-segura-1' });
   assert.equal(login.status, 200, login.texto);
   assert.equal(login.json.usuario.organizacion_id, orgG);
   assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);

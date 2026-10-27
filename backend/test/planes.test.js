@@ -181,7 +181,7 @@ test('el contacto de la landing cae en el CRM del negocio de ventas, y en ningú
 test('un plan desconocido en el alta responde 400', async () => {
   const r = await crearCliente(servidor.url).post('/api/auth/registro', {
     empresa: 'X',
-    usuario: 'plan-raro',
+    email_cuenta: 'plan-raro@nexo.test',
     nombre: 'X',
     password: 'clave-segura-1',
     plan: 'constructor'

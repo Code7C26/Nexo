@@ -73,6 +73,11 @@ function irAPaso(n, { historial = true } = {}) {
     });
   if (historial) history.pushState(null, "", rutaDelPaso(n));
   pantalla.scrollTo(0, 0);
+  // El mail de los comprobantes se propone con el de la cuenta: casi
+  // siempre es el mismo, y se puede cambiar o borrar.
+  if (n === 5 && modo === MODOS.cuenta && !campo("altaEmail").value.trim()) {
+    campo("altaEmail").value = valor("altaEmailCuenta");
+  }
   // Con teclado, el foco va al primer campo (o a la tarjeta elegida): se
   // sigue sin buscar dónde quedó. En una pantalla táctil va al título, porque
   // enfocar un campo abre el teclado del celular y tapa la explicación del
@@ -197,11 +202,13 @@ async function mostrarPlan() {
 const VALIDAR = {
   1() {
     const nombre = campo("altaNombre");
-    const usuario = campo("altaUsuario");
+    const email = campo("altaEmailCuenta");
     const password = campo("altaPassword");
     if (!nombre.value.trim()) return errorEn(nombre, "Escribí tu nombre.");
-    if (!usuario.value.trim()) return errorEn(usuario, "Elegí un nombre de usuario.");
-    if (/\s/.test(usuario.value.trim())) return errorEn(usuario, "El usuario no puede tener espacios.");
+    if (!email.value.trim()) return errorEn(email, "Escribí tu mail: con él vas a ingresar.");
+    if (!EMAIL_VALIDO.test(email.value.trim())) {
+      return errorEn(email, "Revisá el mail: tiene que ser como nombre@dominio.com.");
+    }
     if (password.value.length < 8) return errorEn(password, "La contraseña tiene que tener al menos 8 caracteres.");
     return true;
   },
@@ -276,7 +283,7 @@ async function crearCuenta({ conComprobantes }) {
       ? { nombre: valor("altaEmpresa"), ...delNegocio }
       : {
           nombre: valor("altaNombre"),
-          usuario: valor("altaUsuario"),
+          email_cuenta: valor("altaEmailCuenta"),
           password: campo("altaPassword").value,
           empresa: valor("altaEmpresa"),
           ...(planElegido && { plan: planElegido }),
@@ -304,9 +311,9 @@ async function crearCuenta({ conComprobantes }) {
     });
     const datos = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // Usuario ya tomado: de vuelta al primer paso, con el error en el campo.
+      // Mail ya tomado: de vuelta al primer paso, con el error en el campo.
       if (res.status === 409) {
-        alVolverAlPrimero = () => errorEn(campo("altaUsuario"), `${datos.error} Probá con otro.`);
+        alVolverAlPrimero = () => errorEn(campo("altaEmailCuenta"), datos.error);
         history.go(1 - paso);
         return;
       }

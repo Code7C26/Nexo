@@ -46,7 +46,10 @@ try {
   const pendiente = sessionStorage.getItem(CLAVE_AVISO);
   if (pendiente) {
     sessionStorage.removeItem(CLAVE_AVISO);
-    avisar(pendiente, "ok");
+    // sesion.js también deja acá el resultado del enlace del mail (hist.
+    // §102); uno que salió mal llega con "error:" adelante.
+    if (pendiente.startsWith("error:")) avisar(pendiente.slice(6), "error");
+    else avisar(pendiente, "ok");
   }
 } catch {}
 

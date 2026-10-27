@@ -28,6 +28,7 @@
   // id del DOM es una propiedad de window), que se rompen sin aviso si otro
   // script declara una variable con el mismo nombre.
   const formCambioForzado = document.getElementById("formCambioForzado");
+  const formSumarMail = document.getElementById("formSumarMail");
 
   let appInyectada = false;
 
@@ -169,6 +170,20 @@
     pantalla.hidden = false;
     formLogin.hidden = cual !== "login";
     formCambioForzado.hidden = cual !== "cambio";
+    formSumarMail.hidden = cual !== "mail";
+    if (cual === "mail") document.getElementById("sumarMailEmail").focus();
+  }
+
+  // Lo que falta antes de la app, en orden: la contraseña propia (cuando el
+  // admin la reseteó) y el mail (hist. §102: una cuenta de antes de §102 lo
+  // suma antes de operar; el backend tampoco la deja). Es el mismo camino
+  // después del login, del arranque con sesión y de cada paso completado.
+  let usuarioPendiente = null;
+  function seguirCon(usuario) {
+    usuarioPendiente = usuario;
+    if (usuario.debe_cambiar_password) mostrarPantalla("cambio");
+    else if (!usuario.email) mostrarPantalla("mail");
+    else arrancarApp(usuario);
   }
 
   // El alta guiada (hist. §73) es un módulo aparte, js/alta.js, que se baja
@@ -283,7 +298,7 @@
       const res = await fetchOriginal("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, password })
+        body: JSON.stringify({ email: usuario, password })
       });
       const datos = await res.json();
       if (!res.ok) {
@@ -292,12 +307,7 @@
       }
       // Lo guardado antes de este login puede ser de otra persona.
       await borrarDatosGuardados();
-      if (datos.usuario.debe_cambiar_password) {
-        window.__usuarioPendienteCambio = datos.usuario;
-        mostrarPantalla("cambio");
-        return;
-      }
-      arrancarApp(datos.usuario);
+      seguirCon(datos.usuario);
     } catch {
       mostrarErrorEn("loginError", sinRedNiSesion());
     }
@@ -346,12 +356,65 @@
         mostrarErrorEn("cambioForzadoError", datos.error || "No se pudo cambiar la contraseña.");
         return;
       }
-      const usuario = window.__usuarioPendienteCambio;
-      arrancarApp({ ...usuario, debe_cambiar_password: false });
+      seguirCon({ ...usuarioPendiente, debe_cambiar_password: false });
     } catch {
       mostrarErrorEn("cambioForzadoError", "No se pudo conectar con el servidor.");
     }
   });
+
+  formSumarMail.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("sumarMailError");
+    const email = document.getElementById("sumarMailEmail").value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      mostrarErrorEn("sumarMailError", "Revisá el mail: tiene que ser como nombre@dominio.com.");
+      return;
+    }
+    const boton = formSumarMail.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const res = await fetchOriginal("/api/auth/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const datos = await res.json();
+      if (!res.ok) {
+        mostrarErrorEn("sumarMailError", datos.error || "No se pudo guardar el mail.");
+        return;
+      }
+      guardarAviso(`Te mandamos un enlace a ${datos.usuario.email} para confirmarlo.`);
+      seguirCon({ ...usuarioPendiente, ...datos.usuario });
+    } catch {
+      mostrarErrorEn("sumarMailError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("sumarMailSalir").addEventListener("click", () => window.nexoCerrarSesion());
+
+  // El toast que muestra la app al cargar (dominios/negocios.js). Con
+  // "error:" adelante sale como error.
+  function guardarAviso(texto) {
+    try {
+      sessionStorage.setItem("nexo.aviso", texto);
+    } catch {}
+  }
+
+  // El enlace del mail de verificación vuelve a /app?mail=… (server.js,
+  // /verificar-mail). Se lee una vez y se saca de la dirección, así recargar
+  // no lo repite.
+  const RESULTADO_MAIL = {
+    verificado: "Listo: tu mail quedó confirmado.",
+    invalido: "error:Ese enlace ya no sirve: venció o pediste uno más nuevo. Podés pedir otro desde Mi cuenta."
+  };
+  const resultadoMail = RESULTADO_MAIL[new URLSearchParams(location.search).get("mail")] ?? null;
+  if (new URLSearchParams(location.search).has("mail")) {
+    const url = new URL(location.href);
+    url.searchParams.delete("mail");
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  }
 
   // ---------- Flujo de arranque ----------
   (async () => {
@@ -369,11 +432,18 @@
         // desde la página pública).
         if (location.hash.startsWith("#/crear-cuenta")) abrirAlta();
         else mostrarPantalla("login");
-      } else if (estado.usuario.debe_cambiar_password) {
-        window.__usuarioPendienteCambio = estado.usuario;
-        mostrarPantalla("cambio");
+        // Tocó el enlace del mail desde un dispositivo sin sesión.
+        if (resultadoMail) {
+          const aviso = document.getElementById("loginAviso");
+          aviso.textContent = resultadoMail.startsWith("error:")
+            ? resultadoMail.slice(6)
+            : "Tu mail quedó confirmado. Entrá con él.";
+          aviso.classList.toggle("is-error", resultadoMail.startsWith("error:"));
+          aviso.hidden = false;
+        }
       } else {
-        arrancarApp(estado.usuario);
+        if (resultadoMail) guardarAviso(resultadoMail);
+        seguirCon(estado.usuario);
       }
     } catch {
       // Backend caído o inalcanzable: nunca dejar la pantalla en blanco.

@@ -21,6 +21,16 @@ const ROL_LABEL = { admin: "Administrador", empleado: "Empleado" };
 // leía como un problema). Lo mismo un usuario dado de baja, abajo.
 const ROL_CLASE = { admin: "", empleado: "" };
 
+// Se entra con el mail (hist. §102). Una cuenta de antes que todavía no
+// entró a sumarlo se ve por su usuario: lo va a cargar al entrar.
+function celdaMail(u) {
+  if (!u.email) {
+    return `<div class="celda-mail"><span class="mono">${esc(u.usuario)}</span><span class="status">Sin mail todavía</span></div>`;
+  }
+  const estado = u.email_verificado ? "" : '<span class="status status-pendiente">Sin confirmar</span>';
+  return `<div class="celda-mail"><span>${esc(u.email)}</span>${estado}</div>`;
+}
+
 function renderUsuarios(lista) {
   const body = document.getElementById("usuariosBody");
 
@@ -45,7 +55,7 @@ function renderUsuarios(lista) {
       }
       return `
         <tr class="${u.activo ? "" : "fila-anulada"}">
-          <td data-label="Usuario" class="mono">${esc(u.usuario)}</td>
+          <td data-label="Mail">${celdaMail(u)}</td>
           <td data-label="Nombre">${esc(u.nombre)}</td>
           <td data-label="Rol"><span class="status ${ROL_CLASE[u.rol] || ""}">${esc(ROL_LABEL[u.rol] || u.rol)}</span></td>
           <td data-label="Estado"><span class="status ${u.activo ? "status-cobrado" : ""}">${

@@ -9507,3 +9507,146 @@ olvida la contraseña pierde su negocio.
 - `npm run probar-mail`: Gmail aceptó el envío a la misma cuenta. Falta que el
   usuario confirme que llegó y cómo se ve.
 - No se tocó el esquema ni la base real.
+
+## 102. Mail en la cuenta, verificación y login con mail (etapa 8b, Fase 1), 27 de octubre de 2026
+
+Primera fase de la etapa 8b, con el diseño de la sección 5 de
+`docs/investigacion-login-legal.md`. Antes se commiteó aparte lo de §101
+(`20e548f`).
+
+**Esquema (aditivo, sin rebuild):**
+- `usuarios.email` y `usuarios.email_verificado`, nulables. Están al final del
+  `CREATE TABLE` de `schema.sql` y se suman con `ALTER` en `db/index.js`,
+  después de la migración de `rol`/`activo`. Ahí también va
+  `idx_usuarios_email`: único sobre `LOWER(email)`, parcial (`WHERE email IS
+  NOT NULL`).
+- La tabla nueva `tokens_cuenta`:
+  - columnas: usuario, tipo `verificar_email` | `recuperar`, SHA-256 del
+    token, mail al que se mandó, creado, vence y usado;
+  - sin `organizacion_id`, como `sesiones`, y con las horas en UTC;
+  - la Fase 2 la reusa para recuperar la contraseña.
+- La auditoría usa `editar usuario` con detalle ("Sumó su mail", "Cambió su
+  mail", "Verificó su mail"): no toca el `CHECK` de `auditoria`.
+
+**Backend:**
+- **Login:** acepta `email` o `usuario` en el mismo campo y busca por los dos.
+  Si coinciden cuentas distintas, gana la del mail. El mensaje pasa a ser "Mail
+  o contraseña incorrectos.". El `HASH_DUMMY`, los topes y la auditoría quedan
+  igual.
+- **Alta (`/api/auth/registro`):**
+  - pide `email_cuenta`, porque `email` ya era el mail del negocio de los
+    comprobantes, igual que en "Agregar negocio";
+  - el usuario de una cuenta nueva es su mail, en minúsculas;
+  - 409 si el mail lo usa otra cuenta, como mail o como usuario;
+  - manda la verificación.
+- **Puerta en `autenticar`:** una cuenta sin mail recibe 403 `{ codigo:
+  'falta_email' }` en todo, salvo en `/auth/email`, `/auth/logout` y
+  `/auth/cambiar-password`. Va después de la del cambio de contraseña.
+- **`POST /api/auth/email`:**
+  - la primera vez no pide la contraseña; cambiarlo sí;
+  - el mail nuevo queda sin verificar, y al anterior le llega un aviso;
+  - si el usuario era el mail viejo, pasa al nuevo (si no, el mail viejo
+    seguía entrando: lo encontró el test);
+  - tope: 5 por hora y por cuenta, con `registroExcedido('mail:<id>')`.
+- **`POST /api/auth/email/reenviar`:** con el mismo tope.
+- **`GET /verificar-mail?token=`:**
+  - vale 48 h, y solo si el mail de la cuenta sigue siendo al que se mandó;
+  - un enlace nuevo borra los anteriores sin usar;
+  - redirige a `/app?mail=verificado|invalido`;
+  - un enlace ya usado vuelve a decir "verificado" (por el antivirus del mail
+    que lo abre antes).
+- **Los mails** salen después de responder (`mandarSinEsperar`): si falla, el
+  error queda en el log y la operación ya está hecha. Los enlaces usan
+  `urlPublica(req)`.
+- `datosUsuario`, `sesionValida` y `GET /api/usuarios` suman `email` y
+  `email_verificado`.
+
+**Frontend:**
+- **Login:**
+  - dice "Mail", sin `type=email`, porque las cuentas viejas entran con su
+    usuario;
+  - `sesion.js` sigue el orden contraseña forzada → "Sumá tu mail"
+    (`#formSumarMail`, obligatoria) → la app, con `seguirCon()`.
+- **`?mail=` del enlace:**
+  - se lee y se saca de la dirección;
+  - con sesión va como `nexo.aviso`; `dominios/negocios.js` ahora entiende el
+    prefijo `error:`;
+  - sin sesión, como nota en el login.
+- **Alta:**
+  - el paso 1 pide el mail (`#altaEmailCuenta`), y el 409 vuelve a ese campo;
+  - el mail del negocio del paso 5 se propone con el de la cuenta.
+- **Mi cuenta:** tarjeta "Mail" con el estado (Confirmado o Sin confirmar),
+  "Mandarlo de nuevo" y el cambio con contraseña.
+- **Resumen:** aviso "Confirmá tu mail" (`#avisoMail`) para los dos roles, con
+  reenviar y cambiar.
+- **Usuarios:** la columna "Mail", con el estado abajo; si falta el mail,
+  muestra el usuario viejo.
+- **Textos:**
+  - ícono `mail` de lucide-static en el sprite;
+  - "entra con su mail" en Primeros pasos y en la landing;
+  - privacidad: el mail de la cuenta y un párrafo sobre los mails que salen
+    por Gmail.
+
+**Tests y scripts:**
+- **`servidor-de-prueba.js`:**
+  - corre con `NEXO_MAIL=stub` y devuelve `leerMails()`;
+  - suma `ultimoEnlace()`;
+  - `registrarEmpresa` manda `<usuario>@nexo.test`;
+  - `crearEmpleado` suma el mail después del cambio de contraseña.
+- `backend/test/cuenta-mail.test.js` (6 tests) cubre:
+  - el enlace de un solo uso, el vencido y el reemplazado;
+  - las mayúsculas;
+  - la puerta `falta_email`;
+  - los duplicados contra el mail y contra el usuario;
+  - el cambio de mail con su aviso;
+  - el empleado y el tope.
+- **`regresion-head.mjs`:**
+  - entra con el mail y, si falla (400 o 401), con el usuario;
+  - si la cuenta no tiene mail, se lo suma.
+- `seed.mjs` muestra las credenciales con el mail.
+
+**Lo que falló en el camino:**
+- La primera versión del alta usaba `email` para la cuenta, que chocaba con
+  el mail del negocio.
+- En el test de cambio de mail, el viejo seguía entrando porque era también el
+  usuario.
+- La regresión se siembra con el seed de la ref, así que en el árbol de
+  trabajo sus cuentas no tienen mail. HEAD responde 400 (no 401) a un login
+  sin `usuario`.
+- El primer recorrido en el navegador creó la empresa en Gratis, que no deja
+  sumar usuarios.
+
+**Verificación:**
+- `npm test` dio 88 de 88. Lint sin problemas.
+- `npm run verificar-migracion`: 24 de 24, y la base real no cambió.
+- **`npm run regresion`:** 5 diferencias, todas esperadas:
+  - `email` y `email_verificado` en `estado` (los dos roles) y en Usuarios;
+  - dos filas "Sumó su mail" en la auditoría, que el script mismo genera al
+    sumar el mail.
+- **Navegador** (playwright-core del scratchpad, base nueva, mail stub):
+  - el alta con mail inválido y el paso 5 con el mail propuesto;
+  - el aviso del Resumen y el reenvío;
+  - Mi cuenta sin confirmar → el enlace → el toast y "Confirmado";
+  - el cambio con contraseña mala y buena;
+  - una cuenta vieja: contraseña forzada → "Sumá tu mail" (con un mail
+    repetido) → la app;
+  - el enlace sin sesión, válido e inválido;
+  - Usuarios.
+  - Capturas en oscuro, claro y a 390 px, sin errores de consola fuera de los
+    401 y 409 buscados.
+- **Base real:**
+  - la migró un servidor temporal en el puerto 3917, sin tocar el `npm start`
+    del usuario que corría en el 3000 con el código viejo. Las columnas son
+    aditivas, así que el código viejo anda igual;
+  - respaldos `nexo-20261027-165816.db` (antes de migrar) y los dos que
+    siguen, en OneDrive;
+  - `integrity_check` ok y sin errores de FK.
+- **Cuentas de la demo:**
+  - `prueba` → `nexosystem.app+prueba@gmail.com` y `vendedor.prueba` →
+    `nexosystem.app+vendedor@gmail.com`, con el enlace mandado de verdad por
+    Gmail;
+  - el envío se rehízo con `NEXO_URL_PUBLICA=http://localhost:3000` para que
+    el enlace apunte al servidor de siempre (el primero apuntaba al 3917);
+  - `recepcion.prueba` quedó sin mail a propósito: tiene el cambio de
+    contraseña forzado, y sumarle el mail por la API pedía cambiarle la clave
+    de la demo. Al entrar pasa por las dos páginas.
