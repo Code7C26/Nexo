@@ -690,6 +690,90 @@ app.get('/api/auth/planes', (req, res) => {
   res.json(catalogoPlanes());
 });
 
+// Contacto de la landing y de "Tu plan" (hist. §99): quien quiere un plan, o
+// pregunta algo, deja sus datos y la consulta cae en el CRM del negocio con
+// el que se vende Nexo (NEXO_NEGOCIO_VENTAS), en su primera etapa, con una
+// tarea para hoy. Nexo se vende con Nexo: no hace falta un mail ni un número
+// público, ni un servicio externo.
+//
+// Es pública, así que tiene su tope por IP, un campo trampa para bots
+// (`sitio`, oculto en el formulario) y largos máximos. Solo escribe en ese
+// negocio, nunca en el de quien la manda.
+const CONSULTAS_MAX = 5;
+const consultasPorIp = new Map();
+const LARGOS_CONSULTA = { nombre: 120, negocio: 120, contacto: 120, mensaje: 1000 };
+
+app.post('/api/publico/consulta', (req, res) => {
+  const cuerpo = req.body ?? {};
+  // Un bot llena el campo trampa: se le contesta como si hubiera salido bien.
+  if (cuerpo.sitio) return res.status(201).json({ ok: true });
+
+  const ahora = Date.now();
+  const registro = consultasPorIp.get(req.ip);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    consultasPorIp.set(req.ip, { cuenta: 1, desde: ahora });
+  } else if (++registro.cuenta > CONSULTAS_MAX) {
+    return res.status(429).json({ error: 'Mandaste varias consultas seguidas. Probá de nuevo en un rato.' });
+  }
+
+  const organizacionId = Number(process.env.NEXO_NEGOCIO_VENTAS);
+  const etapa =
+    organizacionId > 0 &&
+    db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 ORDER BY orden, id LIMIT 1').get(organizacionId);
+  if (!etapa) {
+    return res.status(503).json({ error: 'Las consultas todavía no están habilitadas.' });
+  }
+
+  const datos = {};
+  for (const [campo, largo] of Object.entries(LARGOS_CONSULTA)) {
+    const valor = cuerpo[campo];
+    if (valor != null && typeof valor !== 'string') return res.status(400).json({ error: 'Los datos no son válidos.' });
+    datos[campo] = (valor ?? '').trim();
+    if (datos[campo].length > largo) {
+      return res.status(400).json({ error: `Es demasiado largo: hasta ${largo} caracteres.` });
+    }
+  }
+  if (!datos.nombre) return res.status(400).json({ error: 'Contanos tu nombre.' });
+  // Un mail o un teléfono: con @ es mail; si no, tiene que tener números.
+  const esEmail = datos.contacto.includes('@');
+  if (esEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.contacto) : (datos.contacto.match(/\d/g) ?? []).length < 6) {
+    return res.status(400).json({ error: 'Dejanos un teléfono o un mail para responderte.' });
+  }
+  const plan = cuerpo.plan ?? null;
+  if (plan !== null && (typeof plan !== 'string' || !esPlan(plan))) {
+    return res.status(400).json({ error: 'El plan no es válido.' });
+  }
+
+  const interes = (plan ? `Quiere el plan ${PLANES[plan].nombre}` : 'Consulta desde la web') + (datos.negocio ? ` para "${datos.negocio}"` : '');
+  const hoy = fechaDeHoy();
+  withTransaction(() => {
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO crm_oportunidades (contacto_nombre, contacto_telefono, contacto_email, origen, interes, etapa_id, fecha, organizacion_id)
+           VALUES (?, ?, ?, 'web', ?, ?, ?, ?)`
+        )
+        .run(datos.nombre, esEmail ? null : datos.contacto, esEmail ? datos.contacto : null, interes, etapa.id, hoy, organizacionId)
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO crm_actividades (oportunidad_id, tipo, descripcion, fecha, organizacion_id)
+       VALUES (?, 'tarea', ?, ?, ?)`
+    ).run(id, datos.mensaje ? `Responder. Escribió: "${datos.mensaje}"` : 'Responder la consulta de la web', hoy, organizacionId);
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'oportunidad',
+      operacion_id: id,
+      detalle: `Consulta #${id} de ${datos.nombre} desde la web: ${interes}`,
+      organizacion_id: organizacionId
+    });
+  });
+  res.status(201).json({ ok: true });
+});
+
 // A partir de acá, TODO /api/* requiere sesión — los únicos endpoints que no
 // la necesitan son los de arriba (estado, login, registro y tipos de
 // negocio), declarados antes de este montaje. Los ~115 endpoints de

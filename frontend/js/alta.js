@@ -161,6 +161,36 @@ async function cargarCatalogo() {
   }
 }
 
+/* ---------- Plan elegido en la landing (hist. §99) ---------- */
+
+// La landing manda a /app?plan=pro#/crear-cuenta. El plan se confirma contra
+// el catálogo del backend: uno que no existe se ignora y queda Gratis, el que
+// el backend usa si no llega ninguno.
+let planElegido = null;
+
+async function mostrarPlan() {
+  const aviso = campo("altaPlan");
+  aviso.hidden = true;
+  planElegido = null;
+  const pedido = new URLSearchParams(location.search).get("plan");
+  if (!pedido || modo !== MODOS.cuenta) return;
+  try {
+    const res = await fetch("/api/auth/planes");
+    if (!res.ok) return;
+    const { planes, dias_prueba: dias } = await res.json();
+    const plan = planes.find((p) => p.clave === pedido);
+    if (!plan) return;
+    planElegido = plan.clave;
+    aviso.textContent =
+      plan.precio > 0
+        ? `Plan ${plan.nombre}: lo probás ${dias} días gratis, sin tarjeta. Si después no lo pagás, seguís en el plan Gratis con todo lo que cargaste.`
+        : "Plan Gratis: sin costo y sin tarjeta. Cuando lo necesites, pasás a un plan con más lugar.";
+    aviso.hidden = false;
+  } catch {
+    // Sin el catálogo, el alta sigue igual y el negocio nace en Gratis.
+  }
+}
+
 /* ---------- Validación de cada paso ---------- */
 
 // Cada una devuelve true si el paso está completo; si no, marca el error.
@@ -249,6 +279,7 @@ async function crearCuenta({ conComprobantes }) {
           usuario: valor("altaUsuario"),
           password: campo("altaPassword").value,
           empresa: valor("altaEmpresa"),
+          ...(planElegido && { plan: planElegido }),
           ...delNegocio
         };
   if (conComprobantes) {
@@ -334,4 +365,5 @@ export function montarAlta({ alTerminar, alVolver, instalacionNueva = false, mod
   else history.replaceState(null, "", rutaDelPaso(modo.primero));
   irAPaso(modo.primero, { historial: false });
   cargarCatalogo();
+  mostrarPlan();
 }

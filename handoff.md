@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §98);
+    siguiente número (hoy el último es §99);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -25,7 +25,9 @@
 en cuatro fases (§98 a §101). El plan está en el punto 8.
 - **Fase 1, planes en el backend: hecha** (hist. §98), commiteada en
   `solla`.
-- **Sigue la Fase 2:** el plan dentro de la app.
+- **Fase 2, el plan dentro de la app: hecha** (hist. §99), commiteada.
+  Incluye el contacto `POST /api/publico/consulta`, adelantado de la Fase 3.
+- **Sigue la Fase 3:** la landing en `/` y la app en `/app`.
 - **Las decisiones del usuario ya están tomadas** (precios, topes de Gratis,
   Oracle Cloud y DuckDNS, contacto al CRM): ver hist. §98.
 - **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
@@ -504,6 +506,11 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   editando lo que tiene, solo no suma más allá del tope.
 - **Los negocios que existían antes de §98 quedaron en Pro sin vencimiento**
   (las bases reales y la demo).
+- **Contacto público (hist. §99):** `POST /api/publico/consulta` escribe solo
+  en el negocio `NEXO_NEGOCIO_VENTAS` (Nexo se vende con Nexo). Sin esa
+  variable responde 503.
+- **`alEntrarEnVista()` admite varios handlers por vista** (hist. §99): corren
+  en orden de registro.
 - **El arnés de tests registra en Pro** (`registrarEmpresa`, `plan`). Un test
   de topes pide `plan: 'gratis'`.
 
@@ -894,21 +901,18 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    usuario (27 de octubre) están en hist. §98. Son cuatro fases, un § y un
    commit cada una:
    - ~~**Fase 1 (§98), planes en el backend**~~ **hecha**.
-   - **Fase 2 (§99), el plan en la app:**
-     - página "Tu plan" en Configuración, con el uso y cómo pasar a pago;
-     - aviso en el Resumen al final de la prueba o cerca de un tope;
-     - enlace a "Tu plan" cuando se llega a un tope;
-     - "Hecho con Nexo" en los comprobantes de Gratis;
-     - tipo "Emprendimiento" (sin módulos opcionales) primero en el alta;
-     - el alta lee `?plan=`.
+   - ~~**Fase 2 (§99), el plan en la app**~~ **hecha**: página "Plan de Nexo",
+     aviso en el Resumen, enlace en el toast del tope, marca en los
+     comprobantes, tipo "Emprendimiento", `?plan=` en el alta y el contacto
+     al CRM de ventas.
    - **Fase 3 (§100), landing:**
      - `/` muestra la landing sin sesión y lleva a `/app` con sesión;
      - la app pasa a `/app` (con `start_url` y `PRECACHE` del service
        worker);
      - `landing.html`, `landing.css` y `landing.js` sin scripts inline, con
        capturas reales;
-     - contacto en `POST /api/publico/consulta`, que crea una consulta en el
-       CRM del negocio `NEXO_NEGOCIO_VENTAS`;
+     - el formulario de contacto, contra `POST /api/publico/consulta` (ya
+       hecho en §99);
      - página de privacidad, `robots.txt` y `sitemap.xml`.
    - **Fase 4 (§101), publicación:**
      - carpeta `deploy/` con `Caddyfile`, `nexo.service`, `instalar.sh`,

@@ -9282,3 +9282,66 @@ etapa: fases §98 a §101.
 - `regresion`: 4 diferencias, todas esperadas (la ruta nueva y los campos
   `plan` y `planes`).
 - La base real no cambió (md5 `602d45b8…`).
+
+## 99. El plan dentro de la app, 27 de octubre de 2026
+
+Segunda fase de la etapa 8 (ver §98).
+
+**Qué se hizo:**
+- **Configuración → "Plan de Nexo"** (`dominios/plan.js`, solo admin):
+  - el plan actual, con su estado (hasta cuándo es la prueba, o "terminó, seguís
+    en Gratis");
+  - barras de uso de productos, ventas del mes y usuarios: naranja desde el
+    80% y rojo en el tope. Los usuarios llenos no se colorean, porque Gratis es
+    de una persona;
+  - los tres planes lado a lado (apilados en el celular), con lo que suma cada
+    uno y lo que viene "muy pronto";
+  - **"Quiero este plan"** abre en la misma página un pedido con el teléfono o
+    el mail. Va a `POST /api/publico/consulta`, y si hay WhatsApp configurado,
+    también un enlace a `wa.me` con el texto armado. El plan no cambia solo: lo
+    activa quien vende Nexo con `npm run plan`.
+- **`POST /api/publico/consulta`** (pública, adelantada de la Fase 3):
+  - crea la consulta en el CRM del negocio `NEXO_NEGOCIO_VENTAS`, en su
+    primera etapa, con origen "La web", y "qué busca" dice el plan y el
+    negocio;
+  - suma una tarea para hoy con el mensaje, así sale en "Para hoy";
+  - tiene un tope de 5 por hora por IP, un campo trampa (`sitio`) y largos
+    máximos. Sin la variable responde 503;
+  - se audita con actor `sistema` en ese negocio.
+- **Aviso en el Resumen** (solo admin): cuando la prueba termina en 3 días o
+  menos, o cuando productos o ventas pasan el 80% del tope. Lleva "Ver los
+  planes".
+- **El tope en un toast:** `manejarError` de `core/ui.js` ve
+  `codigo: 'limite_plan'` y, al admin, le suma "Ver los planes".
+  - `avisar()` acepta una acción `{ texto, href }`, y ese aviso dura 8 s.
+  - Tocar el enlace cierra el modal abierto en la compu; en el celular lo
+    cierra el `popstate`.
+- **"Hecho con Nexo · gestión para tu negocio"** al pie de los comprobantes de
+  un negocio Gratis (`plan.marca`, `core/comprobante.js`).
+- **Tipo "Emprendimiento"**, primero en `PERFILES_RUBRO`:
+  - unidad `unidad`, tipo `producto`, sin módulos opcionales e ícono `sprout`;
+  - es para quien vende por su cuenta.
+- **El alta guiada lee `?plan=`** (`/?plan=pro#/crear-cuenta`, y desde la
+  Fase 3 `/app?plan=pro…`):
+  - lo confirma contra `/api/auth/planes` y muestra "Plan Pro: lo probás 14
+    días gratis, sin tarjeta…" en el primer paso;
+  - lo manda al registro.
+- **Íconos nuevos** en el sprite: `sprout` y `gem`.
+
+**Bug de base que apareció:** `alEntrarEnVista()` guardaba un solo handler
+por vista, y el de primeros pasos pisaba al del aviso del plan. Ahora guarda
+una lista y corren en orden. Solo el Resumen tiene dos.
+
+**Verificación:**
+- `npm test`: 71 de 71, y lint sin problemas.
+- La base real no cambió (md5 `602d45b8…`).
+- En Chrome, con base nueva y `NEXO_NEGOCIO_VENTAS=1`, en la compu y a 390 px,
+  en oscuro y en claro:
+  - el alta con `?plan=pro` muestra la prueba;
+  - con 85 productos, el Resumen avisa "Vas por 85 de 100";
+  - la página del plan y el pedido de Emprendedor: la consulta aparece en el
+    CRM del negocio de ventas;
+  - el producto 101 desde el modal da el toast con "Ver los planes", que lleva
+    a la página y cierra el modal;
+  - el comprobante de Gratis lleva la marca.
+  - El único error de consola es el 403 del tope, el esperado.

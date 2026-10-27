@@ -3709,6 +3709,12 @@ input.precio-sin-configurar::placeholder {
   --aviso-icono: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' x2='12' y1='8' y2='12'/%3E%3Cline x1='12' x2='12.01' y1='16' y2='16'/%3E%3C/svg%3E");
 }
 
+.aviso-accion {
+  color: var(--accent-on-dark);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .aviso-ok::before       { color: #4ADE80; }
 .aviso-atencion::before { color: #F87171; }
 .aviso-error::before    { color: #F87171; }
@@ -4262,6 +4268,133 @@ input.precio-sin-configurar::placeholder {
 .config-tarjeta-cuerpo > label,
 .config-tarjeta-cuerpo > .form-fila { max-width: 560px; }
 
+/* Plan de Nexo (dominios/plan.js, hist. §99): el plan actual con su uso, y
+   los tres planes uno al lado del otro (apilados en el celular). */
+.plan-actual {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.plan-actual:empty { display: none; }
+.plan-actual-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.plan-actual-etiqueta {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.plan-actual-nombre {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--txt-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.plan-actual-estado {
+  margin: 0;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+.plan-precio {
+  margin: 0;
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.plan-precio-mes {
+  font-size: var(--txt-sm);
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+.plan-uso { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+.plan-uso-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--txt-sm);
+}
+.plan-uso-fila span:last-child { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.plan-uso-barra {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  overflow: hidden;
+}
+.plan-uso-barra span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.plan-uso.is-cerca .plan-uso-barra span { background: var(--naranja); }
+.plan-uso.is-lleno .plan-uso-barra span { background: var(--accent-warn); }
+.plan-uso.is-lleno .plan-uso-fila span:last-child { color: var(--accent-warn); font-weight: 600; }
+
+.planes-grilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-4);
+}
+.plan-tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.plan-tarjeta.is-actual { border-color: var(--accent); }
+.plan-tarjeta h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--txt-lg);
+}
+.plan-desc { margin: var(--sp-2) 0 0; color: var(--ink-muted); font-size: var(--txt-sm); text-wrap: pretty; }
+.plan-incluye {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--txt-sm);
+}
+.plan-incluye li { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.plan-incluye .ico { flex: none; margin-top: 2px; width: 16px; height: 16px; }
+.plan-si .ico { color: var(--accent-ok); }
+.plan-pronto { color: var(--ink-muted); }
+.plan-tarjeta .btn { margin-top: auto; }
+.aviso-plan {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+}
+.aviso-plan[hidden] { display: none; }
+.aviso-plan > .ico { flex: none; color: var(--accent); }
+.aviso-plan p { flex: 1; margin: 0; font-size: var(--txt-sm); text-wrap: pretty; }
+.aviso-plan .btn { flex: none; }
+@media (max-width: 860px) {
+  .aviso-plan { flex-wrap: wrap; }
+  .aviso-plan p { flex-basis: calc(100% - 40px); }
+  .aviso-plan .btn { width: 100%; }
+}
+.plan-pedido-titulo { margin: 0; font-size: var(--txt-lg); }
+.plan-pedido-titulo:focus { outline: none; }
+.plan-pedido-texto { margin: 0; color: var(--ink-muted); }
+.campo-opcional { font-weight: 400; color: var(--ink-muted); }
+
 .config-tarjeta-pie {
   display: flex;
   align-items: center;
@@ -4587,6 +4720,20 @@ input.precio-sin-configurar::placeholder {
 }
 
 .alta-encabezado h1:focus { outline: none; }
+
+/* El plan que se eligió en la landing (hist. §99). */
+.alta-plan {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.alta-plan[hidden] { display: none; }
 
 .alta-encabezado p {
   margin: 0;
@@ -5024,6 +5171,14 @@ input.precio-sin-configurar::placeholder {
 .hoja-legal {
   margin-top: 4pt;
   font-style: italic;
+}
+
+/* La marca del plan Gratis (hist. §99): chica y al final, nunca encima de los
+   datos del negocio. */
+.hoja-marca {
+  margin-top: 6pt;
+  font-size: 7.5pt;
+  letter-spacing: 0.02em;
 }
 
 /* Paginación: en un presupuesto largo el encabezado de columnas se repite en

@@ -224,6 +224,8 @@
 
       <!-- Vista: Resumen -->
       <section class="view" data-view="dashboard">
+        <!-- La prueba que termina o un tope del plan que se acerca (dominios/plan.js). -->
+        <div class="aviso-plan" id="avisoPlan" role="status" hidden></div>
         <!-- Guía de primeros pasos para una cuenta nueva (dominios/primeros-pasos.js). -->
         <section class="panel primeros-pasos" id="primerosPasos" aria-label="Primeros pasos" hidden></section>
         <section class="panel para-hoy-resumen" id="paraHoyResumen" data-modulo="crm" aria-labelledby="paraHoyResumenTitulo" hidden></section>
@@ -2806,6 +2808,14 @@
               </a>
             </div>
             <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Tu plan</p>
+              <a class="config-item" href="#/configuracion/plan" data-seccion="plan">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gem"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Plan de Nexo</span><span class="config-item-desc" id="configPlanResumen">Lo que usás y cómo pasar a otro</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
+            <div class="config-grupo col-admin">
               <p class="config-grupo-titulo">Equipo</p>
               <a class="config-item" href="#/configuracion/usuarios" data-seccion="usuarios">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg></span>
@@ -3177,6 +3187,34 @@
 
             <!-- Mi cuenta: la persona, no el negocio. La ven los dos roles, y
                  también la abre el círculo de perfil del pie del menú. -->
+            <!-- Plan de Nexo (hist. §99): lo pinta dominios/plan.js. -->
+            <section class="config-pagina col-admin" data-seccion="plan" aria-labelledby="configPlanTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configPlanTitulo" tabindex="-1">Plan de Nexo</h2>
+                <p>Todos los planes tienen todas las funciones: cambia hasta dónde llegás.</p>
+              </header>
+              <div class="config-tarjeta plan-actual" id="planActual"></div>
+              <div class="planes-grilla" id="planesGrilla"></div>
+              <form class="form config-tarjeta" id="formPedirPlan" novalidate hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <h3 class="plan-pedido-titulo" id="planPedidoTitulo" tabindex="-1">Pedir el plan</h3>
+                  <p class="plan-pedido-texto">Te escribimos para activarlo. Mientras tanto seguís usando Nexo como siempre.</p>
+                  <label>Teléfono o mail para responderte
+                    <input type="text" id="planPedidoContacto" maxlength="120" autocomplete="tel" />
+                  </label>
+                  <label>Algo que nos quieras contar <span class="campo-opcional">(opcional)</span>
+                    <textarea id="planPedidoMensaje" maxlength="1000" rows="3"></textarea>
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <a class="btn btn-secundario" id="planPedidoWhatsapp" target="_blank" rel="noopener" hidden>
+                    <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#message-circle"></use></svg> Escribir por WhatsApp
+                  </a>
+                  <button type="submit" class="btn btn-primary">Enviar el pedido</button>
+                </div>
+              </form>
+            </section>
+
             <section class="config-pagina" data-seccion="cuenta" aria-labelledby="configCuentaTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configCuentaTitulo" tabindex="-1">Mi cuenta</h2>
@@ -3343,6 +3381,7 @@
             <h1 tabindex="-1">Creá tu cuenta</h1>
             <p>Con ella vas a entrar a Nexo. Vas a ser quien administra tu negocio, y después podés sumar a tu equipo.</p>
           </div>
+          <p class="alta-plan" id="altaPlan" hidden></p>
           <label>Tu nombre
             <input type="text" id="altaNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
           </label>

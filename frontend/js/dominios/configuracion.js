@@ -390,6 +390,8 @@ const PAGINAS = {
   // Las etapas del embudo de consultas las pinta dominios/crm.js (hist. §90).
   "etapas-consultas": { admin: true, modulo: "crm", alEntrar: () => invocar("pintar:etapasConsultas") },
   comprobantes: { admin: true, form: formComprobantes, alEntrar: pintarComprobantes },
+  // El plan de Nexo lo pinta dominios/plan.js (hist. §99).
+  plan: { admin: true, alEntrar: () => invocar("pintar:plan") },
   usuarios: { admin: true, alEntrar: () => recargar("usuarios") },
   // Los catálogos los pinta su dominio (leen su estado), después de traerlos
   // de nuevo: el boot pudo no haber llegado a cargarlos con un deep-link.

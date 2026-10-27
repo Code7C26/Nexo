@@ -98,6 +98,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
              documento interno, no un comprobante fiscal. Decirlo es
              obligatorio para no inducir a error a quien lo recibe. -->
         <p class="hoja-legal">Documento no válido como comprobante fiscal.</p>
+        ${negocio.plan?.marca ? `<p class="hoja-marca">Hecho con Nexo · gestión para tu negocio</p>` : ""}
       </footer>
     </div>
   `;

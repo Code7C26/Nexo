@@ -145,6 +145,39 @@ test('la prueba de Pro dura 14 días, deja sumar negocios y al vencer cae a Grat
   assert.ok(filas.some((f) => /Plan cambiado a Pro/.test(f.detalle ?? '')), 'el cambio de plan queda en la auditoría');
 });
 
+test('el contacto de la landing cae en el CRM del negocio de ventas, y en ningún otro (hist. §99)', async () => {
+  // Sin NEXO_NEGOCIO_VENTAS, el contacto está apagado.
+  const anonimo = crearCliente(servidor.url);
+  const consulta = { nombre: 'Rosa', negocio: 'Panadería Rosa', contacto: '351 555-0101', mensaje: '¿Sirve para dos locales?', plan: 'pro' };
+  assert.equal((await anonimo.post('/api/publico/consulta', consulta)).status, 503);
+
+  const otro = await levantarServidor({ env: { NEXO_NEGOCIO_VENTAS: '1', NEXO_CONTACTO_WHATSAPP: '+54 9 351 555-0000' } });
+  try {
+    const ventas = await registrarEmpresa(otro.url, { empresa: 'Nexo', usuario: 'nexo-ventas' });
+    const ajeno = await registrarEmpresa(otro.url, { empresa: 'Otro negocio', usuario: 'ajeno' });
+    const publico = crearCliente(otro.url);
+    assert.equal((await publico.get('/api/auth/planes')).json.contacto.whatsapp, '5493515550000');
+
+    assert.equal((await publico.post('/api/publico/consulta', consulta)).status, 201);
+    // El campo trampa responde bien y no crea nada; un dato inválido, 400.
+    assert.equal((await publico.post('/api/publico/consulta', { ...consulta, nombre: 'Bot', sitio: 'http://spam' })).status, 201);
+    for (const malo of [{ ...consulta, nombre: '' }, { ...consulta, contacto: 'mañana' }, { ...consulta, plan: 'constructor' }]) {
+      assert.equal((await publico.post('/api/publico/consulta', malo)).status, 400, JSON.stringify(malo));
+    }
+
+    const oportunidades = (await ventas.get('/api/crm/oportunidades')).json;
+    const lista = Array.isArray(oportunidades) ? oportunidades : oportunidades.oportunidades ?? [];
+    assert.deepEqual(
+      lista.map((o) => [o.contacto_nombre ?? o.nombre, o.origen, o.interes]),
+      [['Rosa', 'web', 'Quiere el plan Pro para "Panadería Rosa"']]
+    );
+    const deAjeno = (await ajeno.get('/api/crm/oportunidades')).json;
+    assert.equal((Array.isArray(deAjeno) ? deAjeno : deAjeno.oportunidades ?? []).length, 0);
+  } finally {
+    await otro.cerrar();
+  }
+});
+
 test('un plan desconocido en el alta responde 400', async () => {
   const r = await crearCliente(servidor.url).post('/api/auth/registro', {
     empresa: 'X',

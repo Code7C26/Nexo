@@ -26,6 +26,18 @@ export const MODULOS_INFO = {
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
 };
 export const PERFILES_RUBRO = {
+  // El más chico (hist. §99): quien vende por su cuenta y quiere saber cuánto
+  // vende y cuánto gana. Sin módulos opcionales, solo el núcleo; los suma en
+  // Configuración → Funciones cuando los necesite. Va primero en el alta.
+  emprendimiento: {
+    nombre: 'Emprendimiento',
+    descripcion: 'Vendés por tu cuenta (comida, ropa, artesanías): anotá cada venta y mirá cuánto ganás.',
+    icono: 'sprout',
+    unidad_defecto: 'unidad',
+    tipo_defecto: 'producto',
+    modulos: [],
+    etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
+  },
   comercio: {
     nombre: 'Comercio general',
     descripcion: 'Ropa, ferretería, librería o regalería: productos con talles, colores y códigos.',
