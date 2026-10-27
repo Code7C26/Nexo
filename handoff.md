@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §97);
+    siguiente número (hoy el último es §98);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,10 +19,15 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (26 de octubre de 2026)
+## Estado actual (27 de octubre de 2026)
 
-**Próxima sesión:** la landing pública con planes y hosting (8 en "Qué sigue").
-Pide decisiones del usuario: qué precios mostrar y dónde se publica.
+**En curso: etapa 8, planes, landing y publicación** (8 en "Qué sigue"),
+en cuatro fases (§98 a §101). El plan está en el punto 8.
+- **Fase 1, planes en el backend: hecha** (hist. §98), commiteada en
+  `solla`.
+- **Sigue la Fase 2:** el plan dentro de la app.
+- **Las decisiones del usuario ya están tomadas** (precios, topes de Gratis,
+  Oracle Cloud y DuckDNS, contacto al CRM): ver hist. §98.
 - **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
   `solla`, sin pushear. El diseño y la investigación están en
   `docs/investigacion-celular.md`.
@@ -482,6 +487,26 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Cambiar de negocio recarga la página** en la vista de inicio. Es el
   reseteo de la memoria de la app, como en el logout.
 
+**Planes de Nexo (hist. §98)**
+- **Precios, textos y topes viven solo en `backend/planes.js`.** La landing
+  y el alta los piden a `GET /api/auth/planes`.
+- **Todo plan tiene todas las funciones:** los separan los topes (usuarios,
+  negocios, productos activos y ventas del mes), nunca un módulo apagado.
+- **Una ruta nueva que crea algo con tope llama a `exigirLugarEnPlan()`.**
+  - Se llama en la ruta, no en `crearVenta()`: las cuotas de socios y abonos
+    se generan solas y nunca se frenan ni cuentan.
+  - Una alta que crea productos dentro de una transacción la llama con
+    `nuevos = 0` después del INSERT, así el throw la deshace.
+- **El plan no se cambia por la API.** Se cambia con `npm run plan` en el
+  servidor, y `PUT /api/negocio` no lo toca. Hacerlo editable desde la app
+  dejaría a cualquier negocio pasarse a Pro gratis.
+- **Plan vencido = Gratis, sin borrar nada:** el negocio sigue viendo y
+  editando lo que tiene, solo no suma más allá del tope.
+- **Los negocios que existían antes de §98 quedaron en Pro sin vencimiento**
+  (las bases reales y la demo).
+- **El arnés de tests registra en Pro** (`registrarEmpresa`, `plan`). Un test
+  de topes pide `plan: 'gratis'`.
+
 **PWA (hist. §94)**
 - **Primero la red, y lo guardado solo si falla** (`frontend/sw.js`). No pasar
   a "primero lo guardado": sin build step serviría código viejo.
@@ -864,11 +889,38 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      flotante para "Nuevo"; filtros en una hoja que sube desde abajo; formularios
      a pantalla completa en vez de modales.
    - Va junto con la PWA: la app instalada es esta misma vista.
-8. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
-   porque el marketing necesita una dirección pública. La landing se sirve
-   desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
-   no hay respuesta, va "consultanos") y dónde se publica (hosting gratis o
-   pago, y si se compra un dominio).
+8. **Landing pública con planes y hosting: en curso.** Va antes de lo demás
+   porque el marketing necesita una dirección pública. Las decisiones del
+   usuario (27 de octubre) están en hist. §98. Son cuatro fases, un § y un
+   commit cada una:
+   - ~~**Fase 1 (§98), planes en el backend**~~ **hecha**.
+   - **Fase 2 (§99), el plan en la app:**
+     - página "Tu plan" en Configuración, con el uso y cómo pasar a pago;
+     - aviso en el Resumen al final de la prueba o cerca de un tope;
+     - enlace a "Tu plan" cuando se llega a un tope;
+     - "Hecho con Nexo" en los comprobantes de Gratis;
+     - tipo "Emprendimiento" (sin módulos opcionales) primero en el alta;
+     - el alta lee `?plan=`.
+   - **Fase 3 (§100), landing:**
+     - `/` muestra la landing sin sesión y lleva a `/app` con sesión;
+     - la app pasa a `/app` (con `start_url` y `PRECACHE` del service
+       worker);
+     - `landing.html`, `landing.css` y `landing.js` sin scripts inline, con
+       capturas reales;
+     - contacto en `POST /api/publico/consulta`, que crea una consulta en el
+       CRM del negocio `NEXO_NEGOCIO_VENTAS`;
+     - página de privacidad, `robots.txt` y `sitemap.xml`.
+   - **Fase 4 (§101), publicación:**
+     - carpeta `deploy/` con `Caddyfile`, `nexo.service`, `instalar.sh`,
+       `actualizar.sh` y DuckDNS;
+     - la guía `docs/publicar.md`;
+     - HSTS en producción.
+     - Los trámites del usuario son la cuenta de Oracle Cloud (pide tarjeta
+       solo para verificar) y la de DuckDNS.
+   - **Para después:** cobro online con Mercado Pago, un panel de
+     administración de la plataforma, dominio propio y respaldo fuera de la
+     VM.
+   Lo que sigue es el planteo original de la etapa, como referencia:
    - **Planes (pedido del usuario del 25 de octubre):** se definen en esta
      etapa, con él. Hay que decidir en base a qué se cobra, qué suma cada
      plan más caro y cómo es la demo para probarlo.

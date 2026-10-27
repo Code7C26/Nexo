@@ -6,6 +6,7 @@ import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCat
 import { interpretar, InterpreteError } from './interprete.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
+import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -604,6 +605,13 @@ app.post('/api/auth/registro', (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  // El plan que eligió en la landing (hist. §98). Uno pago arranca como prueba
+  // de DIAS_PRUEBA días; al vencer, el negocio queda en Gratis.
+  const plan = req.body?.plan ?? PLAN_POR_DEFECTO;
+  if (typeof plan !== 'string' || !esPlan(plan)) {
+    return res.status(400).json({ error: 'El plan no es válido.' });
+  }
+  const planVence = PLANES[plan].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null;
 
   // Global a propósito: el nombre de usuario es único en todo Nexo y el login
   // no pide empresa (hist. §45).
@@ -632,6 +640,7 @@ app.post('/api/auth/registro', (req, res) => {
     } else {
       orgId = insertarNegocio(datos);
     }
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, planVence, orgId);
     const info = db
       .prepare(
         `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
@@ -647,7 +656,9 @@ app.post('/api/auth/registro', (req, res) => {
       entidad_id: orgId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[datos.rubro].nombre})`
+      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[datos.rubro].nombre}, plan ${PLANES[plan].nombre}${
+        planVence ? ` de prueba hasta el ${planVence}` : ''
+      })`
     });
     registrarAuditoria({
       accion: 'crear',
@@ -671,6 +682,12 @@ app.post('/api/auth/registro', (req, res) => {
 // ningún dato de una empresa.
 app.get('/api/auth/tipos-negocio', (req, res) => {
   res.json(catalogoTiposNegocio());
+});
+
+// Los planes y sus precios (hist. §98), para la landing y el alta guiada,
+// antes de que exista una sesión. Mismo criterio que los tipos de negocio.
+app.get('/api/auth/planes', (req, res) => {
+  res.json(catalogoPlanes());
 });
 
 // A partir de acá, TODO /api/* requiere sesión — los únicos endpoints que no
@@ -816,6 +833,17 @@ class ErrorValidacion extends Error {
   constructor(mensaje) {
     super(mensaje);
     this.status = 400;
+  }
+}
+
+// Se llegó al tope del plan del negocio (hist. §98). Es un ErrorBulk para que
+// los catch que ya traducen ErrorBulk (compras, edición de productos, lotes)
+// lo devuelvan con su 403 y su texto sin tocarlos. El manejador final le suma
+// `codigo`, que el frontend usa para ofrecer "Tu plan".
+class ErrorPlan extends ErrorBulk {
+  constructor(mensaje) {
+    super(mensaje, 403);
+    this.codigo = 'limite_plan';
   }
 }
 
@@ -1863,6 +1891,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
+  // Uno inactivo no cuenta para el tope del plan (hist. §98).
+  if (!(activo === false || activo === 0)) exigirLugarEnPlan(req.usuario.organizacion_id, 'productos');
 
   let lastInsertRowid;
   try {
@@ -2054,6 +2084,10 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   if (esPlanDeSocios && (cambiaPrecioDeLista || nuevo.precio_venta !== producto.precio_venta)) {
     throw new ErrorBulk(`El precio de "${producto.nombre}" se cambia en Socios → Planes: cada duración tiene el suyo.`);
   }
+  // Reactivarlo vuelve a ocupar un lugar del plan (hist. §98).
+  if (!producto.activo && nuevo.activo) {
+    exigirLugarEnPlan(req.usuario.organizacion_id, 'productos');
+  }
   // precio_costo no entra en este diff: es el promedio ponderado que
   // recalculan las compras (recalcularCostoProducto), no algo que este
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
@@ -2120,7 +2154,8 @@ app.patch('/api/productos/:id', soloAdmin, (req, res) => {
     aplicarEdicionProducto(req, productoId, req.body, 1);
   } catch (err) {
     if (err instanceof ErrorBulk) {
-      return res.status(err.status).json({ error: err.message });
+      // `codigo` solo lo trae el tope del plan (ErrorPlan).
+      return res.status(err.status).json({ error: err.message, codigo: err.codigo });
     }
     return res.status(400).json({ error: mensajeDeError(err) });
   }
@@ -3665,6 +3700,7 @@ app.post('/api/ventas', (req, res) => {
   if (errorItems) {
     return res.status(400).json({ error: errorItems });
   }
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
   const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
   if (deposito_id && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
@@ -4229,6 +4265,8 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
 // Puede fallar si en el medio se vendió el stock que había vuelto.
 app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
+  // Una venta restaurada vuelve a contar en el mes (hist. §98).
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
 
   const venta = db
     .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
@@ -4620,6 +4658,7 @@ app.patch('/api/presupuestos/:id/estado', (req, res) => {
 // que se cotizó — es lo que se le prometió al cliente.
 app.post('/api/presupuestos/:id/convertir', (req, res) => {
   const presupuestoId = Number(req.params.id);
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
 
   const presupuesto = db
     .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ? AND organizacion_id = ?')
@@ -5039,6 +5078,7 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
   if (items.length === 0) {
     return res.status(400).json({ error: 'Cargale al trabajo lo que se cobra antes de terminarlo.' });
   }
+  exigirLugarEnPlan(organizacionId, 'ventas_mes');
   const deposito = depositoPredeterminadoId(organizacionId);
   const errorStock = validarStockDisponible(items, deposito, organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
@@ -5781,6 +5821,9 @@ function crearCompra({
     if (!productoRow) {
       const { lastInsertRowid } = crearProducto.run(item.producto, organizacion_id);
       productoRow = { id: lastInsertRowid };
+      // El producto que la compra crea por nombre ocupa un lugar del plan
+      // (hist. §98): pasado el tope, el throw deshace toda la compra.
+      exigirLugarEnPlan(organizacion_id, 'productos', 0);
     }
     if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
     if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -5849,6 +5892,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
       return id;
     });
   } catch (err) {
+    // El tope del plan (un producto nuevo por nombre) sale con su 403.
+    if (err instanceof ErrorPlan) return res.status(err.status).json({ error: err.message, codigo: err.codigo });
     return res.status(400).json({ error: mensajeDeError(err) });
   }
 
@@ -6054,6 +6099,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       if (!productoRow) {
         const { lastInsertRowid } = crearProducto.run(item.producto, req.usuario.organizacion_id);
         productoRow = { id: lastInsertRowid };
+        exigirLugarEnPlan(req.usuario.organizacion_id, 'productos', 0);
       }
       if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
       if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -9255,6 +9301,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     if (!Array.isArray(propuesta?.items) || propuesta.items.length === 0) {
       return res.status(400).json({ error: 'La venta necesita al menos un item.' });
     }
+    exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
     const items = [];
     for (const item of propuesta.items) {
       if (!existeId('productos', item.producto?.id, req.usuario.organizacion_id)) {
@@ -9412,6 +9459,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
       });
     } catch (err) {
       marcarFallido(err.message);
+      // El tope del plan (un producto nuevo por nombre) se explica tal cual.
+      if (err instanceof ErrorPlan) return res.status(err.status).json({ error: err.message, codigo: err.codigo });
       return res.status(500).json({ error: 'No se pudo registrar la compra.' });
     }
 
@@ -9658,6 +9707,7 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
   const rolFinal = rol === 'admin' ? 'admin' : 'empleado';
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'usuarios');
 
   // Sin filtro por organización a propósito: `usuarios.usuario` tiene UNIQUE
   // global en el esquema y el login resuelve sin saber la empresa, así que el
@@ -9732,6 +9782,10 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   if (nuevo.nombre !== anterior.nombre && !administraTodosSusNegocios(req.usuario.id, id)) {
     return res.status(409).json({ error: MENSAJE_USA_OTRO_NEGOCIO });
   }
+  // Reactivar a alguien vuelve a ocupar un lugar del plan (hist. §98).
+  if (anterior.activo === 0 && nuevo.activo === 1) {
+    exigirLugarEnPlan(organizacionId, 'usuarios');
+  }
 
   withTransaction(() => {
     if (nuevo.nombre !== anterior.nombre) {
@@ -9802,6 +9856,108 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
 
   res.status(204).end();
 });
+
+/* ---------- Planes de Nexo (hist. §98) ---------- */
+
+// Los planes y sus topes viven en planes.js. Acá se cuenta cuánto usa cada
+// negocio y se frena lo que pasa el tope. Frenar nunca borra ni oculta nada:
+// un negocio cuya prueba venció sigue viendo y editando todo lo que cargó,
+// solo no suma más de lo que su plan permite.
+
+const NOMBRE_RECURSO = {
+  productos: { uno: 'producto o servicio activo', varios: 'productos o servicios activos' },
+  ventas_mes: { uno: 'venta por mes', varios: 'ventas por mes' },
+  usuarios: { uno: 'usuario', varios: 'usuarios' },
+  negocios: { uno: 'negocio', varios: 'negocios' }
+};
+
+// El primer día del mes de `hoy` (AAAA-MM-01) y el del mes siguiente.
+function limitesDelMes(hoy) {
+  const desde = `${hoy.slice(0, 7)}-01`;
+  const [y, m] = hoy.split('-').map(Number);
+  const hasta = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  return { desde, hasta };
+}
+
+// Cuánto usa hoy el negocio de cada recurso con tope. Las ventas son las del
+// mes de la Argentina, sin anular, y sin las cuotas que se generan solas
+// (socios y abonos): esas no las carga una persona y frenarlas dejaría a un
+// gimnasio sin cuotas.
+function usoDelPlan(organizacionId, hoy = fechaDeHoy()) {
+  const { desde, hasta } = limitesDelMes(hoy);
+  const contar = (sql, ...extra) => db.prepare(sql).get(organizacionId, ...extra).n;
+  return {
+    productos: contar('SELECT COUNT(*) AS n FROM productos WHERE organizacion_id = ? AND activo = 1'),
+    usuarios: contar('SELECT COUNT(*) AS n FROM usuario_organizaciones WHERE organizacion_id = ? AND activo = 1'),
+    ventas_mes: contar(
+      `SELECT COUNT(*) AS n FROM ventas
+        WHERE organizacion_id = ? AND estado = 'activa' AND fecha >= ? AND fecha < ?
+          AND id NOT IN (SELECT venta_id FROM cuotas_socio)
+          AND id NOT IN (SELECT venta_id FROM cuotas_abono)`,
+      desde,
+      hasta
+    )
+  };
+}
+
+// El plan del negocio como lo ve la página "Tu plan": el que rige hoy, el
+// guardado (distinto si la prueba venció), hasta cuándo y cuánto usa.
+function planDelNegocio(organizacionId) {
+  const hoy = fechaDeHoy();
+  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
+  const clave = planEfectivo(fila, hoy);
+  const plan = PLANES[clave];
+  const vigente = clave === fila.plan;
+  const uso = usoDelPlan(organizacionId, hoy);
+  return {
+    clave,
+    nombre: plan.nombre,
+    precio: plan.precio,
+    marca: plan.marca,
+    vence: vigente ? fila.plan_vence : null,
+    // diffDias es inclusivo: el último día de la prueba quedan 0 días más.
+    dias_restantes: vigente && fila.plan_vence ? diffDias(hoy, fila.plan_vence) : null,
+    // La prueba (o el plan pago) que terminó: la página explica por qué está
+    // en Gratis.
+    vencido: vigente ? null : { clave: fila.plan, nombre: PLANES[fila.plan]?.nombre ?? fila.plan, vencio: fila.plan_vence },
+    uso: Object.fromEntries(
+      ['productos', 'ventas_mes', 'usuarios'].map((recurso) => [recurso, { usados: uso[recurso], tope: plan[recurso] }])
+    )
+  };
+}
+
+// Frena (ErrorPlan, 403) si sumar `nuevos` de `recurso` pasa el tope del plan
+// que rige hoy. Con nuevos = 0 controla lo que ya se insertó adentro de una
+// transacción (los productos que una compra crea por nombre): el throw hace
+// ROLLBACK.
+function exigirLugarEnPlan(organizacionId, recurso, nuevos = 1) {
+  const hoy = fechaDeHoy();
+  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
+  const clave = planEfectivo(fila, hoy);
+  const tope = PLANES[clave][recurso];
+  if (tope === null) return;
+  const usados = recurso === 'negocios' ? 1 : usoDelPlan(organizacionId, hoy)[recurso];
+  if (usados + nuevos <= tope) return;
+  const siguiente = planQuePermite(recurso, tope);
+  const nombre = NOMBRE_RECURSO[recurso];
+  const cuanto = `${tope} ${tope === 1 ? nombre.uno : nombre.varios}`;
+  throw new ErrorPlan(
+    recurso === 'negocios'
+      ? `El plan ${PLANES[clave].nombre} es de un solo negocio. Con el plan ${PLANES[siguiente].nombre} sumás los que quieras.`
+      : `El plan ${PLANES[clave].nombre} llega hasta ${cuanto}. Pasá al plan ${PLANES[siguiente].nombre} para sumar más.`
+  );
+}
+
+// Los planes para la landing y el alta, con el contacto público si está
+// configurado. Es el mismo catálogo para todos y no tiene datos de ninguna
+// empresa.
+function catalogoPlanes() {
+  return {
+    planes: Object.entries(PLANES).map(([clave, plan]) => ({ clave, ...plan })),
+    dias_prueba: DIAS_PRUEBA,
+    contacto: { whatsapp: process.env.NEXO_CONTACTO_WHATSAPP?.replace(/\D/g, '') || null }
+  };
+}
 
 /* ---------- Tipo de negocio y módulos (CLAUDE.md §29) ---------- */
 
@@ -9959,7 +10115,16 @@ app.get('/api/negocio', (req, res) => {
   }
   // Con el perfil efectivo y el catálogo de tipos y módulos, así las tarjetas
   // de Configuración no repiten la tabla.
-  res.json({ ...negocio, ...perfilDeEmpresa(req.usuario.organizacion_id), perfiles: catalogoTiposNegocio() });
+  // El plan va para los dos roles: el comprobante de un negocio Gratis lleva
+  // "Hecho con Nexo" lo imprima quien lo imprima. El uso son conteos, nada
+  // sensible.
+  res.json({
+    ...negocio,
+    ...perfilDeEmpresa(req.usuario.organizacion_id),
+    perfiles: catalogoTiposNegocio(),
+    plan: planDelNegocio(req.usuario.organizacion_id),
+    planes: catalogoPlanes()
+  });
 });
 
 // Cuánto tiene cargado el negocio, para la guía de primeros pasos del Resumen
@@ -10115,10 +10280,21 @@ app.post('/api/negocios', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  // Sumar negocios es de Pro (hist. §98), y el nuevo nace con el plan de este
+  // y su mismo vencimiento: se pagan juntos.
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'negocios');
+  const planActual = db
+    .prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?')
+    .get(req.usuario.organizacion_id);
 
   const token = leerCookie(req, COOKIE_SESION);
   const id = withTransaction(() => {
     const orgId = insertarNegocio(datos);
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(
+      planActual.plan,
+      planActual.plan_vence,
+      orgId
+    );
     sumarAlNegocio(req.usuario.id, orgId, 'admin');
     registrarAuditoria({
       accion: 'crear',
@@ -10407,6 +10583,7 @@ app.post('/api/pos/ventas', (req, res) => {
   }
   const errorItems = validarItemsVenta(items);
   if (errorItems) return res.status(400).json({ error: errorItems });
+  exigirLugarEnPlan(organizacionId, 'ventas_mes');
   const errorStock = validarStockDisponible(items, depositoPredeterminadoId(organizacionId), organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
 
@@ -11129,6 +11306,8 @@ app.post('/api/planes-socio', soloAdmin, (req, res) => {
   if (nombreDePlanRepetido(datos.nombre, organizacionId)) {
     return res.status(400).json({ error: 'Ya hay un plan con ese nombre.' });
   }
+  // Su servicio es un producto activo más del catálogo (hist. §98).
+  exigirLugarEnPlan(organizacionId, 'productos');
   const planId = withTransaction(() => {
     const { lastInsertRowid: productoId } = db
       .prepare(
@@ -12917,6 +13096,9 @@ app.use((err, req, res, next) => {
   }
   if (err instanceof ErrorValidacion) {
     return res.status(err.status).json({ error: err.message });
+  }
+  if (err instanceof ErrorPlan) {
+    return res.status(err.status).json({ error: err.message, codigo: err.codigo });
   }
   // Errores del cliente que Express/body-parser ya clasificó (una URL mal
   // codificada con `%`, un Content-Encoding que no soporta): conservan su 4xx

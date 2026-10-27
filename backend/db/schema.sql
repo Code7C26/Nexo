@@ -916,7 +916,12 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- Tipo de negocio y módulos visibles (CLAUDE.md §29, PERFILES_RUBRO en
   -- server.js). NULL = comercio general / los módulos del preset del tipo.
   rubro TEXT,
-  modulos TEXT
+  modulos TEXT,
+  -- Plan de Nexo (hist. §98, PLANES en backend/planes.js) y hasta cuándo rige
+  -- (AAAA-MM-DD). NULL en plan_vence es que no vence; vencido, el negocio
+  -- queda en Gratis sin perder nada.
+  plan TEXT NOT NULL DEFAULT 'gratis',
+  plan_vence TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

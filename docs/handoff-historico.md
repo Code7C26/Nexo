@@ -9204,3 +9204,81 @@ cambió (md5 `e8df3009…`). En Chrome:
 
 **Para después** (anotado en `docs/investigacion-celular.md` §4): encabezados
 por día en Ventas y Caja, acciones deslizando la fila, Web Push.
+
+## 98. Planes de Nexo en el backend, 27 de octubre de 2026
+
+Primera fase de la etapa 8 (landing, planes y hosting). Plan completo de la
+etapa: fases §98 a §101.
+
+**Decisiones del usuario (27 de octubre):**
+- **Planes:** Gratis, Emprendedor a $ 19.900 por mes y Pro a $ 34.900 por
+  mes.
+- **Gratis, versión generosa:** 1 usuario y 1 negocio, 100 productos y 300
+  ventas por mes, con "Hecho con Nexo" en los comprobantes.
+- **Hosting y dominio:** Oracle Cloud Always Free con un subdominio gratis de
+  DuckDNS, porque "nexo" no está libre.
+- **Contacto:** por ahora la consulta de la landing cae en el CRM de un
+  negocio suyo dentro de Nexo. WhatsApp se suma cuando tenga un número
+  propio para Nexo.
+
+**Decidido sin el usuario** (default del mercado, a revisar):
+- **Prueba de 14 días** de un plan pago, que al vencer cae a Gratis sin
+  borrar nada.
+- **Topes:** Emprendedor tiene 3 usuarios; solo Pro suma negocios, y el
+  negocio nuevo hereda su plan.
+- **Qué cuenta para el tope:**
+  - los productos activos, contando los servicios;
+  - las ventas del mes que no estén anuladas. Las cuotas de socios y abonos
+    no cuentan ni se frenan.
+- **Todos los planes tienen todas las funciones:** los separan solo los
+  topes, nunca un módulo apagado.
+
+**Qué se hizo:**
+- **`backend/planes.js`:**
+  - `PLANES` es la única fuente de precios, textos y topes;
+  - `DIAS_PRUEBA` es la duración de la prueba;
+  - `planEfectivo()` devuelve Gratis cuando el plan venció;
+  - `planQuePermite()` nombra el plan que sigue.
+- **Esquema:**
+  - `organizaciones.plan` (`NOT NULL DEFAULT 'gratis'`) y `plan_vence`
+    (AAAA-MM-DD o NULL), en `schema.sql` y como `ALTER` en `db/index.js`;
+  - los negocios que ya existían pasan a Pro sin vencimiento, solo en el
+    arranque que suma la columna.
+- **`server.js`:**
+  - `GET /api/auth/planes` es pública y trae los planes y el WhatsApp de
+    `NEXO_CONTACTO_WHATSAPP`, si existe;
+  - el registro acepta `plan`, y uno pago arranca la prueba;
+  - `GET /api/negocio` suma `plan` (el que rige, el vencimiento, los días que
+    quedan, el que venció y el uso contra cada tope) y `planes`.
+- **El tope es `exigirLugarEnPlan()`:** responde 403
+  `{ error, codigo: 'limite_plan' }` con `ErrorPlan`, un `ErrorBulk`, así los
+  catch que ya traducían `ErrorBulk` lo devuelven. Corre en:
+  - **productos:** el alta, la reactivación (también en lote), los que crea
+    una compra por nombre (después del INSERT, y el throw deshace la compra)
+    y el servicio de un plan de socios;
+  - **usuarios:** el alta y la reactivación;
+  - **negocios:** "Agregar negocio";
+  - **ventas:** las ventas, el punto de venta, un presupuesto convertido, un
+    trabajo terminado, las ventas del asistente y la venta anulada que se
+    restaura.
+- **`npm run plan` (`scripts/plan.mjs`):**
+  - lista los negocios, muestra uno con `--ver` y cambia el plan con
+    `--negocio N --plan X [--hasta AAAA-MM-DD]`;
+  - abre la base directo, sin correr migraciones ni respaldo con el servidor
+    andando, y audita el cambio con actor `sistema`;
+  - es la administración de la plataforma hasta que haya un panel.
+- **Tests:**
+  - `registrarEmpresa()` del arnés da de alta en Pro, para que los topes no
+    se crucen con lo que prueba cada test;
+  - `backend/test/planes.test.js` (con su propio servidor) llena un Gratis
+    hasta cada tope, vence una prueba con el script y controla que
+    `PUT /api/negocio` ignore el plan.
+
+**Verificación:**
+- `npm test`: 70 de 70, y lint sin problemas.
+- `verificar-migracion`: 24 de 24 casos.
+- Una copia de la base real migrada deja sus 4 negocios en Pro sin
+  vencimiento.
+- `regresion`: 4 diferencias, todas esperadas (la ruta nueva y los campos
+  `plan` y `planes`).
+- La base real no cambió (md5 `602d45b8…`).

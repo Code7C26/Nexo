@@ -135,10 +135,12 @@ export async function levantarServidor({ backendDir = backendPropio, dbPath, env
 }
 
 // Crea una empresa con su admin por el registro público y devuelve el cliente
-// ya logueado como ese admin.
-export async function registrarEmpresa(url, { empresa, usuario, nombre = 'Admin', password = 'clave-segura-1' }) {
+// ya logueado como ese admin. Nace en Pro (la prueba de 14 días, hist. §98)
+// para que los topes de Gratis no se crucen con lo que prueba cada test; los
+// de planes piden `plan: 'gratis'`.
+export async function registrarEmpresa(url, { empresa, usuario, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro' }) {
   const cliente = crearCliente(url);
-  const r = await cliente.post('/api/auth/registro', { empresa, usuario, nombre, password });
+  const r = await cliente.post('/api/auth/registro', { empresa, usuario, nombre, password, plan });
   if (r.status !== 201) throw new Error(`Registro falló (${r.status}): ${r.texto}`);
   return cliente;
 }

@@ -12,7 +12,8 @@
     "seed": "node scripts/seed.mjs",
     "verificar-migracion": "node scripts/verificar-migracion.mjs",
     "regresion": "node scripts/regresion-head.mjs",
-    "fuentes": "node scripts/fuentes.mjs"
+    "fuentes": "node scripts/fuentes.mjs",
+    "plan": "node scripts/plan.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

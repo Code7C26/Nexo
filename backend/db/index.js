@@ -1667,6 +1667,17 @@ for (const columna of ['rubro', 'modulos']) {
     db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna} TEXT`);
   }
 }
+// Plan de Nexo (hist. §98, ver schema.sql). Los negocios que ya existían antes
+// de los planes (las bases reales y la demo) quedan en Pro sin vencimiento:
+// nunca se les frena nada que ya hacían. Solo en el arranque que suma la
+// columna, así un negocio nuevo nace en Gratis aunque se repita la migración.
+if (!organizacionesColumnasRubro.some((col) => col.name === 'plan')) {
+  db.exec(`
+    ALTER TABLE organizaciones ADD COLUMN plan TEXT NOT NULL DEFAULT 'gratis';
+    ALTER TABLE organizaciones ADD COLUMN plan_vence TEXT;
+    UPDATE organizaciones SET plan = 'pro', plan_vence = NULL;
+  `);
+}
 // Los módulos de cada empresa quedan guardados (hist. §88): NULL era "los del
 // tipo", y cambiar el tipo prendía y apagaba secciones solo. Sin cambio de
 // esquema: cada NULL pasa a los módulos que esa empresa ve hoy, los del preset
