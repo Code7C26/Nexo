@@ -9440,3 +9440,70 @@ azul de Nexo y sin el rosa:
   `modulepreload`). Falta la compresión, que la pone Caddy en la Fase 4.
 - La base real no la tocó esta sesión: su md5 cambia porque el servidor del
   usuario en el puerto 3000 renueva sesiones.
+
+## 101. Login, mail, términos y edad: investigación y el módulo de mail, 27 de octubre de 2026
+
+El usuario vio la landing ("quedó perfecta") y, antes de seguir con cosas
+grandes, pidió revisar la seguridad del login, la aceptación de términos y
+privacidad, la edad y la recuperación por mail. Pasa a ser la etapa 8b, antes
+de la Fase 4 de publicación: sin esto la landing no se abre al público.
+
+**Investigación:** `docs/investigacion-login-legal.md`. Lo legal (Ley 25.326,
+inscripción en la AAIP, botones de arrepentimiento y de baja, edad según el
+Código Civil), qué le falta al login, las opciones de mail y el plan por
+fases. El hallazgo más grave: ninguna cuenta tiene mail, y un admin que se
+olvida la contraseña pierde su negocio.
+
+**Decisiones del usuario (27 de octubre):**
+- El titular legal de Nexo es Santino (19 años). No hace falta estar
+  inscripto en ARCA para eso; sí para cobrar los planes. Sus datos van en
+  `.env` (`NEXO_TITULAR_*`, Fase 3), no en el repo público.
+- Se acepta de 13 a 17 años en Gratis, con permiso de los padres. Los planes
+  pagos, solo mayores.
+- Cada persona tiene su cuenta con mail y se entra con el mail. El admin
+  invita por mail desde Configuración y la persona acepta la solicitud, solo
+  con mail verificado. Diseño en la sección 5 del documento (Fases 1 y 1b).
+- Gemini: se le recomendó una sola clave de Nexo en el plan pago, con un tope
+  de frases por plan (sección 2.6). Falta que lo confirme, con los topes.
+
+**Qué se hizo:**
+- `backend/mail.js`: cliente SMTP propio sobre `node:tls` (solo TLS directo,
+  puerto 465), sin dependencia nueva.
+  - `mandarMail({ para, asunto, texto, html })`, `plantillaMail()` (texto y
+    HTML con la franja negra de Nexo, estilos en línea y sin imágenes),
+    `esMailValido()`, `mailConfigurado()` y `conversarSmtp()`, separada de la
+    conexión para poder probarla.
+  - Saca los espacios de la clave (Google la muestra en cuatro grupos).
+  - Rechaza destinatarios y asuntos con saltos de línea, para que nadie meta
+    un `Bcc:`.
+  - Cuerpo en base64 y asunto con RFC 2047; duplica los puntos al principio
+    de línea.
+  - Un 535 da "rechazó el usuario o la clave", sin mostrar la clave.
+  - `NEXO_MAIL=stub` guarda cada mail como JSON en `NEXO_MAIL_DIR` en vez de
+    mandarlo.
+- `npm run probar-mail [-- destino]` (`scripts/probar-mail.mjs`), desde la
+  raíz, lee `.env`.
+- `.env.example`: `NEXO_SMTP_USUARIO`, `NEXO_SMTP_CLAVE`,
+  `NEXO_SMTP_SERVIDOR` y `NEXO_SMTP_PUERTO`.
+- La cuenta de Nexo es `nexosystem.app@gmail.com`, con contraseña de
+  aplicación en el `.env` de la raíz de la máquina de Santino (se creó en esta
+  sesión, comprobado que git lo ignora). La clave nunca pasó por el chat: el
+  formato se controló con búsquedas que solo cuentan coincidencias.
+- `assets/logo/06-perfil/`: el ícono en un cuadrado de 512×512, en negro y en
+  blanco, para la foto de perfil del mail. A escala 1:1, sin agrandar.
+
+**Lo que falló en el camino:**
+- `myaccount.google.com/apppasswords` decía "no está disponible para tu
+  cuenta": faltaba la verificación en dos pasos.
+- El usuario abrió `.env.example` para pegar la clave. Ese archivo se versiona
+  y el repo es público: la clave va en `.env`.
+- La clave se pegó con los espacios de Google. Desde ahí `mail.js` los saca.
+
+**Verificación:**
+- `backend/test/mail.test.js` (5 tests) contra un servidor SMTP falso sin
+  TLS: la charla, el AUTH, los puntos duplicados, el 535 sin la clave, el
+  asunto con acentos, los destinatarios inválidos y el modo stub.
+- `npm test`: 82 de 82. Lint sin problemas.
+- `npm run probar-mail`: Gmail aceptó el envío a la misma cuenta. Falta que el
+  usuario confirme que llegó y cómo se ve.
+- No se tocó el esquema ni la base real.

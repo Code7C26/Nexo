@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §100);
+    siguiente número (hoy el último es §101);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,45 @@
 
 ## Estado actual (27 de octubre de 2026)
 
+**Para retomar (próxima sesión): la Fase 1 de la etapa 8b**, con el diseño
+de la sección 5 de `docs/investigacion-login-legal.md`: el mail en la cuenta,
+`tokens_cuenta`, la verificación, el login con mail, la página obligatoria
+"Sumá tu mail" y los mails "+" de las cuentas de la demo. Lo hecho hasta acá
+está en hist. §101, **sin commitear** (mail.js, su test, probar-mail, el
+documento, el logo de perfil y los cambios de `.env.example`, `package.json`
+y estos dos handoffs). Falta que el usuario confirme que el mail de prueba
+llegó bien.
+
+**Nuevo: etapa 8b, login, mail, términos y edad** (8b en "Qué sigue").
+Pedida por el usuario el 27 de octubre, después de ver la landing ("quedó
+perfecta") y antes de seguir con cosas grandes. La investigación está hecha:
+`docs/investigacion-login-legal.md`, con el plan en cuatro fases. El
+hallazgo más grave: ninguna cuenta tiene mail, así que un admin que se olvida
+la contraseña pierde su negocio.
+- **Decidido el 27 de octubre:** el titular legal es Santino (19 años; sus
+  datos van en `.env`, no en el repo público), y se acepta de 13 a 17 años en
+  Gratis, con permiso de los padres.
+- **El mail ya manda** (27 de octubre): `nexosystem.app@gmail.com` con
+  contraseña de aplicación en el `.env` de la raíz (solo en la máquina de
+  Santino; en `.env.example` están las variables vacías). `backend/mail.js` es
+  un cliente SMTP propio sobre `node:tls`, sin dependencia, con
+  `plantillaMail()` para el cuerpo y `NEXO_MAIL=stub` para los tests
+  (`backend/test/mail.test.js`, servidor SMTP falso). `npm run probar-mail`
+  manda uno de prueba; el primero salió bien. Falta todo lo demás de la
+  Fase 1: el mail en la cuenta, la verificación y entrar con el mail.
+- **Decisión del usuario (27 de octubre): cada persona tiene su cuenta con
+  mail y se entra con el mail.** El admin ya no crea empleados con usuario y
+  contraseña: los invita por mail desde Configuración, y la persona acepta la
+  solicitud (solo a mails verificados). Diseño, migración (incluido un
+  rebuild de `usuarios`) y qué pasa con las cuentas de hoy y las de la demo:
+  sección 5 del documento, Fases 1 y 1b. Cuando se implemente, corregir acá
+  las decisiones vigentes de hist. §45 y §77 sobre el usuario único y el login.
+- **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
+  frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
+  topes.
+
 **En curso: etapa 8, planes, landing y publicación** (8 en "Qué sigue"),
-en cuatro fases (§98 a §101). El plan está en el punto 8.
+en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 - **Fase 1, planes en el backend: hecha** (hist. §98), commiteada en
   `solla`.
 - **Fase 2, el plan dentro de la app: hecha** (hist. §99), commiteada.
@@ -31,8 +68,8 @@ en cuatro fases (§98 a §101). El plan está en el punto 8.
   pushear.
   - `/` es la landing pública, y la app pasa a `/app`;
   - suma privacidad, robots y sitemap, con capturas reales de la demo;
-  - **falta que el usuario la mire.** La inspiración que dio fue
-    escalafy.com.
+  - el usuario la vio el 27 de octubre: "quedó perfecta". La inspiración
+    que dio fue escalafy.com.
   - **Privacidad es un borrador** para que el equipo revise el texto.
 - **Sigue la Fase 4:** la publicación (`deploy/`, Caddy, DuckDNS, la guía).
   Al publicar, definir `NEXO_URL_PUBLICA` y `NEXO_NEGOCIO_VENTAS`.
@@ -945,7 +982,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - el formulario de contacto, contra `POST /api/publico/consulta` (ya
        hecho en §99);
      - página de privacidad, `robots.txt` y `sitemap.xml`.
-   - **Fase 4 (§101), publicación:**
+   - **Fase 4, publicación** (después de la etapa 8b):
      - carpeta `deploy/` con `Caddyfile`, `nexo.service`, `instalar.sh`,
        `actualizar.sh` y DuckDNS;
      - la guía `docs/publicar.md`;
@@ -976,6 +1013,19 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      Google restringe los anuncios a menores. La alternativa propuesta: el
      plan gratis funciona como vidriera, invita a pasar a un plan pago y lleva
      la marca "Hecho con Nexo".
+8b. **Login, mail, términos y edad** (pedido del usuario del 27 de octubre,
+   antes de la Fase 4 de publicación: sin esto la landing no se abre al
+   público). Investigación y plan en `docs/investigacion-login-legal.md`:
+   - ~~`backend/mail.js`~~ hecho (hist. §101).
+   - Fase 1: mail en la cuenta, verificado, y login con mail.
+   - Fase 1b: invitaciones por mail desde Configuración, cuentas sin negocio
+     y rebuild de `usuarios` (`organizacion_id` nulable).
+   - Fase 2: recuperar la contraseña (`tokens_cuenta`, enlace de un solo uso
+     de 30 minutos).
+   - Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
+     su versión y la pregunta de edad.
+   - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.
+   - Las migraciones son aditivas y están explicadas en el documento.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
