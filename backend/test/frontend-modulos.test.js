@@ -133,7 +133,9 @@ test('sw.js guarda todo frontend/js y lo que carga index.html, y lo que lista ex
   const css = readFileSync(path.join(RAIZ_FRONT, 'css', 'styles.css'), 'utf8');
   const absoluta = (ref) => (ref.startsWith('/') ? ref : `/${ref}`);
   const esperados = new Set([
-    ...archivos.map((a) => `/js/${rel(a)}`),
+    // landing.js es de la página pública (hist. §100), no de la app: no hace
+    // falta sin conexión, y el service worker no guarda la landing.
+    ...archivos.filter((a) => rel(a) !== 'landing.js').map((a) => `/js/${rel(a)}`),
     // src/href locales (sin esquema); el #fragmento de los íconos no cuenta.
     ...[...html.matchAll(/(?:src|href)="([^"#:]+)/g)].map((m) => absoluta(m[1])),
     ...[...css.matchAll(/url\("\.\.\/([^"]+)"\)/g)].map((m) => `/${m[1]}`),
@@ -144,7 +146,7 @@ test('sw.js guarda todo frontend/js y lo que carga index.html, y lo que lista ex
   // Lo de OPCIONALES puede faltar (Satoshi no se versiona); lo de PRECACHE no:
   // un solo archivo inexistente hace fallar la instalación entera.
   const enDisco = (url) =>
-    url === '/'
+    url === '/app'
       ? path.join(RAIZ_FRONT, 'index.html')
       : url.startsWith('/assets/')
         ? path.join(RAIZ_FRONT, '..', url)

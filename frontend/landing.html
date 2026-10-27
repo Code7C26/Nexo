@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- La sirve server.js como plantilla (hist. §100): le pone la dirección
+       pública (canónico, Open Graph) y los datos estructurados con los
+       precios de planes.js. Sin script inline: la CSP no lo deja. -->
+  <title>Nexo — Ventas, stock, caja y clientes de tu negocio, en un solo lugar</title>
+  <meta name="description" content="Sistema de gestión para comercios, emprendimientos y pymes: punto de venta, stock, compras con costo real, cuentas corrientes, caja y CRM. Gratis para empezar, sin tarjeta." />
+  <link rel="canonical" href="%URL%/" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_blanco_fondo-negro.png" />
+  <link rel="apple-touch-icon" href="/img/app/apple-touch-icon.png" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="es_AR" />
+  <meta property="og:site_name" content="Nexo" />
+  <meta property="og:title" content="Nexo — Todo tu negocio en un solo lugar" />
+  <meta property="og:description" content="Ventas, caja, stock, clientes y cuentas, conectados. Sabés cuánto ganás en cada venta. Gratis para empezar." />
+  <meta property="og:url" content="%URL%/" />
+  <meta property="og:image" content="%URL%/img/landing/resumen.webp" />
+  <meta property="og:image:width" content="2880" />
+  <meta property="og:image:height" content="1800" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/css/landing.css" />
+  <!-- Lo que importa landing.js se pide en paralelo, no uno detrás de otro. -->
+  <link rel="modulepreload" href="/js/core/formato.js" />
+  <link rel="modulepreload" href="/js/core/iconos.js" />
+  <script type="module" src="/js/landing.js"></script>
+  <script type="application/ld+json">%JSONLD%</script>
+</head>
+<body>
+  <a class="saltar" href="#contenido">Saltar al contenido</a>
+
+  <header class="barra" id="barra">
+    <div class="barra-interior">
+      <a class="marca" href="/" aria-label="Nexo, inicio">
+        <img src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" width="28" height="28" />
+        <span>Nexo</span>
+      </a>
+      <nav class="barra-nav" id="barraNav" aria-label="Secciones">
+        <a href="#funciones">Funciones</a>
+        <a href="#negocios">Negocios</a>
+        <a href="#planes">Planes</a>
+        <a href="#preguntas">Preguntas</a>
+        <a href="#contacto">Contacto</a>
+        <a class="solo-celular" href="/app">Entrar</a>
+      </nav>
+      <div class="barra-acciones">
+        <a class="btn btn-fantasma solo-compu" href="/app">Entrar</a>
+        <a class="btn btn-tinta" href="/app#/crear-cuenta">Crear cuenta gratis</a>
+        <button type="button" class="btn-menu" id="btnMenu" aria-label="Abrir menú" aria-controls="barraNav" aria-expanded="false">
+          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#menu"></use></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenido">
+
+    <!-- Portada -->
+    <section class="portada">
+      <div class="contenedor portada-texto">
+        <p class="pastilla"><span class="punto" aria-hidden="true"></span>Gratis para empezar · sin tarjeta</p>
+        <h1>Todo tu negocio en un solo lugar.<br /><span class="acento">Y sabés cuánto ganás.</span></h1>
+        <p class="bajada">
+          Ventas, caja, stock, clientes y cuentas, conectados entre sí. Cada venta descuenta el stock,
+          guarda lo que te costó y te dice cuánto ganaste. Sirve para el que vende medialunas y para la
+          pyme con tres locales.
+        </p>
+        <ul class="preguntas-chips" aria-label="Lo que Nexo te responde">
+          <li>¿Cuánto gané este mes?</li>
+          <li>¿Qué tengo que reponer?</li>
+          <li>¿Quién me debe plata?</li>
+          <li>¿Cuánto hay en la caja?</li>
+          <li>¿A quién llamo hoy?</li>
+          <li>¿Qué producto me deja más?</li>
+        </ul>
+        <div class="acciones">
+          <a class="btn btn-tinta btn-grande" href="/app#/crear-cuenta">Crear cuenta gratis</a>
+          <a class="btn btn-fantasma btn-grande" href="#funciones">Ver cómo funciona</a>
+        </div>
+        <p class="nota">El plan Gratis no vence. Lo usás en la compu y en el celular.</p>
+      </div>
+
+      <div class="contenedor portada-visual">
+        <figure class="marco-compu">
+          <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+          <img src="/img/landing/resumen.webp" width="2880" height="1800" alt="El Resumen de Nexo: lo que hay que hacer hoy, las ventas, el costo de la mercadería, la ganancia y el resultado del período." fetchpriority="high" />
+        </figure>
+        <figure class="marco-celular">
+          <img src="/img/landing/celular-resumen.webp" width="780" height="1688" alt="El Resumen de Nexo en el celular, con la barra de secciones abajo." />
+        </figure>
+      </div>
+    </section>
+
+    <!-- Lo conectado -->
+    <section class="seccion" id="funciones">
+      <div class="contenedor encabezado">
+        <p class="etiqueta">Cómo funciona</p>
+        <h2>No son pantallas sueltas.<br /><span class="acento">Es tu negocio, conectado.</span></h2>
+        <p class="bajada">
+          Una venta descuenta el stock, guarda el costo de ese momento, suma a la caja o a la cuenta del
+          cliente y queda registrada con quién la hizo. Sin pasar datos de una planilla a otra.
+        </p>
+      </div>
+
+      <div class="contenedor bloques">
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg>Vender</p>
+            <h3>Cobrá rápido en el mostrador.</h3>
+            <p>
+              Buscás por nombre o pasás el lector de códigos, y cobrás en efectivo, con transferencia o
+              Mercado Pago, o con varios medios a la vez. Al cerrar la caja, Nexo te dice cuánto tendría
+              que haber y anota la diferencia.
+            </p>
+            <ul class="chips">
+              <li>Lector de códigos</li>
+              <li>Cobro con varios medios</li>
+              <li>Vuelto</li>
+              <li>Arqueo de caja</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual marco-compu">
+            <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+            <img src="/img/landing/punto-de-venta.webp" width="2560" height="1760" loading="lazy" alt="El punto de venta de Nexo con la caja abierta, los productos y una venta de tres productos por cobrar." />
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#boxes"></use></svg>Stock y costos</p>
+            <h3>Sabés lo que tenés y cuánto te costó de verdad.</h3>
+            <p>
+              Talles, colores y venta por kilo. Cuando cargás una compra, el envío se reparte entre los
+              productos y el costo se promedia con lo que ya tenías. Si un producto queda por debajo del
+              margen que querés, te avisa.
+            </p>
+            <ul class="chips">
+              <li>Talles y colores</li>
+              <li>Venta por kilo</li>
+              <li>Costo con el envío</li>
+              <li>Varios depósitos</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual marco-compu">
+            <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+            <img src="/img/landing/productos.webp" width="2560" height="1760" loading="lazy" alt="La lista de productos con costo, precio, margen contra el objetivo y stock de cada uno." />
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg>Clientes</p>
+            <h3>Ninguna consulta se te pierde.</h3>
+            <p>
+              Cada persona que pregunta queda anotada, con en qué etapa está y qué hay que hacer después.
+              Todos los días ves a quién tenés que llamar, y quiénes dejaron de comprar. Una consulta pasa
+              a presupuesto o a venta sin volver a cargar nada.
+            </p>
+            <ul class="chips">
+              <li>Embudo de consultas</li>
+              <li>Para hoy</li>
+              <li>Presupuestos</li>
+              <li>Dejaron de comprar</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual marco-compu">
+            <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+            <img src="/img/landing/crm.webp" width="2560" height="1760" loading="lazy" alt="El CRM de Nexo: las consultas en columnas por etapa, con lo que vale cada una y el próximo paso." />
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#wallet"></use></svg>La plata</p>
+            <h3>Quién te debe, a quién le debés y cuánto ganaste.</h3>
+            <p>
+              Ventas y compras a cuenta corriente, con su vencimiento. La caja, el banco y Mercado Pago, cada
+              uno con su saldo. Los gastos del mes. Y el resultado: lo que vendiste, menos lo que te costó,
+              menos los gastos.
+            </p>
+            <ul class="chips">
+              <li>Cuentas corrientes</li>
+              <li>Vencidos</li>
+              <li>Caja y bancos</li>
+              <li>Gastos</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual marco-compu">
+            <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
+            <img src="/img/landing/cuentas.webp" width="2560" height="1760" loading="lazy" alt="Las cuentas corrientes: lo que hay por cobrar y por pagar, con el vencimiento y si está vencido." />
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#sparkles"></use></svg>Asistente</p>
+            <h3>Contale qué pasó, como a una persona.</h3>
+            <p>
+              Le escribís lo que vendiste, lo que compraste o lo que pagaste, y Nexo arma la operación. Te
+              muestra cómo lo entendió y no carga nada hasta que confirmás.
+            </p>
+            <ul class="chips">
+              <li>Ventas</li>
+              <li>Compras</li>
+              <li>Gastos</li>
+              <li>Vos confirmás</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual chat" aria-label="Ejemplo de una conversación con el asistente">
+            <p class="chat-yo">Vendí 3 remeras a Juan por 45 mil y me pagó por Mercado Pago</p>
+            <div class="chat-nexo">
+              <p class="chat-titulo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#sparkles"></use></svg>Así lo entendí</p>
+              <dl>
+                <div><dt>Operación</dt><dd>Venta</dd></div>
+                <div><dt>Cliente</dt><dd>Juan Pérez</dd></div>
+                <div><dt>Producto</dt><dd>3 × Remera básica</dd></div>
+                <div><dt>Total</dt><dd>$ 45.000</dd></div>
+                <div><dt>Cobro</dt><dd>Mercado Pago</dd></div>
+              </dl>
+              <div class="chat-botones" aria-hidden="true">
+                <span class="chat-btn">Descartar</span>
+                <span class="chat-btn chat-btn-ok">Confirmar y registrar</span>
+              </div>
+            </div>
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#phone"></use></svg>En el celular</p>
+            <h3>En la compu y en el celular, la misma cuenta.</h3>
+            <p>
+              Se instala desde el navegador como una app, sin pasar por ninguna tienda. Las secciones que más
+              usás van abajo, a mano, y si te quedás sin señal ves lo último que cargaste.
+            </p>
+            <ul class="chips">
+              <li>Se instala como una app</li>
+              <li>Android y iPhone</li>
+              <li>Sin conexión, lo último cargado</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual bloque-celular">
+            <div class="marco-celular">
+              <img src="/img/landing/celular-pos.webp" width="780" height="1688" loading="lazy" alt="El punto de venta en el celular, con la venta en curso y el botón Cobrar." />
+            </div>
+          </figure>
+        </article>
+      </div>
+
+      <div class="contenedor">
+        <h3 class="tambien-titulo">Y además</h3>
+        <ul class="tambien">
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg>Devoluciones con nota de crédito</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-cog"></use></svg>Usuarios con roles: el empleado no ve tus costos</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg>Registro de cada cambio: quién y cuándo</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg>Compras y proveedores</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg>Listas de precios: minorista, mayorista</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg>Socios y cuotas para gimnasios</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#clipboard-list"></use></svg>Trabajos y abonos para servicios</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-down"></use></svg>Comprobantes en PDF y listas en CSV</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Tipos de negocio: los arma landing.js con /api/auth/tipos-negocio -->
+    <section class="seccion" id="negocios">
+      <div class="contenedor encabezado">
+        <p class="etiqueta">Para qué negocio</p>
+        <h2>Se acomoda a lo que vendés.</h2>
+        <p class="bajada">
+          Al crear la cuenta elegís qué tipo de negocio tenés, y Nexo arranca con lo que te sirve. Después
+          sumás o sacás funciones cuando quieras.
+        </p>
+      </div>
+      <div class="contenedor">
+        <ul class="tipos" id="tipos">
+          <li class="tipo"><div class="tipo-texto"><strong>Emprendimiento</strong><span>Vendés por tu cuenta: anotá cada venta y mirá cuánto ganás.</span></div></li>
+          <li class="tipo"><div class="tipo-texto"><strong>Comercio</strong><span>Ropa, ferretería, librería o regalería.</span></div></li>
+          <li class="tipo"><div class="tipo-texto"><strong>Carnicería y verdulería</strong><span>Venta por kilo en el mostrador.</span></div></li>
+          <li class="tipo"><div class="tipo-texto"><strong>Kiosco y almacén</strong><span>Cobrando rápido con el lector.</span></div></li>
+          <li class="tipo"><div class="tipo-texto"><strong>Servicios</strong><span>Presupuestos, trabajos y abonos.</span></div></li>
+          <li class="tipo"><div class="tipo-texto"><strong>Gimnasio</strong><span>Socios, cuotas e ingreso en la recepción.</span></div></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Planes: los arma landing.js con /api/auth/planes -->
+    <section class="seccion" id="planes">
+      <div class="contenedor encabezado">
+        <p class="etiqueta">Planes</p>
+        <h2>Empezá gratis.<br /><span class="acento">Pagá cuando crezcas.</span></h2>
+        <p class="bajada">
+          Todos los planes tienen todas las funciones: cambia cuánto entra. Los planes pagos los probás
+          <span data-dias-prueba>14</span> días sin tarjeta.
+        </p>
+      </div>
+      <div class="contenedor">
+        <div class="planes" id="planesLista" aria-live="polite">
+          <p class="planes-cargando">Cargando los planes…</p>
+        </div>
+        <noscript>
+          <p class="planes-error">Para ver los precios hace falta JavaScript. <a href="/app#/crear-cuenta">Creá tu cuenta gratis</a> y los ves adentro.</p>
+        </noscript>
+      </div>
+    </section>
+
+    <!-- Preguntas frecuentes, sin JS -->
+    <section class="seccion" id="preguntas">
+      <div class="contenedor encabezado">
+        <p class="etiqueta">Preguntas</p>
+        <h2>Lo que más nos preguntan.</h2>
+      </div>
+      <div class="contenedor faq">
+        <details>
+          <summary>¿Necesito tarjeta para empezar?</summary>
+          <p>No. El plan Gratis no vence, y los planes pagos los probás <span data-dias-prueba>14</span> días sin cargar ninguna tarjeta.</p>
+        </details>
+        <details>
+          <summary>¿Qué pasa cuando termina la prueba?</summary>
+          <p>Si no lo pagás, seguís en el plan Gratis con todo lo que cargaste: no se borra nada. Solo no podés sumar más productos, ventas o usuarios que los que entran en Gratis.</p>
+        </details>
+        <details>
+          <summary>¿Cómo pago un plan?</summary>
+          <p>Por ahora nos dejás tus datos en el formulario de abajo (o desde la página del plan, adentro de Nexo) y te escribimos para activarlo.</p>
+        </details>
+        <details>
+          <summary>¿Funciona en el celular?</summary>
+          <p>Sí. Entrás desde el navegador del celular y lo podés instalar como una app, en Android y en iPhone. Es la misma cuenta que en la compu.</p>
+        </details>
+        <details>
+          <summary>¿Hace factura electrónica de ARCA?</summary>
+          <p>Todavía no: está en camino. Hoy Nexo arma comprobantes internos (factura, nota de crédito y nota de débito) para imprimir o mandar en PDF, sin CAE.</p>
+        </details>
+        <details>
+          <summary>¿Mis empleados ven lo que gano?</summary>
+          <p>No. Cada persona entra con su usuario, y el rol de empleado no ve costos, márgenes ni ganancias.</p>
+        </details>
+        <details>
+          <summary>¿Puedo tener más de un negocio?</summary>
+          <p>Sí, con el plan Pro: varios negocios con la misma cuenta, cada uno con sus datos aparte, y pasás de uno a otro desde el menú.</p>
+        </details>
+        <details>
+          <summary>¿Dónde quedan mis datos?</summary>
+          <p>En el servidor de Nexo, con respaldo automático y separados de los de cualquier otro negocio. No los vendemos ni los usamos para publicidad. El detalle está en la <a href="/privacidad">política de privacidad</a>.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- Contacto: va al CRM del negocio con el que se vende Nexo (hist. §99) -->
+    <section class="seccion" id="contacto">
+      <div class="contenedor contacto">
+        <div class="contacto-texto">
+          <p class="etiqueta">Contacto</p>
+          <h2>¿Tenés dudas? Escribinos.</h2>
+          <p class="bajada">Te respondemos nosotros, no un bot. Contanos qué negocio tenés y te ayudamos a arrancar.</p>
+          <p id="whatsapp" hidden></p>
+        </div>
+        <form class="contacto-form" id="formContacto" novalidate>
+          <div class="campo">
+            <label for="cNombre">Tu nombre</label>
+            <input id="cNombre" name="nombre" autocomplete="name" maxlength="120" required />
+          </div>
+          <div class="campo">
+            <label for="cNegocio">Tu negocio <span class="opcional">(opcional)</span></label>
+            <input id="cNegocio" name="negocio" autocomplete="organization" maxlength="120" />
+          </div>
+          <div class="campo">
+            <label for="cContacto">Teléfono o mail</label>
+            <input id="cContacto" name="contacto" autocomplete="email" maxlength="120" required />
+          </div>
+          <div class="campo">
+            <label for="cPlan">Plan que te interesa <span class="opcional">(opcional)</span></label>
+            <select id="cPlan" name="plan">
+              <option value="">Todavía no sé</option>
+            </select>
+          </div>
+          <div class="campo campo-ancho">
+            <label for="cMensaje">Mensaje <span class="opcional">(opcional)</span></label>
+            <textarea id="cMensaje" name="mensaje" rows="4" maxlength="1000"></textarea>
+          </div>
+          <!-- Campo trampa para bots: una persona no lo ve ni lo llena. -->
+          <div class="trampa" aria-hidden="true">
+            <label for="cSitio">Sitio web</label>
+            <input id="cSitio" name="sitio" tabindex="-1" autocomplete="off" />
+          </div>
+          <p class="form-aviso" id="contactoAviso" role="status" hidden></p>
+          <button type="submit" class="btn btn-tinta btn-grande campo-ancho" id="btnContacto">Mandar consulta</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Cierre -->
+    <section class="cierre">
+      <div class="contenedor">
+        <h2>Probalo hoy con tu negocio.</h2>
+        <p class="bajada">Creás la cuenta en un par de minutos, gratis y sin tarjeta.</p>
+        <a class="btn btn-tinta btn-grande" href="/app#/crear-cuenta">Crear cuenta gratis</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pie">
+    <div class="contenedor pie-interior">
+      <a class="marca" href="/">
+        <img src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" width="22" height="22" />
+        <span>Nexo</span>
+      </a>
+      <nav class="pie-nav" aria-label="Pie">
+        <a href="#planes">Planes</a>
+        <a href="#contacto">Contacto</a>
+        <a href="/privacidad">Privacidad</a>
+        <a href="/app">Entrar</a>
+      </nav>
+      <p class="pie-nota">Hecho en Argentina · © <span id="anio">2026</span> Nexo</p>
+    </div>
+  </footer>
+</body>
+</html>

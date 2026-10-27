@@ -33,7 +33,7 @@
 // una zona para este archivo, así que se declaran acá.
 /* global self, caches, fetch, URL, Headers, Request, Response, setTimeout, clearTimeout */
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = `nexo-shell-${VERSION}`;
 const DATOS = `nexo-datos-${VERSION}`;
 
@@ -43,8 +43,7 @@ const DATOS = `nexo-datos-${VERSION}`;
 const ESPERA_API_MS = 6000;
 
 const PRECACHE = [
-  "/",
-  "/index.html",
+  "/app",
   "/manifest.webmanifest",
   "/css/styles.css",
   "/fonts/inter.woff2",
@@ -131,10 +130,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Una navegación (abrir la app, recargar) es siempre index.html: el resto de
-  // la ruta va en el hash, que no llega acá.
-  const clave = pedido.mode === "navigate" ? "/index.html" : pedido;
-  event.respondWith(redPrimero(event, pedido, clave, SHELL, null));
+  // Las páginas públicas (la landing en "/", privacidad) no se guardan: son de
+  // quien todavía no usa Nexo, y antes de §100 toda navegación se guardaba como
+  // la app, así que la landing la habría pisado. La app es siempre /app (con o
+  // sin la barra final): el resto de la ruta va en el hash, que no llega acá.
+  if (pedido.mode === "navigate") {
+    if (url.pathname !== "/app" && url.pathname !== "/app/") return;
+    event.respondWith(redPrimero(event, pedido, "/app", SHELL, null));
+    return;
+  }
+  event.respondWith(redPrimero(event, pedido, pedido, SHELL, null));
 });
 
 // Pide a la red y guarda la copia. Si la red falla (o, con `espera`, tarda más

@@ -242,7 +242,7 @@
     // que conserva el gate: sin sesión ni siquiera se descarga.
     const script = document.createElement("script");
     script.type = "module";
-    script.src = "js/app.js";
+    script.src = "/js/app.js";
     // Si falta o falla cualquier archivo del grafo de imports el navegador
     // descarta TODO el módulo y la pantalla quedaría en blanco sin una pista.
     // Se vuelve al login con el motivo, y la guarda de idempotencia se libera

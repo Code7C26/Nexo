@@ -9345,3 +9345,98 @@ una lista y corren en orden. Solo el Resumen tiene dos.
     a la página y cierra el modal;
   - el comprobante de Gratis lleva la marca.
   - El único error de consola es el 403 del tope, el esperado.
+
+## 100. La landing en "/" y la app en "/app", 27 de octubre de 2026
+
+Tercera fase de la etapa 8 (ver §98). La inspiración que pasó el usuario fue
+escalafy.com. De ahí se tomaron cinco cosas, adaptadas al negro con acento
+azul de Nexo y sin el rosa:
+- el título grande con la segunda línea en color;
+- las preguntas en chips;
+- los bloques alternados de texto y pantalla;
+- los planes en tarjetas con "Recomendado";
+- un cierre con llamada a la acción.
+
+**Qué se hizo:**
+- **Rutas (`server.js`, antes de lo estático, que pasa a `index: false`):**
+  - `/` da la landing sin sesión, y con sesión, 302 a `/app`. Así, una PWA
+    instalada antes, con `start_url "/"`, sigue entrando;
+  - `/app` es `index.html`, y `/index.html` da 301 a `/app`;
+  - `/privacidad`;
+  - `/robots.txt` deja afuera `/app` y `/api/`;
+  - `/sitemap.xml` lista `/` y `/privacidad`.
+- **La landing es una plantilla:**
+  - `urlPublica()` sale de `NEXO_URL_PUBLICA`, o del pedido si no está;
+  - llena el canónico, Open Graph y el JSON-LD (`SoftwareApplication`), con
+    los precios armados desde `PLANES`;
+  - en producción el archivo se lee una vez, y en desarrollo en cada pedido.
+- **La app en `/app`:**
+  - las rutas relativas de `index.html`, `sesion.js` (`app.js`) y
+    `comprobante.js` (vendor) pasan a absolutas, porque `/app/` las rompía;
+  - en el manifest, `start_url` pasa a `/app`, y `id` y `scope` quedan en
+    `/`.
+- **Service worker v2:**
+  - `PRECACHE` lleva `/app` en vez de `/` y `/index.html`;
+  - solo la navegación a `/app` se guarda, con la clave `/app`;
+  - la landing y privacidad no se interceptan. Antes, cualquier navegación
+    se guardaba como la app, así que la landing la habría pisado.
+- **Archivos nuevos:** `landing.html`, `privacidad.html`, `css/landing.css`,
+  `js/landing.js` e `img/landing/*.webp`.
+  - `landing.js` es el único script, sin inline. Importa `esc` y `icono` de
+    `core/`, con `modulepreload`.
+  - `landing.js` queda fuera de la regla de que todo `frontend/js` vaya en
+    `PRECACHE` (`frontend-modulos.test.js`).
+- **Secciones:**
+  - la portada, con el Resumen en un marco de compu y el celular encimado;
+  - "Cómo funciona", en seis bloques: vender, stock y costos, clientes, la
+    plata, el asistente (un ejemplo armado en HTML) y el celular;
+  - "Y además";
+  - los tipos de negocio, desde `/api/auth/tipos-negocio`, con los "Muy
+    pronto" como tarjetas apagadas;
+  - los planes, desde `/api/auth/planes`. Emprendedor va "Recomendado" (una
+    opinión de la landing, en `PLAN_RECOMENDADO`), y el botón lleva a
+    `/app?plan=X#/crear-cuenta`;
+  - las preguntas frecuentes, con `<details>`. Dicen que ARCA "todavía no" y
+    que el plan se activa contactándonos;
+  - el contacto, contra `POST /api/publico/consulta`, con el campo trampa y
+    WhatsApp si está configurado;
+  - el cierre.
+- **Las capturas** salen de una copia de la base real, con la demo `prueba`:
+  - el negocio se renombró a "Tienda Alma", solo en la copia;
+  - las de la compu son de 1280×880 a 2x, con la barra lateral colapsada,
+    para que se lean;
+  - la portada es de 1440×900 a 2x, y las del celular, de 390×844 a 2x;
+  - todas pesan menos de 110 KB.
+- **`privacidad.html` es un borrador para que el equipo lo revise.** Dice lo
+  que Nexo hace de verdad:
+  - la cookie de sesión y lo que queda en el navegador;
+  - que al asistente se le mandan a Gemini el texto y los nombres de
+    productos, cuentas y categorías, nada más;
+  - los respaldos, y que la IP se usa solo en memoria;
+  - la Ley 25.326 y la AAIP.
+
+**Lo que falló en el camino:**
+- La plantilla citaba `%URL%` y `%JSONLD%` en un comentario, y `.replace` de
+  `%JSONLD%` llenó el comentario en vez del `<script>`. Lo agarró
+  `landing.test.js`. Ahora el comentario no los nombra, y se usa
+  `replaceAll`.
+- El chequeo de `esc()` marcó `plan.clave` dentro de un `href` (solo tenía
+  `encodeURIComponent`). Va con los dos.
+- En chrome-devtools, la primera captura después de cambiar la emulación a
+  veces da timeout o sale ampliada. Se repite la captura.
+
+**Verificación:**
+- `npm test`: 77 de 77, con el nuevo `landing.test.js` (6 tests), y lint sin
+  problemas.
+- `regresion`: 0 diferencias. Solo compara `/api`, que no cambió.
+- En Chrome, en la compu y a 390 px:
+  - sin errores de consola ni de CSP;
+  - un plan lleva al alta con "Plan Pro: lo probás 14 días…";
+  - el formulario deja la consulta en "Para hoy" del negocio de ventas;
+  - con sesión, `/` va a `/app`;
+  - el caché `nexo-shell-v2` tiene `/app` y no tiene la landing.
+- Lighthouse en el celular: 100 en accesibilidad, buenas prácticas y SEO.
+- La traza con 4x de CPU y Fast 4G da un LCP de 2,1 s (era 2,7 s antes del
+  `modulepreload`). Falta la compresión, que la pone Caddy en la Fase 4.
+- La base real no la tocó esta sesión: su md5 cambia porque el servidor del
+  usuario en el puerto 3000 renueva sesiones.

@@ -158,8 +158,8 @@ export function imprimirComprobante(html) {
 
 // Vendorizadas en frontend/js/vendor/, servidas por el mismo express.static
 // que ya sirve el resto del frontend — sin dependencia de npm ni build step.
-const VENDOR_JSPDF = "js/vendor/jspdf.umd.min.js";
-const VENDOR_HTML2CANVAS = "js/vendor/html2canvas.min.js";
+const VENDOR_JSPDF = "/js/vendor/jspdf.umd.min.js";
+const VENDOR_HTML2CANVAS = "/js/vendor/html2canvas.min.js";
 
 // No se cargan con <script> en index.html: son ~500KB combinados y solo
 // hacen falta si alguien aprieta "Descargar PDF". Memoizada para no volver

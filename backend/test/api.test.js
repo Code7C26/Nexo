@@ -316,12 +316,15 @@ test('la PWA: el manifest y el service worker se sirven con su tipo (hist. §94)
   const manifest = await cliente.get('/manifest.webmanifest');
   assert.equal(manifest.status, 200);
   assert.match(manifest.headers.get('content-type'), /application\/manifest\+json/);
-  assert.equal(manifest.json?.start_url, '/');
+  // La app vive en /app desde la landing (hist. §100); el id sigue en "/" para
+  // que una instalación vieja no pase a contar como otra app.
+  assert.equal(manifest.json?.start_url, '/app');
+  assert.equal(manifest.json?.id, '/');
   const sw = await cliente.get('/sw.js');
   assert.equal(sw.status, 200);
   assert.match(sw.headers.get('content-type'), /javascript/);
-  // La página de inicio también lleva la CSP: es la que la aplica.
-  const inicio = await cliente.get('/');
+  // La página de la app también lleva la CSP: es la que la aplica.
+  const inicio = await cliente.get('/app');
   assert.match(inicio.headers.get('content-security-policy') ?? '', /default-src 'self'/);
 });
 

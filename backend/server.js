@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
@@ -61,7 +62,75 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+/* ---------- Páginas públicas y la app (hist. §100) ---------- */
+
+// `/` es la landing, y la app vive en `/app`. Quien ya tiene sesión va derecho
+// a la app: una instalación vieja de la PWA (start_url "/") sigue abriendo
+// bien. Lo estático va con `index: false` para que `/` no sirva index.html.
+const FRONTEND = path.join(__dirname, '..', 'frontend');
+const PAGINAS_PUBLICAS = ['/', '/privacidad'];
+
+// La dirección pública, para lo que tiene que ir absoluto (canónico, imagen de
+// Open Graph, robots y sitemap). NEXO_URL_PUBLICA la fija al publicar (Fase 4);
+// sin ella se arma con el pedido, que alcanza en desarrollo.
+const urlPublica = (req) => (process.env.NEXO_URL_PUBLICA || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+// Los precios del JSON-LD salen de PLANES, como los de las tarjetas (que arma
+// landing.js con GET /api/auth/planes): un precio se cambia solo en planes.js.
+// `<` se escapa para que ningún texto pueda cerrar el <script>.
+function jsonLdLanding(url) {
+  const datos = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Nexo',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web, Android, iOS, Windows, macOS',
+    url: `${url}/`,
+    inLanguage: 'es-AR',
+    offers: Object.values(PLANES).map((plan) => ({
+      '@type': 'Offer',
+      name: plan.nombre,
+      price: plan.precio,
+      priceCurrency: 'ARS',
+      description: plan.descripcion
+    }))
+  };
+  return JSON.stringify(datos).replace(/</g, '\\u003c');
+}
+
+// La plantilla se lee una vez en producción y en cada pedido en desarrollo,
+// así un cambio en landing.html se ve sin reiniciar.
+let plantillaLanding = null;
+function leerPlantillaLanding() {
+  if (plantillaLanding && process.env.NODE_ENV === 'production') return plantillaLanding;
+  plantillaLanding = readFileSync(path.join(FRONTEND, 'landing.html'), 'utf8');
+  return plantillaLanding;
+}
+
+app.get('/', (req, res) => {
+  if (sesionValida(leerCookie(req, COOKIE_SESION))) return res.redirect(302, '/app');
+  const url = urlPublica(req);
+  const html = leerPlantillaLanding()
+    .replaceAll('%URL%', url)
+    .replaceAll('%JSONLD%', () => jsonLdLanding(url));
+  res.type('html').send(html);
+});
+app.get('/app', (req, res) => res.sendFile(path.join(FRONTEND, 'index.html')));
+app.get('/index.html', (req, res) => res.redirect(301, '/app'));
+app.get('/privacidad', (req, res) => res.sendFile(path.join(FRONTEND, 'privacidad.html')));
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\n\nSitemap: ${urlPublica(req)}/sitemap.xml\n`);
+});
+app.get('/sitemap.xml', (req, res) => {
+  const url = urlPublica(req);
+  const entradas = PAGINAS_PUBLICAS.map((p) => `  <url><loc>${url}${p}</loc></url>`).join('\n');
+  res
+    .type('application/xml')
+    .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entradas}\n</urlset>\n`);
+});
+
+app.use(express.static(FRONTEND, { index: false }));
 // assets/ vive al mismo nivel que backend/ y frontend/ (así lo define
 // CLAUDE.md), no adentro de frontend/. Sin este mount el logo y el
 // favicon no serían alcanzables por HTTP. Es una ruta estática de solo

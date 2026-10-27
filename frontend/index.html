@@ -9,14 +9,14 @@
        styles.css): sin Google Fonts. Inter es la de todo el texto y se
        precarga; Satoshi (títulos) no, porque puede no estar instalada
        (scripts/fuentes.mjs) y entonces cae a Inter. -->
-  <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
   <meta name="theme-color" content="#000000" />
   <!-- PWA (hist. §94): se instala desde el navegador del celular. -->
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/app/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-title" content="Nexo" />
-  <link rel="stylesheet" href="css/styles.css" />
-  <script src="js/arranque.js"></script>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="/js/arranque.js"></script>
 </head>
 <body>
 
@@ -4731,6 +4731,6 @@
        completo del sistema — app.js no tiene ninguna guarda propia de
        arranque, así que la única forma de garantizar que no dispare sus
        fetches sin sesión es no cargarlo hasta tener una. -->
-  <script src="js/sesion.js"></script>
+  <script src="/js/sesion.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
   "description": "Ventas, stock, caja, clientes y todo tu negocio en un solo lugar.",
   "lang": "es-AR",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

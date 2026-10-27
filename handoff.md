@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §99);
+    siguiente número (hoy el último es §100);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -27,7 +27,15 @@ en cuatro fases (§98 a §101). El plan está en el punto 8.
   `solla`.
 - **Fase 2, el plan dentro de la app: hecha** (hist. §99), commiteada.
   Incluye el contacto `POST /api/publico/consulta`, adelantado de la Fase 3.
-- **Sigue la Fase 3:** la landing en `/` y la app en `/app`.
+- **Fase 3, la landing: hecha** (hist. §100), commiteada en `solla`, sin
+  pushear.
+  - `/` es la landing pública, y la app pasa a `/app`;
+  - suma privacidad, robots y sitemap, con capturas reales de la demo;
+  - **falta que el usuario la mire.** La inspiración que dio fue
+    escalafy.com.
+  - **Privacidad es un borrador** para que el equipo revise el texto.
+- **Sigue la Fase 4:** la publicación (`deploy/`, Caddy, DuckDNS, la guía).
+  Al publicar, definir `NEXO_URL_PUBLICA` y `NEXO_NEGOCIO_VENTAS`.
 - **Las decisiones del usuario ya están tomadas** (precios, topes de Gratis,
   Oracle Cloud y DuckDNS, contacto al CRM): ver hist. §98.
 - **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
@@ -517,6 +525,26 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **El arnés de tests registra en Pro** (`registrarEmpresa`, `plan`). Un test
   de topes pide `plan: 'gratis'`.
 
+**Landing y app (hist. §100)**
+- **La app vive en `/app`; `/` es la landing**, y con sesión redirige a
+  `/app`.
+  - Un enlace o un `location` nuevo de la app no apunta a `/`.
+  - Las rutas de `index.html` y de lo que se inyecta van absolutas (`/js/…`):
+    `/app/` rompe las relativas.
+- **El service worker solo guarda la navegación a `/app`.** Las páginas
+  públicas no se guardan, para que no pisen la app sin conexión.
+  - `landing.js` no va en `PRECACHE`.
+  - En el manifest, `id` sigue siendo `/`.
+- **La landing no repite datos del backend:**
+  - precios, topes y tipos de negocio salen de `/api/auth/planes` y
+    `/api/auth/tipos-negocio`;
+  - el JSON-LD lo arma `server.js` desde `PLANES`.
+- **Lo que tiene que ser absoluto (canónico, Open Graph, sitemap) usa
+  `NEXO_URL_PUBLICA`.** Si no está, la URL sale del pedido.
+- **La landing no promete lo que no existe:** ARCA y las integraciones
+  aparecen como "muy pronto". Si una función cambia, se revisa el texto de la
+  landing y de privacidad.
+
 **PWA (hist. §94)**
 - **Primero la red, y lo guardado solo si falla** (`frontend/sw.js`). No pasar
   a "primero lo guardado": sin build step serviría código viejo.
@@ -908,7 +936,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      aviso en el Resumen, enlace en el toast del tope, marca en los
      comprobantes, tipo "Emprendimiento", `?plan=` en el alta y el contacto
      al CRM de ventas.
-   - **Fase 3 (§100), landing:**
+   - ~~**Fase 3 (§100), landing**~~ **hecha**:
      - `/` muestra la landing sin sesión y lleva a `/app` con sesión;
      - la app pasa a `/app` (con `start_url` y `PRECACHE` del service
        worker);
