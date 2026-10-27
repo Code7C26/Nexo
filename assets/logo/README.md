@@ -17,6 +17,10 @@ de color, todas con el mismo trazo, solo cambia tinta y fondo:
 | `03-wordmark` | "NEXO" solo, sin ícono ni bajada |
 | `04-wordmark-tagline` | "NEXO" + "Sistema de gestión para pymes" |
 | `05-lockup-completo` | Ícono + "NEXO" + bajada, todo junto (como en `logo.png`) |
+| `06-perfil` | El ícono centrado en un cuadrado de 512×512, para foto de perfil (mail, redes). Lleva margen para que el recorte en círculo no lo corte. Solo las dos versiones con fondo sólido: una foto de perfil no admite transparencia |
+
+`06-perfil` copia los píxeles del ícono a escala 1:1, sin agrandarlo: por eso
+mide 512 y no más.
 
 ## Nota de resolución
 

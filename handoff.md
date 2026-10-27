@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §87);
+    siguiente número (hoy el último es §102);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,13 +19,166 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (20 de octubre de 2026)
+## Estado actual (27 de octubre de 2026)
 
-**Próxima sesión:** tipo de negocio fijo y funciones que se suman (punto 6a2,
-en "Qué sigue"), pedido por el usuario el 20 de octubre; después el CRM (6b), con su lista "Para
-hoy", que también lleva el recordatorio de presupuestos sin respuesta y los
-abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
-20 de octubre.
+**Para retomar (próxima sesión): la Fase 4 de la etapa 8, la publicación**
+(`deploy/`, Caddy, DuckDNS y la guía), adelantada por pedido del usuario del
+27 de octubre: quiere probar en un servidor y no depender de su compu. Se
+publica para pruebas, con `noindex` hasta que estén los términos (Fase 3 de
+8b), y se actualiza solo cuando cambia `main`.
+- **El servidor ya existe** (27 de octubre, creado por el usuario):
+  - Oracle Cloud, cuenta "Nexoapp" en la región Brazil East (São Paulo),
+    todavía en los 30 días de prueba (después pasa sola a Always Free);
+  - instancia `nexo`, una VM.Standard.E2.1.Micro (AMD x86_64, 2 núcleos,
+    1 GB de memoria, 45 GB de disco) con Ubuntu 24.04.5. El Ampere no tenía
+    capacidad;
+  - IP pública `137.131.218.182`, ephemeral: se mantiene mientras exista la
+    instancia;
+  - los puertos 80 y 443 están abiertos en la Default Security List. El
+    firewall de adentro de Ubuntu (iptables de Oracle) todavía no;
+  - **DuckDNS:** `nexosystem.duckdns.org` → esa IP, verificado contra
+    1.1.1.1, 8.8.8.8 y ns1.duckdns.org. El token lo tiene el usuario y nunca
+    pasa por el chat;
+  - **SSH:** `ssh -i "C:\Users\HP ULTRA 5\.ssh\nexo-oracle.key" ubuntu@137.131.218.182`.
+    La llave tiene los permisos restringidos con icacls y ya entra; no se
+    versiona ni se comparte.
+- **Para la instalación** (`deploy/`):
+  - swap de 2 GB, por el 1 GB de memoria;
+  - abrir el 80 y el 443 en iptables;
+  - Node 22.13+, Caddy con https, el servicio systemd y `.env` en el
+    servidor (`NEXO_URL_PUBLICA=https://nexosystem.duckdns.org`,
+    `NEXO_TRUST_PROXY=1`, `NODE_ENV=production`, SMTP);
+  - el cron de DuckDNS, el respaldo diario a Object Storage y
+    `X-Robots-Tag: noindex` hasta la Fase 3 de 8b;
+  - la actualización desde `main` (decidida en la próxima sesión: el
+    servidor la busca solo cada 5 minutos, o GitHub Actions por SSH);
+  - copiar la base real (con el usuario parando su `npm start` antes).
+- **Oracle recupera las instancias gratis que pasan una semana casi sin uso.**
+  Pasar a Pay As You Go lo evita, pero es una decisión de plata del usuario. Después sigue la **Fase 1b de
+la etapa 8b** (invitaciones por mail, cuentas sin negocio y el rebuild de
+`usuarios`), con el diseño de la sección 5 de
+`docs/investigacion-login-legal.md`. La Fase 1 (mail en la
+cuenta, verificación y login con mail) está hecha y commiteada (hist. §102).
+- **Lo que tiene que hacer el usuario:**
+  - **reiniciar su `npm start`**: el que corría desde la mañana tiene el
+    código viejo, aunque la base real ya está migrada;
+  - después, tocar los dos enlaces que llegaron a `nexosystem.app@gmail.com`
+    (cuentas `prueba` y `vendedor.prueba`);
+  - al entrar con su propia cuenta (`Solla_FAT`) va a ver "Sumá tu mail".
+- **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
+  y cómo se ve.
+
+**Nuevo: etapa 8b, login, mail, términos y edad** (8b en "Qué sigue").
+Pedida por el usuario el 27 de octubre, después de ver la landing ("quedó
+perfecta") y antes de seguir con cosas grandes. La investigación está hecha:
+`docs/investigacion-login-legal.md`, con el plan en cuatro fases. El
+hallazgo más grave: ninguna cuenta tiene mail, así que un admin que se olvida
+la contraseña pierde su negocio.
+- **Decidido el 27 de octubre:** el titular legal es Santino (19 años; sus
+  datos van en `.env`, no en el repo público), y se acepta de 13 a 17 años en
+  Gratis, con permiso de los padres.
+- **El mail ya manda** (27 de octubre): `nexosystem.app@gmail.com` con
+  contraseña de aplicación en el `.env` de la raíz (solo en la máquina de
+  Santino; en `.env.example` están las variables vacías). `backend/mail.js` es
+  un cliente SMTP propio sobre `node:tls`, sin dependencia, con
+  `plantillaMail()` para el cuerpo y `NEXO_MAIL=stub` para los tests
+  (`backend/test/mail.test.js`, servidor SMTP falso). `npm run probar-mail`
+  manda uno de prueba (hist. §101).
+- **Fase 1, hecha (hist. §102):**
+  - el mail en la cuenta, con verificación por enlace;
+  - el login y el alta con mail;
+  - la página obligatoria "Sumá tu mail" para las cuentas de antes;
+  - en Mi cuenta, cambiar el mail;
+  - el aviso en el Resumen.
+- **Decisión del usuario (27 de octubre): cada persona tiene su cuenta con
+  mail y se entra con el mail.** El admin ya no crea empleados con usuario y
+  contraseña: los invita por mail desde Configuración, y la persona acepta la
+  solicitud (solo a mails verificados). Eso es la Fase 1b (diseño y rebuild
+  de `usuarios` en la sección 5 del documento). Hasta entonces,
+  `POST /api/usuarios` sigue creando empleados con usuario y contraseña, y
+  ellos suman su mail al entrar.
+- **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
+  frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
+  topes.
+
+**En curso: etapa 8, planes, landing y publicación** (8 en "Qué sigue"),
+en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
+- **Fase 1, planes en el backend: hecha** (hist. §98), commiteada en
+  `solla`.
+- **Fase 2, el plan dentro de la app: hecha** (hist. §99), commiteada.
+  Incluye el contacto `POST /api/publico/consulta`, adelantado de la Fase 3.
+- **Fase 3, la landing: hecha** (hist. §100), commiteada en `solla`, sin
+  pushear.
+  - `/` es la landing pública, y la app pasa a `/app`;
+  - suma privacidad, robots y sitemap, con capturas reales de la demo;
+  - el usuario la vio el 27 de octubre: "quedó perfecta". La inspiración
+    que dio fue escalafy.com.
+  - **Privacidad es un borrador** para que el equipo revise el texto.
+- **Sigue la Fase 4:** la publicación (`deploy/`, Caddy, DuckDNS, la guía).
+  Al publicar, definir `NEXO_URL_PUBLICA` y `NEXO_NEGOCIO_VENTAS`.
+- **Las decisiones del usuario ya están tomadas** (precios, topes de Gratis,
+  Oracle Cloud y DuckDNS, contacto al CRM): ver hist. §98.
+- **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
+  `solla`, sin pushear. El diseño y la investigación están en
+  `docs/investigacion-celular.md`.
+  - **PWA:** se instala, y sin conexión abre con lo último que cargó. Suma la
+    CSP.
+  - **Navegación:** barra de abajo con las secciones del negocio y "Más".
+  - **Pantallas:** formularios a pantalla completa, y el "atrás" los cierra.
+  - **Listas:** de dos líneas, unos 10 renglones por pantalla en vez de 1.
+  - **Filtros y alta:** los filtros en una hoja y un "Nuevo" flotante por
+    vista.
+  - **Falta que el usuario lo pruebe en su celular.** Para instalarla hace
+    falta https o localhost: entrando a la compu por IP en la red de la casa
+    se ve el diseño nuevo, pero no se instala ni abre sin conexión. Las
+    opciones son ngrok (gratis, ver "Trámites"), o en Chrome del celular
+    `chrome://flags` → "Insecure origins treated as secure" con la IP de la
+    compu.
+- **La auditoría es también del empleado** (hist. §93), sin costos ni filas
+  de compras. Commiteado en `solla`; falta que el usuario lo vea.
+- **Cuenta de demo para el profe (26 de octubre), en la base real:** usuario
+  `prueba` / `prueba1234`, con dos negocios: "Comercio prueba" (#3) y "Gym
+  prueba" (#4). Empleados: `vendedor.prueba` / `vendedor1234` (comercio) y
+  `recepcion.prueba` / `recepcion1234` (gym, debe cambiar la clave al entrar).
+  - **Mails (hist. §102):** `prueba` tiene `nexosystem.app+prueba@gmail.com` y
+    `vendedor.prueba` tiene `nexosystem.app+vendedor@gmail.com`. Entran con el
+    mail o con el usuario de siempre.
+  - `recepcion.prueba` no tiene mail: al entrar pide la clave nueva y después
+    el mail. Si se prueba, conviene usar `nexosystem.app+recepcion@gmail.com`.
+  Todo se cargó por la API: productos con talles, lista mayorista, compras
+  recibidas con envío, ventas de contado y a cuenta corriente, presupuestos,
+  devolución, gastos, turnos de caja (uno cerrado con $500 de faltante y otro
+  abierto), CRM en todas las etapas, y socios con cuotas e ingresos en el gym.
+  Respaldo previo: `nexo-20261026-124111.db` en OneDrive. Los negocios #1 y #2
+  del usuario no se tocaron (hist. §92).
+- **Mi cuenta es una página de Configuración** (hist. §92): contraseña y
+  cerrar sesión, para los dos roles. El círculo de perfil lleva ahí; el modal
+  de antes se sacó.
+- **CRM: hecho y commiteado en `solla`** (hist. §89 el backend, §90 la
+  pantalla, §91 la unión con Clientes). **En el menú es "CRM"**, en el lugar
+  de Clientes, y es una sola página con pestañas: Clientes (la base de
+  siempre), Consultas, Para hoy, Dejaron de comprar y Números. Pedido del
+  usuario del 26 de octubre: "se tiene que llamar CRM y tiene que estar
+  combinado con la base de datos de clientes, todo en la misma página". Con
+  el módulo apagado vuelve a decir "Clientes", sin pestañas. Tiene:
+  - embudo con arrastrar y soltar, y en el celular una etapa por pestaña;
+  - "Para hoy", también en el Resumen;
+  - Dejaron de comprar, Números y alta rápida de tres campos;
+  - la ficha pasa la consulta a cliente, presupuesto, venta o socio, y se gana
+    sola;
+  - en la ficha del cliente, sus consultas y su seguimiento;
+  - las etapas, en Configuración.
+  - **Falta que el usuario lo vea.** Su base real (gimnasio) ya lo tiene
+    prendido (migrada el 26 de octubre, respaldo
+    `nexo-20261026-120237.db` en OneDrive), con las etapas Consulta → Clase
+    de prueba → Seguimiento.
+- **Tipo de negocio fijo y funciones que se suman (hist. §88): hecho y
+  commiteado en `solla`, sin pushear.** Configuración tiene "Funciones" y una
+  página aparte para cambiar el tipo; el catálogo se llama según lo cargado,
+  con pestañas Productos | Servicios cuando hay de los dos. Falta que el
+  usuario lo vea. **Su base real es un gimnasio** (no Servicios, como decía
+  esto antes) con `modulos` en NULL: el próximo `npm start` la deja en
+  `pos crm compras stock socios` (hist. §89).
 - **Falta que el usuario vea §78 a §87** (servicios, trabajos, agenda, abonos,
   primeros pasos y lo demás). Ya están pusheados y en `main`.
 - **Arreglado un error de fechas** (hist. §82): desde las 21 h, toda operación
@@ -62,10 +215,10 @@ abonos que deben; recién después la PWA (7). Los dos los pidió el usuario el
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está pusheada hasta el cierre de la auditoría (hist. §65). El PR
-  `solla` → `main` se abre desde
-  https://github.com/Code7C26/Nexo/compare/main...solla (no hay `gh`). Va a
-  ser la primera corrida del CI en GitHub.
+- `solla` está pusheada entera (27 de octubre, hasta la publicación lista,
+  hist. §102), con lint y 88 tests en verde. El PR `solla` → `main` lo abre
+  el usuario desde https://github.com/Code7C26/Nexo/compare/main...solla
+  (no hay `gh`); mergeado, `main` queda lista para instalar en Oracle.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
@@ -98,6 +251,9 @@ Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
 incluido.
 
 **Base de datos real** (`backend/db/nexo.db`, en `.gitignore`):
+- Migrada a §98 (planes) el 27 de octubre de 2026 en un `npm start`. Sus 4
+  negocios quedaron en Pro sin vencimiento. Respaldo previo:
+  `nexo-20261027-123610.db` en OneDrive.
 - Migrada a §77–§79 el 25 de octubre de 2026 en un `npm start` (respaldo
   `nexo-20261025-225132.db` en OneDrive).
 - **Ya migrada a la Etapa A** (6 de octubre de 2026, primer arranque real, hist.
@@ -131,7 +287,8 @@ incluido.
 - Node 22.13+ (`engines`, `.nvmrc`). `npm start`, `npm run dev` y
   `npm run backup` leen `.env` de la raíz si existe (`--env-file-if-exists`;
   plantilla en `.env.example`, hist. §59). Lo que ya está en el entorno le gana
-  al archivo. `npm test` no lo lee. Hoy no hay `.env` en la máquina de Santino.
+  al archivo. `npm test` no lo lee. En la máquina de Santino, `.env` tiene la
+  clave del mail (hist. §101).
 - `GEMINI_API_KEY`: sin ella el asistente responde 503 y el resto funciona
   igual.
 - `NEXO_TRUST_PROXY=<n>` (cantidad de proxies de confianza delante, normalmente
@@ -151,9 +308,11 @@ con su admin (adopta la organización sembrada).
 Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Multi-empresa y seguridad**
-- **El nombre de usuario es único en todo Nexo** y el login no pide empresa
-  (hist. §45). Por eso el chequeo de duplicado de `POST /api/usuarios` es
-  global a propósito.
+- **Se entra con el mail, y es único en todo Nexo** (hist. §102, reemplaza al
+  "usuario único" de §45). El login no pide empresa. El nombre de usuario
+  sigue siendo único y global (`POST /api/usuarios` lo controla así a
+  propósito). En una cuenta nueva el usuario es su mail; las de antes entran
+  también con el usuario viejo.
 - **Aislamiento entre empresas:** filtro plano `AND organizacion_id = ?` con la
   empresa de la sesión, nunca `(? IS NULL OR ...)`. Un id de otra empresa da el
   mismo 404/400 que uno inexistente (hist. §40–§49).
@@ -181,8 +340,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **`auditoria` no está en el backfill de arranque** de `organizacion_id`: su
   NULL de `login_fallido` es legítimo. Volver a sumarla al array de
   `db/index.js` reintroduce el bug de hist. §51.
-- **`GET /api/auditoria` es solo admin**, porque los JSON de valor
-  anterior/nuevo traen costos. Un `login_fallido` con un usuario inexistente
+- **`GET /api/auditoria` es de los dos roles** (hist. §93). Al empleado se le
+  podan los JSON de valor anterior/nuevo con `podarSensibles` (el filtro de
+  `res.json` no entra en un string) y no le llegan las filas de `compra`,
+  `pago` ni `devolucion_proveedor`. Un `login_fallido` con un usuario inexistente
   queda con `organizacion_id NULL`, invisible para todas las empresas
   (hist. §46).
 
@@ -301,13 +462,15 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Alta guiada y Configuración (hist. §73)**
 - **Los tipos de negocio viven en un solo lugar:** `PERFILES_RUBRO`,
-  `RUBROS_PROXIMAMENTE` y `MODULOS_INFO` en `server.js` (nombre, descripción e
+  `RUBROS_PROXIMAMENTE` y `MODULOS_INFO` en `backend/perfiles.js` (nombre, descripción e
   ícono). El frontend los pide: `GET /api/auth/tipos-negocio` (pública) o
   `perfiles` de `GET /api/negocio`. Un tipo nuevo no se escribe en el HTML.
 - **`PUT /api/negocio` es parcial:** escribe solo los campos que vienen.
   Configuración manda solo lo que cambió.
-- **Módulos iguales a los del tipo se guardan como NULL** (en el alta y en el
-  `PUT`): la empresa sigue al preset.
+- **Los módulos de cada negocio quedan guardados** (hist. §88): el alta guarda
+  los elegidos (o los del tipo), y ni el `PUT` ni un cambio de tipo los mueven.
+  Volver al NULL = "los del tipo" reintroduce el problema de §88: cambiar el
+  tipo apagaba secciones solo.
 - **Condición fiscal del negocio:** lista fija de claves (`responsable_inscripto`,
   `monotributo`, `exento`; `CONDICIONES_IVA` en `server.js`, `core/fiscal.js`).
   Un texto viejo que no se reconoció queda como estaba y se imprime tal cual.
@@ -375,9 +538,11 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - los planes no salen en el catálogo del punto de venta.
 
 **Servicios y trabajos (hist. §78)**
-- **El nombre del catálogo es dato del preset** (`PERFILES_RUBRO.catalogo`),
-  nunca un `if`: en el HTML va en `[data-termino]` y en el JS, `termino()` de
-  `core/negocio.js`.
+- **El nombre del catálogo sale de lo cargado** (hist. §88), nunca de un `if`:
+  solo productos, solo servicios, o "productos y servicios" con pestañas en
+  Productos. Con el catálogo vacío, el del preset (`PERFILES_RUBRO.catalogo`).
+  En el HTML va en `[data-termino]` y en el JS, `termino()` de
+  `core/negocio.js`; para un tipo puntual, `terminoDeTipo()`.
 - **Un trabajo no es un circuito propio:** al terminarlo crea la venta con sus
   renglones, que se cobra como siempre. Hasta ahí no mueve stock ni cuenta
   corriente.
@@ -405,8 +570,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - `usuarios.organizacion_id` es el negocio donde se creó la cuenta y no
     decide nada.
   - El negocio de cada request sale de `sesiones.organizacion_id`.
-- **El nombre de usuario sigue siendo único en todo Nexo** y el login no pide
-  negocio: entra al último que se usó.
+- **El login no pide negocio** (con el mail o el usuario viejo, hist. §102):
+  entra al último que se usó.
 - **Nombre y contraseña son de la persona.** Un admin solo los cambia si
   administra todos los negocios de esa persona (409 si no). Sacar esa regla
   deja tomar el negocio de otro.
@@ -422,6 +587,116 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   clave nueva de ese tipo sigue la misma regla.
 - **Cambiar de negocio recarga la página** en la vista de inicio. Es el
   reseteo de la memoria de la app, como en el logout.
+
+**Cuenta y mail (hist. §102)**
+- **Se entra con el mail:**
+  - el login acepta `email` o `usuario` y busca por los dos; si coinciden
+    cuentas distintas, gana la del mail;
+  - el alta lo recibe como `email_cuenta`, porque `email` es el del negocio
+    (comprobantes), en el alta y en "Agregar negocio".
+- **En una cuenta nueva, `usuarios.usuario` es su mail.** Al cambiar el mail,
+  si el usuario era el mail viejo, pasa al nuevo: si no, el viejo seguiría
+  entrando y nadie más podría usarlo.
+- **Una cuenta sin mail no opera** (403 `falta_email` en `autenticar`, salvo
+  `/auth/email`, `/auth/logout` y `/auth/cambiar-password`). `sesion.js` la
+  manda a "Sumá tu mail" con `seguirCon()`: primero la contraseña forzada,
+  después el mail.
+- **Sin verificar se trabaja igual**, con el aviso en el Resumen y en Mi
+  cuenta. La verificación es un `GET /verificar-mail?token=`:
+  - vale 48 h, y solo el último enlace;
+  - deja de valer si la cuenta cambió de mail;
+  - un enlace ya usado sigue diciendo "verificado".
+- **Los tokens de mail se guardan como SHA-256** en `tokens_cuenta`, sin
+  `organizacion_id` (es de la cuenta). La Fase 2 (recuperar) usa la misma
+  tabla con `tipo = 'recuperar'`.
+- **Los mails salen después de responder** (`mandarSinEsperar`): un fallo de
+  Gmail no corta la operación y queda en el log. Los enlaces usan
+  `urlPublica(req)`. Fuera del navegador (un script contra otro puerto),
+  definir `NEXO_URL_PUBLICA`.
+- **Topes:** 5 envíos por hora y por cuenta (cambio y reenvío juntos), con
+  `registroExcedido('mail:<id>')`.
+- **Tests:** el arnés corre con `NEXO_MAIL=stub` y lee los mails con
+  `leerMails()` y `ultimoEnlace()`. Cada cuenta del arnés es
+  `<usuario>@nexo.test`.
+
+**Planes de Nexo (hist. §98)**
+- **Precios, textos y topes viven solo en `backend/planes.js`.** La landing
+  y el alta los piden a `GET /api/auth/planes`.
+- **Todo plan tiene todas las funciones:** los separan los topes (usuarios,
+  negocios, productos activos y ventas del mes), nunca un módulo apagado.
+- **Una ruta nueva que crea algo con tope llama a `exigirLugarEnPlan()`.**
+  - Se llama en la ruta, no en `crearVenta()`: las cuotas de socios y abonos
+    se generan solas y nunca se frenan ni cuentan.
+  - Una alta que crea productos dentro de una transacción la llama con
+    `nuevos = 0` después del INSERT, así el throw la deshace.
+- **El plan no se cambia por la API.** Se cambia con `npm run plan` en el
+  servidor, y `PUT /api/negocio` no lo toca. Hacerlo editable desde la app
+  dejaría a cualquier negocio pasarse a Pro gratis.
+- **Plan vencido = Gratis, sin borrar nada:** el negocio sigue viendo y
+  editando lo que tiene, solo no suma más allá del tope.
+- **Los negocios que existían antes de §98 quedaron en Pro sin vencimiento**
+  (las bases reales y la demo).
+- **Contacto público (hist. §99):** `POST /api/publico/consulta` escribe solo
+  en el negocio `NEXO_NEGOCIO_VENTAS` (Nexo se vende con Nexo). Sin esa
+  variable responde 503.
+- **`alEntrarEnVista()` admite varios handlers por vista** (hist. §99): corren
+  en orden de registro.
+- **El arnés de tests registra en Pro** (`registrarEmpresa`, `plan`). Un test
+  de topes pide `plan: 'gratis'`.
+
+**Landing y app (hist. §100)**
+- **La app vive en `/app`; `/` es la landing**, y con sesión redirige a
+  `/app`.
+  - Un enlace o un `location` nuevo de la app no apunta a `/`.
+  - Las rutas de `index.html` y de lo que se inyecta van absolutas (`/js/…`):
+    `/app/` rompe las relativas.
+- **El service worker solo guarda la navegación a `/app`.** Las páginas
+  públicas no se guardan, para que no pisen la app sin conexión.
+  - `landing.js` no va en `PRECACHE`.
+  - En el manifest, `id` sigue siendo `/`.
+- **La landing no repite datos del backend:**
+  - precios, topes y tipos de negocio salen de `/api/auth/planes` y
+    `/api/auth/tipos-negocio`;
+  - el JSON-LD lo arma `server.js` desde `PLANES`.
+- **Lo que tiene que ser absoluto (canónico, Open Graph, sitemap) usa
+  `NEXO_URL_PUBLICA`.** Si no está, la URL sale del pedido.
+- **La landing no promete lo que no existe:** ARCA y las integraciones
+  aparecen como "muy pronto". Si una función cambia, se revisa el texto de la
+  landing y de privacidad.
+
+**PWA (hist. §94)**
+- **Primero la red, y lo guardado solo si falla** (`frontend/sw.js`). No pasar
+  a "primero lo guardado": sin build step serviría código viejo.
+- **Un `.js` nuevo va a `PRECACHE` de `sw.js`**, y `npm test` falla si
+  falta. Si cambia la forma de lo guardado, se sube `VERSION`: el service
+  worker borra al activarse los cachés de otra versión.
+- **Lo guardado de la API es de quien lo cargó:** la clave lleva el negocio y
+  `sesion.js` lo borra en el login, el logout y el 401. Nunca guardar
+  `/api/auth/*` (salvo `estado`) ni algo que no sea 200.
+- **Sin conexión no se escribe** (CLAUDE.md §31): no hay cola de escrituras.
+- **CSP sin scripts inline:** todo script va en un archivo. `arranque.js` es
+  el que corre en el `<head>` antes de pintar.
+- **`eslint.config.mjs` está protegido** por el hook `config-protection` del
+  plugin ecc. `sw.js` declara sus globales con `/* global */`.
+
+**Celular (hist. §95)**
+- **Lo fijo abajo se apoya en `--abajo`** (la barra con el safe area; 0 en la
+  compu). Un elemento flotante nuevo usa `bottom: calc(var(--abajo) + …)`.
+- **Los destinos de la barra salen del menú lateral** (`PRIORIDAD` en
+  `core/barra-inferior.js`), nunca del tipo de negocio. Una sección nueva de
+  uso diario se suma a esa lista.
+- **Un modal nuevo termina su formulario en `.btn-full`:** en el celular ese
+  es el botón que queda fijo abajo.
+- **El botón de alta de una vista nueva lleva `btn-nuevo`** (hist. §97): en
+  el celular flota arriba de la barra. Uno solo por vista visible.
+- **El "atrás" de los modales** vive en el observer de `core/ui.js`. Abrir un
+  modal sin cambiar `hidden` (por ejemplo, con una clase) lo deja afuera.
+- **Una lista nueva va en dos líneas en el celular** (hist. §96):
+  - `lista-movil` en la tabla;
+  - `m-titulo`, `m-valor` y `m-estado` en sus celdas;
+  - la segunda línea con `celdaMovil()`, que escapa cada parte.
+  - Una parte con prefijo va como `["vence", fecha]`, no con un template
+    anidado: el chequeo de escape lo vería como HTML crudo.
 
 **Frontend (hist. §58)**
 - **Todo dato que se imprime en HTML pasa por `esc()`** (`core/formato.js`),
@@ -494,15 +769,17 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Tipos de negocio, unidades y servicios (hist. §70)**
 - **El tipo de negocio es un preset de datos** (`PERFILES_RUBRO` en
-  `server.js`): unidad y tipo con que nace un producto, y qué módulos se ven.
+  `backend/perfiles.js`, hist. §88): unidad y tipo con que nace un producto, y
+  qué módulos trae al crear el negocio.
   Nunca `if (rubro === …)` con lógica (CLAUDE.md §29).
 - **Módulos:** `pos`, `presupuestos`, `compras` y `stock`. Ocultarlos es de la
   interfaz (`<html data-modulos>` y el router); los permisos siguen en
-  `permisos.js`. `organizaciones.modulos` NULL = los del preset; cambiar el tipo
-  sin mandar módulos vuelve al preset.
+  `permisos.js`. Se eligen al crear el negocio y se suman o sacan en
+  Configuración → Funciones.
 - **Cambiar el tipo de negocio no borra nada** (respondido al usuario el 20 de
   octubre):
-  - solo cambia el menú y con qué unidad y tipo nace un producto nuevo. Los
+  - desde hist. §88 solo cambia con qué unidad y tipo nace un producto nuevo
+    (el menú ya no). Es una página aparte que lo dice antes de confirmar. Los
     productos que ya existen quedan como estaban;
   - los socios siguen siendo clientes y sus planes siguen en Productos;
   - con Socios apagado no se generan cuotas. Si se vuelve a prender, se generan
@@ -526,7 +803,8 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    - anotar el md5 de la base real antes y después (los scripts lo hacen
      solos).
    - Para una base con datos: `npm run seed -- --db <ruta>` (empresa "Baseline
-     SA", `admin1`/`clave-segura-1` y `emp1`/`clave-segura-2`).
+     SA", `admin1@nexo.test`/`clave-segura-1` y
+     `emp1@nexo.test`/`clave-segura-2`).
 2. **Regresión:** `npm run regresion`. Compara el árbol de trabajo contra
    `HEAD` (`-- --ref <ref>` para otra) con la misma base sembrada, en todos los
    `GET` y con los dos roles. `-- --db <ruta>` parte de una copia de esa base.
@@ -563,7 +841,9 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    scratchpad contra el Chrome de `C:/Program Files/Google/Chrome`, servidor
    con base nueva (`NEXO_DB_PATH` al scratchpad, `NEXO_BACKUP=off`,
    `NEXO_INTERPRETE=stub`), empresa creada con `POST /api/auth/registro`.
-   Para XSS: sembrar `<img src=x onerror="window.__xss=…">'"` en cada campo de
+   Para XSS: el contexto va con `bypassCSP: true` (con la CSP de hist. §94 el
+   `onerror` no correría aunque faltara el escape, y la prueba no probaría
+   nada). Sembrar `<img src=x onerror="window.__xss=…">'"` en cada campo de
    texto, recorrer vistas, fichas, modales, filtros y asistente, y mirar
    `window.__xss`. Correr lo mismo contra el commit anterior (`git worktree`
    + junction de `node_modules`) como control: si ahí tampoco salta, la
@@ -620,8 +900,6 @@ están, hist. §65):
    email (hist. §45).
 
 **Pendientes chicos conocidos:**
-- Filtrar `valor_anterior`/`valor_nuevo` de `GET /api/auditoria` por campos
-  sensibles. Solo hace falta si se reabre ese endpoint al rol empleado.
 - `gh` (GitHub CLI) no está instalado en la máquina de Santino. Los PR se
   abren desde el link de comparación de GitHub.
 
@@ -713,57 +991,125 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      (hist. §79, `periodosPendientes()` compartido);
    - el recordatorio de presupuestos enviados sin respuesta pasa al CRM (6b),
      dentro de "Para hoy".
-6a2. **Tipo de negocio fijo y funciones que se suman** (1 sesión, la próxima).
-   Pedido del usuario del 20 de octubre, después de pasar su gimnasio a
-   Servicios en la base real (sigue así: `rubro = servicios`, módulos NULL).
-   - **Qué pasó** (sin pérdida de datos: sus 3 productos siguen con
-     `tipo = producto`, sus socios y cuotas están):
-     - el catálogo pasó a llamarse "Servicios", y con él sus productos;
-     - sus módulos siguen al preset (`modulos` NULL), así que se apagaron
-       socios, punto de venta, compras y stock, y se prendieron trabajos y
-       abonos;
-     - sin el módulo de stock, la tabla de productos esconde Stock y
-       Valorizado.
-   - **Lo que quiere:**
-     - el tipo de negocio se elige al crear el negocio y no se cambia tan
-       fácil (hoy son dos clics en Configuración); quien quiere otro tipo,
-       crea otro negocio;
-     - sí poder **sumarle funciones** a su tipo (un comercio con servicios,
-       un gimnasio con comercio), sin que se mezclen las cosas;
-     - que nada parezca perderse ni cambiar de nombre por tocar una opción.
-   - **Ideas para planificar (a confirmar):** sacar el cambio de tipo de
-     Configuración, o dejarlo con una confirmación que muestre qué cambia;
-     guardar los módulos elegidos al crear (no NULL), así un cambio de preset
-     no los apaga; separar "Productos" y "Servicios" en el catálogo cuando
-     el negocio tiene los dos, en vez de renombrar la sección entera.
-   - Antes de empezar, preguntarle si su negocio real vuelve a Gimnasio (lo
-     puede hacer él desde Configuración; no se toca su base sin pedirlo).
-6b. **CRM adaptado a cada tipo de negocio** (2 sesiones). Pedido del usuario
-   del 20 de octubre, **que llegue a la presentación**: consultas, clientes y
-   clientes potenciales. Diseño en `docs/investigacion-crm-servicios.md` §2:
+6a2. ~~Tipo de negocio fijo y funciones que se suman~~ **hecha** (hist. §88).
+   Pedido del usuario del 20 de octubre; decidido con él el 25 de octubre: el
+   cambio de tipo queda en una página aparte que dice qué cambia, el nombre del
+   catálogo sale de lo cargado, y su base real no se toca (le suma las
+   funciones él). Falta que lo vea.
+6b. ~~CRM adaptado a cada tipo de negocio~~ **hecho** (hist. §89 y §90).
+   Pedido del usuario del 20 de octubre, **que llegue a la presentación**:
+   consultas, clientes y clientes potenciales. Diseño en
+   `docs/investigacion-crm-servicios.md` §2:
    - módulo `crm` con etapas por preset;
    - oportunidades y actividades;
    - pasar a cliente, presupuesto, socio o venta sin volver a cargar;
    - la lista "Para hoy";
    - clientes que dejaron de comprar.
    - Ni Dux ni Contagram tienen CRM: es diferencial.
-   - WhatsApp lo alimenta después, en la etapa 11.
-7. **B2: PWA** (1 sesión).
-   - Manifest, íconos y service worker con caché del shell: se instala desde el
-     celular.
-   - Sin conexión abre y muestra lo último que cargó; no escribe sin conexión
-     (CLAUDE.md §31).
-8. **Landing pública con planes y hosting** (1 sesión). Va antes de lo demás
-   porque el marketing necesita una dirección pública. La landing se sirve
-   desde el mismo Express. **Decisiones del usuario:** qué precios mostrar (si
-   no hay respuesta, va "consultanos") y dónde se publica (hosting gratis o
-   pago, y si se compra un dominio).
+   - Para después: que WhatsApp cree la consulta sola (etapa 11), el
+     asistente que la anote ("me consultó Juan por…"), un formulario de
+     contacto en la landing, mensajes por lote y automatizaciones de
+     seguimiento.
+7. ~~B2: PWA~~ **hecha** (hist. §94). Para después: notificaciones con Web
+   Push.
+7b. ~~**Celular de verdad**~~ **hecho** (hist. §94 a §97; pedido del usuario
+   del 25 de octubre, muy importante). **Investigación hecha** (`docs/investigacion-celular.md`), y
+   de ahí salen las fases que siguen, un commit y un § cada una:
+   - ~~**Fase 2, base:**~~ **hecha** (hist. §95):
+     - barra inferior con Resumen, las tres primeras funciones prendidas de
+       `ingreso, socios, pos, trabajos, ventas, productos, clientes`, y
+       "Más", que abre el cajón de siempre; se va la hamburguesa;
+     - el asistente pasa a la topbar y las fichas llevan "volver";
+     - los modales a pantalla completa, y el "atrás" los cierra;
+     - `--control-h` de 44 px e inputs de 16 px;
+     - un token `--abajo` para todo lo fijo abajo.
+   - ~~**Fase 3, listas compactas:**~~ **hecha** (hist. §96):
+     - la tabla con `lista-movil`; las celdas con `m-titulo`, `m-valor` y
+       `m-estado`, más una `<td class="m-sub">` armada con `celdaMovil()`
+       (`core/formato.js`), que en la compu no se ve;
+     - dos líneas por fila;
+     - sin selección múltiple ni precio editable en el celular.
+   - ~~**Fase 4:**~~ **hecha** (hist. §97): filtros en hoja desde abajo, un
+     "Nuevo" flotante por vista (`btn-nuevo`) y la pasada visual.
+
+   El pedido original, como referencia: Hoy en el celular
+   todo tiene el mismo tamaño que en la compu, solo más apretado: en Productos
+   entran uno o dos renglones por pantalla (cada fila de tabla se vuelve una
+   tarjeta alta con todas las columnas) y hay que deslizar todo el tiempo. Le
+   pasó lo mismo con el sistema de su negocio de perfumes.
+   - **Investigar primero, con capturas:** cómo resuelven las listas, las
+     fichas, los formularios y la navegación en el celular otros sistemas de
+     gestión y apps de comercio (Dux, Contagram, Mercado Pago, Tienda Nube,
+     Shopify, Square, Loyverse y otros).
+   - **Ideas a validar con esa investigación:** lista compacta de una o dos
+     líneas por renglón (nombre, el dato clave y el estado, y lo demás en la
+     ficha); barra de navegación abajo con las secciones de uso diario; botón
+     flotante para "Nuevo"; filtros en una hoja que sube desde abajo; formularios
+     a pantalla completa en vez de modales.
+   - Va junto con la PWA: la app instalada es esta misma vista.
+8. **Landing pública con planes y hosting: en curso.** Va antes de lo demás
+   porque el marketing necesita una dirección pública. Las decisiones del
+   usuario (27 de octubre) están en hist. §98. Son cuatro fases, un § y un
+   commit cada una:
+   - ~~**Fase 1 (§98), planes en el backend**~~ **hecha**.
+   - ~~**Fase 2 (§99), el plan en la app**~~ **hecha**: página "Plan de Nexo",
+     aviso en el Resumen, enlace en el toast del tope, marca en los
+     comprobantes, tipo "Emprendimiento", `?plan=` en el alta y el contacto
+     al CRM de ventas.
+   - ~~**Fase 3 (§100), landing**~~ **hecha**:
+     - `/` muestra la landing sin sesión y lleva a `/app` con sesión;
+     - la app pasa a `/app` (con `start_url` y `PRECACHE` del service
+       worker);
+     - `landing.html`, `landing.css` y `landing.js` sin scripts inline, con
+       capturas reales;
+     - el formulario de contacto, contra `POST /api/publico/consulta` (ya
+       hecho en §99);
+     - página de privacidad, `robots.txt` y `sitemap.xml`.
+   - **Fase 4, publicación** (después de la etapa 8b):
+     - carpeta `deploy/` con `Caddyfile`, `nexo.service`, `instalar.sh`,
+       `actualizar.sh` y DuckDNS;
+     - la guía `docs/publicar.md`;
+     - HSTS en producción.
+     - Los trámites del usuario son la cuenta de Oracle Cloud (pide tarjeta
+       solo para verificar) y la de DuckDNS.
+   - **Para después:** cobro online con Mercado Pago, un panel de
+     administración de la plataforma, dominio propio y respaldo fuera de la
+     VM.
+   Lo que sigue es el planteo original de la etapa, como referencia:
    - **Planes (pedido del usuario del 25 de octubre):** se definen en esta
      etapa, con él. Hay que decidir en base a qué se cobra, qué suma cada
      plan más caro y cómo es la demo para probarlo.
    - El plan base va más barato que la competencia. El trabajo del Classroom
      de punto de equilibrio usó $ 19.900 por mes como provisorio (Dux desde
      $ 36.000 + IVA; Contagram, $ 58.900 + IVA): no es un precio decidido.
+   - **Plan gratis (pedido del usuario del 25 de octubre):** Nexo tiene que
+     servirle a cualquier negocio, también a un chico que vende medialunas en
+     el colegio y quiere saber cuánto vende y cuánto gana. Quiere invitar a los
+     emprendedores de su colegio. El plan gratis tiene límites, a definir en
+     esta etapa (por ejemplo, cantidad de productos o de ventas por mes, un
+     solo usuario, sin facturación electrónica). Para ese usuario, una
+     entrada más simple (un tipo "Emprendimiento" con pocas secciones) se
+     piensa en esta misma etapa.
+   - **Publicidad de terceros en el plan gratis: recomendado no ponerla**
+     (respondido al usuario el 25 de octubre; la decisión es suya): paga muy
+     poco, mete scripts de terceros donde están los datos de los negocios, y
+     Google restringe los anuncios a menores. La alternativa propuesta: el
+     plan gratis funciona como vidriera, invita a pasar a un plan pago y lleva
+     la marca "Hecho con Nexo".
+8b. **Login, mail, términos y edad** (pedido del usuario del 27 de octubre,
+   antes de la Fase 4 de publicación: sin esto la landing no se abre al
+   público). Investigación y plan en `docs/investigacion-login-legal.md`:
+   - ~~`backend/mail.js`~~ hecho (hist. §101).
+   - ~~Fase 1: mail en la cuenta, verificado, y login con mail~~ hecha (hist.
+     §102).
+   - Fase 1b: invitaciones por mail desde Configuración, cuentas sin negocio
+     y rebuild de `usuarios` (`organizacion_id` nulable).
+   - Fase 2: recuperar la contraseña (`tokens_cuenta`, enlace de un solo uso
+     de 30 minutos).
+   - Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
+     su versión y la pregunta de edad.
+   - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.
+   - Las migraciones son aditivas y están explicadas en el documento.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
@@ -830,6 +1176,17 @@ octubre).
     código del producto en el mismo commit.
   - Los documentos van directo en `docs/`, junto a los otros trabajos (pedido
     del usuario del 25 de octubre: no hay carpeta `docs/classroom/`).
+- **Hechos y entregados** (un PDF cada uno en `docs/`; el HTML de origen no
+  se versiona):
+  - informe económico, monetización y marco legal;
+  - punto de equilibrio: plan base provisorio de $ 19.900 por mes, 84
+    clientes con sueldos y 5 sin sueldos;
+  - TAM, SAM y SOM:
+    - TAM: 476.750 empresas empleadoras;
+    - SAM: unos 2.770 negocios de Alta Gracia, la ciudad del equipo;
+    - SOM: el 3%, unos 83 clientes.
+  - Un trabajo nuevo que use estos números los toma de ahí, para que no se
+    contradigan.
 - **Prioridad:** terminar el producto lo antes posible, así esos documentos
   describen un producto ya definido. Igual, algunos se van haciendo en estos
   días, intercalados.

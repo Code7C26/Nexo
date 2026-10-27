@@ -9,9 +9,10 @@ import { moduloActivo, termino } from "./negocio.js";
 import { entrarEnVista } from "./registro.js";
 
 // Vistas que pertenecen a un módulo opcional del tipo de negocio (CLAUDE.md
-// §29, PERFILES_RUBRO en server.js): con el módulo apagado no se entra.
+// §29, PERFILES_RUBRO en backend/perfiles.js): con el módulo apagado no se entra.
 const MODULO_DE_VISTA = {
   pos: "pos",
+  "consulta-detalle": "crm",
   presupuestos: "presupuestos",
   "presupuesto-detalle": "presupuestos",
   trabajos: "trabajos",
@@ -46,7 +47,8 @@ const MODULO_DE_VISTA = {
 const VISTAS_CONSTRUIDAS = {
   dashboard: { titulo: "Resumen", dominio: "Resumen" },
   productos: { titulo: "Productos", termino: "Plural", dominio: "Maestros" },
-  clientes: { titulo: "Clientes", dominio: "Maestros" },
+  // Con el módulo crm, la página de clientes es el CRM (hist. §91).
+  clientes: { titulo: "Clientes", tituloConModulo: ["crm", "CRM"], dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
@@ -71,6 +73,7 @@ const VISTAS_CONSTRUIDAS = {
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
+  "consulta-detalle": { titulo: "Consulta", dominio: "Maestros", nav: "clientes", esFicha: true },
   "trabajo-detalle": { titulo: "Trabajo", dominio: "Embudo de venta", nav: "trabajos", esFicha: true },
   "abono-detalle": { titulo: "Abono", dominio: "Embudo de venta", nav: "abonos", esFicha: true },
   "devolucion-detalle": { titulo: "Devolución", dominio: "Embudo de venta", nav: "devoluciones", esFicha: true },
@@ -94,12 +97,12 @@ const VISTAS_CONSTRUIDAS = {
 // (permisos.js): dashboard (Estadísticas: GET /api/resumen), reportes-stock (GET /api/reportes/stock), papelera
 // (mezcla compras/devoluciones a proveedor, ya admin, con ventas/gastos),
 // todo el circuito de compras y sus devoluciones a proveedor, fichas
-// incluidas, y auditoria (GET /api/auditoria, admin desde la Etapa A de
-// multi-tenant — ver permisos.js). Un deep-link escrito a mano por un
+// incluidas. Auditoría ya no: es de los dos roles (hist. §93). Un
+// deep-link escrito a mano por un
 // empleado (el nav-item ya está oculto por CSS, pero el hash se puede
 // tipear igual) cae al mismo destino que un click normal — es solo UI, el
 // servidor responde 403 igual si se llama al endpoint directo.
-// Configuración no está: el empleado entra a su página Apariencia, y las de
+// Configuración no está: el empleado entra a Mi cuenta y Apariencia, y las de
 // admin las filtra dominios/configuracion.js.
 const VISTAS_SOLO_ADMIN = new Set([
   "dashboard",
@@ -109,7 +112,6 @@ const VISTAS_SOLO_ADMIN = new Set([
   "compra-detalle",
   "devoluciones-proveedor",
   "devolucion-proveedor-detalle",
-  "auditoria",
   "planes-socio"
 ]);
 
@@ -152,7 +154,8 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
   // deep-link el negocio llega después: el data-termino del título hace que
   // fijarNegocio() lo corrija.
   const conTermino = !titulo && info?.termino;
-  const tituloFinal = titulo ?? (conTermino ? termino(info.termino) : info?.titulo);
+  const conModulo = info?.tituloConModulo && moduloActivo(info.tituloConModulo[0]);
+  const tituloFinal = titulo ?? (conTermino ? termino(info.termino) : conModulo ? info.tituloConModulo[1] : info?.titulo);
   // El texto chico "RESUMEN"/"ADMINISTRACIÓN" sobre el título se sacó del
   // HTML por decisión de diseño. El campo `dominio` de VISTAS_CONSTRUIDAS se
   // conserva igual: documenta a qué dominio pertenece cada vista.
@@ -175,6 +178,10 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
     else item.removeAttribute("aria-current");
   });
 
+  // La flecha de la topbar, en una ficha (hist. §95). Se ve en el celular, donde
+  // la topbar es fija y el "Volver a …" de la ficha se va al scrollear.
+  document.getElementById("btnVolver").hidden = !(info?.esFicha && info.nav);
+
   // Deep-link: F5 o el botón Atrás vuelven a esta misma pantalla. Las
   // fichas quedan afuera (ver "esFicha" arriba); actualizarHash en false
   // lo pasa quien ya está respondiendo a un cambio de hash, para no
@@ -193,7 +200,15 @@ const VISTAS_RENOMBRADAS = {
   "reportes-ventas": "dashboard",
   usuarios: "configuracion/usuarios",
   "configuracion/planes-socio": "planes-socio",
-  "configuracion/descuentos-socio": "planes-socio/descuentos"
+  "configuracion/descuentos-socio": "planes-socio/descuentos",
+  // "Tipo de negocio y secciones" pasó a Funciones (hist. §88).
+  "configuracion/tipo": "configuracion/funciones",
+  // Consultas pasó a ser parte del CRM, junto con los clientes (hist. §91).
+  consultas: "clientes/consultas",
+  "consultas/embudo": "clientes/consultas",
+  "consultas/hoy": "clientes/hoy",
+  "consultas/dejaron": "clientes/dejaron",
+  "consultas/numeros": "clientes/numeros"
 };
 
 function rutaDesdeHash() {
@@ -216,6 +231,15 @@ export const subrutaDesdeHash = () => rutaDesdeHash().subruta;
 window.addEventListener("hashchange", () => {
   const view = vistaDesdeHash();
   if (view) mostrarVista(view, { actualizarHash: false, subruta: subrutaDesdeHash() });
+});
+
+// La flecha hace lo mismo que el "Volver a …" de la ficha abierta (cada una
+// sabe a qué pestaña volver); si una ficha no lo tuviera, vuelve a su lista.
+document.getElementById("btnVolver").addEventListener("click", () => {
+  const ficha = [...document.querySelectorAll(".view")].find((sec) => !sec.hidden);
+  const propio = ficha?.querySelector(':scope > .btn-link[id^="btnVolver"]');
+  if (propio) propio.click();
+  else mostrarVista(VISTAS_CONSTRUIDAS[ficha?.dataset.view]?.nav ?? "ventas");
 });
 
 document.querySelectorAll(".nav-item").forEach((item) => {

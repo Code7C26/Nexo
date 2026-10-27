@@ -127,6 +127,8 @@ export function rangoDeFiltroFecha(filtro) {
 }
 
 const estaVacio = (v) => v === null || v === undefined || String(v).trim() === "";
+// El corte del celular (styles.css): ahí el popover es una hoja desde abajo.
+const celular = window.matchMedia("(max-width: 860px)");
 
 function cumpleFiltro(fila, filtro, campo) {
   const bruto = fila[filtro.campo];
@@ -440,6 +442,18 @@ export function crearFiltros(contenedorId, campos, onCambio) {
   document.addEventListener("click", (e) => {
     if (!contenedor.contains(e.target)) cerrarPopover();
   });
+  // En el celular el popover es una hoja con velo (hist. §97): tocar el velo
+  // solo la cierra. Sin esto, ese toque abría la fila de la lista de atrás.
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!celular.matches || contenedor.contains(e.target) || !contenedor.querySelector(".filtro-popover")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cerrarPopover();
+    },
+    true
+  );
 
   render();
 

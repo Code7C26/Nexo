@@ -14,19 +14,25 @@ suelta — sin la API detrás, todas las pantallas van a fallar al pedir datos
 1. Desde la carpeta `backend/`: `npm install` (la primera vez) y después
    `npm run dev`.
 2. Abrí **http://localhost:3000** en el navegador. Ese mismo puerto sirve
-   tanto la interfaz como la API.
+   tanto la interfaz como la API. Sin sesión, `/` es la landing pública; la
+   app vive en **http://localhost:3000/app** (hist. §100).
 
 ## Estructura
 
 ```
 frontend/
-├── index.html        → estructura de la página (todas las vistas)
-├── css/styles.css     → sistema de diseño (colores, tipografía, layout)
+├── index.html        → la app, servida en /app (todas las vistas)
+├── landing.html      → la página pública de "/", plantilla que completa server.js
+├── privacidad.html   → la política de privacidad (/privacidad)
+├── css/styles.css     → sistema de diseño de la app (colores, tipografía, layout)
+├── css/landing.css    → el de la landing y privacidad, aparte del de la app
+├── img/landing/      → capturas reales de la app para la landing (webp)
 ├── fonts/            → Inter (woff2 variable + licencia OFL) y Satoshi, que
 │                       no se versiona: la baja scripts/fuentes.mjs
 ├── img/iconos.svg    → sprite de íconos (Lucide, ISC); se usan con icono() de core/iconos.js
 └── js/
     ├── sesion.js       → login y gate: recién logueado inyecta app.js (módulo ES)
+    ├── landing.js      → la landing: planes, tipos de negocio y contacto (no es de la app)
     ├── app.js          → las pantallas que todavía no se partieron + boot
     │                     (se está partiendo por dominio, Etapa B de CLAUDE.md §31)
     ├── dominios/       → una pantalla (o grupo chico) por módulo
@@ -66,7 +72,11 @@ los importa a ellos): lo verifica `backend/test/frontend-modulos.test.js`
   flotante del final de `index.html` (`#asistenteLauncher`).
 - IVA y retención de Mercado Pago no tienen cálculo ni pantalla todavía: son
   la Etapa C del roadmap (CLAUDE.md §16, §33, §38).
-- Falta la PWA (manifest, service worker, offline de lectura; CLAUDE.md §31).
+- PWA (CLAUDE.md §31, hist. §94): `manifest.webmanifest`, los íconos de
+  `img/app/` y el service worker `sw.js` en la raíz, que registra
+  `js/sesion.js`. Sin conexión abre y muestra lo último que cargó, sin
+  escribir. Un `.js` nuevo va también a `PRECACHE` de `sw.js` (lo controla
+  `npm test`).
 
 ## Sistema visual
 

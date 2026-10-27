@@ -2,38 +2,26 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Nexo — Gestión para tu negocio</title>
   <link rel="icon" type="image/png" href="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" />
   <!-- Las fuentes se sirven desde frontend/fonts/ (ver @font-face en
        styles.css): sin Google Fonts. Inter es la de todo el texto y se
        precarga; Satoshi (títulos) no, porque puede no estar instalada
        (scripts/fuentes.mjs) y entonces cae a Inter. -->
-  <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
   <meta name="theme-color" content="#000000" />
-  <link rel="stylesheet" href="css/styles.css" />
-  <script>
-    // Se aplica antes de pintar la página (no en app.js, que carga después)
-    // para que no haya un flash de tema oscuro (el de partida, sin atributo)
-    // al entrar con claro elegido.
-    try {
-      const guardado = localStorage.getItem("nexo.tema");
-      if (guardado) document.documentElement.setAttribute("data-tema", guardado);
-      const sidebarGuardada = localStorage.getItem("nexo.sidebar");
-      if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
-      // Marca cosmética para evitar el flash de la app antes de que
-      // sesion.js confirme con el servidor si hay sesión de verdad. Esto
-      // NO es seguridad: el servidor decide con la cookie httpOnly, que
-      // este script ni siquiera puede leer. Si alguien borra esta marca a
-      // mano, lo único que pasa es que ve un parpadeo — sesion.js igual
-      // pide /api/auth/estado y muestra el login si corresponde.
-      if (localStorage.getItem("nexo.sesion") !== "activa") {
-        document.documentElement.setAttribute("data-sesion", "cerrada");
-      }
-    } catch {}
-  </script>
+  <!-- PWA (hist. §94): se instala desde el navegador del celular. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/img/app/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Nexo" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <script src="/js/arranque.js"></script>
 </head>
 <body>
+
+  <!-- Aviso de sin conexión (hist. §94): lo muestra sesion.js. -->
+  <div class="aviso-conexion" id="avisoConexion" role="status" hidden></div>
 
   <button class="nav-toggle" id="navToggle" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">
     <span></span><span></span><span></span>
@@ -90,7 +78,7 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> <span data-termino="Plural">Productos</span>
           </a>
           <a href="#" class="nav-item" data-view="clientes">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> Clientes
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> <span class="con-crm">CRM</span><span class="sin-crm">Clientes</span>
           </a>
           <a href="#" class="nav-item" data-view="proveedores">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg> Proveedores
@@ -174,8 +162,10 @@
         <!-- Administración: vistas de revisión, no de operación diaria
              (Auditoría es CLAUDE.md §22), y Configuración, donde están
              también los usuarios (hist. §73). El empleado entra a
-             Configuración por el engranaje del pie, a su página Apariencia. -->
-        <div class="nav-seccion nav-seccion-admin">
+             Configuración por el engranaje del pie, a su página Apariencia.
+             El empleado ve el grupo solo con Auditoría (hist. §93): Papelera
+             y Configuración se le ocultan una por una en styles.css. -->
+        <div class="nav-seccion">
           <p class="nav-grupo">Administración</p>
           <a href="#" class="nav-item" data-view="papelera">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trash-2"></use></svg> Papelera
@@ -191,7 +181,7 @@
 
       <div class="sidebar-foot">
         <!-- Círculo de perfil: hoy es un ícono genérico, más adelante
-             podría llevar una foto. Abre el menú de perfil real (nombre,
+             podría llevar una foto. Abre Mi cuenta en Configuración (nombre,
              rol, cambiar contraseña, cerrar sesión) — antes de la etapa
              de usuarios abría el mismo modal vacío que el engranaje de
              al lado; ahora tienen roles distintos. -->
@@ -204,7 +194,7 @@
         </div>
         <div class="sidebar-foot-botones">
           <!-- El engranaje lleva a la vista Configuración (hist. §73), para
-               los dos roles: el empleado ve ahí solo Apariencia, y las
+               los dos roles: el empleado ve ahí solo Mi cuenta y Apariencia, y las
                páginas de admin las filtra dominios/configuracion.js. -->
           <button type="button" class="btn-tema" id="btnConfiguracion" title="Configuración" aria-label="Configuración">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -221,7 +211,12 @@
     <main class="main">
 
       <header class="topbar">
-        <div>
+        <div class="topbar-titulo">
+          <!-- En una ficha, vuelve a la lista de la que salió (hist. §95; lo
+               muestra core/router.js). -->
+          <button type="button" class="topbar-volver" id="btnVolver" aria-label="Volver" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg>
+          </button>
           <h1 id="vistaTitulo">Resumen</h1>
         </div>
         <p class="topbar-fecha mono" id="todayDate">—</p>
@@ -229,8 +224,13 @@
 
       <!-- Vista: Resumen -->
       <section class="view" data-view="dashboard">
+        <!-- La prueba que termina o un tope del plan que se acerca (dominios/plan.js). -->
+        <div class="aviso-plan" id="avisoPlan" role="status" hidden></div>
+        <!-- El mail de la cuenta sin confirmar (hist. §102, dominios/perfil.js). -->
+        <div class="aviso-plan" id="avisoMail" role="status" hidden></div>
         <!-- Guía de primeros pasos para una cuenta nueva (dominios/primeros-pasos.js). -->
         <section class="panel primeros-pasos" id="primerosPasos" aria-label="Primeros pasos" hidden></section>
+        <section class="panel para-hoy-resumen" id="paraHoyResumen" data-modulo="crm" aria-labelledby="paraHoyResumenTitulo" hidden></section>
 
         <div class="filtros" id="filtrosResumen"></div>
         <p class="nota-plana" id="resumenRangoNota"></p>
@@ -538,11 +538,11 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Presupuestos</h2>
-            <button class="btn btn-primary" id="btnNuevoPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo presupuesto</button>
+            <button class="btn btn-primary btn-nuevo" id="btnNuevoPresupuesto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo presupuesto</button>
           </div>
           <div class="filtros" id="filtrosPresupuestos"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">N°</th>
@@ -564,6 +564,50 @@
       <!-- Vista: Trabajos (hist. §78, dominios/trabajos.js). Tres pestañas:
            #/trabajos/lista, #/trabajos/semana y #/trabajos/mes (la agenda,
            hist. §80). Sin subruta, la última que se usó. -->
+      <section class="view" data-view="consulta-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverConsultas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver al CRM</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaConsultaTitulo">—</h2>
+            <div class="panel-acciones" id="fichaConsultaAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaConsultaDatos"></dl>
+        </section>
+
+        <section class="panel consulta-pasar" id="fichaConsultaPasar" hidden>
+          <div class="panel-head">
+            <div>
+              <h2>Cuando decide</h2>
+              <p class="panel-sub">Pasala a lo que corresponda: los datos ya están cargados, y la consulta queda ganada sola.</p>
+            </div>
+          </div>
+          <div class="consulta-pasar-opciones" id="fichaConsultaOpciones"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Seguimiento</h2>
+          </div>
+          <form id="formActividad" class="form actividad-form" novalidate>
+            <div class="segmentos" role="group" aria-label="Qué es" id="actividadTipo"></div>
+            <label class="actividad-texto">Qué
+              <input type="text" name="descripcion" maxlength="1000" autocomplete="off" />
+            </label>
+            <div class="actividad-form-fila">
+              <label>Para cuándo
+                <input type="date" name="fecha" />
+              </label>
+              <label class="form-check">
+                <input type="checkbox" name="hecha" /> Ya lo hice
+              </label>
+              <button type="submit" class="btn btn-primary">Anotar</button>
+            </div>
+          </form>
+          <ol class="linea-tiempo" id="fichaConsultaActividades"></ol>
+        </section>
+      </section>
+
       <section class="view" data-view="trabajos" hidden>
         <div class="trabajos-vista">
         <nav class="segmentos planes-menu" aria-label="Cómo ver los trabajos" id="trabajosMenu">
@@ -598,7 +642,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Trabajos</h2>
-            <button class="btn btn-primary" id="btnNuevoTrabajo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo trabajo</button>
+            <button class="btn btn-primary btn-nuevo" id="btnNuevoTrabajo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo trabajo</button>
           </div>
           <div class="socios-herramientas">
             <input type="search" class="search" placeholder="Buscar por trabajo, cliente o responsable" id="trabajosBuscar" aria-label="Buscar trabajos" />
@@ -610,7 +654,7 @@
             </div>
           </div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Cuándo</th>
@@ -642,7 +686,7 @@
               <select id="agendaResponsable" class="select-inline agenda-filtro">
                 <option value="">Todos</option>
               </select>
-              <button type="button" class="btn btn-primary" id="btnNuevoTrabajoAgenda"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo trabajo</button>
+              <button type="button" class="btn btn-primary btn-nuevo" id="btnNuevoTrabajoAgenda"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo trabajo</button>
             </div>
           </div>
           <div class="agenda-cuerpo" id="agendaCuerpo"></div>
@@ -718,7 +762,7 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Abonos</h2>
-            <button class="btn btn-primary col-admin" id="btnNuevoAbono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo abono</button>
+            <button class="btn btn-primary btn-nuevo col-admin" id="btnNuevoAbono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo abono</button>
           </div>
           <div class="socios-herramientas">
             <input type="search" class="search" placeholder="Buscar por cliente o servicio" id="abonosBuscar" aria-label="Buscar abonos" />
@@ -730,7 +774,7 @@
             </div>
           </div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Cliente</th>
@@ -1003,7 +1047,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Socios</h2>
-              <a class="btn btn-primary" id="btnNuevoSocio" href="#/socios/nuevo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg> Nuevo socio</a>
+              <a class="btn btn-primary btn-nuevo" id="btnNuevoSocio" href="#/socios/nuevo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg> Nuevo socio</a>
             </div>
             <div class="socios-herramientas">
               <input type="search" class="search" placeholder="Buscar por nombre, DNI o número" id="sociosBuscar" aria-label="Buscar socios" />
@@ -1015,7 +1059,7 @@
               </div>
             </div>
             <div class="tabla-scroll">
-            <table class="ledger-table">
+            <table class="ledger-table lista-movil">
               <thead>
                 <tr>
                   <th scope="col">N°</th>
@@ -1380,12 +1424,12 @@
                  quedan pegados sin separación (ver el gap de .fila-acciones). -->
             <div class="panel-acciones">
               <button class="btn btn-secundario" id="btnExportarVentas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
-              <button class="btn btn-primary" id="btnNuevaVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva venta</button>
+              <button class="btn btn-primary btn-nuevo" id="btnNuevaVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva venta</button>
             </div>
           </div>
           <div class="filtros" id="filtrosVentas"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">N°</th>
@@ -1515,7 +1559,7 @@
           <p class="form-note">Una devolución se registra desde la ficha de la venta que revierte.</p>
           <div class="filtros" id="filtrosDevoluciones"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">N°</th>
@@ -1595,11 +1639,11 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Compras</h2>
-            <button class="btn btn-primary" id="btnNuevaCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva compra</button>
+            <button class="btn btn-primary btn-nuevo" id="btnNuevaCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva compra</button>
           </div>
           <div class="filtros" id="filtrosCompras"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">N°</th>
@@ -1727,7 +1771,7 @@
           <p class="form-note">Una devolución a proveedor se registra desde la ficha de la compra que revierte.</p>
           <div class="filtros" id="filtrosDevolucionesProveedor"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">N°</th>
@@ -1799,7 +1843,7 @@
           <input type="search" class="search search-full" placeholder="Buscar por nombre" id="stockSearch" />
           <div class="filtros" id="filtrosStock"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Producto</th>
@@ -1844,7 +1888,7 @@
           </div>
           <div class="filtros" id="filtrosStockMov"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Fecha</th>
@@ -1913,21 +1957,27 @@
         </section>
       </section>
 
-      <!-- Vista: Productos -->
+      <!-- Vista: Productos. Con productos y servicios cargados, dos pestañas
+           (#/productos/productos y #/productos/servicios, hist. §88); con uno
+           solo, no hay pestañas. -->
       <section class="view" data-view="productos" hidden>
+        <nav class="segmentos planes-menu" aria-label="Qué ver del catálogo" id="productosMenu" hidden>
+          <a class="segmento" href="#/productos/productos" data-pestana="producto">Productos</a>
+          <a class="segmento" href="#/productos/servicios" data-pestana="servicio">Servicios</a>
+        </nav>
         <section class="panel">
           <div class="panel-head">
-            <h2 data-termino="Plural">Productos</h2>
+            <h2 id="productosTitulo" data-termino="Plural">Productos</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnCategoriasProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
               <button class="btn btn-secundario col-admin" id="btnListasPrecios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Listas de precios</button>
-              <button class="btn btn-primary" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span data-termino="singular">producto</span></span></button>
+              <button class="btn btn-primary btn-nuevo" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span id="btnNuevoProductoTermino">producto</span></span></button>
             </div>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre o SKU" id="productosSearch" />
           <div class="filtros" id="filtrosProductos"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil" id="productosTabla">
             <thead>
               <tr>
                 <th scope="col">Nombre</th>
@@ -2026,17 +2076,143 @@
         </section>
       </section>
 
-      <!-- Vista: Clientes (CRM) -->
+      <!-- Vista: CRM (hist. §91). La base de clientes y las consultas en una sola
+           página, con pestañas (#/clientes/lista|consultas|hoy|dejaron|numeros).
+           Con el módulo crm apagado se ve solo la lista: el menú dice
+           "Clientes" y no hay pestañas (dominios/crm.js). -->
       <section class="view" data-view="clientes" hidden>
+        <div class="trabajos-vista">
+        <div class="consultas-cabecera" data-modulo="crm">
+          <nav class="segmentos planes-menu" aria-label="Qué ver del CRM" id="consultasMenu">
+            <a class="segmento" href="#/clientes/lista" data-pestana="lista">Clientes</a>
+            <a class="segmento" href="#/clientes/consultas" data-pestana="consultas">Consultas</a>
+            <a class="segmento" href="#/clientes/hoy" data-pestana="hoy">Para hoy <span class="segmento-cuenta" id="consultasHoyCuenta" hidden></span></a>
+            <a class="segmento" href="#/clientes/dejaron" data-pestana="dejaron">Dejaron de comprar</a>
+            <a class="segmento" href="#/clientes/numeros" data-pestana="numeros">Números</a>
+          </nav>
+          <button type="button" class="btn btn-primary consultas-nueva" id="btnNuevaConsulta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nueva consulta</span></button>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="consultas" hidden>
+        <section class="ledger-strip" aria-label="Consultas">
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#funnel"></use></svg></span>Abiertas</span>
+            <span class="ledger-value mono" id="consultasAbiertas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">En juego</span>
+            <span class="ledger-value mono" id="consultasValor">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Sin próximo paso</span>
+            <span class="ledger-value mono" id="consultasSinAccion">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Ganadas este mes</span>
+            <span class="ledger-value mono" id="consultasGanadas">0</span>
+          </div>
+        </section>
+
+        <section class="panel embudo-panel">
+          <div class="socios-herramientas">
+            <input type="search" class="search" placeholder="Buscar por nombre, teléfono o qué busca" id="consultasBuscar" aria-label="Buscar consultas" />
+            <p class="embudo-ayuda">Arrastrá una tarjeta para pasarla de etapa, o soltala en Ganada o Perdida para cerrarla.</p>
+          </div>
+          <div class="segmentos embudo-etapas" role="group" aria-label="Etapa" id="embudoEtapas"></div>
+          <div class="embudo" id="embudo"></div>
+        </section>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="hoy" hidden>
+          <div class="para-hoy" id="paraHoy"></div>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="dejaron" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Dejaron de comprar</h2>
+              <p class="panel-sub">Te compraron dos veces o más y hace un tiempo que no vuelven. Un mensaje a tiempo los trae de vuelta.</p>
+            </div>
+            <div class="segmentos" role="group" aria-label="Sin comprar hace más de" id="dejaronDias">
+              <button type="button" class="segmento" data-dias="60" aria-pressed="false">60 días</button>
+              <button type="button" class="segmento" data-dias="90" aria-pressed="true">90 días</button>
+              <button type="button" class="segmento" data-dias="180" aria-pressed="false">6 meses</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Cliente</th>
+                <th scope="col">Última compra</th>
+                <th scope="col" class="align-right">Compras</th>
+                <th scope="col" class="align-right">Compró en total</th>
+                <th scope="col"><span class="visualmente-oculto">Seguimiento</span></th>
+              </tr>
+            </thead>
+            <tbody id="dejaronBody"></tbody>
+          </table>
+          </div>
+        </section>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="numeros" hidden>
+        <div class="segmentos numeros-periodo" role="group" aria-label="Período" id="numerosPeriodo">
+          <button type="button" class="segmento" data-periodo="mes" aria-pressed="false">Este mes</button>
+          <button type="button" class="segmento" data-periodo="trimestre" aria-pressed="true">Últimos 3 meses</button>
+          <button type="button" class="segmento" data-periodo="todo" aria-pressed="false">Desde siempre</button>
+        </div>
+        <section class="ledger-strip" aria-label="Números de las consultas">
+          <div class="ledger-item">
+            <span class="ledger-label">Consultas</span>
+            <span class="ledger-value mono" id="numerosTotal">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Ganadas</span>
+            <span class="ledger-value mono" id="numerosGanadas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Perdidas</span>
+            <span class="ledger-value mono" id="numerosPerdidas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>De las cerradas, ganadas</span>
+            <span class="ledger-value mono" id="numerosConversion">—</span>
+          </div>
+        </section>
+        <div class="numeros-grilla">
+          <section class="panel">
+            <div class="panel-head"><h2>De dónde llegan</h2></div>
+            <div class="barras" id="numerosOrigen"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Cómo está el embudo hoy</h2></div>
+            <div class="barras" id="numerosEtapas"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Por qué se pierden</h2></div>
+            <div class="barras" id="numerosMotivos"></div>
+          </section>
+        </div>
+        </div>
+
+        <div class="trabajos-pestana crm-pestana" data-pestana="lista">
         <section class="panel">
           <div class="panel-head">
             <h2>Clientes</h2>
-            <button class="btn btn-primary" id="btnNuevoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo cliente</button>
+            <button class="btn btn-primary btn-nuevo" id="btnNuevoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo cliente</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="clientesSearch" />
           <div class="filtros" id="filtrosClientes"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Nombre</th>
@@ -2051,6 +2227,8 @@
           </table>
           </div>
         </section>
+        </div>
+        </div>
       </section>
 
       <!-- Vista: ficha de un cliente -->
@@ -2099,6 +2277,17 @@
             <tbody id="fichaClienteHistorial"></tbody>
           </table>
           </div>
+        </section>
+
+        <!-- Consultas y seguimiento del cliente (hist. §90): los pinta
+             dominios/crm.js. -->
+        <section class="panel" data-modulo="crm">
+          <div class="panel-head">
+            <h2>Consultas y seguimiento</h2>
+            <button type="button" class="btn btn-secundario" id="btnSeguimientoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Anotar seguimiento</button>
+          </div>
+          <div class="cliente-consultas" id="fichaClienteConsultas"></div>
+          <ol class="linea-tiempo" id="fichaClienteSeguimiento"></ol>
         </section>
 
         <!-- Lo del cliente en los módulos de servicios (hist. §83): los pinta
@@ -2152,12 +2341,12 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Proveedores</h2>
-            <button class="btn btn-primary" id="btnNuevoProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo proveedor</button>
+            <button class="btn btn-primary btn-nuevo" id="btnNuevoProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo proveedor</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="proveedoresSearch" />
           <div class="filtros" id="filtrosProveedores"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Nombre</th>
@@ -2268,11 +2457,11 @@
             <div class="panel-acciones">
               <button class="btn btn-secundario" id="btnNuevaCuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Cuenta</button>
               <button class="btn btn-secundario" id="btnTransferencia"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#arrow-right-left"></use></svg> Transferencia</button>
-              <button class="btn btn-primary" id="btnMovimientoTesoreria"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Movimiento</button>
+              <button class="btn btn-primary btn-nuevo" id="btnMovimientoTesoreria"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Movimiento</button>
             </div>
           </div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Cuenta</th>
@@ -2293,7 +2482,7 @@
           </div>
           <div class="filtros" id="filtrosCaja"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Fecha</th>
@@ -2335,7 +2524,7 @@
           <p class="form-note" id="ccNotaFavorClientes" hidden></p>
           <div class="filtros" id="filtrosCcCobrar"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Cliente</th>
@@ -2359,7 +2548,7 @@
           <p class="form-note" id="ccNotaFavorProveedores" hidden></p>
           <div class="filtros" id="filtrosCcPagar"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Proveedor</th>
@@ -2401,12 +2590,12 @@
             <div class="panel-acciones">
               <button class="btn btn-secundario" id="btnExportarGastos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
               <button class="btn btn-secundario col-admin" id="btnCategoriasGasto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
-              <button class="btn btn-primary" id="btnNuevoGasto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo gasto</button>
+              <button class="btn btn-primary btn-nuevo" id="btnNuevoGasto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo gasto</button>
             </div>
           </div>
           <div class="filtros" id="filtrosGastos"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Fecha</th>
@@ -2446,11 +2635,11 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Facturas</h2>
-            <button class="btn btn-primary" id="btnNuevaFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva factura</button>
+            <button class="btn btn-primary btn-nuevo" id="btnNuevaFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva factura</button>
           </div>
           <div class="filtros" id="filtrosFacturas"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Comprobante</th>
@@ -2548,7 +2737,7 @@
           </div>
           <div class="filtros" id="filtrosAuditoria"></div>
           <div class="tabla-scroll">
-          <table class="ledger-table">
+          <table class="ledger-table lista-movil">
             <thead>
               <tr>
                 <th scope="col">Fecha</th>
@@ -2589,7 +2778,7 @@
       <!-- Configuración (hist. §73): una sección con su menú y una página por
            tema, en vez del modal de antes. Cada página es su propio
            formulario con su "Guardar cambios". Las páginas de admin llevan
-           .col-admin: el empleado ve solo Apariencia. Sumar una página (IVA,
+           .col-admin: el empleado ve solo Mi cuenta y Apariencia. Sumar una página (IVA,
            ARCA) es agregar su ítem al menú, su <section> y su
            entrada en SECCIONES de dominios/configuracion.js.
            En el celular, #/configuracion es la lista y cada ítem lleva a su
@@ -2604,14 +2793,27 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Datos del negocio</span><span class="config-item-desc">Nombre, dirección y contacto</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
-              <a class="config-item" href="#/configuracion/tipo" data-seccion="tipo">
+              <a class="config-item" href="#/configuracion/funciones" data-seccion="funciones">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg></span>
-                <span class="config-item-texto"><span class="config-item-nombre">Tipo de negocio y secciones</span><span class="config-item-desc">Qué secciones ves en el menú</span></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Funciones</span><span class="config-item-desc">Qué secciones ves en el menú</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/etapas-consultas" data-seccion="etapas-consultas" data-modulo="crm">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#funnel"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Etapas de las consultas</span><span class="config-item-desc">Los pasos de tu embudo</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
               <a class="config-item" href="#/configuracion/comprobantes" data-seccion="comprobantes">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
+            <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Tu plan</p>
+              <a class="config-item" href="#/configuracion/plan" data-seccion="plan">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gem"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Plan de Nexo</span><span class="config-item-desc" id="configPlanResumen">Lo que usás y cómo pasar a otro</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
@@ -2647,10 +2849,15 @@
               </a>
             </div>
             <div class="config-grupo">
-              <p class="config-grupo-titulo">Preferencias</p>
+              <p class="config-grupo-titulo">Tu cuenta</p>
+              <a class="config-item" href="#/configuracion/cuenta" data-seccion="cuenta">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Mi cuenta</span><span class="config-item-desc">Contraseña y cerrar sesión</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
-                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema oscuro o claro</span></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema e instalar como app</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
@@ -2688,26 +2895,50 @@
               </form>
             </section>
 
-            <section class="config-pagina col-admin" data-seccion="tipo" aria-labelledby="configTipoTitulo" hidden>
+            <!-- Funciones (hist. §88): el tipo se ve fijo y las funciones se
+                 suman o se sacan. Cambiar el tipo es una página aparte. -->
+            <section class="config-pagina col-admin" data-seccion="funciones" aria-labelledby="configFuncionesTitulo" hidden>
               <header class="config-pagina-head">
-                <h2 id="configTipoTitulo" tabindex="-1">Tipo de negocio y secciones</h2>
-                <p>Nexo se arma según tu tipo de negocio. Cambiarlo no borra nada: cambia con qué unidad nacen los productos nuevos y qué secciones ves en el menú.</p>
+                <h2 id="configFuncionesTitulo" tabindex="-1">Funciones</h2>
+                <p>Sumale a tu negocio lo que necesites, aunque no venga con su tipo: un comercio que también da servicios, un gimnasio que vende en el mostrador.</p>
               </header>
-              <form class="form config-tarjeta" id="formConfigTipo" novalidate>
+              <div class="config-tarjeta config-tipo-actual">
+                <div class="config-tarjeta-cuerpo" id="configTipoActual"></div>
+              </div>
+              <form class="form config-tarjeta" id="formConfigFunciones" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <fieldset class="opciones">
+                    <legend>Funciones que usás</legend>
+                    <p class="opciones-nota">Ventas, clientes, caja, gastos, cuentas corrientes y reportes están siempre.</p>
+                    <div class="opciones-tarjetas opciones-tarjetas-compactas" id="configModulos"></div>
+                  </fieldset>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Las funciones apagadas solo se ocultan del menú: lo que cargaste sigue ahí.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Cambiar el tipo (hist. §88): fuera del menú, se llega desde
+                 Funciones. Dice qué cambia antes de confirmar. -->
+            <section class="config-pagina col-admin" data-seccion="cambiar-tipo" aria-labelledby="configCambiarTipoTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/funciones"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Funciones</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configCambiarTipoTitulo" tabindex="-1">Cambiar el tipo de negocio</h2>
+                <p>El tipo es con qué arrancó tu negocio. Si lo que querés es llevar otro negocio, conviene crearlo aparte: cada uno con sus productos, clientes y caja.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigCambiarTipo" novalidate>
                 <div class="config-tarjeta-cuerpo">
                   <fieldset class="opciones">
                     <legend>Tipo de negocio</legend>
                     <div class="opciones-tarjetas" id="configTipos"></div>
                   </fieldset>
-                  <fieldset class="opciones">
-                    <legend>Secciones que usás</legend>
-                    <p class="opciones-nota" id="configModulosNota" aria-live="polite">Ventas, clientes, caja, gastos, cuentas corrientes y reportes están siempre.</p>
-                    <div class="opciones-tarjetas opciones-tarjetas-compactas" id="configModulos"></div>
-                  </fieldset>
+                  <div class="config-tipo-cambios" id="configTipoCambios" aria-live="polite"></div>
                 </div>
                 <div class="config-tarjeta-pie">
-                  <p>Las secciones apagadas solo se ocultan del menú: lo que cargaste sigue ahí.</p>
-                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                  <button type="button" class="btn btn-secundario" id="btnConfigOtroNegocio"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Crear otro negocio</span></button>
+                  <button type="submit" class="btn btn-primary" disabled>Cambiar el tipo</button>
                 </div>
               </form>
             </section>
@@ -2756,7 +2987,7 @@
                 <table class="ledger-table">
                   <thead>
                     <tr>
-                      <th scope="col">Usuario</th>
+                      <th scope="col">Mail</th>
                       <th scope="col">Nombre</th>
                       <th scope="col">Rol</th>
                       <th scope="col">Estado</th>
@@ -2922,6 +3153,130 @@
               </form>
             </section>
 
+            <section class="config-pagina col-admin" data-seccion="etapas-consultas" aria-labelledby="configEtapasConsultasTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configEtapasConsultasTitulo" tabindex="-1">Etapas de las consultas</h2>
+                <p>Los pasos por los que pasa alguien desde que te pregunta hasta que te compra. Ganada y Perdida son el cierre de todas, y no hace falta cargarlas.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Etapa</th>
+                      <th scope="col" class="align-right">Abiertas</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col"><span class="visualmente-oculto">Acciones</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="etapasConsultasBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formEtapaConsulta" class="form config-tarjeta">
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <label>Nombre de la etapa
+                    <input type="text" name="nombre" required maxlength="40" placeholder="Visita, Clase de prueba, Seña…" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Para renombrar una etapa, tocá el lápiz de su fila. Las flechas cambian el orden.</p>
+                  <button type="submit" class="btn btn-primary" id="formEtapaConsultaSubmit">Agregar etapa</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Mi cuenta: la persona, no el negocio. La ven los dos roles, y
+                 también la abre el círculo de perfil del pie del menú. -->
+            <!-- Plan de Nexo (hist. §99): lo pinta dominios/plan.js. -->
+            <section class="config-pagina col-admin" data-seccion="plan" aria-labelledby="configPlanTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configPlanTitulo" tabindex="-1">Plan de Nexo</h2>
+                <p>Todos los planes tienen todas las funciones: cambia hasta dónde llegás.</p>
+              </header>
+              <div class="config-tarjeta plan-actual" id="planActual"></div>
+              <div class="planes-grilla" id="planesGrilla"></div>
+              <form class="form config-tarjeta" id="formPedirPlan" novalidate hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <h3 class="plan-pedido-titulo" id="planPedidoTitulo" tabindex="-1">Pedir el plan</h3>
+                  <p class="plan-pedido-texto">Te escribimos para activarlo. Mientras tanto seguís usando Nexo como siempre.</p>
+                  <label>Teléfono o mail para responderte
+                    <input type="text" id="planPedidoContacto" maxlength="120" autocomplete="tel" />
+                  </label>
+                  <label>Algo que nos quieras contar <span class="campo-opcional">(opcional)</span>
+                    <textarea id="planPedidoMensaje" maxlength="1000" rows="3"></textarea>
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <a class="btn btn-secundario" id="planPedidoWhatsapp" target="_blank" rel="noopener" hidden>
+                    <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#message-circle"></use></svg> Escribir por WhatsApp
+                  </a>
+                  <button type="submit" class="btn btn-primary">Enviar el pedido</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina" data-seccion="cuenta" aria-labelledby="configCuentaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configCuentaTitulo" tabindex="-1">Mi cuenta</h2>
+                <p>Tu cuenta es la misma en todos tus negocios.</p>
+              </header>
+              <!-- El mail de la cuenta (hist. §102): con él se entra y se
+                   recupera la cuenta. Cambiarlo pide la contraseña. -->
+              <form class="form config-tarjeta" id="formCambioMail" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Mail</p>
+                  <div class="perfil-identidad">
+                    <strong id="perfilEmail">—</strong>
+                    <span class="status" id="perfilEmailEstado" hidden></span>
+                  </div>
+                  <p class="form-note" id="perfilEmailNota" hidden>
+                    Te mandamos un enlace para confirmarlo. Si no lo ves, buscalo en el correo no deseado.
+                    <button type="button" class="btn-link" id="btnReenviarMail">Mandarlo de nuevo</button>
+                  </p>
+                  <p class="form-note" id="cambioMailError" hidden></p>
+                  <label>Mail nuevo
+                    <input type="email" id="perfilEmailNuevo" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" />
+                  </label>
+                  <label>Tu contraseña
+                    <input type="password" id="perfilEmailPassword" autocomplete="current-password" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Te mandamos un enlace al mail nuevo, y un aviso al de ahora.</p>
+                  <button type="submit" class="btn btn-primary">Cambiar mi mail</button>
+                </div>
+              </form>
+              <form class="form config-tarjeta" id="formCambioPassword">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="perfil-identidad">
+                    <strong id="perfilNombre">—</strong>
+                    <span class="status" id="perfilRol">—</span>
+                  </div>
+                  <p class="form-note" id="cambioPasswordError" hidden></p>
+                  <label>Contraseña actual
+                    <input type="password" id="perfilPasswordActual" autocomplete="current-password" required />
+                  </label>
+                  <label>Contraseña nueva
+                    <input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" required />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Al menos 8 caracteres.</p>
+                  <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
+                </div>
+              </form>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-pie config-cuenta-salir">
+                  <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el mail y la contraseña.</p>
+                  <button type="button" class="btn btn-secundario" id="btnCerrarSesion">
+                    <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#log-out"></use></svg> Cerrar sesión
+                  </button>
+                </div>
+              </div>
+            </section>
+
             <section class="config-pagina" data-seccion="apariencia" aria-labelledby="configAparienciaTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configAparienciaTitulo" tabindex="-1">Apariencia</h2>
@@ -2954,6 +3309,23 @@
                   </fieldset>
                 </div>
               </form>
+              <!-- Instalar como app (PWA, hist. §94): el texto y el botón dependen
+                   del navegador y de si ya está instalada (dominios/configuracion.js). -->
+              <form class="form config-tarjeta" id="formConfigInstalar">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="instalar">
+                    <img class="instalar-icono" src="/img/app/icono-192.png" alt="" width="56" height="56" />
+                    <div class="instalar-texto">
+                      <h3>Nexo como app</h3>
+                      <p id="instalarEstado"></p>
+                    </div>
+                  </div>
+                  <button class="btn btn-primary instalar-boton" id="btnInstalar" type="button" hidden>
+                    <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg>
+                    Instalar Nexo
+                  </button>
+                </div>
+              </form>
             </section>
           </div>
         </div>
@@ -2977,7 +3349,9 @@
        accesibilidad de modales se instala sobre los .modal que ya existen
        al cargar app.js — que con este gate carga después. Los dos
        formularios son hermanos, y sesion.js alterna cuál se muestra con
-       hidden. Crear una cuenta es la pantalla de abajo (#altaPantalla). -->
+       hidden. Crear una cuenta es la pantalla de abajo (#altaPantalla).
+       Se entra con el mail (hist. §102). El campo no es type="email" a
+       propósito: una cuenta de antes de §102 todavía entra con su usuario. -->
   <div class="sesion-pantalla" id="sesionPantalla" hidden>
     <div class="sesion-card">
       <img src="/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png" alt="" class="sesion-logo" />
@@ -2985,9 +3359,10 @@
       <p class="sesion-bajada">Stock, ventas, caja y cuentas de tu negocio, en un solo lugar.</p>
 
       <form id="formLogin" class="form">
+        <p class="sesion-aviso" id="loginAviso" role="status" hidden></p>
         <p class="form-note" id="loginError" hidden></p>
-        <label>Usuario
-          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg><input type="text" id="loginUsuario" autocomplete="username" required /></span>
+        <label>Mail
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="text" id="loginUsuario" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" required /></span>
         </label>
         <label>Contraseña
           <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="loginPassword" autocomplete="current-password" required /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
@@ -3006,6 +3381,21 @@
           <input type="password" id="cambioForzadoNueva" autocomplete="new-password" minlength="8" required />
         </label>
         <button type="submit" class="btn btn-primary">Cambiar contraseña</button>
+      </form>
+
+      <!-- Obligatoria para una cuenta de antes de §102: el backend no la
+           deja operar sin mail (403 falta_email). -->
+      <form id="formSumarMail" class="form" hidden novalidate>
+        <div class="sesion-paso">
+          <h2>Sumá tu mail</h2>
+          <p>Desde ahora entrás a Nexo con tu mail, y es la forma de recuperar tu cuenta si algún día te olvidás la contraseña. Te mandamos un enlace para confirmarlo.</p>
+        </div>
+        <p class="form-note" id="sumarMailError" hidden></p>
+        <label>Tu mail
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="sumarMailEmail" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" required /></span>
+        </label>
+        <button type="submit" class="btn btn-primary">Guardar y seguir</button>
+        <button type="button" class="btn-link" id="sumarMailSalir">Cerrar sesión</button>
       </form>
     </div>
   </div>
@@ -3037,12 +3427,13 @@
             <h1 tabindex="-1">Creá tu cuenta</h1>
             <p>Con ella vas a entrar a Nexo. Vas a ser quien administra tu negocio, y después podés sumar a tu equipo.</p>
           </div>
+          <p class="alta-plan" id="altaPlan" hidden></p>
           <label>Tu nombre
             <input type="text" id="altaNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
           </label>
-          <label>Usuario
-            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg><input type="text" id="altaUsuario" autocomplete="username" maxlength="100" autocapitalize="none" spellcheck="false" aria-describedby="altaUsuarioAyuda" /></span>
-            <span class="campo-ayuda" id="altaUsuarioAyuda">Con él vas a ingresar. Sin espacios; por ejemplo, marta.</span>
+          <label>Tu mail
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="altaEmailCuenta" autocomplete="email" maxlength="254" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" aria-describedby="altaEmailCuentaAyuda" /></span>
+            <span class="campo-ayuda" id="altaEmailCuentaAyuda">Con él vas a ingresar, y te mandamos un enlace para confirmarlo.</span>
           </label>
           <label>Contraseña
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
@@ -3276,6 +3667,94 @@
   </div>
   <!-- Modal nuevo/editar trabajo (dominios/trabajos.js). Desde un
        presupuesto no lleva cliente ni renglones: son los del presupuesto. -->
+  <!-- Alta rápida y edición de una consulta (dominios/crm.js): tres campos y
+       "Más datos". Es lo que se carga parado en el mostrador. -->
+  <div class="modal" id="modalConsulta" role="dialog" aria-modal="true" aria-labelledby="modalConsultaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalConsultaTitulo">Nueva consulta</h3>
+        <button class="modal-close" id="modalConsultaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formConsulta" class="form">
+        <label id="consultaNombreCampo">Nombre
+          <input type="text" name="nombre" maxlength="120" autocomplete="off" placeholder="Quién pregunta" />
+        </label>
+        <p class="form-note" id="consultaEsCliente" hidden></p>
+        <label>Teléfono
+          <input type="tel" name="telefono" maxlength="40" autocomplete="off" placeholder="Para llamarlo o escribirle" />
+        </label>
+        <label>Qué busca
+          <input type="text" name="interes" maxlength="300" autocomplete="off" placeholder="Ej.: un plan anual, pintar el living" />
+        </label>
+        <details class="form-mas" id="consultaMasDatos">
+          <summary><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg> Más datos</summary>
+          <div class="form-mas-cuerpo">
+            <label>De dónde llegó
+              <select name="origen"></select>
+            </label>
+            <div class="form-fila">
+              <label>Valor estimado
+                <input type="number" name="valor_estimado" min="0" step="0.01" inputmode="decimal" placeholder="$" />
+              </label>
+              <label>La sigue
+                <select name="responsable_id"></select>
+              </label>
+            </div>
+            <label>Email
+              <input type="email" name="email" maxlength="120" autocomplete="off" />
+            </label>
+          </div>
+        </details>
+        <button type="submit" class="btn btn-primary btn-full" id="formConsultaSubmit">Guardar consulta</button>
+      </form>
+    </div>
+  </div>
+  <!-- Cerrar como perdida: el motivo, con los más comunes a un toque. -->
+  <div class="modal" id="modalPerdida" role="dialog" aria-modal="true" aria-labelledby="modalPerdidaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalPerdidaTitulo">¿Por qué se perdió?</h3>
+        <button class="modal-close" id="modalPerdidaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPerdida" class="form">
+        <p class="form-note">Lo vas a ver en Números: es lo que te muestra qué mejorar.</p>
+        <div class="motivos-rapidos" id="motivosRapidos">
+          <button type="button" class="motivo-rapido" data-motivo="Le pareció caro">Le pareció caro</button>
+          <button type="button" class="motivo-rapido" data-motivo="Compró en otro lado">Compró en otro lado</button>
+          <button type="button" class="motivo-rapido" data-motivo="No respondió más">No respondió más</button>
+          <button type="button" class="motivo-rapido" data-motivo="No era lo que buscaba">No era lo que buscaba</button>
+        </div>
+        <label>Motivo
+          <input type="text" name="motivo" maxlength="300" autocomplete="off" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Marcar como perdida</button>
+      </form>
+    </div>
+  </div>
+  <!-- Anotar seguimiento de un cliente (su ficha, Dejaron de comprar). -->
+  <div class="modal" id="modalSeguimiento" role="dialog" aria-modal="true" aria-labelledby="modalSeguimientoTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalSeguimientoTitulo">Anotar seguimiento</h3>
+        <button class="modal-close" id="modalSeguimientoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formSeguimiento" class="form actividad-form" novalidate>
+        <div class="segmentos" role="group" aria-label="Qué es" id="seguimientoTipo"></div>
+        <label class="actividad-texto">Qué
+          <input type="text" name="descripcion" maxlength="1000" autocomplete="off" />
+        </label>
+        <div class="actividad-form-fila">
+          <label>Para cuándo
+            <input type="date" name="fecha" />
+          </label>
+          <label class="form-check">
+            <input type="checkbox" name="hecha" /> Ya lo hice
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Anotar</button>
+      </form>
+    </div>
+  </div>
   <div class="modal" id="modalTrabajo" role="dialog" aria-modal="true" aria-labelledby="modalTrabajoTitulo" hidden>
     <div class="modal-card modal-card-ancha">
       <div class="modal-head">
@@ -4060,6 +4539,10 @@
     </div>
   </div>
 
+  <!-- Barra de abajo del celular (hist. §95): la arma core/barra-inferior.js
+       con las secciones de uso diario del negocio y "Más". En la compu no se ve. -->
+  <nav class="barra-inferior" id="barraInferior" aria-label="Secciones principales"></nav>
+
   <!-- Asistente flotante — operaciones por texto (CLAUDE.md §21). No es
        una vista más del nav: está disponible desde cualquier pantalla.
        El ícono es genérico a propósito (chispa/IA); un personaje propio
@@ -4111,37 +4594,6 @@
         </svg>
       </button>
     </form>
-  </div>
-
-  <!-- Menú de perfil: quién sos, tu rol, cambiar tu propia contraseña y
-       cerrar sesión. Antes #btnPerfil abría el modal de Configuración,
-       que hoy es una vista propia (hist. §73). -->
-  <div class="modal" id="modalPerfil" role="dialog" aria-modal="true" aria-labelledby="modalPerfilTitulo" hidden>
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3 id="modalPerfilTitulo">Mi cuenta</h3>
-        <button class="modal-close" id="modalPerfilClose" aria-label="Cerrar">
-          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
-        </button>
-      </div>
-      <div class="perfil-identidad">
-        <strong id="perfilNombre">—</strong>
-        <span class="status" id="perfilRol">—</span>
-      </div>
-      <form id="formCambioPassword" class="form">
-        <p class="form-note" id="cambioPasswordError" hidden></p>
-        <label>Contraseña actual
-          <input type="password" id="perfilPasswordActual" autocomplete="current-password" required />
-        </label>
-        <label>Contraseña nueva
-          <input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" required />
-        </label>
-        <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
-      </form>
-      <div class="panel-acciones">
-        <button type="button" class="btn btn-secundario" id="btnCerrarSesion">Cerrar sesión</button>
-      </div>
-    </div>
   </div>
 
   <!-- Modal de alta/edición de usuario (solo admin). -->
@@ -4325,6 +4777,6 @@
        completo del sistema — app.js no tiene ninguna guarda propia de
        arranque, así que la única forma de garantizar que no dispare sus
        fetches sin sesión es no cargarlo hasta tener una. -->
-  <script src="js/sesion.js"></script>
+  <script src="/js/sesion.js"></script>
 </body>
 </html>

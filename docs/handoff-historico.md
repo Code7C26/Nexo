@@ -8605,3 +8605,1048 @@ Abonos (lista y ficha con cobro) y la semana en el celular. Arreglado:
   oculta: `.ledger-strip[hidden] + .panel` recupera el margen.
 - **Doble separación entre la franja y la lista de Trabajos** (gap de la
   pestaña más el margen de la franja).
+
+## 88. Tipo de negocio fijo y funciones que se suman, 25 de octubre de 2026
+
+**Por qué:** el usuario pasó su gimnasio a Servicios desde Configuración y, con
+dos clics, se le apagaron Socios, punto de venta, Compras y Stock (los módulos
+en NULL seguían al preset) y todo el catálogo pasó a llamarse "Servicios".
+Pidió que el tipo no se cambie tan fácil, poder sumarle funciones a su tipo y
+que nada parezca perderse ni renombrarse por tocar una opción. Decidido con él
+el 25 de octubre: el cambio de tipo queda en una página aparte que dice qué
+cambia; el nombre del catálogo sale de lo cargado; su base real no se toca (él
+le suma las funciones que quiera).
+
+**Backend, sin cambio de esquema:**
+- `backend/perfiles.js` (nuevo): `MODULOS`, `MODULOS_INFO`, `PERFILES_RUBRO`,
+  `RUBROS_PROXIMAMENTE` y `modulosDelPreset()` salieron de `server.js`, para
+  que `db/index.js` también los lea.
+- `organizaciones.modulos` se guarda siempre: el alta y "Agregar negocio"
+  guardan los elegidos (o los del tipo si no vienen), y `PUT /api/negocio` ya
+  no los pasa a NULL. **Cambiar el tipo no toca los módulos:** solo con qué
+  unidad y tipo nace un producto nuevo. `''` (todos apagados) es válido.
+- Migración de datos en `db/index.js`: cada `modulos IS NULL` pasa a los del
+  preset de su tipo (lo que esa empresa ya veía). Re-ejecutable. La base real
+  queda con `presupuestos trabajos abonos`, como la ve hoy.
+- `perfilDeEmpresa()` conserva el NULL → preset por si acaso.
+
+**Configuración** (`dominios/configuracion.js`, `index.html`):
+- "Tipo de negocio y secciones" pasó a **Funciones**
+  (`#/configuracion/funciones`; `#/configuracion/tipo` redirige): el tipo se ve
+  fijo en una tarjeta con "Cambiar el tipo", y abajo las funciones, con la
+  pastilla "Viene con {tipo}" en las que trae (`tarjetasModulos(..., tipo)`).
+- **Cambiar el tipo** (`#/configuracion/cambiar-tipo`, sin ítem propio: marca
+  Funciones con `menu` en `PAGINAS`): las tarjetas de tipo, un panel "Qué
+  cambia" (cómo nace lo nuevo, y que nada se borra, renombra ni apaga), una
+  casilla opcional para sumar las funciones del tipo nuevo que faltan, "Crear
+  otro negocio" (`invocar("agregar:negocio")`, que registra `negocios.js`) y
+  el botón "Cambiar a {tipo}", deshabilitado hasta elegir otro.
+- `guardar()` devuelve al botón su texto propio.
+
+**Catálogo** (`core/negocio.js`, `app.js`):
+- `termino()` sale de lo cargado (`fijarTiposDelCatalogo`, que llama
+  `cargarProductos()`): solo productos, "productos"; solo servicios,
+  "servicios"; los dos, "productos y servicios" / "producto o servicio"; vacío,
+  el del tipo. `terminoDeTipo()` da la palabra de un tipo puntual.
+  `pintarTerminos()` avisa con el evento `nexo:catalogo`.
+- Con los dos tipos, Productos tiene pestañas **Productos | Servicios**
+  (`#/productos/productos|servicios`): la lista, el CSV, el título del panel y
+  "Nuevo producto/servicio" siguen a la pestaña; en Servicios se ocultan Stock
+  y Valorizado (`.solo-servicios`). Al guardar, la pestaña pasa al tipo
+  guardado. El modal se titula según su tipo.
+- Los planes de socio son servicios: un gimnasio con productos ve "Productos y
+  servicios", con los planes en la pestaña Servicios.
+
+**Verificación:** `npm test` 62 de 62 (el cambio de tipo mantiene los
+módulos; el alta los guarda explícitos; apagar todos es válido), lint,
+`verificar-migracion` 24 de 24, `regresion` 0 diferencias en 172, md5 de la
+base real igual. Recorrido en Chrome con un negocio de Servicios con un
+producto y un servicio: pestañas, "Nuevo servicio", sumar Socios, cambiar a
+Carnicería (módulos intactos, producto nuevo en kg), en oscuro, claro y 390 px,
+sin errores de consola.
+
+## 89. Consultas (CRM), primera parte: el backend, 26 de octubre de 2026
+
+Punto 6b del plan, pedido por el usuario el 20 de octubre ("que llegue a la
+presentación"). Diseño en `docs/investigacion-crm-servicios.md` §2. Esta parte
+es el backend entero, con sus tests; la pantalla es hist. §90.
+
+**Módulo y presets** (`backend/perfiles.js`):
+- `crm` entra en `MODULOS` (después de `pos`) y en `MODULOS_INFO` como
+  "Consultas", con el ícono `funnel` (el sprite lo suma en §90).
+- Cada preset tiene `etapas_crm` (solo las abiertas; Ganada y Perdida son el
+  estado de la consulta): comercio, carnicería, verdulería y kiosco "Consulta →
+  Presupuesto enviado → Negociación"; servicios "Consulta → Visita o
+  relevamiento → Presupuesto enviado"; gimnasio "Consulta → Clase de prueba →
+  Seguimiento". `etapasCrmDelPreset()` las da.
+- Viene prendido en comercio, servicios y gimnasio. En carnicería, verdulería y
+  kiosco (venta de paso) queda para sumar desde Funciones.
+
+**Esquema** (solo tablas nuevas, en `schema.sql` con su forma final):
+- `crm_etapas` (por negocio, `UNIQUE(organizacion_id, nombre)`, `orden`,
+  `activa`).
+- `crm_oportunidades`: cliente o contacto suelto (el nombre se guarda
+  siempre), origen (clave de `ORIGENES_CRM`, sin CHECK), qué busca, valor
+  estimado, responsable, etapa, `estado` abierta/ganada/perdida con motivo y
+  fecha de cierre, y lo que generó (`presupuesto_id`, `venta_id`,
+  `socio_id`).
+- `crm_actividades`: llamada, mensaje, visita, nota o tarea, de una consulta o
+  de un cliente, con `organizacion_id` propio. Una pendiente siempre tiene
+  fecha; una nota nace hecha.
+- **La próxima acción no se guarda:** es la actividad pendiente más próxima
+  (`SELECT_OPORTUNIDAD`). De ahí sale el aviso `sin_accion` / `vencida` /
+  `hoy`.
+
+**Migración** (`db/index.js`):
+- `crmYaExistia` se mide antes de `db.exec(schemaSql)`. Solo en el arranque
+  que crea las tablas, a cada negocio cuyo tipo trae `crm` se le suma a
+  `modulos`. Si después el admin lo apaga, no vuelve.
+- `sembrarCatalogosBase` siembra las etapas del tipo (aunque el módulo esté
+  apagado, así prenderlo ya trae el embudo).
+- `resembrarEtapasCrm()`: la instalación nueva adopta la organización
+  sembrada sin tipo (con las etapas de comercio); el registro las vuelve a
+  sembrar con las del tipo elegido.
+- **La base real es un gimnasio con `modulos` en NULL** (no arrancó desde
+  §88; el handoff decía Servicios por error). El próximo `npm start` la deja
+  en `pos crm compras stock socios` con las etapas del gimnasio. Probado sobre
+  una copia: un segundo arranque con `crm` apagado no lo vuelve a prender.
+
+**Rutas** (`server.js`, sección "Consultas (CRM)"; `permisos.js`):
+- Etapas: `GET` de los dos roles; alta, `PUT` (nombre, pausar) y
+  `PATCH /orden` del admin. "Ganada" y "Perdida" no se aceptan como nombre, y
+  siempre queda una activa.
+- Consultas: listado (`?estado`, `?cliente_id`), ficha con actividades y lo
+  vinculado, alta (la rápida es nombre, teléfono y qué busca; entra en la
+  primera etapa activa), edición, `PATCH /etapa`, `/cerrar` (perdida pide
+  motivo), `/reabrir` y `/cliente` (crea el cliente desde el contacto o
+  vincula uno; si ya hay uno con el mismo nombre, 400 con su `cliente_id`
+  para ofrecer vincularlo). `GET /api/crm/origenes`.
+- Actividades: alta, `PATCH` (hecha o corregir), `DELETE` y
+  `GET ?cliente_id=` para la ficha del cliente.
+- `GET /api/crm/para-hoy`: actividades vencidas o de hoy, consultas abiertas
+  sin próxima acción, presupuestos `enviado` con fecha de hace 7 días o más
+  (el presupuesto no guarda cuándo se envió) y sin vencer, y abonos que deben
+  (pone los abonos al día, como `GET /api/abonos`).
+- `GET /api/crm/inactivos?dias=` (90 por defecto): clientes con dos ventas o
+  más y la última hace más de esos días, con si ya tienen seguimiento.
+- `GET /api/crm/reporte`: por origen, embudo por etapa y motivos de pérdida;
+  la conversión es sobre las cerradas.
+- **Pasar a presupuesto, venta o socio no duplica circuitos:**
+  `POST /api/presupuestos`, `/api/ventas` y `/api/socios` aceptan
+  `crm_oportunidad_id` (`oportunidadParaVincular`, 400 si es ajena) y, en su
+  transacción, `vincularOportunidad()` deja el vínculo y el cliente (nunca
+  "Consumidor final"). La venta y el socio la ganan.
+- **Se gana sola** al convertir su presupuesto o al terminar el trabajo que lo
+  convierte (`ganarOportunidadesDelPresupuesto`).
+- Auditoría sin reconstruir `auditoria`: entidad `cliente` (u
+  `organizacion`, si es un contacto suelto) con `operacion_tipo`
+  `oportunidad`, `actividad` o `crm_etapa`.
+- `primeros-pasos` cuenta `consultas`.
+
+**Seed:** cuatro pasos nuevos (una consulta con llamada vencida y nota, una que
+pasa a cliente y a presupuesto, una perdida). `LISTADO_DE` suma
+`/api/crm/oportunidades/:id`.
+
+**Verificación:** `npm test` 63 de 63 (test nuevo de consultas: etapas del tipo,
+también del gimnasio; orden y pausa; alta rápida; próxima acción y "Para hoy";
+mover de etapa; presupuesto → venta la gana; perdida con motivo y números;
+pasar a cliente sin duplicar; venta y socio desde la consulta; dejaron de
+comprar; aislamiento). Se ajustaron dos tests que fijaban la lista de módulos.
+Lint, `verificar-migracion` 24 de 24, `regresion` con 19 diferencias, todas
+de lo nuevo (rutas `/api/crm/*`, `crm` en los módulos, `etapas_crm` en los
+perfiles y `consultas` en primeros pasos). md5 de la base real igual
+(`d4a84eef…`).
+
+## 90. Consultas (CRM), segunda parte: la pantalla, 26 de octubre de 2026
+
+Sigue a hist. §89 (el backend). Todo en `frontend/js/dominios/crm.js`, con el
+patrón de `trabajos.js`. En el menú se llama **"Consultas"** (no "CRM": quien
+nunca usó Nexo no conoce la sigla), primero en la sección Ventas.
+
+**Vista `consultas`** (`#/consultas/embudo|hoy|dejaron|numeros`; sin subruta,
+la última usada, `nexo.consultas.vista`, con try/catch):
+- **Embudo:**
+  - en la compu, columnas por etapa (las pausadas solo si tienen consultas),
+    más Ganadas y Perdidas de los últimos 30 días;
+  - arrastrar y soltar nativo de HTML5, sin librería. Soltar en una etapa la
+    mueve (optimista, vuelve si el servidor no acepta); en Ganada, confirma;
+    en Perdida, pide el motivo;
+  - con teclado, lo mismo se hace desde la ficha (selector de etapa);
+  - no se repinta a mitad de un arrastre (`repintarAlSoltar`): soltaba la
+    tarjeta;
+  - en el celular, una etapa por pestaña (`.segmentos` con la cuenta) y una
+    lista de dos renglones por consulta.
+  - Cada tarjeta muestra el próximo paso siempre con texto ("Venció hace 2
+    días: …", "Sin próximo paso"); el color solo acompaña. La clase es
+    `.proximo`: **`.aviso` ya era la del toast**.
+  - Vacío: explica qué es una consulta y ofrece cargar la primera.
+- **Para hoy:** grupos (atrasado, para hoy, consultas sin próximo paso,
+  presupuestos sin respuesta si está el módulo, abonos que deben si está el
+  módulo). Las actividades se marcan "Hecha" ahí; lo demás lleva a su ficha.
+  La cuenta va en la pestaña.
+- **Dejaron de comprar:** 60, 90 días o 6 meses, con "Anotar seguimiento".
+- **Números:** este mes, 3 meses o siempre; consultas, ganadas, perdidas y "De
+  las cerradas, ganadas"; barras de un color con el número al lado (por
+  origen, embudo hoy y motivos de pérdida).
+
+**Alta rápida:** un modal de tres campos (nombre, teléfono, qué busca) y "Más
+datos" plegado (origen, valor, quién la sigue, email). En el celular el botón
+flota abajo, a la izquierda del asistente. Al guardar abre la ficha con el foco
+en el seguimiento (en el celular no: abriría el teclado).
+
+**Ficha `consulta-detalle`:** datos con `camposFicha` (teléfono con `tel:` y
+WhatsApp si el número argentino se puede armar con seguridad, `linkWhatsApp`),
+selector de etapa, Editar, Ganada y Perdida (o Reabrir). "Cuando decide":
+- pasarla a cliente (si ya hay uno con ese nombre, pregunta si es la misma
+  persona y lo vincula);
+- hacerle un presupuesto o registrar la venta: asegura el cliente y abre el
+  alta de siempre con `invocar("nuevo:presupuesto" | "nuevo:venta")`,
+  registrados en `app.js`, que mandan `crm_oportunidad_id` y vuelven a la
+  ficha;
+- hacerlo socio: `invocar("nuevo:socio")`, que registra `socios.js`: el alta
+  de `#/socios/nuevo` con los datos puestos.
+- El seguimiento es una línea de tiempo con un formulario arriba (llamada,
+  mensaje, visita, tarea o nota; una nota no lleva fecha).
+
+**Integraciones:**
+- Ficha del cliente: panel "Consultas y seguimiento"
+  (`pintar:crmDelCliente`) con sus consultas, su seguimiento y "Anotar
+  seguimiento" (modal `modalSeguimiento`, el mismo de Dejaron de comprar).
+- Resumen: panel "Para hoy" con los 5 primeros y "Ver todo"; no se ve si no hay
+  nada. Lo invoca el handler de dashboard de `primeros-pasos.js`, porque
+  `alEntrarEnVista` guarda uno solo por vista.
+- Primeros pasos: "Anotá tu primera consulta".
+- Configuración: página "Etapas de las consultas" (admin, `modulo: "crm"`):
+  agregar, renombrar, subir y bajar, pausar y activar.
+- Íconos nuevos de `lucide-static` 1.57.0: `funnel`, `phone` y
+  `message-circle`.
+
+**Verificación:** `npm test` 63 de 63, lint, `regresion` 0 diferencias en 196,
+`verificar-migracion` 24 de 24, md5 de la base real igual. En Chrome
+(playwright-core, base sembrada en el scratchpad) a 1440 y 390 px, oscuro y
+claro:
+- embudo y arrastre;
+- alta rápida → ficha;
+- "Para hoy" en la vista y en el Resumen;
+- Números y página de etapas;
+- pasar a presupuesto (queda vinculado) y a venta (la gana);
+- seguimiento desde la ficha del cliente y Dejaron de comprar;
+- el empleado ve el embudo y no las etapas;
+- XSS sembrado en nombre, teléfono, qué busca, actividad, etapa y motivo, sin
+  ejecutar (no se corrió el control contra el commit anterior);
+- sin errores de consola y sin scroll horizontal a 390 px.
+
+Arreglado con las capturas:
+- nombres cortados en las tarjetas;
+- el botón flotante tapado por el del asistente;
+- el selector de etapa pisado en el celular;
+- la cuenta de la pestaña ilegible en claro.
+
+El arrastre de Playwright falló dos veces por tiempos de la prueba, cuando se
+arrastra apenas carga la página; después anduvo siempre.
+
+## 91. El CRM junto con los clientes, en una sola página, 26 de octubre de 2026
+
+Pedido del usuario después de ver §90: "en el panel se tiene que llamar CRM y
+tiene que estar combinado con la base de datos de clientes, tiene que estar
+todo en la misma página".
+
+- **Una sola vista:** la de `clientes`. Las pestañas de Consultas pasaron
+  adentro: `#/clientes/lista|consultas|hoy|dejaron|numeros`. "Clientes" es la
+  lista de siempre (la pinta `app.js`) y va primero; sin subruta abre la
+  última usada (`nexo.crm.vista`). El embudo pasó a llamarse "Consultas".
+- **El menú tiene un solo ítem**, en el lugar de Clientes (Maestros). Dice
+  "CRM" con el módulo prendido y "Clientes" sin él (`.con-crm` /
+  `.sin-crm`), y el título lo mismo (`tituloConModulo` en
+  `core/router.js`, y `entrarAlCrm` lo corrige cuando el negocio llega
+  después). Sin el módulo no hay pestañas: solo la lista.
+- "Nueva consulta" no se ve en la pestaña Clientes, que tiene "Nuevo cliente".
+- Los links viejos (`#/consultas`, `#/consultas/hoy`…) redirigen
+  (`VISTAS_RENOMBRADAS`), y la dirección queda en la nueva.
+- La ficha de una consulta marca CRM en el menú; "Volver al CRM" vuelve a
+  Consultas.
+- **La vista `consultas` ya no existe.** No hay cambios en el backend ni en
+  el módulo: sigue siendo `crm`.
+
+**Verificación:** `npm test` 63 de 63, lint. En Chrome (servidor de prueba):
+- menú y título "CRM", la lista primero y sin ítem aparte;
+- la pestaña Consultas, el link viejo y "Volver al CRM";
+- con el módulo apagado, "Clientes" sin pestañas;
+- a 390 px, sin scroll horizontal y sin errores de consola.
+
+## 92. Mi cuenta en Configuración, y la demo para el profe, 26 de octubre de 2026
+
+**Demo.** Pedido del usuario: "creá un comercio y un gym de prueba y usá la
+mayoría de las funciones, para mostrarle a mi profe". Cuenta nueva en la base
+real (`prueba` / `prueba1234`) con "Comercio prueba" y "Gym prueba", cargada
+toda por la API con un script del scratchpad: primero corrió limpio contra una
+base temporal y después, con respaldo previo (`nexo-20261026-124111.db`),
+contra el servidor real. Los negocios #1 y #2 del usuario no se tocaron.
+Trampas de la API que aparecieron: el alta de producto devuelve solo el `id`;
+el punto de venta no acepta cobrar de más (el vuelto lo calcula la pantalla);
+los orígenes del CRM son `whatsapp|instagram|local|conocido|web|otro`.
+
+**Mi cuenta.** El usuario no encontraba cómo cerrar sesión (estaba en un
+modal que abría el círculo de perfil) y pidió: "la configuración de cuenta
+debería estar en configuración también".
+- Página nueva `#/configuracion/cuenta`, en el grupo "Tu cuenta" junto con
+  Apariencia, para los dos roles: nombre y rol, cambiar la contraseña y una
+  tarjeta aparte para cerrar sesión.
+- El círculo de perfil ahora lleva a esa página. **El modal `#modalPerfil` ya
+  no existe:** un solo lugar, y configuración en páginas, no en modales.
+- `dominios/perfil.js` registra `pintar:cuenta`, que `configuracion.js` llama
+  al entrar. Sin cambios en el backend.
+
+**Verificación:** `npm test` 63 de 63, lint. En Chrome contra el servidor real
+con la cuenta de demo: el círculo abre Mi cuenta, la contraseña equivocada
+muestra el error en la página, Cerrar sesión vuelve al login, el empleado ve
+solo Mi cuenta y Apariencia, y a 390 px se ve bien.
+
+## 93. La auditoría, también para el empleado, 26 de octubre de 2026
+
+Pendiente chico del handoff: filtrar `valor_anterior`/`valor_nuevo` de
+`GET /api/auditoria` por campos sensibles. Como el endpoint era solo admin, el
+filtro no habría cambiado nada; el usuario eligió abrirla al empleado.
+- `server.js`: el endpoint ya no lleva `soloAdmin`. Para el empleado, cada
+  JSON de valor se parsea y pasa por `podarSensibles` (el filtro de `res.json`
+  no entra en un string); si queda vacío o roto, va `null`. Las filas de
+  `compra`, `pago` y `devolucion_proveedor` no le llegan
+  (`ENTIDADES_AUDITORIA_SOLO_ADMIN`): ahí `precio_unitario` es un costo y el
+  filtro por nombre de clave no lo distingue. Ningún `detalle` arma texto con
+  costos, así que no se tocó.
+- `permisos.js`: `'ambos'`.
+- Frontend: la sección "Administración" del menú dejó de ser
+  `nav-seccion-admin`; al empleado se le ocultan Papelera y Configuración una
+  por una y ve solo Auditoría. `auditoria` salió de `VISTAS_SOLO_ADMIN` y
+  `cargarAuditoria` ya no corta por rol. El filtro "Entidad" sigue ofreciendo
+  Compra y Pago (se arma antes de conocer el rol): para el empleado filtran a
+  vacío.
+
+**Verificación:** `npm test` 64 de 64 (test nuevo en `api.test.js`: margen
+objetivo podado para el empleado y visible para el admin, sin filas de
+compras), lint. No se probó en el navegador.
+
+## 94. PWA: se instala y abre sin conexión, 26 de octubre de 2026
+
+Etapa 7 del plan (B2, CLAUDE.md §31), junto con 7b ("celular de verdad"). La
+investigación de 7b quedó en `docs/investigacion-celular.md` (commit aparte);
+esta etapa es solo la PWA.
+
+**Qué se hizo:**
+- `frontend/manifest.webmanifest`: nombre, `start_url` "/", standalone, negro
+  de marca. Los íconos (`frontend/img/app/`: 192, 512, 512 maskable y el 180 de
+  Apple) se generaron una sola vez con `playwright-core` en el scratchpad: el
+  logo blanco de `assets/logo/01-icono/` centrado sobre negro (72 % del lado, y
+  56 % el maskable, dentro de su zona segura). No se versiona el script ni se
+  suma dependencia.
+- `frontend/sw.js`, en la raíz para que su alcance sea "/":
+  - **primero la red, y lo guardado solo si falla**, para el shell y para los
+    `GET /api`. No hay build step que versione los archivos: un caché "primero
+    lo guardado" serviría código viejo;
+  - la API espera hasta 6 s antes de mostrar lo guardado. El shell no tiene
+    tope: un `index.html` viejo con un `app.js` nuevo rompería la pantalla;
+  - `PRECACHE` lista todo `frontend/js`, `styles.css`, Inter, el sprite, los
+    logos y los íconos. Satoshi va en `OPCIONALES`, que tolera que falte. Los
+    vendor del PDF se guardan al usarse;
+  - en `DATOS`, solo las respuestas 200, con la clave más el negocio
+    (`__negocio`, de `X-Nexo-Negocio`) y la cabecera `X-Nexo-Guardado-En`;
+  - nunca `/api/auth/*`, salvo `estado`, que hace falta para arrancar sin red.
+- `js/sesion.js`:
+  - registra el service worker, solo en contexto seguro (localhost o https);
+  - **borra lo guardado de la API** (`nexo-datos-*`) en el login, el logout y
+    `cerrarSesionLocal` (401 o arranque sin sesión);
+  - después de un login vuelve a pedir `/api/auth/estado` con `fetchOriginal`,
+    para que el próximo arranque sin conexión tenga la sesión, con la misma
+    clave que usa el arranque;
+  - aviso naranja arriba (`#avisoConexion`): "Sin conexión. Estás viendo lo que
+    se cargó a las 14:55; no se puede guardar nada hasta que vuelva". Lo
+    dispara una respuesta con `X-Nexo-Guardado-En`, un fetch a `/api/` que
+    falla o el evento `offline`. Lo saca una respuesta del servidor o el evento
+    `online`;
+  - sin conexión y sin nada guardado, el login lo explica en vez de "No se
+    pudo conectar con el servidor";
+  - guarda el `beforeinstallprompt` en `window.nexoPedidoInstalar`, porque
+    llega antes que `app.js`.
+- Configuración → Apariencia: tarjeta "Nexo como app".
+  - Con el pedido del navegador, botón "Instalar Nexo". En iOS, los pasos;
+    instalada, "ya está instalada". Sin https, lo explica.
+  - En el menú de Configuración, Apariencia pasó a decir "Tema e instalar como
+    app".
+- **CSP** (`server.js`): `script-src 'self'`, sin inline; `style-src` con
+  `'unsafe-inline'`, porque las plantillas arman `style=""`; `img-src` con
+  `data:` y `blob:`; `frame-ancestors 'none'`.
+  - El script inline del `<head>` salió a `js/arranque.js`, que sigue siendo
+    bloqueante y corre antes de pintar.
+  - `viewport-fit=cover` en el viewport, para los safe areas de la fase
+    siguiente.
+- Tests y lint:
+  - `api.test.js`: la CSP, y el manifest y `sw.js` con su tipo;
+  - `frontend-modulos.test.js`, test nuevo: `PRECACHE` (más `OPCIONALES`)
+    contiene todo `frontend/js` y todo `src`/`href` local de `index.html` y
+    `url()` de `styles.css`, y todo lo de `PRECACHE` existe en disco. Mutado
+    (sacando dos entradas), falla y las nombra;
+  - `scripts/lint.mjs` lintea `frontend/sw.js` (`SUELTOS`).
+  - **`eslint.config.mjs` no se pudo tocar:** el hook `config-protection` del
+    plugin ecc lo bloquea. Por eso `sw.js` declara sus globales con
+    `/* global */`, y `arranque.js` se lintea como módulo, sin diferencia
+    para ese código.
+
+**Ojo para la prueba de XSS en el navegador** (procedimiento 7 del handoff):
+con la CSP, un `onerror=` sembrado ya no corre aunque el HTML esté sin
+escapar. Para probar el escape hay que crear el contexto con
+`bypassCSP: true`; si no, la prueba no prueba nada.
+
+**Verificación:** `npm test` 66 de 66, lint (56 archivos), `npm run regresion`
+con 196 comparaciones y 0 distintas. La base real no cambió (md5 `e8df3009…`).
+En Chrome a 390 px, contra una base sembrada:
+- el service worker queda activo y controla la página; el manifest no tiene
+  errores, y el único error de instalabilidad es "in-incognito", propio del
+  contexto de prueba;
+- sin conexión: abre con la sesión, Productos sale de lo guardado, el aviso
+  tiene la hora, y un POST falla sin escribir. Con conexión, el aviso se va;
+- el logout deja solo `nexo-shell-v1`;
+- el empleado: 21 respuestas guardadas, ninguna con costos. Control: con el
+  admin hay 5 que sí los tienen;
+- cero violaciones de CSP en las 24 vistas del menú, y el PDF de una factura
+  se descarga con la CSP puesta.
+
+**Lo que muestra la captura sin conexión:** Productos, en el celular, con un
+producto por pantalla. Es el problema de 7b, que se resuelve en las fases
+siguientes.
+
+## 95. Celular, fase 2: barra de abajo y formularios a pantalla completa, 26 de octubre de 2026
+
+Primera fase de 7b (`docs/investigacion-celular.md`). Todo es del frontend y
+solo cambia hasta 860 px: en la compu no se ve nada nuevo.
+
+**Qué se hizo:**
+- **Barra de abajo** (`core/barra-inferior.js`, `#barraInferior`):
+  - cuatro destinos y "Más". Los destinos son los primeros de `PRIORIDAD`
+    (`dashboard, ingreso, socios, pos, trabajos, ventas, productos, clientes`)
+    que el menú lateral muestra (`checkVisibility`): los módulos y el rol ya
+    se resuelven ahí, sin `if (rubro)`;
+  - según el negocio queda así:
+    - comercio: Resumen · Vender · Ventas · Catálogo;
+    - gimnasio: Resumen · Ingreso · Socios · Vender;
+    - servicios: Resumen · Trabajos · Ventas · Catálogo (o Servicios);
+    - el empleado no tiene Resumen: Vender · Ventas · Catálogo · CRM;
+  - textos cortos: `pos` dice "Vender", y el catálogo dice "Catálogo" cuando
+    el nombre tiene más de una palabra;
+  - tocar un destino es hacer `click()` en su ítem del menú: navega igual,
+    con su subruta;
+  - un observer repinta cuando cambian los módulos, el rol o la sección activa
+    (el router marca `.is-active` en el menú). **Solo se rearma si cambian los
+    destinos;** lo activo se marca aparte, porque si no "Más" perdía el foco
+    al abrir el cajón.
+- **"Más" abre el cajón de siempre**, y la hamburguesa ya no se ve en el
+  celular.
+  - Tocar afuera del cajón lo cierra, y ese toque no hace nada más (click en
+    captura). No cuentan como afuera el menú de negocios (vive en el `<body>`)
+    ni los modales.
+  - Escape devuelve el foco a "Más".
+- **El asistente sube a la topbar**, arriba a la derecha (40 px), y su panel
+  ocupa la pantalla. Libera la esquina de abajo.
+- **Topbar de un renglón:** sin la fecha. `--topbar-h` es
+  `52px + safe area`. En las fichas, la flecha `#btnVolver` hace `click()` en
+  el "Volver a …" de la ficha abierta (cada una sabe a qué pestaña volver), y
+  ese botón interno se oculta en el celular.
+- **Modales a pantalla completa:** la cabecera fija arriba y el botón de
+  guardar fijo abajo (todos los formularios terminan en `.btn-full`; se
+  revisaron los 34). `#modalConfirmar` va como hoja desde abajo, con los dos
+  botones de 48 px.
+  - Modales en z-index 52, por encima del asistente de la topbar (51).
+- **El "atrás" de Android cierra el modal** (`core/ui.js`):
+  - al abrir, en el celular, un `pushState` con la misma dirección (no cambia
+    el hash, así que el router no se entera);
+  - el `popstate` cierra el último modal abierto;
+  - cerrar con la X hace `history.back()`. Como es asíncrono, un modal que se
+    abre mientras tanto espera para sumar su entrada (`esperandoAtras`): si
+    no, ese back se la llevaría.
+  - `#modalConfirmar` queda afuera, como en el observer.
+- **`--abajo`** (64 px + safe area; 0 en la compu): lo usan la barra del POS,
+  la de selección, los avisos, el alta rápida del CRM y el padding de `.main`.
+  La barra del POS y los avisos ya no dejan el lugar del asistente.
+- **`--control-h: 44px`** en el celular, y los inputs de 16 px (iOS hacía
+  zoom con 14).
+
+**Verificación:** `npm test` 66 de 66, lint (57 archivos). La base real no
+cambió (md5 `e8df3009…`). En Chrome a 390 px (táctil), contra la base
+sembrada:
+- la barra por negocio (cambiando los módulos con `PUT /api/negocio` y
+  restaurándolos) y para el empleado, como arriba;
+- "Más" abre (`aria-expanded`), y tocar afuera cierra sin cambiar el hash;
+- la ficha de un producto con la flecha, que vuelve a la lista;
+- "Nuevo cliente" a 390 × 844, y el "atrás" lo cierra sin salir de
+  `#/clientes/lista`;
+- cerrar con la X y después "atrás" lleva a la vista anterior (no queda una
+  entrada muerta);
+- la hoja de confirmar;
+- en la compu (1440), ni la barra ni la hamburguesa.
+- Sin errores de consola.
+
+## 96. Celular, fase 3: listas de dos líneas, 26 de octubre de 2026
+
+El pedido que abrió 7b: en el celular cada fila de tabla era una tarjeta con
+una línea por columna (Productos, 11 líneas por producto, y uno o dos por
+pantalla). Ahora cada fila son dos líneas de 64 px, como en Shopify o Tienda
+Nube: **unos 10 productos por pantalla.**
+
+**Cómo se hizo (sin un segundo render):** el mismo `<tr>`, con marcas en sus
+celdas.
+- La tabla lleva `lista-movil` en `index.html`, y cada celda lleva una marca:
+  - `m-titulo`: lo que nombra la fila;
+  - `m-valor`: el importe, a la derecha;
+  - `m-estado`: el estado, abajo a la derecha;
+  - `m-accion`: un botón a la derecha, para las listas sin ficha.
+- **`celdaMovil(...partes)`** (`core/formato.js`) suma una `<td class="m-sub">`
+  con la segunda línea: las partes unidas por " · ", sin las vacías, cada una
+  escapada. Una parte puede ser `[prefijo, valor]` ("vence" y la fecha): sale
+  solo si hay valor.
+  - **En la compu `m-sub` no se ve:** se controló que en las 16 listas las
+    celdas visibles por fila sean las mismas columnas del encabezado.
+- En el celular, la fila es una grilla `"titulo valor accion" / "sub estado
+  accion"`, y lo que no está marcado se oculta. Solo cambian las filas con
+  `m-titulo`: la vacía, la de "cargando" y la de detalle de Cuentas corrientes
+  quedan como antes.
+- La selección múltiple y su "Seleccionar todo" no se ven en esas tablas
+  (como en Polaris), y el precio editable de Productos lleva a la ficha
+  (`pointer-events: none`).
+- `.solo-celular`: lo que en la compu ya tiene su columna y en el celular va
+  pegado al título (el N° de Auditoría).
+- `backend/test/plantillas-html.js`: `celdaMovil` está en `FUNCIONES_SEGURAS`
+  (escapa lo que recibe). Una parte armada con un template anidado
+  (`` `vence ${fechaAR(x)}` ``) el chequeo la ve como HTML aparte: por eso
+  existe la forma `[prefijo, valor]`.
+
+**Las 21 listas migradas, con lo que muestra cada una (título · segunda
+línea · estado):**
+
+| Lista | Título | Segunda línea | Importe | Estado |
+|---|---|---|---|---|
+| Productos | nombre | SKU · categoría · stock (o "Servicio") | precio | solo si está inactivo |
+| Ventas | cliente | N° · fecha · productos | total | cobro |
+| Presupuestos | cliente | N° · fecha · vence | total | estado |
+| Compras | proveedor | N° · fecha · envío | total | pago |
+| Clientes | nombre | contacto · compras · "debe $" | total gastado | — |
+| Proveedores | nombre | contacto · compras · "le debés $" | total comprado | — |
+| Stock | producto | depósito · total si difiere | stock | estado, "Ajustar" |
+| Mov. de stock | producto | fecha · origen · depósito · nota | cantidad | — |
+| Facturas | cliente | comprobante · tipo · fecha | importe | cobro |
+| Devoluciones (las dos) | cliente o proveedor | N° · fecha · productos | total | plata |
+| Caja: cuentas | cuenta | tipo · saldo inicial | saldo | lápiz |
+| Caja: movimientos | concepto | fecha · cuenta | importe | — |
+| Cuentas corrientes (las dos) | nombre | operaciones · vence | deuda | tramo |
+| Gastos | categoría | fecha · descripción · cuenta | importe | tipo, botones |
+| Auditoría | entidad #N° | fecha y hora · usuario · detalle | — | acción |
+| Socios | nombre | N° · planes · cuota | deuda, si hay | situación |
+| Trabajos | trabajo | cuándo · atrasado · cliente · responsable | total, si hay | estado |
+| Abonos | cliente | servicio · cada cuánto · debe o próxima | precio | estado |
+| CRM, Dejaron de comprar | cliente | hace N días · compras · teléfono | total comprado | seguimiento |
+
+**Quedan como tarjeta, a propósito:** Usuarios (cuatro botones por fila, en una
+página de Configuración), las tablas de las fichas (renglones de una venta,
+historiales) y los catálogos de Configuración. Si alguna se usa en el celular,
+se migra igual.
+
+**Verificación:** `npm test` 66 de 66, lint (57 archivos). La base real no
+cambió (md5 `e8df3009…`). En Chrome:
+- **a 390 px**, con 33 productos: filas de 64 px y diez a la vista. Las otras
+  12 listas, con capturas: cada una con su primera fila de 64 px (67 en
+  Cuentas corrientes);
+- **XSS:** un producto y una categoría con `<img onerror>` en el nombre, el
+  SKU y la categoría, con `bypassCSP: true`. `window.__xss` no se escribió, y
+  el texto se ve escapado en las dos líneas;
+- **a 1440 px:** las celdas visibles por fila son igual a las columnas del
+  encabezado en las 16 listas;
+- sin errores de consola.
+
+## 97. Celular, fase 4: filtros en una hoja, "Nuevo" flotante y pasada visual, 26 de octubre de 2026
+
+Última fase de 7b. Con esta, el celular queda como se diseñó en
+`docs/investigacion-celular.md`.
+
+**Qué se hizo:**
+- **Filtros** (`core/filtros.js`, `styles.css`):
+  - en el celular, la ventanita de "Filtrar" es una hoja desde abajo, con
+    velo, opciones de 48 px y campos de 44. El `left` que le pone el JS para
+    la compu se pisa con `!important`;
+  - los chips van en una fila que se desliza;
+  - tocar el velo solo cierra la hoja: un listener en captura, que solo actúa
+    en el celular. Antes, ese toque habría abierto la fila de atrás.
+- **"Nuevo" flotante:** el botón primario de 13 vistas lleva `btn-nuevo`
+  (presupuestos, trabajos con su agenda, abonos, socios, productos, clientes,
+  proveedores, caja, gastos, ventas, compras y facturas).
+  - En el celular es una píldora de 56 px con su texto ("+ Nuevo producto"),
+    arriba de la barra de abajo. Es el mismo botón, que se muda.
+  - Se esconde mientras está la barra de selección.
+  - Usuarios no lo lleva: es una página de Configuración.
+- **Renglones de venta, compra y presupuesto** (`.item-row`): el producto va
+  en su línea y abajo la cantidad, el precio, el subtotal y quitar. Antes, a
+  390 px cada campo quedaba de tres letras.
+- **Bug de antes, que ahora se veía:** el cajón cerrado, justo fuera de la
+  pantalla, derramaba su sombra sobre el borde izquierdo. Con los formularios
+  a pantalla completa se veía como un degradé sobre el botón de guardar (y en
+  claro, a lo largo de todo el formulario). Ahora la sombra va solo con el
+  cajón abierto.
+
+**Verificación:** `npm test` 66 de 66, lint. La base real no cambió (md5
+`e8df3009…`). En Chrome a 390 px, en oscuro y en claro:
+- un solo flotante por vista en las 12 recorridas (Stock y Cuentas
+  corrientes no tienen alta, y no lo llevan);
+- la hoja de filtros (elegir campo y editor), y tocar el velo la cierra sin
+  cambiar de vista;
+- al final de Productos, la última fila termina arriba del botón (675 contra
+  708 px);
+- el formulario de venta con sus renglones en dos líneas, y el botón sin el
+  degradé (y en la compu, igual que antes);
+- POS, CRM con la pestaña Consultas y el Resumen;
+- sin errores de consola.
+
+**Para después** (anotado en `docs/investigacion-celular.md` §4): encabezados
+por día en Ventas y Caja, acciones deslizando la fila, Web Push.
+
+## 98. Planes de Nexo en el backend, 27 de octubre de 2026
+
+Primera fase de la etapa 8 (landing, planes y hosting). Plan completo de la
+etapa: fases §98 a §101.
+
+**Decisiones del usuario (27 de octubre):**
+- **Planes:** Gratis, Emprendedor a $ 19.900 por mes y Pro a $ 34.900 por
+  mes.
+- **Gratis, versión generosa:** 1 usuario y 1 negocio, 100 productos y 300
+  ventas por mes, con "Hecho con Nexo" en los comprobantes.
+- **Hosting y dominio:** Oracle Cloud Always Free con un subdominio gratis de
+  DuckDNS, porque "nexo" no está libre.
+- **Contacto:** por ahora la consulta de la landing cae en el CRM de un
+  negocio suyo dentro de Nexo. WhatsApp se suma cuando tenga un número
+  propio para Nexo.
+
+**Decidido sin el usuario** (default del mercado, a revisar):
+- **Prueba de 14 días** de un plan pago, que al vencer cae a Gratis sin
+  borrar nada.
+- **Topes:** Emprendedor tiene 3 usuarios; solo Pro suma negocios, y el
+  negocio nuevo hereda su plan.
+- **Qué cuenta para el tope:**
+  - los productos activos, contando los servicios;
+  - las ventas del mes que no estén anuladas. Las cuotas de socios y abonos
+    no cuentan ni se frenan.
+- **Todos los planes tienen todas las funciones:** los separan solo los
+  topes, nunca un módulo apagado.
+
+**Qué se hizo:**
+- **`backend/planes.js`:**
+  - `PLANES` es la única fuente de precios, textos y topes;
+  - `DIAS_PRUEBA` es la duración de la prueba;
+  - `planEfectivo()` devuelve Gratis cuando el plan venció;
+  - `planQuePermite()` nombra el plan que sigue.
+- **Esquema:**
+  - `organizaciones.plan` (`NOT NULL DEFAULT 'gratis'`) y `plan_vence`
+    (AAAA-MM-DD o NULL), en `schema.sql` y como `ALTER` en `db/index.js`;
+  - los negocios que ya existían pasan a Pro sin vencimiento, solo en el
+    arranque que suma la columna.
+- **`server.js`:**
+  - `GET /api/auth/planes` es pública y trae los planes y el WhatsApp de
+    `NEXO_CONTACTO_WHATSAPP`, si existe;
+  - el registro acepta `plan`, y uno pago arranca la prueba;
+  - `GET /api/negocio` suma `plan` (el que rige, el vencimiento, los días que
+    quedan, el que venció y el uso contra cada tope) y `planes`.
+- **El tope es `exigirLugarEnPlan()`:** responde 403
+  `{ error, codigo: 'limite_plan' }` con `ErrorPlan`, un `ErrorBulk`, así los
+  catch que ya traducían `ErrorBulk` lo devuelven. Corre en:
+  - **productos:** el alta, la reactivación (también en lote), los que crea
+    una compra por nombre (después del INSERT, y el throw deshace la compra)
+    y el servicio de un plan de socios;
+  - **usuarios:** el alta y la reactivación;
+  - **negocios:** "Agregar negocio";
+  - **ventas:** las ventas, el punto de venta, un presupuesto convertido, un
+    trabajo terminado, las ventas del asistente y la venta anulada que se
+    restaura.
+- **`npm run plan` (`scripts/plan.mjs`):**
+  - lista los negocios, muestra uno con `--ver` y cambia el plan con
+    `--negocio N --plan X [--hasta AAAA-MM-DD]`;
+  - abre la base directo, sin correr migraciones ni respaldo con el servidor
+    andando, y audita el cambio con actor `sistema`;
+  - es la administración de la plataforma hasta que haya un panel.
+- **Tests:**
+  - `registrarEmpresa()` del arnés da de alta en Pro, para que los topes no
+    se crucen con lo que prueba cada test;
+  - `backend/test/planes.test.js` (con su propio servidor) llena un Gratis
+    hasta cada tope, vence una prueba con el script y controla que
+    `PUT /api/negocio` ignore el plan.
+
+**Verificación:**
+- `npm test`: 70 de 70, y lint sin problemas.
+- `verificar-migracion`: 24 de 24 casos.
+- Una copia de la base real migrada deja sus 4 negocios en Pro sin
+  vencimiento.
+- `regresion`: 4 diferencias, todas esperadas (la ruta nueva y los campos
+  `plan` y `planes`).
+- La base real no cambió (md5 `602d45b8…`).
+
+## 99. El plan dentro de la app, 27 de octubre de 2026
+
+Segunda fase de la etapa 8 (ver §98).
+
+**Qué se hizo:**
+- **Configuración → "Plan de Nexo"** (`dominios/plan.js`, solo admin):
+  - el plan actual, con su estado (hasta cuándo es la prueba, o "terminó, seguís
+    en Gratis");
+  - barras de uso de productos, ventas del mes y usuarios: naranja desde el
+    80% y rojo en el tope. Los usuarios llenos no se colorean, porque Gratis es
+    de una persona;
+  - los tres planes lado a lado (apilados en el celular), con lo que suma cada
+    uno y lo que viene "muy pronto";
+  - **"Quiero este plan"** abre en la misma página un pedido con el teléfono o
+    el mail. Va a `POST /api/publico/consulta`, y si hay WhatsApp configurado,
+    también un enlace a `wa.me` con el texto armado. El plan no cambia solo: lo
+    activa quien vende Nexo con `npm run plan`.
+- **`POST /api/publico/consulta`** (pública, adelantada de la Fase 3):
+  - crea la consulta en el CRM del negocio `NEXO_NEGOCIO_VENTAS`, en su
+    primera etapa, con origen "La web", y "qué busca" dice el plan y el
+    negocio;
+  - suma una tarea para hoy con el mensaje, así sale en "Para hoy";
+  - tiene un tope de 5 por hora por IP, un campo trampa (`sitio`) y largos
+    máximos. Sin la variable responde 503;
+  - se audita con actor `sistema` en ese negocio.
+- **Aviso en el Resumen** (solo admin): cuando la prueba termina en 3 días o
+  menos, o cuando productos o ventas pasan el 80% del tope. Lleva "Ver los
+  planes".
+- **El tope en un toast:** `manejarError` de `core/ui.js` ve
+  `codigo: 'limite_plan'` y, al admin, le suma "Ver los planes".
+  - `avisar()` acepta una acción `{ texto, href }`, y ese aviso dura 8 s.
+  - Tocar el enlace cierra el modal abierto en la compu; en el celular lo
+    cierra el `popstate`.
+- **"Hecho con Nexo · gestión para tu negocio"** al pie de los comprobantes de
+  un negocio Gratis (`plan.marca`, `core/comprobante.js`).
+- **Tipo "Emprendimiento"**, primero en `PERFILES_RUBRO`:
+  - unidad `unidad`, tipo `producto`, sin módulos opcionales e ícono `sprout`;
+  - es para quien vende por su cuenta.
+- **El alta guiada lee `?plan=`** (`/?plan=pro#/crear-cuenta`, y desde la
+  Fase 3 `/app?plan=pro…`):
+  - lo confirma contra `/api/auth/planes` y muestra "Plan Pro: lo probás 14
+    días gratis, sin tarjeta…" en el primer paso;
+  - lo manda al registro.
+- **Íconos nuevos** en el sprite: `sprout` y `gem`.
+
+**Bug de base que apareció:** `alEntrarEnVista()` guardaba un solo handler
+por vista, y el de primeros pasos pisaba al del aviso del plan. Ahora guarda
+una lista y corren en orden. Solo el Resumen tiene dos.
+
+**Verificación:**
+- `npm test`: 71 de 71, y lint sin problemas.
+- La base real no cambió (md5 `602d45b8…`).
+- En Chrome, con base nueva y `NEXO_NEGOCIO_VENTAS=1`, en la compu y a 390 px,
+  en oscuro y en claro:
+  - el alta con `?plan=pro` muestra la prueba;
+  - con 85 productos, el Resumen avisa "Vas por 85 de 100";
+  - la página del plan y el pedido de Emprendedor: la consulta aparece en el
+    CRM del negocio de ventas;
+  - el producto 101 desde el modal da el toast con "Ver los planes", que lleva
+    a la página y cierra el modal;
+  - el comprobante de Gratis lleva la marca.
+  - El único error de consola es el 403 del tope, el esperado.
+
+## 100. La landing en "/" y la app en "/app", 27 de octubre de 2026
+
+Tercera fase de la etapa 8 (ver §98). La inspiración que pasó el usuario fue
+escalafy.com. De ahí se tomaron cinco cosas, adaptadas al negro con acento
+azul de Nexo y sin el rosa:
+- el título grande con la segunda línea en color;
+- las preguntas en chips;
+- los bloques alternados de texto y pantalla;
+- los planes en tarjetas con "Recomendado";
+- un cierre con llamada a la acción.
+
+**Qué se hizo:**
+- **Rutas (`server.js`, antes de lo estático, que pasa a `index: false`):**
+  - `/` da la landing sin sesión, y con sesión, 302 a `/app`. Así, una PWA
+    instalada antes, con `start_url "/"`, sigue entrando;
+  - `/app` es `index.html`, y `/index.html` da 301 a `/app`;
+  - `/privacidad`;
+  - `/robots.txt` deja afuera `/app` y `/api/`;
+  - `/sitemap.xml` lista `/` y `/privacidad`.
+- **La landing es una plantilla:**
+  - `urlPublica()` sale de `NEXO_URL_PUBLICA`, o del pedido si no está;
+  - llena el canónico, Open Graph y el JSON-LD (`SoftwareApplication`), con
+    los precios armados desde `PLANES`;
+  - en producción el archivo se lee una vez, y en desarrollo en cada pedido.
+- **La app en `/app`:**
+  - las rutas relativas de `index.html`, `sesion.js` (`app.js`) y
+    `comprobante.js` (vendor) pasan a absolutas, porque `/app/` las rompía;
+  - en el manifest, `start_url` pasa a `/app`, y `id` y `scope` quedan en
+    `/`.
+- **Service worker v2:**
+  - `PRECACHE` lleva `/app` en vez de `/` y `/index.html`;
+  - solo la navegación a `/app` se guarda, con la clave `/app`;
+  - la landing y privacidad no se interceptan. Antes, cualquier navegación
+    se guardaba como la app, así que la landing la habría pisado.
+- **Archivos nuevos:** `landing.html`, `privacidad.html`, `css/landing.css`,
+  `js/landing.js` e `img/landing/*.webp`.
+  - `landing.js` es el único script, sin inline. Importa `esc` y `icono` de
+    `core/`, con `modulepreload`.
+  - `landing.js` queda fuera de la regla de que todo `frontend/js` vaya en
+    `PRECACHE` (`frontend-modulos.test.js`).
+- **Secciones:**
+  - la portada, con el Resumen en un marco de compu y el celular encimado;
+  - "Cómo funciona", en seis bloques: vender, stock y costos, clientes, la
+    plata, el asistente (un ejemplo armado en HTML) y el celular;
+  - "Y además";
+  - los tipos de negocio, desde `/api/auth/tipos-negocio`, con los "Muy
+    pronto" como tarjetas apagadas;
+  - los planes, desde `/api/auth/planes`. Emprendedor va "Recomendado" (una
+    opinión de la landing, en `PLAN_RECOMENDADO`), y el botón lleva a
+    `/app?plan=X#/crear-cuenta`;
+  - las preguntas frecuentes, con `<details>`. Dicen que ARCA "todavía no" y
+    que el plan se activa contactándonos;
+  - el contacto, contra `POST /api/publico/consulta`, con el campo trampa y
+    WhatsApp si está configurado;
+  - el cierre.
+- **Las capturas** salen de una copia de la base real, con la demo `prueba`:
+  - el negocio se renombró a "Tienda Alma", solo en la copia;
+  - las de la compu son de 1280×880 a 2x, con la barra lateral colapsada,
+    para que se lean;
+  - la portada es de 1440×900 a 2x, y las del celular, de 390×844 a 2x;
+  - todas pesan menos de 110 KB.
+- **`privacidad.html` es un borrador para que el equipo lo revise.** Dice lo
+  que Nexo hace de verdad:
+  - la cookie de sesión y lo que queda en el navegador;
+  - que al asistente se le mandan a Gemini el texto y los nombres de
+    productos, cuentas y categorías, nada más;
+  - los respaldos, y que la IP se usa solo en memoria;
+  - la Ley 25.326 y la AAIP.
+
+**Lo que falló en el camino:**
+- La plantilla citaba `%URL%` y `%JSONLD%` en un comentario, y `.replace` de
+  `%JSONLD%` llenó el comentario en vez del `<script>`. Lo agarró
+  `landing.test.js`. Ahora el comentario no los nombra, y se usa
+  `replaceAll`.
+- El chequeo de `esc()` marcó `plan.clave` dentro de un `href` (solo tenía
+  `encodeURIComponent`). Va con los dos.
+- En chrome-devtools, la primera captura después de cambiar la emulación a
+  veces da timeout o sale ampliada. Se repite la captura.
+
+**Verificación:**
+- `npm test`: 77 de 77, con el nuevo `landing.test.js` (6 tests), y lint sin
+  problemas.
+- `regresion`: 0 diferencias. Solo compara `/api`, que no cambió.
+- En Chrome, en la compu y a 390 px:
+  - sin errores de consola ni de CSP;
+  - un plan lleva al alta con "Plan Pro: lo probás 14 días…";
+  - el formulario deja la consulta en "Para hoy" del negocio de ventas;
+  - con sesión, `/` va a `/app`;
+  - el caché `nexo-shell-v2` tiene `/app` y no tiene la landing.
+- Lighthouse en el celular: 100 en accesibilidad, buenas prácticas y SEO.
+- La traza con 4x de CPU y Fast 4G da un LCP de 2,1 s (era 2,7 s antes del
+  `modulepreload`). Falta la compresión, que la pone Caddy en la Fase 4.
+- La base real no la tocó esta sesión: su md5 cambia porque el servidor del
+  usuario en el puerto 3000 renueva sesiones.
+
+## 101. Login, mail, términos y edad: investigación y el módulo de mail, 27 de octubre de 2026
+
+El usuario vio la landing ("quedó perfecta") y, antes de seguir con cosas
+grandes, pidió revisar la seguridad del login, la aceptación de términos y
+privacidad, la edad y la recuperación por mail. Pasa a ser la etapa 8b, antes
+de la Fase 4 de publicación: sin esto la landing no se abre al público.
+
+**Investigación:** `docs/investigacion-login-legal.md`. Lo legal (Ley 25.326,
+inscripción en la AAIP, botones de arrepentimiento y de baja, edad según el
+Código Civil), qué le falta al login, las opciones de mail y el plan por
+fases. El hallazgo más grave: ninguna cuenta tiene mail, y un admin que se
+olvida la contraseña pierde su negocio.
+
+**Decisiones del usuario (27 de octubre):**
+- El titular legal de Nexo es Santino (19 años). No hace falta estar
+  inscripto en ARCA para eso; sí para cobrar los planes. Sus datos van en
+  `.env` (`NEXO_TITULAR_*`, Fase 3), no en el repo público.
+- Se acepta de 13 a 17 años en Gratis, con permiso de los padres. Los planes
+  pagos, solo mayores.
+- Cada persona tiene su cuenta con mail y se entra con el mail. El admin
+  invita por mail desde Configuración y la persona acepta la solicitud, solo
+  con mail verificado. Diseño en la sección 5 del documento (Fases 1 y 1b).
+- Gemini: se le recomendó una sola clave de Nexo en el plan pago, con un tope
+  de frases por plan (sección 2.6). Falta que lo confirme, con los topes.
+
+**Qué se hizo:**
+- `backend/mail.js`: cliente SMTP propio sobre `node:tls` (solo TLS directo,
+  puerto 465), sin dependencia nueva.
+  - `mandarMail({ para, asunto, texto, html })`, `plantillaMail()` (texto y
+    HTML con la franja negra de Nexo, estilos en línea y sin imágenes),
+    `esMailValido()`, `mailConfigurado()` y `conversarSmtp()`, separada de la
+    conexión para poder probarla.
+  - Saca los espacios de la clave (Google la muestra en cuatro grupos).
+  - Rechaza destinatarios y asuntos con saltos de línea, para que nadie meta
+    un `Bcc:`.
+  - Cuerpo en base64 y asunto con RFC 2047; duplica los puntos al principio
+    de línea.
+  - Un 535 da "rechazó el usuario o la clave", sin mostrar la clave.
+  - `NEXO_MAIL=stub` guarda cada mail como JSON en `NEXO_MAIL_DIR` en vez de
+    mandarlo.
+- `npm run probar-mail [-- destino]` (`scripts/probar-mail.mjs`), desde la
+  raíz, lee `.env`.
+- `.env.example`: `NEXO_SMTP_USUARIO`, `NEXO_SMTP_CLAVE`,
+  `NEXO_SMTP_SERVIDOR` y `NEXO_SMTP_PUERTO`.
+- La cuenta de Nexo es `nexosystem.app@gmail.com`, con contraseña de
+  aplicación en el `.env` de la raíz de la máquina de Santino (se creó en esta
+  sesión, comprobado que git lo ignora). La clave nunca pasó por el chat: el
+  formato se controló con búsquedas que solo cuentan coincidencias.
+- `assets/logo/06-perfil/`: el ícono en un cuadrado de 512×512, en negro y en
+  blanco, para la foto de perfil del mail. A escala 1:1, sin agrandar.
+
+**Lo que falló en el camino:**
+- `myaccount.google.com/apppasswords` decía "no está disponible para tu
+  cuenta": faltaba la verificación en dos pasos.
+- El usuario abrió `.env.example` para pegar la clave. Ese archivo se versiona
+  y el repo es público: la clave va en `.env`.
+- La clave se pegó con los espacios de Google. Desde ahí `mail.js` los saca.
+
+**Verificación:**
+- `backend/test/mail.test.js` (5 tests) contra un servidor SMTP falso sin
+  TLS: la charla, el AUTH, los puntos duplicados, el 535 sin la clave, el
+  asunto con acentos, los destinatarios inválidos y el modo stub.
+- `npm test`: 82 de 82. Lint sin problemas.
+- `npm run probar-mail`: Gmail aceptó el envío a la misma cuenta. Falta que el
+  usuario confirme que llegó y cómo se ve.
+- No se tocó el esquema ni la base real.
+
+## 102. Mail en la cuenta, verificación y login con mail (etapa 8b, Fase 1), 27 de octubre de 2026
+
+Primera fase de la etapa 8b, con el diseño de la sección 5 de
+`docs/investigacion-login-legal.md`. Antes se commiteó aparte lo de §101
+(`20e548f`).
+
+**Esquema (aditivo, sin rebuild):**
+- `usuarios.email` y `usuarios.email_verificado`, nulables. Están al final del
+  `CREATE TABLE` de `schema.sql` y se suman con `ALTER` en `db/index.js`,
+  después de la migración de `rol`/`activo`. Ahí también va
+  `idx_usuarios_email`: único sobre `LOWER(email)`, parcial (`WHERE email IS
+  NOT NULL`).
+- La tabla nueva `tokens_cuenta`:
+  - columnas: usuario, tipo `verificar_email` | `recuperar`, SHA-256 del
+    token, mail al que se mandó, creado, vence y usado;
+  - sin `organizacion_id`, como `sesiones`, y con las horas en UTC;
+  - la Fase 2 la reusa para recuperar la contraseña.
+- La auditoría usa `editar usuario` con detalle ("Sumó su mail", "Cambió su
+  mail", "Verificó su mail"): no toca el `CHECK` de `auditoria`.
+
+**Backend:**
+- **Login:** acepta `email` o `usuario` en el mismo campo y busca por los dos.
+  Si coinciden cuentas distintas, gana la del mail. El mensaje pasa a ser "Mail
+  o contraseña incorrectos.". El `HASH_DUMMY`, los topes y la auditoría quedan
+  igual.
+- **Alta (`/api/auth/registro`):**
+  - pide `email_cuenta`, porque `email` ya era el mail del negocio de los
+    comprobantes, igual que en "Agregar negocio";
+  - el usuario de una cuenta nueva es su mail, en minúsculas;
+  - 409 si el mail lo usa otra cuenta, como mail o como usuario;
+  - manda la verificación.
+- **Puerta en `autenticar`:** una cuenta sin mail recibe 403 `{ codigo:
+  'falta_email' }` en todo, salvo en `/auth/email`, `/auth/logout` y
+  `/auth/cambiar-password`. Va después de la del cambio de contraseña.
+- **`POST /api/auth/email`:**
+  - la primera vez no pide la contraseña; cambiarlo sí;
+  - el mail nuevo queda sin verificar, y al anterior le llega un aviso;
+  - si el usuario era el mail viejo, pasa al nuevo (si no, el mail viejo
+    seguía entrando: lo encontró el test);
+  - tope: 5 por hora y por cuenta, con `registroExcedido('mail:<id>')`.
+- **`POST /api/auth/email/reenviar`:** con el mismo tope.
+- **`GET /verificar-mail?token=`:**
+  - vale 48 h, y solo si el mail de la cuenta sigue siendo al que se mandó;
+  - un enlace nuevo borra los anteriores sin usar;
+  - redirige a `/app?mail=verificado|invalido`;
+  - un enlace ya usado vuelve a decir "verificado" (por el antivirus del mail
+    que lo abre antes).
+- **Los mails** salen después de responder (`mandarSinEsperar`): si falla, el
+  error queda en el log y la operación ya está hecha. Los enlaces usan
+  `urlPublica(req)`.
+- `datosUsuario`, `sesionValida` y `GET /api/usuarios` suman `email` y
+  `email_verificado`.
+
+**Frontend:**
+- **Login:**
+  - dice "Mail", sin `type=email`, porque las cuentas viejas entran con su
+    usuario;
+  - `sesion.js` sigue el orden contraseña forzada → "Sumá tu mail"
+    (`#formSumarMail`, obligatoria) → la app, con `seguirCon()`.
+- **`?mail=` del enlace:**
+  - se lee y se saca de la dirección;
+  - con sesión va como `nexo.aviso`; `dominios/negocios.js` ahora entiende el
+    prefijo `error:`;
+  - sin sesión, como nota en el login.
+- **Alta:**
+  - el paso 1 pide el mail (`#altaEmailCuenta`), y el 409 vuelve a ese campo;
+  - el mail del negocio del paso 5 se propone con el de la cuenta.
+- **Mi cuenta:** tarjeta "Mail" con el estado (Confirmado o Sin confirmar),
+  "Mandarlo de nuevo" y el cambio con contraseña.
+- **Resumen:** aviso "Confirmá tu mail" (`#avisoMail`) para los dos roles, con
+  reenviar y cambiar.
+- **Usuarios:** la columna "Mail", con el estado abajo; si falta el mail,
+  muestra el usuario viejo.
+- **Textos:**
+  - ícono `mail` de lucide-static en el sprite;
+  - "entra con su mail" en Primeros pasos y en la landing;
+  - privacidad: el mail de la cuenta y un párrafo sobre los mails que salen
+    por Gmail.
+
+**Tests y scripts:**
+- **`servidor-de-prueba.js`:**
+  - corre con `NEXO_MAIL=stub` y devuelve `leerMails()`;
+  - suma `ultimoEnlace()`;
+  - `registrarEmpresa` manda `<usuario>@nexo.test`;
+  - `crearEmpleado` suma el mail después del cambio de contraseña.
+- `backend/test/cuenta-mail.test.js` (6 tests) cubre:
+  - el enlace de un solo uso, el vencido y el reemplazado;
+  - las mayúsculas;
+  - la puerta `falta_email`;
+  - los duplicados contra el mail y contra el usuario;
+  - el cambio de mail con su aviso;
+  - el empleado y el tope.
+- **`regresion-head.mjs`:**
+  - entra con el mail y, si falla (400 o 401), con el usuario;
+  - si la cuenta no tiene mail, se lo suma.
+- `seed.mjs` muestra las credenciales con el mail.
+
+**Lo que falló en el camino:**
+- La primera versión del alta usaba `email` para la cuenta, que chocaba con
+  el mail del negocio.
+- En el test de cambio de mail, el viejo seguía entrando porque era también el
+  usuario.
+- La regresión se siembra con el seed de la ref, así que en el árbol de
+  trabajo sus cuentas no tienen mail. HEAD responde 400 (no 401) a un login
+  sin `usuario`.
+- El primer recorrido en el navegador creó la empresa en Gratis, que no deja
+  sumar usuarios.
+
+**Verificación:**
+- `npm test` dio 88 de 88. Lint sin problemas.
+- `npm run verificar-migracion`: 24 de 24, y la base real no cambió.
+- **`npm run regresion`:** 5 diferencias, todas esperadas:
+  - `email` y `email_verificado` en `estado` (los dos roles) y en Usuarios;
+  - dos filas "Sumó su mail" en la auditoría, que el script mismo genera al
+    sumar el mail.
+- **Navegador** (playwright-core del scratchpad, base nueva, mail stub):
+  - el alta con mail inválido y el paso 5 con el mail propuesto;
+  - el aviso del Resumen y el reenvío;
+  - Mi cuenta sin confirmar → el enlace → el toast y "Confirmado";
+  - el cambio con contraseña mala y buena;
+  - una cuenta vieja: contraseña forzada → "Sumá tu mail" (con un mail
+    repetido) → la app;
+  - el enlace sin sesión, válido e inválido;
+  - Usuarios.
+  - Capturas en oscuro, claro y a 390 px, sin errores de consola fuera de los
+    401 y 409 buscados.
+- **Base real:**
+  - la migró un servidor temporal en el puerto 3917, sin tocar el `npm start`
+    del usuario que corría en el 3000 con el código viejo. Las columnas son
+    aditivas, así que el código viejo anda igual;
+  - respaldos `nexo-20261027-165816.db` (antes de migrar) y los dos que
+    siguen, en OneDrive;
+  - `integrity_check` ok y sin errores de FK.
+- **Cuentas de la demo:**
+  - `prueba` → `nexosystem.app+prueba@gmail.com` y `vendedor.prueba` →
+    `nexosystem.app+vendedor@gmail.com`, con el enlace mandado de verdad por
+    Gmail;
+  - el envío se rehízo con `NEXO_URL_PUBLICA=http://localhost:3000` para que
+    el enlace apunte al servidor de siempre (el primero apuntaba al 3917);
+  - `recepcion.prueba` quedó sin mail a propósito: tiene el cambio de
+    contraseña forzado, y sumarle el mail por la API pedía cambiarle la clave
+    de la demo. Al entrar pasa por las dos páginas.

@@ -20,10 +20,11 @@
 // (pagos incluidos) y sus devoluciones a proveedor, y las 5 vistas de
 // análisis (resumen y reportes) son admin. Cobros de venta y creación de
 // devoluciones de venta quedan del lado del empleado a propósito: es su
-// trabajo diario. Auditoría (GET /api/auditoria) pasó de 'ambos' a admin
-// en la Etapa A de multi-tenant (CLAUDE.md §28): valor_anterior/valor_nuevo
-// traen costo/margen/ganancia sin filtrar, que es justo lo que §35 le
-// esconde al empleado en el resto de las respuestas. El alta y la edición de
+// trabajo diario. Auditoría (GET /api/auditoria) fue admin desde la Etapa A
+// de multi-tenant porque valor_anterior/valor_nuevo traían costo/margen/
+// ganancia sin filtrar; volvió a 'ambos' en hist. §93, con esos JSON podados
+// para el empleado y sin las filas de compras, pagos y devoluciones a
+// proveedor (ver el endpoint en server.js). El alta y la edición de
 // los cinco catálogos (categorías de producto y de gasto, listas de precios,
 // depósitos y cuentas de tesorería) también son admin; leerlos es de los dos.
 // Socios (hist. §74 y §75): la recepción da de alta, suma planes, elige el
@@ -38,6 +39,8 @@ export const RUTAS_PERMISOS = {
   'POST /api/auth/login': 'publico',
   'POST /api/auth/registro': 'publico',
   'GET /api/auth/tipos-negocio': 'publico',
+  'GET /api/auth/planes': 'publico',
+  'POST /api/publico/consulta': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',
@@ -91,6 +94,28 @@ export const RUTAS_PERMISOS = {
   'POST /api/abonos': 'admin',
   'PATCH /api/abonos/:id': 'admin',
   'POST /api/abonos/:id/cobros': 'ambos',
+  // Consultas (hist. §89): atender y seguir consultas es de los dos roles;
+  // las etapas del embudo se editan en Configuración, que es del admin.
+  'GET /api/crm/etapas': 'ambos',
+  'POST /api/crm/etapas': 'admin',
+  'PUT /api/crm/etapas/:id': 'admin',
+  'PATCH /api/crm/etapas/orden': 'admin',
+  'GET /api/crm/origenes': 'ambos',
+  'GET /api/crm/oportunidades': 'ambos',
+  'GET /api/crm/oportunidades/:id': 'ambos',
+  'POST /api/crm/oportunidades': 'ambos',
+  'PUT /api/crm/oportunidades/:id': 'ambos',
+  'PATCH /api/crm/oportunidades/:id/etapa': 'ambos',
+  'POST /api/crm/oportunidades/:id/cerrar': 'ambos',
+  'POST /api/crm/oportunidades/:id/reabrir': 'ambos',
+  'POST /api/crm/oportunidades/:id/cliente': 'ambos',
+  'GET /api/crm/actividades': 'ambos',
+  'POST /api/crm/actividades': 'ambos',
+  'PATCH /api/crm/actividades/:id': 'ambos',
+  'DELETE /api/crm/actividades/:id': 'ambos',
+  'GET /api/crm/para-hoy': 'ambos',
+  'GET /api/crm/inactivos': 'ambos',
+  'GET /api/crm/reporte': 'ambos',
   'GET /api/turnos-caja': 'ambos',
   'GET /api/turnos-caja/:id': 'ambos',
   'POST /api/turnos-caja': 'ambos',
@@ -175,9 +200,12 @@ export const RUTAS_PERMISOS = {
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',
   'POST /api/asistente/ejecutar': 'ambos',
-  'GET /api/auditoria': 'admin',
+  'GET /api/auditoria': 'ambos',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
+  // El mail de la cuenta propia (hist. §102).
+  'POST /api/auth/email': 'ambos',
+  'POST /api/auth/email/reenviar': 'ambos',
   'GET /api/usuarios': 'admin',
   'POST /api/usuarios': 'admin',
   'PATCH /api/usuarios/:id': 'admin',

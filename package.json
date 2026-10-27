@@ -12,7 +12,9 @@
     "seed": "node scripts/seed.mjs",
     "verificar-migracion": "node scripts/verificar-migracion.mjs",
     "regresion": "node scripts/regresion-head.mjs",
-    "fuentes": "node scripts/fuentes.mjs"
+    "fuentes": "node scripts/fuentes.mjs",
+    "plan": "node scripts/plan.mjs",
+    "probar-mail": "node --env-file-if-exists=.env scripts/probar-mail.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

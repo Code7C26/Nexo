@@ -115,6 +115,52 @@ test('sesion.js inyecta app.js como módulo y index.html no lo carga por su cuen
   );
 });
 
+// La PWA (hist. §94): sin conexión, la app solo abre si sw.js guardó todo lo
+// que carga al arrancar. Su lista es a mano (no hay build step), así que un
+// .js nuevo que no se sume ahí rompería la app sin conexión sin que nada avise.
+test('sw.js guarda todo frontend/js y lo que carga index.html, y lo que lista existe', () => {
+  const RAIZ_FRONT = path.join(RAIZ_JS, '..');
+  const sw = readFileSync(path.join(RAIZ_FRONT, 'sw.js'), 'utf8');
+  const lista = (nombre) => {
+    const m = sw.match(new RegExp(`const ${nombre} = \\[([\\s\\S]*?)\\];`));
+    assert.ok(m, `sw.js tiene que declarar const ${nombre} = [...]`);
+    return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  };
+  const precache = lista('PRECACHE');
+  const guardados = new Set([...precache, ...lista('OPCIONALES')]);
+
+  const html = readFileSync(path.join(RAIZ_FRONT, 'index.html'), 'utf8');
+  const css = readFileSync(path.join(RAIZ_FRONT, 'css', 'styles.css'), 'utf8');
+  const absoluta = (ref) => (ref.startsWith('/') ? ref : `/${ref}`);
+  const esperados = new Set([
+    // landing.js es de la página pública (hist. §100), no de la app: no hace
+    // falta sin conexión, y el service worker no guarda la landing.
+    ...archivos.filter((a) => rel(a) !== 'landing.js').map((a) => `/js/${rel(a)}`),
+    // src/href locales (sin esquema); el #fragmento de los íconos no cuenta.
+    ...[...html.matchAll(/(?:src|href)="([^"#:]+)/g)].map((m) => absoluta(m[1])),
+    ...[...css.matchAll(/url\("\.\.\/([^"]+)"\)/g)].map((m) => `/${m[1]}`),
+  ]);
+  const faltan = [...esperados].filter((u) => !guardados.has(u));
+  assert.deepEqual(faltan, [], `Faltan en PRECACHE (o en OPCIONALES) de sw.js:\n${faltan.join('\n')}`);
+
+  // Lo de OPCIONALES puede faltar (Satoshi no se versiona); lo de PRECACHE no:
+  // un solo archivo inexistente hace fallar la instalación entera.
+  const enDisco = (url) =>
+    url === '/app'
+      ? path.join(RAIZ_FRONT, 'index.html')
+      : url.startsWith('/assets/')
+        ? path.join(RAIZ_FRONT, '..', url)
+        : path.join(RAIZ_FRONT, url);
+  const inexistentes = precache.filter((u) => {
+    try {
+      return !statSync(enDisco(u)).isFile();
+    } catch {
+      return true;
+    }
+  });
+  assert.deepEqual(inexistentes, [], `PRECACHE de sw.js lista archivos que no existen:\n${inexistentes.join('\n')}`);
+});
+
 test('todo import relativo resuelve a un archivo existente (mayúsculas exactas)', () => {
   const rotos = [];
   for (const [archivo, { imports }] of modulos) {

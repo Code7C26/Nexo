@@ -73,6 +73,11 @@ function irAPaso(n, { historial = true } = {}) {
     });
   if (historial) history.pushState(null, "", rutaDelPaso(n));
   pantalla.scrollTo(0, 0);
+  // El mail de los comprobantes se propone con el de la cuenta: casi
+  // siempre es el mismo, y se puede cambiar o borrar.
+  if (n === 5 && modo === MODOS.cuenta && !campo("altaEmail").value.trim()) {
+    campo("altaEmail").value = valor("altaEmailCuenta");
+  }
   // Con teclado, el foco va al primer campo (o a la tarjeta elegida): se
   // sigue sin buscar dónde quedó. En una pantalla táctil va al título, porque
   // enfocar un campo abre el teclado del celular y tapa la explicación del
@@ -161,17 +166,49 @@ async function cargarCatalogo() {
   }
 }
 
+/* ---------- Plan elegido en la landing (hist. §99) ---------- */
+
+// La landing manda a /app?plan=pro#/crear-cuenta. El plan se confirma contra
+// el catálogo del backend: uno que no existe se ignora y queda Gratis, el que
+// el backend usa si no llega ninguno.
+let planElegido = null;
+
+async function mostrarPlan() {
+  const aviso = campo("altaPlan");
+  aviso.hidden = true;
+  planElegido = null;
+  const pedido = new URLSearchParams(location.search).get("plan");
+  if (!pedido || modo !== MODOS.cuenta) return;
+  try {
+    const res = await fetch("/api/auth/planes");
+    if (!res.ok) return;
+    const { planes, dias_prueba: dias } = await res.json();
+    const plan = planes.find((p) => p.clave === pedido);
+    if (!plan) return;
+    planElegido = plan.clave;
+    aviso.textContent =
+      plan.precio > 0
+        ? `Plan ${plan.nombre}: lo probás ${dias} días gratis, sin tarjeta. Si después no lo pagás, seguís en el plan Gratis con todo lo que cargaste.`
+        : "Plan Gratis: sin costo y sin tarjeta. Cuando lo necesites, pasás a un plan con más lugar.";
+    aviso.hidden = false;
+  } catch {
+    // Sin el catálogo, el alta sigue igual y el negocio nace en Gratis.
+  }
+}
+
 /* ---------- Validación de cada paso ---------- */
 
 // Cada una devuelve true si el paso está completo; si no, marca el error.
 const VALIDAR = {
   1() {
     const nombre = campo("altaNombre");
-    const usuario = campo("altaUsuario");
+    const email = campo("altaEmailCuenta");
     const password = campo("altaPassword");
     if (!nombre.value.trim()) return errorEn(nombre, "Escribí tu nombre.");
-    if (!usuario.value.trim()) return errorEn(usuario, "Elegí un nombre de usuario.");
-    if (/\s/.test(usuario.value.trim())) return errorEn(usuario, "El usuario no puede tener espacios.");
+    if (!email.value.trim()) return errorEn(email, "Escribí tu mail: con él vas a ingresar.");
+    if (!EMAIL_VALIDO.test(email.value.trim())) {
+      return errorEn(email, "Revisá el mail: tiene que ser como nombre@dominio.com.");
+    }
     if (password.value.length < 8) return errorEn(password, "La contraseña tiene que tener al menos 8 caracteres.");
     return true;
   },
@@ -246,9 +283,10 @@ async function crearCuenta({ conComprobantes }) {
       ? { nombre: valor("altaEmpresa"), ...delNegocio }
       : {
           nombre: valor("altaNombre"),
-          usuario: valor("altaUsuario"),
+          email_cuenta: valor("altaEmailCuenta"),
           password: campo("altaPassword").value,
           empresa: valor("altaEmpresa"),
+          ...(planElegido && { plan: planElegido }),
           ...delNegocio
         };
   if (conComprobantes) {
@@ -273,9 +311,9 @@ async function crearCuenta({ conComprobantes }) {
     });
     const datos = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // Usuario ya tomado: de vuelta al primer paso, con el error en el campo.
+      // Mail ya tomado: de vuelta al primer paso, con el error en el campo.
       if (res.status === 409) {
-        alVolverAlPrimero = () => errorEn(campo("altaUsuario"), `${datos.error} Probá con otro.`);
+        alVolverAlPrimero = () => errorEn(campo("altaEmailCuenta"), datos.error);
         history.go(1 - paso);
         return;
       }
@@ -334,4 +372,5 @@ export function montarAlta({ alTerminar, alVolver, instalacionNueva = false, mod
   else history.replaceState(null, "", rutaDelPaso(modo.primero));
   irAPaso(modo.primero, { historial: false });
   cargarCatalogo();
+  mostrarPlan();
 }

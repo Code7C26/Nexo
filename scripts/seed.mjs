@@ -214,6 +214,25 @@ export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '' } = {
   await paso('cobro de las cuotas', empleado.post(`/api/socios/${socia.id}/cobros`, { cuenta_tesoreria_id: efectivo.id }));
   await paso('cliente que pasa a socio', empleado.post('/api/socios', { cliente_id: ana.id, planes: [{ opcion_id: pase.opciones[1].id }] }));
 
+  // Consultas (hist. §89): una con la llamada vencida, otra que pasa a
+  // cliente y a presupuesto, y una perdida.
+  const consulta = await paso('consulta', empleado.post('/api/crm/oportunidades', {
+    nombre: 'Martina Sosa', telefono: '351 555-0303', interes: 'Gorra para un regalo', origen: 'instagram', valor_estimado: 12000
+  }));
+  await paso('llamada pendiente', empleado.post('/api/crm/actividades', {
+    oportunidad_id: consulta.id, tipo: 'llamada', descripcion: 'Confirmar el talle', fecha: '2026-01-05'
+  }));
+  await paso('nota de la consulta', empleado.post('/api/crm/actividades', {
+    oportunidad_id: consulta.id, tipo: 'nota', descripcion: 'Prefiere la negra'
+  }));
+  const interesado = await paso('consulta que avanza', empleado.post('/api/crm/oportunidades', { nombre: 'Tomás Ibarra', origen: 'local' }));
+  const { cliente_id: tomas } = await paso('consulta a cliente', empleado.post(`/api/crm/oportunidades/${interesado.id}/cliente`, {}));
+  await paso('presupuesto de la consulta', empleado.post('/api/presupuestos', {
+    cliente_id: tomas, crm_oportunidad_id: interesado.id, items: [{ producto_id: remera.id, cantidad: 3, precio_unitario: 9000 }]
+  }));
+  const perdida = await paso('consulta perdida', empleado.post('/api/crm/oportunidades', { nombre: 'Laura Díaz', origen: 'whatsapp' }));
+  await paso('perder la consulta', empleado.post(`/api/crm/oportunidades/${perdida.id}/cerrar`, { resultado: 'perdida', motivo: 'Precio' }));
+
   return { empresa, usuarios, admin, empleado };
 }
 
@@ -251,8 +270,9 @@ async function principal() {
   try {
     const r = await sembrar(url, { empresa: op.empresa, prefijo: op.prefijo });
     console.log(`Empresa "${r.empresa}" sembrada en ${op.db ? path.resolve(op.db) : url}.`);
-    console.log(`  admin:    ${r.usuarios.admin} / ${PASSWORD_ADMIN}`);
-    console.log(`  empleado: ${r.usuarios.empleado} / ${PASSWORD_EMPLEADO}`);
+    // Se entra con el mail (hist. §102): el arnés le pone <usuario>@nexo.test.
+    console.log(`  admin:    ${r.usuarios.admin}@nexo.test / ${PASSWORD_ADMIN}`);
+    console.log(`  empleado: ${r.usuarios.empleado}@nexo.test / ${PASSWORD_EMPLEADO}`);
   } finally {
     await servidor?.cerrar();
   }

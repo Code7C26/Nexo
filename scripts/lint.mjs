@@ -16,6 +16,9 @@ import { ESLint } from 'eslint';
 
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CARPETAS = ['frontend/js', 'backend', 'scripts'];
+// Sueltos fuera de esas carpetas: el service worker vive en la raíz de
+// frontend/ para que su alcance sea todo el sitio (hist. §94).
+const SUELTOS = ['frontend/sw.js'];
 const NO_SE_LINTEA = new Set(['node_modules', 'vendor']);
 
 const eslint = new ESLint({ cwd: raiz });
@@ -60,10 +63,11 @@ function fuentes(dir) {
 }
 const esperados = [
   ...CARPETAS.flatMap((c) => fuentes(path.join(raiz, c))),
+  ...SUELTOS.map((f) => path.join(raiz, f)),
   ...readdirSync(raiz).filter((f) => f.endsWith('.mjs')).map((f) => path.join(raiz, f)),
 ];
 
-const resultados = await eslint.lintFiles([...CARPETAS, '*.mjs']);
+const resultados = await eslint.lintFiles([...CARPETAS, ...SUELTOS, '*.mjs']);
 const leidos = new Set(resultados.map((r) => path.normalize(r.filePath)));
 const faltan = esperados.filter((f) => !leidos.has(path.normalize(f)));
 if (faltan.length) {

@@ -305,6 +305,27 @@ test('las respuestas no anuncian Express y llevan cabeceras de seguridad (A5)', 
   assert.equal(r.headers.get('x-powered-by'), null);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  // CSP sin scripts inline ni de otro origen (hist. §94).
+  const csp = r.headers.get('content-security-policy') ?? '';
+  assert.match(csp, /script-src 'self'(;|$)/);
+  assert.match(csp, /frame-ancestors 'none'/);
+});
+
+test('la PWA: el manifest y el service worker se sirven con su tipo (hist. §94)', async () => {
+  const cliente = crearCliente(servidor.url);
+  const manifest = await cliente.get('/manifest.webmanifest');
+  assert.equal(manifest.status, 200);
+  assert.match(manifest.headers.get('content-type'), /application\/manifest\+json/);
+  // La app vive en /app desde la landing (hist. §100); el id sigue en "/" para
+  // que una instalación vieja no pase a contar como otra app.
+  assert.equal(manifest.json?.start_url, '/app');
+  assert.equal(manifest.json?.id, '/');
+  const sw = await cliente.get('/sw.js');
+  assert.equal(sw.status, 200);
+  assert.match(sw.headers.get('content-type'), /javascript/);
+  // La página de la app también lleva la CSP: es la que la aplica.
+  const inicio = await cliente.get('/app');
+  assert.match(inicio.headers.get('content-security-policy') ?? '', /default-src 'self'/);
 });
 
 test('el envío de una compra se puede pagar, y un borrador no se paga (A2)', async () => {
@@ -356,6 +377,31 @@ test('el alta de clientes y de proveedores queda en la auditoría (§22)', async
   assert.ok(tiene('proveedor', proveedor.json.id), 'falta la fila de auditoría del proveedor');
 });
 
+test('el empleado ve la auditoría sin márgenes ni filas de compras (hist. §93)', async () => {
+  const id = await crearProducto(adminA, 'Gorra auditada', 'SKU-AUD1', 0);
+  const edicion = await adminA.patch(`/api/productos/${id}`, { precio_venta: 120, margen_objetivo: 40 });
+  assert.equal(edicion.status, 200, edicion.texto);
+  const compra = await adminA.post('/api/compras', {
+    proveedor: 'Proveedor auditado',
+    items: [{ producto: 'Gorra auditada', cantidad: 1, precio_unitario: 60 }]
+  });
+  assert.equal(compra.status, 201, compra.texto);
+
+  const deEmpleado = await empleadoA.get('/api/auditoria');
+  assert.equal(deEmpleado.status, 200, deEmpleado.texto);
+  const SOLO_ADMIN = ['compra', 'pago', 'devolucion_proveedor'];
+  assert.ok(!deEmpleado.json.some((f) => SOLO_ADMIN.includes(f.entidad)), 'al empleado le llegó una fila de compras');
+  const filaEmpleado = deEmpleado.json.find((f) => f.entidad === 'producto' && f.entidad_id === id && f.valor_nuevo);
+  assert.ok(filaEmpleado, 'falta la edición del producto');
+  assert.equal(JSON.parse(filaEmpleado.valor_nuevo).precio_venta, 120);
+  assert.ok(!('margen_objetivo' in JSON.parse(filaEmpleado.valor_nuevo)), 'al empleado le llegó el margen objetivo');
+
+  const deAdmin = (await adminA.get('/api/auditoria')).json;
+  const filaAdmin = deAdmin.find((f) => f.id === filaEmpleado.id);
+  assert.equal(JSON.parse(filaAdmin.valor_nuevo).margen_objetivo, 40);
+  assert.ok(deAdmin.some((f) => f.entidad === 'compra' && f.entidad_id === compra.json.id), 'el admin dejó de ver la compra');
+});
+
 test('?limit negativo en un listado con tope no devuelve todo sin límite', async () => {
   const r = await adminA.get('/api/auditoria?limit=-1');
   assert.equal(r.status, 200, r.texto);
@@ -388,14 +434,15 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   // Con stock no se pasa a servicio: se perdería de vista.
   assert.equal((await adminA.patch(`/api/productos/${vacio.json.id}`, { tipo: 'servicio' })).status, 400);
 
-  // Tipo de negocio: preset de módulos y de unidad para lo que se da de alta.
+  // Tipo de negocio: preset de unidad para lo que se da de alta. Cambiarlo no
+  // toca los módulos (hist. §88): siguen los que tenía.
   const negocio = (await adminA.get('/api/negocio')).json;
   assert.equal(negocio.rubro, 'comercio');
-  assert.deepEqual(negocio.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual(negocio.modulos, ['pos', 'crm', 'presupuestos', 'compras', 'stock']);
   const comoCarniceria = await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'carniceria' });
   assert.equal(comoCarniceria.status, 200, comoCarniceria.texto);
   const carniceria = (await empleadoA.get('/api/negocio')).json;
-  assert.deepEqual(carniceria.modulos, ['pos', 'compras', 'stock']);
+  assert.deepEqual(carniceria.modulos, ['pos', 'crm', 'presupuestos', 'compras', 'stock']);
   assert.equal(carniceria.unidad_defecto, 'kg');
   const asado = await adminA.post('/api/productos', { nombre: 'Asado', precio_venta: 9000 });
   assert.equal((await adminA.get('/api/productos')).json.find((p) => p.id === asado.json.id).unidad, 'kg');
@@ -404,9 +451,12 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   assert.equal((await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'astronauta' })).status, 400);
   assert.equal((await adminA.put('/api/negocio', { nombre: negocio.nombre, modulos: ['naves'] })).status, 400);
   assert.equal((await empleadoA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'comercio' })).status, 403);
-  // Volver a comercio sin mandar módulos vuelve a los del preset.
+  // Volver a comercio tampoco los toca, y apagarlos todos es un valor válido.
   await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'comercio' });
-  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos']);
+  await adminA.put('/api/negocio', { modulos: [] });
+  assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, []);
+  await adminA.put('/api/negocio', { modulos: ['pos', 'crm', 'presupuestos', 'compras', 'stock'] });
 });
 
 test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist. §73)', async () => {
@@ -451,7 +501,8 @@ test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist.
 
   // Un gimnasio también compra y vende (hist. §71): sus productos nacen como
   // producto, no como servicio.
-  await adminB.put('/api/negocio', { rubro: 'gimnasio' });
+  // Los módulos del tipo nuevo se suman a mano (hist. §88).
+  await adminB.put('/api/negocio', { rubro: 'gimnasio', modulos: ['pos', 'compras', 'stock', 'socios'] });
   const gimnasio = (await adminB.get('/api/negocio')).json;
   assert.deepEqual(gimnasio.modulos, ['pos', 'compras', 'stock', 'socios']);
   assert.equal(gimnasio.tipo_defecto, 'producto');
@@ -679,7 +730,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
 
   // En el negocio nuevo no hay nada de A: ni productos ni usuarios.
   assert.deepEqual((await adminA.get('/api/productos')).json, []);
-  assert.deepEqual((await adminA.get('/api/usuarios')).json.map((u) => u.usuario), ['admin-a']);
+  assert.deepEqual((await adminA.get('/api/usuarios')).json.map((u) => u.email), ['admin-a@nexo.test']);
 
   // De vuelta en A se ven sus productos.
   assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
@@ -695,7 +746,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
 
   // El login entra al último negocio usado.
   assert.equal((await adminA.post(`/api/negocios/${orgG}/entrar`)).status, 204);
-  const login = await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'admin-a', password: 'clave-segura-1' });
+  const login = await crearCliente(servidor.url).post('/api/auth/login', { email: 'admin-a@nexo.test', password: 'clave-segura-1' });
   assert.equal(login.status, 200, login.texto);
   assert.equal(login.json.usuario.organizacion_id, orgG);
   assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
@@ -758,9 +809,10 @@ test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en
     assert.equal(r.status, 400, `duración ${duracion_minutos}: ${r.texto}`);
   }
 
-  // El tipo Servicios llama "servicios" a su catálogo y trae los trabajos.
+  // El tipo Servicios llama "servicios" a su catálogo (mientras está vacío,
+  // hist. §88) y sus trabajos se suman con el cambio de tipo.
   const nombreB = (await adminB.get('/api/negocio')).json.nombre;
-  await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'servicios' });
+  await adminB.put('/api/negocio', { nombre: nombreB, rubro: 'servicios', modulos: ['presupuestos', 'trabajos', 'abonos'] });
   const servicios = (await adminB.get('/api/negocio')).json;
   assert.deepEqual(servicios.catalogo, { plural: 'servicios', singular: 'servicio' });
   assert.deepEqual(servicios.modulos, ['presupuestos', 'trabajos', 'abonos']);
@@ -911,6 +963,209 @@ test('abonos: la cuota del período, alta hacia atrás, precio desde la siguient
   assert.ok(!(await adminB.get('/api/abonos')).json.some((a) => a.id === abono.json.id));
 });
 
+test('consultas: etapas del tipo, próxima acción, pasar a presupuesto, venta y socio, y aislamiento (hist. §89)', async () => {
+  // "Hoy" es el día de la Argentina, como en el servidor (backend/fecha.js).
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const haceDias = (n) => {
+    const d = new Date(`${hoy}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const item = [{ producto_id: productoA, cantidad: 1, precio_unitario: 100 }];
+
+  // Cada negocio nace con las etapas de su tipo y con el módulo prendido.
+  const etapas = (await empleadoA.get('/api/crm/etapas')).json;
+  assert.deepEqual(etapas.map((e) => e.nombre), ['Consulta', 'Presupuesto enviado', 'Negociación']);
+  assert.ok((await adminA.get('/api/negocio')).json.modulos.includes('crm'));
+  const negocios = (await adminA.get('/api/negocios')).json;
+  const orgA = negocios.find((n) => n.actual).id;
+  const gimnasio = negocios.find((n) => n.rubro === 'gimnasio');
+  assert.ok(gimnasio, 'el caso de varios negocios dejó un gimnasio');
+  assert.equal((await adminA.post(`/api/negocios/${gimnasio.id}/entrar`)).status, 204);
+  assert.deepEqual((await adminA.get('/api/crm/etapas')).json.map((e) => e.nombre), ['Consulta', 'Clase de prueba', 'Seguimiento']);
+  assert.ok((await adminA.get('/api/negocio')).json.modulos.includes('crm'));
+  assert.equal((await adminA.post(`/api/negocios/${orgA}/entrar`)).status, 204);
+
+  // Las etapas son de admin; los cierres no son etapas.
+  assert.equal((await empleadoA.post('/api/crm/etapas', { nombre: 'Visita' })).status, 403);
+  assert.equal((await adminA.post('/api/crm/etapas', { nombre: 'Perdida' })).status, 400);
+  assert.equal((await adminA.post('/api/crm/etapas', { nombre: 'consulta' })).status, 400, 'nombre repetido');
+  const visita = await adminA.post('/api/crm/etapas', { nombre: 'Visita' });
+  assert.equal(visita.status, 201, visita.texto);
+  const orden = [visita.json.id, ...etapas.map((e) => e.id)];
+  assert.equal((await adminA.patch('/api/crm/etapas/orden', { ids: orden.slice(1) })).status, 400, 'faltan etapas');
+  assert.equal((await adminA.patch('/api/crm/etapas/orden', { ids: orden })).status, 200);
+  assert.equal((await empleadoA.get('/api/crm/etapas')).json[0].nombre, 'Visita');
+  assert.equal((await adminA.patch('/api/crm/etapas/orden', { ids: [...orden.slice(1), visita.json.id] })).status, 200);
+  assert.equal((await adminA.put(`/api/crm/etapas/${visita.json.id}`, { activa: false })).status, 200);
+  assert.equal((await adminB.put(`/api/crm/etapas/${etapas[0].id}`, { nombre: 'Robada' })).status, 404);
+
+  // Alta rápida: nombre, teléfono y qué busca. Entra en la primera etapa activa
+  // y, sin próxima acción, avisa.
+  assert.equal((await empleadoA.post('/api/crm/oportunidades', { telefono: '351 555-0000' })).status, 400, 'sin nombre');
+  assert.equal((await empleadoA.post('/api/crm/oportunidades', { nombre: 'X', origen: 'diario' })).status, 400, 'origen inventado');
+  assert.equal((await empleadoA.post('/api/crm/oportunidades', { nombre: 'X', etapa_id: visita.json.id })).status, 400, 'etapa pausada');
+  const alta = await empleadoA.post('/api/crm/oportunidades', {
+    nombre: 'Paula Ferreyra',
+    telefono: '351 555-0101',
+    interes: 'Dos remeras para regalar',
+    origen: 'instagram',
+    valor_estimado: 200
+  });
+  assert.equal(alta.status, 201, alta.texto);
+  const id = alta.json.id;
+  let paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.etapa, 'Consulta');
+  assert.equal(paula.estado, 'abierta');
+  assert.equal(paula.aviso, 'sin_accion');
+  assert.equal(paula.origen_nombre, 'Instagram');
+  let paraHoy = (await empleadoA.get('/api/crm/para-hoy')).json;
+  assert.ok(paraHoy.sin_accion.some((o) => o.id === id));
+
+  // Una actividad pendiente necesita fecha; vencida, sale en "Para hoy".
+  assert.equal((await empleadoA.post('/api/crm/actividades', { oportunidad_id: id, tipo: 'llamada', descripcion: 'Llamarla' })).status, 400);
+  assert.equal((await empleadoA.post('/api/crm/actividades', { tipo: 'llamada', descripcion: 'Suelta', fecha: hoy })).status, 400);
+  const llamada = await empleadoA.post('/api/crm/actividades', {
+    oportunidad_id: id,
+    tipo: 'llamada',
+    descripcion: 'Preguntarle el talle',
+    fecha: haceDias(1)
+  });
+  assert.equal(llamada.status, 201, llamada.texto);
+  const nota = await empleadoA.post('/api/crm/actividades', { oportunidad_id: id, tipo: 'nota', descripcion: 'Prefiere negro' });
+  assert.equal(nota.status, 201, nota.texto);
+  paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.aviso, 'vencida');
+  assert.equal(paula.proxima_id, llamada.json.id);
+  assert.equal(paula.actividades.length, 2);
+  assert.ok(paula.actividades.find((a) => a.id === nota.json.id).hecha, 'una nota nace hecha');
+  paraHoy = (await empleadoA.get('/api/crm/para-hoy')).json;
+  assert.ok(paraHoy.actividades.some((a) => a.id === llamada.json.id && a.vencida));
+  assert.ok(!paraHoy.sin_accion.some((o) => o.id === id));
+  assert.equal((await empleadoA.patch(`/api/crm/actividades/${llamada.json.id}`, { hecha: true })).status, 200);
+  assert.equal((await empleadoA.get(`/api/crm/oportunidades/${id}`)).json.aviso, 'sin_accion');
+
+  // Mover de etapa: a una del negocio y activa.
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: visita.json.id })).status, 400);
+  const etapasB = (await adminB.get('/api/crm/etapas')).json;
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: etapasB[1].id })).status, 400, 'etapa ajena');
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: etapas[1].id })).status, 200);
+  assert.equal((await empleadoA.get(`/api/crm/oportunidades/${id}`)).json.etapa, 'Presupuesto enviado');
+
+  // Pasar a presupuesto la deja vinculada y le da el cliente; convertirlo en
+  // venta la gana sola.
+  const presupuesto = await empleadoA.post('/api/presupuestos', {
+    cliente: 'Paula Ferreyra',
+    crm_oportunidad_id: id,
+    items: [{ producto_id: productoA, cantidad: 2, precio_unitario: 100 }]
+  });
+  assert.equal(presupuesto.status, 201, presupuesto.texto);
+  paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.presupuesto_id, presupuesto.json.id);
+  assert.ok(paula.cliente_id, 'tomó el cliente del presupuesto');
+  assert.equal(paula.estado, 'abierta');
+  const deCliente = (await empleadoA.get(`/api/crm/actividades?cliente_id=${paula.cliente_id}`)).json;
+  assert.equal(deCliente.length, 2, 'sus actividades salen en la ficha del cliente');
+  const convertido = await empleadoA.post(`/api/presupuestos/${presupuesto.json.id}/convertir`);
+  assert.equal(convertido.status, 201, convertido.texto);
+  paula = (await empleadoA.get(`/api/crm/oportunidades/${id}`)).json;
+  assert.equal(paula.estado, 'ganada');
+  assert.equal(paula.venta_id, convertido.json.venta_id);
+  assert.equal(paula.fecha_cierre, hoy);
+  assert.equal((await empleadoA.patch(`/api/crm/oportunidades/${id}/etapa`, { etapa_id: etapas[0].id })).status, 400, 'cerrada');
+
+  // Perderla pide el motivo, y cuenta en los números.
+  const otra = (await empleadoA.post('/api/crm/oportunidades', { nombre: 'Ramiro Paz', origen: 'instagram' })).json;
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cerrar`, { resultado: 'perdida' })).status, 400);
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cerrar`, { resultado: 'perdida', motivo: 'Precio' })).status, 200);
+  const numeros = (await empleadoA.get('/api/crm/reporte')).json;
+  assert.equal(numeros.conversion, 50);
+  assert.deepEqual(numeros.por_origen.find((o) => o.origen === 'instagram'), {
+    origen: 'instagram',
+    total: 2,
+    ganadas: 1,
+    perdidas: 1,
+    origen_nombre: 'Instagram'
+  });
+  assert.deepEqual(numeros.motivos, [{ motivo: 'Precio', total: 1 }]);
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/reabrir`)).status, 200);
+
+  // Pasar a cliente no duplica uno con el mismo nombre: avisa con su id.
+  const repetida = (await empleadoA.post('/api/crm/oportunidades', { nombre: 'paula ferreyra' })).json;
+  const choque = await empleadoA.post(`/api/crm/oportunidades/${repetida.id}/cliente`);
+  assert.equal(choque.status, 400);
+  assert.equal(choque.json.cliente_id, paula.cliente_id);
+  const vinculo = await empleadoA.post(`/api/crm/oportunidades/${repetida.id}/cliente`, { cliente_id: paula.cliente_id });
+  assert.equal(vinculo.status, 200, vinculo.texto);
+  const nuevoCliente = await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cliente`);
+  assert.equal(nuevoCliente.status, 200, nuevoCliente.texto);
+  assert.equal((await empleadoA.post(`/api/crm/oportunidades/${otra.id}/cliente`)).status, 400, 'ya es cliente');
+
+  // Una venta desde la consulta la gana; desde una que no existe, 400.
+  const clienteRamiro = nuevoCliente.json.cliente_id;
+  assert.equal((await empleadoA.post('/api/ventas', { cliente_id: clienteRamiro, crm_oportunidad_id: 999999, items: item })).status, 400);
+  const ventaRamiro = await empleadoA.post('/api/ventas', { cliente_id: clienteRamiro, crm_oportunidad_id: otra.id, items: item });
+  assert.equal(ventaRamiro.status, 201, ventaRamiro.texto);
+  const ramiro = (await empleadoA.get(`/api/crm/oportunidades/${otra.id}`)).json;
+  assert.equal(ramiro.estado, 'ganada');
+  assert.equal(ramiro.venta_id, ventaRamiro.json.id);
+
+  // Un socio desde la consulta también la gana.
+  const plan = (await adminA.post('/api/planes-socio', { nombre: 'Plan consulta', opciones: [{ meses: 1, precio: 10000 }] })).json;
+  const interesado = (await empleadoA.post('/api/crm/oportunidades', { nombre: 'Sofía Luna', telefono: '351 555-0202' })).json;
+  const socio = await empleadoA.post('/api/socios', {
+    cliente: { nombre: 'Sofía Luna', telefono: '351 555-0202' },
+    planes: [{ opcion_id: plan.opciones[0].id }],
+    crm_oportunidad_id: interesado.id
+  });
+  assert.equal(socio.status, 201, socio.texto);
+  const sofia = (await empleadoA.get(`/api/crm/oportunidades/${interesado.id}`)).json;
+  assert.equal(sofia.estado, 'ganada');
+  assert.equal(sofia.socio_id, socio.json.id);
+  assert.ok(sofia.cliente_id);
+
+  // Dejaron de comprar: dos compras o más, la última hace más de los días.
+  const habitual = (await adminA.post('/api/clientes', { nombre: 'Cliente habitual' })).json.id;
+  for (const fecha of [haceDias(200), haceDias(120)]) {
+    const r = await empleadoA.post('/api/ventas', { cliente_id: habitual, fecha, items: item });
+    assert.equal(r.status, 201, r.texto);
+  }
+  const fila = (await empleadoA.get('/api/crm/inactivos')).json.find((c) => c.id === habitual);
+  assert.ok(fila, 'sale en la lista');
+  assert.equal(fila.compras, 2);
+  assert.equal(fila.ultima_compra, haceDias(120));
+  assert.equal(fila.dias, 120);
+  assert.equal(fila.con_seguimiento, false);
+  assert.ok(!(await empleadoA.get('/api/crm/inactivos?dias=150')).json.some((c) => c.id === habitual));
+  assert.equal((await empleadoA.get('/api/crm/inactivos?dias=cero')).status, 400);
+  const seguimiento = await empleadoA.post('/api/crm/actividades', {
+    cliente_id: habitual,
+    tipo: 'mensaje',
+    descripcion: 'Avisarle de lo nuevo',
+    fecha: hoy
+  });
+  assert.equal(seguimiento.status, 201, seguimiento.texto);
+  assert.equal((await empleadoA.get('/api/crm/inactivos')).json.find((c) => c.id === habitual).con_seguimiento, true);
+
+  // Otro negocio no ve ni toca nada.
+  assert.equal((await adminB.get(`/api/crm/oportunidades/${id}`)).status, 404);
+  assert.equal((await adminB.put(`/api/crm/oportunidades/${id}`, { nombre: 'Otra' })).status, 404);
+  assert.equal((await adminB.post(`/api/crm/oportunidades/${id}/reabrir`)).status, 404);
+  assert.equal((await adminB.patch(`/api/crm/actividades/${llamada.json.id}`, { hecha: false })).status, 404);
+  assert.equal((await adminB.del(`/api/crm/actividades/${llamada.json.id}`)).status, 404);
+  assert.equal((await adminB.post('/api/crm/actividades', { oportunidad_id: id, tipo: 'nota', descripcion: 'x' })).status, 400);
+  const presupuestoAjeno = { cliente: 'X', crm_oportunidad_id: id, items: [{ producto_id: productoB, cantidad: 1, precio_unitario: 1 }] };
+  assert.equal((await adminB.post('/api/presupuestos', presupuestoAjeno)).status, 400);
+  assert.ok(!(await adminB.get('/api/crm/oportunidades')).json.some((o) => o.id === id));
+  assert.ok(!(await adminB.get('/api/crm/inactivos')).json.some((c) => c.id === habitual));
+  const deB = (await adminB.get('/api/crm/para-hoy')).json;
+  assert.equal(deB.actividades.length + deB.sin_accion.length, 0);
+
+  // Borrar una actividad.
+  assert.equal((await empleadoA.del(`/api/crm/actividades/${nota.json.id}`)).status, 204);
+  assert.equal((await empleadoA.get(`/api/crm/oportunidades/${id}`)).json.actividades.length, 1);
+});
+
 test('primeros pasos: cuenta lo cargado del negocio, sin planes de socios, y es de admin (hist. §81)', async () => {
   const r = await adminA.get('/api/negocio/primeros-pasos');
   assert.equal(r.status, 200, r.texto);
@@ -918,11 +1173,12 @@ test('primeros pasos: cuenta lo cargado del negocio, sin planes de socios, y es 
   const planes = new Set((await adminA.get('/api/planes-socio')).json.map((p) => p.producto_id));
   assert.ok(planes.size > 0, 'el caso de socios dejó planes');
   assert.equal(r.json.catalogo, productos.filter((p) => !planes.has(p.id)).length);
-  assert.ok(r.json.ventas > 0 && r.json.clientes > 0 && r.json.usuarios >= 2 && r.json.trabajos > 0 && r.json.abonos > 0);
+  assert.ok(r.json.ventas > 0 && r.json.clientes > 0 && r.json.usuarios >= 2 && r.json.trabajos > 0 && r.json.abonos > 0 && r.json.consultas > 0);
   // Otro negocio cuenta lo suyo, no lo de A.
   const deB = (await adminB.get('/api/negocio/primeros-pasos')).json;
   assert.equal(deB.trabajos, 0);
   assert.equal(deB.abonos, 0);
+  assert.equal(deB.consultas, 0);
   assert.equal((await empleadoA.get('/api/negocio/primeros-pasos')).status, 403);
 });
 

@@ -31,11 +31,14 @@ export function recargar(...nombres) {
 }
 
 // Código a correr cada vez que el router muestra esa vista (nav click,
-// deep-link, Atrás/Adelante: los tres pasan por mostrarVista).
+// deep-link, Atrás/Adelante: los tres pasan por mostrarVista). Una vista
+// puede tener varios: el Resumen pinta la guía de primeros pasos y el aviso
+// del plan, cada uno desde su dominio (hist. §99). Corren en el orden en que
+// se registraron.
 export function alEntrarEnVista(vista, fn) {
-  alEntrar.set(vista, fn);
+  alEntrar.set(vista, [...(alEntrar.get(vista) ?? []), fn]);
 }
 
 export function entrarEnVista(vista, ...args) {
-  alEntrar.get(vista)?.(...args);
+  for (const fn of alEntrar.get(vista) ?? []) fn(...args);
 }

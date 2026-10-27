@@ -22,13 +22,13 @@ test('los tipos de negocio se leen sin sesión', async () => {
   assert.equal(r.status, 200, r.texto);
   assert.deepEqual(
     r.json.tipos.map((t) => t.clave),
-    ['comercio', 'carniceria', 'verduleria', 'kiosco', 'servicios', 'gimnasio']
+    ['emprendimiento', 'comercio', 'carniceria', 'verduleria', 'kiosco', 'servicios', 'gimnasio']
   );
   assert.ok(r.json.tipos.every((t) => t.nombre && t.descripcion && t.icono && Array.isArray(t.modulos)));
   assert.ok(r.json.proximamente.some((t) => t.clave === 'restaurante' && t.icono));
   assert.deepEqual(
     r.json.modulos.map((m) => m.clave),
-    ['pos', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios']
+    ['pos', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios']
   );
 });
 
@@ -38,7 +38,7 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
   const alta = await marta.post('/api/auth/registro', {
     empresa: 'La Vaquita',
     nombre: 'Marta',
-    usuario: 'marta',
+    email_cuenta: 'marta@nexo.test',
     password: 'clave-segura-1',
     rubro: 'carniceria',
     modulos: ['pos'],
@@ -64,7 +64,7 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
   const otra = await pepe.post('/api/auth/registro', {
     empresa: 'Kiosco Pepe',
     nombre: 'Pepe',
-    usuario: 'pepe',
+    email_cuenta: 'pepe@nexo.test',
     password: 'clave-segura-1',
     rubro: 'kiosco',
     condicion_iva: 'responsable_inscripto'
@@ -75,19 +75,26 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
   assert.deepEqual(kiosco.modulos, ['pos', 'compras', 'stock']);
   assert.equal(kiosco.condicion_iva, 'responsable_inscripto');
   assert.equal(kiosco.documento, null);
+
+  // Quedan guardados, no "los del tipo" (hist. §88): pasar el kiosco a
+  // Servicios no le apaga el punto de venta ni le prende los trabajos.
+  assert.equal((await pepe.put('/api/negocio', { rubro: 'servicios' })).status, 200);
+  const comoServicios = (await pepe.get('/api/negocio')).json;
+  assert.equal(comoServicios.tipo_defecto, 'servicio');
+  assert.deepEqual(comoServicios.modulos, ['pos', 'compras', 'stock']);
 });
 
 test('el alta rechaza un tipo que no se puede elegir y un CUIT inválido', async () => {
   const base = { empresa: 'Rechazada', nombre: 'Nadie', password: 'clave-segura-1' };
   for (const [cuerpo, motivo] of [
-    [{ ...base, usuario: 'r1', rubro: 'peluqueria' }, 'tipo "Próximamente"'],
-    [{ ...base, usuario: 'r2', rubro: 'constructor' }, 'clave del prototipo'],
-    [{ ...base, usuario: 'r3', documento: '20-12345678-5' }, 'CUIT con el dígito verificador malo']
+    [{ ...base, email_cuenta: 'r1@nexo.test', rubro: 'peluqueria' }, 'tipo "Próximamente"'],
+    [{ ...base, email_cuenta: 'r2@nexo.test', rubro: 'constructor' }, 'clave del prototipo'],
+    [{ ...base, email_cuenta: 'r3@nexo.test', documento: '20-12345678-5' }, 'CUIT con el dígito verificador malo']
   ]) {
     const r = await crearCliente(servidor.url).post('/api/auth/registro', cuerpo);
     assert.equal(r.status, 400, `${motivo}: ${r.texto}`);
   }
   // Ninguno quedó creado a medias.
-  const login = await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'r3', password: 'clave-segura-1' });
+  const login = await crearCliente(servidor.url).post('/api/auth/login', { email: 'r3@nexo.test', password: 'clave-segura-1' });
   assert.equal(login.status, 401);
 });

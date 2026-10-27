@@ -916,7 +916,12 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- Tipo de negocio y módulos visibles (CLAUDE.md §29, PERFILES_RUBRO en
   -- server.js). NULL = comercio general / los módulos del preset del tipo.
   rubro TEXT,
-  modulos TEXT
+  modulos TEXT,
+  -- Plan de Nexo (hist. §98, PLANES en backend/planes.js) y hasta cuándo rige
+  -- (AAAA-MM-DD). NULL en plan_vence es que no vence; vencido, el negocio
+  -- queda en Gratis sin perder nada.
+  plan TEXT NOT NULL DEFAULT 'gratis',
+  plan_vence TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
@@ -942,12 +947,38 @@ CREATE TABLE IF NOT EXISTS usuarios (
   password_salt TEXT NOT NULL,
   debe_cambiar_password INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar_password IN (0,1)),
   fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
-  ultimo_acceso TEXT
+  ultimo_acceso TEXT,
+  -- Mail de la cuenta (hist. §102): se entra con él y es la forma de
+  -- recuperarla. NULL en las cuentas anteriores a §102, que lo cargan al
+  -- entrar. Se guarda en minúsculas; email_verificado es la fecha en que se
+  -- tocó el enlace, y vuelve a NULL si el mail cambia. El índice único va en
+  -- db/index.js, después del ALTER que suma estas columnas.
+  email TEXT,
+  email_verificado TEXT
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas
 -- distintas.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_usuario ON usuarios(LOWER(usuario));
+
+-- Enlaces de un solo uso que se mandan por mail (hist. §102): verificar el
+-- mail y, desde la Fase 2, recuperar la contraseña. Se guarda solo el
+-- SHA-256 del token: quien lea la base no puede usar un enlace vigente.
+-- email es a qué mail se mandó: un enlace de verificación deja de servir si
+-- la cuenta cambió de mail. Es de la cuenta, no de un negocio, por eso no
+-- lleva organizacion_id (igual que sesiones). Las horas van en UTC, como
+-- sesiones.expira: no son fechas de una operación.
+CREATE TABLE IF NOT EXISTS tokens_cuenta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('verificar_email','recuperar')),
+  token_hash TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  creado TEXT NOT NULL DEFAULT (datetime('now')),
+  vence TEXT NOT NULL,
+  usado TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tokens_cuenta_usuario ON tokens_cuenta(usuario_id, tipo);
 
 -- En qué negocios trabaja cada usuario, y con qué rol en cada uno (CLAUDE.md
 -- §28, hist. §77): un dueño con un comercio y un gimnasio entra con un solo
@@ -1199,3 +1230,80 @@ CREATE TABLE IF NOT EXISTS cuotas_abono (
   precio REAL NOT NULL,
   UNIQUE (abono_id, desde)
 );
+
+-- Consultas (CRM, CLAUDE.md §29, hist. §89): los que preguntan y todavía no
+-- compraron. El módulo `crm` lo puede prender cualquier negocio, y el tipo de
+-- negocio solo decide con qué etapas nace (etapas_crm en perfiles.js, que
+-- db/index.js siembra). No es un circuito propio: una oportunidad pasa a
+-- cliente, presupuesto, venta o socio con las altas de siempre, y queda
+-- vinculada a lo que generó.
+
+-- Las etapas abiertas del embudo, propias de cada negocio y editables. Ganada
+-- y Perdida no son filas: son el estado de la oportunidad, comunes a todos.
+-- activa = 0 la pausa: no se ofrece para mover, pero las oportunidades que
+-- están en ella siguen ahí.
+CREATE TABLE IF NOT EXISTS crm_etapas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  orden INTEGER NOT NULL,
+  activa INTEGER NOT NULL DEFAULT 1,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
+);
+
+-- Una consulta o un cliente potencial.
+-- Quién: un cliente que ya existe (cliente_id) o un contacto suelto. El nombre
+-- se guarda siempre (contacto_nombre): al pasar a cliente se copia de él.
+-- origen: clave de una lista fija de server.js (ORIGENES_CRM), sin CHECK, como
+-- productos.unidad.
+-- estado: abierta → ganada o perdida; motivo_perdida solo en perdida, y
+-- fecha_cierre al cerrarse. etapa_id es en qué etapa quedó.
+-- presupuesto_id, venta_id y socio_id: lo que generó. Cuando ese presupuesto
+-- se convierte en venta, o sale la venta o el socio, se gana sola.
+-- La próxima acción no se guarda: es su actividad pendiente más próxima.
+CREATE TABLE IF NOT EXISTS crm_oportunidades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER REFERENCES clientes(id),
+  contacto_nombre TEXT NOT NULL,
+  contacto_telefono TEXT,
+  contacto_email TEXT,
+  origen TEXT,
+  interes TEXT,
+  valor_estimado REAL,
+  responsable_id INTEGER REFERENCES usuarios(id),
+  etapa_id INTEGER NOT NULL REFERENCES crm_etapas(id),
+  estado TEXT NOT NULL DEFAULT 'abierta' CHECK (estado IN ('abierta', 'ganada', 'perdida')),
+  motivo_perdida TEXT,
+  fecha_cierre TEXT,
+  presupuesto_id INTEGER REFERENCES presupuestos(id),
+  venta_id INTEGER REFERENCES ventas(id),
+  socio_id INTEGER REFERENCES socios(id),
+  fecha TEXT NOT NULL,
+  fecha_creacion TEXT NOT NULL DEFAULT (datetime('now')),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_oportunidades_org ON crm_oportunidades(organizacion_id, estado, etapa_id);
+CREATE INDEX IF NOT EXISTS idx_crm_oportunidades_presupuesto ON crm_oportunidades(presupuesto_id);
+CREATE INDEX IF NOT EXISTS idx_crm_oportunidades_cliente ON crm_oportunidades(cliente_id);
+
+-- Llamada, mensaje, visita, nota o tarea. Cuelga de una oportunidad, de un
+-- cliente o de los dos (server.js exige al menos uno). Tiene organizacion_id
+-- propio para listar "Para hoy" sin pasar por la oportunidad.
+-- fecha: para cuándo es; NULL en una nota, que no vence. fecha_hecha: cuándo
+-- se marcó hecha.
+CREATE TABLE IF NOT EXISTS crm_actividades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  oportunidad_id INTEGER REFERENCES crm_oportunidades(id),
+  cliente_id INTEGER REFERENCES clientes(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('llamada', 'mensaje', 'visita', 'nota', 'tarea')),
+  descripcion TEXT NOT NULL,
+  fecha TEXT,
+  hecha INTEGER NOT NULL DEFAULT 0,
+  fecha_hecha TEXT,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  fecha_creacion TEXT NOT NULL DEFAULT (datetime('now')),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE INDEX IF NOT EXISTS idx_crm_actividades_pendientes ON crm_actividades(organizacion_id, hecha, fecha);
+CREATE INDEX IF NOT EXISTS idx_crm_actividades_oportunidad ON crm_actividades(oportunidad_id);
+CREATE INDEX IF NOT EXISTS idx_crm_actividades_cliente ON crm_actividades(cliente_id);

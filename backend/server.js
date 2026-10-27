@@ -1,10 +1,14 @@
 import express from 'express';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
-import db, { withTransaction, registrarAuditoria, sembrarCatalogosBase } from './db/index.js';
+import { createHash, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
+import { esMailValido, mandarMail, plantillaMail } from './mail.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
+import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
+import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -18,10 +22,27 @@ const PORT = process.env.PORT || 3000;
 db.function('fecha_de_hoy', { deterministic: false }, () => fechaDeHoy());
 const HOY_SQL = 'fecha_de_hoy()';
 
-// Cabeceras de seguridad básicas (CLAUDE.md §35). No se agrega CSP todavía:
-// index.html tiene un script inline en el <head> y carga fuentes de Google, así
-// que un CSP útil necesita antes autoalojar las fuentes y mover ese script
-// (se hace junto con la PWA, Etapa B2).
+// Cabeceras de seguridad básicas (CLAUDE.md §35), y la CSP desde la PWA (hist.
+// §94): las fuentes ya se sirven desde frontend/fonts/ y el script del <head>
+// salió a js/arranque.js, así que todo lo que carga la app es del mismo origen.
+// Sin script inline: un XSS que lograra meter HTML no podría ejecutar nada.
+// style-src permite inline porque las plantillas de la app arman atributos
+// style="" (anchos de barras, colores). img-src suma data: (los íconos de los
+// avisos en styles.css) y blob: (lo que arma el PDF de un comprobante).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self'",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
 app.disable('x-powered-by');
 // Detrás de un proxy inverso (HTTPS en producción) `req.ip` sería siempre la IP
 // del proxy y los límites por IP agruparían a todos los clientes. NEXO_TRUST_PROXY
@@ -37,11 +58,123 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Content-Security-Policy', CSP);
   next();
 });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+/* ---------- Páginas públicas y la app (hist. §100) ---------- */
+
+// `/` es la landing, y la app vive en `/app`. Quien ya tiene sesión va derecho
+// a la app: una instalación vieja de la PWA (start_url "/") sigue abriendo
+// bien. Lo estático va con `index: false` para que `/` no sirva index.html.
+const FRONTEND = path.join(__dirname, '..', 'frontend');
+const PAGINAS_PUBLICAS = ['/', '/privacidad'];
+
+// La dirección pública, para lo que tiene que ir absoluto (canónico, imagen de
+// Open Graph, robots y sitemap). NEXO_URL_PUBLICA la fija al publicar (Fase 4);
+// sin ella se arma con el pedido, que alcanza en desarrollo.
+const urlPublica = (req) => (process.env.NEXO_URL_PUBLICA || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+// Los precios del JSON-LD salen de PLANES, como los de las tarjetas (que arma
+// landing.js con GET /api/auth/planes): un precio se cambia solo en planes.js.
+// `<` se escapa para que ningún texto pueda cerrar el <script>.
+function jsonLdLanding(url) {
+  const datos = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Nexo',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web, Android, iOS, Windows, macOS',
+    url: `${url}/`,
+    inLanguage: 'es-AR',
+    offers: Object.values(PLANES).map((plan) => ({
+      '@type': 'Offer',
+      name: plan.nombre,
+      price: plan.precio,
+      priceCurrency: 'ARS',
+      description: plan.descripcion
+    }))
+  };
+  return JSON.stringify(datos).replace(/</g, '\\u003c');
+}
+
+// La plantilla se lee una vez en producción y en cada pedido en desarrollo,
+// así un cambio en landing.html se ve sin reiniciar.
+let plantillaLanding = null;
+function leerPlantillaLanding() {
+  if (plantillaLanding && process.env.NODE_ENV === 'production') return plantillaLanding;
+  plantillaLanding = readFileSync(path.join(FRONTEND, 'landing.html'), 'utf8');
+  return plantillaLanding;
+}
+
+app.get('/', (req, res) => {
+  if (sesionValida(leerCookie(req, COOKIE_SESION))) return res.redirect(302, '/app');
+  const url = urlPublica(req);
+  const html = leerPlantillaLanding()
+    .replaceAll('%URL%', url)
+    .replaceAll('%JSONLD%', () => jsonLdLanding(url));
+  res.type('html').send(html);
+});
+app.get('/app', (req, res) => res.sendFile(path.join(FRONTEND, 'index.html')));
+app.get('/index.html', (req, res) => res.redirect(301, '/app'));
+app.get('/privacidad', (req, res) => res.sendFile(path.join(FRONTEND, 'privacidad.html')));
+
+// El enlace del mail de verificación (hist. §102). Es un GET porque se toca
+// desde el programa de mail; si un antivirus del mail lo abre antes, solo
+// verifica antes de tiempo, y quien lo toque después ve "verificado" igual.
+// Vale si no venció y si la cuenta sigue teniendo el mismo mail al que se
+// mandó. Redirige a la app, que muestra el resultado (sesion.js).
+app.get('/verificar-mail', (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  const fila = token
+    ? db
+        .prepare(
+          `SELECT t.id, t.usuario_id, t.usado, u.email_verificado
+             FROM tokens_cuenta t
+             JOIN usuarios u ON u.id = t.usuario_id
+            WHERE t.token_hash = ? AND t.tipo = 'verificar_email'
+              AND t.vence > datetime('now') AND u.email = t.email`
+        )
+        .get(hashToken(token))
+    : null;
+  if (!fila) return res.redirect(302, '/app?mail=invalido');
+  if (fila.usado) return res.redirect(302, fila.email_verificado ? '/app?mail=verificado' : '/app?mail=invalido');
+
+  withTransaction(() => {
+    db.prepare("UPDATE tokens_cuenta SET usado = datetime('now') WHERE id = ?").run(fila.id);
+    db.prepare("UPDATE usuarios SET email_verificado = datetime('now') WHERE id = ?").run(fila.usuario_id);
+    // Sin sesión: va al último negocio que usó, para que se vea en su auditoría.
+    const negocio = db
+      .prepare(
+        `SELECT organizacion_id FROM usuario_organizaciones WHERE usuario_id = ?
+          ORDER BY ultimo_acceso IS NULL, ultimo_acceso DESC LIMIT 1`
+      )
+      .get(fila.usuario_id);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: fila.usuario_id,
+      usuario_id: fila.usuario_id,
+      organizacion_id: negocio?.organizacion_id ?? null,
+      detalle: 'Verificó su mail'
+    });
+  });
+  res.redirect(302, '/app?mail=verificado');
+});
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\n\nSitemap: ${urlPublica(req)}/sitemap.xml\n`);
+});
+app.get('/sitemap.xml', (req, res) => {
+  const url = urlPublica(req);
+  const entradas = PAGINAS_PUBLICAS.map((p) => `  <url><loc>${url}${p}</loc></url>`).join('\n');
+  res
+    .type('application/xml')
+    .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entradas}\n</urlset>\n`);
+});
+
+app.use(express.static(FRONTEND, { index: false }));
 // assets/ vive al mismo nivel que backend/ y frontend/ (así lo define
 // CLAUDE.md), no adentro de frontend/. Sin este mount el logo y el
 // favicon no serían alcanzables por HTTP. Es una ruta estática de solo
@@ -155,7 +288,8 @@ function sesionValida(token) {
   const fila = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
-              usuarios.debe_cambiar_password, sesiones.organizacion_id
+              usuarios.debe_cambiar_password, sesiones.organizacion_id,
+              usuarios.email, usuarios.email_verificado
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
          JOIN usuario_organizaciones pertenencia
@@ -172,9 +306,19 @@ function sesionValida(token) {
 // Lo que el frontend sabe del usuario de la sesión, con la misma forma en
 // estado, login y registro. organizacion_id es el negocio activo: sesion.js lo
 // marca en <html> para separar por negocio lo que se guarda en el navegador y
-// para darse cuenta si otra pestaña cambió de negocio.
-function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id }) {
-  return { id, usuario, nombre, rol, debe_cambiar_password: !!debe_cambiar_password, organizacion_id };
+// para darse cuenta si otra pestaña cambió de negocio. Sin email, sesion.js
+// muestra "Sumá tu mail" antes de arrancar la app (hist. §102).
+function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id, email, email_verificado }) {
+  return {
+    id,
+    usuario,
+    nombre,
+    rol,
+    debe_cambiar_password: !!debe_cambiar_password,
+    organizacion_id,
+    email: email ?? null,
+    email_verificado: !!email_verificado
+  };
 }
 
 // Cuándo entró por última vez a un negocio: el login vuelve al último. Con
@@ -192,6 +336,57 @@ function renovarSesion(token) {
   db.prepare(`UPDATE sesiones SET expira = datetime('now', '+${SESION_HORAS} hours') WHERE token = ?`).run(
     token
   );
+}
+
+/* ---------- Mail de la cuenta (hist. §102) ---------- */
+
+// Se entra con el mail (docs/investigacion-login-legal.md, sección 5). Se
+// guarda en minúsculas: nadie distingue "Ana@" de "ana@" al tipear.
+const normalizarMail = (valor) => (typeof valor === 'string' ? valor.trim().toLowerCase() : '');
+
+// Un mail que ya usa otra cuenta, como mail o como nombre de usuario: el login
+// busca por los dos, y una cuenta nueva tiene su mail como usuario.
+function mailEnUso(email, usuarioId = 0) {
+  return !!db
+    .prepare('SELECT 1 FROM usuarios WHERE id != ? AND (LOWER(email) = ? OR LOWER(usuario) = ?)')
+    .get(usuarioId, email, email);
+}
+
+const VERIFICACION_HORAS = 48;
+const hashToken = (token) => createHash('sha256').update(token).digest('hex');
+
+// Un enlace nuevo reemplaza a los anteriores del mismo tipo que no se usaron:
+// solo vale el último mail.
+function crearTokenCuenta(usuarioId, tipo, email, horas) {
+  const token = randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM tokens_cuenta WHERE usuario_id = ? AND tipo = ? AND usado IS NULL').run(usuarioId, tipo);
+  db.prepare(
+    `INSERT INTO tokens_cuenta (usuario_id, tipo, token_hash, email, vence)
+     VALUES (?, ?, ?, ?, datetime('now', ?))`
+  ).run(usuarioId, tipo, hashToken(token), email, `+${horas} hours`);
+  return token;
+}
+
+// El mail sale después de responder: Gmail tarda un par de segundos, y si
+// falla (o no está configurado) la operación ya quedó hecha. Queda en el log;
+// la persona puede pedir otro desde Mi cuenta.
+function mandarSinEsperar(datos) {
+  mandarMail(datos).catch((err) => console.error(`No se pudo mandar el mail "${datos.asunto}": ${err.message}`));
+}
+
+function mandarVerificacion(req, { usuarioId, nombre, email }) {
+  const token = crearTokenCuenta(usuarioId, 'verificar_email', email, VERIFICACION_HORAS);
+  const { texto, html } = plantillaMail({
+    titulo: 'Confirmá tu mail',
+    parrafos: [
+      `Hola, ${nombre}.`,
+      'Tocá el botón para confirmar que este mail es tuyo. Con él entrás a Nexo y, si algún día te olvidás la contraseña, recuperás tu cuenta.',
+      `El enlace vence en ${VERIFICACION_HORAS} horas.`
+    ],
+    boton: { texto: 'Confirmar mi mail', url: `${urlPublica(req)}/verificar-mail?token=${token}` },
+    pie: 'Si no creaste una cuenta en Nexo, podés ignorar este mail.'
+  });
+  mandarSinEsperar({ para: email, asunto: 'Confirmá tu mail de Nexo', texto, html });
 }
 
 // Wrapper de registrarAuditoria que agrega automáticamente quién operó.
@@ -228,6 +423,9 @@ function auditar(req, datos) {
   });
 }
 
+// Lo único que puede hacer una cuenta sin mail (ver autenticar).
+const RUTAS_SIN_MAIL = new Set(['/auth/email', '/auth/logout', '/auth/cambiar-password']);
+
 function autenticar(req, res, next) {
   const token = leerCookie(req, COOKIE_SESION);
   const sesion = sesionValida(token);
@@ -246,6 +444,12 @@ function autenticar(req, res, next) {
   // adentro (es el remanente después del mount de app.use('/api', ...)).
   if (sesion.debe_cambiar_password && req.path !== '/auth/cambiar-password' && req.path !== '/auth/logout') {
     return res.status(403).json({ error: 'Tenés que cambiar tu contraseña antes de seguir.' });
+  }
+  // Lo mismo con el mail (hist. §102): una cuenta de antes de §102 lo carga
+  // antes de operar, porque sin mail no puede recuperar la cuenta. El código
+  // le dice al frontend que muestre "Sumá tu mail".
+  if (!sesion.email && !RUTAS_SIN_MAIL.has(req.path)) {
+    return res.status(403).json({ error: 'Sumá tu mail antes de seguir.', codigo: 'falta_email' });
   }
   next();
 }
@@ -381,15 +585,19 @@ app.get('/api/auth/estado', (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
-  const { usuario, password } = req.body ?? {};
+  // Se entra con el mail (hist. §102). Las cuentas de antes de §102 también
+  // con su nombre de usuario, para no dejar a nadie afuera: llega en el mismo
+  // campo, como `email` o como `usuario`.
+  const { password } = req.body ?? {};
+  const usuario = req.body?.email || req.body?.usuario;
   if (!usuario || !password) {
-    return res.status(400).json({ error: 'Usuario y contraseña son obligatorios.' });
+    return res.status(400).json({ error: 'Mail y contraseña son obligatorios.' });
   }
   // Sin sesión todavía: un tipo inesperado (`usuario: 123`) reventaba en
   // `.toLowerCase()` como 500 con stack en el log, y un usuario de 90 KB se
   // guardaba entero como clave del mapa de intentos y en la auditoría.
-  if (typeof usuario !== 'string' || typeof password !== 'string' || usuario.length > 100 || password.length > 1000) {
-    return res.status(400).json({ error: 'Usuario o contraseña inválidos.' });
+  if (typeof usuario !== 'string' || typeof password !== 'string' || usuario.length > 254 || password.length > 1000) {
+    return res.status(400).json({ error: 'Mail o contraseña inválidos.' });
   }
   if (bloqueado(usuario) || ipBloqueada(req.ip)) {
     return res.status(429).json({ error: 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.' });
@@ -397,25 +605,28 @@ app.post('/api/auth/login', (req, res) => {
 
   // El usuario con el negocio en el que entra: el último que usó entre los que
   // tiene activos (hist. §77). Sin ninguno activo es como si no existiera, igual
-  // que antes un usuario dado de baja.
+  // que antes un usuario dado de baja. Por el mail o por el usuario viejo; si
+  // las dos cosas coinciden con cuentas distintas, gana la del mail.
   const fila = db
     .prepare(
-      `SELECT usuarios.id, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
-              usuarios.debe_cambiar_password, pertenencia.organizacion_id, pertenencia.rol
+      `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
+              usuarios.debe_cambiar_password, usuarios.email, usuarios.email_verificado,
+              pertenencia.organizacion_id, pertenencia.rol
          FROM usuarios
          JOIN usuario_organizaciones pertenencia
            ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
-        WHERE LOWER(usuarios.usuario) = LOWER(?)
-        ORDER BY pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
+        WHERE LOWER(usuarios.email) = LOWER(?1) OR LOWER(usuarios.usuario) = LOWER(?1)
+        ORDER BY COALESCE(LOWER(usuarios.email) = LOWER(?1), 0) DESC,
+                 pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
         LIMIT 1`
     )
-    .get(usuario);
+    .get(usuario.trim());
 
   // Mensaje idéntico para "no existe" y "contraseña mala" — no hay que
   // darle a quien intenta loguearse ninguna pista de cuál de las dos fue.
   // Se verifica igual contra HASH_DUMMY cuando no existe, para que el
   // tiempo de respuesta tampoco lo revele.
-  const MENSAJE_ERROR = 'Usuario o contraseña incorrectos.';
+  const MENSAJE_ERROR = 'Mail o contraseña incorrectos.';
 
   if (!fila) {
     verificarPassword(password, HASH_DUMMY.hash, HASH_DUMMY.salt);
@@ -465,7 +676,7 @@ app.post('/api/auth/login', (req, res) => {
     detalle: 'Inició sesión'
   });
 
-  res.json({ usuario: datosUsuario({ ...fila, usuario }) });
+  res.json({ usuario: datosUsuario(fila) });
 });
 
 // Rate limit del registro, por IP y en memoria (mismo criterio que
@@ -490,8 +701,8 @@ function registroExcedido(ip) {
 
 // Los datos de un negocio nuevo, del alta de cuenta y de "Agregar negocio"
 // (POST /api/negocios): se validan igual que en Configuración, con el nombre
-// obligatorio. Si los módulos elegidos son justo los del tipo se guarda NULL:
-// el negocio sigue al preset, igual que uno creado sin elegirlos.
+// obligatorio. Los módulos quedan guardados siempre (hist. §88): sin elegirlos,
+// los del tipo. Así un cambio de tipo después no prende ni apaga nada.
 function validarNegocioNuevo(cuerpo) {
   const { error, datos } = validarDatosNegocio(
     {
@@ -507,8 +718,7 @@ function validarNegocioNuevo(cuerpo) {
     { parcial: false }
   );
   if (error) return { error };
-  const modulos = datos.modulos === undefined || datos.modulos === modulosDelPreset(datos.rubro) ? null : datos.modulos;
-  return { datos: { ...datos, modulos } };
+  return { datos: { ...datos, modulos: datos.modulos ?? modulosDelPreset(datos.rubro) } };
 }
 
 // En el orden de las columnas de los INSERT y UPDATE de abajo.
@@ -553,29 +763,35 @@ function sumarAlNegocio(usuarioId, organizacionId, rol) {
 // primer admin. Reemplaza al viejo /api/auth/bootstrap, que era el caso
 // particular "instalación nueva, primera empresa".
 //
-// Riesgo aceptado y documentado acá para que no se lea como un olvido: no hay
-// verificación de email ni captcha (requieren un servicio externo), solo el
-// rate limit por IP de arriba. Tampoco hay forma de apagar el registro
-// público; ver "Qué sigue" en handoff.md.
+// Riesgo aceptado y documentado acá para que no se lea como un olvido: la
+// cuenta se crea y se usa antes de verificar el mail (el enlace llega por
+// mail y la app avisa hasta que se toca, hist. §102), y no hay captcha, solo
+// el rate limit por IP de arriba. Apagar el registro público es la Fase 4 de
+// la etapa 8b (handoff.md).
 app.post('/api/auth/registro', (req, res) => {
   if (registroExcedido(req.ip)) {
     return res.status(429).json({ error: 'Demasiados intentos de registro. Probá de nuevo más tarde.' });
   }
 
   const empresa = String(req.body?.empresa ?? '').trim();
-  const usuario = String(req.body?.usuario ?? '').trim();
+  // La cuenta se crea con el mail (hist. §102). Llega como `email_cuenta`
+  // porque `email` es el del negocio, el que va en los comprobantes (igual que
+  // en "Agregar negocio"). Por dentro, el nombre de usuario de una cuenta nueva
+  // es su mail: la columna sigue NOT NULL UNIQUE sin reconstruir la tabla.
+  const email = normalizarMail(req.body?.email_cuenta);
   const nombre = String(req.body?.nombre ?? '').trim();
   const password = String(req.body?.password ?? '');
-  if (!empresa || !usuario || !nombre || !password) {
-    return res.status(400).json({ error: 'Negocio, usuario, nombre y contraseña son obligatorios.' });
+  if (!empresa || !email || !nombre || !password) {
+    return res.status(400).json({ error: 'Negocio, mail, nombre y contraseña son obligatorios.' });
   }
-  // Mismos topes que el login para el usuario y la contraseña.
-  if (usuario.length > 100 || password.length > 1000 || nombre.length > 120) {
-    return res.status(400).json({ error: 'El nombre, el usuario o la contraseña son demasiado largos.' });
+  // Mismos topes que el login para la contraseña.
+  if (password.length > 1000 || nombre.length > 120) {
+    return res.status(400).json({ error: 'El nombre o la contraseña son demasiado largos.' });
   }
-  if (/\s/.test(usuario)) {
-    return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
+  if (!esMailValido(email)) {
+    return res.status(400).json({ error: 'El mail no es válido.' });
   }
+  const usuario = email;
   if (password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
@@ -586,12 +802,18 @@ app.post('/api/auth/registro', (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  // El plan que eligió en la landing (hist. §98). Uno pago arranca como prueba
+  // de DIAS_PRUEBA días; al vencer, el negocio queda en Gratis.
+  const plan = req.body?.plan ?? PLAN_POR_DEFECTO;
+  if (typeof plan !== 'string' || !esPlan(plan)) {
+    return res.status(400).json({ error: 'El plan no es válido.' });
+  }
+  const planVence = PLANES[plan].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null;
 
-  // Global a propósito: el nombre de usuario es único en todo Nexo y el login
-  // no pide empresa (hist. §45).
-  const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
-  if (existe) {
-    return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
+  // Global a propósito: el mail es único en todo Nexo y el login no pide
+  // empresa (hist. §45, §102).
+  if (mailEnUso(email)) {
+    return res.status(409).json({ error: 'Ya hay una cuenta con ese mail. Entrá con él, o usá otro.' });
   }
 
   let usuarioId;
@@ -610,15 +832,17 @@ app.post('/api/auth/registro', (req, res) => {
                 direccion = ?, telefono = ?, email = ?
           WHERE id = ?`
       ).run(...valoresNegocio(datos), orgId);
+      resembrarEtapasCrm(orgId);
     } else {
       orgId = insertarNegocio(datos);
     }
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, planVence, orgId);
     const info = db
       .prepare(
-        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
-         VALUES (?, ?, ?, ?, ?, 0)`
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email)
+         VALUES (?, ?, ?, ?, ?, 0, ?)`
       )
-      .run(orgId, usuario, nombre, hash, salt);
+      .run(orgId, usuario, nombre, hash, salt, email);
     usuarioId = Number(info.lastInsertRowid);
     sumarAlNegocio(usuarioId, orgId, 'admin');
     marcarAcceso(usuarioId, orgId);
@@ -628,7 +852,9 @@ app.post('/api/auth/registro', (req, res) => {
       entidad_id: orgId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[datos.rubro].nombre})`
+      detalle: `Empresa "${empresa}" creada (${PERFILES_RUBRO[datos.rubro].nombre}, plan ${PLANES[plan].nombre}${
+        planVence ? ` de prueba hasta el ${planVence}` : ''
+      })`
     });
     registrarAuditoria({
       accion: 'crear',
@@ -642,8 +868,18 @@ app.post('/api/auth/registro', (req, res) => {
 
   const token = crearSesion(usuarioId, orgId);
   ponerCookieSesion(res, token);
+  mandarVerificacion(req, { usuarioId, nombre, email });
   res.status(201).json({
-    usuario: datosUsuario({ id: usuarioId, usuario, nombre, rol: 'admin', debe_cambiar_password: 0, organizacion_id: orgId })
+    usuario: datosUsuario({
+      id: usuarioId,
+      usuario,
+      nombre,
+      rol: 'admin',
+      debe_cambiar_password: 0,
+      organizacion_id: orgId,
+      email,
+      email_verificado: null
+    })
   });
 });
 
@@ -652,6 +888,96 @@ app.post('/api/auth/registro', (req, res) => {
 // ningún dato de una empresa.
 app.get('/api/auth/tipos-negocio', (req, res) => {
   res.json(catalogoTiposNegocio());
+});
+
+// Los planes y sus precios (hist. §98), para la landing y el alta guiada,
+// antes de que exista una sesión. Mismo criterio que los tipos de negocio.
+app.get('/api/auth/planes', (req, res) => {
+  res.json(catalogoPlanes());
+});
+
+// Contacto de la landing y de "Tu plan" (hist. §99): quien quiere un plan, o
+// pregunta algo, deja sus datos y la consulta cae en el CRM del negocio con
+// el que se vende Nexo (NEXO_NEGOCIO_VENTAS), en su primera etapa, con una
+// tarea para hoy. Nexo se vende con Nexo: no hace falta un mail ni un número
+// público, ni un servicio externo.
+//
+// Es pública, así que tiene su tope por IP, un campo trampa para bots
+// (`sitio`, oculto en el formulario) y largos máximos. Solo escribe en ese
+// negocio, nunca en el de quien la manda.
+const CONSULTAS_MAX = 5;
+const consultasPorIp = new Map();
+const LARGOS_CONSULTA = { nombre: 120, negocio: 120, contacto: 120, mensaje: 1000 };
+
+app.post('/api/publico/consulta', (req, res) => {
+  const cuerpo = req.body ?? {};
+  // Un bot llena el campo trampa: se le contesta como si hubiera salido bien.
+  if (cuerpo.sitio) return res.status(201).json({ ok: true });
+
+  const ahora = Date.now();
+  const registro = consultasPorIp.get(req.ip);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    consultasPorIp.set(req.ip, { cuenta: 1, desde: ahora });
+  } else if (++registro.cuenta > CONSULTAS_MAX) {
+    return res.status(429).json({ error: 'Mandaste varias consultas seguidas. Probá de nuevo en un rato.' });
+  }
+
+  const organizacionId = Number(process.env.NEXO_NEGOCIO_VENTAS);
+  const etapa =
+    organizacionId > 0 &&
+    db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 ORDER BY orden, id LIMIT 1').get(organizacionId);
+  if (!etapa) {
+    return res.status(503).json({ error: 'Las consultas todavía no están habilitadas.' });
+  }
+
+  const datos = {};
+  for (const [campo, largo] of Object.entries(LARGOS_CONSULTA)) {
+    const valor = cuerpo[campo];
+    if (valor != null && typeof valor !== 'string') return res.status(400).json({ error: 'Los datos no son válidos.' });
+    datos[campo] = (valor ?? '').trim();
+    if (datos[campo].length > largo) {
+      return res.status(400).json({ error: `Es demasiado largo: hasta ${largo} caracteres.` });
+    }
+  }
+  if (!datos.nombre) return res.status(400).json({ error: 'Contanos tu nombre.' });
+  // Un mail o un teléfono: con @ es mail; si no, tiene que tener números.
+  const esEmail = datos.contacto.includes('@');
+  if (esEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.contacto) : (datos.contacto.match(/\d/g) ?? []).length < 6) {
+    return res.status(400).json({ error: 'Dejanos un teléfono o un mail para responderte.' });
+  }
+  const plan = cuerpo.plan ?? null;
+  if (plan !== null && (typeof plan !== 'string' || !esPlan(plan))) {
+    return res.status(400).json({ error: 'El plan no es válido.' });
+  }
+
+  const interes = (plan ? `Quiere el plan ${PLANES[plan].nombre}` : 'Consulta desde la web') + (datos.negocio ? ` para "${datos.negocio}"` : '');
+  const hoy = fechaDeHoy();
+  withTransaction(() => {
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO crm_oportunidades (contacto_nombre, contacto_telefono, contacto_email, origen, interes, etapa_id, fecha, organizacion_id)
+           VALUES (?, ?, ?, 'web', ?, ?, ?, ?)`
+        )
+        .run(datos.nombre, esEmail ? null : datos.contacto, esEmail ? datos.contacto : null, interes, etapa.id, hoy, organizacionId)
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO crm_actividades (oportunidad_id, tipo, descripcion, fecha, organizacion_id)
+       VALUES (?, 'tarea', ?, ?, ?)`
+    ).run(id, datos.mensaje ? `Responder. Escribió: "${datos.mensaje}"` : 'Responder la consulta de la web', hoy, organizacionId);
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'oportunidad',
+      operacion_id: id,
+      detalle: `Consulta #${id} de ${datos.nombre} desde la web: ${interes}`,
+      organizacion_id: organizacionId
+    });
+  });
+  res.status(201).json({ ok: true });
 });
 
 // A partir de acá, TODO /api/* requiere sesión — los únicos endpoints que no
@@ -797,6 +1123,17 @@ class ErrorValidacion extends Error {
   constructor(mensaje) {
     super(mensaje);
     this.status = 400;
+  }
+}
+
+// Se llegó al tope del plan del negocio (hist. §98). Es un ErrorBulk para que
+// los catch que ya traducen ErrorBulk (compras, edición de productos, lotes)
+// lo devuelvan con su 403 y su texto sin tocarlos. El manejador final le suma
+// `codigo`, que el frontend usa para ofrecer "Tu plan".
+class ErrorPlan extends ErrorBulk {
+  constructor(mensaje) {
+    super(mensaje, 403);
+    this.codigo = 'limite_plan';
   }
 }
 
@@ -1844,6 +2181,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
+  // Uno inactivo no cuenta para el tope del plan (hist. §98).
+  if (!(activo === false || activo === 0)) exigirLugarEnPlan(req.usuario.organizacion_id, 'productos');
 
   let lastInsertRowid;
   try {
@@ -2035,6 +2374,10 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   if (esPlanDeSocios && (cambiaPrecioDeLista || nuevo.precio_venta !== producto.precio_venta)) {
     throw new ErrorBulk(`El precio de "${producto.nombre}" se cambia en Socios → Planes: cada duración tiene el suyo.`);
   }
+  // Reactivarlo vuelve a ocupar un lugar del plan (hist. §98).
+  if (!producto.activo && nuevo.activo) {
+    exigirLugarEnPlan(req.usuario.organizacion_id, 'productos');
+  }
   // precio_costo no entra en este diff: es el promedio ponderado que
   // recalculan las compras (recalcularCostoProducto), no algo que este
   // endpoint edite. Auditarlo acá duplicaría el acto de la compra, que
@@ -2101,7 +2444,8 @@ app.patch('/api/productos/:id', soloAdmin, (req, res) => {
     aplicarEdicionProducto(req, productoId, req.body, 1);
   } catch (err) {
     if (err instanceof ErrorBulk) {
-      return res.status(err.status).json({ error: err.message });
+      // `codigo` solo lo trae el tope del plan (ErrorPlan).
+      return res.status(err.status).json({ error: err.message, codigo: err.codigo });
     }
     return res.status(400).json({ error: mensajeDeError(err) });
   }
@@ -3646,6 +3990,7 @@ app.post('/api/ventas', (req, res) => {
   if (errorItems) {
     return res.status(400).json({ error: errorItems });
   }
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
   const depositoId = deposito_id ? Number(deposito_id) : depositoPredeterminadoId(req.usuario.organizacion_id);
   if (deposito_id && !depositoActivoValido(depositoId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'El depósito seleccionado no existe o está inactivo.' });
@@ -3657,6 +4002,8 @@ app.post('/api/ventas', (req, res) => {
   if (errorStock) {
     return res.status(400).json({ error: errorStock });
   }
+  // Desde una consulta (hist. §89): la venta la gana.
+  const oportunidad = oportunidadParaVincular(req.body.crm_oportunidad_id, req.usuario.organizacion_id);
 
   let ventaId;
   try {
@@ -3673,6 +4020,10 @@ app.post('/api/ventas', (req, res) => {
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
+      if (oportunidad) {
+        const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
+        vincularOportunidad(req, oportunidad, { cliente_id: clienteId, venta_id: id });
+      }
       return id;
     });
   } catch (err) {
@@ -4204,6 +4555,8 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
 // Puede fallar si en el medio se vendió el stock que había vuelto.
 app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
+  // Una venta restaurada vuelve a contar en el mes (hist. §98).
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
 
   const venta = db
     .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
@@ -4461,6 +4814,8 @@ app.post('/api/presupuestos', (req, res) => {
   if (listaPrecioId && !listaPrecioValida(listaPrecioId, req.usuario.organizacion_id)) {
     return res.status(400).json({ error: 'La lista de precios seleccionada no existe.' });
   }
+  // Desde una consulta (hist. §89): queda vinculada al presupuesto.
+  const oportunidad = oportunidadParaVincular(req.body.crm_oportunidad_id, req.usuario.organizacion_id);
 
   const presupuestoId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
@@ -4490,6 +4845,7 @@ app.post('/api/presupuestos', (req, res) => {
       entidad_id: nuevoId,
       detalle: `Presupuesto #${nuevoId} creado`
     });
+    vincularOportunidad(req, oportunidad, { cliente_id: Number(clienteRow.id), presupuesto_id: nuevoId });
     return nuevoId;
   });
 
@@ -4592,6 +4948,7 @@ app.patch('/api/presupuestos/:id/estado', (req, res) => {
 // que se cotizó — es lo que se le prometió al cliente.
 app.post('/api/presupuestos/:id/convertir', (req, res) => {
   const presupuestoId = Number(req.params.id);
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
 
   const presupuesto = db
     .prepare('SELECT id, cliente_id, estado, lista_precio_id FROM presupuestos WHERE id = ? AND organizacion_id = ?')
@@ -4665,6 +5022,7 @@ app.post('/api/presupuestos/:id/convertir', (req, res) => {
       operacion_id: nuevaVentaId,
       detalle: `Presupuesto #${presupuestoId} convertido en la venta #${nuevaVentaId}`
     });
+    ganarOportunidadesDelPresupuesto(req, presupuestoId, nuevaVentaId);
     return nuevaVentaId;
   });
 
@@ -5010,6 +5368,7 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
   if (items.length === 0) {
     return res.status(400).json({ error: 'Cargale al trabajo lo que se cobra antes de terminarlo.' });
   }
+  exigirLugarEnPlan(organizacionId, 'ventas_mes');
   const deposito = depositoPredeterminadoId(organizacionId);
   const errorStock = validarStockDisponible(items, deposito, organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
@@ -5055,6 +5414,7 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
         operacion_id: nuevaVentaId,
         detalle: `Presupuesto #${trabajo.presupuesto_id} convertido en la venta #${nuevaVentaId} al terminar su trabajo`
       });
+      ganarOportunidadesDelPresupuesto(req, trabajo.presupuesto_id, nuevaVentaId);
     }
     return nuevaVentaId;
   });
@@ -5751,6 +6111,9 @@ function crearCompra({
     if (!productoRow) {
       const { lastInsertRowid } = crearProducto.run(item.producto, organizacion_id);
       productoRow = { id: lastInsertRowid };
+      // El producto que la compra crea por nombre ocupa un lugar del plan
+      // (hist. §98): pasado el tope, el throw deshace toda la compra.
+      exigirLugarEnPlan(organizacion_id, 'productos', 0);
     }
     if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
     if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -5819,6 +6182,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
       return id;
     });
   } catch (err) {
+    // El tope del plan (un producto nuevo por nombre) sale con su 403.
+    if (err instanceof ErrorPlan) return res.status(err.status).json({ error: err.message, codigo: err.codigo });
     return res.status(400).json({ error: mensajeDeError(err) });
   }
 
@@ -6024,6 +6389,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       if (!productoRow) {
         const { lastInsertRowid } = crearProducto.run(item.producto, req.usuario.organizacion_id);
         productoRow = { id: lastInsertRowid };
+        exigirLugarEnPlan(req.usuario.organizacion_id, 'productos', 0);
       }
       if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
       if (item.variante_id && !buscarVariante.get(item.variante_id, productoRow.id)) {
@@ -9225,6 +9591,7 @@ app.post('/api/asistente/ejecutar', (req, res) => {
     if (!Array.isArray(propuesta?.items) || propuesta.items.length === 0) {
       return res.status(400).json({ error: 'La venta necesita al menos un item.' });
     }
+    exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
     const items = [];
     for (const item of propuesta.items) {
       if (!existeId('productos', item.producto?.id, req.usuario.organizacion_id)) {
@@ -9382,6 +9749,8 @@ app.post('/api/asistente/ejecutar', (req, res) => {
       });
     } catch (err) {
       marcarFallido(err.message);
+      // El tope del plan (un producto nuevo por nombre) se explica tal cual.
+      if (err instanceof ErrorPlan) return res.status(err.status).json({ error: err.message, codigo: err.codigo });
       return res.status(500).json({ error: 'No se pudo registrar la compra.' });
     }
 
@@ -9464,15 +9833,32 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 // que llega al frontend podría terminar siendo el del usuario, no el de
 // la fila de auditoría.
 //
-// soloAdmin (Etapa A, CLAUDE.md §28): valor_anterior/valor_nuevo traen el
-// JSON crudo de la operación, que para productos/ventas incluye costo,
-// margen y ganancia — justo los campos que el rol empleado no debería ver
-// en ningún otro endpoint (§35). Antes era 'ambos'; pasa a admin acá para
-// cerrar esa deuda. Filtro por organizacion_id: las filas con NULL (ver el
-// comentario de login_fallido más arriba) quedan afuera del listado de
-// cualquier empresa, por diseño.
-app.get('/api/auditoria', soloAdmin, (req, res) => {
+// Es de los dos roles (hist. §93). valor_anterior/valor_nuevo son texto JSON
+// y el filtro de campos sensibles de res.json no entra en un string: para el
+// empleado se parsean y se podan acá con el mismo podarSensibles (CLAUDE.md
+// §35). Las filas del circuito de compras no le llegan: ahí precio_unitario
+// es un costo, y el filtro por nombre de clave no lo distingue del precio de
+// venta (por eso ese circuito ya es admin entero). Filtro por
+// organizacion_id: las filas con NULL (ver el comentario de login_fallido más
+// arriba) quedan afuera del listado de cualquier empresa, por diseño.
+const ENTIDADES_AUDITORIA_SOLO_ADMIN = ['compra', 'pago', 'devolucion_proveedor'];
+
+function podarValorAuditoria(json) {
+  if (!json) return json;
+  try {
+    const podado = podarSensibles(JSON.parse(json));
+    return podado && typeof podado === 'object' && Object.keys(podado).length === 0 ? null : JSON.stringify(podado);
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/auditoria', (req, res) => {
   const limite = limiteDeConsulta(req.query.limit);
+  const esAdmin = req.usuario.rol === 'admin';
+  const sinCompras = esAdmin
+    ? ''
+    : `AND auditoria.entidad NOT IN (${ENTIDADES_AUDITORIA_SOLO_ADMIN.map(() => '?').join(', ')})`;
   const registros = db
     .prepare(
       `SELECT auditoria.id, auditoria.fecha, auditoria.actor, auditoria.accion,
@@ -9482,12 +9868,19 @@ app.get('/api/auditoria', soloAdmin, (req, res) => {
               auditoria.operacion_tipo, auditoria.operacion_id, auditoria.detalle
          FROM auditoria
          LEFT JOIN usuarios ON usuarios.id = auditoria.usuario_id
-        WHERE auditoria.organizacion_id = ?
+        WHERE auditoria.organizacion_id = ? ${sinCompras}
         ORDER BY auditoria.fecha DESC, auditoria.id DESC
         LIMIT ?`
     )
-    .all(req.usuario.organizacion_id, limite);
-  res.json(registros);
+    .all(req.usuario.organizacion_id, ...(esAdmin ? [] : ENTIDADES_AUDITORIA_SOLO_ADMIN), limite);
+  if (esAdmin) return res.json(registros);
+  res.json(
+    registros.map((r) => ({
+      ...r,
+      valor_anterior: podarValorAuditoria(r.valor_anterior),
+      valor_nuevo: podarValorAuditoria(r.valor_nuevo)
+    }))
+  );
 });
 
 /* ---------- Auth: sesión en curso (requieren estar logueado) ---------- */
@@ -9539,6 +9932,89 @@ app.post('/api/auth/cambiar-password', (req, res) => {
   res.status(204).end();
 });
 
+// Sumar o cambiar el mail de la cuenta (hist. §102). La primera vez es la
+// página obligatoria "Sumá tu mail" y no pide la contraseña (recién entró con
+// ella); cambiarlo sí, porque con el mail se recupera la cuenta: alguien que
+// encuentra una sesión abierta no puede quedársela. El mail nuevo queda sin
+// verificar, y al anterior le llega un aviso.
+app.post('/api/auth/email', (req, res) => {
+  const email = normalizarMail(req.body?.email);
+  if (!esMailValido(email)) {
+    return res.status(400).json({ error: 'Escribí un mail válido.' });
+  }
+  const cuenta = db
+    .prepare('SELECT id, nombre, email, password_hash, password_salt FROM usuarios WHERE id = ?')
+    .get(req.usuario.id);
+  if (cuenta.email === email) {
+    return res.status(400).json({ error: 'Ese ya es el mail de tu cuenta.' });
+  }
+  // Antes del scrypt: cada intento con contraseña cuesta ~100 ms de servidor.
+  if (registroExcedido(`mail:${cuenta.id}`)) {
+    return res.status(429).json({ error: 'Pediste demasiados cambios de mail. Probá de nuevo en una hora.' });
+  }
+  if (cuenta.email) {
+    const password = req.body?.password;
+    if (typeof password !== 'string' || !password || password.length > 1000) {
+      return res.status(400).json({ error: 'Escribí tu contraseña para cambiar el mail.' });
+    }
+    if (!verificarPassword(password, cuenta.password_hash, cuenta.password_salt)) {
+      return res.status(401).json({ error: 'La contraseña no es correcta.' });
+    }
+  }
+  if (mailEnUso(email, cuenta.id)) {
+    return res.status(409).json({ error: 'Ese mail ya lo usa otra cuenta de Nexo.' });
+  }
+
+  withTransaction(() => {
+    // En una cuenta nueva el usuario es el mail (ver el alta): si no lo sigue,
+    // el mail viejo seguiría entrando y nadie más podría usarlo. El usuario de
+    // una cuenta de antes de §102 ("dani") no se toca.
+    db.prepare(
+      `UPDATE usuarios
+          SET email = ?1, email_verificado = NULL,
+              usuario = CASE WHEN LOWER(usuario) = LOWER(email) THEN ?1 ELSE usuario END
+        WHERE id = ?2`
+    ).run(email, cuenta.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: cuenta.id,
+      valor_anterior: cuenta.email ? JSON.stringify({ email: cuenta.email }) : null,
+      valor_nuevo: JSON.stringify({ email }),
+      detalle: cuenta.email ? 'Cambió su mail' : 'Sumó su mail'
+    });
+  });
+
+  mandarVerificacion(req, { usuarioId: cuenta.id, nombre: cuenta.nombre, email });
+  if (cuenta.email) {
+    const { texto, html } = plantillaMail({
+      titulo: 'Cambió el mail de tu cuenta',
+      parrafos: [
+        `Hola, ${cuenta.nombre}.`,
+        `El mail de tu cuenta de Nexo pasó a ser ${email}. Desde ahora entrás con ese mail.`,
+        'Si no fuiste vos, respondé este mail y te ayudamos a recuperar la cuenta.'
+      ],
+      pie: 'Es un aviso de seguridad: te lo mandamos a tu mail anterior.'
+    });
+    mandarSinEsperar({ para: cuenta.email, asunto: 'Cambió el mail de tu cuenta de Nexo', texto, html });
+  }
+  res.json({ usuario: datosUsuario({ ...req.usuario, email, email_verificado: null }) });
+});
+
+// Otro enlace de verificación, desde el aviso del Resumen o Mi cuenta. Mismo
+// tope que el cambio de mail: es el mismo envío.
+app.post('/api/auth/email/reenviar', (req, res) => {
+  const cuenta = db.prepare('SELECT id, nombre, email, email_verificado FROM usuarios WHERE id = ?').get(req.usuario.id);
+  if (cuenta.email_verificado) {
+    return res.status(400).json({ error: 'Tu mail ya está confirmado.' });
+  }
+  if (registroExcedido(`mail:${cuenta.id}`)) {
+    return res.status(429).json({ error: 'Ya te mandamos varios enlaces. Probá de nuevo en una hora.' });
+  }
+  mandarVerificacion(req, { usuarioId: cuenta.id, nombre: cuenta.nombre, email: cuenta.email });
+  res.status(204).end();
+});
+
 /* ---------- Usuarios (ABM, solo admin) ---------- */
 
 app.get('/api/usuarios', soloAdmin, (req, res) => {
@@ -9548,7 +10024,8 @@ app.get('/api/usuarios', soloAdmin, (req, res) => {
   const usuarios = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol, pertenencia.activo,
-              usuarios.debe_cambiar_password, pertenencia.fecha_alta, pertenencia.ultimo_acceso
+              usuarios.debe_cambiar_password, pertenencia.fecha_alta, pertenencia.ultimo_acceso,
+              usuarios.email, usuarios.email_verificado
          FROM usuario_organizaciones pertenencia
          JOIN usuarios ON usuarios.id = pertenencia.usuario_id
         WHERE pertenencia.organizacion_id = ?
@@ -9604,6 +10081,7 @@ app.post('/api/usuarios', soloAdmin, (req, res) => {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
   const rolFinal = rol === 'admin' ? 'admin' : 'empleado';
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'usuarios');
 
   // Sin filtro por organización a propósito: `usuarios.usuario` tiene UNIQUE
   // global en el esquema y el login resuelve sin saber la empresa, así que el
@@ -9678,6 +10156,10 @@ app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
   if (nuevo.nombre !== anterior.nombre && !administraTodosSusNegocios(req.usuario.id, id)) {
     return res.status(409).json({ error: MENSAJE_USA_OTRO_NEGOCIO });
   }
+  // Reactivar a alguien vuelve a ocupar un lugar del plan (hist. §98).
+  if (anterior.activo === 0 && nuevo.activo === 1) {
+    exigirLugarEnPlan(organizacionId, 'usuarios');
+  }
 
   withTransaction(() => {
     if (nuevo.nombre !== anterior.nombre) {
@@ -9749,98 +10231,111 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   res.status(204).end();
 });
 
+/* ---------- Planes de Nexo (hist. §98) ---------- */
+
+// Los planes y sus topes viven en planes.js. Acá se cuenta cuánto usa cada
+// negocio y se frena lo que pasa el tope. Frenar nunca borra ni oculta nada:
+// un negocio cuya prueba venció sigue viendo y editando todo lo que cargó,
+// solo no suma más de lo que su plan permite.
+
+const NOMBRE_RECURSO = {
+  productos: { uno: 'producto o servicio activo', varios: 'productos o servicios activos' },
+  ventas_mes: { uno: 'venta por mes', varios: 'ventas por mes' },
+  usuarios: { uno: 'usuario', varios: 'usuarios' },
+  negocios: { uno: 'negocio', varios: 'negocios' }
+};
+
+// El primer día del mes de `hoy` (AAAA-MM-01) y el del mes siguiente.
+function limitesDelMes(hoy) {
+  const desde = `${hoy.slice(0, 7)}-01`;
+  const [y, m] = hoy.split('-').map(Number);
+  const hasta = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  return { desde, hasta };
+}
+
+// Cuánto usa hoy el negocio de cada recurso con tope. Las ventas son las del
+// mes de la Argentina, sin anular, y sin las cuotas que se generan solas
+// (socios y abonos): esas no las carga una persona y frenarlas dejaría a un
+// gimnasio sin cuotas.
+function usoDelPlan(organizacionId, hoy = fechaDeHoy()) {
+  const { desde, hasta } = limitesDelMes(hoy);
+  const contar = (sql, ...extra) => db.prepare(sql).get(organizacionId, ...extra).n;
+  return {
+    productos: contar('SELECT COUNT(*) AS n FROM productos WHERE organizacion_id = ? AND activo = 1'),
+    usuarios: contar('SELECT COUNT(*) AS n FROM usuario_organizaciones WHERE organizacion_id = ? AND activo = 1'),
+    ventas_mes: contar(
+      `SELECT COUNT(*) AS n FROM ventas
+        WHERE organizacion_id = ? AND estado = 'activa' AND fecha >= ? AND fecha < ?
+          AND id NOT IN (SELECT venta_id FROM cuotas_socio)
+          AND id NOT IN (SELECT venta_id FROM cuotas_abono)`,
+      desde,
+      hasta
+    )
+  };
+}
+
+// El plan del negocio como lo ve la página "Tu plan": el que rige hoy, el
+// guardado (distinto si la prueba venció), hasta cuándo y cuánto usa.
+function planDelNegocio(organizacionId) {
+  const hoy = fechaDeHoy();
+  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
+  const clave = planEfectivo(fila, hoy);
+  const plan = PLANES[clave];
+  const vigente = clave === fila.plan;
+  const uso = usoDelPlan(organizacionId, hoy);
+  return {
+    clave,
+    nombre: plan.nombre,
+    precio: plan.precio,
+    marca: plan.marca,
+    vence: vigente ? fila.plan_vence : null,
+    // diffDias es inclusivo: el último día de la prueba quedan 0 días más.
+    dias_restantes: vigente && fila.plan_vence ? diffDias(hoy, fila.plan_vence) : null,
+    // La prueba (o el plan pago) que terminó: la página explica por qué está
+    // en Gratis.
+    vencido: vigente ? null : { clave: fila.plan, nombre: PLANES[fila.plan]?.nombre ?? fila.plan, vencio: fila.plan_vence },
+    uso: Object.fromEntries(
+      ['productos', 'ventas_mes', 'usuarios'].map((recurso) => [recurso, { usados: uso[recurso], tope: plan[recurso] }])
+    )
+  };
+}
+
+// Frena (ErrorPlan, 403) si sumar `nuevos` de `recurso` pasa el tope del plan
+// que rige hoy. Con nuevos = 0 controla lo que ya se insertó adentro de una
+// transacción (los productos que una compra crea por nombre): el throw hace
+// ROLLBACK.
+function exigirLugarEnPlan(organizacionId, recurso, nuevos = 1) {
+  const hoy = fechaDeHoy();
+  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
+  const clave = planEfectivo(fila, hoy);
+  const tope = PLANES[clave][recurso];
+  if (tope === null) return;
+  const usados = recurso === 'negocios' ? 1 : usoDelPlan(organizacionId, hoy)[recurso];
+  if (usados + nuevos <= tope) return;
+  const siguiente = planQuePermite(recurso, tope);
+  const nombre = NOMBRE_RECURSO[recurso];
+  const cuanto = `${tope} ${tope === 1 ? nombre.uno : nombre.varios}`;
+  throw new ErrorPlan(
+    recurso === 'negocios'
+      ? `El plan ${PLANES[clave].nombre} es de un solo negocio. Con el plan ${PLANES[siguiente].nombre} sumás los que quieras.`
+      : `El plan ${PLANES[clave].nombre} llega hasta ${cuanto}. Pasá al plan ${PLANES[siguiente].nombre} para sumar más.`
+  );
+}
+
+// Los planes para la landing y el alta, con el contacto público si está
+// configurado. Es el mismo catálogo para todos y no tiene datos de ninguna
+// empresa.
+function catalogoPlanes() {
+  return {
+    planes: Object.entries(PLANES).map(([clave, plan]) => ({ clave, ...plan })),
+    dias_prueba: DIAS_PRUEBA,
+    contacto: { whatsapp: process.env.NEXO_CONTACTO_WHATSAPP?.replace(/\D/g, '') || null }
+  };
+}
+
 /* ---------- Tipo de negocio y módulos (CLAUDE.md §29) ---------- */
 
-// Cada tipo de negocio es un preset de datos —la unidad y el tipo con que nace
-// un producto nuevo, y qué módulos se ven—, nunca un camino de código propio.
-// Los módulos son las secciones opcionales del menú; el núcleo (productos,
-// clientes, ventas, caja, cuentas corrientes, gastos) se ve siempre. Ocultar
-// un módulo es de la interfaz: los permisos siguen siendo los de permisos.js.
-//
-// `descripcion` e `icono` (id del sprite del frontend) son lo que muestran las
-// tarjetas del alta guiada y de Configuración: viven acá para que la lista de
-// tipos esté en un solo lugar. `catalogo` es cómo se llama la sección de lo que
-// se vende, en plural y en singular (hist. §78); sin él, "productos".
-const MODULOS = ['pos', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios'];
-const MODULOS_INFO = {
-  pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
-  presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
-  trabajos: { nombre: 'Trabajos', descripcion: 'Lo que tenés que hacer para cada cliente: cuándo, quién y, al terminar, la venta.', icono: 'clipboard-list' },
-  abonos: { nombre: 'Abonos', descripcion: 'Servicios que tus clientes pagan todos los meses, con la cuota que se arma sola.', icono: 'repeat' },
-  compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
-  stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
-  socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
-};
-const PERFILES_RUBRO = {
-  comercio: {
-    nombre: 'Comercio general',
-    descripcion: 'Ropa, ferretería, librería o regalería: productos con talles, colores y códigos.',
-    icono: 'store',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'presupuestos', 'compras', 'stock']
-  },
-  carniceria: {
-    nombre: 'Carnicería',
-    descripcion: 'Cortes y fiambres por kilo, con venta rápida en el mostrador.',
-    icono: 'beef',
-    unidad_defecto: 'kg',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
-  },
-  verduleria: {
-    nombre: 'Verdulería',
-    descripcion: 'Frutas y verduras por kilo o por unidad.',
-    icono: 'carrot',
-    unidad_defecto: 'kg',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
-  },
-  kiosco: {
-    nombre: 'Kiosco / almacén',
-    descripcion: 'Golosinas, bebidas y almacén, cobrando rápido con el lector.',
-    icono: 'cup-soda',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock']
-  },
-  servicios: {
-    nombre: 'Servicios',
-    descripcion: 'Presupuestos, agenda de trabajos y abonos mensuales, sin manejar stock.',
-    icono: 'briefcase',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'servicio',
-    catalogo: { plural: 'servicios', singular: 'servicio' },
-    modulos: ['presupuestos', 'trabajos', 'abonos']
-  },
-  // Un gimnasio también compra y vende productos (hist. §71): es un comercio
-  // al que se le suman los socios y sus cuotas (hist. §74).
-  gimnasio: {
-    nombre: 'Gimnasio',
-    descripcion: 'Socios con planes, cuotas e ingreso en la recepción, y venta de suplementos, bebidas y ropa.',
-    icono: 'dumbbell',
-    unidad_defecto: 'unidad',
-    tipo_defecto: 'producto',
-    modulos: ['pos', 'compras', 'stock', 'socios']
-  }
-};
-const RUBRO_POR_DEFECTO = 'comercio';
-const CATALOGO_POR_DEFECTO = { plural: 'productos', singular: 'producto' };
-// Se muestran en el alta con "Próximamente", pero no se pueden elegir: cada uno
-// espera su módulo (turnos, mesas y comandas), que se va a poder sumar a
-// cualquier negocio (CLAUDE.md §29).
-const RUBROS_PROXIMAMENTE = {
-  peluqueria: { nombre: 'Barbería / peluquería', descripcion: 'Turnos con calendario y recordatorios a tus clientes.', icono: 'scissors' },
-  restaurante: { nombre: 'Restaurante / bar', descripcion: 'Mesas, comandas y pedidos a la cocina.', icono: 'utensils' }
-};
-
-// Los módulos del tipo, como se guardan en organizaciones.modulos (en el orden
-// de MODULOS, separados por espacios). Un tipo desconocido es comercio, igual
-// que en perfilDeEmpresa().
-function modulosDelPreset(rubro) {
-  const perfil = PERFILES_RUBRO[Object.hasOwn(PERFILES_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO];
-  return MODULOS.filter((m) => perfil.modulos.includes(m)).join(' ');
-}
+// Los tipos y sus presets viven en perfiles.js, que también lee db/index.js.
 
 function catalogoTiposNegocio() {
   const lista = (tabla) => Object.entries(tabla).map(([clave, datos]) => ({ clave, ...datos }));
@@ -9851,8 +10346,9 @@ function catalogoTiposNegocio() {
   };
 }
 
-// organizaciones.modulos NULL = los del preset del rubro; si no, la lista que
-// eligió el admin, separada por espacios.
+// organizaciones.modulos es la lista que eligió el admin, separada por
+// espacios. Desde hist. §88 siempre está cargada (db/index.js completó las
+// viejas): el NULL al preset queda solo por si acaso.
 function perfilDeEmpresa(organizacionId) {
   const fila = db.prepare('SELECT rubro, modulos FROM organizaciones WHERE id = ?').get(organizacionId);
   const rubro = Object.hasOwn(PERFILES_RUBRO, fila?.rubro ?? '') ? fila.rubro : RUBRO_POR_DEFECTO;
@@ -9993,7 +10489,16 @@ app.get('/api/negocio', (req, res) => {
   }
   // Con el perfil efectivo y el catálogo de tipos y módulos, así las tarjetas
   // de Configuración no repiten la tabla.
-  res.json({ ...negocio, ...perfilDeEmpresa(req.usuario.organizacion_id), perfiles: catalogoTiposNegocio() });
+  // El plan va para los dos roles: el comprobante de un negocio Gratis lleva
+  // "Hecho con Nexo" lo imprima quien lo imprima. El uso son conteos, nada
+  // sensible.
+  res.json({
+    ...negocio,
+    ...perfilDeEmpresa(req.usuario.organizacion_id),
+    perfiles: catalogoTiposNegocio(),
+    plan: planDelNegocio(req.usuario.organizacion_id),
+    planes: catalogoPlanes()
+  });
 });
 
 // Cuánto tiene cargado el negocio, para la guía de primeros pasos del Resumen
@@ -10016,7 +10521,8 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
     planes: contar('SELECT COUNT(*) AS n FROM planes_socio WHERE organizacion_id = ?'),
     socios: contar('SELECT COUNT(*) AS n FROM socios WHERE organizacion_id = ?'),
     trabajos: contar('SELECT COUNT(*) AS n FROM trabajos WHERE organizacion_id = ?'),
-    abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?')
+    abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?'),
+    consultas: contar('SELECT COUNT(*) AS n FROM crm_oportunidades WHERE organizacion_id = ?')
   });
 });
 
@@ -10039,14 +10545,9 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
-  // Cambiar el tipo sin mandar módulos vuelve a los del preset, y mandar justo
-  // los del preset también: la empresa sigue al tipo, como en el alta.
-  if (datos.rubro !== undefined && datos.modulos === undefined && datos.rubro !== (anterior?.rubro ?? RUBRO_POR_DEFECTO)) {
-    datos.modulos = null;
-  }
-  if (datos.modulos && datos.modulos === modulosDelPreset(datos.rubro ?? anterior?.rubro)) {
-    datos.modulos = null;
-  }
+  // Cambiar el tipo no toca los módulos (hist. §88): solo cambia con qué
+  // unidad y tipo nace un producto nuevo. Antes volvía a los del preset, y un
+  // gimnasio pasado a Servicios perdía de vista sus socios.
   const nuevo = { ...anterior, ...datos };
 
   const cambios = diffCampos(anterior, nuevo, CAMPOS_NEGOCIO);
@@ -10153,10 +10654,21 @@ app.post('/api/negocios', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  // Sumar negocios es de Pro (hist. §98), y el nuevo nace con el plan de este
+  // y su mismo vencimiento: se pagan juntos.
+  exigirLugarEnPlan(req.usuario.organizacion_id, 'negocios');
+  const planActual = db
+    .prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?')
+    .get(req.usuario.organizacion_id);
 
   const token = leerCookie(req, COOKIE_SESION);
   const id = withTransaction(() => {
     const orgId = insertarNegocio(datos);
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(
+      planActual.plan,
+      planActual.plan_vence,
+      orgId
+    );
     sumarAlNegocio(req.usuario.id, orgId, 'admin');
     registrarAuditoria({
       accion: 'crear',
@@ -10445,6 +10957,7 @@ app.post('/api/pos/ventas', (req, res) => {
   }
   const errorItems = validarItemsVenta(items);
   if (errorItems) return res.status(400).json({ error: errorItems });
+  exigirLugarEnPlan(organizacionId, 'ventas_mes');
   const errorStock = validarStockDisponible(items, depositoPredeterminadoId(organizacionId), organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
 
@@ -11167,6 +11680,8 @@ app.post('/api/planes-socio', soloAdmin, (req, res) => {
   if (nombreDePlanRepetido(datos.nombre, organizacionId)) {
     return res.status(400).json({ error: 'Ya hay un plan con ese nombre.' });
   }
+  // Su servicio es un producto activo más del catálogo (hist. §98).
+  exigirLugarEnPlan(organizacionId, 'productos');
   const planId = withTransaction(() => {
     const { lastInsertRowid: productoId } = db
       .prepare(
@@ -11409,6 +11924,8 @@ app.post('/api/socios', (req, res) => {
   if (errorFecha) return res.status(400).json({ error: errorFecha });
   const manual = descuentoManualPedido(descuento_id, organizacionId);
   if (manual.error) return res.status(400).json({ error: manual.error });
+  // Desde una consulta (hist. §89): el alta del socio la gana.
+  const oportunidad = oportunidadParaVincular(req.body?.crm_oportunidad_id, organizacionId);
 
   let existente = null;
   let datosNuevo = null;
@@ -11481,6 +11998,7 @@ app.post('/api/socios', (req, res) => {
         (manual.id ? `, con el descuento "${manual.nombre}"` : '')
     });
     for (const inscripcionId of inscripciones) generarCuotasDe(inscripcionId, hoy);
+    vincularOportunidad(req, oportunidad, { cliente_id: clienteId, socio_id: id });
     return id;
   });
   res.status(201).json(detalleSocio(socioId, organizacionId));
@@ -12027,6 +12545,910 @@ app.patch('/api/abonos/:id', soloAdmin, (req, res) => {
   res.json({ id: abono.id });
 });
 
+/* ---------- Consultas (CRM) ---------- */
+// Consultas y clientes potenciales (CLAUDE.md §29, hist. §89; el diseño está
+// en docs/investigacion-crm-servicios.md §2). Es un módulo que puede prender
+// cualquier negocio: el tipo solo decide con qué etapas nace el embudo (datos
+// de perfiles.js). No es un circuito propio:
+// - una consulta pasa a cliente, presupuesto, venta o socio con las altas de
+//   siempre, que reciben `crm_oportunidad_id` y la dejan vinculada;
+// - se gana sola cuando sale su venta o su socio, o cuando su presupuesto se
+//   convierte en venta (también al terminar el trabajo que lo convierte).
+// Es de los dos roles, salvo las etapas, que se editan en Configuración. La
+// auditoría va como entidad cliente (u organizacion, si todavía es un
+// contacto suelto) con operacion_tipo oportunidad, sin reconstruir auditoria.
+
+// De dónde llegó la consulta. La clave es lo que se guarda.
+const ORIGENES_CRM = {
+  whatsapp: 'WhatsApp',
+  instagram: 'Instagram',
+  local: 'Pasó por el local',
+  conocido: 'Un conocido',
+  web: 'La web',
+  otro: 'Otro'
+};
+const TIPOS_ACTIVIDAD = ['llamada', 'mensaje', 'visita', 'nota', 'tarea'];
+const LARGOS_OPORTUNIDAD = { nombre: 120, telefono: 40, email: 120, interes: 300 };
+const LARGO_MOTIVO_PERDIDA = 300;
+const LARGO_ACTIVIDAD = 1000;
+const LARGO_ETAPA = 40;
+// "Para hoy" avisa los presupuestos enviados hace al menos estos días que
+// siguen sin respuesta.
+const DIAS_PRESUPUESTO_SIN_RESPUESTA = 7;
+// "Dejaron de comprar": los que no compran hace más de estos días.
+const DIAS_INACTIVO_POR_DEFECTO = 90;
+
+// La próxima acción no se guarda (hist. §89): es la actividad pendiente más
+// próxima. Una pendiente siempre tiene fecha. Nombre, teléfono y email salen
+// del cliente cuando ya lo es, así un cambio en su ficha se ve acá.
+const SELECT_OPORTUNIDAD = `
+  SELECT o.id, o.cliente_id, COALESCE(clientes.nombre, o.contacto_nombre) AS nombre,
+         COALESCE(clientes.telefono, o.contacto_telefono) AS telefono,
+         COALESCE(clientes.email, o.contacto_email) AS email,
+         o.origen, o.interes, o.valor_estimado, o.responsable_id, usuarios.nombre AS responsable,
+         o.etapa_id, crm_etapas.nombre AS etapa, o.estado, o.motivo_perdida, o.fecha_cierre,
+         o.presupuesto_id, o.venta_id, o.socio_id, o.fecha, o.fecha_creacion,
+         proxima.id AS proxima_id, proxima.tipo AS proxima_tipo,
+         proxima.descripcion AS proxima_descripcion, proxima.fecha AS proxima_fecha
+    FROM crm_oportunidades o
+    JOIN crm_etapas ON crm_etapas.id = o.etapa_id
+    LEFT JOIN clientes ON clientes.id = o.cliente_id
+    LEFT JOIN usuarios ON usuarios.id = o.responsable_id
+    LEFT JOIN crm_actividades proxima ON proxima.id = (
+      SELECT a.id FROM crm_actividades a
+       WHERE a.oportunidad_id = o.id AND a.hecha = 0
+       ORDER BY a.fecha, a.id LIMIT 1)`;
+
+const SELECT_ACTIVIDAD = `
+  SELECT a.id, a.oportunidad_id, a.cliente_id, a.tipo, a.descripcion, a.fecha, a.hecha, a.fecha_hecha,
+         a.usuario_id, usuarios.nombre AS usuario, a.fecha_creacion,
+         COALESCE(clientes.nombre, o.contacto_nombre) AS nombre
+    FROM crm_actividades a
+    LEFT JOIN crm_oportunidades o ON o.id = a.oportunidad_id
+    LEFT JOIN clientes ON clientes.id = COALESCE(a.cliente_id, o.cliente_id)
+    LEFT JOIN usuarios ON usuarios.id = a.usuario_id`;
+
+function oportunidadDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_OPORTUNIDAD} WHERE o.id = ? AND o.organizacion_id = ?`).get(id, organizacionId);
+}
+
+function actividadDeLaEmpresa(id, organizacionId) {
+  return db.prepare(`${SELECT_ACTIVIDAD} WHERE a.id = ? AND a.organizacion_id = ?`).get(id, organizacionId);
+}
+
+function etapaDeLaEmpresa(id, organizacionId) {
+  return db.prepare('SELECT id, nombre, orden, activa FROM crm_etapas WHERE id = ? AND organizacion_id = ?').get(id, organizacionId);
+}
+
+// Cómo está la consulta para el que la mira: sin próxima acción, con la acción
+// vencida, para hoy o al día. Solo de una abierta.
+function conAviso(oportunidad, hoy) {
+  let aviso = null;
+  if (oportunidad.estado === 'abierta') {
+    if (!oportunidad.proxima_id) aviso = 'sin_accion';
+    else if (oportunidad.proxima_fecha < hoy) aviso = 'vencida';
+    else if (oportunidad.proxima_fecha === hoy) aviso = 'hoy';
+  }
+  return { ...oportunidad, origen_nombre: ORIGENES_CRM[oportunidad.origen] ?? null, aviso };
+}
+
+// Audita sobre el cliente si ya lo es, y sobre el negocio si todavía es un
+// contacto suelto: las dos entidades ya están en el CHECK de auditoria.
+function auditarOportunidad(req, oportunidad, datos) {
+  auditar(req, {
+    entidad: oportunidad.cliente_id ? 'cliente' : 'organizacion',
+    entidad_id: oportunidad.cliente_id ?? req.usuario.organizacion_id,
+    operacion_tipo: 'oportunidad',
+    operacion_id: oportunidad.id,
+    ...datos
+  });
+}
+
+function usuarioActivoDelNegocio(usuarioId, organizacionId) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1')
+      .get(usuarioId, organizacionId)
+  );
+}
+
+// Valida los datos de una consulta, para el alta y la edición. Devuelve
+// { error } o { datos }. Con un cliente (cliente_id) el nombre es el suyo; si
+// no, hace falta el del contacto. El alta rápida manda solo nombre, teléfono y
+// qué busca.
+function validarOportunidad(cuerpo, organizacionId) {
+  const datos = {};
+  for (const campo of Object.keys(LARGOS_OPORTUNIDAD)) {
+    const valor = cuerpo?.[campo];
+    if (valor != null && typeof valor !== 'string') return { error: 'Los datos de la consulta no son válidos.' };
+    const texto = (valor ?? '').trim();
+    if (texto.length > LARGOS_OPORTUNIDAD[campo]) {
+      return { error: `El campo ${campo === 'interes' ? '"qué busca"' : campo} no puede pasar de ${LARGOS_OPORTUNIDAD[campo]} caracteres.` };
+    }
+    datos[campo] = texto || null;
+  }
+  if (datos.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.email)) return { error: 'El email no es válido.' };
+
+  datos.cliente_id = null;
+  if (cuerpo?.cliente_id != null && cuerpo.cliente_id !== '') {
+    const cliente = db
+      .prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?')
+      .get(Number(cuerpo.cliente_id), organizacionId);
+    if (!cliente) return { error: 'El cliente no existe.' };
+    if (cliente.nombre === CONSUMIDOR_FINAL) return { error: '"Consumidor final" no puede tener consultas: cargá a la persona.' };
+    datos.cliente_id = cliente.id;
+    datos.nombre = cliente.nombre;
+  }
+  if (!datos.nombre) return { error: 'Anotá el nombre de quien consulta.' };
+
+  const origen = cuerpo?.origen ?? null;
+  if (origen !== null && origen !== '' && !Object.hasOwn(ORIGENES_CRM, origen)) return { error: 'El origen no es válido.' };
+  datos.origen = origen || null;
+
+  const valor = cuerpo?.valor_estimado;
+  datos.valor_estimado = null;
+  if (valor != null && valor !== '') {
+    const numero = Number(valor);
+    if (!Number.isFinite(numero) || numero < 0) return { error: 'El valor estimado tiene que ser un número positivo.' };
+    datos.valor_estimado = redondear2(numero);
+  }
+
+  const responsable = cuerpo?.responsable_id ?? null;
+  datos.responsable_id = null;
+  if (responsable !== null && responsable !== '') {
+    if (!usuarioActivoDelNegocio(Number(responsable), organizacionId)) {
+      return { error: 'El responsable no es un usuario de este negocio.' };
+    }
+    datos.responsable_id = Number(responsable);
+  }
+
+  datos.etapa_id = null;
+  if (cuerpo?.etapa_id != null && cuerpo.etapa_id !== '') {
+    const etapa = etapaDeLaEmpresa(Number(cuerpo.etapa_id), organizacionId);
+    if (!etapa || !etapa.activa) return { error: 'La etapa no existe.' };
+    datos.etapa_id = etapa.id;
+  }
+  return { datos };
+}
+
+// La consulta que llega con un alta de presupuesto, venta o socio
+// (`crm_oportunidad_id`). Se valida antes de la transacción del alta; null si
+// no vino ninguna.
+function oportunidadParaVincular(valor, organizacionId) {
+  if (valor == null || valor === '') return null;
+  const oportunidad = db
+    .prepare('SELECT id, cliente_id, estado FROM crm_oportunidades WHERE id = ? AND organizacion_id = ?')
+    .get(Number(valor), organizacionId);
+  if (!oportunidad) throw new ErrorValidacion('La consulta no existe.');
+  return oportunidad;
+}
+
+function ganarOportunidad(req, oportunidad, motivo) {
+  db.prepare("UPDATE crm_oportunidades SET estado = 'ganada', motivo_perdida = NULL, fecha_cierre = ? WHERE id = ?").run(
+    fechaDeHoy(),
+    oportunidad.id
+  );
+  auditarOportunidad(req, oportunidad, {
+    accion: 'cambiar_estado',
+    valor_anterior: JSON.stringify({ estado: oportunidad.estado }),
+    valor_nuevo: JSON.stringify({ estado: 'ganada' }),
+    detalle: `Consulta #${oportunidad.id} ganada: ${motivo}`
+  });
+}
+
+// Deja la consulta vinculada a lo que generó, adentro de la transacción del
+// alta. El cliente se toma si todavía no tenía. Una venta o un socio la ganan
+// (si sigue abierta); un presupuesto no, porque todavía puede no aceptarse.
+function vincularOportunidad(req, oportunidad, { cliente_id = null, presupuesto_id = null, venta_id = null, socio_id = null }) {
+  if (!oportunidad) return;
+  // Una venta de mostrador va a "Consumidor final": ese no pasa a ser el cliente de la consulta.
+  if (cliente_id && db.prepare('SELECT nombre FROM clientes WHERE id = ?').get(cliente_id)?.nombre === CONSUMIDOR_FINAL) cliente_id = null;
+  db.prepare(
+    `UPDATE crm_oportunidades
+        SET cliente_id = COALESCE(cliente_id, ?), presupuesto_id = COALESCE(?, presupuesto_id),
+            venta_id = COALESCE(?, venta_id), socio_id = COALESCE(?, socio_id)
+      WHERE id = ?`
+  ).run(cliente_id, presupuesto_id, venta_id, socio_id, oportunidad.id);
+  const vinculada = { ...oportunidad, cliente_id: oportunidad.cliente_id ?? cliente_id };
+  const que = presupuesto_id ? `el presupuesto #${presupuesto_id}` : venta_id ? `la venta #${venta_id}` : `el socio #${socio_id}`;
+  auditarOportunidad(req, vinculada, { accion: 'editar', detalle: `Consulta #${oportunidad.id} pasó a ${que}` });
+  if ((venta_id || socio_id) && oportunidad.estado === 'abierta') ganarOportunidad(req, vinculada, `pasó a ${que}`);
+}
+
+// Un presupuesto que se convierte en venta gana las consultas abiertas que lo
+// generaron, y les deja la venta. Adentro de la transacción de la conversión.
+function ganarOportunidadesDelPresupuesto(req, presupuestoId, ventaId) {
+  const abiertas = db
+    .prepare("SELECT id, cliente_id, estado FROM crm_oportunidades WHERE presupuesto_id = ? AND estado = 'abierta'")
+    .all(presupuestoId);
+  for (const oportunidad of abiertas) {
+    db.prepare('UPDATE crm_oportunidades SET venta_id = COALESCE(venta_id, ?) WHERE id = ?').run(ventaId, oportunidad.id);
+    ganarOportunidad(req, oportunidad, `su presupuesto #${presupuestoId} pasó a la venta #${ventaId}`);
+  }
+}
+
+// --- Etapas ---
+
+app.get('/api/crm/etapas', (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT crm_etapas.id, crm_etapas.nombre, crm_etapas.orden, crm_etapas.activa,
+                (SELECT COUNT(*) FROM crm_oportunidades o
+                  WHERE o.etapa_id = crm_etapas.id AND o.estado = 'abierta') AS abiertas
+           FROM crm_etapas WHERE crm_etapas.organizacion_id = ?
+          ORDER BY crm_etapas.orden, crm_etapas.id`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+function nombreDeEtapa(valor) {
+  if (typeof valor !== 'string' || !valor.trim()) return { error: 'La etapa necesita un nombre.' };
+  const nombre = valor.trim();
+  if (nombre.length > LARGO_ETAPA) return { error: `El nombre de la etapa no puede pasar de ${LARGO_ETAPA} caracteres.` };
+  // Ganada y Perdida son los cierres de toda consulta: una etapa con ese
+  // nombre confundiría el embudo.
+  if (['ganada', 'perdida'].includes(nombre.toLowerCase())) {
+    return { error: 'Ganada y Perdida ya son los cierres de toda consulta: elegí otro nombre.' };
+  }
+  return { nombre };
+}
+
+function etapaRepetida(nombre, organizacionId, salvoId = 0) {
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM crm_etapas WHERE organizacion_id = ? AND nombre = ? COLLATE NOCASE AND id <> ?')
+      .get(organizacionId, nombre, salvoId)
+  );
+}
+
+app.post('/api/crm/etapas', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, nombre } = nombreDeEtapa(req.body?.nombre);
+  if (error) return res.status(400).json({ error });
+  if (etapaRepetida(nombre, organizacionId)) return res.status(400).json({ error: `Ya hay una etapa "${nombre}".` });
+  const id = withTransaction(() => {
+    const { orden } = db
+      .prepare('SELECT COALESCE(MAX(orden), 0) + 1 AS orden FROM crm_etapas WHERE organizacion_id = ?')
+      .get(organizacionId);
+    const nuevoId = Number(
+      db.prepare('INSERT INTO crm_etapas (nombre, orden, organizacion_id) VALUES (?, ?, ?)').run(nombre, orden, organizacionId)
+        .lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'crm_etapa',
+      operacion_id: nuevoId,
+      detalle: `Etapa de consultas "${nombre}" creada`
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Renombrarla o pausarla ({ nombre?, activa? }). Una pausada no se ofrece para
+// mover, pero lo que está en ella sigue ahí. Siempre queda al menos una
+// activa: es donde entra una consulta nueva.
+app.put('/api/crm/etapas/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const etapa = etapaDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!etapa) return res.status(404).json({ error: 'Etapa no encontrada.' });
+  let nombre = etapa.nombre;
+  if (req.body?.nombre !== undefined) {
+    const resultado = nombreDeEtapa(req.body.nombre);
+    if (resultado.error) return res.status(400).json({ error: resultado.error });
+    nombre = resultado.nombre;
+    if (etapaRepetida(nombre, organizacionId, etapa.id)) return res.status(400).json({ error: `Ya hay una etapa "${nombre}".` });
+  }
+  let activa = etapa.activa;
+  if (req.body?.activa !== undefined) {
+    if (typeof req.body.activa !== 'boolean') return res.status(400).json({ error: 'Los datos de la etapa no son válidos.' });
+    activa = req.body.activa ? 1 : 0;
+  }
+  if (!activa && etapa.activa) {
+    const { count } = db
+      .prepare('SELECT COUNT(*) AS count FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 AND id <> ?')
+      .get(organizacionId, etapa.id);
+    if (count === 0) return res.status(400).json({ error: 'Tiene que quedar al menos una etapa activa: ahí entran las consultas nuevas.' });
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE crm_etapas SET nombre = ?, activa = ? WHERE id = ?').run(nombre, activa, etapa.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      valor_anterior: JSON.stringify({ nombre: etapa.nombre, activa: etapa.activa }),
+      valor_nuevo: JSON.stringify({ nombre, activa }),
+      operacion_tipo: 'crm_etapa',
+      operacion_id: etapa.id,
+      detalle: `Etapa de consultas "${nombre}" editada`
+    });
+  });
+  res.json({ id: etapa.id });
+});
+
+// El orden del embudo: { ids } con todas las etapas del negocio, en el orden
+// nuevo.
+app.patch('/api/crm/etapas/orden', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const ids = req.body?.ids;
+  const actuales = db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? ORDER BY orden, id').all(organizacionId).map((e) => e.id);
+  const pedidos = Array.isArray(ids) ? ids.map(Number) : [];
+  if (pedidos.length !== actuales.length || new Set(pedidos).size !== pedidos.length || !pedidos.every((id) => actuales.includes(id))) {
+    return res.status(400).json({ error: 'Mandá todas las etapas del negocio, cada una una vez.' });
+  }
+  withTransaction(() => {
+    const actualizar = db.prepare('UPDATE crm_etapas SET orden = ? WHERE id = ?');
+    pedidos.forEach((id, i) => actualizar.run(i + 1, id));
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      valor_anterior: JSON.stringify({ orden: actuales }),
+      valor_nuevo: JSON.stringify({ orden: pedidos }),
+      operacion_tipo: 'crm_etapa',
+      detalle: 'Orden de las etapas de consultas cambiado'
+    });
+  });
+  res.json({ ids: pedidos });
+});
+
+// --- Oportunidades ---
+
+// Los orígenes que se pueden elegir, en el orden en que se muestran.
+app.get('/api/crm/origenes', (req, res) => {
+  res.json(Object.entries(ORIGENES_CRM).map(([clave, nombre]) => ({ clave, nombre })));
+});
+
+// Todas las del negocio, o las de un estado (?estado=abierta|ganada|perdida)
+// o de un cliente (?cliente_id=). Las abiertas primero, de la más nueva a la
+// más vieja.
+app.get('/api/crm/oportunidades', (req, res) => {
+  const filtros = ['o.organizacion_id = ?'];
+  const valores = [req.usuario.organizacion_id];
+  const { estado, cliente_id } = req.query;
+  if (estado !== undefined) {
+    if (!['abierta', 'ganada', 'perdida'].includes(estado)) return res.status(400).json({ error: 'El estado no es válido.' });
+    filtros.push('o.estado = ?');
+    valores.push(estado);
+  }
+  if (cliente_id !== undefined) {
+    filtros.push('o.cliente_id = ?');
+    valores.push(Number(cliente_id));
+  }
+  const hoy = fechaDeHoy();
+  res.json(
+    db
+      .prepare(`${SELECT_OPORTUNIDAD} WHERE ${filtros.join(' AND ')} ORDER BY o.estado <> 'abierta', o.id DESC`)
+      .all(...valores)
+      .map((o) => conAviso(o, hoy))
+  );
+});
+
+app.get('/api/crm/oportunidades/:id', (req, res) => {
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), req.usuario.organizacion_id);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  const actividades = db
+    .prepare(`${SELECT_ACTIVIDAD} WHERE a.oportunidad_id = ? ORDER BY a.hecha, a.fecha DESC, a.id DESC`)
+    .all(oportunidad.id);
+  const presupuesto = oportunidad.presupuesto_id
+    ? db.prepare('SELECT id, estado, fecha FROM presupuestos WHERE id = ?').get(oportunidad.presupuesto_id)
+    : null;
+  const socio = oportunidad.socio_id ? db.prepare('SELECT id, numero FROM socios WHERE id = ?').get(oportunidad.socio_id) : null;
+  res.json({ ...conAviso(oportunidad, fechaDeHoy()), actividades, presupuesto, socio });
+});
+
+app.post('/api/crm/oportunidades', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarOportunidad(req.body, organizacionId);
+  if (error) return res.status(400).json({ error });
+  const etapaId =
+    datos.etapa_id ??
+    db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 ORDER BY orden, id LIMIT 1').get(organizacionId)?.id;
+  if (!etapaId) return res.status(400).json({ error: 'El embudo no tiene ninguna etapa activa. Sumá una en Configuración.' });
+  const id = withTransaction(() => {
+    const nuevoId = Number(
+      db
+        .prepare(
+          `INSERT INTO crm_oportunidades
+             (cliente_id, contacto_nombre, contacto_telefono, contacto_email, origen, interes, valor_estimado,
+              responsable_id, etapa_id, fecha, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          datos.cliente_id,
+          datos.nombre,
+          datos.telefono,
+          datos.email,
+          datos.origen,
+          datos.interes,
+          datos.valor_estimado,
+          datos.responsable_id,
+          etapaId,
+          fechaDeHoy(),
+          organizacionId
+        ).lastInsertRowid
+    );
+    auditarOportunidad(req, { id: nuevoId, cliente_id: datos.cliente_id }, {
+      accion: 'crear',
+      detalle: `Consulta #${nuevoId} de ${datos.nombre}` + (datos.interes ? `: ${datos.interes}` : '')
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Editar los datos (los mismos del alta). La etapa se mueve con PATCH .../etapa.
+app.put('/api/crm/oportunidades/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  // Una que ya es cliente sigue siéndolo: el nombre es el de su ficha.
+  const cuerpo = { ...req.body, cliente_id: oportunidad.cliente_id ?? req.body?.cliente_id, etapa_id: undefined };
+  const { error, datos } = validarOportunidad(cuerpo, organizacionId);
+  if (error) return res.status(400).json({ error });
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE crm_oportunidades
+          SET cliente_id = ?, contacto_nombre = ?, contacto_telefono = ?, contacto_email = ?, origen = ?, interes = ?,
+              valor_estimado = ?, responsable_id = ?
+        WHERE id = ?`
+    ).run(
+      datos.cliente_id,
+      datos.nombre,
+      datos.telefono,
+      datos.email,
+      datos.origen,
+      datos.interes,
+      datos.valor_estimado,
+      datos.responsable_id,
+      oportunidad.id
+    );
+    auditarOportunidad(req, { ...oportunidad, cliente_id: datos.cliente_id }, {
+      accion: 'editar',
+      valor_anterior: JSON.stringify({ interes: oportunidad.interes, valor_estimado: oportunidad.valor_estimado, origen: oportunidad.origen }),
+      valor_nuevo: JSON.stringify({ interes: datos.interes, valor_estimado: datos.valor_estimado, origen: datos.origen }),
+      detalle: `Consulta #${oportunidad.id} de ${datos.nombre} editada`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Mover de etapa (arrastrar en el embudo). Solo una abierta, y a una etapa
+// activa del negocio.
+app.patch('/api/crm/oportunidades/:id/etapa', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.estado !== 'abierta') return res.status(400).json({ error: 'Esta consulta está cerrada: reabrila para moverla.' });
+  const etapa = etapaDeLaEmpresa(Number(req.body?.etapa_id), organizacionId);
+  if (!etapa || !etapa.activa) return res.status(400).json({ error: 'La etapa no existe.' });
+  if (etapa.id === oportunidad.etapa_id) return res.json({ id: oportunidad.id });
+  withTransaction(() => {
+    db.prepare('UPDATE crm_oportunidades SET etapa_id = ? WHERE id = ?').run(etapa.id, oportunidad.id);
+    auditarOportunidad(req, oportunidad, {
+      accion: 'cambiar_estado',
+      valor_anterior: JSON.stringify({ etapa: oportunidad.etapa }),
+      valor_nuevo: JSON.stringify({ etapa: etapa.nombre }),
+      detalle: `Consulta #${oportunidad.id} de ${oportunidad.nombre} pasó a "${etapa.nombre}"`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Cerrarla a mano: { resultado: 'ganada' | 'perdida', motivo }. Perdida pide el
+// motivo, que es lo que después se cuenta en los números.
+app.post('/api/crm/oportunidades/:id/cerrar', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.estado !== 'abierta') return res.status(400).json({ error: 'Esta consulta ya está cerrada.' });
+  const { resultado, motivo } = req.body ?? {};
+  if (!['ganada', 'perdida'].includes(resultado)) return res.status(400).json({ error: 'Elegí si se ganó o se perdió.' });
+  if (motivo != null && typeof motivo !== 'string') return res.status(400).json({ error: 'El motivo no es válido.' });
+  const texto = (motivo ?? '').trim();
+  if (resultado === 'perdida' && !texto) {
+    return res.status(400).json({ error: 'Contá por qué se perdió: es lo que después te muestra qué mejorar.' });
+  }
+  if (texto.length > LARGO_MOTIVO_PERDIDA) {
+    return res.status(400).json({ error: `El motivo no puede pasar de ${LARGO_MOTIVO_PERDIDA} caracteres.` });
+  }
+  withTransaction(() => {
+    if (resultado === 'ganada') {
+      ganarOportunidad(req, oportunidad, texto || 'cerrada a mano');
+      return;
+    }
+    db.prepare("UPDATE crm_oportunidades SET estado = 'perdida', motivo_perdida = ?, fecha_cierre = ? WHERE id = ?").run(
+      texto,
+      fechaDeHoy(),
+      oportunidad.id
+    );
+    auditarOportunidad(req, oportunidad, {
+      accion: 'cambiar_estado',
+      valor_anterior: JSON.stringify({ estado: oportunidad.estado }),
+      valor_nuevo: JSON.stringify({ estado: 'perdida', motivo: texto }),
+      detalle: `Consulta #${oportunidad.id} de ${oportunidad.nombre} perdida: ${texto}`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Volver a abrir una cerrada, en la etapa en que estaba. Lo que generó queda
+// vinculado.
+app.post('/api/crm/oportunidades/:id/reabrir', (req, res) => {
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), req.usuario.organizacion_id);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.estado === 'abierta') return res.status(400).json({ error: 'Esta consulta ya está abierta.' });
+  withTransaction(() => {
+    db.prepare("UPDATE crm_oportunidades SET estado = 'abierta', motivo_perdida = NULL, fecha_cierre = NULL WHERE id = ?").run(
+      oportunidad.id
+    );
+    auditarOportunidad(req, oportunidad, {
+      accion: 'cambiar_estado',
+      valor_anterior: JSON.stringify({ estado: oportunidad.estado }),
+      valor_nuevo: JSON.stringify({ estado: 'abierta' }),
+      detalle: `Consulta #${oportunidad.id} de ${oportunidad.nombre} reabierta`
+    });
+  });
+  res.json({ id: oportunidad.id });
+});
+
+// Pasarla a cliente: con { cliente_id } se vincula uno que ya existe; sin él,
+// se da de alta con el nombre, el teléfono y el email del contacto. Si ya hay
+// un cliente con ese nombre no se duplica: se avisa, y la respuesta trae su id
+// para vincularlo.
+app.post('/api/crm/oportunidades/:id/cliente', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const oportunidad = oportunidadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!oportunidad) return res.status(404).json({ error: 'Consulta no encontrada.' });
+  if (oportunidad.cliente_id) return res.status(400).json({ error: `${oportunidad.nombre} ya es cliente.` });
+
+  let existente = null;
+  if (req.body?.cliente_id != null) {
+    existente = db
+      .prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?')
+      .get(Number(req.body.cliente_id), organizacionId);
+    if (!existente) return res.status(400).json({ error: 'El cliente no existe.' });
+    if (existente.nombre === CONSUMIDOR_FINAL) return res.status(400).json({ error: '"Consumidor final" no puede tener consultas.' });
+  } else {
+    const mismo = db
+      .prepare('SELECT id FROM clientes WHERE organizacion_id = ? AND nombre = ? COLLATE NOCASE')
+      .get(organizacionId, oportunidad.nombre);
+    if (mismo) {
+      return res.status(400).json({
+        error: `Ya hay un cliente que se llama ${oportunidad.nombre}. Si es la misma persona, vinculalo.`,
+        cliente_id: mismo.id
+      });
+    }
+  }
+
+  const clienteId = withTransaction(() => {
+    let id = existente?.id;
+    if (!id) {
+      id = Number(
+        db
+          .prepare('INSERT INTO clientes (nombre, telefono, email, organizacion_id) VALUES (?, ?, ?, ?)')
+          .run(oportunidad.nombre, oportunidad.telefono, oportunidad.email, organizacionId).lastInsertRowid
+      );
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'cliente',
+        entidad_id: id,
+        detalle: `Cliente "${oportunidad.nombre}" creado desde la consulta #${oportunidad.id}`
+      });
+    }
+    db.prepare('UPDATE crm_oportunidades SET cliente_id = ? WHERE id = ?').run(id, oportunidad.id);
+    // Las actividades que ya tenía pasan también a la ficha del cliente.
+    db.prepare('UPDATE crm_actividades SET cliente_id = ? WHERE oportunidad_id = ? AND cliente_id IS NULL').run(id, oportunidad.id);
+    auditarOportunidad(req, { ...oportunidad, cliente_id: id }, {
+      accion: 'editar',
+      detalle: `Consulta #${oportunidad.id} vinculada al cliente "${existente?.nombre ?? oportunidad.nombre}"`
+    });
+    return id;
+  });
+  res.json({ id: oportunidad.id, cliente_id: clienteId });
+});
+
+// --- Actividades ---
+
+// Valida una actividad. Una nota es un registro y nace hecha; lo demás puede
+// ser algo que ya pasó (hecha) o algo que falta, que pide para cuándo. Con
+// `actual` (edición) lo que no viene queda como estaba.
+function validarActividad(cuerpo, actual = null) {
+  const datos = {};
+  const tipo = cuerpo?.tipo ?? actual?.tipo;
+  if (!TIPOS_ACTIVIDAD.includes(tipo)) return { error: 'Elegí qué es: llamada, mensaje, visita, nota o tarea.' };
+  datos.tipo = tipo;
+  if (!actual || cuerpo?.descripcion !== undefined) {
+    if (typeof cuerpo?.descripcion !== 'string' || !cuerpo.descripcion.trim()) return { error: 'Contá de qué se trata.' };
+    if (cuerpo.descripcion.trim().length > LARGO_ACTIVIDAD) {
+      return { error: `La descripción no puede pasar de ${LARGO_ACTIVIDAD} caracteres.` };
+    }
+    datos.descripcion = cuerpo.descripcion.trim();
+  } else {
+    datos.descripcion = actual.descripcion;
+  }
+  if (cuerpo?.hecha !== undefined && typeof cuerpo.hecha !== 'boolean') return { error: 'Los datos de la actividad no son válidos.' };
+  datos.hecha = tipo === 'nota' ? true : (cuerpo?.hecha ?? Boolean(actual?.hecha));
+  const fecha = cuerpo?.fecha !== undefined ? cuerpo.fecha || null : (actual?.fecha ?? null);
+  if (fecha !== null && !validarFecha(fecha)) return { error: 'La fecha no es válida.' };
+  if (!datos.hecha && !fecha) return { error: 'Elegí para cuándo es.' };
+  datos.fecha = fecha ?? fechaDeHoy();
+  return { datos };
+}
+
+// Las actividades de un cliente (las suyas y las de sus consultas), para su
+// ficha: ?cliente_id=.
+app.get('/api/crm/actividades', (req, res) => {
+  const clienteId = Number(req.query.cliente_id);
+  if (!esIdValido(clienteId)) return res.status(400).json({ error: 'Indicá el cliente.' });
+  res.json(
+    db
+      .prepare(
+        `${SELECT_ACTIVIDAD} WHERE a.organizacion_id = ? AND COALESCE(a.cliente_id, o.cliente_id) = ?
+          ORDER BY a.hecha, a.fecha DESC, a.id DESC LIMIT 100`
+      )
+      .all(req.usuario.organizacion_id, clienteId)
+  );
+});
+
+// Alta: { oportunidad_id?, cliente_id?, tipo, descripcion, fecha?, hecha? }.
+// Cuelga de una consulta o de un cliente; la de una consulta que ya es cliente
+// sale también en su ficha.
+app.post('/api/crm/actividades', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = validarActividad(req.body);
+  if (error) return res.status(400).json({ error });
+  let oportunidad = null;
+  let clienteId = null;
+  if (req.body?.oportunidad_id != null) {
+    oportunidad = oportunidadDeLaEmpresa(Number(req.body.oportunidad_id), organizacionId);
+    if (!oportunidad) return res.status(400).json({ error: 'La consulta no existe.' });
+    clienteId = oportunidad.cliente_id;
+  } else if (req.body?.cliente_id != null) {
+    const cliente = db.prepare('SELECT id FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(req.body.cliente_id), organizacionId);
+    if (!cliente) return res.status(400).json({ error: 'El cliente no existe.' });
+    clienteId = cliente.id;
+  } else {
+    return res.status(400).json({ error: 'La actividad tiene que ser de una consulta o de un cliente.' });
+  }
+  const id = withTransaction(() => {
+    const nuevoId = Number(
+      db
+        .prepare(
+          `INSERT INTO crm_actividades (oportunidad_id, cliente_id, tipo, descripcion, fecha, hecha, fecha_hecha, usuario_id, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          oportunidad?.id ?? null,
+          clienteId,
+          datos.tipo,
+          datos.descripcion,
+          datos.fecha,
+          datos.hecha ? 1 : 0,
+          datos.hecha ? fechaDeHoy() : null,
+          req.usuario.id,
+          organizacionId
+        ).lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: clienteId ? 'cliente' : 'organizacion',
+      entidad_id: clienteId ?? organizacionId,
+      operacion_tipo: 'actividad',
+      operacion_id: nuevoId,
+      detalle: `${datos.hecha ? 'Anotó' : 'Agendó'} ${datos.tipo}: ${datos.descripcion}` + (oportunidad ? ` (consulta #${oportunidad.id})` : '')
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Marcarla hecha o pendiente, o corregirla.
+app.patch('/api/crm/actividades/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const actividad = actividadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
+  const { error, datos } = validarActividad(req.body, actividad);
+  if (error) return res.status(400).json({ error });
+  const fechaHecha = datos.hecha ? (actividad.hecha ? actividad.fecha_hecha : fechaDeHoy()) : null;
+  withTransaction(() => {
+    db.prepare('UPDATE crm_actividades SET tipo = ?, descripcion = ?, fecha = ?, hecha = ?, fecha_hecha = ? WHERE id = ?').run(
+      datos.tipo,
+      datos.descripcion,
+      datos.fecha,
+      datos.hecha ? 1 : 0,
+      fechaHecha,
+      actividad.id
+    );
+    const cambioDeEstado = datos.hecha !== Boolean(actividad.hecha);
+    auditar(req, {
+      accion: cambioDeEstado ? 'cambiar_estado' : 'editar',
+      entidad: actividad.cliente_id ? 'cliente' : 'organizacion',
+      entidad_id: actividad.cliente_id ?? organizacionId,
+      valor_anterior: JSON.stringify({ hecha: Boolean(actividad.hecha), fecha: actividad.fecha, descripcion: actividad.descripcion }),
+      valor_nuevo: JSON.stringify({ hecha: datos.hecha, fecha: datos.fecha, descripcion: datos.descripcion }),
+      operacion_tipo: 'actividad',
+      operacion_id: actividad.id,
+      detalle: `${datos.tipo}: ${datos.descripcion} (${cambioDeEstado ? (datos.hecha ? 'hecha' : 'otra vez pendiente') : 'editada'})`
+    });
+  });
+  res.json({ id: actividad.id });
+});
+
+app.delete('/api/crm/actividades/:id', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const actividad = actividadDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
+  withTransaction(() => {
+    db.prepare('DELETE FROM crm_actividades WHERE id = ?').run(actividad.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: actividad.cliente_id ? 'cliente' : 'organizacion',
+      entidad_id: actividad.cliente_id ?? organizacionId,
+      valor_anterior: JSON.stringify({
+        tipo: actividad.tipo,
+        descripcion: actividad.descripcion,
+        fecha: actividad.fecha,
+        hecha: Boolean(actividad.hecha)
+      }),
+      operacion_tipo: 'actividad',
+      operacion_id: actividad.id,
+      detalle: `Borró ${actividad.tipo}: ${actividad.descripcion}`
+    });
+  });
+  res.status(204).end();
+});
+
+// --- Para hoy ---
+
+// Lo que hay que hacer hoy: las actividades vencidas o de hoy, las consultas
+// abiertas sin próxima acción, los presupuestos enviados que siguen sin
+// respuesta (por su fecha: el presupuesto no guarda cuándo se envió) y los
+// abonos que deben. Pone los abonos al día, como GET /api/abonos: un GET que
+// escribe a propósito (hist. §74).
+app.get('/api/crm/para-hoy', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const actividades = db
+    .prepare(`${SELECT_ACTIVIDAD} WHERE a.organizacion_id = ? AND a.hecha = 0 AND a.fecha <= ? ORDER BY a.fecha, a.id`)
+    .all(organizacionId, hoy)
+    .map((a) => ({ ...a, vencida: a.fecha < hoy }));
+  const sinAccion = db
+    .prepare(`${SELECT_OPORTUNIDAD} WHERE o.organizacion_id = ? AND o.estado = 'abierta' AND proxima.id IS NULL ORDER BY o.id DESC`)
+    .all(organizacionId)
+    .map((o) => conAviso(o, hoy));
+  const presupuestos = db
+    .prepare(
+      `SELECT presupuestos.id, presupuestos.fecha, presupuestos.cliente_id, clientes.nombre AS cliente,
+              clientes.telefono AS cliente_telefono,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM presupuesto_items
+                WHERE presupuesto_items.presupuesto_id = presupuestos.id) AS total
+         FROM presupuestos JOIN clientes ON clientes.id = presupuestos.cliente_id
+        WHERE presupuestos.organizacion_id = ? AND presupuestos.estado = 'enviado' AND presupuestos.fecha <= ?
+          AND (presupuestos.vencimiento IS NULL OR presupuestos.vencimiento >= ?)
+        ORDER BY presupuestos.fecha, presupuestos.id`
+    )
+    .all(organizacionId, sumarDias(hoy, -DIAS_PRESUPUESTO_SIN_RESPUESTA), hoy)
+    .map((p) => ({ ...p, dias: diffDias(p.fecha, hoy) }));
+
+  ponerAbonosAlDia(organizacionId);
+  const cuotas = db.prepare(`${SELECT_CUOTAS_ABONO} WHERE abonos.organizacion_id = ?`).all(organizacionId);
+  const porAbono = Map.groupBy(cuotas, (c) => c.abono_id);
+  const abonos = db
+    .prepare(`${SELECT_ABONO} WHERE abonos.organizacion_id = ? ORDER BY clientes.nombre, abonos.id`)
+    .all(organizacionId)
+    .map((a) => conCuotas(a, porAbono.get(a.id) ?? []))
+    .filter((a) => a.deuda > 0)
+    .map(({ id, cliente_id, cliente, cliente_telefono, servicio, deuda, cuotas_impagas }) => ({
+      id,
+      cliente_id,
+      cliente,
+      cliente_telefono,
+      servicio,
+      deuda,
+      cuotas_impagas
+    }));
+
+  res.json({
+    hoy,
+    actividades,
+    sin_accion: sinAccion,
+    presupuestos,
+    abonos,
+    total: actividades.length + sinAccion.length + presupuestos.length + abonos.length
+  });
+});
+
+// --- Dejaron de comprar ---
+
+// Los clientes que compraban (dos ventas o más) y no compran hace más de
+// ?dias= (90 si no viene). Sale de las ventas, no se carga a mano. Dice si ya
+// tienen un seguimiento agendado, para no llamarlos dos veces.
+app.get('/api/crm/inactivos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const dias = req.query.dias === undefined ? DIAS_INACTIVO_POR_DEFECTO : Number(req.query.dias);
+  if (!Number.isInteger(dias) || dias < 1 || dias > 3650) return res.status(400).json({ error: 'La cantidad de días no es válida.' });
+  const hoy = fechaDeHoy();
+  res.json(
+    db
+      .prepare(
+        `SELECT clientes.id, clientes.nombre, clientes.telefono, clientes.email,
+                COUNT(ventas.id) AS compras, MAX(ventas.fecha) AS ultima_compra,
+                SUM((SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
+                       FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA}) AS total_comprado,
+                EXISTS (SELECT 1 FROM crm_actividades a
+                          LEFT JOIN crm_oportunidades o ON o.id = a.oportunidad_id
+                         WHERE a.organizacion_id = clientes.organizacion_id AND a.hecha = 0
+                           AND COALESCE(a.cliente_id, o.cliente_id) = clientes.id) AS con_seguimiento
+           FROM clientes JOIN ventas ON ventas.cliente_id = clientes.id AND ventas.estado = 'activa'
+          WHERE clientes.organizacion_id = ? AND clientes.nombre <> ?
+          GROUP BY clientes.id
+         HAVING COUNT(ventas.id) >= 2 AND MAX(ventas.fecha) < ?
+          ORDER BY MAX(ventas.fecha) DESC
+          LIMIT 200`
+      )
+      .all(organizacionId, CONSUMIDOR_FINAL, sumarDias(hoy, -dias))
+      .map((c) => ({
+        ...c,
+        total_comprado: redondear2(c.total_comprado),
+        con_seguimiento: Boolean(c.con_seguimiento),
+        dias: diffDias(c.ultima_compra, hoy)
+      }))
+  );
+});
+
+// --- Números ---
+
+// Consultas por origen (cuántas y cuántas se ganaron), cómo está el embudo
+// (abiertas y valor en juego por etapa) y por qué se pierden. Con ?desde=,
+// solo las consultas que entraron desde ese día.
+app.get('/api/crm/reporte', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const desde = req.query.desde === undefined ? '0000-01-01' : validarFecha(req.query.desde);
+  if (!desde) return res.status(400).json({ error: 'La fecha no es válida.' });
+  const porOrigen = db
+    .prepare(
+      `SELECT origen, COUNT(*) AS total, SUM(estado = 'ganada') AS ganadas, SUM(estado = 'perdida') AS perdidas
+         FROM crm_oportunidades WHERE organizacion_id = ? AND fecha >= ?
+        GROUP BY origen ORDER BY total DESC`
+    )
+    .all(organizacionId, desde)
+    .map((o) => ({ ...o, origen_nombre: ORIGENES_CRM[o.origen] ?? 'Sin anotar' }));
+  const porEtapa = db
+    .prepare(
+      `SELECT crm_etapas.id, crm_etapas.nombre, crm_etapas.activa,
+              COUNT(o.id) AS abiertas, COALESCE(SUM(o.valor_estimado), 0) AS valor
+         FROM crm_etapas
+         LEFT JOIN crm_oportunidades o ON o.etapa_id = crm_etapas.id AND o.estado = 'abierta'
+        WHERE crm_etapas.organizacion_id = ?
+        GROUP BY crm_etapas.id ORDER BY crm_etapas.orden, crm_etapas.id`
+    )
+    .all(organizacionId);
+  const motivos = db
+    .prepare(
+      `SELECT MIN(motivo_perdida) AS motivo, COUNT(*) AS total FROM crm_oportunidades
+        WHERE organizacion_id = ? AND estado = 'perdida' AND fecha >= ?
+        GROUP BY motivo_perdida COLLATE NOCASE ORDER BY total DESC LIMIT 10`
+    )
+    .all(organizacionId, desde);
+  const ganadas = porOrigen.reduce((acc, o) => acc + o.ganadas, 0);
+  const perdidas = porOrigen.reduce((acc, o) => acc + o.perdidas, 0);
+  res.json({
+    total: porOrigen.reduce((acc, o) => acc + o.total, 0),
+    ganadas,
+    perdidas,
+    // Sobre las cerradas: de las abiertas todavía no se sabe.
+    conversion: ganadas + perdidas > 0 ? redondear2((ganadas / (ganadas + perdidas)) * 100) : null,
+    por_origen: porOrigen,
+    por_etapa: porEtapa,
+    motivos
+  });
+});
+
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
 // Express. Va después de todas las rutas y de `autenticar`.
 app.use('/api', (req, res) => {
@@ -12048,6 +13470,9 @@ app.use((err, req, res, next) => {
   }
   if (err instanceof ErrorValidacion) {
     return res.status(err.status).json({ error: err.message });
+  }
+  if (err instanceof ErrorPlan) {
+    return res.status(err.status).json({ error: err.message, codigo: err.codigo });
   }
   // Errores del cliente que Express/body-parser ya clasificó (una URL mal
   // codificada con `%`, un Content-Encoding que no soporta): conservan su 4xx

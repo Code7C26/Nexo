@@ -46,7 +46,10 @@ try {
   const pendiente = sessionStorage.getItem(CLAVE_AVISO);
   if (pendiente) {
     sessionStorage.removeItem(CLAVE_AVISO);
-    avisar(pendiente, "ok");
+    // sesion.js también deja acá el resultado del enlace del mail (hist.
+    // §102); uno que salió mal llega con "error:" adelante.
+    if (pendiente.startsWith("error:")) avisar(pendiente.slice(6), "error");
+    else avisar(pendiente, "ok");
   }
 } catch {}
 
@@ -232,3 +235,6 @@ if (location.hash.startsWith("#/agregar-negocio")) {
 // Lo pide el boot de app.js en su primera ola, y Configuración al guardar
 // (por si cambió el nombre o el tipo del negocio).
 registrar("cargar:negocios", cargarNegocios);
+// Lo ofrece "Cambiar el tipo" de Configuración (hist. §88): otro tipo de
+// negocio suele ser otro negocio.
+registrar("agregar:negocio", agregarNegocio);

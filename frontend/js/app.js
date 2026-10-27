@@ -14,6 +14,7 @@ import {
   botonEditarFila,
   camposFicha,
   cantidad,
+  celdaMovil,
   columnasVisibles,
   duracion,
   esAdmin,
@@ -37,18 +38,21 @@ import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
-import { negocio, termino } from "./core/negocio.js";
+import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
+import "./dominios/plan.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
 import "./dominios/socios.js";
 import "./dominios/trabajos.js";
 import "./dominios/abonos.js";
+import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
+import "./core/barra-inferior.js";
 
 let facturas = [];
 
@@ -877,14 +881,15 @@ function renderFacturas(lista) {
       <td data-label="Comprobante" class="mono">${esc(f.comprobante)}</td>
       <td data-label="Tipo">${esc(TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo)}</td>
       <td data-label="Fecha">${esc(fechaAR(f.fecha))}</td>
-      <td data-label="Cliente">${esc(f.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(f.cliente)}</td>
+      ${celdaMovil(f.comprobante, TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo, fechaAR(f.fecha))}
       <td data-label="Origen">${
         f.venta_id
           ? `<a href="#" class="btn-link ficha-factura-ver-venta" data-venta-id="${f.venta_id}">Venta #${f.venta_id}</a>`
           : `<span class="status">Suelta</span>`
       }</td>
-      <td data-label="Importe" class="align-right mono">${money(f.total)}</td>
-      <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[f.estado_cobro]}">${ESTADO_COBRO_LABEL[f.estado_cobro]}</span></td>
+      <td data-label="Importe" class="align-right mono m-valor">${money(f.total)}</td>
+      <td data-label="Cobro" class="m-estado"><span class="status ${ESTADO_COBRO_CLASE[f.estado_cobro]}">${ESTADO_COBRO_LABEL[f.estado_cobro]}</span></td>
     </tr>`
     )
     .join("");
@@ -1557,16 +1562,21 @@ function renderProductos(lista) {
       : `<span class="mono${p.precio_venta > 0 ? "" : " precio-sin-configurar"}">${precioTexto}</span>`;
     tr.innerHTML = `
       ${selProductos.celda(p.id)}
-      <td data-label="Nombre">${esc(p.nombre)}</td>
+      <td data-label="Nombre" class="m-titulo">${esc(p.nombre)}</td>
+      ${celdaMovil(
+        p.sku,
+        p.categoria,
+        p.tipo === "servicio" ? "Servicio" : moduloActivo("stock") ? ["Stock", cantidad(p.stock, p.unidad)] : null
+      )}
       <td data-label="SKU" class="col-sku">${esc(p.sku || "—")}</td>
       <td data-label="Categoría">${esc(p.categoria || "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
       <td data-label="Valorizado" class="align-right mono col-admin" data-modulo="stock">${money(p.valorizado)}</td>
-      <td data-label="Precio" class="align-right mono">${precioCelda}</td>
+      <td data-label="Precio" class="align-right mono m-valor">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
       <td data-label="Objetivo" class="align-right col-admin">${badgeMargenObjetivo(p, true)}</td>
       <td data-label="Stock" class="align-right mono" data-modulo="stock">${p.tipo === "servicio" ? "Servicio" : esc(cantidad(p.stock, p.unidad))}</td>
-      <td data-label="Activo"><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
+      <td data-label="Activo"${p.activo ? "" : ' class="m-estado"'}><span class="status ${p.activo ? "status-cobrado" : "status-vencido"}">${
         p.activo ? "Activo" : "Inactivo"
       }</span></td>
       <td data-label="">${botonEditarFila("btn-editar-producto", p.id, "producto")}</td>
@@ -1775,6 +1785,8 @@ async function cargarProductos() {
   categorias = listaCategorias;
   listasPrecios = listaListasPrecios;
   depositos = listaDepositos;
+  // El nombre del catálogo y las pestañas salen de lo que hay (hist. §88).
+  fijarTiposDelCatalogo(productos.map(tipoDeProducto));
   poblarDatalistProductos();
   poblarSelectCategorias();
 
@@ -1848,22 +1860,57 @@ function poblarSelectCategorias(selector = '#formProducto [name="categoria_id"]'
 }
 
 function filtrarProductos() {
-  const q = document.getElementById("productosSearch").value.trim().toLowerCase();
-  const porTexto = productos.filter((p) =>
-    [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
-  );
-  renderProductos(filtrosProductos.aplicar(porTexto));
+  renderProductos(listaProductosVisible());
 }
 
-// Misma expresión que filtrarProductos (búsqueda + filtros + orden), para
-// que el CSV coincida con lo que la tabla muestra.
+// Lo que la tabla muestra (pestaña + búsqueda + filtros + orden): lo usan la
+// tabla y el CSV, para que coincidan.
 function listaProductosVisible() {
   const q = document.getElementById("productosSearch").value.trim().toLowerCase();
-  const porTexto = productos.filter((p) =>
-    [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
+  const porTexto = productos.filter(
+    (p) =>
+      (!catalogoMixto() || tipoDeProducto(p) === pestanaProductos) &&
+      [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
   return filtrosProductos.aplicar(porTexto);
 }
+
+/* ---------- Pestañas Productos | Servicios (hist. §88) ---------- */
+
+// Con productos y servicios cargados, el catálogo se ve en dos pestañas, para
+// que no se mezclen: cada una con su "Nuevo", y la de servicios sin Stock ni
+// Valorizado. Con un solo tipo no hay pestañas y la sección lleva su nombre
+// (termino() en core/negocio.js).
+const tipoDeProducto = (p) => (p.tipo === "servicio" ? "servicio" : "producto");
+const PESTANA_DE_SUBRUTA = { productos: "producto", servicios: "servicio" };
+let pestanaProductos = "producto";
+
+function pintarPestanasProductos() {
+  const mixto = catalogoMixto();
+  document.getElementById("productosMenu").hidden = !mixto;
+  for (const enlace of document.querySelectorAll("#productosMenu .segmento")) {
+    if (enlace.dataset.pestana === pestanaProductos) enlace.setAttribute("aria-current", "page");
+    else enlace.removeAttribute("aria-current");
+  }
+  document.getElementById("productosTabla").classList.toggle("solo-servicios", mixto && pestanaProductos === "servicio");
+  document.getElementById("productosTitulo").textContent = mixto ? terminoDeTipo(pestanaProductos, "Plural") : termino("Plural");
+  document.getElementById("btnNuevoProductoTermino").textContent = mixto ? terminoDeTipo(pestanaProductos) : termino("singular");
+  // La barra de direcciones sigue a la pestaña (también cuando la cambia el
+  // guardado de un producto), sin sumar una entrada al historial.
+  if (mixto && location.hash.startsWith("#/productos")) {
+    history.replaceState(null, "", `#/productos/${terminoDeTipo(pestanaProductos, "plural")}`);
+  }
+}
+
+document.addEventListener("nexo:catalogo", pintarPestanasProductos);
+
+alEntrarEnVista("productos", (subruta) => {
+  const elegida = PESTANA_DE_SUBRUTA[subruta];
+  if (!elegida || elegida === pestanaProductos) return;
+  pestanaProductos = elegida;
+  pintarPestanasProductos();
+  filtrarProductos();
+});
 
 const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Nombre", valor: (p) => p.nombre },
@@ -2103,12 +2150,12 @@ function poblarPreciosPorLista(producto) {
     .join("");
 }
 
-function abrirModalProducto(producto = null) {
+// `tipo` es con qué tipo nace uno nuevo: el de la pestaña, o si no hay
+// pestañas, el del tipo de negocio.
+function abrirModalProducto(producto = null, { tipo } = {}) {
   productoEditandoId = producto?.id ?? null;
   const form = document.getElementById("formProducto");
-  document.getElementById("modalProductoTitulo").textContent = `${producto ? "Editar" : "Nuevo"} ${termino("singular")}`;
   form.nombre.value = producto?.nombre ?? "";
-  form.nombre.placeholder = `Nombre del ${termino("singular")}`;
   form.sku.value = producto?.sku ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
@@ -2121,7 +2168,7 @@ function abrirModalProducto(producto = null) {
   // Un producto nuevo nace con la unidad y el tipo del tipo de negocio (una
   // carnicería vende por kg, un gimnasio vende servicios).
   form.unidad.value = producto?.unidad ?? negocio.unidad_defecto ?? "unidad";
-  form.tipo.value = producto?.tipo ?? negocio.tipo_defecto ?? "producto";
+  form.tipo.value = producto?.tipo ?? tipo ?? negocio.tipo_defecto ?? "producto";
   mostrarCamposSegunTipo();
   poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
@@ -2129,10 +2176,14 @@ function abrirModalProducto(producto = null) {
 
 // Un servicio no maneja stock (no tiene mínimo ni máximo que cargar) y no
 // lleva SKU, pero sí una duración estimada (hist. §78). El SKU que ya tenga
-// sigue viéndose, para poder borrarlo.
+// sigue viéndose, para poder borrarlo. El título dice lo que se está cargando
+// (hist. §88): "Nuevo servicio" aunque el catálogo sea de productos.
 function mostrarCamposSegunTipo() {
   const form = document.getElementById("formProducto");
   const esServicio = form.tipo.value === "servicio";
+  const palabra = terminoDeTipo(esServicio ? "servicio" : "producto");
+  document.getElementById("modalProductoTitulo").textContent = `${productoEditandoId ? "Editar" : "Nuevo"} ${palabra}`;
+  form.nombre.placeholder = `Nombre del ${palabra}`;
   document.getElementById("productoStockCampos").hidden = esServicio;
   document.getElementById("productoSkuCampo").hidden = esServicio && !form.sku.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
@@ -2140,7 +2191,9 @@ function mostrarCamposSegunTipo() {
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
 
-document.getElementById("btnNuevoProducto").addEventListener("click", () => abrirModalProducto());
+document.getElementById("btnNuevoProducto").addEventListener("click", () =>
+  abrirModalProducto(null, { tipo: catalogoMixto() ? pestanaProductos : undefined })
+);
 document.getElementById("btnEditarProducto").addEventListener("click", () => {
   abrirModalProducto(productos.find((p) => p.id === productoFichaId));
 });
@@ -2184,10 +2237,13 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   await api(productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos", {
     method: productoEditandoId ? "PATCH" : "POST",
     body: datos,
-    error: `No se pudo guardar el ${termino("singular")}.`
+    error: `No se pudo guardar el ${terminoDeTipo(datos.tipo)}.`
   });
 
   const eraEdicion = productoEditandoId !== null;
+  // Con productos y servicios, la tabla queda en la pestaña de lo que se
+  // acaba de guardar (hist. §88).
+  pestanaProductos = datos.tipo === "servicio" ? "servicio" : "producto";
   // categoria_id también puede cambiar acá, y "Ventas por categoría" (en
   // Qué se vende) agrupa por la categoría ACTUAL del producto, no por una
   // foto histórica — así que también hay que refrescarlo.
@@ -2197,7 +2253,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   if (eraEdicion && productoFichaId) await abrirFichaProducto(productoFichaId);
   form.reset();
   modalProducto.hidden = true;
-  avisar(`${termino("Singular")} ${eraEdicion ? "actualizado" : "creado"}.`, "ok");
+  avisar(`${terminoDeTipo(datos.tipo, "Singular")} ${eraEdicion ? "actualizado" : "creado"}.`, "ok");
 });
 
 /* ---------- Atributos y variantes de producto ---------- */
@@ -2746,15 +2802,19 @@ function renderStock(lista) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       ${selStock.celda(`${p.producto_id}-${p.deposito_id}`)}
-      <td data-label="Producto">${esc(p.nombre)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(p.nombre)}</td>
+      ${celdaMovil(
+        p.deposito,
+        p.stock_total !== p.stock ? ["en total", cantidad(p.stock_total, p.unidad)] : null
+      )}
       <td data-label="Depósito">${esc(p.deposito ?? "—")}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
-      <td data-label="Stock en depósito" class="align-right mono">${esc(cantidad(p.stock, p.unidad))}</td>
+      <td data-label="Stock en depósito" class="align-right mono m-valor">${esc(cantidad(p.stock, p.unidad))}</td>
       <td data-label="Stock total" class="align-right mono">${esc(cantidad(p.stock_total, p.unidad))}</td>
-      <td data-label="Estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
+      <td data-label="Estado" class="m-estado"><span class="status ${STOCK_CLASE[p.estado_stock]}">${
         STOCK_LABEL[p.estado_stock]
       }</span></td>
-      <td data-label=""><button type="button" class="btn-fila btn-ajustar-stock" data-producto="${p.producto_id}" data-deposito="${p.deposito_id ?? ""}">Ajustar</button></td>
+      <td data-label="" class="m-accion"><button type="button" class="btn-fila btn-ajustar-stock" data-producto="${p.producto_id}" data-deposito="${p.deposito_id ?? ""}">Ajustar</button></td>
     `;
     body.appendChild(tr);
   }
@@ -2799,10 +2859,11 @@ function renderMovimientosStock(movimientos) {
       return `
     <tr>
       <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
-      <td data-label="Producto">${esc(m.producto)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(m.producto)}</td>
+      ${celdaMovil(fechaAR(m.fecha), origen, m.deposito, m.nota)}
       <td data-label="Depósito">${esc(m.deposito ?? "—")}</td>
       <td data-label="Origen">${origen}</td>
-      <td data-label="Cantidad" class="align-right mono">${signo}${numero(Math.abs(m.cantidad))}</td>
+      <td data-label="Cantidad" class="align-right mono m-valor">${signo}${numero(Math.abs(m.cantidad))}</td>
       <td data-label="Nota">${esc(m.nota || "—")}</td>
     </tr>`;
     })
@@ -3083,6 +3144,8 @@ document.getElementById("formTransferenciaDeposito").addEventListener("submit", 
 // genera deuda. Todo eso pasa recién al convertirlo en venta.
 let presupuestos = [];
 let presupuestoEditandoId = null;
+// La consulta de la que sale un presupuesto nuevo (hist. §90): queda vinculada.
+let presupuestoDeConsulta = null;
 
 const PRESUPUESTO_LABEL = {
   borrador: "Borrador",
@@ -3190,12 +3253,13 @@ function renderPresupuestos(lista) {
     <tr class="fila-clickeable" data-id="${p.id}">
       ${selPresupuestos.celda(p.id)}
       <td data-label="N°" class="mono">#${p.id}</td>
-      <td data-label="Cliente">${esc(p.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(p.cliente)}</td>
+      ${celdaMovil(`#${p.id}`, fechaAR(p.fecha), ["vence", fechaAR(p.vencimiento)])}
       <td data-label="Productos" class="celda-wrap">${esc(p.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(p.fecha))}</td>
       <td data-label="Vence">${esc(fechaAR(p.vencimiento) || "—")}</td>
-      <td data-label="Total" class="align-right mono">${money(p.total)}</td>
-      <td data-label="Estado"><span class="status ${PRESUPUESTO_CLASE[p.estado_efectivo]}">${
+      <td data-label="Total" class="align-right mono m-valor">${money(p.total)}</td>
+      <td data-label="Estado" class="m-estado"><span class="status ${PRESUPUESTO_CLASE[p.estado_efectivo]}">${
         PRESUPUESTO_LABEL[p.estado_efectivo]
       }</span></td>
       <td data-label="">${
@@ -3470,8 +3534,10 @@ function actualizarTotalPresupuesto() {
 }
 presupuestoItemsEl.addEventListener("item-change", actualizarTotalPresupuesto);
 
-async function abrirModalPresupuesto(presupuesto = null) {
+// desde: { cliente, crm_oportunidad_id } cuando sale de una consulta.
+async function abrirModalPresupuesto(presupuesto = null, desde = null) {
   presupuestoEditandoId = presupuesto?.id ?? null;
+  presupuestoDeConsulta = desde?.crm_oportunidad_id ?? null;
   document.getElementById("modalPresupuestoTitulo").textContent = presupuesto
     ? "Editar presupuesto"
     : "Nuevo presupuesto";
@@ -3480,7 +3546,7 @@ async function abrirModalPresupuesto(presupuesto = null) {
     : "Guardar presupuesto";
 
   const form = document.getElementById("formPresupuesto");
-  form.cliente.value = presupuesto?.cliente ?? "";
+  form.cliente.value = presupuesto?.cliente ?? desde?.cliente ?? "";
   form.fecha.value = presupuesto?.fecha ?? hoyISO();
   form.vencimiento.value = presupuesto?.vencimiento ?? "";
   form.notas.value = presupuesto?.notas ?? "";
@@ -3555,6 +3621,8 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
     items,
     lista_precio_id: form.lista_precio_id.value || null
   };
+  const consultaId = presupuestoEditandoId ? null : presupuestoDeConsulta;
+  if (consultaId) body.crm_oportunidad_id = consultaId;
 
   await api(presupuestoEditandoId ? `/api/presupuestos/${presupuestoEditandoId}` : "/api/presupuestos", {
     method: presupuestoEditandoId ? "PUT" : "POST",
@@ -3568,6 +3636,7 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
   form.reset();
   modalPresupuesto.hidden = true;
   if (idEditado) await abrirFichaPresupuesto(idEditado);
+  if (consultaId) await invocar("abrirFicha:consulta", consultaId);
   avisar(idEditado ? "Presupuesto actualizado." : "Presupuesto creado.", "ok");
 });
 
@@ -3612,13 +3681,14 @@ function renderVentas(lista) {
     tr.innerHTML = `
       ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
-      <td data-label="Cliente">${esc(v.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(v.cliente)}</td>
+      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), v.items_resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(v.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
-      <td data-label="Total" class="align-right mono">${money(v.total)}</td>
+      <td data-label="Total" class="align-right mono m-valor">${money(v.total)}</td>
       <td data-label="Ganancia" class="align-right mono col-admin">${money(v.margen)}</td>
-      <td data-label="Cobro"><span class="status ${ESTADO_COBRO_CLASE[v.estado_cobro]}">${ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
+      <td data-label="Cobro" class="m-estado"><span class="status ${ESTADO_COBRO_CLASE[v.estado_cobro]}">${ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
       <td data-label=""><div class="fila-acciones">${accionFactura} ${accionCobro} ${accionAnular}</div></td>
     `;
     tr.addEventListener("click", (e) => {
@@ -3754,6 +3824,8 @@ async function cargarVentas() {
 let ventas = [];
 let ventaAFacturarId = null;
 let ventaEditandoId = null;
+// La consulta de la que sale una venta nueva (hist. §90): la venta la gana.
+let ventaDeConsulta = null;
 let ventaFichaId = null;
 
 const modalVenta = document.getElementById("modalVenta");
@@ -3820,14 +3892,16 @@ function poblarSelectCondicionPago(selector) {
 // casos — hace falta esta bandera aparte).
 let ventaCondicionTocada = false;
 
-async function abrirModalVenta(venta = null) {
+// desde: { cliente, crm_oportunidad_id } cuando sale de una consulta.
+async function abrirModalVenta(venta = null, desde = null) {
   ventaEditandoId = venta?.id ?? null;
+  ventaDeConsulta = desde?.crm_oportunidad_id ?? null;
   ventaCondicionTocada = false;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
   document.getElementById("formVentaSubmit").textContent = venta ? "Guardar cambios" : "Registrar venta";
 
   const form = document.getElementById("formVenta");
-  form.cliente.value = venta?.cliente ?? "";
+  form.cliente.value = venta?.cliente ?? desde?.cliente ?? "";
   form.fecha.value = venta?.fecha ?? hoyISO();
 
   poblarSelectListasPrecios("#ventaListaPrecio");
@@ -3985,6 +4059,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     deposito_id: form.deposito_id.value || null,
     ...datosCondicionPago(form)
   };
+  const consultaId = ventaEditandoId ? null : ventaDeConsulta;
+  if (consultaId) body.crm_oportunidad_id = consultaId;
 
   await api(ventaEditandoId ? `/api/ventas/${ventaEditandoId}` : "/api/ventas", {
     method: ventaEditandoId ? "PUT" : "POST",
@@ -3999,7 +4075,8 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   // Si se estaba editando desde la ficha, volver a esa ficha con los
   // datos ya actualizados en vez de dejar al usuario en la lista.
   if (idEditado) await abrirFichaVenta(idEditado);
-  avisar(idEditado ? `Venta #${idEditado} actualizada.` : "Venta registrada.", "ok");
+  if (consultaId) await invocar("abrirFicha:consulta", consultaId);
+  avisar(idEditado ? `Venta #${idEditado} actualizada.` : consultaId ? "Venta registrada: la consulta quedó ganada." : "Venta registrada.", "ok");
 });
 
 async function abrirFichaVenta(id) {
@@ -4217,11 +4294,12 @@ function renderDevoluciones(lista) {
       (d) => `
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Cliente">${esc(d.cliente)}</td>
+      <td data-label="Cliente" class="m-titulo">${esc(d.cliente)}</td>
+      ${celdaMovil(`#${d.id}`, fechaAR(d.fecha), d.items_resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
-      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
-      <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
+      <td data-label="Total" class="align-right mono m-valor">${money(d.total)}</td>
+      <td data-label="Plata" class="m-estado"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
       }</span></td>
       <td data-label="">${
@@ -4580,10 +4658,11 @@ function renderCompras(lista) {
       tr.innerHTML = `
         ${selCompras.celda(c.id)}
         <td data-label="N°" class="mono">#${c.id}</td>
-        <td data-label="Proveedor">${esc(c.proveedor)}</td>
+        <td data-label="Proveedor" class="m-titulo">${esc(c.proveedor)}</td>
+        ${celdaMovil(`#${c.id}`, fechaAR(c.fecha))}
         <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
-        <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-        <td data-label="Pago"><span class="status">Borrador</span></td>
+        <td data-label="Total" class="align-right mono m-valor">${money(c.total)}</td>
+        <td data-label="Pago" class="m-estado"><span class="status">Borrador</span></td>
         <td data-label="Envío">—</td>
         <td data-label=""><div class="fila-acciones"><button type="button" class="btn-fila btn-confirmar-compra" data-id="${c.id}">Efectuar pedido</button> ${accionAnular}</div></td>
       `;
@@ -4610,10 +4689,11 @@ function renderCompras(lista) {
     tr.innerHTML = `
       ${selCompras.celda(c.id)}
       <td data-label="N°" class="mono">#${c.id}</td>
-      <td data-label="Proveedor">${esc(c.proveedor)}</td>
+      <td data-label="Proveedor" class="m-titulo">${esc(c.proveedor)}</td>
+      ${celdaMovil(`#${c.id}`, fechaAR(c.fecha), ENVIO_LABEL[c.estado_envio])}
       <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
-      <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-      <td data-label="Pago"><span class="status ${ESTADO_PAGO_CLASE[c.estado_pago]}">${ESTADO_PAGO_LABEL[c.estado_pago]}</span></td>
+      <td data-label="Total" class="align-right mono m-valor">${money(c.total)}</td>
+      <td data-label="Pago" class="m-estado"><span class="status ${ESTADO_PAGO_CLASE[c.estado_pago]}">${ESTADO_PAGO_LABEL[c.estado_pago]}</span></td>
       <td data-label="Envío">${celdaEnvio}</td>
       <td data-label=""><div class="fila-acciones">${accionPago} ${accionAnular}</div></td>
     `;
@@ -5173,11 +5253,12 @@ function renderDevolucionesProveedor(lista) {
       (d) => `
     <tr class="fila-clickeable" data-id="${d.id}">
       <td data-label="N°" class="mono">#${d.id}</td>
-      <td data-label="Proveedor">${esc(d.proveedor)}</td>
+      <td data-label="Proveedor" class="m-titulo">${esc(d.proveedor)}</td>
+      ${celdaMovil(`#${d.id}`, fechaAR(d.fecha), d.items_resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
       <td data-label="Fecha">${esc(fechaAR(d.fecha))}</td>
-      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
-      <td data-label="Plata"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
+      <td data-label="Total" class="align-right mono m-valor">${money(d.total)}</td>
+      <td data-label="Plata" class="m-estado"><span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
         d.reintegrada ? "Reintegrada" : "Crédito a favor"
       }</span></td>
       <td data-label="">${
@@ -5512,10 +5593,15 @@ function renderClientes(lista) {
     const contacto = [c.telefono, c.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
       ${selClientes.celda(c.id)}
-      <td data-label="Nombre">${esc(c.nombre)}</td>
+      <td data-label="Nombre" class="m-titulo">${esc(c.nombre)}</td>
+      ${celdaMovil(
+        contacto,
+        `${numero(c.cantidad_compras)} compra${c.cantidad_compras === 1 ? "" : "s"}`,
+        c.deuda > 0 ? `debe ${money(c.deuda)}` : null
+      )}
       <td data-label="Contacto">${esc(contacto)}</td>
       <td data-label="Compras" class="align-right mono">${numero(c.cantidad_compras)}</td>
-      <td data-label="Total gastado" class="align-right mono">${money(c.total_gastado)}</td>
+      <td data-label="Total gastado" class="align-right mono m-valor">${money(c.total_gastado)}</td>
       <td data-label="Deuda" class="align-right mono">${money(c.deuda)}</td>
       <td data-label="">${botonEditarFila("btn-editar-cliente", c.id, "cliente")}</td>
     `;
@@ -5642,7 +5728,9 @@ async function abrirFichaCliente(id) {
           })
           .join("");
 
-  // Sus trabajos y sus abonos los pinta cada dominio (hist. §83).
+  // Sus consultas, sus trabajos y sus abonos los pinta cada dominio (hist.
+  // §83, §90).
+  invocar("pintar:crmDelCliente", cliente);
   invocar("pintar:trabajosDelCliente", cliente);
   invocar("pintar:abonosDelCliente", cliente);
   mostrarVista("cliente-detalle", { titulo: cliente.nombre });
@@ -5739,10 +5827,15 @@ function renderProveedores(lista) {
     const contacto = [p.telefono, p.email].filter(Boolean).join(" · ") || "—";
     tr.innerHTML = `
       ${selProveedores.celda(p.id)}
-      <td data-label="Nombre">${esc(p.nombre)}</td>
+      <td data-label="Nombre" class="m-titulo">${esc(p.nombre)}</td>
+      ${celdaMovil(
+        contacto,
+        `${numero(p.cantidad_compras)} compra${p.cantidad_compras === 1 ? "" : "s"}`,
+        p.deuda > 0 ? `le debés ${money(p.deuda)}` : null
+      )}
       <td data-label="Contacto">${esc(contacto)}</td>
       <td data-label="Compras" class="align-right mono">${numero(p.cantidad_compras)}</td>
-      <td data-label="Total comprado" class="align-right mono">${money(p.total_comprado)}</td>
+      <td data-label="Total comprado" class="align-right mono m-valor">${money(p.total_comprado)}</td>
       <td data-label="Deuda" class="align-right mono">${money(p.deuda)}</td>
       <td data-label="">${botonEditarFila("btn-editar-proveedor", p.id, "proveedor")}</td>
     `;
@@ -5962,13 +6055,14 @@ function renderCuentasTesoreria(cuentas) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Cuenta">${esc(c.nombre)}</td>
+      <td data-label="Cuenta" class="m-titulo">${esc(c.nombre)}</td>
+      ${celdaMovil(TIPO_LABEL[c.tipo] ?? c.tipo, `saldo inicial ${money(c.saldo_inicial)}`)}
       <td data-label="Tipo">${esc(TIPO_LABEL[c.tipo] ?? c.tipo)}</td>
       <td data-label="Saldo inicial" class="align-right mono">${money(c.saldo_inicial)}</td>
-      <td data-label="Saldo actual" class="align-right mono ${
+      <td data-label="Saldo actual" class="align-right mono m-valor ${
         c.saldo < 0 ? "saldo-negativo" : ""
       }">${money(c.saldo)}</td>
-      <td data-label="">${botonEditarFila("btn-editar-cuenta", c.id, "cuenta")}</td>
+      <td data-label="" class="m-accion">${botonEditarFila("btn-editar-cuenta", c.id, "cuenta")}</td>
     </tr>`
     )
     .join("");
@@ -6023,8 +6117,9 @@ function renderMovimientosTesoreria(movimientos) {
         <tr>
           <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
           <td data-label="Cuenta">${esc(m.cuenta)}</td>
-          <td data-label="Concepto">${esc(concepto)}</td>
-          <td data-label="Importe" class="align-right mono ${
+          <td data-label="Concepto" class="m-titulo">${esc(concepto)}</td>
+          ${celdaMovil(fechaAR(m.fecha), m.cuenta)}
+          <td data-label="Importe" class="align-right mono m-valor ${
             m.tipo === "egreso" ? "saldo-negativo" : ""
           }">${signo}${money(m.importe)}</td>
         </tr>`;
@@ -6903,8 +6998,9 @@ function renderAuditoria(registros) {
       return `
         <tr>
           <td data-label="Fecha">${esc(fechaAR(fecha) || "—")}${hora ? ` <span class="mono">${esc(hora)}</span>` : ""}</td>
-          <td data-label="Acción"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${esc(AUDITORIA_ACCION_LABEL[r.accion] || r.accion)}</span></td>
-          <td data-label="Entidad">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}</td>
+          <td data-label="Acción" class="m-estado"><span class="status ${AUDITORIA_ACCION_CLASE[r.accion] || ""}">${esc(AUDITORIA_ACCION_LABEL[r.accion] || r.accion)}</span></td>
+          <td data-label="Entidad" class="m-titulo">${esc(AUDITORIA_ENTIDAD_LABEL[r.entidad] || r.entidad)}${r.entidad_id ? ` <span class="mono solo-celular">#${r.entidad_id}</span>` : ""}</td>
+          ${celdaMovil([fechaAR(fecha), hora?.slice(0, 5)].filter(Boolean).join(" "), r.usuario_nombre ?? AUDITORIA_ACTOR_LABEL[r.actor], detalle)}
           <td data-label="N°">${r.entidad_id ?? "—"}</td>
           <td data-label="Detalle" class="celda-wrap">${esc(detalle)}</td>
           <td data-label="Origen">${r.actor === "asistente" ? `<span class="status status-ia">${AUDITORIA_ACTOR_LABEL.asistente}</span>` : esc(AUDITORIA_ACTOR_LABEL[r.actor] || r.actor)}</td>
@@ -7039,12 +7135,8 @@ const filtrosAuditoriaMov = crearFiltros(
 );
 
 async function cargarAuditoria() {
-  // GET /api/auditoria es admin-only en el servidor desde la Etapa A de
-  // multi-tenant (valor_anterior/valor_nuevo traen costo/margen/ganancia sin
-  // filtrar). El nav-item ya está oculto por CSS y VISTAS_SOLO_ADMIN manda a
-  // un empleado a Ventas antes de llegar acá, pero se corta igual por si
-  // alguien llama a esta función directo — mismo criterio que cargarCompras.
-  if (!esAdmin()) return;
+  // Es de los dos roles (hist. §93): al empleado el servidor le saca los
+  // costos de valor_anterior/valor_nuevo y las filas de compras.
   tablaCargando("auditoriaBody", 7);
   tablaCargando("auditoriaMovBody", 4);
 
@@ -7228,7 +7320,9 @@ new MutationObserver(() => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || e.defaultPrevented || !sidebar.classList.contains("is-open")) return;
   sidebar.classList.remove("is-open");
-  navToggle.focus();
+  // En el celular el cajón lo abre "Más", de la barra de abajo (hist. §95).
+  const barraMas = document.getElementById("barraMas");
+  (barraMas?.checkVisibility?.() ? barraMas : navToggle).focus();
 });
 
 navToggle.addEventListener("click", () => {
@@ -7257,6 +7351,9 @@ registrar("abrirFicha:proveedor", abrirFichaProveedor);
 registrar("abrirFicha:venta", abrirFichaVenta);
 registrar("abrirFicha:presupuesto", abrirFichaPresupuesto);
 registrar("cargar:presupuestos", cargarPresupuestos);
+// Las altas que salen de una consulta (dominios/crm.js, hist. §90).
+registrar("nuevo:presupuesto", (desde) => abrirModalPresupuesto(null, desde));
+registrar("nuevo:venta", (desde) => abrirModalVenta(null, desde));
 // Las filas de renglones de venta, para los trabajos (dominios/trabajos.js):
 // leen el catálogo, que vive acá.
 registrar("items:agregarFila", (contenedor) => agregarFilaItemVenta(contenedor, productos, false));
