@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §102);
+    siguiente número (hoy el último es §103);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,52 +21,45 @@
 
 ## Estado actual (27 de octubre de 2026)
 
-**Para retomar (próxima sesión): la Fase 4 de la etapa 8, la publicación**
-(`deploy/`, Caddy, DuckDNS y la guía), adelantada por pedido del usuario del
-27 de octubre: quiere probar en un servidor y no depender de su compu. Se
-publica para pruebas, con `noindex` hasta que estén los términos (Fase 3 de
-8b), y se actualiza solo cuando cambia `main`.
-- **El servidor ya existe** (27 de octubre, creado por el usuario):
-  - Oracle Cloud, cuenta "Nexoapp" en la región Brazil East (São Paulo),
-    todavía en los 30 días de prueba (después pasa sola a Always Free);
-  - instancia `nexo`, una VM.Standard.E2.1.Micro (AMD x86_64, 2 núcleos,
-    1 GB de memoria, 45 GB de disco) con Ubuntu 24.04.5. El Ampere no tenía
-    capacidad;
-  - IP pública `137.131.218.182`, ephemeral: se mantiene mientras exista la
-    instancia;
-  - los puertos 80 y 443 están abiertos en la Default Security List. El
-    firewall de adentro de Ubuntu (iptables de Oracle) todavía no;
-  - **DuckDNS:** `nexosystem.duckdns.org` → esa IP, verificado contra
-    1.1.1.1, 8.8.8.8 y ns1.duckdns.org. El token lo tiene el usuario y nunca
-    pasa por el chat;
-  - **SSH:** `ssh -i "C:\Users\HP ULTRA 5\.ssh\nexo-oracle.key" ubuntu@137.131.218.182`.
-    La llave tiene los permisos restringidos con icacls y ya entra; no se
-    versiona ni se comparte.
-- **Para la instalación** (`deploy/`):
-  - swap de 2 GB, por el 1 GB de memoria;
-  - abrir el 80 y el 443 en iptables;
-  - Node 22.13+, Caddy con https, el servicio systemd y `.env` en el
-    servidor (`NEXO_URL_PUBLICA=https://nexosystem.duckdns.org`,
-    `NEXO_TRUST_PROXY=1`, `NODE_ENV=production`, SMTP);
-  - el cron de DuckDNS, el respaldo diario a Object Storage y
-    `X-Robots-Tag: noindex` hasta la Fase 3 de 8b;
-  - la actualización desde `main` (decidida en la próxima sesión: el
-    servidor la busca solo cada 5 minutos, o GitHub Actions por SSH);
-  - copiar la base real (con el usuario parando su `npm start` antes).
-- **Oracle recupera las instancias gratis que pasan una semana casi sin uso.**
-  Pasar a Pay As You Go lo evita, pero es una decisión de plata del usuario. Después sigue la **Fase 1b de
-la etapa 8b** (invitaciones por mail, cuentas sin negocio y el rebuild de
-`usuarios`), con el diseño de la sección 5 de
-`docs/investigacion-login-legal.md`. La Fase 1 (mail en la
-cuenta, verificación y login con mail) está hecha y commiteada (hist. §102).
+**Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
+en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
+términos (Fase 3 de 8b).
+- **Servidor:** Oracle Cloud, cuenta "Nexoapp", Brazil East.
+  - VM.Standard.E2.1.Micro con 1 GB de memoria y 2 GB de swap, Ubuntu 24.04;
+  - IP `137.131.218.182`, que se mantiene mientras exista la instancia;
+  - SSH: `ssh -i "C:\Users\HP ULTRA 5\.ssh\nexo-oracle.key" ubuntu@137.131.218.182`.
+- **Cómo corre:**
+  - Caddy (https solo) → Node en 127.0.0.1:3000 → `/var/lib/nexo/nexo.db`;
+  - el código está en `/opt/nexo` y las variables en `/etc/nexo/nexo.env`.
+- **Se actualiza solo:** lo que llega a `main` con el CI en verde está en el
+  servidor en unos 5 minutos (`deploy/actualizar.sh`). Si el arranque falla,
+  vuelve al commit anterior.
+- **Respaldos:** en cada arranque y todos los días a las 3:30, en
+  `/var/lib/nexo/respaldos`.
+- **La base del servidor es la real desde el 27 de octubre:** la copió
+  `VACUUM INTO`. La de la compu quedó como copia vieja, y lo que se cargue
+  ahí no sube.
 - **Lo que tiene que hacer el usuario:**
-  - **reiniciar su `npm start`**: el que corría desde la mañana tiene el
-    código viejo, aunque la base real ya está migrada;
-  - después, tocar los dos enlaces que llegaron a `nexosystem.app@gmail.com`
-    (cuentas `prueba` y `vendedor.prueba`);
-  - al entrar con su propia cuenta (`Solla_FAT`) va a ver "Sumá tu mail".
+  - entrar con su cuenta en el sitio, y desde ahí usar el servidor;
+  - parar su `npm start` local cuando quiera: ya no hace falta;
+  - **confirmar `NEXO_NEGOCIO_VENTAS=1`**: las consultas de la landing caen
+    en el CRM de "Mi negocio" (lo elegí yo; su decisión era "un negocio
+    suyo");
+  - los enlaces de verificación que se mandaron antes apuntan a
+    `localhost:3000`: reenviarlos desde el sitio (Mi cuenta) si hacen falta;
+  - opcional: el token de DuckDNS en `/etc/nexo/duckdns.env` (pasos en la
+    guía).
+- **Pendiente de la publicación:**
+  - el respaldo fuera de la VM (Object Storage);
+  - **Oracle recupera las instancias gratis que pasan una semana casi sin
+    uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
+    usuario.
+- **Lo que sigue: la Fase 1b de la etapa 8b** (invitaciones por mail, cuentas
+  sin negocio y el rebuild de `usuarios`), con el diseño de la sección 5 de
+  `docs/investigacion-login-legal.md`. La Fase 1 (mail en la cuenta,
+  verificación y login con mail) está hecha (hist. §102).
 - **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
-  y cómo se ve.
+  y cómo se ve. Desde el servidor salió otro el 27 de octubre.
 
 **Nuevo: etapa 8b, login, mail, términos y edad** (8b en "Qué sigue").
 Pedida por el usuario el 27 de octubre, después de ver la landing ("quedó
@@ -114,8 +107,9 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
   - el usuario la vio el 27 de octubre: "quedó perfecta". La inspiración
     que dio fue escalafy.com.
   - **Privacidad es un borrador** para que el equipo revise el texto.
-- **Sigue la Fase 4:** la publicación (`deploy/`, Caddy, DuckDNS, la guía).
-  Al publicar, definir `NEXO_URL_PUBLICA` y `NEXO_NEGOCIO_VENTAS`.
+- **Fase 4, la publicación: hecha** (hist. §103). Está en
+  https://nexosystem.duckdns.org, con `NEXO_URL_PUBLICA` y
+  `NEXO_NEGOCIO_VENTAS=1` definidas.
 - **Las decisiones del usuario ya están tomadas** (precios, topes de Gratis,
   Oracle Cloud y DuckDNS, contacto al CRM): ver hist. §98.
 - **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
@@ -1065,7 +1059,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      - el formulario de contacto, contra `POST /api/publico/consulta` (ya
        hecho en §99);
      - página de privacidad, `robots.txt` y `sitemap.xml`.
-   - **Fase 4, publicación** (después de la etapa 8b):
+   - ~~**Fase 4, publicación**~~ hecha (hist. §103), adelantada a la etapa
+     8b por pedido del usuario:
      - carpeta `deploy/` con `Caddyfile`, `nexo.service`, `instalar.sh`,
        `actualizar.sh` y DuckDNS;
      - la guía `docs/publicar.md`;
