@@ -215,10 +215,10 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está pusheada hasta el cierre de la auditoría (hist. §65). El PR
-  `solla` → `main` se abre desde
-  https://github.com/Code7C26/Nexo/compare/main...solla (no hay `gh`). Va a
-  ser la primera corrida del CI en GitHub.
+- `solla` está pusheada entera (27 de octubre, hasta la publicación lista,
+  hist. §102), con lint y 88 tests en verde. El PR `solla` → `main` lo abre
+  el usuario desde https://github.com/Code7C26/Nexo/compare/main...solla
+  (no hay `gh`); mergeado, `main` queda lista para instalar en Oracle.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
