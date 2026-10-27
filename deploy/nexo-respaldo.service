@@ -1,0 +1,16 @@
+# Respaldo diario de la base, además del de cada arranque (scripts/backup-db.mjs).
+[Unit]
+Description=Nexo: respaldo de la base
+
+[Service]
+Type=oneshot
+User=nexo
+Group=nexo
+WorkingDirectory=/opt/nexo/backend
+EnvironmentFile=/etc/nexo/nexo.env
+ExecStart=/usr/bin/node ../scripts/backup-db.mjs
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nexo
+ProtectHome=true
+PrivateTmp=true

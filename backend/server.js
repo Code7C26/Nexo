@@ -13491,6 +13491,9 @@ process.on('unhandledRejection', (motivo) => {
   console.error('[unhandledRejection]', motivo);
 });
 
-app.listen(PORT, () => {
-  console.log(`Nexo backend escuchando en http://localhost:${PORT}`);
+// NEXO_HOST=127.0.0.1 en el servidor publicado (deploy/, hist. §103): Node solo
+// atiende a Caddy, que está en la misma máquina. Sin ella escucha en todas las
+// interfaces, como siempre en desarrollo.
+app.listen(PORT, process.env.NEXO_HOST || undefined, () => {
+  console.log(`Nexo backend escuchando en http://${process.env.NEXO_HOST || 'localhost'}:${PORT}`);
 });

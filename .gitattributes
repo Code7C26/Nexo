@@ -1,0 +1,3 @@
+# deploy/ corre en Linux: LF siempre, también en una copia de Windows (los
+# scripts se suben con scp desde la compu, hist. §103).
+deploy/** text eol=lf

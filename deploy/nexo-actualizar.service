@@ -1,0 +1,9 @@
+# Trae main si cambió y reinicia Nexo (deploy/actualizar.sh, hist. §103).
+[Unit]
+Description=Nexo: actualizar desde main
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/nexo/deploy/actualizar.sh
