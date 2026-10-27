@@ -1,0 +1,9 @@
+[Unit]
+Description=Nexo: avisar la IP a DuckDNS cada 30 minutos
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target

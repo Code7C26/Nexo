@@ -1,0 +1,32 @@
+# Nexo detrás de Caddy (hist. §103). Las variables están en /etc/nexo/nexo.env.
+[Unit]
+Description=Nexo, sistema de gestión
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nexo
+Group=nexo
+WorkingDirectory=/opt/nexo/backend
+EnvironmentFile=/etc/nexo/nexo.env
+# 1 GB de memoria en la VM: el heap de Node, acotado.
+ExecStart=/usr/bin/node --max-old-space-size=384 server.js
+Restart=on-failure
+RestartSec=5
+
+# Solo puede escribir en /var/lib/nexo (la base y sus respaldos).
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nexo
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

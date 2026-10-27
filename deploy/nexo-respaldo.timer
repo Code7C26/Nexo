@@ -1,0 +1,9 @@
+[Unit]
+Description=Nexo: respaldo diario a las 3:30 de la Argentina
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

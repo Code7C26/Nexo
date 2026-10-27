@@ -1,0 +1,13 @@
+# Le avisa a DuckDNS la IP del servidor (deploy/duckdns.sh). No hace nada
+# hasta que exista /etc/nexo/duckdns.env con el token (docs/publicar.md).
+[Unit]
+Description=Nexo: actualizar la IP en DuckDNS
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/nexo/duckdns.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/nexo/duckdns.env
+ExecStart=/usr/bin/bash /opt/nexo/deploy/duckdns.sh
+DynamicUser=true

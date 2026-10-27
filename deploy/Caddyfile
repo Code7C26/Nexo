@@ -1,0 +1,16 @@
+# Caddy delante de Nexo (hist. §103). Saca y renueva solo el certificado de
+# Let's Encrypt, redirige http → https y le pasa todo a Node en 127.0.0.1:3000.
+# actualizar.sh lo copia a /etc/caddy/Caddyfile cuando cambia.
+{$NEXO_DOMINIO:nexosystem.duckdns.org} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		# Publicado solo para pruebas hasta los términos (Fase 3 de la etapa
+		# 8b): que ningún buscador lo indexe. Sacar esta línea al lanzar.
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:3000
+}
