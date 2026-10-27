@@ -158,6 +158,9 @@ Decisión para la Etapa C: `precio_unitario` pasa a ser precio final con IVA
 incluido.
 
 **Base de datos real** (`backend/db/nexo.db`, en `.gitignore`):
+- Migrada a §98 (planes) el 27 de octubre de 2026 en un `npm start`. Sus 4
+  negocios quedaron en Pro sin vencimiento. Respaldo previo:
+  `nexo-20261027-123610.db` en OneDrive.
 - Migrada a §77–§79 el 25 de octubre de 2026 en un `npm start` (respaldo
   `nexo-20261025-225132.db` en OneDrive).
 - **Ya migrada a la Etapa A** (6 de octubre de 2026, primer arranque real, hist.
