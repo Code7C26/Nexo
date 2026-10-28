@@ -137,7 +137,11 @@ test('sw.js guarda todo frontend/js y lo que carga index.html, y lo que lista ex
     // falta sin conexión, y el service worker no guarda la landing.
     ...archivos.filter((a) => rel(a) !== 'landing.js').map((a) => `/js/${rel(a)}`),
     // src/href locales (sin esquema); el #fragmento de los íconos no cuenta.
-    ...[...html.matchAll(/(?:src|href)="([^"#:]+)/g)].map((m) => absoluta(m[1])),
+    // Términos y privacidad son páginas públicas que arma el servidor y se
+    // abren aparte (etapa 8b, Fase 3): no son de la app.
+    ...[...html.matchAll(/(?:src|href)="([^"#:]+)/g)]
+      .map((m) => absoluta(m[1]))
+      .filter((ref) => ref !== '/terminos' && ref !== '/privacidad'),
     ...[...css.matchAll(/url\("\.\.\/([^"]+)"\)/g)].map((m) => `/${m[1]}`),
   ]);
   const faltan = [...esperados].filter((u) => !guardados.has(u));

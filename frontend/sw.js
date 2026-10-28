@@ -56,6 +56,7 @@ const PRECACHE = [
   "/js/sesion.js",
   "/js/app.js",
   "/js/alta.js",
+  "/js/core/aceptacion.js",
   "/js/core/api.js",
   "/js/core/barra-inferior.js",
   "/js/core/campos.js",

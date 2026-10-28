@@ -319,7 +319,9 @@ la Fase 2)
 - Restablecer cierra todas las sesiones, apaga `debe_cambiar_password`,
   marca el mail como verificado, audita y avisa por mail.
 
-**Fase 3 — términos, privacidad y edad**
+**Fase 3 — términos, privacidad y edad** (hecha, hist. §106; la edad se
+pregunta también al aceptar en una cuenta de antes, y el menor no puede
+elegir un plan pago tampoco en el primer negocio de una cuenta sin negocio)
 - Página `/terminos` y privacidad completa, con el titular (dato a completar
   hasta que se decida), Gemini, el hosting y el servicio de mail.
 - `usuarios`: `terminos_version`, `terminos_aceptados` (fecha) y `edad`
@@ -347,7 +349,8 @@ cobro online, y pasar a un servicio de mail con dominio propio.
 ## 6. Decisiones que no son técnicas
 
 1. ~~Titular legal~~: **Santino** (2.1). Falta que cargue sus datos en `.env`
-   (`NEXO_TITULAR_*`, llegan con la Fase 3).
+   y en el servidor (`NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL`,
+   `NEXO_TITULAR_DOMICILIO`; ya los leen las páginas desde la Fase 3).
 2. ~~Edad~~: **de 13 a 17 en Gratis, con permiso de los padres** (2.5).
 3. **El mail de Nexo:** los pasos de la sección 4, que hace el usuario.
 4. **Gemini:** recomendado el plan pago con topes por plan (2.6). Falta que el

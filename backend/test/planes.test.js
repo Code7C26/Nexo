@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { crearCliente, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
+import { ACEPTA, crearCliente, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
 import { fechaDeHoy } from '../fecha.js';
 
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -181,7 +181,7 @@ test('el contacto de la landing cae en el CRM del negocio de ventas, y en ningú
 });
 
 test('un plan desconocido en el alta responde 400', async () => {
-  const r = await crearCliente(servidor.url).post('/api/auth/registro', {
+  const r = await crearCliente(servidor.url).post('/api/auth/registro', { ...ACEPTA,
     empresa: 'X',
     email_cuenta: 'plan-raro@nexo.test',
     nombre: 'X',

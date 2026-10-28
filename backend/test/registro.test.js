@@ -5,7 +5,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { crearCliente, levantarServidor } from './servidor-de-prueba.js';
+import { ACEPTA, crearCliente, levantarServidor } from './servidor-de-prueba.js';
 
 let servidor;
 
@@ -35,7 +35,7 @@ test('los tipos de negocio se leen sin sesión', async () => {
 test('el alta guarda el tipo, los módulos y los datos de los comprobantes', async () => {
   // La primera alta adopta la organización sembrada (UPDATE)...
   const marta = crearCliente(servidor.url);
-  const alta = await marta.post('/api/auth/registro', {
+  const alta = await marta.post('/api/auth/registro', { ...ACEPTA,
     empresa: 'La Vaquita',
     nombre: 'Marta',
     email_cuenta: 'marta@nexo.test',
@@ -61,7 +61,7 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
 
   // ...y la segunda crea una nueva (INSERT). Sin módulos, los del tipo.
   const pepe = crearCliente(servidor.url);
-  const otra = await pepe.post('/api/auth/registro', {
+  const otra = await pepe.post('/api/auth/registro', { ...ACEPTA,
     empresa: 'Kiosco Pepe',
     nombre: 'Pepe',
     email_cuenta: 'pepe@nexo.test',
@@ -91,7 +91,7 @@ test('el alta rechaza un tipo que no se puede elegir y un CUIT inválido', async
     [{ ...base, email_cuenta: 'r2@nexo.test', rubro: 'constructor' }, 'clave del prototipo'],
     [{ ...base, email_cuenta: 'r3@nexo.test', documento: '20-12345678-5' }, 'CUIT con el dígito verificador malo']
   ]) {
-    const r = await crearCliente(servidor.url).post('/api/auth/registro', cuerpo);
+    const r = await crearCliente(servidor.url).post('/api/auth/registro', { ...ACEPTA, ...cuerpo });
     assert.equal(r.status, 400, `${motivo}: ${r.texto}`);
   }
   // Ninguno quedó creado a medias.

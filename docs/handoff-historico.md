@@ -9881,3 +9881,62 @@ padre (19 de octubre). En ARCA no existe una "cuenta de Nexo": Nexo tendría
 CUIT propio solo como sociedad. Para producción, con la delegación de §33,
 hace falta un CUIT de verdad (monotributo de Santino o una sociedad): se
 habla con un contador después de la presentación.
+
+## 106. Términos, privacidad y edad (etapa 8b, Fase 3), 28 de octubre de 2026
+
+Plan en `docs/investigacion-login-legal.md` (2.3 a 2.5 y la Fase 3 de la
+sección 5). Commiteado en `solla`, sin publicar.
+
+**Qué se hizo**
+- `backend/legal.js`: `TERMINOS_VERSION` (`'2026-10-28'`), la validación de la
+  aceptación (`{ acepta_terminos: true, edad }`, con `edad` en `mayor` |
+  `menor_autorizado`) y las páginas con los datos del titular, que salen de
+  `NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL`, `NEXO_TITULAR_DOMICILIO` y
+  `NEXO_TITULAR_EMAIL` (sin este, `NEXO_SMTP_USUARIO`). Un dato que falta se
+  ve como "dato a completar", y en producción el arranque avisa.
+- **Migración aditiva** en `usuarios`: `terminos_version`,
+  `terminos_aceptados` y `edad` (con su `CHECK`), en `schema.sql` y como
+  `ALTER` en `db/index.js`. Las cuentas de antes quedan en NULL.
+- **Gate en `autenticar`**, después del de mail: sin la versión vigente, 403
+  `faltan_terminos`, salvo `/auth/terminos`, el mail, la contraseña y salir.
+  `POST /api/auth/terminos` acepta (pide la edad solo si la cuenta no la
+  declaró) y lo audita como `confirmar` sobre `usuario`.
+- **El alta y la cuenta de una invitación exigen la aceptación.** De 13 a 17
+  años, solo Gratis: el registro y el primer negocio de una cuenta sin
+  negocio rechazan un plan pago (400). La auditoría del alta dice la versión y
+  la edad declarada.
+- **Frontend:** el bloque `[data-aceptacion]` (pregunta "¿Tenés 18 años o
+  más?"; con "No", por CSS `:has()`, las casillas "13 o más" y "permiso de
+  los padres"; y la casilla de los términos sin marcar) en el paso 1 del alta,
+  en la cuenta por invitación y en la pantalla nueva `#formTerminos`. Lo lee
+  `js/core/aceptacion.js` (sesion.js lo baja con `import()`). En el alta, un
+  menor que llegó con `?plan=pro` ve que arranca en Gratis y el plan no se
+  manda. Si los términos cambian con la app abierta, el interceptor de
+  `sesion.js` recarga y aparece la pantalla.
+- **Páginas:** `frontend/terminos.html` nueva (`/terminos`, en el sitemap) y
+  `privacidad.html` completa: responsable y encargado (art. 25), Oracle Cloud
+  en Brasil, Google (Gemini y Gmail) en EE. UU. con el consentimiento de la
+  transferencia, la advertencia del plan gratis de Gemini, plazos de los
+  derechos (10 días corridos, 5 hábiles) y menores. Enlaces en el pie de la
+  landing, de privacidad, de términos y de la tarjeta del login.
+
+**Cómo se verificó**
+- `npm test` 110/110, con `backend/test/terminos.test.js` (7 casos: sin
+  casilla o sin edad no crea nada, guarda versión, fecha y edad, menor solo
+  Gratis, invitación, cuenta vieja frenada hasta aceptar, cambio de versión
+  sin volver a pedir la edad, páginas con el titular escapado). El arnés
+  exporta `ACEPTA` y lo mandan `registrarEmpresa` y `crearEmpleado`.
+- `npm run lint` y `npm run verificar-migracion` (24 de 24, la base real sin
+  cambios).
+- En Chrome (`playwright-core` del scratchpad, base temporal): el alta a
+  390 px en oscuro y a 1280 px, el menor con plan Pro, la cuenta vieja que
+  acepta, y las dos páginas. Sin errores de consola. Lo que se corrigió con
+  las capturas: el error del bloque no se iba al responder (ahora se limpia
+  con cualquier cambio) y los enlaces del login quedaban en el medio de la
+  tarjeta en las otras pantallas (pasaron al pie).
+
+**Para después**
+- Un mayor que ya tiene un negocio en un plan pago y declara ser menor al
+  aceptar: hoy no cambia nada en su plan.
+- Que un abogado lea términos y privacidad antes de cobrar el primer plan.
+- El trámite de la base en la AAIP (gratis, con la clave fiscal de Santino).

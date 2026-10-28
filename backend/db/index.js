@@ -1853,6 +1853,19 @@ for (const columna of ['email TEXT', 'email_verificado TEXT']) {
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(LOWER(email)) WHERE email IS NOT NULL');
 
+// Términos y edad (etapa 8b, Fase 3). Nulables: las cuentas de antes los
+// aceptan al entrar. SQLite deja sumar una columna con CHECK por ALTER (no la
+// controla contra las filas que ya hay, que quedan en NULL).
+for (const columna of [
+  'terminos_version TEXT',
+  'terminos_aceptados TEXT',
+  "edad TEXT CHECK (edad IN ('mayor', 'menor_autorizado'))"
+]) {
+  if (!db.prepare('PRAGMA table_info(usuarios)').all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE usuarios ADD COLUMN ${columna}`);
+  }
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

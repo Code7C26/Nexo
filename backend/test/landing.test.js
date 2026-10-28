@@ -9,7 +9,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { levantarServidor } from './servidor-de-prueba.js';
+import { ACEPTA, levantarServidor } from './servidor-de-prueba.js';
 import { PLANES } from '../planes.js';
 
 const RAIZ = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -58,7 +58,7 @@ test('con sesión, "/" lleva a /app; /app es la app y /index.html redirige', asy
   const registro = await fetch(`${servidor.url}/api/auth/registro`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ empresa: 'Landing SA', email_cuenta: 'landing@nexo.test', nombre: 'Admin', password: 'clave-segura-1' })
+    body: JSON.stringify({ empresa: 'Landing SA', email_cuenta: 'landing@nexo.test', nombre: 'Admin', password: 'clave-segura-1', ...ACEPTA })
   });
   assert.equal(registro.status, 201);
   const cookie = registro.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
@@ -92,12 +92,16 @@ test('privacidad, robots y sitemap', async () => {
   const sitemap = await pedir('/sitemap.xml');
   assert.match(sitemap.headers.get('content-type'), /xml/);
   const xml = await sitemap.text();
-  assert.deepEqual([...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]), [`${URL_PUBLICA}/`, `${URL_PUBLICA}/privacidad`]);
+  assert.deepEqual([...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]), [
+    `${URL_PUBLICA}/`,
+    `${URL_PUBLICA}/privacidad`,
+    `${URL_PUBLICA}/terminos`
+  ]);
 });
 
 // La CSP no deja ejecutar scripts inline: uno que se cuele en la landing
 // fallaría en silencio en el navegador. El JSON-LD no se ejecuta, así que vale.
-for (const pagina of ['landing.html', 'privacidad.html']) {
+for (const pagina of ['landing.html', 'privacidad.html', 'terminos.html']) {
   test(`${pagina}: sin scripts inline y todo lo que referencia existe`, () => {
     const html = readFileSync(path.join(FRONTEND, pagina), 'utf8');
     const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>/g)].filter(
@@ -107,7 +111,7 @@ for (const pagina of ['landing.html', 'privacidad.html']) {
     assert.doesNotMatch(html, /\son[a-z]+="/i, 'atributo de evento (onclick=…) en la página pública');
 
     // src/href locales, sin las anclas ni las rutas que arma el servidor.
-    const rutasDelServidor = new Set(['/', '/app', '/privacidad']);
+    const rutasDelServidor = new Set(['/', '/app', '/privacidad', '/terminos']);
     const locales = [...html.matchAll(/(?:src|href)="(\/[^"#?]*)/g)]
       .map((m) => m[1])
       .filter((ref) => !rutasDelServidor.has(ref));

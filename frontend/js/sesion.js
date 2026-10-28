@@ -29,6 +29,7 @@
   // script declara una variable con el mismo nombre.
   const formCambioForzado = document.getElementById("formCambioForzado");
   const formSumarMail = document.getElementById("formSumarMail");
+  const formTerminos = document.getElementById("formTerminos");
   const sinNegocio = document.getElementById("sinNegocio");
   const pantallaInvitacion = document.getElementById("invitacion");
   const formRecuperar = document.getElementById("formRecuperar");
@@ -81,6 +82,14 @@
         cerrarSesionLocal();
         mostrarPantalla("login");
       }
+    }
+    // Los términos cambiaron con la app abierta (etapa 8b, Fase 3): el backend
+    // frena todo con 403 hasta aceptarlos. Recargar pasa por seguirCon, que
+    // muestra la página para aceptarlos. Se mira una copia: el cuerpo sigue
+    // entero para quien llamó.
+    if (res.status === 403 && url.startsWith("/api/") && !url.startsWith("/api/auth/")) {
+      const cuerpo = await res.clone().json().catch(() => null);
+      if (cuerpo?.codigo === "faltan_terminos") location.reload();
     }
     if (res.status === 409 && res.headers.get("X-Nexo-Negocio-Cambiado")) {
       try {
@@ -176,6 +185,7 @@
     formLogin.hidden = cual !== "login";
     formCambioForzado.hidden = cual !== "cambio";
     formSumarMail.hidden = cual !== "mail";
+    formTerminos.hidden = cual !== "terminos";
     sinNegocio.hidden = cual !== "sin-negocio";
     pantallaInvitacion.hidden = cual !== "invitacion";
     formRecuperar.hidden = cual !== "recuperar";
@@ -185,9 +195,10 @@
   }
 
   // Lo que falta antes de la app, en orden: la contraseña propia (cuando el
-  // admin la reseteó) y el mail (hist. §102: una cuenta de antes de §102 lo
-  // suma antes de operar; el backend tampoco la deja). Es el mismo camino
-  // después del login, del arranque con sesión y de cada paso completado.
+  // admin la reseteó), el mail (hist. §102: una cuenta de antes de §102 lo
+  // suma antes de operar; el backend tampoco la deja) y los términos vigentes
+  // (etapa 8b, Fase 3). Es el mismo camino después del login, del arranque con
+  // sesión y de cada paso completado.
   //
   // Después, una invitación que quedó por aceptar (se entró desde su enlace,
   // hist. §104), y una cuenta sin ningún negocio va a su pantalla en vez de a
@@ -197,6 +208,7 @@
     usuarioPendiente = usuario;
     if (usuario.debe_cambiar_password) mostrarPantalla("cambio");
     else if (!usuario.email) mostrarPantalla("mail");
+    else if (!usuario.terminos_al_dia) mostrarTerminos(usuario);
     else if (aceptarAlEntrar) aceptarYEntrar(usuario);
     else if (usuario.organizacion_id == null) mostrarSinNegocio(usuario);
     else arrancarApp(usuario);
@@ -423,6 +435,49 @@
 
   document.getElementById("sumarMailSalir").addEventListener("click", () => window.nexoCerrarSesion());
 
+  // ---------- Términos y edad (etapa 8b, Fase 3) ----------
+
+  // El bloque de la casilla y la edad lo maneja core/aceptacion.js, que se baja
+  // recién acá (como alta.js): quien ya aceptó nunca lo carga.
+  const aceptacion = () => import("./core/aceptacion.js");
+
+  // Una cuenta de antes, o todas cuando cambian los términos. Con la edad ya
+  // declarada, solo la casilla.
+  async function mostrarTerminos(usuario) {
+    const nueva = !usuario.edad;
+    document.getElementById("terminosTitulo").textContent = nueva ? "Antes de seguir" : "Cambiaron los términos";
+    document.getElementById("terminosTexto").textContent = nueva
+      ? "Escribimos los términos y la política de privacidad de Nexo: qué datos guardamos, para qué, y qué podés pedirnos. Leelos y aceptalos para seguir usando Nexo."
+      : "Actualizamos los términos o la política de privacidad de Nexo. Leelos y aceptalos para seguir usando Nexo.";
+    ocultarErrorEn("terminosError");
+    mostrarPantalla("terminos");
+    try {
+      (await aceptacion()).prepararAceptacion(formTerminos, { pedirEdad: nueva });
+    } catch {
+      mostrarErrorEn("terminosError", "No se pudo cargar la página. Recargá para probar de nuevo.");
+    }
+  }
+
+  formTerminos.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("terminosError");
+    const boton = formTerminos.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const respuesta = (await aceptacion()).leerAceptacion(formTerminos);
+      if (!respuesta) return;
+      const { res, datos } = await postJson("/api/auth/terminos", respuesta);
+      if (!res.ok) return mostrarErrorEn("terminosError", datos.error || "No se pudo guardar. Probá de nuevo.");
+      seguirCon({ ...usuarioPendiente, ...datos.usuario });
+    } catch {
+      mostrarErrorEn("terminosError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("terminosSalir").addEventListener("click", () => window.nexoCerrarSesion());
+
   // ---------- Invitaciones y cuentas sin negocio (hist. §104) ----------
 
   const ROL_TEXTO = { admin: "administrador", empleado: "empleado" };
@@ -528,6 +583,9 @@
         texto.textContent = `Te suma a su equipo como ${rol}. Creá tu cuenta para entrar: con ella vas a ingresar a Nexo.`;
         document.getElementById("invitacionEmail").value = info.email;
         mostrar("formInvitacionCuenta", true);
+        aceptacion()
+          .then((m) => m.prepararAceptacion(document.getElementById("formInvitacionCuenta")))
+          .catch(() => {});
       }
     }
     mostrarPantalla("invitacion");
@@ -595,7 +653,9 @@
     const boton = e.target.querySelector('button[type="submit"]');
     boton.disabled = true;
     try {
-      const { res, datos } = await postJson("/api/auth/invitacion/cuenta", { token: tokenInvitacion, nombre, password });
+      const respuesta = (await aceptacion()).leerAceptacion(e.target);
+      if (!respuesta) return;
+      const { res, datos } = await postJson("/api/auth/invitacion/cuenta", { token: tokenInvitacion, nombre, password, ...respuesta });
       if (res.status === 409) {
         // Ese mail ya tiene cuenta (la creó en otra pestaña): a ingresar.
         aceptarAlEntrar = tokenInvitacion;
@@ -857,7 +917,7 @@
         if (!estado.autenticado) {
           cerrarSesionLocal();
           mostrarInvitacion(null);
-        } else if (estado.usuario.debe_cambiar_password || !estado.usuario.email) {
+        } else if (estado.usuario.debe_cambiar_password || !estado.usuario.email || !estado.usuario.terminos_al_dia) {
           aceptarAlEntrar = tokenInvitacion;
           seguirCon(estado.usuario);
         } else {

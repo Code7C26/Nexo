@@ -781,3 +781,5 @@ figure { margin: 0; }
 .legal ul { padding-left: 20px; list-style: disc; }
 .legal a { color: var(--acento); }
 .legal strong { color: var(--texto); font-weight: 600; }
+/* Un dato del titular que todavía no está en NEXO_TITULAR_* (backend/legal.js). */
+.legal-falta { padding: 0 4px; white-space: nowrap; border-radius: 4px; color: var(--texto); background: rgba(255, 196, 0, 0.18); }

@@ -215,6 +215,8 @@ export const RUTAS_PERMISOS = {
   // El mail de la cuenta propia (hist. §102).
   'POST /api/auth/email': 'ambos',
   'POST /api/auth/email/reenviar': 'ambos',
+  // Aceptar los términos vigentes (etapa 8b, Fase 3): de la persona.
+  'POST /api/auth/terminos': 'ambos',
   // Las invitaciones que recibió la cuenta (hist. §104): son de la persona, no
   // de un negocio, y también las alcanza una sesión sin negocio.
   'GET /api/auth/invitaciones': 'ambos',

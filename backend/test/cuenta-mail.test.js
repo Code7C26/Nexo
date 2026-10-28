@@ -9,7 +9,7 @@ import path from 'node:path';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
-import { crearCliente, crearEmpleado, levantarServidor, registrarEmpresa, ultimoEnlace } from './servidor-de-prueba.js';
+import { ACEPTA, crearCliente, crearEmpleado, levantarServidor, registrarEmpresa, ultimoEnlace } from './servidor-de-prueba.js';
 
 let servidor;
 // El alta tiene un tope de 5 por hora y por IP: los últimos tests reusan las
@@ -85,9 +85,9 @@ test('el alta crea la cuenta con el mail, manda la verificación y el enlace la 
 
 test('el alta rechaza un mail inválido o que ya usa otra cuenta', async () => {
   const base = { empresa: 'Repetida', nombre: 'Otro', password: 'clave-segura-1' };
-  const invalido = await crearCliente(servidor.url).post('/api/auth/registro', { ...base, email_cuenta: 'sin-arroba' });
+  const invalido = await crearCliente(servidor.url).post('/api/auth/registro', { ...ACEPTA, ...base, email_cuenta: 'sin-arroba' });
   assert.equal(invalido.status, 400, invalido.texto);
-  const repetido = await crearCliente(servidor.url).post('/api/auth/registro', { ...base, email_cuenta: 'ANA@ejemplo.com' });
+  const repetido = await crearCliente(servidor.url).post('/api/auth/registro', { ...ACEPTA, ...base, email_cuenta: 'ANA@ejemplo.com' });
   assert.equal(repetido.status, 409, repetido.texto);
 });
 
@@ -135,6 +135,9 @@ test('una cuenta sin mail no opera hasta sumarlo, y sigue entrando con su usuari
   assert.equal((await dani.post('/api/auth/email', { email: 'no es un mail' })).status, 400);
   const suma = await dani.post('/api/auth/email', { email: 'dani@nexo.test' });
   assert.equal(suma.status, 200, suma.texto);
+  // Después del mail, los términos (etapa 8b, Fase 3): es una cuenta de antes.
+  assert.equal((await dani.get('/api/productos')).json.codigo, 'faltan_terminos');
+  assert.equal((await dani.post('/api/auth/terminos', ACEPTA)).status, 200);
   assert.equal(suma.json.usuario.email, 'dani@nexo.test');
   assert.equal((await dani.get('/api/productos')).status, 200);
   assert.ok(ultimoEnlace(servidor, 'dani@nexo.test'), 'le llega la verificación');

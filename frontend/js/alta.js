@@ -20,6 +20,7 @@
 import { marcarModulosDelTipo, tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "./core/tipos-negocio.js";
 import { CONDICIONES_FISCALES, errorCuit, formatearCuit } from "./core/fiscal.js";
 import { limpiarError, limpiarErrores, marcarError } from "./core/campos.js";
+import { declaraMenor, leerAceptacion } from "./core/aceptacion.js";
 
 const NOMBRES_PASO = ["Tu cuenta", "Tu negocio", "Tipo de negocio", "Secciones", "Comprobantes"];
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,6 +46,8 @@ let rubroDeLosModulos = null;
 let alVolverAlPrimero = null;
 let opciones = {};
 let modo = MODOS.cuenta;
+// Lo que respondió en el paso 1 sobre los términos y la edad.
+let aceptacion = null;
 
 const formDelPaso = (n) => formularios[n - 1];
 // El número que ve quien completa el alta, y el de la dirección: en "Agregar
@@ -172,6 +175,7 @@ async function cargarCatalogo() {
 // el catálogo del backend: uno que no existe se ignora y queda Gratis, el que
 // el backend usa si no llega ninguno.
 let planElegido = null;
+let textoPlan = "";
 
 async function mostrarPlan() {
   const aviso = campo("altaPlan");
@@ -185,16 +189,36 @@ async function mostrarPlan() {
     const { planes, dias_prueba: dias } = await res.json();
     const plan = planes.find((p) => p.clave === pedido);
     if (!plan) return;
-    planElegido = plan.clave;
-    aviso.textContent =
+    planElegido = plan;
+    textoPlan =
       plan.precio > 0
         ? `Plan ${plan.nombre}: lo probás ${dias} días gratis, sin tarjeta. Si después no lo pagás, seguís en el plan Gratis con todo lo que cargaste.`
         : "Plan Gratis: sin costo y sin tarjeta. Cuando lo necesites, pasás a un plan con más lugar.";
-    aviso.hidden = false;
+    avisarPlan();
   } catch {
     // Sin el catálogo, el alta sigue igual y el negocio nace en Gratis.
   }
 }
+
+// Con menos de 18 años el negocio nace en Gratis (etapa 8b, Fase 3): un plan
+// pago lo contrata un mayor de edad, y el backend lo rechaza. Se avisa apenas
+// responde "No", en el mismo lugar donde dice qué plan eligió.
+function planQueVa() {
+  return planElegido && !(planElegido.precio > 0 && declaraMenor(formDelPaso(1))) ? planElegido : null;
+}
+
+function avisarPlan() {
+  const aviso = campo("altaPlan");
+  if (!planElegido) return;
+  aviso.textContent = planQueVa()
+    ? textoPlan
+    : `Elegiste el plan ${planElegido.nombre}, pero con menos de 18 años tu negocio arranca en el plan Gratis. Un plan pago lo tiene que contratar un mayor de edad.`;
+  aviso.hidden = false;
+}
+
+formDelPaso(1).addEventListener("change", (e) => {
+  if (e.target.type === "radio") avisarPlan();
+});
 
 /* ---------- Validación de cada paso ---------- */
 
@@ -210,7 +234,8 @@ const VALIDAR = {
       return errorEn(email, "Revisá el mail: tiene que ser como nombre@dominio.com.");
     }
     if (password.value.length < 8) return errorEn(password, "La contraseña tiene que tener al menos 8 caracteres.");
-    return true;
+    aceptacion = leerAceptacion(formDelPaso(1));
+    return aceptacion !== null;
   },
   2() {
     const empresa = campo("altaEmpresa");
@@ -286,7 +311,8 @@ async function crearCuenta({ conComprobantes }) {
           email_cuenta: valor("altaEmailCuenta"),
           password: campo("altaPassword").value,
           empresa: valor("altaEmpresa"),
-          ...(planElegido && { plan: planElegido }),
+          ...(planQueVa() && { plan: planQueVa().clave }),
+          ...aceptacion,
           ...delNegocio
         };
   if (conComprobantes) {

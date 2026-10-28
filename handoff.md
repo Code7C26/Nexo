@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §105);
+    siguiente número (hoy el último es §106);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -54,10 +54,17 @@ términos (Fase 3 de 8b).
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
-- **Lo que sigue: la Fase 3 de la etapa 8b** (términos, privacidad y edad).
-  Hechas: Fases 1 (mail en la cuenta, hist. §102), 1b (invitaciones, hist.
-  §104) y 2 (recuperar la contraseña, hist. §105, commiteada en `solla`, sin
-  publicar).
+- **Lo que sigue: la Fase 4 de la etapa 8b** (descargar los datos, dar de
+  baja el negocio y `NEXO_REGISTRO=off`). Hechas: Fases 1 (mail en la cuenta,
+  hist. §102), 1b (invitaciones, hist. §104), 2 (recuperar la contraseña,
+  hist. §105) y 3 (términos, privacidad y edad, hist. §106). La 2 y la 3 están
+  commiteadas en `solla`, sin publicar.
+- **Para el usuario, de la Fase 3:** cargar `NEXO_TITULAR_NOMBRE`,
+  `NEXO_TITULAR_CUIL` y `NEXO_TITULAR_DOMICILIO` en el `.env` de su compu y en
+  `/etc/nexo/nexo.env` del servidor: sin ellos, `/terminos` y `/privacidad`
+  dicen "dato a completar". Y revisar los dos textos (son borradores). Al
+  publicar, **todas las cuentas** (la suya, la demo del profe) ven "Antes de
+  seguir" una vez y aceptan.
 - **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
   y cómo se ve. Desde el servidor salió otro el 27 de octubre.
 
@@ -98,6 +105,13 @@ la contraseña pierde su negocio.
   login, con un enlace por mail de un solo uso y 30 minutos. Usarlo cierra
   todas las sesiones, confirma el mail y avisa. El admin ya no resetea la
   contraseña de quien confirmó su mail. **Falta que el usuario lo vea.**
+- **Fase 3, hecha (hist. §106):** `/terminos` nueva y privacidad completa,
+  con los datos del titular desde `NEXO_TITULAR_*`. El alta y la cuenta por
+  invitación piden la edad y la casilla sin marcar; de 13 a 17 años, solo
+  Gratis. Una cuenta sin la versión vigente (`TERMINOS_VERSION` de
+  `backend/legal.js`) ve "Antes de seguir" y el backend no la deja operar
+  (403 `faltan_terminos`). Cambiar esa versión hace que todos vuelvan a
+  aceptar. **Falta que el usuario lo vea.**
 - **Pendiente nuevo (pedido del usuario del 28 de octubre): entrar con
   Google.** Está en "Qué sigue", 8b.
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
@@ -1150,8 +1164,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        el rebuild de `usuarios` (`organizacion_id` nulable);
      - trámite del usuario: el cliente OAuth en Google Cloud Console (gratis),
        con el dominio de Nexo.
-   - Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
-     su versión y la pregunta de edad.
+   - ~~Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
+     su versión y la pregunta de edad~~ hecha (hist. §106).
    - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.
    - Las migraciones son aditivas y están explicadas en el documento.
 9. **C: IVA** (2 sesiones).

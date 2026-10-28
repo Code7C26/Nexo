@@ -163,6 +163,10 @@ export function ultimoEnlace(servidor, para, ruta = 'verificar-mail') {
   return encontrado?.[1] ?? null;
 }
 
+// Los términos aceptados y la edad declarada (etapa 8b, Fase 3), que el alta
+// de una cuenta exige. Los tests de terminos.test.js prueban sin ellos.
+export const ACEPTA = { acepta_terminos: true, edad: 'mayor' };
+
 // Crea una empresa con su admin por el registro público y devuelve el cliente
 // ya logueado como ese admin. Nace en Pro (la prueba de 14 días, hist. §98)
 // para que los topes de Gratis no se crucen con lo que prueba cada test; los
@@ -174,7 +178,7 @@ export async function registrarEmpresa(
   { empresa, usuario, email = `${usuario}@nexo.test`, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro' }
 ) {
   const cliente = crearCliente(url);
-  const r = await cliente.post('/api/auth/registro', { empresa, email_cuenta: email, nombre, password, plan });
+  const r = await cliente.post('/api/auth/registro', { empresa, email_cuenta: email, nombre, password, plan, ...ACEPTA });
   if (r.status !== 201) throw new Error(`Registro falló (${r.status}): ${r.texto}`);
   return cliente;
 }
@@ -205,7 +209,7 @@ export async function crearEmpleado(
   const token = tokenDeInvitacion(servidor, email);
   if (!token) throw new Error(`No le llegó la invitación a ${email}.`);
   const cliente = crearCliente(servidor.url);
-  const cuenta = await cliente.post('/api/auth/invitacion/cuenta', { token, nombre, password });
+  const cuenta = await cliente.post('/api/auth/invitacion/cuenta', { token, nombre, password, ...ACEPTA });
   if (cuenta.status !== 201) throw new Error(`Crear la cuenta desde la invitación falló (${cuenta.status}): ${cuenta.texto}`);
   return cliente;
 }

@@ -9,6 +9,7 @@ import { esMailValido, mandarMail, plantillaMail } from './mail.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
+import { TERMINOS_VERSION, completarPaginaLegal, titularIncompleto, validarAceptacion } from './legal.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -54,6 +55,11 @@ if (Number(process.env.NEXO_TRUST_PROXY) > 0) {
   // fallidos de cualquiera bloquean el login de todos durante 15 minutos.
   console.warn('NEXO_TRUST_PROXY no está definido: si hay un proxy inverso delante, los límites por IP agrupan a todos los clientes.');
 }
+// Los términos y la privacidad publicados nombran al titular (legal.js). Sin
+// sus datos, las páginas dicen "dato a completar".
+if (process.env.NODE_ENV === 'production' && titularIncompleto().length) {
+  console.warn(`Faltan datos del titular en NEXO_TITULAR_* (${titularIncompleto().join(', ')}): términos y privacidad los muestran "a completar".`);
+}
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -70,7 +76,7 @@ app.use(express.json());
 // a la app: una instalación vieja de la PWA (start_url "/") sigue abriendo
 // bien. Lo estático va con `index: false` para que `/` no sirva index.html.
 const FRONTEND = path.join(__dirname, '..', 'frontend');
-const PAGINAS_PUBLICAS = ['/', '/privacidad'];
+const PAGINAS_PUBLICAS = ['/', '/privacidad', '/terminos'];
 
 // La dirección pública, para lo que tiene que ir absoluto (canónico, imagen de
 // Open Graph, robots y sitemap). NEXO_URL_PUBLICA la fija al publicar (Fase 4);
@@ -119,7 +125,15 @@ app.get('/', (req, res) => {
 });
 app.get('/app', (req, res) => res.sendFile(path.join(FRONTEND, 'index.html')));
 app.get('/index.html', (req, res) => res.redirect(301, '/app'));
-app.get('/privacidad', (req, res) => res.sendFile(path.join(FRONTEND, 'privacidad.html')));
+// Privacidad y términos (etapa 8b, Fase 3) llevan los datos del titular, que
+// no están en el repo (legal.js). Se leen en cada pedido: son dos páginas
+// chicas y así un cambio en el texto se ve sin reiniciar.
+for (const pagina of ['privacidad', 'terminos']) {
+  app.get(`/${pagina}`, (req, res) => {
+    const html = readFileSync(path.join(FRONTEND, `${pagina}.html`), 'utf8');
+    res.type('html').send(completarPaginaLegal(html, { diasPrueba: DIAS_PRUEBA }));
+  });
+}
 
 // El enlace del mail de verificación (hist. §102). Es un GET porque se toca
 // desde el programa de mail; si un antivirus del mail lo abre antes, solo
@@ -287,7 +301,7 @@ function sesionValida(token) {
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
               usuarios.debe_cambiar_password, sesiones.organizacion_id,
-              usuarios.email, usuarios.email_verificado
+              usuarios.email, usuarios.email_verificado, usuarios.terminos_version, usuarios.edad
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
          LEFT JOIN usuario_organizaciones pertenencia
@@ -305,8 +319,10 @@ function sesionValida(token) {
 // estado, login y registro. organizacion_id es el negocio activo: sesion.js lo
 // marca en <html> para separar por negocio lo que se guarda en el navegador y
 // para darse cuenta si otra pestaña cambió de negocio. Sin email, sesion.js
-// muestra "Sumá tu mail" antes de arrancar la app (hist. §102).
-function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id, email, email_verificado }) {
+// muestra "Sumá tu mail" antes de arrancar la app (hist. §102). Sin los
+// términos vigentes aceptados, la página para aceptarlos, que pregunta la edad
+// solo si todavía no la declaró (etapa 8b, Fase 3).
+function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id, email, email_verificado, terminos_version, edad }) {
   return {
     id,
     usuario,
@@ -315,7 +331,9 @@ function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organiz
     debe_cambiar_password: !!debe_cambiar_password,
     organizacion_id,
     email: email ?? null,
-    email_verificado: !!email_verificado
+    email_verificado: !!email_verificado,
+    terminos_al_dia: terminos_version === TERMINOS_VERSION,
+    edad: edad ?? null
   };
 }
 
@@ -436,8 +454,11 @@ function auditar(req, datos) {
   });
 }
 
-// Lo único que puede hacer una cuenta sin mail (ver autenticar).
+// Lo único que puede hacer una cuenta sin mail, o sin los términos vigentes
+// aceptados (ver autenticar). El mail va antes que los términos en sesion.js,
+// por eso sumarlo también se puede sin haberlos aceptado.
 const RUTAS_SIN_MAIL = new Set(['/auth/email', '/auth/logout', '/auth/cambiar-password']);
+const RUTAS_SIN_TERMINOS = new Set([...RUTAS_SIN_MAIL, '/auth/terminos']);
 
 function autenticar(req, res, next) {
   const token = leerCookie(req, COOKIE_SESION);
@@ -463,6 +484,11 @@ function autenticar(req, res, next) {
   // le dice al frontend que muestre "Sumá tu mail".
   if (!sesion.email && !RUTAS_SIN_MAIL.has(req.path)) {
     return res.status(403).json({ error: 'Sumá tu mail antes de seguir.', codigo: 'falta_email' });
+  }
+  // Y los términos (etapa 8b, Fase 3): una cuenta de antes, o cualquiera
+  // cuando cambia TERMINOS_VERSION, los acepta antes de operar.
+  if (sesion.terminos_version !== TERMINOS_VERSION && !RUTAS_SIN_TERMINOS.has(req.path)) {
+    return res.status(403).json({ error: 'Aceptá los términos antes de seguir.', codigo: 'faltan_terminos' });
   }
   // Sin negocio (hist. §104) solo alcanza su cuenta (/auth/*: sus invitaciones,
   // su mail, su contraseña) y crear su negocio (/negocios). Todo lo demás es de
@@ -632,6 +658,7 @@ app.post('/api/auth/login', (req, res) => {
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
               usuarios.debe_cambiar_password, usuarios.email, usuarios.email_verificado,
+              usuarios.terminos_version, usuarios.edad,
               pertenencia.organizacion_id, pertenencia.rol
          FROM usuarios
          LEFT JOIN usuario_organizaciones pertenencia
@@ -784,6 +811,19 @@ function sumarAlNegocio(usuarioId, organizacionId, rol) {
   );
 }
 
+// Lo que queda en la auditoría de una aceptación de los términos (etapa 8b,
+// Fase 3): la versión y, si la declaró en ese momento, la edad. Junto con
+// usuarios.terminos_aceptados es la prueba del consentimiento (Ley 25.326,
+// art. 5).
+const EDAD_TEXTO = {
+  mayor: 'declaró tener 18 años o más',
+  menor_autorizado: 'declaró tener entre 13 y 17 años, con el permiso de su madre, padre o tutor'
+};
+function textoAceptacion(edad) {
+  return `Aceptó los términos y la política de privacidad (versión ${TERMINOS_VERSION})${edad ? ` y ${EDAD_TEXTO[edad]}` : ''}`;
+}
+const MENOR_SOLO_GRATIS = 'Con menos de 18 años, el negocio arranca en el plan Gratis. Un plan pago lo tiene que contratar un mayor de edad.';
+
 // Alta de empresa (CLAUDE.md §28): cualquiera crea su negocio y queda como su
 // primer admin. Reemplaza al viejo /api/auth/bootstrap, que era el caso
 // particular "instalación nueva, primera empresa".
@@ -834,6 +874,16 @@ app.post('/api/auth/registro', (req, res) => {
     return res.status(400).json({ error: 'El plan no es válido.' });
   }
   const planVence = PLANES[plan].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null;
+  // Los términos y la edad (etapa 8b, Fase 3), con la casilla sin marcar del
+  // alta. De 13 a 17 años se entra solo en Gratis: un plan pago lo contrata un
+  // mayor de edad (decisión del usuario del 27 de octubre).
+  const aceptacion = validarAceptacion(req.body);
+  if (aceptacion.error) {
+    return res.status(400).json({ error: aceptacion.error });
+  }
+  if (aceptacion.edad === 'menor_autorizado' && PLANES[plan].precio > 0) {
+    return res.status(400).json({ error: MENOR_SOLO_GRATIS });
+  }
 
   // Global a propósito: el mail es único en todo Nexo y el login no pide
   // empresa (hist. §45, §102).
@@ -864,10 +914,11 @@ app.post('/api/auth/registro', (req, res) => {
     db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, planVence, orgId);
     const info = db
       .prepare(
-        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email)
-         VALUES (?, ?, ?, ?, ?, 0, ?)`
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email,
+                               terminos_version, terminos_aceptados, edad)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now'), ?)`
       )
-      .run(orgId, usuario, nombre, hash, salt, email);
+      .run(orgId, usuario, nombre, hash, salt, email, TERMINOS_VERSION, aceptacion.edad);
     usuarioId = Number(info.lastInsertRowid);
     sumarAlNegocio(usuarioId, orgId, 'admin');
     marcarAcceso(usuarioId, orgId);
@@ -887,7 +938,7 @@ app.post('/api/auth/registro', (req, res) => {
       entidad_id: usuarioId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Primer administrador creado: ${nombre} (${usuario})`
+      detalle: `Primer administrador creado: ${nombre} (${usuario}). ${textoAceptacion(aceptacion.edad)}`
     });
   });
 
@@ -903,7 +954,9 @@ app.post('/api/auth/registro', (req, res) => {
       debe_cambiar_password: 0,
       organizacion_id: orgId,
       email,
-      email_verificado: null
+      email_verificado: null,
+      terminos_version: TERMINOS_VERSION,
+      edad: aceptacion.edad
     })
   });
 });
@@ -1057,6 +1110,10 @@ app.post('/api/auth/invitacion/cuenta', (req, res) => {
   if (password.length < 8) {
     return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
   }
+  const aceptacion = validarAceptacion(req.body);
+  if (aceptacion.error) {
+    return res.status(400).json({ error: aceptacion.error });
+  }
   if (mailEnUso(inv.email)) {
     return res.status(409).json({ error: 'Ya tenés una cuenta con este mail. Entrá con ella para aceptar la invitación.' });
   }
@@ -1071,12 +1128,21 @@ app.post('/api/auth/invitacion/cuenta', (req, res) => {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email, email_verificado)
-           VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'))`
+          `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email, email_verificado,
+                                 terminos_version, terminos_aceptados, edad)
+           VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'), ?, datetime('now'), ?)`
         )
-        .run(inv.organizacion_id, inv.email, nombre, hash, salt, inv.email).lastInsertRowid
+        .run(inv.organizacion_id, inv.email, nombre, hash, salt, inv.email, TERMINOS_VERSION, aceptacion.edad).lastInsertRowid
     );
     aceptarInvitacion(inv, { id, nombre });
+    registrarAuditoria({
+      accion: 'confirmar',
+      entidad: 'usuario',
+      entidad_id: id,
+      usuario_id: id,
+      organizacion_id: inv.organizacion_id,
+      detalle: textoAceptacion(aceptacion.edad)
+    });
     marcarAcceso(id, inv.organizacion_id);
     return id;
   });
@@ -1091,7 +1157,9 @@ app.post('/api/auth/invitacion/cuenta', (req, res) => {
       debe_cambiar_password: 0,
       organizacion_id: inv.organizacion_id,
       email: inv.email,
-      email_verificado: 1
+      email_verificado: 1,
+      terminos_version: TERMINOS_VERSION,
+      edad: aceptacion.edad
     })
   });
 });
@@ -10280,6 +10348,33 @@ app.post('/api/auth/cambiar-password', (req, res) => {
 // ella); cambiarlo sí, porque con el mail se recupera la cuenta: alguien que
 // encuentra una sesión abierta no puede quedársela. El mail nuevo queda sin
 // verificar, y al anterior le llega un aviso.
+// La página que acepta los términos vigentes (etapa 8b, Fase 3), para una
+// cuenta de antes o cuando cambia TERMINOS_VERSION. Pide la edad solo si la
+// cuenta todavía no la declaró: un cambio de términos no la vuelve a
+// preguntar.
+app.post('/api/auth/terminos', (req, res) => {
+  const pedirEdad = !req.usuario.edad;
+  const aceptacion = validarAceptacion(req.body, { pedirEdad });
+  if (aceptacion.error) {
+    return res.status(400).json({ error: aceptacion.error });
+  }
+  const edad = aceptacion.edad ?? req.usuario.edad;
+  withTransaction(() => {
+    db.prepare("UPDATE usuarios SET terminos_version = ?, terminos_aceptados = datetime('now'), edad = ? WHERE id = ?").run(
+      TERMINOS_VERSION,
+      edad,
+      req.usuario.id
+    );
+    auditar(req, {
+      accion: 'confirmar',
+      entidad: 'usuario',
+      entidad_id: req.usuario.id,
+      detalle: textoAceptacion(aceptacion.edad)
+    });
+  });
+  res.json({ usuario: datosUsuario({ ...req.usuario, terminos_version: TERMINOS_VERSION, edad }) });
+});
+
 app.post('/api/auth/email', (req, res) => {
   const email = normalizarMail(req.body?.email);
   if (!esMailValido(email)) {
@@ -11184,6 +11279,9 @@ app.post('/api/negocios', (req, res) => {
     const clave = req.body?.plan ?? PLAN_POR_DEFECTO;
     if (typeof clave !== 'string' || !esPlan(clave)) {
       return res.status(400).json({ error: 'El plan no es válido.' });
+    }
+    if (req.usuario.edad === 'menor_autorizado' && PLANES[clave].precio > 0) {
+      return res.status(400).json({ error: MENOR_SOLO_GRATIS });
     }
     plan = { plan: clave, plan_vence: PLANES[clave].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null };
   } else {

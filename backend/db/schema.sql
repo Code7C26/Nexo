@@ -954,7 +954,14 @@ CREATE TABLE IF NOT EXISTS usuarios (
   -- tocó el enlace, y vuelve a NULL si el mail cambia. El índice único va en
   -- db/index.js, después del ALTER que suma estas columnas.
   email TEXT,
-  email_verificado TEXT
+  email_verificado TEXT,
+  -- Términos y edad (etapa 8b, Fase 3): qué versión de los términos aceptó
+  -- (TERMINOS_VERSION de backend/legal.js), cuándo, y qué declaró sobre su
+  -- edad. NULL en las cuentas de antes, que los aceptan al entrar. No se
+  -- guarda la fecha de nacimiento: solo si es mayor o menor con permiso.
+  terminos_version TEXT,
+  terminos_aceptados TEXT,
+  edad TEXT CHECK (edad IN ('mayor', 'menor_autorizado'))
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas

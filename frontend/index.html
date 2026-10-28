@@ -3513,6 +3513,35 @@
         <button type="button" class="btn-link" id="sumarMailSalir">Cerrar sesión</button>
       </form>
 
+      <!-- Obligatoria sin los términos vigentes aceptados (etapa 8b, Fase 3):
+           una cuenta de antes, o todas cuando cambian. El backend no deja
+           operar sin ellos (403 faltan_terminos). La edad se pregunta solo si
+           la cuenta todavía no la declaró. -->
+      <form id="formTerminos" class="form" hidden novalidate>
+        <div class="sesion-paso">
+          <h2 id="terminosTitulo">Antes de seguir</h2>
+          <p id="terminosTexto">Escribimos los términos y la política de privacidad de Nexo: qué datos guardamos, para qué, y qué podés pedirnos. Leelos y aceptalos para seguir usando Nexo.</p>
+        </div>
+        <p class="form-note" id="terminosError" role="alert" hidden></p>
+        <div class="aceptacion" data-aceptacion>
+            <fieldset class="aceptacion-edad" data-edad-pregunta>
+              <legend>¿Tenés 18 años o más?</legend>
+              <div class="aceptacion-opciones">
+                <label class="form-check"><input type="radio" name="terminosEdad" value="mayor" /> Sí</label>
+                <label class="form-check"><input type="radio" name="terminosEdad" value="menor" /> No</label>
+              </div>
+              <div class="aceptacion-menor">
+                <label class="form-check"><input type="checkbox" data-trece /> <span>Tengo 13 años o más</span></label>
+                <label class="form-check"><input type="checkbox" data-permiso /> <span>Tengo el permiso de mi madre, padre o tutor para usar Nexo</span></label>
+                <p class="campo-ayuda">Si trabajás y tenés 16 o más, ya contás con ese permiso.</p>
+              </div>
+            </fieldset>
+            <label class="form-check aceptacion-casilla"><input type="checkbox" data-acepta /> <span>Leí y acepto los <a href="/terminos" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad" target="_blank" rel="noopener">política de privacidad</a>.</span></label>
+          </div>
+        <button type="submit" class="btn btn-primary">Aceptar y seguir</button>
+        <button type="button" class="btn-link" id="terminosSalir">Cerrar sesión</button>
+      </form>
+
       <!-- Una cuenta que no está en ningún negocio (hist. §104): la dieron de
            baja en todos, o rechazó la invitación con la que llegó. Ve sus
            invitaciones y puede crear su negocio. -->
@@ -3547,12 +3576,28 @@
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="invitacionPassword" autocomplete="new-password" maxlength="1000" aria-describedby="invitacionPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
             <span class="campo-ayuda" id="invitacionPasswordAyuda">Al menos 8 caracteres.</span>
           </label>
+          <div class="aceptacion" data-aceptacion>
+            <fieldset class="aceptacion-edad" data-edad-pregunta>
+              <legend>¿Tenés 18 años o más?</legend>
+              <div class="aceptacion-opciones">
+                <label class="form-check"><input type="radio" name="invitacionEdad" value="mayor" /> Sí</label>
+                <label class="form-check"><input type="radio" name="invitacionEdad" value="menor" /> No</label>
+              </div>
+              <div class="aceptacion-menor">
+                <label class="form-check"><input type="checkbox" data-trece /> <span>Tengo 13 años o más</span></label>
+                <label class="form-check"><input type="checkbox" data-permiso /> <span>Tengo el permiso de mi madre, padre o tutor para usar Nexo</span></label>
+                <p class="campo-ayuda">Si trabajás y tenés 16 o más, ya contás con ese permiso.</p>
+              </div>
+            </fieldset>
+            <label class="form-check aceptacion-casilla"><input type="checkbox" data-acepta /> <span>Leí y acepto los <a href="/terminos" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad" target="_blank" rel="noopener">política de privacidad</a>.</span></label>
+          </div>
           <button type="submit" class="btn btn-primary">Crear mi cuenta y entrar</button>
         </form>
         <button type="button" class="btn btn-primary" id="invitacionAceptar" hidden>Aceptar y entrar</button>
         <button type="button" class="btn btn-primary" id="invitacionIngresar" hidden>Ingresar</button>
         <button type="button" class="btn-link" id="invitacionAhoraNo" hidden>Ahora no</button>
       </div>
+      <p class="sesion-legal"><a href="/terminos" target="_blank" rel="noopener">Términos</a> · <a href="/privacidad" target="_blank" rel="noopener">Privacidad</a></p>
     </div>
   </div>
 
@@ -3595,6 +3640,22 @@
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
             <span class="campo-ayuda" id="altaPasswordAyuda">Al menos 8 caracteres.</span>
           </label>
+          <!-- Términos y edad (etapa 8b, Fase 3): js/core/aceptacion.js. -->
+          <div class="aceptacion" data-aceptacion>
+            <fieldset class="aceptacion-edad" data-edad-pregunta>
+              <legend>¿Tenés 18 años o más?</legend>
+              <div class="aceptacion-opciones">
+                <label class="form-check"><input type="radio" name="altaEdad" value="mayor" /> Sí</label>
+                <label class="form-check"><input type="radio" name="altaEdad" value="menor" /> No</label>
+              </div>
+              <div class="aceptacion-menor">
+                <label class="form-check"><input type="checkbox" data-trece /> <span>Tengo 13 años o más</span></label>
+                <label class="form-check"><input type="checkbox" data-permiso /> <span>Tengo el permiso de mi madre, padre o tutor para usar Nexo</span></label>
+                <p class="campo-ayuda">Con menos de 18 años, tu negocio usa Nexo en el plan Gratis.</p>
+              </div>
+            </fieldset>
+            <label class="form-check aceptacion-casilla"><input type="checkbox" data-acepta /> <span>Leí y acepto los <a href="/terminos" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad" target="_blank" rel="noopener">política de privacidad</a>.</span></label>
+          </div>
           <div class="alta-acciones">
             <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
           </div>
