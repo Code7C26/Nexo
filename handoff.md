@@ -119,8 +119,11 @@ la contraseña pierde su negocio.
   - "Emprendimiento" no marcaba ninguna sección. Arreglado: ahora trae
     Compras y Stock.
   - **Pedido nuevo, para más adelante:** cargar lo que ya tiene un negocio
-    que existe (stock con costo, deudas, saldos). El diseño está en "Qué
+    que existe (stock con costo, deudas, saldos, ventas recientes e importar
+    desde una planilla). Las decisiones del usuario y el diseño están en "Qué
     sigue", 8c.
+  - **Investigado, para más adelante:** el cierre de caja con todos los
+    medios de pago, no solo el efectivo (8d, `docs/investigacion-caja.md`).
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
   frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
   topes.
@@ -1185,10 +1188,29 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - el saldo inicial de las cuentas de tesorería;
    - el tipo `ajuste` en las cuentas corrientes.
 
-   Diseño pensado (se planifica con el usuario antes de arrancar):
-   - **Stock inicial:** una página en forma de planilla, con una fila por
-     producto (los que ya están y el alta rápida en la misma fila), depósito,
-     cantidad y costo unitario.
+   **Decidido por el usuario el 28 de octubre:**
+   - **La entrada:** una pregunta al final del alta y, además, un paso en la
+     guía de primeros pasos del Resumen. La pregunta, redactada:
+     - "¿Tu negocio ya venía funcionando?"
+     - Bajada: "Si ya tenías mercadería, clientes que te deben o plata en la
+       caja, cargalo ahora y Nexo arranca con tus números de hoy. Lo podés
+       hacer después."
+     - Opciones: "Sí, quiero cargar lo que ya tengo" y "No, arranco de cero".
+   - **Un apartado propio, "Lo que ya tenías"**, con una sección para cada
+     cosa, que se cargan en cualquier orden y muestran cuál falta:
+     - productos y stock;
+     - lo que te deben;
+     - lo que debés;
+     - la plata en la caja y en las cuentas;
+     - ventas recientes.
+   - **Importar desde una planilla: sí, sirve mucho.**
+   - **Las ventas de antes no son obligatorias.** Si las carga, elige desde
+     cuándo: esta semana, este mes o una fecha.
+
+   Diseño técnico pensado (se planifica antes de arrancar):
+   - **Stock inicial:** una planilla en pantalla, con una fila por producto
+     (los que ya están y el alta rápida en la misma fila), depósito, cantidad
+     y costo unitario.
      - Cada fila es un movimiento de stock de origen `stock_inicial`, con su
        costo unitario, que entra al costo promedio.
      - No genera deuda ni toca la caja.
@@ -1202,17 +1224,35 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        "compra de saldo inicial" para los proveedores). No mueven stock ni
        caja, se cobran y se pagan con el circuito de siempre y aparecen en el
        aging.
-   - **Caja:** el saldo de cada cuenta, que ya existe; se trae a este mismo
-     recorrido.
-   - **Ventas de antes:** hay que decidir con el usuario si se cargan una por
-     una como ventas históricas (sin stock ni caja) o como un total por mes,
-     solo para comparar en los reportes.
-   - **Importar desde una planilla** (CSV, que se exporta desde Excel o
-     Google Sheets): para quien tiene cientos de productos. Sin dependencias
-     nuevas.
-   - **Dónde aparece:** una pregunta al final del alta ("¿Arrancás de cero o
-     ya venías vendiendo?") y un paso en la guía de primeros pasos del
-     Resumen. Solo para el admin, y queda en la auditoría.
+   - **Caja y cuentas:** el saldo inicial de cada cuenta, que ya existe.
+   - **Ventas recientes:** ventas marcadas como de carga inicial.
+     - **No mueven stock:** el stock que se cargó ya es el de hoy.
+     - **No mueven caja:** la plata que se cargó ya es la de hoy.
+     - Cuentan en los reportes, así la primera semana o el primer mes no
+       arrancan vacíos.
+     - Una venta de antes que quedó sin cobrar **es** la deuda de ese cliente:
+       no se carga de nuevo en "Lo que te deben".
+   - **Importar:**
+     - productos (con stock y costo), clientes y proveedores (con su saldo);
+     - una planilla modelo para bajar;
+     - una vista previa con el error de cada fila antes de confirmar;
+     - el SKU identifica un producto que ya existe, y no se pisa nada sin
+       avisar.
+     - CSV sin dependencias. Para leer `.xlsx` directo, la opción es SheetJS
+       (gratis, Apache 2.0) en `js/vendor/`, que se baja solo en esa
+       pantalla.
+   - Solo para el admin, y queda en la auditoría.
+8d. **Caja con todos los medios de pago** (pedido del usuario del 28 de
+   octubre, sin fecha). Investigación y diseño en `docs/investigacion-caja.md`.
+   - Al abrir, solo el efectivo, como hoy (así hacen Fudo y Loyverse). Al
+     cerrar, cada medio con lo que dice Nexo, lo declarado (el efectivo
+     contado; el débito y el crédito, según el cierre de lote del posnet) y
+     la diferencia.
+   - Primero hace falta el medio de pago como entidad (`medios_pago` y
+     `cobros.medio_pago_id`; CLAUDE.md §3 y §9): hoy un cobro guarda la cuenta,
+     no con qué se pagó. Migración aditiva.
+   - Además, el arqueo ciego opcional y el aviso de un cobro cargado con el
+     medio equivocado.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
