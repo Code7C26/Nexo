@@ -214,9 +214,12 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta la publicación (PR #29). Los PR `solla` → `main`
-  los abre y mergea Claude con el CI en verde, por la API de GitHub (no hay
-  `gh`). Lo que llega a `main` se publica solo en unos 5 minutos.
+- `main` tiene todo hasta la Fase 1b (PR #30, publicado el 28 de octubre).
+- **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
+  cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
+  lo pide: Claude abre y mergea el PR con el CI en verde, por la API de
+  GitHub (no hay `gh`), y el servidor lo toma solo en unos 5 minutos.
+  Mientras tanto, el sitio público sigue en lo último que se mergeó.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
