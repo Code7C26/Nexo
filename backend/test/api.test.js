@@ -33,7 +33,7 @@ async function stockDe(admin, productoId) {
 before(async () => {
   servidor = await levantarServidor();
   adminA = await registrarEmpresa(servidor.url, { empresa: 'Empresa A', usuario: 'admin-a' });
-  empleadoA = await crearEmpleado(servidor.url, adminA, { usuario: 'emp-a' });
+  empleadoA = await crearEmpleado(servidor, adminA, { usuario: 'emp-a' });
   adminB = await registrarEmpresa(servidor.url, { empresa: 'Empresa B', usuario: 'admin-b' });
   productoA = await crearProducto(adminA, 'Remera A', 'SKU-A1', 10);
   productoB = await crearProducto(adminB, 'Remera B', 'SKU-B1', 10);
@@ -762,7 +762,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
   assert.equal((await adminA.pedir('POST', `/api/negocios/${orgA}/entrar`, {}, { 'X-Nexo-Negocio': String(orgG) })).status, 204);
 
   // Y es admin de A y se arma su propio negocio C.
-  const y = await crearEmpleado(servidor.url, adminA, { usuario: 'y-a', nombre: 'Ye', rol: 'admin' });
+  const y = await crearEmpleado(servidor, adminA, { usuario: 'y-a', nombre: 'Ye', rol: 'admin' });
   const yId = (await idDe(y)).id;
   const altaC = await y.post('/api/negocios', { nombre: 'Negocio de Ye', rubro: 'kiosco' });
   assert.equal(altaC.status, 201, altaC.texto);
@@ -772,7 +772,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
   const reset = await adminA.post(`/api/usuarios/${yId}/resetear-password`, { password: 'otra-clave-123' });
   assert.equal(reset.status, 409, reset.texto);
   assert.equal((await adminA.patch(`/api/usuarios/${yId}`, { nombre: 'Otro nombre' })).status, 409);
-  assert.equal((await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'y-a', password: 'clave-segura-2' })).status, 200);
+  assert.equal((await crearCliente(servidor.url).post('/api/auth/login', { email: 'y-a@nexo.test', password: 'clave-segura-2' })).status, 200);
 
   // El rol y la baja en A son solo de A: en C sigue siendo admin y trabajando.
   assert.equal((await adminA.patch(`/api/usuarios/${yId}`, { rol: 'empleado' })).status, 204);
@@ -781,7 +781,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
   assert.equal((await y.get('/api/negocio')).json.id, orgC);
   assert.equal((await y.post(`/api/negocios/${orgA}/entrar`)).status, 404);
   assert.deepEqual((await y.get('/api/negocios')).json.map((n) => n.id), [orgC]);
-  const loginY = await crearCliente(servidor.url).post('/api/auth/login', { usuario: 'y-a', password: 'clave-segura-2' });
+  const loginY = await crearCliente(servidor.url).post('/api/auth/login', { email: 'y-a@nexo.test', password: 'clave-segura-2' });
   assert.equal(loginY.json?.usuario.organizacion_id, orgC, loginY.texto);
 
   // El último admin activo se cuenta por negocio: en A queda solo adminA.

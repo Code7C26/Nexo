@@ -41,6 +41,10 @@ export const RUTAS_PERMISOS = {
   'GET /api/auth/tipos-negocio': 'publico',
   'GET /api/auth/planes': 'publico',
   'POST /api/publico/consulta': 'publico',
+  // El enlace de una invitación (hist. §104): verla y crear la cuenta desde
+  // ella, sin sesión. El token prueba que el mail es de quien lo tiene.
+  'POST /api/auth/invitacion': 'publico',
+  'POST /api/auth/invitacion/cuenta': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',
@@ -206,16 +210,27 @@ export const RUTAS_PERMISOS = {
   // El mail de la cuenta propia (hist. §102).
   'POST /api/auth/email': 'ambos',
   'POST /api/auth/email/reenviar': 'ambos',
+  // Las invitaciones que recibió la cuenta (hist. §104): son de la persona, no
+  // de un negocio, y también las alcanza una sesión sin negocio.
+  'GET /api/auth/invitaciones': 'ambos',
+  'POST /api/auth/invitaciones/:id/aceptar': 'ambos',
+  'POST /api/auth/invitaciones/:id/rechazar': 'ambos',
+  'POST /api/auth/invitacion/aceptar': 'ambos',
   'GET /api/usuarios': 'admin',
-  'POST /api/usuarios': 'admin',
+  // Invitar reemplaza al alta de empleados con usuario y contraseña (hist. §104).
+  'GET /api/invitaciones': 'admin',
+  'POST /api/invitaciones': 'admin',
+  'POST /api/invitaciones/:id/reenviar': 'admin',
+  'POST /api/invitaciones/:id/cancelar': 'admin',
   'PATCH /api/usuarios/:id': 'admin',
   'POST /api/usuarios/:id/resetear-password': 'admin',
   'GET /api/negocio': 'ambos',
   'GET /api/negocio/primeros-pasos': 'admin',
   'PUT /api/negocio': 'admin',
   // Varios negocios por cuenta (hist. §77): ver los suyos y cambiar es de los
-  // dos roles; crear otro negocio, solo del admin.
+  // dos roles. Crear otro negocio es del admin, pero el control va adentro y no
+  // como soloAdmin: una cuenta sin negocio crea el suyo (hist. §104).
   'GET /api/negocios': 'ambos',
-  'POST /api/negocios': 'admin',
+  'POST /api/negocios': 'ambos',
   'POST /api/negocios/:id/entrar': 'ambos'
 };

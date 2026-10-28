@@ -353,14 +353,15 @@ function limpiarPasosDelNegocio() {
 // Con modo "negocio" (hist. §77), desde la app: alTerminar({ id, nombre })
 // recibe el negocio creado, al que la sesión ya pasó, y alVolver() es
 // cancelar. Entra al historial encima de la vista en la que se estaba, así
-// el Atrás del primer paso vuelve a ella.
-export function montarAlta({ alTerminar, alVolver, instalacionNueva = false, modo: nombreModo = "cuenta" }) {
+// el Atrás del primer paso vuelve a ella. Con `primero` es el primer negocio
+// de una cuenta que no tiene ninguno (hist. §104): no es "un negocio aparte".
+export function montarAlta({ alTerminar, alVolver, instalacionNueva = false, modo: nombreModo = "cuenta", primero = false }) {
   opciones = { alTerminar, alVolver, instalacionNueva };
   modo = MODOS[nombreModo];
   const agregaNegocio = modo === MODOS.negocio;
   campo("altaYaTengo").hidden = instalacionNueva || agregaNegocio;
   campo("altaCancelar").hidden = !agregaNegocio;
-  campo("altaNotaNegocio").hidden = !agregaNegocio;
+  campo("altaNotaNegocio").hidden = !agregaNegocio || primero;
   formDelPaso(2).querySelector("[data-atras]").hidden = agregaNegocio;
   campo("altaCrear").textContent = modo.crear;
   if (agregaNegocio) limpiarPasosDelNegocio();

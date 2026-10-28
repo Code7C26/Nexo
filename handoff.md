@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §103);
+    siguiente número (hoy el último es §104);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,7 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (27 de octubre de 2026)
+## Estado actual (28 de octubre de 2026)
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
 en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
@@ -54,10 +54,9 @@ términos (Fase 3 de 8b).
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
-- **Lo que sigue: la Fase 1b de la etapa 8b** (invitaciones por mail, cuentas
-  sin negocio y el rebuild de `usuarios`), con el diseño de la sección 5 de
-  `docs/investigacion-login-legal.md`. La Fase 1 (mail en la cuenta,
-  verificación y login con mail) está hecha (hist. §102).
+- **Lo que sigue: la Fase 2 de la etapa 8b** (recuperar la contraseña). Las
+  Fases 1 (mail en la cuenta, hist. §102) y 1b (invitaciones, hist. §104)
+  están hechas.
 - **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
   y cómo se ve. Desde el servidor salió otro el 27 de octubre.
 
@@ -83,13 +82,19 @@ la contraseña pierde su negocio.
   - la página obligatoria "Sumá tu mail" para las cuentas de antes;
   - en Mi cuenta, cambiar el mail;
   - el aviso en el Resumen.
-- **Decisión del usuario (27 de octubre): cada persona tiene su cuenta con
-  mail y se entra con el mail.** El admin ya no crea empleados con usuario y
-  contraseña: los invita por mail desde Configuración, y la persona acepta la
-  solicitud (solo a mails verificados). Eso es la Fase 1b (diseño y rebuild
-  de `usuarios` en la sección 5 del documento). Hasta entonces,
-  `POST /api/usuarios` sigue creando empleados con usuario y contraseña, y
-  ellos suman su mail al entrar.
+- **Fase 1b, hecha (hist. §104, commiteada en `solla`):** cada persona tiene
+  su cuenta (decisión del usuario del 27 de octubre). El admin invita por mail
+  desde Configuración → Usuarios → Invitar, y `POST /api/usuarios` ya no
+  existe.
+  - Quien no tiene cuenta la crea desde el enlace del mail, que le deja el
+    mail confirmado.
+  - Quien tiene cuenta ve la solicitud en el Resumen (o en el enlace) y la
+    acepta.
+  - Una cuenta sin ningún negocio entra igual: ve sus invitaciones y puede
+    crear el suyo.
+  - **Falta que el usuario lo vea.**
+- **Pendiente nuevo (pedido del usuario del 28 de octubre): entrar con
+  Google.** Está en "Qué sigue", 8b.
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
   frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
   topes.
@@ -209,10 +214,9 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `solla` está pusheada entera (27 de octubre, hasta la publicación lista,
-  hist. §102), con lint y 88 tests en verde. El PR `solla` → `main` lo abre
-  el usuario desde https://github.com/Code7C26/Nexo/compare/main...solla
-  (no hay `gh`); mergeado, `main` queda lista para instalar en Oracle.
+- `main` tiene todo hasta la publicación (PR #29). Los PR `solla` → `main`
+  los abre y mergea Claude con el CI en verde, por la API de GitHub (no hay
+  `gh`). Lo que llega a `main` se publica solo en unos 5 minutos.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
@@ -612,6 +616,29 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Tests:** el arnés corre con `NEXO_MAIL=stub` y lee los mails con
   `leerMails()` y `ultimoEnlace()`. Cada cuenta del arnés es
   `<usuario>@nexo.test`.
+
+**Invitaciones y cuentas sin negocio (hist. §104)**
+- **A alguien se lo suma invitándolo** (`/api/invitaciones`, admin). No
+  volver a crear cuentas con una contraseña elegida por el admin.
+- **El enlace es `/app#/unirme/<token>`**, en el hash, y el token viaja por
+  POST: no queda en ningún log. Cada envío cambia el token.
+- **El enlace confirma el mail:** crear la cuenta o aceptar desde él lo deja
+  confirmado. La lista de solicitudes adentro de Nexo es solo del mail
+  confirmado, para que nadie acepte una invitación ajena con una cuenta hecha
+  con un mail que no es suyo.
+- **Al admin se le responde igual** exista o no una cuenta con ese mail.
+- **Las pendientes cuentan para el tope de usuarios del plan.**
+- **Una sesión puede no tener negocio** (`sesiones.organizacion_id` NULL):
+  la cuenta que dieron de baja en todos sus negocios entra igual, pero
+  `autenticar` solo la deja llegar a `/auth/*` y `/negocios*` (403
+  `sin_negocio`). Una ruta nueva de negocio no necesita nada: nace cerrada.
+- **`usuarios.organizacion_id` sigue NOT NULL:** toda cuenta nace en un
+  negocio (registro o invitación). El rebuild a nulable queda para la cuenta
+  que nazca sola (Google sin invitación).
+- **`POST /api/negocios` no lleva `soloAdmin` en la firma:** con negocio
+  controla el rol adentro; sin negocio crea el primero.
+- **Arnés:** `crearEmpleado(servidor, …)` recibe el servidor (necesita sus
+  mails), no la URL.
 
 **Planes de Nexo (hist. §98)**
 - **Precios, textos y topes viven solo en `backend/planes.js`.** La landing
@@ -1097,10 +1124,25 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - ~~`backend/mail.js`~~ hecho (hist. §101).
    - ~~Fase 1: mail en la cuenta, verificado, y login con mail~~ hecha (hist.
      §102).
-   - Fase 1b: invitaciones por mail desde Configuración, cuentas sin negocio
-     y rebuild de `usuarios` (`organizacion_id` nulable).
+   - ~~Fase 1b: invitaciones por mail desde Configuración y cuentas sin
+     negocio~~ hecha (hist. §104), sin el rebuild de `usuarios` (no hizo
+     falta: ver el §).
    - Fase 2: recuperar la contraseña (`tokens_cuenta`, enlace de un solo uso
-     de 30 minutos).
+     de 30 minutos). Con ella, el reseteo del admin pasa a ser solo para quien
+     no confirmó su mail.
+   - **Entrar con Google** (pedido del usuario del 28 de octubre, pendiente,
+     sin fecha). Lo pensado:
+     - gratis y sin dependencias: el botón de Google Identity Services y el
+       ID token verificado en el backend con `node:crypto` contra las claves
+       públicas de Google (`aud`, `iss`, `exp`, `email_verified`);
+     - la CSP: el script de Google es de un dominio externo. Si no conviene
+       abrirla, el flujo por redirección (OAuth code flow) no pide ningún
+       script en la página;
+     - el mail de Google cuenta como confirmado. Si ya hay una cuenta con ese
+       mail, se vincula. Si no, nace una cuenta sin negocio: ahí sí hace falta
+       el rebuild de `usuarios` (`organizacion_id` nulable);
+     - trámite del usuario: el cliente OAuth en Google Cloud Console (gratis),
+       con el dominio de Nexo.
    - Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
      su versión y la pregunta de edad.
    - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.

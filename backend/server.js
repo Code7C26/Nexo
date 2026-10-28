@@ -283,6 +283,11 @@ function crearSesion(usuarioId, organizacionId) {
 // negocio (usuario_organizaciones, hist. §77). Llegan a req.usuario con los
 // nombres de siempre, organizacion_id y rol, así ningún handler cambia. La
 // baja en ese negocio corta la sesión en el próximo request.
+//
+// Una cuenta que no trabaja en ningún negocio (la dieron de baja en todos, o
+// rechazó la invitación con la que llegó) entra igual, con la sesión sin
+// negocio: organizacion_id y rol en NULL, y autenticar solo la deja ver sus
+// invitaciones o crear su negocio (hist. §104).
 function sesionValida(token) {
   if (!token) return null;
   const fila = db
@@ -292,12 +297,12 @@ function sesionValida(token) {
               usuarios.email, usuarios.email_verificado
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
-         JOIN usuario_organizaciones pertenencia
+         LEFT JOIN usuario_organizaciones pertenencia
            ON pertenencia.usuario_id = sesiones.usuario_id
           AND pertenencia.organizacion_id = sesiones.organizacion_id
         WHERE sesiones.token = ?
           AND sesiones.expira > datetime('now')
-          AND pertenencia.activo = 1`
+          AND (sesiones.organizacion_id IS NULL OR pertenencia.activo = 1)`
     )
     .get(token);
   return fila ?? null;
@@ -450,6 +455,12 @@ function autenticar(req, res, next) {
   // le dice al frontend que muestre "Sumá tu mail".
   if (!sesion.email && !RUTAS_SIN_MAIL.has(req.path)) {
     return res.status(403).json({ error: 'Sumá tu mail antes de seguir.', codigo: 'falta_email' });
+  }
+  // Sin negocio (hist. §104) solo alcanza su cuenta (/auth/*: sus invitaciones,
+  // su mail, su contraseña) y crear su negocio (/negocios). Todo lo demás es de
+  // un negocio, y no tiene ninguno.
+  if (sesion.organizacion_id == null && !req.path.startsWith('/auth/') && !req.path.startsWith('/negocios')) {
+    return res.status(403).json({ error: 'Todavía no estás en ningún negocio.', codigo: 'sin_negocio' });
   }
   next();
 }
@@ -604,16 +615,18 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   // El usuario con el negocio en el que entra: el último que usó entre los que
-  // tiene activos (hist. §77). Sin ninguno activo es como si no existiera, igual
-  // que antes un usuario dado de baja. Por el mail o por el usuario viejo; si
-  // las dos cosas coinciden con cuentas distintas, gana la del mail.
+  // tiene activos (hist. §77). Por el mail o por el usuario viejo; si las dos
+  // cosas coinciden con cuentas distintas, gana la del mail. Sin ningún
+  // negocio activo entra igual, sin negocio (hist. §104): la cuenta es de la
+  // persona, y desde ahí acepta una invitación o crea el suyo. Los datos de
+  // los negocios que la dieron de baja ya no los alcanza.
   const fila = db
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
               usuarios.debe_cambiar_password, usuarios.email, usuarios.email_verificado,
               pertenencia.organizacion_id, pertenencia.rol
          FROM usuarios
-         JOIN usuario_organizaciones pertenencia
+         LEFT JOIN usuario_organizaciones pertenencia
            ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
         WHERE LOWER(usuarios.email) = LOWER(?1) OR LOWER(usuarios.usuario) = LOWER(?1)
         ORDER BY COALESCE(LOWER(usuarios.email) = LOWER(?1), 0) DESC,
@@ -666,7 +679,7 @@ app.post('/api/auth/login', (req, res) => {
   const token = crearSesion(fila.id, fila.organizacion_id);
   ponerCookieSesion(res, token);
   db.prepare("UPDATE usuarios SET ultimo_acceso = datetime('now') WHERE id = ?").run(fila.id);
-  marcarAcceso(fila.id, fila.organizacion_id);
+  if (fila.organizacion_id != null) marcarAcceso(fila.id, fila.organizacion_id);
   registrarAuditoria({
     accion: 'login',
     entidad: 'usuario',
@@ -687,16 +700,20 @@ app.post('/api/auth/login', (req, res) => {
 const REGISTROS_MAX = 5;
 const REGISTROS_VENTANA_MS = 60 * 60 * 1000;
 const intentosRegistro = new Map();
+// Las invitaciones de un negocio por hora (hist. §104): un equipo entero se
+// suma de una, pero la cuenta de mail de Nexo no sirve para mandar a granel.
+const INVITACIONES_POR_HORA = 30;
 
-function registroExcedido(ip) {
+// `clave` es una IP o algo como "mail:<id>"; `maximo`, cuántos por hora.
+function registroExcedido(clave, maximo = REGISTROS_MAX) {
   const ahora = Date.now();
-  const registro = intentosRegistro.get(ip);
+  const registro = intentosRegistro.get(clave);
   if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
-    intentosRegistro.set(ip, { cuenta: 1, desde: ahora });
+    intentosRegistro.set(clave, { cuenta: 1, desde: ahora });
     return false;
   }
   registro.cuenta += 1;
-  return registro.cuenta > REGISTROS_MAX;
+  return registro.cuenta > maximo;
 }
 
 // Los datos de un negocio nuevo, del alta de cuenta y de "Agregar negocio"
@@ -894,6 +911,181 @@ app.get('/api/auth/tipos-negocio', (req, res) => {
 // antes de que exista una sesión. Mismo criterio que los tipos de negocio.
 app.get('/api/auth/planes', (req, res) => {
   res.json(catalogoPlanes());
+});
+
+/* ---------- Invitaciones a un negocio (hist. §104) ---------- */
+//
+// Cada persona tiene su cuenta (decisión del usuario del 27 de octubre,
+// docs/investigacion-login-legal.md §5): el admin no crea empleados con
+// usuario y contraseña, invita a un mail con un rol. Quien tiene cuenta con
+// ese mail confirmado ve la solicitud en Nexo; quien no tiene, crea la cuenta
+// desde el enlace del mail. A los dos les llega el mismo enlace, y al admin se
+// le contesta igual exista o no la cuenta: Configuración no sirve para
+// averiguar quién usa Nexo.
+
+const INVITACION_DIAS = 14;
+const ROL_TEXTO = { admin: 'administrador', empleado: 'empleado' };
+
+// 'vencida' no se guarda: es una pendiente que se mandó hace más de
+// INVITACION_DIAS (como el "vencido" de los presupuestos).
+const SQL_ESTADO_INVITACION = `CASE WHEN invitaciones.estado = 'pendiente'
+       AND invitaciones.enviada <= datetime('now', '-${INVITACION_DIAS} days') THEN 'vencida'
+       ELSE invitaciones.estado END`;
+
+const SELECT_INVITACION = `
+  SELECT invitaciones.id, invitaciones.organizacion_id, invitaciones.email, invitaciones.rol,
+         invitaciones.enviada, ${SQL_ESTADO_INVITACION} AS estado,
+         organizaciones.nombre AS negocio, invito.nombre AS invito
+    FROM invitaciones
+    JOIN organizaciones ON organizaciones.id = invitaciones.organizacion_id
+    JOIN usuarios invito ON invito.id = invitaciones.invitado_por`;
+
+function invitacionPorToken(token) {
+  if (typeof token !== 'string' || !token || token.length > 100) return null;
+  return db.prepare(`${SELECT_INVITACION} WHERE invitaciones.token_hash = ?`).get(hashToken(token)) ?? null;
+}
+
+// El mail lleva a /app#/unirme/<token>: en el hash, así el token no viaja en
+// el pedido de la página ni queda en el log de Caddy. Volver a mandarlo cambia
+// el token: solo vale el último enlace, como en la verificación del mail.
+function mandarInvitacion(req, { invitacionId, email, rol, negocio, invito }) {
+  const token = randomBytes(32).toString('base64url');
+  db.prepare("UPDATE invitaciones SET token_hash = ?, enviada = datetime('now') WHERE id = ?").run(hashToken(token), invitacionId);
+  const tieneCuenta = mailEnUso(email);
+  const { texto, html } = plantillaMail({
+    titulo: `${invito} te invitó a ${negocio}`,
+    parrafos: [
+      'Hola.',
+      `${invito} te sumó al equipo de ${negocio} en Nexo, como ${ROL_TEXTO[rol]}.`,
+      tieneCuenta
+        ? 'Entrá con tu cuenta de Nexo para aceptar la invitación.'
+        : 'Para empezar, creá tu cuenta con este mail: es un minuto.',
+      `La invitación vence en ${INVITACION_DIAS} días.`
+    ],
+    boton: { texto: 'Ver la invitación', url: `${urlPublica(req)}/app#/unirme/${token}` },
+    pie: 'Si no esperabas esta invitación, podés ignorar este mail.'
+  });
+  mandarSinEsperar({ para: email, asunto: `${invito} te invitó a ${negocio} en Nexo`, texto, html });
+}
+
+// Suma la cuenta al negocio con el rol de la invitación (o reactiva la baja
+// que tenía ahí) y la marca aceptada. Va adentro de la transacción de quien la
+// llama. Ocupa un lugar del plan del negocio, salvo que ya trabajara ahí: si
+// no hay, el texto es para quien acepta, que no puede cambiar ese plan.
+function aceptarInvitacion(inv, cuenta) {
+  const pertenencia = db
+    .prepare('SELECT activo FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ?')
+    .get(cuenta.id, inv.organizacion_id);
+  if (pertenencia?.activo !== 1) {
+    try {
+      exigirLugarEnPlan(inv.organizacion_id, 'usuarios');
+    } catch (e) {
+      if (!(e instanceof ErrorPlan)) throw e;
+      throw new ErrorPlan(`${inv.negocio} ya usa todos los usuarios de su plan. Avisale a ${inv.invito} para que sume lugar.`);
+    }
+  }
+  if (!pertenencia) sumarAlNegocio(cuenta.id, inv.organizacion_id, inv.rol);
+  else if (!pertenencia.activo) {
+    db.prepare('UPDATE usuario_organizaciones SET rol = ?, activo = 1 WHERE usuario_id = ? AND organizacion_id = ?').run(
+      inv.rol,
+      cuenta.id,
+      inv.organizacion_id
+    );
+  }
+  db.prepare("UPDATE invitaciones SET estado = 'aceptada', respondida = datetime('now'), usuario_id = ? WHERE id = ?").run(
+    cuenta.id,
+    inv.id
+  );
+  registrarAuditoria({
+    accion: 'crear',
+    entidad: 'usuario',
+    entidad_id: cuenta.id,
+    usuario_id: cuenta.id,
+    organizacion_id: inv.organizacion_id,
+    operacion_tipo: 'invitacion',
+    operacion_id: inv.id,
+    detalle: `${cuenta.nombre} (${inv.email}) aceptó la invitación y se sumó como ${ROL_TEXTO[inv.rol]}`
+  });
+}
+
+// Lo que muestra la página del enlace: de qué negocio es, quién invitó y si
+// ese mail ya tiene cuenta (para ofrecer entrar o crearla). Solo lo ve quien
+// tiene el enlace, que llegó a ese mail. Por POST, para que el token no quede
+// en ningún log.
+app.post('/api/auth/invitacion', (req, res) => {
+  const inv = invitacionPorToken(req.body?.token);
+  if (!inv) {
+    return res.status(404).json({ error: 'Este enlace no es válido. Pedile a quien te invitó que te mande otro.' });
+  }
+  res.json({
+    negocio: inv.negocio,
+    invito: inv.invito,
+    email: inv.email,
+    rol: inv.rol,
+    estado: inv.estado,
+    tiene_cuenta: mailEnUso(inv.email)
+  });
+});
+
+// Crear la cuenta desde el enlace: el mail es el de la invitación y queda
+// confirmado (el enlace llegó ahí), y la cuenta entra directo al negocio.
+// Con su tope por IP, aparte del del registro y más holgado: un equipo que se
+// suma junto sale por el wifi del local. Cuenta solo los intentos con un
+// enlace vigente y datos válidos, los que llegan al scrypt: sin enlace no se
+// crea nada, y probar enlaces al azar no tiene chance (32 bytes).
+const CUENTAS_POR_INVITACION_POR_HORA = 20;
+
+app.post('/api/auth/invitacion/cuenta', (req, res) => {
+  const inv = invitacionPorToken(req.body?.token);
+  if (!inv || inv.estado !== 'pendiente') {
+    return res.status(410).json({ error: 'Esta invitación ya no está vigente. Pedile a quien te invitó que te mande otra.' });
+  }
+  const nombre = String(req.body?.nombre ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (!nombre) return res.status(400).json({ error: 'Escribí tu nombre.' });
+  if (nombre.length > 120 || password.length > 1000) {
+    return res.status(400).json({ error: 'El nombre o la contraseña son demasiado largos.' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
+  }
+  if (mailEnUso(inv.email)) {
+    return res.status(409).json({ error: 'Ya tenés una cuenta con este mail. Entrá con ella para aceptar la invitación.' });
+  }
+  if (registroExcedido(`cuenta:${req.ip}`, CUENTAS_POR_INVITACION_POR_HORA)) {
+    return res.status(429).json({ error: 'Demasiados intentos. Probá de nuevo más tarde.' });
+  }
+
+  const usuarioId = withTransaction(() => {
+    const { hash, salt } = hashPassword(password);
+    // organizacion_id es el negocio donde se creó la cuenta, que desde hist.
+    // §77 no decide nada: acá, el de la invitación.
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email, email_verificado)
+           VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'))`
+        )
+        .run(inv.organizacion_id, inv.email, nombre, hash, salt, inv.email).lastInsertRowid
+    );
+    aceptarInvitacion(inv, { id, nombre });
+    marcarAcceso(id, inv.organizacion_id);
+    return id;
+  });
+
+  ponerCookieSesion(res, crearSesion(usuarioId, inv.organizacion_id));
+  res.status(201).json({
+    usuario: datosUsuario({
+      id: usuarioId,
+      usuario: inv.email,
+      nombre,
+      rol: inv.rol,
+      debe_cambiar_password: 0,
+      organizacion_id: inv.organizacion_id,
+      email: inv.email,
+      email_verificado: 1
+    })
+  });
 });
 
 // Contacto de la landing y de "Tu plan" (hist. §99): quien quiere un plan, o
@@ -10015,6 +10207,102 @@ app.post('/api/auth/email/reenviar', (req, res) => {
   res.status(204).end();
 });
 
+/* ---------- Invitaciones que recibió la cuenta (hist. §104) ---------- */
+
+// Solo las de su mail confirmado: así nadie se queda con la invitación de
+// otro creando una cuenta con un mail ajeno. Sin confirmar, la lista viene
+// vacía (la página lo explica).
+app.get('/api/auth/invitaciones', (req, res) => {
+  if (!req.usuario.email_verificado) return res.json([]);
+  const filas = db
+    .prepare(
+      `${SELECT_INVITACION}
+        WHERE invitaciones.email = ? AND ${SQL_ESTADO_INVITACION} = 'pendiente'
+          AND NOT EXISTS (SELECT 1 FROM usuario_organizaciones m
+                           WHERE m.usuario_id = ? AND m.organizacion_id = invitaciones.organizacion_id AND m.activo = 1)
+        ORDER BY invitaciones.enviada DESC`
+    )
+    .all(normalizarMail(req.usuario.email), req.usuario.id);
+  res.json(filas.map(({ id, negocio, invito, rol, enviada }) => ({ id, negocio, invito, rol, enviada })));
+});
+
+// Una invitación de la cuenta por su id: pendiente, sin vencer y para su mail
+// confirmado. La de otro mail es el mismo 404 que una que no existe.
+function invitacionDeLaCuenta(req) {
+  if (!req.usuario.email_verificado) return null;
+  const inv = db.prepare(`${SELECT_INVITACION} WHERE invitaciones.id = ?`).get(Number(req.params.id));
+  return inv && inv.email === normalizarMail(req.usuario.email) && inv.estado === 'pendiente' ? inv : null;
+}
+
+// Aceptar deja la sesión en ese negocio: quien acepta quiere entrar a él. La
+// pestaña recarga (sesion.js o negocios.js), como al cambiar de negocio.
+function entrarAlAceptar(req, inv) {
+  const token = leerCookie(req, COOKIE_SESION);
+  if (req.usuario.organizacion_id == null) {
+    db.prepare('UPDATE sesiones SET organizacion_id = ? WHERE token = ?').run(inv.organizacion_id, token);
+    marcarAcceso(req.usuario.id, inv.organizacion_id);
+  } else if (req.usuario.organizacion_id !== inv.organizacion_id) {
+    entrarANegocio(req, token, inv.organizacion_id, 'Entró al negocio que lo invitó');
+  }
+}
+
+app.post('/api/auth/invitaciones/:id/aceptar', (req, res) => {
+  const inv = invitacionDeLaCuenta(req);
+  if (!inv) return res.status(404).json({ error: 'La invitación ya no está disponible.' });
+  withTransaction(() => {
+    aceptarInvitacion(inv, req.usuario);
+    entrarAlAceptar(req, inv);
+  });
+  res.json({ organizacion_id: inv.organizacion_id, negocio: inv.negocio });
+});
+
+app.post('/api/auth/invitaciones/:id/rechazar', (req, res) => {
+  const inv = invitacionDeLaCuenta(req);
+  if (!inv) return res.status(404).json({ error: 'La invitación ya no está disponible.' });
+  withTransaction(() => {
+    db.prepare("UPDATE invitaciones SET estado = 'rechazada', respondida = datetime('now'), usuario_id = ? WHERE id = ?").run(
+      req.usuario.id,
+      inv.id
+    );
+    // En el negocio que invitó, para que el admin sepa por qué no aparece.
+    registrarAuditoria({
+      accion: 'cambiar_estado',
+      entidad: 'usuario',
+      entidad_id: req.usuario.id,
+      usuario_id: req.usuario.id,
+      organizacion_id: inv.organizacion_id,
+      operacion_tipo: 'invitacion',
+      operacion_id: inv.id,
+      detalle: `${inv.email} rechazó la invitación`
+    });
+  });
+  res.status(204).end();
+});
+
+// Aceptar desde el enlace del mail con la sesión ya abierta: tocar el enlace
+// prueba que el mail es suyo, así que también lo deja confirmado. Tiene que
+// ser el mail de esta cuenta; si es otro, se dice cuál, para que entre con esa.
+app.post('/api/auth/invitacion/aceptar', (req, res) => {
+  const inv = invitacionPorToken(req.body?.token);
+  if (!inv || inv.estado !== 'pendiente') {
+    return res.status(410).json({ error: 'Esta invitación ya no está vigente. Pedile a quien te invitó que te mande otra.' });
+  }
+  if (inv.email !== normalizarMail(req.usuario.email)) {
+    return res.status(403).json({
+      error: `La invitación es para ${inv.email}, y entraste con ${req.usuario.email}. Cerrá sesión y entrá con ese mail.`,
+      codigo: 'otro_mail'
+    });
+  }
+  withTransaction(() => {
+    if (!req.usuario.email_verificado) {
+      db.prepare("UPDATE usuarios SET email_verificado = datetime('now') WHERE id = ?").run(req.usuario.id);
+    }
+    aceptarInvitacion(inv, req.usuario);
+    entrarAlAceptar(req, inv);
+  });
+  res.json({ organizacion_id: inv.organizacion_id, negocio: inv.negocio });
+});
+
 /* ---------- Usuarios (ABM, solo admin) ---------- */
 
 app.get('/api/usuarios', soloAdmin, (req, res) => {
@@ -10069,56 +10357,124 @@ function administraTodosSusNegocios(adminId, usuarioId) {
 const MENSAJE_USA_OTRO_NEGOCIO =
   'Esta persona también usa Nexo en otro negocio, así que su nombre y su contraseña no se cambian desde acá. La contraseña la puede cambiar ella desde Mi cuenta.';
 
-app.post('/api/usuarios', soloAdmin, (req, res) => {
-  const { usuario, nombre, password, rol } = req.body ?? {};
-  if (!usuario || !nombre || !password) {
-    return res.status(400).json({ error: 'Usuario, nombre y contraseña son obligatorios.' });
-  }
-  if (/\s/.test(usuario)) {
-    return res.status(400).json({ error: 'El usuario no puede tener espacios.' });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
-  }
-  const rolFinal = rol === 'admin' ? 'admin' : 'empleado';
-  exigirLugarEnPlan(req.usuario.organizacion_id, 'usuarios');
+/* ---------- Invitaciones del negocio (admin, hist. §104) ---------- */
 
-  // Sin filtro por organización a propósito: `usuarios.usuario` tiene UNIQUE
-  // global en el esquema y el login resuelve sin saber la empresa, así que el
-  // nombre de usuario es único en todo Nexo (decisión del equipo). Si acá se
-  // filtrara por empresa, el INSERT de abajo reventaría contra ese UNIQUE y
-  // devolvería un 500 en vez de este 409 claro.
-  const existe = db.prepare('SELECT id FROM usuarios WHERE LOWER(usuario) = LOWER(?)').get(usuario);
-  if (existe) {
-    return res.status(409).json({ error: 'Ya existe un usuario con ese nombre de usuario.' });
+// Reemplazan a POST /api/usuarios, que creaba al empleado con usuario y
+// contraseña elegidos por el admin. Las pendientes, también las vencidas
+// (para reenviarlas); las aceptadas ya están en Usuarios.
+app.get('/api/invitaciones', soloAdmin, (req, res) => {
+  const filas = db
+    .prepare(
+      `${SELECT_INVITACION}
+        WHERE invitaciones.organizacion_id = ? AND invitaciones.estado = 'pendiente'
+        ORDER BY invitaciones.enviada DESC`
+    )
+    .all(req.usuario.organizacion_id);
+  res.json(filas.map(({ id, email, rol, estado, enviada, invito }) => ({ id, email, rol, estado, enviada, invito })));
+});
+
+// Invitar a un mail con un rol. Si ya hay una pendiente para ese mail, se
+// reenvía con el rol nuevo (un solo enlace vigente por negocio y mail). Las
+// pendientes cuentan para el tope del plan: si no, se invitaría a más gente
+// de la que entra. La respuesta es la misma tenga o no cuenta ese mail.
+app.post('/api/invitaciones', soloAdmin, (req, res) => {
+  const email = normalizarMail(req.body?.email);
+  const rol = req.body?.rol ?? 'empleado';
+  if (!esMailValido(email)) return res.status(400).json({ error: 'Escribí un mail válido.' });
+  if (rol !== 'admin' && rol !== 'empleado') return res.status(400).json({ error: 'Rol inválido.' });
+  const organizacionId = req.usuario.organizacion_id;
+
+  const yaTrabaja = db
+    .prepare(
+      `SELECT 1 FROM usuarios
+         JOIN usuario_organizaciones m ON m.usuario_id = usuarios.id
+        WHERE m.organizacion_id = ? AND m.activo = 1 AND (LOWER(usuarios.email) = ? OR LOWER(usuarios.usuario) = ?)`
+    )
+    .get(organizacionId, email, email);
+  if (yaTrabaja) return res.status(409).json({ error: 'Esa persona ya trabaja en este negocio.' });
+
+  const pendiente = db
+    .prepare("SELECT id FROM invitaciones WHERE organizacion_id = ? AND email = ? AND estado = 'pendiente'")
+    .get(organizacionId, email);
+  const otrasPendientes = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM invitaciones
+        WHERE organizacion_id = ? AND estado = 'pendiente' AND enviada > datetime('now', '-${INVITACION_DIAS} days') AND email != ?`
+    )
+    .get(organizacionId, email).n;
+  exigirLugarEnPlan(organizacionId, 'usuarios', otrasPendientes + 1);
+  // Cada invitación es un mail que sale con la cuenta de Nexo: con tope, para
+  // que nadie la use para mandar mails a granel.
+  if (registroExcedido(`invitar:${organizacionId}`, INVITACIONES_POR_HORA)) {
+    return res.status(429).json({ error: 'Mandaste muchas invitaciones seguidas. Probá de nuevo en una hora.' });
   }
 
-  let usuarioId;
-  withTransaction(() => {
-    // La empresa sale de la sesión del admin que crea el usuario: con
-    // organizacionUnica() un admin de la empresa B creaba su empleado dentro
-    // de la empresa A (CLAUDE.md §28).
-    const orgId = req.usuario.organizacion_id;
-    const { hash, salt } = hashPassword(password);
-    // debe_cambiar_password: 1 porque la eligió el admin, no el dueño de
-    // la cuenta — se lo obliga a elegir la suya en el primer login.
-    const info = db
-      .prepare(
-        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
-         VALUES (?, ?, ?, ?, ?, 1)`
-      )
-      .run(orgId, usuario, nombre, hash, salt);
-    usuarioId = Number(info.lastInsertRowid);
-    sumarAlNegocio(usuarioId, orgId, rolFinal);
+  const id = withTransaction(() => {
+    let invitacionId = pendiente?.id;
+    if (invitacionId) {
+      db.prepare('UPDATE invitaciones SET rol = ?, invitado_por = ? WHERE id = ?').run(rol, req.usuario.id, invitacionId);
+    } else {
+      // El token de verdad lo pone mandarInvitacion: este es solo para el NOT NULL UNIQUE.
+      invitacionId = Number(
+        db
+          .prepare('INSERT INTO invitaciones (organizacion_id, email, rol, token_hash, invitado_por) VALUES (?, ?, ?, ?, ?)')
+          .run(organizacionId, email, rol, hashToken(randomBytes(32).toString('hex')), req.usuario.id).lastInsertRowid
+      );
+    }
     auditar(req, {
-      accion: 'crear',
+      accion: pendiente ? 'editar' : 'crear',
       entidad: 'usuario',
-      entidad_id: usuarioId,
-      detalle: `Usuario "${nombre}" (${usuario}) creado con rol ${rolFinal}`
+      operacion_tipo: 'invitacion',
+      operacion_id: invitacionId,
+      detalle: `${pendiente ? 'Volvió a invitar' : 'Invitó'} a ${email} como ${ROL_TEXTO[rol]}`
+    });
+    return invitacionId;
+  });
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId).nombre;
+  mandarInvitacion(req, { invitacionId: id, email, rol, negocio, invito: req.usuario.nombre });
+  res.status(pendiente ? 200 : 201).json({ id });
+});
+
+// La pendiente del negocio por su id; la de otro negocio es el mismo 404.
+function invitacionDelNegocio(req) {
+  return db
+    .prepare(`${SELECT_INVITACION} WHERE invitaciones.id = ? AND invitaciones.organizacion_id = ? AND invitaciones.estado = 'pendiente'`)
+    .get(Number(req.params.id), req.usuario.organizacion_id);
+}
+
+app.post('/api/invitaciones/:id/reenviar', soloAdmin, (req, res) => {
+  const inv = invitacionDelNegocio(req);
+  if (!inv) return res.status(404).json({ error: 'Invitación no encontrada.' });
+  if (registroExcedido(`invitar:${req.usuario.organizacion_id}`, INVITACIONES_POR_HORA)) {
+    return res.status(429).json({ error: 'Mandaste muchas invitaciones seguidas. Probá de nuevo en una hora.' });
+  }
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'usuario',
+    operacion_tipo: 'invitacion',
+    operacion_id: inv.id,
+    detalle: `Reenvió la invitación a ${inv.email}`
+  });
+  mandarInvitacion(req, { invitacionId: inv.id, email: inv.email, rol: inv.rol, negocio: inv.negocio, invito: req.usuario.nombre });
+  res.status(204).end();
+});
+
+// Cancelar deja sin efecto el enlace y la solicitud. Una vencida también se
+// cancela: así deja de aparecer.
+app.post('/api/invitaciones/:id/cancelar', soloAdmin, (req, res) => {
+  const inv = invitacionDelNegocio(req);
+  if (!inv) return res.status(404).json({ error: 'Invitación no encontrada.' });
+  withTransaction(() => {
+    db.prepare("UPDATE invitaciones SET estado = 'cancelada', respondida = datetime('now') WHERE id = ?").run(inv.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'usuario',
+      operacion_tipo: 'invitacion',
+      operacion_id: inv.id,
+      detalle: `Canceló la invitación a ${inv.email}`
     });
   });
-
-  res.status(201).json({ id: usuarioId });
+  res.status(204).end();
 });
 
 app.patch('/api/usuarios/:id', soloAdmin, (req, res) => {
@@ -10643,10 +10999,20 @@ app.get('/api/negocios', (req, res) => {
 });
 
 // "Agregar negocio": otro negocio para la misma cuenta, con quien lo crea como
-// su admin, y la sesión pasa a él. Solo un admin: un empleado no arma negocios
-// propios desde la cuenta que le dio su empleador (para eso se crea la suya).
-// Mismo tope que el registro, contado por usuario.
-app.post('/api/negocios', soloAdmin, (req, res) => {
+// su admin, y la sesión pasa a él. Mismo tope que el registro, contado por
+// usuario.
+//
+// Con la sesión en un negocio, solo un admin: un empleado no arma negocios
+// desde el negocio de su empleador, y el nuevo nace con el plan de este.
+// Sin negocio (hist. §104: la dieron de baja en todos, o rechazó la invitación
+// con la que llegó) es su primer negocio, y nace como en el registro: con el
+// plan que elija, Gratis si no elige ninguno. Por eso no lleva soloAdmin en la
+// firma (permisos.js la clasifica 'ambos').
+app.post('/api/negocios', (req, res) => {
+  const primero = req.usuario.organizacion_id == null;
+  if (!primero && req.usuario.rol !== 'admin') {
+    return res.status(403).json({ error: 'Necesitás ser administrador para esto.' });
+  }
   if (registroExcedido(`usuario:${req.usuario.id}`)) {
     return res.status(429).json({ error: 'Creaste varios negocios seguidos. Probá de nuevo más tarde.' });
   }
@@ -10654,21 +11020,24 @@ app.post('/api/negocios', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
-  // Sumar negocios es de Pro (hist. §98), y el nuevo nace con el plan de este
-  // y su mismo vencimiento: se pagan juntos.
-  exigirLugarEnPlan(req.usuario.organizacion_id, 'negocios');
-  const planActual = db
-    .prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?')
-    .get(req.usuario.organizacion_id);
+  let plan;
+  if (primero) {
+    const clave = req.body?.plan ?? PLAN_POR_DEFECTO;
+    if (typeof clave !== 'string' || !esPlan(clave)) {
+      return res.status(400).json({ error: 'El plan no es válido.' });
+    }
+    plan = { plan: clave, plan_vence: PLANES[clave].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null };
+  } else {
+    // Sumar negocios es de Pro (hist. §98), y el nuevo nace con el plan de
+    // este y su mismo vencimiento: se pagan juntos.
+    exigirLugarEnPlan(req.usuario.organizacion_id, 'negocios');
+    plan = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(req.usuario.organizacion_id);
+  }
 
   const token = leerCookie(req, COOKIE_SESION);
   const id = withTransaction(() => {
     const orgId = insertarNegocio(datos);
-    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(
-      planActual.plan,
-      planActual.plan_vence,
-      orgId
-    );
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan.plan, plan.plan_vence, orgId);
     sumarAlNegocio(req.usuario.id, orgId, 'admin');
     registrarAuditoria({
       accion: 'crear',
@@ -10678,7 +11047,13 @@ app.post('/api/negocios', soloAdmin, (req, res) => {
       organizacion_id: orgId,
       detalle: `Negocio "${datos.nombre}" creado (${PERFILES_RUBRO[datos.rubro].nombre})`
     });
-    entrarANegocio(req, token, orgId, 'Entró al negocio que acaba de crear');
+    if (primero) {
+      // Sin negocio del que salir: no hay un "pasó a otro" que auditar.
+      db.prepare('UPDATE sesiones SET organizacion_id = ? WHERE token = ?').run(orgId, token);
+      marcarAcceso(req.usuario.id, orgId);
+    } else {
+      entrarANegocio(req, token, orgId, 'Entró al negocio que acaba de crear');
+    }
     return orgId;
   });
   res.status(201).json({ id });

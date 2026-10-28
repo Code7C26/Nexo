@@ -228,6 +228,9 @@
         <div class="aviso-plan" id="avisoPlan" role="status" hidden></div>
         <!-- El mail de la cuenta sin confirmar (hist. §102, dominios/perfil.js). -->
         <div class="aviso-plan" id="avisoMail" role="status" hidden></div>
+        <!-- Invitaciones a otros negocios que le llegaron a la cuenta (hist.
+             §104, dominios/negocios.js). -->
+        <div id="avisoInvitaciones" hidden></div>
         <!-- Guía de primeros pasos para una cuenta nueva (dominios/primeros-pasos.js). -->
         <section class="panel primeros-pasos" id="primerosPasos" aria-label="Primeros pasos" hidden></section>
         <section class="panel para-hoy-resumen" id="paraHoyResumen" data-modulo="crm" aria-labelledby="paraHoyResumenTitulo" hidden></section>
@@ -2979,9 +2982,26 @@
             <section class="config-pagina col-admin" data-seccion="usuarios" aria-labelledby="configUsuariosTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configUsuariosTitulo" tabindex="-1">Usuarios</h2>
-                <p>Quién puede entrar a Nexo. Un empleado vende y cobra, pero no ve costos ni ganancias.</p>
-                <button type="button" class="btn btn-primary" id="btnNuevoUsuario"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Usuario</button>
+                <p>Quién puede entrar a Nexo. Cada persona entra con su mail; para sumar a alguien, invitalo.</p>
+                <a class="btn btn-primary" id="btnNuevoUsuario" href="#/configuracion/invitar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg> Invitar</a>
               </header>
+              <!-- Las invitaciones que todavía no se aceptaron (hist. §104). -->
+              <section class="panel" id="invitacionesPendientes" aria-labelledby="invitacionesPendientesTitulo" hidden>
+                <div class="panel-head"><h2 id="invitacionesPendientesTitulo">Invitaciones sin responder</h2></div>
+                <div class="tabla-scroll">
+                <table class="ledger-table lista-movil">
+                  <thead>
+                    <tr>
+                      <th scope="col">Mail</th>
+                      <th scope="col">Rol</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="invitacionesBody"></tbody>
+                </table>
+                </div>
+              </section>
               <section class="panel">
                 <div class="tabla-scroll">
                 <table class="ledger-table">
@@ -3000,6 +3020,51 @@
                 </table>
                 </div>
               </section>
+            </section>
+
+            <!-- Invitar (hist. §104): reemplaza al alta con usuario y
+                 contraseña. Fuera del menú, se llega desde Usuarios. -->
+            <section class="config-pagina col-admin" data-seccion="invitar" aria-labelledby="configInvitarTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/usuarios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Usuarios</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configInvitarTitulo" tabindex="-1">Invitar a alguien</h2>
+                <p>Le llega un mail con un enlace. Si todavía no usa Nexo, crea su cuenta desde ahí; si ya lo usa, acepta desde su cuenta.</p>
+              </header>
+              <form class="form config-tarjeta" id="formInvitar" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <label>Su mail
+                    <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" name="email" id="invitarEmail" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="nombre@mail.com" /></span>
+                  </label>
+                  <fieldset class="opciones">
+                    <legend>Qué va a hacer</legend>
+                    <div class="opciones-tarjetas opciones-tarjetas-compactas">
+                      <label class="opcion-tarjeta">
+                        <input type="radio" name="rol" value="empleado" checked />
+                        <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user"></use></svg></span>
+                        <span class="opcion-tarjeta-texto">
+                          <span class="opcion-tarjeta-nombre">Empleado</span>
+                          <span class="opcion-tarjeta-desc">Vende, cobra y atiende. No ve costos, ganancias ni compras.</span>
+                        </span>
+                        <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                      </label>
+                      <label class="opcion-tarjeta">
+                        <input type="radio" name="rol" value="admin" />
+                        <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-cog"></use></svg></span>
+                        <span class="opcion-tarjeta-texto">
+                          <span class="opcion-tarjeta-nombre">Administrador</span>
+                          <span class="opcion-tarjeta-desc">Ve y cambia todo, como vos: costos, reportes, configuración y usuarios.</span>
+                        </span>
+                        <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                      </label>
+                    </div>
+                  </fieldset>
+                  <p class="form-note" id="invitarError" role="alert" hidden></p>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>La invitación vence en 14 días. Podés reenviarla o cancelarla desde Usuarios.</p>
+                  <button type="submit" class="btn btn-primary"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#send"></use></svg> Mandar invitación</button>
+                </div>
+              </form>
             </section>
 
             <!-- Catálogos: eran modales de Productos, Stock y Gastos. Su
@@ -3397,6 +3462,47 @@
         <button type="submit" class="btn btn-primary">Guardar y seguir</button>
         <button type="button" class="btn-link" id="sumarMailSalir">Cerrar sesión</button>
       </form>
+
+      <!-- Una cuenta que no está en ningún negocio (hist. §104): la dieron de
+           baja en todos, o rechazó la invitación con la que llegó. Ve sus
+           invitaciones y puede crear su negocio. -->
+      <div id="sinNegocio" class="form" hidden>
+        <div class="sesion-paso">
+          <h2>Todavía no estás en ningún negocio</h2>
+          <p id="sinNegocioBajada">Si alguien te invita a su negocio, la invitación aparece acá. Si tenés tu propio negocio, crealo.</p>
+        </div>
+        <ul class="solicitudes" id="sinNegocioSolicitudes" hidden></ul>
+        <p class="form-note" id="sinNegocioError" hidden></p>
+        <button type="button" class="btn btn-primary" id="sinNegocioCrear">Crear mi negocio</button>
+        <button type="button" class="btn-link" id="sinNegocioSalir">Cerrar sesión</button>
+      </div>
+
+      <!-- El enlace del mail de una invitación (#/unirme/<token>, hist.
+           §104). Según quién lo abre: crear la cuenta, entrar para
+           aceptarla o, con la sesión abierta, aceptarla ahí. -->
+      <div id="invitacion" class="form" hidden>
+        <div class="sesion-paso">
+          <h2 id="invitacionTitulo">Te invitaron a Nexo</h2>
+          <p id="invitacionTexto"></p>
+        </div>
+        <p class="form-note" id="invitacionError" role="alert" hidden></p>
+        <form id="formInvitacionCuenta" class="form" novalidate hidden>
+          <label>Tu mail
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="invitacionEmail" autocomplete="username" readonly /></span>
+          </label>
+          <label>Tu nombre
+            <input type="text" id="invitacionNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
+          </label>
+          <label>Elegí una contraseña
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="invitacionPassword" autocomplete="new-password" maxlength="1000" aria-describedby="invitacionPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+            <span class="campo-ayuda" id="invitacionPasswordAyuda">Al menos 8 caracteres.</span>
+          </label>
+          <button type="submit" class="btn btn-primary">Crear mi cuenta y entrar</button>
+        </form>
+        <button type="button" class="btn btn-primary" id="invitacionAceptar" hidden>Aceptar y entrar</button>
+        <button type="button" class="btn btn-primary" id="invitacionIngresar" hidden>Ingresar</button>
+        <button type="button" class="btn-link" id="invitacionAhoraNo" hidden>Ahora no</button>
+      </div>
     </div>
   </div>
 
@@ -4596,27 +4702,20 @@
     </form>
   </div>
 
-  <!-- Modal de alta/edición de usuario (solo admin). -->
+  <!-- Modal de edición de usuario (solo admin). El alta es por invitación
+       (hist. §104), en Configuración → Invitar. -->
   <div class="modal" id="modalUsuario" role="dialog" aria-modal="true" aria-labelledby="modalUsuarioTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3 id="modalUsuarioTitulo">Nuevo usuario</h3>
+        <h3 id="modalUsuarioTitulo">Editar usuario</h3>
         <button class="modal-close" id="modalUsuarioClose" aria-label="Cerrar">
           <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg>
         </button>
       </div>
       <form id="formUsuario" class="form">
         <input type="hidden" id="usuarioId" />
-        <label>Usuario (para el login, sin espacios)
-          <input type="text" id="usuarioUsuario" required />
-        </label>
         <label>Nombre
           <input type="text" id="usuarioNombre" required />
-        </label>
-        <!-- Solo en alta: en edición no se cambia la contraseña acá, para
-             eso está "Resetear contraseña" en la fila de la tabla. -->
-        <label id="usuarioPasswordLabel">Contraseña
-          <input type="password" id="usuarioPassword" minlength="8" />
         </label>
         <label>Rol
           <select id="usuarioRol">

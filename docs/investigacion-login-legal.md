@@ -287,7 +287,10 @@ lo recibe como `email_cuenta`, porque `email` ya era el mail del negocio)
   mail de la cuenta de Nexo con "+" (`nexosystem.app+prueba@gmail.com`): es un
   mail real que llega a la misma bandeja, así se pueden verificar.
 
-**Fase 1b — invitaciones y cuentas sin negocio**
+**Fase 1b — invitaciones y cuentas sin negocio** (hecha, hist. §104: sin el
+rebuild de `usuarios`, que pasa a la etapa de entrar con Google; el enlace de
+la invitación deja el mail confirmado; el reseteo del admin se restringe con
+la Fase 2)
 - Tabla `invitaciones`: negocio (`organizacion_id NOT NULL`), mail, rol,
   quién invitó, estado (`pendiente`, `aceptada`, `rechazada`, `cancelada`),
   fechas y quién aceptó. Una sola pendiente por negocio y mail (índice
@@ -336,7 +339,8 @@ lo recibe como `email_cuenta`, porque `email` ya era el mail del negocio)
   auditoría sigue diciendo quién hizo cada cosa.
 - `NEXO_REGISTRO=off` y el campo trampa en el alta.
 
-**Después:** 2FA con app para los admins, sesiones abiertas, aviso de
+**Después:** entrar con Google (pedido del usuario del 28 de octubre; plan en
+`handoff.md`, 8b), 2FA con app para los admins, sesiones abiertas, aviso de
 "entraron desde un dispositivo nuevo", botón de arrepentimiento cuando haya
 cobro online, y pasar a un servicio de mail con dominio propio.
 

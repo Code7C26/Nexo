@@ -5,6 +5,9 @@
  * cuenta y "Agregar negocio" (solo el admin), que abre el alta guiada en su
  * modo "negocio".
  *
+ * También muestra en el Resumen las invitaciones a otros negocios que le
+ * llegaron a la cuenta (hist. §104), para aceptarlas o rechazarlas.
+ *
  * Cambiar de negocio recarga la página: todo lo que la app tiene en memoria
  * (productos, clientes, cajas, filtros) es del negocio anterior, y recargar
  * es el mismo reseteo que ya usa cerrar sesión (sesion.js).
@@ -13,7 +16,7 @@
 import { api } from "../core/api.js";
 import { esAdmin, esc } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
-import { registrar } from "../core/registro.js";
+import { alEntrarEnVista, registrar } from "../core/registro.js";
 import { avisar } from "../core/ui.js";
 
 const selector = document.getElementById("negocioSelector");
@@ -231,6 +234,51 @@ if (location.hash.startsWith("#/agregar-negocio")) {
   history.replaceState(null, "", location.pathname + location.search);
   if (esAdmin()) agregarNegocio();
 }
+
+/* ---------- Invitaciones que le llegaron (hist. §104) ---------- */
+
+// En el Resumen, para los dos roles: solo las del mail confirmado de la cuenta
+// (el backend no devuelve otras). Aceptar pasa a ese negocio, así que recarga.
+const avisoInvitaciones = document.getElementById("avisoInvitaciones");
+const ROL_TEXTO = { admin: "administrador", empleado: "empleado" };
+
+alEntrarEnVista("dashboard", async () => {
+  const solicitudes = await api("/api/auth/invitaciones");
+  avisoInvitaciones.hidden = solicitudes.length === 0;
+  avisoInvitaciones.innerHTML = solicitudes
+    .map(
+      (s) => `
+    <div class="aviso-plan" role="status">
+      ${icono("user-plus")}
+      <p><strong>${esc(s.invito)}</strong> te invitó a sumarte a <strong>${esc(s.negocio)}</strong> como ${esc(ROL_TEXTO[s.rol] ?? s.rol)}.</p>
+      <button type="button" class="btn btn-primary" data-aceptar="${s.id}" data-negocio="${esc(s.negocio)}">Aceptar</button>
+      <button type="button" class="btn-link" data-rechazar="${s.id}">Rechazar</button>
+    </div>`
+    )
+    .join("");
+});
+
+avisoInvitaciones.addEventListener("click", async (e) => {
+  const aceptar = e.target.closest("[data-aceptar]");
+  const rechazar = e.target.closest("[data-rechazar]");
+  const boton = aceptar ?? rechazar;
+  if (!boton) return;
+  boton.disabled = true;
+  try {
+    if (aceptar) {
+      await api(`/api/auth/invitaciones/${aceptar.dataset.aceptar}/aceptar`, { method: "POST", error: "No se pudo aceptar la invitación." });
+      avisarDespuesDeRecargar(`Listo: ya estás en «${aceptar.dataset.negocio}». Pasás de un negocio a otro desde arriba del menú.`);
+      recargarEnInicio();
+      return;
+    }
+    await api(`/api/auth/invitaciones/${rechazar.dataset.rechazar}/rechazar`, { method: "POST", error: "No se pudo rechazar la invitación." });
+    boton.closest(".aviso-plan").remove();
+    avisoInvitaciones.hidden = !avisoInvitaciones.children.length;
+    avisar("Invitación rechazada.", "ok");
+  } finally {
+    boton.disabled = false;
+  }
+});
 
 // Lo pide el boot de app.js en su primera ola, y Configuración al guardar
 // (por si cambió el nombre o el tipo del negocio).
