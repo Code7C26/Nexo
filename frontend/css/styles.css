@@ -3875,6 +3875,46 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 
+/* Las invitaciones de una cuenta sin negocio (hist. §104): una tarjeta por
+   negocio, con quién invitó y las dos respuestas. */
+.solicitudes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.solicitudes[hidden] { display: none; }
+.solicitud {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.solicitud p {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.solicitud strong { color: var(--ink); font-weight: 600; }
+.solicitud span { font-size: var(--txt-sm); color: var(--ink-muted); }
+.solicitud-acciones {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.sesion-card .solicitud-acciones .btn-primary { margin-top: 0; min-height: 40px; }
+.sesion-card .solicitud-acciones .btn-link { margin: 0; }
+#sinNegocioCrear.btn-secundario { min-height: 44px; margin-top: var(--sp-1); }
+/* El display de .btn-link le gana al [hidden] del navegador: la pantalla de
+   la invitación muestra u oculta sus botones según quién abre el enlace. */
+.sesion-card .btn-link[hidden] { display: none; }
+
 /* Campo con ícono adelante (y, en las contraseñas, el botón para verla). */
 .campo-icono {
   position: relative;

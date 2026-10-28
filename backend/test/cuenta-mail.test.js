@@ -6,6 +6,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { randomBytes, scryptSync } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 import { crearCliente, crearEmpleado, levantarServidor, registrarEmpresa, ultimoEnlace } from './servidor-de-prueba.js';
@@ -33,6 +34,25 @@ async function tocarEnlace(token) {
 }
 
 const estado = async (cliente) => (await cliente.get('/api/auth/estado')).json.usuario;
+
+// Una cuenta de antes de §102, como la dejaba POST /api/usuarios: sin mail y
+// con la contraseña que eligió el admin, que se cambia al entrar.
+function crearCuentaVieja(organizacionId, usuario, password) {
+  const salt = randomBytes(16);
+  const hash = scryptSync(password.normalize('NFKC'), salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  const base = new DatabaseSync(path.join(servidor.dir, 'nexo.db'));
+  try {
+    const { lastInsertRowid: id } = base
+      .prepare(
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password)
+         VALUES (?, ?, ?, ?, ?, 1)`
+      )
+      .run(organizacionId, usuario, usuario[0].toUpperCase() + usuario.slice(1), hash.toString('hex'), salt.toString('hex'));
+    base.prepare("INSERT INTO usuario_organizaciones (usuario_id, organizacion_id, rol) VALUES (?, ?, 'empleado')").run(id, organizacionId);
+  } finally {
+    base.close();
+  }
+}
 
 test('el alta crea la cuenta con el mail, manda la verificación y el enlace la verifica una vez', async () => {
   ana = await registrarEmpresa(servidor.url, { empresa: 'Almacén Ana', usuario: 'ana', email: 'Ana@Ejemplo.com' });
@@ -92,9 +112,11 @@ test('un enlace vencido no verifica, y uno viejo deja de servir cuando llega otr
 
 test('una cuenta sin mail no opera hasta sumarlo, y sigue entrando con su usuario', async () => {
   ceci = await registrarEmpresa(servidor.url, { empresa: 'Ferretería Ceci', usuario: 'ceci' });
-  // Un empleado creado como antes de §102: usuario y contraseña, sin mail.
-  const alta = await ceci.post('/api/usuarios', { usuario: 'dani', nombre: 'Dani', password: 'clave-temporal-1' });
-  assert.equal(alta.status, 201, alta.texto);
+  // Un empleado creado como antes de §102: usuario y contraseña elegidos por
+  // el admin, sin mail. Desde hist. §104 ese alta ya no existe (se invita por
+  // mail), así que la cuenta se escribe directo en la base de prueba, con el
+  // mismo scrypt que server.js.
+  crearCuentaVieja((await ceci.get('/api/negocio')).json.id, 'dani', 'clave-temporal-1');
   const dani = crearCliente(servidor.url);
   const login = await dani.post('/api/auth/login', { usuario: 'dani', password: 'clave-temporal-1' });
   assert.equal(login.status, 200, login.texto);
@@ -157,12 +179,14 @@ test('cambiar el mail pide la contraseña, avisa al anterior y deja sin verifica
   assert.equal((await crearCliente(servidor.url).post('/api/auth/login', { email: 'ana@otro.com', password: 'clave-segura-1' })).status, 200);
 });
 
-test('un empleado suma y verifica su propio mail, y los envíos tienen tope', async () => {
+test('un empleado que entra por invitación ya tiene el mail confirmado, y los envíos tienen tope', async () => {
   const admin = ceci;
-  const empleado = await crearEmpleado(servidor.url, admin, { usuario: 'gise' });
+  // El enlace de la invitación llegó a ese mail (hist. §104): no hace falta
+  // otro para confirmarlo.
+  const empleado = await crearEmpleado(servidor, admin, { usuario: 'gise' });
   assert.equal((await estado(empleado)).email, 'gise@nexo.test');
-  assert.equal(await tocarEnlace(ultimoEnlace(servidor, 'gise@nexo.test')), '/app?mail=verificado');
   assert.equal((await estado(empleado)).email_verificado, true);
+  assert.equal(ultimoEnlace(servidor, 'gise@nexo.test'), null, 'no le llega una verificación aparte');
   assert.equal((await empleado.post('/api/auth/email/reenviar')).status, 400, 'ya está verificado');
 
   // Cinco envíos por hora y por cuenta, entre altas de mail y reenvíos (el

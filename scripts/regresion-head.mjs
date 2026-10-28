@@ -176,7 +176,9 @@ async function principal() {
     const sembrador = await levantarServidor({ backendDir: path.join(worktree, 'backend'), dbPath: base });
     let usuarios;
     try {
-      ({ usuarios } = await sembrar(sembrador.url, { prefijo: op.db ? 'regresion' : '' }));
+      // leerMails para el seed desde hist. §104 (el empleado acepta su
+      // invitación por mail); el de una ref anterior lo ignora.
+      ({ usuarios } = await sembrar(sembrador.url, { prefijo: op.db ? 'regresion' : '', leerMails: sembrador.leerMails }));
     } finally {
       await sembrador.cerrar();
     }

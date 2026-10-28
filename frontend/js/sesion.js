@@ -29,6 +29,8 @@
   // script declara una variable con el mismo nombre.
   const formCambioForzado = document.getElementById("formCambioForzado");
   const formSumarMail = document.getElementById("formSumarMail");
+  const sinNegocio = document.getElementById("sinNegocio");
+  const pantallaInvitacion = document.getElementById("invitacion");
 
   let appInyectada = false;
 
@@ -171,6 +173,8 @@
     formLogin.hidden = cual !== "login";
     formCambioForzado.hidden = cual !== "cambio";
     formSumarMail.hidden = cual !== "mail";
+    sinNegocio.hidden = cual !== "sin-negocio";
+    pantallaInvitacion.hidden = cual !== "invitacion";
     if (cual === "mail") document.getElementById("sumarMailEmail").focus();
   }
 
@@ -178,22 +182,41 @@
   // admin la reseteó) y el mail (hist. §102: una cuenta de antes de §102 lo
   // suma antes de operar; el backend tampoco la deja). Es el mismo camino
   // después del login, del arranque con sesión y de cada paso completado.
+  //
+  // Después, una invitación que quedó por aceptar (se entró desde su enlace,
+  // hist. §104), y una cuenta sin ningún negocio va a su pantalla en vez de a
+  // la app.
   let usuarioPendiente = null;
   function seguirCon(usuario) {
     usuarioPendiente = usuario;
     if (usuario.debe_cambiar_password) mostrarPantalla("cambio");
     else if (!usuario.email) mostrarPantalla("mail");
+    else if (aceptarAlEntrar) aceptarYEntrar(usuario);
+    else if (usuario.organizacion_id == null) mostrarSinNegocio(usuario);
     else arrancarApp(usuario);
   }
 
   // El alta guiada (hist. §73) es un módulo aparte, js/alta.js, que se baja
   // recién cuando hace falta: quien entra con su cuenta nunca la carga. Si no
   // carga, se vuelve al login con el motivo, como con app.js.
-  async function abrirAlta({ instalacionNueva = false } = {}) {
+  //
+  // Una cuenta sin negocio (hist. §104) la usa para crear el primero: el alta
+  // sin el paso "Tu cuenta", como "Agregar negocio". La sesión pasa a él, y se
+  // recarga para arrancar la app de cero.
+  async function abrirAlta({ instalacionNueva = false, primerNegocio = false } = {}) {
     pantalla.hidden = true;
     try {
       const { montarAlta } = await import("./alta.js");
-      montarAlta({ instalacionNueva, alTerminar: arrancarApp, alVolver: () => mostrarPantalla("login") });
+      montarAlta(
+        primerNegocio
+          ? {
+              modo: "negocio",
+              primero: true,
+              alTerminar: (nuevo) => entrarALaApp(`Listo: ya estás en «${nuevo.nombre}».`),
+              alVolver: () => mostrarPantalla("sin-negocio")
+            }
+          : { instalacionNueva, alTerminar: arrancarApp, alVolver: () => mostrarPantalla("login") }
+      );
     } catch (e) {
       console.error("No se pudo cargar js/alta.js (o alguno de los módulos que importa).", e);
       mostrarPantalla("login");
@@ -394,6 +417,274 @@
 
   document.getElementById("sumarMailSalir").addEventListener("click", () => window.nexoCerrarSesion());
 
+  // ---------- Invitaciones y cuentas sin negocio (hist. §104) ----------
+
+  const ROL_TEXTO = { admin: "administrador", empleado: "empleado" };
+
+  // El enlace del mail de una invitación: /app#/unirme/<token>.
+  const tokenInvitacion = location.hash.match(/^#\/unirme\/([A-Za-z0-9_-]+)$/)?.[1] ?? null;
+  // Quien ya tiene cuenta entra primero (y pasa sus pasos obligatorios), y
+  // recién ahí se acepta: seguirCon lo mira.
+  let aceptarAlEntrar = null;
+
+  function sacarInvitacionDeLaDireccion() {
+    if (location.hash.startsWith("#/unirme/")) history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  async function postJson(url, cuerpo = {}) {
+    const res = await fetchOriginal(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo)
+    });
+    return { res, datos: await res.json().catch(() => ({})) };
+  }
+
+  // Aceptar (o crear un negocio) deja la sesión en otro negocio: se arranca
+  // de cero en la app, con el aviso, como al cambiar de negocio.
+  function entrarALaApp(aviso) {
+    guardarAviso(aviso);
+    sacarInvitacionDeLaDireccion();
+    location.replace(location.pathname);
+  }
+
+  async function aceptarYEntrar(usuario) {
+    const token = aceptarAlEntrar;
+    aceptarAlEntrar = null;
+    try {
+      const { res, datos } = await postJson("/api/auth/invitacion/aceptar", { token });
+      if (res.ok) return entrarALaApp(`Listo: ya estás en «${datos.negocio}».`);
+      guardarAviso(`error:${datos.error || "No se pudo aceptar la invitación."}`);
+    } catch {
+      guardarAviso("error:No se pudo aceptar la invitación. Probá de nuevo desde el enlace del mail.");
+    }
+    sacarInvitacionDeLaDireccion();
+    seguirCon(usuario);
+  }
+
+  const mostrar = (id, visible) => (document.getElementById(id).hidden = !visible);
+
+  function errorInvitacion(texto) {
+    const p = document.getElementById("invitacionError");
+    p.textContent = texto;
+    p.hidden = !texto;
+  }
+
+  // La página del enlace. Sin sesión ofrece crear la cuenta o, si ese mail ya
+  // tiene, ingresar; con sesión, aceptarla ahí. Una que ya no está vigente
+  // dice por qué.
+  async function mostrarInvitacion(usuario) {
+    let info = null;
+    try {
+      const { res, datos } = await postJson("/api/auth/invitacion", { token: tokenInvitacion });
+      if (res.ok) info = datos;
+    } catch {
+      mostrarPantalla("login");
+      mostrarErrorEn("loginError", sinRedNiSesion());
+      return;
+    }
+    const titulo = document.getElementById("invitacionTitulo");
+    const texto = document.getElementById("invitacionTexto");
+    for (const id of ["formInvitacionCuenta", "invitacionAceptar", "invitacionIngresar", "invitacionAhoraNo"]) mostrar(id, false);
+    errorInvitacion("");
+    const ingresar = document.getElementById("invitacionIngresar");
+    ingresar.textContent = usuario ? "Ir a Nexo" : "Ingresar";
+    delete ingresar.dataset.email;
+
+    if (!info) {
+      titulo.textContent = "Este enlace no sirve";
+      texto.textContent =
+        "Puede que esté incompleto o que ya te hayan mandado uno más nuevo. Pedile a quien te invitó que te lo mande de nuevo.";
+      mostrar("invitacionIngresar", true);
+    } else {
+      titulo.textContent = `${info.invito} te invitó a ${info.negocio}`;
+      const rol = ROL_TEXTO[info.rol] ?? info.rol;
+      if (info.estado !== "pendiente") {
+        texto.textContent = {
+          vencida: `La invitación venció. Pedile a ${info.invito} que te la mande de nuevo desde Nexo.`,
+          cancelada: `${info.invito} canceló esta invitación.`,
+          aceptada: `Ya la aceptaste. Entrá con tu mail para trabajar en ${info.negocio}.`,
+          rechazada: `La rechazaste. Si cambiaste de idea, pedile a ${info.invito} que te invite de nuevo.`
+        }[info.estado];
+        mostrar("invitacionIngresar", true);
+      } else if (usuario) {
+        texto.textContent =
+          usuario.organizacion_id == null
+            ? `Te suma a su equipo como ${rol}.`
+            : `Te suma a su equipo como ${rol}. Tus otros negocios siguen igual: pasás de uno a otro desde arriba del menú.`;
+        mostrar("invitacionAceptar", true);
+        mostrar("invitacionAhoraNo", true);
+      } else if (info.tiene_cuenta) {
+        texto.textContent = `Te suma a su equipo como ${rol}. Ya tenés cuenta con ${info.email}: ingresá y la invitación se acepta sola.`;
+        ingresar.dataset.email = info.email;
+        mostrar("invitacionIngresar", true);
+      } else {
+        texto.textContent = `Te suma a su equipo como ${rol}. Creá tu cuenta para entrar: con ella vas a ingresar a Nexo.`;
+        document.getElementById("invitacionEmail").value = info.email;
+        mostrar("formInvitacionCuenta", true);
+      }
+    }
+    mostrarPantalla("invitacion");
+    if (!document.getElementById("formInvitacionCuenta").hidden) document.getElementById("invitacionNombre").focus();
+  }
+
+  document.getElementById("invitacionIngresar").addEventListener("click", (e) => {
+    const email = e.currentTarget.dataset.email;
+    if (usuarioPendiente) {
+      sacarInvitacionDeLaDireccion();
+      seguirCon(usuarioPendiente);
+      return;
+    }
+    // Con una invitación vigente, se acepta al entrar.
+    if (email) {
+      aceptarAlEntrar = tokenInvitacion;
+      document.getElementById("loginUsuario").value = email;
+    } else {
+      sacarInvitacionDeLaDireccion();
+    }
+    mostrarPantalla("login");
+    document.getElementById(email ? "loginPassword" : "loginUsuario").focus();
+  });
+
+  // "Ahora no" sigue a la app. Si la invitación era para otro mail, el mismo
+  // botón pasa a cerrar la sesión: cerrarla recarga con el enlace todavía en la
+  // dirección, y se entra con ese mail.
+  let paraOtroMail = false;
+  document.getElementById("invitacionAhoraNo").addEventListener("click", () => {
+    if (paraOtroMail) {
+      window.nexoCerrarSesion();
+      return;
+    }
+    sacarInvitacionDeLaDireccion();
+    seguirCon(usuarioPendiente);
+  });
+
+  document.getElementById("invitacionAceptar").addEventListener("click", async (e) => {
+    const boton = e.currentTarget;
+    errorInvitacion("");
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/invitacion/aceptar", { token: tokenInvitacion });
+      if (res.ok) return entrarALaApp(`Listo: ya estás en «${datos.negocio}».`);
+      errorInvitacion(datos.error || "No se pudo aceptar la invitación.");
+      if (datos.codigo === "otro_mail") {
+        paraOtroMail = true;
+        boton.hidden = true;
+        document.getElementById("invitacionAhoraNo").textContent = "Cerrar sesión y entrar con ese mail";
+      }
+    } catch {
+      errorInvitacion("No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("formInvitacionCuenta").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorInvitacion("");
+    const nombre = document.getElementById("invitacionNombre").value.trim();
+    const password = document.getElementById("invitacionPassword").value;
+    if (!nombre) return errorInvitacion("Escribí tu nombre.");
+    if (password.length < 8) return errorInvitacion("La contraseña tiene que tener al menos 8 caracteres.");
+    const boton = e.target.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/invitacion/cuenta", { token: tokenInvitacion, nombre, password });
+      if (res.status === 409) {
+        // Ese mail ya tiene cuenta (la creó en otra pestaña): a ingresar.
+        aceptarAlEntrar = tokenInvitacion;
+        document.getElementById("loginUsuario").value = document.getElementById("invitacionEmail").value;
+        mostrarPantalla("login");
+        mostrarErrorEn("loginError", datos.error);
+        return;
+      }
+      if (!res.ok) return errorInvitacion(datos.error || "No se pudo crear la cuenta.");
+      await borrarDatosGuardados();
+      sacarInvitacionDeLaDireccion();
+      guardarAviso("Listo: ya estás en el equipo. Te damos la bienvenida a Nexo.");
+      seguirCon(datos.usuario);
+    } catch {
+      errorInvitacion("No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  // Sin ningún negocio: sus invitaciones (de su mail confirmado) y crear el
+  // suyo. Armado con el DOM y textContent: este archivo no carga core/.
+  async function mostrarSinNegocio(usuario) {
+    mostrarPantalla("sin-negocio");
+    ocultarErrorEn("sinNegocioError");
+    const lista = document.getElementById("sinNegocioSolicitudes");
+    const bajada = document.getElementById("sinNegocioBajada");
+    let solicitudes = [];
+    try {
+      const res = await fetchOriginal("/api/auth/invitaciones");
+      if (res.ok) solicitudes = await res.json();
+    } catch {
+      mostrarErrorEn("sinNegocioError", "No se pudo conectar con el servidor.");
+    }
+    lista.replaceChildren(
+      ...solicitudes.map((s) => {
+        const item = document.createElement("li");
+        item.className = "solicitud";
+        const textos = document.createElement("p");
+        const negocio = document.createElement("strong");
+        negocio.textContent = s.negocio;
+        const detalle = document.createElement("span");
+        detalle.textContent = `Te invitó ${s.invito}, como ${ROL_TEXTO[s.rol] ?? s.rol}`;
+        textos.append(negocio, detalle);
+        const boton = (clase, textoBoton, accion) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = clase;
+          b.textContent = textoBoton;
+          b.addEventListener("click", () => responder(s, accion, b));
+          return b;
+        };
+        const acciones = document.createElement("div");
+        acciones.className = "solicitud-acciones";
+        acciones.append(boton("btn-link", "Rechazar", "rechazar"), boton("btn btn-primary", "Aceptar", "aceptar"));
+        item.append(textos, acciones);
+        return item;
+      })
+    );
+    lista.hidden = solicitudes.length === 0;
+    // Con invitaciones, la acción principal es aceptar: crear el propio queda
+    // como la otra opción.
+    const crear = document.getElementById("sinNegocioCrear");
+    crear.classList.toggle("btn-primary", !solicitudes.length);
+    crear.classList.toggle("btn-secundario", !!solicitudes.length);
+    if (solicitudes.length) {
+      bajada.textContent = "Te invitaron a estos negocios. Aceptá para empezar a trabajar, o creá el tuyo.";
+    } else if (!usuario.email_verificado) {
+      bajada.textContent = `Cuando alguien te invite, la invitación aparece acá una vez que confirmes tu mail: te mandamos un enlace a ${usuario.email}. Si tenés tu propio negocio, crealo.`;
+    } else {
+      bajada.textContent = "Si alguien te invita a su negocio, la invitación aparece acá. Si tenés tu propio negocio, crealo.";
+    }
+  }
+
+  async function responder(solicitud, accion, boton) {
+    ocultarErrorEn("sinNegocioError");
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson(`/api/auth/invitaciones/${solicitud.id}/${accion}`);
+      if (!res.ok) {
+        mostrarErrorEn("sinNegocioError", datos.error || "No se pudo responder la invitación.");
+        return;
+      }
+      if (accion === "aceptar") return entrarALaApp(`Listo: ya estás en «${solicitud.negocio}».`);
+      mostrarSinNegocio(usuarioPendiente);
+    } catch {
+      mostrarErrorEn("sinNegocioError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  }
+
+  document.getElementById("sinNegocioCrear").addEventListener("click", () => abrirAlta({ primerNegocio: true }));
+  document.getElementById("sinNegocioSalir").addEventListener("click", () => window.nexoCerrarSesion());
+
   // El toast que muestra la app al cargar (dominios/negocios.js). Con
   // "error:" adelante sale como error.
   function guardarAviso(texto) {
@@ -426,6 +717,19 @@
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
         // no ofrece "Ya tengo cuenta".
         abrirAlta({ instalacionNueva: true });
+      } else if (tokenInvitacion) {
+        // El enlace de una invitación (hist. §104). Con sesión, los pasos
+        // obligatorios van antes: la invitación se acepta después.
+        if (!estado.autenticado) {
+          cerrarSesionLocal();
+          mostrarInvitacion(null);
+        } else if (estado.usuario.debe_cambiar_password || !estado.usuario.email) {
+          aceptarAlEntrar = tokenInvitacion;
+          seguirCon(estado.usuario);
+        } else {
+          usuarioPendiente = estado.usuario;
+          mostrarInvitacion(estado.usuario);
+        }
       } else if (!estado.autenticado) {
         cerrarSesionLocal();
         // #/crear-cuenta es el enlace para crear una cuenta (por ejemplo,

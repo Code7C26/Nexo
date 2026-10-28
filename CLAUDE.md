@@ -1116,6 +1116,9 @@ una instancia por negocio.
     del menú;
   - "Agregar negocio" (solo el admin) reusa el alta guiada sin el paso de la
     cuenta.
+  - **Cada persona tiene su cuenta y entra con su mail** (hist. §102, §104):
+    el admin suma gente invitándola por mail, y una cuenta sin ningún negocio
+    entra igual a ver sus invitaciones o crear el suyo.
 - Lo que falta: poder apagar el registro público por configuración y sumarle
   verificación (email o captcha). Las dos requieren decisión del equipo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y

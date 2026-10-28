@@ -9723,3 +9723,108 @@ usuario no estaba, con su autorización para mergear (PR #27 y #28).
 - El loop local que seguía la instalación nunca cortaba, porque `pgrep -f` se
   encontraba a sí mismo. La instalación terminó bien igual, en unos 7
   minutos.
+
+## 104. Invitaciones por mail y cuentas sin negocio (etapa 8b, Fase 1b), 28 de octubre de 2026
+
+Lo que seguía según el handoff ("¿qué sigue?", "¿y?"); el usuario aprobó el
+plan y sumó como pendiente entrar con Google (anotado en "Qué sigue", 8b).
+Diseño de partida: `docs/investigacion-login-legal.md` §5.
+
+**Qué cambió:**
+- **Tabla `invitaciones`** (solo en `schema.sql`, es nueva: aditiva, sin
+  migración en `db/index.js`): negocio, mail en minúsculas, rol, `token_hash`
+  (SHA-256), estado (`pendiente|aceptada|rechazada|cancelada`), quién invitó,
+  `enviada` y quién respondió. Una pendiente por negocio y mail (índice
+  parcial). "Vencida" son 14 días desde `enviada`, calculado al leer.
+- **Admin** (`/api/invitaciones`, `soloAdmin`): listar las pendientes (con
+  las vencidas), invitar, reenviar y cancelar.
+  - Invitar a un mail con una pendiente la reenvía con el rol nuevo (200 y no
+    201).
+  - Cada envío cambia el token: solo vale el último enlace.
+  - Las pendientes vigentes cuentan para el tope de usuarios del plan.
+  - 30 invitaciones por hora y por negocio (`registroExcedido` ahora acepta
+    un máximo).
+  - Si esa persona ya trabaja en el negocio, 409.
+  - La respuesta es igual exista o no una cuenta con ese mail. Al mail sí
+    le cambia el texto: "creá tu cuenta" o "entrá con tu cuenta".
+- **El enlace** es `/app#/unirme/<token>`: en el hash, así no queda en el log
+  de Caddy. Lo leen rutas por POST con el token en el cuerpo:
+  - `POST /api/auth/invitacion` (pública): de qué negocio es, quién invitó,
+    el estado y si el mail ya tiene cuenta.
+  - `POST /api/auth/invitacion/cuenta` (pública): crea la cuenta con ese mail
+    **ya confirmado** (el enlace llegó ahí), la suma al negocio y abre la
+    sesión. Tope aparte: 20 por hora y por IP, contando solo los pedidos con
+    un enlace vigente y datos válidos (un equipo se suma desde el mismo wifi).
+  - `POST /api/auth/invitacion/aceptar` (con sesión): tiene que ser el mail de
+    la cuenta (si no, 403 `otro_mail`), y lo deja confirmado.
+- **La cuenta** (`/api/auth/invitaciones`): ve las pendientes de su mail
+  **confirmado** y las acepta o rechaza por id. Aceptar pasa la sesión a ese
+  negocio. Rechazar queda en la auditoría del negocio.
+- **Aceptar** (`aceptarInvitacion`): suma la fila de `usuario_organizaciones`
+  con el rol, o reactiva la baja que tenía ahí, y ocupa un lugar del plan. Si
+  no hay lugar, el texto es para quien acepta ("avisale a … para que sume
+  lugar"). Auditado como `crear usuario` con `operacion_tipo invitacion`.
+- **Cuenta sin negocio:** el login ya no rechaza a una cuenta sin ningún
+  negocio activo (antes era "como si no existiera").
+  - Entra con la sesión sin negocio (`organizacion_id` y rol en NULL);
+    `sesionValida` pasó a LEFT JOIN.
+  - `autenticar` solo la deja llegar a `/auth/*` y `/negocios*`; lo demás es
+    403 `sin_negocio`.
+  - `POST /api/negocios` perdió el `soloAdmin` de la firma (permisos.js:
+    'ambos'): con negocio sigue siendo solo del admin, controlado adentro;
+    sin negocio crea el primero, con el plan que mande (Gratis si no manda),
+    como el registro.
+- **`POST /api/usuarios` se fue** (el alta con usuario y contraseña). Editar,
+  dar de baja y resetear la contraseña siguen.
+- **Frontend:**
+  - Configuración → Usuarios: "Invitar" (página `#/configuracion/invitar`, con
+    el mail y el rol en dos tarjetas) e "Invitaciones sin responder" con
+    reenviar y cancelar. El modal de usuario quedó solo para editar nombre y
+    rol.
+  - `sesion.js`: la pantalla del enlace (crear la cuenta; ingresar y aceptar
+    sola si el mail ya tiene cuenta; aceptar con la sesión abierta; o por qué
+    ya no vale) y la de "Todavía no estás en ningún negocio", con sus
+    solicitudes y "Crear mi negocio" (el alta en modo negocio con `primero`,
+    sin la nota de "negocio aparte").
+  - El Resumen muestra las invitaciones que le llegaron a la cuenta
+    (`dominios/negocios.js`), con Aceptar y Rechazar.
+- **Arnés:** `crearEmpleado(servidor, admin, …)` invita y crea la cuenta
+  desde el enlace del mail (necesita `servidor.leerMails`); `lectorDeMails()`
+  y `tokenDeInvitacion()` exportados. El seed recibe `leerMails`, y con
+  `--url` pide `--mails <carpeta>`. `regresion-head` se lo pasa (una ref
+  anterior lo ignora).
+
+**Lo que se decidió distinto del documento:**
+- **Sin rebuild de `usuarios`.** Toda cuenta nueva nace desde una invitación
+  (con su negocio) o desde el registro, así que `organizacion_id` nunca queda
+  NULL. La cuenta sin negocio se resuelve en la sesión, no en `usuarios`. El
+  rebuild hace falta recién con una cuenta que nazca sola (entrar con Google
+  sin invitación): se hace en esa etapa.
+- **El reseteo de contraseña del admin sigue igual** para todos: limitarlo a
+  quien no confirmó su mail deja sin salida al que la olvida hasta que exista
+  "Me olvidé la contraseña". Se restringe en la Fase 2.
+- **El enlace confirma el mail.** El documento pedía cuenta verificada para ver
+  la solicitud; eso sigue en la lista de Nexo, pero tocar el enlace ya prueba
+  el mail, así que crear la cuenta o aceptar desde él no pide otro paso.
+
+**Verificación:**
+- `npm run lint` limpio y 96 tests en verde, 8 nuevos en
+  `backend/test/invitaciones.test.js`. Cubren invitar y crear la cuenta,
+  aceptar con cuenta ya existente, reenviar, vencer y cancelar, el mail
+  equivocado, rechazar, la cuenta sin negocio que crea el suyo, los permisos
+  del empleado y el tope de Gratis.
+- `cuenta-mail.test.js` arma la cuenta "de antes de §102" directo en la base de
+  prueba (el alta con usuario y contraseña ya no existe).
+- `npm run verificar-migracion`: 24 de 24, la base real sin cambios (md5
+  igual).
+- `npm run regresion`: solo las 4 rutas nuevas (404 en HEAD).
+- En Chrome, contra una base sembrada en el scratchpad:
+  - invitar desde la página;
+  - abrir el enlace sin sesión y crear la cuenta (entra como empleada);
+  - darla de baja y volver a entrar (pantalla sin negocio);
+  - reinvitarla (aparece la solicitud);
+  - crear su negocio (queda admin) y aceptar la invitación desde el Resumen
+    (pasa a Baseline SA como admin).
+  - Pasada a 390 px de la pantalla sin negocio.
+- **Corregido en la pasada:** `.btn-link` le ganaba al `[hidden]` y "Ahora no"
+  se veía sin sesión. Con solicitudes, "Crear mi negocio" pasa a secundario.

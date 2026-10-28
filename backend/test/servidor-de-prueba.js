@@ -135,20 +135,23 @@ export async function levantarServidor({ backendDir = backendPropio, dbPath, env
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 
-  // Los mails guardados, del más viejo al más nuevo; con `para`, solo los de
-  // ese destinatario.
-  function leerMails(para) {
+  return { url, dir, cerrar, salida: () => salida, leerMails: lectorDeMails(carpetaMails) };
+}
+
+// Los mails que guardó un servidor con NEXO_MAIL=stub en `carpeta`, del más
+// viejo al más nuevo; con `para`, solo los de ese destinatario. Exportado para
+// el seed con --url, contra un servidor que no levantó este arnés.
+export function lectorDeMails(carpeta) {
+  return (para) => {
     let archivos;
     try {
-      archivos = readdirSync(carpetaMails).sort();
+      archivos = readdirSync(carpeta).sort();
     } catch {
       return [];
     }
-    const mails = archivos.map((a) => JSON.parse(readFileSync(path.join(carpetaMails, a), 'utf8')));
+    const mails = archivos.map((a) => JSON.parse(readFileSync(path.join(carpeta, a), 'utf8')));
     return para ? mails.filter((m) => m.para === para) : mails;
-  }
-
-  return { url, dir, cerrar, salida: () => salida, leerMails };
+  };
 }
 
 // El token del último enlace que se mandó a un mail (`ruta` sin la barra:
@@ -176,23 +179,33 @@ export async function registrarEmpresa(
   return cliente;
 }
 
-// Alta de un empleado por el admin y primer login con cambio de contraseña
-// obligatorio, y después "Sumá tu mail" (hist. §102), con `<usuario>@nexo.test`
-// si no viene `email`. Devuelve el cliente ya logueado como empleado (o como
-// otro admin, con `rol`).
+// El token del último enlace de invitación que se mandó a un mail
+// (/app#/unirme/<token>, hist. §104).
+export function tokenDeInvitacion(servidor, para) {
+  const texto = servidor.leerMails(para).at(-1)?.texto ?? '';
+  return texto.match(/#\/unirme\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
+}
+
+// Un empleado como entra desde hist. §104: el admin lo invita a
+// `<usuario>@nexo.test` (si no viene `email`) y la persona crea su cuenta
+// desde el enlace del mail, que la deja adentro del negocio y con el mail
+// confirmado. `servidor` es { url, leerMails }: lo que devuelve
+// levantarServidor. Devuelve el cliente ya logueado como empleado (o como otro
+// admin, con `rol`).
 export async function crearEmpleado(
-  url,
+  servidor,
   admin,
   { usuario, email = `${usuario}@nexo.test`, nombre = 'Empleado', password = 'clave-segura-2', rol = 'empleado' }
 ) {
-  const alta = await admin.post('/api/usuarios', { usuario, nombre, password: 'clave-temporal-1', rol });
-  if (alta.status !== 201) throw new Error(`Alta de empleado falló (${alta.status}): ${alta.texto}`);
-  const cliente = crearCliente(url);
-  const login = await cliente.post('/api/auth/login', { usuario, password: 'clave-temporal-1' });
-  if (login.status !== 200) throw new Error(`Login del empleado falló (${login.status}): ${login.texto}`);
-  const cambio = await cliente.post('/api/auth/cambiar-password', { actual: 'clave-temporal-1', nueva: password });
-  if (cambio.status >= 300) throw new Error(`Cambio de contraseña falló (${cambio.status}): ${cambio.texto}`);
-  const mail = await cliente.post('/api/auth/email', { email });
-  if (mail.status !== 200) throw new Error(`Sumar el mail falló (${mail.status}): ${mail.texto}`);
+  const invitacion = await admin.post('/api/invitaciones', { email, rol });
+  if (invitacion.status >= 300) throw new Error(`Invitar al empleado falló (${invitacion.status}): ${invitacion.texto}`);
+  if (!servidor.leerMails) {
+    throw new Error('Sin los mails del servidor (NEXO_MAIL=stub) no hay enlace con qué aceptar la invitación.');
+  }
+  const token = tokenDeInvitacion(servidor, email);
+  if (!token) throw new Error(`No le llegó la invitación a ${email}.`);
+  const cliente = crearCliente(servidor.url);
+  const cuenta = await cliente.post('/api/auth/invitacion/cuenta', { token, nombre, password });
+  if (cuenta.status !== 201) throw new Error(`Crear la cuenta desde la invitación falló (${cuenta.status}): ${cuenta.texto}`);
   return cliente;
 }

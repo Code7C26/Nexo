@@ -57,7 +57,9 @@ test('Gratis: un usuario, un negocio, 100 productos y 300 ventas por mes, sin fr
   assert.deepEqual(negocio.plan.uso.usuarios, { usados: 1, tope: 1 });
 
   // Usuarios y negocios.
-  const empleado = await admin.post('/api/usuarios', { usuario: 'ayudante', nombre: 'Ayudante', password: 'clave-temporal-1' });
+  // Invitar a alguien ya cuenta (hist. §104): si no, se invitaría a más gente
+  // de la que entra.
+  const empleado = await admin.post('/api/invitaciones', { email: 'ayudante@nexo.test' });
   assert.ok(esTope(empleado), empleado.texto);
   assert.match(empleado.json.error, /Emprendedor/);
   const otroNegocio = await admin.post('/api/negocios', { nombre: 'Otro local', rubro: 'comercio' });

@@ -996,6 +996,32 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
 );
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
 
+-- Invitaciones a trabajar en un negocio (hist. §104,
+-- docs/investigacion-login-legal.md §5): el admin ya no crea empleados con
+-- usuario y contraseña, invita a un mail con un rol. Aceptar suma la fila de
+-- usuario_organizaciones. La ve en Nexo la cuenta que confirmó ese mail; el
+-- enlace del mail (token_hash, SHA-256 como tokens_cuenta) sirve además para
+-- crear la cuenta si no tiene, y prueba que el mail es suyo.
+-- Una sola pendiente por negocio y mail: volver a invitar la reenvía. Vence a
+-- los 14 días de `enviada` (la última vez que se mandó), calculado al leerla
+-- y sin estado guardado, como el "vencido" de los presupuestos. usuario_id es
+-- quién la aceptó o la rechazó.
+CREATE TABLE IF NOT EXISTS invitaciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  email TEXT NOT NULL,
+  rol TEXT NOT NULL DEFAULT 'empleado' CHECK (rol IN ('admin','empleado')),
+  token_hash TEXT NOT NULL UNIQUE,
+  estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','aceptada','rechazada','cancelada')),
+  invitado_por INTEGER NOT NULL REFERENCES usuarios(id),
+  creada TEXT NOT NULL DEFAULT (datetime('now')),
+  enviada TEXT NOT NULL DEFAULT (datetime('now')),
+  respondida TEXT,
+  usuario_id INTEGER REFERENCES usuarios(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invitaciones_pendiente ON invitaciones(organizacion_id, email) WHERE estado = 'pendiente';
+CREATE INDEX IF NOT EXISTS idx_invitaciones_email ON invitaciones(email, estado);
+
 -- Tabla de sesiones en vez de un token firmado (JWT). Con JWT, dar de
 -- baja a un empleado no lo echa del sistema hasta que el token expire
 -- por su cuenta. Con esta tabla, DELETE FROM sesiones WHERE usuario_id=?

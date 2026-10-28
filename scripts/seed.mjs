@@ -13,6 +13,9 @@
 //                     una copia de la base real en otro puerto, para tener una
 //                     segunda empresa con la que probar aislamiento). El puerto
 //                     3000 es el del servidor real: se rechaza salvo --forzar.
+//   --mails <dir>     con --url, la carpeta donde ese servidor guarda los mails
+//                     (NEXO_MAIL=stub y NEXO_MAIL_DIR): el empleado entra con
+//                     el enlace de su invitación (hist. §104).
 //   --empresa <nom>   nombre de la empresa (por defecto "Baseline SA").
 //   --prefijo <p>     prefijo de usuarios y SKUs, para sembrar más de una
 //                     empresa en la misma base (el usuario y el SKU son únicos
@@ -23,7 +26,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { crearEmpleado, levantarServidor, registrarEmpresa } from '../backend/test/servidor-de-prueba.js';
+import { crearEmpleado, lectorDeMails, levantarServidor, registrarEmpresa } from '../backend/test/servidor-de-prueba.js';
 import { asegurarQueNoEsLaReal } from './lib/base-real.mjs';
 
 export const PASSWORD_ADMIN = 'clave-segura-1';
@@ -40,12 +43,14 @@ async function paso(descripcion, pedido) {
 
 const enDias = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
-export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '' } = {}) {
+// El empleado entra por invitación (hist. §104): para aceptarla hace falta leer
+// el mail que le llegó, con `leerMails` del servidor (NEXO_MAIL=stub).
+export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '', leerMails } = {}) {
   const p = prefijo ? `${prefijo}-` : '';
   const usuarios = { admin: `${p}admin1`, empleado: `${p}emp1` };
 
   const admin = await registrarEmpresa(url, { empresa, usuario: usuarios.admin, password: PASSWORD_ADMIN });
-  const empleado = await crearEmpleado(url, admin, { usuario: usuarios.empleado, password: PASSWORD_EMPLEADO });
+  const empleado = await crearEmpleado({ url, leerMails }, admin, { usuario: usuarios.empleado, password: PASSWORD_EMPLEADO });
 
   // Catálogos base: los siembra el servidor para cada empresa nueva (hist. §49).
   const [efectivo] = await paso('listar cuentas', admin.get('/api/cuentas-tesoreria'));
@@ -248,6 +253,7 @@ async function principal() {
       url: { type: 'string' },
       empresa: { type: 'string' },
       prefijo: { type: 'string' },
+      mails: { type: 'string' },
       forzar: { type: 'boolean', default: false }
     }
   });
@@ -268,7 +274,9 @@ async function principal() {
   }
 
   try {
-    const r = await sembrar(url, { empresa: op.empresa, prefijo: op.prefijo });
+    const leerMails = servidor?.leerMails ?? (op.mails ? lectorDeMails(path.resolve(op.mails)) : undefined);
+    if (!leerMails) rechazar('con --url, el servidor tiene que correr con NEXO_MAIL=stub y NEXO_MAIL_DIR=<carpeta>, y se pasa --mails <carpeta>: el empleado entra con el enlace de su invitación.');
+    const r = await sembrar(url, { empresa: op.empresa, prefijo: op.prefijo, leerMails });
     console.log(`Empresa "${r.empresa}" sembrada en ${op.db ? path.resolve(op.db) : url}.`);
     // Se entra con el mail (hist. §102): el arnés le pone <usuario>@nexo.test.
     console.log(`  admin:    ${r.usuarios.admin}@nexo.test / ${PASSWORD_ADMIN}`);

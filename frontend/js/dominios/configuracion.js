@@ -393,6 +393,8 @@ const PAGINAS = {
   // El plan de Nexo lo pinta dominios/plan.js (hist. §99).
   plan: { admin: true, alEntrar: () => invocar("pintar:plan") },
   usuarios: { admin: true, alEntrar: () => recargar("usuarios") },
+  // Invitar a alguien (hist. §104): sin ítem propio, marca el de Usuarios.
+  invitar: { admin: true, alEntrar: () => invocar("pintar:invitar"), menu: "usuarios" },
   // Los catálogos los pinta su dominio (leen su estado), después de traerlos
   // de nuevo: el boot pudo no haber llegado a cargarlos con un deep-link.
   "listas-precios": { admin: true, alEntrar: () => recargar("productos").then(() => invocar("pintar:listas-precios")) },
