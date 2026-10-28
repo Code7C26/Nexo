@@ -272,9 +272,11 @@ function prepararModulos() {
   rubroDeLosModulos = rubro;
   contenedorModulos.innerHTML = tarjetasModulos(catalogo, []);
   marcarModulosDelTipo(contenedorModulos, catalogo, rubro);
-  campo("altaModulosBajada").textContent =
-    `Marcamos las que suele usar un negocio como el tuyo (${tipoDeNegocio(catalogo, rubro).nombre}). ` +
-    "Cambialas ahora o cuando quieras desde Configuración.";
+  const tipo = tipoDeNegocio(catalogo, rubro);
+  campo("altaModulosBajada").textContent = tipo.modulos.length
+    ? `Marcamos las que suele usar un negocio como el tuyo (${tipo.nombre}). ` +
+      "Cambialas ahora o cuando quieras desde Configuración."
+    : "Marcá las que vayas a usar. Si después necesitás otra, la sumás desde Configuración.";
 }
 
 for (const form of formularios) {

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §106);
+    siguiente número (hoy el último es §107);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -114,6 +114,13 @@ la contraseña pierde su negocio.
   aceptar. **Falta que el usuario lo vea.**
 - **Pendiente nuevo (pedido del usuario del 28 de octubre): entrar con
   Google.** Está en "Qué sigue", 8b.
+- **Lo que encontró el hermano del usuario al crear su cuenta** (28 de
+  octubre; hist. §107):
+  - "Emprendimiento" no marcaba ninguna sección. Arreglado: ahora trae
+    Compras y Stock.
+  - **Pedido nuevo, para más adelante:** cargar lo que ya tiene un negocio
+    que existe (stock con costo, deudas, saldos). El diseño está en "Qué
+    sigue", 8c.
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
   frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
   topes.
@@ -1168,6 +1175,44 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      su versión y la pregunta de edad~~ hecha (hist. §106).
    - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.
    - Las migraciones son aditivas y están explicadas en el documento.
+8c. **Carga inicial: empezar con un negocio que ya existe** (pedido del
+   usuario del 28 de octubre, **no ahora**, sin fecha). Lo vio cuando su
+   hermano, que vende mates, tuvo que registrar una compra para cargar el
+   stock que ya tenía. La mayoría de los que usen Nexo ya tienen un negocio
+   andando: el primer día tienen que poder cargar lo que tienen, lo que les
+   deben y lo que deben, sin inventar compras ni ventas. Lo que ya hay hoy:
+   - el ajuste de stock (`POST /api/stock/ajuste`), que no lleva costo;
+   - el saldo inicial de las cuentas de tesorería;
+   - el tipo `ajuste` en las cuentas corrientes.
+
+   Diseño pensado (se planifica con el usuario antes de arrancar):
+   - **Stock inicial:** una página en forma de planilla, con una fila por
+     producto (los que ya están y el alta rápida en la misma fila), depósito,
+     cantidad y costo unitario.
+     - Cada fila es un movimiento de stock de origen `stock_inicial`, con su
+       costo unitario, que entra al costo promedio.
+     - No genera deuda ni toca la caja.
+     - **Esquema:** hay que sumar `stock_inicial` al `CHECK` de
+       `movimientos_stock.origen`. Es un rebuild (CLAUDE.md §34).
+   - **Lo que te deben y lo que debés:** por cliente o proveedor, el importe,
+     la fecha y el vencimiento.
+     - No sirve un `ajuste` suelto en la cuenta corriente: los cobros se
+       aplican a una venta, y el aging sale del vencimiento de las ventas.
+     - Por eso cada deuda nace como una "venta de saldo inicial" (y una
+       "compra de saldo inicial" para los proveedores). No mueven stock ni
+       caja, se cobran y se pagan con el circuito de siempre y aparecen en el
+       aging.
+   - **Caja:** el saldo de cada cuenta, que ya existe; se trae a este mismo
+     recorrido.
+   - **Ventas de antes:** hay que decidir con el usuario si se cargan una por
+     una como ventas históricas (sin stock ni caja) o como un total por mes,
+     solo para comparar en los reportes.
+   - **Importar desde una planilla** (CSV, que se exporta desde Excel o
+     Google Sheets): para quien tiene cientos de productos. Sin dependencias
+     nuevas.
+   - **Dónde aparece:** una pregunta al final del alta ("¿Arrancás de cero o
+     ya venías vendiendo?") y un paso en la guía de primeros pasos del
+     Resumen. Solo para el admin, y queda en la auditoría.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.

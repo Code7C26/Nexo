@@ -27,15 +27,16 @@ export const MODULOS_INFO = {
 };
 export const PERFILES_RUBRO = {
   // El más chico (hist. §99): quien vende por su cuenta y quiere saber cuánto
-  // vende y cuánto gana. Sin módulos opcionales, solo el núcleo; los suma en
-  // Configuración → Funciones cuando los necesite. Va primero en el alta.
+  // vende y cuánto gana. Va primero en el alta. Trae solo compras y stock
+  // (hist. §107): sin ellos no hay costo para saber cuánto gana ni forma de
+  // cargar la mercadería; el resto lo suma en Configuración → Funciones.
   emprendimiento: {
     nombre: 'Emprendimiento',
     descripcion: 'Vendés por tu cuenta (comida, ropa, artesanías): anotá cada venta y mirá cuánto ganás.',
     icono: 'sprout',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: [],
+    modulos: ['compras', 'stock'],
     etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   comercio: {

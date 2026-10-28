@@ -9940,3 +9940,27 @@ sección 5). Commiteado en `solla`, sin publicar.
   aceptar: hoy no cambia nada en su plan.
 - Que un abogado lea términos y privacidad antes de cobrar el primer plan.
 - El trámite de la base en la AAIP (gratis, con la clave fiscal de Santino).
+
+## 107. "Emprendimiento" trae compras y stock, y la idea de la carga inicial, 28 de octubre de 2026
+
+**Qué pasó.** El hermano del usuario creó una cuenta desde el sitio y
+anduvo todo. Eligió "Emprendimiento" (vende mates), y en el paso de las
+secciones no había ninguna marcada. Pero el texto decía "Marcamos las que
+suele usar un negocio como el tuyo". En hist. §99, Emprendimiento había nacido
+sin módulos opcionales. Para cargar sus mates tuvo que prender Compras y
+registrar una compra.
+
+**Qué se cambió**
+- `backend/perfiles.js`: Emprendimiento trae `compras` y `stock`. Sin compras
+  no hay costo para saber cuánto gana, y sin stock no ve lo que tiene. Las
+  empresas que ya existen no cambian: sus módulos están guardados (hist. §88),
+  y la migración solo completa las que tienen `NULL`.
+- `frontend/js/alta.js` (`prepararModulos`): si un tipo no trae ninguna
+  sección, el texto dice "Marcá las que vayas a usar…" en lugar de prometer
+  secciones marcadas.
+
+**Cómo se verificó:** `npm test` 110/110 y `npm run lint`. No se miró en el
+navegador: es un dato del preset y un texto.
+
+**Pedido nuevo, sin hacer: carga inicial para un negocio que ya existe.**
+El diseño quedó anotado en el punto 8c de "Qué sigue" de `handoff.md`.
