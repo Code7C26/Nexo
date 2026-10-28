@@ -49,10 +49,12 @@ function renderUsuarios(lista) {
     .map((u) => {
       const acciones = [`<button type="button" class="btn-fila btn-editar-usuario" data-id="${u.id}">Editar</button>`];
       if (u.activo) {
-        acciones.push(
-          `<button type="button" class="btn-fila btn-resetear-usuario" data-id="${u.id}">Resetear contraseña</button>`,
-          `<button type="button" class="btn-fila btn-baja-usuario" data-id="${u.id}">Dar de baja</button>`
-        );
+        // Quien confirmó su mail la recupera solo desde el ingreso (hist.
+        // §105): el backend ya no deja resetearla.
+        if (!u.email_verificado) {
+          acciones.push(`<button type="button" class="btn-fila btn-resetear-usuario" data-id="${u.id}">Resetear contraseña</button>`);
+        }
+        acciones.push(`<button type="button" class="btn-fila btn-baja-usuario" data-id="${u.id}">Dar de baja</button>`);
       } else {
         acciones.push(`<button type="button" class="btn-fila btn-reactivar-usuario" data-id="${u.id}">Reactivar</button>`);
       }

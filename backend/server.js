@@ -145,19 +145,12 @@ app.get('/verificar-mail', (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE tokens_cuenta SET usado = datetime('now') WHERE id = ?").run(fila.id);
     db.prepare("UPDATE usuarios SET email_verificado = datetime('now') WHERE id = ?").run(fila.usuario_id);
-    // Sin sesión: va al último negocio que usó, para que se vea en su auditoría.
-    const negocio = db
-      .prepare(
-        `SELECT organizacion_id FROM usuario_organizaciones WHERE usuario_id = ?
-          ORDER BY ultimo_acceso IS NULL, ultimo_acceso DESC LIMIT 1`
-      )
-      .get(fila.usuario_id);
     registrarAuditoria({
       accion: 'editar',
       entidad: 'usuario',
       entidad_id: fila.usuario_id,
       usuario_id: fila.usuario_id,
-      organizacion_id: negocio?.organizacion_id ?? null,
+      organizacion_id: ultimoNegocioDe(fila.usuario_id),
       detalle: 'Verificó su mail'
     });
   });
@@ -361,15 +354,30 @@ const VERIFICACION_HORAS = 48;
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
 
 // Un enlace nuevo reemplaza a los anteriores del mismo tipo que no se usaron:
-// solo vale el último mail.
-function crearTokenCuenta(usuarioId, tipo, email, horas) {
+// solo vale el último mail. `duracion` es un modificador de datetime(), como
+// '+48 hours'.
+function crearTokenCuenta(usuarioId, tipo, email, duracion) {
   const token = randomBytes(32).toString('base64url');
   db.prepare('DELETE FROM tokens_cuenta WHERE usuario_id = ? AND tipo = ? AND usado IS NULL').run(usuarioId, tipo);
   db.prepare(
     `INSERT INTO tokens_cuenta (usuario_id, tipo, token_hash, email, vence)
      VALUES (?, ?, ?, ?, datetime('now', ?))`
-  ).run(usuarioId, tipo, hashToken(token), email, `+${horas} hours`);
+  ).run(usuarioId, tipo, hashToken(token), email, duracion);
   return token;
+}
+
+// Lo que la cuenta hace sin sesión (confirmar el mail, recuperar la
+// contraseña) se audita en el último negocio que usó, para que se vea en su
+// auditoría. Sin ningún negocio, queda NULL, como un login fallido.
+function ultimoNegocioDe(usuarioId) {
+  return (
+    db
+      .prepare(
+        `SELECT organizacion_id FROM usuario_organizaciones WHERE usuario_id = ?
+          ORDER BY ultimo_acceso IS NULL, ultimo_acceso DESC LIMIT 1`
+      )
+      .get(usuarioId)?.organizacion_id ?? null
+  );
 }
 
 // El mail sale después de responder: Gmail tarda un par de segundos, y si
@@ -380,7 +388,7 @@ function mandarSinEsperar(datos) {
 }
 
 function mandarVerificacion(req, { usuarioId, nombre, email }) {
-  const token = crearTokenCuenta(usuarioId, 'verificar_email', email, VERIFICACION_HORAS);
+  const token = crearTokenCuenta(usuarioId, 'verificar_email', email, `+${VERIFICACION_HORAS} hours`);
   const { texto, html } = plantillaMail({
     titulo: 'Confirmá tu mail',
     parrafos: [
@@ -1087,6 +1095,148 @@ app.post('/api/auth/invitacion/cuenta', (req, res) => {
     })
   });
 });
+
+/* ---------- Recuperar la contraseña (hist. §105) ---------- */
+
+// "¿Te olvidaste la contraseña?" del login (docs/investigacion-login-legal.md,
+// Fase 2). Manda un enlace de un solo uso que vence a los 30 minutos, y
+// responde siempre lo mismo: así no sirve para averiguar qué mails tienen
+// cuenta en Nexo. Los topes se cuentan antes de buscar la cuenta, por el
+// mismo motivo: el de la IP frena a un script, el del mail que una casilla
+// ajena reciba diez mails seguidos.
+//
+// Vale también para un mail sin confirmar: el enlace llega a esa casilla, así
+// que usarlo lo confirma. Una cuenta de antes de §102 sin mail no tiene por
+// dónde recibirlo: la resetea el admin, como siempre.
+const RECUPERAR_MINUTOS = 30;
+const RECUPERAR_POR_IP_POR_HORA = 10;
+const RECUPERAR_POR_MAIL_POR_HORA = 3;
+
+app.post('/api/auth/recuperar', (req, res) => {
+  const email = normalizarMail(req.body?.email);
+  if (!esMailValido(email)) {
+    return res.status(400).json({ error: 'Escribí un mail válido.' });
+  }
+  if (
+    registroExcedido(`recuperar:${req.ip}`, RECUPERAR_POR_IP_POR_HORA) ||
+    registroExcedido(`recuperar-mail:${email}`, RECUPERAR_POR_MAIL_POR_HORA)
+  ) {
+    return res.status(429).json({ error: 'Ya pediste varios enlaces. Revisá tu mail (también el spam) o probá de nuevo en una hora.' });
+  }
+
+  const cuenta = db.prepare('SELECT id, nombre, email FROM usuarios WHERE LOWER(email) = ?').get(email);
+  if (cuenta) {
+    const token = crearTokenCuenta(cuenta.id, 'recuperar', cuenta.email, `+${RECUPERAR_MINUTOS} minutes`);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: cuenta.id,
+      usuario_id: cuenta.id,
+      organizacion_id: ultimoNegocioDe(cuenta.id),
+      detalle: 'Pidió recuperar su contraseña por mail'
+    });
+    const { texto, html } = plantillaMail({
+      titulo: 'Elegí una contraseña nueva',
+      parrafos: [
+        `Hola, ${cuenta.nombre}.`,
+        'Pediste recuperar tu cuenta de Nexo. Tocá el botón para elegir una contraseña nueva.',
+        `El enlace sirve una sola vez y vence en ${RECUPERAR_MINUTOS} minutos.`
+      ],
+      boton: { texto: 'Elegir contraseña nueva', url: `${urlPublica(req)}/app#/restablecer/${token}` },
+      pie: 'Si no lo pediste vos, ignorá este mail: tu contraseña sigue siendo la misma.'
+    });
+    mandarSinEsperar({ para: cuenta.email, asunto: 'Recuperá tu cuenta de Nexo', texto, html });
+  }
+  res.status(204).end();
+});
+
+// El enlace vigente, con la cuenta: vale si no se usó, no venció y la cuenta
+// sigue teniendo el mail al que se mandó.
+function enlaceDeRecuperacion(token) {
+  if (typeof token !== 'string' || !token || token.length > 100) return null;
+  return db
+    .prepare(
+      `SELECT t.id, t.usuario_id, u.nombre, u.email, u.usuario
+         FROM tokens_cuenta t
+         JOIN usuarios u ON u.id = t.usuario_id
+        WHERE t.token_hash = ? AND t.tipo = 'recuperar' AND t.usado IS NULL
+          AND t.vence > datetime('now') AND u.email = t.email`
+    )
+    .get(hashToken(token));
+}
+
+const ENLACE_RECUPERAR_INVALIDO =
+  'Este enlace ya no sirve: venció, ya se usó o pediste uno más nuevo. Pedí otro desde el ingreso.';
+
+// La página del enlace pregunta antes de mostrar el formulario, así quien
+// toca uno vencido no escribe la contraseña de gusto. Devuelve el mail para
+// que el gestor de contraseñas guarde la nueva con la cuenta correcta.
+app.post('/api/auth/restablecer/enlace', (req, res) => {
+  const enlace = enlaceDeRecuperacion(req.body?.token);
+  if (!enlace) return res.status(410).json({ error: ENLACE_RECUPERAR_INVALIDO });
+  res.json({ email: enlace.email });
+});
+
+// Guarda la contraseña nueva. Sin tope propio: solo un enlace vigente llega
+// al scrypt, se usa una vez, y adivinar uno no tiene chance (32 bytes).
+//
+// Cierra todas las sesiones (si alguien le tomó la cuenta, queda afuera),
+// apaga el cambio obligatorio, deja el mail confirmado (el enlace llegó ahí)
+// y le avisa por mail. No entra solo: vuelve al ingreso con la contraseña
+// nueva, que así también queda guardada en el gestor de contraseñas.
+app.post('/api/auth/restablecer', (req, res) => {
+  const password = req.body?.password;
+  if (typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({ error: 'La contraseña tiene que tener al menos 8 caracteres.' });
+  }
+  if (password.length > 1000) {
+    return res.status(400).json({ error: 'La contraseña es demasiado larga.' });
+  }
+  const enlace = enlaceDeRecuperacion(req.body?.token);
+  if (!enlace) return res.status(410).json({ error: ENLACE_RECUPERAR_INVALIDO });
+
+  withTransaction(() => {
+    const { hash, salt } = hashPassword(password);
+    db.prepare("UPDATE tokens_cuenta SET usado = datetime('now') WHERE id = ?").run(enlace.id);
+    db.prepare(
+      `UPDATE usuarios
+          SET password_hash = ?, password_salt = ?, debe_cambiar_password = 0,
+              email_verificado = COALESCE(email_verificado, datetime('now'))
+        WHERE id = ?`
+    ).run(hash, salt, enlace.usuario_id);
+    db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(enlace.usuario_id);
+    // La contraseña nunca entra en la auditoría.
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: enlace.usuario_id,
+      usuario_id: enlace.usuario_id,
+      organizacion_id: ultimoNegocioDe(enlace.usuario_id),
+      detalle: 'Eligió una contraseña nueva con el enlace del mail'
+    });
+  });
+  // Si se trabó con los intentos fallidos, entra apenas termina.
+  limpiarIntentos(enlace.email);
+  limpiarIntentos(enlace.usuario);
+  avisarCambioDePassword({ nombre: enlace.nombre, email: enlace.email });
+  res.json({ email: enlace.email });
+});
+
+// Aviso de seguridad (docs/investigacion-login-legal.md, sección 3): si la
+// cambió otro, el dueño se entera y la recupera con su mail.
+function avisarCambioDePassword({ nombre, email }) {
+  if (!email) return;
+  const { texto, html } = plantillaMail({
+    titulo: 'Cambió la contraseña de tu cuenta',
+    parrafos: [
+      `Hola, ${nombre}.`,
+      'La contraseña de tu cuenta de Nexo acaba de cambiar, y se cerró la sesión en los demás dispositivos.',
+      'Si no fuiste vos, entrá a Nexo y tocá «¿Te olvidaste la contraseña?» para elegir una nueva con este mail.'
+    ],
+    pie: 'Es un aviso de seguridad: te lo mandamos cada vez que cambia tu contraseña.'
+  });
+  mandarSinEsperar({ para: email, asunto: 'Cambió la contraseña de tu cuenta de Nexo', texto, html });
+}
 
 // Contacto de la landing y de "Tu plan" (hist. §99): quien quiere un plan, o
 // pregunta algo, deja sus datos y la consulta cae en el CRM del negocio con
@@ -10121,6 +10271,7 @@ app.post('/api/auth/cambiar-password', (req, res) => {
     auditar(req, { accion: 'editar', entidad: 'usuario', entidad_id: req.usuario.id, detalle: 'Cambió su contraseña' });
   });
 
+  avisarCambioDePassword(req.usuario);
   res.status(204).end();
 });
 
@@ -10328,7 +10479,7 @@ app.get('/api/usuarios', soloAdmin, (req, res) => {
 function usuarioDelNegocio(usuarioId, organizacionId) {
   return db
     .prepare(
-      `SELECT usuarios.id, usuarios.nombre, pertenencia.rol, pertenencia.activo
+      `SELECT usuarios.id, usuarios.nombre, usuarios.email_verificado, pertenencia.rol, pertenencia.activo
          FROM usuario_organizaciones pertenencia
          JOIN usuarios ON usuarios.id = pertenencia.usuario_id
         WHERE pertenencia.usuario_id = ? AND pertenencia.organizacion_id = ?`
@@ -10563,6 +10714,14 @@ app.post('/api/usuarios/:id/resetear-password', soloAdmin, (req, res) => {
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado.' });
   if (!administraTodosSusNegocios(req.usuario.id, id)) {
     return res.status(409).json({ error: MENSAJE_USA_OTRO_NEGOCIO });
+  }
+  // Quien confirmó su mail la recupera solo, con el enlace (hist. §105): así
+  // nadie más que esa persona conoce su contraseña. El reseteo queda para
+  // quien no tiene por dónde recibirlo.
+  if (usuario.email_verificado) {
+    return res.status(409).json({
+      error: 'Ya confirmó su mail: que toque «¿Te olvidaste la contraseña?» en el ingreso y elija una nueva.'
+    });
   }
 
   withTransaction(() => {

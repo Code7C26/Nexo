@@ -1409,11 +1409,14 @@ Ya existe también el **respaldo automático** de la base: cada arranque la
 respalda antes de abrirla (`backend/db/respaldo.js`, con rotación y carpeta
 configurable con `NEXO_BACKUP_DIR`), y `npm run backup` lo hace a mano.
 
+Y la **recuperación de contraseña por mail** (hist. §105): un enlace de un
+solo uso que vence a los 30 minutos, guardado como hash. Pedirlo responde
+igual exista o no la cuenta, y usarlo cierra todas las sesiones y avisa por
+mail. El reseteo a mano del admin queda solo para quien no confirmó su mail.
+
 Pendiente para producción real, a incorporar progresivamente sin bloquear el
 resto del roadmap:
 
-- **Recuperación de contraseña** sin depender de que un admin la resetee a
-  mano (hoy es la única vía).
 - **HTTPS** obligatorio fuera de desarrollo local.
 - **Límites de tamaño/tasa de request** más allá del rate limit de login.
 - **Paginación**: hoy casi ningún `GET` pagina resultados; con volumen real de

@@ -45,6 +45,11 @@ export const RUTAS_PERMISOS = {
   // ella, sin sesión. El token prueba que el mail es de quien lo tiene.
   'POST /api/auth/invitacion': 'publico',
   'POST /api/auth/invitacion/cuenta': 'publico',
+  // Recuperar la contraseña (hist. §105): quien la pide no puede entrar. El
+  // enlace del mail es el que prueba que la cuenta es suya.
+  'POST /api/auth/recuperar': 'publico',
+  'POST /api/auth/restablecer/enlace': 'publico',
+  'POST /api/auth/restablecer': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',

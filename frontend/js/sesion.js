@@ -31,6 +31,9 @@
   const formSumarMail = document.getElementById("formSumarMail");
   const sinNegocio = document.getElementById("sinNegocio");
   const pantallaInvitacion = document.getElementById("invitacion");
+  const formRecuperar = document.getElementById("formRecuperar");
+  const recuperarEnviado = document.getElementById("recuperarEnviado");
+  const formRestablecer = document.getElementById("formRestablecer");
 
   let appInyectada = false;
 
@@ -175,6 +178,9 @@
     formSumarMail.hidden = cual !== "mail";
     sinNegocio.hidden = cual !== "sin-negocio";
     pantallaInvitacion.hidden = cual !== "invitacion";
+    formRecuperar.hidden = cual !== "recuperar";
+    recuperarEnviado.hidden = cual !== "recuperar-enviado";
+    formRestablecer.hidden = cual !== "restablecer";
     if (cual === "mail") document.getElementById("sumarMailEmail").focus();
   }
 
@@ -682,6 +688,129 @@
     }
   }
 
+  // ---------- Recuperar la contraseña (hist. §105) ----------
+
+  // El enlace del mail: /app#/restablecer/<token>.
+  const tokenRestablecer = location.hash.match(/^#\/restablecer\/([A-Za-z0-9_-]+)$/)?.[1] ?? null;
+  const MAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function volverAlLogin(email) {
+    if (location.hash.startsWith("#/restablecer/")) history.replaceState(null, "", location.pathname + location.search);
+    if (email) document.getElementById("loginUsuario").value = email;
+    mostrarPantalla("login");
+    document.getElementById(email ? "loginPassword" : "loginUsuario").focus();
+  }
+
+  // Lleva lo que ya escribió en el login, si es un mail: una cuenta de antes
+  // de §102 pudo haber escrito su usuario.
+  function abrirRecuperar() {
+    ocultarErrorEn("recuperarError");
+    const escrito = document.getElementById("loginUsuario").value.trim();
+    const campo = document.getElementById("recuperarEmail");
+    if (MAIL_VALIDO.test(escrito)) campo.value = escrito;
+    mostrarPantalla("recuperar");
+    campo.focus();
+  }
+
+  document.getElementById("irARecuperar").addEventListener("click", abrirRecuperar);
+  document.getElementById("recuperarOtraVez").addEventListener("click", abrirRecuperar);
+  document.getElementById("restablecerPedirOtro").addEventListener("click", () => {
+    if (location.hash.startsWith("#/restablecer/")) history.replaceState(null, "", location.pathname + location.search);
+    abrirRecuperar();
+  });
+  pantalla.querySelectorAll("[data-volver-login]").forEach((b) => b.addEventListener("click", () => volverAlLogin()));
+
+  formRecuperar.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("recuperarError");
+    const email = document.getElementById("recuperarEmail").value.trim();
+    if (!MAIL_VALIDO.test(email)) {
+      mostrarErrorEn("recuperarError", "Revisá el mail: tiene que ser como nombre@dominio.com.");
+      return;
+    }
+    const boton = formRecuperar.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/recuperar", { email });
+      if (!res.ok) {
+        mostrarErrorEn("recuperarError", datos.error || "No se pudo mandar el enlace.");
+        return;
+      }
+      // El backend responde igual exista o no la cuenta: el texto también.
+      document.getElementById("recuperarEnviadoTexto").textContent =
+        `Si hay una cuenta de Nexo con ${email}, te llega un mail con un enlace para elegir una contraseña nueva. ` +
+        "Vence en 30 minutos. Si no lo ves en unos minutos, buscalo en el spam.";
+      mostrarPantalla("recuperar-enviado");
+    } catch {
+      mostrarErrorEn("recuperarError", sinRedNiSesion());
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  // Antes del formulario se pregunta si el enlace sirve, así quien toca uno
+  // vencido no escribe la contraseña de gusto.
+  async function mostrarRestablecer() {
+    const campos = document.getElementById("restablecerCampos");
+    ocultarErrorEn("restablecerError");
+    let enlace = null;
+    try {
+      const { res, datos } = await postJson("/api/auth/restablecer/enlace", { token: tokenRestablecer });
+      if (res.ok) enlace = datos;
+    } catch {
+      mostrarPantalla("login");
+      mostrarErrorEn("loginError", sinRedNiSesion());
+      return;
+    }
+    campos.hidden = !enlace;
+    document.getElementById("restablecerPedirOtro").hidden = !!enlace;
+    if (enlace) {
+      document.getElementById("restablecerEmail").value = enlace.email;
+    } else {
+      document.getElementById("restablecerTitulo").textContent = "Este enlace ya no sirve";
+      document.getElementById("restablecerTexto").textContent =
+        "Venció (dura 30 minutos), ya se usó o pediste uno más nuevo. Pedí otro y usá el último que te llegue.";
+    }
+    mostrarPantalla("restablecer");
+    if (enlace) document.getElementById("restablecerPassword").focus();
+  }
+
+  formRestablecer.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("restablecerError");
+    const password = document.getElementById("restablecerPassword").value;
+    if (password.length < 8) {
+      mostrarErrorEn("restablecerError", "La contraseña tiene que tener al menos 8 caracteres.");
+      return;
+    }
+    const boton = formRestablecer.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/restablecer", { token: tokenRestablecer, password });
+      if (res.status === 410) {
+        // Venció mientras escribía: la misma página que un enlace vencido.
+        await mostrarRestablecer();
+        return;
+      }
+      if (!res.ok) {
+        mostrarErrorEn("restablecerError", datos.error || "No se pudo guardar la contraseña.");
+        return;
+      }
+      // Cerró todas las sesiones, también la de este navegador si había una.
+      cerrarSesionLocal();
+      document.getElementById("restablecerPassword").value = "";
+      volverAlLogin(datos.email);
+      const aviso = document.getElementById("loginAviso");
+      aviso.textContent = "Listo: tu contraseña cambió. Entrá con la nueva.";
+      aviso.classList.remove("is-error");
+      aviso.hidden = false;
+    } catch {
+      mostrarErrorEn("restablecerError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
   document.getElementById("sinNegocioCrear").addEventListener("click", () => abrirAlta({ primerNegocio: true }));
   document.getElementById("sinNegocioSalir").addEventListener("click", () => window.nexoCerrarSesion());
 
@@ -717,6 +846,11 @@
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
         // no ofrece "Ya tengo cuenta".
         abrirAlta({ instalacionNueva: true });
+      } else if (tokenRestablecer) {
+        // El enlace para elegir otra contraseña (hist. §105), con sesión o
+        // sin ella: guardarla cierra todas.
+        if (!estado.autenticado) cerrarSesionLocal();
+        mostrarRestablecer();
       } else if (tokenInvitacion) {
         // El enlace de una invitación (hist. §104). Con sesión, los pasos
         // obligatorios van antes: la invitación se acepta después.

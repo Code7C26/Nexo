@@ -9828,3 +9828,56 @@ Diseño de partida: `docs/investigacion-login-legal.md` §5.
   - Pasada a 390 px de la pantalla sin negocio.
 - **Corregido en la pasada:** `.btn-link` le ganaba al `[hidden]` y "Ahora no"
   se veía sin sesión. Con solicitudes, "Crear mi negocio" pasa a secundario.
+
+## 105. Recuperar la contraseña por mail (etapa 8b, Fase 2), 28 de octubre de 2026
+
+Lo que seguía según el handoff ("seguir"). Diseño de partida:
+`docs/investigacion-login-legal.md`, Fase 2. Sin cambios de esquema: usa
+`tokens_cuenta` con el tipo `recuperar`, que ya estaba en el `CHECK`.
+
+**Qué cambió:**
+- **`POST /api/auth/recuperar`** (público): manda un enlace de un solo uso
+  (`/app#/restablecer/<token>`), que vence a los 30 minutos y se guarda como
+  SHA-256. Responde 204 exista o no la cuenta. Topes por hora, contados antes
+  de buscar la cuenta: 10 por IP y 3 por mail (429). Vale también para un
+  mail sin confirmar: usarlo lo confirma. Se audita en el último negocio de
+  la cuenta (`ultimoNegocioDe()`, sacado de `/verificar-mail`).
+- **`POST /api/auth/restablecer/enlace`**: dice si el enlace sirve (410 si no)
+  y devuelve el mail, para que el gestor de contraseñas guarde la nueva con
+  la cuenta correcta.
+- **`POST /api/auth/restablecer`**: guarda la contraseña, marca el enlace
+  usado, apaga `debe_cambiar_password`, confirma el mail, cierra **todas** las
+  sesiones, limpia los intentos fallidos del login, audita (sin la
+  contraseña) y avisa por mail. No entra solo: vuelve al ingreso con el mail
+  puesto y el aviso "tu contraseña cambió".
+- **Aviso por mail al cambiar la contraseña** (`avisarCambioDePassword()`),
+  también desde `/api/auth/cambiar-password`.
+- **El admin ya no resetea la contraseña de quien confirmó su mail** (409), y
+  en Configuración → Usuarios el botón no aparece para esa persona. Queda
+  para cuentas sin mail o sin confirmar.
+- `crearTokenCuenta()` recibe la duración como modificador de `datetime()`
+  (`'+48 hours'`, `'+30 minutes'`).
+- **Frontend** (`sesion.js`, `index.html`): "¿Te olvidaste la contraseña?"
+  bajo el campo del login (lleva el mail que ya escribió). Las pantallas
+  "Recuperá tu cuenta", "Revisá tu mail" (el texto dice "si hay una cuenta
+  con…") y "Elegí una contraseña nueva" funcionan con sesión o sin ella. La
+  última pregunta primero si el enlace sirve, y si no ofrece "Pedir otro
+  enlace".
+- `permisos.js`: las tres rutas nuevas, como `publico`.
+
+**Verificación:**
+- `npm run lint` limpio y 102 tests en verde, 6 nuevos en
+  `backend/test/recuperar.test.js`: respuesta idéntica, un solo uso, cierre de
+  sesiones, mail confirmado, auditoría sin la contraseña, vencido, el nuevo
+  anula al anterior, tope por mail, el reseteo del admin y el aviso.
+- En Chrome (`playwright-core` en el scratchpad, el MCP de Chrome estaba
+  trabado), contra un servidor con una base vacía: el recorrido entero a
+  390 px en oscuro y a 1280 px en claro, hasta entrar con la contraseña nueva,
+  y el enlace inválido. Sin errores de consola.
+
+**Decidido en esta sesión (ARCA, etapa 10):** el certificado de homologación
+lo saca Santino con su propio CUIL y su clave fiscal nivel 3, en lugar del
+padre (19 de octubre). En ARCA no existe una "cuenta de Nexo": Nexo tendría
+CUIT propio solo como sociedad. Para producción, con la delegación de §33,
+hace falta un CUIT de verdad (monotributo de Santino o una sociedad): se
+habla con un contador después de la presentación.

@@ -3844,6 +3844,20 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 
+/* "¿Te olvidaste la contraseña?", pegado al campo, del lado derecho, como
+   donde se lo busca (hist. §105). */
+.sesion-card .sesion-olvido {
+  align-self: flex-end;
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+.sesion-nota {
+  margin: 0;
+  font-size: var(--txt-xs);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
 /* El resultado del enlace del mail, cuando se toca sin sesión (hist. §102). */
 .sesion-aviso {
   margin: 0;

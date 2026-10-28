@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §104);
+    siguiente número (hoy el último es §105);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -54,9 +54,10 @@ términos (Fase 3 de 8b).
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
-- **Lo que sigue: la Fase 2 de la etapa 8b** (recuperar la contraseña). Las
-  Fases 1 (mail en la cuenta, hist. §102) y 1b (invitaciones, hist. §104)
-  están hechas.
+- **Lo que sigue: la Fase 3 de la etapa 8b** (términos, privacidad y edad).
+  Hechas: Fases 1 (mail en la cuenta, hist. §102), 1b (invitaciones, hist.
+  §104) y 2 (recuperar la contraseña, hist. §105, commiteada en `solla`, sin
+  publicar).
 - **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
   y cómo se ve. Desde el servidor salió otro el 27 de octubre.
 
@@ -93,6 +94,10 @@ la contraseña pierde su negocio.
   - Una cuenta sin ningún negocio entra igual: ve sus invitaciones y puede
     crear el suyo.
   - **Falta que el usuario lo vea.**
+- **Fase 2, hecha (hist. §105):** "¿Te olvidaste la contraseña?" en el
+  login, con un enlace por mail de un solo uso y 30 minutos. Usarlo cierra
+  todas las sesiones, confirma el mail y avisa. El admin ya no resetea la
+  contraseña de quien confirmó su mail. **Falta que el usuario lo vea.**
 - **Pendiente nuevo (pedido del usuario del 28 de octubre): entrar con
   Google.** Está en "Qué sigue", 8b.
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
@@ -1130,9 +1135,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - ~~Fase 1b: invitaciones por mail desde Configuración y cuentas sin
      negocio~~ hecha (hist. §104), sin el rebuild de `usuarios` (no hizo
      falta: ver el §).
-   - Fase 2: recuperar la contraseña (`tokens_cuenta`, enlace de un solo uso
-     de 30 minutos). Con ella, el reseteo del admin pasa a ser solo para quien
-     no confirmó su mail.
+   - ~~Fase 2: recuperar la contraseña~~ hecha (hist. §105). El reseteo del
+     admin quedó solo para quien no confirmó su mail.
    - **Entrar con Google** (pedido del usuario del 28 de octubre, pendiente,
      sin fecha). Lo pensado:
      - gratis y sin dependencias: el botón de Google Identity Services y el
@@ -1235,21 +1239,28 @@ octubre).
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **ARCA (etapa 10):**
-  - clave fiscal nivel 3, la suya o la de un adulto; la app de ARCA la da
-    validando el DNI;
-  - adherir el servicio "WSASS – Autogestión Certificados Homologación";
-  - generar el certificado de prueba con el pedido (CSR) que se prepara acá, y
-    autorizarlo para el servicio "wsfe".
-  - **Quién (19 de octubre):** lo va a hacer el padre del usuario, que es
-    monotributista. Es un solo certificado de prueba para todos los negocios
-    de la demo, y no toca su monotributo real.
-    - Como es monotributista, las facturas de prueba salen C.
-    - Para mostrar también A y B, probar si homologación lo permite con su
-      CUIT.
+  - **Quién (cambiado el 28 de octubre, hist. §105):** Santino, con su propio
+    CUIL y su clave fiscal. Reemplaza al padre (19 de octubre). En ARCA no
+    hay "cuenta de Nexo": Nexo tendría CUIT propio solo como sociedad.
+    Homologación es gratis y no lo inscribe en ningún impuesto. Es un solo
+    certificado de prueba para todos los negocios de la demo.
+  - **Pasos que le pasé:**
+    1. Clave fiscal nivel 3 con la app Mi ARCA (DNI + selfie).
+    2. En arca.gob.ar, Administrador de Relaciones de Clave Fiscal → Adherir
+       servicio → ARCA → Servicios interactivos → "WSASS – Autogestión
+       Certificados Homologación". Salir y volver a entrar.
+    3. Pasarme su CUIL: acá se genera la clave privada y el pedido (CSR). La
+       clave no se versiona, igual que el `.env`.
+    4. En WSASS: Nuevo certificado (nombre `nexo-homologacion`), pegar el CSR
+       y pasarme el `.crt`.
+    5. En WSASS: Crear autorización a servicio, con ese certificado, el
+       servicio "wsfe" y su propio CUIL como representado.
+  - Sin inscripción fiscal, qué letras deja emitir homologación (A, B o C) se
+    confirma en la primera prueba.
   - **Cómo se ve en la demo (decidido con el usuario el 19 de octubre):** es
     una presentación escolar pero seria, con directivos y padres.
     - La factura impresa lleva los datos del negocio de demo cargados en
-      Configuración, no los del padre: su CUIT es solo un dato interno.
+      Configuración, no los de Santino: su CUIL es solo un dato interno.
     - Todo comprobante emitido en homologación lleva la leyenda "Comprobante
       de prueba – sin validez fiscal".
     - Se intenta emitir A, B y C. Homologación en general no controla la
@@ -1259,16 +1270,18 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
       última red.
   - **En producción (decidido por el usuario el 19 de octubre):**
     - Nexo se inscribe en ARCA con su propio CUIT, clave fiscal nivel 3 y un
-      certificado de producción;
+      certificado de producción. Ese CUIT es el de Santino como
+      monotributista o el de una sociedad: cuesta plata por mes, así que se
+      decide con un contador después de la presentación;
     - cada cliente le delega el servicio wsfe a Nexo y emite con su propio
       CUIT, sin tener certificado.
     - Seguir soportando que un negocio suba su propio certificado.
     - CLAUDE.md §33 quedó corregido en ese sentido.
     - Que Nexo facture sus suscripciones (inscripción fiscal de Nexo) es
       aparte: hay que charlarlo con un contador.
-- **Dirección pública con HTTPS (etapa 11):** Mercado Libre, Tienda Nube y
-  WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
-  ngrok con su dominio fijo, apuntando al servidor local.
+- **Dirección pública con HTTPS (etapa 11): ya está.** Mercado Libre, Tienda
+  Nube y WhatsApp le avisan a Nexo por webhook, y desde hist. §103 llegan
+  directo a https://nexosystem.duckdns.org. Ngrok ya no hace falta.
 - **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
   en su portal de desarrolladores.
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una

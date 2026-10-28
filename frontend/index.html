@@ -3432,8 +3432,58 @@
         <label>Contraseña
           <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="loginPassword" autocomplete="current-password" required /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
         </label>
+        <button type="button" class="btn-link sesion-olvido" id="irARecuperar">¿Te olvidaste la contraseña?</button>
         <button type="submit" class="btn btn-primary">Ingresar</button>
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
+      </form>
+
+      <!-- "¿Te olvidaste la contraseña?" (hist. §105): pide el enlace por
+           mail. La respuesta es la misma haya o no una cuenta con ese mail,
+           así que la confirmación lo dice con un "si". -->
+      <form id="formRecuperar" class="form" hidden novalidate>
+        <div class="sesion-paso">
+          <h2>Recuperá tu cuenta</h2>
+          <p>Escribí el mail con el que entrás a Nexo y te mandamos un enlace para elegir una contraseña nueva.</p>
+        </div>
+        <p class="form-note" id="recuperarError" role="alert" hidden></p>
+        <label>Tu mail
+          <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="recuperarEmail" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" /></span>
+        </label>
+        <button type="submit" class="btn btn-primary">Mandame el enlace</button>
+        <p class="sesion-nota">¿Tu cuenta no tiene mail? Pedile a quien administra tu negocio que te resetee la contraseña.</p>
+        <button type="button" class="btn-link" data-volver-login>Volver a ingresar</button>
+      </form>
+
+      <div id="recuperarEnviado" class="form" hidden>
+        <div class="sesion-paso">
+          <h2>Revisá tu mail</h2>
+          <p id="recuperarEnviadoTexto"></p>
+        </div>
+        <button type="button" class="btn btn-primary" data-volver-login>Volver a ingresar</button>
+        <button type="button" class="btn-link" id="recuperarOtraVez">No me llegó: mandarlo de nuevo</button>
+      </div>
+
+      <!-- El enlace del mail: /app#/restablecer/<token>. El mail va en un
+           campo de solo lectura con autocomplete="username", así el gestor
+           de contraseñas guarda la nueva con la cuenta correcta. -->
+      <form id="formRestablecer" class="form" hidden novalidate>
+        <div class="sesion-paso">
+          <h2 id="restablecerTitulo">Elegí una contraseña nueva</h2>
+          <p id="restablecerTexto">Vas a entrar con ella a Nexo. Se cierra la sesión en todos los dispositivos donde estabas.</p>
+        </div>
+        <p class="form-note" id="restablecerError" role="alert" hidden></p>
+        <div class="form" id="restablecerCampos">
+          <label>Tu mail
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="restablecerEmail" autocomplete="username" readonly /></span>
+          </label>
+          <label>Contraseña nueva
+            <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="restablecerPassword" autocomplete="new-password" maxlength="1000" aria-describedby="restablecerPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+            <span class="campo-ayuda" id="restablecerPasswordAyuda">Al menos 8 caracteres.</span>
+          </label>
+          <button type="submit" class="btn btn-primary">Guardar contraseña</button>
+        </div>
+        <button type="button" class="btn btn-primary" id="restablecerPedirOtro" hidden>Pedir otro enlace</button>
+        <button type="button" class="btn-link" data-volver-login>Volver a ingresar</button>
       </form>
 
       <form id="formCambioForzado" class="form" hidden>
