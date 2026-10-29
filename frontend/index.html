@@ -177,6 +177,14 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#settings"></use></svg> Configuración
           </a>
         </div>
+        <!-- El panel de la plataforma (hist. §111): solo para quien
+             administra Nexo. Se oculta por CSS sin data-plataforma en <html>. -->
+        <div class="nav-seccion nav-seccion-plataforma">
+          <p class="nav-grupo">Nexo</p>
+          <a href="#" class="nav-item" data-view="plataforma">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#building-2"></use></svg> Plataforma
+          </a>
+        </div>
       </nav>
 
       <div class="sidebar-foot">
@@ -2776,6 +2784,148 @@
           </table>
           </div>
         </section>
+      </section>
+
+      <!-- Plataforma (hist. §111): el panel de quien administra Nexo, con las
+           cuentas y los negocios de toda la instalación. Solo lo ve una cuenta
+           de NEXO_ADMIN_PLATAFORMA (data-plataforma en <html>, lo pone
+           sesion.js); para las demás el backend responde 404. Solo lectura.
+           Tres pestañas por subruta, como Trabajos. -->
+      <section class="view" data-view="plataforma" hidden>
+        <div class="plataforma-vista">
+        <nav class="segmentos planes-menu" aria-label="Qué mirar" id="plataformaMenu">
+          <a class="segmento" href="#/plataforma/resumen" data-pestana="resumen">Resumen</a>
+          <a class="segmento" href="#/plataforma/cuentas" data-pestana="cuentas">Cuentas</a>
+          <a class="segmento" href="#/plataforma/negocios" data-pestana="negocios">Negocios</a>
+        </nav>
+        <p class="nota-plana">Lo ves solo vos, como administrador de Nexo. De cada negocio, cuántas cosas cargó; nunca sus datos.</p>
+
+        <div class="plataforma-pestana" data-pestana="resumen">
+          <section class="ledger-strip" aria-label="Cuentas">
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg></span>Cuentas</span>
+              <span class="ledger-value mono" id="platCuentas">—</span>
+              <span class="ledger-delta ledger-delta-ref" id="platCuentasNota"></span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg></span>Nuevas en 7 días</span>
+              <span class="ledger-value mono" id="platCuentasNuevas">—</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-violeta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg></span>Usaron Nexo en 7 días</span>
+              <span class="ledger-value mono" id="platCuentasActivas">—</span>
+            </div>
+          </section>
+
+          <section class="ledger-strip" aria-label="Negocios">
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg></span>Negocios abiertos</span>
+              <span class="ledger-value mono" id="platNegocios">—</span>
+              <span class="ledger-delta ledger-delta-ref" id="platNegociosNota"></span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Usados en 7 días</span>
+              <span class="ledger-value mono" id="platNegociosActivos">—</span>
+              <span class="ledger-delta ledger-delta-ref" id="platNegociosActivosNota"></span>
+            </div>
+          </section>
+
+          <div class="plataforma-tablas">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Negocios por plan</h2>
+              </div>
+              <div class="tabla-scroll">
+              <table class="ledger-table lista-movil">
+                <thead>
+                  <tr>
+                    <th scope="col">Plan</th>
+                    <th scope="col" class="align-right">Negocios</th>
+                  </tr>
+                </thead>
+                <tbody id="platPlanesBody"></tbody>
+              </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Semana a semana</h2>
+              </div>
+              <div class="tabla-scroll">
+              <table class="ledger-table lista-movil">
+                <thead>
+                  <tr>
+                    <th scope="col">Semana</th>
+                    <th scope="col" class="align-right">Cuentas nuevas</th>
+                    <th scope="col" class="align-right">Negocios nuevos</th>
+                  </tr>
+                </thead>
+                <tbody id="platSemanasBody"></tbody>
+              </table>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="plataforma-pestana" data-pestana="cuentas" hidden>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Cuentas</h2>
+              <button type="button" class="btn btn-secundario" data-plat-actualizar><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Actualizar</button>
+            </div>
+            <div class="socios-herramientas">
+              <input type="search" class="search" placeholder="Buscar por nombre, mail o negocio" id="platCuentasBuscar" aria-label="Buscar cuentas" />
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Cuenta</th>
+                  <th scope="col">Negocios</th>
+                  <th scope="col">Creada</th>
+                  <th scope="col">Último uso</th>
+                  <th scope="col">Mail</th>
+                </tr>
+              </thead>
+              <tbody id="platCuentasBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="plataforma-pestana" data-pestana="negocios" hidden>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Negocios</h2>
+              <button type="button" class="btn btn-secundario" data-plat-actualizar><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Actualizar</button>
+            </div>
+            <div class="socios-herramientas">
+              <input type="search" class="search" placeholder="Buscar por nombre o tipo" id="platNegociosBuscar" aria-label="Buscar negocios" />
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Negocio</th>
+                  <th scope="col">Plan</th>
+                  <th scope="col" class="align-right">Productos</th>
+                  <th scope="col" class="align-right">Ventas</th>
+                  <th scope="col" class="align-right">Personas</th>
+                  <th scope="col">Creado</th>
+                  <th scope="col">Último uso</th>
+                  <th scope="col">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="platNegociosBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+        </div>
       </section>
 
       <!-- Configuración (hist. §73): una sección con su menú y una página por
