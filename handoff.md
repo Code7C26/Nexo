@@ -1381,7 +1381,9 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     "Computadores Test", vence el 28 de octubre de 2028) y su clave están en
     `C:\Users\HP ULTRA 5\.nexo-arca\` (`nexo-homologacion.key`, `.csr` y
     `.crt`), fuera del repo; se controló que la clave y el certificado son
-    pareja. Falta confirmar el paso 5 (autorización a `wsfe`).
+    pareja. Paso 5 hecho: autorización a `wsfe` con su propio CUIL como
+    representado (también quedaron, sin uso, autorizaciones a `arbccf` y
+    `wsfex`). **Los trámites de ARCA para homologación están completos.**
   - Sin inscripción fiscal, qué letras deja emitir homologación (A, B o C) se
     confirma en la primera prueba.
   - **Cómo se ve en la demo (decidido con el usuario el 19 de octubre):** es
