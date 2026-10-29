@@ -31,7 +31,7 @@ import {
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
-import { armarHojaComprobante, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
+import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
@@ -39,7 +39,17 @@ import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
 import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
-import { ALICUOTAS_IVA, CONDICIONES_FISCALES, alicuotaIva, condicionFiscal, condicionIvaCliente, opcionesSelect } from "./core/fiscal.js";
+import {
+  ALICUOTAS_IVA,
+  CONDICIONES_FISCALES,
+  CONDICIONES_RECEPTOR,
+  CONDICIONES_VENTA,
+  alicuotaIva,
+  condicionFiscal,
+  condicionIvaCliente,
+  letraPrevista,
+  opcionesSelect
+} from "./core/fiscal.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -1165,32 +1175,9 @@ document.getElementById("btnVolverFacturas").addEventListener("click", () => mos
 // reusarla también en la impresión/descarga en lote desde el listado
 // (varias facturas a la vez, ver crearSeleccion) sin duplicar la lógica del
 // caso "factura suelta".
-function hojaDeFactura(f) {
-  return armarHojaComprobante({
-    rotulo: TIPO_FACTURA_LABEL[f.tipo] ?? "Factura",
-    comprobanteNro: f.comprobante,
-    fecha: f.fecha,
-    // NO van el estado de cobro ni "Origen: Venta #N": son gestión interna.
-    campos: [],
-    cliente: {
-      nombre: f.cliente,
-      documento: f.cliente_documento,
-      direccion: f.cliente_direccion,
-      telefono: f.cliente_telefono,
-      email: f.cliente_email
-    },
-    // Una factura suelta no tiene renglones: se imprime su concepto como
-    // único ítem, que es exactamente lo que la factura dice que se cobró.
-    items: f.items?.length
-      ? f.items
-      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total, iva: f.iva }],
-    total: f.total,
-    iva: { letra: f.letra, importe: f.iva, condicionCliente: f.cliente_condicion_iva },
-    arca: f.arca_estado
-      ? { estado: f.arca_estado, cae: f.cae, vence: f.cae_vencimiento, qr: f.arca_qr, ambiente: f.arca_ambiente }
-      : null
-  });
-}
+// Con el formato de las facturas de ARCA (hist. §116, core/comprobante.js). NO
+// van el estado de cobro ni "Origen: Venta #N": son gestión interna.
+const hojaDeFactura = (f) => armarHojaFactura(f);
 
 // El botón vive en el HTML (no se re-renderiza como el de presupuesto), así
 // que se bindea una sola vez y lee la factura de la variable de módulo.
@@ -1241,6 +1228,77 @@ document.getElementById("btnDescartarFactura").addEventListener("click", async (
 
 const modal = document.getElementById("modalFactura");
 
+/* ---------- Los datos de cada factura (hist. §116) ---------- */
+
+// "Para quién es la factura", la condición de venta y el período, en los
+// formularios de facturar una venta y de factura suelta: se precargan de la
+// ficha del cliente y se pueden corregir para esta factura. El servidor guarda
+// una foto (datosDeLaFactura en server.js).
+function prepararDatosFactura(form, cliente, { conPeriodo, condicionVenta = "contado", vencimiento = "" }) {
+  opcionesSelect(form.receptor_condicion_iva, CONDICIONES_RECEPTOR);
+  opcionesSelect(form.condicion_venta, CONDICIONES_VENTA);
+  if (form.receptor_nombre) form.receptor_nombre.value = cliente?.nombre ?? "";
+  completarReceptor(form, cliente, { pisar: true });
+  form.condicion_venta.value = condicionVenta;
+  form.querySelector("[data-periodo]").hidden = !conPeriodo;
+  form.periodo_desde.value = "";
+  form.periodo_hasta.value = "";
+  form.vencimiento_pago.value = vencimiento;
+  mostrarLetraPrevista(form);
+}
+
+// Lo de la ficha del cliente en los campos. Sin `pisar`, solo completa los
+// vacíos (al reconocer un cliente por su nombre en la factura suelta). En
+// "Consumidor final", que es de todos, no se ofrece guardar en la ficha.
+function completarReceptor(form, cliente, { pisar }) {
+  const poner = (campo, valor) => {
+    if (pisar || !form[campo].value) form[campo].value = valor ?? "";
+  };
+  poner("receptor_documento", cliente?.documento);
+  poner("receptor_domicilio", cliente?.direccion);
+  if (pisar || form.receptor_condicion_iva.value === "consumidor_final") {
+    form.receptor_condicion_iva.value = cliente?.condicion_iva || "consumidor_final";
+  }
+  const deTodos = cliente?.nombre === "Consumidor final";
+  form.querySelector("[data-guardar-cliente]").hidden = deTodos;
+  form.guardar_en_cliente.checked = !deTodos;
+  mostrarLetraPrevista(form);
+}
+
+// La letra que va a salir cambia con la condición del cliente: se dice antes.
+function mostrarLetraPrevista(form) {
+  const letra = letraPrevista(negocio.condicion_iva, form.receptor_condicion_iva.value);
+  if (letra) {
+    form.querySelector("[data-letra-sola]").textContent =
+      `Va a salir una factura ${letra}, según tu condición frente al IVA y la del cliente.`;
+  }
+}
+
+// Lo que va al servidor. El período, solo si se ve.
+function datosFacturaDelForm(form) {
+  const receptor = {
+    documento: form.receptor_documento.value.trim(),
+    condicion_iva: form.receptor_condicion_iva.value,
+    domicilio: form.receptor_domicilio.value.trim()
+  };
+  const nombre = form.receptor_nombre?.value.trim();
+  if (nombre) receptor.nombre = nombre;
+  const conPeriodo = !form.querySelector("[data-periodo]").hidden;
+  return {
+    receptor,
+    guardar_en_cliente: !form.querySelector("[data-guardar-cliente]").hidden && form.guardar_en_cliente.checked,
+    condicion_venta: form.condicion_venta.value,
+    periodo_desde: (conPeriodo && form.periodo_desde.value) || undefined,
+    periodo_hasta: (conPeriodo && form.periodo_hasta.value) || undefined,
+    vencimiento_pago: (conPeriodo && form.vencimiento_pago.value) || undefined
+  };
+}
+
+for (const id of ["formFacturarVenta", "formFactura"]) {
+  const form = document.getElementById(id);
+  form.receptor_condicion_iva.addEventListener("change", () => mostrarLetraPrevista(form));
+}
+
 // Si el negocio cargó su condición frente al IVA, la letra la pone el
 // servidor (hist. §113) y elegirla confundiría: se muestra el porqué.
 function mostrarLetraSiSeElige(form) {
@@ -1266,7 +1324,16 @@ document.getElementById("btnNuevaFactura").addEventListener("click", () => {
   document.getElementById("facturaAlicuotaWrap").hidden = negocio.condicion_iva !== "responsable_inscripto";
   opcionesSelect(form.alicuota_iva, ALICUOTAS_IVA);
   form.alicuota_iva.value = "21";
+  prepararDatosFactura(form, null, { conPeriodo: true });
   modal.hidden = false;
+});
+
+// Al escribir el nombre de alguien que ya es cliente, sus datos de la ficha
+// completan lo que esté vacío.
+document.getElementById("formFactura").cliente.addEventListener("change", (e) => {
+  const nombre = e.target.value.trim().toLowerCase();
+  const cliente = clientes.find((c) => c.nombre.toLowerCase() === nombre);
+  if (cliente) completarReceptor(e.target.form, cliente, { pisar: false });
 });
 
 document.getElementById("modalClose").addEventListener("click", () => {
@@ -1292,7 +1359,8 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
       tipo: tipoElegido,
       letra: form.letra.value,
       punto_venta: Number(form.punto_venta.value) || 1,
-      alicuota_iva: document.getElementById("facturaAlicuotaWrap").hidden ? undefined : form.alicuota_iva.value
+      alicuota_iva: document.getElementById("facturaAlicuotaWrap").hidden ? undefined : form.alicuota_iva.value,
+      ...datosFacturaDelForm(form)
     },
     error: "No se pudo registrar la factura."
   });
@@ -3882,9 +3950,22 @@ function renderVentas(lista) {
   }
 
   body.querySelectorAll(".btn-facturar-venta").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       ventaAFacturarId = Number(btn.dataset.id);
-      mostrarLetraSiSeElige(document.getElementById("formFacturarVenta"));
+      const form = document.getElementById("formFacturarVenta");
+      // Los datos de la venta y del cliente precargan la factura (hist. §116):
+      // una venta con plazo es a cuenta corriente, y con servicios se pide el
+      // período.
+      const venta = await api(`/api/ventas/${ventaAFacturarId}`, { error: "No se pudo cargar la venta." });
+      const cliente = await api(`/api/clientes/${venta.cliente_id}`, { error: "No se pudo cargar el cliente." });
+      const aPlazo = Boolean(venta.fecha_vencimiento && venta.fecha_vencimiento > venta.fecha);
+      const tipos = new Map(productos.map((p) => [p.id, p.tipo]));
+      mostrarLetraSiSeElige(form);
+      prepararDatosFactura(form, cliente, {
+        conPeriodo: venta.items.some((i) => tipos.get(i.producto_id) === "servicio"),
+        condicionVenta: aPlazo ? "cuenta_corriente" : "contado",
+        vencimiento: aPlazo ? venta.fecha_vencimiento : ""
+      });
       modalFacturarVenta.hidden = false;
     });
   });
@@ -4370,7 +4451,8 @@ document.getElementById("formFacturarVenta").addEventListener("submit", async (e
       body: {
         condicion: form.condicion.value,
         letra: form.letra.value,
-        punto_venta: Number(form.punto_venta.value) || 1
+        punto_venta: Number(form.punto_venta.value) || 1,
+        ...datosFacturaDelForm(form)
       },
       error: "No se pudo generar la factura."
     });

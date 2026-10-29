@@ -144,6 +144,8 @@ const esId = (campo) => campo === 'id' || campo.endsWith('_id');
 const FUNCIONES_SEGURAS = new Set([
   'esc', 'money', 'numero', 'moneyCorto', 'porcentaje', 'Number',
   'lineaSiHay', // core/comprobante.js
+  'datoFactura', // core/comprobante.js: escapa la etiqueta y el valor
+  'importeFactura', // core/comprobante.js: formatea un número
   'asistenteBadge', // app.js: solo lee ref.estado para elegir un texto fijo
   'ccTextoDias', // dominios/cuentas-corrientes.js: recibe un número
   'inputValor', // core/filtros.js: escapa el valor del input; en el select solo lo compara

@@ -1715,14 +1715,31 @@ for (const columna of [
   'cae_vencimiento TEXT',
   'arca_ambiente TEXT',
   'arca_datos TEXT',
-  'arca_error TEXT'
+  'arca_error TEXT',
+  // La foto del receptor y del emisor, la condición de venta y el período
+  // (ver schema.sql). Sin backfill: las anteriores muestran los datos actuales.
+  'receptor_nombre TEXT',
+  'receptor_documento TEXT',
+  'receptor_condicion_iva TEXT',
+  'receptor_domicilio TEXT',
+  'emisor_datos TEXT',
+  'condicion_venta TEXT',
+  'periodo_desde TEXT',
+  'periodo_hasta TEXT',
+  'vencimiento_pago TEXT'
 ]) {
   if (!facturasColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE facturas ADD COLUMN ${columna}`);
   }
 }
 const organizacionesColumnasArca = db.prepare('PRAGMA table_info(organizaciones)').all();
-for (const columna of ['arca_punto_venta INTEGER', 'arca_verificado TEXT']) {
+for (const columna of [
+  'arca_punto_venta INTEGER',
+  'arca_verificado TEXT',
+  'razon_social TEXT',
+  'ingresos_brutos TEXT',
+  'inicio_actividades TEXT'
+]) {
   if (!organizacionesColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna}`);
   }

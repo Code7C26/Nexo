@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §115);
+    siguiente número (hoy el último es §116);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -32,8 +32,7 @@
      el `.env` de la raíz.
    - El README se puso al día en la misma publicación (PR #33).
    - **Falta que el usuario lo vea.**
-   - **IVA hecho** (hist. §112, §113 y §114, commiteados en `solla`, sin
-     publicar): alícuota del producto, condición del cliente y del proveedor,
+   - **IVA hecho** (hist. §112, §113 y §114, publicados en el PR #34): alícuota del producto, condición del cliente y del proveedor,
      IVA congelado en cada renglón de venta, presupuesto y compra, letra
      automática, factura A discriminada, compras con factura A como crédito
      fiscal (costo sin IVA), ganancia sin IVA para el inscripto y el libro
@@ -49,26 +48,31 @@
    homologación ya están: **lo que sigue es el cierre**. Voz y
    WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
    presentación, salvo que sobre tiempo.
-4. **ARCA en homologación hecho** (hist. §115, commiteado en `solla`, sin
-   publicar). Factura y nota de crédito con CAE de prueba real: se probó
+4. **ARCA en homologación hecho y publicado** (hist. §115, PR #34, 29 de
+   octubre). Factura y nota de crédito con CAE de prueba real: se probó
    contra ARCA una A con dos alícuotas, una B y una nota de crédito A
    asociada, todas autorizadas. Configuración → Factura electrónica tiene los
    pasos de la delegación y "Verificar".
-   - **Para publicarlo hay que subir el certificado al servidor:** copiar el
-     `.crt` y la `.key` de `C:\Users\HP ULTRA 5\.nexo-arca\` a, por ejemplo,
-     `/etc/nexo/arca/` (dueño el usuario del servicio, `chmod 600` la clave) y
-     sumar `NEXO_ARCA_CERT` y `NEXO_ARCA_KEY` a `/etc/nexo/nexo.env`.
-   - **Ojo con el ticket de 12 horas:** ARCA da un ticket por certificado y
-     no da otro mientras esté vigente. Si la compu y el servidor usan el mismo
-     certificado, el que pida segundo queda bloqueado hasta que venza el del
-     otro. La compu pidió uno el 29 de octubre (vence el 30 a las 7:02). Lo
-     limpio es un segundo certificado de homologación para el servidor
-     (trámite de 5 minutos en WSASS, pasos 3 y 4 de "Trámites del usuario"),
-     y en la compu probar con `NEXO_ARCA=stub`.
-   - **Falta que el usuario lo vea**, y las capturas de ARCA para los pasos
-     de la página: solo las puede sacar él, con su clave fiscal.
+   - **En el servidor:** el certificado está en `/etc/nexo/arca/` (root:nexo,
+     640) y `NEXO_ARCA_CERT` y `NEXO_ARCA_KEY` en `/etc/nexo/nexo.env`. Se
+     comprobó desde el servidor que llega a ARCA.
+   - **El ticket de 12 horas:** ARCA da uno por certificado y no da otro
+     mientras esté vigente. La compu había pedido uno (vence el 30 de octubre
+     a las 7:02) y se copió a `arca_tickets` de la base del servidor, así
+     anda ya; después el servidor pide los suyos. Por eso, **en la compu se
+     prueba con `NEXO_ARCA=stub`**: si la compu pide un ticket real, el
+     servidor queda sin poder facturar hasta 12 horas. Un segundo certificado
+     de homologación solo para la compu lo evitaría (opcional).
+   - **Falta que el usuario lo vea** en el sitio: activarla en Configuración
+     (CUIT, condición, un punto de venta que no tenga comprobantes internos,
+     Verificar) y facturar una venta. En homologación todos los negocios
+     comparten la serie de cada punto de venta (el 3 ya tiene la A, la B y la
+     nota de crédito de prueba): los números saltan, es lo esperado.
+   - Faltan las capturas de ARCA para los pasos de la página (las saca el
+     usuario, con su clave fiscal).
    - La facturación real (producción) es después de la presentación y pide
      el CUIT de Nexo (decisión con un contador).
+4b. **La factura con el formato de ARCA** (hist. §116, commiteado en `solla`): datos fijos del negocio en Configuración → Comprobantes (razón social, ingresos brutos, inicio de actividades), y los de cada factura (cliente, condición de venta, período) en el formulario de facturar, con una foto en la factura. **Falta que el usuario cargue sus datos fijos** en Configuración y lo vea impreso.
 5. Hecho en esta sesión: el código del mail (hist. §108), la baja (hist.
    §109), ambos publicados (PR #31), y la limpieza de cuentas de la base real
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
@@ -290,8 +294,8 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta §111 (PR #32 el panel y #33 el README, publicados
-  el 29 de octubre).
+- `main` tiene todo hasta §115 (PR #34: IVA y ARCA en homologación,
+  publicado el 29 de octubre).
 - **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
   cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
   lo pide: Claude abre y mergea el PR con el CI en verde, por la API de
@@ -1380,8 +1384,6 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Reporte de IVA ventas y compras.
    - La retención de Mercado Pago queda para después.
 10. **E: ARCA en homologación — hecho** (hist. §115). Lo que queda:
-   - subir el certificado al servidor y publicar (ver "Estado actual",
-     punto 4);
    - las capturas de ARCA en los pasos de la página (las saca el usuario);
    - que un negocio suba su propio certificado (CLAUDE.md §33): hace falta
      para producción, no para la demo. Su clave privada iría cifrada en la

@@ -769,7 +769,9 @@ discrimina el IVA, y Estadísticas tiene el libro IVA ventas y compras con el
 saldo del período. `facturas.neto` sigue siendo el total, y `iva` el
 contenido. **Factura electrónica en homologación** (hist. §115, ver §33): con
 la factura electrónica activa, cada factura y nota de crédito sale con CAE
-de ARCA; sin activarla, el comprobante sigue siendo interno.
+de ARCA; sin activarla, el comprobante sigue siendo interno. La factura
+guarda una foto de quien la emite y de para quién es, tomada al hacerla, y
+se imprime con el formato de las de ARCA (hist. §116).
 
 Esto deja de ser una decisión definitiva y pasa a ser el orden de trabajo real
 (corrige la frase anterior "puede desarrollarse progresivamente", que sonaba

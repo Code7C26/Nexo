@@ -10463,3 +10463,63 @@ navegador (el de la herramienta estaba tomado por otra sesión).
 **Lo que queda:** subir el certificado al servidor (con un segundo
 certificado, por el ticket de 12 horas), las capturas de ARCA en los pasos,
 el certificado propio de un negocio y producción (ver handoff.md, punto 10).
+
+## 116. La factura con el formato de ARCA y sus datos, 29 de octubre de 2026
+
+Pedido del usuario, mirando una factura real de ARCA de su padre al lado de
+la de Nexo: el diseño general como el de ARCA, los datos permanentes en
+Configuración y los particulares de cada factura (incluido el cliente) al
+hacerla.
+
+**Decisiones (mías):**
+- **La factura guarda una foto** de quien la emite y de para quién es,
+  tomada al hacerla. Un cliente o un negocio que cambia de dirección o de
+  condición no cambia una factura ya emitida, como en la realidad. Lo
+  impreso, el libro IVA y el pedido a ARCA usan la foto; las anteriores, que
+  no la tienen, siguen con los datos actuales del cliente.
+- Los datos del cliente **se cargan en el formulario de facturar,
+  precargados de su ficha**, y "Guardar estos datos en la ficha del cliente"
+  (marcado) los deja para la próxima. Nunca en "Consumidor final", que es de
+  todos. El nombre de la ficha no se toca: la razón social va solo en la
+  factura.
+- La letra sale de la condición elegida en el formulario, y se muestra antes
+  de guardar ("Va a salir una factura A…").
+- **Condición de venta** propia de la factura (contado, cuenta corriente,
+  transferencia, tarjetas, cheque, otra). Al facturar una venta con plazo,
+  cuenta corriente y su vencimiento.
+- **Período facturado y vencimiento del pago**: se piden cuando la venta
+  tiene servicios (y en la suelta, opcionales); van a ARCA en lugar del día.
+- Un comprobante interno (sin factura electrónica) lleva una **X** en la caja
+  de la letra, "No válido como factura": es la práctica para un documento
+  que no es factura.
+- Solo el ORIGINAL: en la factura electrónica las copias no son obligatorias.
+
+**Qué se hizo.**
+- Migración aditiva: `organizaciones.razon_social`, `ingresos_brutos`,
+  `inicio_actividades`; `facturas.receptor_nombre`, `receptor_documento`,
+  `receptor_condicion_iva`, `receptor_domicilio`, `emisor_datos` (JSON, con
+  el texto al pie), `condicion_venta`, `periodo_desde`, `periodo_hasta`,
+  `vencimiento_pago`.
+- `server.js`: `datosDeLaFactura` (valida y arma la foto; el CUIT con su
+  dígito verificador), `guardarDatosDeLaFactura` y `guardarReceptorEnCliente`
+  en las tres emisiones; la nota de crédito copia la foto de la factura que
+  corrige. `GET /api/facturas/:id` trae el emisor, el código de ARCA del
+  comprobante, los renglones con código y unidad (también los de la
+  devolución en una nota de crédito) y las observaciones de ARCA.
+- ARCA simulado sigue desde el último número de la base al reiniciarse el
+  servidor (antes chocaba con el índice único: la red de la demo no se puede
+  romper por un reinicio).
+- Frontend: `armarHojaFactura` (core/comprobante.js) con el formato de ARCA
+  (ORIGINAL, emisor, caja de la letra con COD., datos del comprobante,
+  período, receptor, renglones —en la A con alícuota y subtotal con IVA—,
+  totales por letra —la A con neto e IVA de cada alícuota, la B con el IVA
+  contenido de la Ley 27.743—, texto al pie, observaciones de ARCA y el pie
+  con el QR y el CAE). Configuración → Comprobantes suma razón social,
+  ingresos brutos e inicio de actividades; su grilla con la vista previa
+  dejaba los campos en 5 px en una notebook y ahora la previa pasa abajo.
+- `test/factura-datos.test.js` (3 tests).
+
+**Cómo se verificó.** `npm test` (155) y en el navegador, contra una base
+temporal con ARCA simulado: el formulario de facturar (precarga, letra que
+cambia con la condición), la factura A impresa desde la ficha y la página de
+Configuración.

@@ -65,6 +65,34 @@ export const alicuotaIva = (valor) => ALICUOTAS_IVA[valor ?? "21"] ?? valor;
 export const condicionIvaCliente = (valor) =>
   !valor || valor === "consumidor_final" ? "Consumidor final" : condicionFiscal(valor);
 
+// Las del receptor de una factura, para elegirla al hacerla (hist. §116).
+export const CONDICIONES_RECEPTOR = {
+  consumidor_final: "Consumidor final",
+  responsable_inscripto: "Responsable inscripto",
+  monotributo: "Monotributo",
+  exento: "Exento"
+};
+
+// Condición de venta de una factura (CONDICIONES_VENTA en server.js).
+export const CONDICIONES_VENTA = {
+  contado: "Contado",
+  cuenta_corriente: "Cuenta corriente",
+  transferencia: "Transferencia bancaria",
+  tarjeta_debito: "Tarjeta de débito",
+  tarjeta_credito: "Tarjeta de crédito",
+  cheque: "Cheque",
+  otra: "Otra"
+};
+
+// La letra que va a salir, con la misma regla que letraQueCorresponde (iva.js):
+// monotributo y exento emiten C; el inscripto, A a un inscripto o a un
+// monotributista y B a los demás. null si el negocio no cargó su condición.
+export function letraPrevista(condicionNegocio, condicionReceptor) {
+  if (condicionNegocio === "monotributo" || condicionNegocio === "exento") return "C";
+  if (condicionNegocio !== "responsable_inscripto") return null;
+  return condicionReceptor === "responsable_inscripto" || condicionReceptor === "monotributo" ? "A" : "B";
+}
+
 export function opcionesSelect(select, opciones) {
   select.innerHTML = Object.entries(opciones)
     .map(([valor, etiqueta]) => `<option value="${valor}">${etiqueta}</option>`)
