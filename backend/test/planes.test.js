@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { crearCliente, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
+import { ACEPTA, crearCliente, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
 import { fechaDeHoy } from '../fecha.js';
 
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -49,7 +49,7 @@ test('los planes se leen sin sesión', async () => {
 });
 
 test('Gratis: un usuario, un negocio, 100 productos y 300 ventas por mes, sin frenar las cuotas', async () => {
-  const admin = await registrarEmpresa(servidor.url, { empresa: 'Medialunas Tomi', usuario: 'tomi', plan: 'gratis' });
+  const admin = await registrarEmpresa(servidor, { empresa: 'Medialunas Tomi', usuario: 'tomi', plan: 'gratis' });
   const negocio = (await admin.get('/api/negocio')).json;
   assert.equal(negocio.plan.clave, 'gratis');
   assert.equal(negocio.plan.vence, null);
@@ -117,7 +117,7 @@ test('Gratis: un usuario, un negocio, 100 productos y 300 ventas por mes, sin fr
 });
 
 test('la prueba de Pro dura 14 días, deja sumar negocios y al vencer cae a Gratis', async () => {
-  const admin = await registrarEmpresa(servidor.url, { empresa: 'Pyme Pro', usuario: 'pyme', plan: 'pro' });
+  const admin = await registrarEmpresa(servidor, { empresa: 'Pyme Pro', usuario: 'pyme', plan: 'pro' });
   const negocio = (await admin.get('/api/negocio')).json;
   assert.equal(negocio.plan.clave, 'pro');
   assert.equal(negocio.plan.dias_restantes, 14);
@@ -155,8 +155,8 @@ test('el contacto de la landing cae en el CRM del negocio de ventas, y en ningú
 
   const otro = await levantarServidor({ env: { NEXO_NEGOCIO_VENTAS: '1', NEXO_CONTACTO_WHATSAPP: '+54 9 351 555-0000' } });
   try {
-    const ventas = await registrarEmpresa(otro.url, { empresa: 'Nexo', usuario: 'nexo-ventas' });
-    const ajeno = await registrarEmpresa(otro.url, { empresa: 'Otro negocio', usuario: 'ajeno' });
+    const ventas = await registrarEmpresa(otro, { empresa: 'Nexo', usuario: 'nexo-ventas' });
+    const ajeno = await registrarEmpresa(otro, { empresa: 'Otro negocio', usuario: 'ajeno' });
     const publico = crearCliente(otro.url);
     assert.equal((await publico.get('/api/auth/planes')).json.contacto.whatsapp, '5493515550000');
 
@@ -181,7 +181,7 @@ test('el contacto de la landing cae en el CRM del negocio de ventas, y en ningú
 });
 
 test('un plan desconocido en el alta responde 400', async () => {
-  const r = await crearCliente(servidor.url).post('/api/auth/registro', {
+  const r = await crearCliente(servidor.url).post('/api/auth/registro', { ...ACEPTA,
     empresa: 'X',
     email_cuenta: 'plan-raro@nexo.test',
     nombre: 'X',

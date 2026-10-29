@@ -1119,8 +1119,12 @@ una instancia por negocio.
   - **Cada persona tiene su cuenta y entra con su mail** (hist. §102, §104):
     el admin suma gente invitándola por mail, y una cuenta sin ningún negocio
     entra igual a ver sus invitaciones o crear el suyo.
-- Lo que falta: poder apagar el registro público por configuración y sumarle
-  verificación (email o captcha). Las dos requieren decisión del equipo.
+- El mail se confirma con un código de 6 números antes de crear la cuenta y
+  antes de cambiarlo (hist. §108): nadie usa un mail que no es suyo.
+- El alta pública se apaga con `NEXO_REGISTRO=off` (hist. §109), y un
+  negocio se descarga y se da de baja desde Configuración: queda cerrado 30
+  días y después se borra. El captcha no se hizo: pediría un servicio
+  externo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
   `docs/handoff-historico.md` (§37–§51, §77).
 
@@ -1409,11 +1413,14 @@ Ya existe también el **respaldo automático** de la base: cada arranque la
 respalda antes de abrirla (`backend/db/respaldo.js`, con rotación y carpeta
 configurable con `NEXO_BACKUP_DIR`), y `npm run backup` lo hace a mano.
 
+Y la **recuperación de contraseña por mail** (hist. §105): un enlace de un
+solo uso que vence a los 30 minutos, guardado como hash. Pedirlo responde
+igual exista o no la cuenta, y usarlo cierra todas las sesiones y avisa por
+mail. El reseteo a mano del admin queda solo para quien no confirmó su mail.
+
 Pendiente para producción real, a incorporar progresivamente sin bloquear el
 resto del roadmap:
 
-- **Recuperación de contraseña** sin depender de que un admin la resetee a
-  mano (hoy es la única vía).
 - **HTTPS** obligatorio fuera de desarrollo local.
 - **Límites de tamaño/tasa de request** más allá del rate limit de login.
 - **Paginación**: hoy casi ningún `GET` pagina resultados; con volumen real de

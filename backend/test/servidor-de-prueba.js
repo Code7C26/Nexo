@@ -163,18 +163,52 @@ export function ultimoEnlace(servidor, para, ruta = 'verificar-mail') {
   return encontrado?.[1] ?? null;
 }
 
+// Los términos aceptados y la edad declarada (etapa 8b, Fase 3), que el alta
+// de una cuenta exige. Los tests de terminos.test.js prueban sin ellos.
+export const ACEPTA = { acepta_terminos: true, edad: 'mayor' };
+
+// El último código de 6 números que se mandó a un mail (hist. §108): va en el
+// asunto, "123456 es tu código de Nexo".
+export function codigoDelMail(servidor, para) {
+  return servidor.leerMails(para).at(-1)?.asunto.match(/^(\d{6}) es tu código/)?.[1] ?? null;
+}
+
+// Lo que hace el alta antes de crear la cuenta (hist. §108): pide el código al
+// mail, lo lee y lo confirma. Devuelve el comprobante para
+// POST /api/auth/registro.
+export async function confirmarMailDeAlta(servidor, email) {
+  const cliente = crearCliente(servidor.url);
+  const pedido = await cliente.post('/api/auth/registro/codigo', { email });
+  if (pedido.status !== 204) throw new Error(`Pedir el código falló (${pedido.status}): ${pedido.texto}`);
+  const codigo = codigoDelMail(servidor, email.toLowerCase());
+  if (!codigo) throw new Error(`No llegó el código a ${email}.`);
+  const r = await cliente.post('/api/auth/registro/verificar', { email, codigo });
+  if (r.status !== 200) throw new Error(`Confirmar el código falló (${r.status}): ${r.texto}`);
+  return r.json.comprobante;
+}
+
 // Crea una empresa con su admin por el registro público y devuelve el cliente
 // ya logueado como ese admin. Nace en Pro (la prueba de 14 días, hist. §98)
 // para que los topes de Gratis no se crucen con lo que prueba cada test; los
 // de planes piden `plan: 'gratis'`. La cuenta se crea con el mail (hist.
 // §102): sin `email`, `<usuario>@nexo.test`, así los tests siguen nombrando a
-// cada cuenta por su usuario de siempre.
+// cada cuenta por su usuario de siempre. `servidor` es { url, leerMails }: el
+// alta confirma el mail con el código que le llega (hist. §108).
 export async function registrarEmpresa(
-  url,
+  servidor,
   { empresa, usuario, email = `${usuario}@nexo.test`, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro' }
 ) {
-  const cliente = crearCliente(url);
-  const r = await cliente.post('/api/auth/registro', { empresa, email_cuenta: email, nombre, password, plan });
+  const comprobante = await confirmarMailDeAlta(servidor, email);
+  const cliente = crearCliente(servidor.url);
+  const r = await cliente.post('/api/auth/registro', {
+    empresa,
+    email_cuenta: email,
+    comprobante_email: comprobante,
+    nombre,
+    password,
+    plan,
+    ...ACEPTA
+  });
   if (r.status !== 201) throw new Error(`Registro falló (${r.status}): ${r.texto}`);
   return cliente;
 }
@@ -205,7 +239,7 @@ export async function crearEmpleado(
   const token = tokenDeInvitacion(servidor, email);
   if (!token) throw new Error(`No le llegó la invitación a ${email}.`);
   const cliente = crearCliente(servidor.url);
-  const cuenta = await cliente.post('/api/auth/invitacion/cuenta', { token, nombre, password });
+  const cuenta = await cliente.post('/api/auth/invitacion/cuenta', { token, nombre, password, ...ACEPTA });
   if (cuenta.status !== 201) throw new Error(`Crear la cuenta desde la invitación falló (${cuenta.status}): ${cuenta.texto}`);
   return cliente;
 }

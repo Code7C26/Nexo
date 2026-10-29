@@ -43,6 +43,7 @@ import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
 import "./dominios/plan.js";
+import "./dominios/baja.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";

@@ -95,7 +95,7 @@ function pintarMenu() {
         <span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>
         <span class="negocio-textos">
           <strong class="negocio-nombre">${esc(n.nombre)}</strong>
-          <span class="negocio-tipo">${esc(n.tipo)}</span>
+          <span class="negocio-tipo">${esc(n.se_borra ? "Se está dando de baja" : n.tipo)}</span>
         </span>
         ${n.actual ? icono("check", "negocio-check") : ""}
       </button>`

@@ -9828,3 +9828,285 @@ Diseño de partida: `docs/investigacion-login-legal.md` §5.
   - Pasada a 390 px de la pantalla sin negocio.
 - **Corregido en la pasada:** `.btn-link` le ganaba al `[hidden]` y "Ahora no"
   se veía sin sesión. Con solicitudes, "Crear mi negocio" pasa a secundario.
+
+## 105. Recuperar la contraseña por mail (etapa 8b, Fase 2), 28 de octubre de 2026
+
+Lo que seguía según el handoff ("seguir"). Diseño de partida:
+`docs/investigacion-login-legal.md`, Fase 2. Sin cambios de esquema: usa
+`tokens_cuenta` con el tipo `recuperar`, que ya estaba en el `CHECK`.
+
+**Qué cambió:**
+- **`POST /api/auth/recuperar`** (público): manda un enlace de un solo uso
+  (`/app#/restablecer/<token>`), que vence a los 30 minutos y se guarda como
+  SHA-256. Responde 204 exista o no la cuenta. Topes por hora, contados antes
+  de buscar la cuenta: 10 por IP y 3 por mail (429). Vale también para un
+  mail sin confirmar: usarlo lo confirma. Se audita en el último negocio de
+  la cuenta (`ultimoNegocioDe()`, sacado de `/verificar-mail`).
+- **`POST /api/auth/restablecer/enlace`**: dice si el enlace sirve (410 si no)
+  y devuelve el mail, para que el gestor de contraseñas guarde la nueva con
+  la cuenta correcta.
+- **`POST /api/auth/restablecer`**: guarda la contraseña, marca el enlace
+  usado, apaga `debe_cambiar_password`, confirma el mail, cierra **todas** las
+  sesiones, limpia los intentos fallidos del login, audita (sin la
+  contraseña) y avisa por mail. No entra solo: vuelve al ingreso con el mail
+  puesto y el aviso "tu contraseña cambió".
+- **Aviso por mail al cambiar la contraseña** (`avisarCambioDePassword()`),
+  también desde `/api/auth/cambiar-password`.
+- **El admin ya no resetea la contraseña de quien confirmó su mail** (409), y
+  en Configuración → Usuarios el botón no aparece para esa persona. Queda
+  para cuentas sin mail o sin confirmar.
+- `crearTokenCuenta()` recibe la duración como modificador de `datetime()`
+  (`'+48 hours'`, `'+30 minutes'`).
+- **Frontend** (`sesion.js`, `index.html`): "¿Te olvidaste la contraseña?"
+  bajo el campo del login (lleva el mail que ya escribió). Las pantallas
+  "Recuperá tu cuenta", "Revisá tu mail" (el texto dice "si hay una cuenta
+  con…") y "Elegí una contraseña nueva" funcionan con sesión o sin ella. La
+  última pregunta primero si el enlace sirve, y si no ofrece "Pedir otro
+  enlace".
+- `permisos.js`: las tres rutas nuevas, como `publico`.
+
+**Verificación:**
+- `npm run lint` limpio y 102 tests en verde, 6 nuevos en
+  `backend/test/recuperar.test.js`: respuesta idéntica, un solo uso, cierre de
+  sesiones, mail confirmado, auditoría sin la contraseña, vencido, el nuevo
+  anula al anterior, tope por mail, el reseteo del admin y el aviso.
+- En Chrome (`playwright-core` en el scratchpad, el MCP de Chrome estaba
+  trabado), contra un servidor con una base vacía: el recorrido entero a
+  390 px en oscuro y a 1280 px en claro, hasta entrar con la contraseña nueva,
+  y el enlace inválido. Sin errores de consola.
+
+**Decidido en esta sesión (ARCA, etapa 10):** el certificado de homologación
+lo saca Santino con su propio CUIL y su clave fiscal nivel 3, en lugar del
+padre (19 de octubre). En ARCA no existe una "cuenta de Nexo": Nexo tendría
+CUIT propio solo como sociedad. Para producción, con la delegación de §33,
+hace falta un CUIT de verdad (monotributo de Santino o una sociedad): se
+habla con un contador después de la presentación.
+
+## 106. Términos, privacidad y edad (etapa 8b, Fase 3), 28 de octubre de 2026
+
+Plan en `docs/investigacion-login-legal.md` (2.3 a 2.5 y la Fase 3 de la
+sección 5). Commiteado en `solla`, sin publicar.
+
+**Qué se hizo**
+- `backend/legal.js`: `TERMINOS_VERSION` (`'2026-10-28'`), la validación de la
+  aceptación (`{ acepta_terminos: true, edad }`, con `edad` en `mayor` |
+  `menor_autorizado`) y las páginas con los datos del titular, que salen de
+  `NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL`, `NEXO_TITULAR_DOMICILIO` y
+  `NEXO_TITULAR_EMAIL` (sin este, `NEXO_SMTP_USUARIO`). Un dato que falta se
+  ve como "dato a completar", y en producción el arranque avisa.
+- **Migración aditiva** en `usuarios`: `terminos_version`,
+  `terminos_aceptados` y `edad` (con su `CHECK`), en `schema.sql` y como
+  `ALTER` en `db/index.js`. Las cuentas de antes quedan en NULL.
+- **Gate en `autenticar`**, después del de mail: sin la versión vigente, 403
+  `faltan_terminos`, salvo `/auth/terminos`, el mail, la contraseña y salir.
+  `POST /api/auth/terminos` acepta (pide la edad solo si la cuenta no la
+  declaró) y lo audita como `confirmar` sobre `usuario`.
+- **El alta y la cuenta de una invitación exigen la aceptación.** De 13 a 17
+  años, solo Gratis: el registro y el primer negocio de una cuenta sin
+  negocio rechazan un plan pago (400). La auditoría del alta dice la versión y
+  la edad declarada.
+- **Frontend:** el bloque `[data-aceptacion]` (pregunta "¿Tenés 18 años o
+  más?"; con "No", por CSS `:has()`, las casillas "13 o más" y "permiso de
+  los padres"; y la casilla de los términos sin marcar) en el paso 1 del alta,
+  en la cuenta por invitación y en la pantalla nueva `#formTerminos`. Lo lee
+  `js/core/aceptacion.js` (sesion.js lo baja con `import()`). En el alta, un
+  menor que llegó con `?plan=pro` ve que arranca en Gratis y el plan no se
+  manda. Si los términos cambian con la app abierta, el interceptor de
+  `sesion.js` recarga y aparece la pantalla.
+- **Páginas:** `frontend/terminos.html` nueva (`/terminos`, en el sitemap) y
+  `privacidad.html` completa: responsable y encargado (art. 25), Oracle Cloud
+  en Brasil, Google (Gemini y Gmail) en EE. UU. con el consentimiento de la
+  transferencia, la advertencia del plan gratis de Gemini, plazos de los
+  derechos (10 días corridos, 5 hábiles) y menores. Enlaces en el pie de la
+  landing, de privacidad, de términos y de la tarjeta del login.
+
+**Cómo se verificó**
+- `npm test` 110/110, con `backend/test/terminos.test.js` (7 casos: sin
+  casilla o sin edad no crea nada, guarda versión, fecha y edad, menor solo
+  Gratis, invitación, cuenta vieja frenada hasta aceptar, cambio de versión
+  sin volver a pedir la edad, páginas con el titular escapado). El arnés
+  exporta `ACEPTA` y lo mandan `registrarEmpresa` y `crearEmpleado`.
+- `npm run lint` y `npm run verificar-migracion` (24 de 24, la base real sin
+  cambios).
+- En Chrome (`playwright-core` del scratchpad, base temporal): el alta a
+  390 px en oscuro y a 1280 px, el menor con plan Pro, la cuenta vieja que
+  acepta, y las dos páginas. Sin errores de consola. Lo que se corrigió con
+  las capturas: el error del bloque no se iba al responder (ahora se limpia
+  con cualquier cambio) y los enlaces del login quedaban en el medio de la
+  tarjeta en las otras pantallas (pasaron al pie).
+
+**Para después**
+- Un mayor que ya tiene un negocio en un plan pago y declara ser menor al
+  aceptar: hoy no cambia nada en su plan.
+- Que un abogado lea términos y privacidad antes de cobrar el primer plan.
+- El trámite de la base en la AAIP (gratis, con la clave fiscal de Santino).
+
+## 107. "Emprendimiento" trae compras y stock, y la idea de la carga inicial, 28 de octubre de 2026
+
+**Qué pasó.** El hermano del usuario creó una cuenta desde el sitio y
+anduvo todo. Eligió "Emprendimiento" (vende mates), y en el paso de las
+secciones no había ninguna marcada. Pero el texto decía "Marcamos las que
+suele usar un negocio como el tuyo". En hist. §99, Emprendimiento había nacido
+sin módulos opcionales. Para cargar sus mates tuvo que prender Compras y
+registrar una compra.
+
+**Qué se cambió**
+- `backend/perfiles.js`: Emprendimiento trae `compras` y `stock`. Sin compras
+  no hay costo para saber cuánto gana, y sin stock no ve lo que tiene. Las
+  empresas que ya existen no cambian: sus módulos están guardados (hist. §88),
+  y la migración solo completa las que tienen `NULL`.
+- `frontend/js/alta.js` (`prepararModulos`): si un tipo no trae ninguna
+  sección, el texto dice "Marcá las que vayas a usar…" en lugar de prometer
+  secciones marcadas.
+
+**Cómo se verificó:** `npm test` 110/110 y `npm run lint`. No se miró en el
+navegador: es un dato del preset y un texto.
+
+**Pedido nuevo, sin hacer: carga inicial para un negocio que ya existe.**
+El diseño quedó anotado en el punto 8c de "Qué sigue" de `handoff.md`.
+
+## 108. El mail se confirma con un código antes de crear la cuenta, 29 de octubre de 2026
+
+**Qué pasó.** El usuario notó que con un mail que no es suyo podía crear una
+cuenta igual: el alta la creaba en el momento y mandaba un enlace que se podía
+ignorar (hist. §102). Además, el dueño real de ese mail ya no podía usarlo en
+Nexo. Pidió confirmar el mail "con un código o algo" antes de crear la cuenta.
+Cambiar el mail desde Mi cuenta tenía el mismo agujero, y se cerró igual.
+
+**Decisiones (técnicas, tomadas sin preguntar)**
+- **Código de 6 números y no enlace:** se tipea en la misma pantalla del alta
+  sin perder lo cargado, y anda igual si el mail se abre en el celular.
+- **Un paso propio del alta** ("Tu mail", el 2 de 6), no un cartel adentro del
+  paso 1: cada paso entra al historial, y el Atrás del celular no tira lo
+  cargado. Con Atrás desde el paso 3, el 2 dice "Tu mail está confirmado".
+- **Comprobante:** acertar el código devuelve un token (2 horas) que el alta
+  lleva al final como `comprobante_email`; `POST /api/auth/registro` lo gasta
+  dentro de la transacción. Así el código se controla una sola vez, con su
+  tope de intentos.
+- **Sin revelar quién usa Nexo:** `/registro/codigo` responde 204 siempre. Si
+  el mail ya tiene cuenta, en vez del código le llega a su dueño "Ya tenés una
+  cuenta en Nexo", con el enlace para entrar.
+- **El código se manda esperando a Gmail** (503 si falla), porque la persona
+  está mirando la pantalla. Sin mail configurado y fuera de producción, sale
+  en la consola del servidor, así una instalación de prueba anda sin Gmail.
+- **Cambiar o sumar el mail** ("Sumá tu mail", Mi cuenta): `POST
+  /api/auth/email` ya no cambia nada, manda el código al mail nuevo y responde
+  202. El mail cambia, confirmado, con `POST /api/auth/email/confirmar`.
+- **Las cuentas de antes sin confirmar** siguen con el enlace de "Mandarlo de
+  nuevo" (`/verificar-mail`): no se tocaron.
+
+**Qué se tocó**
+- `backend/db/schema.sql`: tabla nueva `codigos_mail` (propósito `registro` o
+  `cambiar_email`, `usuario_id` nulo en el alta, `codigo_hash` SHA-256,
+  `intentos`, `vence`, `confirmado`, `comprobante_hash`, `usado`). Migración
+  aditiva: alcanza el `CREATE TABLE IF NOT EXISTS`, no toca ninguna tabla.
+- `backend/server.js`: `crearCodigoMail`, `ultimoCodigo`, `errorDelCodigo`
+  (5 intentos, acepta espacios y guiones), `mandarCodigo`; rutas
+  `/api/auth/registro/codigo` y `/registro/verificar`; el registro exige el
+  comprobante y crea la cuenta con `email_verificado`; `/auth/email` y
+  `/auth/email/confirmar`. Topes: 10 códigos por hora por IP, 5 por mail y 30
+  verificaciones por IP.
+- `backend/mail.js`: `plantillaMail` acepta `codigo`, que va grande en el
+  HTML. El asunto es "123456 es tu código de Nexo", así se ve en la
+  notificación del celular.
+- `backend/permisos.js`: las tres rutas nuevas.
+- Frontend: `js/core/codigo.js` (campo de solo números que se manda al
+  completar 6, y "Mandar otro código" con 30 s de espera), el paso 2 de
+  `alta.js` (los pasos pasan a la constante `PASO`), la pantalla
+  `#formSumarMailCodigo` en `sesion.js` y el paso del código dentro de la
+  tarjeta de Mail de Mi cuenta (`perfil.js`). `autocomplete="one-time-code"`
+  para que el celular proponga el código.
+- Arnés: `codigoDelMail()` y `confirmarMailDeAlta()`. `registrarEmpresa`
+  recibe el servidor, no la URL. `scripts/seed.mjs` y `regresion-head.mjs`
+  ajustados.
+
+**Cómo se verificó**
+- `npm test` 117/117, con `backend/test/codigo-mail.test.js` nuevo (7 casos:
+  el comprobante crea la cuenta confirmada y no sirve para otro mail ni dos
+  veces, 5 errores matan el código, vencido, mail con cuenta responde igual,
+  un tercero no le corta el alta a quien ya confirmó, tope por mail y la
+  consola sin Gmail). `cuenta-mail.test.js` reescrito para el cambio con
+  código. Los tests de recuperar e invitaciones que necesitaban una cuenta sin
+  confirmar la dejan así en la base de prueba.
+- `npm run lint`, `npm run verificar-migracion` (24 de 24, la base real sin
+  cambios) y `npm run regresion` (0 diferencias).
+- En Chrome, contra una base temporal: el alta completa (código erróneo con
+  "quedan 4 intentos", el correcto pegado con un espacio, Atrás al paso
+  confirmado) y el cambio de mail en Mi cuenta, en oscuro a 1280 px y en el
+  ancho mínimo de la ventana (502 px).
+
+**Para después**
+- Un captcha en el alta, si aparecen bots: pediría un servicio externo.
+
+## 109. La baja: descargar los datos, dar de baja el negocio o la cuenta, 29 de octubre de 2026
+
+**Qué pasó.** Fase 4 de la etapa 8b, la última (diseño en
+`docs/investigacion-login-legal.md`, sección 5). Cubre la supresión de la Ley
+25.326 y el "botón de baja": darse de baja desde la app, sin escribirle a
+nadie.
+
+**Decisiones (técnicas, tomadas sin preguntar)**
+- **Qué es "del negocio" no se lista a mano:** `backend/db/datos-negocio.js`
+  lo arma del esquema. Una tabla con `organizacion_id` es del negocio; una sin
+  la columna (renglones, cobros, atributos) lo hereda de su padre por
+  cualquiera de sus FK. Así la descarga y el borrado no se pueden olvidar una
+  tabla, y una nueva queda cubierta sola.
+- **La descarga es un JSON** (`GET /api/negocio/exportar`, admin): todas las
+  tablas, sin sesiones ni hashes, y el equipo con nombre y mail. Un ZIP de
+  CSV pediría una dependencia o un compresor propio.
+- **Dar de baja el negocio** pide el nombre escrito y la contraseña, en una
+  página de Configuración (no un cartel). El negocio queda cerrado para todos
+  (403 `negocio_en_baja`), y cualquier admin cancela la baja durante 30 días.
+  Se avisa por mail a todos los admins, al pedirla y al cancelarla.
+- **El borrado a los 30 días** corre al arrancar y cada 6 horas, sin cron. Es
+  una transacción con las FK apagadas: primero las tablas más lejos de
+  `organizacion_id`, y al final controla que no quede ninguna FK rota que antes
+  no estuviera. La fila de `organizaciones` queda vacía, con `baja_hecha`,
+  porque `usuarios.organizacion_id` la referencia. Las cuentas siguen: entran
+  sin negocio, o en sus otros negocios.
+- **Dar de baja la cuenta** (Mi cuenta): la fila no se borra (la auditoría la
+  referencia). Se le sacan el nombre, el mail y la contraseña, y sale de todos
+  sus negocios. En la auditoría se tapa su mail en todas las filas, y su
+  nombre y usuario solo en las suyas ("Ana" puede estar en otro texto). No
+  puede dejar un negocio sin admin: 409 `unico_admin` con los nombres.
+- **`NEXO_REGISTRO=off`** cierra el alta y el primer negocio de una cuenta sin
+  negocio; se entra por invitación. La primera cuenta de una instalación nueva
+  se crea igual. **Campo trampa** (`sitio`) en el paso 1 del alta, como el de
+  la landing.
+
+**Qué se tocó**
+- Esquema (aditivo): `organizaciones.baja_pedida` y `baja_hecha`,
+  `usuarios.baja`. En `schema.sql` y como `ALTER` idempotente en
+  `db/index.js`.
+- `backend/server.js`: la sesión trae el negocio en baja
+  (`negocio_en_baja: { nombre, se_borra }`), el freno en `autenticar`, las rutas
+  `/api/negocio/exportar`, `/negocio/baja`, `/negocio/baja/cancelar` y
+  `/auth/baja-cuenta`, `borrarNegociosVencidos`, `registroCerrado()` y
+  `se_borra` en `GET /api/negocios`.
+- Frontend: la página "Tus datos y la baja" (`dominios/baja.js`), el helper
+  `core/descarga-datos.js`, la pantalla `#negocioBaja` de `sesion.js` (con los
+  otros negocios para entrar), la tarjeta de Mi cuenta (`perfil.js`), el aviso
+  del login, el registro cerrado y el selector de negocios. Clase nueva
+  `.config-tarjeta-texto` para la explicación de una tarjeta.
+- `terminos.html`: "Darte de baja" cuenta cómo hacerlo desde la app. No cambia
+  `TERMINOS_VERSION`: es el procedimiento, no una condición nueva.
+
+**Cómo se verificó**
+- `npm test` 123/123, con `backend/test/baja.test.js` nuevo (6 casos, con dos
+  negocios sembrados por el seed): la descarga trae solo lo del negocio y sin
+  secretos; la baja pide nombre y contraseña, cierra para los dos roles y se
+  cancela; a los 29 días no se borra y a los 30 sí, con el otro negocio
+  idéntico y sin FK rotas; la baja de la cuenta; el campo trampa; y el
+  registro cerrado.
+- El borrado contra una **copia** de la base local (4 negocios): borró las 20
+  filas del más chico, los otros 3 quedaron iguales tabla por tabla y sin FK
+  rotas. La base real quedó con el mismo md5.
+- `npm run lint`, `npm run verificar-migracion` (24 de 24).
+- En Chrome, contra una base sembrada: la página, la descarga (45 tablas), la
+  baja, la pantalla del admin y la del empleado, cancelar, y la baja de la
+  cuenta con el aviso en el login.
+
+**Para después**
+- Un mail de recordatorio unos días antes del borrado.
+- Si un negocio en baja tenía una suscripción paga, cortarla (cuando haya
+  cobro online).

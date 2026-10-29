@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §104);
+    siguiente número (hoy el último es §109);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,25 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (28 de octubre de 2026)
+## Estado actual (29 de octubre de 2026)
+
+**Para retomar (sesión del 29 de octubre):**
+1. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
+   datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
+   trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
+2. Después, el orden que se le recomendó al usuario el 29 de octubre (faltan
+   pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
+   homologación** (etapa E, punto 10) → **cierre** (punto 13). Voz y
+   WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
+   presentación, salvo que sobre tiempo.
+3. **ARCA: los trámites están completos** (certificado de homologación y
+   autorización a `wsfe`, ver "Trámites del usuario"). Se le explicó al
+   usuario que todavía no se factura: falta programar IVA y la conexión
+   (WSAA + WSFEv1). Con eso salen CAE de prueba, sin validez fiscal. La
+   facturación real (producción) es después de la presentación y pide el
+   CUIT de Nexo (decisión con un contador).
+4. Hecho en esta sesión: el código del mail (hist. §108) y la baja (hist.
+   §109). Falta que el usuario los pruebe en el sitio.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
 en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
@@ -54,9 +72,24 @@ términos (Fase 3 de 8b).
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
-- **Lo que sigue: la Fase 2 de la etapa 8b** (recuperar la contraseña). Las
-  Fases 1 (mail en la cuenta, hist. §102) y 1b (invitaciones, hist. §104)
-  están hechas.
+- **La etapa 8b está hecha:** Fases 1 (mail en la cuenta, hist. §102), 1b
+  (invitaciones, hist. §104), 2 (recuperar la contraseña, hist. §105), 3
+  (términos, privacidad y edad, hist. §106), el código del mail (hist. §108)
+  y 4 (la baja, hist. §109).
+- **Nuevo (29 de octubre, hist. §109):** Configuración → "Tus datos y la
+  baja" (descargar todo en JSON y dar de baja el negocio: cerrado 30 días,
+  cancelable, después se borra) y "Dar de baja mi cuenta" en Mi cuenta.
+  **Falta que el usuario lo vea.**
+- **Nuevo (29 de octubre, hist. §108):** el mail se confirma con un código
+  de 6 números antes de crear la cuenta, y antes de cambiarlo. Pedido del
+  usuario: con un mail ajeno se podía crear una cuenta igual. **Falta que el
+  usuario lo vea.**
+- **Para el usuario, de la Fase 3:** cargar `NEXO_TITULAR_NOMBRE`,
+  `NEXO_TITULAR_CUIL` y `NEXO_TITULAR_DOMICILIO` en el `.env` de su compu y en
+  `/etc/nexo/nexo.env` del servidor: sin ellos, `/terminos` y `/privacidad`
+  dicen "dato a completar". Y revisar los dos textos (son borradores). Al
+  publicar, **todas las cuentas** (la suya, la demo del profe) ven "Antes de
+  seguir" una vez y aceptan.
 - **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
   y cómo se ve. Desde el servidor salió otro el 27 de octubre.
 
@@ -93,8 +126,29 @@ la contraseña pierde su negocio.
   - Una cuenta sin ningún negocio entra igual: ve sus invitaciones y puede
     crear el suyo.
   - **Falta que el usuario lo vea.**
+- **Fase 2, hecha (hist. §105):** "¿Te olvidaste la contraseña?" en el
+  login, con un enlace por mail de un solo uso y 30 minutos. Usarlo cierra
+  todas las sesiones, confirma el mail y avisa. El admin ya no resetea la
+  contraseña de quien confirmó su mail. **Falta que el usuario lo vea.**
+- **Fase 3, hecha (hist. §106):** `/terminos` nueva y privacidad completa,
+  con los datos del titular desde `NEXO_TITULAR_*`. El alta y la cuenta por
+  invitación piden la edad y la casilla sin marcar; de 13 a 17 años, solo
+  Gratis. Una cuenta sin la versión vigente (`TERMINOS_VERSION` de
+  `backend/legal.js`) ve "Antes de seguir" y el backend no la deja operar
+  (403 `faltan_terminos`). Cambiar esa versión hace que todos vuelvan a
+  aceptar. **Falta que el usuario lo vea.**
 - **Pendiente nuevo (pedido del usuario del 28 de octubre): entrar con
   Google.** Está en "Qué sigue", 8b.
+- **Lo que encontró el hermano del usuario al crear su cuenta** (28 de
+  octubre; hist. §107):
+  - "Emprendimiento" no marcaba ninguna sección. Arreglado: ahora trae
+    Compras y Stock.
+  - **Pedido nuevo, para más adelante:** cargar lo que ya tiene un negocio
+    que existe (stock con costo, deudas, saldos, ventas recientes e importar
+    desde una planilla). Las decisiones del usuario y el diseño están en "Qué
+    sigue", 8c.
+  - **Investigado, para más adelante:** el cierre de caja con todos los
+    medios de pago, no solo el efectivo (8d, `docs/investigacion-caja.md`).
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
   frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
   topes.
@@ -214,9 +268,12 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta la publicación (PR #29). Los PR `solla` → `main`
-  los abre y mergea Claude con el CI en verde, por la API de GitHub (no hay
-  `gh`). Lo que llega a `main` se publica solo en unos 5 minutos.
+- `main` tiene todo hasta la Fase 1b (PR #30, publicado el 28 de octubre).
+- **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
+  cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
+  lo pide: Claude abre y mergea el PR con el CI en verde, por la API de
+  GitHub (no hay `gh`), y el servidor lo toma solo en unos 5 minutos.
+  Mientras tanto, el sitio público sigue en lo último que se mergeó.
 - `main` ya está mergeada en `solla` (los PR #24 y #25 pasaron la Etapa A y
   F0–F5). Pasar `solla` → `main` es por PR, y desde la Fase 4 el CI de GitHub
   Actions (`npm run lint` + `npm test`) corre en cada PR.
@@ -599,8 +656,23 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   `/auth/email`, `/auth/logout` y `/auth/cambiar-password`). `sesion.js` la
   manda a "Sumá tu mail" con `seguirCon()`: primero la contraseña forzada,
   después el mail.
+- **Un mail se confirma con un código antes de usarlo** (hist. §108, pedido
+  del usuario del 29 de octubre: "si pongo un mail que no es mío puedo crear
+  una cuenta igual"):
+  - el alta pide el código en su paso 2 y la cuenta nace confirmada.
+    `POST /api/auth/registro` exige `comprobante_email`, que da
+    `/registro/verificar` al acertar el código;
+  - cambiar o sumar el mail (Mi cuenta, "Sumá tu mail") manda el código al
+    mail nuevo (202), y el mail cambia recién con `/auth/email/confirmar`;
+  - tabla `codigos_mail`: 6 cifras, 15 minutos, 5 intentos, vale el último.
+    El comprobante dura 2 horas. Se manda **esperando** a Gmail (si falla,
+    503), no con `mandarSinEsperar`;
+  - `/registro/codigo` responde 204 exista o no la cuenta: si existe, a su
+    dueño le llega "Ya tenés una cuenta" en vez del código;
+  - sin mail configurado y fuera de producción, el código sale en la consola.
 - **Sin verificar se trabaja igual**, con el aviso en el Resumen y en Mi
-  cuenta. La verificación es un `GET /verificar-mail?token=`:
+  cuenta. Desde §108 eso solo le pasa a una cuenta de antes. La verificación
+  es un `GET /verificar-mail?token=` (lo manda "Mandarlo de nuevo"):
   - vale 48 h, y solo el último enlace;
   - deja de valer si la cuenta cambió de mail;
   - un enlace ya usado sigue diciendo "verificado".
@@ -614,8 +686,36 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Topes:** 5 envíos por hora y por cuenta (cambio y reenvío juntos), con
   `registroExcedido('mail:<id>')`.
 - **Tests:** el arnés corre con `NEXO_MAIL=stub` y lee los mails con
-  `leerMails()` y `ultimoEnlace()`. Cada cuenta del arnés es
-  `<usuario>@nexo.test`.
+  `leerMails()`, `ultimoEnlace()` y `codigoDelMail()`. Cada cuenta del arnés
+  es `<usuario>@nexo.test`. `registrarEmpresa(servidor, …)` recibe el
+  servidor (lee el código), no la URL; un alta a mano usa
+  `confirmarMailDeAlta()`.
+
+**La baja (hist. §109)**
+- **Qué es "del negocio" sale del esquema** (`backend/db/datos-negocio.js`):
+  toda tabla con `organizacion_id`, y las hijas sin la columna por sus FK.
+  La descarga y el borrado usan la misma cuenta, así una tabla nueva queda
+  cubierta sola. `usuarios`, `tokens_cuenta`, `codigos_mail` y
+  `organizaciones` son de la cuenta y no se tocan.
+- **Negocio en baja (`organizaciones.baja_pedida`):** `autenticar` responde
+  403 `negocio_en_baja` a todo salvo `/auth/*`, `/negocios*`,
+  `/negocio/baja/cancelar` y `/negocio/exportar`. `sesion.js` muestra la
+  pantalla que lo explica.
+- **El borrado** corre al arrancar y cada 6 horas (`borrarNegociosVencidos`),
+  a los `BAJA_DIAS` (30). Es una transacción con las FK apagadas y controla
+  que no queden FK rotas. La fila de `organizaciones` queda vacía
+  (`baja_hecha`), porque `usuarios.organizacion_id` la referencia. Queda una
+  fila de auditoría sin negocio.
+- **Baja de la cuenta:** no se borra la fila (la auditoría la referencia).
+  Se le sacan el nombre, el mail y la contraseña, y se tapa su mail en toda
+  la auditoría y su nombre y usuario en sus filas. No puede dejar un negocio
+  sin admin (409 `unico_admin`).
+- **`NEXO_REGISTRO=off`:** cierra el alta y el primer negocio de una cuenta
+  sin negocio. La primera cuenta de una instalación nueva se crea igual.
+  `GET /api/auth/estado` trae `registro_abierto`.
+- **Arnés:** `baja.test.js` reinicia el servidor sobre la misma base y en el
+  mismo puerto. `levantarServidor` devuelve la URL de su puerto, no la del
+  `PORT` que se le pasa.
 
 **Invitaciones y cuentas sin negocio (hist. §104)**
 - **A alguien se lo suma invitándolo** (`/api/invitaciones`, admin). No
@@ -913,9 +1013,9 @@ Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
 **Para cerrar la Etapa A** (`organizacion_id NOT NULL` y SKU por empresa ya
 están, hist. §65):
 1. Poder apagar el registro público por configuración (por ejemplo, en una
-   instalación de un solo comercio) y sumarle verificación de email o captcha.
-   Ninguna de las dos se hizo: requieren decisión y, la segunda, un servicio
-   externo.
+   instalación de un solo comercio): es la Fase 4 de 8b. La verificación del
+   mail ya está (hist. §108, código antes de crear la cuenta). El captcha no
+   se hizo: pediría un servicio externo.
 2. Si algún día dos empresas necesitan el mismo nombre de usuario, elegir entre
    `UNIQUE(organizacion_id, usuario)` con la empresa en el login, o login por
    email (hist. §45).
@@ -1127,9 +1227,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - ~~Fase 1b: invitaciones por mail desde Configuración y cuentas sin
      negocio~~ hecha (hist. §104), sin el rebuild de `usuarios` (no hizo
      falta: ver el §).
-   - Fase 2: recuperar la contraseña (`tokens_cuenta`, enlace de un solo uso
-     de 30 minutos). Con ella, el reseteo del admin pasa a ser solo para quien
-     no confirmó su mail.
+   - ~~Fase 2: recuperar la contraseña~~ hecha (hist. §105). El reseteo del
+     admin quedó solo para quien no confirmó su mail.
    - **Entrar con Google** (pedido del usuario del 28 de octubre, pendiente,
      sin fecha). Lo pensado:
      - gratis y sin dependencias: el botón de Google Identity Services y el
@@ -1143,10 +1242,88 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        el rebuild de `usuarios` (`organizacion_id` nulable);
      - trámite del usuario: el cliente OAuth en Google Cloud Console (gratis),
        con el dominio de Nexo.
-   - Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
-     su versión y la pregunta de edad.
-   - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.
+   - ~~Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
+     su versión y la pregunta de edad~~ hecha (hist. §106).
+   - ~~Fase 4: descargar los datos, dar de baja el negocio y
+     `NEXO_REGISTRO=off`~~ hecha (hist. §109), con la baja de la cuenta y el
+     campo trampa del alta. Para después: un mail de recordatorio unos días
+     antes del borrado.
    - Las migraciones son aditivas y están explicadas en el documento.
+8c. **Carga inicial: empezar con un negocio que ya existe** (pedido del
+   usuario del 28 de octubre, **no ahora**, sin fecha). Lo vio cuando su
+   hermano, que vende mates, tuvo que registrar una compra para cargar el
+   stock que ya tenía. La mayoría de los que usen Nexo ya tienen un negocio
+   andando: el primer día tienen que poder cargar lo que tienen, lo que les
+   deben y lo que deben, sin inventar compras ni ventas. Lo que ya hay hoy:
+   - el ajuste de stock (`POST /api/stock/ajuste`), que no lleva costo;
+   - el saldo inicial de las cuentas de tesorería;
+   - el tipo `ajuste` en las cuentas corrientes.
+
+   **Decidido por el usuario el 28 de octubre:**
+   - **La entrada:** una pregunta al final del alta y, además, un paso en la
+     guía de primeros pasos del Resumen. La pregunta, redactada:
+     - "¿Tu negocio ya venía funcionando?"
+     - Bajada: "Si ya tenías mercadería, clientes que te deben o plata en la
+       caja, cargalo ahora y Nexo arranca con tus números de hoy. Lo podés
+       hacer después."
+     - Opciones: "Sí, quiero cargar lo que ya tengo" y "No, arranco de cero".
+   - **Un apartado propio, "Lo que ya tenías"**, con una sección para cada
+     cosa, que se cargan en cualquier orden y muestran cuál falta:
+     - productos y stock;
+     - lo que te deben;
+     - lo que debés;
+     - la plata en la caja y en las cuentas;
+     - ventas recientes.
+   - **Importar desde una planilla: sí, sirve mucho.**
+   - **Las ventas de antes no son obligatorias.** Si las carga, elige desde
+     cuándo: esta semana, este mes o una fecha.
+
+   Diseño técnico pensado (se planifica antes de arrancar):
+   - **Stock inicial:** una planilla en pantalla, con una fila por producto
+     (los que ya están y el alta rápida en la misma fila), depósito, cantidad
+     y costo unitario.
+     - Cada fila es un movimiento de stock de origen `stock_inicial`, con su
+       costo unitario, que entra al costo promedio.
+     - No genera deuda ni toca la caja.
+     - **Esquema:** hay que sumar `stock_inicial` al `CHECK` de
+       `movimientos_stock.origen`. Es un rebuild (CLAUDE.md §34).
+   - **Lo que te deben y lo que debés:** por cliente o proveedor, el importe,
+     la fecha y el vencimiento.
+     - No sirve un `ajuste` suelto en la cuenta corriente: los cobros se
+       aplican a una venta, y el aging sale del vencimiento de las ventas.
+     - Por eso cada deuda nace como una "venta de saldo inicial" (y una
+       "compra de saldo inicial" para los proveedores). No mueven stock ni
+       caja, se cobran y se pagan con el circuito de siempre y aparecen en el
+       aging.
+   - **Caja y cuentas:** el saldo inicial de cada cuenta, que ya existe.
+   - **Ventas recientes:** ventas marcadas como de carga inicial.
+     - **No mueven stock:** el stock que se cargó ya es el de hoy.
+     - **No mueven caja:** la plata que se cargó ya es la de hoy.
+     - Cuentan en los reportes, así la primera semana o el primer mes no
+       arrancan vacíos.
+     - Una venta de antes que quedó sin cobrar **es** la deuda de ese cliente:
+       no se carga de nuevo en "Lo que te deben".
+   - **Importar:**
+     - productos (con stock y costo), clientes y proveedores (con su saldo);
+     - una planilla modelo para bajar;
+     - una vista previa con el error de cada fila antes de confirmar;
+     - el SKU identifica un producto que ya existe, y no se pisa nada sin
+       avisar.
+     - CSV sin dependencias. Para leer `.xlsx` directo, la opción es SheetJS
+       (gratis, Apache 2.0) en `js/vendor/`, que se baja solo en esa
+       pantalla.
+   - Solo para el admin, y queda en la auditoría.
+8d. **Caja con todos los medios de pago** (pedido del usuario del 28 de
+   octubre, sin fecha). Investigación y diseño en `docs/investigacion-caja.md`.
+   - Al abrir, solo el efectivo, como hoy (así hacen Fudo y Loyverse). Al
+     cerrar, cada medio con lo que dice Nexo, lo declarado (el efectivo
+     contado; el débito y el crédito, según el cierre de lote del posnet) y
+     la diferencia.
+   - Primero hace falta el medio de pago como entidad (`medios_pago` y
+     `cobros.medio_pago_id`; CLAUDE.md §3 y §9): hoy un cobro guarda la cuenta,
+     no con qué se pagó. Migración aditiva.
+   - Además, el arqueo ciego opcional y el aviso de un cobro cargado con el
+     medio equivocado.
 9. **C: IVA** (2 sesiones).
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
@@ -1159,6 +1336,12 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - La retención de Mercado Pago queda para después.
 10. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
    electrónica real contra el ambiente de prueba de ARCA, con CAE de prueba.
+   - **Los trámites ya están** (29 de octubre): la clave, el certificado y la
+     autorización a `wsfe` en `C:\Users\HP ULTRA 5\.nexo-arca\`. El CUIT para
+     WSAA es el CUIL de Santino (está en el `serialNumber` del certificado; no
+     va al repo). Para el backend, conviene leer las rutas del `.crt` y la
+     `.key` desde variables de entorno (por ejemplo `NEXO_ARCA_CERT` y
+     `NEXO_ARCA_KEY`), como el `.env` del mail.
    - Gratis.
    - WSAA + WSFEv1 implementados directo en el backend. No se usa AfipSDK: su
      producción pasa por una nube paga.
@@ -1232,21 +1415,36 @@ octubre).
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **ARCA (etapa 10):**
-  - clave fiscal nivel 3, la suya o la de un adulto; la app de ARCA la da
-    validando el DNI;
-  - adherir el servicio "WSASS – Autogestión Certificados Homologación";
-  - generar el certificado de prueba con el pedido (CSR) que se prepara acá, y
-    autorizarlo para el servicio "wsfe".
-  - **Quién (19 de octubre):** lo va a hacer el padre del usuario, que es
-    monotributista. Es un solo certificado de prueba para todos los negocios
-    de la demo, y no toca su monotributo real.
-    - Como es monotributista, las facturas de prueba salen C.
-    - Para mostrar también A y B, probar si homologación lo permite con su
-      CUIT.
+  - **Quién (cambiado el 28 de octubre, hist. §105):** Santino, con su propio
+    CUIL y su clave fiscal. Reemplaza al padre (19 de octubre). En ARCA no
+    hay "cuenta de Nexo": Nexo tendría CUIT propio solo como sociedad.
+    Homologación es gratis y no lo inscribe en ningún impuesto. Es un solo
+    certificado de prueba para todos los negocios de la demo.
+  - **Pasos que le pasé:**
+    1. Clave fiscal nivel 3 con la app Mi ARCA (DNI + selfie).
+    2. En arca.gob.ar, Administrador de Relaciones de Clave Fiscal → Adherir
+       servicio → ARCA → Servicios interactivos → "WSASS – Autogestión
+       Certificados Homologación". Salir y volver a entrar.
+    3. Pasarme su CUIL: acá se genera la clave privada y el pedido (CSR). La
+       clave no se versiona, igual que el `.env`.
+    4. En WSASS: Nuevo certificado (nombre `nexo-homologacion`), pegar el CSR
+       y pasarme el `.crt`.
+    5. En WSASS: Crear autorización a servicio, con ese certificado, el
+       servicio "wsfe" y su propio CUIL como representado.
+  - **Estado (29 de octubre):** pasos 1 a 4 hechos. El certificado de
+    homologación (alias `nexohomologacion`, sin guion, emitido por
+    "Computadores Test", vence el 28 de octubre de 2028) y su clave están en
+    `C:\Users\HP ULTRA 5\.nexo-arca\` (`nexo-homologacion.key`, `.csr` y
+    `.crt`), fuera del repo; se controló que la clave y el certificado son
+    pareja. Paso 5 hecho: autorización a `wsfe` con su propio CUIL como
+    representado (también quedaron, sin uso, autorizaciones a `arbccf` y
+    `wsfex`). **Los trámites de ARCA para homologación están completos.**
+  - Sin inscripción fiscal, qué letras deja emitir homologación (A, B o C) se
+    confirma en la primera prueba.
   - **Cómo se ve en la demo (decidido con el usuario el 19 de octubre):** es
     una presentación escolar pero seria, con directivos y padres.
     - La factura impresa lleva los datos del negocio de demo cargados en
-      Configuración, no los del padre: su CUIT es solo un dato interno.
+      Configuración, no los de Santino: su CUIL es solo un dato interno.
     - Todo comprobante emitido en homologación lleva la leyenda "Comprobante
       de prueba – sin validez fiscal".
     - Se intenta emitir A, B y C. Homologación en general no controla la
@@ -1256,16 +1454,18 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
       última red.
   - **En producción (decidido por el usuario el 19 de octubre):**
     - Nexo se inscribe en ARCA con su propio CUIT, clave fiscal nivel 3 y un
-      certificado de producción;
+      certificado de producción. Ese CUIT es el de Santino como
+      monotributista o el de una sociedad: cuesta plata por mes, así que se
+      decide con un contador después de la presentación;
     - cada cliente le delega el servicio wsfe a Nexo y emite con su propio
       CUIT, sin tener certificado.
     - Seguir soportando que un negocio suba su propio certificado.
     - CLAUDE.md §33 quedó corregido en ese sentido.
     - Que Nexo facture sus suscripciones (inscripción fiscal de Nexo) es
       aparte: hay que charlarlo con un contador.
-- **Dirección pública con HTTPS (etapa 11):** Mercado Libre, Tienda Nube y
-  WhatsApp le avisan a Nexo por webhook. Sin hosting pago: cuenta gratis de
-  ngrok con su dominio fijo, apuntando al servidor local.
+- **Dirección pública con HTTPS (etapa 11): ya está.** Mercado Libre, Tienda
+  Nube y WhatsApp le avisan a Nexo por webhook, y desde hist. §103 llegan
+  directo a https://nexosystem.duckdns.org. Ngrok ya no hace falta.
 - **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
   en su portal de desarrolladores.
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
@@ -1285,4 +1485,5 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   - catálogo de Instagram.
 - **Modularización F6–F13.** Se avanza cuando una etapa toca un dominio.
 - **Migrar a Postgres.**
-- **Registro público:** poder apagarlo y sumarle verificación.
+- **Registro público:** poder apagarlo (Fase 4 de 8b). El mail ya se
+  verifica con el código (hist. §108).

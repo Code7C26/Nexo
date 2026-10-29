@@ -38,6 +38,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
   'POST /api/auth/registro': 'publico',
+  // El código al mail del alta (hist. §108): todavía no hay cuenta.
+  'POST /api/auth/registro/codigo': 'publico',
+  'POST /api/auth/registro/verificar': 'publico',
   'GET /api/auth/tipos-negocio': 'publico',
   'GET /api/auth/planes': 'publico',
   'POST /api/publico/consulta': 'publico',
@@ -45,6 +48,11 @@ export const RUTAS_PERMISOS = {
   // ella, sin sesión. El token prueba que el mail es de quien lo tiene.
   'POST /api/auth/invitacion': 'publico',
   'POST /api/auth/invitacion/cuenta': 'publico',
+  // Recuperar la contraseña (hist. §105): quien la pide no puede entrar. El
+  // enlace del mail es el que prueba que la cuenta es suya.
+  'POST /api/auth/recuperar': 'publico',
+  'POST /api/auth/restablecer/enlace': 'publico',
+  'POST /api/auth/restablecer': 'publico',
   'GET /api/clientes': 'ambos',
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',
@@ -209,7 +217,12 @@ export const RUTAS_PERMISOS = {
   'POST /api/auth/cambiar-password': 'ambos',
   // El mail de la cuenta propia (hist. §102).
   'POST /api/auth/email': 'ambos',
+  'POST /api/auth/email/confirmar': 'ambos',
+  // Dar de baja la cuenta propia (hist. §109): es de la persona.
+  'POST /api/auth/baja-cuenta': 'ambos',
   'POST /api/auth/email/reenviar': 'ambos',
+  // Aceptar los términos vigentes (etapa 8b, Fase 3): de la persona.
+  'POST /api/auth/terminos': 'ambos',
   // Las invitaciones que recibió la cuenta (hist. §104): son de la persona, no
   // de un negocio, y también las alcanza una sesión sin negocio.
   'GET /api/auth/invitaciones': 'ambos',
@@ -227,6 +240,11 @@ export const RUTAS_PERMISOS = {
   'GET /api/negocio': 'ambos',
   'GET /api/negocio/primeros-pasos': 'admin',
   'PUT /api/negocio': 'admin',
+  // Descargar los datos y dar de baja el negocio (hist. §109): llevan costos
+  // y borran todo.
+  'GET /api/negocio/exportar': 'admin',
+  'POST /api/negocio/baja': 'admin',
+  'POST /api/negocio/baja/cancelar': 'admin',
   // Varios negocios por cuenta (hist. §77): ver los suyos y cambiar es de los
   // dos roles. Crear otro negocio es del admin, pero el control va adentro y no
   // como soloAdmin: una cuenta sin negocio crea el suyo (hist. §104).

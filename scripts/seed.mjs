@@ -49,7 +49,7 @@ export async function sembrar(url, { empresa = 'Baseline SA', prefijo = '', leer
   const p = prefijo ? `${prefijo}-` : '';
   const usuarios = { admin: `${p}admin1`, empleado: `${p}emp1` };
 
-  const admin = await registrarEmpresa(url, { empresa, usuario: usuarios.admin, password: PASSWORD_ADMIN });
+  const admin = await registrarEmpresa({ url, leerMails }, { empresa, usuario: usuarios.admin, password: PASSWORD_ADMIN });
   const empleado = await crearEmpleado({ url, leerMails }, admin, { usuario: usuarios.empleado, password: PASSWORD_EMPLEADO });
 
   // Catálogos base: los siembra el servidor para cada empresa nueva (hist. §49).

@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <!-- Política de privacidad (hist. §100). Es un borrador para que el equipo
-       lo revise: describe lo que Nexo hace hoy de verdad. Si cambia lo que se
-       guarda o a quién se le manda algo, se cambia acá. -->
+  <!-- Política de privacidad (hist. §100, completada en la etapa 8b, Fase 3).
+       Es un borrador para que el equipo lo revise: describe lo que Nexo hace
+       hoy de verdad. Si cambia lo que se guarda o a quién se le manda algo, se
+       cambia acá, y si el cambio es de fondo, con una TERMINOS_VERSION nueva
+       en backend/legal.js. Los %…% los completa server.js con legal.js. -->
   <title>Privacidad · Nexo</title>
   <meta name="description" content="Qué datos guarda Nexo, para qué, con quién los comparte y cómo pedir que los corrijan o los borren." />
   <meta name="theme-color" content="#000000" />
@@ -33,16 +35,30 @@
   <main id="contenido" class="legal">
     <div class="contenedor">
       <h1>Política de privacidad</h1>
-      <p class="actualizado">Última actualización: 27 de octubre de 2026</p>
+      <p class="actualizado">Vigente desde el %TERMINOS_FECHA%</p>
 
       <p>
         Nexo es un sistema de gestión para negocios. Esta página cuenta qué datos guardamos, para qué los
-        usamos y qué podés pedirnos sobre ellos. La escribimos para que se entienda sin ser abogado.
+        usamos y qué podés pedirnos sobre ellos. La escribimos para que se entienda sin ser abogado. Va junto
+        con los <a href="/terminos">términos y condiciones</a>.
+      </p>
+
+      <h2>Quién es el responsable</h2>
+      <p>
+        El responsable de los datos es %TITULAR_NOMBRE% (CUIL %TITULAR_CUIL%), con domicilio en
+        %TITULAR_DOMICILIO%. Para todo lo de esta página, escribinos a
+        <a href="mailto:%TITULAR_EMAIL%">%TITULAR_EMAIL%</a>.
+      </p>
+      <p>
+        Hay dos tipos de datos, y no es lo mismo con cada uno. De los de tu cuenta y de las consultas que nos
+        mandás, el responsable somos nosotros. De lo que tu negocio carga sobre sus clientes y proveedores,
+        el responsable es tu negocio, y nosotros lo guardamos por cuenta suya, solo para prestarle el
+        servicio, como prevé el artículo 25 de la Ley 25.326.
       </p>
 
       <h2>Qué datos guardamos</h2>
       <ul>
-        <li><strong>Tu cuenta:</strong> tu nombre, tu mail y tu contraseña. Con el mail entrás a Nexo y recuperás la cuenta, y solo lo usamos para mandarte lo de tu cuenta: el enlace para confirmarlo y los avisos de seguridad, como un cambio de mail. La contraseña se guarda cifrada con un método que no permite volver a leerla: ni nosotros la vemos.</li>
+        <li><strong>Tu cuenta:</strong> tu nombre, tu mail, tu contraseña, qué versión de estos textos aceptaste y cuándo, y si declaraste tener 18 años o más o entre 13 y 17 con permiso (no tu fecha de nacimiento). Con el mail entrás a Nexo y recuperás la cuenta, y solo lo usamos para mandarte lo de tu cuenta: el enlace para confirmarlo y los avisos de seguridad, como un cambio de mail. La contraseña se guarda cifrada con un método que no permite volver a leerla: ni nosotros la vemos.</li>
         <li><strong>Los datos de tu negocio:</strong> lo que cargás en Nexo (productos, clientes, proveedores, ventas, compras, caja, gastos, consultas). Son tuyos: los guardamos para que Nexo funcione, nada más.</li>
         <li><strong>El registro de cambios:</strong> quién hizo cada operación y cuándo, incluidas las entradas y salidas de la cuenta. Sirve para que el dueño del negocio sepa qué pasó.</li>
         <li><strong>Las consultas de esta página:</strong> si nos escribís desde el formulario de contacto, guardamos tu nombre, tu negocio, tu teléfono o mail y tu mensaje, para responderte.</li>
@@ -72,6 +88,11 @@
         nada solo: siempre te muestra lo que entendió y espera a que confirmes. Si no querés usarlo, el
         resto de Nexo funciona igual.
       </p>
+      <p>
+        Mientras Nexo use el plan gratuito de Gemini, Google puede usar lo que se le manda para mejorar sus
+        productos, y una persona de Google puede llegar a leerlo. Por eso, no escribas en el asistente datos
+        personales de nadie que no hagan falta para la operación.
+      </p>
 
       <h2>Los mails que te mandamos</h2>
       <p>
@@ -82,19 +103,43 @@
 
       <h2>Dónde se guardan y por cuánto tiempo</h2>
       <p>
-        Los datos se guardan en el servidor de Nexo, con un respaldo automático cada vez que el sistema
-        arranca. Los guardamos mientras tu cuenta exista. Para limitar los intentos de entrada fallidos
-        usamos la dirección IP de quien se conecta, solo en la memoria del servidor y por poco tiempo: no
-        la guardamos.
+        Los datos se guardan en el servidor de Nexo, alquilado a Oracle Cloud en San Pablo, Brasil, con un
+        respaldo automático todos los días. Los guardamos mientras tu cuenta y tu negocio existan; al darlos
+        de baja, se borran dentro de los 30 días. Para limitar los intentos de entrada fallidos usamos la
+        dirección IP de quien se conecta, solo en la memoria del servidor y por poco tiempo: no la guardamos.
+      </p>
+
+      <h2>A quién se le manda algo</h2>
+      <p>No le vendemos ni le damos tus datos a nadie. Para funcionar, Nexo usa servicios de afuera:</p>
+      <ul>
+        <li><strong>Oracle Cloud</strong> (Brasil), donde está el servidor: guarda todo, pero no lo usa.</li>
+        <li><strong>Google</strong> (Estados Unidos), por Gemini, para el asistente, y por Gmail, para los mails de tu cuenta, como cuentan las secciones de arriba.</li>
+      </ul>
+      <p>
+        Brasil y Estados Unidos están fuera de la Argentina, y Estados Unidos no tiene una ley de datos que la
+        Argentina considere equivalente. Al aceptar esta política, nos das tu permiso para mandar ahí lo
+        necesario para cada servicio, y nada más.
       </p>
 
       <h2>Tus derechos</h2>
       <p>
-        Podés pedirnos ver, corregir o borrar tus datos personales cuando quieras, como prevé la Ley 25.326
-        de Protección de los Datos Personales. Para hacerlo, escribinos desde el
-        <a href="/#contacto">formulario de contacto</a>. Si no te respondemos, podés presentar un reclamo
-        ante la Agencia de Acceso a la Información Pública (AAIP), el organismo que controla el
-        cumplimiento de esa ley.
+        Podés pedirnos ver, corregir o borrar tus datos personales cuando quieras, gratis, como prevé la Ley
+        25.326 de Protección de los Datos Personales. Para hacerlo, escribinos a
+        <a href="mailto:%TITULAR_EMAIL%">%TITULAR_EMAIL%</a> o desde el
+        <a href="/#contacto">formulario de contacto</a>. Te mostramos tus datos dentro de los 10 días corridos,
+        y los corregimos o borramos dentro de los 5 días hábiles. Tu nombre y tu mail también los cambiás vos
+        desde Mi cuenta, en Configuración.
+      </p>
+      <p>
+        Si no te respondemos, podés presentar un reclamo ante la Agencia de Acceso a la Información Pública
+        (AAIP), el organismo que controla el cumplimiento de esa ley.
+      </p>
+
+      <h2>Menores de edad</h2>
+      <p>
+        Nexo no es para menores de 13 años. Desde los 13 y hasta los 17 se puede usar con el permiso de la
+        madre, el padre o un tutor, que se declara al crear la cuenta. Si sos madre, padre o tutor de un menor
+        que usa Nexo, podés pedirnos ver o borrar su cuenta escribiéndonos al mail de arriba.
       </p>
       <p>
         Si usás Nexo para tu negocio, los datos de tus clientes los cargás vos: vos sos el responsable de
@@ -103,8 +148,8 @@
 
       <h2>Cambios en esta política</h2>
       <p>
-        Si cambia algo importante (por ejemplo, un servicio nuevo al que se le manden datos), lo vamos a
-        avisar adentro de Nexo y vamos a cambiar la fecha de arriba.
+        Si cambia algo importante (por ejemplo, un servicio nuevo al que se le manden datos), lo avisamos
+        adentro de Nexo, te pedimos que la vuelvas a aceptar y cambiamos la fecha de arriba.
       </p>
     </div>
   </main>
@@ -118,6 +163,7 @@
       <nav class="pie-nav" aria-label="Pie">
         <a href="/#planes">Planes</a>
         <a href="/#contacto">Contacto</a>
+        <a href="/terminos">Términos</a>
         <a href="/app">Entrar</a>
       </nav>
       <p class="pie-nota">Hecho en Argentina · Nexo</p>

@@ -29,8 +29,14 @@
   // script declara una variable con el mismo nombre.
   const formCambioForzado = document.getElementById("formCambioForzado");
   const formSumarMail = document.getElementById("formSumarMail");
+  const formSumarMailCodigo = document.getElementById("formSumarMailCodigo");
+  const formTerminos = document.getElementById("formTerminos");
   const sinNegocio = document.getElementById("sinNegocio");
+  const negocioBaja = document.getElementById("negocioBaja");
   const pantallaInvitacion = document.getElementById("invitacion");
+  const formRecuperar = document.getElementById("formRecuperar");
+  const recuperarEnviado = document.getElementById("recuperarEnviado");
+  const formRestablecer = document.getElementById("formRestablecer");
 
   let appInyectada = false;
 
@@ -78,6 +84,16 @@
         cerrarSesionLocal();
         mostrarPantalla("login");
       }
+    }
+    // Los términos cambiaron con la app abierta (etapa 8b, Fase 3): el backend
+    // frena todo con 403 hasta aceptarlos. Recargar pasa por seguirCon, que
+    // muestra la página para aceptarlos. Se mira una copia: el cuerpo sigue
+    // entero para quien llamó.
+    if (res.status === 403 && url.startsWith("/api/") && !url.startsWith("/api/auth/")) {
+      const cuerpo = await res.clone().json().catch(() => null);
+      // Lo mismo si otro admin dio de baja el negocio (hist. §109): recargar
+      // muestra la pantalla que lo explica.
+      if (cuerpo?.codigo === "faltan_terminos" || cuerpo?.codigo === "negocio_en_baja") location.reload();
     }
     if (res.status === 409 && res.headers.get("X-Nexo-Negocio-Cambiado")) {
       try {
@@ -173,15 +189,23 @@
     formLogin.hidden = cual !== "login";
     formCambioForzado.hidden = cual !== "cambio";
     formSumarMail.hidden = cual !== "mail";
+    formSumarMailCodigo.hidden = cual !== "mail-codigo";
+    formTerminos.hidden = cual !== "terminos";
     sinNegocio.hidden = cual !== "sin-negocio";
+    negocioBaja.hidden = cual !== "negocio-baja";
     pantallaInvitacion.hidden = cual !== "invitacion";
+    formRecuperar.hidden = cual !== "recuperar";
+    recuperarEnviado.hidden = cual !== "recuperar-enviado";
+    formRestablecer.hidden = cual !== "restablecer";
     if (cual === "mail") document.getElementById("sumarMailEmail").focus();
+    if (cual === "mail-codigo") document.getElementById("sumarMailCodigo").focus();
   }
 
   // Lo que falta antes de la app, en orden: la contraseña propia (cuando el
-  // admin la reseteó) y el mail (hist. §102: una cuenta de antes de §102 lo
-  // suma antes de operar; el backend tampoco la deja). Es el mismo camino
-  // después del login, del arranque con sesión y de cada paso completado.
+  // admin la reseteó), el mail (hist. §102: una cuenta de antes de §102 lo
+  // suma antes de operar; el backend tampoco la deja) y los términos vigentes
+  // (etapa 8b, Fase 3). Es el mismo camino después del login, del arranque con
+  // sesión y de cada paso completado.
   //
   // Después, una invitación que quedó por aceptar (se entró desde su enlace,
   // hist. §104), y una cuenta sin ningún negocio va a su pantalla en vez de a
@@ -191,7 +215,9 @@
     usuarioPendiente = usuario;
     if (usuario.debe_cambiar_password) mostrarPantalla("cambio");
     else if (!usuario.email) mostrarPantalla("mail");
+    else if (!usuario.terminos_al_dia) mostrarTerminos(usuario);
     else if (aceptarAlEntrar) aceptarYEntrar(usuario);
+    else if (usuario.negocio_en_baja) mostrarNegocioEnBaja(usuario);
     else if (usuario.organizacion_id == null) mostrarSinNegocio(usuario);
     else arrancarApp(usuario);
   }
@@ -396,26 +422,140 @@
     const boton = formSumarMail.querySelector('button[type="submit"]');
     boton.disabled = true;
     try {
-      const res = await fetchOriginal("/api/auth/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      const datos = await res.json();
-      if (!res.ok) {
-        mostrarErrorEn("sumarMailError", datos.error || "No se pudo guardar el mail.");
-        return;
-      }
-      guardarAviso(`Te mandamos un enlace a ${datos.usuario.email} para confirmarlo.`);
-      seguirCon({ ...usuarioPendiente, ...datos.usuario });
-    } catch {
-      mostrarErrorEn("sumarMailError", "No se pudo conectar con el servidor.");
+      const error = await mandarCodigoSumarMail(email);
+      if (error) return mostrarErrorEn("sumarMailError", error);
+      mostrarCodigoSumarMail(email);
     } finally {
       boton.disabled = false;
     }
   });
 
   document.getElementById("sumarMailSalir").addEventListener("click", () => window.nexoCerrarSesion());
+
+  // El código que llegó al mail que se suma (hist. §108): recién con él el
+  // mail queda en la cuenta. El campo lo arma core/codigo.js, que se baja
+  // recién acá, como core/aceptacion.js.
+  const inputCodigoSumarMail = document.getElementById("sumarMailCodigo");
+  const botonReenviarSumarMail = document.getElementById("sumarMailReenviar");
+  let mailPorSumar = null;
+  let cortarEsperaSumarMail = null;
+  let moduloCodigo = null;
+  const codigoUi = () =>
+    (moduloCodigo ??= import("./core/codigo.js").then((m) => {
+      m.prepararCampoCodigo(inputCodigoSumarMail, () => formSumarMailCodigo.requestSubmit());
+      return m;
+    }));
+
+  // Devuelve el error para mostrar, o null si el código salió.
+  async function mandarCodigoSumarMail(email) {
+    try {
+      const { res, datos } = await postJson("/api/auth/email", { email });
+      if (!res.ok) return datos.error || "No se pudo mandar el código.";
+      mailPorSumar = email;
+      inputCodigoSumarMail.value = "";
+      const { esperarParaReenviar } = await codigoUi();
+      cortarEsperaSumarMail?.();
+      cortarEsperaSumarMail = esperarParaReenviar(botonReenviarSumarMail);
+      return null;
+    } catch {
+      return "No se pudo conectar con el servidor.";
+    }
+  }
+
+  function mostrarCodigoSumarMail(email) {
+    const destacado = document.createElement("strong");
+    destacado.textContent = email;
+    document
+      .getElementById("sumarMailCodigoTexto")
+      .replaceChildren("Te mandamos un código de 6 números a ", destacado, ". Escribilo acá para confirmar que el mail es tuyo.");
+    ocultarErrorEn("sumarMailCodigoError");
+    mostrarPantalla("mail-codigo");
+  }
+
+  formSumarMailCodigo.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("sumarMailCodigoError");
+    const boton = formSumarMailCodigo.querySelector('button[type="submit"]');
+    if (boton.disabled) return;
+    if (!/^\d{6}$/.test(inputCodigoSumarMail.value)) {
+      return mostrarErrorEn("sumarMailCodigoError", "Escribí los 6 números del código que te mandamos.");
+    }
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/email/confirmar", { codigo: inputCodigoSumarMail.value });
+      if (!res.ok) {
+        mostrarErrorEn("sumarMailCodigoError", datos.error || "No se pudo confirmar el código.");
+        inputCodigoSumarMail.focus();
+        return;
+      }
+      cortarEsperaSumarMail?.();
+      guardarAviso(`Listo: tu mail ${datos.usuario.email} quedó confirmado.`);
+      seguirCon({ ...usuarioPendiente, ...datos.usuario });
+    } catch {
+      mostrarErrorEn("sumarMailCodigoError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  botonReenviarSumarMail.addEventListener("click", async () => {
+    ocultarErrorEn("sumarMailCodigoError");
+    botonReenviarSumarMail.disabled = true;
+    const error = await mandarCodigoSumarMail(mailPorSumar);
+    if (error) {
+      botonReenviarSumarMail.disabled = false;
+      return mostrarErrorEn("sumarMailCodigoError", error);
+    }
+    inputCodigoSumarMail.focus();
+  });
+
+  document.getElementById("sumarMailCambiar").addEventListener("click", () => {
+    ocultarErrorEn("sumarMailError");
+    mostrarPantalla("mail");
+  });
+
+  // ---------- Términos y edad (etapa 8b, Fase 3) ----------
+
+  // El bloque de la casilla y la edad lo maneja core/aceptacion.js, que se baja
+  // recién acá (como alta.js): quien ya aceptó nunca lo carga.
+  const aceptacion = () => import("./core/aceptacion.js");
+
+  // Una cuenta de antes, o todas cuando cambian los términos. Con la edad ya
+  // declarada, solo la casilla.
+  async function mostrarTerminos(usuario) {
+    const nueva = !usuario.edad;
+    document.getElementById("terminosTitulo").textContent = nueva ? "Antes de seguir" : "Cambiaron los términos";
+    document.getElementById("terminosTexto").textContent = nueva
+      ? "Escribimos los términos y la política de privacidad de Nexo: qué datos guardamos, para qué, y qué podés pedirnos. Leelos y aceptalos para seguir usando Nexo."
+      : "Actualizamos los términos o la política de privacidad de Nexo. Leelos y aceptalos para seguir usando Nexo.";
+    ocultarErrorEn("terminosError");
+    mostrarPantalla("terminos");
+    try {
+      (await aceptacion()).prepararAceptacion(formTerminos, { pedirEdad: nueva });
+    } catch {
+      mostrarErrorEn("terminosError", "No se pudo cargar la página. Recargá para probar de nuevo.");
+    }
+  }
+
+  formTerminos.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("terminosError");
+    const boton = formTerminos.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const respuesta = (await aceptacion()).leerAceptacion(formTerminos);
+      if (!respuesta) return;
+      const { res, datos } = await postJson("/api/auth/terminos", respuesta);
+      if (!res.ok) return mostrarErrorEn("terminosError", datos.error || "No se pudo guardar. Probá de nuevo.");
+      seguirCon({ ...usuarioPendiente, ...datos.usuario });
+    } catch {
+      mostrarErrorEn("terminosError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("terminosSalir").addEventListener("click", () => window.nexoCerrarSesion());
 
   // ---------- Invitaciones y cuentas sin negocio (hist. §104) ----------
 
@@ -522,6 +662,9 @@
         texto.textContent = `Te suma a su equipo como ${rol}. Creá tu cuenta para entrar: con ella vas a ingresar a Nexo.`;
         document.getElementById("invitacionEmail").value = info.email;
         mostrar("formInvitacionCuenta", true);
+        aceptacion()
+          .then((m) => m.prepararAceptacion(document.getElementById("formInvitacionCuenta")))
+          .catch(() => {});
       }
     }
     mostrarPantalla("invitacion");
@@ -589,7 +732,9 @@
     const boton = e.target.querySelector('button[type="submit"]');
     boton.disabled = true;
     try {
-      const { res, datos } = await postJson("/api/auth/invitacion/cuenta", { token: tokenInvitacion, nombre, password });
+      const respuesta = (await aceptacion()).leerAceptacion(e.target);
+      if (!respuesta) return;
+      const { res, datos } = await postJson("/api/auth/invitacion/cuenta", { token: tokenInvitacion, nombre, password, ...respuesta });
       if (res.status === 409) {
         // Ese mail ya tiene cuenta (la creó en otra pestaña): a ingresar.
         aceptarAlEntrar = tokenInvitacion;
@@ -682,7 +827,213 @@
     }
   }
 
+  // ---------- Recuperar la contraseña (hist. §105) ----------
+
+  // El enlace del mail: /app#/restablecer/<token>.
+  const tokenRestablecer = location.hash.match(/^#\/restablecer\/([A-Za-z0-9_-]+)$/)?.[1] ?? null;
+  const MAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function volverAlLogin(email) {
+    if (location.hash.startsWith("#/restablecer/")) history.replaceState(null, "", location.pathname + location.search);
+    if (email) document.getElementById("loginUsuario").value = email;
+    mostrarPantalla("login");
+    document.getElementById(email ? "loginPassword" : "loginUsuario").focus();
+  }
+
+  // Lleva lo que ya escribió en el login, si es un mail: una cuenta de antes
+  // de §102 pudo haber escrito su usuario.
+  function abrirRecuperar() {
+    ocultarErrorEn("recuperarError");
+    const escrito = document.getElementById("loginUsuario").value.trim();
+    const campo = document.getElementById("recuperarEmail");
+    if (MAIL_VALIDO.test(escrito)) campo.value = escrito;
+    mostrarPantalla("recuperar");
+    campo.focus();
+  }
+
+  document.getElementById("irARecuperar").addEventListener("click", abrirRecuperar);
+  document.getElementById("recuperarOtraVez").addEventListener("click", abrirRecuperar);
+  document.getElementById("restablecerPedirOtro").addEventListener("click", () => {
+    if (location.hash.startsWith("#/restablecer/")) history.replaceState(null, "", location.pathname + location.search);
+    abrirRecuperar();
+  });
+  pantalla.querySelectorAll("[data-volver-login]").forEach((b) => b.addEventListener("click", () => volverAlLogin()));
+
+  formRecuperar.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("recuperarError");
+    const email = document.getElementById("recuperarEmail").value.trim();
+    if (!MAIL_VALIDO.test(email)) {
+      mostrarErrorEn("recuperarError", "Revisá el mail: tiene que ser como nombre@dominio.com.");
+      return;
+    }
+    const boton = formRecuperar.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/recuperar", { email });
+      if (!res.ok) {
+        mostrarErrorEn("recuperarError", datos.error || "No se pudo mandar el enlace.");
+        return;
+      }
+      // El backend responde igual exista o no la cuenta: el texto también.
+      document.getElementById("recuperarEnviadoTexto").textContent =
+        `Si hay una cuenta de Nexo con ${email}, te llega un mail con un enlace para elegir una contraseña nueva. ` +
+        "Vence en 30 minutos. Si no lo ves en unos minutos, buscalo en el spam.";
+      mostrarPantalla("recuperar-enviado");
+    } catch {
+      mostrarErrorEn("recuperarError", sinRedNiSesion());
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  // Antes del formulario se pregunta si el enlace sirve, así quien toca uno
+  // vencido no escribe la contraseña de gusto.
+  async function mostrarRestablecer() {
+    const campos = document.getElementById("restablecerCampos");
+    ocultarErrorEn("restablecerError");
+    let enlace = null;
+    try {
+      const { res, datos } = await postJson("/api/auth/restablecer/enlace", { token: tokenRestablecer });
+      if (res.ok) enlace = datos;
+    } catch {
+      mostrarPantalla("login");
+      mostrarErrorEn("loginError", sinRedNiSesion());
+      return;
+    }
+    campos.hidden = !enlace;
+    document.getElementById("restablecerPedirOtro").hidden = !!enlace;
+    if (enlace) {
+      document.getElementById("restablecerEmail").value = enlace.email;
+    } else {
+      document.getElementById("restablecerTitulo").textContent = "Este enlace ya no sirve";
+      document.getElementById("restablecerTexto").textContent =
+        "Venció (dura 30 minutos), ya se usó o pediste uno más nuevo. Pedí otro y usá el último que te llegue.";
+    }
+    mostrarPantalla("restablecer");
+    if (enlace) document.getElementById("restablecerPassword").focus();
+  }
+
+  formRestablecer.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("restablecerError");
+    const password = document.getElementById("restablecerPassword").value;
+    if (password.length < 8) {
+      mostrarErrorEn("restablecerError", "La contraseña tiene que tener al menos 8 caracteres.");
+      return;
+    }
+    const boton = formRestablecer.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/restablecer", { token: tokenRestablecer, password });
+      if (res.status === 410) {
+        // Venció mientras escribía: la misma página que un enlace vencido.
+        await mostrarRestablecer();
+        return;
+      }
+      if (!res.ok) {
+        mostrarErrorEn("restablecerError", datos.error || "No se pudo guardar la contraseña.");
+        return;
+      }
+      // Cerró todas las sesiones, también la de este navegador si había una.
+      cerrarSesionLocal();
+      document.getElementById("restablecerPassword").value = "";
+      volverAlLogin(datos.email);
+      const aviso = document.getElementById("loginAviso");
+      aviso.textContent = "Listo: tu contraseña cambió. Entrá con la nueva.";
+      aviso.classList.remove("is-error");
+      aviso.hidden = false;
+    } catch {
+      mostrarErrorEn("restablecerError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
   document.getElementById("sinNegocioCrear").addEventListener("click", () => abrirAlta({ primerNegocio: true }));
+
+  // ---------- Negocio en baja (etapa 8b, Fase 4, hist. §109) ----------
+
+  // El negocio en el que entró se está dando de baja: nadie lo usa. Un admin
+  // la cancela o baja los datos; cualquiera puede ir a otro de sus negocios.
+  async function mostrarNegocioEnBaja(usuario) {
+    const { nombre, se_borra: seBorra } = usuario.negocio_en_baja;
+    const fecha = seBorra.split("-").reverse().join("/");
+    const admin = usuario.rol === "admin";
+    document.getElementById("negocioBajaTitulo").textContent = `${nombre} se está dando de baja`;
+    document.getElementById("negocioBajaTexto").textContent = admin
+      ? `Nadie del equipo lo puede usar. El ${fecha} se borra todo lo que tiene. Si te arrepentiste, cancelá la baja y sigue todo como estaba.`
+      : `Quien lo administra pidió darlo de baja, así que nadie lo puede usar. El ${fecha} se borran sus datos. Si es un error, avisale para que la cancele.`;
+    document.getElementById("negocioBajaCancelar").hidden = !admin;
+    document.getElementById("negocioBajaDescargar").hidden = !admin;
+    ocultarErrorEn("negocioBajaError");
+    mostrarPantalla("negocio-baja");
+
+    let otros = [];
+    try {
+      const res = await fetchOriginal("/api/negocios");
+      if (res.ok) otros = (await res.json()).filter((n) => !n.actual && !n.se_borra);
+    } catch {}
+    document.getElementById("negocioBajaLista").replaceChildren(
+      ...otros.map((n) => {
+        const item = document.createElement("li");
+        item.className = "solicitud";
+        const textos = document.createElement("p");
+        const titulo = document.createElement("strong");
+        titulo.textContent = n.nombre;
+        const tipo = document.createElement("span");
+        tipo.textContent = n.tipo;
+        textos.append(titulo, tipo);
+        const ir = document.createElement("button");
+        ir.type = "button";
+        ir.className = "btn btn-secundario";
+        ir.textContent = "Entrar";
+        ir.addEventListener("click", async () => {
+          ir.disabled = true;
+          const { res } = await postJson(`/api/negocios/${n.id}/entrar`).catch(() => ({ res: null }));
+          if (res?.ok) return location.reload();
+          ir.disabled = false;
+          mostrarErrorEn("negocioBajaError", "No se pudo entrar a ese negocio. Probá de nuevo.");
+        });
+        item.append(textos, ir);
+        return item;
+      })
+    );
+    document.getElementById("negocioBajaOtros").hidden = otros.length === 0;
+  }
+
+  document.getElementById("negocioBajaCancelar").addEventListener("click", async (e) => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    ocultarErrorEn("negocioBajaError");
+    try {
+      const { res, datos } = await postJson("/api/negocio/baja/cancelar");
+      if (!res.ok) return mostrarErrorEn("negocioBajaError", datos.error || "No se pudo cancelar la baja.");
+      guardarAviso("Listo: cancelaste la baja. El negocio sigue como estaba.");
+      location.reload();
+    } catch {
+      mostrarErrorEn("negocioBajaError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("negocioBajaDescargar").addEventListener("click", async (e) => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    ocultarErrorEn("negocioBajaError");
+    try {
+      const { descargarDatosDelNegocio } = await import("./core/descarga-datos.js");
+      const fallo = await descargarDatosDelNegocio();
+      if (fallo) mostrarErrorEn("negocioBajaError", fallo);
+    } catch {
+      mostrarErrorEn("negocioBajaError", "No se pudo descargar. Recargá la página para probar de nuevo.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("negocioBajaSalir").addEventListener("click", () => window.nexoCerrarSesion());
   document.getElementById("sinNegocioSalir").addEventListener("click", () => window.nexoCerrarSesion());
 
   // El toast que muestra la app al cargar (dominios/negocios.js). Con
@@ -713,17 +1064,28 @@
       const res = await fetchOriginal("/api/auth/estado");
       revisarConexion(res);
       const estado = await res.json();
+      // Con NEXO_REGISTRO=off (hist. §109) no se ofrece crear una cuenta ni
+      // un negocio propio: en esa instalación se entra por invitación.
+      if (estado.registro_abierto === false) {
+        document.getElementById("irARegistro").hidden = true;
+        document.getElementById("sinNegocioCrear").hidden = true;
+      }
       if (estado.requiere_bootstrap) {
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
         // no ofrece "Ya tengo cuenta".
         abrirAlta({ instalacionNueva: true });
+      } else if (tokenRestablecer) {
+        // El enlace para elegir otra contraseña (hist. §105), con sesión o
+        // sin ella: guardarla cierra todas.
+        if (!estado.autenticado) cerrarSesionLocal();
+        mostrarRestablecer();
       } else if (tokenInvitacion) {
         // El enlace de una invitación (hist. §104). Con sesión, los pasos
         // obligatorios van antes: la invitación se acepta después.
         if (!estado.autenticado) {
           cerrarSesionLocal();
           mostrarInvitacion(null);
-        } else if (estado.usuario.debe_cambiar_password || !estado.usuario.email) {
+        } else if (estado.usuario.debe_cambiar_password || !estado.usuario.email || !estado.usuario.terminos_al_dia) {
           aceptarAlEntrar = tokenInvitacion;
           seguirCon(estado.usuario);
         } else {
@@ -734,8 +1096,21 @@
         cerrarSesionLocal();
         // #/crear-cuenta es el enlace para crear una cuenta (por ejemplo,
         // desde la página pública).
-        if (location.hash.startsWith("#/crear-cuenta")) abrirAlta();
+        if (location.hash.startsWith("#/crear-cuenta") && estado.registro_abierto !== false) abrirAlta();
         else mostrarPantalla("login");
+        // Lo que pasó antes de volver al login: por ahora, la baja de la
+        // cuenta (dominios/perfil.js).
+        let avisoLogin = null;
+        try {
+          avisoLogin = sessionStorage.getItem("nexo.avisoLogin");
+          sessionStorage.removeItem("nexo.avisoLogin");
+        } catch {}
+        if (avisoLogin) {
+          const aviso = document.getElementById("loginAviso");
+          aviso.textContent = avisoLogin;
+          aviso.classList.remove("is-error");
+          aviso.hidden = false;
+        }
         // Tocó el enlace del mail desde un dispositivo sin sesión.
         if (resultadoMail) {
           const aviso = document.getElementById("loginAviso");

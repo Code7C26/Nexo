@@ -921,7 +921,13 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- (AAAA-MM-DD). NULL en plan_vence es que no vence; vencido, el negocio
   -- queda en Gratis sin perder nada.
   plan TEXT NOT NULL DEFAULT 'gratis',
-  plan_vence TEXT
+  plan_vence TEXT,
+  -- La baja (etapa 8b, Fase 4, hist. §109): cuándo la pidió un admin (el
+  -- negocio queda cerrado y se puede volver atrás) y cuándo se borraron sus
+  -- datos, a los 30 días. La fila queda, sin sus datos, porque
+  -- usuarios.organizacion_id la referencia.
+  baja_pedida TEXT,
+  baja_hecha TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
@@ -954,7 +960,18 @@ CREATE TABLE IF NOT EXISTS usuarios (
   -- tocó el enlace, y vuelve a NULL si el mail cambia. El índice único va en
   -- db/index.js, después del ALTER que suma estas columnas.
   email TEXT,
-  email_verificado TEXT
+  email_verificado TEXT,
+  -- Términos y edad (etapa 8b, Fase 3): qué versión de los términos aceptó
+  -- (TERMINOS_VERSION de backend/legal.js), cuándo, y qué declaró sobre su
+  -- edad. NULL en las cuentas de antes, que los aceptan al entrar. No se
+  -- guarda la fecha de nacimiento: solo si es mayor o menor con permiso.
+  terminos_version TEXT,
+  terminos_aceptados TEXT,
+  edad TEXT CHECK (edad IN ('mayor', 'menor_autorizado')),
+  -- Cuándo la persona dio de baja su cuenta (hist. §109). La fila no se
+  -- borra (la auditoría la referencia): se le sacan el nombre, el mail y la
+  -- contraseña.
+  baja TEXT
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas
@@ -979,6 +996,31 @@ CREATE TABLE IF NOT EXISTS tokens_cuenta (
   usado TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tokens_cuenta_usuario ON tokens_cuenta(usuario_id, tipo);
+
+-- Códigos de 6 números que se mandan por mail para probar que el mail es de
+-- quien lo escribió ANTES de usarlo (hist. §108): al crear una cuenta
+-- (usuario_id NULL: todavía no existe) y al cambiar el mail de una cuenta
+-- (con usuario_id; el mail nuevo se guarda recién al confirmar). Vale solo el
+-- último código sin confirmar de cada mail (o cuenta) y propósito, 15 minutos
+-- y 5 intentos. Al acertar el del alta se entrega un comprobante
+-- (comprobante_hash, SHA-256 como tokens_cuenta) que POST /api/auth/registro
+-- gasta al crear la cuenta; `vence` pasa a ser el del comprobante. Es de la
+-- persona y no de un negocio, por eso no lleva organizacion_id. Horas en UTC.
+CREATE TABLE IF NOT EXISTS codigos_mail (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  proposito TEXT NOT NULL CHECK (proposito IN ('registro','cambiar_email')),
+  usuario_id INTEGER REFERENCES usuarios(id),
+  email TEXT NOT NULL,
+  codigo_hash TEXT NOT NULL,
+  intentos INTEGER NOT NULL DEFAULT 0,
+  creado TEXT NOT NULL DEFAULT (datetime('now')),
+  vence TEXT NOT NULL,
+  confirmado TEXT,
+  comprobante_hash TEXT UNIQUE,
+  usado TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_codigos_mail_email ON codigos_mail(email, proposito);
+CREATE INDEX IF NOT EXISTS idx_codigos_mail_usuario ON codigos_mail(usuario_id, proposito);
 
 -- En qué negocios trabaja cada usuario, y con qué rol en cada uno (CLAUDE.md
 -- §28, hist. §77): un dueño con un comercio y un gimnasio entra con un solo

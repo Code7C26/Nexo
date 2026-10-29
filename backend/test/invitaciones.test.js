@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { crearCliente, levantarServidor, registrarEmpresa, tokenDeInvitacion, ultimoEnlace } from './servidor-de-prueba.js';
+import { ACEPTA, crearCliente, levantarServidor, registrarEmpresa, tokenDeInvitacion, ultimoEnlace } from './servidor-de-prueba.js';
 
 let servidor;
 let admin;
@@ -18,9 +18,9 @@ let otraAdmin;
 
 before(async () => {
   servidor = await levantarServidor();
-  admin = await registrarEmpresa(servidor.url, { empresa: 'Kiosco Lucía', usuario: 'lucia', nombre: 'Lucía' });
+  admin = await registrarEmpresa(servidor, { empresa: 'Kiosco Lucía', usuario: 'lucia', nombre: 'Lucía' });
   negocioId = (await admin.get('/api/negocio')).json.id;
-  otraAdmin = await registrarEmpresa(servidor.url, { empresa: 'Taller Otro', usuario: 'otra', nombre: 'Otra' });
+  otraAdmin = await registrarEmpresa(servidor, { empresa: 'Taller Otro', usuario: 'otra', nombre: 'Otra' });
 });
 
 after(async () => {
@@ -64,8 +64,8 @@ test('invitar a un mail sin cuenta: crea la cuenta desde el enlace y entra al ne
   );
 
   const mati = crearCliente(servidor.url);
-  assert.equal((await mati.post('/api/auth/invitacion/cuenta', { token, nombre: 'Mati', password: 'corta' })).status, 400);
-  const cuenta = await mati.post('/api/auth/invitacion/cuenta', { token, nombre: 'Mati', password: 'clave-segura-3' });
+  assert.equal((await mati.post('/api/auth/invitacion/cuenta', { ...ACEPTA, token, nombre: 'Mati', password: 'corta' })).status, 400);
+  const cuenta = await mati.post('/api/auth/invitacion/cuenta', { ...ACEPTA, token, nombre: 'Mati', password: 'clave-segura-3' });
   assert.equal(cuenta.status, 201, cuenta.texto);
   assert.equal(cuenta.json.usuario.rol, 'empleado');
   assert.equal(cuenta.json.usuario.organizacion_id, negocioId);
@@ -81,7 +81,7 @@ test('invitar a un mail sin cuenta: crea la cuenta desde el enlace y entra al ne
 
   // El enlace ya no sirve, y la invitación sale de pendientes.
   assert.equal((await verInvitacion(token)).json.estado, 'aceptada');
-  assert.equal((await mati.post('/api/auth/invitacion/cuenta', { token, nombre: 'Mati', password: 'clave-segura-3' })).status, 410);
+  assert.equal((await mati.post('/api/auth/invitacion/cuenta', { ...ACEPTA, token, nombre: 'Mati', password: 'clave-segura-3' })).status, 410);
   assert.deepEqual((await admin.get('/api/invitaciones')).json, []);
   assert.ok((await admin.get('/api/usuarios')).json.some((u) => u.email === 'mati@nexo.test' && u.rol === 'empleado'));
 
@@ -95,8 +95,12 @@ test('invitar a un mail sin cuenta: crea la cuenta desde el enlace y entra al ne
 });
 
 test('quien ya tiene cuenta la ve en Nexo con su mail confirmado, y al aceptar pasa a ese negocio', async () => {
-  // La admin de otro negocio, todavía sin confirmar su mail. El enlace de
-  // verificación se toma antes: después, su último mail es la invitación.
+  // La admin de otro negocio, todavía sin confirmar su mail: una cuenta de
+  // antes de hist. §108 (desde ahí nacen confirmadas). El enlace de
+  // verificación se pide y se toma antes: después, su último mail es la
+  // invitación.
+  enLaBase("UPDATE usuarios SET email_verificado = NULL WHERE email = 'otra@nexo.test'");
+  assert.equal((await otraAdmin.post('/api/auth/email/reenviar')).status, 204);
   const verificacion = ultimoEnlace(servidor, 'otra@nexo.test');
   const r = await admin.post('/api/invitaciones', { email: 'otra@nexo.test', rol: 'admin' });
   assert.equal(r.status, 201, r.texto);
@@ -148,7 +152,7 @@ test('volver a invitar reenvía con un enlace nuevo; cancelar y vencer lo dejan 
   enLaBase("UPDATE invitaciones SET enviada = datetime('now', '-15 days') WHERE id = ?", primera.json.id);
   assert.equal((await verInvitacion(tokenNuevo)).json.estado, 'vencida');
   assert.equal((await admin.get('/api/invitaciones')).json.find((i) => i.id === primera.json.id).estado, 'vencida');
-  const tarde = await crearCliente(servidor.url).post('/api/auth/invitacion/cuenta', { token: tokenNuevo, nombre: 'Nico', password: 'clave-segura-4' });
+  const tarde = await crearCliente(servidor.url).post('/api/auth/invitacion/cuenta', { ...ACEPTA, token: tokenNuevo, nombre: 'Nico', password: 'clave-segura-4' });
   assert.equal(tarde.status, 410);
 
   // Reenviarla la renueva.
@@ -159,7 +163,7 @@ test('volver a invitar reenvía con un enlace nuevo; cancelar y vencer lo dejan 
   // Cancelada: el enlace la muestra así y ya no crea la cuenta.
   assert.equal((await admin.post(`/api/invitaciones/${primera.json.id}/cancelar`)).status, 204);
   assert.equal((await verInvitacion(renovado)).json.estado, 'cancelada');
-  const cancelada = await crearCliente(servidor.url).post('/api/auth/invitacion/cuenta', { token: renovado, nombre: 'Nico', password: 'clave-segura-4' });
+  const cancelada = await crearCliente(servidor.url).post('/api/auth/invitacion/cuenta', { ...ACEPTA, token: renovado, nombre: 'Nico', password: 'clave-segura-4' });
   assert.equal(cancelada.status, 410);
   assert.equal((await admin.post(`/api/invitaciones/${primera.json.id}/cancelar`)).status, 404, 'ya no está pendiente');
 
@@ -171,7 +175,7 @@ test('volver a invitar reenvía con un enlace nuevo; cancelar y vencer lo dejan 
 
 test('aceptar desde el enlace con la sesión abierta: tiene que ser su mail, y lo deja confirmado', async () => {
   // Una cuenta con negocio propio y el mail sin confirmar.
-  const pablo = await registrarEmpresa(servidor.url, { empresa: 'Verdulería Pablo', usuario: 'pablo', nombre: 'Pablo' });
+  const pablo = await registrarEmpresa(servidor, { empresa: 'Verdulería Pablo', usuario: 'pablo', nombre: 'Pablo' });
   assert.equal((await admin.post('/api/invitaciones', { email: 'pablo@nexo.test' })).status, 201);
   const token = tokenDeInvitacion(servidor, 'pablo@nexo.test');
 
@@ -181,7 +185,7 @@ test('aceptar desde el enlace con la sesión abierta: tiene que ser su mail, y l
   assert.equal(ajena.json.codigo, 'otro_mail');
 
   // Crear una cuenta nueva con ese mail tampoco: ya tiene.
-  assert.equal((await crearCliente(servidor.url).post('/api/auth/invitacion/cuenta', { token, nombre: 'P', password: 'clave-segura-5' })).status, 409);
+  assert.equal((await crearCliente(servidor.url).post('/api/auth/invitacion/cuenta', { ...ACEPTA, token, nombre: 'P', password: 'clave-segura-5' })).status, 409);
 
   const acepta = await pablo.post('/api/auth/invitacion/aceptar', { token });
   assert.equal(acepta.status, 200, acepta.texto);
@@ -209,7 +213,7 @@ test('rechazar: la solicitud se va y el negocio lo ve en la auditoría', async (
 test('una cuenta sin ningún negocio entra igual, solo alcanza su cuenta y puede crear el suyo', async () => {
   assert.equal((await admin.post('/api/invitaciones', { email: 'sol@nexo.test' })).status, 201);
   const sol = crearCliente(servidor.url);
-  const cuenta = await sol.post('/api/auth/invitacion/cuenta', {
+  const cuenta = await sol.post('/api/auth/invitacion/cuenta', { ...ACEPTA,
     token: tokenDeInvitacion(servidor, 'sol@nexo.test'),
     nombre: 'Sol',
     password: 'clave-segura-6'
@@ -263,7 +267,7 @@ test('un empleado no invita ni crea negocios, y el alta con usuario y contraseñ
 });
 
 test('en Gratis no se invita: el plan es de un solo usuario', async () => {
-  const solo = await registrarEmpresa(servidor.url, { empresa: 'Medialunas', usuario: 'tomi', plan: 'gratis' });
+  const solo = await registrarEmpresa(servidor, { empresa: 'Medialunas', usuario: 'tomi', plan: 'gratis' });
   const r = await solo.post('/api/invitaciones', { email: 'ayuda@nexo.test' });
   assert.equal(r.status, 403, r.texto);
   assert.equal(r.json.codigo, 'limite_plan');
