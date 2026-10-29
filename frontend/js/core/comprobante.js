@@ -5,7 +5,7 @@
  */
 
 import { esc, fechaAR, money, numero } from "./formato.js";
-import { condicionFiscal } from "./fiscal.js";
+import { condicionFiscal, condicionIvaCliente } from "./fiscal.js";
 import { negocio } from "./negocio.js";
 import { avisar } from "./ui.js";
 
@@ -34,17 +34,37 @@ const lineaSiHay = (etiqueta, valor) =>
 // OJO con los nombres: el parámetro del número de comprobante NO puede
 // llamarse `numero`, porque sombrearía al helper de formato numero() que esta
 // misma función usa para las cantidades (y tirar "numero is not a function").
-export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra }) {
+//
+// `iva` es solo de una factura o nota (hist. §113): { letra, importe,
+// condicionCliente }. La A discrimina el IVA debajo de los renglones; la B de
+// un inscripto informa el IVA contenido (Ley 27.743, transparencia fiscal al
+// consumidor). Un presupuesto no lo pasa.
+function lineasDeIva(iva, total) {
+  if (!iva) return "";
+  if (iva.letra === "A") {
+    return `
+      <p class="hoja-subtotal"><span>Neto gravado</span> <span>${money(total - iva.importe)}</span></p>
+      <p class="hoja-subtotal"><span>IVA</span> <span>${money(iva.importe)}</span></p>`;
+  }
+  return iva.importe > 0
+    ? `<p class="hoja-subtotal"><span>IVA contenido (Ley 27.743)</span> <span>${money(iva.importe)}</span></p>`
+    : "";
+}
+
+export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra, iva }) {
+  // En la A los renglones van sin IVA, para que sumen el neto gravado.
+  const sinIva = iva?.letra === "A";
   const filas = items
-    .map(
-      (i) => `
+    .map((i) => {
+      const subtotal = i.cantidad * i.precio_unitario - (sinIva ? i.iva ?? 0 : 0);
+      return `
         <tr>
           <td>${esc(i.producto)}</td>
           <td class="num">${numero(i.cantidad)}</td>
-          <td class="num">${money(i.precio_unitario)}</td>
-          <td class="num">${money(i.cantidad * i.precio_unitario)}</td>
-        </tr>`
-    )
+          <td class="num">${money(subtotal / i.cantidad)}</td>
+          <td class="num">${money(subtotal)}</td>
+        </tr>`;
+    })
     .join("");
 
   return `
@@ -70,6 +90,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
         <p class="hoja-etiqueta">Cliente</p>
         <p class="hoja-cliente-nombre">${esc(cliente.nombre)}</p>
         ${lineaSiHay("CUIT/DNI:", cliente.documento)}
+        ${iva ? lineaSiHay("IVA:", condicionIvaCliente(iva.condicionCliente)) : ""}
         ${lineaSiHay("", cliente.direccion)}
         ${lineaSiHay("Tel:", cliente.telefono)}
         ${lineaSiHay("", cliente.email)}
@@ -87,6 +108,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
         <tbody>${filas}</tbody>
       </table>
 
+      ${lineasDeIva(iva, total)}
       <p class="hoja-total"><span>Total</span> <strong>${money(total)}</strong></p>
 
       ${notas ? `<section class="hoja-notas"><p class="hoja-etiqueta">Notas</p><p>${esc(notas)}</p></section>` : ""}

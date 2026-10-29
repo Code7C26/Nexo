@@ -46,10 +46,10 @@ CREATE TABLE IF NOT EXISTS facturas (
   condicion TEXT NOT NULL CHECK (condicion IN ('efectivo', 'transferencia', 'mercadopago')),
   estado TEXT NOT NULL CHECK (estado IN ('cobrado', 'pendiente', 'vencido')),
   fecha TEXT NOT NULL DEFAULT (date('now')),
-  -- Estructura de comprobante fiscal (CLAUDE.md §16), sin IVA todavía
-  -- (fuera de V1) y sin conexión real a ARCA: deja la numeración lista
-  -- para cuando se conecte, sin tener que volver a migrar sobre datos
-  -- ya cargados.
+  -- Estructura de comprobante fiscal (CLAUDE.md §16), sin conexión real a
+  -- ARCA todavía: deja la numeración lista para cuando se conecte, sin tener
+  -- que volver a migrar sobre datos ya cargados. La letra la decide
+  -- letraQueCorresponde() (iva.js) cuando el negocio cargó su condición.
   tipo TEXT NOT NULL DEFAULT 'factura' CHECK (tipo IN ('factura', 'nota_credito', 'nota_debito')),
   letra TEXT NOT NULL DEFAULT 'B' CHECK (letra IN ('A', 'B', 'C')),
   punto_venta INTEGER NOT NULL DEFAULT 1,
@@ -72,7 +72,10 @@ CREATE TABLE IF NOT EXISTS facturas (
   -- idx_facturas_devolucion_id): no pueden vivir acá porque en una base
   -- vieja estas columnas todavía no existen cuando corre este archivo.
   venta_id INTEGER REFERENCES ventas(id),
-  devolucion_id INTEGER REFERENCES devoluciones(id)
+  devolucion_id INTEGER REFERENCES devoluciones(id),
+  -- El IVA contenido en `neto`, que es el total (hist. §113): neto gravado =
+  -- neto − iva. 0 si el negocio no discrimina IVA o si es anterior.
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Solo un nivel por ahora (sin subcategoría): CLAUDE.md §3/§4 las
@@ -333,7 +336,12 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- recalcula nunca después, aunque el costo del producto cambie con
   -- compras posteriores: es lo que permite calcular márgenes históricos
   -- reales en vez de con el costo actual.
-  costo_unitario_historico REAL NOT NULL DEFAULT 0
+  costo_unitario_historico REAL NOT NULL DEFAULT 0,
+  -- Foto de la alícuota del producto (clave de ALICUOTAS_IVA en iva.js) y el
+  -- IVA incluido en cantidad × precio (hist. §113). Alícuota NULL = no se
+  -- discriminó: el negocio no es inscripto, o la venta es anterior.
+  alicuota_iva TEXT,
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
@@ -377,7 +385,10 @@ CREATE TABLE IF NOT EXISTS presupuesto_items (
   producto_id INTEGER NOT NULL REFERENCES productos(id),
   variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
-  precio_unitario REAL NOT NULL
+  precio_unitario REAL NOT NULL,
+  -- Igual que en venta_items (hist. §113).
+  alicuota_iva TEXT,
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Una devolución revierte parte (o todo) de una venta ya confirmada:

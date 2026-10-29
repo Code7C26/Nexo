@@ -11,6 +11,7 @@ import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
 import { TERMINOS_VERSION, completarPaginaLegal, titularIncompleto, validarAceptacion } from './legal.js';
+import { ALICUOTAS_IVA, discriminaIva, ivaDelRenglon, ivaIncluido, letraQueCorresponde } from './iva.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -2133,6 +2134,24 @@ function siguienteNumero(organizacionId, puntoVenta, tipo, letra) {
 const comprobante = (f) =>
   `${f.letra} ${String(f.punto_venta).padStart(4, '0')}-${String(f.numero).padStart(8, '0')}`;
 
+// La condición del negocio frente al IVA (Configuración): decide si los
+// renglones discriminan IVA y, con la del cliente, la letra.
+const condicionIvaNegocio = (organizacionId) =>
+  db.prepare('SELECT condicion_iva FROM organizaciones WHERE id = ?').get(organizacionId)?.condicion_iva ?? null;
+
+// La letra de un comprobante (hist. §113). Si el negocio cargó su condición,
+// sale sola y la que se pida no cuenta: una letra mal elegida es un
+// comprobante inválido. Si no la cargó, la que se elija, o B como siempre.
+function letraDelComprobante(organizacionId, clienteId, pedida) {
+  const cliente = db.prepare('SELECT condicion_iva FROM clientes WHERE id = ?').get(clienteId);
+  return letraQueCorresponde(condicionIvaNegocio(organizacionId), cliente?.condicion_iva ?? null) ?? (pedida || 'B');
+}
+
+// Las alícuotas de los productos, para la foto de cada renglón: una variante
+// lleva la de su producto.
+const alicuotaDelProducto = (productoId) =>
+  db.prepare('SELECT alicuota_iva FROM productos WHERE id = ?').get(productoId)?.alicuota_iva;
+
 // El estado de cobro de una factura que respalda una venta se calcula en
 // vivo a partir de los cobros de esa venta (misma cuenta que ya usa
 // GET /api/ventas): así nunca se desincroniza del cobro real. Una factura
@@ -2158,8 +2177,9 @@ const SELECT_FACTURA = `
          -- impreso (a quién se le emite). Aditivo: quien no lo use lo ignora.
          clientes.documento AS cliente_documento, clientes.direccion AS cliente_direccion,
          clientes.email AS cliente_email, clientes.telefono AS cliente_telefono,
+         clientes.condicion_iva AS cliente_condicion_iva,
          facturas.concepto,
-         facturas.neto, facturas.neto AS total, facturas.condicion, facturas.fecha,
+         facturas.neto, facturas.neto AS total, facturas.iva, facturas.condicion, facturas.fecha,
          facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero, facturas.venta_id,
          facturas.devolucion_id,
          CASE
@@ -2198,7 +2218,8 @@ app.get('/api/facturas/:id', (req, res) => {
     ? db
         .prepare(
           `SELECT venta_items.producto_id, productos.nombre AS producto,
-                  venta_items.cantidad, venta_items.precio_unitario
+                  venta_items.cantidad, venta_items.precio_unitario,
+                  venta_items.alicuota_iva, venta_items.iva
              FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
             WHERE venta_id = ?
             ORDER BY venta_items.id`
@@ -2221,10 +2242,10 @@ const TIPOS_COMPROBANTE = ['factura', 'nota_credito', 'nota_debito'];
 const LETRAS_COMPROBANTE = ['A', 'B', 'C'];
 
 app.post('/api/facturas', (req, res) => {
-  const { cliente, concepto, neto, condicion, tipo, letra, punto_venta } = req.body;
+  const { cliente, concepto, neto, condicion, tipo, letra, punto_venta, alicuota_iva } = req.body;
 
   const tipoFinal = tipo || 'factura';
-  const letraFinal = letra || 'B';
+  const letraPedida = letra || 'B';
   const puntoVentaFinal = punto_venta === undefined || punto_venta === null || punto_venta === '' ? 1 : Number(punto_venta);
   if (typeof concepto !== 'string' || !concepto.trim()) {
     return res.status(400).json({ error: 'Indicá el concepto.' });
@@ -2235,26 +2256,35 @@ app.post('/api/facturas', (req, res) => {
   if (!MEDIOS_FACTURA.includes(condicion)) {
     return res.status(400).json({ error: 'Elegí un medio de pago válido.' });
   }
-  if (!TIPOS_COMPROBANTE.includes(tipoFinal) || !LETRAS_COMPROBANTE.includes(letraFinal)) {
+  if (!TIPOS_COMPROBANTE.includes(tipoFinal) || !LETRAS_COMPROBANTE.includes(letraPedida)) {
     return res.status(400).json({ error: 'Tipo o letra de comprobante inválidos.' });
   }
   if (!Number.isInteger(puntoVentaFinal) || puntoVentaFinal < 1 || puntoVentaFinal > 99999) {
     return res.status(400).json({ error: 'El punto de venta debe ser un número entero entre 1 y 99999.' });
   }
+  // Sin renglones, la alícuota es la de todo el importe: 21 % si no se elige.
+  if (alicuota_iva != null && alicuota_iva !== '' && !ALICUOTAS_IVA.includes(String(alicuota_iva))) {
+    return res.status(400).json({ error: 'La alícuota de IVA no es válida.' });
+  }
 
   const facturaId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
+    const letraFinal = letraDelComprobante(req.usuario.organizacion_id, clienteRow.id, letraPedida);
+    const iva = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id))
+      ? ivaIncluido(Number(neto), alicuota_iva ? String(alicuota_iva) : '21')
+      : 0;
 
     const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id, fecha)
-         VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ${HOY_SQL})`
+        `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id, fecha)
+         VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ${HOY_SQL})`
       )
       .run(
         clienteRow.id,
         concepto,
         neto,
+        iva,
         condicion,
         tipoFinal,
         letraFinal,
@@ -2801,9 +2831,6 @@ const UNIDADES = ['unidad', 'kg', 'g', 'l', 'ml', 'm', 'hora'];
 // Un servicio no maneja stock: se vende sin control de stock y no genera
 // movimientos (ver esServicio).
 const TIPOS_PRODUCTO = ['producto', 'servicio'];
-// Alícuotas de IVA de un producto (CLAUDE.md §33): las de ARCA, más exento y
-// no gravado. Se guarda la clave en texto: '10.5' no es un número exacto.
-const ALICUOTAS_IVA = ['21', '10.5', '27', '5', '2.5', '0', 'exento', 'no_gravado'];
 const MAX_DESCRIPCION_PRODUCTO = 500;
 // Una semana: más que eso ya no es la duración de un servicio, es un trabajo.
 const MAX_DURACION_MINUTOS = 7 * 24 * 60;
@@ -4401,6 +4428,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
+              venta_items.alicuota_iva, venta_items.iva,
               COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
                   FROM devolucion_items JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
@@ -4432,6 +4460,7 @@ app.get('/api/ventas/:id', (req, res) => {
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
     })),
     total,
+    iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     costo_total: costoTotal,
     margen: total - costoTotal,
     devuelto,
@@ -4648,19 +4677,25 @@ function crearVenta({
   // del producto padre.
   const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
   const insertItem = db.prepare(
-    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const condicionIva = condicionIvaNegocio(organizacion_id);
 
   let total = 0;
   for (const item of items) {
     const varianteId = item.variante_id ? Number(item.variante_id) : null;
     // El costo se congela ACA, antes de tocar nada más del producto: es
     // la foto del momento de la venta, no se vuelve a recalcular después.
+    // La alícuota también (hist. §113).
     const costoActual = varianteId
       ? buscarCostoVariante.get(varianteId).precio_costo
       : buscarCostoActual.get(item.producto_id).precio_costo;
-    insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual);
+    const { alicuota_iva, iva } = ivaDelRenglon(
+      { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
+      condicionIva
+    );
+    insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
     registrarMovimientoStock({
       producto_id: item.producto_id,
       variante_id: varianteId,
@@ -4956,19 +4991,24 @@ app.put('/api/ventas/:id', (req, res) => {
     const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
     const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
     const insertItem = db.prepare(
-      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
+    const condicionIva = condicionIvaNegocio(req.usuario.organizacion_id);
 
     let total = 0;
     for (const item of items) {
       const varianteId = item.variante_id ? Number(item.variante_id) : null;
-      // Mismo criterio que crear una venta: el costo se congela con el
-      // costo actual del producto/variante en este momento, no el que tenía antes.
+      // Mismo criterio que crear una venta: el costo y la alícuota se
+      // congelan con los del producto/variante en este momento, no los de antes.
       const costoActual = varianteId
         ? buscarCostoVariante.get(varianteId).precio_costo
         : buscarCostoActual.get(item.producto_id).precio_costo;
-      insertItem.run(ventaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual);
+      const { alicuota_iva, iva } = ivaDelRenglon(
+        { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
+        condicionIva
+      );
+      insertItem.run(ventaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
       registrarMovimientoStock({
         producto_id: item.producto_id,
         variante_id: varianteId,
@@ -5109,11 +5149,29 @@ function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, or
   return nuevoCobroId;
 }
 
+// El total y el IVA que lleva la factura de una venta (hist. §113): el de cada
+// renglón, si se congeló al vender. Un renglón anterior, o de cuando el
+// negocio todavía no era inscripto, toma la alícuota actual de su producto.
+function ivaDeLaVenta(ventaId, organizacionId) {
+  const discrimina = discriminaIva(condicionIvaNegocio(organizacionId));
+  const items = db
+    .prepare('SELECT producto_id, cantidad, precio_unitario, alicuota_iva, iva FROM venta_items WHERE venta_id = ?')
+    .all(ventaId);
+  let total = 0;
+  let iva = 0;
+  for (const item of items) {
+    const subtotal = item.cantidad * item.precio_unitario;
+    total += subtotal;
+    if (!discrimina) continue;
+    iva += item.alicuota_iva != null ? item.iva : ivaIncluido(subtotal, alicuotaDelProducto(item.producto_id));
+  }
+  return { total, iva: Math.round(iva * 100) / 100 };
+}
+
 app.post('/api/ventas/:id/facturar', (req, res) => {
   const ventaId = Number(req.params.id);
   const { condicion, tipo, letra, punto_venta } = req.body;
   const tipoFinal = tipo || 'factura';
-  const letraFinal = letra || 'B';
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const venta = db
@@ -5125,6 +5183,10 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   if (venta.estado === 'anulada') {
     return res.status(400).json({ error: 'No se puede facturar una venta anulada.' });
   }
+  const letraFinal = letraDelComprobante(req.usuario.organizacion_id, venta.cliente_id, letra);
+  if (!LETRAS_COMPROBANTE.includes(letraFinal)) {
+    return res.status(400).json({ error: 'Tipo o letra de comprobante inválidos.' });
+  }
 
   const yaFacturada = db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(ventaId);
   if (yaFacturada) {
@@ -5134,22 +5196,19 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   let facturaId;
   try {
     facturaId = withTransaction(() => {
-      const { total } = db
-        .prepare(
-          'SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS total FROM venta_items WHERE venta_id = ?'
-        )
-        .get(ventaId);
+      const { total, iva } = ivaDeLaVenta(ventaId, req.usuario.organizacion_id);
 
       const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
-           VALUES (?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
+          `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
         )
         .run(
           venta.cliente_id,
           `Venta #${ventaId}`,
           total,
+          iva,
           condicion,
           ventaId,
           tipoFinal,
@@ -5407,7 +5466,8 @@ app.get('/api/presupuestos/:id', (req, res) => {
     .prepare(
       `SELECT presupuesto_items.id, presupuesto_items.producto_id, presupuesto_items.variante_id,
               productos.nombre AS producto,
-              presupuesto_items.cantidad, presupuesto_items.precio_unitario
+              presupuesto_items.cantidad, presupuesto_items.precio_unitario,
+              presupuesto_items.alicuota_iva, presupuesto_items.iva
          FROM presupuesto_items JOIN productos ON productos.id = presupuesto_items.producto_id
         WHERE presupuesto_id = ?
         ORDER BY presupuesto_items.id`
@@ -5416,6 +5476,7 @@ app.get('/api/presupuestos/:id', (req, res) => {
 
   res.json({
     ...decorarPresupuesto(presupuesto, fechaDeHoy()),
+    iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     items: items.map((i) => ({
       ...i,
       combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
@@ -5468,18 +5529,27 @@ function errorEnItemsCotizados(items, organizacionId) {
   return null;
 }
 
-function guardarItemsPresupuesto(presupuestoId, items) {
+// La alícuota se congela al cotizar (hist. §113), como el precio. Al pasar a
+// venta se vuelve a tomar la del producto, igual que el costo.
+function guardarItemsPresupuesto(presupuestoId, items, organizacionId) {
   const insertItem = db.prepare(
-    `INSERT INTO presupuesto_items (presupuesto_id, producto_id, variante_id, cantidad, precio_unitario)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO presupuesto_items (presupuesto_id, producto_id, variante_id, cantidad, precio_unitario, alicuota_iva, iva)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
+  const condicionIva = condicionIvaNegocio(organizacionId);
   for (const item of items) {
+    const { alicuota_iva, iva } = ivaDelRenglon(
+      { ...item, alicuota: alicuotaDelProducto(Number(item.producto_id)) },
+      condicionIva
+    );
     insertItem.run(
       presupuestoId,
       Number(item.producto_id),
       item.variante_id ? Number(item.variante_id) : null,
       Number(item.cantidad),
-      Number(item.precio_unitario)
+      Number(item.precio_unitario),
+      alicuota_iva,
+      iva
     );
   }
 }
@@ -5546,7 +5616,7 @@ app.post('/api/presupuestos', (req, res) => {
       )
       .run(...valores);
 
-    guardarItemsPresupuesto(nuevoId, items);
+    guardarItemsPresupuesto(nuevoId, items, req.usuario.organizacion_id);
     auditar(req, {
       accion: 'crear',
       entidad: 'presupuesto',
@@ -5600,7 +5670,7 @@ app.put('/api/presupuestos/:id', (req, res) => {
     // cuenta corriente), así que sus items se reemplazan directamente —
     // no hace falta el revertir-y-reaplicar de ventas y compras.
     db.prepare('DELETE FROM presupuesto_items WHERE presupuesto_id = ?').run(presupuestoId);
-    guardarItemsPresupuesto(presupuestoId, items);
+    guardarItemsPresupuesto(presupuestoId, items, req.usuario.organizacion_id);
 
     auditar(req, {
       accion: 'editar',
@@ -6443,12 +6513,11 @@ app.post('/api/devoluciones', (req, res) => {
 app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
   const devolucionId = Number(req.params.id);
   const { condicion, letra, punto_venta } = req.body;
-  const letraFinal = letra || 'B';
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const devolucion = db
     .prepare(
-      `SELECT devoluciones.id, devoluciones.estado, ventas.cliente_id
+      `SELECT devoluciones.id, devoluciones.estado, devoluciones.venta_id, ventas.cliente_id
          FROM devoluciones JOIN ventas ON ventas.id = devoluciones.venta_id
         WHERE devoluciones.id = ? AND ventas.organizacion_id = ?`
     )
@@ -6465,9 +6534,35 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
     return res.status(409).json({ error: 'Esta devolución ya tiene una nota de crédito asociada.' });
   }
 
-  const { total } = db
-    .prepare('SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS total FROM devolucion_items WHERE devolucion_id = ?')
-    .get(devolucionId);
+  // La nota de crédito lleva la letra de la factura que corrige (hist. §113).
+  // Si la venta no se facturó, la que corresponda hoy.
+  const facturaOriginal = db
+    .prepare("SELECT letra FROM facturas WHERE venta_id = ? AND tipo = 'factura'")
+    .get(devolucion.venta_id);
+  const letraFinal = facturaOriginal?.letra ?? letraDelComprobante(req.usuario.organizacion_id, devolucion.cliente_id, letra);
+  if (!LETRAS_COMPROBANTE.includes(letraFinal)) {
+    return res.status(400).json({ error: 'Tipo o letra de comprobante inválidos.' });
+  }
+
+  // El IVA de lo devuelto, con la alícuota que se congeló en cada renglón de
+  // la venta (o la del producto, si la venta es anterior).
+  const discrimina = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id));
+  const itemsDevueltos = db
+    .prepare(
+      `SELECT devolucion_items.producto_id, devolucion_items.cantidad, devolucion_items.precio_unitario,
+              venta_items.alicuota_iva
+         FROM devolucion_items JOIN venta_items ON venta_items.id = devolucion_items.venta_item_id
+        WHERE devolucion_items.devolucion_id = ?`
+    )
+    .all(devolucionId);
+  let total = 0;
+  let iva = 0;
+  for (const item of itemsDevueltos) {
+    const subtotal = item.cantidad * item.precio_unitario;
+    total += subtotal;
+    if (discrimina) iva += ivaIncluido(subtotal, item.alicuota_iva ?? alicuotaDelProducto(item.producto_id));
+  }
+  iva = Math.round(iva * 100) / 100;
 
   let facturaId;
   try {
@@ -6475,13 +6570,14 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
       const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, 'nota_credito', letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
-           VALUES (?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?, ${HOY_SQL})`
+          `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?, ${HOY_SQL})`
         )
         .run(
           devolucion.cliente_id,
           `Devolución #${devolucionId}`,
           total,
+          iva,
           condicion || 'efectivo',
           devolucionId,
           letraFinal,

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §112);
+    siguiente número (hoy el último es §113);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -32,10 +32,11 @@
      el `.env` de la raíz.
    - El README se puso al día en la misma publicación (PR #33).
    - **Falta que el usuario lo vea.**
-   - **IVA arrancó** (hist. §112, commiteado en `solla`, sin publicar):
-     la alícuota del producto (21 % de partida) y la condición del cliente,
-     solo como datos. **Lo próximo:** el IVA de cada renglón y la letra
-     (punto 9 de "Qué sigue").
+   - **IVA, dos tramos hechos** (hist. §112 y §113, commiteados en `solla`,
+     sin publicar): alícuota del producto, condición del cliente, IVA
+     congelado en cada renglón de venta y presupuesto, letra automática y la
+     factura A con el IVA discriminado. **Lo próximo:** el IVA de las compras
+     y el reporte de IVA (punto 9 de "Qué sigue"), o pasar a ARCA.
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
@@ -1345,15 +1346,19 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      no con qué se pagó. Migración aditiva.
    - Además, el arqueo ciego opcional y el aviso de un cobro cargado con el
      medio equivocado.
-9. **C: IVA** (2 sesiones). **Hecho el primer tramo (hist. §112):** alícuota
-   del producto y condición del cliente, guardadas y en los formularios.
+9. **C: IVA** (2 sesiones). **Hechos dos tramos:** alícuota del producto y
+   condición del cliente (hist. §112); IVA por renglón en ventas y
+   presupuestos, letra automática y factura A discriminada (hist. §113).
+   Falta: compras (decidir si el costo de un inscripto se guarda neto de
+   IVA), el reporte y la alícuota en la factura suelta.
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
    - Alícuota por producto, 21% por defecto. `precio_unitario` sigue siendo el
      precio final con IVA incluido.
    - Cada renglón guarda su alícuota y su IVA.
-   - Letra automática: A de inscripto a inscripto, B de inscripto a cualquier
-     otro, C si el emisor es monotributista. La factura A discrimina el IVA.
+   - Letra automática: A de inscripto a inscripto o a monotributista (RG
+     5003), B de inscripto a cualquier otro, C si el emisor es monotributista
+     o exento. La factura A discrimina el IVA.
    - Reporte de IVA ventas y compras.
    - La retención de Mercado Pago queda para después.
 10. **E: ARCA en homologación** (2 sesiones, después de C). Facturación

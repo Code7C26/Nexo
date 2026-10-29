@@ -5388,6 +5388,21 @@ input.precio-sin-configurar::placeholder {
   font-family: var(--font-mono);
 }
 
+/* Neto gravado e IVA de una factura (hist. §113), arriba del total. */
+.hoja-subtotal {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12pt;
+  margin: 0 0 3pt;
+  font-size: 10pt;
+}
+
+.hoja-subtotal span:last-child {
+  font-family: var(--font-mono);
+  min-width: 70pt;
+  text-align: right;
+}
+
 .hoja-notas {
   margin-top: 12pt;
 }

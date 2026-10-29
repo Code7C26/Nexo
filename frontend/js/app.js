@@ -1020,6 +1020,7 @@ async function abrirFichaFactura(id) {
     ["Concepto", factura.concepto],
     ["Medio de pago", CONDICION_FACTURA_LABEL[factura.condicion] ?? factura.condicion],
     ["Importe", money(factura.total)],
+    ...(factura.iva > 0 ? [["IVA incluido", money(factura.iva)]] : []),
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[factura.estado_cobro], ESTADO_COBRO_LABEL[factura.estado_cobro] ?? factura.estado_cobro)],
     ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"]
   ];
@@ -1074,8 +1075,9 @@ function hojaDeFactura(f) {
     // único ítem, que es exactamente lo que la factura dice que se cobró.
     items: f.items?.length
       ? f.items
-      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total }],
-    total: f.total
+      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total, iva: f.iva }],
+    total: f.total,
+    iva: { letra: f.letra, importe: f.iva, condicionCliente: f.cliente_condicion_iva }
   });
 }
 
@@ -1091,7 +1093,16 @@ document.getElementById("btnImprimirFactura").addEventListener("click", () => {
 
 const modal = document.getElementById("modalFactura");
 
+// Si el negocio cargó su condición frente al IVA, la letra la pone el
+// servidor (hist. §113) y elegirla confundiría: se muestra el porqué.
+function mostrarLetraSiSeElige(form) {
+  const sola = Boolean(negocio.condicion_iva);
+  form.querySelector("[data-letra-elegida]").hidden = sola;
+  form.querySelector("[data-letra-sola]").hidden = !sola;
+}
+
 document.getElementById("btnNuevaFactura").addEventListener("click", () => {
+  mostrarLetraSiSeElige(document.getElementById("formFactura"));
   modal.hidden = false;
 });
 
@@ -3709,6 +3720,7 @@ function renderVentas(lista) {
   body.querySelectorAll(".btn-facturar-venta").forEach((btn) => {
     btn.addEventListener("click", () => {
       ventaAFacturarId = Number(btn.dataset.id);
+      mostrarLetraSiSeElige(document.getElementById("formFacturarVenta"));
       modalFacturarVenta.hidden = false;
     });
   });
@@ -4408,6 +4420,7 @@ async function abrirFichaDevolucion(id) {
   if (btnNotaCredito) {
     btnNotaCredito.addEventListener("click", () => {
       devolucionANotaCreditoId = d.id;
+      mostrarLetraSiSeElige(document.getElementById("formNotaCredito"));
       modalNotaCredito.hidden = false;
     });
   }

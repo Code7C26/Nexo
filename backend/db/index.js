@@ -1670,6 +1670,21 @@ if (!productosColumnasUnidad.some((col) => col.name === 'alicuota_iva')) {
 if (!db.prepare('PRAGMA table_info(clientes)').all().some((col) => col.name === 'condicion_iva')) {
   db.exec('ALTER TABLE clientes ADD COLUMN condicion_iva TEXT');
 }
+// IVA, segundo paso (hist. §113): cada renglón de venta y de presupuesto
+// guarda su alícuota y su IVA, y la factura el IVA de su total. Sin backfill:
+// lo anterior se hizo sin discriminar IVA (alícuota NULL, IVA 0), y así quedó.
+for (const tabla of ['venta_items', 'presupuesto_items']) {
+  const columnas = db.prepare(`PRAGMA table_info(${tabla})`).all();
+  if (!columnas.some((col) => col.name === 'alicuota_iva')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN alicuota_iva TEXT`);
+  }
+  if (!columnas.some((col) => col.name === 'iva')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN iva REAL NOT NULL DEFAULT 0`);
+  }
+}
+if (!db.prepare('PRAGMA table_info(facturas)').all().some((col) => col.name === 'iva')) {
+  db.exec('ALTER TABLE facturas ADD COLUMN iva REAL NOT NULL DEFAULT 0');
+}
 const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
 for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {

@@ -10251,3 +10251,52 @@ cliente, PATCH sin la clave, vaciarla y una inválida). `npm test` (133) y
 **Lo que sigue de IVA:** cada renglón de venta, compra y presupuesto guarda su
 alícuota y su IVA (el precio sigue siendo final, así que IVA = precio −
 precio / (1 + alícuota)), la letra automática (A, B o C) y el reporte de IVA.
+
+## 113. IVA, segundo paso: el IVA de cada renglón y la letra del comprobante, 29 de octubre de 2026
+
+Segundo tramo de la etapa C (punto 9 de "Qué sigue"): ventas, presupuestos
+y comprobantes. Las compras y el reporte de IVA quedan para el tercero.
+
+**Qué se hizo.**
+- `backend/iva.js` (nuevo, puro): `ALICUOTAS_IVA` (se mudó de `server.js`),
+  `ivaIncluido`, `discriminaIva`, `ivaDelRenglon` y `letraQueCorresponde`.
+  El precio sigue siendo el final: IVA = importe − importe / (1 + alícuota).
+- Migración aditiva (`db/index.js`, también en `schema.sql`), sin backfill:
+  - `venta_items` y `presupuesto_items`: `alicuota_iva TEXT` (NULL = no se
+    discriminó) e `iva REAL NOT NULL DEFAULT 0` (el IVA de cantidad × precio);
+  - `facturas.iva REAL NOT NULL DEFAULT 0`: el IVA contenido en `neto`, que
+    sigue siendo el total (no se renombró: lo leen unos 45 lugares).
+- Solo el responsable inscripto discrimina IVA. Monotributo, exento o sin
+  condición cargada: alícuota NULL e IVA 0.
+- La alícuota se congela al vender y al cotizar, como el costo. Al facturar
+  una venta de antes (sin alícuota), toma la actual del producto.
+- Letra (`letraDelComprobante` en `server.js`): monotributo y exento → C;
+  inscripto → A a inscripto **y a monotributista** (RG 5003 de 2021; el plan
+  de handoff decía B, se corrigió), B a cualquier otro. Con la condición del
+  negocio cargada, la letra pedida no cuenta; sin cargar, la elegida o B.
+- La nota de crédito toma la letra de la factura de la venta, y el IVA de lo
+  devuelto con la alícuota congelada del renglón.
+- La factura suelta: 21 % si no se manda `alicuota_iva`.
+- `GET /api/ventas/:id` y `/api/presupuestos/:id` devuelven la alícuota y el
+  IVA por renglón y el total `iva`; `/api/facturas` suma `iva` y
+  `cliente_condicion_iva`.
+- Frontend:
+  - en los tres formularios de comprobante (suelta, facturar venta, nota de
+    crédito) la letra se esconde y se explica cuando sale sola
+    (`mostrarLetraSiSeElige`);
+  - la hoja impresa (`core/comprobante.js`) muestra la condición del cliente;
+    la A, los renglones sin IVA, "Neto gravado" e "IVA"; la B de un
+    inscripto, "IVA contenido (Ley 27.743)";
+  - la ficha de la factura muestra "IVA incluido".
+
+**Cómo se verificó.** `backend/test/iva.test.js` suma 4 casos (reglas puras;
+inscripto con tres alícuotas, B/A/A y numeración propia de la A, alícuota
+congelada, presupuesto y suelta; nota de crédito A con IVA proporcional;
+monotributo C y negocio sin condición). `npm test` (137), `npm run lint` y
+`npm run verificar-migracion` (24 de 24) en verde. En el navegador, con una
+base temporal: el modal de facturar con la ayuda en vez de la letra, y las
+hojas A (neto $ 3.000 + IVA $ 525 = $ 3.525) y B (IVA contenido $ 525).
+
+**Lo que sigue de IVA:** compras (el IVA del proveedor es crédito fiscal, no
+costo: hay que decidir si el costo de un inscripto se guarda neto), el
+reporte de IVA ventas y compras, y la alícuota elegible en la factura suelta.
