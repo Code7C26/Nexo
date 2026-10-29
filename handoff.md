@@ -1376,6 +1376,12 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
        y pasarme el `.crt`.
     5. En WSASS: Crear autorización a servicio, con ese certificado, el
        servicio "wsfe" y su propio CUIL como representado.
+  - **Estado (29 de octubre):** pasos 1 a 4 hechos. El certificado de
+    homologación (alias `nexohomologacion`, sin guion, emitido por
+    "Computadores Test", vence el 28 de octubre de 2028) y su clave están en
+    `C:\Users\HP ULTRA 5\.nexo-arca\` (`nexo-homologacion.key`, `.csr` y
+    `.crt`), fuera del repo; se controló que la clave y el certificado son
+    pareja. Falta confirmar el paso 5 (autorización a `wsfe`).
   - Sin inscripción fiscal, qué letras deja emitir homologación (A, B o C) se
     confirma en la primera prueba.
   - **Cómo se ve en la demo (decidido con el usuario el 19 de octubre):** es
