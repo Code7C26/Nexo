@@ -31,7 +31,7 @@ import {
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
-import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
+import { armarHojaComprobante, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
@@ -39,11 +39,13 @@ import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
 import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
+import { ALICUOTAS_IVA, CONDICIONES_FISCALES, alicuotaIva, condicionFiscal, condicionIvaCliente, opcionesSelect } from "./core/fiscal.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
 import "./dominios/plan.js";
 import "./dominios/baja.js";
+import "./dominios/factura-electronica.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
@@ -503,7 +505,7 @@ const filtrosResumen = crearFiltros(
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
 async function cargarPanelResumen() {
-  await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras()]);
+  await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras(), cargarReporteIva()]);
 }
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
@@ -703,6 +705,78 @@ async function cargarReporteCompras() {
   renderReporteComprasCategorias(datos.categorias);
 }
 
+/* ---------- Reportes: IVA ventas y compras (hist. §114) ---------- */
+//
+// Solo se ve si el negocio es responsable inscripto: los demás no
+// discriminan IVA y no tienen libros que llevar. Mismo filtro de fecha que
+// el resto de Estadísticas. Las notas de crédito vienen con signo negativo.
+
+let libroIva = { ventas: [], compras: [] };
+
+// En ventas, `comprobante` ya trae la letra y el punto de venta ("A
+// 0001-00000001"); en compras, el número es el que dio el proveedor.
+const comprobanteLibroIva = (f) =>
+  [TIPO_FACTURA_LABEL[f.tipo], ...(f.comprobante ? [f.comprobante] : [f.letra, f.numero])].filter(Boolean).join(" ");
+
+function filasLibroIva(lista, nombre, documento) {
+  if (lista.length === 0) return filaVacia(7, "No hay comprobantes en este período.");
+  return lista
+    .map(
+      (f) => `
+    <tr>
+      <td data-label="Fecha">${esc(fechaAR(f.fecha))}</td>
+      <td data-label="Comprobante">${esc(comprobanteLibroIva(f))}</td>
+      <td data-label="${nombre === "cliente" ? "Cliente" : "Proveedor"}">${esc(f[nombre])}</td>
+      <td data-label="CUIT / DNI" class="mono">${esc(f[documento] || "—")}</td>
+      <td data-label="Neto" class="align-right mono">${money(f.neto)}</td>
+      <td data-label="IVA" class="align-right mono">${money(f.iva)}</td>
+      <td data-label="Total" class="align-right mono">${money(f.total)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+async function cargarReporteIva() {
+  const seccion = document.getElementById("reporteIvaSeccion");
+  if (!esAdmin() || negocio.condicion_iva !== "responsable_inscripto") {
+    seccion.hidden = true;
+    return;
+  }
+  seccion.hidden = false;
+  tablaCargando("reporteIvaVentasBody", 7);
+  tablaCargando("reporteIvaComprasBody", 7);
+
+  const params = new URLSearchParams(rangoActualResumen()).toString();
+  const datos = await api(`/api/reportes/iva${params ? "?" + params : ""}`);
+  libroIva = datos;
+
+  document.getElementById("reporteIvaDebito").textContent = money(datos.totales.debito);
+  document.getElementById("reporteIvaCredito").textContent = money(datos.totales.credito);
+  // Saldo positivo: el IVA que se le paga a ARCA. Negativo: queda a favor
+  // para el período siguiente.
+  document.getElementById("reporteIvaSaldoLabel").textContent = datos.totales.saldo < 0 ? "A favor" : "A pagar";
+  document.getElementById("reporteIvaSaldo").textContent = money(Math.abs(datos.totales.saldo));
+
+  document.getElementById("reporteIvaVentasBody").innerHTML = filasLibroIva(datos.ventas, "cliente", "cliente_documento");
+  document.getElementById("reporteIvaComprasBody").innerHTML = filasLibroIva(datos.compras, "proveedor", "proveedor_documento");
+}
+
+const columnasLibroIva = (nombre, titulo, documento) => [
+  { titulo: "Fecha", valor: (f) => f.fecha },
+  { titulo: "Comprobante", valor: comprobanteLibroIva },
+  { titulo, valor: (f) => f[nombre] },
+  { titulo: "CUIT / DNI", valor: (f) => f[documento] ?? "" },
+  { titulo: "Neto", valor: (f) => f.neto },
+  { titulo: "IVA", valor: (f) => f.iva },
+  { titulo: "Total", valor: (f) => f.total }
+];
+document.getElementById("btnExportarIvaVentas").addEventListener("click", () => {
+  descargarCSV("nexo-libro-iva-ventas", columnasLibroIva("cliente", "Cliente", "cliente_documento"), libroIva.ventas);
+});
+document.getElementById("btnExportarIvaCompras").addEventListener("click", () => {
+  descargarCSV("nexo-libro-iva-compras", columnasLibroIva("proveedor", "Proveedor", "proveedor_documento"), libroIva.compras);
+});
+
 /* ---------- Reportes: stock (qué reponer, valorizado, rotación) ---------- */
 //
 // El filtro de fecha define el ritmo de venta contra el que se mide la
@@ -778,11 +852,13 @@ function filtrarFacturas() {
     facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" }))
   );
 
-  const facturado = lista.reduce((acc, f) => acc + f.total, 0);
-  const cobrado = lista
+  // Lo que ARCA rechazó no se facturó: se ve en la lista, pero no suma.
+  const validas = lista.filter((f) => f.arca_estado !== "rechazado");
+  const facturado = validas.reduce((acc, f) => acc + f.total, 0);
+  const cobrado = validas
     .filter((f) => f.estado_cobro === "cobrado")
     .reduce((acc, f) => acc + f.total, 0);
-  const pendiente = lista
+  const pendiente = validas
     .filter((f) => f.estado_cobro !== "cobrado")
     .reduce((acc, f) => acc + f.total, 0);
   document.getElementById("facturasFacturadoStrip").textContent = money(facturado);
@@ -800,6 +876,23 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
 const TIPO_FACTURA_LABEL = { factura: "Factura", nota_credito: "Nota de crédito", nota_debito: "Nota de débito" };
 const CONDICION_FACTURA_LABEL = { efectivo: "Efectivo", transferencia: "Transferencia", mercadopago: "Mercado Pago" };
+// Factura electrónica (etapa E): cómo está ante ARCA. Una interna no lleva marca.
+const ARCA_ESTADO_LABEL = { autorizado: "Con CAE", pendiente: "Sin CAE todavía", rechazado: "Rechazada por ARCA" };
+const ARCA_ESTADO_CLASE = { autorizado: "status-cobrado", pendiente: "status-pendiente", rechazado: "status-vencido" };
+
+// El aviso después de emitir, con lo que contestó ARCA. `hecho` es el de
+// siempre ("Venta #3 facturada."), para un comprobante interno.
+function avisarEmision(r, hecho) {
+  if (r.arca_estado === "autorizado") {
+    avisar(`ARCA autorizó la ${r.comprobante} con el CAE ${r.cae}.`, "ok");
+  } else if (r.arca_estado === "pendiente") {
+    avisar(`Quedó guardado, pero ARCA no respondió y todavía no tiene CAE. Pedilo de nuevo desde la factura. (${r.arca_error ?? ""})`, "atencion");
+  } else if (r.arca_estado === "rechazado") {
+    avisar(`ARCA lo rechazó: ${r.arca_error}. Corregí el dato y pedí el CAE de nuevo desde la factura, o descartalo.`, "error");
+  } else {
+    avisar(hecho, "ok");
+  }
+}
 
 // Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
 // se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
@@ -835,6 +928,7 @@ async function imprimirFacturasSeleccionadas(ids) {
     return;
 
   const facturasDetalle = await traerConcurrencia(ids, (id) => api(`/api/facturas/${id}`));
+  await cargarQr();
   imprimirHojas(facturasDetalle.map(hojaDeFactura));
 }
 
@@ -854,6 +948,7 @@ async function descargarPDFFacturasSeleccionadas(ids, btn) {
     return;
 
   const facturasDetalle = await traerConcurrencia(ids, (id) => api(`/api/facturas/${id}`));
+  await cargarQr();
   const items = facturasDetalle.map((f) => ({
     html: hojaDeFactura(f),
     nombreArchivo: nombreArchivoPdf("factura", f.comprobante)
@@ -880,7 +975,11 @@ function renderFacturas(lista) {
       (f) => `
     <tr class="fila-clickeable" data-id="${f.id}">
       ${selFacturas.celda(f.id)}
-      <td data-label="Comprobante" class="mono">${esc(f.comprobante)}</td>
+      <td data-label="Comprobante" class="mono">${esc(f.comprobante)}${
+        f.arca_estado && f.arca_estado !== "autorizado"
+          ? ` <span class="status ${ARCA_ESTADO_CLASE[f.arca_estado]}">${esc(ARCA_ESTADO_LABEL[f.arca_estado])}</span>`
+          : ""
+      }</td>
       <td data-label="Tipo">${esc(TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo)}</td>
       <td data-label="Fecha">${esc(fechaAR(f.fecha))}</td>
       <td data-label="Cliente" class="m-titulo">${esc(f.cliente)}</td>
@@ -1019,10 +1118,21 @@ async function abrirFichaFactura(id) {
     ["Concepto", factura.concepto],
     ["Medio de pago", CONDICION_FACTURA_LABEL[factura.condicion] ?? factura.condicion],
     ["Importe", money(factura.total)],
+    ...(factura.iva > 0 ? [["IVA incluido", money(factura.iva)]] : []),
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[factura.estado_cobro], ESTADO_COBRO_LABEL[factura.estado_cobro] ?? factura.estado_cobro)],
-    ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"]
+    ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"],
+    // Factura electrónica (etapa E): cómo está ante ARCA.
+    ...(factura.arca_estado
+      ? [
+          ["ARCA", badge(ARCA_ESTADO_CLASE[factura.arca_estado], ARCA_ESTADO_LABEL[factura.arca_estado])],
+          ...(factura.cae ? [["CAE", `${factura.cae} · vence el ${fechaAR(factura.cae_vencimiento)}`]] : []),
+          ...(factura.arca_estado !== "autorizado" && factura.arca_error ? [["Lo que dijo ARCA", factura.arca_error]] : [])
+        ]
+      : [])
   ];
   document.getElementById("fichaFacturaDatos").innerHTML = camposFicha(campos);
+  document.getElementById("btnPedirCae").hidden = !["pendiente", "rechazado"].includes(factura.arca_estado);
+  document.getElementById("btnDescartarFactura").hidden = factura.arca_estado !== "rechazado";
 
   const panelItems = document.getElementById("fichaFacturaItemsPanel");
   if (factura.venta_id) {
@@ -1073,24 +1183,89 @@ function hojaDeFactura(f) {
     // único ítem, que es exactamente lo que la factura dice que se cobró.
     items: f.items?.length
       ? f.items
-      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total }],
-    total: f.total
+      : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total, iva: f.iva }],
+    total: f.total,
+    iva: { letra: f.letra, importe: f.iva, condicionCliente: f.cliente_condicion_iva },
+    arca: f.arca_estado
+      ? { estado: f.arca_estado, cae: f.cae, vence: f.cae_vencimiento, qr: f.arca_qr, ambiente: f.arca_ambiente }
+      : null
   });
 }
 
 // El botón vive en el HTML (no se re-renderiza como el de presupuesto), así
 // que se bindea una sola vez y lee la factura de la variable de módulo.
-document.getElementById("btnImprimirFactura").addEventListener("click", () => {
+document.getElementById("btnImprimirFactura").addEventListener("click", async () => {
   const f = facturaFichaDatos;
   if (!f) return;
+  await cargarQr().catch(() => {});
   imprimirComprobante(hojaDeFactura(f));
+});
+
+// Pedir el CAE de nuevo: ARCA no respondió, o lo rechazó y ya se corrigió el
+// dato (por ejemplo, el CUIT del cliente).
+document.getElementById("btnPedirCae").addEventListener("click", async (e) => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  const boton = e.currentTarget;
+  boton.disabled = true;
+  try {
+    const r = await api(`/api/facturas/${f.id}/autorizar`, { method: "POST", error: "No se pudo pedir el CAE." });
+    avisarEmision(r, "");
+    await refrescar([cargarFacturas()]);
+    await abrirFichaFactura(f.id);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+// Un comprobante que ARCA rechazó nunca existió ante ARCA: se puede descartar,
+// y la venta o la devolución queda para facturar de nuevo.
+document.getElementById("btnDescartarFactura").addEventListener("click", async () => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  const ok = await confirmar({
+    titulo: "Descartar el comprobante",
+    cuerpo: f.venta_id
+      ? `ARCA lo rechazó, así que no existe como factura. La venta #${f.venta_id} queda sin facturar, para hacerlo de nuevo.`
+      : "ARCA lo rechazó, así que no existe como factura. Se borra de la lista.",
+    aceptar: "Descartar"
+  });
+  if (!ok) return;
+  await api(`/api/facturas/${f.id}`, { method: "DELETE", error: "No se pudo descartar el comprobante." });
+  await refrescar([cargarFacturas(), cargarVentas()]);
+  avisar("Comprobante descartado.", "ok");
+  mostrarVista("facturas");
 });
 
 /* ---------- Modal nueva factura ---------- */
 
 const modal = document.getElementById("modalFactura");
 
+// Si el negocio cargó su condición frente al IVA, la letra la pone el
+// servidor (hist. §113) y elegirla confundiría: se muestra el porqué.
+function mostrarLetraSiSeElige(form) {
+  const sola = Boolean(negocio.condicion_iva);
+  form.querySelector("[data-letra-elegida]").hidden = sola;
+  form.querySelector("[data-letra-sola]").hidden = !sola;
+  // Con factura electrónica (etapa E), el punto de venta es el que se dio de
+  // alta en ARCA y el número lo da ARCA: no se elige.
+  const electronica = negocio.factura_electronica?.activa;
+  form.querySelector("[data-punto-venta]").hidden = Boolean(electronica);
+  const aviso = form.querySelector("[data-arca]");
+  aviso.hidden = !electronica;
+  aviso.textContent = electronica
+    ? `Sale como comprobante electrónico: al guardarlo, Nexo le pide el CAE a ARCA (punto de venta ${negocio.factura_electronica.punto_venta}).`
+    : "";
+}
+
 document.getElementById("btnNuevaFactura").addEventListener("click", () => {
+  const form = document.getElementById("formFactura");
+  mostrarLetraSiSeElige(form);
+  // La alícuota de la factura suelta, que no tiene renglones de donde
+  // sacarla: solo la pide un inscripto, el único que discrimina IVA.
+  document.getElementById("facturaAlicuotaWrap").hidden = negocio.condicion_iva !== "responsable_inscripto";
+  opcionesSelect(form.alicuota_iva, ALICUOTAS_IVA);
+  form.alicuota_iva.value = "21";
   modal.hidden = false;
 });
 
@@ -1107,7 +1282,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   const form = e.target;
   const tipoElegido = form.tipo.value;
 
-  const { id } = await api("/api/facturas", {
+  const emitida = await api("/api/facturas", {
     method: "POST",
     body: {
       cliente: form.cliente.value,
@@ -1116,7 +1291,8 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
       condicion: form.condicion.value,
       tipo: tipoElegido,
       letra: form.letra.value,
-      punto_venta: Number(form.punto_venta.value) || 1
+      punto_venta: Number(form.punto_venta.value) || 1,
+      alicuota_iva: document.getElementById("facturaAlicuotaWrap").hidden ? undefined : form.alicuota_iva.value
     },
     error: "No se pudo registrar la factura."
   });
@@ -1124,7 +1300,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   await refrescar([cargarFacturas()]);
   form.reset();
   modal.hidden = true;
-  avisar(`${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${id} registrada.`, "ok");
+  avisarEmision(emitida, `${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${emitida.id} registrada.`);
 });
 
 /* ---------- Filas de items (Venta / Compra) ---------- */
@@ -1709,6 +1885,7 @@ async function abrirFichaProducto(id) {
         ]
       : []),
     [esServicio ? "Se cobra por" : "Se vende por", UNIDADES[producto.unidad] ?? producto.unidad],
+    ...(negocio.condicion_iva === "monotributo" ? [] : [["IVA", alicuotaIva(producto.alicuota_iva)]]),
     ...(esServicio
       ? [
           ["Tipo", "Servicio (sin stock)"],
@@ -2171,6 +2348,9 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   // carnicería vende por kg, un gimnasio vende servicios).
   form.unidad.value = producto?.unidad ?? negocio.unidad_defecto ?? "unidad";
   form.tipo.value = producto?.tipo ?? tipo ?? negocio.tipo_defecto ?? "producto";
+  opcionesSelect(form.alicuota_iva, ALICUOTAS_IVA);
+  form.alicuota_iva.value = producto?.alicuota_iva ?? "21";
+  document.getElementById("productoIvaCampo").hidden = negocio.condicion_iva === "monotributo";
   mostrarCamposSegunTipo();
   poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
@@ -2223,6 +2403,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     stock_maximo: form.stock_maximo.value,
     activo: form.activo.checked,
     unidad: form.unidad.value,
+    alicuota_iva: form.alicuota_iva.value,
     tipo: form.tipo.value
   };
   // precios por lista: solo en edición (ver poblarPreciosPorLista). Un
@@ -3703,6 +3884,7 @@ function renderVentas(lista) {
   body.querySelectorAll(".btn-facturar-venta").forEach((btn) => {
     btn.addEventListener("click", () => {
       ventaAFacturarId = Number(btn.dataset.id);
+      mostrarLetraSiSeElige(document.getElementById("formFacturarVenta"));
       modalFacturarVenta.hidden = false;
     });
   });
@@ -3784,7 +3966,8 @@ function filtrarVentas() {
   const costo = lista.reduce((acc, v) => acc + (v.costo_total ?? 0), 0);
   document.getElementById("ventasTotalStrip").textContent = money(total);
   document.getElementById("ventasCostoStrip").textContent = money(costo);
-  document.getElementById("ventasGananciaStrip").textContent = money(total - costo);
+  // La ganancia viene de cada venta: un inscripto la mide sin IVA (hist. §114).
+  document.getElementById("ventasGananciaStrip").textContent = money(lista.reduce((acc, v) => acc + (v.margen ?? 0), 0));
 
   renderVentas(lista);
 }
@@ -4177,18 +4360,26 @@ document.getElementById("formFacturarVenta").addEventListener("submit", async (e
   e.preventDefault();
   const form = e.target;
 
-  await api(`/api/ventas/${ventaAFacturarId}/facturar`, {
-    method: "POST",
-    body: {
-      condicion: form.condicion.value,
-      letra: form.letra.value,
-      punto_venta: Number(form.punto_venta.value) || 1
-    },
-    error: "No se pudo generar la factura."
-  });
+  // Con factura electrónica, puede tardar lo que tarde ARCA.
+  const boton = form.querySelector('button[type="submit"]');
+  boton.disabled = true;
+  let emitida;
+  try {
+    emitida = await api(`/api/ventas/${ventaAFacturarId}/facturar`, {
+      method: "POST",
+      body: {
+        condicion: form.condicion.value,
+        letra: form.letra.value,
+        punto_venta: Number(form.punto_venta.value) || 1
+      },
+      error: "No se pudo generar la factura."
+    });
+  } finally {
+    boton.disabled = false;
+  }
 
   await refrescar([cargarVentas(), cargarFacturas()]);
-  avisar(`Venta #${ventaAFacturarId} facturada.`, "ok");
+  avisarEmision(emitida, `Venta #${ventaAFacturarId} facturada.`);
   ventaAFacturarId = null;
   modalFacturarVenta.hidden = true;
 });
@@ -4402,6 +4593,7 @@ async function abrirFichaDevolucion(id) {
   if (btnNotaCredito) {
     btnNotaCredito.addEventListener("click", () => {
       devolucionANotaCreditoId = d.id;
+      mostrarLetraSiSeElige(document.getElementById("formNotaCredito"));
       modalNotaCredito.hidden = false;
     });
   }
@@ -4596,7 +4788,7 @@ document.getElementById("formNotaCredito").addEventListener("submit", async (e) 
   e.preventDefault();
   const form = e.target;
 
-  await api(`/api/devoluciones/${devolucionANotaCreditoId}/nota-credito`, {
+  const emitida = await api(`/api/devoluciones/${devolucionANotaCreditoId}/nota-credito`, {
     method: "POST",
     body: {
       condicion: form.condicion.value,
@@ -4609,7 +4801,7 @@ document.getElementById("formNotaCredito").addEventListener("submit", async (e) 
   await refrescar([cargarDevoluciones(), cargarFacturas()]);
   modalNotaCredito.hidden = true;
   await abrirFichaDevolucion(devolucionANotaCreditoId);
-  avisar("Nota de crédito emitida.", "ok");
+  avisarEmision(emitida, "Nota de crédito emitida.");
 });
 
 
@@ -4967,10 +5159,29 @@ compraCostoEnvioEl.addEventListener("input", actualizarTotalCompra);
 // oculta al editar (una compra editada nunca cambia de estado).
 // Mismo criterio que ventaCondicionTocada (ver ahí el porqué).
 let compraCondicionTocada = false;
+let compraLetraTocada = false;
+
+// La letra que corresponde al comprobante de un proveedor (hist. §114),
+// como letraQueCorresponde() de iva.js con el negocio de receptor: el
+// inscripto da A, el monotributista y el exento C. Sin condición cargada,
+// ninguna: que la elija quien carga la compra.
+const LETRA_DEL_PROVEEDOR = { responsable_inscripto: "A", monotributo: "C", exento: "C" };
+function proponerLetraCompra(nombreProveedor) {
+  const proveedor = proveedores.find(
+    (p) => p.nombre.trim().toLowerCase() === (nombreProveedor || "").trim().toLowerCase()
+  );
+  document.getElementById("compraLetra").value = LETRA_DEL_PROVEEDOR[proveedor?.condicion_iva] ?? "";
+  sincronizarNotaLetraCompra();
+}
+function sincronizarNotaLetraCompra() {
+  document.getElementById("compraLetraNota").hidden =
+    document.getElementById("compraLetraWrap").hidden || document.getElementById("compraLetra").value !== "A";
+}
 
 async function abrirModalCompra(compra = null) {
   compraEditandoId = compra?.id ?? null;
   compraCondicionTocada = false;
+  compraLetraTocada = false;
   document.getElementById("modalCompraTitulo").textContent = compra ? "Editar compra" : "Nueva compra";
   document.getElementById("formCompraSubmit").textContent = compra ? "Guardar cambios" : "Guardar borrador";
   document.getElementById("compraFormNota").hidden = Boolean(compra);
@@ -4998,6 +5209,17 @@ async function abrirModalCompra(compra = null) {
       sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
     }
   }
+
+  // Solo un inscripto discrimina IVA en lo que compra: a los demás, la letra
+  // no les cambia nada y no se les pregunta.
+  document.getElementById("compraLetraWrap").hidden = negocio.condicion_iva !== "responsable_inscripto";
+  if (compra) {
+    form.comprobante_letra.value = compra.comprobante_letra ?? "";
+    sincronizarNotaLetraCompra();
+  } else {
+    proponerLetraCompra(form.proveedor.value);
+  }
+  form.comprobante_numero.value = compra?.comprobante_numero ?? "";
 
   compraItemsEl.innerHTML = "";
   if (compra) {
@@ -5046,6 +5268,11 @@ document.getElementById("formCompra").proveedor.addEventListener("change", (e) =
     document.getElementById("compraCondicionPago").value = proveedorExistente.condicion_pago;
     sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
   }
+  if (!compraLetraTocada) proponerLetraCompra(e.target.value);
+});
+document.getElementById("compraLetra").addEventListener("change", () => {
+  compraLetraTocada = true;
+  sincronizarNotaLetraCompra();
 });
 document.getElementById("modalCompraClose").addEventListener("click", () => {
   modalCompra.hidden = true;
@@ -5070,6 +5297,10 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     costo_envio: form.costo_envio.value,
     items,
     deposito_id: form.deposito_id.value || null,
+    // Sin la letra a la vista (no inscripto), no se manda: el backend usa
+    // la que tenía o la que corresponde al proveedor.
+    ...(document.getElementById("compraLetraWrap").hidden ? {} : { comprobante_letra: form.comprobante_letra.value }),
+    comprobante_numero: form.comprobante_numero.value,
     ...datosCondicionPago(form)
   };
 
@@ -5107,6 +5338,13 @@ async function abrirFichaCompra(id) {
     ["Fecha", fechaAR(compra.fecha)],
     ["Estado", compra.estado === "borrador" ? badge("", "Borrador") : badge("status-cobrado", "Efectuada")],
     ["Envío", ENVIO_LABEL[compra.estado_envio] ?? "—"],
+    [
+      "Comprobante",
+      [compra.comprobante_letra ? `Factura ${compra.comprobante_letra}` : "", compra.comprobante_numero ?? ""]
+        .filter(Boolean)
+        .join(" ") || null
+    ],
+    ...(compra.iva > 0 ? [["IVA (crédito fiscal)", money(compra.iva)]] : []),
     ["Pagado", `${money(compra.pagado)} de ${money(compra.neto)}`],
     ["Estado de pago", badge(ESTADO_PAGO_CLASE[compra.estado_pago], ESTADO_PAGO_LABEL[compra.estado_pago] ?? compra.estado_pago)]
   ];
@@ -5706,6 +5944,7 @@ async function abrirFichaCliente(id) {
     ["Teléfono", cliente.telefono],
     ["Dirección", cliente.direccion],
     ["CUIT / DNI", cliente.documento],
+    ["Condición frente al IVA", condicionIvaCliente(cliente.condicion_iva)],
     ["Última compra", fechaAR(cliente.ultima_compra)],
     ["Notas", cliente.notas]
   ];
@@ -5754,6 +5993,8 @@ function abrirModalCliente(cliente = null) {
   form.lista_precio_id.value = cliente?.lista_precio_id ?? "";
   poblarSelectCondicionPago('#formCliente [name="condicion_pago"]');
   form.condicion_pago.value = cliente?.condicion_pago ?? "";
+  opcionesSelect(form.condicion_iva, { "": "Consumidor final", ...CONDICIONES_FISCALES });
+  form.condicion_iva.value = cliente?.condicion_iva === "consumidor_final" ? "" : cliente?.condicion_iva ?? "";
   modalCliente.hidden = false;
 }
 
@@ -5781,7 +6022,8 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
     documento: form.documento.value || null,
     notas: form.notas.value || null,
     lista_precio_id: form.lista_precio_id.value || null,
-    condicion_pago: form.condicion_pago.value || null
+    condicion_pago: form.condicion_pago.value || null,
+    condicion_iva: form.condicion_iva.value || null
   };
 
   await api(clienteEditandoId ? `/api/clientes/${clienteEditandoId}` : "/api/clientes", {
@@ -5930,6 +6172,7 @@ async function abrirFichaProveedor(id) {
     ["Teléfono", proveedor.telefono],
     ["Dirección", proveedor.direccion],
     ["CUIT / DNI", proveedor.documento],
+    ["Condición frente al IVA", proveedor.condicion_iva ? condicionFiscal(proveedor.condicion_iva) : null],
     ["Última compra", fechaAR(proveedor.ultima_compra)],
     ["Notas", proveedor.notas]
   ];
@@ -5995,6 +6238,8 @@ function abrirModalProveedor(proveedor = null) {
   form.notas.value = proveedor?.notas ?? "";
   poblarSelectCondicionPago('#formProveedor [name="condicion_pago"]');
   form.condicion_pago.value = proveedor?.condicion_pago ?? "";
+  opcionesSelect(form.condicion_iva, { "": "Sin cargar", ...CONDICIONES_FISCALES });
+  form.condicion_iva.value = proveedor?.condicion_iva ?? "";
   modalProveedor.hidden = false;
 }
 
@@ -6022,7 +6267,8 @@ document.getElementById("formProveedor").addEventListener("submit", async (e) =>
     direccion: form.direccion.value || null,
     documento: form.documento.value || null,
     notas: form.notas.value || null,
-    condicion_pago: form.condicion_pago.value || null
+    condicion_pago: form.condicion_pago.value || null,
+    condicion_iva: form.condicion_iva.value || null
   };
 
   await api(proveedorEditandoId ? `/api/proveedores/${proveedorEditandoId}` : "/api/proveedores", {

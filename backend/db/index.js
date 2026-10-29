@@ -1661,6 +1661,72 @@ for (const columna of ['descripcion TEXT', 'duracion_minutos INTEGER']) {
     db.exec(`ALTER TABLE productos ADD COLUMN ${columna}`);
   }
 }
+// IVA, primer paso de la etapa C (hist. §112): la alícuota del producto y la
+// condición del cliente. Los productos que ya existen quedan en 21 % (lo que
+// tiene casi todo); los clientes, sin condición (= consumidor final).
+if (!productosColumnasUnidad.some((col) => col.name === 'alicuota_iva')) {
+  db.exec("ALTER TABLE productos ADD COLUMN alicuota_iva TEXT NOT NULL DEFAULT '21'");
+}
+if (!db.prepare('PRAGMA table_info(clientes)').all().some((col) => col.name === 'condicion_iva')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN condicion_iva TEXT');
+}
+// IVA, segundo paso (hist. §113): cada renglón de venta y de presupuesto
+// guarda su alícuota y su IVA, y la factura el IVA de su total. Sin backfill:
+// lo anterior se hizo sin discriminar IVA (alícuota NULL, IVA 0), y así quedó.
+for (const tabla of ['venta_items', 'presupuesto_items']) {
+  const columnas = db.prepare(`PRAGMA table_info(${tabla})`).all();
+  if (!columnas.some((col) => col.name === 'alicuota_iva')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN alicuota_iva TEXT`);
+  }
+  if (!columnas.some((col) => col.name === 'iva')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN iva REAL NOT NULL DEFAULT 0`);
+  }
+}
+if (!db.prepare('PRAGMA table_info(facturas)').all().some((col) => col.name === 'iva')) {
+  db.exec('ALTER TABLE facturas ADD COLUMN iva REAL NOT NULL DEFAULT 0');
+}
+// IVA, tercer paso (hist. §114): la condición del proveedor, el comprobante
+// que dio en cada compra (letra y número) y el IVA de cada renglón comprado.
+// Sin backfill, como §113: lo anterior queda sin letra (no se discriminó).
+if (!db.prepare('PRAGMA table_info(proveedores)').all().some((col) => col.name === 'condicion_iva')) {
+  db.exec('ALTER TABLE proveedores ADD COLUMN condicion_iva TEXT');
+}
+const comprasColumnasIva = db.prepare('PRAGMA table_info(compras)').all();
+for (const columna of ['comprobante_letra', 'comprobante_numero']) {
+  if (!comprasColumnasIva.some((col) => col.name === columna)) {
+    db.exec(`ALTER TABLE compras ADD COLUMN ${columna} TEXT`);
+  }
+}
+const compraItemsColumnasIva = db.prepare('PRAGMA table_info(compra_items)').all();
+if (!compraItemsColumnasIva.some((col) => col.name === 'alicuota_iva')) {
+  db.exec('ALTER TABLE compra_items ADD COLUMN alicuota_iva TEXT');
+}
+if (!compraItemsColumnasIva.some((col) => col.name === 'iva')) {
+  db.exec('ALTER TABLE compra_items ADD COLUMN iva REAL NOT NULL DEFAULT 0');
+}
+// Factura electrónica (etapa E): el estado en ARCA de cada comprobante y la
+// configuración del negocio (ver schema.sql). Sin backfill: lo emitido hasta
+// ahora queda como comprobante interno (arca_estado NULL), que es lo que fue.
+const facturasColumnasArca = db.prepare('PRAGMA table_info(facturas)').all();
+for (const columna of [
+  'alicuota_iva TEXT',
+  "arca_estado TEXT CHECK (arca_estado IN ('pendiente', 'autorizado', 'rechazado'))",
+  'cae TEXT',
+  'cae_vencimiento TEXT',
+  'arca_ambiente TEXT',
+  'arca_datos TEXT',
+  'arca_error TEXT'
+]) {
+  if (!facturasColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE facturas ADD COLUMN ${columna}`);
+  }
+}
+const organizacionesColumnasArca = db.prepare('PRAGMA table_info(organizaciones)').all();
+for (const columna of ['arca_punto_venta INTEGER', 'arca_verificado TEXT']) {
+  if (!organizacionesColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna}`);
+  }
+}
 const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
 for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {

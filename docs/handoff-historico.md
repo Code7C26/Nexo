@@ -10213,3 +10213,253 @@ negocio.
 **Para publicarlo:** sumar `NEXO_ADMIN_PLATAFORMA=santinosolla22@gmail.com` a
 `/etc/nexo/nexo.env` del servidor y reiniciar el servicio. Sin la variable,
 nadie ve el panel.
+
+## 112. IVA, primer paso: alícuota del producto y condición del cliente, 29 de octubre de 2026
+
+Primer tramo de la etapa C (punto 9 de "Qué sigue"), chico a propósito: el
+usuario tenía poco límite de sesión. Solo datos y formularios, sin cálculo.
+
+**Qué se hizo.**
+- Migración aditiva (`db/index.js`, junto a la de descripción/duración):
+  - `productos.alicuota_iva TEXT NOT NULL DEFAULT '21'`: los productos que ya
+    existen quedan en 21 %;
+  - `clientes.condicion_iva TEXT`, nullable: NULL = consumidor final, sin
+    backfill.
+  - Las dos columnas también están en `schema.sql`.
+- `server.js`:
+  - `ALICUOTAS_IVA` (`'21'`, `'10.5'`, `'27'`, `'5'`, `'2.5'`, `'0'`,
+    `'exento'`, `'no_gravado'`): se guarda la clave en texto, porque 10,5 no es
+    un número exacto. La valida `validarProducto` y entra en el alta, el PATCH
+    (con su auditoría) y la edición en lote (`CAMPOS_BULK_PRODUCTO`).
+  - `CONDICIONES_IVA_CLIENTE` (`consumidor_final`, `responsable_inscripto`,
+    `monotributo`, `exento`) en el alta y el PATCH de clientes. Si el PATCH no
+    manda la clave, queda la que tenía: otras pantallas editan el cliente sin
+    conocer el campo.
+- Frontend:
+  - `core/fiscal.js` suma `ALICUOTAS_IVA`, `alicuotaIva`,
+    `condicionIvaCliente` y `opcionesSelect`.
+  - El formulario de producto tiene "IVA incluido en el precio" (21 % de
+    partida), que no se muestra si el negocio es monotributista (factura C).
+  - El de cliente tiene "Condición frente al IVA" (vacío = Consumidor final).
+  - Las dos fichas muestran el dato.
+
+**Cómo se verificó.** `backend/test/iva.test.js` (2 casos: 21 % por defecto,
+cambio, otra edición que no la toca, alícuotas inválidas; condición del
+cliente, PATCH sin la clave, vaciarla y una inválida). `npm test` (133) y
+`npm run lint` en verde. **No se miró en el navegador.**
+
+**Lo que sigue de IVA:** cada renglón de venta, compra y presupuesto guarda su
+alícuota y su IVA (el precio sigue siendo final, así que IVA = precio −
+precio / (1 + alícuota)), la letra automática (A, B o C) y el reporte de IVA.
+
+## 113. IVA, segundo paso: el IVA de cada renglón y la letra del comprobante, 29 de octubre de 2026
+
+Segundo tramo de la etapa C (punto 9 de "Qué sigue"): ventas, presupuestos
+y comprobantes. Las compras y el reporte de IVA quedan para el tercero.
+
+**Qué se hizo.**
+- `backend/iva.js` (nuevo, puro): `ALICUOTAS_IVA` (se mudó de `server.js`),
+  `ivaIncluido`, `discriminaIva`, `ivaDelRenglon` y `letraQueCorresponde`.
+  El precio sigue siendo el final: IVA = importe − importe / (1 + alícuota).
+- Migración aditiva (`db/index.js`, también en `schema.sql`), sin backfill:
+  - `venta_items` y `presupuesto_items`: `alicuota_iva TEXT` (NULL = no se
+    discriminó) e `iva REAL NOT NULL DEFAULT 0` (el IVA de cantidad × precio);
+  - `facturas.iva REAL NOT NULL DEFAULT 0`: el IVA contenido en `neto`, que
+    sigue siendo el total (no se renombró: lo leen unos 45 lugares).
+- Solo el responsable inscripto discrimina IVA. Monotributo, exento o sin
+  condición cargada: alícuota NULL e IVA 0.
+- La alícuota se congela al vender y al cotizar, como el costo. Al facturar
+  una venta de antes (sin alícuota), toma la actual del producto.
+- Letra (`letraDelComprobante` en `server.js`): monotributo y exento → C;
+  inscripto → A a inscripto **y a monotributista** (RG 5003 de 2021; el plan
+  de handoff decía B, se corrigió), B a cualquier otro. Con la condición del
+  negocio cargada, la letra pedida no cuenta; sin cargar, la elegida o B.
+- La nota de crédito toma la letra de la factura de la venta, y el IVA de lo
+  devuelto con la alícuota congelada del renglón.
+- La factura suelta: 21 % si no se manda `alicuota_iva`.
+- `GET /api/ventas/:id` y `/api/presupuestos/:id` devuelven la alícuota y el
+  IVA por renglón y el total `iva`; `/api/facturas` suma `iva` y
+  `cliente_condicion_iva`.
+- Frontend:
+  - en los tres formularios de comprobante (suelta, facturar venta, nota de
+    crédito) la letra se esconde y se explica cuando sale sola
+    (`mostrarLetraSiSeElige`);
+  - la hoja impresa (`core/comprobante.js`) muestra la condición del cliente;
+    la A, los renglones sin IVA, "Neto gravado" e "IVA"; la B de un
+    inscripto, "IVA contenido (Ley 27.743)";
+  - la ficha de la factura muestra "IVA incluido".
+
+**Cómo se verificó.** `backend/test/iva.test.js` suma 4 casos (reglas puras;
+inscripto con tres alícuotas, B/A/A y numeración propia de la A, alícuota
+congelada, presupuesto y suelta; nota de crédito A con IVA proporcional;
+monotributo C y negocio sin condición). `npm test` (137), `npm run lint` y
+`npm run verificar-migracion` (24 de 24) en verde. En el navegador, con una
+base temporal: el modal de facturar con la ayuda en vez de la letra, y las
+hojas A (neto $ 3.000 + IVA $ 525 = $ 3.525) y B (IVA contenido $ 525).
+
+**Lo que sigue de IVA:** compras (el IVA del proveedor es crédito fiscal, no
+costo: hay que decidir si el costo de un inscripto se guarda neto), el
+reporte de IVA ventas y compras, y la alícuota elegible en la factura suelta.
+
+## 114. IVA, tercer paso: las compras, la ganancia sin IVA y el libro de IVA, 29 de octubre de 2026
+
+Tercer tramo de la etapa C (punto 9 de "Qué sigue"), que la cierra salvo la
+retención de Mercado Pago.
+
+**Decisión (mía, criterio contable estándar en la Argentina; revisable):**
+para un responsable inscripto el IVA no es ingreso ni costo. El de una compra
+con factura A es crédito fiscal y el costo se guarda sin IVA. Para que el
+margen no quede inflado, la venta también se mide sin su IVA: ganancia,
+margen del producto, resultado y reportes de ventas restan `venta_items.iva`.
+Para cualquier otro negocio, `iva` es 0 y nada cambia. Los totales de plata
+(deuda, cobros, total de la venta o de la compra) siguen siendo con IVA.
+
+**Qué se hizo.**
+- Migración aditiva, sin backfill (`db/index.js` y `schema.sql`):
+  `proveedores.condicion_iva`, `compras.comprobante_letra` y
+  `comprobante_numero`, `compra_items.alicuota_iva` e `iva`.
+- `iva.js`: `compraDiscriminaIva` (negocio inscripto y letra A). La letra
+  que corresponde es `letraQueCorresponde` con los papeles al revés (emite el
+  proveedor).
+- `server.js`:
+  - proveedores: `condicion_iva` en alta y PATCH (mismas claves que el
+    cliente; sin la clave, queda la que tenía);
+  - compras: `comprobante_letra` (A, B, C o vacía) y `comprobante_numero`.
+    Sin letra en el pedido, la propone la condición del proveedor (sin
+    condición, ninguna: no discrimina). Al editar, queda la que tenía salvo
+    que cambie el proveedor. `ivaDelRenglonComprado` saca el IVA del costo
+    real (el envío queda como vino);
+  - `precio_unitario` de la compra sigue siendo lo pagado (con IVA), así que
+    la deuda con el proveedor no cambia;
+  - ganancia sin IVA: lista y ficha de ventas, `calcularResultado` y los
+    reportes por producto, categoría y cliente (`SQL_IVA_DEVUELTO` descuenta
+    la parte del IVA de lo devuelto); `decorarProducto` mide el margen sobre
+    el precio sin IVA si el negocio discrimina;
+  - `GET /api/reportes/iva` (admin): libro de ventas (de las facturas
+    emitidas, las notas de crédito restan), libro de compras (compras con
+    comprobante y sus devoluciones, con el IVA proporcional) y el saldo.
+- Frontend:
+  - proveedor: "Condición frente al IVA" en el formulario y la ficha;
+  - compra: "Comprobante del proveedor" (solo si el negocio es inscripto,
+    propuesto por el proveedor) con la nota de crédito fiscal, y "N° de
+    comprobante" para todos; la ficha muestra el comprobante y el IVA;
+  - Estadísticas: sección IVA (lo vendido, lo comprado, a pagar o a favor) y
+    los dos libros con "Exportar CSV", solo para un inscripto;
+  - factura suelta: "Importe" (era "Monto neto", y es el total) e "IVA
+    incluido en el importe" para un inscripto;
+  - la tira de Ventas suma la ganancia de cada venta en vez de total − costo.
+
+**Cómo se verificó.** `backend/test/iva-compras.test.js` (2 casos, en archivo
+aparte porque el alta de empresas tiene tope por IP): compra A y C, costo y
+margen sin IVA, venta con ganancia y resumen sin IVA, devolución al
+proveedor, el libro y su saldo, letra inválida; un monotributista con A no
+discrimina. `npm test` (139), `npm run lint` y `npm run verificar-migracion`
+(24 de 24) en verde. `npm run regresion`: 11 diferencias, todas campos nuevos,
+la ruta nueva (admin 200, empleado 403) y las columnas nuevas en la descarga.
+En el navegador (base temporal, escritorio y celular): la sección IVA (A
+favor $ 840 con $ 1.260 vendido y $ 2.100 comprado), la letra propuesta A
+para el inscripto y C para el monotributista, la factura suelta con la
+alícuota, sin errores de consola. Se corrigió ahí la letra repetida en el
+libro de ventas ("Factura A A …").
+
+**Lo que queda de IVA:** la retención de Mercado Pago (necesita decidir su
+tratamiento), el desglose por alícuota en los libros (hace falta para el
+libro IVA digital de ARCA) y la alícuota por renglón en la compra (hoy toma
+la del producto).
+
+## 115. ARCA en homologación: factura electrónica con CAE, 29 de octubre de 2026
+
+Etapa E (punto 10 de "Qué sigue"), con los trámites de homologación ya hechos
+por el usuario. Pedido: "hacer lo que sigue", y la alta guiada de la
+delegación que había pedido ese mismo día.
+
+**Decisiones (mías, técnicas):**
+- **Sin `node-forge`.** El handoff decía que la firma CMS del ticket de WSAA
+  lo necesitaba. Son unas pocas estructuras DER (SignedData con atributos
+  firmados, SHA-256 y RSA) y la firma RSA sí la hace `node:crypto`: se
+  arman a mano en `backend/arca.js`, como el SMTP de `mail.js`. Lo verifica
+  `openssl cms -verify` (test) y lo aceptó WSAA de homologación a la
+  primera.
+- **El ticket se guarda en la base** (`arca_tickets`): ARCA da uno por
+  certificado cada 12 horas y rechaza otro pedido mientras siga vigente. En
+  memoria, cada deploy lo perdería y bloquearía la facturación hasta 12 h.
+- **El número lo da ARCA.** Con la factura electrónica activa, el
+  comprobante nace `pendiente`, sin número, en el punto de venta de ARCA del
+  negocio. Después del commit (node:sqlite es síncrono y ARCA tarda) se pide
+  el último autorizado + 1 y el CAE. Un pedido a la vez por serie (CUIT,
+  punto de venta, tipo), con una cola en memoria.
+- **Reintento sin duplicar:** el número intentado se guarda antes de
+  mandarlo. Si la respuesta se pierde, el reintento consulta ese número
+  (`FECompConsultar`) y lo adopta si coincide importe, receptor y fecha. Un
+  10016 (número ya usado) da una vuelta más. Un rechazo no consume número:
+  queda `rechazado` con el motivo de ARCA, se puede reintentar después de
+  corregir (el CUIT del cliente) o descartar (`DELETE /api/facturas/:id`,
+  solo rechazados).
+- **Homologación:** todos los negocios emiten con el CUIT del certificado de
+  prueba (el CUIL de Santino), porque el ARCA de prueba no tiene
+  delegaciones de negocios de mentira; lo impreso lleva los datos del
+  negocio y "Comprobante de prueba – sin validez fiscal" (decisión del 19 de
+  octubre). Comparten la serie de cada punto de venta: los números de un
+  negocio saltan. En producción, cada uno con su CUIT.
+- **Punto de venta propio:** no puede tener comprobantes internos de Nexo
+  (chocaría la numeración). Lo interno queda como estaba (`arca_estado`
+  NULL).
+- La nota de crédito va asociada a la factura electrónica de la venta
+  (`CbtesAsoc`); si la venta no tiene una, al período desde la venta hasta
+  hoy (`PeriodoAsoc`). La factura suelta, concepto 3 (no se sabe qué se
+  vendió); la de una venta, 1, 2 o 3 según tenga productos o servicios.
+- Auditoría: `cambiar_estado` (CAE o rechazo), `editar` (configuración) y
+  `anular` (descarte). Sumar una acción nueva pedía reconstruir la tabla.
+- El QR de la RG 4892 se dibuja con `qrcode-generator` (MIT, Kazuhiko Arase,
+  1.4.4), vendorizada en `frontend/js/vendor/qrcode.js` como jsPDF: cliente,
+  sin npm ni build.
+
+**Qué se hizo.**
+- `backend/arca.js` (nuevo): firma CMS, WSAA, WSFEv1 (`FEDummy`,
+  `FECompUltimoAutorizado`, `FECAESolicitar`, `FECompConsultar`,
+  `FEParamGetPtosVenta`), las cuentas del comprobante
+  (`importesDelComprobante`: IVA por alícuota desde el total de cada una,
+  exento y no gravado aparte, cierra al centavo), documento y condición del
+  receptor (RG 5616), URL del QR y ARCA simulado (`NEXO_ARCA=stub`).
+- Migración aditiva, sin backfill: `facturas.alicuota_iva`, `arca_estado`,
+  `cae`, `cae_vencimiento`, `arca_ambiente`, `arca_datos` (JSON con lo
+  mandado y lo contestado), `arca_error`; `organizaciones.arca_punto_venta`
+  y `arca_verificado`; tabla `arca_tickets`.
+- `server.js`: las tres emisiones (factura suelta, facturar venta, nota de
+  crédito) pasan por `autorizarFactura` si el negocio la tiene activa; una A
+  sin CUIT del cliente se frena antes de guardar. Endpoints nuevos:
+  `POST /api/facturas/:id/autorizar`, `DELETE /api/facturas/:id`,
+  `GET/PUT/DELETE /api/factura-electronica` y `POST .../verificar` (admin).
+  El libro IVA ventas no cuenta lo que no tiene CAE. Cambiar el CUIT del
+  negocio pide verificar de nuevo. `GET /api/negocio` trae
+  `factura_electronica`.
+- Frontend: Configuración → Factura electrónica
+  (`dominios/factura-electronica.js`): estado, aviso del ambiente de prueba,
+  cuatro pasos con número que pasa a tilde (datos fiscales, permiso en ARCA
+  con los menús exactos, punto de venta con el sistema que corresponde a la
+  condición, verificar). El error de "Verificar" queda debajo del botón.
+  Facturas: marca "Sin CAE todavía" o "Rechazada por ARCA" en la lista (los
+  rechazados no suman), CAE y lo que dijo ARCA en la ficha, botones "Pedir
+  el CAE a ARCA" y "Descartar", y el aviso al emitir con el número y el
+  CAE. En los tres formularios, con la factura activa, el punto de venta no
+  se elige. Lo impreso: CAE, vencimiento y QR, o "sin autorizar por ARCA".
+- `test/arca.test.js` (13 tests): cuentas, firma con openssl (se saltea sin
+  openssl), emisión con número y CAE, QR, A sin CUIT, red caída, respuesta
+  perdida (adopta el mismo número), rechazo y descarte, nota de crédito,
+  falta de delegación, CUIT cambiado y punto de venta con internos.
+  `permisos.js` clasifica los endpoints nuevos. En
+  `frontend-modulos.test.js` se corrigió la expresión que lista lo que carga
+  `index.html`: decía saltear los links con esquema y no lo hacía (el link a
+  arca.gob.ar es el primero externo).
+
+**Cómo se verificó.** `npm run lint` y `npm test`. Contra ARCA de
+homologación real, con una base temporal: el login (ticket hasta el 30 de
+octubre a las 7:02), C y B de prueba en el punto de venta 1, y por la API del
+servidor una factura A con 21 % y 10,5 % a un inscripto, una B a consumidor
+final y la nota de crédito A asociada en el punto de venta 3: las tres
+autorizadas, IVA $ 15.734,80. No se pudo hacer la pasada visual en el
+navegador (el de la herramienta estaba tomado por otra sesión).
+
+**Lo que queda:** subir el certificado al servidor (con un segundo
+certificado, por el ticket de 12 horas), las capturas de ARCA en los pasos,
+el certificado propio de un negocio y producción (ver handoff.md, punto 10).

@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS clientes (
   -- el cliente en una venta. NULL = la lista predeterminada / sin plazo
   -- definido (el porqué de cada una, en su ALTER de db/index.js).
   lista_precio_id INTEGER REFERENCES listas_precios(id),
-  condicion_pago TEXT
+  condicion_pago TEXT,
+  -- Condición frente al IVA (CLAUDE.md §10, §33): decide la letra del
+  -- comprobante. Clave de CONDICIONES_IVA_CLIENTE en server.js; NULL se trata
+  -- como consumidor final.
+  condicion_iva TEXT
 );
 
 -- estado solo tiene sentido para una factura SUELTA (sin venta_id): no
@@ -42,10 +46,10 @@ CREATE TABLE IF NOT EXISTS facturas (
   condicion TEXT NOT NULL CHECK (condicion IN ('efectivo', 'transferencia', 'mercadopago')),
   estado TEXT NOT NULL CHECK (estado IN ('cobrado', 'pendiente', 'vencido')),
   fecha TEXT NOT NULL DEFAULT (date('now')),
-  -- Estructura de comprobante fiscal (CLAUDE.md §16), sin IVA todavía
-  -- (fuera de V1) y sin conexión real a ARCA: deja la numeración lista
-  -- para cuando se conecte, sin tener que volver a migrar sobre datos
-  -- ya cargados.
+  -- Estructura de comprobante fiscal (CLAUDE.md §16), sin conexión real a
+  -- ARCA todavía: deja la numeración lista para cuando se conecte, sin tener
+  -- que volver a migrar sobre datos ya cargados. La letra la decide
+  -- letraQueCorresponde() (iva.js) cuando el negocio cargó su condición.
   tipo TEXT NOT NULL DEFAULT 'factura' CHECK (tipo IN ('factura', 'nota_credito', 'nota_debito')),
   letra TEXT NOT NULL DEFAULT 'B' CHECK (letra IN ('A', 'B', 'C')),
   punto_venta INTEGER NOT NULL DEFAULT 1,
@@ -68,7 +72,41 @@ CREATE TABLE IF NOT EXISTS facturas (
   -- idx_facturas_devolucion_id): no pueden vivir acá porque en una base
   -- vieja estas columnas todavía no existen cuando corre este archivo.
   venta_id INTEGER REFERENCES ventas(id),
-  devolucion_id INTEGER REFERENCES devoluciones(id)
+  devolucion_id INTEGER REFERENCES devoluciones(id),
+  -- El IVA contenido en `neto`, que es el total (hist. §113): neto gravado =
+  -- neto − iva. 0 si el negocio no discrimina IVA o si es anterior.
+  iva REAL NOT NULL DEFAULT 0,
+  -- La alícuota de una factura suelta, que no tiene renglones de donde
+  -- sacarla. NULL en las demás.
+  alicuota_iva TEXT,
+  -- Factura electrónica (etapa E, CLAUDE.md §33). arca_estado NULL es un
+  -- comprobante interno, que nunca fue a ARCA. Uno electrónico nace
+  -- 'pendiente', sin número: el número lo da ARCA (el último autorizado + 1)
+  -- y se guarda junto con el CAE al autorizarse. 'rechazado' no consumió
+  -- número y se puede reintentar.
+  arca_estado TEXT CHECK (arca_estado IN ('pendiente', 'autorizado', 'rechazado')),
+  cae TEXT,
+  cae_vencimiento TEXT,
+  -- homologacion (CAE de prueba), produccion o simulado (NEXO_ARCA=stub).
+  arca_ambiente TEXT,
+  -- Lo que se le mandó y lo que contestó ARCA, en JSON: CUIT emisor, código
+  -- del comprobante, documento del receptor, importes, observaciones y el
+  -- número que se intentó (para reintentar sin duplicar).
+  arca_datos TEXT,
+  -- El último rechazo o falla, en palabras de ARCA.
+  arca_error TEXT
+);
+
+-- El ticket de acceso de WSAA (arca.js): ARCA da uno por certificado cada 12
+-- horas y no da otro mientras ese siga vigente, así que se guarda en la base y
+-- no en memoria (un reinicio del servidor lo perdería). Sin organizacion_id: es
+-- del certificado (el de Nexo lo comparten todos los negocios que le
+-- delegaron), y no sale en la descarga de datos de un negocio.
+CREATE TABLE IF NOT EXISTS arca_tickets (
+  clave TEXT PRIMARY KEY,   -- ambiente:servicio:huella del certificado
+  token TEXT NOT NULL,
+  sign TEXT NOT NULL,
+  vence TEXT NOT NULL
 );
 
 -- Solo un nivel por ahora (sin subcategoría): CLAUDE.md §3/§4 las
@@ -176,7 +214,11 @@ CREATE TABLE IF NOT EXISTS productos (
   -- duración es estimada, en minutos: informa, no se cobra (lo que se cobra
   -- por tiempo es la unidad 'hora').
   descripcion TEXT,
-  duracion_minutos INTEGER
+  duracion_minutos INTEGER,
+  -- Alícuota de IVA con que se factura (CLAUDE.md §4, §33): clave de
+  -- ALICUOTAS_IVA en server.js ('21', '10.5', 'exento'...). El precio de venta
+  -- es el final, con el IVA adentro.
+  alicuota_iva TEXT NOT NULL DEFAULT '21'
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -278,7 +320,10 @@ CREATE TABLE IF NOT EXISTS proveedores (
   notas TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- Plazo de pago habitual: mismo criterio que clientes.condicion_pago.
-  condicion_pago TEXT
+  condicion_pago TEXT,
+  -- Condición frente al IVA (hist. §114), mismas claves que en clientes.
+  -- NULL = no se cargó: sus compras no discriminan IVA salvo que se elija A.
+  condicion_iva TEXT
 );
 
 -- condicion_pago / fecha_vencimiento: el plazo pactado con el cliente y la
@@ -325,7 +370,12 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- recalcula nunca después, aunque el costo del producto cambie con
   -- compras posteriores: es lo que permite calcular márgenes históricos
   -- reales en vez de con el costo actual.
-  costo_unitario_historico REAL NOT NULL DEFAULT 0
+  costo_unitario_historico REAL NOT NULL DEFAULT 0,
+  -- Foto de la alícuota del producto (clave de ALICUOTAS_IVA en iva.js) y el
+  -- IVA incluido en cantidad × precio (hist. §113). Alícuota NULL = no se
+  -- discriminó: el negocio no es inscripto, o la venta es anterior.
+  alicuota_iva TEXT,
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
@@ -369,7 +419,10 @@ CREATE TABLE IF NOT EXISTS presupuesto_items (
   producto_id INTEGER NOT NULL REFERENCES productos(id),
   variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
-  precio_unitario REAL NOT NULL
+  precio_unitario REAL NOT NULL,
+  -- Igual que en venta_items (hist. §113).
+  alicuota_iva TEXT,
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Una devolución revierte parte (o todo) de una venta ya confirmada:
@@ -447,7 +500,12 @@ CREATE TABLE IF NOT EXISTS compras (
   fecha_vencimiento TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- A qué depósito entra la mercadería: mismo criterio que ventas.deposito_id.
-  deposito_id INTEGER REFERENCES depositos(id)
+  deposito_id INTEGER REFERENCES depositos(id),
+  -- El comprobante que dio el proveedor (hist. §114): letra (A, B o C) y su
+  -- número, libre. Solo la A a un negocio inscripto discrimina IVA (crédito
+  -- fiscal). NULL en las compras anteriores y sin comprobante.
+  comprobante_letra TEXT,
+  comprobante_numero TEXT
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a
@@ -461,7 +519,12 @@ CREATE TABLE IF NOT EXISTS compra_items (
   variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL,
-  costo_real_unitario REAL
+  costo_real_unitario REAL,
+  -- Como en venta_items (hist. §114): la alícuota y el IVA contenido en
+  -- cantidad × precio_unitario, que sigue siendo lo pagado. Con IVA
+  -- discriminado, costo_real_unitario va sin IVA: es crédito fiscal, no costo.
+  alicuota_iva TEXT,
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Espejo de devoluciones/devolucion_items, del lado de compras: revierte
@@ -927,7 +990,13 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- datos, a los 30 días. La fila queda, sin sus datos, porque
   -- usuarios.organizacion_id la referencia.
   baja_pedida TEXT,
-  baja_hecha TEXT
+  baja_hecha TEXT,
+  -- Factura electrónica (etapa E, CLAUDE.md §33): el punto de venta que el
+  -- negocio dio de alta en ARCA para web services, y cuándo se verificó que
+  -- Nexo puede facturar por su CUIT. Sin verificar, el negocio no emite
+  -- comprobantes electrónicos.
+  arca_punto_venta INTEGER,
+  arca_verificado TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

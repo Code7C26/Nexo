@@ -63,6 +63,15 @@ export const RUTAS_PERMISOS = {
   'GET /api/facturas': 'ambos',
   'GET /api/facturas/:id': 'ambos',
   'POST /api/facturas': 'ambos',
+  // Factura electrónica (etapa E): reintentar el CAE o descartar un rechazo es
+  // parte de facturar, como emitir; activarla y verificarla es configuración
+  // del negocio.
+  'POST /api/facturas/:id/autorizar': 'ambos',
+  'DELETE /api/facturas/:id': 'ambos',
+  'GET /api/factura-electronica': 'admin',
+  'PUT /api/factura-electronica': 'admin',
+  'POST /api/factura-electronica/verificar': 'admin',
+  'DELETE /api/factura-electronica': 'admin',
   'GET /api/categorias': 'ambos',
   'POST /api/categorias': 'admin',
   'PATCH /api/categorias/:id': 'admin',
@@ -211,6 +220,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/resumen/evolucion': 'admin',
   'GET /api/reportes/ventas': 'admin',
   'GET /api/reportes/compras': 'admin',
+  'GET /api/reportes/iva': 'admin',
   'GET /api/reportes/stock': 'admin',
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',

@@ -525,6 +525,77 @@
           </div>
         </section>
 
+        <!-- IVA del período (hist. §114): solo para un responsable inscripto,
+             el único que discrimina. Mismo filtro de fecha de arriba. Los
+             dos libros son lo que pide el contador, y se bajan en CSV. -->
+        <div id="reporteIvaSeccion" hidden>
+          <h2>IVA</h2>
+
+          <section class="ledger-strip" aria-label="IVA del período">
+            <div class="ledger-item">
+              <span class="ledger-label">IVA de lo vendido</span>
+              <span class="ledger-value mono" id="reporteIvaDebito">$0,00</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label">IVA de lo comprado</span>
+              <span class="ledger-value mono" id="reporteIvaCredito">$0,00</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label" id="reporteIvaSaldoLabel">A pagar</span>
+              <span class="ledger-value mono" id="reporteIvaSaldo">$0,00</span>
+            </div>
+          </section>
+          <p class="form-note">El IVA de lo vendido (débito fiscal) sale de las facturas emitidas; el de lo comprado (crédito fiscal), de las compras con factura A. Las notas de crédito restan.</p>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Libro IVA ventas</h2>
+              <button class="btn btn-secundario" id="btnExportarIvaVentas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Comprobante</th>
+                  <th scope="col">Cliente</th>
+                  <th scope="col">CUIT / DNI</th>
+                  <th scope="col" class="align-right">Neto</th>
+                  <th scope="col" class="align-right">IVA</th>
+                  <th scope="col" class="align-right">Total</th>
+                </tr>
+              </thead>
+              <tbody id="reporteIvaVentasBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Libro IVA compras</h2>
+              <button class="btn btn-secundario" id="btnExportarIvaCompras"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Comprobante</th>
+                  <th scope="col">Proveedor</th>
+                  <th scope="col">CUIT / DNI</th>
+                  <th scope="col" class="align-right">Neto</th>
+                  <th scope="col" class="align-right">IVA</th>
+                  <th scope="col" class="align-right">Total</th>
+                </tr>
+              </thead>
+              <tbody id="reporteIvaComprasBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+
       </section>
 
       <!-- Vista: Presupuestos -->
@@ -2682,6 +2753,9 @@
                    él, quien busca un PDF no adivina que está detrás de
                    "Imprimir". -->
               <button type="button" class="btn btn-secundario" id="btnImprimirFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#printer"></use></svg> Imprimir / PDF</button>
+              <!-- Factura electrónica (etapa E): un comprobante sin CAE. -->
+              <button type="button" class="btn btn-primary" id="btnPedirCae" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg> Pedir el CAE a ARCA</button>
+              <button type="button" class="btn btn-peligro" id="btnDescartarFactura" hidden>Descartar</button>
             </div>
           </div>
           <dl class="ficha-datos" id="fichaFacturaDatos"></dl>
@@ -2961,6 +3035,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/factura-electronica" data-seccion="factura-electronica">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Factura electrónica</span><span class="config-item-desc" id="configFacturaElectronicaResumen">Facturá con CAE de ARCA</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/baja" data-seccion="baja">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-down"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Tus datos y la baja</span><span class="config-item-desc">Descargá todo, o dá de baja el negocio</span></span>
@@ -3129,6 +3208,76 @@
                   <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
                 </div>
               </form>
+            </section>
+
+            <!-- Factura electrónica (etapa E, CLAUDE.md §33): la pinta
+                 dominios/factura-electronica.js. El negocio le delega la
+                 factura electrónica a Nexo en ARCA (nunca le da su clave
+                 fiscal), carga su punto de venta y lo verifica. -->
+            <section class="config-pagina col-admin" data-seccion="factura-electronica" aria-labelledby="configFeTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configFeTitulo" tabindex="-1">Factura electrónica</h2>
+                <p>Facturá con CAE de ARCA desde Nexo. Le das permiso a Nexo una sola vez, desde ARCA, y listo: sin certificados ni programas aparte.</p>
+              </header>
+
+              <div class="fe-estado" id="feEstado" aria-live="polite"></div>
+
+              <ol class="fe-pasos">
+                <li class="fe-paso" data-paso="datos">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Tus datos fiscales</p>
+                    <p class="config-tarjeta-texto" id="feDatosTexto"></p>
+                    <a class="btn btn-secundario" id="feDatosLink" href="#/configuracion/comprobantes">Cargar el CUIT y la condición</a>
+                  </div>
+                </li>
+
+                <li class="fe-paso" data-paso="permiso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Dale permiso a Nexo en ARCA</p>
+                    <p class="fe-aviso-prueba" id="fePermisoPrueba" hidden>En el ambiente de prueba no hace falta: Nexo factura con su CUIT de prueba. Estos son los pasos que vas a seguir cuando Nexo facture de verdad.</p>
+                    <ol class="fe-subpasos">
+                      <li>Entrá a <a href="https://www.arca.gob.ar" target="_blank" rel="noopener noreferrer">arca.gob.ar</a> con tu CUIT y tu clave fiscal (nivel 3).</li>
+                      <li>Abrí el servicio <strong>Administrador de Relaciones de Clave Fiscal</strong> y tocá <strong>Nueva relación</strong>.</li>
+                      <li>En “Servicio”, tocá <strong>Buscar</strong> y elegí <strong>ARCA</strong> → <strong>WebServices</strong> → <strong>Facturación Electrónica</strong>.</li>
+                      <li>En “Representante”, tocá <strong>Buscar</strong>, escribí el CUIT de Nexo, <strong class="mono" id="feCuitNexo">—</strong>, y confirmá.</li>
+                    </ol>
+                    <p class="campo-ayuda">Nexo nunca te pide tu clave fiscal: el permiso se da desde ARCA, y lo podés sacar cuando quieras desde el mismo lugar.</p>
+                  </div>
+                </li>
+
+                <li class="fe-paso" data-paso="punto">
+                  <form class="form" id="formFePuntoVenta" novalidate>
+                    <div class="config-tarjeta-cuerpo">
+                      <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Un punto de venta para Nexo</p>
+                      <ol class="fe-subpasos">
+                        <li>En ARCA, abrí <strong>Administración de puntos de venta y domicilios</strong>, elegí tu CUIT y después <strong>A/B/M de puntos de venta</strong>.</li>
+                        <li>Tocá <strong>Agregar</strong>, poné un número que no uses en otro lado y, en “Sistema”, elegí <strong id="feSistema">RECE para aplicativo y web services</strong>.</li>
+                        <li>Escribí acá ese mismo número.</li>
+                      </ol>
+                      <label>Número de punto de venta
+                        <input type="number" name="punto_venta" id="fePuntoVenta" min="1" max="99998" step="1" inputmode="numeric" />
+                      </label>
+                      <p class="campo-ayuda" id="fePuntoAyuda" hidden></p>
+                    </div>
+                    <div class="config-tarjeta-pie">
+                      <p>Cambiarlo pide volver a verificar.</p>
+                      <button type="submit" class="btn btn-secundario">Guardar el punto de venta</button>
+                    </div>
+                  </form>
+                </li>
+
+                <li class="fe-paso" data-paso="verificar">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Verificá con ARCA</p>
+                    <p class="config-tarjeta-texto">Nexo se fija en ARCA que tenga tu permiso y que el punto de venta esté habilitado. Si da bien, desde ese momento cada factura y cada nota de crédito salen con CAE.</p>
+                    <p class="form-note" id="feVerificarError" hidden></p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p id="feVerificarPie">Tarda unos segundos.</p>
+                    <button type="button" class="btn btn-primary" id="btnFeVerificar">Verificar con ARCA</button>
+                  </div>
+                </li>
+              </ol>
             </section>
 
             <!-- Usuarios (solo admin): quién puede entrar a Nexo y con qué
@@ -4053,8 +4202,14 @@
         <label>Concepto
           <input type="text" name="concepto" required placeholder="Ej: Venta de mercadería" />
         </label>
-        <label>Monto neto
+        <label>Importe
           <input type="number" name="neto" required placeholder="0.00" step="0.01" min="0" />
+        </label>
+        <!-- Solo para un inscripto (hist. §114): el importe es el final, y el
+             IVA se saca de adentro con esta alícuota. Opciones en runtime
+             (core/fiscal.js). -->
+        <label id="facturaAlicuotaWrap" hidden>IVA incluido en el importe
+          <select name="alicuota_iva"></select>
         </label>
         <label>Medio de pago
           <select name="condicion">
@@ -4069,16 +4224,20 @@
             <option value="nota_debito">Nota de débito</option>
           </select>
         </label>
-        <label>Letra
+        <label data-letra-elegida>Letra
           <select name="letra">
             <option value="B">B</option>
             <option value="A">A</option>
             <option value="C">C</option>
           </select>
         </label>
-        <label>Punto de venta
+        <!-- Con la condición del negocio cargada, la letra sale sola (hist. §113). -->
+        <p class="campo-ayuda" data-letra-sola hidden>La letra (A, B o C) sale sola, según tu condición frente al IVA y la del cliente.</p>
+        <label data-punto-venta>Punto de venta
           <input type="number" name="punto_venta" value="1" min="1" step="1" />
         </label>
+        <!-- Con factura electrónica, el punto de venta es el de ARCA y el número lo da ARCA (etapa E). -->
+        <p class="campo-ayuda" data-arca hidden></p>
         <p class="form-note">Factura suelta: no descuenta stock ni entra en el resultado.</p>
         <button type="submit" class="btn btn-primary btn-full">Registrar factura</button>
       </form>
@@ -4431,6 +4590,21 @@
         <label id="compraVencimientoWrap" hidden>Vence el
           <input type="date" name="fecha_vencimiento" id="compraVencimiento" />
         </label>
+        <!-- El comprobante que dio el proveedor (hist. §114). La letra solo
+             se ve si el negocio es inscripto, y la propone la condición del
+             proveedor: con A, el IVA es crédito fiscal y el costo va sin IVA. -->
+        <label id="compraLetraWrap" hidden>Comprobante del proveedor
+          <select name="comprobante_letra" id="compraLetra">
+            <option value="">Sin comprobante</option>
+            <option value="A">Factura A</option>
+            <option value="B">Factura B</option>
+            <option value="C">Factura C</option>
+          </select>
+        </label>
+        <p class="form-note" id="compraLetraNota" hidden>Con factura A, el IVA queda como crédito fiscal y el costo de los productos va sin IVA.</p>
+        <label>N° de comprobante
+          <input type="text" name="comprobante_numero" maxlength="30" placeholder="Opcional, por ejemplo 0001-00001234" />
+        </label>
         <div class="item-rows" id="compraItems"></div>
         <datalist id="productosSugeridos"></datalist>
         <button type="button" class="btn-add-item" id="btnAgregarItemCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
@@ -4460,16 +4634,20 @@
             <option value="transferencia">Transferencia</option>
           </select>
         </label>
-        <label>Letra
+        <label data-letra-elegida>Letra
           <select name="letra">
             <option value="B">B</option>
             <option value="A">A</option>
             <option value="C">C</option>
           </select>
         </label>
-        <label>Punto de venta
+        <!-- Con la condición del negocio cargada, la letra sale sola (hist. §113). -->
+        <p class="campo-ayuda" data-letra-sola hidden>La letra (A, B o C) sale sola, según tu condición frente al IVA y la del cliente.</p>
+        <label data-punto-venta>Punto de venta
           <input type="number" name="punto_venta" value="1" min="1" step="1" />
         </label>
+        <!-- Con factura electrónica, el punto de venta es el de ARCA y el número lo da ARCA (etapa E). -->
+        <p class="campo-ayuda" data-arca hidden></p>
         <button type="submit" class="btn btn-primary btn-full">Generar factura</button>
       </form>
     </div>
@@ -4490,16 +4668,20 @@
             <option value="mercadopago">Mercado Pago</option>
           </select>
         </label>
-        <label>Letra
+        <label data-letra-elegida>Letra
           <select name="letra">
             <option value="B">B</option>
             <option value="A">A</option>
             <option value="C">C</option>
           </select>
         </label>
-        <label>Punto de venta
+        <!-- Con la condición del negocio cargada, la letra sale sola (hist. §113). -->
+        <p class="campo-ayuda" data-letra-sola hidden>La letra (A, B o C) sale sola, según tu condición frente al IVA y la del cliente.</p>
+        <label data-punto-venta>Punto de venta
           <input type="number" name="punto_venta" value="1" min="1" step="1" />
         </label>
+        <!-- Con factura electrónica, el punto de venta es el de ARCA y el número lo da ARCA (etapa E). -->
+        <p class="campo-ayuda" data-arca hidden></p>
         <button type="submit" class="btn btn-primary btn-full">Emitir nota de crédito</button>
       </form>
     </div>
@@ -4527,6 +4709,11 @@
         </label>
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <!-- Opciones en runtime (core/fiscal.js). Decide la letra de la
+             factura (CLAUDE.md §33): vacío es consumidor final. -->
+        <label>Condición frente al IVA
+          <select name="condicion_iva"></select>
         </label>
         <!-- Opciones en runtime (poblarSelectListasPrecios en app.js). Sin
              elegir nada = usa la predeterminada del negocio (CLAUDE.md §18);
@@ -4572,6 +4759,11 @@
         </label>
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <!-- Opciones en runtime (core/fiscal.js). Con la del negocio, propone
+             la letra del comprobante de cada compra (hist. §114). -->
+        <label>Condición frente al IVA
+          <select name="condicion_iva"></select>
         </label>
         <!-- Opciones en runtime (poblarSelectCondicionPago en app.js). Sin
              definir = la compra arranca en Contado como siempre; con un plazo
@@ -4806,6 +4998,12 @@
         </div>
         <label>Precio de venta (lista predeterminada)
           <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
+        </label>
+        <!-- Opciones en runtime (ALICUOTAS_IVA de core/fiscal.js). El precio
+             de arriba es el final, con el IVA adentro. Un negocio
+             monotributista no la ve: factura C, sin IVA discriminado. -->
+        <label id="productoIvaCampo">IVA incluido en el precio
+          <select name="alicuota_iva"></select>
         </label>
         <!-- Un campo por cada lista de precios activa que NO sea la
              predeterminada (esa ya se carga arriba, en precio_venta) — se

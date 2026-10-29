@@ -5388,6 +5388,21 @@ input.precio-sin-configurar::placeholder {
   font-family: var(--font-mono);
 }
 
+/* Neto gravado e IVA de una factura (hist. §113), arriba del total. */
+.hoja-subtotal {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12pt;
+  margin: 0 0 3pt;
+  font-size: 10pt;
+}
+
+.hoja-subtotal span:last-child {
+  font-family: var(--font-mono);
+  min-width: 70pt;
+  text-align: right;
+}
+
 .hoja-notas {
   margin-top: 12pt;
 }
@@ -5403,6 +5418,22 @@ input.precio-sin-configurar::placeholder {
 .hoja-legal {
   margin-top: 4pt;
   font-style: italic;
+}
+
+/* El pie fiscal del comprobante electrónico (etapa E): el QR de la RG 4892 al
+   lado del CAE y su vencimiento. */
+.hoja-arca {
+  display: flex;
+  align-items: center;
+  gap: 10pt;
+  margin-top: 8pt;
+}
+.hoja-arca p { margin: 0 0 2pt; }
+.hoja-arca-titulo { font-weight: 600; }
+.hoja-qr {
+  width: 26mm;
+  height: 26mm;
+  image-rendering: pixelated;
 }
 
 /* La marca del plan Gratis (hist. §99): chica y al final, nunca encima de los
@@ -6413,6 +6444,115 @@ a.segmento {
   line-height: 1.5;
   color: var(--ink-muted);
   text-wrap: pretty;
+}
+
+/* Factura electrónica (etapa E, dominios/factura-electronica.js): el estado
+   arriba y los cuatro pasos, cada uno una tarjeta con su número, que pasa a
+   tilde cuando está hecho. */
+.fe-estado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.fe-estado-linea {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.fe-estado-linea > .ico { flex: none; margin-top: 2px; }
+.fe-estado-activa {
+  align-items: center;
+  border-color: var(--accent-ok);
+  background: var(--accent-ok-bg);
+  color: var(--ink);
+}
+.fe-estado-activa > .ico { color: var(--accent-ok); }
+.fe-estado-falta {
+  border-color: var(--accent-warn);
+  background: var(--accent-warn-bg);
+  color: var(--ink);
+}
+.fe-estado-texto { flex: 1; min-width: 0; }
+.fe-estado-texto p { margin: 0; }
+.fe-estado-titulo { font-weight: 600; }
+.fe-aviso-prueba {
+  margin: 0;
+  max-width: 72ch;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--info-bg);
+  color: var(--ink);
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+}
+.fe-aviso-prueba[hidden] { display: none; }
+
+.fe-pasos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  counter-reset: fe-paso;
+}
+.fe-paso {
+  counter-increment: fe-paso;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.fe-paso > .form { gap: 0; }
+.fe-paso .config-tarjeta-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.fe-paso-marca {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-sunk);
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  transition: background var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
+}
+.fe-paso-marca::before { content: counter(fe-paso); }
+.fe-paso-hecho .fe-paso-marca {
+  border-color: var(--accent-ok);
+  background: var(--accent-ok);
+  color: var(--surface);
+}
+.fe-paso-hecho .fe-paso-marca::before { content: "✓"; }
+.fe-subpasos {
+  margin: 0;
+  max-width: 66ch;
+  padding-left: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--txt-sm);
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+.fe-subpasos strong { color: var(--ink); font-weight: 600; }
+.fe-paso .config-tarjeta-cuerpo > .btn { align-self: flex-start; }
+.fe-paso .btn[hidden] { display: none; }
+@media (max-width: 860px) {
+  .fe-estado-activa { flex-wrap: wrap; }
 }
 
 
