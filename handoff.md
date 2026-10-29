@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §109);
+    siguiente número (hoy el último es §110);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -22,22 +22,45 @@
 ## Estado actual (29 de octubre de 2026)
 
 **Para retomar (sesión del 29 de octubre):**
-1. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
+1. **Lo próximo: el panel de la plataforma** (pedido y aceptado por el
+   usuario el 29 de octubre; va antes que IVA). Hoy no hay forma de ver las
+   cuentas y los negocios de Nexo desde la web; se consultó por SSH (cómo, en
+   hist. §110).
+   - **Quién lo ve:** solo la cuenta `santinosolla22@gmail.com`, que es la
+     que administra Nexo (decisión del usuario). Va por una variable del
+     servidor, por ejemplo `NEXO_ADMIN_PLATAFORMA` con la lista de mails, no
+     escrita en el código (el repo es público). Hay que sumarla a
+     `/etc/nexo/nexo.env` y a `.env.example`.
+   - **Qué muestra:** las cuentas (nombre, mail, cuándo se creó, si confirmó
+     el mail, último ingreso, en qué negocios y con qué rol); los negocios
+     (tipo, plan y vencimiento, cuándo se creó, cuántos productos, ventas y
+     personas, último uso, si está en baja); y totales (cuentas nuevas por
+     semana, negocios activos).
+   - **Diseño pensado:** rutas `GET /api/plataforma/*` fuera del aislamiento
+     por negocio, con su propio guardia (no `soloAdmin`, que es del negocio):
+     es la única parte de Nexo que lee datos de todos. Solo lectura en la
+     primera versión, y que no muestre datos del negocio más allá de conteos.
+     Cambiar el plan sigue siendo `npm run plan` en el servidor. Una vista
+     propia en el menú, visible solo para esa cuenta, mobile-first.
+   - El "último ingreso" hoy se puede sacar de `usuario_organizaciones.ultimo_acceso`
+     y de las sesiones; conviene revisar si alcanza.
+2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
-2. Después, el orden que se le recomendó al usuario el 29 de octubre (faltan
+3. Después del panel, el orden que se le recomendó al usuario el 29 de octubre (faltan
    pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
    homologación** (etapa E, punto 10) → **cierre** (punto 13). Voz y
    WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
    presentación, salvo que sobre tiempo.
-3. **ARCA: los trámites están completos** (certificado de homologación y
+4. **ARCA: los trámites están completos** (certificado de homologación y
    autorización a `wsfe`, ver "Trámites del usuario"). Se le explicó al
    usuario que todavía no se factura: falta programar IVA y la conexión
    (WSAA + WSFEv1). Con eso salen CAE de prueba, sin validez fiscal. La
    facturación real (producción) es después de la presentación y pide el
    CUIT de Nexo (decisión con un contador).
-4. Hecho en esta sesión: el código del mail (hist. §108) y la baja (hist.
-   §109). Falta que el usuario los pruebe en el sitio.
+5. Hecho en esta sesión: el código del mail (hist. §108), la baja (hist.
+   §109), ambos publicados (PR #31), y la limpieza de cuentas de la base real
+   (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
 en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
@@ -88,7 +111,7 @@ términos (Fase 3 de 8b).
   `NEXO_TITULAR_CUIL` y `NEXO_TITULAR_DOMICILIO` en el `.env` de su compu y en
   `/etc/nexo/nexo.env` del servidor: sin ellos, `/terminos` y `/privacidad`
   dicen "dato a completar". Y revisar los dos textos (son borradores). Al
-  publicar, **todas las cuentas** (la suya, la demo del profe) ven "Antes de
+  publicar, **todas las cuentas** ven "Antes de
   seguir" una vez y aceptan.
 - **Falta que el usuario confirme** que el mail de prueba de §101 llegó bien
   y cómo se ve. Desde el servidor salió otro el 27 de octubre.
@@ -189,21 +212,9 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
     compu.
 - **La auditoría es también del empleado** (hist. §93), sin costos ni filas
   de compras. Commiteado en `solla`; falta que el usuario lo vea.
-- **Cuenta de demo para el profe (26 de octubre), en la base real:** usuario
-  `prueba` / `prueba1234`, con dos negocios: "Comercio prueba" (#3) y "Gym
-  prueba" (#4). Empleados: `vendedor.prueba` / `vendedor1234` (comercio) y
-  `recepcion.prueba` / `recepcion1234` (gym, debe cambiar la clave al entrar).
-  - **Mails (hist. §102):** `prueba` tiene `nexosystem.app+prueba@gmail.com` y
-    `vendedor.prueba` tiene `nexosystem.app+vendedor@gmail.com`. Entran con el
-    mail o con el usuario de siempre.
-  - `recepcion.prueba` no tiene mail: al entrar pide la clave nueva y después
-    el mail. Si se prueba, conviene usar `nexosystem.app+recepcion@gmail.com`.
-  Todo se cargó por la API: productos con talles, lista mayorista, compras
-  recibidas con envío, ventas de contado y a cuenta corriente, presupuestos,
-  devolución, gastos, turnos de caja (uno cerrado con $500 de faltante y otro
-  abierto), CRM en todas las etapas, y socios con cuotas e ingresos en el gym.
-  Respaldo previo: `nexo-20261026-124111.db` en OneDrive. Los negocios #1 y #2
-  del usuario no se tocaron (hist. §92).
+- **La cuenta de demo del profe ya no existe** (hist. §110): el 29 de octubre
+  el usuario pidió dejar solo su cuenta y la de su hermano. Para una demo
+  nueva, sembrar un negocio con `npm run seed` o cargarlo desde el alta.
 - **Mi cuenta es una página de Configuración** (hist. §92): contraseña y
   cerrar sesión, para los dos roles. El círculo de perfil lleva ahí; el modal
   de antes se sacó.

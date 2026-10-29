@@ -10110,3 +10110,40 @@ nadie.
 - Un mail de recordatorio unos días antes del borrado.
 - Si un negocio en baja tenía una suscripción paga, cortarla (cuando haya
   cobro online).
+
+## 110. Limpieza de cuentas en la base real y el pedido del panel, 29 de octubre de 2026
+
+**Qué pasó.** El usuario preguntó cómo ver, como dueño de Nexo, las cuentas
+creadas y los usuarios activos: su hermano se había creado una cuenta y no
+tenía cómo verla. No hay una pantalla para eso. Se consultó la base del
+servidor por SSH, solo lectura.
+
+**Cómo se consulta hoy** (hasta que esté el panel): un script `.mjs` que abre
+`/var/lib/nexo/nexo.db` con `new DatabaseSync(ruta, { readOnly: true })`, y se
+le pasa por la entrada al ssh:
+`ssh -i <clave> ubuntu@137.131.218.182 'sudo node --input-type=module' < script.mjs`.
+Con `node -e` y el SQL entre comillas se rompe el escapado; por archivo, no.
+
+**La limpieza (pedida por el usuario):** dejar solo las cuentas
+`santinosolla22@gmail.com` (la suya) y `sollavalentin2@gmail.com` (su hermano,
+negocio "Coquitomates", Emprendimiento, Gratis).
+- Se fueron las tres cuentas de la demo del profe (hist. §92) y la de "tosi"
+  (`tois@gmail.com`, creada esa mañana con un mail mal tipeado, antes del
+  código de §108), con sus negocios: "Comercio prueba" (307 filas), "Gym
+  prueba" (266) y "tosi" (12). Quedaron "Mi negocio", "Almacen don jose" y
+  "Coquitomates".
+- Cómo: un script de una sola vez, corrido en el servidor como el usuario
+  `nexo` con `/etc/nexo/nexo.env`. Primero en seco (`--dry`, solo lista).
+  Importar `db/index.js` hizo el respaldo previo:
+  `/var/lib/nexo/respaldos/nexo-20261029-135958.db` (para volver atrás,
+  restaurar ese archivo con el servicio parado). Después, con `systemctl stop
+  nexo`: `borrarDatosNegocio` de §109 para cada negocio, y en una transacción
+  las sesiones, tokens, códigos y pertenencias de esas cuentas. Las filas de
+  `usuarios` y `organizaciones` se borraron solo después de contar que ninguna
+  FK las seguía referenciando. Quedó una fila de auditoría sin negocio.
+- Resultado: 2 cuentas, 3 negocios, ninguna FK rota, el servicio arriba y el
+  sitio respondiendo.
+
+**Decidido para la próxima sesión:** el panel de la plataforma, visible solo
+para `santinosolla22@gmail.com` (la cuenta que administra Nexo). El diseño
+pensado está en "Para retomar" de `handoff.md`.
