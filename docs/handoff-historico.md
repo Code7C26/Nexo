@@ -10213,3 +10213,41 @@ negocio.
 **Para publicarlo:** sumar `NEXO_ADMIN_PLATAFORMA=santinosolla22@gmail.com` a
 `/etc/nexo/nexo.env` del servidor y reiniciar el servicio. Sin la variable,
 nadie ve el panel.
+
+## 112. IVA, primer paso: alícuota del producto y condición del cliente, 29 de octubre de 2026
+
+Primer tramo de la etapa C (punto 9 de "Qué sigue"), chico a propósito: el
+usuario tenía poco límite de sesión. Solo datos y formularios, sin cálculo.
+
+**Qué se hizo.**
+- Migración aditiva (`db/index.js`, junto a la de descripción/duración):
+  - `productos.alicuota_iva TEXT NOT NULL DEFAULT '21'`: los productos que ya
+    existen quedan en 21 %;
+  - `clientes.condicion_iva TEXT`, nullable: NULL = consumidor final, sin
+    backfill.
+  - Las dos columnas también están en `schema.sql`.
+- `server.js`:
+  - `ALICUOTAS_IVA` (`'21'`, `'10.5'`, `'27'`, `'5'`, `'2.5'`, `'0'`,
+    `'exento'`, `'no_gravado'`): se guarda la clave en texto, porque 10,5 no es
+    un número exacto. La valida `validarProducto` y entra en el alta, el PATCH
+    (con su auditoría) y la edición en lote (`CAMPOS_BULK_PRODUCTO`).
+  - `CONDICIONES_IVA_CLIENTE` (`consumidor_final`, `responsable_inscripto`,
+    `monotributo`, `exento`) en el alta y el PATCH de clientes. Si el PATCH no
+    manda la clave, queda la que tenía: otras pantallas editan el cliente sin
+    conocer el campo.
+- Frontend:
+  - `core/fiscal.js` suma `ALICUOTAS_IVA`, `alicuotaIva`,
+    `condicionIvaCliente` y `opcionesSelect`.
+  - El formulario de producto tiene "IVA incluido en el precio" (21 % de
+    partida), que no se muestra si el negocio es monotributista (factura C).
+  - El de cliente tiene "Condición frente al IVA" (vacío = Consumidor final).
+  - Las dos fichas muestran el dato.
+
+**Cómo se verificó.** `backend/test/iva.test.js` (2 casos: 21 % por defecto,
+cambio, otra edición que no la toca, alícuotas inválidas; condición del
+cliente, PATCH sin la clave, vaciarla y una inválida). `npm test` (133) y
+`npm run lint` en verde. **No se miró en el navegador.**
+
+**Lo que sigue de IVA:** cada renglón de venta, compra y presupuesto guarda su
+alícuota y su IVA (el precio sigue siendo final, así que IVA = precio −
+precio / (1 + alícuota)), la letra automática (A, B o C) y el reporte de IVA.

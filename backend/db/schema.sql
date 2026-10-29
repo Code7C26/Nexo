@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS clientes (
   -- el cliente en una venta. NULL = la lista predeterminada / sin plazo
   -- definido (el porqué de cada una, en su ALTER de db/index.js).
   lista_precio_id INTEGER REFERENCES listas_precios(id),
-  condicion_pago TEXT
+  condicion_pago TEXT,
+  -- Condición frente al IVA (CLAUDE.md §10, §33): decide la letra del
+  -- comprobante. Clave de CONDICIONES_IVA_CLIENTE en server.js; NULL se trata
+  -- como consumidor final.
+  condicion_iva TEXT
 );
 
 -- estado solo tiene sentido para una factura SUELTA (sin venta_id): no
@@ -176,7 +180,11 @@ CREATE TABLE IF NOT EXISTS productos (
   -- duración es estimada, en minutos: informa, no se cobra (lo que se cobra
   -- por tiempo es la unidad 'hora').
   descripcion TEXT,
-  duracion_minutos INTEGER
+  duracion_minutos INTEGER,
+  -- Alícuota de IVA con que se factura (CLAUDE.md §4, §33): clave de
+  -- ALICUOTAS_IVA en server.js ('21', '10.5', 'exento'...). El precio de venta
+  -- es el final, con el IVA adentro.
+  alicuota_iva TEXT NOT NULL DEFAULT '21'
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila

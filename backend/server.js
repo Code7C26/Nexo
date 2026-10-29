@@ -1972,8 +1972,18 @@ function condicionPagoHabitualValida(condicion) {
   return condicion === null || Object.prototype.hasOwnProperty.call(CONDICIONES_PAGO, condicion);
 }
 
+// Condición del cliente frente al IVA (CLAUDE.md §33): con la del negocio
+// decide la letra del comprobante. NULL = consumidor final.
+const CONDICIONES_IVA_CLIENTE = ['consumidor_final', 'responsable_inscripto', 'monotributo', 'exento'];
+function normalizarCondicionIvaCliente(valor) {
+  return valor === undefined || valor === null || valor === '' ? null : String(valor);
+}
+function condicionIvaClienteValida(condicion) {
+  return condicion === null || CONDICIONES_IVA_CLIENTE.includes(condicion);
+}
+
 app.post('/api/clientes', (req, res) => {
-  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, condicion_iva } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
@@ -1985,14 +1995,18 @@ app.post('/api/clientes', (req, res) => {
   if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
+  const condicionIva = normalizarCondicionIvaCliente(condicion_iva);
+  if (!condicionIvaClienteValida(condicionIva)) {
+    return res.status(400).json({ error: 'La condición frente al IVA no es válida.' });
+  }
 
   // Con auditoría como el resto de las altas (CLAUDE.md §22): era de las pocas
   // que escribían sin dejar quién ni cuándo.
   const clienteId = withTransaction(() => {
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, organizacion_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO clientes (nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, condicion_iva, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -2003,6 +2017,7 @@ app.post('/api/clientes', (req, res) => {
         notas ?? null,
         listaPrecioId,
         condicionPagoHabitual,
+        condicionIva,
         req.usuario.organizacion_id
       );
     auditar(req, {
@@ -2025,7 +2040,7 @@ app.patch('/api/clientes/:id', (req, res) => {
     return res.status(404).json({ error: 'Cliente no encontrado.' });
   }
 
-  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, lista_precio_id, condicion_pago, condicion_iva } = req.body;
   if (!nombre || !nombre.trim()) {
     return res.status(400).json({ error: 'El cliente necesita un nombre.' });
   }
@@ -2037,6 +2052,12 @@ app.patch('/api/clientes/:id', (req, res) => {
   if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
+  // Sin la clave, queda la que tenía: otras pantallas editan el cliente sin
+  // conocer este campo.
+  const condicionIva = condicion_iva === undefined ? cliente.condicion_iva : normalizarCondicionIvaCliente(condicion_iva);
+  if (!condicionIvaClienteValida(condicionIva)) {
+    return res.status(400).json({ error: 'La condición frente al IVA no es válida.' });
+  }
 
   const nuevo = {
     nombre: nombre.trim(),
@@ -2046,7 +2067,8 @@ app.patch('/api/clientes/:id', (req, res) => {
     documento: documento ?? null,
     notas: notas ?? null,
     lista_precio_id: listaPrecioId,
-    condicion_pago: condicionPagoHabitual
+    condicion_pago: condicionPagoHabitual,
+    condicion_iva: condicionIva
   };
   const cambios = diffCampos(cliente, nuevo, [
     'nombre',
@@ -2056,14 +2078,15 @@ app.patch('/api/clientes/:id', (req, res) => {
     'documento',
     'notas',
     'lista_precio_id',
-    'condicion_pago'
+    'condicion_pago',
+    'condicion_iva'
   ]);
 
   withTransaction(() => {
     db.prepare(
       `UPDATE clientes
           SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, lista_precio_id = ?,
-              condicion_pago = ?
+              condicion_pago = ?, condicion_iva = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -2074,6 +2097,7 @@ app.patch('/api/clientes/:id', (req, res) => {
       nuevo.notas,
       nuevo.lista_precio_id,
       nuevo.condicion_pago,
+      nuevo.condicion_iva,
       clienteId
     );
     if (cambios) {
@@ -2662,7 +2686,7 @@ const SELECT_PRODUCTO = `
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
          productos.margen_objetivo, productos.unidad, productos.tipo,
-         productos.descripcion, productos.duracion_minutos,
+         productos.descripcion, productos.duracion_minutos, productos.alicuota_iva,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
            WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count,
@@ -2777,6 +2801,9 @@ const UNIDADES = ['unidad', 'kg', 'g', 'l', 'ml', 'm', 'hora'];
 // Un servicio no maneja stock: se vende sin control de stock y no genera
 // movimientos (ver esServicio).
 const TIPOS_PRODUCTO = ['producto', 'servicio'];
+// Alícuotas de IVA de un producto (CLAUDE.md §33): las de ARCA, más exento y
+// no gravado. Se guarda la clave en texto: '10.5' no es un número exacto.
+const ALICUOTAS_IVA = ['21', '10.5', '27', '5', '2.5', '0', 'exento', 'no_gravado'];
 const MAX_DESCRIPCION_PRODUCTO = 500;
 // Una semana: más que eso ya no es la duración de un servicio, es un trabajo.
 const MAX_DURACION_MINUTOS = 7 * 24 * 60;
@@ -2794,7 +2821,7 @@ function normalizarDuracion(valor) {
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
 function validarProducto(
-  { nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos },
+  { nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos, alicuota_iva },
   organizacionId
 ) {
   if (!nombre || !nombre.trim()) {
@@ -2815,6 +2842,9 @@ function validarProducto(
   }
   if (tipo != null && !TIPOS_PRODUCTO.includes(tipo)) {
     return 'El tipo de producto no es válido.';
+  }
+  if (alicuota_iva != null && !ALICUOTAS_IVA.includes(String(alicuota_iva))) {
+    return 'La alícuota de IVA no es válida.';
   }
   const venta = normalizarPrecio(precio_venta);
   if (Number.isNaN(venta) || venta < 0) {
@@ -2851,8 +2881,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     return res.status(400).json({ error });
   }
 
-  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos } =
-    req.body;
+  const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos,
+    alicuota_iva } = req.body;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
@@ -2867,8 +2897,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
-                                descripcion, duracion_minutos)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                descripcion, duracion_minutos, alicuota_iva)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -2883,7 +2913,8 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         unidad ?? perfil.unidad_defecto,
         tipo ?? perfil.tipo_defecto,
         normalizarDescripcion(descripcion),
-        normalizarDuracion(duracion_minutos)
+        normalizarDuracion(duracion_minutos),
+        alicuota_iva == null ? '21' : String(alicuota_iva)
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
@@ -2902,7 +2933,7 @@ app.post('/api/productos', soloAdmin, (req, res) => {
 // porcentaje una lista puntual (ej. "+10% en Mayorista") sobre todo el
 // catálogo filtrado es exactamente el caso de uso que el bulk existe para
 // cubrir.
-const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'margen_objetivo', 'precios', 'unidad'];
+const CAMPOS_BULK_PRODUCTO = ['activo', 'categoria_id', 'precio_venta', 'stock_minimo', 'stock_maximo', 'margen_objetivo', 'precios', 'unidad', 'alicuota_iva'];
 
 // `cambios.precio_venta` puede venir como número (valor fijo) o como
 // { modo: 'porcentaje', valor: N } (ajuste sobre el precio actual DE ESE
@@ -2946,7 +2977,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
     .prepare(
       `SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo,
-              descripcion, duracion_minutos
+              descripcion, duracion_minutos, alicuota_iva
          FROM productos WHERE id = ? AND organizacion_id = ?`
     )
     .get(productoId, req.usuario.organizacion_id);
@@ -3017,7 +3048,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     unidad: fusionado.unidad ?? 'unidad',
     tipo: fusionado.tipo ?? 'producto',
     descripcion: normalizarDescripcion(fusionado.descripcion),
-    duracion_minutos: normalizarDuracion(fusionado.duracion_minutos)
+    duracion_minutos: normalizarDuracion(fusionado.duracion_minutos),
+    alicuota_iva: fusionado.alicuota_iva == null ? '21' : String(fusionado.alicuota_iva)
   };
   // Pasar a servicio deja de controlar el stock: si todavía tiene, se perdería
   // de vista. Primero se ajusta a 0.
@@ -3059,7 +3091,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
     'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo',
-    'descripcion', 'duracion_minutos'
+    'descripcion', 'duracion_minutos', 'alicuota_iva'
   ]);
 
   withTransaction(() => {
@@ -3069,7 +3101,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     db.prepare(
       `UPDATE productos
           SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
-              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?
+              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -3084,6 +3116,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.tipo,
       nuevo.descripcion,
       nuevo.duracion_minutos,
+      nuevo.alicuota_iva,
       productoId
     );
     if (preciosPorLista) {

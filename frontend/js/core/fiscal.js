@@ -45,3 +45,28 @@ export function formatearCuit(texto) {
   if (!/^\d{11}$/.test(digitos)) return String(texto ?? "").trim();
   return `${digitos.slice(0, 2)}-${digitos.slice(2, 10)}-${digitos.slice(10)}`;
 }
+
+// Alícuotas de IVA de un producto (ALICUOTAS_IVA en server.js). El precio de
+// venta ya la incluye: es el precio final.
+export const ALICUOTAS_IVA = {
+  "21": "21 %",
+  "10.5": "10,5 %",
+  "27": "27 %",
+  "5": "5 %",
+  "2.5": "2,5 %",
+  "0": "0 %",
+  exento: "Exento",
+  no_gravado: "No gravado"
+};
+export const alicuotaIva = (valor) => ALICUOTAS_IVA[valor ?? "21"] ?? valor;
+
+// La del cliente (CONDICIONES_IVA_CLIENTE en server.js): sin cargar, es
+// consumidor final.
+export const condicionIvaCliente = (valor) =>
+  !valor || valor === "consumidor_final" ? "Consumidor final" : condicionFiscal(valor);
+
+export function opcionesSelect(select, opciones) {
+  select.innerHTML = Object.entries(opciones)
+    .map(([valor, etiqueta]) => `<option value="${valor}">${etiqueta}</option>`)
+    .join("");
+}

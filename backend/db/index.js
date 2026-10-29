@@ -1661,6 +1661,15 @@ for (const columna of ['descripcion TEXT', 'duracion_minutos INTEGER']) {
     db.exec(`ALTER TABLE productos ADD COLUMN ${columna}`);
   }
 }
+// IVA, primer paso de la etapa C (hist. §112): la alícuota del producto y la
+// condición del cliente. Los productos que ya existen quedan en 21 % (lo que
+// tiene casi todo); los clientes, sin condición (= consumidor final).
+if (!productosColumnasUnidad.some((col) => col.name === 'alicuota_iva')) {
+  db.exec("ALTER TABLE productos ADD COLUMN alicuota_iva TEXT NOT NULL DEFAULT '21'");
+}
+if (!db.prepare('PRAGMA table_info(clientes)').all().some((col) => col.name === 'condicion_iva')) {
+  db.exec('ALTER TABLE clientes ADD COLUMN condicion_iva TEXT');
+}
 const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
 for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {

@@ -4528,6 +4528,11 @@
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
         </label>
+        <!-- Opciones en runtime (core/fiscal.js). Decide la letra de la
+             factura (CLAUDE.md §33): vacío es consumidor final. -->
+        <label>Condición frente al IVA
+          <select name="condicion_iva"></select>
+        </label>
         <!-- Opciones en runtime (poblarSelectListasPrecios en app.js). Sin
              elegir nada = usa la predeterminada del negocio (CLAUDE.md §18);
              Venta/Presupuesto la proponen sola al elegir este cliente. -->
@@ -4806,6 +4811,12 @@
         </div>
         <label>Precio de venta (lista predeterminada)
           <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
+        </label>
+        <!-- Opciones en runtime (ALICUOTAS_IVA de core/fiscal.js). El precio
+             de arriba es el final, con el IVA adentro. Un negocio
+             monotributista no la ve: factura C, sin IVA discriminado. -->
+        <label id="productoIvaCampo">IVA incluido en el precio
+          <select name="alicuota_iva"></select>
         </label>
         <!-- Un campo por cada lista de precios activa que NO sea la
              predeterminada (esa ya se carga arriba, en precio_venta) — se

@@ -39,6 +39,7 @@ import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
 import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
+import { ALICUOTAS_IVA, CONDICIONES_FISCALES, alicuotaIva, condicionIvaCliente, opcionesSelect } from "./core/fiscal.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -1709,6 +1710,7 @@ async function abrirFichaProducto(id) {
         ]
       : []),
     [esServicio ? "Se cobra por" : "Se vende por", UNIDADES[producto.unidad] ?? producto.unidad],
+    ...(negocio.condicion_iva === "monotributo" ? [] : [["IVA", alicuotaIva(producto.alicuota_iva)]]),
     ...(esServicio
       ? [
           ["Tipo", "Servicio (sin stock)"],
@@ -2171,6 +2173,9 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   // carnicería vende por kg, un gimnasio vende servicios).
   form.unidad.value = producto?.unidad ?? negocio.unidad_defecto ?? "unidad";
   form.tipo.value = producto?.tipo ?? tipo ?? negocio.tipo_defecto ?? "producto";
+  opcionesSelect(form.alicuota_iva, ALICUOTAS_IVA);
+  form.alicuota_iva.value = producto?.alicuota_iva ?? "21";
+  document.getElementById("productoIvaCampo").hidden = negocio.condicion_iva === "monotributo";
   mostrarCamposSegunTipo();
   poblarPreciosPorLista(producto);
   modalProducto.hidden = false;
@@ -2223,6 +2228,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     stock_maximo: form.stock_maximo.value,
     activo: form.activo.checked,
     unidad: form.unidad.value,
+    alicuota_iva: form.alicuota_iva.value,
     tipo: form.tipo.value
   };
   // precios por lista: solo en edición (ver poblarPreciosPorLista). Un
@@ -5706,6 +5712,7 @@ async function abrirFichaCliente(id) {
     ["Teléfono", cliente.telefono],
     ["Dirección", cliente.direccion],
     ["CUIT / DNI", cliente.documento],
+    ["Condición frente al IVA", condicionIvaCliente(cliente.condicion_iva)],
     ["Última compra", fechaAR(cliente.ultima_compra)],
     ["Notas", cliente.notas]
   ];
@@ -5754,6 +5761,8 @@ function abrirModalCliente(cliente = null) {
   form.lista_precio_id.value = cliente?.lista_precio_id ?? "";
   poblarSelectCondicionPago('#formCliente [name="condicion_pago"]');
   form.condicion_pago.value = cliente?.condicion_pago ?? "";
+  opcionesSelect(form.condicion_iva, { "": "Consumidor final", ...CONDICIONES_FISCALES });
+  form.condicion_iva.value = cliente?.condicion_iva === "consumidor_final" ? "" : cliente?.condicion_iva ?? "";
   modalCliente.hidden = false;
 }
 
@@ -5781,7 +5790,8 @@ document.getElementById("formCliente").addEventListener("submit", async (e) => {
     documento: form.documento.value || null,
     notas: form.notas.value || null,
     lista_precio_id: form.lista_precio_id.value || null,
-    condicion_pago: form.condicion_pago.value || null
+    condicion_pago: form.condicion_pago.value || null,
+    condicion_iva: form.condicion_iva.value || null
   };
 
   await api(clienteEditandoId ? `/api/clientes/${clienteEditandoId}` : "/api/clientes", {

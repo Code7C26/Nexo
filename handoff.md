@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §111);
+    siguiente número (hoy el último es §112);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -32,7 +32,10 @@
      el `.env` de la raíz.
    - El README se puso al día en la misma publicación (PR #33).
    - **Falta que el usuario lo vea.**
-   - **Lo próximo: IVA** (etapa C, punto 9 de "Qué sigue").
+   - **IVA arrancó** (hist. §112, commiteado en `solla`, sin publicar):
+     la alícuota del producto (21 % de partida) y la condición del cliente,
+     solo como datos. **Lo próximo:** el IVA de cada renglón y la letra
+     (punto 9 de "Qué sigue").
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
@@ -1342,7 +1345,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      no con qué se pagó. Migración aditiva.
    - Además, el arqueo ciego opcional y el aviso de un cobro cargado con el
      medio equivocado.
-9. **C: IVA** (2 sesiones).
+9. **C: IVA** (2 sesiones). **Hecho el primer tramo (hist. §112):** alícuota
+   del producto y condición del cliente, guardadas y en los formularios.
    - Condición fiscal de la empresa (responsable inscripto, monotributo o
      exento) y del cliente.
    - Alícuota por producto, 21% por defecto. `precio_unitario` sigue siendo el
