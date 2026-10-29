@@ -19,7 +19,26 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (28 de octubre de 2026)
+## Estado actual (29 de octubre de 2026)
+
+**Para retomar (sesión del 29 de octubre):**
+1. **Lo próximo es la Fase 4 de 8b** (descargar los datos, dar de baja el
+   negocio y `NEXO_REGISTRO=off`), con el diseño de
+   `docs/investigacion-login-legal.md`, sección 5. Sin pedidos del usuario
+   pendientes antes de eso.
+2. Después, el orden que se le recomendó al usuario el 29 de octubre (faltan
+   pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
+   homologación** (etapa E, punto 10) → **cierre** (punto 13). Voz y
+   WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
+   presentación, salvo que sobre tiempo.
+3. **ARCA: los trámites están completos** (certificado de homologación y
+   autorización a `wsfe`, ver "Trámites del usuario"). Se le explicó al
+   usuario que todavía no se factura: falta programar IVA y la conexión
+   (WSAA + WSFEv1). Con eso salen CAE de prueba, sin validez fiscal. La
+   facturación real (producción) es después de la presentación y pide el
+   CUIT de Nexo (decisión con un contador).
+4. Hecho en esta sesión: el código del mail (hist. §108), commiteado en
+   `solla`, sin publicar. Falta que el usuario lo pruebe.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
 en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
@@ -1287,6 +1306,12 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - La retención de Mercado Pago queda para después.
 10. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
    electrónica real contra el ambiente de prueba de ARCA, con CAE de prueba.
+   - **Los trámites ya están** (29 de octubre): la clave, el certificado y la
+     autorización a `wsfe` en `C:\Users\HP ULTRA 5\.nexo-arca\`. El CUIT para
+     WSAA es el CUIL de Santino (está en el `serialNumber` del certificado; no
+     va al repo). Para el backend, conviene leer las rutas del `.crt` y la
+     `.key` desde variables de entorno (por ejemplo `NEXO_ARCA_CERT` y
+     `NEXO_ARCA_KEY`), como el `.env` del mail.
    - Gratis.
    - WSAA + WSFEv1 implementados directo en el backend. No se usa AfipSDK: su
      producción pasa por una nube paga.
