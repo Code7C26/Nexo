@@ -53,14 +53,14 @@
    contra ARCA una A con dos alícuotas, una B y una nota de crédito A
    asociada, todas autorizadas. Configuración → Factura electrónica tiene los
    pasos de la delegación y "Verificar".
-   - **En el servidor:** el certificado está en  (root:nexo,
-     640) y  y  en . Se
+   - **En el servidor:** el certificado está en `/etc/nexo/arca/` (root:nexo,
+     640) y `NEXO_ARCA_CERT` y `NEXO_ARCA_KEY` en `/etc/nexo/nexo.env`. Se
      comprobó desde el servidor que llega a ARCA.
    - **El ticket de 12 horas:** ARCA da uno por certificado y no da otro
      mientras esté vigente. La compu había pedido uno (vence el 30 de octubre
-     a las 7:02) y se copió a  de la base del servidor, así
+     a las 7:02) y se copió a `arca_tickets` de la base del servidor, así
      anda ya; después el servidor pide los suyos. Por eso, **en la compu se
-     prueba con **: si la compu pide un ticket real, el
+     prueba con `NEXO_ARCA=stub`**: si la compu pide un ticket real, el
      servidor queda sin poder facturar hasta 12 horas. Un segundo certificado
      de homologación solo para la compu lo evitaría (opcional).
    - **Falta que el usuario lo vea** en el sitio: activarla en Configuración
