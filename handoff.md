@@ -72,7 +72,7 @@
      usuario, con su clave fiscal).
    - La facturación real (producción) es después de la presentación y pide
      el CUIT de Nexo (decisión con un contador).
-4b. **La factura con el formato de ARCA** (hist. §116, commiteado en `solla`): datos fijos del negocio en Configuración → Comprobantes (razón social, ingresos brutos, inicio de actividades), y los de cada factura (cliente, condición de venta, período) en el formulario de facturar, con una foto en la factura. **Falta que el usuario cargue sus datos fijos** en Configuración y lo vea impreso.
+4b. **La factura con el formato de ARCA** (hist. §116, publicado en el PR #35): datos fijos del negocio en Configuración → Comprobantes (razón social, ingresos brutos, inicio de actividades), y los de cada factura (cliente, condición de venta, período) en el formulario de facturar, con una foto en la factura. **Falta que el usuario cargue sus datos fijos** en Configuración y lo vea impreso.
 5. Hecho en esta sesión: el código del mail (hist. §108), la baja (hist.
    §109), ambos publicados (PR #31), y la limpieza de cuentas de la base real
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
@@ -294,7 +294,7 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta §115 (PR #34: IVA y ARCA en homologación,
+- `main` tiene todo hasta §116 (PR #34: IVA y ARCA en homologación; PR #35: formato de factura,
   publicado el 29 de octubre).
 - **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
   cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
