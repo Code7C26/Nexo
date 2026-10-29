@@ -1121,8 +1121,10 @@ una instancia por negocio.
     entra igual a ver sus invitaciones o crear el suyo.
 - El mail se confirma con un código de 6 números antes de crear la cuenta y
   antes de cambiarlo (hist. §108): nadie usa un mail que no es suyo.
-- Lo que falta: poder apagar el registro público por configuración (Fase 4
-  de la etapa 8b). El captcha no se hizo: pediría un servicio externo.
+- El alta pública se apaga con `NEXO_REGISTRO=off` (hist. §109), y un
+  negocio se descarga y se da de baja desde Configuración: queda cerrado 30
+  días y después se borra. El captcha no se hizo: pediría un servicio
+  externo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
   `docs/handoff-historico.md` (§37–§51, §77).
 

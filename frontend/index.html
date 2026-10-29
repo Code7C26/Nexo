@@ -2811,6 +2811,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/baja" data-seccion="baja">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-down"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Tus datos y la baja</span><span class="config-item-desc">Descargá todo, o dá de baja el negocio</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
             </div>
             <div class="config-grupo col-admin">
               <p class="config-grupo-titulo">Tu plan</p>
@@ -3254,6 +3259,48 @@
 
             <!-- Mi cuenta: la persona, no el negocio. La ven los dos roles, y
                  también la abre el círculo de perfil del pie del menú. -->
+            <!-- Descargar los datos y dar de baja el negocio (hist. §109): lo
+                 maneja dominios/baja.js. La baja es una página con el nombre
+                 escrito y la contraseña, no un cartel que se acepta. -->
+            <section class="config-pagina col-admin" data-seccion="baja" aria-labelledby="configBajaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configBajaTitulo" tabindex="-1">Tus datos y la baja</h2>
+                <p>Lo que cargás en Nexo es tuyo: lo podés descargar cuando quieras.</p>
+              </header>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Descargar los datos del negocio</p>
+                  <p class="config-tarjeta-texto">Un archivo con todo lo que cargaste: productos, stock, clientes, proveedores, ventas, compras, caja, cuentas corrientes y la auditoría. Para guardarlo, o para llevarlo a otro sistema.</p>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Es un archivo JSON, el formato que leen los sistemas y las planillas.</p>
+                  <button type="button" class="btn btn-secundario" id="btnDescargarDatos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Descargar</button>
+                </div>
+              </div>
+              <form class="form config-tarjeta" id="formBajaNegocio" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Dar de baja el negocio</p>
+                  <ul class="baja-lista">
+                    <li>Desde ese momento, nadie del equipo lo puede usar.</li>
+                    <li>Durante 30 días podés cancelar la baja, y sigue todo como estaba.</li>
+                    <li>Después se borra todo lo que tiene, y no se puede recuperar.</li>
+                    <li>Las cuentas de las personas siguen, con sus otros negocios.</li>
+                  </ul>
+                  <p class="form-note" id="bajaNegocioError" hidden></p>
+                  <label><span id="bajaNegocioEtiqueta">Escribí el nombre del negocio para confirmar</span>
+                    <input type="text" id="bajaNegocioNombre" autocomplete="off" spellcheck="false" maxlength="120" />
+                  </label>
+                  <label>Tu contraseña
+                    <input type="password" id="bajaNegocioPassword" autocomplete="current-password" maxlength="1000" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Antes, conviene descargar los datos.</p>
+                  <button type="submit" class="btn btn-peligro">Dar de baja el negocio</button>
+                </div>
+              </form>
+            </section>
+
             <!-- Plan de Nexo (hist. §99): lo pinta dominios/plan.js. -->
             <section class="config-pagina col-admin" data-seccion="plan" aria-labelledby="configPlanTitulo" hidden>
               <header class="config-pagina-head">
@@ -3354,6 +3401,21 @@
                   </button>
                 </div>
               </div>
+              <!-- Dar de baja la cuenta (hist. §109): la persona, no el negocio. -->
+              <form class="form config-tarjeta" id="formBajaCuenta" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Dar de baja mi cuenta</p>
+                  <p class="config-tarjeta-texto">Borramos tu nombre, tu mail y tu contraseña, y salís de todos tus negocios. Lo que cargaste en cada uno queda, porque es del negocio. Si administrás uno sin nadie más que lo administre, primero dalo de baja o sumá a otra persona como administradora.</p>
+                  <p class="form-note" id="bajaCuentaError" hidden></p>
+                  <label>Tu contraseña
+                    <input type="password" id="bajaCuentaPassword" autocomplete="current-password" maxlength="1000" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>No se puede deshacer.</p>
+                  <button type="submit" class="btn btn-peligro">Dar de baja mi cuenta</button>
+                </div>
+              </form>
             </section>
 
             <section class="config-pagina" data-seccion="apariencia" aria-labelledby="configAparienciaTitulo" hidden>
@@ -3589,6 +3651,24 @@
         <button type="button" class="btn-link" id="sinNegocioSalir">Cerrar sesión</button>
       </div>
 
+      <!-- El negocio en el que se entró se está dando de baja (hist. §109):
+           nadie lo puede usar. Un admin cancela la baja o baja los datos;
+           cualquiera puede ir a otro de sus negocios. -->
+      <div id="negocioBaja" class="form" hidden>
+        <div class="sesion-paso">
+          <h2 id="negocioBajaTitulo">Este negocio se está dando de baja</h2>
+          <p id="negocioBajaTexto"></p>
+        </div>
+        <p class="form-note" id="negocioBajaError" hidden></p>
+        <button type="button" class="btn btn-primary" id="negocioBajaCancelar" hidden>Cancelar la baja</button>
+        <button type="button" class="btn btn-secundario" id="negocioBajaDescargar" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Descargar los datos</button>
+        <div class="negocio-baja-otros" id="negocioBajaOtros" hidden>
+          <p>O entrá a otro de tus negocios:</p>
+          <ul class="solicitudes" id="negocioBajaLista"></ul>
+        </div>
+        <button type="button" class="btn-link" id="negocioBajaSalir">Cerrar sesión</button>
+      </div>
+
       <!-- El enlace del mail de una invitación (#/unirme/<token>, hist.
            §104). Según quién lo abre: crear la cuenta, entrar para
            aceptarla o, con la sesión abierta, aceptarla ahí. -->
@@ -3673,6 +3753,12 @@
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
             <span class="campo-ayuda" id="altaPasswordAyuda">Al menos 8 caracteres.</span>
           </label>
+          <!-- Campo trampa para bots (hist. §109): una persona no lo ve ni lo
+               llena, y si viene lleno el backend no manda el código. -->
+          <div class="trampa" aria-hidden="true">
+            <label for="altaSitio">Sitio web</label>
+            <input id="altaSitio" tabindex="-1" autocomplete="off" />
+          </div>
           <!-- Términos y edad (etapa 8b, Fase 3): js/core/aceptacion.js. -->
           <div class="aceptacion" data-aceptacion>
             <fieldset class="aceptacion-edad" data-edad-pregunta>

@@ -724,7 +724,7 @@ test('varios negocios por cuenta: crear, cambiar, aislamiento y quién cambia la
   assert.equal(lista.length, 2);
   assert.deepEqual(
     lista.find((n) => n.id === orgG),
-    { id: orgG, nombre: 'Gimnasio A', rubro: 'gimnasio', tipo: 'Gimnasio', rol: 'admin', actual: true }
+    { id: orgG, nombre: 'Gimnasio A', rubro: 'gimnasio', tipo: 'Gimnasio', rol: 'admin', actual: true, se_borra: null }
   );
   assert.equal(lista.find((n) => n.id === orgA).actual, false);
 

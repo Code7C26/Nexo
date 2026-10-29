@@ -218,6 +218,8 @@ export const RUTAS_PERMISOS = {
   // El mail de la cuenta propia (hist. §102).
   'POST /api/auth/email': 'ambos',
   'POST /api/auth/email/confirmar': 'ambos',
+  // Dar de baja la cuenta propia (hist. §109): es de la persona.
+  'POST /api/auth/baja-cuenta': 'ambos',
   'POST /api/auth/email/reenviar': 'ambos',
   // Aceptar los términos vigentes (etapa 8b, Fase 3): de la persona.
   'POST /api/auth/terminos': 'ambos',
@@ -238,6 +240,11 @@ export const RUTAS_PERMISOS = {
   'GET /api/negocio': 'ambos',
   'GET /api/negocio/primeros-pasos': 'admin',
   'PUT /api/negocio': 'admin',
+  // Descargar los datos y dar de baja el negocio (hist. §109): llevan costos
+  // y borran todo.
+  'GET /api/negocio/exportar': 'admin',
+  'POST /api/negocio/baja': 'admin',
+  'POST /api/negocio/baja/cancelar': 'admin',
   // Varios negocios por cuenta (hist. §77): ver los suyos y cambiar es de los
   // dos roles. Crear otro negocio es del admin, pero el control va adentro y no
   // como soloAdmin: una cuenta sin negocio crea el suyo (hist. §104).

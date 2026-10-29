@@ -72,6 +72,20 @@ function normalizar(ruta, json) {
   if (ruta === '/api/usuarios' && Array.isArray(json)) {
     return json.map((u) => ('ultimo_acceso' in u ? { ...u, ultimo_acceso: '<hora del login>' } : u));
   }
+  // La descarga de los datos (hist. §109) lleva su hora, la auditoría y los
+  // accesos de cada persona.
+  if (ruta === '/api/negocio/exportar' && json?.tablas) {
+    const { auditoria, usuario_organizaciones: equipo } = json.tablas;
+    return {
+      ...json,
+      exportado: '<hora de la descarga>',
+      tablas: {
+        ...json.tablas,
+        ...(auditoria && { auditoria: normalizar('/api/auditoria', auditoria) }),
+        ...(equipo && { usuario_organizaciones: equipo.map((u) => ({ ...u, ultimo_acceso: '<hora del login>' })) })
+      }
+    };
+  }
   return json;
 }
 

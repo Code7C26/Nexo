@@ -4940,6 +4940,24 @@ input.precio-sin-configurar::placeholder {
 .alta .form input.campo-codigo { font-size: 24px; }
 .form input.campo-codigo::placeholder { letter-spacing: 0.35em; font-weight: 400; color: var(--ink-faint); }
 
+/* Campo trampa del alta (hist. §109): fuera de la pantalla, no `display:
+   none`, que algunos bots saltean. Igual que el de la landing. */
+.trampa { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+/* La página "Tus datos y la baja" (hist. §109). */
+.baja-lista {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.negocio-baja-otros[hidden] { display: none; }
+.negocio-baja-otros > p { margin: 0 0 var(--sp-2); font-size: var(--txt-sm); color: var(--ink-muted); }
+
 .alta-codigo,
 .perfil-mail-campos { display: flex; flex-direction: column; gap: var(--sp-3); }
 .alta-codigo[hidden],
@@ -6357,6 +6375,17 @@ a.segmento {
   margin: 0;
   font-size: var(--txt-md);
   font-weight: 600;
+}
+
+/* La explicación de una tarjeta, debajo del título: texto, no un aviso en
+   caja como .form-note (hist. §109). */
+.config-tarjeta-texto {
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-wrap: pretty;
 }
 
 

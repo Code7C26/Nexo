@@ -10037,3 +10037,76 @@ Cambiar el mail desde Mi cuenta tenía el mismo agujero, y se cerró igual.
 
 **Para después**
 - Un captcha en el alta, si aparecen bots: pediría un servicio externo.
+
+## 109. La baja: descargar los datos, dar de baja el negocio o la cuenta, 29 de octubre de 2026
+
+**Qué pasó.** Fase 4 de la etapa 8b, la última (diseño en
+`docs/investigacion-login-legal.md`, sección 5). Cubre la supresión de la Ley
+25.326 y el "botón de baja": darse de baja desde la app, sin escribirle a
+nadie.
+
+**Decisiones (técnicas, tomadas sin preguntar)**
+- **Qué es "del negocio" no se lista a mano:** `backend/db/datos-negocio.js`
+  lo arma del esquema. Una tabla con `organizacion_id` es del negocio; una sin
+  la columna (renglones, cobros, atributos) lo hereda de su padre por
+  cualquiera de sus FK. Así la descarga y el borrado no se pueden olvidar una
+  tabla, y una nueva queda cubierta sola.
+- **La descarga es un JSON** (`GET /api/negocio/exportar`, admin): todas las
+  tablas, sin sesiones ni hashes, y el equipo con nombre y mail. Un ZIP de
+  CSV pediría una dependencia o un compresor propio.
+- **Dar de baja el negocio** pide el nombre escrito y la contraseña, en una
+  página de Configuración (no un cartel). El negocio queda cerrado para todos
+  (403 `negocio_en_baja`), y cualquier admin cancela la baja durante 30 días.
+  Se avisa por mail a todos los admins, al pedirla y al cancelarla.
+- **El borrado a los 30 días** corre al arrancar y cada 6 horas, sin cron. Es
+  una transacción con las FK apagadas: primero las tablas más lejos de
+  `organizacion_id`, y al final controla que no quede ninguna FK rota que antes
+  no estuviera. La fila de `organizaciones` queda vacía, con `baja_hecha`,
+  porque `usuarios.organizacion_id` la referencia. Las cuentas siguen: entran
+  sin negocio, o en sus otros negocios.
+- **Dar de baja la cuenta** (Mi cuenta): la fila no se borra (la auditoría la
+  referencia). Se le sacan el nombre, el mail y la contraseña, y sale de todos
+  sus negocios. En la auditoría se tapa su mail en todas las filas, y su
+  nombre y usuario solo en las suyas ("Ana" puede estar en otro texto). No
+  puede dejar un negocio sin admin: 409 `unico_admin` con los nombres.
+- **`NEXO_REGISTRO=off`** cierra el alta y el primer negocio de una cuenta sin
+  negocio; se entra por invitación. La primera cuenta de una instalación nueva
+  se crea igual. **Campo trampa** (`sitio`) en el paso 1 del alta, como el de
+  la landing.
+
+**Qué se tocó**
+- Esquema (aditivo): `organizaciones.baja_pedida` y `baja_hecha`,
+  `usuarios.baja`. En `schema.sql` y como `ALTER` idempotente en
+  `db/index.js`.
+- `backend/server.js`: la sesión trae el negocio en baja
+  (`negocio_en_baja: { nombre, se_borra }`), el freno en `autenticar`, las rutas
+  `/api/negocio/exportar`, `/negocio/baja`, `/negocio/baja/cancelar` y
+  `/auth/baja-cuenta`, `borrarNegociosVencidos`, `registroCerrado()` y
+  `se_borra` en `GET /api/negocios`.
+- Frontend: la página "Tus datos y la baja" (`dominios/baja.js`), el helper
+  `core/descarga-datos.js`, la pantalla `#negocioBaja` de `sesion.js` (con los
+  otros negocios para entrar), la tarjeta de Mi cuenta (`perfil.js`), el aviso
+  del login, el registro cerrado y el selector de negocios. Clase nueva
+  `.config-tarjeta-texto` para la explicación de una tarjeta.
+- `terminos.html`: "Darte de baja" cuenta cómo hacerlo desde la app. No cambia
+  `TERMINOS_VERSION`: es el procedimiento, no una condición nueva.
+
+**Cómo se verificó**
+- `npm test` 123/123, con `backend/test/baja.test.js` nuevo (6 casos, con dos
+  negocios sembrados por el seed): la descarga trae solo lo del negocio y sin
+  secretos; la baja pide nombre y contraseña, cierra para los dos roles y se
+  cancela; a los 29 días no se borra y a los 30 sí, con el otro negocio
+  idéntico y sin FK rotas; la baja de la cuenta; el campo trampa; y el
+  registro cerrado.
+- El borrado contra una **copia** de la base local (4 negocios): borró las 20
+  filas del más chico, los otros 3 quedaron iguales tabla por tabla y sin FK
+  rotas. La base real quedó con el mismo md5.
+- `npm run lint`, `npm run verificar-migracion` (24 de 24).
+- En Chrome, contra una base sembrada: la página, la descarga (45 tablas), la
+  baja, la pantalla del admin y la del empleado, cancelar, y la baja de la
+  cuenta con el aviso en el login.
+
+**Para después**
+- Un mail de recordatorio unos días antes del borrado.
+- Si un negocio en baja tenía una suscripción paga, cortarla (cuando haya
+  cobro online).

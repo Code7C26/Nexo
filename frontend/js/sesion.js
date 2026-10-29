@@ -32,6 +32,7 @@
   const formSumarMailCodigo = document.getElementById("formSumarMailCodigo");
   const formTerminos = document.getElementById("formTerminos");
   const sinNegocio = document.getElementById("sinNegocio");
+  const negocioBaja = document.getElementById("negocioBaja");
   const pantallaInvitacion = document.getElementById("invitacion");
   const formRecuperar = document.getElementById("formRecuperar");
   const recuperarEnviado = document.getElementById("recuperarEnviado");
@@ -90,7 +91,9 @@
     // entero para quien llamó.
     if (res.status === 403 && url.startsWith("/api/") && !url.startsWith("/api/auth/")) {
       const cuerpo = await res.clone().json().catch(() => null);
-      if (cuerpo?.codigo === "faltan_terminos") location.reload();
+      // Lo mismo si otro admin dio de baja el negocio (hist. §109): recargar
+      // muestra la pantalla que lo explica.
+      if (cuerpo?.codigo === "faltan_terminos" || cuerpo?.codigo === "negocio_en_baja") location.reload();
     }
     if (res.status === 409 && res.headers.get("X-Nexo-Negocio-Cambiado")) {
       try {
@@ -189,6 +192,7 @@
     formSumarMailCodigo.hidden = cual !== "mail-codigo";
     formTerminos.hidden = cual !== "terminos";
     sinNegocio.hidden = cual !== "sin-negocio";
+    negocioBaja.hidden = cual !== "negocio-baja";
     pantallaInvitacion.hidden = cual !== "invitacion";
     formRecuperar.hidden = cual !== "recuperar";
     recuperarEnviado.hidden = cual !== "recuperar-enviado";
@@ -213,6 +217,7 @@
     else if (!usuario.email) mostrarPantalla("mail");
     else if (!usuario.terminos_al_dia) mostrarTerminos(usuario);
     else if (aceptarAlEntrar) aceptarYEntrar(usuario);
+    else if (usuario.negocio_en_baja) mostrarNegocioEnBaja(usuario);
     else if (usuario.organizacion_id == null) mostrarSinNegocio(usuario);
     else arrancarApp(usuario);
   }
@@ -946,6 +951,89 @@
   });
 
   document.getElementById("sinNegocioCrear").addEventListener("click", () => abrirAlta({ primerNegocio: true }));
+
+  // ---------- Negocio en baja (etapa 8b, Fase 4, hist. §109) ----------
+
+  // El negocio en el que entró se está dando de baja: nadie lo usa. Un admin
+  // la cancela o baja los datos; cualquiera puede ir a otro de sus negocios.
+  async function mostrarNegocioEnBaja(usuario) {
+    const { nombre, se_borra: seBorra } = usuario.negocio_en_baja;
+    const fecha = seBorra.split("-").reverse().join("/");
+    const admin = usuario.rol === "admin";
+    document.getElementById("negocioBajaTitulo").textContent = `${nombre} se está dando de baja`;
+    document.getElementById("negocioBajaTexto").textContent = admin
+      ? `Nadie del equipo lo puede usar. El ${fecha} se borra todo lo que tiene. Si te arrepentiste, cancelá la baja y sigue todo como estaba.`
+      : `Quien lo administra pidió darlo de baja, así que nadie lo puede usar. El ${fecha} se borran sus datos. Si es un error, avisale para que la cancele.`;
+    document.getElementById("negocioBajaCancelar").hidden = !admin;
+    document.getElementById("negocioBajaDescargar").hidden = !admin;
+    ocultarErrorEn("negocioBajaError");
+    mostrarPantalla("negocio-baja");
+
+    let otros = [];
+    try {
+      const res = await fetchOriginal("/api/negocios");
+      if (res.ok) otros = (await res.json()).filter((n) => !n.actual && !n.se_borra);
+    } catch {}
+    document.getElementById("negocioBajaLista").replaceChildren(
+      ...otros.map((n) => {
+        const item = document.createElement("li");
+        item.className = "solicitud";
+        const textos = document.createElement("p");
+        const titulo = document.createElement("strong");
+        titulo.textContent = n.nombre;
+        const tipo = document.createElement("span");
+        tipo.textContent = n.tipo;
+        textos.append(titulo, tipo);
+        const ir = document.createElement("button");
+        ir.type = "button";
+        ir.className = "btn btn-secundario";
+        ir.textContent = "Entrar";
+        ir.addEventListener("click", async () => {
+          ir.disabled = true;
+          const { res } = await postJson(`/api/negocios/${n.id}/entrar`).catch(() => ({ res: null }));
+          if (res?.ok) return location.reload();
+          ir.disabled = false;
+          mostrarErrorEn("negocioBajaError", "No se pudo entrar a ese negocio. Probá de nuevo.");
+        });
+        item.append(textos, ir);
+        return item;
+      })
+    );
+    document.getElementById("negocioBajaOtros").hidden = otros.length === 0;
+  }
+
+  document.getElementById("negocioBajaCancelar").addEventListener("click", async (e) => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    ocultarErrorEn("negocioBajaError");
+    try {
+      const { res, datos } = await postJson("/api/negocio/baja/cancelar");
+      if (!res.ok) return mostrarErrorEn("negocioBajaError", datos.error || "No se pudo cancelar la baja.");
+      guardarAviso("Listo: cancelaste la baja. El negocio sigue como estaba.");
+      location.reload();
+    } catch {
+      mostrarErrorEn("negocioBajaError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("negocioBajaDescargar").addEventListener("click", async (e) => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    ocultarErrorEn("negocioBajaError");
+    try {
+      const { descargarDatosDelNegocio } = await import("./core/descarga-datos.js");
+      const fallo = await descargarDatosDelNegocio();
+      if (fallo) mostrarErrorEn("negocioBajaError", fallo);
+    } catch {
+      mostrarErrorEn("negocioBajaError", "No se pudo descargar. Recargá la página para probar de nuevo.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById("negocioBajaSalir").addEventListener("click", () => window.nexoCerrarSesion());
   document.getElementById("sinNegocioSalir").addEventListener("click", () => window.nexoCerrarSesion());
 
   // El toast que muestra la app al cargar (dominios/negocios.js). Con
@@ -976,6 +1064,12 @@
       const res = await fetchOriginal("/api/auth/estado");
       revisarConexion(res);
       const estado = await res.json();
+      // Con NEXO_REGISTRO=off (hist. §109) no se ofrece crear una cuenta ni
+      // un negocio propio: en esa instalación se entra por invitación.
+      if (estado.registro_abierto === false) {
+        document.getElementById("irARegistro").hidden = true;
+        document.getElementById("sinNegocioCrear").hidden = true;
+      }
       if (estado.requiere_bootstrap) {
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
         // no ofrece "Ya tengo cuenta".
@@ -1002,8 +1096,21 @@
         cerrarSesionLocal();
         // #/crear-cuenta es el enlace para crear una cuenta (por ejemplo,
         // desde la página pública).
-        if (location.hash.startsWith("#/crear-cuenta")) abrirAlta();
+        if (location.hash.startsWith("#/crear-cuenta") && estado.registro_abierto !== false) abrirAlta();
         else mostrarPantalla("login");
+        // Lo que pasó antes de volver al login: por ahora, la baja de la
+        // cuenta (dominios/perfil.js).
+        let avisoLogin = null;
+        try {
+          avisoLogin = sessionStorage.getItem("nexo.avisoLogin");
+          sessionStorage.removeItem("nexo.avisoLogin");
+        } catch {}
+        if (avisoLogin) {
+          const aviso = document.getElementById("loginAviso");
+          aviso.textContent = avisoLogin;
+          aviso.classList.remove("is-error");
+          aviso.hidden = false;
+        }
         // Tocó el enlace del mail desde un dispositivo sin sesión.
         if (resultadoMail) {
           const aviso = document.getElementById("loginAviso");

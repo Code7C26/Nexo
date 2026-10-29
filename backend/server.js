@@ -6,7 +6,8 @@ import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
-import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
+import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
+import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
 import { TERMINOS_VERSION, completarPaginaLegal, titularIncompleto, validarAceptacion } from './legal.js';
@@ -301,12 +302,14 @@ function sesionValida(token) {
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
               usuarios.debe_cambiar_password, sesiones.organizacion_id,
-              usuarios.email, usuarios.email_verificado, usuarios.terminos_version, usuarios.edad
+              usuarios.email, usuarios.email_verificado, usuarios.terminos_version, usuarios.edad,
+              negocio.nombre AS negocio_nombre, negocio.baja_pedida
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
          LEFT JOIN usuario_organizaciones pertenencia
            ON pertenencia.usuario_id = sesiones.usuario_id
           AND pertenencia.organizacion_id = sesiones.organizacion_id
+         LEFT JOIN organizaciones negocio ON negocio.id = sesiones.organizacion_id
         WHERE sesiones.token = ?
           AND sesiones.expira > datetime('now')
           AND (sesiones.organizacion_id IS NULL OR pertenencia.activo = 1)`
@@ -321,8 +324,22 @@ function sesionValida(token) {
 // para darse cuenta si otra pestaña cambió de negocio. Sin email, sesion.js
 // muestra "Sumá tu mail" antes de arrancar la app (hist. §102). Sin los
 // términos vigentes aceptados, la página para aceptarlos, que pregunta la edad
-// solo si todavía no la declaró (etapa 8b, Fase 3).
-function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organizacion_id, email, email_verificado, terminos_version, edad }) {
+// solo si todavía no la declaró (etapa 8b, Fase 3). Con el negocio activo en
+// baja (hist. §109), la página que lo explica en vez de la app.
+function datosUsuario({
+  id,
+  usuario,
+  nombre,
+  rol,
+  debe_cambiar_password,
+  organizacion_id,
+  email,
+  email_verificado,
+  terminos_version,
+  edad,
+  negocio_nombre,
+  baja_pedida
+}) {
   return {
     id,
     usuario,
@@ -333,8 +350,20 @@ function datosUsuario({ id, usuario, nombre, rol, debe_cambiar_password, organiz
     email: email ?? null,
     email_verificado: !!email_verificado,
     terminos_al_dia: terminos_version === TERMINOS_VERSION,
-    edad: edad ?? null
+    edad: edad ?? null,
+    negocio_en_baja: baja_pedida ? { nombre: negocio_nombre, se_borra: fechaDeBorrado(baja_pedida) } : null
   };
+}
+
+// La baja de un negocio (hist. §109): queda cerrado BAJA_DIAS días, en los que
+// un admin la puede cancelar, y después se borran sus datos.
+const BAJA_DIAS = 30;
+// El día (AAAA-MM-DD, en la Argentina) en que se borra un negocio cuya baja se
+// pidió en `pedida` (UTC, de datetime('now')).
+function fechaDeBorrado(pedida) {
+  return new Date(new Date(`${pedida.replace(' ', 'T')}Z`).getTime() + BAJA_DIAS * 86_400_000).toLocaleDateString('sv-SE', {
+    timeZone: ZONA_HORARIA
+  });
 }
 
 // Cuándo entró por última vez a un negocio: el login vuelve al último. Con
@@ -591,8 +620,15 @@ function autenticar(req, res, next) {
   if (sesion.organizacion_id == null && !req.path.startsWith('/auth/') && !req.path.startsWith('/negocios')) {
     return res.status(403).json({ error: 'Todavía no estás en ningún negocio.', codigo: 'sin_negocio' });
   }
+  // Un negocio en baja (hist. §109) queda cerrado para todos: se puede ir a
+  // otro negocio o a la cuenta, y un admin puede cancelar la baja o bajar los
+  // datos. Nada más lo lee ni lo escribe.
+  if (sesion.baja_pedida && !req.path.startsWith('/auth/') && !req.path.startsWith('/negocios') && !RUTAS_EN_BAJA.has(req.path)) {
+    return res.status(403).json({ error: 'Este negocio se está dando de baja.', codigo: 'negocio_en_baja' });
+  }
   next();
 }
+const RUTAS_EN_BAJA = new Set(['/negocio/baja/cancelar', '/negocio/exportar']);
 
 // Express 4 no captura el rechazo de un handler `async`: sin esto, una
 // excepción después de un `await` (la llamada a Gemini, el INSERT) es un
@@ -717,11 +753,13 @@ app.get('/api/auth/estado', (req, res) => {
   }
   const token = leerCookie(req, COOKIE_SESION);
   const sesion = sesionValida(token);
+  // registro_abierto: con NEXO_REGISTRO=off el login no ofrece crear cuenta.
+  const registroAbierto = !registroCerrado();
   if (!sesion) {
-    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null });
+    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto });
   }
   renovarSesion(token);
-  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion) });
+  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -919,12 +957,28 @@ function textoAceptacion(edad) {
 }
 const MENOR_SOLO_GRATIS = 'Con menos de 18 años, el negocio arranca en el plan Gratis. Un plan pago lo tiene que contratar un mayor de edad.';
 
+// NEXO_REGISTRO=off cierra el alta pública (etapa 8b, Fase 4; CLAUDE.md §28):
+// una instalación de un solo comercio suma gente solo por invitación. La
+// primera cuenta de una instalación nueva se crea igual: si no, nadie podría
+// entrar nunca.
+function registroCerrado() {
+  return process.env.NEXO_REGISTRO === 'off' && !!db.prepare('SELECT 1 FROM usuarios LIMIT 1').get();
+}
+const REGISTRO_CERRADO = {
+  error: 'En esta instalación de Nexo no se crean cuentas nuevas. Pedile a quien la administra que te invite.',
+  codigo: 'registro_cerrado'
+};
+
 // Paso 1 del alta (hist. §108): el código al mail que escribió. Responde lo
 // mismo exista o no una cuenta con ese mail, para que el alta no sirva para
 // averiguar quién usa Nexo (como recuperar la contraseña). Si ya existe, en
 // vez del código le llega a su dueño un aviso para entrar o recuperar la
 // contraseña.
 app.post('/api/auth/registro/codigo', async (req, res) => {
+  if (registroCerrado()) return res.status(403).json(REGISTRO_CERRADO);
+  // Un bot llena el campo trampa del alta (`sitio`, oculto): se le contesta
+  // como si el código hubiera salido, y no se manda nada.
+  if (req.body?.sitio) return res.status(204).end();
   const email = normalizarMail(req.body?.email);
   if (!esMailValido(email)) {
     return res.status(400).json({ error: 'Revisá el mail: tiene que ser como nombre@dominio.com.' });
@@ -1002,6 +1056,7 @@ function comprobanteDeAlta(email, comprobante) {
 // por IP de arriba y el del mail. Apagar el registro público es la Fase 4 de
 // la etapa 8b (handoff.md).
 app.post('/api/auth/registro', (req, res) => {
+  if (registroCerrado()) return res.status(403).json(REGISTRO_CERRADO);
   if (registroExcedido(req.ip)) {
     return res.status(429).json({ error: 'Demasiados intentos de registro. Probá de nuevo más tarde.' });
   }
@@ -11439,10 +11494,10 @@ function entrarANegocio(req, token, organizacionId, detalleEntrada) {
 app.get('/api/negocios', (req, res) => {
   const filas = db
     .prepare(
-      `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, pertenencia.rol
+      `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, organizaciones.baja_pedida, pertenencia.rol
          FROM usuario_organizaciones pertenencia
          JOIN organizaciones ON organizaciones.id = pertenencia.organizacion_id
-        WHERE pertenencia.usuario_id = ? AND pertenencia.activo = 1
+        WHERE pertenencia.usuario_id = ? AND pertenencia.activo = 1 AND organizaciones.baja_hecha IS NULL
         ORDER BY organizaciones.nombre, organizaciones.id`
     )
     .all(req.usuario.id);
@@ -11455,7 +11510,9 @@ app.get('/api/negocios', (req, res) => {
         rubro,
         tipo: PERFILES_RUBRO[rubro].nombre,
         rol: fila.rol,
-        actual: fila.id === req.usuario.organizacion_id
+        actual: fila.id === req.usuario.organizacion_id,
+        // El día en que se borra, si se está dando de baja (hist. §109).
+        se_borra: fila.baja_pedida ? fechaDeBorrado(fila.baja_pedida) : null
       };
     })
   );
@@ -11476,6 +11533,9 @@ app.post('/api/negocios', (req, res) => {
   if (!primero && req.usuario.rol !== 'admin') {
     return res.status(403).json({ error: 'Necesitás ser administrador para esto.' });
   }
+  // Con el alta cerrada, una cuenta sin negocio tampoco arma uno propio: en
+  // esa instalación se entra por invitación.
+  if (primero && registroCerrado()) return res.status(403).json(REGISTRO_CERRADO);
   if (registroExcedido(`usuario:${req.usuario.id}`)) {
     return res.status(429).json({ error: 'Creaste varios negocios seguidos. Probá de nuevo más tarde.' });
   }
@@ -11539,6 +11599,248 @@ app.post('/api/negocios/:id/entrar', (req, res) => {
     const token = leerCookie(req, COOKIE_SESION);
     withTransaction(() => entrarANegocio(req, token, id, 'Entró desde otro de sus negocios'));
   }
+  res.status(204).end();
+});
+
+/* ---------- Descargar los datos y darse de baja (etapa 8b, Fase 4, hist. §109) ---------- */
+//
+// Ley 25.326: acceso (art. 14) y supresión (art. 16), y el "botón de baja"
+// (Res. 316/2018): darse de baja desde la app, sin escribirle a nadie.
+// docs/investigacion-login-legal.md, sección 5.
+
+// Un nombre de archivo sin acentos ni signos: "Almacén Don José" →
+// "almacen-don-jose".
+const enArchivo = (texto) =>
+  texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'negocio';
+
+// "Descargar los datos": todo lo del negocio en un JSON (db/datos-negocio.js).
+// Solo admin: lleva costos, márgenes y la cuenta corriente de cada cliente.
+// También con el negocio en baja: es lo último que se hace antes de irse.
+app.get('/api/negocio/exportar', soloAdmin, (req, res) => {
+  const orgId = req.usuario.organizacion_id;
+  const datos = exportarNegocio(orgId);
+  auditar(req, { accion: 'confirmar', entidad: 'organizacion', entidad_id: orgId, detalle: 'Descargó los datos del negocio' });
+  res.setHeader('Content-Disposition', `attachment; filename="nexo-${enArchivo(datos.negocio.nombre)}-${fechaDeHoy()}.json"`);
+  res.type('application/json').send(JSON.stringify(datos, null, 2));
+});
+
+// La contraseña de la sesión, para lo que no tiene vuelta atrás. Devuelve el
+// error para responder, o null. El tope va antes del scrypt.
+function errorDeContrasena(req, clave) {
+  if (registroExcedido(`${clave}:${req.usuario.id}`)) {
+    return { status: 429, error: 'Probaste demasiadas veces. Esperá una hora y probá de nuevo.' };
+  }
+  const password = req.body?.password;
+  const cuenta = db.prepare('SELECT password_hash, password_salt FROM usuarios WHERE id = ?').get(req.usuario.id);
+  if (typeof password !== 'string' || !password || password.length > 1000) {
+    return { status: 400, error: 'Escribí tu contraseña para confirmar.' };
+  }
+  if (!verificarPassword(password, cuenta.password_hash, cuenta.password_salt)) {
+    return { status: 401, error: 'La contraseña no es correcta.' };
+  }
+  return null;
+}
+
+// A todos los admins del negocio, con su mail: la baja y su cancelación les
+// importan a todos, no solo a quien la tocó.
+function avisarAdmins(organizacionId, { asunto, titulo, parrafos, pie }, req) {
+  const admins = db
+    .prepare(
+      `SELECT usuarios.nombre, usuarios.email
+         FROM usuario_organizaciones pertenencia
+         JOIN usuarios ON usuarios.id = pertenencia.usuario_id
+        WHERE pertenencia.organizacion_id = ? AND pertenencia.rol = 'admin' AND pertenencia.activo = 1
+          AND usuarios.email IS NOT NULL`
+    )
+    .all(organizacionId);
+  for (const admin of admins) {
+    const { texto, html } = plantillaMail({
+      titulo,
+      parrafos: [`Hola, ${admin.nombre}.`, ...parrafos],
+      boton: { texto: 'Ir a Nexo', url: `${urlPublica(req)}/app` },
+      pie
+    });
+    mandarSinEsperar({ para: admin.email, asunto, texto, html });
+  }
+}
+
+// Pedir la baja del negocio: con el nombre escrito tal cual y la contraseña,
+// como confirmación de algo que borra todo. Desde ese momento nadie lo puede
+// usar (autenticar), y a los BAJA_DIAS se borra (borrarNegociosVencidos).
+app.post('/api/negocio/baja', soloAdmin, (req, res) => {
+  const orgId = req.usuario.organizacion_id;
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(orgId);
+  const escrito = String(req.body?.nombre ?? '').trim().toLocaleLowerCase('es');
+  if (escrito !== negocio.nombre.trim().toLocaleLowerCase('es')) {
+    return res.status(400).json({ error: `Escribí el nombre del negocio tal como está: "${negocio.nombre}".` });
+  }
+  const error = errorDeContrasena(req, 'baja');
+  if (error) return res.status(error.status).json({ error: error.error });
+
+  const pedida = withTransaction(() => {
+    db.prepare("UPDATE organizaciones SET baja_pedida = datetime('now') WHERE id = ?").run(orgId);
+    const { baja_pedida: fecha } = db.prepare('SELECT baja_pedida FROM organizaciones WHERE id = ?').get(orgId);
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'organizacion',
+      entidad_id: orgId,
+      detalle: `Pidió la baja del negocio: se borra el ${fechaLegible(fechaDeBorrado(fecha))}`
+    });
+    return fecha;
+  });
+  const seBorra = fechaLegible(fechaDeBorrado(pedida));
+  avisarAdmins(
+    orgId,
+    {
+      asunto: `Se pidió la baja de ${negocio.nombre} en Nexo`,
+      titulo: `Se pidió la baja de ${negocio.nombre}`,
+      parrafos: [
+        `${req.usuario.nombre} pidió dar de baja ${negocio.nombre} en Nexo. Desde ahora nadie del equipo lo puede usar, y el ${seBorra} se borran todos sus datos.`,
+        'Hasta ese día, cualquier administrador puede cancelar la baja o descargar los datos del negocio entrando a Nexo.'
+      ],
+      pie: 'Si nadie de tu equipo la pidió, entrá, cancelala y cambiá tu contraseña.'
+    },
+    req
+  );
+  res.json({ usuario: datosUsuario({ ...req.usuario, baja_pedida: pedida, negocio_nombre: negocio.nombre }) });
+});
+
+// Volver atrás, mientras no se borró: el negocio queda como estaba.
+app.post('/api/negocio/baja/cancelar', soloAdmin, (req, res) => {
+  const orgId = req.usuario.organizacion_id;
+  const negocio = db.prepare('SELECT nombre, baja_pedida FROM organizaciones WHERE id = ?').get(orgId);
+  if (!negocio.baja_pedida) {
+    return res.status(400).json({ error: 'Este negocio no se está dando de baja.' });
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE organizaciones SET baja_pedida = NULL WHERE id = ?').run(orgId);
+    auditar(req, { accion: 'restaurar', entidad: 'organizacion', entidad_id: orgId, detalle: 'Canceló la baja del negocio' });
+  });
+  avisarAdmins(
+    orgId,
+    {
+      asunto: `Se canceló la baja de ${negocio.nombre} en Nexo`,
+      titulo: `${negocio.nombre} sigue en Nexo`,
+      parrafos: [`${req.usuario.nombre} canceló la baja de ${negocio.nombre}. El negocio sigue como estaba, con todos sus datos.`]
+    },
+    req
+  );
+  res.json({ usuario: datosUsuario({ ...req.usuario, baja_pedida: null }) });
+});
+
+// Los negocios cuya baja se pidió hace BAJA_DIAS: se borran sus datos
+// (db/datos-negocio.js). Sin cron, como las cuotas de socios: al arrancar y
+// cada 6 horas. Uno que falla no frena a los demás, y se reintenta en la
+// próxima vuelta. Queda una fila en la auditoría sin negocio, como un login
+// fallido: la del negocio se borró con él.
+function borrarNegociosVencidos() {
+  const vencidos = db
+    .prepare(
+      `SELECT id, baja_pedida FROM organizaciones
+        WHERE baja_pedida IS NOT NULL AND baja_hecha IS NULL AND baja_pedida <= datetime('now', ?)`
+    )
+    .all(`-${BAJA_DIAS} days`);
+  for (const { id, baja_pedida: pedida } of vencidos) {
+    try {
+      const borradas = borrarDatosNegocio(id);
+      const total = Object.values(borradas).reduce((a, b) => a + b, 0);
+      registrarAuditoria({
+        actor: 'sistema',
+        accion: 'anular',
+        entidad: 'organizacion',
+        entidad_id: id,
+        detalle: `Se borraron los datos del negocio #${id} (${total} filas), dado de baja el ${fechaLegible(pedida.slice(0, 10))}`
+      });
+      console.log(`Negocio #${id} dado de baja: se borraron ${total} filas.`);
+    } catch (err) {
+      console.error(`No se pudo borrar el negocio #${id}: ${err.message}`);
+    }
+  }
+}
+
+// Dar de baja la cuenta de una persona: se va de todos sus negocios y se le
+// sacan el nombre, el mail y la contraseña. La fila queda porque la
+// auditoría la referencia ("Cuenta dada de baja" en vez de su nombre), y en
+// los textos de la auditoría se tapan su mail y su usuario (y su nombre en
+// las filas que son suyas), como dicen los términos. No puede dejar un
+// negocio sin quien lo administre: antes lo da de baja o suma a otro admin.
+app.post('/api/auth/baja-cuenta', (req, res) => {
+  const error = errorDeContrasena(req, 'baja-cuenta');
+  if (error) return res.status(error.status).json({ error: error.error });
+  const id = req.usuario.id;
+  const sinOtroAdmin = db
+    .prepare(
+      `SELECT negocio.nombre
+         FROM usuario_organizaciones pertenencia
+         JOIN organizaciones negocio ON negocio.id = pertenencia.organizacion_id
+        WHERE pertenencia.usuario_id = ? AND pertenencia.rol = 'admin' AND pertenencia.activo = 1
+          AND negocio.baja_pedida IS NULL
+          AND NOT EXISTS (SELECT 1 FROM usuario_organizaciones otro
+                           WHERE otro.organizacion_id = pertenencia.organizacion_id AND otro.usuario_id != pertenencia.usuario_id
+                             AND otro.rol = 'admin' AND otro.activo = 1)
+        ORDER BY negocio.nombre`
+    )
+    .all(id)
+    .map((n) => n.nombre);
+  if (sinOtroAdmin.length) {
+    return res.status(409).json({
+      error: `Sos quien administra ${sinOtroAdmin.join(', ')}. Antes, dalo de baja desde Configuración o sumá a otra persona como administradora.`,
+      codigo: 'unico_admin',
+      negocios: sinOtroAdmin
+    });
+  }
+
+  const cuenta = db.prepare('SELECT nombre, usuario, email FROM usuarios WHERE id = ?').get(id);
+  withTransaction(() => {
+    const negocios = db.prepare('SELECT organizacion_id FROM usuario_organizaciones WHERE usuario_id = ? AND activo = 1').all(id);
+    for (const { organizacion_id: organizacionId } of negocios) {
+      registrarAuditoria({ accion: 'editar', entidad: 'usuario', entidad_id: id, usuario_id: id, organizacion_id: organizacionId, detalle: 'Dio de baja su cuenta' });
+    }
+    const tapar = db.prepare(
+      `UPDATE auditoria
+          SET detalle = REPLACE(detalle, ?1, ?2), valor_anterior = REPLACE(valor_anterior, ?1, ?2), valor_nuevo = REPLACE(valor_nuevo, ?1, ?2)
+        WHERE (detalle LIKE '%' || ?1 || '%' OR valor_anterior LIKE '%' || ?1 || '%' OR valor_nuevo LIKE '%' || ?1 || '%')`
+    );
+    // El mail es único: se tapa en toda la auditoría. El nombre y el usuario
+    // de una cuenta vieja ("dani"), solo en sus filas: "Ana" puede ser parte
+    // de cualquier otro texto.
+    if (cuenta.email) tapar.run(cuenta.email, '(cuenta dada de baja)');
+    const taparEnSusFilas = db.prepare(
+      `UPDATE auditoria SET detalle = REPLACE(detalle, ?, '(cuenta dada de baja)')
+        WHERE usuario_id = ? OR (entidad = 'usuario' AND entidad_id = ?)`
+    );
+    for (const texto of new Set([cuenta.usuario, cuenta.nombre])) taparEnSusFilas.run(texto, id, id);
+    db.prepare('UPDATE usuario_organizaciones SET activo = 0 WHERE usuario_id = ?').run(id);
+    const { hash, salt } = hashPassword(randomBytes(32).toString('base64url'));
+    db.prepare(
+      `UPDATE usuarios
+          SET nombre = 'Cuenta dada de baja', usuario = ?, email = NULL, email_verificado = NULL,
+              password_hash = ?, password_salt = ?, baja = datetime('now')
+        WHERE id = ?`
+    ).run(`baja-${id}`, hash, salt, id);
+    for (const tabla of ['sesiones', 'tokens_cuenta', 'codigos_mail']) {
+      db.prepare(`DELETE FROM ${tabla} WHERE usuario_id = ?`).run(id);
+    }
+  });
+
+  if (cuenta.email) {
+    const { texto, html } = plantillaMail({
+      titulo: 'Diste de baja tu cuenta de Nexo',
+      parrafos: [
+        `Hola, ${cuenta.nombre}.`,
+        'Tu cuenta de Nexo quedó dada de baja: ya no se puede entrar con ella, y borramos tu nombre, tu mail y tu contraseña. Los negocios en los que trabajabas siguen, con lo que cargaste.',
+        'Si querés volver, creás una cuenta nueva cuando quieras, con este mismo mail.'
+      ],
+      pie: 'Si no fuiste vos, respondé este mail y te ayudamos.'
+    });
+    mandarSinEsperar({ para: cuenta.email, asunto: 'Diste de baja tu cuenta de Nexo', texto, html });
+  }
+  borrarCookieSesion(res);
   res.status(204).end();
 });
 
@@ -14335,6 +14637,11 @@ process.on('unhandledRejection', (motivo) => {
 // NEXO_HOST=127.0.0.1 en el servidor publicado (deploy/, hist. §103): Node solo
 // atiende a Caddy, que está en la misma máquina. Sin ella escucha en todas las
 // interfaces, como siempre en desarrollo.
+// Los negocios dados de baja hace BAJA_DIAS (hist. §109): al arrancar, antes
+// de atender, y cada 6 horas.
+borrarNegociosVencidos();
+setInterval(borrarNegociosVencidos, 6 * 60 * 60 * 1000).unref();
+
 app.listen(PORT, process.env.NEXO_HOST || undefined, () => {
   console.log(`Nexo backend escuchando en http://${process.env.NEXO_HOST || 'localhost'}:${PORT}`);
 });

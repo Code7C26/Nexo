@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §108);
+    siguiente número (hoy el último es §109);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -22,10 +22,9 @@
 ## Estado actual (29 de octubre de 2026)
 
 **Para retomar (sesión del 29 de octubre):**
-1. **Lo próximo es la Fase 4 de 8b** (descargar los datos, dar de baja el
-   negocio y `NEXO_REGISTRO=off`), con el diseño de
-   `docs/investigacion-login-legal.md`, sección 5. Sin pedidos del usuario
-   pendientes antes de eso.
+1. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
+   datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
+   trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
 2. Después, el orden que se le recomendó al usuario el 29 de octubre (faltan
    pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
    homologación** (etapa E, punto 10) → **cierre** (punto 13). Voz y
@@ -37,8 +36,8 @@
    (WSAA + WSFEv1). Con eso salen CAE de prueba, sin validez fiscal. La
    facturación real (producción) es después de la presentación y pide el
    CUIT de Nexo (decisión con un contador).
-4. Hecho en esta sesión: el código del mail (hist. §108), commiteado en
-   `solla`, sin publicar. Falta que el usuario lo pruebe.
+4. Hecho en esta sesión: el código del mail (hist. §108) y la baja (hist.
+   §109). Falta que el usuario los pruebe en el sitio.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
 en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
@@ -73,12 +72,14 @@ términos (Fase 3 de 8b).
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
-- **Lo que sigue: la Fase 4 de la etapa 8b** (descargar los datos, dar de
-  baja el negocio y `NEXO_REGISTRO=off`). Hechas: Fases 1 (mail en la cuenta,
-  hist. §102), 1b (invitaciones, hist. §104), 2 (recuperar la contraseña,
-  hist. §105), 3 (términos, privacidad y edad, hist. §106) y el código del
-  mail (hist. §108). La 2, la 3 y §108 están commiteadas en `solla`, sin
-  publicar.
+- **La etapa 8b está hecha:** Fases 1 (mail en la cuenta, hist. §102), 1b
+  (invitaciones, hist. §104), 2 (recuperar la contraseña, hist. §105), 3
+  (términos, privacidad y edad, hist. §106), el código del mail (hist. §108)
+  y 4 (la baja, hist. §109).
+- **Nuevo (29 de octubre, hist. §109):** Configuración → "Tus datos y la
+  baja" (descargar todo en JSON y dar de baja el negocio: cerrado 30 días,
+  cancelable, después se borra) y "Dar de baja mi cuenta" en Mi cuenta.
+  **Falta que el usuario lo vea.**
 - **Nuevo (29 de octubre, hist. §108):** el mail se confirma con un código
   de 6 números antes de crear la cuenta, y antes de cambiarlo. Pedido del
   usuario: con un mail ajeno se podía crear una cuenta igual. **Falta que el
@@ -690,6 +691,32 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   servidor (lee el código), no la URL; un alta a mano usa
   `confirmarMailDeAlta()`.
 
+**La baja (hist. §109)**
+- **Qué es "del negocio" sale del esquema** (`backend/db/datos-negocio.js`):
+  toda tabla con `organizacion_id`, y las hijas sin la columna por sus FK.
+  La descarga y el borrado usan la misma cuenta, así una tabla nueva queda
+  cubierta sola. `usuarios`, `tokens_cuenta`, `codigos_mail` y
+  `organizaciones` son de la cuenta y no se tocan.
+- **Negocio en baja (`organizaciones.baja_pedida`):** `autenticar` responde
+  403 `negocio_en_baja` a todo salvo `/auth/*`, `/negocios*`,
+  `/negocio/baja/cancelar` y `/negocio/exportar`. `sesion.js` muestra la
+  pantalla que lo explica.
+- **El borrado** corre al arrancar y cada 6 horas (`borrarNegociosVencidos`),
+  a los `BAJA_DIAS` (30). Es una transacción con las FK apagadas y controla
+  que no queden FK rotas. La fila de `organizaciones` queda vacía
+  (`baja_hecha`), porque `usuarios.organizacion_id` la referencia. Queda una
+  fila de auditoría sin negocio.
+- **Baja de la cuenta:** no se borra la fila (la auditoría la referencia).
+  Se le sacan el nombre, el mail y la contraseña, y se tapa su mail en toda
+  la auditoría y su nombre y usuario en sus filas. No puede dejar un negocio
+  sin admin (409 `unico_admin`).
+- **`NEXO_REGISTRO=off`:** cierra el alta y el primer negocio de una cuenta
+  sin negocio. La primera cuenta de una instalación nueva se crea igual.
+  `GET /api/auth/estado` trae `registro_abierto`.
+- **Arnés:** `baja.test.js` reinicia el servidor sobre la misma base y en el
+  mismo puerto. `levantarServidor` devuelve la URL de su puerto, no la del
+  `PORT` que se le pasa.
+
 **Invitaciones y cuentas sin negocio (hist. §104)**
 - **A alguien se lo suma invitándolo** (`/api/invitaciones`, admin). No
   volver a crear cuentas con una contraseña elegida por el admin.
@@ -1217,7 +1244,10 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        con el dominio de Nexo.
    - ~~Fase 3: `/terminos`, privacidad completa, la casilla de aceptación con
      su versión y la pregunta de edad~~ hecha (hist. §106).
-   - Fase 4: descargar los datos, dar de baja el negocio y `NEXO_REGISTRO=off`.
+   - ~~Fase 4: descargar los datos, dar de baja el negocio y
+     `NEXO_REGISTRO=off`~~ hecha (hist. §109), con la baja de la cuenta y el
+     campo trampa del alta. Para después: un mail de recordatorio unos días
+     antes del borrado.
    - Las migraciones son aditivas y están explicadas en el documento.
 8c. **Carga inicial: empezar con un negocio que ya existe** (pedido del
    usuario del 28 de octubre, **no ahora**, sin fecha). Lo vio cuando su

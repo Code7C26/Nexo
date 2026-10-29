@@ -287,7 +287,7 @@ function pintarPasoCodigo() {
 // Manda el código al mail del paso 1. Devuelve true si salió.
 async function mandarCodigo() {
   const email = mailDeLaCuenta();
-  const { ok, datos } = await postJson("/api/auth/registro/codigo", { email });
+  const { ok, datos } = await postJson("/api/auth/registro/codigo", { email, sitio: campo("altaSitio").value });
   if (!ok) return datos.error || "No pudimos mandarte el código. Probá de nuevo en unos minutos.";
   codigoMandadoA = email;
   inputCodigo.value = "";

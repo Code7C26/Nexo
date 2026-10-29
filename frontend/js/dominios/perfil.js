@@ -26,6 +26,8 @@ function pintarCuenta() {
   document.getElementById("cambioMailError").hidden = true;
   // Un cambio de mail a medias no sigue abierto al volver a la página.
   if (mailPendiente) pasoDelCodigo(null);
+  document.getElementById("formBajaCuenta").reset();
+  document.getElementById("bajaCuentaError").hidden = true;
   pintarMail();
 }
 registrar("pintar:cuenta", pintarCuenta);
@@ -179,6 +181,35 @@ botonReenviarCodigo.addEventListener("click", async () => {
 document.getElementById("perfilCancelarCodigo").addEventListener("click", () => {
   errorDelMail("");
   pasoDelCodigo(null);
+});
+
+/* ---------- Dar de baja la cuenta (hist. §109) ---------- */
+
+// Si sale bien, la sesión ya no existe: se cierra como un logout, y el login
+// dice qué pasó (sesion.js lee "nexo.avisoLogin").
+const formBajaCuenta = document.getElementById("formBajaCuenta");
+formBajaCuenta.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const boton = formBajaCuenta.querySelector('button[type="submit"]');
+  const errorEl = document.getElementById("bajaCuentaError");
+  const error = (texto) => {
+    errorEl.textContent = texto;
+    errorEl.hidden = !texto;
+  };
+  if (boton.disabled) return;
+  error("");
+  if (!formBajaCuenta.bajaCuentaPassword.value) return error("Escribí tu contraseña para confirmar.");
+  boton.disabled = true;
+  try {
+    const { ok, datos } = await postEnLaPagina("/api/auth/baja-cuenta", { password: formBajaCuenta.bajaCuentaPassword.value });
+    if (!ok) return error(datos.error || "No se pudo dar de baja la cuenta.");
+    try {
+      sessionStorage.setItem("nexo.avisoLogin", "Tu cuenta quedó dada de baja. Te mandamos un mail de confirmación.");
+    } catch {}
+    window.nexoCerrarSesion();
+  } finally {
+    boton.disabled = false;
+  }
 });
 
 document.getElementById("btnPerfil").addEventListener("click", () => {

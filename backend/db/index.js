@@ -1866,6 +1866,19 @@ for (const columna of [
   }
 }
 
+// La baja (etapa 8b, Fase 4, hist. §109): cuándo se pidió la del negocio y
+// cuándo se borraron sus datos, y cuándo se dio de baja una cuenta. Nulables:
+// NULL es que sigue activo.
+for (const [tabla, columna] of [
+  ['organizaciones', 'baja_pedida TEXT'],
+  ['organizaciones', 'baja_hecha TEXT'],
+  ['usuarios', 'baja TEXT']
+]) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
+  }
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

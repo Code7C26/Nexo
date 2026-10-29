@@ -921,7 +921,13 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- (AAAA-MM-DD). NULL en plan_vence es que no vence; vencido, el negocio
   -- queda en Gratis sin perder nada.
   plan TEXT NOT NULL DEFAULT 'gratis',
-  plan_vence TEXT
+  plan_vence TEXT,
+  -- La baja (etapa 8b, Fase 4, hist. §109): cuándo la pidió un admin (el
+  -- negocio queda cerrado y se puede volver atrás) y cuándo se borraron sus
+  -- datos, a los 30 días. La fila queda, sin sus datos, porque
+  -- usuarios.organizacion_id la referencia.
+  baja_pedida TEXT,
+  baja_hecha TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
@@ -961,7 +967,11 @@ CREATE TABLE IF NOT EXISTS usuarios (
   -- guarda la fecha de nacimiento: solo si es mayor o menor con permiso.
   terminos_version TEXT,
   terminos_aceptados TEXT,
-  edad TEXT CHECK (edad IN ('mayor', 'menor_autorizado'))
+  edad TEXT CHECK (edad IN ('mayor', 'menor_autorizado')),
+  -- Cuándo la persona dio de baja su cuenta (hist. §109). La fila no se
+  -- borra (la auditoría la referencia): se le sacan el nombre, el mail y la
+  -- contraseña.
+  baja TEXT
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas
