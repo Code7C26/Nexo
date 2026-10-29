@@ -320,7 +320,8 @@ Implementado hoy: productos con atributos y variantes (combinaciones
 vendibles con su propio SKU y precio por lista), categorías, listas de
 precios, margen objetivo con alerta, unidad de medida (unidad, kg, g, l,
 ml, m, con cantidades decimales) y tipo producto/servicio (un servicio no
-maneja stock). La condición fiscal es la ampliación pendiente (§33).
+maneja stock) y alícuota de IVA (21 % de partida; el precio de venta es el
+final, con IVA incluido; hist. §112).
 
 ---
 
@@ -411,9 +412,11 @@ Una compra confirmada puede:
 Implementado hoy: cabecera y detalle, costo promedio ponderado, prorrateo de
 costo de envío (ver §7), ciclo borrador → activa → anulada en paralelo al
 estado de envío (pedido → en camino → recibido, el stock sube solo al
-recibir). El campo "impuestos" listado arriba es la base sobre la que se
-implementa IVA discriminado por renglón cuando se planifique esa etapa (§16,
-§33) — hoy no se calcula.
+recibir). IVA (hist. §114): la compra guarda la letra y el número del
+comprobante del proveedor (la letra la propone su condición frente al IVA), y
+cada renglón su alícuota y su IVA. Solo la factura A a un negocio
+responsable inscripto discrimina: ese IVA es crédito fiscal y el costo real
+queda sin IVA; en cualquier otro caso el IVA es parte del costo.
 
 ---
 
@@ -493,7 +496,9 @@ ganancia por renglón, lista de precios y depósito de origen (con fallback al
 predeterminado), condición de pago y vencimiento para aging real. Vendedor
 identificado por usuario existe (hay login y roles, ver §35), pero el reporte
 "ventas por vendedor" todavía no está construido (§20). El
-campo "impuestos" es la misma base pendiente que en §6 (ver §16, §33).
+IVA (hist. §113, §114): cada renglón congela su alícuota y su IVA. Para un
+responsable inscripto, la ganancia, el margen y el resultado se miden sin
+IVA (es del fisco, no ingreso); para los demás no cambia nada.
 
 ---
 
@@ -558,10 +563,9 @@ Debe poder relacionarse con:
 Los datos como total comprado, cantidad de compras, última compra, etc. deben considerarse datos calculados salvo que exista una razón técnica clara para persistirlos.
 
 Implementado hoy: ficha de cliente con condición de pago habitual y cuenta
-corriente con saldo reconstruido desde los movimientos (§12). El campo
-"condición frente al IVA" existe como dato pero todavía es informativo; al
-implementar IVA (§16, §33) pasa a determinar qué tipo de comprobante se le
-puede emitir a ese cliente.
+corriente con saldo reconstruido desde los movimientos (§12). La condición
+frente al IVA (vacía = consumidor final) decide, con la del negocio, la letra
+del comprobante (hist. §113). El proveedor tiene la suya (hist. §114).
 
 ---
 
@@ -718,8 +722,8 @@ Puede convertirse posteriormente en una venta.
 Implementado hoy: cabecera y detalle multi-ítem con variante de producto,
 estados borrador/enviado/aceptado/rechazado/convertido ("vencido" se calcula
 comparando `vencimiento` contra hoy, no es un estado persistido), conversión a
-venta que congela costos y deja el vínculo `venta_id`. "Impuestos" es la misma
-base pendiente de IVA que en §6/§8 (ver §16, §33).
+venta que congela costos y deja el vínculo `venta_id`. Cada renglón guarda
+su alícuota y su IVA, como la venta (hist. §113).
 
 ---
 
@@ -759,9 +763,11 @@ Datos posibles:
 
 Implementado hoy: comprobante con tipo (factura/nota de crédito/nota de
 débito), letra, punto de venta y número correlativo garantizado por índice
-único (por punto de venta + tipo + letra) — la numeración está lista, pero
-**sin IVA calculado y sin conexión real a ARCA todavía**: hoy es monto simple
-(`neto = total`) y el comprobante no tiene CAE real.
+único (por punto de venta + tipo + letra). IVA (hist. §112–§114): la letra
+sale sola de la condición del negocio y la del cliente, la factura A
+discrimina el IVA, y Estadísticas tiene el libro IVA ventas y compras con el
+saldo del período. **Sin conexión real a ARCA todavía**: el comprobante no
+tiene CAE real (`facturas.neto` sigue siendo el total, y `iva` el contenido).
 
 Esto deja de ser una decisión definitiva y pasa a ser el orden de trabajo real
 (corrige la frase anterior "puede desarrollarse progresivamente", que sonaba
@@ -1490,7 +1496,7 @@ excepciones).
 | 0 | Cerrar el trabajo pendiente de margen objetivo (pasada visual en navegador + commit) | Hay cambios sin commitear en el árbol de trabajo; no se empieza nada nuevo arriba de eso | Hecha |
 | A | Multi-empresa: `organizacion_id`, aislamiento, resolución desde sesión (§28) | Cuanto más crezca el esquema, más caro se vuelve; conviene hacerlo temprano | Núcleo hecho; faltan los detalles de §28 |
 | B | Modularizar `app.js` por dominio + base de PWA (§31) | Habilita todas las pantallas que siguen y el uso desde el celular; en paralelo con A | En curso |
-| C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio | Pendiente |
+| C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio | Hecha (falta la retención de Mercado Pago) |
 | D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Hecha |
 | E | ARCA: homologación → producción (§33) | Depende de C | Pendiente |
 | F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Hecha (socios y cuotas, en curso) |

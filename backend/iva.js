@@ -41,3 +41,10 @@ export function letraQueCorresponde(condicionNegocio, condicionCliente) {
   if (condicionNegocio !== 'responsable_inscripto') return null;
   return condicionCliente === 'responsable_inscripto' || condicionCliente === 'monotributo' ? 'A' : 'B';
 }
+
+// Las compras (hist. §114). Solo la factura A a un negocio inscripto
+// discrimina el IVA de lo comprado: ese IVA es crédito fiscal y sale del
+// costo. Con B o C, o si el negocio no es inscripto, el IVA es parte del
+// costo, como siempre. La letra que corresponde es la de letraQueCorresponde
+// con los papeles al revés: emite el proveedor y recibe el negocio.
+export const compraDiscriminaIva = (condicionNegocio, letra) => discriminaIva(condicionNegocio) && letra === 'A';

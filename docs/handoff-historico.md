@@ -10300,3 +10300,69 @@ hojas A (neto $ 3.000 + IVA $ 525 = $ 3.525) y B (IVA contenido $ 525).
 **Lo que sigue de IVA:** compras (el IVA del proveedor es crédito fiscal, no
 costo: hay que decidir si el costo de un inscripto se guarda neto), el
 reporte de IVA ventas y compras, y la alícuota elegible en la factura suelta.
+
+## 114. IVA, tercer paso: las compras, la ganancia sin IVA y el libro de IVA, 29 de octubre de 2026
+
+Tercer tramo de la etapa C (punto 9 de "Qué sigue"), que la cierra salvo la
+retención de Mercado Pago.
+
+**Decisión (mía, criterio contable estándar en la Argentina; revisable):**
+para un responsable inscripto el IVA no es ingreso ni costo. El de una compra
+con factura A es crédito fiscal y el costo se guarda sin IVA. Para que el
+margen no quede inflado, la venta también se mide sin su IVA: ganancia,
+margen del producto, resultado y reportes de ventas restan `venta_items.iva`.
+Para cualquier otro negocio, `iva` es 0 y nada cambia. Los totales de plata
+(deuda, cobros, total de la venta o de la compra) siguen siendo con IVA.
+
+**Qué se hizo.**
+- Migración aditiva, sin backfill (`db/index.js` y `schema.sql`):
+  `proveedores.condicion_iva`, `compras.comprobante_letra` y
+  `comprobante_numero`, `compra_items.alicuota_iva` e `iva`.
+- `iva.js`: `compraDiscriminaIva` (negocio inscripto y letra A). La letra
+  que corresponde es `letraQueCorresponde` con los papeles al revés (emite el
+  proveedor).
+- `server.js`:
+  - proveedores: `condicion_iva` en alta y PATCH (mismas claves que el
+    cliente; sin la clave, queda la que tenía);
+  - compras: `comprobante_letra` (A, B, C o vacía) y `comprobante_numero`.
+    Sin letra en el pedido, la propone la condición del proveedor (sin
+    condición, ninguna: no discrimina). Al editar, queda la que tenía salvo
+    que cambie el proveedor. `ivaDelRenglonComprado` saca el IVA del costo
+    real (el envío queda como vino);
+  - `precio_unitario` de la compra sigue siendo lo pagado (con IVA), así que
+    la deuda con el proveedor no cambia;
+  - ganancia sin IVA: lista y ficha de ventas, `calcularResultado` y los
+    reportes por producto, categoría y cliente (`SQL_IVA_DEVUELTO` descuenta
+    la parte del IVA de lo devuelto); `decorarProducto` mide el margen sobre
+    el precio sin IVA si el negocio discrimina;
+  - `GET /api/reportes/iva` (admin): libro de ventas (de las facturas
+    emitidas, las notas de crédito restan), libro de compras (compras con
+    comprobante y sus devoluciones, con el IVA proporcional) y el saldo.
+- Frontend:
+  - proveedor: "Condición frente al IVA" en el formulario y la ficha;
+  - compra: "Comprobante del proveedor" (solo si el negocio es inscripto,
+    propuesto por el proveedor) con la nota de crédito fiscal, y "N° de
+    comprobante" para todos; la ficha muestra el comprobante y el IVA;
+  - Estadísticas: sección IVA (lo vendido, lo comprado, a pagar o a favor) y
+    los dos libros con "Exportar CSV", solo para un inscripto;
+  - factura suelta: "Importe" (era "Monto neto", y es el total) e "IVA
+    incluido en el importe" para un inscripto;
+  - la tira de Ventas suma la ganancia de cada venta en vez de total − costo.
+
+**Cómo se verificó.** `backend/test/iva-compras.test.js` (2 casos, en archivo
+aparte porque el alta de empresas tiene tope por IP): compra A y C, costo y
+margen sin IVA, venta con ganancia y resumen sin IVA, devolución al
+proveedor, el libro y su saldo, letra inválida; un monotributista con A no
+discrimina. `npm test` (139), `npm run lint` y `npm run verificar-migracion`
+(24 de 24) en verde. `npm run regresion`: 11 diferencias, todas campos nuevos,
+la ruta nueva (admin 200, empleado 403) y las columnas nuevas en la descarga.
+En el navegador (base temporal, escritorio y celular): la sección IVA (A
+favor $ 840 con $ 1.260 vendido y $ 2.100 comprado), la letra propuesta A
+para el inscripto y C para el monotributista, la factura suelta con la
+alícuota, sin errores de consola. Se corrigió ahí la letra repetida en el
+libro de ventas ("Factura A A …").
+
+**Lo que queda de IVA:** la retención de Mercado Pago (necesita decidir su
+tratamiento), el desglose por alícuota en los libros (hace falta para el
+libro IVA digital de ARCA) y la alícuota por renglón en la compra (hoy toma
+la del producto).

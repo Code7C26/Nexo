@@ -11,7 +11,14 @@ import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
 import { TERMINOS_VERSION, completarPaginaLegal, titularIncompleto, validarAceptacion } from './legal.js';
-import { ALICUOTAS_IVA, discriminaIva, ivaDelRenglon, ivaIncluido, letraQueCorresponde } from './iva.js';
+import {
+  ALICUOTAS_IVA,
+  compraDiscriminaIva,
+  discriminaIva,
+  ivaDelRenglon,
+  ivaIncluido,
+  letraQueCorresponde
+} from './iva.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -2775,10 +2782,13 @@ function estadoStock(stock, stockMinimo, stockMaximo) {
 // valorizado $0 y margen 100%. stock_variantes y valorizado_variantes no
 // salen en la respuesta: el filtro de campos sensibles corta por nombre de
 // clave (CLAUDE.md §35) y no los conoce.
-function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}) {
+// Si el negocio discrimina IVA, el margen se mide sobre el precio sin IVA
+// (hist. §114): el costo de lo comprado con factura A ya va sin IVA.
+function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}, discrimina = false) {
   const valorizado = valorizadoProducto(p.precio_costo, p.stock, stock_variantes, valorizado_variantes);
   if (stock_variantes && p.stock > 0) p.precio_costo = valorizado / p.stock;
-  const margen = p.precio_venta > 0 ? ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100 : null;
+  const precio = discrimina ? p.precio_venta - ivaIncluido(p.precio_venta, p.alicuota_iva) : p.precio_venta;
+  const margen = precio > 0 ? ((precio - p.precio_costo) / precio) * 100 : null;
   return {
     ...p,
     precios,
@@ -2799,7 +2809,8 @@ app.get('/api/productos', (req, res) => {
     .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? ORDER BY productos.nombre`)
     .all(req.usuario.organizacion_id);
   const preciosPorProducto = obtenerPreciosPorProducto(req.usuario.organizacion_id);
-  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id])));
+  const discrimina = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id));
+  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id], discrimina)));
 });
 
 function normalizarPrecio(valor) {
@@ -3835,7 +3846,7 @@ app.get('/api/proveedores/:id', (req, res) => {
 });
 
 app.post('/api/proveedores', (req, res) => {
-  const { nombre, email, telefono, direccion, documento, notas, condicion_pago } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, condicion_pago, condicion_iva } = req.body;
 
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El proveedor necesita un nombre.' });
@@ -3844,13 +3855,18 @@ app.post('/api/proveedores', (req, res) => {
   if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
+  // La del proveedor usa las mismas claves que la del cliente (hist. §114).
+  const condicionIva = normalizarCondicionIvaCliente(condicion_iva);
+  if (!condicionIvaClienteValida(condicionIva)) {
+    return res.status(400).json({ error: 'La condición frente al IVA no es válida.' });
+  }
 
   // Con auditoría, igual que el alta de clientes (CLAUDE.md §22).
   const proveedorNuevoId = withTransaction(() => {
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago, organizacion_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO proveedores (nombre, email, telefono, direccion, documento, notas, condicion_pago, condicion_iva, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         String(nombre).trim(),
@@ -3860,6 +3876,7 @@ app.post('/api/proveedores', (req, res) => {
         documento ?? null,
         notas ?? null,
         condicionPagoHabitual,
+        condicionIva,
         req.usuario.organizacion_id
       );
     auditar(req, {
@@ -3875,7 +3892,7 @@ app.post('/api/proveedores', (req, res) => {
 
 app.patch('/api/proveedores/:id', (req, res) => {
   const proveedorId = Number(req.params.id);
-  const { nombre, email, telefono, direccion, documento, notas, condicion_pago } = req.body;
+  const { nombre, email, telefono, direccion, documento, notas, condicion_pago, condicion_iva } = req.body;
 
   const proveedor = db
     .prepare('SELECT * FROM proveedores WHERE id = ? AND organizacion_id = ?')
@@ -3890,6 +3907,11 @@ app.patch('/api/proveedores/:id', (req, res) => {
   if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
   }
+  // Mismo criterio que el cliente: sin la clave, queda la que tenía.
+  const condicionIva = condicion_iva === undefined ? proveedor.condicion_iva : normalizarCondicionIvaCliente(condicion_iva);
+  if (!condicionIvaClienteValida(condicionIva)) {
+    return res.status(400).json({ error: 'La condición frente al IVA no es válida.' });
+  }
 
   const nuevo = {
     nombre: String(nombre).trim(),
@@ -3898,7 +3920,8 @@ app.patch('/api/proveedores/:id', (req, res) => {
     direccion: direccion ?? null,
     documento: documento ?? null,
     notas: notas ?? null,
-    condicion_pago: condicionPagoHabitual
+    condicion_pago: condicionPagoHabitual,
+    condicion_iva: condicionIva
   };
   const cambios = diffCampos(proveedor, nuevo, [
     'nombre',
@@ -3907,13 +3930,15 @@ app.patch('/api/proveedores/:id', (req, res) => {
     'direccion',
     'documento',
     'notas',
-    'condicion_pago'
+    'condicion_pago',
+    'condicion_iva'
   ]);
 
   withTransaction(() => {
     db.prepare(
       `UPDATE proveedores
-          SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, condicion_pago = ?
+          SET nombre = ?, email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, condicion_pago = ?,
+              condicion_iva = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -3923,6 +3948,7 @@ app.patch('/api/proveedores/:id', (req, res) => {
       nuevo.documento,
       nuevo.notas,
       nuevo.condicion_pago,
+      nuevo.condicion_iva,
       proveedorId
     );
     if (cambios) {
@@ -4367,7 +4393,9 @@ app.get('/api/ventas', (req, res) => {
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) AS total,
-              (SELECT COALESCE(SUM((precio_unitario - costo_unitario_historico) * cantidad), 0)
+              (SELECT COALESCE(SUM(iva), 0)
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS iva,
+              (SELECT COALESCE(SUM((precio_unitario - costo_unitario_historico) * cantidad - iva), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) AS margen,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
@@ -4392,7 +4420,7 @@ app.get('/api/ventas', (req, res) => {
       const neto = v.total - v.devuelto;
       return {
         ...v,
-        costo_total: v.total - v.margen,
+        costo_total: v.total - v.iva - v.margen,
         facturada: Boolean(v.facturada),
         tiene_devolucion: Boolean(v.tiene_devolucion),
         neto,
@@ -4456,13 +4484,14 @@ app.get('/api/ventas/:id', (req, res) => {
       ...i,
       combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
       subtotal: i.cantidad * i.precio_unitario,
-      ganancia: (i.precio_unitario - i.costo_unitario_historico) * i.cantidad,
+      // Sin el IVA del renglón (hist. §114): es del fisco, no ganancia.
+      ganancia: (i.precio_unitario - i.costo_unitario_historico) * i.cantidad - i.iva,
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
     })),
     total,
     iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     costo_total: costoTotal,
-    margen: total - costoTotal,
+    margen: total - items.reduce((acc, i) => acc + i.iva, 0) - costoTotal,
     devuelto,
     neto,
     cobrado,
@@ -6721,6 +6750,7 @@ app.get('/api/compras', soloAdmin, (req, res) => {
     .prepare(
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
               compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
+              compras.comprobante_letra, compras.comprobante_numero,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
                  FROM compra_items WHERE compra_items.compra_id = compras.id) AS subtotal,
               (SELECT COALESCE(SUM(importe), 0)
@@ -6757,6 +6787,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
               compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
               compras.deposito_id, depositos.nombre AS deposito,
               compras.condicion_pago, compras.fecha_vencimiento,
+              compras.comprobante_letra, compras.comprobante_numero, proveedores.condicion_iva AS proveedor_condicion_iva,
               EXISTS (SELECT 1 FROM devoluciones_proveedor
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
          FROM compras
@@ -6776,6 +6807,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
     .prepare(
       `SELECT compra_items.id, compra_items.producto_id, compra_items.variante_id, productos.nombre AS producto,
               compra_items.cantidad, compra_items.precio_unitario, compra_items.costo_real_unitario,
+              compra_items.alicuota_iva, compra_items.iva,
               COALESCE((
                 SELECT SUM(devolucion_proveedor_items.cantidad)
                   FROM devolucion_proveedor_items
@@ -6807,6 +6839,8 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
     })),
     subtotal,
+    // El IVA de los renglones: crédito fiscal si la compra lo discriminó.
+    iva: redondear2(items.reduce((acc, i) => acc + i.iva, 0)),
     total,
     devuelto,
     neto,
@@ -6831,6 +6865,38 @@ function prorratearEnvio(items, costoEnvio) {
   });
 }
 
+// El comprobante que dio el proveedor (hist. §114): la letra y el número,
+// opcionales. undefined es "no vino en el pedido", distinto de vacío.
+function validarComprobanteCompra(letra, numero) {
+  if (letra !== undefined && letra !== null && letra !== '' && !LETRAS_COMPROBANTE.includes(letra)) {
+    return 'La letra del comprobante tiene que ser A, B o C.';
+  }
+  if (numero !== undefined && numero !== null && String(numero).trim().length > 30) {
+    return 'El número de comprobante es demasiado largo.';
+  }
+  return null;
+}
+const normalizarNumeroComprobante = (numero) => (numero == null ? null : String(numero).trim() || null);
+
+// La letra de una compra: la elegida o, si no vino, la que corresponde por la
+// condición del proveedor y la del negocio. NULL si no hay de dónde sacarla
+// (proveedor sin condición): la compra no discrimina IVA.
+function letraDeLaCompra(organizacionId, proveedorId, pedida) {
+  if (pedida !== undefined) return pedida || null;
+  const proveedor = db.prepare('SELECT condicion_iva FROM proveedores WHERE id = ?').get(proveedorId);
+  return letraQueCorresponde(proveedor?.condicion_iva ?? null, condicionIvaNegocio(organizacionId));
+}
+
+// El IVA de un renglón comprado, ya con el envío prorrateado. Si la compra
+// discrimina, el IVA sale del costo real: es crédito fiscal, no costo. El
+// envío queda como vino (no se sabe si el flete trajo factura A).
+function ivaDelRenglonComprado(item, alicuotaProducto, discrimina) {
+  if (!discrimina) return { alicuota_iva: null, iva: 0, costo_real_unitario: item.costo_real_unitario };
+  const alicuota = alicuotaProducto ?? '21';
+  const iva = ivaIncluido(item.cantidad * item.precio_unitario, alicuota);
+  return { alicuota_iva: alicuota, iva, costo_real_unitario: item.costo_real_unitario - iva / item.cantidad };
+}
+
 // Una compra nace como borrador: no toca stock, ni costo, ni deuda. Es
 // nada más el papel armado. Los efectos aparecen recién al efectuar el
 // pedido (deuda) y al recibir la mercadería (stock y costo).
@@ -6847,6 +6913,8 @@ function crearCompra({
   deposito_id,
   condicion_pago,
   fecha_vencimiento,
+  comprobante_letra,
+  comprobante_numero,
   organizacion_id
 }) {
   // organizacion_id es obligatorio (CLAUDE.md §28): proveedor y productos
@@ -6873,22 +6941,36 @@ function crearCompra({
   const fechaCompra = fecha ?? fechaDeHoy();
   const venc = calcularVencimiento(fechaCompra, condicion_pago, fecha_vencimiento);
 
+  const letra = letraDeLaCompra(organizacion_id, proveedorRow.id, comprobante_letra);
+  const discrimina = compraDiscriminaIva(condicionIvaNegocio(organizacion_id), letra);
+
   const { lastInsertRowid: nuevaCompraId } = db
     .prepare(
-      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO compras (proveedor_id, costo_envio, deposito_id, fecha, condicion_pago, fecha_vencimiento,
+                            comprobante_letra, comprobante_numero, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(proveedorRow.id, costoEnvio, depositoId, fechaCompra, venc.condicion, venc.vencimiento, organizacion_id);
+    .run(
+      proveedorRow.id,
+      costoEnvio,
+      depositoId,
+      fechaCompra,
+      venc.condicion,
+      venc.vencimiento,
+      letra,
+      normalizarNumeroComprobante(comprobante_numero),
+      organizacion_id
+    );
 
-  const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
+  const buscarProducto = db.prepare('SELECT id, alicuota_iva FROM productos WHERE nombre = ? AND organizacion_id = ?');
   // Un producto nuevo nace con costo 0: todavía no entró nada al
   // depósito, su costo lo va a fijar la recepción de esta compra.
   const crearProducto = db.prepare(
     'INSERT INTO productos (nombre, precio_costo, precio_venta, organizacion_id) VALUES (?, 0, 0, ?)'
   );
   const insertItem = db.prepare(
-    `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario, alicuota_iva, iva)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   // Variante resuelta por el frontend (no se autocrea a ciegas desde un
   // nombre libre, a diferencia del producto): tiene que existir, estar
@@ -6914,7 +6996,7 @@ function crearCompra({
     let productoRow = buscarProducto.get(item.producto, organizacion_id);
     if (!productoRow) {
       const { lastInsertRowid } = crearProducto.run(item.producto, organizacion_id);
-      productoRow = { id: lastInsertRowid };
+      productoRow = { id: lastInsertRowid, alicuota_iva: '21' };
       // El producto que la compra crea por nombre ocupa un lugar del plan
       // (hist. §98): pasado el tope, el throw deshace toda la compra.
       exigirLugarEnPlan(organizacion_id, 'productos', 0);
@@ -6926,13 +7008,16 @@ function crearCompra({
     if (!item.variante_id && contarVariantesActivas.get(productoRow.id).n > 0) {
       throw new ErrorBulk(`"${item.producto}" tiene variantes: elegí una para comprar.`);
     }
+    const renglon = ivaDelRenglonComprado(item, productoRow.alicuota_iva, discrimina);
     insertItem.run(
       nuevaCompraId,
       productoRow.id,
       item.variante_id,
       item.cantidad,
       item.precio_unitario,
-      item.costo_real_unitario
+      renglon.costo_real_unitario,
+      renglon.alicuota_iva,
+      renglon.iva
     );
   }
 
@@ -6940,7 +7025,17 @@ function crearCompra({
 }
 
 app.post('/api/compras', soloAdmin, (req, res) => {
-  const { proveedor, items, fecha, costo_envio, deposito_id, condicion_pago, fecha_vencimiento } = req.body;
+  const {
+    proveedor,
+    items,
+    fecha,
+    costo_envio,
+    deposito_id,
+    condicion_pago,
+    fecha_vencimiento,
+    comprobante_letra,
+    comprobante_numero
+  } = req.body;
 
   if (!proveedor || !String(proveedor).trim()) {
     return res.status(400).json({ error: 'La compra necesita un proveedor.' });
@@ -6963,6 +7058,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
   if (Number.isNaN(costoEnvio) || costoEnvio < 0) {
     return res.status(400).json({ error: 'El costo de envío debe ser un número mayor o igual a 0.' });
   }
+  const errorComprobante = validarComprobanteCompra(comprobante_letra, comprobante_numero);
+  if (errorComprobante) return res.status(400).json({ error: errorComprobante });
 
   let compraId;
   try {
@@ -6975,6 +7072,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
         deposito_id,
         condicion_pago,
         fecha_vencimiento,
+        comprobante_letra,
+        comprobante_numero,
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, {
@@ -7003,12 +7102,22 @@ app.post('/api/compras', soloAdmin, (req, res) => {
 // promedio ponderado no se puede "restar" de forma exacta.
 app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const compraId = Number(req.params.id);
-  const { proveedor, items, fecha, costo_envio, deposito_id, condicion_pago, fecha_vencimiento } = req.body;
+  const {
+    proveedor,
+    items,
+    fecha,
+    costo_envio,
+    deposito_id,
+    condicion_pago,
+    fecha_vencimiento,
+    comprobante_letra,
+    comprobante_numero
+  } = req.body;
 
   const compra = db
     .prepare(
       `SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, fecha, condicion_pago,
-              fecha_vencimiento
+              fecha_vencimiento, comprobante_letra, comprobante_numero
          FROM compras WHERE id = ? AND organizacion_id = ?`
     )
     .get(compraId, req.usuario.organizacion_id);
@@ -7076,6 +7185,8 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   if (Number.isNaN(costoEnvio) || costoEnvio < 0) {
     return res.status(400).json({ error: 'El costo de envío debe ser un número mayor o igual a 0.' });
   }
+  const errorComprobante = validarComprobanteCompra(comprobante_letra, comprobante_numero);
+  if (errorComprobante) return res.status(400).json({ error: errorComprobante });
 
   const itemsViejos = db
     .prepare(
@@ -7154,10 +7265,17 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
         .run(proveedor, req.usuario.organizacion_id);
       proveedorRow = { id: lastInsertRowid };
     }
+    // Sin la letra en el pedido queda la que tenía, salvo que cambie el
+    // proveedor: entonces, la que corresponde con el nuevo.
+    const letra =
+      comprobante_letra === undefined && proveedorRow.id === compra.proveedor_id
+        ? compra.comprobante_letra
+        : letraDeLaCompra(req.usuario.organizacion_id, proveedorRow.id, comprobante_letra);
+    const discrimina = compraDiscriminaIva(condicionIvaNegocio(req.usuario.organizacion_id), letra);
     db.prepare(
       `UPDATE compras
           SET proveedor_id = ?, costo_envio = ?, fecha = COALESCE(?, fecha), deposito_id = ?,
-              condicion_pago = ?, fecha_vencimiento = ?
+              condicion_pago = ?, fecha_vencimiento = ?, comprobante_letra = ?, comprobante_numero = ?
         WHERE id = ?`
     ).run(
       proveedorRow.id,
@@ -7166,18 +7284,20 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       depositoIdNuevo,
       vencEdicionCompra.condicion,
       vencEdicionCompra.vencimiento,
+      letra,
+      comprobante_numero === undefined ? compra.comprobante_numero : normalizarNumeroComprobante(comprobante_numero),
       compraId
     );
 
     db.prepare('DELETE FROM compra_items WHERE compra_id = ?').run(compraId);
 
-    const buscarProducto = db.prepare('SELECT id FROM productos WHERE nombre = ? AND organizacion_id = ?');
+    const buscarProducto = db.prepare('SELECT id, alicuota_iva FROM productos WHERE nombre = ? AND organizacion_id = ?');
     const crearProducto = db.prepare(
       'INSERT INTO productos (nombre, precio_costo, precio_venta, organizacion_id) VALUES (?, 0, 0, ?)'
     );
     const insertItem = db.prepare(
-      `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO compra_items (compra_id, producto_id, variante_id, cantidad, precio_unitario, costo_real_unitario, alicuota_iva, iva)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const buscarVariante = db.prepare(
       'SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1'
@@ -7192,7 +7312,7 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       let productoRow = buscarProducto.get(item.producto, req.usuario.organizacion_id);
       if (!productoRow) {
         const { lastInsertRowid } = crearProducto.run(item.producto, req.usuario.organizacion_id);
-        productoRow = { id: lastInsertRowid };
+        productoRow = { id: lastInsertRowid, alicuota_iva: '21' };
         exigirLugarEnPlan(req.usuario.organizacion_id, 'productos', 0);
       }
       if (esServicio(productoRow.id)) throw new ErrorBulk(errorServicioSinStock(item.producto));
@@ -7202,13 +7322,16 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
       if (!item.variante_id && contarVariantesActivas.get(productoRow.id).n > 0) {
         throw new ErrorBulk(`"${item.producto}" tiene variantes: elegí una para comprar.`);
       }
+      const renglon = ivaDelRenglonComprado(item, productoRow.alicuota_iva, discrimina);
       insertItem.run(
         compraId,
         productoRow.id,
         item.variante_id,
         item.cantidad,
         item.precio_unitario,
-        item.costo_real_unitario
+        renglon.costo_real_unitario,
+        renglon.alicuota_iva,
+        renglon.iva
       );
       productosNuevos.push(productoRow.id);
       if (item.variante_id) variantesNuevas.push(item.variante_id);
@@ -9113,8 +9236,17 @@ app.get('/api/cuentas-corrientes', (req, res) => {
 // string SQL, que es lo que se hace en el resto del archivo) porque este
 // módulo se importa después de que db/index.js termina de correr las
 // migraciones.
+// Para un responsable inscripto, las ventas del resultado y de los reportes
+// van sin su IVA (hist. §114): es del fisco, no ingreso, y el costo de lo que
+// compró con factura A también va sin IVA. venta_items.iva es 0 en cualquier
+// otro caso, así que la resta no cambia nada. Lo devuelto descuenta la parte
+// proporcional del IVA del renglón vendido.
+const SQL_IVA_DEVUELTO = `COALESCE((SELECT devolucion_items.cantidad * vendido.iva / vendido.cantidad
+                                      FROM venta_items AS vendido
+                                     WHERE vendido.id = devolucion_items.venta_item_id), 0)`;
+
 const SQL_RESULTADO_VENTAS = db.prepare(
-  `SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0) AS total,
+  `SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva), 0) AS total,
           COALESCE(SUM(venta_items.cantidad * venta_items.costo_unitario_historico), 0) AS costo
      FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
     WHERE ventas.estado = 'activa'
@@ -9141,7 +9273,7 @@ const SQL_RESULTADO_GASTOS = db.prepare(
 // venta se borra pero el costo queda puesto, o sea la pérdida completa
 // de esa mercadería (CLAUDE.md §17).
 const SQL_RESULTADO_DEVOLUCIONES = db.prepare(
-  `SELECT COALESCE(SUM(devolucion_items.cantidad * devolucion_items.precio_unitario), 0) AS importe,
+  `SELECT COALESCE(SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}), 0) AS importe,
           COALESCE(SUM(CASE WHEN devolucion_items.vuelve_stock
                             THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
                             ELSE 0 END), 0) AS costo
@@ -9519,7 +9651,7 @@ const SQL_REPORTE_UNIDADES_DEVOLUCIONES = db.prepare(
 const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
   `SELECT venta_items.producto_id AS id, productos.nombre AS nombre,
           SUM(venta_items.cantidad) AS unidades,
-          SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas,
           SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo
      FROM venta_items
      JOIN ventas ON ventas.id = venta_items.venta_id
@@ -9534,7 +9666,7 @@ const SQL_REPORTE_VENTAS_POR_PRODUCTO = db.prepare(
 const SQL_REPORTE_DEVOLUCIONES_POR_PRODUCTO = db.prepare(
   `SELECT devolucion_items.producto_id AS id,
           SUM(devolucion_items.cantidad) AS unidades,
-          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario) AS ventas,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}) AS ventas,
           SUM(CASE WHEN devolucion_items.vuelve_stock
                    THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
                    ELSE 0 END) AS costo
@@ -9555,7 +9687,7 @@ const SQL_REPORTE_VENTAS_POR_CATEGORIA = db.prepare(
   `SELECT productos.categoria_id AS id,
           COALESCE(categorias.nombre, 'Sin categoría') AS nombre,
           SUM(venta_items.cantidad) AS unidades,
-          SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas,
           SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo
      FROM venta_items
      JOIN ventas ON ventas.id = venta_items.venta_id
@@ -9571,7 +9703,7 @@ const SQL_REPORTE_VENTAS_POR_CATEGORIA = db.prepare(
 const SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA = db.prepare(
   `SELECT productos.categoria_id AS id,
           SUM(devolucion_items.cantidad) AS unidades,
-          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario) AS ventas,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}) AS ventas,
           SUM(CASE WHEN devolucion_items.vuelve_stock
                    THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
                    ELSE 0 END) AS costo
@@ -9588,7 +9720,7 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CATEGORIA = db.prepare(
 const SQL_REPORTE_VENTAS_POR_CLIENTE = db.prepare(
   `SELECT ventas.cliente_id AS id, clientes.nombre AS nombre,
           COUNT(DISTINCT ventas.id) AS cantidad_ventas,
-          SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas,
           SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo,
           MAX(ventas.fecha) AS ultima_compra
      FROM venta_items
@@ -9606,7 +9738,7 @@ const SQL_REPORTE_VENTAS_POR_CLIENTE = db.prepare(
 // corrientes se atribuye todo movimiento a través de su operación.
 const SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE = db.prepare(
   `SELECT ventas.cliente_id AS id,
-          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario) AS ventas,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}) AS ventas,
           SUM(CASE WHEN devolucion_items.vuelve_stock
                    THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
                    ELSE 0 END) AS costo
@@ -10004,6 +10136,91 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
     proveedores,
     productos,
     categorias
+  });
+});
+
+/* ---------- Reportes: IVA ventas y compras (hist. §114, CLAUDE.md §33) ---------- */
+//
+// Los dos libros que pide el contador de un responsable inscripto, y el saldo
+// del período. El débito sale de los comprobantes emitidos (no de las
+// ventas: el IVA nace con la factura), y las notas de crédito lo restan. El
+// crédito sale de las compras con comprobante del proveedor, y sus
+// devoluciones lo restan con la parte proporcional del IVA de cada renglón.
+// Todo con el IVA ya congelado en cada fila: nada se recalcula con las
+// alícuotas de hoy.
+
+const SQL_LIBRO_IVA_VENTAS = db.prepare(
+  `SELECT facturas.id, facturas.fecha, facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero,
+          clientes.nombre AS cliente, clientes.documento AS cliente_documento,
+          clientes.condicion_iva AS cliente_condicion_iva,
+          facturas.neto AS total, facturas.iva
+     FROM facturas JOIN clientes ON clientes.id = facturas.cliente_id
+    WHERE facturas.organizacion_id = ?
+      AND (? IS NULL OR facturas.fecha >= ?)
+      AND (? IS NULL OR facturas.fecha <= ?)
+    ORDER BY facturas.fecha, facturas.id`
+);
+
+const SQL_LIBRO_IVA_COMPRAS = db.prepare(
+  `SELECT compras.id, compras.fecha, 'factura' AS tipo, compras.comprobante_letra AS letra,
+          compras.comprobante_numero AS numero,
+          proveedores.nombre AS proveedor, proveedores.documento AS proveedor_documento,
+          (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id)
+            + compras.costo_envio AS total,
+          (SELECT COALESCE(SUM(iva), 0) FROM compra_items WHERE compra_id = compras.id) AS iva
+     FROM compras JOIN proveedores ON proveedores.id = compras.proveedor_id
+    WHERE compras.organizacion_id = ? AND compras.estado = 'activa' AND compras.comprobante_letra IS NOT NULL
+      AND (? IS NULL OR compras.fecha >= ?)
+      AND (? IS NULL OR compras.fecha <= ?)
+  UNION ALL
+  SELECT compras.id, devoluciones_proveedor.fecha, 'nota_credito', compras.comprobante_letra,
+         devoluciones_proveedor.nota_credito_proveedor_numero,
+         proveedores.nombre, proveedores.documento,
+         (SELECT COALESCE(SUM(devolucion_proveedor_items.cantidad * devolucion_proveedor_items.precio_unitario), 0)
+            FROM devolucion_proveedor_items
+           WHERE devolucion_proveedor_items.devolucion_proveedor_id = devoluciones_proveedor.id),
+         (SELECT COALESCE(SUM(devolucion_proveedor_items.cantidad * compra_items.iva / compra_items.cantidad), 0)
+            FROM devolucion_proveedor_items
+            JOIN compra_items ON compra_items.id = devolucion_proveedor_items.compra_item_id
+           WHERE devolucion_proveedor_items.devolucion_proveedor_id = devoluciones_proveedor.id)
+     FROM devoluciones_proveedor
+     JOIN compras ON compras.id = devoluciones_proveedor.compra_id
+     JOIN proveedores ON proveedores.id = compras.proveedor_id
+    WHERE devoluciones_proveedor.organizacion_id = ? AND devoluciones_proveedor.estado = 'activa'
+      AND compras.comprobante_letra IS NOT NULL
+      AND (? IS NULL OR devoluciones_proveedor.fecha >= ?)
+      AND (? IS NULL OR devoluciones_proveedor.fecha <= ?)
+    ORDER BY 2, 1`
+);
+
+// Una nota de crédito resta: en los libros va con signo negativo.
+function filaLibroIva(fila) {
+  const signo = fila.tipo === 'nota_credito' ? -1 : 1;
+  const total = redondear2(signo * fila.total);
+  const iva = redondear2(signo * fila.iva);
+  return { ...fila, total, iva, neto: redondear2(total - iva) };
+}
+
+app.get('/api/reportes/iva', soloAdmin, (req, res) => {
+  const desde = validarFecha(req.query.desde) ?? null;
+  const hasta = validarFecha(req.query.hasta) ?? null;
+  const organizacionId = req.usuario.organizacion_id;
+  const rango = [desde, desde, hasta, hasta];
+
+  const ventas = SQL_LIBRO_IVA_VENTAS.all(organizacionId, ...rango).map((f) => ({
+    ...filaLibroIva(f),
+    comprobante: f.numero == null ? null : comprobante(f)
+  }));
+  const compras = SQL_LIBRO_IVA_COMPRAS.all(organizacionId, ...rango, organizacionId, ...rango).map(filaLibroIva);
+
+  const debito = redondear2(ventas.reduce((acc, f) => acc + f.iva, 0));
+  const credito = redondear2(compras.reduce((acc, f) => acc + f.iva, 0));
+  res.json({
+    rango: { desde, hasta },
+    discrimina: discriminaIva(condicionIvaNegocio(organizacionId)),
+    totales: { debito, credito, saldo: redondear2(debito - credito) },
+    ventas,
+    compras
   });
 });
 

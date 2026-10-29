@@ -1685,6 +1685,25 @@ for (const tabla of ['venta_items', 'presupuesto_items']) {
 if (!db.prepare('PRAGMA table_info(facturas)').all().some((col) => col.name === 'iva')) {
   db.exec('ALTER TABLE facturas ADD COLUMN iva REAL NOT NULL DEFAULT 0');
 }
+// IVA, tercer paso (hist. §114): la condición del proveedor, el comprobante
+// que dio en cada compra (letra y número) y el IVA de cada renglón comprado.
+// Sin backfill, como §113: lo anterior queda sin letra (no se discriminó).
+if (!db.prepare('PRAGMA table_info(proveedores)').all().some((col) => col.name === 'condicion_iva')) {
+  db.exec('ALTER TABLE proveedores ADD COLUMN condicion_iva TEXT');
+}
+const comprasColumnasIva = db.prepare('PRAGMA table_info(compras)').all();
+for (const columna of ['comprobante_letra', 'comprobante_numero']) {
+  if (!comprasColumnasIva.some((col) => col.name === columna)) {
+    db.exec(`ALTER TABLE compras ADD COLUMN ${columna} TEXT`);
+  }
+}
+const compraItemsColumnasIva = db.prepare('PRAGMA table_info(compra_items)').all();
+if (!compraItemsColumnasIva.some((col) => col.name === 'alicuota_iva')) {
+  db.exec('ALTER TABLE compra_items ADD COLUMN alicuota_iva TEXT');
+}
+if (!compraItemsColumnasIva.some((col) => col.name === 'iva')) {
+  db.exec('ALTER TABLE compra_items ADD COLUMN iva REAL NOT NULL DEFAULT 0');
+}
 const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
 for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {

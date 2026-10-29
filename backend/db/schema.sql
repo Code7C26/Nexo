@@ -289,7 +289,10 @@ CREATE TABLE IF NOT EXISTS proveedores (
   notas TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- Plazo de pago habitual: mismo criterio que clientes.condicion_pago.
-  condicion_pago TEXT
+  condicion_pago TEXT,
+  -- Condición frente al IVA (hist. §114), mismas claves que en clientes.
+  -- NULL = no se cargó: sus compras no discriminan IVA salvo que se elija A.
+  condicion_iva TEXT
 );
 
 -- condicion_pago / fecha_vencimiento: el plazo pactado con el cliente y la
@@ -466,7 +469,12 @@ CREATE TABLE IF NOT EXISTS compras (
   fecha_vencimiento TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   -- A qué depósito entra la mercadería: mismo criterio que ventas.deposito_id.
-  deposito_id INTEGER REFERENCES depositos(id)
+  deposito_id INTEGER REFERENCES depositos(id),
+  -- El comprobante que dio el proveedor (hist. §114): letra (A, B o C) y su
+  -- número, libre. Solo la A a un negocio inscripto discrimina IVA (crédito
+  -- fiscal). NULL en las compras anteriores y sin comprobante.
+  comprobante_letra TEXT,
+  comprobante_numero TEXT
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a
@@ -480,7 +488,12 @@ CREATE TABLE IF NOT EXISTS compra_items (
   variante_id INTEGER REFERENCES producto_variantes(id),
   cantidad REAL NOT NULL CHECK (cantidad > 0),
   precio_unitario REAL NOT NULL,
-  costo_real_unitario REAL
+  costo_real_unitario REAL,
+  -- Como en venta_items (hist. §114): la alícuota y el IVA contenido en
+  -- cantidad × precio_unitario, que sigue siendo lo pagado. Con IVA
+  -- discriminado, costo_real_unitario va sin IVA: es crédito fiscal, no costo.
+  alicuota_iva TEXT,
+  iva REAL NOT NULL DEFAULT 0
 );
 
 -- Espejo de devoluciones/devolucion_items, del lado de compras: revierte

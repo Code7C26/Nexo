@@ -525,6 +525,77 @@
           </div>
         </section>
 
+        <!-- IVA del período (hist. §114): solo para un responsable inscripto,
+             el único que discrimina. Mismo filtro de fecha de arriba. Los
+             dos libros son lo que pide el contador, y se bajan en CSV. -->
+        <div id="reporteIvaSeccion" hidden>
+          <h2>IVA</h2>
+
+          <section class="ledger-strip" aria-label="IVA del período">
+            <div class="ledger-item">
+              <span class="ledger-label">IVA de lo vendido</span>
+              <span class="ledger-value mono" id="reporteIvaDebito">$0,00</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label">IVA de lo comprado</span>
+              <span class="ledger-value mono" id="reporteIvaCredito">$0,00</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label" id="reporteIvaSaldoLabel">A pagar</span>
+              <span class="ledger-value mono" id="reporteIvaSaldo">$0,00</span>
+            </div>
+          </section>
+          <p class="form-note">El IVA de lo vendido (débito fiscal) sale de las facturas emitidas; el de lo comprado (crédito fiscal), de las compras con factura A. Las notas de crédito restan.</p>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Libro IVA ventas</h2>
+              <button class="btn btn-secundario" id="btnExportarIvaVentas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Comprobante</th>
+                  <th scope="col">Cliente</th>
+                  <th scope="col">CUIT / DNI</th>
+                  <th scope="col" class="align-right">Neto</th>
+                  <th scope="col" class="align-right">IVA</th>
+                  <th scope="col" class="align-right">Total</th>
+                </tr>
+              </thead>
+              <tbody id="reporteIvaVentasBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Libro IVA compras</h2>
+              <button class="btn btn-secundario" id="btnExportarIvaCompras"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Comprobante</th>
+                  <th scope="col">Proveedor</th>
+                  <th scope="col">CUIT / DNI</th>
+                  <th scope="col" class="align-right">Neto</th>
+                  <th scope="col" class="align-right">IVA</th>
+                  <th scope="col" class="align-right">Total</th>
+                </tr>
+              </thead>
+              <tbody id="reporteIvaComprasBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+
       </section>
 
       <!-- Vista: Presupuestos -->
@@ -4053,8 +4124,14 @@
         <label>Concepto
           <input type="text" name="concepto" required placeholder="Ej: Venta de mercadería" />
         </label>
-        <label>Monto neto
+        <label>Importe
           <input type="number" name="neto" required placeholder="0.00" step="0.01" min="0" />
+        </label>
+        <!-- Solo para un inscripto (hist. §114): el importe es el final, y el
+             IVA se saca de adentro con esta alícuota. Opciones en runtime
+             (core/fiscal.js). -->
+        <label id="facturaAlicuotaWrap" hidden>IVA incluido en el importe
+          <select name="alicuota_iva"></select>
         </label>
         <label>Medio de pago
           <select name="condicion">
@@ -4433,6 +4510,21 @@
         <label id="compraVencimientoWrap" hidden>Vence el
           <input type="date" name="fecha_vencimiento" id="compraVencimiento" />
         </label>
+        <!-- El comprobante que dio el proveedor (hist. §114). La letra solo
+             se ve si el negocio es inscripto, y la propone la condición del
+             proveedor: con A, el IVA es crédito fiscal y el costo va sin IVA. -->
+        <label id="compraLetraWrap" hidden>Comprobante del proveedor
+          <select name="comprobante_letra" id="compraLetra">
+            <option value="">Sin comprobante</option>
+            <option value="A">Factura A</option>
+            <option value="B">Factura B</option>
+            <option value="C">Factura C</option>
+          </select>
+        </label>
+        <p class="form-note" id="compraLetraNota" hidden>Con factura A, el IVA queda como crédito fiscal y el costo de los productos va sin IVA.</p>
+        <label>N° de comprobante
+          <input type="text" name="comprobante_numero" maxlength="30" placeholder="Opcional, por ejemplo 0001-00001234" />
+        </label>
         <div class="item-rows" id="compraItems"></div>
         <datalist id="productosSugeridos"></datalist>
         <button type="button" class="btn-add-item" id="btnAgregarItemCompra"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> agregar producto</button>
@@ -4583,6 +4675,11 @@
         </label>
         <label>CUIT / DNI
           <input type="text" name="documento" placeholder="Opcional" />
+        </label>
+        <!-- Opciones en runtime (core/fiscal.js). Con la del negocio, propone
+             la letra del comprobante de cada compra (hist. §114). -->
+        <label>Condición frente al IVA
+          <select name="condicion_iva"></select>
         </label>
         <!-- Opciones en runtime (poblarSelectCondicionPago en app.js). Sin
              definir = la compra arranca en Contado como siempre; con un plazo

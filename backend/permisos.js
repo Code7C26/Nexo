@@ -211,6 +211,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/resumen/evolucion': 'admin',
   'GET /api/reportes/ventas': 'admin',
   'GET /api/reportes/compras': 'admin',
+  'GET /api/reportes/iva': 'admin',
   'GET /api/reportes/stock': 'admin',
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',
