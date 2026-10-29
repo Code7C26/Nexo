@@ -94,7 +94,26 @@ CREATE TABLE IF NOT EXISTS facturas (
   -- número que se intentó (para reintentar sin duplicar).
   arca_datos TEXT,
   -- El último rechazo o falla, en palabras de ARCA.
-  arca_error TEXT
+  arca_error TEXT,
+  -- La foto de para quién es la factura, tomada al hacerla (se cargan en el
+  -- momento, precargados de la ficha del cliente): un cliente que cambia de
+  -- dirección o de condición después no cambia una factura ya emitida. Es lo
+  -- que se imprime y lo que se le informa a ARCA. NULL en las anteriores,
+  -- que muestran los datos actuales del cliente.
+  receptor_nombre TEXT,
+  receptor_documento TEXT,
+  receptor_condicion_iva TEXT,
+  receptor_domicilio TEXT,
+  -- La de quien la emite, en JSON (nombre, razón social, CUIT, domicilio,
+  -- condición, ingresos brutos, inicio de actividades), por lo mismo.
+  emisor_datos TEXT,
+  -- Contado, cuenta corriente, tarjeta... (CONDICIONES_VENTA en server.js).
+  condicion_venta TEXT,
+  -- Período facturado y vencimiento del pago (AAAA-MM-DD): ARCA los pide
+  -- cuando se facturan servicios.
+  periodo_desde TEXT,
+  periodo_hasta TEXT,
+  vencimiento_pago TEXT
 );
 
 -- El ticket de acceso de WSAA (arca.js): ARCA da uno por certificado cada 12
@@ -996,7 +1015,13 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- Nexo puede facturar por su CUIT. Sin verificar, el negocio no emite
   -- comprobantes electrónicos.
   arca_punto_venta INTEGER,
-  arca_verificado TEXT
+  arca_verificado TEXT,
+  -- Lo que una factura de ARCA dice de quien la emite, además de lo de
+  -- arriba: la razón social (el nombre de arriba es el de fantasía), el
+  -- número de ingresos brutos y la fecha de inicio de actividades (AAAA-MM-DD).
+  razon_social TEXT,
+  ingresos_brutos TEXT,
+  inicio_actividades TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

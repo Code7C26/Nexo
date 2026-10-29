@@ -378,14 +378,16 @@ const importeXml = (n) => Number(n).toFixed(2);
 // El detalle de un comprobante, con los campos en el orden del WSDL (es una
 // secuencia y el orden cuenta).
 // d: { concepto, docTipo, docNro, numero, fecha (AAAAMMDD), importes,
-//      condicionReceptor, asociado?: { tipo, puntoVenta, numero, cuit, fecha },
+//      condicionReceptor, servicio?: { desde, hasta, vencimiento },
+//      asociado?: { tipo, puntoVenta, numero, cuit, fecha },
 //      periodo?: { desde, hasta } }
 function xmlDetalle(d) {
   const campo = (nombre, valor) => (valor == null ? '' : `<ar:${nombre}>${valor}</ar:${nombre}>`);
   const { importes } = d;
-  // Un servicio (concepto 2 o 3) pide el período y el vencimiento del pago:
-  // el día del comprobante.
+  // Un servicio (concepto 2 o 3) pide el período facturado y el vencimiento
+  // del pago: los que se cargaron, o el día del comprobante.
   const servicio = d.concepto !== 1;
+  const periodo = d.servicio ?? { desde: d.fecha, hasta: d.fecha, vencimiento: d.fecha };
   return [
     campo('Concepto', d.concepto),
     campo('DocTipo', d.docTipo),
@@ -399,7 +401,9 @@ function xmlDetalle(d) {
     campo('ImpOpEx', importeXml(importes.exento)),
     campo('ImpTrib', '0.00'),
     campo('ImpIVA', importeXml(importes.iva)),
-    servicio ? campo('FchServDesde', d.fecha) + campo('FchServHasta', d.fecha) + campo('FchVtoPago', d.fecha) : '',
+    servicio
+      ? campo('FchServDesde', periodo.desde) + campo('FchServHasta', periodo.hasta) + campo('FchVtoPago', periodo.vencimiento)
+      : '',
     campo('MonId', 'PES'),
     campo('MonCotiz', '1'),
     campo('CondicionIVAReceptorId', d.condicionReceptor),
@@ -590,7 +594,10 @@ function clienteSimulado(cuit) {
         return { resultado: 'R', cae: null, caeVence: null, observaciones: [], errores: [{ codigo: 10015, mensaje: 'Rechazo simulado' }] };
       }
       const lista = serie(pv, tipo);
-      if (detalle.numero !== lista.length + 1) {
+      // Acepta un número más adelante que el suyo: al reiniciar el servidor el
+      // simulado vuelve a cero, y quien lo usa sigue desde lo que ya hay en la
+      // base (ver autorizarFactura).
+      if (detalle.numero <= lista.length) {
         const mensaje = 'El numero o fecha del comprobante no se corresponde con el proximo a autorizar.';
         return { resultado: 'R', cae: null, caeVence: null, observaciones: [], errores: [{ codigo: 10016, mensaje }] };
       }
@@ -602,7 +609,7 @@ function clienteSimulado(cuit) {
         docNro: detalle.docNro,
         fecha: fechaDeArca(detalle.fecha)
       };
-      lista.push(comprobante);
+      lista[detalle.numero - 1] = comprobante;
       if (modo === 'perder') throw new ArcaError('Se agotó la espera (simulado).', { transitorio: true });
       return { resultado: 'A', cae: comprobante.cae, caeVence: vence, observaciones: [], errores: [] };
     }

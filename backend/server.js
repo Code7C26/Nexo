@@ -2163,9 +2163,144 @@ const condicionIvaNegocio = (organizacionId) =>
 // La letra de un comprobante (hist. §113). Si el negocio cargó su condición,
 // sale sola y la que se pida no cuenta: una letra mal elegida es un
 // comprobante inválido. Si no la cargó, la que se elija, o B como siempre.
-function letraDelComprobante(organizacionId, clienteId, pedida) {
-  const cliente = db.prepare('SELECT condicion_iva FROM clientes WHERE id = ?').get(clienteId);
-  return letraQueCorresponde(condicionIvaNegocio(organizacionId), cliente?.condicion_iva ?? null) ?? (pedida || 'B');
+// `condicionReceptor` es la de la factura (ver datosDeLaFactura).
+function letraDelComprobante(organizacionId, condicionReceptor, pedida) {
+  const condicion = condicionReceptor === 'consumidor_final' ? null : condicionReceptor;
+  return letraQueCorresponde(condicionIvaNegocio(organizacionId), condicion ?? null) ?? (pedida || 'B');
+}
+
+// La condición de venta que imprime una factura, como las de ARCA.
+const CONDICIONES_VENTA = ['contado', 'cuenta_corriente', 'tarjeta_debito', 'tarjeta_credito', 'transferencia', 'cheque', 'otra'];
+
+const textoCampo = (valor) => (valor === undefined || valor === null ? '' : String(valor).trim());
+
+// Los datos particulares de una factura, que se cargan al hacerla: para quién
+// es (documento, nombre o razón social, condición frente al IVA y domicilio),
+// la condición de venta y, si hay servicios, el período y el vencimiento del
+// pago. Lo que no venga en el pedido sale de `base` (la factura que corrige
+// una nota de crédito) o de la ficha del cliente. Más la foto de quien emite.
+// Solo lee y valida (lanza ErrorValidacion); guardarReceptorEnCliente es la
+// que escribe.
+function datosDeLaFactura(organizacionId, clienteId, cuerpo = {}, { base = null, condicionVenta = 'contado' } = {}) {
+  const cliente = db
+    .prepare('SELECT nombre, documento, condicion_iva, direccion FROM clientes WHERE id = ?')
+    .get(clienteId);
+  const pedido = cuerpo.receptor ?? {};
+  const elegir = (campo, columnaBase, delCliente) =>
+    pedido[campo] !== undefined ? textoCampo(pedido[campo]) : textoCampo(base?.[columnaBase] ?? delCliente);
+
+  const nombre = elegir('nombre', 'receptor_nombre', cliente.nombre);
+  if (!nombre) throw new ErrorValidacion('Indicá a nombre de quién va la factura.');
+  if (nombre.length > 160) throw new ErrorValidacion('El nombre o la razón social no puede pasar de 160 caracteres.');
+
+  // El documento queda con guiones si es CUIT, y en números si es DNI.
+  let documento = elegir('documento', 'receptor_documento', cliente.documento);
+  const digitos = documento.replace(/[\s.-]/g, '');
+  if (digitos) {
+    if (digitos.length === 11) {
+      if (!cuitValido(digitos)) throw new ErrorValidacion('El CUIT del cliente no es válido: revisá el último número.');
+      documento = `${digitos.slice(0, 2)}-${digitos.slice(2, 10)}-${digitos.slice(10)}`;
+    } else if (/^\d{7,8}$/.test(digitos)) {
+      documento = digitos;
+    } else {
+      throw new ErrorValidacion('El documento del cliente tiene que ser un CUIT (11 números) o un DNI (7 u 8).');
+    }
+  }
+
+  // Sin condición es consumidor final, y se guarda así: en la foto, NULL sería
+  // "factura anterior, sin foto".
+  const condicion = elegir('condicion_iva', 'receptor_condicion_iva', cliente.condicion_iva) || 'consumidor_final';
+  if (!CONDICIONES_IVA_CLIENTE.includes(condicion)) throw new ErrorValidacion('Elegí la condición del cliente frente al IVA de la lista.');
+
+  const domicilio = elegir('domicilio', 'receptor_domicilio', cliente.direccion);
+  if (domicilio.length > 200) throw new ErrorValidacion('El domicilio no puede pasar de 200 caracteres.');
+
+  const venta = cuerpo.condicion_venta ?? base?.condicion_venta ?? condicionVenta;
+  if (!CONDICIONES_VENTA.includes(venta)) throw new ErrorValidacion('Elegí la condición de venta de la lista.');
+
+  const fecha = (campo) => {
+    const valor = textoCampo(cuerpo[campo]);
+    if (!valor) return null;
+    if (!validarFecha(valor)) throw new ErrorValidacion('Revisá las fechas del período facturado.');
+    return valor;
+  };
+  const periodoDesde = fecha('periodo_desde');
+  const periodoHasta = fecha('periodo_hasta');
+  const vencimientoPago = fecha('vencimiento_pago');
+  if (periodoDesde && periodoHasta && periodoDesde > periodoHasta) {
+    throw new ErrorValidacion('El período facturado termina antes de empezar.');
+  }
+
+  const emisor = db
+    .prepare(
+      `SELECT nombre, razon_social, documento, direccion, condicion_iva, ingresos_brutos, inicio_actividades,
+              pie_comprobante
+         FROM organizaciones WHERE id = ?`
+    )
+    .get(organizacionId);
+  return {
+    receptor_nombre: nombre,
+    receptor_documento: documento,
+    receptor_condicion_iva: condicion,
+    receptor_domicilio: domicilio,
+    emisor_datos: JSON.stringify(emisor),
+    condicion_venta: venta,
+    periodo_desde: periodoDesde,
+    periodo_hasta: periodoHasta,
+    vencimiento_pago: vencimientoPago
+  };
+}
+
+// Deja la foto en la factura recién creada (después de su INSERT, en la misma
+// transacción).
+function guardarDatosDeLaFactura(facturaId, datos) {
+  db.prepare(
+    `UPDATE facturas
+        SET receptor_nombre = ?, receptor_documento = ?, receptor_condicion_iva = ?, receptor_domicilio = ?,
+            emisor_datos = ?, condicion_venta = ?, periodo_desde = ?, periodo_hasta = ?, vencimiento_pago = ?
+      WHERE id = ?`
+  ).run(
+    datos.receptor_nombre,
+    datos.receptor_documento,
+    datos.receptor_condicion_iva,
+    datos.receptor_domicilio,
+    datos.emisor_datos,
+    datos.condicion_venta,
+    datos.periodo_desde,
+    datos.periodo_hasta,
+    datos.vencimiento_pago,
+    facturaId
+  );
+}
+
+// "Guardar en la ficha del cliente": el documento, la condición y el domicilio
+// que se cargaron en la factura pasan a la ficha, para la próxima. Nunca en
+// "Consumidor final", que es de todos. El nombre de la ficha no se toca: puede
+// ser el de fantasía, y la razón social va solo en la factura.
+function guardarReceptorEnCliente(req, clienteId, datos) {
+  const anterior = db.prepare('SELECT nombre, documento, condicion_iva, direccion FROM clientes WHERE id = ?').get(clienteId);
+  if (anterior.nombre === CONSUMIDOR_FINAL) return;
+  const nuevo = {
+    documento: datos.receptor_documento || null,
+    condicion_iva: datos.receptor_condicion_iva === 'consumidor_final' ? null : datos.receptor_condicion_iva,
+    direccion: datos.receptor_domicilio || null
+  };
+  const cambio = ['documento', 'condicion_iva', 'direccion'].some((c) => (anterior[c] ?? null) !== nuevo[c]);
+  if (!cambio) return;
+  db.prepare('UPDATE clientes SET documento = ?, condicion_iva = ?, direccion = ? WHERE id = ?').run(
+    nuevo.documento,
+    nuevo.condicion_iva,
+    nuevo.direccion,
+    clienteId
+  );
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'cliente',
+    entidad_id: clienteId,
+    valor_anterior: JSON.stringify({ documento: anterior.documento, condicion_iva: anterior.condicion_iva, direccion: anterior.direccion }),
+    valor_nuevo: JSON.stringify(nuevo),
+    detalle: `Datos fiscales del cliente "${anterior.nombre}" actualizados al facturar`
+  });
 }
 
 // Las alícuotas de los productos, para la foto de cada renglón: una variante
@@ -2194,11 +2329,14 @@ const SUBQUERY_DEVUELTO_DE_VENTA_FACTURA = `
 
 const SELECT_FACTURA = `
   SELECT facturas.id, facturas.cliente_id, clientes.nombre AS cliente,
-         -- Contacto del cliente: lo necesita el membrete del comprobante
-         -- impreso (a quién se le emite). Aditivo: quien no lo use lo ignora.
-         clientes.documento AS cliente_documento, clientes.direccion AS cliente_direccion,
+         -- Para quién es: la foto que se tomó al hacerla (datosDeLaFactura), o
+         -- los datos actuales del cliente en una factura anterior a la foto.
+         COALESCE(facturas.receptor_nombre, clientes.nombre) AS receptor_nombre,
+         COALESCE(facturas.receptor_documento, clientes.documento) AS cliente_documento,
+         COALESCE(facturas.receptor_domicilio, clientes.direccion) AS cliente_direccion,
          clientes.email AS cliente_email, clientes.telefono AS cliente_telefono,
-         clientes.condicion_iva AS cliente_condicion_iva,
+         COALESCE(facturas.receptor_condicion_iva, clientes.condicion_iva) AS cliente_condicion_iva,
+         facturas.condicion_venta, facturas.periodo_desde, facturas.periodo_hasta, facturas.vencimiento_pago,
          facturas.concepto,
          facturas.neto, facturas.neto AS total, facturas.iva, facturas.condicion, facturas.fecha,
          facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero, facturas.venta_id,
@@ -2234,28 +2372,47 @@ app.get('/api/facturas/:id', (req, res) => {
     return res.status(404).json({ error: 'Factura no encontrada.' });
   }
 
-  // Si respalda una venta, se traen sus items para poder ver qué se
-  // facturó — mismo shape que ya arma GET /api/ventas/:id.
-  const items = factura.venta_id
-    ? db
-        .prepare(
-          `SELECT venta_items.producto_id, productos.nombre AS producto,
-                  venta_items.cantidad, venta_items.precio_unitario,
-                  venta_items.alicuota_iva, venta_items.iva
-             FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
-            WHERE venta_id = ?
-            ORDER BY venta_items.id`
-        )
-        .all(factura.venta_id)
-        .map((i) => ({ ...i, subtotal: i.cantidad * i.precio_unitario }))
-    : [];
+  // Los renglones: los de la venta que respalda, o los devueltos si es la nota
+  // de crédito de una devolución — mismo shape que GET /api/ventas/:id, más el
+  // código y la unidad que imprime la factura.
+  const columnasRenglon = `productos.nombre AS producto, COALESCE(producto_variantes.sku, productos.sku) AS codigo,
+                           productos.unidad, venta_items.alicuota_iva`;
+  let items = [];
+  if (factura.venta_id) {
+    items = db
+      .prepare(
+        `SELECT venta_items.producto_id, ${columnasRenglon}, venta_items.cantidad, venta_items.precio_unitario, venta_items.iva
+           FROM venta_items
+           JOIN productos ON productos.id = venta_items.producto_id
+           LEFT JOIN producto_variantes ON producto_variantes.id = venta_items.variante_id
+          WHERE venta_items.venta_id = ?
+          ORDER BY venta_items.id`
+      )
+      .all(factura.venta_id);
+  } else if (factura.devolucion_id) {
+    items = db
+      .prepare(
+        `SELECT devolucion_items.producto_id, ${columnasRenglon}, devolucion_items.cantidad, devolucion_items.precio_unitario,
+                CASE WHEN venta_items.cantidad > 0 THEN venta_items.iva * devolucion_items.cantidad / venta_items.cantidad ELSE 0 END AS iva
+           FROM devolucion_items
+           JOIN venta_items ON venta_items.id = devolucion_items.venta_item_id
+           JOIN productos ON productos.id = devolucion_items.producto_id
+           LEFT JOIN producto_variantes ON producto_variantes.id = venta_items.variante_id
+          WHERE devolucion_items.devolucion_id = ?
+          ORDER BY devolucion_items.id`
+      )
+      .all(factura.devolucion_id);
+  }
+  items = items.map((i) => ({ ...i, subtotal: i.cantidad * i.precio_unitario }));
+
+  // Lo que no está en SELECT_FACTURA (el listado no lo necesita): la foto de
+  // quien emite, la alícuota de una suelta y lo que contestó ARCA.
+  const extra = db.prepare('SELECT emisor_datos, alicuota_iva, arca_datos FROM facturas WHERE id = ?').get(facturaId);
+  const datos = extra.arca_datos ? JSON.parse(extra.arca_datos) : {};
 
   // El QR de la RG 4892, con lo mismo que se le informó a ARCA.
   let arcaQr = null;
   if (factura.arca_estado === 'autorizado') {
-    const datos = JSON.parse(
-      db.prepare('SELECT arca_datos FROM facturas WHERE id = ?').get(facturaId).arca_datos
-    );
     arcaQr = urlQr({
       fecha: factura.fecha,
       cuit: datos.cuit,
@@ -2269,7 +2426,19 @@ app.get('/api/facturas/:id', (req, res) => {
     });
   }
 
-  res.json({ ...factura, comprobante: comprobante(factura), items, arca_qr: arcaQr });
+  res.json({
+    ...factura,
+    comprobante: comprobante(factura),
+    items,
+    alicuota_iva: extra.alicuota_iva,
+    // Una factura anterior a la foto muestra los datos de hoy del negocio.
+    emisor: extra.emisor_datos ? JSON.parse(extra.emisor_datos) : null,
+    // El código de ARCA del comprobante (011 es factura C), que va debajo de
+    // la letra.
+    codigo_comprobante: TIPOS_CBTE[factura.tipo]?.[factura.letra] ?? null,
+    arca_observaciones: factura.arca_estado === 'autorizado' ? datos.observaciones ?? [] : [],
+    arca_qr: arcaQr
+  });
 });
 
 // Factura "suelta": sin venta detrás. Se conserva porque ya la usa el
@@ -2310,7 +2479,8 @@ app.post('/api/facturas', asincrono(async (req, res) => {
 
   const facturaId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
-    const letraFinal = letraDelComprobante(req.usuario.organizacion_id, clienteRow.id, letraPedida);
+    const datosFactura = datosDeLaFactura(req.usuario.organizacion_id, clienteRow.id, req.body);
+    const letraFinal = letraDelComprobante(req.usuario.organizacion_id, datosFactura.receptor_condicion_iva, letraPedida);
     const alicuota = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id))
       ? (alicuota_iva ? String(alicuota_iva) : '21')
       : null;
@@ -2321,7 +2491,7 @@ app.post('/api/facturas', asincrono(async (req, res) => {
     const negocio = negocioParaArca(req.usuario.organizacion_id);
     const electronica = facturaElectronicaActiva(negocio);
     if (electronica) {
-      const error = errorParaArca(letraFinal, clienteRow.id);
+      const error = errorParaArca(letraFinal, datosFactura.receptor_documento);
       if (error) throw new ErrorValidacion(error);
     }
     const puntoVenta = electronica ? negocio.arca_punto_venta : puntoVentaFinal;
@@ -2346,6 +2516,9 @@ app.post('/api/facturas', asincrono(async (req, res) => {
         electronica ? 'pendiente' : null,
         req.usuario.organizacion_id
       );
+
+    guardarDatosDeLaFactura(lastInsertRowid, datosFactura);
+    if (req.body.guardar_en_cliente) guardarReceptorEnCliente(req, clienteRow.id, datosFactura);
 
     auditar(req, {
       accion: 'crear',
@@ -2424,10 +2597,9 @@ function arcaDelNegocio(negocio) {
 }
 
 // Lo que ARCA rechazaría seguro, dicho antes de guardar nada: una factura A
-// necesita el CUIT del cliente.
-function errorParaArca(letra, clienteId) {
+// necesita el CUIT del cliente (`documento`, el de la factura).
+function errorParaArca(letra, documento) {
   if (letra !== 'A') return null;
-  const { documento } = db.prepare('SELECT documento FROM clientes WHERE id = ?').get(clienteId);
   const digitos = String(documento ?? '').replace(/\D/g, '');
   return cuitValido(digitos) ? null : 'Para una factura A, cargá el CUIT del cliente en su ficha.';
 }
@@ -2544,18 +2716,32 @@ async function autorizarFactura(req, facturaId) {
     const factura = leer();
     if (factura.arca_estado === 'autorizado') return factura;
     const datos = JSON.parse(factura.arca_datos ?? '{}');
+    // Para quién es: la foto de la factura, o la ficha del cliente si es
+    // anterior a la foto.
     const cliente = db.prepare('SELECT documento, condicion_iva FROM clientes WHERE id = ?').get(factura.cliente_id);
+    const documento = factura.receptor_documento ?? cliente.documento;
+    const condicion = factura.receptor_condicion_iva ?? cliente.condicion_iva;
     const { renglones, concepto } = renglonesParaArca(factura);
     const importes = importesDelComprobante(factura.letra, renglones);
-    const { docTipo, docNro } = documentoReceptor(cliente.documento);
+    const { docTipo, docNro } = documentoReceptor(documento);
     const detalle = {
       concepto,
       docTipo,
       docNro,
       importes,
-      condicionReceptor: condicionReceptor(cliente.condicion_iva),
+      condicionReceptor: condicionReceptor(condicion),
       ...asociadoParaArca(factura, arca.ambiente)
     };
+    // Con servicios, el período y el vencimiento del pago que se cargaron (o
+    // el día). ARCA no acepta un vencimiento anterior al comprobante.
+    const servicioDel = (fecha) =>
+      concepto === 1
+        ? null
+        : {
+            desde: fechaArca(factura.periodo_desde ?? fecha),
+            hasta: fechaArca(factura.periodo_hasta ?? fecha),
+            vencimiento: fechaArca(factura.vencimiento_pago && factura.vencimiento_pago > fecha ? factura.vencimiento_pago : fecha)
+          };
 
     const autorizada = ({ numero, fecha, cae, caeVence, observaciones = [] }) => {
       withTransaction(() => {
@@ -2597,12 +2783,24 @@ async function autorizarFactura(req, facturaId) {
         }
       }
       for (let vuelta = 0; ; vuelta++) {
-        const numero = (await arca.ultimoAutorizado(pv, cbteTipo)) + 1;
+        let ultimo = await arca.ultimoAutorizado(pv, cbteTipo);
+        // ARCA simulado vive en memoria y vuelve a cero cuando se reinicia el
+        // servidor: sigue desde el último que ya está en la base. Con ARCA de
+        // verdad, el número es siempre el suyo.
+        if (arca.ambiente === 'simulado') {
+          ultimo = Math.max(ultimo, siguienteNumero(factura.organizacion_id, pv, factura.tipo, factura.letra) - 1);
+        }
+        const numero = ultimo + 1;
         const fecha = fechaDeHoy();
         // El intento se guarda antes de mandarlo: si la respuesta se pierde, el
         // reintento lo consulta en vez de pedir un número nuevo.
         db.prepare('UPDATE facturas SET arca_datos = ? WHERE id = ?').run(JSON.stringify({ intento: numero, fecha }), facturaId);
-        const respuesta = await arca.solicitarCae(pv, cbteTipo, { ...detalle, numero, fecha: fechaArca(fecha) });
+        const respuesta = await arca.solicitarCae(pv, cbteTipo, {
+          ...detalle,
+          numero,
+          fecha: fechaArca(fecha),
+          servicio: servicioDel(fecha)
+        });
         if (respuesta.resultado === 'A') {
           return autorizada({ numero, fecha, cae: respuesta.cae, caeVence: respuesta.caeVence, observaciones: respuesta.observaciones });
         }
@@ -2656,13 +2854,18 @@ const resultadoEmision = (factura) => ({
 app.post('/api/facturas/:id/autorizar', asincrono(async (req, res) => {
   const facturaId = Number(req.params.id);
   const factura = db
-    .prepare('SELECT id, arca_estado, letra, cliente_id FROM facturas WHERE id = ? AND organizacion_id = ?')
+    .prepare(
+      `SELECT facturas.id, facturas.arca_estado, facturas.letra,
+              COALESCE(facturas.receptor_documento, clientes.documento) AS documento
+         FROM facturas JOIN clientes ON clientes.id = facturas.cliente_id
+        WHERE facturas.id = ? AND facturas.organizacion_id = ?`
+    )
     .get(facturaId, req.usuario.organizacion_id);
   if (!factura) return res.status(404).json({ error: 'Factura no encontrada.' });
   if (!['pendiente', 'rechazado'].includes(factura.arca_estado)) {
     return res.status(400).json({ error: 'Este comprobante no está esperando el CAE.' });
   }
-  const error = errorParaArca(factura.letra, factura.cliente_id);
+  const error = errorParaArca(factura.letra, factura.documento);
   if (error) return res.status(400).json({ error });
   res.json(resultadoEmision(await autorizarFactura(req, facturaId)));
 }));
@@ -5714,7 +5917,10 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   const puntoVentaFinal = Number(punto_venta) || 1;
 
   const venta = db
-    .prepare('SELECT ventas.id, ventas.cliente_id, ventas.estado FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?')
+    .prepare(
+      `SELECT ventas.id, ventas.cliente_id, ventas.estado, ventas.fecha, ventas.fecha_vencimiento
+         FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
+    )
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
@@ -5722,7 +5928,15 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   if (venta.estado === 'anulada') {
     return res.status(400).json({ error: 'No se puede facturar una venta anulada.' });
   }
-  const letraFinal = letraDelComprobante(req.usuario.organizacion_id, venta.cliente_id, letra);
+  // Una venta con plazo es a cuenta corriente, y su vencimiento es el del pago.
+  const aPlazo = Boolean(venta.fecha_vencimiento && venta.fecha_vencimiento > venta.fecha);
+  const datosFactura = datosDeLaFactura(
+    req.usuario.organizacion_id,
+    venta.cliente_id,
+    { vencimiento_pago: aPlazo ? venta.fecha_vencimiento : undefined, ...req.body },
+    { condicionVenta: aPlazo ? 'cuenta_corriente' : 'contado' }
+  );
+  const letraFinal = letraDelComprobante(req.usuario.organizacion_id, datosFactura.receptor_condicion_iva, letra);
   if (!LETRAS_COMPROBANTE.includes(letraFinal)) {
     return res.status(400).json({ error: 'Tipo o letra de comprobante inválidos.' });
   }
@@ -5736,7 +5950,7 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   const negocio = negocioParaArca(req.usuario.organizacion_id);
   const electronica = facturaElectronicaActiva(negocio);
   if (electronica) {
-    const error = errorParaArca(letraFinal, venta.cliente_id);
+    const error = errorParaArca(letraFinal, datosFactura.receptor_documento);
     if (error) return res.status(400).json({ error });
   }
   const puntoVenta = electronica ? negocio.arca_punto_venta : puntoVentaFinal;
@@ -5767,6 +5981,8 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
           electronica ? 'pendiente' : null,
           req.usuario.organizacion_id
         );
+      guardarDatosDeLaFactura(lastInsertRowid, datosFactura);
+      if (req.body.guardar_en_cliente) guardarReceptorEnCliente(req, venta.cliente_id, datosFactura);
 
       auditar(req, {
         accion: 'crear',
@@ -7086,10 +7302,19 @@ app.post('/api/devoluciones/:id/nota-credito', asincrono(async (req, res) => {
 
   // La nota de crédito lleva la letra de la factura que corrige (hist. §113).
   // Si la venta no se facturó, la que corresponda hoy.
+  // Va al mismo receptor, con la misma condición de venta, que la factura que
+  // corrige (su foto); sin factura, a los datos de hoy del cliente.
   const facturaOriginal = db
-    .prepare("SELECT letra FROM facturas WHERE venta_id = ? AND tipo = 'factura'")
+    .prepare(
+      `SELECT letra, receptor_nombre, receptor_documento, receptor_condicion_iva, receptor_domicilio, condicion_venta
+         FROM facturas WHERE venta_id = ? AND tipo = 'factura'`
+    )
     .get(devolucion.venta_id);
-  const letraFinal = facturaOriginal?.letra ?? letraDelComprobante(req.usuario.organizacion_id, devolucion.cliente_id, letra);
+  const datosFactura = datosDeLaFactura(req.usuario.organizacion_id, devolucion.cliente_id, req.body, {
+    base: facturaOriginal?.receptor_nombre ? facturaOriginal : null
+  });
+  const letraFinal =
+    facturaOriginal?.letra ?? letraDelComprobante(req.usuario.organizacion_id, datosFactura.receptor_condicion_iva, letra);
   if (!LETRAS_COMPROBANTE.includes(letraFinal)) {
     return res.status(400).json({ error: 'Tipo o letra de comprobante inválidos.' });
   }
@@ -7120,7 +7345,7 @@ app.post('/api/devoluciones/:id/nota-credito', asincrono(async (req, res) => {
   const negocio = negocioParaArca(req.usuario.organizacion_id);
   const electronica = facturaElectronicaActiva(negocio);
   if (electronica) {
-    const error = errorParaArca(letraFinal, devolucion.cliente_id);
+    const error = errorParaArca(letraFinal, datosFactura.receptor_documento);
     if (error) return res.status(400).json({ error });
   }
   const puntoVenta = electronica ? negocio.arca_punto_venta : puntoVentaFinal;
@@ -7148,6 +7373,7 @@ app.post('/api/devoluciones/:id/nota-credito', asincrono(async (req, res) => {
           electronica ? 'pendiente' : null,
           req.usuario.organizacion_id
         );
+      guardarDatosDeLaFactura(lastInsertRowid, datosFactura);
       auditar(req, {
         accion: 'crear',
         entidad: 'factura',
@@ -10685,8 +10911,10 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
 
 const SQL_LIBRO_IVA_VENTAS = db.prepare(
   `SELECT facturas.id, facturas.fecha, facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero,
-          clientes.nombre AS cliente, clientes.documento AS cliente_documento,
-          clientes.condicion_iva AS cliente_condicion_iva,
+          -- La foto de la factura: el libro dice lo que se facturó.
+          COALESCE(facturas.receptor_nombre, clientes.nombre) AS cliente,
+          COALESCE(facturas.receptor_documento, clientes.documento) AS cliente_documento,
+          COALESCE(facturas.receptor_condicion_iva, clientes.condicion_iva) AS cliente_condicion_iva,
           facturas.neto AS total, facturas.iva
      FROM facturas JOIN clientes ON clientes.id = facturas.cliente_id
     WHERE facturas.organizacion_id = ?
@@ -12170,6 +12398,9 @@ const CAMPOS_NEGOCIO = [
   'email',
   'condicion_iva',
   'pie_comprobante',
+  'razon_social',
+  'ingresos_brutos',
+  'inicio_actividades',
   'rubro',
   'modulos'
 ];
@@ -12178,13 +12409,15 @@ const CAMPOS_NEGOCIO = [
 // páginas (hist. §73): es la base de la letra del comprobante en la Etapa C.
 // El texto libre de antes lo pasa a clave db/index.js cuando lo reconoce.
 const CONDICIONES_IVA = ['responsable_inscripto', 'monotributo', 'exento'];
-const LARGOS_NEGOCIO = { nombre: 120, direccion: 160, telefono: 40, email: 120, pie_comprobante: 300 };
+const LARGOS_NEGOCIO = { nombre: 120, direccion: 160, telefono: 40, email: 120, pie_comprobante: 300, razon_social: 160, ingresos_brutos: 30 };
 const NOMBRES_CAMPO_NEGOCIO = {
   nombre: 'El nombre del negocio',
   direccion: 'La dirección',
   telefono: 'El teléfono',
   email: 'El email',
-  pie_comprobante: 'El pie de los comprobantes'
+  pie_comprobante: 'El pie de los comprobantes',
+  razon_social: 'La razón social',
+  ingresos_brutos: 'Ingresos brutos'
 };
 
 // Dígito verificador del CUIT (módulo 11, el cálculo de ARCA). Un resto de 1
@@ -12208,7 +12441,7 @@ function validarDatosNegocio(cuerpo, { parcial }) {
   const viene = (campo) => cuerpo?.[campo] !== undefined;
   const datos = {};
 
-  for (const campo of ['nombre', 'direccion', 'telefono', 'email', 'pie_comprobante', 'documento', 'condicion_iva']) {
+  for (const campo of ['nombre', 'direccion', 'telefono', 'email', 'pie_comprobante', 'documento', 'condicion_iva', 'razon_social', 'ingresos_brutos', 'inicio_actividades']) {
     if (!viene(campo)) continue;
     const valor = cuerpo[campo];
     if (valor !== null && typeof valor !== 'string' && typeof valor !== 'number') {
@@ -12244,6 +12477,10 @@ function validarDatosNegocio(cuerpo, { parcial }) {
   if (datos.condicion_iva && !CONDICIONES_IVA.includes(datos.condicion_iva)) {
     return { error: 'Elegí una condición fiscal de la lista.' };
   }
+  // La de la constancia de ARCA: va en cada factura, como en las de ARCA.
+  if (datos.inicio_actividades && (!validarFecha(datos.inicio_actividades) || datos.inicio_actividades > fechaDeHoy())) {
+    return { error: 'La fecha de inicio de actividades no es válida.' };
+  }
 
   // Object.hasOwn y no PERFILES_RUBRO[rubro]: "constructor" o "toString"
   // pasaban como tipo de negocio, y un array se convertía a texto.
@@ -12267,7 +12504,7 @@ app.get('/api/negocio', (req, res) => {
   const negocio = db
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
-              arca_punto_venta, arca_verificado
+              razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado
          FROM organizaciones
         WHERE id = ?`
     )
@@ -12332,7 +12569,8 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   const id = req.usuario.organizacion_id;
   const anterior = db
     .prepare(
-      `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante, rubro, modulos
+      `SELECT nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
+              razon_social, ingresos_brutos, inicio_actividades, rubro, modulos
          FROM organizaciones WHERE id = ?`
     )
     .get(id);
@@ -12361,7 +12599,8 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
     db.prepare(
       `UPDATE organizaciones
           SET nombre = ?, documento = ?, direccion = ?, telefono = ?,
-              email = ?, condicion_iva = ?, pie_comprobante = ?, rubro = ?, modulos = ?
+              email = ?, condicion_iva = ?, pie_comprobante = ?, razon_social = ?, ingresos_brutos = ?,
+              inicio_actividades = ?, rubro = ?, modulos = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -12371,6 +12610,9 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
       nuevo.email,
       nuevo.condicion_iva,
       nuevo.pie_comprobante,
+      nuevo.razon_social,
+      nuevo.ingresos_brutos,
+      nuevo.inicio_actividades,
       nuevo.rubro,
       nuevo.modulos,
       id

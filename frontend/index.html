@@ -3188,12 +3188,25 @@
               <form class="form config-tarjeta" id="formConfigComprobantes" novalidate>
                 <div class="config-tarjeta-cuerpo config-con-previa">
                   <div class="config-campos">
+                    <!-- Lo que una factura de ARCA dice de quien la emite (hist.
+                         §116): se carga una vez acá y sale en cada factura. -->
+                    <label>Razón social
+                      <input type="text" name="razon_social" maxlength="160" placeholder="Como figura en tu constancia de ARCA" />
+                    </label>
                     <label>CUIT
                       <input type="text" name="documento" id="configCuit" maxlength="13" inputmode="numeric" placeholder="20-12345678-9" />
                     </label>
                     <label>Condición frente al IVA
                       <select name="condicion_iva" id="configCondicion"></select>
                     </label>
+                    <div class="form-fila">
+                      <label>Ingresos brutos
+                        <input type="text" name="ingresos_brutos" maxlength="30" placeholder="Número de inscripción" />
+                      </label>
+                      <label>Inicio de actividades
+                        <input type="date" name="inicio_actividades" />
+                      </label>
+                    </div>
                     <label>Texto al pie
                       <textarea name="pie_comprobante" rows="3" maxlength="300" placeholder="Ej: Gracias por su compra."></textarea>
                     </label>
@@ -4196,9 +4209,29 @@
         <button class="modal-close" id="modalClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formFactura" class="form">
-        <label>Cliente
-          <input type="text" name="cliente" required placeholder="Nombre o razón social" />
-        </label>
+        <!-- Para quién es (hist. §116): el nombre busca o crea el cliente, y
+             el resto queda en la foto de la factura. -->
+        <fieldset class="factura-receptor">
+          <legend>Para quién es la factura</legend>
+          <label>Nombre o razón social
+            <input type="text" name="cliente" required placeholder="Si ya es cliente, el mismo nombre de su ficha" autocomplete="off" />
+          </label>
+          <div class="form-fila">
+            <label>CUIT o DNI
+              <input type="text" name="receptor_documento" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="Opcional" />
+            </label>
+            <label>Condición frente al IVA
+              <select name="receptor_condicion_iva"></select>
+            </label>
+          </div>
+          <label>Domicilio
+            <input type="text" name="receptor_domicilio" maxlength="200" autocomplete="off" />
+          </label>
+          <label class="form-check" data-guardar-cliente>
+            <input type="checkbox" name="guardar_en_cliente" checked />
+            Guardar estos datos en la ficha del cliente
+          </label>
+        </fieldset>
         <label>Concepto
           <input type="text" name="concepto" required placeholder="Ej: Venta de mercadería" />
         </label>
@@ -4211,13 +4244,34 @@
         <label id="facturaAlicuotaWrap" hidden>IVA incluido en el importe
           <select name="alicuota_iva"></select>
         </label>
-        <label>Medio de pago
-          <select name="condicion">
-            <option value="mercadopago">Mercado Pago</option>
-            <option value="efectivo">Efectivo</option>
-            <option value="transferencia">Transferencia</option>
-          </select>
-        </label>
+        <div class="form-fila">
+          <label>Condición de venta
+            <select name="condicion_venta"></select>
+          </label>
+          <label>Medio de pago
+            <select name="condicion">
+              <option value="mercadopago">Mercado Pago</option>
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </label>
+        </div>
+        <!-- Una factura suelta no dice si es un producto o un servicio: ARCA la
+             toma como las dos cosas y pide el período (si se deja vacío, el día). -->
+        <fieldset class="factura-periodo" data-periodo>
+          <legend>Período facturado <span class="campo-opcional">(opcional)</span></legend>
+          <div class="form-fila form-fila-3">
+            <label>Desde
+              <input type="date" name="periodo_desde" />
+            </label>
+            <label>Hasta
+              <input type="date" name="periodo_hasta" />
+            </label>
+            <label>Vence el pago
+              <input type="date" name="vencimiento_pago" />
+            </label>
+          </div>
+        </fieldset>
         <label>Tipo
           <select name="tipo">
             <option value="factura">Factura</option>
@@ -4627,13 +4681,58 @@
         <button class="modal-close" id="modalFacturarVentaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formFacturarVenta" class="form">
-        <label>Medio de pago
+        <!-- Los datos de esta factura (hist. §116): para quién es, precargado
+             de la ficha del cliente y editable, la condición de venta y el
+             período. Los arma app.js (prepararDatosFactura). -->
+        <fieldset class="factura-receptor">
+          <legend>Para quién es la factura</legend>
+          <label>Nombre o razón social
+            <input type="text" name="receptor_nombre" maxlength="160" autocomplete="off" />
+          </label>
+          <div class="form-fila">
+            <label>CUIT o DNI
+              <input type="text" name="receptor_documento" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="Opcional" />
+            </label>
+            <label>Condición frente al IVA
+              <select name="receptor_condicion_iva"></select>
+            </label>
+          </div>
+          <label>Domicilio
+            <input type="text" name="receptor_domicilio" maxlength="200" autocomplete="off" />
+          </label>
+          <label class="form-check" data-guardar-cliente>
+            <input type="checkbox" name="guardar_en_cliente" checked />
+            Guardar estos datos en la ficha del cliente
+          </label>
+        </fieldset>
+        <div class="form-fila">
+          <label>Condición de venta
+            <select name="condicion_venta"></select>
+          </label>
+          <label>Medio de pago
           <select name="condicion">
             <option value="mercadopago">Mercado Pago</option>
             <option value="efectivo">Efectivo</option>
             <option value="transferencia">Transferencia</option>
           </select>
-        </label>
+          </label>
+        </div>
+        <!-- Solo si se facturan servicios: ARCA pide el período y el
+             vencimiento del pago. -->
+        <fieldset class="factura-periodo" data-periodo hidden>
+          <legend>Período facturado</legend>
+          <div class="form-fila form-fila-3">
+            <label>Desde
+              <input type="date" name="periodo_desde" />
+            </label>
+            <label>Hasta
+              <input type="date" name="periodo_hasta" />
+            </label>
+            <label>Vence el pago
+              <input type="date" name="vencimiento_pago" />
+            </label>
+          </div>
+        </fieldset>
         <label data-letra-elegida>Letra
           <select name="letra">
             <option value="B">B</option>
@@ -4641,7 +4740,8 @@
             <option value="C">C</option>
           </select>
         </label>
-        <!-- Con la condición del negocio cargada, la letra sale sola (hist. §113). -->
+        <!-- Con la condición del negocio cargada, la letra sale sola (hist. §113):
+             app.js dice cuál, según la condición del cliente elegida arriba. -->
         <p class="campo-ayuda" data-letra-sola hidden>La letra (A, B o C) sale sola, según tu condición frente al IVA y la del cliente.</p>
         <label data-punto-venta>Punto de venta
           <input type="number" name="punto_venta" value="1" min="1" step="1" />

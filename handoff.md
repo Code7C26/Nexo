@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §115);
+    siguiente número (hoy el último es §116);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -72,6 +72,7 @@
      usuario, con su clave fiscal).
    - La facturación real (producción) es después de la presentación y pide
      el CUIT de Nexo (decisión con un contador).
+4b. **La factura con el formato de ARCA** (hist. §116, commiteado en `solla`): datos fijos del negocio en Configuración → Comprobantes (razón social, ingresos brutos, inicio de actividades), y los de cada factura (cliente, condición de venta, período) en el formulario de facturar, con una foto en la factura. **Falta que el usuario cargue sus datos fijos** en Configuración y lo vea impreso.
 5. Hecho en esta sesión: el código del mail (hist. §108), la baja (hist.
    §109), ambos publicados (PR #31), y la limpieza de cuentas de la base real
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.

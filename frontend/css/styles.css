@@ -4082,6 +4082,32 @@ input.precio-sin-configurar::placeholder {
 
 .sesion-legal a:hover { color: var(--ink-muted); }
 
+/* Los datos de cada factura (hist. §116): para quién es y el período, cada uno
+   en su recuadro dentro del formulario de facturar. */
+.factura-receptor,
+.factura-periodo {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-sunk);
+}
+.factura-periodo[hidden] { display: none; }
+.factura-receptor legend,
+.factura-periodo legend {
+  padding: 0 var(--sp-1);
+  font-size: var(--txt-sm);
+  font-weight: 600;
+}
+.form-fila-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 560px) {
+  .form-fila-3 { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Grupo de tarjetas: un fieldset sin el marco del navegador. */
 .opciones {
   margin: 0;
@@ -4674,12 +4700,18 @@ input.precio-sin-configurar::placeholder {
   color: var(--accent-ok);
 }
 
+/* Los campos y la vista previa lado a lado; si la tarjeta es angosta (una
+   notebook con el menú y la lista de Configuración abiertos), la vista previa
+   pasa abajo. Con una grilla fija de 280px para la previa, los campos
+   quedaban de unos pocos píxeles. */
 .config-con-previa {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-5);
-  align-items: start;
+  align-items: flex-start;
 }
+.config-con-previa > .config-campos { flex: 1 1 280px; min-width: 0; }
+.config-con-previa > .membrete-previa { flex: 0 1 280px; min-width: 0; }
 
 .config-campos {
   display: flex;
@@ -5077,7 +5109,7 @@ input.precio-sin-configurar::placeholder {
   .config-item-desc { display: block; font-size: var(--txt-xs); color: var(--ink-muted); }
   .config-item-chevron { display: block; flex: none; margin-left: auto; color: var(--ink-faint); }
 
-  .config-con-previa { grid-template-columns: minmax(0, 1fr); }
+  .config-con-previa > .membrete-previa { flex-basis: 100%; }
   .config-tarjeta-cuerpo { padding: var(--sp-4); }
 
   .config-tarjeta-pie {
@@ -5420,19 +5452,194 @@ input.precio-sin-configurar::placeholder {
   font-style: italic;
 }
 
-/* El pie fiscal del comprobante electrónico (etapa E): el QR de la RG 4892 al
-   lado del CAE y su vencimiento. */
-.hoja-arca {
+/* La factura, con el formato de las de ARCA (hist. §116, armarHojaFactura en
+   core/comprobante.js): recuadros de línea fina, la letra en una caja al
+   medio, etiquetas en negrita y los importes alineados a la derecha. Colores
+   literales, como el resto de la hoja. */
+.hoja-factura {
+  font-size: 8.5pt;
+  line-height: 1.35;
+}
+.hoja-factura p { margin: 0; }
+.fac-etiqueta { font-weight: 700; }
+.fac-copia {
+  border: 0.75pt solid #000000;
+  border-bottom: 0;
+  padding: 3pt;
+  text-align: center;
+  font-size: 11pt;
+  font-weight: 700;
+}
+.fac-cabecera {
+  position: relative;
+  display: grid;
+  /* Mitades exactas: la caja de la letra va montada sobre la línea del medio. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border: 0.75pt solid #000000;
+}
+.fac-emisor,
+.fac-datos {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+  padding: 8pt 10pt;
+}
+.fac-emisor { border-right: 0.75pt solid #000000; }
+.fac-datos { padding-left: 34pt; }
+.fac-emisor-nombre {
+  margin-bottom: 4pt !important;
+  font-size: 12pt;
+  font-weight: 700;
+  text-align: center;
+}
+.fac-tipo {
+  margin-bottom: 4pt !important;
+  font-size: 15pt;
+  font-weight: 700;
+}
+.fac-numero {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 10pt;
+}
+.fac-numero > span { white-space: nowrap; }
+.fac-items td:first-child { white-space: nowrap; }
+/* La caja de la letra, montada sobre la línea del medio. */
+.fac-letra {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 46pt;
+  padding: 2pt 2pt 3pt;
+  background: #FFFFFF;
+  border: 0.75pt solid #000000;
+  border-top: 0;
+}
+.fac-letra-letra {
+  font-size: 22pt;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.fac-letra-cod {
+  font-size: 6.5pt;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.15;
+}
+.fac-periodo {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4pt 14pt;
+  margin-top: 2pt;
+  padding: 5pt 10pt;
+  border: 0.75pt solid #000000;
+}
+.fac-receptor {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 4pt 14pt;
+  margin-top: 2pt;
+  padding: 7pt 10pt;
+  border: 0.75pt solid #000000;
+}
+.fac-items {
+  width: 100%;
+  margin-top: 6pt;
+  border-collapse: collapse;
+}
+.fac-items th {
+  padding: 3pt 4pt;
+  background: #CCCCCC;
+  border: 0.75pt solid #000000;
+  font-size: 7.5pt;
+  text-align: left;
+}
+.fac-items td {
+  padding: 3pt 4pt;
+  vertical-align: top;
+}
+.fac-items .num { text-align: right; white-space: nowrap; }
+.fac-totales {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3pt;
+  margin-top: 18pt;
+  padding: 8pt 10pt;
+  border: 0.75pt solid #000000;
+}
+.fac-total {
+  display: flex;
+  gap: 12pt;
+  font-weight: 700;
+}
+.fac-total span:last-child {
+  min-width: 70pt;
+  text-align: right;
+}
+.fac-total-final { font-size: 10pt; }
+.fac-transparencia {
+  margin-top: 6pt;
+  padding: 5pt 10pt;
+  border: 0.75pt solid #000000;
+}
+.fac-leyenda {
+  margin-top: 10pt !important;
+  padding: 5pt;
+  border: 0.75pt solid #000000;
+  text-align: center;
+  font-style: italic;
+}
+/* Lo que ARCA observó al autorizar, como en sus comprobantes. */
+.fac-observaciones {
+  margin-top: 4pt !important;
+  padding: 4pt;
+  border: 0.75pt solid #000000;
+  font-size: 7pt;
+  font-style: italic;
+  text-align: center;
+  text-transform: uppercase;
+}
+.fac-pie {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 10pt;
+  margin-top: 12pt;
+}
+.fac-pie-arca {
   display: flex;
   align-items: center;
-  gap: 10pt;
-  margin-top: 8pt;
+  gap: 8pt;
 }
-.hoja-arca p { margin: 0 0 2pt; }
-.hoja-arca-titulo { font-weight: 600; }
+.fac-arca-marca {
+  font-size: 15pt;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.fac-arca-autorizado {
+  font-style: italic;
+  font-weight: 700;
+}
+.fac-prueba {
+  margin-top: 3pt !important;
+  font-style: italic;
+}
+.fac-pagina { font-weight: 700; }
+.fac-cae {
+  display: flex;
+  flex-direction: column;
+  gap: 3pt;
+  text-align: right;
+}
 .hoja-qr {
-  width: 26mm;
-  height: 26mm;
+  width: 24mm;
+  height: 24mm;
   image-rendering: pixelated;
 }
 

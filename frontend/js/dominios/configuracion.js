@@ -12,7 +12,7 @@ import { fijarNegocio, moduloActivo, negocio, terminoDeTipo } from "../core/nego
 import { avisar } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
-import { UNIDADES, esAdmin, esc } from "../core/formato.js";
+import { UNIDADES, esAdmin, esc, fechaAR } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
 import { mostrarVista } from "../core/router.js";
 import { tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "../core/tipos-negocio.js";
@@ -276,6 +276,7 @@ function pintarComprobantes() {
   selectCondicion.innerHTML = `<option value="">Sin indicar</option>${opciones.join("")}${anterior}`;
   selectCondicion.value = actual;
   formComprobantes.pie_comprobante.value = negocio.pie_comprobante ?? "";
+  for (const campo of ["razon_social", "ingresos_brutos", "inicio_actividades"]) formComprobantes[campo].value = negocio[campo] ?? "";
   limpiarErrores(formComprobantes);
   marcarSinCambios(formComprobantes);
   pintarMembrete();
@@ -284,10 +285,20 @@ function pintarComprobantes() {
 // El encabezado del comprobante armado con lo que se va escribiendo. La
 // dirección y el contacto salen de Datos del negocio.
 function pintarMembrete() {
-  const { documento, condicion_iva: condicion, pie_comprobante: pie } = valores(formComprobantes);
+  const {
+    documento,
+    condicion_iva: condicion,
+    pie_comprobante: pie,
+    razon_social: razonSocial,
+    ingresos_brutos: iibb,
+    inicio_actividades: inicio
+  } = valores(formComprobantes);
   const lineas = [
+    razonSocial && `Razón social: ${razonSocial}`,
     documento && `CUIT: ${formatearCuit(documento)}`,
     condicionFiscal(condicion),
+    iibb && `Ingresos brutos: ${iibb}`,
+    inicio && `Inicio de actividades: ${fechaAR(inicio)}`,
     negocio.direccion,
     negocio.telefono && `Tel: ${negocio.telefono}`,
     negocio.email
