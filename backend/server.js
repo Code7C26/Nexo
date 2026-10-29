@@ -351,7 +351,8 @@ function datosUsuario({
     email_verificado: !!email_verificado,
     terminos_al_dia: terminos_version === TERMINOS_VERSION,
     edad: edad ?? null,
-    negocio_en_baja: baja_pedida ? { nombre: negocio_nombre, se_borra: fechaDeBorrado(baja_pedida) } : null
+    negocio_en_baja: baja_pedida ? { nombre: negocio_nombre, se_borra: fechaDeBorrado(baja_pedida) } : null,
+    plataforma: esAdminPlataforma({ email, email_verificado })
   };
 }
 
@@ -617,13 +618,16 @@ function autenticar(req, res, next) {
   // Sin negocio (hist. §104) solo alcanza su cuenta (/auth/*: sus invitaciones,
   // su mail, su contraseña) y crear su negocio (/negocios). Todo lo demás es de
   // un negocio, y no tiene ninguno.
-  if (sesion.organizacion_id == null && !req.path.startsWith('/auth/') && !req.path.startsWith('/negocios')) {
+  // El panel de la plataforma (/plataforma/*) tampoco es de un negocio: lo
+  // controla soloPlataforma en cada ruta.
+  const deLaCuenta = req.path.startsWith('/auth/') || req.path.startsWith('/negocios') || req.path.startsWith('/plataforma/');
+  if (sesion.organizacion_id == null && !deLaCuenta) {
     return res.status(403).json({ error: 'Todavía no estás en ningún negocio.', codigo: 'sin_negocio' });
   }
   // Un negocio en baja (hist. §109) queda cerrado para todos: se puede ir a
   // otro negocio o a la cuenta, y un admin puede cancelar la baja o bajar los
   // datos. Nada más lo lee ni lo escribe.
-  if (sesion.baja_pedida && !req.path.startsWith('/auth/') && !req.path.startsWith('/negocios') && !RUTAS_EN_BAJA.has(req.path)) {
+  if (sesion.baja_pedida && !deLaCuenta && !RUTAS_EN_BAJA.has(req.path)) {
     return res.status(403).json({ error: 'Este negocio se está dando de baja.', codigo: 'negocio_en_baja' });
   }
   next();
@@ -644,6 +648,32 @@ function soloAdmin(req, res, next) {
   // tenés permiso para esto".
   if (req.usuario?.rol !== 'admin') {
     return res.status(403).json({ error: 'Necesitás ser administrador para esto.' });
+  }
+  next();
+}
+
+// Quién administra Nexo, la plataforma (hist. §111): las cuentas cuyo mail
+// está en NEXO_ADMIN_PLATAFORMA (separados por coma), con el mail confirmado.
+// Va en una variable y no en el código porque el repo es público. No tiene
+// nada que ver con el rol de un negocio: soloAdmin es "admin de ESTE
+// negocio"; esto es lo único de Nexo que lee datos de todos los negocios.
+function mailsAdminPlataforma() {
+  return new Set(
+    (process.env.NEXO_ADMIN_PLATAFORMA ?? '')
+      .split(',')
+      .map((m) => m.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function esAdminPlataforma({ email, email_verificado }) {
+  return !!email && !!email_verificado && mailsAdminPlataforma().has(email.toLowerCase());
+}
+
+// 404 y no 403 para cualquier otra cuenta: el panel no se anuncia.
+function soloPlataforma(req, res, next) {
+  if (!esAdminPlataforma(req.usuario ?? {})) {
+    return res.status(404).json({ error: 'Ruta no encontrada.' });
   }
   next();
 }
@@ -1646,7 +1676,9 @@ app.use('/api', autenticar);
 // dependen del negocio activo: las de la sesión y las de cambiar de negocio.
 app.use('/api', (req, res, next) => {
   const negocio = req.get('X-Nexo-Negocio');
-  if (!negocio || req.path.startsWith('/auth/') || req.path.startsWith('/negocios')) return next();
+  if (!negocio || req.path.startsWith('/auth/') || req.path.startsWith('/negocios') || req.path.startsWith('/plataforma/')) {
+    return next();
+  }
   if (Number(negocio) !== req.usuario.organizacion_id) {
     res.set('X-Nexo-Negocio-Cambiado', '1');
     return res.status(409).json({ error: 'Cambiaste de negocio en otra pestaña.' });
@@ -14590,6 +14622,184 @@ app.get('/api/crm/reporte', (req, res) => {
     por_etapa: porEtapa,
     motivos
   });
+});
+
+// ---------- Panel de la plataforma (hist. §111) ----------
+// Lo que ve quien administra Nexo: las cuentas, los negocios y cómo crecen. Es
+// la única parte de Nexo que lee datos de todos los negocios, por eso solo
+// lee, va con su propio guardia (soloPlataforma) y de cada negocio da conteos,
+// nunca sus datos (ni clientes, ni importes). Cambiar un plan sigue siendo
+// `npm run plan` en el servidor (hist. §98).
+
+// El día de la Argentina de un momento guardado con datetime('now') (UTC).
+function diaArgentino(utc) {
+  return new Date(`${utc.replace(' ', 'T').slice(0, 19)}Z`).toLocaleDateString('sv-SE', { timeZone: ZONA_HORARIA });
+}
+
+// Cuándo usó Nexo por última vez: el último ingreso, o el último pedido de una
+// sesión abierta. Cada pedido estira la sesión (renovarSesion), así que su
+// vencimiento menos SESION_HORAS es la hora del último. Sin esto, quien deja
+// la sesión abierta días seguidos figura con el ingreso de hace una semana.
+// Los formatos se comparan como texto (con o sin milésimas, todos en UTC).
+function ultimoUso(...momentos) {
+  return momentos.filter(Boolean).reduce((max, m) => (max == null || m > max ? m : max), null);
+}
+const usoDeSesion = (expira) =>
+  expira
+    ? new Date(new Date(`${expira.replace(' ', 'T')}Z`).getTime() - SESION_HORAS * 3_600_000)
+        .toISOString()
+        .slice(0, 19)
+        .replace('T', ' ')
+    : null;
+
+// Las sesiones, por cuenta y negocio, con su último pedido.
+function usoPorSesion() {
+  return db
+    .prepare('SELECT usuario_id, organizacion_id, MAX(expira) AS expira FROM sesiones GROUP BY usuario_id, organizacion_id')
+    .all()
+    .map((s) => ({ ...s, uso: usoDeSesion(s.expira) }));
+}
+
+const SEMANAS_PANEL = 8;
+
+app.get('/api/plataforma/resumen', soloPlataforma, (req, res) => {
+  const hoy = fechaDeHoy();
+  const hace7 = sumarDias(hoy, -6);
+  const hace30 = sumarDias(hoy, -29);
+  const cuentas = db.prepare('SELECT id, fecha_alta, ultimo_acceso, email_verificado, baja FROM usuarios').all();
+  const negocios = db.prepare('SELECT id, plan, plan_vence, fecha_alta, baja_pedida, baja_hecha FROM organizaciones').all();
+  const sesiones = usoPorSesion();
+  const accesos = db.prepare('SELECT usuario_id, organizacion_id, ultimo_acceso FROM usuario_organizaciones').all();
+
+  const usoCuenta = new Map();
+  const usoNegocio = new Map();
+  const anotar = (mapa, clave, momento) => {
+    if (clave != null && momento) mapa.set(clave, ultimoUso(mapa.get(clave), momento));
+  };
+  for (const c of cuentas) anotar(usoCuenta, c.id, c.ultimo_acceso);
+  for (const s of sesiones) {
+    anotar(usoCuenta, s.usuario_id, s.uso);
+    anotar(usoNegocio, s.organizacion_id, s.uso);
+  }
+  for (const a of accesos) anotar(usoNegocio, a.organizacion_id, a.ultimo_acceso);
+  const usadoDesde = (momento, desde) => !!momento && diaArgentino(momento) >= desde;
+
+  const vivas = cuentas.filter((c) => !c.baja);
+  const abiertos = negocios.filter((n) => !n.baja_pedida && !n.baja_hecha);
+  // En el orden de PLANES (de precio), con el nombre para la tabla.
+  const porPlan = Object.entries(PLANES).map(([clave, plan]) => ({
+    clave,
+    nombre: plan.nombre,
+    negocios: abiertos.filter((n) => planEfectivo(n, hoy) === clave).length
+  }));
+
+  // De la más reciente a la más vieja. Cada semana termina en `hasta`: la
+  // primera es la que termina hoy.
+  const semanas = Array.from({ length: SEMANAS_PANEL }, (_, i) => {
+    const hasta = sumarDias(hoy, -7 * i);
+    const desde = sumarDias(hasta, -6);
+    const dentro = (fila) => {
+      const dia = diaArgentino(fila.fecha_alta);
+      return dia >= desde && dia <= hasta;
+    };
+    return { desde, hasta, cuentas: cuentas.filter(dentro).length, negocios: negocios.filter(dentro).length };
+  });
+
+  res.json({
+    cuentas: {
+      total: vivas.length,
+      confirmadas: vivas.filter((c) => c.email_verificado).length,
+      nuevas_7_dias: vivas.filter((c) => diaArgentino(c.fecha_alta) >= hace7).length,
+      activas_7_dias: vivas.filter((c) => usadoDesde(usoCuenta.get(c.id), hace7)).length,
+      dadas_de_baja: cuentas.length - vivas.length
+    },
+    negocios: {
+      total: abiertos.length,
+      activos_7_dias: abiertos.filter((n) => usadoDesde(usoNegocio.get(n.id), hace7)).length,
+      activos_30_dias: abiertos.filter((n) => usadoDesde(usoNegocio.get(n.id), hace30)).length,
+      en_baja: negocios.filter((n) => n.baja_pedida && !n.baja_hecha).length,
+      borrados: negocios.filter((n) => n.baja_hecha).length,
+      por_plan: porPlan
+    },
+    semanas
+  });
+});
+
+app.get('/api/plataforma/cuentas', soloPlataforma, (req, res) => {
+  const cuentas = db
+    .prepare(
+      `SELECT id, nombre, email, email_verificado, fecha_alta, ultimo_acceso, edad, baja
+         FROM usuarios ORDER BY fecha_alta DESC, id DESC`
+    )
+    .all();
+  const pertenencias = db
+    .prepare(
+      `SELECT pertenencia.usuario_id, pertenencia.organizacion_id AS id, negocio.nombre, pertenencia.rol,
+              pertenencia.activo, pertenencia.ultimo_acceso
+         FROM usuario_organizaciones pertenencia
+         JOIN organizaciones negocio ON negocio.id = pertenencia.organizacion_id
+        WHERE negocio.baja_hecha IS NULL
+        ORDER BY pertenencia.fecha_alta, negocio.id`
+    )
+    .all();
+  const sesiones = usoPorSesion();
+  res.json(
+    cuentas.map((c) => {
+      const suyos = pertenencias.filter((p) => p.usuario_id === c.id);
+      return {
+        id: c.id,
+        nombre: c.nombre,
+        email: c.email,
+        email_verificado: c.email_verificado,
+        fecha_alta: c.fecha_alta,
+        ultimo_uso: ultimoUso(
+          c.ultimo_acceso,
+          ...suyos.map((p) => p.ultimo_acceso),
+          ...sesiones.filter((s) => s.usuario_id === c.id).map((s) => s.uso)
+        ),
+        edad: c.edad,
+        baja: c.baja,
+        negocios: suyos.map((p) => ({ id: p.id, nombre: p.nombre, rol: p.rol, activo: !!p.activo }))
+      };
+    })
+  );
+});
+
+app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
+  const hoy = fechaDeHoy();
+  const negocios = db
+    .prepare(
+      `SELECT negocio.id, negocio.nombre, negocio.rubro, negocio.plan, negocio.plan_vence, negocio.fecha_alta,
+              negocio.baja_pedida,
+              (SELECT COUNT(*) FROM productos WHERE productos.organizacion_id = negocio.id AND productos.activo = 1) AS productos,
+              (SELECT COUNT(*) FROM ventas WHERE ventas.organizacion_id = negocio.id AND ventas.estado = 'activa') AS ventas,
+              (SELECT COUNT(*) FROM ventas
+                WHERE ventas.organizacion_id = negocio.id AND ventas.estado = 'activa' AND ventas.fecha >= ?) AS ventas_30_dias,
+              (SELECT MAX(fecha) FROM ventas WHERE ventas.organizacion_id = negocio.id AND ventas.estado = 'activa') AS ultima_venta,
+              (SELECT COUNT(*) FROM usuario_organizaciones pertenencia
+                WHERE pertenencia.organizacion_id = negocio.id AND pertenencia.activo = 1) AS personas,
+              (SELECT MAX(ultimo_acceso) FROM usuario_organizaciones pertenencia
+                WHERE pertenencia.organizacion_id = negocio.id) AS ultimo_acceso
+         FROM organizaciones negocio
+        WHERE negocio.baja_hecha IS NULL
+        ORDER BY negocio.fecha_alta DESC, negocio.id DESC`
+    )
+    .all(sumarDias(hoy, -29));
+  const sesiones = usoPorSesion();
+  res.json(
+    negocios.map(({ ultimo_acceso, ...n }) => {
+      const vigente = planEfectivo(n, hoy);
+      return {
+        ...n,
+        tipo: PERFILES_RUBRO[n.rubro ?? RUBRO_POR_DEFECTO]?.nombre ?? n.rubro,
+        // El guardado y el que rige: difieren cuando venció la prueba.
+        plan_vigente: vigente,
+        plan_nombre: PLANES[vigente].nombre,
+        ultimo_uso: ultimoUso(ultimo_acceso, ...sesiones.filter((s) => s.organizacion_id === n.id).map((s) => s.uso)),
+        se_borra: n.baja_pedida ? fechaDeBorrado(n.baja_pedida) : null
+      };
+    })
+  );
 });
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de

@@ -10147,3 +10147,69 @@ negocio "Coquitomates", Emprendimiento, Gratis).
 **Decidido para la próxima sesión:** el panel de la plataforma, visible solo
 para `santinosolla22@gmail.com` (la cuenta que administra Nexo). El diseño
 pensado está en "Para retomar" de `handoff.md`.
+
+## 111. El panel de la plataforma, 29 de octubre de 2026
+
+**Qué es.** Lo que ve quien administra Nexo de toda la instalación, sin SSH
+(hasta acá se consultaba como en §110). Pedido y aceptado por el usuario el 29
+de octubre, antes de IVA. Solo lectura.
+
+**Quién lo ve.** Las cuentas cuyo mail está en `NEXO_ADMIN_PLATAFORMA`
+(separados por coma, sin importar mayúsculas ni espacios) y con el mail
+confirmado. Va en una variable porque el repo es público. Para cualquier otra
+cuenta las rutas responden 404 (`Ruta no encontrada.`, el mismo cuerpo que una
+ruta inexistente): el panel no se anuncia. No tiene nada que ver con el rol del
+negocio.
+
+**Backend (`server.js`, sección "Panel de la plataforma").**
+- `esAdminPlataforma()` y el guardia `soloPlataforma`, al lado de `soloAdmin`.
+  `datosUsuario()` suma `plataforma: true|false`, que `sesion.js` pasa a
+  `data-plataforma` en `<html>`.
+- `autenticar` y el control de `X-Nexo-Negocio` dejan pasar `/plataforma/*`
+  como a `/auth/*` y `/negocios*`: no es de un negocio (anda sin negocio, con
+  el negocio en baja y desde una pestaña vieja).
+- `GET /api/plataforma/resumen`: cuentas (total, confirmadas, nuevas y activas
+  en 7 días, dadas de baja), negocios (abiertos, usados en 7 y 30 días, en
+  baja, borrados, por plan con su nombre) y 8 semanas de altas.
+- `GET /api/plataforma/cuentas`: nombre, mail, confirmación, alta, último uso,
+  edad, baja y sus negocios con rol. Nunca la contraseña.
+- `GET /api/plataforma/negocios`: tipo, plan guardado y vigente, vencimiento,
+  alta, conteos (productos activos, ventas activas, ventas de 30 días,
+  personas), última venta, último uso y la fecha en que se borra si está en
+  baja. Los negocios ya borrados (`baja_hecha`) no salen. Ningún importe.
+- **Último uso:** el mayor entre `usuarios.ultimo_acceso` (login),
+  `usuario_organizaciones.ultimo_acceso` (entrar a un negocio) y el último
+  pedido de cada sesión. Este último sale de `sesiones.expira` menos
+  `SESION_HORAS`, porque cada pedido estira la sesión. Sin eso, quien deja la
+  sesión abierta días seguidos figuraba con el login de hace una semana. Sin
+  cambio de esquema. Se calcula en JS (no con `datetime(..., '-12 hours')`) por
+  portabilidad (CLAUDE.md §34).
+- `permisos.js` tiene una cuarta clase, `'plataforma'`, y `permisos.test.js` la
+  reconoce por `soloPlataforma` en la línea de la ruta.
+
+**Frontend.**
+- `dominios/plataforma.js` y la vista `plataforma` en `index.html`, con el ítem
+  "Plataforma" en un grupo "Nexo" al final del menú (oculto por CSS sin
+  `data-plataforma`). El router manda a Ventas a quien no la tiene.
+- Tres pestañas por subruta (`#/plataforma/resumen|cuentas|negocios`), como
+  Trabajos. Franja de cifras, tablas por plan y semana a semana, y listas con
+  búsqueda y "Actualizar". En el celular, listas de dos líneas (el mail va en
+  la segunda en Cuentas). "Último uso" en relativo ("Hace 3 h"), con la fecha
+  y hora en el `title`.
+
+**Cómo se verificó.**
+- `backend/test/plataforma.test.js` (8 casos): quién lo ve, el 404 para un
+  admin y un empleado de otro negocio, el 401 sin sesión, los conteos, que no
+  salgan contraseñas ni datos del negocio (las claves exactas de cada fila), la
+  cabecera de otra pestaña, un negocio en baja, y que con el mail sin confirmar
+  la cuenta de la lista tampoco entra.
+- `npm test` (131) y `npm run lint` en verde. `npm run regresion`: solo cambia
+  `plataforma` en `/api/auth/estado`, para los dos roles.
+- Capturas con Playwright contra un servidor de prueba con dos negocios
+  sembrados: compu en oscuro y claro, celular a 390 px sin scroll horizontal,
+  sin errores de consola, y otra cuenta sin el menú y con el enlace directo
+  mandado a Ventas. La base real no cambió (md5 igual antes y después).
+
+**Para publicarlo:** sumar `NEXO_ADMIN_PLATAFORMA=santinosolla22@gmail.com` a
+`/etc/nexo/nexo.env` del servidor y reiniciar el servicio. Sin la variable,
+nadie ve el panel.

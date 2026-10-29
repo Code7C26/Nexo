@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §110);
+    siguiente número (hoy el último es §111);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -22,32 +22,20 @@
 ## Estado actual (29 de octubre de 2026)
 
 **Para retomar (sesión del 29 de octubre):**
-1. **Lo próximo: el panel de la plataforma** (pedido y aceptado por el
-   usuario el 29 de octubre; va antes que IVA). Hoy no hay forma de ver las
-   cuentas y los negocios de Nexo desde la web; se consultó por SSH (cómo, en
-   hist. §110).
-   - **Quién lo ve:** solo la cuenta `santinosolla22@gmail.com`, que es la
-     que administra Nexo (decisión del usuario). Va por una variable del
-     servidor, por ejemplo `NEXO_ADMIN_PLATAFORMA` con la lista de mails, no
-     escrita en el código (el repo es público). Hay que sumarla a
-     `/etc/nexo/nexo.env` y a `.env.example`.
-   - **Qué muestra:** las cuentas (nombre, mail, cuándo se creó, si confirmó
-     el mail, último ingreso, en qué negocios y con qué rol); los negocios
-     (tipo, plan y vencimiento, cuándo se creó, cuántos productos, ventas y
-     personas, último uso, si está en baja); y totales (cuentas nuevas por
-     semana, negocios activos).
-   - **Diseño pensado:** rutas `GET /api/plataforma/*` fuera del aislamiento
-     por negocio, con su propio guardia (no `soloAdmin`, que es del negocio):
-     es la única parte de Nexo que lee datos de todos. Solo lectura en la
-     primera versión, y que no muestre datos del negocio más allá de conteos.
-     Cambiar el plan sigue siendo `npm run plan` en el servidor. Una vista
-     propia en el menú, visible solo para esa cuenta, mobile-first.
-   - El "último ingreso" hoy se puede sacar de `usuario_organizaciones.ultimo_acceso`
-     y de las sesiones; conviene revisar si alcanza.
+1. **El panel de la plataforma está hecho** (hist. §111), commiteado en
+   `solla` y sin publicar. Es "Plataforma", en el grupo "Nexo" al final del
+   menú, con Resumen, Cuentas y Negocios, y solo lectura.
+   - Lo ve la cuenta cuyo mail está en `NEXO_ADMIN_PLATAFORMA`, con el mail
+     confirmado. **Al publicar:** sumar
+     `NEXO_ADMIN_PLATAFORMA=santinosolla22@gmail.com` a `/etc/nexo/nexo.env`
+     y reiniciar `nexo`. Para verlo en la compu, la misma línea en el `.env`
+     de la raíz.
+   - **Falta que el usuario lo vea.**
+   - **Lo próximo: IVA** (etapa C, punto 9 de "Qué sigue").
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
-3. Después del panel, el orden que se le recomendó al usuario el 29 de octubre (faltan
+3. Ahora que está el panel, el orden que se le recomendó al usuario el 29 de octubre (faltan
    pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
    homologación** (etapa E, punto 10) → **cierre** (punto 13). Voz y
    WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
@@ -728,6 +716,23 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Arnés:** `baja.test.js` reinicia el servidor sobre la misma base y en el
   mismo puerto. `levantarServidor` devuelve la URL de su puerto, no la del
   `PORT` que se le pasa.
+
+**Panel de la plataforma (hist. §111)**
+- **Es lo único de Nexo que lee datos de todos los negocios.** Va con su
+  guardia, `soloPlataforma` (mail en `NEXO_ADMIN_PLATAFORMA` y confirmado), y
+  nunca con `soloAdmin`, que es "admin de este negocio". En `permisos.js` es la
+  clase `'plataforma'`.
+- **De cada negocio, conteos y nunca sus datos** (ni clientes ni importes). Una
+  columna nueva del panel sigue esa regla, y el test fija las claves exactas de
+  cada fila.
+- **Para otra cuenta, 404 igual que una ruta inexistente**, no 403: el panel no
+  se anuncia.
+- `/plataforma/*` pasa sin negocio, con el negocio en baja y con otra pestaña,
+  como `/auth/*` (`autenticar` y el control de `X-Nexo-Negocio`).
+- **Solo lectura.** Cambiar un plan sigue siendo `npm run plan` en el
+  servidor.
+- **"Último uso"** es el mayor entre los dos `ultimo_acceso` y el último pedido
+  de cada sesión (`expira` menos `SESION_HORAS`).
 
 **Invitaciones y cuentas sin negocio (hist. §104)**
 - **A alguien se lo suma invitándolo** (`/api/invitaciones`, admin). No

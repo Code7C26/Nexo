@@ -5162,6 +5162,13 @@ input.precio-sin-configurar::placeholder {
   display: none;
 }
 
+/* El panel de la plataforma (hist. §111): solo para quien administra Nexo,
+   con data-plataforma en <html> (sesion.js). Es solo UI: el backend responde
+   404 a las demás cuentas. */
+:root:not([data-plataforma]) .nav-seccion-plataforma {
+  display: none;
+}
+
 /* Marcador genérico para columnas, botones y tiras de ledger que solo
    tienen sentido para admin (costos, márgenes, ganancias, acciones de
    anular/restaurar y administración de tesorería). Se aplica con clase,
@@ -6337,14 +6344,16 @@ input.precio-sin-configurar::placeholder {
 /* Planes y descuentos (hist. §75), en su propia vista desde hist. §76. */
 
 .planes-vista,
-.trabajos-vista {
+.trabajos-vista,
+.plataforma-vista {
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
 }
 
 .planes-pestana,
-.trabajos-pestana {
+.trabajos-pestana,
+.plataforma-pestana {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -6352,11 +6361,29 @@ input.precio-sin-configurar::placeholder {
 }
 
 .planes-pestana[hidden],
-.trabajos-pestana[hidden] { display: none; }
+.trabajos-pestana[hidden],
+.plataforma-pestana[hidden] { display: none; }
 
 /* Dentro de una pestaña la separación la da el gap: el margen propio de la
    franja la duplicaba. */
-.trabajos-pestana > .ledger-strip { margin-bottom: 0; }
+.trabajos-pestana > .ledger-strip,
+.plataforma-pestana > .ledger-strip { margin-bottom: 0; }
+
+/* Panel de la plataforma (hist. §111): las dos tablas del resumen van una al
+   lado de la otra en la compu, y apiladas en el celular. */
+.plataforma-tablas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+.plataforma-tablas > .panel { margin: 0; }
+@media (max-width: 860px) {
+  .plataforma-tablas { grid-template-columns: minmax(0, 1fr); }
+}
+/* Los negocios de una cuenta, uno por renglón. */
+.plat-negocios { display: flex; flex-direction: column; gap: 2px; }
+.plat-negocios .status { margin-left: 6px; }
 
 /* Las pestañas son enlaces (#/planes-socio/…): se ven como .segmento. */
 a.segmento {

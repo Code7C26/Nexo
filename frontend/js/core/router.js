@@ -4,7 +4,7 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
-import { esAdmin } from "./formato.js";
+import { esAdmin, esPlataforma } from "./formato.js";
 import { moduloActivo, termino } from "./negocio.js";
 import { entrarEnVista } from "./registro.js";
 
@@ -70,6 +70,7 @@ const VISTAS_CONSTRUIDAS = {
   papelera: { titulo: "Papelera", dominio: "Papelera" },
   auditoria: { titulo: "Auditoría", dominio: "Auditoría" },
   configuracion: { titulo: "Configuración", dominio: "Administración" },
+  plataforma: { titulo: "Plataforma", dominio: "Nexo" },
 
   "venta-detalle": { titulo: "Venta", dominio: "Embudo de venta", nav: "ventas", esFicha: true },
   "presupuesto-detalle": { titulo: "Presupuesto", dominio: "Embudo de venta", nav: "presupuestos", esFicha: true },
@@ -125,6 +126,9 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
     viewId = "ventas";
   }
   if (MODULO_DE_VISTA[viewId] && !moduloActivo(MODULO_DE_VISTA[viewId])) {
+    viewId = "ventas";
+  }
+  if (viewId === "plataforma" && !esPlataforma()) {
     viewId = "ventas";
   }
 

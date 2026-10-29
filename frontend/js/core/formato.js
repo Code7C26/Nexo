@@ -59,6 +59,9 @@ export function duracion(minutos) {
 // una regla de CSS (no hacer el fetch, no emitir el link, elegir la vista
 // de fallback).
 export const esAdmin = () => document.documentElement.dataset.rol === "admin";
+// Quien administra Nexo, la plataforma (hist. §111): lo marca sesion.js desde
+// la sesión. Solo es UI; el backend responde 404 a cualquier otra cuenta.
+export const esPlataforma = () => document.documentElement.hasAttribute("data-plataforma");
 
 // Los CSV son datos armados en JS, no DOM: `.col-admin` no les sirve. Las
 // columnas de costo/margen de un array COLUMNAS_CSV_X se marcan con

@@ -269,6 +269,8 @@
   function escribirDatosUsuario(usuario) {
     document.documentElement.setAttribute("data-rol", usuario.rol);
     document.documentElement.setAttribute("data-organizacion", usuario.organizacion_id);
+    // Quien administra Nexo ve el panel de la plataforma (hist. §111).
+    document.documentElement.toggleAttribute("data-plataforma", !!usuario.plataforma);
     const nombreEl = document.querySelector("[data-usuario-nombre]");
     if (nombreEl) nombreEl.textContent = usuario.nombre;
     const rolEl = document.querySelector("[data-usuario-rol]");

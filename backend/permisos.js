@@ -9,10 +9,13 @@
 // `soloAdmin`, el test rompe. Es la fuente de verdad de la política, no
 // una copia que se pueda desincronizar en silencio.
 //
-// Tres valores posibles:
+// Cuatro valores posibles:
 // - 'publico': sin sesión, declarado antes de `app.use('/api', autenticar)`.
 // - 'ambos': requiere sesión (admin o empleado), sin `soloAdmin`.
 // - 'admin': requiere sesión Y rol admin (`soloAdmin` como argumento).
+// - 'plataforma': requiere sesión de quien administra Nexo
+//   (`soloPlataforma` como argumento, hist. §111). No depende del rol en
+//   ningún negocio: lee datos de todos.
 //
 // Decisiones de negocio detrás de esta tabla (ver docs/handoff-historico.md,
 // §27 y §28): anular/restaurar, tesorería, alta/edición de
@@ -250,5 +253,10 @@ export const RUTAS_PERMISOS = {
   // como soloAdmin: una cuenta sin negocio crea el suyo (hist. §104).
   'GET /api/negocios': 'ambos',
   'POST /api/negocios': 'ambos',
-  'POST /api/negocios/:id/entrar': 'ambos'
+  'POST /api/negocios/:id/entrar': 'ambos',
+  // El panel de la plataforma (hist. §111): solo lectura, solo para las
+  // cuentas de NEXO_ADMIN_PLATAFORMA.
+  'GET /api/plataforma/resumen': 'plataforma',
+  'GET /api/plataforma/cuentas': 'plataforma',
+  'GET /api/plataforma/negocios': 'plataforma'
 };
