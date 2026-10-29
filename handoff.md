@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §107);
+    siguiente número (hoy el último es §108);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -57,8 +57,13 @@ términos (Fase 3 de 8b).
 - **Lo que sigue: la Fase 4 de la etapa 8b** (descargar los datos, dar de
   baja el negocio y `NEXO_REGISTRO=off`). Hechas: Fases 1 (mail en la cuenta,
   hist. §102), 1b (invitaciones, hist. §104), 2 (recuperar la contraseña,
-  hist. §105) y 3 (términos, privacidad y edad, hist. §106). La 2 y la 3 están
-  commiteadas en `solla`, sin publicar.
+  hist. §105), 3 (términos, privacidad y edad, hist. §106) y el código del
+  mail (hist. §108). La 2, la 3 y §108 están commiteadas en `solla`, sin
+  publicar.
+- **Nuevo (29 de octubre, hist. §108):** el mail se confirma con un código
+  de 6 números antes de crear la cuenta, y antes de cambiarlo. Pedido del
+  usuario: con un mail ajeno se podía crear una cuenta igual. **Falta que el
+  usuario lo vea.**
 - **Para el usuario, de la Fase 3:** cargar `NEXO_TITULAR_NOMBRE`,
   `NEXO_TITULAR_CUIL` y `NEXO_TITULAR_DOMICILIO` en el `.env` de su compu y en
   `/etc/nexo/nexo.env` del servidor: sin ellos, `/terminos` y `/privacidad`
@@ -631,8 +636,23 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   `/auth/email`, `/auth/logout` y `/auth/cambiar-password`). `sesion.js` la
   manda a "Sumá tu mail" con `seguirCon()`: primero la contraseña forzada,
   después el mail.
+- **Un mail se confirma con un código antes de usarlo** (hist. §108, pedido
+  del usuario del 29 de octubre: "si pongo un mail que no es mío puedo crear
+  una cuenta igual"):
+  - el alta pide el código en su paso 2 y la cuenta nace confirmada.
+    `POST /api/auth/registro` exige `comprobante_email`, que da
+    `/registro/verificar` al acertar el código;
+  - cambiar o sumar el mail (Mi cuenta, "Sumá tu mail") manda el código al
+    mail nuevo (202), y el mail cambia recién con `/auth/email/confirmar`;
+  - tabla `codigos_mail`: 6 cifras, 15 minutos, 5 intentos, vale el último.
+    El comprobante dura 2 horas. Se manda **esperando** a Gmail (si falla,
+    503), no con `mandarSinEsperar`;
+  - `/registro/codigo` responde 204 exista o no la cuenta: si existe, a su
+    dueño le llega "Ya tenés una cuenta" en vez del código;
+  - sin mail configurado y fuera de producción, el código sale en la consola.
 - **Sin verificar se trabaja igual**, con el aviso en el Resumen y en Mi
-  cuenta. La verificación es un `GET /verificar-mail?token=`:
+  cuenta. Desde §108 eso solo le pasa a una cuenta de antes. La verificación
+  es un `GET /verificar-mail?token=` (lo manda "Mandarlo de nuevo"):
   - vale 48 h, y solo el último enlace;
   - deja de valer si la cuenta cambió de mail;
   - un enlace ya usado sigue diciendo "verificado".
@@ -646,8 +666,10 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - **Topes:** 5 envíos por hora y por cuenta (cambio y reenvío juntos), con
   `registroExcedido('mail:<id>')`.
 - **Tests:** el arnés corre con `NEXO_MAIL=stub` y lee los mails con
-  `leerMails()` y `ultimoEnlace()`. Cada cuenta del arnés es
-  `<usuario>@nexo.test`.
+  `leerMails()`, `ultimoEnlace()` y `codigoDelMail()`. Cada cuenta del arnés
+  es `<usuario>@nexo.test`. `registrarEmpresa(servidor, …)` recibe el
+  servidor (lee el código), no la URL; un alta a mano usa
+  `confirmarMailDeAlta()`.
 
 **Invitaciones y cuentas sin negocio (hist. §104)**
 - **A alguien se lo suma invitándolo** (`/api/invitaciones`, admin). No
@@ -945,9 +967,9 @@ Hist. §53 y §54 cuentan qué cubre cada prueba y las trampas.
 **Para cerrar la Etapa A** (`organizacion_id NOT NULL` y SKU por empresa ya
 están, hist. §65):
 1. Poder apagar el registro público por configuración (por ejemplo, en una
-   instalación de un solo comercio) y sumarle verificación de email o captcha.
-   Ninguna de las dos se hizo: requieren decisión y, la segunda, un servicio
-   externo.
+   instalación de un solo comercio): es la Fase 4 de 8b. La verificación del
+   mail ya está (hist. §108, código antes de crear la cuenta). El captcha no
+   se hizo: pediría un servicio externo.
 2. Si algún día dos empresas necesitan el mismo nombre de usuario, elegir entre
    `UNIQUE(organizacion_id, usuario)` con la empresa en el login, o login por
    email (hist. §45).
@@ -1400,4 +1422,5 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   - catálogo de Instagram.
 - **Modularización F6–F13.** Se avanza cuando una etapa toca un dominio.
 - **Migrar a Postgres.**
-- **Registro público:** poder apagarlo y sumarle verificación.
+- **Registro público:** poder apagarlo (Fase 4 de 8b). El mail ya se
+  verifica con el código (hist. §108).

@@ -1119,8 +1119,10 @@ una instancia por negocio.
   - **Cada persona tiene su cuenta y entra con su mail** (hist. §102, §104):
     el admin suma gente invitándola por mail, y una cuenta sin ningún negocio
     entra igual a ver sus invitaciones o crear el suyo.
-- Lo que falta: poder apagar el registro público por configuración y sumarle
-  verificación (email o captcha). Las dos requieren decisión del equipo.
+- El mail se confirma con un código de 6 números antes de crear la cuenta y
+  antes de cambiarlo (hist. §108): nadie usa un mail que no es suyo.
+- Lo que falta: poder apagar el registro público por configuración (Fase 4
+  de la etapa 8b). El captcha no se hizo: pediría un servicio externo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
   `docs/handoff-historico.md` (§37–§51, §77).
 

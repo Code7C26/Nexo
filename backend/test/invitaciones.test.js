@@ -18,9 +18,9 @@ let otraAdmin;
 
 before(async () => {
   servidor = await levantarServidor();
-  admin = await registrarEmpresa(servidor.url, { empresa: 'Kiosco Lucía', usuario: 'lucia', nombre: 'Lucía' });
+  admin = await registrarEmpresa(servidor, { empresa: 'Kiosco Lucía', usuario: 'lucia', nombre: 'Lucía' });
   negocioId = (await admin.get('/api/negocio')).json.id;
-  otraAdmin = await registrarEmpresa(servidor.url, { empresa: 'Taller Otro', usuario: 'otra', nombre: 'Otra' });
+  otraAdmin = await registrarEmpresa(servidor, { empresa: 'Taller Otro', usuario: 'otra', nombre: 'Otra' });
 });
 
 after(async () => {
@@ -95,8 +95,12 @@ test('invitar a un mail sin cuenta: crea la cuenta desde el enlace y entra al ne
 });
 
 test('quien ya tiene cuenta la ve en Nexo con su mail confirmado, y al aceptar pasa a ese negocio', async () => {
-  // La admin de otro negocio, todavía sin confirmar su mail. El enlace de
-  // verificación se toma antes: después, su último mail es la invitación.
+  // La admin de otro negocio, todavía sin confirmar su mail: una cuenta de
+  // antes de hist. §108 (desde ahí nacen confirmadas). El enlace de
+  // verificación se pide y se toma antes: después, su último mail es la
+  // invitación.
+  enLaBase("UPDATE usuarios SET email_verificado = NULL WHERE email = 'otra@nexo.test'");
+  assert.equal((await otraAdmin.post('/api/auth/email/reenviar')).status, 204);
   const verificacion = ultimoEnlace(servidor, 'otra@nexo.test');
   const r = await admin.post('/api/invitaciones', { email: 'otra@nexo.test', rol: 'admin' });
   assert.equal(r.status, 201, r.texto);
@@ -171,7 +175,7 @@ test('volver a invitar reenvía con un enlace nuevo; cancelar y vencer lo dejan 
 
 test('aceptar desde el enlace con la sesión abierta: tiene que ser su mail, y lo deja confirmado', async () => {
   // Una cuenta con negocio propio y el mail sin confirmar.
-  const pablo = await registrarEmpresa(servidor.url, { empresa: 'Verdulería Pablo', usuario: 'pablo', nombre: 'Pablo' });
+  const pablo = await registrarEmpresa(servidor, { empresa: 'Verdulería Pablo', usuario: 'pablo', nombre: 'Pablo' });
   assert.equal((await admin.post('/api/invitaciones', { email: 'pablo@nexo.test' })).status, 201);
   const token = tokenDeInvitacion(servidor, 'pablo@nexo.test');
 
@@ -263,7 +267,7 @@ test('un empleado no invita ni crea negocios, y el alta con usuario y contraseñ
 });
 
 test('en Gratis no se invita: el plan es de un solo usuario', async () => {
-  const solo = await registrarEmpresa(servidor.url, { empresa: 'Medialunas', usuario: 'tomi', plan: 'gratis' });
+  const solo = await registrarEmpresa(servidor, { empresa: 'Medialunas', usuario: 'tomi', plan: 'gratis' });
   const r = await solo.post('/api/invitaciones', { email: 'ayuda@nexo.test' });
   assert.equal(r.status, 403, r.texto);
   assert.equal(r.json.codigo, 'limite_plan');

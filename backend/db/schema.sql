@@ -987,6 +987,31 @@ CREATE TABLE IF NOT EXISTS tokens_cuenta (
 );
 CREATE INDEX IF NOT EXISTS idx_tokens_cuenta_usuario ON tokens_cuenta(usuario_id, tipo);
 
+-- Códigos de 6 números que se mandan por mail para probar que el mail es de
+-- quien lo escribió ANTES de usarlo (hist. §108): al crear una cuenta
+-- (usuario_id NULL: todavía no existe) y al cambiar el mail de una cuenta
+-- (con usuario_id; el mail nuevo se guarda recién al confirmar). Vale solo el
+-- último código sin confirmar de cada mail (o cuenta) y propósito, 15 minutos
+-- y 5 intentos. Al acertar el del alta se entrega un comprobante
+-- (comprobante_hash, SHA-256 como tokens_cuenta) que POST /api/auth/registro
+-- gasta al crear la cuenta; `vence` pasa a ser el del comprobante. Es de la
+-- persona y no de un negocio, por eso no lleva organizacion_id. Horas en UTC.
+CREATE TABLE IF NOT EXISTS codigos_mail (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  proposito TEXT NOT NULL CHECK (proposito IN ('registro','cambiar_email')),
+  usuario_id INTEGER REFERENCES usuarios(id),
+  email TEXT NOT NULL,
+  codigo_hash TEXT NOT NULL,
+  intentos INTEGER NOT NULL DEFAULT 0,
+  creado TEXT NOT NULL DEFAULT (datetime('now')),
+  vence TEXT NOT NULL,
+  confirmado TEXT,
+  comprobante_hash TEXT UNIQUE,
+  usado TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_codigos_mail_email ON codigos_mail(email, proposito);
+CREATE INDEX IF NOT EXISTS idx_codigos_mail_usuario ON codigos_mail(usuario_id, proposito);
+
 -- En qué negocios trabaja cada usuario, y con qué rol en cada uno (CLAUDE.md
 -- §28, hist. §77): un dueño con un comercio y un gimnasio entra con un solo
 -- usuario y cambia de negocio. activo es la baja en ESE negocio, nunca

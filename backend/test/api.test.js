@@ -32,9 +32,9 @@ async function stockDe(admin, productoId) {
 
 before(async () => {
   servidor = await levantarServidor();
-  adminA = await registrarEmpresa(servidor.url, { empresa: 'Empresa A', usuario: 'admin-a' });
+  adminA = await registrarEmpresa(servidor, { empresa: 'Empresa A', usuario: 'admin-a' });
   empleadoA = await crearEmpleado(servidor, adminA, { usuario: 'emp-a' });
-  adminB = await registrarEmpresa(servidor.url, { empresa: 'Empresa B', usuario: 'admin-b' });
+  adminB = await registrarEmpresa(servidor, { empresa: 'Empresa B', usuario: 'admin-b' });
   productoA = await crearProducto(adminA, 'Remera A', 'SKU-A1', 10);
   productoB = await crearProducto(adminB, 'Remera B', 'SKU-B1', 10);
 });

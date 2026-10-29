@@ -2,10 +2,10 @@ import express from 'express';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createHash, scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError } from './interprete.js';
-import { esMailValido, mandarMail, plantillaMail } from './mail.js';
+import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
@@ -420,6 +420,101 @@ function mandarVerificacion(req, { usuarioId, nombre, email }) {
   mandarSinEsperar({ para: email, asunto: 'Confirmá tu mail de Nexo', texto, html });
 }
 
+/* ---------- Códigos por mail (hist. §108) ---------- */
+//
+// Un mail se usa recién cuando quien lo escribió prueba que es suyo, con el
+// código de 6 números que le llega: al crear la cuenta y al cambiarle el mail.
+// Antes la cuenta se creaba y el enlace de verificación se podía ignorar, así
+// que cualquiera tomaba el mail de otro (y su dueño ya no podía usarlo en
+// Nexo). Un código y no un enlace: se tipea en la misma pantalla del alta,
+// sin perder lo cargado, y anda igual si el mail se abre en el celular.
+
+const CODIGO_MINUTOS = 15;
+const CODIGO_INTENTOS = 5;
+// Lo que tiene quien acertó el código del alta para terminar los pasos que
+// siguen y crear la cuenta.
+const COMPROBANTE_HORAS = 2;
+const CODIGOS_POR_IP_POR_HORA = 10;
+const CODIGOS_POR_MAIL_POR_HORA = 5;
+const VERIFICACIONES_POR_IP_POR_HORA = 30;
+
+// Un código nuevo reemplaza al anterior del mismo mail (o cuenta) y propósito
+// que no se confirmó: vale el último que llegó. Uno ya confirmado no se
+// borra, así un tercero que pide códigos para ese mail no le invalida el alta
+// a quien ya lo confirmó.
+function crearCodigoMail({ proposito, email, usuarioId = null }) {
+  const codigo = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  db.prepare(
+    `DELETE FROM codigos_mail
+      WHERE proposito = ? AND usado IS NULL AND confirmado IS NULL
+        AND ${usuarioId ? 'usuario_id = ?' : 'usuario_id IS NULL AND email = ?'}`
+  ).run(proposito, usuarioId ?? email);
+  db.prepare(
+    `INSERT INTO codigos_mail (proposito, usuario_id, email, codigo_hash, vence)
+     VALUES (?, ?, ?, ?, datetime('now', ?))`
+  ).run(proposito, usuarioId, email, hashToken(codigo), `+${CODIGO_MINUTOS} minutes`);
+  return codigo;
+}
+
+// El último código sin usar de un alta (por mail) o de una cuenta.
+function ultimoCodigo({ proposito, email = null, usuarioId = null }) {
+  return (
+    db
+      .prepare(
+        `SELECT id, email, codigo_hash, intentos, vence <= datetime('now') AS vencido
+           FROM codigos_mail
+          WHERE proposito = ? AND usado IS NULL
+            AND ${usuarioId ? 'usuario_id = ?' : 'usuario_id IS NULL AND email = ?'}
+          ORDER BY id DESC LIMIT 1`
+      )
+      .get(proposito, usuarioId ?? email) ?? null
+  );
+}
+
+// Controla lo que tipeó contra el último código. Devuelve el error para la
+// persona, o null si acertó. Cada error cuenta: a los CODIGO_INTENTOS el
+// código no sirve más, así nadie prueba el millón de combinaciones.
+function errorDelCodigo(fila, codigo) {
+  if (!fila) return 'Pedí un código nuevo.';
+  if (fila.vencido) return 'El código venció. Pedí uno nuevo.';
+  if (fila.intentos >= CODIGO_INTENTOS) return 'Probaste demasiadas veces. Pedí un código nuevo.';
+  // Pegado del mail puede traer espacios o un guion en el medio.
+  const tipeado = (typeof codigo === 'string' || typeof codigo === 'number' ? String(codigo) : '').replace(/[\s-]/g, '');
+  if (/^\d{6}$/.test(tipeado) && timingSafeEqual(Buffer.from(hashToken(tipeado)), Buffer.from(fila.codigo_hash))) {
+    return null;
+  }
+  db.prepare('UPDATE codigos_mail SET intentos = intentos + 1 WHERE id = ?').run(fila.id);
+  const quedan = CODIGO_INTENTOS - fila.intentos - 1;
+  if (quedan <= 0) return 'El código no es correcto. Pedí uno nuevo.';
+  return `El código no es correcto. Te ${quedan === 1 ? 'queda 1 intento' : `quedan ${quedan} intentos`}.`;
+}
+
+// El código se manda esperando la respuesta de Gmail (no con
+// mandarSinEsperar): quien lo pidió está mirando la pantalla, y si el mail no
+// sale tiene que enterarse ahí. Sin el mail configurado y fuera de
+// producción, el código sale en la consola del servidor, así una instalación
+// de prueba se puede usar sin una cuenta de Gmail.
+async function mandarMailEsperando(datos, { paraLaConsola }) {
+  if (!mailConfigurado() && process.env.NODE_ENV !== 'production') {
+    console.log(`[mail sin configurar] ${datos.para}: ${paraLaConsola}`);
+    return;
+  }
+  await mandarMail(datos);
+}
+
+function mandarCodigo({ email, nombre, codigo, para }) {
+  const { texto, html } = plantillaMail({
+    titulo: 'Tu código de Nexo',
+    parrafos: [nombre ? `Hola, ${nombre}.` : 'Hola.', `Para ${para}, escribí este código en Nexo:`],
+    codigo,
+    pie: `Vence en ${CODIGO_MINUTOS} minutos. Si no fuiste vos, ignorá este mail: sin el código nadie puede usar tu mail en Nexo.`
+  });
+  return mandarMailEsperando(
+    { para: email, asunto: `${codigo} es tu código de Nexo`, texto, html },
+    { paraLaConsola: `código ${codigo}` }
+  );
+}
+
 // Wrapper de registrarAuditoria que agrega automáticamente quién operó.
 // Explícito, no AsyncLocalStorage: como `req` ya está en scope en los ~44
 // sitios que auditan (todos viven dentro de un handler `(req, res) => {`),
@@ -457,7 +552,7 @@ function auditar(req, datos) {
 // Lo único que puede hacer una cuenta sin mail, o sin los términos vigentes
 // aceptados (ver autenticar). El mail va antes que los términos en sesion.js,
 // por eso sumarlo también se puede sin haberlos aceptado.
-const RUTAS_SIN_MAIL = new Set(['/auth/email', '/auth/logout', '/auth/cambiar-password']);
+const RUTAS_SIN_MAIL = new Set(['/auth/email', '/auth/email/confirmar', '/auth/logout', '/auth/cambiar-password']);
 const RUTAS_SIN_TERMINOS = new Set([...RUTAS_SIN_MAIL, '/auth/terminos']);
 
 function autenticar(req, res, next) {
@@ -824,14 +919,87 @@ function textoAceptacion(edad) {
 }
 const MENOR_SOLO_GRATIS = 'Con menos de 18 años, el negocio arranca en el plan Gratis. Un plan pago lo tiene que contratar un mayor de edad.';
 
+// Paso 1 del alta (hist. §108): el código al mail que escribió. Responde lo
+// mismo exista o no una cuenta con ese mail, para que el alta no sirva para
+// averiguar quién usa Nexo (como recuperar la contraseña). Si ya existe, en
+// vez del código le llega a su dueño un aviso para entrar o recuperar la
+// contraseña.
+app.post('/api/auth/registro/codigo', async (req, res) => {
+  const email = normalizarMail(req.body?.email);
+  if (!esMailValido(email)) {
+    return res.status(400).json({ error: 'Revisá el mail: tiene que ser como nombre@dominio.com.' });
+  }
+  if (
+    registroExcedido(`codigo:${req.ip}`, CODIGOS_POR_IP_POR_HORA) ||
+    registroExcedido(`codigo-mail:${email}`, CODIGOS_POR_MAIL_POR_HORA)
+  ) {
+    return res.status(429).json({ error: 'Pediste demasiados códigos. Probá de nuevo en una hora.' });
+  }
+  try {
+    if (mailEnUso(email)) {
+      const { texto, html } = plantillaMail({
+        titulo: 'Ya tenés una cuenta en Nexo',
+        parrafos: [
+          'Alguien, seguramente vos, quiso crear una cuenta de Nexo con este mail, pero ya hay una.',
+          'Entrá con este mail y tu contraseña. Si no te acordás de la contraseña, la recuperás desde la misma pantalla de ingreso.'
+        ],
+        boton: { texto: 'Ir a Nexo', url: `${urlPublica(req)}/app` },
+        pie: 'Si no fuiste vos, podés ignorar este mail: tu cuenta sigue igual.'
+      });
+      await mandarMailEsperando(
+        { para: email, asunto: 'Ya tenés una cuenta en Nexo', texto, html },
+        { paraLaConsola: 'ya tiene cuenta, se le avisó' }
+      );
+    } else {
+      await mandarCodigo({ email, codigo: crearCodigoMail({ proposito: 'registro', email }), para: 'crear tu cuenta' });
+    }
+  } catch (err) {
+    console.error(`No se pudo mandar el código del alta: ${err.message}`);
+    return res.status(503).json({ error: 'No pudimos mandarte el mail. Probá de nuevo en unos minutos.' });
+  }
+  res.status(204).end();
+});
+
+// Paso 2 del alta: el código que llegó. Acertarlo da el comprobante que
+// POST /api/auth/registro gasta al final de los pasos.
+app.post('/api/auth/registro/verificar', (req, res) => {
+  if (registroExcedido(`verificar:${req.ip}`, VERIFICACIONES_POR_IP_POR_HORA)) {
+    return res.status(429).json({ error: 'Demasiados intentos. Probá de nuevo en una hora.' });
+  }
+  const email = normalizarMail(req.body?.email);
+  const fila = esMailValido(email) ? ultimoCodigo({ proposito: 'registro', email }) : null;
+  const error = errorDelCodigo(fila, req.body?.codigo);
+  if (error) {
+    return res.status(400).json({ error });
+  }
+  const comprobante = randomBytes(32).toString('base64url');
+  db.prepare(
+    `UPDATE codigos_mail SET confirmado = datetime('now'), comprobante_hash = ?, vence = datetime('now', ?) WHERE id = ?`
+  ).run(hashToken(comprobante), `+${COMPROBANTE_HORAS} hours`, fila.id);
+  res.json({ comprobante });
+});
+
+// El comprobante del alta para ese mail, si sigue sirviendo.
+function comprobanteDeAlta(email, comprobante) {
+  if (typeof comprobante !== 'string' || !comprobante || comprobante.length > 100) return null;
+  return (
+    db
+      .prepare(
+        `SELECT id FROM codigos_mail
+          WHERE comprobante_hash = ? AND proposito = 'registro' AND email = ?
+            AND usado IS NULL AND vence > datetime('now')`
+      )
+      .get(hashToken(comprobante), email) ?? null
+  );
+}
+
 // Alta de empresa (CLAUDE.md §28): cualquiera crea su negocio y queda como su
 // primer admin. Reemplaza al viejo /api/auth/bootstrap, que era el caso
 // particular "instalación nueva, primera empresa".
 //
-// Riesgo aceptado y documentado acá para que no se lea como un olvido: la
-// cuenta se crea y se usa antes de verificar el mail (el enlace llega por
-// mail y la app avisa hasta que se toca, hist. §102), y no hay captcha, solo
-// el rate limit por IP de arriba. Apagar el registro público es la Fase 4 de
+// La cuenta nace con el mail confirmado: el alta pide antes el código que le
+// llegó (hist. §108, `comprobante_email`). No hay captcha: lo frenan los topes
+// por IP de arriba y el del mail. Apagar el registro público es la Fase 4 de
 // la etapa 8b (handoff.md).
 app.post('/api/auth/registro', (req, res) => {
   if (registroExcedido(req.ip)) {
@@ -884,9 +1052,18 @@ app.post('/api/auth/registro', (req, res) => {
   if (aceptacion.edad === 'menor_autorizado' && PLANES[plan].precio > 0) {
     return res.status(400).json({ error: MENOR_SOLO_GRATIS });
   }
+  // El mail ya confirmado con el código (hist. §108).
+  const confirmacion = comprobanteDeAlta(email, req.body?.comprobante_email);
+  if (!confirmacion) {
+    return res.status(400).json({
+      error: 'Confirmá tu mail con el código que te mandamos antes de crear la cuenta.',
+      codigo: 'mail_sin_confirmar'
+    });
+  }
 
   // Global a propósito: el mail es único en todo Nexo y el login no pide
-  // empresa (hist. §45, §102).
+  // empresa (hist. §45, §102). Con el código confirmado solo pasa si otra
+  // cuenta tomó el mail mientras tanto.
   if (mailEnUso(email)) {
     return res.status(409).json({ error: 'Ya hay una cuenta con ese mail. Entrá con él, o usá otro.' });
   }
@@ -894,6 +1071,7 @@ app.post('/api/auth/registro', (req, res) => {
   let usuarioId;
   let orgId;
   withTransaction(() => {
+    db.prepare("UPDATE codigos_mail SET usado = datetime('now') WHERE id = ?").run(confirmacion.id);
     const { hash, salt } = hashPassword(password);
     // Instalación nueva: todavía no hay ningún usuario, así que se adopta la
     // organización que db/index.js sembró al arrancar en vez de dejarla
@@ -915,8 +1093,8 @@ app.post('/api/auth/registro', (req, res) => {
     const info = db
       .prepare(
         `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email,
-                               terminos_version, terminos_aceptados, edad)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now'), ?)`
+                               email_verificado, terminos_version, terminos_aceptados, edad)
+         VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'), ?, datetime('now'), ?)`
       )
       .run(orgId, usuario, nombre, hash, salt, email, TERMINOS_VERSION, aceptacion.edad);
     usuarioId = Number(info.lastInsertRowid);
@@ -944,7 +1122,7 @@ app.post('/api/auth/registro', (req, res) => {
 
   const token = crearSesion(usuarioId, orgId);
   ponerCookieSesion(res, token);
-  mandarVerificacion(req, { usuarioId, nombre, email });
+  const { email_verificado: emailVerificado } = db.prepare('SELECT email_verificado FROM usuarios WHERE id = ?').get(usuarioId);
   res.status(201).json({
     usuario: datosUsuario({
       id: usuarioId,
@@ -954,7 +1132,7 @@ app.post('/api/auth/registro', (req, res) => {
       debe_cambiar_password: 0,
       organizacion_id: orgId,
       email,
-      email_verificado: null,
+      email_verificado: emailVerificado,
       terminos_version: TERMINOS_VERSION,
       edad: aceptacion.edad
     })
@@ -10375,7 +10553,7 @@ app.post('/api/auth/terminos', (req, res) => {
   res.json({ usuario: datosUsuario({ ...req.usuario, terminos_version: TERMINOS_VERSION, edad }) });
 });
 
-app.post('/api/auth/email', (req, res) => {
+app.post('/api/auth/email', async (req, res) => {
   const email = normalizarMail(req.body?.email);
   if (!esMailValido(email)) {
     return res.status(400).json({ error: 'Escribí un mail válido.' });
@@ -10403,13 +10581,44 @@ app.post('/api/auth/email', (req, res) => {
     return res.status(409).json({ error: 'Ese mail ya lo usa otra cuenta de Nexo.' });
   }
 
+  // El mail nuevo se guarda recién cuando llega el código (hist. §108): hasta
+  // entonces la cuenta sigue con el de antes.
+  try {
+    await mandarCodigo({
+      email,
+      nombre: cuenta.nombre,
+      codigo: crearCodigoMail({ proposito: 'cambiar_email', email, usuarioId: cuenta.id }),
+      para: cuenta.email ? 'cambiar el mail de tu cuenta' : 'sumar este mail a tu cuenta'
+    });
+  } catch (err) {
+    console.error(`No se pudo mandar el código del cambio de mail: ${err.message}`);
+    return res.status(503).json({ error: 'No pudimos mandarte el mail. Probá de nuevo en unos minutos.' });
+  }
+  res.status(202).json({ pendiente: email });
+});
+
+// El código del mail nuevo: recién acá cambia, y queda confirmado.
+app.post('/api/auth/email/confirmar', (req, res) => {
+  const cuenta = db.prepare('SELECT id, nombre, email FROM usuarios WHERE id = ?').get(req.usuario.id);
+  const fila = ultimoCodigo({ proposito: 'cambiar_email', usuarioId: cuenta.id });
+  const error = errorDelCodigo(fila, req.body?.codigo);
+  if (error) {
+    return res.status(400).json({ error });
+  }
+  const { email } = fila;
+  // Otra cuenta pudo tomarlo en estos minutos.
+  if (mailEnUso(email, cuenta.id)) {
+    return res.status(409).json({ error: 'Ese mail ya lo usa otra cuenta de Nexo.' });
+  }
+
   withTransaction(() => {
+    db.prepare("UPDATE codigos_mail SET usado = datetime('now') WHERE id = ?").run(fila.id);
     // En una cuenta nueva el usuario es el mail (ver el alta): si no lo sigue,
     // el mail viejo seguiría entrando y nadie más podría usarlo. El usuario de
     // una cuenta de antes de §102 ("dani") no se toca.
     db.prepare(
       `UPDATE usuarios
-          SET email = ?1, email_verificado = NULL,
+          SET email = ?1, email_verificado = datetime('now'),
               usuario = CASE WHEN LOWER(usuario) = LOWER(email) THEN ?1 ELSE usuario END
         WHERE id = ?2`
     ).run(email, cuenta.id);
@@ -10419,11 +10628,10 @@ app.post('/api/auth/email', (req, res) => {
       entidad_id: cuenta.id,
       valor_anterior: cuenta.email ? JSON.stringify({ email: cuenta.email }) : null,
       valor_nuevo: JSON.stringify({ email }),
-      detalle: cuenta.email ? 'Cambió su mail' : 'Sumó su mail'
+      detalle: `${cuenta.email ? 'Cambió su mail' : 'Sumó su mail'}, confirmado con el código`
     });
   });
 
-  mandarVerificacion(req, { usuarioId: cuenta.id, nombre: cuenta.nombre, email });
   if (cuenta.email) {
     const { texto, html } = plantillaMail({
       titulo: 'Cambió el mail de tu cuenta',
@@ -10436,7 +10644,8 @@ app.post('/api/auth/email', (req, res) => {
     });
     mandarSinEsperar({ para: cuenta.email, asunto: 'Cambió el mail de tu cuenta de Nexo', texto, html });
   }
-  res.json({ usuario: datosUsuario({ ...req.usuario, email, email_verificado: null }) });
+  const { email_verificado: emailVerificado } = db.prepare('SELECT email_verificado FROM usuarios WHERE id = ?').get(cuenta.id);
+  res.json({ usuario: datosUsuario({ ...req.usuario, email, email_verificado: emailVerificado }) });
 });
 
 // Otro enlace de verificación, desde el aviso del Resumen o Mi cuenta. Mismo

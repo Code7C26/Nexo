@@ -11,6 +11,7 @@ import { icono } from "../core/iconos.js";
 import { avisar } from "../core/ui.js";
 import { alEntrarEnVista, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
+import { codigoCompleto, esperarParaReenviar, prepararCampoCodigo } from "../core/codigo.js";
 
 // Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
 // data-usuario-nombre/data-usuario-rol en el pie de la sidebar): leerlos de
@@ -23,6 +24,8 @@ function pintarCuenta() {
   perfilRolEl.className = "status"; // un rol no es bueno ni malo: gris, como en Usuarios
   document.getElementById("cambioPasswordError").hidden = true;
   document.getElementById("cambioMailError").hidden = true;
+  // Un cambio de mail a medias no sigue abierto al volver a la página.
+  if (mailPendiente) pasoDelCodigo(null);
   pintarMail();
 }
 registrar("pintar:cuenta", pintarCuenta);
@@ -69,36 +72,113 @@ avisoMailEl.addEventListener("click", (e) => {
   if (boton) reenviarMail(boton);
 });
 
-document.getElementById("formCambioMail").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const errorEl = document.getElementById("cambioMailError");
-  const email = form.perfilEmailNuevo.value.trim();
-  errorEl.hidden = true;
-  const error = (texto) => {
-    errorEl.textContent = texto;
-    errorEl.hidden = false;
-  };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return error("Revisá el mail nuevo: tiene que ser como nombre@dominio.com.");
-  if (!form.perfilEmailPassword.value) return error("Escribí tu contraseña para cambiar el mail.");
+// Cambiar el mail es en dos pasos dentro de la misma tarjeta (hist. §108): el
+// mail nuevo con la contraseña, y el código que llega a ese mail. Hasta el
+// código, la cuenta sigue con el de antes.
+const formCambioMail = document.getElementById("formCambioMail");
+const inputCodigo = document.getElementById("perfilCodigo");
+const botonReenviarCodigo = document.getElementById("perfilReenviarCodigo");
+let mailPendiente = null;
+let cortarEspera = null;
 
-  // Como la contraseña: el error va en la propia página, no en un toast.
-  let res;
+function errorDelMail(texto) {
+  const errorEl = document.getElementById("cambioMailError");
+  errorEl.textContent = texto;
+  errorEl.hidden = !texto;
+}
+
+// Como la contraseña: el error va en la propia página, no en un toast.
+async function postEnLaPagina(url, cuerpo) {
   try {
-    res = await fetch("/api/auth/email", {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password: form.perfilEmailPassword.value })
+      body: JSON.stringify(cuerpo)
     });
+    return { ok: res.ok, datos: await res.json().catch(() => ({})) };
   } catch {
-    return error("Sin conexión con el servidor. Revisá la red y volvé a intentar.");
+    return { ok: false, datos: { error: "Sin conexión con el servidor. Revisá la red y volvé a intentar." } };
   }
-  const datos = await res.json().catch(() => ({}));
-  if (!res.ok) return error(datos.error || "No se pudo cambiar el mail.");
+}
 
-  form.reset();
-  avisar(`Listo. Te mandamos un enlace a ${datos.usuario.email} para confirmarlo.`, "ok");
-  pintarMail();
+function pasoDelCodigo(email) {
+  mailPendiente = email;
+  document.getElementById("perfilMailCampos").hidden = !!email;
+  document.getElementById("perfilCodigoBloque").hidden = !email;
+  document.getElementById("perfilMailPie").textContent = email
+    ? "Hasta que lo confirmes, seguís entrando con tu mail de ahora."
+    : "Te mandamos un código al mail nuevo, y un aviso al de ahora.";
+  document.getElementById("perfilMailEnviar").textContent = email ? "Confirmar" : "Cambiar mi mail";
+  if (!email) {
+    cortarEspera?.();
+    formCambioMail.reset();
+    return;
+  }
+  const destacado = document.createElement("strong");
+  destacado.textContent = email;
+  document
+    .getElementById("perfilCodigoTexto")
+    .replaceChildren("Te mandamos un código de 6 números a ", destacado, ". Escribilo acá para confirmar el cambio.");
+  inputCodigo.value = "";
+  inputCodigo.focus();
+}
+
+// Pide el código para el mail y la contraseña del formulario. Devuelve el
+// error, o null si salió.
+async function pedirCodigo(email) {
+  const { ok, datos } = await postEnLaPagina("/api/auth/email", { email, password: formCambioMail.perfilEmailPassword.value });
+  if (!ok) return datos.error || "No se pudo mandar el código.";
+  cortarEspera?.();
+  cortarEspera = esperarParaReenviar(botonReenviarCodigo);
+  return null;
+}
+
+formCambioMail.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const boton = document.getElementById("perfilMailEnviar");
+  if (boton.disabled) return;
+  errorDelMail("");
+  boton.disabled = true;
+  try {
+    if (mailPendiente) {
+      if (!codigoCompleto(inputCodigo)) return errorDelMail("Escribí los 6 números del código que te mandamos.");
+      const { ok, datos } = await postEnLaPagina("/api/auth/email/confirmar", { codigo: inputCodigo.value });
+      if (!ok) {
+        errorDelMail(datos.error || "No se pudo confirmar el código.");
+        return inputCodigo.focus();
+      }
+      pasoDelCodigo(null);
+      avisar(`Listo: tu mail ahora es ${datos.usuario.email}.`, "ok");
+      pintarMail();
+      return;
+    }
+    const email = formCambioMail.perfilEmailNuevo.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return errorDelMail("Revisá el mail nuevo: tiene que ser como nombre@dominio.com.");
+    if (!formCambioMail.perfilEmailPassword.value) return errorDelMail("Escribí tu contraseña para cambiar el mail.");
+    const error = await pedirCodigo(email);
+    if (error) return errorDelMail(error);
+    pasoDelCodigo(email);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+prepararCampoCodigo(inputCodigo, () => formCambioMail.requestSubmit());
+
+botonReenviarCodigo.addEventListener("click", async () => {
+  errorDelMail("");
+  botonReenviarCodigo.disabled = true;
+  const error = await pedirCodigo(mailPendiente);
+  if (error) {
+    botonReenviarCodigo.disabled = false;
+    return errorDelMail(error);
+  }
+  inputCodigo.focus();
+});
+
+document.getElementById("perfilCancelarCodigo").addEventListener("click", () => {
+  errorDelMail("");
+  pasoDelCodigo(null);
 });
 
 document.getElementById("btnPerfil").addEventListener("click", () => {

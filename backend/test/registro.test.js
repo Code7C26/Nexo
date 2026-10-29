@@ -5,7 +5,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ACEPTA, crearCliente, levantarServidor } from './servidor-de-prueba.js';
+import { ACEPTA, confirmarMailDeAlta, crearCliente, levantarServidor } from './servidor-de-prueba.js';
 
 let servidor;
 
@@ -39,6 +39,7 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
     empresa: 'La Vaquita',
     nombre: 'Marta',
     email_cuenta: 'marta@nexo.test',
+    comprobante_email: await confirmarMailDeAlta(servidor, 'marta@nexo.test'),
     password: 'clave-segura-1',
     rubro: 'carniceria',
     modulos: ['pos'],
@@ -65,6 +66,7 @@ test('el alta guarda el tipo, los módulos y los datos de los comprobantes', asy
     empresa: 'Kiosco Pepe',
     nombre: 'Pepe',
     email_cuenta: 'pepe@nexo.test',
+    comprobante_email: await confirmarMailDeAlta(servidor, 'pepe@nexo.test'),
     password: 'clave-segura-1',
     rubro: 'kiosco',
     condicion_iva: 'responsable_inscripto'

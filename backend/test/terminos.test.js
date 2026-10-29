@@ -8,7 +8,7 @@ import path from 'node:path';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
-import { ACEPTA, crearCliente, levantarServidor, registrarEmpresa, tokenDeInvitacion } from './servidor-de-prueba.js';
+import { ACEPTA, confirmarMailDeAlta, crearCliente, levantarServidor, registrarEmpresa, tokenDeInvitacion } from './servidor-de-prueba.js';
 import { TERMINOS_VERSION } from '../legal.js';
 
 let servidor;
@@ -25,7 +25,7 @@ before(async () => {
       NEXO_TITULAR_DOMICILIO: ''
     }
   });
-  ana = await registrarEmpresa(servidor.url, { empresa: 'Almacén Ana', usuario: 'ana' });
+  ana = await registrarEmpresa(servidor, { empresa: 'Almacén Ana', usuario: 'ana' });
 });
 
 after(async () => {
@@ -49,6 +49,9 @@ const alta = (cuerpo) =>
     { empresa: 'Negocio', nombre: 'Persona', password: 'clave-segura-1', ...cuerpo },
     { 'x-forwarded-for': `10.0.0.${++ipDePrueba}` }
   );
+// La que tiene que crear la cuenta lleva antes el mail confirmado (hist. §108).
+const altaConfirmada = async (cuerpo) =>
+  alta({ ...cuerpo, comprobante_email: await confirmarMailDeAlta(servidor, cuerpo.email_cuenta) });
 
 test('el alta sin la casilla o sin la edad no crea nada', async () => {
   const sinCasilla = await alta({ email_cuenta: 't1@nexo.test', edad: 'mayor' });
@@ -64,7 +67,7 @@ test('el alta sin la casilla o sin la edad no crea nada', async () => {
 });
 
 test('el alta guarda la versión, la fecha y la edad, y lo deja en la auditoría', async () => {
-  const r = await alta({ ...ACEPTA, email_cuenta: 'lu@nexo.test' });
+  const r = await altaConfirmada({ ...ACEPTA, email_cuenta: 'lu@nexo.test' });
   assert.equal(r.status, 201, r.texto);
   assert.equal(r.json.usuario.terminos_al_dia, true);
   assert.equal(r.json.usuario.edad, 'mayor');
@@ -84,7 +87,7 @@ test('de 13 a 17 años se entra solo en Gratis', async () => {
   const pago = await alta({ ...ACEPTA, edad: 'menor_autorizado', email_cuenta: 'teo@nexo.test', plan: 'pro' });
   assert.equal(pago.status, 400, pago.texto);
   assert.match(pago.json.error, /Gratis/);
-  const gratis = await alta({ ...ACEPTA, edad: 'menor_autorizado', email_cuenta: 'teo@nexo.test', plan: 'gratis' });
+  const gratis = await altaConfirmada({ ...ACEPTA, edad: 'menor_autorizado', email_cuenta: 'teo@nexo.test', plan: 'gratis' });
   assert.equal(gratis.status, 201, gratis.texto);
   assert.equal(gratis.json.usuario.edad, 'menor_autorizado');
   const plan = enBase((base) => base.prepare('SELECT plan FROM organizaciones WHERE id = ?').get(gratis.json.usuario.organizacion_id).plan);

@@ -29,6 +29,7 @@
   // script declara una variable con el mismo nombre.
   const formCambioForzado = document.getElementById("formCambioForzado");
   const formSumarMail = document.getElementById("formSumarMail");
+  const formSumarMailCodigo = document.getElementById("formSumarMailCodigo");
   const formTerminos = document.getElementById("formTerminos");
   const sinNegocio = document.getElementById("sinNegocio");
   const pantallaInvitacion = document.getElementById("invitacion");
@@ -185,6 +186,7 @@
     formLogin.hidden = cual !== "login";
     formCambioForzado.hidden = cual !== "cambio";
     formSumarMail.hidden = cual !== "mail";
+    formSumarMailCodigo.hidden = cual !== "mail-codigo";
     formTerminos.hidden = cual !== "terminos";
     sinNegocio.hidden = cual !== "sin-negocio";
     pantallaInvitacion.hidden = cual !== "invitacion";
@@ -192,6 +194,7 @@
     recuperarEnviado.hidden = cual !== "recuperar-enviado";
     formRestablecer.hidden = cual !== "restablecer";
     if (cual === "mail") document.getElementById("sumarMailEmail").focus();
+    if (cual === "mail-codigo") document.getElementById("sumarMailCodigo").focus();
   }
 
   // Lo que falta antes de la app, en orden: la contraseña propia (cuando el
@@ -414,26 +417,97 @@
     const boton = formSumarMail.querySelector('button[type="submit"]');
     boton.disabled = true;
     try {
-      const res = await fetchOriginal("/api/auth/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      const datos = await res.json();
-      if (!res.ok) {
-        mostrarErrorEn("sumarMailError", datos.error || "No se pudo guardar el mail.");
-        return;
-      }
-      guardarAviso(`Te mandamos un enlace a ${datos.usuario.email} para confirmarlo.`);
-      seguirCon({ ...usuarioPendiente, ...datos.usuario });
-    } catch {
-      mostrarErrorEn("sumarMailError", "No se pudo conectar con el servidor.");
+      const error = await mandarCodigoSumarMail(email);
+      if (error) return mostrarErrorEn("sumarMailError", error);
+      mostrarCodigoSumarMail(email);
     } finally {
       boton.disabled = false;
     }
   });
 
   document.getElementById("sumarMailSalir").addEventListener("click", () => window.nexoCerrarSesion());
+
+  // El código que llegó al mail que se suma (hist. §108): recién con él el
+  // mail queda en la cuenta. El campo lo arma core/codigo.js, que se baja
+  // recién acá, como core/aceptacion.js.
+  const inputCodigoSumarMail = document.getElementById("sumarMailCodigo");
+  const botonReenviarSumarMail = document.getElementById("sumarMailReenviar");
+  let mailPorSumar = null;
+  let cortarEsperaSumarMail = null;
+  let moduloCodigo = null;
+  const codigoUi = () =>
+    (moduloCodigo ??= import("./core/codigo.js").then((m) => {
+      m.prepararCampoCodigo(inputCodigoSumarMail, () => formSumarMailCodigo.requestSubmit());
+      return m;
+    }));
+
+  // Devuelve el error para mostrar, o null si el código salió.
+  async function mandarCodigoSumarMail(email) {
+    try {
+      const { res, datos } = await postJson("/api/auth/email", { email });
+      if (!res.ok) return datos.error || "No se pudo mandar el código.";
+      mailPorSumar = email;
+      inputCodigoSumarMail.value = "";
+      const { esperarParaReenviar } = await codigoUi();
+      cortarEsperaSumarMail?.();
+      cortarEsperaSumarMail = esperarParaReenviar(botonReenviarSumarMail);
+      return null;
+    } catch {
+      return "No se pudo conectar con el servidor.";
+    }
+  }
+
+  function mostrarCodigoSumarMail(email) {
+    const destacado = document.createElement("strong");
+    destacado.textContent = email;
+    document
+      .getElementById("sumarMailCodigoTexto")
+      .replaceChildren("Te mandamos un código de 6 números a ", destacado, ". Escribilo acá para confirmar que el mail es tuyo.");
+    ocultarErrorEn("sumarMailCodigoError");
+    mostrarPantalla("mail-codigo");
+  }
+
+  formSumarMailCodigo.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    ocultarErrorEn("sumarMailCodigoError");
+    const boton = formSumarMailCodigo.querySelector('button[type="submit"]');
+    if (boton.disabled) return;
+    if (!/^\d{6}$/.test(inputCodigoSumarMail.value)) {
+      return mostrarErrorEn("sumarMailCodigoError", "Escribí los 6 números del código que te mandamos.");
+    }
+    boton.disabled = true;
+    try {
+      const { res, datos } = await postJson("/api/auth/email/confirmar", { codigo: inputCodigoSumarMail.value });
+      if (!res.ok) {
+        mostrarErrorEn("sumarMailCodigoError", datos.error || "No se pudo confirmar el código.");
+        inputCodigoSumarMail.focus();
+        return;
+      }
+      cortarEsperaSumarMail?.();
+      guardarAviso(`Listo: tu mail ${datos.usuario.email} quedó confirmado.`);
+      seguirCon({ ...usuarioPendiente, ...datos.usuario });
+    } catch {
+      mostrarErrorEn("sumarMailCodigoError", "No se pudo conectar con el servidor.");
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  botonReenviarSumarMail.addEventListener("click", async () => {
+    ocultarErrorEn("sumarMailCodigoError");
+    botonReenviarSumarMail.disabled = true;
+    const error = await mandarCodigoSumarMail(mailPorSumar);
+    if (error) {
+      botonReenviarSumarMail.disabled = false;
+      return mostrarErrorEn("sumarMailCodigoError", error);
+    }
+    inputCodigoSumarMail.focus();
+  });
+
+  document.getElementById("sumarMailCambiar").addEventListener("click", () => {
+    ocultarErrorEn("sumarMailError");
+    mostrarPantalla("mail");
+  });
 
   // ---------- Términos y edad (etapa 8b, Fase 3) ----------
 

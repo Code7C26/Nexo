@@ -109,13 +109,15 @@ const escaparHtml = (texto) =>
 // El cuerpo de todos los mails de Nexo: el texto plano y el HTML salen de los
 // mismos datos. Estilos en línea (los clientes de mail ignoran los <style>) y
 // sin imágenes, que muchos bloquean hasta que se las deja ver. `boton` es
-// { texto, url }.
-export function plantillaMail({ titulo, parrafos, boton, pie }) {
+// { texto, url }; `codigo`, uno de los que se tipean en Nexo (hist. §108), que
+// va grande y separado para leerlo de un vistazo.
+export function plantillaMail({ titulo, parrafos, codigo, boton, pie }) {
   const pieTexto = pie ?? 'Si no fuiste vos, podés ignorar este mail.';
   const texto = [
     titulo,
     '',
     ...parrafos.flatMap((p) => [p, '']),
+    ...(codigo ? [codigo, ''] : []),
     ...(boton ? [`${boton.texto}: ${boton.url}`, ''] : []),
     pieTexto,
     '',
@@ -127,6 +129,11 @@ export function plantillaMail({ titulo, parrafos, boton, pie }) {
 <div style="padding:24px">
 <h1 style="margin:0 0 16px;font-size:20px">${escaparHtml(titulo)}</h1>
 ${parrafos.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5">${escaparHtml(p)}</p>`).join('\n')}
+${
+  codigo
+    ? `<p style="margin:20px 0;padding:16px;background:#f5f5f5;border-radius:8px;text-align:center;font-size:32px;font-weight:bold;letter-spacing:8px;font-family:'Courier New',monospace">${escaparHtml(codigo)}</p>`
+    : ''
+}
 ${
   boton
     ? `<p style="margin:20px 0"><a href="${escaparHtml(boton.url)}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-size:15px">${escaparHtml(boton.texto)}</a></p>

@@ -16,7 +16,7 @@ let ana;
 
 before(async () => {
   servidor = await levantarServidor();
-  ana = await registrarEmpresa(servidor.url, { empresa: 'Almacén Ana', usuario: 'ana' });
+  ana = await registrarEmpresa(servidor, { empresa: 'Almacén Ana', usuario: 'ana' });
 });
 
 after(async () => {
@@ -56,6 +56,8 @@ test('pedir el enlace responde lo mismo exista o no la cuenta, y solo le llega a
 });
 
 test('el enlace cambia la contraseña una sola vez, cierra las sesiones, confirma el mail y avisa', async () => {
+  // Una cuenta de antes de hist. §108, que nacía con el mail sin confirmar.
+  enBase((base) => base.prepare("UPDATE usuarios SET email_verificado = NULL WHERE email = 'ana@nexo.test'").run());
   assert.equal((await ana.get('/api/auth/estado')).json.usuario.email_verificado, false);
   await pedir('ana@nexo.test');
   const token = tokenDeRecuperacion('ana@nexo.test');
@@ -95,7 +97,7 @@ test('el enlace cambia la contraseña una sola vez, cierra las sesiones, confirm
 
 // Con otra cuenta: Ana ya pidió dos, y el tope es de tres por hora.
 test('un enlace vencido no sirve, y pedir otro deja sin efecto el anterior', async () => {
-  await registrarEmpresa(servidor.url, { empresa: 'Kiosco Beto', usuario: 'beto' });
+  await registrarEmpresa(servidor, { empresa: 'Kiosco Beto', usuario: 'beto' });
   await pedir('beto@nexo.test');
   const primero = tokenDeRecuperacion('beto@nexo.test');
   await pedir('beto@nexo.test');

@@ -9,7 +9,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { ACEPTA, levantarServidor } from './servidor-de-prueba.js';
+import { ACEPTA, confirmarMailDeAlta, levantarServidor } from './servidor-de-prueba.js';
 import { PLANES } from '../planes.js';
 
 const RAIZ = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -58,7 +58,14 @@ test('con sesión, "/" lleva a /app; /app es la app y /index.html redirige', asy
   const registro = await fetch(`${servidor.url}/api/auth/registro`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ empresa: 'Landing SA', email_cuenta: 'landing@nexo.test', nombre: 'Admin', password: 'clave-segura-1', ...ACEPTA })
+    body: JSON.stringify({
+      empresa: 'Landing SA',
+      email_cuenta: 'landing@nexo.test',
+      comprobante_email: await confirmarMailDeAlta(servidor, 'landing@nexo.test'),
+      nombre: 'Admin',
+      password: 'clave-segura-1',
+      ...ACEPTA
+    })
   });
   assert.equal(registro.status, 201);
   const cookie = registro.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');

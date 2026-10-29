@@ -25,7 +25,7 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { RUTAS_PERMISOS } from '../backend/permisos.js';
-import { crearCliente, levantarServidor } from '../backend/test/servidor-de-prueba.js';
+import { codigoDelMail, crearCliente, levantarServidor } from '../backend/test/servidor-de-prueba.js';
 import { copiarBase, md5, raiz, rutaBaseReal } from './lib/base-real.mjs';
 import { PASSWORD_ADMIN, PASSWORD_EMPLEADO } from './seed.mjs';
 
@@ -105,7 +105,8 @@ function git(...args) {
 // Si la cuenta no tiene mail y el servidor lo pide (el árbol con una base de
 // antes de §102), se lo suma, como haría la persona al entrar: eso deja sus
 // filas en la auditoría y el mail en Usuarios, diferencias esperadas.
-async function login(url, usuario, password) {
+async function login(servidor, usuario, password) {
+  const { url } = servidor;
   const email = `${usuario}@nexo.test`;
   let cliente = crearCliente(url);
   let r = await cliente.post('/api/auth/login', { email, password });
@@ -117,7 +118,9 @@ async function login(url, usuario, password) {
   }
   if (r.status !== 200) throw new Error(`Login de ${usuario} falló en ${url} (${r.status}): ${r.texto}`);
   if (r.json.usuario.email === null) {
-    const suma = await cliente.post('/api/auth/email', { email });
+    let suma = await cliente.post('/api/auth/email', { email });
+    // Desde hist. §108 el mail queda recién con el código que le llega (202).
+    if (suma.status === 202) suma = await cliente.post('/api/auth/email/confirmar', { codigo: codigoDelMail(servidor, email) });
     if (suma.status !== 200) throw new Error(`Sumar el mail de ${usuario} falló en ${url} (${suma.status}): ${suma.texto}`);
   }
   return cliente;
@@ -199,7 +202,7 @@ async function principal() {
       const servidor = await levantarServidor({ backendDir, dbPath });
       servidores.push(servidor);
       const clientes = {};
-      for (const [rol, usuario, password] of sesiones) clientes[rol] = await login(servidor.url, usuario, password);
+      for (const [rol, usuario, password] of sesiones) clientes[rol] = await login(servidor, usuario, password);
       versiones[nombre] = clientes;
     }
 

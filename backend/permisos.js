@@ -38,6 +38,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
   'POST /api/auth/registro': 'publico',
+  // El código al mail del alta (hist. §108): todavía no hay cuenta.
+  'POST /api/auth/registro/codigo': 'publico',
+  'POST /api/auth/registro/verificar': 'publico',
   'GET /api/auth/tipos-negocio': 'publico',
   'GET /api/auth/planes': 'publico',
   'POST /api/publico/consulta': 'publico',
@@ -214,6 +217,7 @@ export const RUTAS_PERMISOS = {
   'POST /api/auth/cambiar-password': 'ambos',
   // El mail de la cuenta propia (hist. §102).
   'POST /api/auth/email': 'ambos',
+  'POST /api/auth/email/confirmar': 'ambos',
   'POST /api/auth/email/reenviar': 'ambos',
   // Aceptar los términos vigentes (etapa 8b, Fase 3): de la persona.
   'POST /api/auth/terminos': 'ambos',

@@ -60,6 +60,7 @@ const PRECACHE = [
   "/js/core/api.js",
   "/js/core/barra-inferior.js",
   "/js/core/campos.js",
+  "/js/core/codigo.js",
   "/js/core/comprobante.js",
   "/js/core/csv.js",
   "/js/core/filtros.js",

@@ -15,7 +15,7 @@ let admin;
 
 before(async () => {
   servidor = await levantarServidor({ env: { NEXO_ZONA_HORARIA: ZONA } });
-  admin = await registrarEmpresa(servidor.url, { empresa: 'Kiosco de la isla', usuario: 'admin-isla' });
+  admin = await registrarEmpresa(servidor, { empresa: 'Kiosco de la isla', usuario: 'admin-isla' });
 });
 
 after(async () => {

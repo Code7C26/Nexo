@@ -9964,3 +9964,76 @@ navegador: es un dato del preset y un texto.
 
 **Pedido nuevo, sin hacer: carga inicial para un negocio que ya existe.**
 El diseño quedó anotado en el punto 8c de "Qué sigue" de `handoff.md`.
+
+## 108. El mail se confirma con un código antes de crear la cuenta, 29 de octubre de 2026
+
+**Qué pasó.** El usuario notó que con un mail que no es suyo podía crear una
+cuenta igual: el alta la creaba en el momento y mandaba un enlace que se podía
+ignorar (hist. §102). Además, el dueño real de ese mail ya no podía usarlo en
+Nexo. Pidió confirmar el mail "con un código o algo" antes de crear la cuenta.
+Cambiar el mail desde Mi cuenta tenía el mismo agujero, y se cerró igual.
+
+**Decisiones (técnicas, tomadas sin preguntar)**
+- **Código de 6 números y no enlace:** se tipea en la misma pantalla del alta
+  sin perder lo cargado, y anda igual si el mail se abre en el celular.
+- **Un paso propio del alta** ("Tu mail", el 2 de 6), no un cartel adentro del
+  paso 1: cada paso entra al historial, y el Atrás del celular no tira lo
+  cargado. Con Atrás desde el paso 3, el 2 dice "Tu mail está confirmado".
+- **Comprobante:** acertar el código devuelve un token (2 horas) que el alta
+  lleva al final como `comprobante_email`; `POST /api/auth/registro` lo gasta
+  dentro de la transacción. Así el código se controla una sola vez, con su
+  tope de intentos.
+- **Sin revelar quién usa Nexo:** `/registro/codigo` responde 204 siempre. Si
+  el mail ya tiene cuenta, en vez del código le llega a su dueño "Ya tenés una
+  cuenta en Nexo", con el enlace para entrar.
+- **El código se manda esperando a Gmail** (503 si falla), porque la persona
+  está mirando la pantalla. Sin mail configurado y fuera de producción, sale
+  en la consola del servidor, así una instalación de prueba anda sin Gmail.
+- **Cambiar o sumar el mail** ("Sumá tu mail", Mi cuenta): `POST
+  /api/auth/email` ya no cambia nada, manda el código al mail nuevo y responde
+  202. El mail cambia, confirmado, con `POST /api/auth/email/confirmar`.
+- **Las cuentas de antes sin confirmar** siguen con el enlace de "Mandarlo de
+  nuevo" (`/verificar-mail`): no se tocaron.
+
+**Qué se tocó**
+- `backend/db/schema.sql`: tabla nueva `codigos_mail` (propósito `registro` o
+  `cambiar_email`, `usuario_id` nulo en el alta, `codigo_hash` SHA-256,
+  `intentos`, `vence`, `confirmado`, `comprobante_hash`, `usado`). Migración
+  aditiva: alcanza el `CREATE TABLE IF NOT EXISTS`, no toca ninguna tabla.
+- `backend/server.js`: `crearCodigoMail`, `ultimoCodigo`, `errorDelCodigo`
+  (5 intentos, acepta espacios y guiones), `mandarCodigo`; rutas
+  `/api/auth/registro/codigo` y `/registro/verificar`; el registro exige el
+  comprobante y crea la cuenta con `email_verificado`; `/auth/email` y
+  `/auth/email/confirmar`. Topes: 10 códigos por hora por IP, 5 por mail y 30
+  verificaciones por IP.
+- `backend/mail.js`: `plantillaMail` acepta `codigo`, que va grande en el
+  HTML. El asunto es "123456 es tu código de Nexo", así se ve en la
+  notificación del celular.
+- `backend/permisos.js`: las tres rutas nuevas.
+- Frontend: `js/core/codigo.js` (campo de solo números que se manda al
+  completar 6, y "Mandar otro código" con 30 s de espera), el paso 2 de
+  `alta.js` (los pasos pasan a la constante `PASO`), la pantalla
+  `#formSumarMailCodigo` en `sesion.js` y el paso del código dentro de la
+  tarjeta de Mail de Mi cuenta (`perfil.js`). `autocomplete="one-time-code"`
+  para que el celular proponga el código.
+- Arnés: `codigoDelMail()` y `confirmarMailDeAlta()`. `registrarEmpresa`
+  recibe el servidor, no la URL. `scripts/seed.mjs` y `regresion-head.mjs`
+  ajustados.
+
+**Cómo se verificó**
+- `npm test` 117/117, con `backend/test/codigo-mail.test.js` nuevo (7 casos:
+  el comprobante crea la cuenta confirmada y no sirve para otro mail ni dos
+  veces, 5 errores matan el código, vencido, mail con cuenta responde igual,
+  un tercero no le corta el alta a quien ya confirmó, tope por mail y la
+  consola sin Gmail). `cuenta-mail.test.js` reescrito para el cambio con
+  código. Los tests de recuperar e invitaciones que necesitaban una cuenta sin
+  confirmar la dejan así en la base de prueba.
+- `npm run lint`, `npm run verificar-migracion` (24 de 24, la base real sin
+  cambios) y `npm run regresion` (0 diferencias).
+- En Chrome, contra una base temporal: el alta completa (código erróneo con
+  "quedan 4 intentos", el correcto pegado con un espacio, Atrás al paso
+  confirmado) y el cambio de mail en Mi cuenta, en oscuro a 1280 px y en el
+  ancho mínimo de la ventana (502 px).
+
+**Para después**
+- Un captcha en el alta, si aparecen bots: pediría un servicio externo.

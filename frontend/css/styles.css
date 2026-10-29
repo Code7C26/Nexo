@@ -4928,6 +4928,35 @@ input.precio-sin-configurar::placeholder {
 .alta .form select { min-height: 44px; font-size: var(--txt-md); }
 .alta .form input.alta-campo-grande { min-height: 52px; font-size: 18px; }
 
+/* El código del mail (hist. §108): seis cifras parejas y separadas, que se
+   leen de un vistazo contra el mail. En el alta, en "Sumá tu mail" y en Mi
+   cuenta. */
+.form input.campo-codigo {
+  max-width: 16ch;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.35em;
+  font-weight: 600;
+}
+.alta .form input.campo-codigo { font-size: 24px; }
+.form input.campo-codigo::placeholder { letter-spacing: 0.35em; font-weight: 400; color: var(--ink-faint); }
+
+.alta-codigo,
+.perfil-mail-campos { display: flex; flex-direction: column; gap: var(--sp-3); }
+.alta-codigo[hidden],
+.perfil-mail-campos[hidden] { display: none; }
+
+.alta-codigo-acciones,
+.codigo-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0;
+}
+.alta-codigo-acciones .btn-link,
+.codigo-acciones .btn-link { padding: 0; font-size: var(--txt-sm); }
+.alta-codigo-acciones .btn-link:disabled,
+.codigo-acciones .btn-link:disabled { color: var(--ink-faint); cursor: default; text-decoration: none; }
+
 .alta-siempre {
   display: flex;
   align-items: center;

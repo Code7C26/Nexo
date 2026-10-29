@@ -3288,7 +3288,9 @@
                 <p>Tu cuenta es la misma en todos tus negocios.</p>
               </header>
               <!-- El mail de la cuenta (hist. §102): con él se entra y se
-                   recupera la cuenta. Cambiarlo pide la contraseña. -->
+                   recupera la cuenta. Cambiarlo pide la contraseña y el
+                   código que llega al mail nuevo (hist. §108): hasta
+                   entonces sigue el de antes. -->
               <form class="form config-tarjeta" id="formCambioMail" novalidate>
                 <div class="config-tarjeta-cuerpo">
                   <p class="config-tarjeta-titulo">Mail</p>
@@ -3301,16 +3303,28 @@
                     <button type="button" class="btn-link" id="btnReenviarMail">Mandarlo de nuevo</button>
                   </p>
                   <p class="form-note" id="cambioMailError" hidden></p>
-                  <label>Mail nuevo
-                    <input type="email" id="perfilEmailNuevo" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" />
-                  </label>
-                  <label>Tu contraseña
-                    <input type="password" id="perfilEmailPassword" autocomplete="current-password" />
-                  </label>
+                  <div class="perfil-mail-campos" id="perfilMailCampos">
+                    <label>Mail nuevo
+                      <input type="email" id="perfilEmailNuevo" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" />
+                    </label>
+                    <label>Tu contraseña
+                      <input type="password" id="perfilEmailPassword" autocomplete="current-password" />
+                    </label>
+                  </div>
+                  <div class="perfil-mail-campos" id="perfilCodigoBloque" hidden>
+                    <p class="form-note" id="perfilCodigoTexto"></p>
+                    <label>Código
+                      <input type="text" id="perfilCodigo" class="campo-codigo" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="000000" />
+                    </label>
+                    <p class="codigo-acciones">
+                      <button type="button" class="btn-link" id="perfilReenviarCodigo">Mandar otro código</button>
+                      <button type="button" class="btn-link" id="perfilCancelarCodigo">Cancelar</button>
+                    </p>
+                  </div>
                 </div>
                 <div class="config-tarjeta-pie">
-                  <p>Te mandamos un enlace al mail nuevo, y un aviso al de ahora.</p>
-                  <button type="submit" class="btn btn-primary">Cambiar mi mail</button>
+                  <p id="perfilMailPie">Te mandamos un código al mail nuevo, y un aviso al de ahora.</p>
+                  <button type="submit" class="btn btn-primary" id="perfilMailEnviar">Cambiar mi mail</button>
                 </div>
               </form>
               <form class="form config-tarjeta" id="formCambioPassword">
@@ -3503,14 +3517,33 @@
       <form id="formSumarMail" class="form" hidden novalidate>
         <div class="sesion-paso">
           <h2>Sumá tu mail</h2>
-          <p>Desde ahora entrás a Nexo con tu mail, y es la forma de recuperar tu cuenta si algún día te olvidás la contraseña. Te mandamos un enlace para confirmarlo.</p>
+          <p>Desde ahora entrás a Nexo con tu mail, y es la forma de recuperar tu cuenta si algún día te olvidás la contraseña. Te mandamos un código para confirmar que es tuyo.</p>
         </div>
         <p class="form-note" id="sumarMailError" hidden></p>
         <label>Tu mail
           <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="sumarMailEmail" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" required /></span>
         </label>
-        <button type="submit" class="btn btn-primary">Guardar y seguir</button>
+        <button type="submit" class="btn btn-primary">Mandarme el código</button>
         <button type="button" class="btn-link" id="sumarMailSalir">Cerrar sesión</button>
+      </form>
+
+      <!-- El código del mail que se suma (hist. §108): el mail queda en la
+           cuenta recién cuando se confirma, así nadie suma uno ajeno. -->
+      <form id="formSumarMailCodigo" class="form" hidden novalidate>
+        <div class="sesion-paso">
+          <h2>Revisá tu mail</h2>
+          <p id="sumarMailCodigoTexto">Te mandamos un código de 6 números. Escribilo acá para confirmar que el mail es tuyo.</p>
+        </div>
+        <p class="form-note" id="sumarMailCodigoError" hidden></p>
+        <label>Código
+          <input type="text" id="sumarMailCodigo" class="campo-codigo" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="000000" aria-describedby="sumarMailCodigoAyuda" />
+          <span class="campo-ayuda" id="sumarMailCodigoAyuda">Vence en 15 minutos. Si no lo ves, buscalo en el correo no deseado.</span>
+        </label>
+        <p class="codigo-acciones">
+          <button type="button" class="btn-link" id="sumarMailReenviar">Mandar otro código</button>
+          <button type="button" class="btn-link" id="sumarMailCambiar">Cambiar el mail</button>
+        </p>
+        <button type="submit" class="btn btn-primary">Confirmar y seguir</button>
       </form>
 
       <!-- Obligatoria sin los términos vigentes aceptados (etapa 8b, Fase 3):
@@ -3615,8 +3648,8 @@
           <span>Nexo</span>
         </div>
         <div class="alta-progreso">
-          <p class="alta-progreso-texto" id="altaProgreso" aria-live="polite">Paso 1 de 5 · Tu cuenta</p>
-          <ol class="alta-pasos" id="altaPasos" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li></ol>
+          <p class="alta-progreso-texto" id="altaProgreso" aria-live="polite">Paso 1 de 6 · Tu cuenta</p>
+          <ol class="alta-pasos" id="altaPasos" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li></ol>
         </div>
         <p class="alta-ya-tengo" id="altaYaTengo">¿Ya tenés cuenta? <button type="button" class="btn-link" id="altaIrALogin">Ingresá</button></p>
         <button type="button" class="btn btn-secundario alta-cancelar" id="altaCancelar" hidden>Cancelar</button>
@@ -3634,7 +3667,7 @@
           </label>
           <label>Tu mail
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="altaEmailCuenta" autocomplete="email" maxlength="254" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" aria-describedby="altaEmailCuentaAyuda" /></span>
-            <span class="campo-ayuda" id="altaEmailCuentaAyuda">Con él vas a ingresar, y te mandamos un enlace para confirmarlo.</span>
+            <span class="campo-ayuda" id="altaEmailCuentaAyuda">Con él vas a ingresar. Te mandamos un código para confirmar que es tuyo.</span>
           </label>
           <label>Contraseña
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
@@ -3657,11 +3690,35 @@
             <label class="form-check aceptacion-casilla"><input type="checkbox" data-acepta /> <span>Leí y acepto los <a href="/terminos" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad" target="_blank" rel="noopener">política de privacidad</a>.</span></label>
           </div>
           <div class="alta-acciones">
-            <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+            <button type="submit" class="btn btn-primary" id="altaContinuarCuenta">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
           </div>
         </form>
 
+        <!-- El código que llegó al mail (hist. §108): sin él no se crea la
+             cuenta, así nadie la crea con un mail que no es suyo. Si se
+             vuelve con Atrás y el mail ya está confirmado, muestra eso. -->
         <form class="form alta-paso" data-paso="2" novalidate hidden>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1" id="altaCodigoTitulo">Revisá tu mail</h1>
+            <p id="altaCodigoTexto">Te mandamos un código de 6 números. Escribilo acá para confirmar que el mail es tuyo.</p>
+          </div>
+          <div class="alta-codigo" id="altaCodigoCampo">
+            <label>Código
+              <input type="text" id="altaCodigo" class="alta-campo-grande campo-codigo" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="000000" aria-describedby="altaCodigoAyuda" />
+              <span class="campo-ayuda" id="altaCodigoAyuda">Vence en 15 minutos. Si no lo ves, buscalo en el correo no deseado o en Promociones.</span>
+            </label>
+            <p class="alta-codigo-acciones">
+              <button type="button" class="btn-link" id="altaReenviarCodigo">Mandar otro código</button>
+              <button type="button" class="btn-link" data-atras>Cambiar el mail</button>
+            </p>
+          </div>
+          <div class="alta-acciones">
+            <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
+            <button type="submit" class="btn btn-primary" id="altaConfirmarCodigo">Confirmar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+          </div>
+        </form>
+
+        <form class="form alta-paso" data-paso="3" novalidate hidden>
           <div class="alta-encabezado">
             <h1 tabindex="-1">¿Cómo se llama tu negocio?</h1>
             <p>Es el nombre que va a salir en tus presupuestos y facturas. Lo podés cambiar cuando quieras.</p>
@@ -3676,7 +3733,7 @@
           </div>
         </form>
 
-        <form class="form alta-paso alta-paso-ancho" data-paso="3" novalidate hidden>
+        <form class="form alta-paso alta-paso-ancho" data-paso="4" novalidate hidden>
           <div class="alta-encabezado">
             <h1 tabindex="-1">¿Qué tipo de negocio tenés?</h1>
             <p>Así Nexo se arma para vos: en una carnicería los productos se venden por kilo, y en un estudio de servicios no hace falta stock.</p>
@@ -3693,7 +3750,7 @@
           </div>
         </form>
 
-        <form class="form alta-paso alta-paso-ancho" data-paso="4" novalidate hidden>
+        <form class="form alta-paso alta-paso-ancho" data-paso="5" novalidate hidden>
           <div class="alta-encabezado">
             <h1 tabindex="-1">¿Qué secciones vas a usar?</h1>
             <p id="altaModulosBajada">Las marcamos según tu tipo de negocio. Cambialas ahora o cuando quieras desde Configuración.</p>
@@ -3709,7 +3766,7 @@
           </div>
         </form>
 
-        <form class="form alta-paso" data-paso="5" novalidate hidden>
+        <form class="form alta-paso" data-paso="6" novalidate hidden>
           <div class="alta-encabezado">
             <h1 tabindex="-1">Datos para tus comprobantes</h1>
             <p>Encabezan los presupuestos y las facturas que imprimas. Si no los tenés a mano, completalos después en Configuración.</p>
