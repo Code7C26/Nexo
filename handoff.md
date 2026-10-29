@@ -1381,6 +1381,14 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
    - Certificado y clave por empresa (CLAUDE.md §33).
    - Reintento sin duplicar: antes de emitir se consulta el último número
      autorizado.
+   - **Alta guiada de la delegación** (pedido del usuario, 29 de octubre):
+     una página de Configuración con el paso a paso, con links a ARCA y
+     capturas, y un botón "Verificar" que consulta a ARCA y marca el CUIT
+     como verificado. Sin delegación verificada, el negocio no emite
+     factura electrónica. Contagram hace lo mismo, pero con un artículo de
+     ayuda y la constancia mandada a mano por chat o WhatsApp
+     (help.contagram.com, "Actualización de Factura Electrónica"); nunca
+     pedir la clave fiscal dentro de Nexo.
 11. **I: voz y WhatsApp** (2 sesiones).
    - Dictado con la Web Speech API del navegador (es-AR, sin costo), con el
      mismo flujo de confirmación.
