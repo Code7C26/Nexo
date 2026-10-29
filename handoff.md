@@ -268,7 +268,8 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta la Fase 1b (PR #30, publicado el 28 de octubre).
+- `main` tiene todo hasta §109 (PR #31, publicado el 29 de octubre): la
+  etapa 8b completa está en el sitio.
 - **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
   cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
   lo pide: Claude abre y mergea el PR con el CI en verde, por la API de
