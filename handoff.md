@@ -22,14 +22,15 @@
 ## Estado actual (29 de octubre de 2026)
 
 **Para retomar (sesión del 29 de octubre):**
-1. **El panel de la plataforma está hecho** (hist. §111), commiteado en
-   `solla` y sin publicar. Es "Plataforma", en el grupo "Nexo" al final del
-   menú, con Resumen, Cuentas y Negocios, y solo lectura.
+1. **El panel de la plataforma está hecho y publicado** (hist. §111, PR #32).
+   Es "Plataforma", en el grupo "Nexo" al final del menú, con Resumen, Cuentas
+   y Negocios, y solo lectura.
    - Lo ve la cuenta cuyo mail está en `NEXO_ADMIN_PLATAFORMA`, con el mail
-     confirmado. **Al publicar:** sumar
-     `NEXO_ADMIN_PLATAFORMA=santinosolla22@gmail.com` a `/etc/nexo/nexo.env`
-     y reiniciar `nexo`. Para verlo en la compu, la misma línea en el `.env`
-     de la raíz.
+     confirmado. En el servidor ya está:
+     `NEXO_ADMIN_PLATAFORMA=santinosolla22@gmail.com` en `/etc/nexo/nexo.env`
+     (el proceso la tiene cargada). Para verlo en la compu, la misma línea en
+     el `.env` de la raíz.
+   - El README se puso al día en la misma publicación (PR #33).
    - **Falta que el usuario lo vea.**
    - **Lo próximo: IVA** (etapa C, punto 9 de "Qué sigue").
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
@@ -267,8 +268,8 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta §109 (PR #31, publicado el 29 de octubre): la
-  etapa 8b completa está en el sitio.
+- `main` tiene todo hasta §111 (PR #32 el panel y #33 el README, publicados
+  el 29 de octubre).
 - **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
   cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
   lo pide: Claude abre y mergea el PR con el CI en verde, por la API de
