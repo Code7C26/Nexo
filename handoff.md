@@ -1377,7 +1377,9 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 12. **H: reportes** (1 sesión, segundo en recortarse): ventas por vendedor y
     comparación contra el mismo período del año anterior.
 13. **Cierre** (1 sesión).
-    - Datos de demo realistas.
+    - Datos de demo realistas: una cuenta nueva para la presentación que
+      muestre todas las funciones (decidido con el usuario el 29 de octubre;
+      reemplaza a la demo del profe, que se borró en hist. §110).
     - Pasada final de diseño.
     - Ensayo de la demo.
 
