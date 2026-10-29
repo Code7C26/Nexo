@@ -19,6 +19,19 @@ import {
   ivaIncluido,
   letraQueCorresponde
 } from './iva.js';
+import {
+  ArcaError,
+  ERRORES_DE_PERMISO,
+  TIPOS_CBTE,
+  ambienteArca,
+  clienteArca,
+  condicionReceptor,
+  documentoReceptor,
+  fechaArca,
+  importesDelComprobante,
+  revisarCertificado,
+  urlQr
+} from './arca.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -2138,8 +2151,9 @@ function siguienteNumero(organizacionId, puntoVenta, tipo, letra) {
   return (maximo ?? 0) + 1;
 }
 
+// Uno electrónico todavía sin CAE no tiene número: lo da ARCA al autorizarlo.
 const comprobante = (f) =>
-  `${f.letra} ${String(f.punto_venta).padStart(4, '0')}-${String(f.numero).padStart(8, '0')}`;
+  `${f.letra} ${String(f.punto_venta).padStart(4, '0')}-${f.numero == null ? 'sin número' : String(f.numero).padStart(8, '0')}`;
 
 // La condición del negocio frente al IVA (Configuración): decide si los
 // renglones discriminan IVA y, con la del cliente, la letra.
@@ -2189,6 +2203,7 @@ const SELECT_FACTURA = `
          facturas.neto, facturas.neto AS total, facturas.iva, facturas.condicion, facturas.fecha,
          facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero, facturas.venta_id,
          facturas.devolucion_id,
+         facturas.arca_estado, facturas.cae, facturas.cae_vencimiento, facturas.arca_ambiente, facturas.arca_error,
          CASE
            WHEN facturas.venta_id IS NOT NULL THEN (
              SELECT CASE
@@ -2235,7 +2250,26 @@ app.get('/api/facturas/:id', (req, res) => {
         .map((i) => ({ ...i, subtotal: i.cantidad * i.precio_unitario }))
     : [];
 
-  res.json({ ...factura, comprobante: comprobante(factura), items });
+  // El QR de la RG 4892, con lo mismo que se le informó a ARCA.
+  let arcaQr = null;
+  if (factura.arca_estado === 'autorizado') {
+    const datos = JSON.parse(
+      db.prepare('SELECT arca_datos FROM facturas WHERE id = ?').get(facturaId).arca_datos
+    );
+    arcaQr = urlQr({
+      fecha: factura.fecha,
+      cuit: datos.cuit,
+      puntoVenta: factura.punto_venta,
+      cbteTipo: datos.cbteTipo,
+      numero: factura.numero,
+      total: datos.importes.total,
+      docTipo: datos.docTipo,
+      docNro: datos.docNro,
+      cae: factura.cae
+    });
+  }
+
+  res.json({ ...factura, comprobante: comprobante(factura), items, arca_qr: arcaQr });
 });
 
 // Factura "suelta": sin venta detrás. Se conserva porque ya la usa el
@@ -2248,7 +2282,7 @@ const MEDIOS_FACTURA = ['efectivo', 'transferencia', 'mercadopago'];
 const TIPOS_COMPROBANTE = ['factura', 'nota_credito', 'nota_debito'];
 const LETRAS_COMPROBANTE = ['A', 'B', 'C'];
 
-app.post('/api/facturas', (req, res) => {
+app.post('/api/facturas', asincrono(async (req, res) => {
   const { cliente, concepto, neto, condicion, tipo, letra, punto_venta, alicuota_iva } = req.body;
 
   const tipoFinal = tipo || 'factura';
@@ -2277,26 +2311,39 @@ app.post('/api/facturas', (req, res) => {
   const facturaId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
     const letraFinal = letraDelComprobante(req.usuario.organizacion_id, clienteRow.id, letraPedida);
-    const iva = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id))
-      ? ivaIncluido(Number(neto), alicuota_iva ? String(alicuota_iva) : '21')
-      : 0;
+    const alicuota = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id))
+      ? (alicuota_iva ? String(alicuota_iva) : '21')
+      : null;
+    const iva = alicuota ? ivaIncluido(Number(neto), alicuota) : 0;
 
-    const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
+    // Con factura electrónica, el punto de venta es el de ARCA y el número lo
+    // da ARCA al autorizar.
+    const negocio = negocioParaArca(req.usuario.organizacion_id);
+    const electronica = facturaElectronicaActiva(negocio);
+    if (electronica) {
+      const error = errorParaArca(letraFinal, clienteRow.id);
+      if (error) throw new ErrorValidacion(error);
+    }
+    const puntoVenta = electronica ? negocio.arca_punto_venta : puntoVentaFinal;
+    const numero = electronica ? null : siguienteNumero(req.usuario.organizacion_id, puntoVenta, tipoFinal, letraFinal);
     const { lastInsertRowid } = db
       .prepare(
-        `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, tipo, letra, punto_venta, numero, organizacion_id, fecha)
-         VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ${HOY_SQL})`
+        `INSERT INTO facturas (cliente_id, concepto, neto, iva, alicuota_iva, condicion, estado, tipo, letra, punto_venta, numero,
+                               arca_estado, organizacion_id, fecha)
+         VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
       )
       .run(
         clienteRow.id,
         concepto,
         neto,
         iva,
+        alicuota,
         condicion,
         tipoFinal,
         letraFinal,
-        puntoVentaFinal,
+        puntoVenta,
         numero,
+        electronica ? 'pendiente' : null,
         req.usuario.organizacion_id
       );
 
@@ -2310,7 +2357,470 @@ app.post('/api/facturas', (req, res) => {
     return lastInsertRowid;
   });
 
-  res.status(201).json({ id: facturaId });
+  res.status(201).json(resultadoEmision(await autorizarFactura(req, facturaId)));
+}));
+
+/* ---------- Factura electrónica: ARCA (etapa E, CLAUDE.md §33) ---------- */
+//
+// Un negocio con la factura electrónica activa (punto de venta cargado y
+// verificado) no emite comprobantes internos: cada factura o nota nace
+// 'pendiente', sin número, y se le pide el CAE a ARCA apenas se guarda. El
+// pedido va fuera de la transacción (node:sqlite es síncrono y ARCA tarda): la
+// venta y el comprobante ya quedaron guardados, y si ARCA no contesta el
+// comprobante queda pendiente y se reintenta, sin duplicarse.
+
+// El ticket de WSAA vive en la base (ver arca_tickets en schema.sql).
+const almacenTicketsArca = {
+  leer: (clave) => db.prepare('SELECT token, sign, vence FROM arca_tickets WHERE clave = ?').get(clave) ?? null,
+  guardar: (clave, { token, sign, vence }) =>
+    db
+      .prepare(
+        `INSERT INTO arca_tickets (clave, token, sign, vence) VALUES (?, ?, ?, ?)
+         ON CONFLICT (clave) DO UPDATE SET token = excluded.token, sign = excluded.sign, vence = excluded.vence`
+      )
+      .run(clave, token, sign, vence)
+};
+
+// CUIT de mentira (con dígito verificador válido) para ARCA simulado.
+const CUIT_SIMULADO = '20111111112';
+
+// El certificado de Nexo: NEXO_ARCA_CERT y NEXO_ARCA_KEY son las rutas del .crt
+// y la .key, fuera del repo, como el .env. Con él factura cada negocio que le
+// delegó el servicio. Se lee en cada uso (son dos archivos chicos): cambiarlo
+// no pide reiniciar. null si el servidor no lo tiene.
+function certificadoDeNexo() {
+  if (ambienteArca() === 'simulado') return { credenciales: null, cuit: process.env.NEXO_ARCA_CUIT || CUIT_SIMULADO };
+  const rutaCertificado = process.env.NEXO_ARCA_CERT;
+  const rutaClave = process.env.NEXO_ARCA_KEY;
+  if (!rutaCertificado || !rutaClave) return null;
+  try {
+    const certificado = readFileSync(rutaCertificado, 'utf8');
+    const clave = readFileSync(rutaClave, 'utf8');
+    const { cuit } = revisarCertificado(certificado, clave);
+    return { credenciales: { certificado, clave }, cuit: process.env.NEXO_ARCA_CUIT || cuit };
+  } catch (err) {
+    console.error(`El certificado de ARCA (NEXO_ARCA_CERT, NEXO_ARCA_KEY) no se pudo usar: ${err.message}`);
+    return null;
+  }
+}
+
+const negocioParaArca = (organizacionId) =>
+  db
+    .prepare('SELECT id, documento, condicion_iva, arca_punto_venta, arca_verificado FROM organizaciones WHERE id = ?')
+    .get(organizacionId);
+
+const facturaElectronicaActiva = (negocio) => Boolean(negocio?.arca_punto_venta && negocio.arca_verificado);
+
+// Con qué CUIT factura un negocio. En producción, el suyo: le delegó el
+// servicio a Nexo. En homologación (y simulado), el del certificado de Nexo:
+// el ARCA de prueba no tiene delegaciones de negocios de mentira, y un
+// comprobante de prueba no tiene validez fiscal (decidido el 19 de octubre).
+function arcaDelNegocio(negocio) {
+  const nexo = certificadoDeNexo();
+  if (!nexo) throw new ArcaError('Este servidor todavía no tiene el certificado de Nexo para ARCA.');
+  const cuit = ambienteArca() === 'produccion' ? negocio.documento?.replace(/\D/g, '') : nexo.cuit;
+  if (!cuit) throw new ArcaError('Cargá el CUIT del negocio en Configuración.');
+  return clienteArca({ credenciales: nexo.credenciales, cuit, almacen: almacenTicketsArca });
+}
+
+// Lo que ARCA rechazaría seguro, dicho antes de guardar nada: una factura A
+// necesita el CUIT del cliente.
+function errorParaArca(letra, clienteId) {
+  if (letra !== 'A') return null;
+  const { documento } = db.prepare('SELECT documento FROM clientes WHERE id = ?').get(clienteId);
+  const digitos = String(documento ?? '').replace(/\D/g, '');
+  return cuitValido(digitos) ? null : 'Para una factura A, cargá el CUIT del cliente en su ficha.';
+}
+
+// Un pedido a la vez por serie (CUIT, punto de venta y tipo): el número es el
+// último autorizado + 1, y dos pedidos juntos pedirían el mismo.
+const colasArca = new Map();
+function enColaArca(clave, tarea) {
+  const actual = (colasArca.get(clave) ?? Promise.resolve()).catch(() => {}).then(tarea);
+  colasArca.set(clave, actual);
+  actual
+    .finally(() => {
+      if (colasArca.get(clave) === actual) colasArca.delete(clave);
+    })
+    .catch(() => {});
+  return actual;
+}
+
+// Los renglones del comprobante y su concepto para ARCA: 1 productos, 2
+// servicios, 3 los dos. Una factura suelta no tiene renglones: su importe con
+// su alícuota, y concepto 3, porque no se sabe qué se vendió.
+function renglonesParaArca(factura) {
+  let filas;
+  if (factura.devolucion_id) {
+    filas = db
+      .prepare(
+        `SELECT devolucion_items.cantidad, devolucion_items.precio_unitario, productos.tipo,
+                COALESCE(venta_items.alicuota_iva, productos.alicuota_iva) AS alicuota
+           FROM devolucion_items
+           JOIN venta_items ON venta_items.id = devolucion_items.venta_item_id
+           JOIN productos ON productos.id = devolucion_items.producto_id
+          WHERE devolucion_items.devolucion_id = ?`
+      )
+      .all(factura.devolucion_id);
+  } else if (factura.venta_id) {
+    filas = db
+      .prepare(
+        `SELECT venta_items.cantidad, venta_items.precio_unitario, productos.tipo,
+                COALESCE(venta_items.alicuota_iva, productos.alicuota_iva) AS alicuota
+           FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+          WHERE venta_items.venta_id = ?`
+      )
+      .all(factura.venta_id);
+  } else {
+    return { renglones: [{ importe: factura.neto, alicuota: factura.alicuota_iva ?? '21' }], concepto: 3 };
+  }
+  const servicios = filas.filter((f) => f.tipo === 'servicio').length;
+  return {
+    renglones: filas.map((f) => ({ importe: f.cantidad * f.precio_unitario, alicuota: f.alicuota })),
+    concepto: servicios === 0 ? 1 : servicios === filas.length ? 2 : 3
+  };
+}
+
+// Una nota va asociada a lo que corrige (RG 4540): la factura de la venta si
+// es electrónica y del mismo ambiente, o si no el período, desde la venta
+// hasta hoy. Una nota suelta, el día.
+function asociadoParaArca(factura, ambiente) {
+  if (factura.tipo === 'factura') return {};
+  const hoy = fechaArca(fechaDeHoy());
+  if (!factura.devolucion_id) return { periodo: { desde: fechaArca(factura.fecha), hasta: hoy } };
+  const original = db
+    .prepare(
+      `SELECT facturas.punto_venta, facturas.numero, facturas.fecha, facturas.arca_estado, facturas.arca_ambiente,
+              facturas.arca_datos, ventas.fecha AS venta_fecha
+         FROM devoluciones
+         JOIN ventas ON ventas.id = devoluciones.venta_id
+         LEFT JOIN facturas ON facturas.venta_id = ventas.id AND facturas.tipo = 'factura'
+        WHERE devoluciones.id = ?`
+    )
+    .get(factura.devolucion_id);
+  if (original.arca_estado === 'autorizado' && original.arca_ambiente === ambiente) {
+    const datos = JSON.parse(original.arca_datos);
+    return {
+      asociado: {
+        tipo: datos.cbteTipo,
+        puntoVenta: original.punto_venta,
+        numero: original.numero,
+        cuit: datos.cuit,
+        fecha: fechaArca(original.fecha)
+      }
+    };
+  }
+  return { periodo: { desde: fechaArca(original.venta_fecha), hasta: hoy } };
+}
+
+const mensajesArca = (lista) => lista.map((e) => `${e.mensaje} (código ${e.codigo})`).join(' · ');
+
+// Pide el CAE de un comprobante pendiente o rechazado. Nunca lanza por ARCA:
+// lo que pase queda en la factura (autorizada con su número y CAE, rechazada
+// con el motivo, o pendiente con la falla) y se devuelve su estado.
+async function autorizarFactura(req, facturaId) {
+  const leer = () =>
+    db
+      .prepare('SELECT * FROM facturas WHERE id = ? AND organizacion_id = ?')
+      .get(facturaId, req.usuario.organizacion_id);
+  const inicial = leer();
+  if (!inicial || !['pendiente', 'rechazado'].includes(inicial.arca_estado)) return inicial;
+
+  const anotarFalla = (mensaje) =>
+    db.prepare("UPDATE facturas SET arca_estado = 'pendiente', arca_error = ? WHERE id = ?").run(mensaje, facturaId);
+
+  let arca;
+  try {
+    arca = arcaDelNegocio(negocioParaArca(inicial.organizacion_id));
+  } catch (err) {
+    if (!(err instanceof ArcaError)) throw err;
+    anotarFalla(err.message);
+    return leer();
+  }
+  const cbteTipo = TIPOS_CBTE[inicial.tipo][inicial.letra];
+  const pv = inicial.punto_venta;
+
+  return enColaArca(`${arca.cuit}:${pv}:${cbteTipo}`, async () => {
+    const factura = leer();
+    if (factura.arca_estado === 'autorizado') return factura;
+    const datos = JSON.parse(factura.arca_datos ?? '{}');
+    const cliente = db.prepare('SELECT documento, condicion_iva FROM clientes WHERE id = ?').get(factura.cliente_id);
+    const { renglones, concepto } = renglonesParaArca(factura);
+    const importes = importesDelComprobante(factura.letra, renglones);
+    const { docTipo, docNro } = documentoReceptor(cliente.documento);
+    const detalle = {
+      concepto,
+      docTipo,
+      docNro,
+      importes,
+      condicionReceptor: condicionReceptor(cliente.condicion_iva),
+      ...asociadoParaArca(factura, arca.ambiente)
+    };
+
+    const autorizada = ({ numero, fecha, cae, caeVence, observaciones = [] }) => {
+      withTransaction(() => {
+        db.prepare(
+          `UPDATE facturas
+              SET arca_estado = 'autorizado', numero = ?, fecha = ?, cae = ?, cae_vencimiento = ?, iva = ?,
+                  arca_ambiente = ?, arca_error = NULL, arca_datos = ?
+            WHERE id = ?`
+        ).run(
+          numero,
+          fecha,
+          cae,
+          caeVence,
+          importes.iva,
+          arca.ambiente,
+          JSON.stringify({ cuit: arca.cuit, cbteTipo, concepto, docTipo, docNro, importes, observaciones }),
+          facturaId
+        );
+        auditar(req, {
+          accion: 'cambiar_estado',
+          entidad: 'factura',
+          entidad_id: facturaId,
+          valor_anterior: JSON.stringify({ arca_estado: factura.arca_estado }),
+          valor_nuevo: JSON.stringify({ arca_estado: 'autorizado', numero, cae }),
+          detalle: `ARCA autorizó ${comprobante({ ...factura, numero })} con el CAE ${cae}`
+        });
+      });
+      return leer();
+    };
+
+    try {
+      // Un intento anterior pudo quedar autorizado sin que volviera la
+      // respuesta: si ARCA tiene ese número con este importe, receptor y
+      // fecha, es este comprobante, y no se pide otro.
+      if (datos.intento) {
+        const previo = await arca.consultar(pv, cbteTipo, datos.intento);
+        if (previo?.resultado === 'A' && previo.total === importes.total && previo.docNro === docNro && previo.fecha === datos.fecha) {
+          return autorizada({ numero: datos.intento, fecha: previo.fecha, cae: previo.cae, caeVence: previo.caeVence });
+        }
+      }
+      for (let vuelta = 0; ; vuelta++) {
+        const numero = (await arca.ultimoAutorizado(pv, cbteTipo)) + 1;
+        const fecha = fechaDeHoy();
+        // El intento se guarda antes de mandarlo: si la respuesta se pierde, el
+        // reintento lo consulta en vez de pedir un número nuevo.
+        db.prepare('UPDATE facturas SET arca_datos = ? WHERE id = ?').run(JSON.stringify({ intento: numero, fecha }), facturaId);
+        const respuesta = await arca.solicitarCae(pv, cbteTipo, { ...detalle, numero, fecha: fechaArca(fecha) });
+        if (respuesta.resultado === 'A') {
+          return autorizada({ numero, fecha, cae: respuesta.cae, caeVence: respuesta.caeVence, observaciones: respuesta.observaciones });
+        }
+        // 10016: el número ya no es el próximo (alguien emitió en el medio en
+        // la misma serie). Una vuelta más, con el último de nuevo.
+        if (vuelta === 0 && respuesta.errores.some((e) => e.codigo === 10016)) continue;
+        const motivo = mensajesArca([...respuesta.errores, ...respuesta.observaciones]) || 'ARCA rechazó el comprobante.';
+        withTransaction(() => {
+          db.prepare(
+            `UPDATE facturas SET arca_estado = 'rechazado', arca_error = ?, arca_ambiente = ?, arca_datos = ? WHERE id = ?`
+          ).run(
+            motivo,
+            arca.ambiente,
+            JSON.stringify({ cuit: arca.cuit, cbteTipo, errores: respuesta.errores, observaciones: respuesta.observaciones }),
+            facturaId
+          );
+          auditar(req, {
+            accion: 'cambiar_estado',
+            entidad: 'factura',
+            entidad_id: facturaId,
+            valor_anterior: JSON.stringify({ arca_estado: factura.arca_estado }),
+            valor_nuevo: JSON.stringify({ arca_estado: 'rechazado' }),
+            detalle: `ARCA rechazó el comprobante #${facturaId}: ${motivo}`
+          });
+        });
+        return leer();
+      }
+    } catch (err) {
+      if (!(err instanceof ArcaError)) throw err;
+      anotarFalla(
+        ERRORES_DE_PERMISO.includes(err.codigo)
+          ? `ARCA no deja que Nexo facture por este CUIT: revisá la delegación en Configuración → Factura electrónica. (${err.message})`
+          : err.message
+      );
+      return leer();
+    }
+  });
+}
+
+// Lo que devuelven los endpoints que emiten: el id y cómo le fue con ARCA.
+const resultadoEmision = (factura) => ({
+  id: factura.id,
+  arca_estado: factura.arca_estado,
+  arca_error: factura.arca_error,
+  comprobante: factura.numero == null ? null : comprobante(factura),
+  cae: factura.cae
+});
+
+// Reintentar un comprobante pendiente o rechazado (después de corregir el
+// cliente, o cuando ARCA vuelve).
+app.post('/api/facturas/:id/autorizar', asincrono(async (req, res) => {
+  const facturaId = Number(req.params.id);
+  const factura = db
+    .prepare('SELECT id, arca_estado, letra, cliente_id FROM facturas WHERE id = ? AND organizacion_id = ?')
+    .get(facturaId, req.usuario.organizacion_id);
+  if (!factura) return res.status(404).json({ error: 'Factura no encontrada.' });
+  if (!['pendiente', 'rechazado'].includes(factura.arca_estado)) {
+    return res.status(400).json({ error: 'Este comprobante no está esperando el CAE.' });
+  }
+  const error = errorParaArca(factura.letra, factura.cliente_id);
+  if (error) return res.status(400).json({ error });
+  res.json(resultadoEmision(await autorizarFactura(req, facturaId)));
+}));
+
+// Descartar un comprobante que ARCA rechazó: nunca existió ante ARCA (no
+// consumió número), y la venta o la devolución queda libre para volver a
+// facturarse. Uno pendiente no: ARCA pudo haberlo autorizado.
+app.delete('/api/facturas/:id', (req, res) => {
+  const facturaId = Number(req.params.id);
+  const factura = db
+    .prepare('SELECT id, arca_estado, venta_id, devolucion_id FROM facturas WHERE id = ? AND organizacion_id = ?')
+    .get(facturaId, req.usuario.organizacion_id);
+  if (!factura) return res.status(404).json({ error: 'Factura no encontrada.' });
+  if (factura.arca_estado !== 'rechazado') {
+    return res.status(400).json({ error: 'Solo se puede descartar un comprobante que ARCA rechazó.' });
+  }
+  withTransaction(() => {
+    db.prepare('DELETE FROM facturas WHERE id = ?').run(facturaId);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'factura',
+      entidad_id: facturaId,
+      operacion_tipo: factura.venta_id ? 'venta' : factura.devolucion_id ? 'devolucion' : null,
+      operacion_id: factura.venta_id ?? factura.devolucion_id,
+      detalle: `Comprobante #${facturaId} rechazado por ARCA, descartado`
+    });
+  });
+  res.json({ id: facturaId });
+});
+
+// La configuración, para la página de Configuración → Factura electrónica. El
+// CUIT de Nexo (el que el negocio pone como representante al delegar) solo en
+// producción: en homologación es el de quien tramitó el certificado de prueba.
+app.get('/api/factura-electronica', soloAdmin, (req, res) => {
+  const negocio = negocioParaArca(req.usuario.organizacion_id);
+  const nexo = certificadoDeNexo();
+  const ambiente = ambienteArca();
+  const puntosInternos = db
+    .prepare(
+      'SELECT DISTINCT punto_venta FROM facturas WHERE organizacion_id = ? AND arca_estado IS NULL ORDER BY punto_venta'
+    )
+    .all(negocio.id)
+    .map((f) => f.punto_venta);
+  res.json({
+    ambiente,
+    disponible: Boolean(nexo),
+    cuit_nexo: ambiente === 'produccion' && nexo ? nexo.cuit : null,
+    cuit_negocio: negocio.documento,
+    condicion_iva: negocio.condicion_iva,
+    punto_venta: negocio.arca_punto_venta,
+    verificado: negocio.arca_verificado,
+    activa: facturaElectronicaActiva(negocio),
+    puntos_internos: puntosInternos
+  });
+});
+
+// Guardar el punto de venta. Cambiarlo pide volver a verificar. No puede ser
+// uno que ya tenga comprobantes internos de Nexo: la numeración de ARCA
+// chocaría con la de ellos.
+app.put('/api/factura-electronica', soloAdmin, (req, res) => {
+  const puntoVenta = Number(req.body?.punto_venta);
+  if (!Number.isInteger(puntoVenta) || puntoVenta < 1 || puntoVenta > 99998) {
+    return res.status(400).json({ error: 'El punto de venta es un número entre 1 y 99998.' });
+  }
+  const negocio = negocioParaArca(req.usuario.organizacion_id);
+  const conInternos = db
+    .prepare('SELECT 1 FROM facturas WHERE organizacion_id = ? AND punto_venta = ? AND arca_estado IS NULL')
+    .get(negocio.id, puntoVenta);
+  if (conInternos) {
+    return res.status(400).json({
+      error: `El punto de venta ${puntoVenta} ya tiene comprobantes internos de Nexo. Usá el que diste de alta en ARCA para factura electrónica.`
+    });
+  }
+  if (negocio.arca_punto_venta === puntoVenta) return res.json({ punto_venta: puntoVenta });
+  withTransaction(() => {
+    db.prepare('UPDATE organizaciones SET arca_punto_venta = ?, arca_verificado = NULL WHERE id = ?').run(puntoVenta, negocio.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: negocio.id,
+      valor_anterior: JSON.stringify({ arca_punto_venta: negocio.arca_punto_venta }),
+      valor_nuevo: JSON.stringify({ arca_punto_venta: puntoVenta }),
+      detalle: `Punto de venta de factura electrónica: ${puntoVenta}`
+    });
+  });
+  res.json({ punto_venta: puntoVenta });
+});
+
+// "Verificar": que ARCA ande, que deje a Nexo facturar por este CUIT y que el
+// punto de venta esté habilitado para web services. Si todo da bien, la
+// factura electrónica queda activa.
+app.post('/api/factura-electronica/verificar', soloAdmin, asincrono(async (req, res) => {
+  const negocio = negocioParaArca(req.usuario.organizacion_id);
+  if (!negocio.documento) {
+    return res.status(400).json({ error: 'Primero cargá el CUIT del negocio en Comprobantes y datos fiscales.' });
+  }
+  if (!negocio.condicion_iva) {
+    return res.status(400).json({ error: 'Primero elegí la condición frente al IVA en Comprobantes y datos fiscales.' });
+  }
+  if (!negocio.arca_punto_venta) return res.status(400).json({ error: 'Primero cargá el punto de venta.' });
+  try {
+    const arca = arcaDelNegocio(negocio);
+    const estado = await arca.estado();
+    if ([estado.app, estado.db, estado.auth].some((s) => s !== 'OK')) {
+      return res.status(503).json({ error: 'ARCA está con problemas en este momento. Probá de nuevo en unos minutos.' });
+    }
+    const letra = letraQueCorresponde(negocio.condicion_iva, null);
+    const ultimo = await arca.ultimoAutorizado(negocio.arca_punto_venta, TIPOS_CBTE.factura[letra]);
+    const puntos = await arca.puntosDeVenta();
+    const punto = puntos.find((p) => p.numero === negocio.arca_punto_venta);
+    if (puntos.length && (!punto || punto.bloqueado || punto.baja)) {
+      return res.status(400).json({
+        error: `El punto de venta ${negocio.arca_punto_venta} no está habilitado en ARCA para factura electrónica por web services. Revisá el paso 3.`
+      });
+    }
+    const verificado = new Date().toISOString();
+    withTransaction(() => {
+      db.prepare('UPDATE organizaciones SET arca_verificado = ? WHERE id = ?').run(verificado, negocio.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: negocio.id,
+        valor_anterior: JSON.stringify({ arca_verificado: negocio.arca_verificado }),
+        valor_nuevo: JSON.stringify({ arca_verificado: verificado }),
+        detalle: 'Factura electrónica verificada con ARCA'
+      });
+    });
+    res.json({ verificado, ultimo_autorizado: ultimo, letra });
+  } catch (err) {
+    if (!(err instanceof ArcaError)) throw err;
+    if (ERRORES_DE_PERMISO.includes(err.codigo)) {
+      return res.status(400).json({
+        error:
+          'ARCA todavía no deja que Nexo facture por tu CUIT. Revisá que la delegación del paso 2 esté hecha. Si la hiciste hace un rato, ARCA puede tardar unas horas en reconocerla.'
+      });
+    }
+    res.status(err.transitorio ? 503 : 400).json({ error: err.message });
+  }
+}));
+
+// Apagar la factura electrónica: los comprobantes nuevos vuelven a ser
+// internos. Lo ya autorizado no cambia.
+app.delete('/api/factura-electronica', soloAdmin, (req, res) => {
+  const negocio = negocioParaArca(req.usuario.organizacion_id);
+  if (negocio.arca_verificado) {
+    withTransaction(() => {
+      db.prepare('UPDATE organizaciones SET arca_verificado = NULL WHERE id = ?').run(negocio.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: negocio.id,
+        valor_anterior: JSON.stringify({ arca_verificado: negocio.arca_verificado }),
+        valor_nuevo: JSON.stringify({ arca_verificado: null }),
+        detalle: 'Factura electrónica apagada'
+      });
+    });
+  }
+  res.json({ activa: false });
 });
 
 /* ---------- Categorías de productos ---------- */
@@ -5197,7 +5707,7 @@ function ivaDeLaVenta(ventaId, organizacionId) {
   return { total, iva: Math.round(iva * 100) / 100 };
 }
 
-app.post('/api/ventas/:id/facturar', (req, res) => {
+app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   const ventaId = Number(req.params.id);
   const { condicion, tipo, letra, punto_venta } = req.body;
   const tipoFinal = tipo || 'factura';
@@ -5221,17 +5731,27 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
   if (yaFacturada) {
     return res.status(409).json({ error: 'Esta venta ya tiene una factura asociada.' });
   }
+  // Con factura electrónica, el punto de venta es el de ARCA y el número lo da
+  // ARCA al autorizar (ver autorizarFactura).
+  const negocio = negocioParaArca(req.usuario.organizacion_id);
+  const electronica = facturaElectronicaActiva(negocio);
+  if (electronica) {
+    const error = errorParaArca(letraFinal, venta.cliente_id);
+    if (error) return res.status(400).json({ error });
+  }
+  const puntoVenta = electronica ? negocio.arca_punto_venta : puntoVentaFinal;
 
   let facturaId;
   try {
     facturaId = withTransaction(() => {
       const { total, iva } = ivaDeLaVenta(ventaId, req.usuario.organizacion_id);
 
-      const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, tipoFinal, letraFinal);
+      const numero = electronica ? null : siguienteNumero(req.usuario.organizacion_id, puntoVenta, tipoFinal, letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, venta_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
-           VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
+          `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, venta_id, tipo, letra, punto_venta, numero,
+                                 arca_estado, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
         )
         .run(
           venta.cliente_id,
@@ -5242,8 +5762,9 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
           ventaId,
           tipoFinal,
           letraFinal,
-          puntoVentaFinal,
+          puntoVenta,
           numero,
+          electronica ? 'pendiente' : null,
           req.usuario.organizacion_id
         );
 
@@ -5273,8 +5794,8 @@ app.post('/api/ventas/:id/facturar', (req, res) => {
     throw err;
   }
 
-  res.status(201).json({ id: facturaId });
-});
+  res.status(201).json(resultadoEmision(await autorizarFactura(req, facturaId)));
+}));
 
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
@@ -6539,7 +7060,7 @@ app.post('/api/devoluciones', (req, res) => {
 // Nota de crédito: comprobante fiscal aparte, opcional — igual que
 // "Facturar" en una venta (CLAUDE.md §16). Arranca su propia numeración
 // (tipo 'nota_credito'), independiente de la de las facturas.
-app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
+app.post('/api/devoluciones/:id/nota-credito', asincrono(async (req, res) => {
   const devolucionId = Number(req.params.id);
   const { condicion, letra, punto_venta } = req.body;
   const puntoVentaFinal = Number(punto_venta) || 1;
@@ -6593,14 +7114,26 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
   }
   iva = Math.round(iva * 100) / 100;
 
+  // Con factura electrónica, como al facturar una venta: punto de venta de
+  // ARCA y número al autorizar. Va asociada a la factura que corrige (ver
+  // asociadoParaArca).
+  const negocio = negocioParaArca(req.usuario.organizacion_id);
+  const electronica = facturaElectronicaActiva(negocio);
+  if (electronica) {
+    const error = errorParaArca(letraFinal, devolucion.cliente_id);
+    if (error) return res.status(400).json({ error });
+  }
+  const puntoVenta = electronica ? negocio.arca_punto_venta : puntoVentaFinal;
+
   let facturaId;
   try {
     facturaId = withTransaction(() => {
-      const numero = siguienteNumero(req.usuario.organizacion_id, puntoVentaFinal, 'nota_credito', letraFinal);
+      const numero = electronica ? null : siguienteNumero(req.usuario.organizacion_id, puntoVenta, 'nota_credito', letraFinal);
       const { lastInsertRowid } = db
         .prepare(
-          `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero, organizacion_id, fecha)
-           VALUES (?, ?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?, ${HOY_SQL})`
+          `INSERT INTO facturas (cliente_id, concepto, neto, iva, condicion, estado, devolucion_id, tipo, letra, punto_venta, numero,
+                                 arca_estado, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, ?, 'cobrado', ?, 'nota_credito', ?, ?, ?, ?, ?, ${HOY_SQL})`
         )
         .run(
           devolucion.cliente_id,
@@ -6610,8 +7143,9 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
           condicion || 'efectivo',
           devolucionId,
           letraFinal,
-          puntoVentaFinal,
+          puntoVenta,
           numero,
+          electronica ? 'pendiente' : null,
           req.usuario.organizacion_id
         );
       auditar(req, {
@@ -6634,8 +7168,8 @@ app.post('/api/devoluciones/:id/nota-credito', (req, res) => {
     throw err;
   }
 
-  res.status(201).json({ id: facturaId });
-});
+  res.status(201).json(resultadoEmision(await autorizarFactura(req, facturaId)));
+}));
 
 app.post('/api/devoluciones/:id/anular', soloAdmin, (req, res) => {
   const devolucionId = Number(req.params.id);
@@ -10156,6 +10690,9 @@ const SQL_LIBRO_IVA_VENTAS = db.prepare(
           facturas.neto AS total, facturas.iva
      FROM facturas JOIN clientes ON clientes.id = facturas.cliente_id
     WHERE facturas.organizacion_id = ?
+      -- Un comprobante electrónico sin CAE (pendiente o rechazado) no existe
+      -- ante ARCA todavía: no entra al libro.
+      AND (facturas.arca_estado IS NULL OR facturas.arca_estado = 'autorizado')
       AND (? IS NULL OR facturas.fecha >= ?)
       AND (? IS NULL OR facturas.fecha <= ?)
     ORDER BY facturas.fecha, facturas.id`
@@ -11729,7 +12266,8 @@ function validarDatosNegocio(cuerpo, { parcial }) {
 app.get('/api/negocio', (req, res) => {
   const negocio = db
     .prepare(
-      `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante
+      `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
+              arca_punto_venta, arca_verificado
          FROM organizaciones
         WHERE id = ?`
     )
@@ -11744,8 +12282,17 @@ app.get('/api/negocio', (req, res) => {
   // El plan va para los dos roles: el comprobante de un negocio Gratis lleva
   // "Hecho con Nexo" lo imprima quien lo imprima. El uso son conteos, nada
   // sensible.
+  // La factura electrónica, para los formularios (el punto de venta lo pone
+  // ARCA) y para el comprobante impreso (la leyenda de prueba).
+  const { arca_punto_venta: arcaPuntoVenta, arca_verificado: arcaVerificado, ...datos } = negocio;
   res.json({
-    ...negocio,
+    ...datos,
+    factura_electronica: {
+      activa: facturaElectronicaActiva(negocio),
+      punto_venta: arcaPuntoVenta,
+      verificado: arcaVerificado,
+      ambiente: ambienteArca()
+    },
     ...perfilDeEmpresa(req.usuario.organizacion_id),
     perfiles: catalogoTiposNegocio(),
     plan: planDelNegocio(req.usuario.organizacion_id),
@@ -11828,6 +12375,10 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
       nuevo.modulos,
       id
     );
+    // Otro CUIT es otra delegación en ARCA: hay que volver a verificar.
+    if ((anterior.documento ?? null) !== nuevo.documento) {
+      db.prepare('UPDATE organizaciones SET arca_verificado = NULL WHERE id = ?').run(id);
+    }
     // Se audita solo si algo cambió de verdad (diffCampos devuelve null si
     // no): abrir Configuración y guardar sin tocar nada no es un evento.
     if (cambios) {

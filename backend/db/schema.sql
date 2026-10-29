@@ -75,7 +75,38 @@ CREATE TABLE IF NOT EXISTS facturas (
   devolucion_id INTEGER REFERENCES devoluciones(id),
   -- El IVA contenido en `neto`, que es el total (hist. §113): neto gravado =
   -- neto − iva. 0 si el negocio no discrimina IVA o si es anterior.
-  iva REAL NOT NULL DEFAULT 0
+  iva REAL NOT NULL DEFAULT 0,
+  -- La alícuota de una factura suelta, que no tiene renglones de donde
+  -- sacarla. NULL en las demás.
+  alicuota_iva TEXT,
+  -- Factura electrónica (etapa E, CLAUDE.md §33). arca_estado NULL es un
+  -- comprobante interno, que nunca fue a ARCA. Uno electrónico nace
+  -- 'pendiente', sin número: el número lo da ARCA (el último autorizado + 1)
+  -- y se guarda junto con el CAE al autorizarse. 'rechazado' no consumió
+  -- número y se puede reintentar.
+  arca_estado TEXT CHECK (arca_estado IN ('pendiente', 'autorizado', 'rechazado')),
+  cae TEXT,
+  cae_vencimiento TEXT,
+  -- homologacion (CAE de prueba), produccion o simulado (NEXO_ARCA=stub).
+  arca_ambiente TEXT,
+  -- Lo que se le mandó y lo que contestó ARCA, en JSON: CUIT emisor, código
+  -- del comprobante, documento del receptor, importes, observaciones y el
+  -- número que se intentó (para reintentar sin duplicar).
+  arca_datos TEXT,
+  -- El último rechazo o falla, en palabras de ARCA.
+  arca_error TEXT
+);
+
+-- El ticket de acceso de WSAA (arca.js): ARCA da uno por certificado cada 12
+-- horas y no da otro mientras ese siga vigente, así que se guarda en la base y
+-- no en memoria (un reinicio del servidor lo perdería). Sin organizacion_id: es
+-- del certificado (el de Nexo lo comparten todos los negocios que le
+-- delegaron), y no sale en la descarga de datos de un negocio.
+CREATE TABLE IF NOT EXISTS arca_tickets (
+  clave TEXT PRIMARY KEY,   -- ambiente:servicio:huella del certificado
+  token TEXT NOT NULL,
+  sign TEXT NOT NULL,
+  vence TEXT NOT NULL
 );
 
 -- Solo un nivel por ahora (sin subcategoría): CLAUDE.md §3/§4 las
@@ -959,7 +990,13 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- datos, a los 30 días. La fila queda, sin sus datos, porque
   -- usuarios.organizacion_id la referencia.
   baja_pedida TEXT,
-  baja_hecha TEXT
+  baja_hecha TEXT,
+  -- Factura electrónica (etapa E, CLAUDE.md §33): el punto de venta que el
+  -- negocio dio de alta en ARCA para web services, y cuándo se verificó que
+  -- Nexo puede facturar por su CUIT. Sin verificar, el negocio no emite
+  -- comprobantes electrónicos.
+  arca_punto_venta INTEGER,
+  arca_verificado TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

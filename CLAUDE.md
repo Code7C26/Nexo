@@ -766,8 +766,10 @@ débito), letra, punto de venta y número correlativo garantizado por índice
 único (por punto de venta + tipo + letra). IVA (hist. §112–§114): la letra
 sale sola de la condición del negocio y la del cliente, la factura A
 discrimina el IVA, y Estadísticas tiene el libro IVA ventas y compras con el
-saldo del período. **Sin conexión real a ARCA todavía**: el comprobante no
-tiene CAE real (`facturas.neto` sigue siendo el total, y `iva` el contenido).
+saldo del período. `facturas.neto` sigue siendo el total, y `iva` el
+contenido. **Factura electrónica en homologación** (hist. §115, ver §33): con
+la factura electrónica activa, cada factura y nota de crédito sale con CAE
+de ARCA; sin activarla, el comprobante sigue siendo interno.
 
 Esto deja de ser una decisión definitiva y pasa a ser el orden de trabajo real
 (corrige la frase anterior "puede desarrollarse progresivamente", que sonaba
@@ -1373,6 +1375,23 @@ Retención de Mercado Pago (mencionada en el preámbulo como pendiente) se
 resuelve en la misma etapa que IVA, porque ambas dependen de tener categoría
 fiscal del cliente resuelta.
 
+Implementado hoy (Etapa E, hist. §115), contra el ambiente de homologación:
+- `backend/arca.js`: WSAA y WSFEv1 sin dependencias (la firma CMS del ticket
+  se arma con `node:crypto`). El ticket se guarda en la base
+  (`arca_tickets`): ARCA no da otro durante 12 horas.
+- Configuración → Factura electrónica: los pasos de la delegación (nunca se
+  pide la clave fiscal), el punto de venta y "Verificar". Sin verificar, no
+  se emite nada electrónico.
+- Al emitir, el comprobante nace pendiente y sin número; ARCA da el número
+  (último autorizado + 1) y el CAE. Si ARCA no contesta, queda pendiente y
+  el reintento consulta el número intentado antes de pedir otro: no se
+  duplica. Un rechazo no consume número y se puede descartar.
+- Lo impreso lleva el CAE, su vencimiento y el QR (RG 4892). En
+  homologación, todos los negocios emiten con el CUIT del certificado de
+  prueba, con la leyenda "Comprobante de prueba – sin validez fiscal".
+- Falta: producción (CUIT de Nexo, a decidir con un contador) y que un
+  negocio suba su propio certificado.
+
 ---
 
 # 34. PORTABILIDAD DE DATOS Y EVOLUCIÓN DEL ESQUEMA
@@ -1498,7 +1517,7 @@ excepciones).
 | B | Modularizar `app.js` por dominio + base de PWA (§31) | Habilita todas las pantallas que siguen y el uso desde el celular; en paralelo con A | En curso |
 | C | IVA discriminado y categoría fiscal (§16, §33) | Bloqueante de ARCA y de facturar en serio | Hecha (falta la retención de Mercado Pago) |
 | D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Hecha |
-| E | ARCA: homologación → producción (§33) | Depende de C | Pendiente |
+| E | ARCA: homologación → producción (§33) | Depende de C | Homologación hecha; falta producción |
 | F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Hecha (socios y cuotas, en curso) |
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Pendiente |
 | H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |

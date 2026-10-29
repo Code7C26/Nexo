@@ -139,7 +139,7 @@ test('sw.js guarda todo frontend/js y lo que carga index.html, y lo que lista ex
     // src/href locales (sin esquema); el #fragmento de los íconos no cuenta.
     // Términos y privacidad son páginas públicas que arma el servidor y se
     // abren aparte (etapa 8b, Fase 3): no son de la app.
-    ...[...html.matchAll(/(?:src|href)="([^"#:]+)/g)]
+    ...[...html.matchAll(/(?:src|href)="(?![a-z][a-z0-9+.-]*:)([^"#:]+)/g)]
       .map((m) => absoluta(m[1]))
       .filter((ref) => ref !== '/terminos' && ref !== '/privacidad'),
     ...[...css.matchAll(/url\("\.\.\/([^"]+)"\)/g)].map((m) => `/${m[1]}`),

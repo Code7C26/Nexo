@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §114);
+    siguiente número (hoy el último es §115);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -37,24 +37,38 @@
      IVA congelado en cada renglón de venta, presupuesto y compra, letra
      automática, factura A discriminada, compras con factura A como crédito
      fiscal (costo sin IVA), ganancia sin IVA para el inscripto y el libro
-     IVA ventas y compras en Estadísticas. **Lo próximo:** ARCA en
-     homologación (punto 10). **Falta que el usuario lo vea:** poner el
-     negocio como responsable inscripto en Configuración y cargar una compra
-     con un proveedor inscripto.
+     IVA ventas y compras en Estadísticas. **Falta que el usuario lo vea:**
+     poner el negocio como responsable inscripto en Configuración y cargar
+     una compra con un proveedor inscripto.
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
 3. Ahora que está el panel, el orden que se le recomendó al usuario el 29 de octubre (faltan
    pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
-   homologación** (etapa E, punto 10) → **cierre** (punto 13). Voz y
+   homologación** (etapa E, punto 10) → **cierre** (punto 13). IVA y ARCA en
+   homologación ya están: **lo que sigue es el cierre**. Voz y
    WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
    presentación, salvo que sobre tiempo.
-4. **ARCA: los trámites están completos** (certificado de homologación y
-   autorización a `wsfe`, ver "Trámites del usuario"). Se le explicó al
-   usuario que todavía no se factura: falta programar IVA y la conexión
-   (WSAA + WSFEv1). Con eso salen CAE de prueba, sin validez fiscal. La
-   facturación real (producción) es después de la presentación y pide el
-   CUIT de Nexo (decisión con un contador).
+4. **ARCA en homologación hecho** (hist. §115, commiteado en `solla`, sin
+   publicar). Factura y nota de crédito con CAE de prueba real: se probó
+   contra ARCA una A con dos alícuotas, una B y una nota de crédito A
+   asociada, todas autorizadas. Configuración → Factura electrónica tiene los
+   pasos de la delegación y "Verificar".
+   - **Para publicarlo hay que subir el certificado al servidor:** copiar el
+     `.crt` y la `.key` de `C:\Users\HP ULTRA 5\.nexo-arca\` a, por ejemplo,
+     `/etc/nexo/arca/` (dueño el usuario del servicio, `chmod 600` la clave) y
+     sumar `NEXO_ARCA_CERT` y `NEXO_ARCA_KEY` a `/etc/nexo/nexo.env`.
+   - **Ojo con el ticket de 12 horas:** ARCA da un ticket por certificado y
+     no da otro mientras esté vigente. Si la compu y el servidor usan el mismo
+     certificado, el que pida segundo queda bloqueado hasta que venza el del
+     otro. La compu pidió uno el 29 de octubre (vence el 30 a las 7:02). Lo
+     limpio es un segundo certificado de homologación para el servidor
+     (trámite de 5 minutos en WSASS, pasos 3 y 4 de "Trámites del usuario"),
+     y en la compu probar con `NEXO_ARCA=stub`.
+   - **Falta que el usuario lo vea**, y las capturas de ARCA para los pasos
+     de la página: solo las puede sacar él, con su clave fiscal.
+   - La facturación real (producción) es después de la presentación y pide
+     el CUIT de Nexo (decisión con un contador).
 5. Hecho en esta sesión: el código del mail (hist. §108), la baja (hist.
    §109), ambos publicados (PR #31), y la limpieza de cuentas de la base real
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
@@ -1365,30 +1379,17 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      o exento. La factura A discrimina el IVA.
    - Reporte de IVA ventas y compras.
    - La retención de Mercado Pago queda para después.
-10. **E: ARCA en homologación** (2 sesiones, después de C). Facturación
-   electrónica real contra el ambiente de prueba de ARCA, con CAE de prueba.
-   - **Los trámites ya están** (29 de octubre): la clave, el certificado y la
-     autorización a `wsfe` en `C:\Users\HP ULTRA 5\.nexo-arca\`. El CUIT para
-     WSAA es el CUIL de Santino (está en el `serialNumber` del certificado; no
-     va al repo). Para el backend, conviene leer las rutas del `.crt` y la
-     `.key` desde variables de entorno (por ejemplo `NEXO_ARCA_CERT` y
-     `NEXO_ARCA_KEY`), como el `.env` del mail.
-   - Gratis.
-   - WSAA + WSFEv1 implementados directo en el backend. No se usa AfipSDK: su
-     producción pasa por una nube paga.
-   - La firma del ticket de acceso (CMS) necesita `node-forge`, una
-     dependencia sin costo; `node:crypto` no la tiene.
-   - Certificado y clave por empresa (CLAUDE.md §33).
-   - Reintento sin duplicar: antes de emitir se consulta el último número
-     autorizado.
-   - **Alta guiada de la delegación** (pedido del usuario, 29 de octubre):
-     una página de Configuración con el paso a paso, con links a ARCA y
-     capturas, y un botón "Verificar" que consulta a ARCA y marca el CUIT
-     como verificado. Sin delegación verificada, el negocio no emite
-     factura electrónica. Contagram hace lo mismo, pero con un artículo de
-     ayuda y la constancia mandada a mano por chat o WhatsApp
-     (help.contagram.com, "Actualización de Factura Electrónica"); nunca
-     pedir la clave fiscal dentro de Nexo.
+10. **E: ARCA en homologación — hecho** (hist. §115). Lo que queda:
+   - subir el certificado al servidor y publicar (ver "Estado actual",
+     punto 4);
+   - las capturas de ARCA en los pasos de la página (las saca el usuario);
+   - que un negocio suba su propio certificado (CLAUDE.md §33): hace falta
+     para producción, no para la demo. Su clave privada iría cifrada en la
+     base, con una clave del servidor;
+   - producción: el CUIT de Nexo (contador), `NEXO_ARCA_AMBIENTE=produccion`
+     y confirmar que ARCA reconoce una delegación nueva sin esperar a que
+     venza el ticket (si no, el mensaje de "Verificar" ya avisa que puede
+     tardar unas horas).
 11. **I: voz y WhatsApp** (2 sesiones).
    - Dictado con la Web Speech API del navegador (es-AR, sin costo), con el
      mismo flujo de confirmación.

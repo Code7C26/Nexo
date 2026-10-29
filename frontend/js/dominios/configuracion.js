@@ -390,6 +390,8 @@ const PAGINAS = {
   // Las etapas del embudo de consultas las pinta dominios/crm.js (hist. §90).
   "etapas-consultas": { admin: true, modulo: "crm", alEntrar: () => invocar("pintar:etapasConsultas") },
   comprobantes: { admin: true, form: formComprobantes, alEntrar: pintarComprobantes },
+  // Factura electrónica con ARCA: dominios/factura-electronica.js (etapa E).
+  "factura-electronica": { admin: true, alEntrar: () => invocar("pintar:factura-electronica") },
   // Descargar los datos y dar de baja el negocio: dominios/baja.js (hist. §109).
   baja: { admin: true, alEntrar: () => invocar("pintar:baja") },
   // El plan de Nexo lo pinta dominios/plan.js (hist. §99).

@@ -10366,3 +10366,100 @@ libro de ventas ("Factura A A …").
 tratamiento), el desglose por alícuota en los libros (hace falta para el
 libro IVA digital de ARCA) y la alícuota por renglón en la compra (hoy toma
 la del producto).
+
+## 115. ARCA en homologación: factura electrónica con CAE, 29 de octubre de 2026
+
+Etapa E (punto 10 de "Qué sigue"), con los trámites de homologación ya hechos
+por el usuario. Pedido: "hacer lo que sigue", y la alta guiada de la
+delegación que había pedido ese mismo día.
+
+**Decisiones (mías, técnicas):**
+- **Sin `node-forge`.** El handoff decía que la firma CMS del ticket de WSAA
+  lo necesitaba. Son unas pocas estructuras DER (SignedData con atributos
+  firmados, SHA-256 y RSA) y la firma RSA sí la hace `node:crypto`: se
+  arman a mano en `backend/arca.js`, como el SMTP de `mail.js`. Lo verifica
+  `openssl cms -verify` (test) y lo aceptó WSAA de homologación a la
+  primera.
+- **El ticket se guarda en la base** (`arca_tickets`): ARCA da uno por
+  certificado cada 12 horas y rechaza otro pedido mientras siga vigente. En
+  memoria, cada deploy lo perdería y bloquearía la facturación hasta 12 h.
+- **El número lo da ARCA.** Con la factura electrónica activa, el
+  comprobante nace `pendiente`, sin número, en el punto de venta de ARCA del
+  negocio. Después del commit (node:sqlite es síncrono y ARCA tarda) se pide
+  el último autorizado + 1 y el CAE. Un pedido a la vez por serie (CUIT,
+  punto de venta, tipo), con una cola en memoria.
+- **Reintento sin duplicar:** el número intentado se guarda antes de
+  mandarlo. Si la respuesta se pierde, el reintento consulta ese número
+  (`FECompConsultar`) y lo adopta si coincide importe, receptor y fecha. Un
+  10016 (número ya usado) da una vuelta más. Un rechazo no consume número:
+  queda `rechazado` con el motivo de ARCA, se puede reintentar después de
+  corregir (el CUIT del cliente) o descartar (`DELETE /api/facturas/:id`,
+  solo rechazados).
+- **Homologación:** todos los negocios emiten con el CUIT del certificado de
+  prueba (el CUIL de Santino), porque el ARCA de prueba no tiene
+  delegaciones de negocios de mentira; lo impreso lleva los datos del
+  negocio y "Comprobante de prueba – sin validez fiscal" (decisión del 19 de
+  octubre). Comparten la serie de cada punto de venta: los números de un
+  negocio saltan. En producción, cada uno con su CUIT.
+- **Punto de venta propio:** no puede tener comprobantes internos de Nexo
+  (chocaría la numeración). Lo interno queda como estaba (`arca_estado`
+  NULL).
+- La nota de crédito va asociada a la factura electrónica de la venta
+  (`CbtesAsoc`); si la venta no tiene una, al período desde la venta hasta
+  hoy (`PeriodoAsoc`). La factura suelta, concepto 3 (no se sabe qué se
+  vendió); la de una venta, 1, 2 o 3 según tenga productos o servicios.
+- Auditoría: `cambiar_estado` (CAE o rechazo), `editar` (configuración) y
+  `anular` (descarte). Sumar una acción nueva pedía reconstruir la tabla.
+- El QR de la RG 4892 se dibuja con `qrcode-generator` (MIT, Kazuhiko Arase,
+  1.4.4), vendorizada en `frontend/js/vendor/qrcode.js` como jsPDF: cliente,
+  sin npm ni build.
+
+**Qué se hizo.**
+- `backend/arca.js` (nuevo): firma CMS, WSAA, WSFEv1 (`FEDummy`,
+  `FECompUltimoAutorizado`, `FECAESolicitar`, `FECompConsultar`,
+  `FEParamGetPtosVenta`), las cuentas del comprobante
+  (`importesDelComprobante`: IVA por alícuota desde el total de cada una,
+  exento y no gravado aparte, cierra al centavo), documento y condición del
+  receptor (RG 5616), URL del QR y ARCA simulado (`NEXO_ARCA=stub`).
+- Migración aditiva, sin backfill: `facturas.alicuota_iva`, `arca_estado`,
+  `cae`, `cae_vencimiento`, `arca_ambiente`, `arca_datos` (JSON con lo
+  mandado y lo contestado), `arca_error`; `organizaciones.arca_punto_venta`
+  y `arca_verificado`; tabla `arca_tickets`.
+- `server.js`: las tres emisiones (factura suelta, facturar venta, nota de
+  crédito) pasan por `autorizarFactura` si el negocio la tiene activa; una A
+  sin CUIT del cliente se frena antes de guardar. Endpoints nuevos:
+  `POST /api/facturas/:id/autorizar`, `DELETE /api/facturas/:id`,
+  `GET/PUT/DELETE /api/factura-electronica` y `POST .../verificar` (admin).
+  El libro IVA ventas no cuenta lo que no tiene CAE. Cambiar el CUIT del
+  negocio pide verificar de nuevo. `GET /api/negocio` trae
+  `factura_electronica`.
+- Frontend: Configuración → Factura electrónica
+  (`dominios/factura-electronica.js`): estado, aviso del ambiente de prueba,
+  cuatro pasos con número que pasa a tilde (datos fiscales, permiso en ARCA
+  con los menús exactos, punto de venta con el sistema que corresponde a la
+  condición, verificar). El error de "Verificar" queda debajo del botón.
+  Facturas: marca "Sin CAE todavía" o "Rechazada por ARCA" en la lista (los
+  rechazados no suman), CAE y lo que dijo ARCA en la ficha, botones "Pedir
+  el CAE a ARCA" y "Descartar", y el aviso al emitir con el número y el
+  CAE. En los tres formularios, con la factura activa, el punto de venta no
+  se elige. Lo impreso: CAE, vencimiento y QR, o "sin autorizar por ARCA".
+- `test/arca.test.js` (13 tests): cuentas, firma con openssl (se saltea sin
+  openssl), emisión con número y CAE, QR, A sin CUIT, red caída, respuesta
+  perdida (adopta el mismo número), rechazo y descarte, nota de crédito,
+  falta de delegación, CUIT cambiado y punto de venta con internos.
+  `permisos.js` clasifica los endpoints nuevos. En
+  `frontend-modulos.test.js` se corrigió la expresión que lista lo que carga
+  `index.html`: decía saltear los links con esquema y no lo hacía (el link a
+  arca.gob.ar es el primero externo).
+
+**Cómo se verificó.** `npm run lint` y `npm test`. Contra ARCA de
+homologación real, con una base temporal: el login (ticket hasta el 30 de
+octubre a las 7:02), C y B de prueba en el punto de venta 1, y por la API del
+servidor una factura A con 21 % y 10,5 % a un inscripto, una B a consumidor
+final y la nota de crédito A asociada en el punto de venta 3: las tres
+autorizadas, IVA $ 15.734,80. No se pudo hacer la pasada visual en el
+navegador (el de la herramienta estaba tomado por otra sesión).
+
+**Lo que queda:** subir el certificado al servidor (con un segundo
+certificado, por el ticket de 12 horas), las capturas de ARCA en los pasos,
+el certificado propio de un negocio y producción (ver handoff.md, punto 10).

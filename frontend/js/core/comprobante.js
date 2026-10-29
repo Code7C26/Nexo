@@ -51,7 +51,70 @@ function lineasDeIva(iva, total) {
     : "";
 }
 
-export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra, iva }) {
+/* ---------- Factura electrónica (etapa E, CLAUDE.md §33) ---------- */
+
+// El QR de la RG 4892 lo dibuja qrcode-generator (MIT, vendorizada como
+// jsPDF). Se baja apenas carga este módulo, para que esté al imprimir; quien
+// imprime una factura igual espera cargarQr() antes de armar la hoja.
+const VENDOR_QR = "/js/vendor/qrcode.js";
+let qrPromesa = null;
+export function cargarQr() {
+  if (window.qrcode) return Promise.resolve();
+  qrPromesa ??= new Promise((ok, mal) => {
+    const s = document.createElement("script");
+    s.src = VENDOR_QR;
+    s.onload = ok;
+    s.onerror = () => {
+      qrPromesa = null;
+      mal(new Error(`No se pudo cargar ${VENDOR_QR}`));
+    };
+    document.body.appendChild(s);
+  });
+  return qrPromesa;
+}
+cargarQr().catch(() => {});
+
+// Una imagen (GIF en data:) y no un SVG: html2canvas, el del PDF, la copia tal
+// cual.
+function imagenQr(url) {
+  if (!window.qrcode) return "";
+  const qr = window.qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  return `<img class="hoja-qr" src="${qr.createDataURL(4, 0)}" alt="Código QR del comprobante en ARCA" />`;
+}
+
+// El pie legal del comprobante, según qué es ante ARCA:
+// - autorizado: el CAE, su vencimiento y el QR; si es del ambiente de prueba
+//   (o del simulado), dice que no tiene validez fiscal (decidido el 19 de
+//   octubre, para la demo);
+// - electrónico sin CAE (pendiente o rechazado): no vale como factura;
+// - interno (sin factura electrónica): no es un comprobante fiscal.
+function pieFiscal(arca) {
+  if (arca?.estado === "autorizado") {
+    const prueba = arca.ambiente !== "produccion";
+    // imagenQr arma la etiqueta entera: la URL va codificada adentro del GIF.
+    const qr = arca.qr ? imagenQr(arca.qr) : "";
+    return `
+      <div class="hoja-arca">
+        ${qr}
+        <div>
+          <p class="hoja-arca-titulo">Comprobante autorizado por ARCA</p>
+          <p><span class="hoja-etiqueta">CAE:</span> <span class="mono">${esc(arca.cae)}</span></p>
+          <p><span class="hoja-etiqueta">Vto. CAE:</span> ${esc(fechaAR(arca.vence))}</p>
+          ${prueba ? `<p class="hoja-legal">Comprobante de prueba – sin validez fiscal.</p>` : ""}
+        </div>
+      </div>`;
+  }
+  if (arca?.estado) return `<p class="hoja-legal">Comprobante sin autorizar por ARCA: no es válido como factura.</p>`;
+  // Sin factura electrónica, Nexo no emite CAE: lo impreso es un documento
+  // interno, no un comprobante fiscal. Decirlo es obligatorio para no inducir
+  // a error a quien lo recibe.
+  return `<p class="hoja-legal">Documento no válido como comprobante fiscal.</p>`;
+}
+
+// `arca` es solo de una factura o nota: { estado, cae, vence, qr, ambiente }.
+export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra, iva, arca }) {
   // En la A los renglones van sin IVA, para que sumen el neto gravado.
   const sinIva = iva?.letra === "A";
   const filas = items
@@ -116,10 +179,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
       <footer class="hoja-pie">
         ${pieExtra ? `<p>${esc(pieExtra)}</p>` : ""}
         ${negocio.pie_comprobante ? `<p>${esc(negocio.pie_comprobante)}</p>` : ""}
-        <!-- Nexo no está conectado a ARCA y no emite CAE: lo impreso es un
-             documento interno, no un comprobante fiscal. Decirlo es
-             obligatorio para no inducir a error a quien lo recibe. -->
-        <p class="hoja-legal">Documento no válido como comprobante fiscal.</p>
+        ${pieFiscal(arca)}
         ${negocio.plan?.marca ? `<p class="hoja-marca">Hecho con Nexo · gestión para tu negocio</p>` : ""}
       </footer>
     </div>

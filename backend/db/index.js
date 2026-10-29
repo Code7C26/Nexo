@@ -1704,6 +1704,29 @@ if (!compraItemsColumnasIva.some((col) => col.name === 'alicuota_iva')) {
 if (!compraItemsColumnasIva.some((col) => col.name === 'iva')) {
   db.exec('ALTER TABLE compra_items ADD COLUMN iva REAL NOT NULL DEFAULT 0');
 }
+// Factura electrónica (etapa E): el estado en ARCA de cada comprobante y la
+// configuración del negocio (ver schema.sql). Sin backfill: lo emitido hasta
+// ahora queda como comprobante interno (arca_estado NULL), que es lo que fue.
+const facturasColumnasArca = db.prepare('PRAGMA table_info(facturas)').all();
+for (const columna of [
+  'alicuota_iva TEXT',
+  "arca_estado TEXT CHECK (arca_estado IN ('pendiente', 'autorizado', 'rechazado'))",
+  'cae TEXT',
+  'cae_vencimiento TEXT',
+  'arca_ambiente TEXT',
+  'arca_datos TEXT',
+  'arca_error TEXT'
+]) {
+  if (!facturasColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE facturas ADD COLUMN ${columna}`);
+  }
+}
+const organizacionesColumnasArca = db.prepare('PRAGMA table_info(organizaciones)').all();
+for (const columna of ['arca_punto_venta INTEGER', 'arca_verificado TEXT']) {
+  if (!organizacionesColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna}`);
+  }
+}
 const organizacionesColumnasRubro = db.prepare('PRAGMA table_info(organizaciones)').all();
 for (const columna of ['rubro', 'modulos']) {
   if (!organizacionesColumnasRubro.some((col) => col.name === columna)) {

@@ -31,7 +31,7 @@ import {
 import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
-import { armarHojaComprobante, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
+import { armarHojaComprobante, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
@@ -45,6 +45,7 @@ import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
 import "./dominios/plan.js";
 import "./dominios/baja.js";
+import "./dominios/factura-electronica.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
@@ -851,11 +852,13 @@ function filtrarFacturas() {
     facturas.map((f) => ({ ...f, respalda_venta: f.venta_id ? "si" : "no" }))
   );
 
-  const facturado = lista.reduce((acc, f) => acc + f.total, 0);
-  const cobrado = lista
+  // Lo que ARCA rechazó no se facturó: se ve en la lista, pero no suma.
+  const validas = lista.filter((f) => f.arca_estado !== "rechazado");
+  const facturado = validas.reduce((acc, f) => acc + f.total, 0);
+  const cobrado = validas
     .filter((f) => f.estado_cobro === "cobrado")
     .reduce((acc, f) => acc + f.total, 0);
-  const pendiente = lista
+  const pendiente = validas
     .filter((f) => f.estado_cobro !== "cobrado")
     .reduce((acc, f) => acc + f.total, 0);
   document.getElementById("facturasFacturadoStrip").textContent = money(facturado);
@@ -873,6 +876,23 @@ const ESTADO_COBRO_CLASE = { pendiente: "status-vencido", parcial: "status-pendi
 const ESTADO_COBRO_LABEL = { pendiente: "Pendiente", parcial: "Parcial", cobrado: "Cobrado" };
 const TIPO_FACTURA_LABEL = { factura: "Factura", nota_credito: "Nota de crédito", nota_debito: "Nota de débito" };
 const CONDICION_FACTURA_LABEL = { efectivo: "Efectivo", transferencia: "Transferencia", mercadopago: "Mercado Pago" };
+// Factura electrónica (etapa E): cómo está ante ARCA. Una interna no lleva marca.
+const ARCA_ESTADO_LABEL = { autorizado: "Con CAE", pendiente: "Sin CAE todavía", rechazado: "Rechazada por ARCA" };
+const ARCA_ESTADO_CLASE = { autorizado: "status-cobrado", pendiente: "status-pendiente", rechazado: "status-vencido" };
+
+// El aviso después de emitir, con lo que contestó ARCA. `hecho` es el de
+// siempre ("Venta #3 facturada."), para un comprobante interno.
+function avisarEmision(r, hecho) {
+  if (r.arca_estado === "autorizado") {
+    avisar(`ARCA autorizó la ${r.comprobante} con el CAE ${r.cae}.`, "ok");
+  } else if (r.arca_estado === "pendiente") {
+    avisar(`Quedó guardado, pero ARCA no respondió y todavía no tiene CAE. Pedilo de nuevo desde la factura. (${r.arca_error ?? ""})`, "atencion");
+  } else if (r.arca_estado === "rechazado") {
+    avisar(`ARCA lo rechazó: ${r.arca_error}. Corregí el dato y pedí el CAE de nuevo desde la factura, o descartalo.`, "error");
+  } else {
+    avisar(hecho, "ok");
+  }
+}
 
 // Declarada arriba de cargarFacturas() (más abajo) a propósito: esa función
 // se invoca a nivel de módulo apenas se carga el archivo, y tablaCargando()
@@ -908,6 +928,7 @@ async function imprimirFacturasSeleccionadas(ids) {
     return;
 
   const facturasDetalle = await traerConcurrencia(ids, (id) => api(`/api/facturas/${id}`));
+  await cargarQr();
   imprimirHojas(facturasDetalle.map(hojaDeFactura));
 }
 
@@ -927,6 +948,7 @@ async function descargarPDFFacturasSeleccionadas(ids, btn) {
     return;
 
   const facturasDetalle = await traerConcurrencia(ids, (id) => api(`/api/facturas/${id}`));
+  await cargarQr();
   const items = facturasDetalle.map((f) => ({
     html: hojaDeFactura(f),
     nombreArchivo: nombreArchivoPdf("factura", f.comprobante)
@@ -953,7 +975,11 @@ function renderFacturas(lista) {
       (f) => `
     <tr class="fila-clickeable" data-id="${f.id}">
       ${selFacturas.celda(f.id)}
-      <td data-label="Comprobante" class="mono">${esc(f.comprobante)}</td>
+      <td data-label="Comprobante" class="mono">${esc(f.comprobante)}${
+        f.arca_estado && f.arca_estado !== "autorizado"
+          ? ` <span class="status ${ARCA_ESTADO_CLASE[f.arca_estado]}">${esc(ARCA_ESTADO_LABEL[f.arca_estado])}</span>`
+          : ""
+      }</td>
       <td data-label="Tipo">${esc(TIPO_FACTURA_LABEL[f.tipo] ?? f.tipo)}</td>
       <td data-label="Fecha">${esc(fechaAR(f.fecha))}</td>
       <td data-label="Cliente" class="m-titulo">${esc(f.cliente)}</td>
@@ -1094,9 +1120,19 @@ async function abrirFichaFactura(id) {
     ["Importe", money(factura.total)],
     ...(factura.iva > 0 ? [["IVA incluido", money(factura.iva)]] : []),
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[factura.estado_cobro], ESTADO_COBRO_LABEL[factura.estado_cobro] ?? factura.estado_cobro)],
-    ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"]
+    ["Origen", factura.venta_id ? `Venta #${factura.venta_id}` : "Factura suelta (sin venta asociada)"],
+    // Factura electrónica (etapa E): cómo está ante ARCA.
+    ...(factura.arca_estado
+      ? [
+          ["ARCA", badge(ARCA_ESTADO_CLASE[factura.arca_estado], ARCA_ESTADO_LABEL[factura.arca_estado])],
+          ...(factura.cae ? [["CAE", `${factura.cae} · vence el ${fechaAR(factura.cae_vencimiento)}`]] : []),
+          ...(factura.arca_estado !== "autorizado" && factura.arca_error ? [["Lo que dijo ARCA", factura.arca_error]] : [])
+        ]
+      : [])
   ];
   document.getElementById("fichaFacturaDatos").innerHTML = camposFicha(campos);
+  document.getElementById("btnPedirCae").hidden = !["pendiente", "rechazado"].includes(factura.arca_estado);
+  document.getElementById("btnDescartarFactura").hidden = factura.arca_estado !== "rechazado";
 
   const panelItems = document.getElementById("fichaFacturaItemsPanel");
   if (factura.venta_id) {
@@ -1149,16 +1185,56 @@ function hojaDeFactura(f) {
       ? f.items
       : [{ producto: f.concepto, cantidad: 1, precio_unitario: f.total, iva: f.iva }],
     total: f.total,
-    iva: { letra: f.letra, importe: f.iva, condicionCliente: f.cliente_condicion_iva }
+    iva: { letra: f.letra, importe: f.iva, condicionCliente: f.cliente_condicion_iva },
+    arca: f.arca_estado
+      ? { estado: f.arca_estado, cae: f.cae, vence: f.cae_vencimiento, qr: f.arca_qr, ambiente: f.arca_ambiente }
+      : null
   });
 }
 
 // El botón vive en el HTML (no se re-renderiza como el de presupuesto), así
 // que se bindea una sola vez y lee la factura de la variable de módulo.
-document.getElementById("btnImprimirFactura").addEventListener("click", () => {
+document.getElementById("btnImprimirFactura").addEventListener("click", async () => {
   const f = facturaFichaDatos;
   if (!f) return;
+  await cargarQr().catch(() => {});
   imprimirComprobante(hojaDeFactura(f));
+});
+
+// Pedir el CAE de nuevo: ARCA no respondió, o lo rechazó y ya se corrigió el
+// dato (por ejemplo, el CUIT del cliente).
+document.getElementById("btnPedirCae").addEventListener("click", async (e) => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  const boton = e.currentTarget;
+  boton.disabled = true;
+  try {
+    const r = await api(`/api/facturas/${f.id}/autorizar`, { method: "POST", error: "No se pudo pedir el CAE." });
+    avisarEmision(r, "");
+    await refrescar([cargarFacturas()]);
+    await abrirFichaFactura(f.id);
+  } finally {
+    boton.disabled = false;
+  }
+});
+
+// Un comprobante que ARCA rechazó nunca existió ante ARCA: se puede descartar,
+// y la venta o la devolución queda para facturar de nuevo.
+document.getElementById("btnDescartarFactura").addEventListener("click", async () => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  const ok = await confirmar({
+    titulo: "Descartar el comprobante",
+    cuerpo: f.venta_id
+      ? `ARCA lo rechazó, así que no existe como factura. La venta #${f.venta_id} queda sin facturar, para hacerlo de nuevo.`
+      : "ARCA lo rechazó, así que no existe como factura. Se borra de la lista.",
+    aceptar: "Descartar"
+  });
+  if (!ok) return;
+  await api(`/api/facturas/${f.id}`, { method: "DELETE", error: "No se pudo descartar el comprobante." });
+  await refrescar([cargarFacturas(), cargarVentas()]);
+  avisar("Comprobante descartado.", "ok");
+  mostrarVista("facturas");
 });
 
 /* ---------- Modal nueva factura ---------- */
@@ -1171,6 +1247,15 @@ function mostrarLetraSiSeElige(form) {
   const sola = Boolean(negocio.condicion_iva);
   form.querySelector("[data-letra-elegida]").hidden = sola;
   form.querySelector("[data-letra-sola]").hidden = !sola;
+  // Con factura electrónica (etapa E), el punto de venta es el que se dio de
+  // alta en ARCA y el número lo da ARCA: no se elige.
+  const electronica = negocio.factura_electronica?.activa;
+  form.querySelector("[data-punto-venta]").hidden = Boolean(electronica);
+  const aviso = form.querySelector("[data-arca]");
+  aviso.hidden = !electronica;
+  aviso.textContent = electronica
+    ? `Sale como comprobante electrónico: al guardarlo, Nexo le pide el CAE a ARCA (punto de venta ${negocio.factura_electronica.punto_venta}).`
+    : "";
 }
 
 document.getElementById("btnNuevaFactura").addEventListener("click", () => {
@@ -1197,7 +1282,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   const form = e.target;
   const tipoElegido = form.tipo.value;
 
-  const { id } = await api("/api/facturas", {
+  const emitida = await api("/api/facturas", {
     method: "POST",
     body: {
       cliente: form.cliente.value,
@@ -1215,7 +1300,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   await refrescar([cargarFacturas()]);
   form.reset();
   modal.hidden = true;
-  avisar(`${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${id} registrada.`, "ok");
+  avisarEmision(emitida, `${TIPO_FACTURA_LABEL[tipoElegido] ?? "Factura"} #${emitida.id} registrada.`);
 });
 
 /* ---------- Filas de items (Venta / Compra) ---------- */
@@ -4275,18 +4360,26 @@ document.getElementById("formFacturarVenta").addEventListener("submit", async (e
   e.preventDefault();
   const form = e.target;
 
-  await api(`/api/ventas/${ventaAFacturarId}/facturar`, {
-    method: "POST",
-    body: {
-      condicion: form.condicion.value,
-      letra: form.letra.value,
-      punto_venta: Number(form.punto_venta.value) || 1
-    },
-    error: "No se pudo generar la factura."
-  });
+  // Con factura electrónica, puede tardar lo que tarde ARCA.
+  const boton = form.querySelector('button[type="submit"]');
+  boton.disabled = true;
+  let emitida;
+  try {
+    emitida = await api(`/api/ventas/${ventaAFacturarId}/facturar`, {
+      method: "POST",
+      body: {
+        condicion: form.condicion.value,
+        letra: form.letra.value,
+        punto_venta: Number(form.punto_venta.value) || 1
+      },
+      error: "No se pudo generar la factura."
+    });
+  } finally {
+    boton.disabled = false;
+  }
 
   await refrescar([cargarVentas(), cargarFacturas()]);
-  avisar(`Venta #${ventaAFacturarId} facturada.`, "ok");
+  avisarEmision(emitida, `Venta #${ventaAFacturarId} facturada.`);
   ventaAFacturarId = null;
   modalFacturarVenta.hidden = true;
 });
@@ -4695,7 +4788,7 @@ document.getElementById("formNotaCredito").addEventListener("submit", async (e) 
   e.preventDefault();
   const form = e.target;
 
-  await api(`/api/devoluciones/${devolucionANotaCreditoId}/nota-credito`, {
+  const emitida = await api(`/api/devoluciones/${devolucionANotaCreditoId}/nota-credito`, {
     method: "POST",
     body: {
       condicion: form.condicion.value,
@@ -4708,7 +4801,7 @@ document.getElementById("formNotaCredito").addEventListener("submit", async (e) 
   await refrescar([cargarDevoluciones(), cargarFacturas()]);
   modalNotaCredito.hidden = true;
   await abrirFichaDevolucion(devolucionANotaCreditoId);
-  avisar("Nota de crédito emitida.", "ok");
+  avisarEmision(emitida, "Nota de crédito emitida.");
 });
 
 
