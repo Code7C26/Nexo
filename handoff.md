@@ -19,7 +19,7 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (29 de octubre de 2026)
+## Estado actual (1 de noviembre de 2026)
 
 **Para retomar (sesión del 29 de octubre):**
 1. **El panel de la plataforma está hecho y publicado** (hist. §111, PR #32).
@@ -42,12 +42,9 @@
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
-3. Ahora que está el panel, el orden que se le recomendó al usuario el 29 de octubre (faltan
-   pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
-   homologación** (etapa E, punto 10) → **cierre** (punto 13). IVA y ARCA en
-   homologación ya están: **lo que sigue es el cierre**. Voz y
-   WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
-   presentación, salvo que sobre tiempo.
+3. **La presentación pasó al 20 de noviembre** (dicho por el usuario el 1 de
+   noviembre). IVA y ARCA en homologación ya están. El orden vigente es el
+   "Plan hasta el 20 de noviembre", al principio de "Qué sigue".
 4. **ARCA en homologación hecho y publicado** (hist. §115, PR #34, 29 de
    octubre). Factura y nota de crédito con CAE de prueba real: se probó
    contra ARCA una A con dos alícuotas, una B y una nota de crédito A
@@ -78,8 +75,8 @@
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
-en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
-términos (Fase 3 de 8b).
+en `docs/publicar.md`). Sigue con `noindex` (`deploy/Caddyfile`, comprobado en
+vivo el 1 de noviembre): se saca cuando los datos del titular estén cargados.
 - **Servidor:** Oracle Cloud, cuenta "Nexoapp", Brazil East.
   - VM.Standard.E2.1.Micro con 1 GB de memoria y 2 GB de swap, Ubuntu 24.04;
   - IP `137.131.218.182`, que se mantiene mientras exista la instancia;
@@ -1016,8 +1013,34 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
-El orden de trabajo es el **plan en dos semanas**, al final de esta
-sección. Ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
+**Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
+vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38). El
+tiempo va a lo que se ve en vivo y a que la demo no falle, no a más módulos.
+- **Del 1 al 8:**
+  - dictado por voz en el asistente (punto 11);
+  - consultas de solo lectura en lenguaje natural (punto 11; hoy el asistente
+    solo tiene `registrar_venta`, `registrar_compra` y `registrar_gasto`);
+  - sugerencias en el Resumen: reponer, margen bajo, cuentas por vencer
+    (CLAUDE.md §36).
+  - **Del usuario:** cargar los datos del titular, crear la cuenta de Meta,
+    probar lo que el handoff marca como pendiente de ver y conseguir negocios
+    reales que usen Nexo.
+- **Del 9 al 15:**
+  - WhatsApp con notas de voz (punto 11);
+  - "Probar sin registrarse": un negocio de ejemplo, con QR para el público;
+  - importar desde una planilla (punto 8c);
+  - mandar el comprobante por mail o WhatsApp (hoy no se puede);
+  - logo del negocio y descuentos en el punto de venta.
+- **Del 16 al 19, congelado:** nada nuevo llega a `main`, que se publica solo.
+  Son los días del cierre (punto 13): cuenta de demo, video de respaldo de ARCA
+  y ensayo. Antes, comprobar que las listas aguantan el volumen de la demo: casi
+  ningún `GET` pagina (CLAUDE.md §35).
+- **Si no da, se recorta desde el final** de la lista de cada semana. Mercado
+  Libre entra solo si sobran dos sesiones. Tienda Nube, los reportes (punto 12)
+  y Web Push quedan para después.
+- **Del Classroom:** `docs/manual-usuario.html` no cambia desde el 29 de agosto
+  (antes del punto de venta, IVA y ARCA), y Canvas y contabilidad no están en
+  `docs/`. Falta que el usuario pase la lista completa.
 
 **Auditoría general del 6 de octubre (hist. §57–§65): hechas las Fases 0 a 7**
 (git, respaldo automático, backend, frontend, herramientas, scripts de verificación, limpieza
@@ -1073,7 +1096,9 @@ claro, en oscuro y a 390 px, y las fechas ya se muestran en dd/mm/aaaa. Los
 dos pendientes viejos (la tabla de evolución en el celular y el título
 repetido de las fichas) quedaron resueltos en hist. §72.
 
-**Plan en dos semanas (decidido el 19 de octubre de 2026).** El usuario adelantó
+**Plan en dos semanas (decidido el 19 de octubre de 2026).** El orden ya no es
+este: lo reemplaza el plan hasta el 20 de noviembre, al principio de esta
+sección. Queda como detalle de cada etapa. El usuario adelantó
 el plazo: el producto tiene que estar casi terminado hacia el **2 de noviembre
 de 2026**. Después se arranca con publicidad, marketing y la presentación
 presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
