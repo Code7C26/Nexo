@@ -19,7 +19,7 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (29 de octubre de 2026)
+## Estado actual (1 de noviembre de 2026)
 
 **Para retomar (sesión del 29 de octubre):**
 1. **El panel de la plataforma está hecho y publicado** (hist. §111, PR #32).
@@ -42,12 +42,9 @@
 2. **La etapa 8b está completa** con la Fase 4 (hist. §109: descargar los
    datos, dar de baja el negocio o la cuenta, `NEXO_REGISTRO=off` y campo
    trampa en el alta). Queda de 8b solo "entrar con Google", sin fecha.
-3. Ahora que está el panel, el orden que se le recomendó al usuario el 29 de octubre (faltan
-   pocos días para el 2 de noviembre): **IVA** (etapa C, punto 9) → **ARCA en
-   homologación** (etapa E, punto 10) → **cierre** (punto 13). IVA y ARCA en
-   homologación ya están: **lo que sigue es el cierre**. Voz y
-   WhatsApp, reportes, Mercado Libre y Tienda Nube quedan para después de la
-   presentación, salvo que sobre tiempo.
+3. **La presentación pasó al 20 de noviembre** (dicho por el usuario el 1 de
+   noviembre). IVA y ARCA en homologación ya están. El orden vigente es el
+   "Plan hasta el 20 de noviembre", al principio de "Qué sigue".
 4. **ARCA en homologación hecho y publicado** (hist. §115, PR #34, 29 de
    octubre). Factura y nota de crédito con CAE de prueba real: se probó
    contra ARCA una A con dos alícuotas, una B y una nota de crédito A
@@ -72,14 +69,14 @@
      usuario, con su clave fiscal).
    - La facturación real (producción) es después de la presentación y pide
      el CUIT de Nexo (decisión con un contador).
-4b. **La factura con el formato de ARCA** (hist. §116, commiteado en `solla`): datos fijos del negocio en Configuración → Comprobantes (razón social, ingresos brutos, inicio de actividades), y los de cada factura (cliente, condición de venta, período) en el formulario de facturar, con una foto en la factura. **Falta que el usuario cargue sus datos fijos** en Configuración y lo vea impreso.
+4b. **La factura con el formato de ARCA** (hist. §116, publicado en el PR #35): datos fijos del negocio en Configuración → Comprobantes (razón social, ingresos brutos, inicio de actividades), y los de cada factura (cliente, condición de venta, período) en el formulario de facturar, con una foto en la factura. **Falta que el usuario cargue sus datos fijos** en Configuración y lo vea impreso.
 5. Hecho en esta sesión: el código del mail (hist. §108), la baja (hist.
    §109), ambos publicados (PR #31), y la limpieza de cuentas de la base real
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
-en `docs/publicar.md`). Para pruebas, con `noindex` hasta que estén los
-términos (Fase 3 de 8b).
+en `docs/publicar.md`). Sigue con `noindex` (`deploy/Caddyfile`, comprobado en
+vivo el 1 de noviembre): se saca cuando arranque la publicidad.
 - **Servidor:** Oracle Cloud, cuenta "Nexoapp", Brazil East.
   - VM.Standard.E2.1.Micro con 1 GB de memoria y 2 GB de swap, Ubuntu 24.04;
   - IP `137.131.218.182`, que se mantiene mientras exista la instancia;
@@ -91,7 +88,9 @@ términos (Fase 3 de 8b).
   servidor en unos 5 minutos (`deploy/actualizar.sh`). Si el arranque falla,
   vuelve al commit anterior.
 - **Respaldos:** en cada arranque y todos los días a las 3:30, en
-  `/var/lib/nexo/respaldos`.
+  `/var/lib/nexo/respaldos`. El diario además sube la copia cifrada a
+  Backblaze B2 (bucket `nexo-respaldos-solla`, EU Central;
+  `backend/db/respaldo-nube.js`, guía en `docs/publicar.md`).
 - **La base del servidor es la real desde el 27 de octubre:** la copió
   `VACUUM INTO`. La de la compu quedó como copia vieja, y lo que se cargue
   ahí no sube.
@@ -106,7 +105,8 @@ términos (Fase 3 de 8b).
   - opcional: el token de DuckDNS en `/etc/nexo/duckdns.env` (pasos en la
     guía).
 - **Pendiente de la publicación:**
-  - el respaldo fuera de la VM (Object Storage);
+  - el respaldo fuera de la VM: código hecho el 2 de noviembre, falta
+    cargar las claves en el servidor (ver "Orden", punto 1);
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
@@ -294,7 +294,7 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
 **Ramas.** El trabajo diario va sobre `solla`, la rama de Santino (decisión
 del usuario, hist. §28): no se abre una rama por tarea. `Tosi` es la de
 Joaquín.
-- `main` tiene todo hasta §115 (PR #34: IVA y ARCA en homologación,
+- `main` tiene todo hasta §116 (PR #34: IVA y ARCA en homologación; PR #35: formato de factura,
   publicado el 29 de octubre).
 - **Desde el 28 de octubre se trabaja local** (propuesta del usuario): cada
   cambio se commitea en `solla`, sin push ni PR. Se publica cuando el usuario
@@ -1016,8 +1016,112 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
-El orden de trabajo es el **plan en dos semanas**, al final de esta
-sección. Ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
+**Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
+vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
+
+**Lo que decidió el usuario el 1 de noviembre:**
+- **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
+  del titular. Solo se hacen detalles cortos.
+- **Sin gastos fijos nuevos** hasta vender. Se busca la opción más económica y
+  segura.
+- **Las facturas de prueba alcanzan para la presentación.** Para después:
+  facturar en masa, facturar ventas que ya existen y mandar el comprobante por
+  mail.
+- **Mercado Libre y Tienda Nube tienen que estar en la presentación.** Reemplaza
+  a "van al final" del plan de dos semanas.
+- **La semana de la presentación es solo para la presentación.**
+- **Los videos son importantes,** para publicidad y para la presentación. El
+  usuario va a instalar una skill para hacerlos.
+- **El manual de usuario se actualiza una sola vez, al final.**
+- **Conocidos del usuario empiezan a usar Nexo** para encontrar errores e ideas.
+  Él probó mucho sin que quede anotado: los "Falta que el usuario lo vea" de
+  este archivo pueden estar viejos.
+- **Classroom:** faltan la consigna de testing y el documento final (importante).
+  Las consignas se dejan en `consignas/`, en la raíz (ignorada por git).
+
+**Orden:**
+- **Del 2 al 8:**
+  1. Respaldo cifrado fuera del servidor, restauración probada y aviso si el
+     sitio se cae.
+     - **Hecho (2 de noviembre):** `backend/db/respaldo-nube.js` (gzip +
+       AES-256-GCM, firma SigV4 con `node:crypto` y `fetch`, probada contra
+       el ejemplo de AWS), subida en `scripts/backup-db.mjs` (idempotente,
+       con mail al titular si falla) y `scripts/restaurar-nube.mjs`
+       (`npm run restaurar-nube`, controla `integrity_check`). Probado de
+       punta a punta contra un S3 falso: 550 KB → 42 KB.
+     - **Falta, con el usuario:** cargar en `/etc/nexo/nexo.env`
+       `NEXO_B2_KEY_ID` (el keyID de la clave "NexoKey"), `NEXO_B2_APP_KEY`,
+       `NEXO_B2_BUCKET=nexo-respaldos-solla`,
+       `NEXO_B2_ENDPOINT=s3.eu-central-003.backblazeb2.com` y
+       `NEXO_RESPALDO_CLAVE` (`openssl rand -base64 32`, también al gestor
+       de contraseñas); la regla de ciclo de vida del bucket (ocultar a los
+       90 días, borrar 1 después); una subida a mano y la restauración
+       contra B2 de verdad.
+     - **Falta:** el aviso si el sitio se cae.
+  2. "Avisar un problema" adentro de la app, para las pruebas de los conocidos:
+     cae en el CRM de `NEXO_NEGOCIO_VENTAS`, como las consultas de la landing.
+  3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.
+  4. Preguntas de solo lectura en el asistente (hoy solo tiene
+     `registrar_venta`, `registrar_compra` y `registrar_gasto`).
+  5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
+- **Del 9 al 15:**
+  1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
+  2. WhatsApp (ver abajo).
+  3. Si da: importar desde una planilla (punto 8c), sugerencias en el Resumen
+     (CLAUDE.md §36), logo del negocio y descuentos en el punto de venta.
+- **Del 16 al 19, solo presentación:** ninguna función nueva de producto.
+  - cuenta de demo y "Probar sin registrarse" con QR;
+  - comprobar que las listas aguantan ese volumen (casi ningún `GET` pagina,
+    CLAUDE.md §35);
+  - videos, ensayo y video de respaldo;
+  - manual de usuario y documento final;
+  - sacar el `noindex` si ya arranca la publicidad.
+- **Trámites del usuario, esta semana:** Backblaze, Groq, Mercado Libre (app en
+  su portal), Tienda Nube (partners; la evaluación puede demorar) y Meta. Ver
+  "Trámites del usuario".
+- **Después de la presentación:** reportes (punto 12), Web Push, caja con todos
+  los medios (8d) y entrar con Google.
+
+**IA (decidido el 1 de noviembre, a confirmar con la prueba de frases):**
+- **El problema:** `gemini-3.6-flash` tiene razonamiento en `medium` por defecto
+  y en el código no se baja. Además, los términos del plan gratis de Google
+  prohíben mandarle datos personales: pueden leerlos personas y se usan para
+  mejorar sus productos. Nexo le manda el catálogo y la frase, que suele traer
+  el nombre del cliente.
+- **La salida, sin dependencia nueva:** Groq con `fetch`, `openai/gpt-oss-20b`
+  para interpretar y `whisper-large-v3-turbo` para el audio, con Zero Data
+  Retention prendido. `gemini-2.5-flash-lite` queda de respaldo. Antes de
+  cambiar, una prueba con unas 30 frases en castellano rioplatense: si Groq no
+  entiende bien, va Gemini Flash-Lite con facturación (centavos de dólar).
+- **Whisper reemplaza a la Web Speech API del punto 11:** el mismo camino para
+  el dictado de la web y las notas de voz de WhatsApp, y anda en todo navegador.
+- **`interprete.js` sigue sin importar la base** (CLAUDE.md §36).
+
+**WhatsApp (diseño del 1 de noviembre):**
+- Webhook con firma verificada, que responde enseguida y no procesa dos veces un
+  mismo mensaje (Meta reintenta).
+- Teléfono vinculado a la cuenta con un código desde Mi cuenta. El negocio sale
+  de ese vínculo, nunca del mensaje (CLAUDE.md §28).
+- Audio → Whisper → el mismo `interpretar` y `resolverPropuesta` de la web →
+  propuesta con botones Confirmar y Cancelar → la misma ejecución, con auditoría
+  de actor `asistente`.
+- El número de prueba llega a 5 teléfonos verificados y es gratis. Sirve para la
+  demo, no para todos los conocidos.
+- **Solo gestión del negocio, nunca charla abierta:** desde enero de 2026 Meta
+  prohíbe los asistentes de uso general en la API.
+
+**Servidor y respaldos (decidido el 1 de noviembre):**
+- **Se sigue en Oracle:** es gratis, y migrar a días de la presentación es un
+  riesgo mayor que el que evita. Google e2-micro solo da 1 GB de salida por mes.
+- **Pay As You Go no tiene costo fijo:** se paga solo lo que exceda lo gratis.
+  Oracle autoriza US$ 100 en la tarjeta y lo revierte. No acepta prepagas ni
+  débito con PIN. Es decisión del usuario; con la copia afuera no bloquea nada.
+- **Respaldo en Backblaze B2** (10 GB gratis, sin tarjeta, compatible con S3):
+  cifrado con `node:crypto` y sin dependencias, con la clave también guardada
+  fuera del servidor. Otro proveedor, para que un problema con Oracle no se
+  lleve la copia.
+- **Con gente usando Nexo, publicar es delicado:** cada merge a `main` reinicia
+  y puede migrar la base real. Se publica por bloques y probando antes.
 
 **Auditoría general del 6 de octubre (hist. §57–§65): hechas las Fases 0 a 7**
 (git, respaldo automático, backend, frontend, herramientas, scripts de verificación, limpieza
@@ -1073,7 +1177,9 @@ claro, en oscuro y a 390 px, y las fechas ya se muestran en dd/mm/aaaa. Los
 dos pendientes viejos (la tabla de evolución en el celular y el título
 repetido de las fichas) quedaron resueltos en hist. §72.
 
-**Plan en dos semanas (decidido el 19 de octubre de 2026).** El usuario adelantó
+**Plan en dos semanas (decidido el 19 de octubre de 2026).** El orden ya no es
+este: lo reemplaza el plan hasta el 20 de noviembre, al principio de esta
+sección. Queda como detalle de cada etapa. El usuario adelantó
 el plazo: el producto tiene que estar casi terminado hacia el **2 de noviembre
 de 2026**. Después se arranca con publicidad, marketing y la presentación
 presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
@@ -1458,6 +1564,10 @@ octubre).
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
+- ~~**Backblaze:**~~ hecho el 2 de noviembre (cuenta en EU Central, bucket
+  privado `nexo-respaldos-solla`, clave solo para ese bucket).
+- **Groq:** cuenta en console.groq.com, una clave y Zero Data Retention prendido
+  en Data Controls. Mirar ahí los límites reales del plan gratis.
 - **ARCA (etapa 10):**
   - **Quién (cambiado el 28 de octubre, hist. §105):** Santino, con su propio
     CUIL y su clave fiscal. Reemplaza al padre (19 de octubre). En ARCA no
@@ -1511,9 +1621,12 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   Nube y WhatsApp le avisan a Nexo por webhook, y desde hist. §103 llegan
   directo a https://nexosystem.duckdns.org. Ngrok ya no hace falta.
 - **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
-  en su portal de desarrolladores.
+  en su portal de desarrolladores. No hay sandbox: se prueba en producción entre
+  usuarios de prueba (hasta 10, se crean por API y caducan).
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
-  tienda demo y la app.
+  tienda demo y la app. La tienda demo es gratis pero no admite ventas: para la
+  demo, probar crear la orden con `POST /orders` y confirmar que dispara
+  `order/created`.
 - **Meta (etapa 11):**
   - cuenta de Meta for Developers;
   - una app con el producto WhatsApp;

@@ -9,6 +9,7 @@
     "lint": "node scripts/lint.mjs",
     "test": "npm --prefix backend test",
     "backup": "npm --prefix backend run backup",
+    "restaurar-nube": "node --env-file-if-exists=.env scripts/restaurar-nube.mjs",
     "seed": "node scripts/seed.mjs",
     "verificar-migracion": "node scripts/verificar-migracion.mjs",
     "regresion": "node scripts/regresion-head.mjs",
