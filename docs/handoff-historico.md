@@ -10777,3 +10777,76 @@ ejemplo y "llevame a ventas"; solo la frase sin sentido llegó a la IA.
 pérdida de stock, alta de cliente o producto, presupuesto, anotar una
 consulta), con las herramientas que se mandan elegidas según la frase para
 no agrandar cada pedido; y bloque 3, el punto 4 del plan.
+
+## 121. Tienda Nube: la base de integraciones, publicar, stock y precio, y los pedidos como ventas, 2 de noviembre de 2026
+
+Punto 5 del plan hasta el 20 de noviembre ("base de integraciones y Mercado
+Libre"). Se empezó por Tienda Nube porque su app ya estaba creada (49947) con
+las claves en el `.env`; las de Mercado Libre siguen vacías. La base común de
+CLAUDE.md §32 sirve igual para las dos.
+
+**Esquema (aditivo, cuatro tablas nuevas, nada existente cambia).**
+- `integraciones`: una por negocio y plataforma. La tienda (`cuenta_externa`),
+  el token cifrado, la lista y el depósito que se publican, la cuenta donde
+  entra lo cobrado y `pedidos_desde` (lo anterior a conectar no se trae). Un
+  índice parcial impide que una tienda conectada esté en dos negocios.
+- `integracion_vinculos`: variante de la tienda ↔ producto o variante de
+  Nexo, con lo último que se mandó (stock y precio). Nunca por nombre.
+- `integracion_pedidos`: cada pedido una sola vez (UNIQUE), con su venta, su
+  estado (importado, pendiente, cancelado) y el error si no pasó.
+- `integracion_log`: la actividad, hasta 500 filas por integración.
+- `verificar-migracion`: 24 de 24 casos, la base real intacta.
+
+**Backend.** `backend/tiendanube.js` (sin dependencias, como `arca.js`, no
+toca la base): OAuth, `state` firmado con HMAC y vencimiento, firma de
+webhooks (`x-linkedstore-hmac-sha256`), token cifrado con AES-256-GCM (clave
+derivada del secreto de la app, sin variable nueva) y el cliente de la API
+2025-03 con el límite de 40/2 por segundo. En `server.js`:
+- **Conectar:** el callback (público) exige que el `state` sea válido y de la
+  misma persona. Sin `state` (la app se instaló desde Tienda Nube) no conecta
+  solo: guarda el permiso 10 minutos y pide confirmarlo en Nexo viendo el
+  nombre de la tienda. Así un tercero no puede atar su tienda al negocio de
+  otro (el test lo encontró: la primera versión caía al negocio de la sesión).
+- **Webhooks:** order/created, paid y cancelled, product/deleted y
+  app/uninstalled, solo si la dirección es https pública. Contestan enseguida
+  y procesan después. Los tres de privacidad (`/privacidad/tienda`,
+  `borrar-cliente`, `datos-cliente`) borran lo que Nexo guardó de Tienda Nube;
+  los clientes y las ventas son del negocio y quedan.
+- **Publicar:** crea el producto con sus atributos (hasta 3), una variante
+  por variante activa, precio de la lista y stock del depósito. Un servicio va
+  sin tope de stock.
+- **Stock y precio:** Nexo manda. `registrarMovimientoStock` programa una
+  pasada a los 3 segundos, y cada 5 minutos hay una de todas las tiendas
+  (cubre los precios, que se editan desde muchas pantallas). Se manda solo lo
+  que cambió, de a 50 variantes (`PATCH /products/stock-price`).
+- **Pedidos:** uno pagado pasa a venta con `crearVenta` (la misma de una
+  venta a mano), en el depósito y con la lista de la integración, y su cobro
+  en la cuenta elegida. El cliente se busca por mail o documento, si no se
+  crea. El descuento del pedido se reparte entre los renglones. Si un producto
+  no está vinculado o no hay stock, queda pendiente y se reintenta. Una
+  cancelación de algo que ya es venta no la anula sola (puede tener cobro y
+  factura): queda marcada para hacer la devolución. Auditoría con actor
+  `sistema`.
+
+**Frontend.** Configuración → Canales de venta → Tienda Nube
+(`frontend/js/dominios/tienda-nube.js`): los dos pasos, la confirmación de
+una instalación hecha desde Tienda Nube, y conectada: lista, depósito y
+cuenta, productos para publicar, pedidos (con "Reintentar", "Ver venta" y "Ya
+lo revisé") y la actividad.
+
+**Cómo se verificó.** `backend/test/tiendanube.test.js` (12 tests) contra un
+Tienda Nube falso: permisos, `state` trucho, ajeno o sin sesión, token fuera
+de la descarga de datos, publicar simple y con variantes, el stock que sale
+solo después de una venta, webhook sin firma, pedido → venta una sola vez,
+pendiente, cancelado, privacidad, desinstalar y la confirmación. `npm test`
+(237) y `npm run lint`. En Chrome, compu y 390 px, con una demo (Tienda Nube
+falso + base temporal): conectar de punta a punta, publicar dos productos y
+traer dos pedidos (uno pasó a venta, el otro quedó para revisar).
+
+**No se pudo probar contra Tienda Nube de verdad:** la redirección de la app
+apunta al sitio publicado. Se prueba al publicar (ver `handoff.md`).
+
+**Queda para después:** el envío que paga el cliente no se suma a la venta
+(el log lo avisa), el canal de la venta y la comisión (lista de "lo que le
+falta a la venta para e-commerce"), vincular productos que ya estaban en la
+tienda (por SKU, confirmado a mano), fotos, y si va solo en el plan Pro.

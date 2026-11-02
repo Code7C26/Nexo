@@ -1340,6 +1340,17 @@ sin confundir con la app de e-commerce), ARCA (§33, es la integración fiscal),
 WhatsApp y email (notificaciones y eventualmente el canal de entrada de la
 IA conversacional, ver §36).
 
+Implementado hoy (hist. §121): la base común y **Tienda Nube**.
+- Tablas `integraciones` (token cifrado, lista, depósito y cuenta de cobro
+  por negocio), `integracion_vinculos`, `integracion_pedidos` (cada pedido
+  una sola vez) e `integracion_log`. Mercado Libre se suma sobre las mismas.
+- `backend/tiendanube.js` habla con Tienda Nube sin dependencias; lo demás
+  está en `server.js` ("Integraciones") y en Configuración → Tienda Nube.
+- Conflictos, decididos de antemano: Nexo manda en el stock y el precio; un
+  pedido pagado pasa a venta con `crearVenta`, como una cargada a mano; una
+  cancelación de algo que ya es venta no la anula sola.
+- Sin `state` válido el permiso no se conecta solo: se confirma en Nexo.
+
 ---
 
 # 33. FACTURACIÓN ELECTRÓNICA ARCA
@@ -1539,7 +1550,7 @@ excepciones).
 | D | Punto de venta (POS) y turno de caja (§30) | Es el uso diario más visible de un comercio real | Hecha |
 | E | ARCA: homologación → producción (§33) | Depende de C | Homologación hecha; falta producción |
 | F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Hecha (socios y cuotas, en curso) |
-| G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Pendiente |
+| G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | En curso (Tienda Nube hecha; falta Mercado Libre) |
 | H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
 | I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | En curso (voz hecha; falta WhatsApp) |
 

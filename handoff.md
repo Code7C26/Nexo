@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §120);
+    siguiente número (hoy el último es §121);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,15 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (1 de noviembre de 2026)
+## Estado actual (2 de noviembre de 2026)
+
+**Lo último (2 de noviembre, hist. §121): Tienda Nube hecha, sin publicar.**
+Configuración → Canales de venta → Tienda Nube: conectar (OAuth), publicar
+productos, stock y precio que se mandan solos y pedidos pagados que pasan a
+venta con su cobro. Probado contra un Tienda Nube falso (12 tests) y en Chrome
+con una demo; **falta probarlo contra la tienda demo de verdad**, que necesita
+el sitio publicado (la redirección de la app apunta ahí). Pasos en "Qué
+sigue", punto 5.
 
 **Para retomar (sesión del 29 de octubre):**
 1. **El panel de la plataforma está hecho y publicado** (hist. §111, PR #32).
@@ -1128,6 +1136,25 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      las de los números ("¿cuánto vendí este mes?"), que hoy llevan a
      Resumen.
   5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
+     - **Tienda Nube hecha el 2 de noviembre** (hist. §121), commiteada en
+       `solla` y sin publicar. La base (`integraciones`, vínculos, pedidos y
+       log) sirve igual para Mercado Libre.
+     - **Para probarla de verdad, al publicar:** cargar `TIENDANUBE_APP_ID` y
+       `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env` (con el comando de
+       PowerShell que las lee del `.env`), entrar al sitio como admin,
+       Configuración → Tienda Nube → Conectar, elegir la tienda demo
+       (nexo330), publicar un producto y crear un pedido con `POST /orders`
+       (la tienda demo no vende) para ver que llega como venta.
+     - **Decidido por mí, para revisar:** Nexo manda en el stock y el precio
+       (pisa los de la tienda); un pedido entra recién pagado; una
+       cancelación de algo que ya es venta no se anula sola, queda para hacer
+       la devolución; lo cobrado entra en la cuenta de Mercado Pago (se
+       cambia en la página); los pedidos de antes de conectar no se traen.
+     - **Pregunta para el usuario:** ¿Tienda Nube (y Mercado Libre) solo en el
+       plan Pro, como dice la landing ("muy pronto")? Hoy está para todos,
+       como ARCA.
+     - Falta: Mercado Libre (cuando estén sus claves), el envío y el canal
+       en la venta, vincular productos que ya estaban en la tienda, fotos.
 - **Del 9 al 15:**
   1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
   2. WhatsApp (ver abajo).
@@ -1713,7 +1740,7 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     `/api/integraciones/tiendanube/callback`, la página `/app`, Editar
     productos, Ver pedidos y los tres webhooks de privacidad en
     `/api/integraciones/tiendanube/privacidad/{tienda,borrar-cliente,datos-cliente}`.
-    Esas rutas todavía no existen: no instalar la app hasta programarlas.
+    Las rutas existen desde hist. §121 (sin publicar todavía).
     Tienda demo: https://nexo330.mitiendanube.com, vacía a propósito: los
     productos los sube Nexo al instalar la app ("publicar en Tienda Nube").
     `TIENDANUBE_APP_ID` y `TIENDANUBE_CLIENT_SECRET` en el `.env` de la compu
