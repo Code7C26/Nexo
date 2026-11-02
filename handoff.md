@@ -1156,6 +1156,15 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        reserva stock 72 horas); una cancelación anula sola la venta sin
        cobros, y la que tiene cobros o factura queda para la devolución; lo cobrado entra en la cuenta de Mercado Pago (se
        cambia en la página); los pedidos de antes de conectar no se traen.
+     - **Decidido por el usuario el 2 de noviembre: Nexo manda** en el stock y
+       el precio. Razón: el stock lo cambian las ventas y las compras, y las
+       compras solo se registran en Nexo; que la tienda se actualice sola al
+       cargar una compra es lo cómodo. **"Traer mis productos" desde una
+       tienda que ya existe queda para después**, si sobra tiempo: crear en Nexo
+       los productos de la tienda (o vincularlos por SKU), con el stock como
+       ajuste "importado de Tienda Nube". Los cambios de la tienda hacia Nexo
+       (stock como ajuste por la diferencia, nunca copiando el número) se
+       pensaron y quedan descartados por ahora.
      - **Pregunta para el usuario:** ¿Tienda Nube (y Mercado Libre) solo en el
        plan Pro, como dice la landing ("muy pronto")? Hoy está para todos,
        como ARCA.
