@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §116);
+    siguiente número (hoy el último es §117);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -1078,6 +1078,17 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - Tests en `backend/test/problema.test.js`; probado en Chrome en
        celular (empleado) y en compu (admin).
   3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.
+     **Hecho el 2 de noviembre, menos la prueba contra Groq real** (hist.
+     §117):
+     - Groq por `fetch` como principal, Gemini de respaldo y con
+       razonamiento bajo.
+     - Dictado con Whisper (botón de micrófono en el asistente).
+     - `npm run probar-ia` con las 30 frases.
+     - **Falta:** que el usuario saque la clave de Groq (ver "Trámites del
+       usuario"); con ella, correr `npm run probar-ia` en la compu y cargarla
+       en el servidor (`GROQ_API_KEY` en `/etc/nexo/nexo.env`, con el `.txt`
+       y `Get-Content | ssh`). Sin la clave, el asistente sigue con Gemini si
+       el servidor tiene la suya, y el micrófono no aparece.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`).
   5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
@@ -1584,7 +1595,9 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
 - ~~**Backblaze:**~~ hecho el 2 de noviembre (cuenta en EU Central, bucket
   privado `nexo-respaldos-solla`, clave solo para ese bucket).
 - **Groq:** cuenta en console.groq.com, una clave y Zero Data Retention prendido
-  en Data Controls. Mirar ahí los límites reales del plan gratis.
+  en Data Controls. Mirar ahí los límites reales del plan gratis. **Es lo que
+  frena el punto 3** (el código ya está, hist. §117): la clave va en el `.env`
+  de la compu como `GROQ_API_KEY=` y después en el servidor.
 - **ARCA (etapa 10):**
   - **Quién (cambiado el 28 de octubre, hist. §105):** Santino, con su propio
     CUIL y su clave fiscal. Reemplaza al padre (19 de octubre). En ARCA no

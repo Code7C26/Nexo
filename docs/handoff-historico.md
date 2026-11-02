@@ -10523,3 +10523,64 @@ hacerla.
 temporal con ARCA simulado: el formulario de facturar (precarga, letra que
 cambia con la condición), la factura A impresa desde la ficha y la página de
 Configuración.
+
+## 117. El asistente con Groq y con voz, 2 de noviembre de 2026
+
+Punto 3 del plan hasta el 20 de noviembre ("IA más rápida y sin datos en el
+plan gratis de Google, con voz"). Hecho todo lo que no depende de la clave de
+Groq, que es un trámite del usuario: **todavía no se probó contra Groq real.**
+
+**Qué cambia.**
+- **Groq es el proveedor principal** (`backend/interprete.js`): la API de
+  OpenAI por `fetch`, sin dependencia nueva. Interpreta con
+  `openai/gpt-oss-20b` y razonamiento `low`, con las mismas tres herramientas
+  y el mismo prompt (el prompt de sistema va primero: Groq lo cachea y lo
+  cacheado no cuenta para su límite). Si arma mal la llamada
+  (`tool_use_failed`) se reintenta una vez.
+- **Gemini queda de respaldo:** con las dos claves, si Groq da 429, 5xx o no
+  responde en 20 s, contesta Gemini. Un 401 o un 400 no pasa al respaldo (es
+  configuración, no caída). Gemini ahora razona en `LOW` (por defecto era
+  `medium` y tardaba segundos). `NEXO_GROQ_MODELO` y `NEXO_GEMINI_MODELO`
+  cambian el modelo sin tocar el código; `NEXO_INTERPRETE=groq|gemini` fija
+  uno.
+- **El prompt** ya no dice que Nexo no maneja IVA (desde §112 sí): dice que
+  los precios son finales. Suma cómo se dicen los montos ("45 lucas", "45k",
+  "un palo").
+- **Voz:** `POST /api/asistente/transcribir` recibe el audio crudo
+  (`audio/*`, hasta 4 MB, 40 dictados por hora por persona), lo pasa por
+  Whisper (`whisper-large-v3-turbo`, castellano, con los nombres de las
+  cuentas y de 40 productos como contexto) y devuelve el texto. El audio no
+  se guarda. `GET /api/asistente/capacidades` dice si la voz está.
+- **En la app:** botón de micrófono al lado de enviar, solo si el servidor
+  tiene la voz y el navegador puede grabar. Se toca para empezar (rojo, late)
+  y otra vez para terminar, con tope de un minuto. El texto se manda como si
+  se hubiera tipeado: queda a la vista en el hilo y después viene la
+  propuesta para confirmar (CLAUDE.md §21). Un toque de menos de 0,8 s no
+  manda nada (Whisper inventa frases en el silencio). `api()` acepta un
+  `Blob` como cuerpo.
+- **Reemplaza a la Web Speech API del punto 11:** el mismo camino servirá
+  para las notas de voz de WhatsApp, y anda en todo navegador.
+- **`npm run probar-ia [groq|gemini]`** (`scripts/probar-ia.mjs`): las 30
+  frases en rioplatense (12 ventas, 7 compras, 7 gastos y 4 que no son
+  operaciones) contra el proveedor real, con un negocio de ejemplo en
+  memoria. Dice cuáles entendió mal y cuánto tarda.
+
+**Cómo se verificó.**
+- `test/interprete-proveedores.test.js` (12, con `fetch` simulado: el pedido
+  a Groq, la lectura de la llamada, el reintento, el respaldo a Gemini, que
+  un 401 no pasa al respaldo, que el mensaje de cupo no filtra datos de
+  Groq, y el formulario de Whisper) y `test/asistente-voz.test.js` (5, con el
+  servidor de prueba). `npm test` (183) y `npm run lint`.
+- En Chrome con el micrófono falso (`--use-fake-device-for-media-stream`) a
+  390 px y en la compu: graba WebM/Opus de verdad, el servidor lo recibe y
+  lo devuelve, se interpreta, el toque corto no manda nada y sale la
+  propuesta. Sin errores de consola.
+
+**Lo que falta.**
+- La clave de Groq (trámite del usuario) y correr `npm run probar-ia`. Si
+  Groq entiende mal, va Gemini Flash-Lite con facturación (decisión de plata
+  del usuario).
+- Cuidado con el límite del plan gratis de Groq para `gpt-oss-20b` (por
+  minuto y por día, en tokens): la prueba lo muestra. Si no alcanza, el
+  modelo se cambia con `NEXO_GROQ_MODELO`.
+- Probar el dictado con la voz de una persona, en el celular.
