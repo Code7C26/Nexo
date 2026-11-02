@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §119);
+    siguiente número (hoy el último es §120);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -1106,6 +1106,17 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        tokens). Las pruebas de este día lo agotaron: **no correr
        `probar-ia` con la clave del servidor** salvo lo justo. Para la demo,
        el Dev Tier de Groq (pago por uso) lo decide el usuario.
+  3d. **Que el asistente responda a cualquier cosa** (pedido del usuario del
+     2 de noviembre: "que el asistente y la app en general respondan a
+     cualquier cosa que el público pueda llegar a poner"). Tres bloques:
+     1. ~~Sin IA: saludos, gracias, "¿qué podés hacer?", "llevame a…", y
+        nunca un "no identifiqué" seco; menos productos por pedido~~
+        **hecho** (hist. §120), sin publicar.
+     2. Más operaciones con la IA: cobrar a un cliente, pagar a un proveedor,
+        rotura o pérdida de stock, alta de cliente o producto, presupuesto,
+        anotar una consulta. Mandar solo las herramientas que tengan que ver
+        con la frase, para no agrandar cada pedido.
+     3. Preguntas sobre los números: es el punto 4 de abajo.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`). Las de
      cómo se usa ya las contesta el manual (hist. §118): este punto es para

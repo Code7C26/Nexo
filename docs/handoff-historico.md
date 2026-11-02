@@ -10739,3 +10739,41 @@ devolución registrada y la red del manual, sin errores de consola.
 **Falta:** probar contra Groq real la frase del profe cuando vuelva el cupo,
 y publicar (el próximo arranque migra la tabla en la base real, con el
 respaldo automático antes).
+
+## 120. Que el asistente responda a todo: la charla, "llevame a…" y menos tokens, 2 de noviembre de 2026
+
+Pedido del usuario: "la idea es que el asistente y la app en general respondan
+a cualquier cosa que el público pueda llegar a poner". Plan en tres bloques
+(anotado en `handoff.md`, punto 3d): 1) lo que se contesta sin IA, 2) más
+operaciones con la IA, 3) preguntas sobre los números. Este § es el bloque 1.
+
+**Qué se hizo.**
+- `clasificarFrase` (core/buscar-ayuda.js) suma dos tipos, sin IA:
+  - **charla**: saludo, gracias, despedida y "¿qué podés hacer?/ayuda". Se
+    sacan las fórmulas una tras otra ("buenas, ¿cómo andás?") y es charla
+    solo si no queda nada con contenido: "hola, vendí 3 remeras" es una venta.
+  - **navegar**: "llevame a ventas", "abrí el stock", "quiero ver la caja",
+    con 21 pantallas. El asistente lleva solo (y en el celular cierra el
+    panel). "Abrí la caja" no navega: es abrir el turno del mostrador, y lo
+    contesta el manual.
+- **Nadie queda trabado:** el saludo, "¿qué podés hacer?", la pregunta que el
+  manual no tiene ("Eso no lo sé: estoy para ayudarte con tu negocio") y lo
+  que la IA no entiende ("No entendí qué querés cargar") muestran lo que el
+  asistente sabe hacer, con un ejemplo que se toca para cada cosa
+  (`htmlCapacidades`, dominios/ayuda.js). Los ejemplos pasan a un click
+  delegado: también andan los que aparecen en las respuestas.
+- **Menos tokens por frase:** `contextoParaInterprete(org, texto)` manda a la
+  IA solo los productos con una palabra que empiece igual (4 letras) que una
+  de la frase, hasta 40, en vez del catálogo entero (hasta 300). El prompt
+  dice que son "los que se parecen a la frase".
+
+**Cómo se verificó.** `test/ayuda.test.js` suma la charla (7 frases y "hola,
+vendí…" como venta) y la navegación (6 frases a vistas que existen, y "abrí
+la caja" al manual). `npm test` (225) y `npm run lint`. En Chrome, compu y
+390 px: hola, la capital de Francia, una frase sin sentido, gracias, tocar un
+ejemplo y "llevame a ventas"; solo la frase sin sentido llegó a la IA.
+
+**Sigue:** bloque 2 (cobrar a un cliente, pagar a un proveedor, rotura o
+pérdida de stock, alta de cliente o producto, presupuesto, anotar una
+consulta), con las herramientas que se mandan elegidas según la frase para
+no agrandar cada pedido; y bloque 3, el punto 4 del plan.
