@@ -72,6 +72,12 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layout-dashboard"></use></svg> Resumen
           </a>
         </div>
+        <!-- El asistente con su página (hist. §118), para los dos roles. -->
+        <div class="nav-seccion">
+          <a href="#" class="nav-item" data-view="asistente">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#sparkles"></use></svg> Asistente
+          </a>
+        </div>
         <div class="nav-seccion">
           <p class="nav-grupo">Maestros</p>
           <a href="#" class="nav-item" data-view="productos">
@@ -234,6 +240,55 @@
         </div>
         <p class="topbar-fecha mono" id="todayDate">—</p>
       </header>
+
+      <!-- Vista: Asistente (hist. §118). La conversación es la misma del panel
+           flotante: app.js mueve #asistentePanel a #asistentePaginaChat al
+           entrar y lo devuelve al salir, así el hilo sigue. -->
+      <section class="view" data-view="asistente" hidden>
+        <div class="asistente-pagina">
+          <div class="asistente-pagina-chat" id="asistentePaginaChat"></div>
+          <aside class="asistente-pagina-guia" aria-labelledby="asistenteGuiaTitulo">
+            <h2 id="asistenteGuiaTitulo">Qué podés hacer</h2>
+            <div class="asistente-guia-tarjeta">
+              <h3>Cargar una venta, una compra o un gasto</h3>
+              <p>Contámelo como se lo dirías a alguien. Te muestro cómo lo entendí y no se carga nada hasta que confirmás.</p>
+              <div class="asistente-sugerencias">
+                <button type="button" class="asistente-sugerencia">Vendí 2 buzos a Sole a 28 mil cada uno, pagó en efectivo</button>
+                <button type="button" class="asistente-sugerencia">Compré 24 gaseosas a Distribuidora Sur a 2100 cada una</button>
+              </div>
+            </div>
+            <div class="asistente-guia-tarjeta">
+              <h3>Preguntar cómo se usa Nexo</h3>
+              <p>Te respondo al instante con el manual.</p>
+              <div class="asistente-sugerencias">
+                <button type="button" class="asistente-sugerencia">¿Cómo anulo una venta?</button>
+                <button type="button" class="asistente-sugerencia">¿Dónde veo quién me debe?</button>
+              </div>
+            </div>
+            <div class="asistente-guia-tarjeta" id="asistenteGuiaVoz" hidden>
+              <h3>Dictar</h3>
+              <p>Tocá el micrófono, decí lo que pasó y tocalo de nuevo para terminar.</p>
+            </div>
+            <a class="btn-link" href="#/ayuda"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg> Ver el manual completo</a>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Vista: Manual de uso (hist. §118, dominios/ayuda.js). Usa el
+           esqueleto de Configuración: el índice a la izquierda y la página a
+           la derecha; en el celular, uno o el otro según data-pagina. -->
+      <section class="view" data-view="ayuda" hidden>
+        <div class="config ayuda" id="ayuda" data-pagina="">
+          <nav class="config-menu ayuda-menu" aria-label="Manual de uso">
+            <label class="ayuda-buscar">
+              <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#search"></use></svg>
+              <input type="search" id="ayudaBuscar" placeholder="¿Qué querés hacer?" aria-label="Buscar en el manual" autocomplete="off" />
+            </label>
+            <div id="ayudaIndice"></div>
+          </nav>
+          <div class="config-contenido" id="ayudaContenido"></div>
+        </div>
+      </section>
 
       <!-- Vista: Resumen -->
       <section class="view" data-view="dashboard">
@@ -3105,6 +3160,11 @@
             </div>
             <div class="config-grupo">
               <p class="config-grupo-titulo">Ayuda</p>
+              <a class="config-item" href="#/ayuda">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Manual de uso</span><span class="config-item-desc">Cómo se hace cada cosa en Nexo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/problema" data-seccion="problema">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Avisar un problema</span><span class="config-item-desc">Si algo no anda o no se entiende</span></span>
@@ -5417,7 +5477,7 @@
 
     <div class="asistente-hilo" id="asistenteHilo">
       <p class="asistente-bienvenida">
-        Contame una venta, una compra o un gasto como se lo dirías a alguien — te muestro cómo lo entendí antes de cargar nada.
+        Contame una venta, una compra o un gasto como se lo dirías a alguien — te muestro cómo lo entendí antes de cargar nada. También podés preguntarme cómo se hace algo.
       </p>
       <!-- Ejemplos que se pueden tocar: llenan el cuadro, no envían (el
            ejemplo entero no entraba en el placeholder de una línea). -->
@@ -5425,6 +5485,7 @@
         <button type="button" class="asistente-sugerencia">Vendí 3 remeras a Juan por 45 mil y me pagó por Mercado Pago</button>
         <button type="button" class="asistente-sugerencia">Compré 10 pantalones a Textil Norte a 9 mil cada uno</button>
         <button type="button" class="asistente-sugerencia">Pagué 25 mil de luz en efectivo</button>
+        <button type="button" class="asistente-sugerencia">¿Cómo anulo una venta?</button>
       </div>
     </div>
 

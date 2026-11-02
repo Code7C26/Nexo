@@ -46,6 +46,9 @@ const MODULO_DE_VISTA = {
 // apenas sabe qué registro es.
 const VISTAS_CONSTRUIDAS = {
   dashboard: { titulo: "Resumen", dominio: "Resumen" },
+  asistente: { titulo: "Asistente", dominio: "Resumen" },
+  // El manual (hist. §118): se entra desde Configuración › Ayuda, que queda marcada.
+  ayuda: { titulo: "Manual de uso", dominio: "Ayuda", nav: "configuracion" },
   productos: { titulo: "Productos", termino: "Plural", dominio: "Maestros" },
   // Con el módulo crm, la página de clientes es el CRM (hist. §91).
   clientes: { titulo: "Clientes", tituloConModulo: ["crm", "CRM"], dominio: "Maestros" },

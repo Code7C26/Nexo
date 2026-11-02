@@ -67,6 +67,8 @@ import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
+import { respuestaDeAyuda } from "./dominios/ayuda.js";
+import { clasificarFrase } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
 
 let facturas = [];
@@ -6725,6 +6727,8 @@ function asistenteAbrir() {
 }
 
 function asistenteCerrar() {
+  // En su página, el panel no se cierra: se sale de la página.
+  if (asistenteEnPagina()) return;
   asistenteCortarDictado({ descartar: true });
   asistentePanel.hidden = true;
   asistenteLauncher.setAttribute("aria-expanded", "false");
@@ -6800,6 +6804,15 @@ formAsistente.addEventListener("submit", async (e) => {
   asistenteAjustarAltoTextarea();
   asistenteScrollAlFinal();
 
+  // "¿Cómo hago…?" se contesta con el manual, en el navegador y sin la IA
+  // (hist. §118); la IA queda para cargar operaciones.
+  const frase = clasificarFrase(texto);
+  if (frase.tipo === "ayuda") {
+    turnoRespuesta.innerHTML = respuestaDeAyuda(frase.resultados);
+    asistenteScrollAlFinal();
+    return;
+  }
+
   btnAsistenteEnviar.disabled = true;
   try {
     const data = await api("/api/asistente/interpretar", {
@@ -6842,7 +6855,48 @@ async function asistenteMostrarVoz() {
   if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) return;
   const capacidades = await api("/api/asistente/capacidades").catch(() => null);
   btnAsistenteVoz.hidden = !capacidades?.voz;
+  document.getElementById("asistenteGuiaVoz").hidden = !capacidades?.voz;
 }
+
+/* --- La página del asistente (hist. §118) --- */
+//
+// La misma conversación que el panel flotante, en grande: al entrar a
+// #/asistente el panel se muda a la página, y al salir vuelve a su lugar (un
+// comentario marca dónde estaba). Así el hilo y las propuestas a medio
+// confirmar siguen ahí, se abran desde donde se abran.
+
+const asistenteVista = document.querySelector('.view[data-view="asistente"]');
+const asistenteLugarPagina = document.getElementById("asistentePaginaChat");
+const asistenteLugarFlotante = document.createComment("lugar del panel del asistente");
+asistentePanel.before(asistenteLugarFlotante);
+
+function asistenteEnPagina() {
+  return asistentePanel.parentElement === asistenteLugarPagina;
+}
+
+alEntrarEnVista("asistente", () => {
+  if (!asistenteEnPagina()) asistenteLugarPagina.append(asistentePanel);
+  asistentePanel.hidden = false;
+  document.documentElement.dataset.asistentePagina = "";
+  asistenteLauncher.setAttribute("aria-expanded", "false");
+  asistenteMostrarVoz();
+  asistenteScrollAlFinal();
+  // En el celular, el teclado taparía la guía apenas se entra.
+  if (!window.matchMedia("(max-width: 860px)").matches) asistenteTextoEl.focus();
+});
+
+new MutationObserver(() => {
+  if (!asistenteVista.hidden || !asistenteEnPagina()) return;
+  asistenteLugarFlotante.after(asistentePanel);
+  asistentePanel.hidden = true;
+  delete document.documentElement.dataset.asistentePagina;
+}).observe(asistenteVista, { attributes: true, attributeFilter: ["hidden"] });
+
+// Un enlace de una respuesta (Ir a Ventas, Ver en el manual) lleva a otra
+// pantalla: en el celular el panel la tapa entera, así que se cierra.
+asistenteHilo.addEventListener("click", (e) => {
+  if (e.target.closest('a[href^="#/"]') && window.matchMedia("(max-width: 860px)").matches) asistenteCerrar();
+});
 
 function asistenteVozEstado(estado) {
   const grabando = estado === "grabando";
