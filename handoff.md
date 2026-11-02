@@ -1052,13 +1052,17 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        `nexo.env.antes-b2`). Primera subida a mano (27 KB cifrados) y
        restauración desde B2 a `/tmp`: íntegra y con los mismos conteos que
        la base real.
-     - **Sin confirmar con el usuario:** que guardó `NEXO_RESPALDO_CLAVE` en
-       su gestor de contraseñas y que puso la regla de ciclo de vida del
-       bucket (ocultar a los 90 días, borrar 1 después).
+     - La regla de ciclo de vida del bucket está puesta (ocultar a los 90
+       días, borrar 1 después). **Sin confirmar:** que el usuario guardó
+       `NEXO_RESPALDO_CLAVE` en su gestor de contraseñas.
      - **Para pegar claves en el servidor:** pegar en la terminal no le
        anduvo (el portapapeles se pisa con el comando); lo que funcionó fue
        un `.txt` en la compu mandado por `Get-Content … | ssh …`.
-     - **Falta:** el aviso si el sitio se cae.
+     - **Aviso si el sitio se cae (2 de noviembre):**
+       `.github/workflows/vigia.yml`, cada 10 minutos desde GitHub (afuera
+       del servidor) contra `/api/auth/estado`, con tres intentos. Si falla,
+       GitHub manda un mail por cada run en rojo. Sin cuenta ni servicio
+       nuevo. GitHub lo apaga si el repo pasa 60 días sin actividad.
   2. "Avisar un problema" adentro de la app, para las pruebas de los conocidos:
      cae en el CRM de `NEXO_NEGOCIO_VENTAS`, como las consultas de la landing.
   3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.

@@ -1,0 +1,47 @@
+# Aviso si el sitio publicado se cae (handoff.md, "Orden", punto 1).
+#
+# Corre afuera del servidor a propósito: si se cae la VM de Oracle, nada que
+# corra adentro puede avisar. Cada 10 minutos pide /api/auth/estado, que es
+# público y consulta la base, así que comprueba Caddy, Node y SQLite juntos.
+# Tres intentos con 30 segundos entre cada uno, para que un reinicio por una
+# actualización (deploy/actualizar.sh) no cuente como caída.
+#
+# Si falla, el run queda en rojo y GitHub manda un mail a quien hizo el último
+# cambio a este archivo (Settings → Notifications → Actions de su cuenta).
+# Manda uno por cada run fallido: mientras el sitio siga caído, llega uno cada
+# 10 minutos más o menos.
+#
+# GitHub demora a veces los programados unos minutos, y los apaga si el repo
+# pasa 60 días sin actividad.
+name: Vigía del sitio
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: vigia
+  cancel-in-progress: false
+
+jobs:
+  sitio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      URL: https://nexosystem.duckdns.org/api/auth/estado
+    steps:
+      - name: ¿Responde el sitio?
+        run: |
+          for intento in 1 2 3; do
+            if cuerpo=$(curl -fsS --max-time 20 "$URL") && grep -q '"requiere_bootstrap":false' <<< "$cuerpo"; then
+              echo "El sitio responde (intento $intento)."
+              exit 0
+            fi
+            echo "::warning::Intento $intento: no respondió bien."
+            [ "$intento" -lt 3 ] && sleep 30
+          done
+          echo "::error::Nexo no responde en $URL desde hace más de un minuto."
+          exit 1
