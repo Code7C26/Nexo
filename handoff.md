@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §117);
+    siguiente número (hoy el último es §118);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -1030,7 +1030,9 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 - **La semana de la presentación es solo para la presentación.**
 - **Los videos son importantes,** para publicidad y para la presentación. El
   usuario va a instalar una skill para hacerlos.
-- **El manual de usuario se actualiza una sola vez, al final.**
+- **El manual de usuario se actualiza una sola vez, al final.** Desde el 2 de
+  noviembre vive en la app (`frontend/js/core/manual.js`, hist. §118): esa
+  revisión final es sobre ese archivo.
 - **Conocidos del usuario empiezan a usar Nexo** para encontrar errores e ideas.
   Él probó mucho sin que quede anotado: los "Falta que el usuario lo vea" de
   este archivo pueden estar viejos.
@@ -1090,8 +1092,17 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - **Publicado el 2 de noviembre** (PR #39) y con `GROQ_API_KEY` en
        `/etc/nexo/nexo.env`: comprobado que el proceso la tiene cargada.
      - **Falta que el usuario pruebe el dictado en el celular, con su voz.**
+  3b. **Manual en la app y asistente que responde con él: hecho el 2 de
+     noviembre** (hist. §118, pedido del usuario). `#/ayuda` (Configuración ›
+     Ayuda › Manual de uso, 41 secciones en `core/manual.js`), `#/asistente`
+     con su página, y las preguntas de uso se contestan con el manual en el
+     navegador, sin la IA. **Falta que el usuario lo vea** y que el manual se
+     revise al final.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
-     `registrar_venta`, `registrar_compra` y `registrar_gasto`).
+     `registrar_venta`, `registrar_compra` y `registrar_gasto`). Las de
+     cómo se usa ya las contesta el manual (hist. §118): este punto es para
+     las de los números ("¿cuánto vendí este mes?"), que hoy llevan a
+     Resumen.
   5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
 - **Del 9 al 15:**
   1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
