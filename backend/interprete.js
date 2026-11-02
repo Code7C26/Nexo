@@ -110,7 +110,9 @@ const HERRAMIENTAS = [
               description: 'Monto cobrado. Si es null, se asume que se cobró el total de la venta.'
             }
           },
-          required: ['cuenta', 'importe'],
+          // Sin `importe` obligatorio: Groq valida el esquema y el modelo lo
+          // omitía cuando se cobró todo (es lo mismo que null).
+          required: ['cuenta'],
           additionalProperties: false
         },
         fecha: {
@@ -195,7 +197,9 @@ const TIPO_POR_HERRAMIENTA = {
 // instrucciones de sistema.
 function construirSystemPrompt(contexto) {
   const listar = (items, formatear) => (items.length ? items.map(formatear).join('\n') : '(ninguna cargada todavía)');
-  const cuentas = listar(contexto.cuentas, (c) => `- ${c.nombre} (${c.tipo})`);
+  // El tipo va aparte del nombre: con "- Mercado Pago (billetera)" el modelo
+  // a veces devolvía "billetera" como cuenta.
+  const cuentas = listar(contexto.cuentas, (c) => `- ${c.nombre}  [tipo: ${c.tipo}]`);
   const categorias = listar(contexto.categoriasGasto, (c) => `- ${c.nombre} (${c.tipo})`);
   // El catálogo puede crecer mucho; se acota para no inflar el prompt de
   // forma innecesaria — alcanza para que el modelo matchee nombres.
@@ -209,6 +213,11 @@ Reglas:
 - Usá siempre NOMBRES, nunca inventes IDs — eso lo resuelve Nexo después.
 - Si el texto da un precio total para varias unidades, calculá el precio unitario dividiendo por la cantidad.
 - Si no se menciona explícitamente que se cobró o se pagó, dejá el cobro en null (queda a crédito).
+- El cobro lleva solo dos campos: "cuenta" (dónde entró la plata: efectivo, cash, MP, transferencia a un banco...) e "importe" (null si se cobró todo).
+- "a X", "X cada uno" o "X el kilo" es el precio por unidad; "por X" o "X en total" es el total de todas las unidades. Ejemplo: "vendí 4 gorras a 9 mil" es cantidad 4 y precio_unitario 9000; "vendí 4 gorras por 36 mil" también.
+- En "cuenta" va el nombre exacto de una de las cuentas listadas (nunca su tipo).
+- Si el texto dice "ayer", "anteayer" o un día de la semana, calculá la fecha YYYY-MM-DD a partir de la de hoy.
+- Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca.
 - No calcules IVA ni retenciones: los precios que dice el texto son finales, y Nexo discrimina el IVA solo.
 - Los montos se dicen de muchas formas: "45 mil", "45 lucas" y "45k" son 45000; "1 palo" o "un millón" es 1000000; "luca" sola es 1000.
 - No inventes un cliente, proveedor, cuenta o categoría que no tenga nada que ver con lo que dice el texto solo para completar el esquema.
@@ -238,7 +247,12 @@ const mensajeUsuario = (texto) => `Hoy es ${fechaDeHoy()}. Interpretá esta oper
 
 // --- Groq ------------------------------------------------------------
 
-async function llamarGroq(ruta, init) {
+// El plan gratis de Groq da 8000 tokens por minuto para toda la instalación
+// (unas 5 frases). Cuando se pasa, dice cuántos segundos esperar: si es poco,
+// se espera acá y se reintenta una vez, así no le llega un error a nadie.
+const ESPERA_CUPO_MAX_MS = 8_000;
+
+async function llamarGroq(ruta, init, { reintentoPorCupo = true } = {}) {
   let res;
   try {
     res = await fetch(`${GROQ_URL}${ruta}`, {
@@ -253,6 +267,11 @@ async function llamarGroq(ruta, init) {
   // El cuerpo del error puede traer el id de la organización de Groq: al log,
   // nunca al cliente.
   const cuerpo = await res.text().catch(() => '');
+  const espera = Number(res.headers.get('retry-after')) * 1000;
+  if (res.status === 429 && reintentoPorCupo && espera > 0 && espera <= ESPERA_CUPO_MAX_MS) {
+    await new Promise((r) => setTimeout(r, espera));
+    return llamarGroq(ruta, init, { reintentoPorCupo: false });
+  }
   if (res.status === 429 || res.status >= 500) {
     throw new FalloProveedor(`Groq ${res.status}: ${cuerpo.slice(0, 300)}`, { cupo: res.status === 429 });
   }
@@ -275,7 +294,10 @@ async function interpretarConGroq(texto, contexto) {
       function: { name, description, parameters: parametersJsonSchema }
     })),
     tool_choice: 'auto',
-    temperature: 0
+    temperature: 0,
+    // El límite por minuto de Groq cuenta el máximo de salida pedido, no lo
+    // que se usa: una llamada entra de sobra en esto.
+    max_completion_tokens: 700
   };
   // Pensar poco alcanza para llenar un esquema y es lo que lo hace rápido.
   if (GROQ_MODELO.startsWith('openai/gpt-oss')) pedido.reasoning_effort = 'low';
@@ -287,14 +309,15 @@ async function interpretarConGroq(texto, contexto) {
       body: JSON.stringify(pedido)
     });
 
+  // Groq rechaza con 400 `tool_use_failed` cuando el modelo arma mal la
+  // llamada (no respeta el esquema); suele salir bien al reintentar.
   let respuesta;
-  try {
-    respuesta = await enviar();
-  } catch (err) {
-    // Groq rechaza con 400 `tool_use_failed` cuando el modelo arma mal la
-    // llamada; suele salir bien a la segunda.
-    if (!err.cuerpo?.includes('tool_use_failed')) throw err;
-    respuesta = await enviar();
+  for (let intento = 1; !respuesta; intento++) {
+    try {
+      respuesta = await enviar();
+    } catch (err) {
+      if (!err.cuerpo?.includes('tool_use_failed') || intento === 3) throw err;
+    }
   }
 
   const mensaje = respuesta.choices?.[0]?.message ?? {};

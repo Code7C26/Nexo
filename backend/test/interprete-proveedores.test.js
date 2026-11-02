@@ -33,10 +33,10 @@ function fetchFalso(respuestas) {
     pedidos.push({ url: String(url), init });
     const siguiente = respuestas.shift();
     if (!siguiente) throw new Error(`Pedido de más: ${url}`);
-    const { status = 200, cuerpo } = siguiente;
+    const { status = 200, cuerpo, cabeceras = {} } = siguiente;
     return new Response(typeof cuerpo === 'string' ? cuerpo : JSON.stringify(cuerpo), {
       status,
-      headers: { 'content-type': 'application/json' }
+      headers: { 'content-type': 'application/json', ...cabeceras }
     });
   };
   return pedidos;
@@ -129,6 +129,20 @@ test('Groq sin cupo y sin respaldo: avisa que hay mucho uso, sin detalles intern
     interpretar('Vendí 3 remeras a Juan', CONTEXTO),
     (err) => err instanceof InterpreteError && err.status === 503 && /mucho uso/.test(err.message) && !/org_/.test(err.message)
   );
+});
+
+test('Groq sin cupo por un par de segundos: espera lo que dice y reintenta una sola vez', async () => {
+  configurar();
+  const sinCupo = { status: 429, cuerpo: { error: { message: 'Rate limit' } }, cabeceras: { 'retry-after': '1' } };
+  const pedidos = fetchFalso([sinCupo, respuestaGroq({ nombre: 'registrar_venta', args: VENTA })]);
+  const inicio = Date.now();
+  assert.equal((await interpretar('Vendí 3 remeras a Juan', CONTEXTO)).tipo, 'venta');
+  assert.equal(pedidos.length, 2);
+  assert.ok(Date.now() - inicio >= 900, 'esperó el segundo que pidió Groq');
+
+  // Si a la segunda tampoco hay cupo, no insiste más.
+  fetchFalso([sinCupo, sinCupo]);
+  await assert.rejects(interpretar('Vendí 3 remeras a Juan', CONTEXTO), (err) => err.status === 503);
 });
 
 test('Groq caído con la clave de Gemini: responde Gemini', async () => {
