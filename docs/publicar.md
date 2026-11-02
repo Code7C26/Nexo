@@ -77,8 +77,33 @@ sudo bash /opt/nexo/deploy/actualizar.sh --forzar
   ```
   Antes hay que dejarlo legible para `ubuntu`: copiarlo con sudo a `/tmp` y
   hacerle `chmod`.
-- **Pendiente:** un respaldo fuera de la VM (Object Storage de Oracle).
-  Mientras tanto, si se pierde la VM se pierden también sus respaldos.
+- **Copia fuera de la VM:** el respaldo diario sube la copia más reciente,
+  comprimida y cifrada con AES-256-GCM, al bucket privado
+  `nexo-respaldos-solla` de Backblaze B2 (región EU Central;
+  `backend/db/respaldo-nube.js`). Si la subida falla, el timer queda en error
+  y llega un mail al titular. Al día siguiente se reintenta solo.
+  - **Variables** en `/etc/nexo/nexo.env`: `NEXO_B2_KEY_ID`,
+    `NEXO_B2_APP_KEY`, `NEXO_B2_BUCKET`, `NEXO_B2_ENDPOINT` y
+    `NEXO_RESPALDO_CLAVE` (sale de `openssl rand -base64 32`).
+  - **La clave de cifrado y la de Backblaze también van al gestor de
+    contraseñas del dueño.** Si se pierde la VM y con ella la clave de
+    cifrado, los respaldos de la nube no se pueden abrir.
+  - **Cuánto se guarda:** lo decide la regla de ciclo de vida del bucket
+    (Lifecycle Settings → custom: ocultar a los 90 días, borrar 1 día después).
+    El código nunca borra nada de la nube.
+  - **Subir ya, sin esperar a las 3:30:**
+    `sudo systemctl start nexo-respaldo && journalctl -u nexo-respaldo -n 20`.
+  - **Restaurar:** `restaurar-nube` lista los respaldos o baja uno, lo descifra
+    y controla que SQLite lo lea entero. Nunca pisa un archivo:
+    ```bash
+    cd /opt/nexo
+    sudo -u nexo node --env-file=/etc/nexo/nexo.env scripts/restaurar-nube.mjs
+    sudo -u nexo node --env-file=/etc/nexo/nexo.env scripts/restaurar-nube.mjs --ultimo /tmp/restaurada.db
+    ```
+    Desde la compu es igual (`npm run restaurar-nube -- --ultimo restaurada.db`),
+    con las cinco variables en el `.env`. Para ponerla en lugar de la base:
+    `sudo systemctl stop nexo`, copiarla a `/var/lib/nexo/nexo.db` (dueño
+    `nexo`) y `sudo systemctl start nexo`.
 
 ## Tareas comunes
 

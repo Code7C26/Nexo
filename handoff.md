@@ -88,7 +88,9 @@ vivo el 1 de noviembre): se saca cuando arranque la publicidad.
   servidor en unos 5 minutos (`deploy/actualizar.sh`). Si el arranque falla,
   vuelve al commit anterior.
 - **Respaldos:** en cada arranque y todos los días a las 3:30, en
-  `/var/lib/nexo/respaldos`.
+  `/var/lib/nexo/respaldos`. El diario además sube la copia cifrada a
+  Backblaze B2 (bucket `nexo-respaldos-solla`, EU Central;
+  `backend/db/respaldo-nube.js`, guía en `docs/publicar.md`).
 - **La base del servidor es la real desde el 27 de octubre:** la copió
   `VACUUM INTO`. La de la compu quedó como copia vieja, y lo que se cargue
   ahí no sube.
@@ -103,7 +105,8 @@ vivo el 1 de noviembre): se saca cuando arranque la publicidad.
   - opcional: el token de DuckDNS en `/etc/nexo/duckdns.env` (pasos en la
     guía).
 - **Pendiente de la publicación:**
-  - el respaldo fuera de la VM (Object Storage);
+  - el respaldo fuera de la VM: código hecho el 2 de noviembre, falta
+    cargar las claves en el servidor (ver "Orden", punto 1);
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
@@ -1040,6 +1043,21 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 - **Del 2 al 8:**
   1. Respaldo cifrado fuera del servidor, restauración probada y aviso si el
      sitio se cae.
+     - **Hecho (2 de noviembre):** `backend/db/respaldo-nube.js` (gzip +
+       AES-256-GCM, firma SigV4 con `node:crypto` y `fetch`, probada contra
+       el ejemplo de AWS), subida en `scripts/backup-db.mjs` (idempotente,
+       con mail al titular si falla) y `scripts/restaurar-nube.mjs`
+       (`npm run restaurar-nube`, controla `integrity_check`). Probado de
+       punta a punta contra un S3 falso: 550 KB → 42 KB.
+     - **Falta, con el usuario:** cargar en `/etc/nexo/nexo.env`
+       `NEXO_B2_KEY_ID` (el keyID de la clave "NexoKey"), `NEXO_B2_APP_KEY`,
+       `NEXO_B2_BUCKET=nexo-respaldos-solla`,
+       `NEXO_B2_ENDPOINT=s3.eu-central-003.backblazeb2.com` y
+       `NEXO_RESPALDO_CLAVE` (`openssl rand -base64 32`, también al gestor
+       de contraseñas); la regla de ciclo de vida del bucket (ocultar a los
+       90 días, borrar 1 después); una subida a mano y la restauración
+       contra B2 de verdad.
+     - **Falta:** el aviso si el sitio se cae.
   2. "Avisar un problema" adentro de la app, para las pruebas de los conocidos:
      cae en el CRM de `NEXO_NEGOCIO_VENTAS`, como las consultas de la landing.
   3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.
@@ -1546,8 +1564,8 @@ octubre).
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
-- **Backblaze:** cuenta, un bucket privado y una clave de aplicación solo para
-  ese bucket.
+- ~~**Backblaze:**~~ hecho el 2 de noviembre (cuenta en EU Central, bucket
+  privado `nexo-respaldos-solla`, clave solo para ese bucket).
 - **Groq:** cuenta en console.groq.com, una clave y Zero Data Retention prendido
   en Data Controls. Mirar ahí los límites reales del plan gratis.
 - **ARCA (etapa 10):**
