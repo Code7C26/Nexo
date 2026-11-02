@@ -10602,6 +10602,8 @@ Groq, que es un trámite del usuario: **todavía no se probó contra Groq real.*
   Windows volvió exacta ("…por 45 mil, y me pagó por Mercado Pago.") en
   0,9 s.
 
-**Lo que falta.**
-- Publicar y cargar `GROQ_API_KEY` en `/etc/nexo/nexo.env` del servidor.
-- Probar el dictado con la voz de una persona, en el celular.
+**Publicado** el mismo día (PR #39). La clave la cargó el usuario con un
+solo comando de PowerShell que la lee de su `.env` y la manda por `ssh` (sin
+`.txt`), validando el largo; se comprobó que el proceso de Nexo la tiene.
+
+**Lo que falta:** probar el dictado con la voz de una persona, en el celular.

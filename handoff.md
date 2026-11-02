@@ -1087,9 +1087,9 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        la compu.
      - **Límite del plan gratis:** unas 5 frases por minuto para toda la
        instalación (el servidor espera y reintenta si es poco).
-     - **Falta:** publicar y cargar `GROQ_API_KEY` en `/etc/nexo/nexo.env`
-       (con el `.txt` y `Get-Content | ssh`). Hasta entonces, el sitio sigue
-       con Gemini y sin micrófono.
+     - **Publicado el 2 de noviembre** (PR #39) y con `GROQ_API_KEY` en
+       `/etc/nexo/nexo.env`: comprobado que el proceso la tiene cargada.
+     - **Falta que el usuario pruebe el dictado en el celular, con su voz.**
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`).
   5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
