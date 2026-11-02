@@ -10850,3 +10850,35 @@ apunta al sitio publicado. Se prueba al publicar (ver `handoff.md`).
 (el log lo avisa), el canal de la venta y la comisión (lista de "lo que le
 falta a la venta para e-commerce"), vincular productos que ya estaban en la
 tienda (por SKU, confirmado a mano), fotos, y si va solo en el plan Pro.
+
+## 122. Tienda Nube: pedidos sin pagar, cobros y el logo, 2 de noviembre de 2026
+
+Pregunta del usuario: "¿no pueden entrar pedidos todavía no pagados? Así el
+usuario también administra los cobros". Se separó por medio de pago (Tienda
+Nube marca con `gateway` "offline" o "not-provided" los que cobra el negocio):
+- **Pago manual** (transferencia, efectivo, a convenir): entra apenas se crea,
+  como venta por cobrar (la deuda en la cuenta corriente del cliente). El
+  negocio registra el cobro en Nexo. Cuando lo marca pagado en Tienda Nube,
+  Nexo cobra solo lo que falte (`cobrarLoQueFalta`): sin duplicar lo cobrado.
+  La API de Tienda Nube no deja marcar un pedido como pagado desde afuera.
+- **Pago online sin terminar:** no es venta (muchos se abandonan), queda
+  `esperando_pago` y sus unidades se descuentan del stock que se publica
+  (`reservadoPorVariante`, hasta 72 horas). Al pagarse pasa a venta cobrada.
+- **Cancelado:** si ya era venta sin cobros, factura ni devolución, se anula
+  sola (`motivoParaNoAnular` y `revertirVentaAnulada`, sacadas del botón de
+  anular, que sigue igual). Con cobros o factura queda para la devolución.
+  `abandoned` cuenta como cancelado.
+- La página muestra "Por cobrar" con lo que falta, "Esperando el pago", y los
+  pedidos pasaron de tabla a lista (el panel mide ~320 px en Configuración y
+  la tabla no entraba).
+- **Logo:** `frontend/img/tiendanube.svg`, tomado del encabezado de
+  tiendanube.com (no hay kit de marca público), como sprite con `<use>` para
+  que tome el color del tema. Es el título de la página.
+- El CHECK de `integracion_pedidos.estado` suma `esperando_pago`: la tabla no
+  estaba publicada, así que no hizo falta migración.
+
+**Cómo se verificó.** `tiendanube.test.js` (15): online pendiente reserva y
+al pagarse es venta; manual por cobrar, cobro parcial en Nexo y el resto solo
+al pagarse en la tienda, una sola vez; cancelado sin cobros se anula y el
+stock vuelve. `npm test` (240), lint, `verificar-migracion` (24 de 24). En
+Chrome, compu y 390 px, oscuro y claro, con la demo.

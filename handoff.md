@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §121);
+    siguiente número (hoy el último es §122);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,10 +21,11 @@
 
 ## Estado actual (2 de noviembre de 2026)
 
-**Lo último (2 de noviembre, hist. §121): Tienda Nube hecha, sin publicar.**
+**Lo último (2 de noviembre, hist. §121 y §122): Tienda Nube hecha.**
 Configuración → Canales de venta → Tienda Nube: conectar (OAuth), publicar
-productos, stock y precio que se mandan solos y pedidos pagados que pasan a
-venta con su cobro. Probado contra un Tienda Nube falso (12 tests) y en Chrome
+productos, stock y precio que se mandan solos y pedidos que pasan a venta:
+cobrada si se pagó online, por cobrar si el pago es manual (§122). Probado
+contra un Tienda Nube falso (15 tests) y en Chrome
 con una demo; **falta probarlo contra la tienda demo de verdad**, que necesita
 el sitio publicado (la redirección de la app apunta ahí). Pasos en "Qué
 sigue", punto 5.
@@ -1146,9 +1147,10 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        (nexo330), publicar un producto y crear un pedido con `POST /orders`
        (la tienda demo no vende) para ver que llega como venta.
      - **Decidido por mí, para revisar:** Nexo manda en el stock y el precio
-       (pisa los de la tienda); un pedido entra recién pagado; una
-       cancelación de algo que ya es venta no se anula sola, queda para hacer
-       la devolución; lo cobrado entra en la cuenta de Mercado Pago (se
+       (pisa los de la tienda); un pedido con pago manual entra al crearse,
+       como venta por cobrar, y uno online recién pagado (mientras tanto
+       reserva stock 72 horas); una cancelación anula sola la venta sin
+       cobros, y la que tiene cobros o factura queda para la devolución; lo cobrado entra en la cuenta de Mercado Pago (se
        cambia en la página); los pedidos de antes de conectar no se traen.
      - **Pregunta para el usuario:** ¿Tienda Nube (y Mercado Libre) solo en el
        plan Pro, como dice la landing ("muy pronto")? Hoy está para todos,

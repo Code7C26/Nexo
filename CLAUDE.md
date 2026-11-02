@@ -1348,7 +1348,8 @@ Implementado hoy (hist. §121): la base común y **Tienda Nube**.
   está en `server.js` ("Integraciones") y en Configuración → Tienda Nube.
 - Conflictos, decididos de antemano: Nexo manda en el stock y el precio; un
   pedido pagado pasa a venta con `crearVenta`, como una cargada a mano; una
-  cancelación de algo que ya es venta no la anula sola.
+  pedido con pago manual entra como venta por cobrar y uno online sin pagar
+  reserva stock (hist. §122); una cancelación anula sola la venta sin cobros.
 - Sin `state` válido el permiso no se conecta solo: se confirma en Nexo.
 
 ---
