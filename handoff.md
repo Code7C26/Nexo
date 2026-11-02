@@ -1168,7 +1168,33 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - **Pregunta para el usuario:** ¿Tienda Nube (y Mercado Libre) solo en el
        plan Pro, como dice la landing ("muy pronto")? Hoy está para todos,
        como ARCA.
-     - Falta: Mercado Libre (cuando estén sus claves), el envío y el canal
+     - **Mercado Libre, lo próximo (sesión nueva, sin código todavía):** la app
+       y las claves están (ver "Trámites del usuario"). Plan pensado el 2 de
+       noviembre, sobre la misma base de Tienda Nube (`integraciones` ya acepta
+       `mercadolibre` en su CHECK):
+       1. `backend/mercadolibre.js` como `tiendanube.js`: OAuth con `state`
+          firmado. Diferencia clave: el token dura 6 horas y se renueva con un
+          refresh token que cambia en cada uso; hay que guardarlo cifrado, y
+          renovar de a uno a la vez (si dos pedidos renuevan juntos, uno pierde
+          el permiso).
+       2. Avisos: Mercado Libre **no los firma**. Se contestan 200 enseguida y
+          se confía solo en lo que devuelve su API con el token del negocio
+          (pedir `/orders/{id}` con ese token es la verificación).
+       3. **En Mercado Libre lo normal es vincular, no publicar:** el vendedor ya
+          tiene publicaciones, y publicar desde Nexo pide fotos y los atributos
+          obligatorios de cada categoría (marca, modelo, código), que Nexo no
+          tiene. Primero: listar sus publicaciones, vincularlas por SKU
+          (`seller_custom_field` o el atributo `SELLER_SKU`) confirmando a mano,
+          y crear en Nexo las que no existan. Publicar desde Nexo, después.
+       4. Stock y precio: Nexo manda, como en Tienda Nube (decisión del
+          usuario), con la misma pasada y la reserva de pedidos.
+       5. Ventas: `orders_v2` → pedido pagado → venta cobrada en la cuenta de
+          Mercado Pago, con `crearVenta`. La comisión (`sale_fee`) queda para
+          después (lista de e-commerce de más abajo).
+       6. Probar con usuarios de prueba de Mercado Libre (se crean por API).
+       - **La documentación de Mercado Libre devolvió 403 a WebFetch**: leerla
+         con curl y un User-Agent de navegador, o desde el navegador.
+     - Falta también: el envío y el canal
        en la venta, vincular productos que ya estaban en la tienda, fotos.
 - **Del 9 al 15:**
   1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
@@ -1748,6 +1774,15 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
   en su portal de desarrolladores. No hay sandbox: se prueba en producción entre
   usuarios de prueba (hasta 10, se crean por API y caducan).
+  - **Hecho el 2 de noviembre:** app creada en Mercado Libre Developers (cuenta
+    de Santino). El nombre corto "nexo" estaba tomado por otra app de Mercado
+    Libre (es único en todo el sitio); se usó otro. Cargadas en la app:
+    redirección `https://nexosystem.duckdns.org/api/integraciones/mercadolibre/callback`
+    y avisos en `.../api/integraciones/mercadolibre/notificaciones`, con los
+    tópicos `orders_v2` e `items`. **Esas rutas todavía no existen.**
+  - `MERCADOLIBRE_APP_ID` (16 dígitos) y `MERCADOLIBRE_CLIENT_SECRET` (32) en el
+    `.env` de la compu; **faltan en el servidor** (mismo comando de PowerShell
+    que Tienda Nube, al publicar).
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
   tienda demo y la app.
   - **Hecho el 2 de noviembre:** app 49947, "Para tus clientes" (sin la
