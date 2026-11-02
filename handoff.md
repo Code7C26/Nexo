@@ -1117,6 +1117,11 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
         anotar una consulta. Mandar solo las herramientas que tengan que ver
         con la frase, para no agrandar cada pedido.
      3. Preguntas sobre los números: es el punto 4 de abajo.
+     - **Para después (dicho por el usuario el 2 de noviembre, "eso guardalo
+       para después"):** los bloques 2 y 3, publicar lo de hist. §119 y §120
+       (con la migración de `asistente_mensajes`) y decidir el plan pago de
+       Groq. Todo está commiteado en `solla`, sin publicar: el sitio sigue
+       con lo del PR #40.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`). Las de
      cómo se usa ya las contesta el manual (hist. §118): este punto es para
