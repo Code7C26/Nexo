@@ -10576,11 +10576,32 @@ Groq, que es un trámite del usuario: **todavía no se probó contra Groq real.*
   lo devuelve, se interpreta, el toque corto no manda nada y sale la
   propuesta. Sin errores de consola.
 
+**La prueba contra Groq real (mismo día, con la clave del usuario).**
+- Primera corrida, 24 de 30 y 0,7 s. Groq valida el esquema de la
+  herramienta y rechazaba la llamada cuando el modelo omitía el `importe` del
+  cobro o lo llamaba `monto` (3 fallas); además confundía "a 9 mil" con el
+  total, no pasaba "ayer" a fecha y no tomaba internet ni ingresos brutos
+  como gastos.
+- Arreglos: `importe` del cobro opcional (null ya era "todo"), hasta dos
+  reintentos ante `tool_use_failed`, reglas nuevas en el prompt (los dos
+  campos del cobro, precio por unidad con un ejemplo, fechas relativas, todo
+  pago que no es mercadería es un gasto) y la cuenta listada como
+  `- Mercado Pago  [tipo: billetera]` (con el tipo entre paréntesis devolvía
+  "billetera" como cuenta).
+- Resultado: **30 de 30.** Una frase sola tarda menos de un segundo.
+- **El límite real:** la cuenta gratis tiene solo 4 modelos (`allam-2-7b`,
+  `gpt-oss-20b`, `gpt-oss-120b`, `qwen3.8-27b`), todos con 8000 tokens por
+  minuto y 1000 pedidos por día; Llama 4 Scout ya no está. Una frase pide
+  unos 1500 (con `max_completion_tokens: 700`, que también cuenta): unas 5
+  frases por minuto para toda la instalación. Cuando Groq pide esperar hasta
+  8 s, el servidor espera y reintenta una vez, así no le llega un error a
+  nadie; con la prueba de 30 seguidas el promedio sube a 2,1 s por eso.
+  Para más uso: el Dev Tier de Groq es pago por uso, sin fijo (decisión de
+  plata del usuario).
+- Whisper con audio real: una frase dicha por la voz en castellano de
+  Windows volvió exacta ("…por 45 mil, y me pagó por Mercado Pago.") en
+  0,9 s.
+
 **Lo que falta.**
-- La clave de Groq (trámite del usuario) y correr `npm run probar-ia`. Si
-  Groq entiende mal, va Gemini Flash-Lite con facturación (decisión de plata
-  del usuario).
-- Cuidado con el límite del plan gratis de Groq para `gpt-oss-20b` (por
-  minuto y por día, en tokens): la prueba lo muestra. Si no alcanza, el
-  modelo se cambia con `NEXO_GROQ_MODELO`.
+- Publicar y cargar `GROQ_API_KEY` en `/etc/nexo/nexo.env` del servidor.
 - Probar el dictado con la voz de una persona, en el celular.

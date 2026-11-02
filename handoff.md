@@ -1078,17 +1078,18 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - Tests en `backend/test/problema.test.js`; probado en Chrome en
        celular (empleado) y en compu (admin).
   3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.
-     **Hecho el 2 de noviembre, menos la prueba contra Groq real** (hist.
-     §117):
-     - Groq por `fetch` como principal, Gemini de respaldo y con
-       razonamiento bajo.
-     - Dictado con Whisper (botón de micrófono en el asistente).
-     - `npm run probar-ia` con las 30 frases.
-     - **Falta:** que el usuario saque la clave de Groq (ver "Trámites del
-       usuario"); con ella, correr `npm run probar-ia` en la compu y cargarla
-       en el servidor (`GROQ_API_KEY` en `/etc/nexo/nexo.env`, con el `.txt`
-       y `Get-Content | ssh`). Sin la clave, el asistente sigue con Gemini si
-       el servidor tiene la suya, y el micrófono no aparece.
+     **Hecho el 2 de noviembre** (hist. §117):
+     - Groq por `fetch` como principal (`gpt-oss-20b`): 30 de 30 frases, en
+       menos de un segundo. Gemini de respaldo, con razonamiento bajo.
+     - Dictado con Whisper (botón de micrófono en el asistente), probado con
+       audio real.
+     - `npm run probar-ia` con las 30 frases. La clave está en el `.env` de
+       la compu.
+     - **Límite del plan gratis:** unas 5 frases por minuto para toda la
+       instalación (el servidor espera y reintenta si es poco).
+     - **Falta:** publicar y cargar `GROQ_API_KEY` en `/etc/nexo/nexo.env`
+       (con el `.txt` y `Get-Content | ssh`). Hasta entonces, el sitio sigue
+       con Gemini y sin micrófono.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`).
   5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
@@ -1594,10 +1595,9 @@ octubre).
 los usa; conviene arrancarlos ya, porque algunos tardan días):
 - ~~**Backblaze:**~~ hecho el 2 de noviembre (cuenta en EU Central, bucket
   privado `nexo-respaldos-solla`, clave solo para ese bucket).
-- **Groq:** cuenta en console.groq.com, una clave y Zero Data Retention prendido
-  en Data Controls. Mirar ahí los límites reales del plan gratis. **Es lo que
-  frena el punto 3** (el código ya está, hist. §117): la clave va en el `.env`
-  de la compu como `GROQ_API_KEY=` y después en el servidor.
+- ~~**Groq:**~~ cuenta y clave hechas el 2 de noviembre (la clave en el
+  `.env` de la compu). Confirmar que Zero Data Retention quedó prendido en
+  Data Controls.
 - **ARCA (etapa 10):**
   - **Quién (cambiado el 28 de octubre, hist. §105):** Santino, con su propio
     CUIL y su clave fiscal. Reemplaza al padre (19 de octubre). En ARCA no
