@@ -105,8 +105,6 @@ vivo el 1 de noviembre): se saca cuando arranque la publicidad.
   - opcional: el token de DuckDNS en `/etc/nexo/duckdns.env` (pasos en la
     guía).
 - **Pendiente de la publicación:**
-  - el respaldo fuera de la VM: código hecho el 2 de noviembre, falta
-    cargar las claves en el servidor (ver "Orden", punto 1);
   - **Oracle recupera las instancias gratis que pasan una semana casi sin
     uso.** Pasar a Pay As You Go lo evita, pero es una decisión de plata del
     usuario.
@@ -1049,15 +1047,22 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        con mail al titular si falla) y `scripts/restaurar-nube.mjs`
        (`npm run restaurar-nube`, controla `integrity_check`). Probado de
        punta a punta contra un S3 falso: 550 KB → 42 KB.
-     - **Falta, con el usuario:** cargar en `/etc/nexo/nexo.env`
-       `NEXO_B2_KEY_ID` (el keyID de la clave "NexoKey"), `NEXO_B2_APP_KEY`,
-       `NEXO_B2_BUCKET=nexo-respaldos-solla`,
-       `NEXO_B2_ENDPOINT=s3.eu-central-003.backblazeb2.com` y
-       `NEXO_RESPALDO_CLAVE` (`openssl rand -base64 32`, también al gestor
-       de contraseñas); la regla de ciclo de vida del bucket (ocultar a los
-       90 días, borrar 1 después); una subida a mano y la restauración
-       contra B2 de verdad.
-     - **Falta:** el aviso si el sitio se cae.
+     - **Funcionando en el servidor desde el 2 de noviembre:** las cinco
+       variables en `/etc/nexo/nexo.env` (queda una copia de antes en
+       `nexo.env.antes-b2`). Primera subida a mano (27 KB cifrados) y
+       restauración desde B2 a `/tmp`: íntegra y con los mismos conteos que
+       la base real.
+     - La regla de ciclo de vida del bucket está puesta (ocultar a los 90
+       días, borrar 1 después). **Sin confirmar:** que el usuario guardó
+       `NEXO_RESPALDO_CLAVE` en su gestor de contraseñas.
+     - **Para pegar claves en el servidor:** pegar en la terminal no le
+       anduvo (el portapapeles se pisa con el comando); lo que funcionó fue
+       un `.txt` en la compu mandado por `Get-Content … | ssh …`.
+     - **Aviso si el sitio se cae (2 de noviembre):**
+       `.github/workflows/vigia.yml`, cada 10 minutos desde GitHub (afuera
+       del servidor) contra `/api/auth/estado`, con tres intentos. Si falla,
+       GitHub manda un mail por cada run en rojo. Sin cuenta ni servicio
+       nuevo. GitHub lo apaga si el repo pasa 60 días sin actividad.
   2. "Avisar un problema" adentro de la app, para las pruebas de los conocidos:
      cae en el CRM de `NEXO_NEGOCIO_VENTAS`, como las consultas de la landing.
   3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.

@@ -105,6 +105,14 @@ sudo bash /opt/nexo/deploy/actualizar.sh --forzar
     `sudo systemctl stop nexo`, copiarla a `/var/lib/nexo/nexo.db` (dueño
     `nexo`) y `sudo systemctl start nexo`.
 
+## Si el sitio se cae
+
+`.github/workflows/vigia.yml` pide `/api/auth/estado` desde GitHub cada 10
+minutos. Si no responde en tres intentos, el run queda en rojo y GitHub manda
+un mail. Para ver el estado: la pestaña Actions del repo, "Vigía del sitio".
+Lo primero que conviene mirar: `systemctl status nexo caddy` y
+`journalctl -u nexo -n 50`.
+
 ## Tareas comunes
 
 ```bash
