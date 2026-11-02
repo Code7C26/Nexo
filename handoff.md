@@ -1140,9 +1140,10 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - **Tienda Nube hecha el 2 de noviembre** (hist. §121), commiteada en
        `solla` y sin publicar. La base (`integraciones`, vínculos, pedidos y
        log) sirve igual para Mercado Libre.
-     - **Para probarla de verdad, al publicar:** cargar `TIENDANUBE_APP_ID` y
-       `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env` (con el comando de
-       PowerShell que las lee del `.env`), entrar al sitio como admin,
+     - **Publicado el 2 de noviembre** (PR #41, junto con §119 y §120), con
+       `TIENDANUBE_APP_ID` y `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env`
+       (comprobado desde afuera: el callback ya no dice "no-disponible").
+     - **Falta probarla de verdad:** entrar al sitio como admin,
        Configuración → Tienda Nube → Conectar, elegir la tienda demo
        (nexo330), publicar un producto y crear un pedido con `POST /orders`
        (la tienda demo no vende) para ver que llega como venta.
