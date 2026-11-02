@@ -1143,10 +1143,13 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - **Publicado el 2 de noviembre** (PR #41, junto con §119 y §120), con
        `TIENDANUBE_APP_ID` y `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env`
        (comprobado desde afuera: el callback ya no dice "no-disponible").
-     - **Falta probarla de verdad:** entrar al sitio como admin,
-       Configuración → Tienda Nube → Conectar, elegir la tienda demo
-       (nexo330), publicar un producto y crear un pedido con `POST /orders`
-       (la tienda demo no vende) para ver que llega como venta.
+     - **Probada contra Tienda Nube de verdad el 2 de noviembre**, en el negocio
+       "Gonzalo José Solla" con la tienda nexo330: publicar un producto, un
+       pedido "Pago pendiente" (gateway not-provided) que entró al momento como
+       venta por cobrar y bajó el stock, y su cancelación, que anuló sola la
+       venta y devolvió el stock. Quedan el producto "Producto de prueba (Tienda
+       Nube)" desactivado, el cliente "Cliente de Prueba" y la venta #34
+       anulada. Una orden de compra con un mail .test la rechaza Tienda Nube.
      - **Decidido por mí, para revisar:** Nexo manda en el stock y el precio
        (pisa los de la tienda); un pedido con pago manual entra al crearse,
        como venta por cobrar, y uno online recién pagado (mientras tanto
