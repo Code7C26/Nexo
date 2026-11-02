@@ -76,7 +76,7 @@
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
 en `docs/publicar.md`). Sigue con `noindex` (`deploy/Caddyfile`, comprobado en
-vivo el 1 de noviembre): se saca cuando los datos del titular estén cargados.
+vivo el 1 de noviembre): se saca cuando arranque la publicidad.
 - **Servidor:** Oracle Cloud, cuenta "Nexoapp", Brazil East.
   - VM.Standard.E2.1.Micro con 1 GB de memoria y 2 GB de swap, Ubuntu 24.04;
   - IP `137.131.218.182`, que se mantiene mientras exista la instancia;
@@ -1014,33 +1014,96 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 ## Qué sigue
 
 **Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
-vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38). El
-tiempo va a lo que se ve en vivo y a que la demo no falle, no a más módulos.
-- **Del 1 al 8:**
-  - dictado por voz en el asistente (punto 11);
-  - consultas de solo lectura en lenguaje natural (punto 11; hoy el asistente
-    solo tiene `registrar_venta`, `registrar_compra` y `registrar_gasto`);
-  - sugerencias en el Resumen: reponer, margen bajo, cuentas por vencer
-    (CLAUDE.md §36).
-  - **Del usuario:** cargar los datos del titular, crear la cuenta de Meta,
-    probar lo que el handoff marca como pendiente de ver y conseguir negocios
-    reales que usen Nexo.
+vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
+
+**Lo que decidió el usuario el 1 de noviembre:**
+- **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
+  del titular. Solo se hacen detalles cortos.
+- **Sin gastos fijos nuevos** hasta vender. Se busca la opción más económica y
+  segura.
+- **Las facturas de prueba alcanzan para la presentación.** Para después:
+  facturar en masa, facturar ventas que ya existen y mandar el comprobante por
+  mail.
+- **Mercado Libre y Tienda Nube tienen que estar en la presentación.** Reemplaza
+  a "van al final" del plan de dos semanas.
+- **La semana de la presentación es solo para la presentación.**
+- **Los videos son importantes,** para publicidad y para la presentación. El
+  usuario va a instalar una skill para hacerlos.
+- **El manual de usuario se actualiza una sola vez, al final.**
+- **Conocidos del usuario empiezan a usar Nexo** para encontrar errores e ideas.
+  Él probó mucho sin que quede anotado: los "Falta que el usuario lo vea" de
+  este archivo pueden estar viejos.
+- **Classroom:** faltan la consigna de testing y el documento final (importante).
+  Las consignas se dejan en `consignas/`, en la raíz (ignorada por git).
+
+**Orden:**
+- **Del 2 al 8:**
+  1. Respaldo cifrado fuera del servidor, restauración probada y aviso si el
+     sitio se cae.
+  2. "Avisar un problema" adentro de la app, para las pruebas de los conocidos:
+     cae en el CRM de `NEXO_NEGOCIO_VENTAS`, como las consultas de la landing.
+  3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.
+  4. Preguntas de solo lectura en el asistente (hoy solo tiene
+     `registrar_venta`, `registrar_compra` y `registrar_gasto`).
+  5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
 - **Del 9 al 15:**
-  - WhatsApp con notas de voz (punto 11);
-  - "Probar sin registrarse": un negocio de ejemplo, con QR para el público;
-  - importar desde una planilla (punto 8c);
-  - mandar el comprobante por mail o WhatsApp (hoy no se puede);
-  - logo del negocio y descuentos en el punto de venta.
-- **Del 16 al 19, congelado:** nada nuevo llega a `main`, que se publica solo.
-  Son los días del cierre (punto 13): cuenta de demo, video de respaldo de ARCA
-  y ensayo. Antes, comprobar que las listas aguantan el volumen de la demo: casi
-  ningún `GET` pagina (CLAUDE.md §35).
-- **Si no da, se recorta desde el final** de la lista de cada semana. Mercado
-  Libre entra solo si sobran dos sesiones. Tienda Nube, los reportes (punto 12)
-  y Web Push quedan para después.
-- **Del Classroom:** `docs/manual-usuario.html` no cambia desde el 29 de agosto
-  (antes del punto de venta, IVA y ARCA), y Canvas y contabilidad no están en
-  `docs/`. Falta que el usuario pase la lista completa.
+  1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
+  2. WhatsApp (ver abajo).
+  3. Si da: importar desde una planilla (punto 8c), sugerencias en el Resumen
+     (CLAUDE.md §36), logo del negocio y descuentos en el punto de venta.
+- **Del 16 al 19, solo presentación:** ninguna función nueva de producto.
+  - cuenta de demo y "Probar sin registrarse" con QR;
+  - comprobar que las listas aguantan ese volumen (casi ningún `GET` pagina,
+    CLAUDE.md §35);
+  - videos, ensayo y video de respaldo;
+  - manual de usuario y documento final;
+  - sacar el `noindex` si ya arranca la publicidad.
+- **Trámites del usuario, esta semana:** Backblaze, Groq, Mercado Libre (app en
+  su portal), Tienda Nube (partners; la evaluación puede demorar) y Meta. Ver
+  "Trámites del usuario".
+- **Después de la presentación:** reportes (punto 12), Web Push, caja con todos
+  los medios (8d) y entrar con Google.
+
+**IA (decidido el 1 de noviembre, a confirmar con la prueba de frases):**
+- **El problema:** `gemini-3.6-flash` tiene razonamiento en `medium` por defecto
+  y en el código no se baja. Además, los términos del plan gratis de Google
+  prohíben mandarle datos personales: pueden leerlos personas y se usan para
+  mejorar sus productos. Nexo le manda el catálogo y la frase, que suele traer
+  el nombre del cliente.
+- **La salida, sin dependencia nueva:** Groq con `fetch`, `openai/gpt-oss-20b`
+  para interpretar y `whisper-large-v3-turbo` para el audio, con Zero Data
+  Retention prendido. `gemini-2.5-flash-lite` queda de respaldo. Antes de
+  cambiar, una prueba con unas 30 frases en castellano rioplatense: si Groq no
+  entiende bien, va Gemini Flash-Lite con facturación (centavos de dólar).
+- **Whisper reemplaza a la Web Speech API del punto 11:** el mismo camino para
+  el dictado de la web y las notas de voz de WhatsApp, y anda en todo navegador.
+- **`interprete.js` sigue sin importar la base** (CLAUDE.md §36).
+
+**WhatsApp (diseño del 1 de noviembre):**
+- Webhook con firma verificada, que responde enseguida y no procesa dos veces un
+  mismo mensaje (Meta reintenta).
+- Teléfono vinculado a la cuenta con un código desde Mi cuenta. El negocio sale
+  de ese vínculo, nunca del mensaje (CLAUDE.md §28).
+- Audio → Whisper → el mismo `interpretar` y `resolverPropuesta` de la web →
+  propuesta con botones Confirmar y Cancelar → la misma ejecución, con auditoría
+  de actor `asistente`.
+- El número de prueba llega a 5 teléfonos verificados y es gratis. Sirve para la
+  demo, no para todos los conocidos.
+- **Solo gestión del negocio, nunca charla abierta:** desde enero de 2026 Meta
+  prohíbe los asistentes de uso general en la API.
+
+**Servidor y respaldos (decidido el 1 de noviembre):**
+- **Se sigue en Oracle:** es gratis, y migrar a días de la presentación es un
+  riesgo mayor que el que evita. Google e2-micro solo da 1 GB de salida por mes.
+- **Pay As You Go no tiene costo fijo:** se paga solo lo que exceda lo gratis.
+  Oracle autoriza US$ 100 en la tarjeta y lo revierte. No acepta prepagas ni
+  débito con PIN. Es decisión del usuario; con la copia afuera no bloquea nada.
+- **Respaldo en Backblaze B2** (10 GB gratis, sin tarjeta, compatible con S3):
+  cifrado con `node:crypto` y sin dependencias, con la clave también guardada
+  fuera del servidor. Otro proveedor, para que un problema con Oracle no se
+  lleve la copia.
+- **Con gente usando Nexo, publicar es delicado:** cada merge a `main` reinicia
+  y puede migrar la base real. Se publica por bloques y probando antes.
 
 **Auditoría general del 6 de octubre (hist. §57–§65): hechas las Fases 0 a 7**
 (git, respaldo automático, backend, frontend, herramientas, scripts de verificación, limpieza
@@ -1483,6 +1546,10 @@ octubre).
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
+- **Backblaze:** cuenta, un bucket privado y una clave de aplicación solo para
+  ese bucket.
+- **Groq:** cuenta en console.groq.com, una clave y Zero Data Retention prendido
+  en Data Controls. Mirar ahí los límites reales del plan gratis.
 - **ARCA (etapa 10):**
   - **Quién (cambiado el 28 de octubre, hist. §105):** Santino, con su propio
     CUIL y su clave fiscal. Reemplaza al padre (19 de octubre). En ARCA no
@@ -1536,9 +1603,12 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   Nube y WhatsApp le avisan a Nexo por webhook, y desde hist. §103 llegan
   directo a https://nexosystem.duckdns.org. Ngrok ya no hace falta.
 - **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
-  en su portal de desarrolladores.
+  en su portal de desarrolladores. No hay sandbox: se prueba en producción entre
+  usuarios de prueba (hasta 10, se crean por API y caducan).
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
-  tienda demo y la app.
+  tienda demo y la app. La tienda demo es gratis pero no admite ventas: para la
+  demo, probar crear la orden con `POST /orders` y confirmar que dispara
+  `order/created`.
 - **Meta (etapa 11):**
   - cuenta de Meta for Developers;
   - una app con el producto WhatsApp;
