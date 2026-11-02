@@ -1470,3 +1470,97 @@ CREATE TABLE IF NOT EXISTS crm_actividades (
 CREATE INDEX IF NOT EXISTS idx_crm_actividades_pendientes ON crm_actividades(organizacion_id, hecha, fecha);
 CREATE INDEX IF NOT EXISTS idx_crm_actividades_oportunidad ON crm_actividades(oportunidad_id);
 CREATE INDEX IF NOT EXISTS idx_crm_actividades_cliente ON crm_actividades(cliente_id);
+
+-- Integraciones con canales de venta (etapa G, CLAUDE.md §32). Una fila por
+-- negocio y plataforma: hoy Tienda Nube, después Mercado Libre.
+-- - cuenta_externa: la tienda (o el vendedor) del otro lado. Una tienda
+--   conectada está en un solo negocio a la vez (índice de abajo): si no, un
+--   webhook no sabría a cuál va.
+-- - token: el permiso, cifrado (tiendanube.js). NULL al desconectar. Se llama
+--   `token` para que la descarga de datos lo saque (db/datos-negocio.js).
+-- - lista_precio_id y deposito_id: con qué lista se publica el precio y de
+--   qué depósito sale el stock que se publica y la mercadería de cada pedido.
+--   NULL = los predeterminados de cada momento, como en una venta.
+-- - cuenta_tesoreria_id: adónde entra lo que se cobra en la tienda.
+-- - pedidos_desde: los pedidos de antes no se traen (son de antes de Nexo).
+CREATE TABLE IF NOT EXISTS integraciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plataforma TEXT NOT NULL CHECK (plataforma IN ('tiendanube', 'mercadolibre')),
+  estado TEXT NOT NULL DEFAULT 'conectada' CHECK (estado IN ('conectada', 'desconectada')),
+  cuenta_externa TEXT NOT NULL,
+  nombre_cuenta TEXT,
+  url_cuenta TEXT,
+  token TEXT,
+  lista_precio_id INTEGER REFERENCES listas_precios(id),
+  deposito_id INTEGER REFERENCES depositos(id),
+  cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
+  pedidos_desde TEXT NOT NULL,
+  conectada_en TEXT NOT NULL,
+  conectada_por INTEGER REFERENCES usuarios(id),
+  ultima_sincronizacion TEXT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, plataforma)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_integraciones_cuenta
+  ON integraciones(plataforma, cuenta_externa) WHERE estado = 'conectada';
+
+-- El vínculo explícito entre lo que se vende en el canal y lo de Nexo
+-- (CLAUDE.md §32): nunca se deduce por nombre. Se arma al publicar un
+-- producto desde Nexo. Un producto sin variantes es una sola fila con
+-- variante_id NULL (en Tienda Nube tiene igual su variante "virtual").
+-- ultimo_stock y ultimo_precio: lo último que se le mandó al canal, para
+-- mandar solo lo que cambió.
+CREATE TABLE IF NOT EXISTS integracion_vinculos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  externo_producto_id TEXT NOT NULL,
+  externo_variante_id TEXT NOT NULL,
+  ultimo_stock REAL,
+  ultimo_precio REAL,
+  creado_en TEXT NOT NULL,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (integracion_id, externo_variante_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_integracion_vinculos_nexo
+  ON integracion_vinculos(integracion_id, producto_id, COALESCE(variante_id, 0));
+
+-- Cada pedido del canal que llegó a Nexo, una sola vez (UNIQUE): los webhooks
+-- se repiten y llegan desordenados, y la pasada periódica vuelve a pedir los
+-- recientes. venta_id: la venta que armó. estado:
+-- - importado: ya es una venta;
+-- - pendiente: no se pudo armar (un producto sin vincular, sin stock); se
+--   reintenta solo y desde la página, y `error` dice por qué;
+-- - cancelado: se canceló en el canal. Si ya era una venta no se toca sola
+--   (puede tener cobros y factura): queda para que el negocio la devuelva.
+-- datos: el pedido tal como vino, para reintentar sin volver a pedirlo.
+CREATE TABLE IF NOT EXISTS integracion_pedidos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
+  externo_id TEXT NOT NULL,
+  numero TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('importado', 'pendiente', 'cancelado')),
+  venta_id INTEGER REFERENCES ventas(id),
+  error TEXT,
+  datos TEXT,
+  recibido_en TEXT NOT NULL,
+  actualizado_en TEXT NOT NULL,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (integracion_id, externo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_integracion_pedidos_venta ON integracion_pedidos(venta_id);
+
+-- El registro de la sincronización (CLAUDE.md §32): qué se hizo, cuándo y
+-- cómo salió. Complementa la auditoría: las ventas que arma un pedido quedan
+-- además en `auditoria`, con actor 'sistema'.
+CREATE TABLE IF NOT EXISTS integracion_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  tipo TEXT NOT NULL CHECK (tipo IN ('conexion', 'desconexion', 'publicacion', 'stock', 'pedido', 'webhook')),
+  resultado TEXT NOT NULL CHECK (resultado IN ('ok', 'error')),
+  detalle TEXT NOT NULL,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE INDEX IF NOT EXISTS idx_integracion_log ON integracion_log(integracion_id, id);

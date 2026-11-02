@@ -3107,6 +3107,14 @@
               </a>
             </div>
             <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Canales de venta</p>
+              <a class="config-item" href="#/configuracion/tienda-nube" data-seccion="tienda-nube">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Tienda Nube</span><span class="config-item-desc" id="configTiendaNubeResumen">Tu tienda online, conectada a Nexo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
+            <div class="config-grupo col-admin">
               <p class="config-grupo-titulo">Tu plan</p>
               <a class="config-item" href="#/configuracion/plan" data-seccion="plan">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gem"></use></svg></span>
@@ -3364,6 +3372,106 @@
                   </div>
                 </li>
               </ol>
+            </section>
+
+            <!-- Tienda Nube (etapa G, CLAUDE.md §32): la pinta
+                 dominios/tienda-nube.js. Sin conectar, los pasos; conectada,
+                 los ajustes, publicar productos, los pedidos y la actividad. -->
+            <section class="config-pagina col-admin" data-seccion="tienda-nube" aria-labelledby="configTnTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configTnTitulo" tabindex="-1">Tienda Nube</h2>
+                <p>Publicá tus productos en tu tienda online desde Nexo. El stock y el precio se mantienen al día solos, y cada venta de la tienda entra como una venta de Nexo, con su cobro.</p>
+              </header>
+
+              <div class="fe-estado" id="tnEstado" aria-live="polite"></div>
+
+              <!-- Una instalación hecha desde Tienda Nube: se confirma acá,
+                   viendo qué tienda es, antes de conectarla. -->
+              <div class="fe-paso" id="tnConfirmar" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">¿Conectar esta tienda?</p>
+                  <p class="config-tarjeta-texto" id="tnConfirmarTexto"></p>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnTnNoConfirmar">No, cancelar</button>
+                  <button type="button" class="btn btn-primary" id="btnTnConfirmar">Conectar</button>
+                </div>
+              </div>
+
+              <ol class="fe-pasos" id="tnPasos" hidden>
+                <li class="fe-paso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Tené tu tienda</p>
+                    <p class="config-tarjeta-texto">Si todavía no tenés una, creala en <a href="https://www.tiendanube.com" target="_blank" rel="noopener noreferrer">tiendanube.com</a>. Puede estar vacía: los productos los sube Nexo.</p>
+                  </div>
+                </li>
+                <li class="fe-paso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Conectala con Nexo</p>
+                    <p class="config-tarjeta-texto">Te lleva a Tienda Nube para que le des permiso a Nexo, y volvés acá solo. Nexo nunca te pide la contraseña de tu tienda.</p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p>Lo podés desconectar cuando quieras.</p>
+                    <button type="button" class="btn btn-primary" id="btnTnConectar">Conectar mi Tienda Nube</button>
+                  </div>
+                </li>
+              </ol>
+
+              <div class="tn-conectada" id="tnConectada" hidden>
+                <form class="form config-tarjeta" id="formTnAjustes" novalidate>
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo">Qué se publica y adónde entra la plata</p>
+                    <label>Precio de la lista
+                      <select name="lista_precio_id" id="tnLista"></select>
+                    </label>
+                    <label>Stock del depósito
+                      <select name="deposito_id" id="tnDeposito"></select>
+                    </label>
+                    <label>Lo cobrado en la tienda entra en
+                      <select name="cuenta_tesoreria_id" id="tnCuenta"></select>
+                    </label>
+                    <p class="campo-ayuda">Nexo manda: si cambiás el stock o el precio en la tienda, Nexo lo vuelve a poner como está acá. Las ventas de la tienda salen de este depósito.</p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p>Cambiarlo actualiza la tienda enseguida.</p>
+                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                  </div>
+                </form>
+
+                <section class="panel" aria-labelledby="tnProductosTitulo">
+                  <div class="panel-head">
+                    <h2 id="tnProductosTitulo">Productos en la tienda</h2>
+                    <button type="button" class="btn btn-primary" id="btnTnPublicar" disabled>Publicar</button>
+                  </div>
+                  <p class="tn-ayuda">Elegí qué productos de Nexo publicar. Se crean en la tienda con su nombre, su descripción, sus variantes, su precio y su stock; las fotos y el diseño se cargan en Tienda Nube.</p>
+                  <ul class="tn-productos" id="tnProductos"></ul>
+                </section>
+
+                <section class="panel" aria-labelledby="tnPedidosTitulo">
+                  <div class="panel-head">
+                    <h2 id="tnPedidosTitulo">Pedidos de la tienda</h2>
+                    <button type="button" class="btn btn-secundario" id="btnTnSincronizar">Buscar pedidos ahora</button>
+                  </div>
+                  <div class="tabla-scroll">
+                    <table class="ledger-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Pedido</th>
+                          <th scope="col">Estado</th>
+                          <th scope="col">Detalle</th>
+                          <th scope="col"></th>
+                        </tr>
+                      </thead>
+                      <tbody id="tnPedidosBody"></tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section class="panel" aria-labelledby="tnActividadTitulo">
+                  <div class="panel-head"><h2 id="tnActividadTitulo">Actividad</h2></div>
+                  <ul class="tn-actividad" id="tnActividad"></ul>
+                </section>
+              </div>
             </section>
 
             <!-- Usuarios (solo admin): quién puede entrar a Nexo y con qué

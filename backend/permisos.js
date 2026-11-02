@@ -273,5 +273,23 @@ export const RUTAS_PERMISOS = {
   // cuentas de NEXO_ADMIN_PLATAFORMA.
   'GET /api/plataforma/resumen': 'plataforma',
   'GET /api/plataforma/cuentas': 'plataforma',
-  'GET /api/plataforma/negocios': 'plataforma'
+  'GET /api/plataforma/negocios': 'plataforma',
+  // Tienda Nube (etapa G, CLAUDE.md §32). Lo que llega desde Tienda Nube es
+  // público: la vuelta del permiso (controla la sesión y el `state` adentro) y
+  // los webhooks (firmados con el secreto de la app). Conectar, publicar y
+  // todo lo demás es admin: escribe en la tienda del negocio.
+  'GET /api/integraciones/tiendanube/callback': 'publico',
+  'POST /api/integraciones/tiendanube/webhook': 'publico',
+  'POST /api/integraciones/tiendanube/privacidad/:tipo': 'publico',
+  'GET /api/integraciones/tiendanube': 'admin',
+  'POST /api/integraciones/tiendanube/conectar': 'admin',
+  'GET /api/integraciones/tiendanube/pendiente': 'admin',
+  'POST /api/integraciones/tiendanube/confirmar': 'admin',
+  'PUT /api/integraciones/tiendanube': 'admin',
+  'POST /api/integraciones/tiendanube/desconectar': 'admin',
+  'POST /api/integraciones/tiendanube/sincronizar': 'admin',
+  'GET /api/integraciones/tiendanube/productos': 'admin',
+  'POST /api/integraciones/tiendanube/publicar': 'admin',
+  'POST /api/integraciones/tiendanube/pedidos/:id/reintentar': 'admin',
+  'POST /api/integraciones/tiendanube/pedidos/:id/revisado': 'admin'
 };

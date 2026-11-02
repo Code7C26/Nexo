@@ -6921,6 +6921,70 @@ a.segmento {
 }
 .fe-aviso-prueba[hidden] { display: none; }
 
+/* Tienda Nube (etapa G, dominios/tienda-nube.js): reusa el estado y las
+   tarjetas de Factura electrónica. Conectada: los ajustes, la lista de
+   productos para publicar (una fila tocable por producto), los pedidos y la
+   actividad. */
+.tn-conectada {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.tn-conectada > .panel { margin: 0; }
+.tn-conectada[hidden],
+.fe-pasos[hidden],
+.fe-paso[hidden] { display: none; }
+.tn-ayuda {
+  margin: 0 0 var(--sp-3);
+  max-width: 72ch;
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.tn-productos,
+.tn-actividad {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.tn-productos li,
+.tn-actividad li {
+  border-bottom: 1px solid var(--line);
+}
+.tn-producto {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 48px;
+  padding: var(--sp-2) 0;
+  cursor: pointer;
+}
+.tn-producto input { flex: none; width: 18px; height: 18px; }
+.tn-producto-texto { flex: 1; min-width: 0; }
+.tn-producto-nombre { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.tn-producto-detalle { display: block; font-size: var(--txt-xs); color: var(--ink-faint); }
+.tn-producto-publicado { cursor: default; }
+.tn-vacio {
+  margin: 0;
+  padding: var(--sp-4) 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+.tn-actividad li {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+}
+.tn-actividad-fecha { flex: none; width: 8.5em; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.tn-actividad-error { color: var(--accent-danger); }
+@media (max-width: 560px) {
+  .tn-actividad li { flex-direction: column; gap: 0; }
+  .tn-actividad-fecha { width: auto; font-size: var(--txt-xs); }
+}
+
 .fe-pasos {
   list-style: none;
   margin: 0;
