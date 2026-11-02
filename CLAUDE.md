@@ -77,8 +77,8 @@ no aplica.
 - Backend: Node.js 22+ (requerido por `node:sqlite`) + Express.
 - Base de datos: SQLite vía `node:sqlite` (`DatabaseSync`), sin ORM ni driver
   externo. SQL crudo. Ver §34 para la regla de portabilidad hacia Postgres.
-- Dependencias de producción reales: `express` y `@google/genai` (asistente
-  IA). Nada más — evitar sumar dependencias salvo necesidad concreta,
+- Dependencias de producción reales: `express` y `@google/genai` (Gemini, el
+  respaldo del asistente IA; Groq, el principal, va con `fetch`). Nada más — evitar sumar dependencias salvo necesidad concreta,
   coherente con la restricción de costo/complejidad del proyecto.
 - Frontend: HTML, CSS y JavaScript vanilla, sin framework ni build step. Ver
   §31 para la evolución hacia módulos ES y PWA.
@@ -1482,6 +1482,21 @@ auditoría con actor `asistente`):
   por debajo del objetivo, cuentas por cobrar próximas a vencer. Son
   sugerencias que el operador revisa, no acciones automáticas.
 
+Implementado hoy (hist. §117, §118):
+- **Proveedor:** Groq (`openai/gpt-oss-20b`) por `fetch`, sin dependencia
+  nueva y con Zero Data Retention; Gemini de respaldo si Groq se queda sin
+  cupo. Se eligió así porque el plan gratis de Gemini puede usar lo que se le
+  manda, y la frase suele traer el nombre del cliente. El plan gratis de Groq
+  da unas 5 frases por minuto para toda la instalación.
+- **Voz:** el navegador graba, `POST /api/asistente/transcribir` lo pasa por
+  Whisper y el texto sigue el mismo camino que uno tipeado, con la misma
+  confirmación. El audio no se guarda.
+- **Preguntas de uso sin la IA:** "¿cómo anulo una venta?" se contesta con el
+  manual de uso (`frontend/js/core/manual.js`), buscado en el navegador. La IA
+  queda solo para las operaciones. El manual también es una vista
+  (`#/ayuda`), y el asistente tiene su página (`#/asistente`).
+- Falta: WhatsApp y las consultas sobre los datos.
+
 ---
 
 # 37. QUÉ SIGNIFICA "COMPETIR"
@@ -1523,7 +1538,7 @@ excepciones).
 | F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Hecha (socios y cuotas, en curso) |
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Pendiente |
 | H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
-| I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | Pendiente |
+| I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | En curso (voz hecha; falta WhatsApp) |
 
 El detalle de cada etapa en curso (qué está hecho y qué falta) vive en
 `handoff.md`; esta columna solo da el estado grueso.

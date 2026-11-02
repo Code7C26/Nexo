@@ -38,9 +38,8 @@ optimizar procesos clave como:
 Todo en un solo sistema que se adapta al tipo de negocio (comercio,
 carnicería, verdulería, kiosco, servicios, gimnasio), con varios negocios por
 cuenta y uso desde el celular como app instalable (PWA). Lo que sigue (ver
-[Roadmap](#-roadmap)): IVA discriminado y facturación electrónica con ARCA,
-voz y WhatsApp, reportes avanzados e integraciones con Mercado Libre y Tienda
-Nube.
+[Roadmap](#-roadmap)): facturación electrónica en producción, WhatsApp,
+reportes avanzados e integraciones con Mercado Libre y Tienda Nube.
 
 ---
 
@@ -196,15 +195,19 @@ a punta, no un prototipo.
 - Auditoría de operaciones, incluido login/logout.
 - Asistente por lenguaje natural (Groq, con Gemini de respaldo) para
   registrar ventas, compras y gastos por texto o por voz, siempre con
-  confirmación humana antes de ejecutar.
+  confirmación humana antes de ejecutar, con su propia página. Las preguntas
+  de cómo se usa Nexo las contesta con el manual, en el navegador y sin la IA.
+- **Manual de uso** dentro de la app (Configuración › Ayuda), con buscador.
+- IVA discriminado por renglón, letra de comprobante automática, libro IVA, y
+  factura electrónica con CAE de ARCA en el ambiente de homologación.
 - **Panel de la plataforma** para quien administra Nexo: las cuentas, los
   negocios y cómo crecen, sin ver los datos de ningún negocio.
 
 **Todavía no construido**, para no prometer de más (roadmap real en
-`CLAUDE.md §38`): IVA discriminado y facturación electrónica con ARCA (los
-trámites de homologación ya están hechos), voz y WhatsApp, reportes de ventas
-por vendedor y comparativas entre períodos, integraciones con Mercado Libre y
-Tienda Nube, notificaciones push y entrar con Google.
+`CLAUDE.md §38`): facturación electrónica en producción, la retención de
+Mercado Pago, WhatsApp, preguntas al asistente sobre los números del negocio,
+reportes de ventas por vendedor y comparativas entre períodos, integraciones
+con Mercado Libre y Tienda Nube, notificaciones push y entrar con Google.
 
 ## 🗺️ Roadmap
 
@@ -216,13 +219,13 @@ autorización para empezarla (`CLAUDE.md §27`).
 |---|---|---|
 | A | Multi-empresa (`organizacion_id`, aislamiento, alta de negocios) | Hecha, con varios negocios por cuenta |
 | B | Modularizar `app.js` por dominio + PWA | PWA hecha; la modularización sigue en curso (`app.js` tiene ~7400 líneas, y 15 dominios ya están en `frontend/js/dominios/`) |
-| C | IVA discriminado y categoría fiscal | Próxima |
+| C | IVA discriminado y categoría fiscal | Hecha (falta la retención de Mercado Pago) |
 | D | Punto de venta (POS) y turno de caja | Hecha |
-| E | Facturación electrónica ARCA (homologación → producción) | Pendiente, depende de C; trámites de homologación listos |
+| E | Facturación electrónica ARCA (homologación → producción) | Homologación hecha; falta producción |
 | F | Perfiles de rubro y unidad de medida fraccionable | Hecha |
 | G | Integraciones: Mercado Libre, Tienda Nube | Pendiente |
 | H | Reportes avanzados y dashboard por rubro | Pendiente |
-| I | IA: voz y WhatsApp | Pendiente |
+| I | IA: voz y WhatsApp | En curso: voz y respuestas con el manual hechas; falta WhatsApp |
 
 Respaldos: cada arranque del servidor respalda la base antes de abrirla (con
 rotación de 14; `NEXO_BACKUP_DIR` elige la carpeta), el servidor publicado lo
