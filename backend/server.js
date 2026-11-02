@@ -7279,24 +7279,22 @@ function revertirDevolucion(devolucionId) {
   }
 }
 
-app.post('/api/devoluciones', (req, res) => {
-  const { venta_id, items, motivo, cuenta_tesoreria_id } = req.body;
+// Valida y registra una devolución, todo en una transacción. La usan el alta
+// de siempre y el asistente (hist. §119), así las dos pasan por las mismas
+// reglas: el tope de lo que queda por devolver de cada renglón, la venta no
+// anulada y la cuenta del reintegro del negocio. Un dato inválido sale como
+// ErrorValidacion (el 404 de una venta que no existe, también). `auditoria`
+// suma campos al registro de auditoría (el actor y el mensaje del asistente).
+function registrarDevolucion(req, { venta_id, items, motivo, cuenta_tesoreria_id }, auditoria = {}) {
+  const invalido = (mensaje, status = 400) => Object.assign(new ErrorValidacion(mensaje), { status });
   const ventaId = Number(venta_id);
 
   const venta = db
     .prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
-  if (!venta) {
-    return res.status(404).json({ error: 'Venta no encontrada.' });
-  }
-  if (venta.estado === 'anulada') {
-    return res
-      .status(400)
-      .json({ error: 'Esta venta está anulada, no se le puede registrar una devolución.' });
-  }
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'La devolución necesita al menos un item.' });
-  }
+  if (!venta) throw invalido('Venta no encontrada.', 404);
+  if (venta.estado === 'anulada') throw invalido('Esta venta está anulada, no se le puede registrar una devolución.');
+  if (!Array.isArray(items) || items.length === 0) throw invalido('La devolución necesita al menos un item.');
   // La devolución reingresa al MISMO depósito de la venta original: no es
   // una elección del operador, es de dónde salió físicamente la mercadería.
   const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
@@ -7304,22 +7302,16 @@ app.post('/api/devoluciones', (req, res) => {
   const vistos = new Set();
   for (const item of items) {
     const id = Number(item.venta_item_id);
-    if (vistos.has(id)) {
-      return res.status(400).json({ error: 'No se puede repetir el mismo item de la venta.' });
-    }
+    if (vistos.has(id)) throw invalido('No se puede repetir el mismo item de la venta.');
     vistos.add(id);
-    if (!(Number(item.cantidad) > 0)) {
-      return res.status(400).json({ error: 'La cantidad a devolver debe ser mayor a 0.' });
-    }
+    if (!(Number(item.cantidad) > 0)) throw invalido('La cantidad a devolver debe ser mayor a 0.');
   }
 
   if (cuenta_tesoreria_id) {
     const cuenta = db
       .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
       .get(cuenta_tesoreria_id, req.usuario.organizacion_id);
-    if (!cuenta) {
-      return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
-    }
+    if (!cuenta) throw invalido('La cuenta de tesorería no existe.');
   }
 
   const disponibles = new Map(
@@ -7327,18 +7319,14 @@ app.post('/api/devoluciones', (req, res) => {
   );
   for (const item of items) {
     const renglon = disponibles.get(Number(item.venta_item_id));
-    if (!renglon) {
-      return res.status(400).json({ error: 'Uno de los items no pertenece a esta venta.' });
-    }
+    if (!renglon) throw invalido('Uno de los items no pertenece a esta venta.');
     if (Number(item.cantidad) > renglon.disponible) {
       const detalle = renglon.variante_id ? ` (${combinacionVariante(renglon.variante_id)})` : '';
-      return res.status(400).json({
-        error: `No se puede devolver más de lo vendido de "${renglon.nombre}"${detalle} (disponible: ${renglon.disponible}).`
-      });
+      throw invalido(`No se puede devolver más de lo vendido de "${renglon.nombre}"${detalle} (disponible: ${renglon.disponible}).`);
     }
   }
 
-  const devolucionId = withTransaction(() => {
+  return withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
       .prepare(
         `INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id, fecha) VALUES (?, ?, ?, ?, ?, ${HOY_SQL})`
@@ -7372,12 +7360,15 @@ app.post('/api/devoluciones', (req, res) => {
       entidad_id: nuevaId,
       operacion_tipo: 'venta',
       operacion_id: ventaId,
-      detalle: `Devolución #${nuevaId} sobre la venta #${ventaId}`
+      detalle: `Devolución #${nuevaId} sobre la venta #${ventaId}`,
+      ...auditoria
     });
     return nuevaId;
   });
+}
 
-  res.status(201).json({ id: devolucionId });
+app.post('/api/devoluciones', (req, res) => {
+  res.status(201).json({ id: registrarDevolucion(req, req.body) });
 });
 
 // Nota de crédito: comprobante fiscal aparte, opcional — igual que
@@ -11362,7 +11353,87 @@ function resolverPropuesta(tipo, datos, organizacionId) {
     };
   }
 
+  if (tipo === 'devolucion') {
+    const cliente = buscarPorNombre('clientes', datos.cliente, organizacionId);
+    if (cliente.estado === 'no_dado') problemas.push('Falta quién devuelve.');
+    if (cliente.estado === 'no_encontrado') problemas.push(`No encontré al cliente "${cliente.valor}".`);
+    if (cliente.estado === 'ambiguo') problemas.push(`Hay más de un cliente que coincide con "${cliente.valor}".`);
+
+    const pedidos = (Array.isArray(datos.items) ? datos.items : []).map((item) => ({
+      producto: buscarPorNombre('productos', item.producto, organizacionId),
+      cantidad: Number(item.cantidad) > 0 ? Number(item.cantidad) : 1
+    }));
+    if (!pedidos.length) problemas.push('Falta qué devuelve.');
+    for (const { producto } of pedidos) {
+      if (producto.estado === 'ambiguo') problemas.push(`Hay más de un producto que coincide con "${producto.valor}".`);
+      else if (producto.estado !== 'resuelto') problemas.push(`No encontré el producto "${producto.valor ?? '?'}".`);
+    }
+
+    let ventas = [];
+    if (cliente.estado === 'resuelto' && pedidos.length && pedidos.every((p) => p.producto.estado === 'resuelto')) {
+      ventas = ventasParaDevolver(cliente.id, pedidos, organizacionId);
+      if (!ventas.length) {
+        const que = pedidos.map((p) => p.producto.nombre_resuelto).join(', ');
+        problemas.push(`No encontré una venta a ${cliente.nombre_resuelto} con ${que} que se pueda devolver.`);
+      }
+    }
+
+    let reintegro = null;
+    if (datos.reintegro?.cuenta) {
+      const cuenta = buscarPorNombre('cuentas_tesoreria', datos.reintegro.cuenta, organizacionId);
+      if (cuenta.estado !== 'resuelto') problemas.push(`No encontré la cuenta "${datos.reintegro.cuenta}" para devolver la plata.`);
+      reintegro = { cuenta };
+    }
+
+    return {
+      cliente,
+      pedidos,
+      ventas,
+      reintegro,
+      motivo: datos.motivo ?? null,
+      ejecutable: problemas.length === 0,
+      problemas
+    };
+  }
+
   return { ejecutable: false, problemas: ['Tipo de operación desconocido.'] };
+}
+
+// Las ventas de un cliente donde está lo que devuelve, con lo que queda por
+// devolver de cada renglón, de la más nueva a la más vieja (hist. §119). Van
+// primero las que tienen todos los productos. Cada una trae sus renglones ya
+// armados para la tarjeta del asistente, así elegir otra venta no pide nada
+// al servidor. Las anuladas no cuentan, igual que en registrarDevolucion.
+const VENTAS_PARA_DEVOLVER = 5;
+
+function ventasParaDevolver(clienteId, pedidos, organizacionId) {
+  const ventas = db
+    .prepare(
+      `SELECT id, fecha FROM ventas
+        WHERE cliente_id = ? AND organizacion_id = ? AND estado != 'anulada'
+        ORDER BY fecha DESC, id DESC LIMIT 50`
+    )
+    .all(clienteId, organizacionId);
+  const resultado = [];
+  for (const venta of ventas) {
+    const renglones = itemsDevolviblesDeVenta(venta.id).filter((r) => r.disponible > 0);
+    const items = [];
+    for (const pedido of pedidos) {
+      const renglon = renglones.find(
+        (r) => r.producto_id === pedido.producto.id && !items.some((i) => i.venta_item_id === r.venta_item_id)
+      );
+      if (!renglon) continue;
+      items.push({
+        venta_item_id: renglon.venta_item_id,
+        nombre: renglon.variante_id ? `${renglon.nombre} (${combinacionVariante(renglon.variante_id)})` : renglon.nombre,
+        disponible: renglon.disponible,
+        precio_unitario: renglon.precio_unitario,
+        cantidad: Math.min(pedido.cantidad, renglon.disponible)
+      });
+    }
+    if (items.length) resultado.push({ id: venta.id, fecha: venta.fecha, items, completa: items.length === pedidos.length });
+  }
+  return resultado.sort((a, b) => b.completa - a.completa).slice(0, VENTAS_PARA_DEVOLVER);
 }
 
 // Lo que viaja a la IA como contexto del negocio: solo lo de la
@@ -11747,6 +11818,37 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 
     marcarConfirmado(gastoId);
     return res.status(201).json({ id: gastoId, tipo: 'gasto' });
+  }
+
+  if (tipo === 'devolucion') {
+    // Las mismas reglas que el alta de siempre (registrarDevolucion): la
+    // venta tiene que ser de este negocio y no estar anulada, y nada se
+    // devuelve por encima de lo que queda de cada renglón.
+    const items = (Array.isArray(propuesta?.items) ? propuesta.items : []).map((item) => ({
+      venta_item_id: Number(item.venta_item_id),
+      cantidad: Number(item.cantidad),
+      vuelve_stock: item.vuelve_stock !== false
+    }));
+    let devolucionId;
+    try {
+      devolucionId = registrarDevolucion(
+        req,
+        {
+          venta_id: propuesta?.venta_id,
+          items,
+          motivo: typeof propuesta?.motivo === 'string' ? propuesta.motivo : null,
+          cuenta_tesoreria_id: propuesta?.cuenta_tesoreria_id || null
+        },
+        { actor: 'asistente', operacion_tipo: 'asistente_mensaje', operacion_id: mensaje.id }
+      );
+    } catch (err) {
+      if (err instanceof ErrorValidacion) return res.status(err.status).json({ error: err.message });
+      marcarFallido(err.message);
+      return res.status(500).json({ error: 'No se pudo registrar la devolución.' });
+    }
+
+    marcarConfirmado(devolucionId);
+    return res.status(201).json({ id: devolucionId, tipo: 'devolucion' });
   }
 
   return res.status(400).json({ error: 'Tipo de operación desconocido.' });

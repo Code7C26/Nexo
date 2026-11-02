@@ -882,7 +882,8 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   texto TEXT NOT NULL,
   propuesta_json TEXT,
   estado TEXT NOT NULL CHECK (estado IN ('interpretado', 'confirmado', 'descartado', 'fallido')),
-  operacion_tipo TEXT CHECK (operacion_tipo IN ('venta', 'compra', 'gasto')),
+  -- 'devolucion' desde hist. §119 (rebuild en db/index.js).
+  operacion_tipo TEXT CHECK (operacion_tipo IN ('venta', 'compra', 'gasto', 'devolucion')),
   operacion_id INTEGER,
   error TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)

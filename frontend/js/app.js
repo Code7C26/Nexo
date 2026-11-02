@@ -68,7 +68,7 @@ import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
 import { respuestaDeAyuda } from "./dominios/ayuda.js";
-import { clasificarFrase } from "./core/buscar-ayuda.js";
+import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
 
 let facturas = [];
@@ -6823,7 +6823,7 @@ formAsistente.addEventListener("submit", async (e) => {
       turnoRespuesta.remove();
       throw e;
     });
-    asistenteRenderRespuesta(turnoRespuesta, data);
+    asistenteRenderRespuesta(turnoRespuesta, data, texto);
   } finally {
     btnAsistenteEnviar.disabled = false;
     asistenteScrollAlFinal();
@@ -6976,13 +6976,24 @@ btnAsistenteVoz.addEventListener("click", () => {
   else asistenteEmpezarDictado();
 });
 
-function asistenteRenderRespuesta(turnoEl, data) {
+function asistenteRenderRespuesta(turnoEl, data, texto) {
   if (!data.tipo) {
-    turnoEl.innerHTML = `<p>${esc(data.mensaje ?? "No identifiqué ninguna operación en ese texto.")}</p>`;
+    // La IA no vio una operación: si el manual tiene algo seguro sobre lo que
+    // se dijo, va eso (hist. §119), sin otra llamada.
+    const delManual = buscarEnManual(texto);
+    turnoEl.innerHTML =
+      delManual[0]?.puntaje >= PUNTAJE_SEGURO
+        ? `<p>No es algo que pueda cargar, pero esto del manual te puede servir:</p>${respuestaDeAyuda(delManual)}`
+        : `<p>${esc(data.mensaje ?? "No identifiqué ninguna operación en ese texto.")}</p>`;
     return;
   }
 
-  const plantillas = { venta: plantillaAsistenteVenta, compra: plantillaAsistenteCompra, gasto: plantillaAsistenteGasto };
+  const plantillas = {
+    venta: plantillaAsistenteVenta,
+    compra: plantillaAsistenteCompra,
+    gasto: plantillaAsistenteGasto,
+    devolucion: plantillaAsistenteDevolucion
+  };
   turnoEl.innerHTML = plantillas[data.tipo](data.propuesta);
   const tarjeta = turnoEl.querySelector(".asistente-propuesta");
 
@@ -6993,7 +7004,12 @@ function asistenteRenderRespuesta(turnoEl, data) {
     );
   }
 
-  const activadores = { venta: activarAsistenteVenta, compra: activarAsistenteCompra, gasto: activarAsistenteGasto };
+  const activadores = {
+    venta: activarAsistenteVenta,
+    compra: activarAsistenteCompra,
+    gasto: activarAsistenteGasto,
+    devolucion: activarAsistenteDevolucion
+  };
   activadores[data.tipo](tarjeta, data.propuesta, data.mensaje_id, turnoEl);
 
   tarjeta
@@ -7009,7 +7025,7 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     body: { mensaje_id: mensajeId, tipo, propuesta },
     error: "No se pudo registrar la operación."
   });
-  const etiqueta = { venta: "Venta", compra: "Compra", gasto: "Gasto" }[tipo];
+  const etiqueta = { venta: "Venta", compra: "Compra", gasto: "Gasto", devolucion: "Devolución" }[tipo];
   turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">${icono("circle-check")} ${etiqueta} #${id} registrada.</p>`;
   asistenteScrollAlFinal();
 
@@ -7402,6 +7418,102 @@ function activarAsistenteGasto(raiz, propuesta, mensajeId, turnoEl) {
         tipo: raiz.querySelector(".asistente-tipo-gasto").value || null,
         descripcion: raiz.querySelector(".asistente-descripcion").value.trim() || null,
         fecha: raiz.querySelector(".asistente-fecha").value || null
+      },
+      turnoEl
+    );
+  });
+}
+
+/* --- Devolución (hist. §119) --- */
+//
+// El servidor ya buscó las ventas del cliente con lo que devuelve (las que
+// lo tienen todo primero, y de la más nueva a la más vieja), con lo que queda
+// por devolver de cada renglón: elegir otra venta solo vuelve a pintar.
+
+function plantillaAsistenteDevolucion(propuesta) {
+  const cliente = propuesta.cliente.nombre_resuelto ?? propuesta.cliente.valor ?? "?";
+  return `
+    <div class="asistente-propuesta">
+      <p class="asistente-propuesta-titulo">Devolución</p>
+      <form class="form">
+        <p class="form-note">De <strong>${esc(cliente)}</strong> ${asistenteBadge(propuesta.cliente)}</p>
+        <label>
+          <span>De la venta</span>
+          <select class="asistente-dev-venta"></select>
+        </label>
+        <div class="asistente-dev-items"></div>
+        <label>
+          <span>¿Le devolvés la plata?</span>
+          <select class="asistente-dev-reintegro"></select>
+        </label>
+        <label>
+          <span>Motivo</span>
+          <input type="text" class="asistente-dev-motivo" maxlength="200" value="${esc(propuesta.motivo ?? "")}" />
+        </label>
+
+        <div class="panel-acciones">
+          <button type="button" class="btn btn-secundario btn-asistente-descartar">Descartar</button>
+          <button type="submit" class="btn btn-primary">Confirmar y registrar</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+function activarAsistenteDevolucion(raiz, propuesta, mensajeId, turnoEl) {
+  const ventas = propuesta.ventas ?? [];
+  const ventaSelect = raiz.querySelector(".asistente-dev-venta");
+  const itemsEl = raiz.querySelector(".asistente-dev-items");
+  ventaSelect.innerHTML = ventas.length
+    ? ventas.map((v) => `<option value="${v.id}">Venta #${v.id} del ${esc(fechaAR(v.fecha))}</option>`).join("")
+    : `<option value="">No hay una venta para devolver</option>`;
+  ventaSelect.disabled = !ventas.length;
+  raiz.querySelector('button[type="submit"]').disabled = !ventas.length;
+
+  const pintarRenglones = () => {
+    const venta = ventas.find((v) => String(v.id) === ventaSelect.value);
+    itemsEl.innerHTML = (venta?.items ?? [])
+      .map(
+        (i) => `<div class="asistente-dev-item" data-venta-item="${i.venta_item_id}">
+          <label>
+            <span>${esc(i.nombre)} <small>(quedan ${numero(i.disponible)}, a ${money(i.precio_unitario)} c/u)</small></span>
+            <input type="number" class="asistente-dev-cantidad" min="0" max="${numero(i.disponible)}" step="any" value="${numero(i.cantidad)}" />
+          </label>
+          <label class="form-check"><input type="checkbox" class="asistente-dev-stock" checked /> Vuelve al stock</label>
+        </div>`
+      )
+      .join("");
+  };
+  ventaSelect.addEventListener("change", pintarRenglones);
+  pintarRenglones();
+
+  const reintegroSelect = raiz.querySelector(".asistente-dev-reintegro");
+  reintegroSelect.innerHTML =
+    `<option value="">No: le queda a favor, o se lleva otra cosa</option>` +
+    cuentasTesoreria.map((c) => `<option value="${c.id}">Sí, de ${esc(c.nombre)}</option>`).join("");
+  if (propuesta.reintegro?.cuenta?.estado === "resuelto") reintegroSelect.value = propuesta.reintegro.cuenta.id;
+
+  raiz.querySelector("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const items = [...itemsEl.querySelectorAll(".asistente-dev-item")]
+      .map((fila) => ({
+        venta_item_id: Number(fila.dataset.ventaItem),
+        cantidad: Number(fila.querySelector(".asistente-dev-cantidad").value),
+        vuelve_stock: fila.querySelector(".asistente-dev-stock").checked
+      }))
+      .filter((i) => i.cantidad > 0);
+    if (!items.length) {
+      avisar("Poné cuántas unidades devuelve.", "atencion");
+      return;
+    }
+    await asistenteEjecutar(
+      mensajeId,
+      "devolucion",
+      {
+        venta_id: Number(ventaSelect.value),
+        items,
+        cuenta_tesoreria_id: reintegroSelect.value ? Number(reintegroSelect.value) : null,
+        motivo: raiz.querySelector(".asistente-dev-motivo").value.trim() || null
       },
       turnoEl
     );

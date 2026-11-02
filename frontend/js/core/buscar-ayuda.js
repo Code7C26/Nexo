@@ -134,7 +134,7 @@ const PREGUNTA_DE_USO =
 const COMO_SE_HACE = /\b(como|donde) (hago|hacer|puedo|se|cargo|paso|veo|pongo|agrego|cambio|saco|registro|aviso|encuentro)\b/;
 // Lo que ya pasó, contado en primera persona: es una operación para cargar.
 const OPERACION =
-  /\b(vendi|vendimos|le vendi|compre|compramos|le compre|pague|pagamos|cobre|cobramos|gaste|gastamos|me pago|me pagaron|entraron|llegaron|se llevo|se llevaron|cargue)\b/;
+  /\b(vendi|vendimos|le vendi|compre|compramos|le compre|pague|pagamos|cobre|cobramos|gaste|gastamos|me pago|me pagaron|entraron|llegaron|se llevo|se llevaron|cargue|devolv\w*|le quedo (chico|chica|grande|corto|corta))\b/;
 
 // Qué hacer con una frase del asistente:
 // - "operacion": va a la IA, como siempre (venta, compra o gasto).

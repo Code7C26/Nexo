@@ -80,7 +80,10 @@ test('las operaciones siguen yendo a la IA', () => {
     'compré 10 pantalones a Textil Norte a 9 mil cada uno',
     'pagué 25 mil de luz en efectivo',
     'Martín se llevó un pantalón jean de 52 mil',
-    'entraron 20 buzos de Textil Norte'
+    'entraron 20 buzos de Textil Norte',
+    // Lo que probó el profe (hist. §119): una devolución, no una pregunta.
+    'Juan, le quedó chica la remera y quiere devolverla',
+    'Juan devolvió la gorra'
   ]) {
     assert.equal(clasificarFrase(frase).tipo, 'operacion', frase);
   }
