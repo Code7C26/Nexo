@@ -149,7 +149,10 @@ const FUNCIONES_SEGURAS = new Set([
   'asistenteBadge', // app.js: solo lee ref.estado para elegir un texto fijo
   'ccTextoDias', // dominios/cuentas-corrientes.js: recibe un número
   'inputValor', // core/filtros.js: escapa el valor del input; en el select solo lo compara
-  'celdaMovil' // core/formato.js: escapa cada parte de la segunda línea del celular (hist. §96)
+  'celdaMovil', // core/formato.js: escapa cada parte de la segunda línea del celular (hist. §96)
+  'enLinea', // dominios/ayuda.js: esc() y después solo cambia **x** por <strong> (hist. §118)
+  'htmlDeBloques', // dominios/ayuda.js: cada texto del manual pasa por enLinea
+  'enlaceSeccion' // dominios/ayuda.js: escapa el id y el título
 ]);
 const esFuncionSegura = (nombre) => FUNCIONES_SEGURAS.has(nombre) || /^Math\.\w+$/.test(nombre);
 const COMPARACION_DESPUES = /^\s*(\?(?![.?])|===|!==|==|!=|>=|<=|>|<|&&)/;

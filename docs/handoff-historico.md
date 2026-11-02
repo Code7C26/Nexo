@@ -10602,6 +10602,73 @@ Groq, que es un trámite del usuario: **todavía no se probó contra Groq real.*
   Windows volvió exacta ("…por 45 mil, y me pagó por Mercado Pago.") en
   0,9 s.
 
-**Lo que falta.**
-- Publicar y cargar `GROQ_API_KEY` en `/etc/nexo/nexo.env` del servidor.
-- Probar el dictado con la voz de una persona, en el celular.
+**Publicado** el mismo día (PR #39). La clave la cargó el usuario con un
+solo comando de PowerShell que la lee de su `.env` y la manda por `ssh` (sin
+`.txt`), validando el largo; se comprobó que el proceso de Nexo la tiene.
+
+**Lo que falta:** probar el dictado con la voz de una persona, en el celular.
+
+## 118. El manual en la app, y el asistente que responde con él, 2 de noviembre de 2026
+
+Pedido del usuario: que una pregunta sobre cómo se usa Nexo se conteste con el
+manual sin gastar la IA, el manual adentro de "Ayuda", y una página propia
+para el asistente.
+
+**Decisiones.**
+- **El manual es datos, no un HTML suelto:** `frontend/js/core/manual.js`, 40
+  secciones en 9 grupos, escritas para quien nunca usó Nexo y con los nombres
+  de los botones tal cual. Cada sección tiene `preguntas` (cómo lo preguntaría
+  alguien) y `palabras` para la búsqueda, la `pantalla` donde se hace, y si es
+  de una función opcional (`modulo`) o solo de administradores (`admin`). El
+  `docs/manual-usuario.html` de Tosi era un borrador viejo y queda como estaba;
+  el documento final para el Classroom puede salir de estos mismos datos.
+- **La búsqueda corre en el navegador, sin red** (`core/buscar-ayuda.js`):
+  raíces de palabras (familias como vendí/venta/vender), pesos por campo
+  (título y preguntas más que el texto), rareza, y una palabra que el manual
+  no tiene pesa mucho (así "¿cómo funciona la bicicleta?" no se contesta con
+  "Funciones"). Anda sin conexión, como la PWA.
+- **Qué hace el asistente con cada frase** (`clasificarFrase`):
+  - una pregunta ("cómo…", "dónde…", "qué es…", "se puede…", "…, ¿cómo paso
+    …?" o un signo de pregunta) → el manual, sin llamar a la IA;
+  - una operación contada en pasado ("vendí", "pagué", "se llevó") → la IA,
+    como siempre;
+  - lo demás corto que el manual tiene seguro → el manual; el resto → la IA.
+  - Con seguridad (≥ 0,45) contesta la sección entera, con "Ir a <pantalla>"
+    y "Ver en el manual"; entre 0,2 y 0,45 ofrece "¿Es alguna de estas?"; por
+    debajo, "No encontré eso en el manual" con el manual y Avisar un problema.
+  - Tiene en cuenta a quien pregunta: si la función está apagada lo dice, y
+    al empleado no le ofrece entrar a lo que es de administradores.
+- **El manual es una vista, `#/ayuda/<sección>`** (`dominios/ayuda.js`), con
+  el esqueleto de Configuración (índice y buscador a la izquierda, la página a
+  la derecha; en el celular, uno o el otro). Se entra desde Configuración ›
+  Ayuda › Manual de uso, que queda marcada en el menú.
+- **La página del asistente, `#/asistente`**, con su ítem en el menú para los
+  dos roles: la conversación es la misma del flotante (`app.js` muda
+  `#asistentePanel` a la página al entrar y lo devuelve al salir, así el hilo
+  y las propuestas siguen). Al costado, "Qué podés hacer" con ejemplos que se
+  tocan y el dictado si está. En el celular, la conversación ocupa la
+  pantalla. Un enlace de una respuesta en el flotante del celular lo cierra.
+- Las sugerencias del panel suman "¿Cómo anulo una venta?".
+
+**Cómo se verificó.**
+- `test/ayuda.test.js` (32): el manual bien armado (ids, grupos, enlaces y
+  pantallas que existen en `index.html`), 28 preguntas dichas de otra forma
+  que en el manual que caen en su sección con seguridad, operaciones que
+  siguen yendo a la IA y preguntas ajenas que no se contestan como si
+  supiera. `npm test` (216) y `npm run lint`.
+- `plantillas-html.js` suma `enLinea`, `htmlDeBloques` y `enlaceSeccion` a las
+  funciones que escapan (verificadas a mano). Los ids de sección no pasan por
+  `esc()`: el test exige que sean `[a-z0-9-]`.
+- En Chrome, compu y 390 px, admin y empleado: la pregunta no pidió nada a
+  `/interpretar` y la operación sí; "Ver en el manual" abre la sección; el
+  buscador; el hilo sigue al pasar de la página al flotante; "Ir a
+  Presupuestos" en el celular cierra el panel; el empleado ve "Esto lo hace
+  quien administra" y sin botón. Sin errores de consola.
+
+**Para después.**
+- El contenido del manual se revisa una vez más al final, con el producto
+  cerrado (decisión del 1 de noviembre); si cambia un botón, cambia su texto
+  en `core/manual.js`.
+- Capturas o videos cortos por sección.
+- Las preguntas sobre los números del negocio ("¿cuánto vendí este mes?") hoy
+  llevan a Resumen; el punto 4 del plan las va a contestar con los datos.
