@@ -1094,7 +1094,7 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - **Falta que el usuario pruebe el dictado en el celular, con su voz.**
   3b. **Manual en la app y asistente que responde con él: hecho el 2 de
      noviembre** (hist. §118, pedido del usuario). `#/ayuda` (Configuración ›
-     Ayuda › Manual de uso, 41 secciones en `core/manual.js`), `#/asistente`
+     Ayuda › Manual de uso, 40 secciones en `core/manual.js`), `#/asistente`
      con su página, y las preguntas de uso se contestan con el manual en el
      navegador, sin la IA. **Falta que el usuario lo vea** y que el manual se
      revise al final.

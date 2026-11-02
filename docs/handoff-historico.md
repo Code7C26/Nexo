@@ -10615,7 +10615,7 @@ manual sin gastar la IA, el manual adentro de "Ayuda", y una página propia
 para el asistente.
 
 **Decisiones.**
-- **El manual es datos, no un HTML suelto:** `frontend/js/core/manual.js`, 41
+- **El manual es datos, no un HTML suelto:** `frontend/js/core/manual.js`, 40
   secciones en 9 grupos, escritas para quien nunca usó Nexo y con los nombres
   de los botones tal cual. Cada sección tiene `preguntas` (cómo lo preguntaría
   alguien) y `palabras` para la búsqueda, la `pantalla` donde se hace, y si es
