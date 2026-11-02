@@ -1594,6 +1594,24 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        la misma lógica que una venta cargada a mano, y sin duplicarse.
    - Para la demo, usuarios de prueba de Mercado Libre (se crean por API).
    - Gratis.
+   - **Lo que le falta a la venta para e-commerce** (visto con el usuario el
+     2 de noviembre; hoy solo la compra tiene envío):
+     - el canal de la venta (mostrador, Mercado Libre, Tienda Nube,
+       WhatsApp), para la rentabilidad por canal de CLAUDE.md §20;
+     - la comisión y el envío que cobra el canal como costo de la venta: si
+       no, la ganancia de un vendedor de Mercado Libre sale falsa;
+     - el envío de la venta: dirección, estado (por preparar → despachado →
+       entregado), empresa y seguimiento, copiado del canal o cargado a mano
+       en el envío propio, con una lista "para despachar hoy";
+     - stock reservado de los pedidos pagos que todavía no salieron.
+     - la ficha del producto para publicar: hoy tiene nombre, SKU, precio,
+       categoría, descripción, variantes y stock. Faltan fotos, peso y
+       medidas (los piden los envíos), código de barras, marca y precio de
+       oferta. Lo de la vidriera (SEO, diseño, orden) queda en cada canal.
+       Las fotos van al disco del servidor: una carga para los dos canales.
+     - Las etiquetas y la elección del correo quedan en Mercado Envíos y
+       Envío Nube. Son columnas nuevas en `ventas`: explicar la migración
+       antes (CLAUDE.md §34).
 15. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
    partners, con una tienda demo.
 
@@ -1689,7 +1707,17 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   en su portal de desarrolladores. No hay sandbox: se prueba en producción entre
   usuarios de prueba (hasta 10, se crean por API y caducan).
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
-  tienda demo y la app. La tienda demo es gratis pero no admite ventas: para la
+  tienda demo y la app.
+  - **Hecho el 2 de noviembre:** app 49947, "Para tus clientes" (sin la
+    revisión de la tienda de aplicaciones), con la redirección a
+    `/api/integraciones/tiendanube/callback`, la página `/app`, Editar
+    productos, Ver pedidos y los tres webhooks de privacidad en
+    `/api/integraciones/tiendanube/privacidad/{tienda,borrar-cliente,datos-cliente}`.
+    Esas rutas todavía no existen: no instalar la app hasta programarlas.
+    Tienda demo: https://nexo330.mitiendanube.com, vacía a propósito: los
+    productos los sube Nexo al instalar la app ("publicar en Tienda Nube").
+    `TIENDANUBE_APP_ID` y `TIENDANUBE_CLIENT_SECRET` en el `.env` de la compu
+    (las de Mercado Libre y WhatsApp, vacías). La tienda demo es gratis pero no admite ventas: para la
   demo, probar crear la orden con `POST /orders` y confirmar que dispara
   `order/created`.
 - **Meta (etapa 11):**
@@ -1701,6 +1729,16 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **ARCA en producción.** Cada empresa usa su propio certificado, o delega el
   servicio en el CUIT de Nexo.
 - **Producción de WhatsApp.** Pide verificar un negocio real ante Meta.
+- **Correo Argentino y Andreani** (posible mejora, pedida por el usuario el 2
+  de noviembre). Va después del envío en la venta (etapa 14): cotizar,
+  generar la etiqueta y seguir el envío desde una venta con envío propio.
+  - Las dos APIs piden un contrato comercial de cada negocio, con sus
+    credenciales guardadas por empresa (CLAUDE.md §32). Para Nexo es gratis.
+  - No se puede probar sin un contrato real: no entra en la presentación.
+  - Alternativa: un servicio que junta varios correos en una API (Enviopack,
+    Zippin), sin contrato con cada uno, pero cobra por envío. Es decisión de
+    plata.
+  - Las condiciones de cada API se confirman al planificarla.
 - **Fuera de alcance (CLAUDE.md §39):**
   - métricas de Meta Ads: la API es gratis, pero leer cuentas de otros negocios
     pide revisión de la app y verificación de negocio, semanas de trámite;
