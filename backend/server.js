@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
-import { interpretar, InterpreteError } from './interprete.js';
+import { interpretar, InterpreteError, transcribir, vozDisponible } from './interprete.js';
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
@@ -11365,7 +11365,7 @@ function resolverPropuesta(tipo, datos, organizacionId) {
   return { ejecutable: false, problemas: ['Tipo de operación desconocido.'] };
 }
 
-// Lo que viaja a Gemini como contexto del negocio: solo lo de la
+// Lo que viaja a la IA como contexto del negocio: solo lo de la
 // organización de la sesión (Etapa A, CLAUDE.md §28) — nombres de otra
 // empresa no pueden salir hacia el proveedor de IA.
 function contextoParaInterprete(organizacionId) {
@@ -11423,6 +11423,46 @@ app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
     ejecutable: propuesta.ejecutable,
     problemas: propuesta.problemas
   });
+}));
+
+// La voz (handoff, "IA"): el audio grabado en el navegador se pasa a texto y
+// vuelve a la app, que lo manda a interpretar como si se hubiera tipeado. Así
+// la frase que se entendió queda a la vista en el hilo antes de la propuesta,
+// y nada se carga sin confirmar (CLAUDE.md §21). El audio no se guarda.
+const AUDIO_MAX = '4mb';
+const DICTADOS_MAX = 40;
+const dictadosPorUsuario = new Map();
+
+app.get('/api/asistente/capacidades', (req, res) => {
+  res.json({ voz: vozDisponible() });
+});
+
+app.post('/api/asistente/transcribir', express.raw({ type: 'audio/*', limit: AUDIO_MAX }), asincrono(async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !req.body.length) {
+    return res.status(400).json({ error: 'No llegó ningún audio.' });
+  }
+  // Groq cobra el cupo por segundo de audio, compartido entre todos los
+  // negocios: nadie puede gastarlo solo.
+  const ahora = Date.now();
+  const registro = dictadosPorUsuario.get(req.usuario.id);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    dictadosPorUsuario.set(req.usuario.id, { cuenta: 1, desde: ahora });
+  } else if (++registro.cuenta > DICTADOS_MAX) {
+    return res.status(429).json({ error: 'Usaste mucho el dictado en la última hora. Mientras tanto, escribilo.' });
+  }
+
+  // Los nombres del negocio ayudan a que Whisper los escriba bien. Solo los
+  // de la organización de la sesión (CLAUDE.md §28).
+  const { cuentas, productos } = contextoParaInterprete(req.usuario.organizacion_id);
+  const palabras = [...cuentas, ...productos.slice(0, 40)].map((f) => f.nombre);
+
+  try {
+    const texto = await transcribir(req.body, req.get('Content-Type'), palabras);
+    res.json({ texto });
+  } catch (err) {
+    if (err instanceof InterpreteError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 }));
 
 app.post('/api/asistente/:id/descartar', (req, res) => {

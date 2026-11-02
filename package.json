@@ -15,7 +15,8 @@
     "regresion": "node scripts/regresion-head.mjs",
     "fuentes": "node scripts/fuentes.mjs",
     "plan": "node scripts/plan.mjs",
-    "probar-mail": "node --env-file-if-exists=.env scripts/probar-mail.mjs"
+    "probar-mail": "node --env-file-if-exists=.env scripts/probar-mail.mjs",
+    "probar-ia": "node --env-file-if-exists=.env scripts/probar-ia.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

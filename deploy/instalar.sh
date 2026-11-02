@@ -100,6 +100,7 @@ NEXO_BACKUP_KEEP=60
 # Mail (sin estas dos, Nexo no manda mails):
 # NEXO_SMTP_USUARIO=
 # NEXO_SMTP_CLAVE=
+# GROQ_API_KEY=
 # GEMINI_API_KEY=
 EOF
 fi

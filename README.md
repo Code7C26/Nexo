@@ -65,7 +65,8 @@ hasta negocios con varios puntos de venta.
   Se escribe con SQL portable pensando en migrar a Postgres cuando haga falta
   soportar múltiples empresas en producción concurrente (`CLAUDE.md §34`).
 - Dependencias de producción reales: solo `express` y `@google/genai`
-  (asistente IA con Gemini). El mail sale por un cliente SMTP propio sobre
+  (Gemini, el respaldo del asistente IA). Groq, el proveedor principal, va
+  con `fetch` sin dependencia. El mail sale por un cliente SMTP propio sobre
   `node:tls`, sin dependencia. Criterio del proyecto: minimizar dependencias
   y costo de infraestructura, no funcionalidad.
 - Publicación: una VM gratuita de Oracle Cloud con Caddy (HTTPS) delante de
@@ -86,7 +87,7 @@ npm start          # levanta el servidor en http://localhost:3000
 ```
 
 Configuración opcional: copiar `.env.example` como `.env` en la raíz y
-descomentar lo que haga falta (puerto, clave de Gemini, carpeta de respaldos,
+descomentar lo que haga falta (puerto, clave de la IA, carpeta de respaldos,
 etc.). `npm start`, `npm run dev` y `npm run backup` lo leen solos; sin `.env`
 el servidor arranca igual.
 
@@ -193,8 +194,9 @@ a punta, no un prototipo.
 - Reportes de ventas, compras y stock, y un Resumen con el resultado del
   período.
 - Auditoría de operaciones, incluido login/logout.
-- Asistente por lenguaje natural (Gemini) para registrar ventas, compras y
-  gastos por texto, siempre con confirmación humana antes de ejecutar.
+- Asistente por lenguaje natural (Groq, con Gemini de respaldo) para
+  registrar ventas, compras y gastos por texto o por voz, siempre con
+  confirmación humana antes de ejecutar.
 - **Panel de la plataforma** para quien administra Nexo: las cuentas, los
   negocios y cómo crecen, sin ver los datos de ningún negocio.
 

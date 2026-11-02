@@ -1,19 +1,26 @@
-// Intérprete de operaciones por texto (CLAUDE.md §21).
+// Intérprete de operaciones por texto y voz (CLAUDE.md §21, §36).
 //
 // Este es el ÚNICO archivo del backend que sabe que existe un proveedor de
 // IA. Aislado a propósito: si mañana cambia el proveedor, o si hace falta
 // stubearlo para tests, el resto de Nexo (server.js) no se entera — solo
-// conoce la forma de entrada/salida de `interpretar()`. Prueba de que el
-// aislamiento funciona: este archivo pasó de usar la API de Anthropic a la
-// de Google Gemini (elegida por tener un tier gratuito real, a diferencia
-// de Anthropic que es pago por uso) sin tocar una sola línea de
-// server.js ni del frontend.
+// conoce la forma de entrada/salida de `interpretar()` y `transcribir()`.
+// Prueba de que el aislamiento funciona: este archivo pasó de Anthropic a
+// Gemini, y después sumó Groq, sin tocar el circuito de server.js.
+//
+// Proveedores (handoff, "IA", decidido el 1 de noviembre de 2026):
+// - Groq es el principal: rápido, con Zero Data Retention en su consola, y
+//   habla la API de OpenAI, así que va con `fetch` sin dependencia nueva.
+//   Interpreta con `openai/gpt-oss-20b` y transcribe con Whisper.
+// - Gemini queda de respaldo. Ojo: en su plan gratis Google puede leer y
+//   usar lo que se le manda, y la frase suele traer el nombre del cliente;
+//   con datos reales va con facturación o no va.
+// Con las dos claves, si Groq falla por cupo o caída se usa Gemini.
 //
 // IMPORTANTE (regla de arquitectura de §21): este módulo SOLO interpreta.
 // Nunca abre una conexión a la base, nunca importa `db`, nunca ejecuta
 // nada. Devuelve una propuesta con nombres (no IDs) que server.js todavía
 // tiene que resolver y validar antes de poder ejecutarse.
-import { GoogleGenAI, FunctionCallingConfigMode } from '@google/genai';
+import { GoogleGenAI, FunctionCallingConfigMode, ThinkingLevel } from '@google/genai';
 import { fechaDeHoy } from './fecha.js';
 
 export class InterpreteError extends Error {
@@ -24,12 +31,30 @@ export class InterpreteError extends Error {
   }
 }
 
+// Un fallo del proveedor que justifica probar con el otro (cupo, caída, red),
+// distinto de un error nuestro o de configuración.
+class FalloProveedor extends Error {
+  constructor(message, { cupo = false } = {}) {
+    super(message);
+    this.name = 'FalloProveedor';
+    this.cupo = cupo;
+  }
+}
+
+const GROQ_URL = 'https://api.groq.com/openai/v1';
+const GROQ_MODELO = process.env.NEXO_GROQ_MODELO || 'openai/gpt-oss-20b';
+const GROQ_MODELO_VOZ = 'whisper-large-v3-turbo';
+
 // gemini-2.5-flash quedó deprecado para cuentas nuevas (la propia API lo
 // avisó con un 404 al probarlo, indicando gemini-3.6-flash como
 // reemplazo directo) — Google va corriendo esta familia seguido, así que
 // si este modelo deja de andar, el mensaje de error de la API suele decir
-// directamente cuál usar en su lugar.
-const MODELO = 'gemini-3.6-flash';
+// directamente cuál usar en su lugar. NEXO_GEMINI_MODELO lo cambia sin
+// tocar el código.
+const GEMINI_MODELO = process.env.NEXO_GEMINI_MODELO || 'gemini-3.6-flash';
+
+// Lo que tarda un proveedor antes de darlo por caído.
+const ESPERA_MS = 20_000;
 
 // Herramientas: el modelo no "escribe JSON libre", llena estos esquemas
 // exactos vía function calling. `parametersJsonSchema` (JSON Schema real,
@@ -85,7 +110,9 @@ const HERRAMIENTAS = [
               description: 'Monto cobrado. Si es null, se asume que se cobró el total de la venta.'
             }
           },
-          required: ['cuenta', 'importe'],
+          // Sin `importe` obligatorio: Groq valida el esquema y el modelo lo
+          // omitía cuando se cobró todo (es lo mismo que null).
+          required: ['cuenta'],
           additionalProperties: false
         },
         fecha: {
@@ -170,7 +197,9 @@ const TIPO_POR_HERRAMIENTA = {
 // instrucciones de sistema.
 function construirSystemPrompt(contexto) {
   const listar = (items, formatear) => (items.length ? items.map(formatear).join('\n') : '(ninguna cargada todavía)');
-  const cuentas = listar(contexto.cuentas, (c) => `- ${c.nombre} (${c.tipo})`);
+  // El tipo va aparte del nombre: con "- Mercado Pago (billetera)" el modelo
+  // a veces devolvía "billetera" como cuenta.
+  const cuentas = listar(contexto.cuentas, (c) => `- ${c.nombre}  [tipo: ${c.tipo}]`);
   const categorias = listar(contexto.categoriasGasto, (c) => `- ${c.nombre} (${c.tipo})`);
   // El catálogo puede crecer mucho; se acota para no inflar el prompt de
   // forma innecesaria — alcanza para que el modelo matchee nombres.
@@ -184,7 +213,13 @@ Reglas:
 - Usá siempre NOMBRES, nunca inventes IDs — eso lo resuelve Nexo después.
 - Si el texto da un precio total para varias unidades, calculá el precio unitario dividiendo por la cantidad.
 - Si no se menciona explícitamente que se cobró o se pagó, dejá el cobro en null (queda a crédito).
-- No calcules IVA ni retenciones de ningún tipo: Nexo no los maneja en esta versión (decisión ya tomada, no es un olvido).
+- El cobro lleva solo dos campos: "cuenta" (dónde entró la plata: efectivo, cash, MP, transferencia a un banco...) e "importe" (null si se cobró todo).
+- "a X", "X cada uno" o "X el kilo" es el precio por unidad; "por X" o "X en total" es el total de todas las unidades. Ejemplo: "vendí 4 gorras a 9 mil" es cantidad 4 y precio_unitario 9000; "vendí 4 gorras por 36 mil" también.
+- En "cuenta" va el nombre exacto de una de las cuentas listadas (nunca su tipo).
+- Si el texto dice "ayer", "anteayer" o un día de la semana, calculá la fecha YYYY-MM-DD a partir de la de hoy.
+- Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca.
+- No calcules IVA ni retenciones: los precios que dice el texto son finales, y Nexo discrimina el IVA solo.
+- Los montos se dicen de muchas formas: "45 mil", "45 lucas" y "45k" son 45000; "1 palo" o "un millón" es 1000000; "luca" sola es 1000.
 - No inventes un cliente, proveedor, cuenta o categoría que no tenga nada que ver con lo que dice el texto solo para completar el esquema.
 
 Cuentas de tesorería disponibles:
@@ -197,47 +232,213 @@ Catálogo de productos (para ventas — una venta NO puede crear un producto nue
 ${productos}`;
 }
 
-function extraerPropuesta(response) {
-  const llamada = response.functionCalls?.[0];
-  if (!llamada) {
-    const texto = response.text?.trim();
-    return { tipo: null, mensaje: texto || 'No identifiqué ninguna operación en ese texto.' };
+// Una herramienta que no es de las nuestras se toma como "sin operación": la
+// validación de server.js no sabría qué hacer con ella.
+function propuestaDeLlamada(nombre, args, textoLibre) {
+  const tipo = TIPO_POR_HERRAMIENTA[nombre];
+  if (!tipo) {
+    return { tipo: null, mensaje: textoLibre?.trim() || 'No identifiqué ninguna operación en ese texto.' };
   }
-  return { tipo: TIPO_POR_HERRAMIENTA[llamada.name], datos: llamada.args };
+  return { tipo, datos: args };
 }
 
-async function interpretarConGemini(texto, contexto) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new InterpreteError(
-      'Falta configurar GEMINI_API_KEY: el asistente por texto todavía no puede interpretar frases.'
-    );
+// El día del negocio (fecha.js): en UTC, después de las 21 h "hoy" era mañana.
+const mensajeUsuario = (texto) => `Hoy es ${fechaDeHoy()}. Interpretá esta operación: "${texto}"`;
+
+// --- Groq ------------------------------------------------------------
+
+// El plan gratis de Groq da 8000 tokens por minuto para toda la instalación
+// (unas 5 frases). Cuando se pasa, dice cuántos segundos esperar: si es poco,
+// se espera acá y se reintenta una vez, así no le llega un error a nadie.
+const ESPERA_CUPO_MAX_MS = 8_000;
+
+async function llamarGroq(ruta, init, { reintentoPorCupo = true } = {}) {
+  let res;
+  try {
+    res = await fetch(`${GROQ_URL}${ruta}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, ...init.headers },
+      signal: AbortSignal.timeout(ESPERA_MS)
+    });
+  } catch (err) {
+    throw new FalloProveedor(`Groq no respondió: ${err.message}`);
   }
-  const client = new GoogleGenAI({ apiKey });
-  // El día del negocio (fecha.js): en UTC, después de las 21 h "hoy" era mañana.
-  const hoy = fechaDeHoy();
+  if (res.ok) return res.json();
+  // El cuerpo del error puede traer el id de la organización de Groq: al log,
+  // nunca al cliente.
+  const cuerpo = await res.text().catch(() => '');
+  const espera = Number(res.headers.get('retry-after')) * 1000;
+  if (res.status === 429 && reintentoPorCupo && espera > 0 && espera <= ESPERA_CUPO_MAX_MS) {
+    await new Promise((r) => setTimeout(r, espera));
+    return llamarGroq(ruta, init, { reintentoPorCupo: false });
+  }
+  if (res.status === 429 || res.status >= 500) {
+    throw new FalloProveedor(`Groq ${res.status}: ${cuerpo.slice(0, 300)}`, { cupo: res.status === 429 });
+  }
+  const error = new Error(`Groq ${res.status}: ${cuerpo.slice(0, 300)}`);
+  error.cuerpo = cuerpo;
+  throw error;
+}
+
+async function interpretarConGroq(texto, contexto) {
+  const pedido = {
+    model: GROQ_MODELO,
+    // El prompt de sistema va primero y no cambia entre frases de un mismo
+    // negocio: Groq lo cachea, y lo cacheado no cuenta para su límite.
+    messages: [
+      { role: 'system', content: construirSystemPrompt(contexto) },
+      { role: 'user', content: mensajeUsuario(texto) }
+    ],
+    tools: HERRAMIENTAS.map(({ name, description, parametersJsonSchema }) => ({
+      type: 'function',
+      function: { name, description, parameters: parametersJsonSchema }
+    })),
+    tool_choice: 'auto',
+    temperature: 0,
+    // El límite por minuto de Groq cuenta el máximo de salida pedido, no lo
+    // que se usa: una llamada entra de sobra en esto.
+    max_completion_tokens: 700
+  };
+  // Pensar poco alcanza para llenar un esquema y es lo que lo hace rápido.
+  if (GROQ_MODELO.startsWith('openai/gpt-oss')) pedido.reasoning_effort = 'low';
+
+  const enviar = () =>
+    llamarGroq('/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pedido)
+    });
+
+  // Groq rechaza con 400 `tool_use_failed` cuando el modelo arma mal la
+  // llamada (no respeta el esquema); suele salir bien al reintentar.
+  let respuesta;
+  for (let intento = 1; !respuesta; intento++) {
+    try {
+      respuesta = await enviar();
+    } catch (err) {
+      if (!err.cuerpo?.includes('tool_use_failed') || intento === 3) throw err;
+    }
+  }
+
+  const mensaje = respuesta.choices?.[0]?.message ?? {};
+  const llamada = mensaje.tool_calls?.[0]?.function;
+  if (!llamada) return propuestaDeLlamada(null, null, mensaje.content);
+  let args;
+  try {
+    args = JSON.parse(llamada.arguments || '{}');
+  } catch {
+    throw new FalloProveedor('Groq devolvió argumentos que no son JSON.');
+  }
+  return propuestaDeLlamada(llamada.name, args);
+}
+
+// --- Gemini ----------------------------------------------------------
+
+async function interpretarConGemini(texto, contexto) {
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
   let response;
   try {
     response = await client.models.generateContent({
-      model: MODELO,
-      contents: `Hoy es ${hoy}. Interpretá esta operación: "${texto}"`,
+      model: GEMINI_MODELO,
+      contents: mensajeUsuario(texto),
       config: {
         systemInstruction: construirSystemPrompt(contexto),
         tools: [{ functionDeclarations: HERRAMIENTAS }],
-        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } }
+        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+        // Por defecto razona en "medium" y tardaba varios segundos por frase.
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        httpOptions: { timeout: ESPERA_MS }
       }
     });
   } catch (err) {
-    // No dejamos que un error de red/API tumbe el server: se traduce a un
-    // error tipado que el endpoint convierte en una respuesta HTTP clara.
-    // El mensaje de la API de Gemini puede traer detalles internos (cuota,
-    // proyecto, claves parciales): al log del servidor, no al cliente.
-    console.error('[interprete] Falló la llamada a Gemini:', err);
-    throw new InterpreteError('El intérprete no pudo responder. Probá de nuevo en unos minutos.', 502);
+    throw new FalloProveedor(`Gemini: ${err.message}`, { cupo: err.status === 429 });
   }
 
-  return extraerPropuesta(response);
+  // `response.text` solo sin llamada: con una, el SDK avisa por consola.
+  const llamada = response.functionCalls?.[0];
+  return llamada ? propuestaDeLlamada(llamada.name, llamada.args) : propuestaDeLlamada(null, null, response.text);
+}
+
+// --- Elección del proveedor ----------------------------------------------
+
+const PROVEEDORES = {
+  groq: { clave: 'GROQ_API_KEY', interpretar: interpretarConGroq },
+  gemini: { clave: 'GEMINI_API_KEY', interpretar: interpretarConGemini }
+};
+
+// Los proveedores con clave, en orden. NEXO_INTERPRETE=groq|gemini fija uno
+// (lo usa la prueba de frases para compararlos).
+function proveedoresDisponibles() {
+  const forzado = process.env.NEXO_INTERPRETE;
+  const nombres = PROVEEDORES[forzado] ? [forzado] : Object.keys(PROVEEDORES);
+  return nombres.filter((nombre) => process.env[PROVEEDORES[nombre].clave]);
+}
+
+async function interpretarConProveedor(texto, contexto) {
+  const disponibles = proveedoresDisponibles();
+  if (!disponibles.length) {
+    throw new InterpreteError(
+      'Falta configurar la clave de la IA (GROQ_API_KEY): el asistente todavía no puede interpretar frases.'
+    );
+  }
+  let ultimo;
+  for (const nombre of disponibles) {
+    try {
+      return await PROVEEDORES[nombre].interpretar(texto, contexto);
+    } catch (err) {
+      // El mensaje del proveedor puede traer detalles internos (cuota,
+      // proyecto, claves parciales): al log del servidor, no al cliente.
+      console.error(`[interprete] Falló ${nombre}:`, err.message);
+      ultimo = err;
+      if (!(err instanceof FalloProveedor)) break;
+    }
+  }
+  if (ultimo instanceof FalloProveedor && ultimo.cupo) {
+    throw new InterpreteError('El asistente está con mucho uso en este momento. Probá de nuevo en un minuto.', 503);
+  }
+  throw new InterpreteError('El intérprete no pudo responder. Probá de nuevo en unos minutos.', 502);
+}
+
+// --- Voz -------------------------------------------------------------
+
+// La extensión del archivo es lo que mira Whisper para saber el formato.
+const EXTENSION_AUDIO = { webm: 'webm', ogg: 'ogg', mp4: 'mp4', mpeg: 'mp3', mp3: 'mp3', wav: 'wav', 'x-m4a': 'm4a', aac: 'm4a' };
+
+export const vozDisponible = () => process.env.NEXO_INTERPRETE === 'stub' || Boolean(process.env.GROQ_API_KEY);
+
+// audio: Buffer con lo grabado; tipo: su Content-Type ("audio/webm;codecs=opus").
+// palabras: nombres del negocio (productos, cuentas) que ayudan a Whisper a
+// escribirlos bien. Devuelve el texto.
+export async function transcribir(audio, tipo, palabras = []) {
+  // El stub "transcribe" leyendo los bytes como texto: los tests mandan la
+  // frase como si fuera el audio.
+  if (process.env.NEXO_INTERPRETE === 'stub') return audio.toString('utf8').trim();
+  if (!process.env.GROQ_API_KEY) {
+    throw new InterpreteError('Falta configurar la clave de la IA (GROQ_API_KEY): el dictado por voz todavía no anda.');
+  }
+
+  const subtipo = String(tipo).split(';')[0].split('/')[1]?.trim();
+  const formulario = new FormData();
+  formulario.append('file', new Blob([audio], { type: tipo }), `audio.${EXTENSION_AUDIO[subtipo] ?? 'webm'}`);
+  formulario.append('model', GROQ_MODELO_VOZ);
+  formulario.append('language', 'es');
+  formulario.append('temperature', '0');
+  formulario.append('response_format', 'json');
+  // Whisper toma hasta 224 tokens de contexto: unos pocos nombres alcanzan.
+  const contexto = palabras.join(', ').slice(0, 600);
+  if (contexto) formulario.append('prompt', contexto);
+
+  try {
+    const { text } = await llamarGroq('/audio/transcriptions', { method: 'POST', body: formulario });
+    return String(text ?? '').trim();
+  } catch (err) {
+    console.error('[interprete] Falló la transcripción:', err.message);
+    if (err instanceof FalloProveedor && err.cupo) {
+      throw new InterpreteError('El dictado está con mucho uso en este momento. Probá de nuevo en un minuto.', 503);
+    }
+    throw new InterpreteError('No se pudo pasar el audio a texto. Probá de nuevo o escribilo.', 502);
+  }
 }
 
 // --- Intérprete stub -------------------------------------------------
@@ -317,5 +518,5 @@ export async function interpretar(texto, contexto) {
   if (process.env.NEXO_INTERPRETE === 'stub') {
     return interpretarStub(texto);
   }
-  return interpretarConGemini(texto, contexto);
+  return interpretarConProveedor(texto, contexto);
 }

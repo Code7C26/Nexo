@@ -120,7 +120,7 @@ systemctl status nexo caddy                  # ¿anda?
 journalctl -u nexo -f                        # el log de Nexo en vivo
 journalctl -u nexo-actualizar -n 50          # qué hizo la última actualización
 sudo systemctl restart nexo                  # después de cambiar /etc/nexo/nexo.env
-sudoedit /etc/nexo/nexo.env                  # variables (SMTP, Gemini, etc.)
+sudoedit /etc/nexo/nexo.env                  # variables (SMTP, IA, etc.)
 sudo -u nexo sqlite3 /var/lib/nexo/nexo.db   # mirar la base (con cuidado)
 ```
 

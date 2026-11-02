@@ -2548,6 +2548,35 @@ input.precio-sin-configurar::placeholder {
 
 .asistente-enviar:disabled { opacity: 0.5; cursor: default; }
 
+/* Dictado: el mismo tamaño que enviar, sin relleno; grabando se pone rojo y
+   late, para que se note que está escuchando. */
+.asistente-voz {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.asistente-voz[hidden] { display: none; }
+.asistente-voz:disabled { opacity: 0.5; cursor: default; }
+.asistente-voz[aria-pressed="true"] {
+  border-color: var(--accent-danger);
+  background: var(--accent-danger);
+  color: #fff;
+  animation: asistente-voz-late 1.4s ease-in-out infinite;
+}
+@keyframes asistente-voz-late {
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-danger) 25%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asistente-voz[aria-pressed="true"] { animation: none; }
+}
+
 /* ---------- Punto de venta (dominios/pos.js) ----------
    La pantalla de mostrador, con las mismas superficies que el resto de la
    app (el negro de marca queda en la sidebar y el login). El único color
