@@ -1063,8 +1063,20 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        del servidor) contra `/api/auth/estado`, con tres intentos. Si falla,
        GitHub manda un mail por cada run en rojo. Sin cuenta ni servicio
        nuevo. GitHub lo apaga si el repo pasa 60 días sin actividad.
-  2. "Avisar un problema" adentro de la app, para las pruebas de los conocidos:
-     cae en el CRM de `NEXO_NEGOCIO_VENTAS`, como las consultas de la landing.
+  2. ~~"Avisar un problema" adentro de la app~~ **Hecho el 2 de noviembre.**
+     - Página Configuración → Ayuda → "Avisar un problema", para los dos
+       roles, y un botón (círculo con "!") en el pie del menú
+       (`frontend/js/dominios/problema.js`).
+     - `POST /api/problema` ('ambos'): cae en el CRM de `NEXO_NEGOCIO_VENTAS`.
+       Una consulta abierta por persona (por su mail, interés "Avisos de
+       problemas en Nexo"), y una tarea para hoy por cada aviso, con el texto,
+       la pantalla, el negocio, el navegador y los últimos 3 errores (de
+       JavaScript o toasts de error). Tope: 10 avisos por hora por persona.
+       Sin la variable, 503.
+     - La página muestra antes todo lo que se manda. Al mandar, vuelve a la
+       pantalla donde estaba.
+     - Tests en `backend/test/problema.test.js`; probado en Chrome en
+       celular (empleado) y en compu (admin).
   3. IA más rápida y sin datos en el plan gratis de Google (ver abajo), con voz.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`).

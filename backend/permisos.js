@@ -125,6 +125,9 @@ export const RUTAS_PERMISOS = {
   'PUT /api/crm/etapas/:id': 'admin',
   'PATCH /api/crm/etapas/orden': 'admin',
   'GET /api/crm/origenes': 'ambos',
+  // Avisar un problema (handoff.md, "Orden", punto 2): cualquiera que use
+  // Nexo. Escribe solo en el CRM de NEXO_NEGOCIO_VENTAS.
+  'POST /api/problema': 'ambos',
   'GET /api/crm/oportunidades': 'ambos',
   'GET /api/crm/oportunidades/:id': 'ambos',
   'POST /api/crm/oportunidades': 'ambos',

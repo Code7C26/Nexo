@@ -420,6 +420,8 @@ const PAGINAS = {
   },
   "categorias-gastos": { admin: true, alEntrar: () => recargar("gastos").then(() => invocar("pintar:categorias-gastos")) },
   cuenta: { admin: false, alEntrar: () => invocar("pintar:cuenta") },
+  // Avisar un problema: dominios/problema.js (handoff.md, "Orden", punto 2).
+  problema: { admin: false, alEntrar: () => invocar("pintar:problema") },
   apariencia: {
     admin: false,
     alEntrar: () => {
