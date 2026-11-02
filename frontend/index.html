@@ -201,6 +201,11 @@
           <strong id="businessName" data-usuario-nombre>Tu Pyme</strong>
         </div>
         <div class="sidebar-foot-botones">
+          <!-- Avisar un problema, a mano desde cualquier pantalla: lleva a su
+               página de Configuración, que anota de dónde venía. -->
+          <a class="btn-tema" href="#/configuracion/problema" title="Avisar un problema" aria-label="Avisar un problema">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg>
+          </a>
           <!-- El engranaje lleva a la vista Configuración (hist. §73), para
                los dos roles: el empleado ve ahí solo Mi cuenta y Apariencia, y las
                páginas de admin las filtra dominios/configuracion.js. -->
@@ -3098,6 +3103,14 @@
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
+            <div class="config-grupo">
+              <p class="config-grupo-titulo">Ayuda</p>
+              <a class="config-item" href="#/configuracion/problema" data-seccion="problema">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Avisar un problema</span><span class="config-item-desc">Si algo no anda o no se entiende</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
           </nav>
 
           <div class="config-contenido">
@@ -3777,6 +3790,33 @@
                     <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg>
                     Instalar Nexo
                   </button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Avisar un problema (handoff.md, "Orden", punto 2): para los dos
+                 roles. Lo arma dominios/problema.js; la lista de lo que se
+                 manda además del texto se pinta al entrar. -->
+            <section class="config-pagina" data-seccion="problema" aria-labelledby="configProblemaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configProblemaTitulo" tabindex="-1">Avisar un problema</h2>
+                <p>Si algo no anda, no se entiende o te falta algo, contanos. Le llega al equipo de Nexo.</p>
+              </header>
+              <form class="form config-tarjeta" id="formProblema" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <label>Qué pasó
+                    <textarea name="mensaje" rows="5" maxlength="800" placeholder="Ej.: quise cobrar una venta y el botón no hacía nada."></textarea>
+                  </label>
+                  <details class="form-mas">
+                    <summary><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg> Qué se manda además</summary>
+                    <div class="form-mas-cuerpo">
+                      <ul class="problema-tecnico" id="problemaTecnico"></ul>
+                      <p class="form-note">Nada de tus ventas, clientes ni productos.</p>
+                    </div>
+                  </details>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="submit" class="btn btn-primary">Enviar el aviso</button>
                 </div>
               </form>
             </section>

@@ -7681,6 +7681,18 @@ a.segmento {
 .form-mas[open] summary .ico { transform: rotate(90deg); }
 .form-mas-cuerpo { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-3); }
 
+/* Avisar un problema: lo que se manda además del texto (dominios/problema.js). */
+.problema-tecnico {
+  margin: 0;
+  padding-left: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
 .motivos-rapidos { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .motivo-rapido {
   min-height: 32px;

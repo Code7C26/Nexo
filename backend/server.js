@@ -1789,6 +1789,113 @@ function diffCampos(anterior, nuevo, campos) {
     : null;
 }
 
+/* ---------- Avisar un problema ---------- */
+
+// "Avisar un problema" adentro de la app (handoff.md, "Orden", punto 2): quien
+// usa Nexo cuenta qué le pasó, y el aviso cae en el CRM del negocio con el que
+// se vende Nexo (NEXO_NEGOCIO_VENTAS), como las consultas de la landing. Cada
+// persona tiene una sola consulta abierta con sus avisos: cada aviso es una
+// tarea nueva en ella, así quien los atiende ve todo lo de esa persona junto y
+// marca hecho cada uno.
+//
+// Escribe en otro negocio a propósito, y solo ahí: no lee nada de él ni del
+// negocio de quien avisa. Lo que se manda además del texto (la pantalla, el
+// navegador y los últimos errores) lo ve antes quien avisa, en la página.
+const AVISOS_MAX = 10;
+const avisosPorUsuario = new Map();
+const LARGOS_AVISO = { mensaje: 800, pantalla: 80, navegador: 120 };
+const ERRORES_AVISO_MAX = 3;
+const LARGO_ERROR_AVISO = 150;
+const INTERES_AVISOS = 'Avisos de problemas en Nexo';
+
+app.post('/api/problema', (req, res) => {
+  const cuerpo = req.body ?? {};
+  const datos = {};
+  for (const [campo, largo] of Object.entries(LARGOS_AVISO)) {
+    const valor = cuerpo[campo];
+    if (valor != null && typeof valor !== 'string') return res.status(400).json({ error: 'Los datos no son válidos.' });
+    // Lo técnico lo arma la app, así que se recorta; el texto lo escribe la
+    // persona, así que se le avisa.
+    datos[campo] = (valor ?? '').trim();
+    if (campo !== 'mensaje') datos[campo] = datos[campo].slice(0, largo);
+  }
+  if (!datos.mensaje) return res.status(400).json({ error: 'Contanos qué pasó.' });
+  if (datos.mensaje.length > LARGOS_AVISO.mensaje) {
+    return res.status(400).json({ error: `Es demasiado largo: hasta ${LARGOS_AVISO.mensaje} caracteres.` });
+  }
+  const errores = Array.isArray(cuerpo.errores)
+    ? cuerpo.errores
+        .filter((e) => typeof e === 'string' && e.trim())
+        .slice(-ERRORES_AVISO_MAX)
+        .map((e) => e.trim().slice(0, LARGO_ERROR_AVISO))
+    : [];
+
+  const ahora = Date.now();
+  const registro = avisosPorUsuario.get(req.usuario.id);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    avisosPorUsuario.set(req.usuario.id, { cuenta: 1, desde: ahora });
+  } else if (++registro.cuenta > AVISOS_MAX) {
+    return res.status(429).json({ error: 'Mandaste varios avisos seguidos. Probá de nuevo en un rato.' });
+  }
+
+  const organizacionId = Number(process.env.NEXO_NEGOCIO_VENTAS);
+  const etapa =
+    organizacionId > 0 &&
+    db.prepare('SELECT id FROM crm_etapas WHERE organizacion_id = ? AND activa = 1 ORDER BY orden, id LIMIT 1').get(organizacionId);
+  if (!etapa) return res.status(503).json({ error: 'Los avisos todavía no están habilitados.' });
+
+  const { nombre, email } = req.usuario;
+  const negocioNombre = req.usuario.negocio_nombre ?? null;
+  const tecnico = [
+    datos.pantalla && `Pantalla: ${datos.pantalla}`,
+    negocioNombre && `Negocio: ${negocioNombre}`,
+    datos.navegador && `Navegador: ${datos.navegador}`,
+    errores.length && `Errores: ${errores.join(' | ')}`
+  ].filter(Boolean);
+  // Entra en el largo de una actividad (LARGO_ACTIVIDAD), para que se pueda
+  // editar desde el CRM como cualquier otra.
+  const descripcion = [`Problema: "${datos.mensaje}"`, ...tecnico].join('\n').slice(0, LARGO_ACTIVIDAD);
+  const hoy = fechaDeHoy();
+
+  withTransaction(() => {
+    // La consulta abierta de esta persona, por su mail (es el mismo en todos
+    // sus negocios). Si no tiene, nace una en la primera etapa.
+    let oportunidadId = db
+      .prepare(
+        `SELECT id FROM crm_oportunidades
+          WHERE organizacion_id = ? AND estado = 'abierta' AND interes LIKE ? AND contacto_email = ?
+          ORDER BY id DESC LIMIT 1`
+      )
+      .get(organizacionId, `${INTERES_AVISOS}%`, email)?.id;
+    if (!oportunidadId) {
+      const interes = `${INTERES_AVISOS}${negocioNombre ? ` ("${negocioNombre}")` : ''}`.slice(0, LARGOS_OPORTUNIDAD.interes);
+      oportunidadId = Number(
+        db
+          .prepare(
+            `INSERT INTO crm_oportunidades (contacto_nombre, contacto_email, origen, interes, etapa_id, fecha, organizacion_id)
+             VALUES (?, ?, 'otro', ?, ?, ?, ?)`
+          )
+          .run(nombre, email, interes, etapa.id, hoy, organizacionId).lastInsertRowid
+      );
+    }
+    db.prepare(
+      `INSERT INTO crm_actividades (oportunidad_id, tipo, descripcion, fecha, organizacion_id)
+       VALUES (?, 'tarea', ?, ?, ?)`
+    ).run(oportunidadId, descripcion, hoy, organizacionId);
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'oportunidad',
+      operacion_id: oportunidadId,
+      detalle: `Aviso de un problema de ${nombre}${datos.pantalla ? ` en ${datos.pantalla}` : ''}`,
+      organizacion_id: organizacionId
+    });
+  });
+  res.status(201).json({ ok: true });
+});
+
 /* ---------- Edición en lote (bulk) ---------- */
 
 // Tope de seguridad de cualquier endpoint /bulk. node:sqlite es síncrono:

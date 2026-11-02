@@ -66,6 +66,7 @@ import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
+import "./dominios/problema.js";
 import "./core/barra-inferior.js";
 
 let facturas = [];
