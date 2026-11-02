@@ -27,11 +27,15 @@ window.addEventListener("unhandledrejection", (e) => {
   if (e.reason instanceof ErrorApi) e.preventDefault();
 });
 
-// opciones: { method, body, error }. `body` va como JSON; `error` es el
-// mensaje del toast cuando el backend no manda uno propio.
+// opciones: { method, body, error }. `body` va como JSON, salvo un Blob (el
+// audio del dictado), que va tal cual con su tipo; `error` es el mensaje del
+// toast cuando el backend no manda uno propio.
 export async function api(url, { method = "GET", body, error = "No se pudo completar la operación." } = {}) {
   const init = { method };
-  if (body !== undefined) {
+  if (body instanceof Blob) {
+    init.headers = { "Content-Type": body.type || "application/octet-stream" };
+    init.body = body;
+  } else if (body !== undefined) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(body);
   }

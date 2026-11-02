@@ -6721,9 +6721,11 @@ function asistenteAbrir() {
   asistenteLauncher.setAttribute("aria-expanded", "true");
   asistenteTextoEl.focus();
   asistenteScrollAlFinal();
+  asistenteMostrarVoz();
 }
 
 function asistenteCerrar() {
+  asistenteCortarDictado({ descartar: true });
   asistentePanel.hidden = true;
   asistenteLauncher.setAttribute("aria-expanded", "false");
   asistenteLauncher.focus();
@@ -6813,6 +6815,111 @@ formAsistente.addEventListener("submit", async (e) => {
     btnAsistenteEnviar.disabled = false;
     asistenteScrollAlFinal();
   }
+});
+
+/* --- Dictado (hist. §117) --- */
+//
+// Graba con MediaRecorder y manda el audio a /api/asistente/transcribir. El
+// texto que vuelve se envía como si se hubiera tipeado: así la frase que se
+// entendió queda a la vista en el hilo, y después viene la propuesta para
+// confirmar, igual que siempre. Se toca para empezar y otra vez para
+// terminar, con un tope de un minuto.
+
+const btnAsistenteVoz = document.getElementById("btnAsistenteVoz");
+const ASISTENTE_PLACEHOLDER = asistenteTextoEl.placeholder;
+const DICTADO_MAX_MS = 60_000;
+// Menos que esto es un toque sin querer, y Whisper "escucha" frases en el
+// silencio.
+const DICTADO_MIN_MS = 800;
+let asistenteVozConsultada = false;
+let grabacion = null; // { recorder, inicio, corte, descartar }
+
+// La primera vez que se abre el panel (no al cargar la app: sin sesión, el
+// pedido daría 401).
+async function asistenteMostrarVoz() {
+  if (asistenteVozConsultada) return;
+  asistenteVozConsultada = true;
+  if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) return;
+  const capacidades = await api("/api/asistente/capacidades").catch(() => null);
+  btnAsistenteVoz.hidden = !capacidades?.voz;
+}
+
+function asistenteVozEstado(estado) {
+  const grabando = estado === "grabando";
+  btnAsistenteVoz.setAttribute("aria-pressed", String(grabando));
+  btnAsistenteVoz.setAttribute("aria-label", grabando ? "Terminar el dictado" : "Dictar");
+  btnAsistenteVoz.disabled = estado === "transcribiendo";
+  btnAsistenteEnviar.disabled = estado !== "listo";
+  // Corto: a 390 px no entra más (el botón rojo ya dice que está grabando).
+  asistenteTextoEl.placeholder = grabando
+    ? "Te escucho…"
+    : estado === "transcribiendo"
+      ? "Pasando a texto…"
+      : ASISTENTE_PLACEHOLDER;
+}
+
+async function asistenteEmpezarDictado() {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    avisar("Nexo no tiene permiso para usar el micrófono. Habilitalo en el navegador y probá de nuevo.", "error");
+    return;
+  }
+  const recorder = new MediaRecorder(stream);
+  const partes = [];
+  recorder.addEventListener("dataavailable", (e) => {
+    if (e.data.size) partes.push(e.data);
+  });
+  recorder.addEventListener("stop", () => {
+    stream.getTracks().forEach((pista) => pista.stop());
+    const { inicio, corte, descartar } = grabacion;
+    clearTimeout(corte);
+    grabacion = null;
+    asistenteVozEstado("listo");
+    if (descartar) return;
+    if (Date.now() - inicio < DICTADO_MIN_MS) {
+      avisar("Fue muy corto. Tocá el micrófono, decí la operación y tocalo otra vez para terminar.", "atencion");
+      return;
+    }
+    asistenteTranscribir(new Blob(partes, { type: recorder.mimeType }));
+  });
+  grabacion = { recorder, inicio: Date.now(), corte: setTimeout(() => recorder.stop(), DICTADO_MAX_MS), descartar: false };
+  recorder.start();
+  asistenteVozEstado("grabando");
+}
+
+function asistenteCortarDictado({ descartar = false } = {}) {
+  if (!grabacion) return;
+  grabacion.descartar = descartar;
+  grabacion.recorder.stop();
+}
+
+async function asistenteTranscribir(audio) {
+  asistenteVozEstado("transcribiendo");
+  let texto;
+  try {
+    ({ texto } = await api("/api/asistente/transcribir", {
+      method: "POST",
+      body: audio,
+      error: "No se pudo pasar el audio a texto."
+    }));
+  } finally {
+    asistenteVozEstado("listo");
+  }
+  if (!texto) {
+    avisar("No se escuchó nada. Probá de nuevo, más cerca del micrófono.", "atencion");
+    return;
+  }
+  // Si ya había algo escrito, el dictado lo completa.
+  asistenteTextoEl.value = [asistenteTextoEl.value.trim(), texto].filter(Boolean).join(" ");
+  asistenteAjustarAltoTextarea();
+  formAsistente.requestSubmit();
+}
+
+btnAsistenteVoz.addEventListener("click", () => {
+  if (grabacion) asistenteCortarDictado();
+  else asistenteEmpezarDictado();
 });
 
 function asistenteRenderRespuesta(turnoEl, data) {

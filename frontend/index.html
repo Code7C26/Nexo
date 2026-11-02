@@ -5435,6 +5435,15 @@
         rows="1"
         placeholder="Contame qué pasó…"
       ></textarea>
+      <!-- Dictado (hist. §117): aparece solo si el servidor tiene la voz
+           configurada y el navegador puede grabar. -->
+      <button type="button" id="btnAsistenteVoz" class="asistente-voz" aria-label="Dictar" aria-pressed="false" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="2" width="6" height="12" rx="3" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <path d="M12 18v4" />
+        </svg>
+      </button>
       <button type="submit" id="btnAsistenteEnviar" class="asistente-enviar" aria-label="Enviar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 2 11 13" />
