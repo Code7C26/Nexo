@@ -1039,8 +1039,8 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 
 **Orden:**
 - **Del 2 al 8:**
-  1. Respaldo cifrado fuera del servidor, restauración probada y aviso si el
-     sitio se cae.
+  1. ~~Respaldo cifrado fuera del servidor, restauración probada y aviso si
+     el sitio se cae.~~ **Hecho el 2 de noviembre.**
      - **Hecho (2 de noviembre):** `backend/db/respaldo-nube.js` (gzip +
        AES-256-GCM, firma SigV4 con `node:crypto` y `fetch`, probada contra
        el ejemplo de AWS), subida en `scripts/backup-db.mjs` (idempotente,
@@ -1053,8 +1053,8 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        restauración desde B2 a `/tmp`: íntegra y con los mismos conteos que
        la base real.
      - La regla de ciclo de vida del bucket está puesta (ocultar a los 90
-       días, borrar 1 después). **Sin confirmar:** que el usuario guardó
-       `NEXO_RESPALDO_CLAVE` en su gestor de contraseñas.
+       días, borrar 1 después). El usuario guardó `NEXO_RESPALDO_CLAVE` y la clave
+       de Backblaze en su gestor de contraseñas.
      - **Para pegar claves en el servidor:** pegar en la terminal no le
        anduvo (el portapapeles se pisa con el comando); lo que funcionó fue
        un `.txt` en la compu mandado por `Get-Content … | ssh …`.
