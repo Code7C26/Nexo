@@ -16945,9 +16945,10 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
   }
   if (ventaId) {
     const envio = Number(pedido.shipping_cost_customer) || 0;
-    const porCobrar = cobrar
-      ? ''
-      : ` Sin cobrar todavía (${pedido.gateway_name || 'pago a convenir'}): registrá el cobro cuando llegue la plata.`;
+    // El nombre del medio de pago, si Tienda Nube da uno legible ("Transferencia
+    // bancaria"); con un código ("not-provided"), es a convenir.
+    const medio = [pedido.gateway_name, pedido.payment_details?.method].find((t) => t && !/^[a-z_-]+$/.test(t)) ?? 'a convenir';
+    const porCobrar = cobrar ? '' : ` Sin cobrar todavía (${medio}): registrá el cobro cuando llegue la plata.`;
     anotarIntegracion(
       integracion,
       'pedido',
