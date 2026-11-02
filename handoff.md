@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §118);
+    siguiente número (hoy el último es §119);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -1098,6 +1098,14 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      con su página, y las preguntas de uso se contestan con el manual en el
      navegador, sin la IA. **Publicado el 2 de noviembre** (PR #40). **Falta
      que el usuario lo vea** y que el manual se revise al final.
+  3c. **El asistente registra devoluciones y siempre propone el gasto**
+     (hist. §119, lo probaron el usuario y su profesor en el sitio). Suma una
+     migración chica (`asistente_mensajes.operacion_tipo` acepta
+     `devolucion`). **Sin publicar todavía.**
+     - **Cupo de Groq:** unas 100 frases por día para todo Nexo (200.000
+       tokens). Las pruebas de este día lo agotaron: **no correr
+       `probar-ia` con la clave del servidor** salvo lo justo. Para la demo,
+       el Dev Tier de Groq (pago por uso) lo decide el usuario.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`). Las de
      cómo se usa ya las contesta el manual (hist. §118): este punto es para

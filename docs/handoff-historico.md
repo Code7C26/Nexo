@@ -10672,3 +10672,70 @@ para el asistente.
 - Capturas o videos cortos por sección.
 - Las preguntas sobre los números del negocio ("¿cuánto vendí este mes?") hoy
   llevan a Resumen; el punto 4 del plan las va a contestar con los datos.
+
+## 119. El asistente registra devoluciones, propone siempre el gasto, y el cupo de Groq, 2 de noviembre de 2026
+
+Dos cosas que el usuario y su profesor probaron en el sitio y no anduvieron, y
+lo que se aprendió del cupo de Groq.
+
+**1. "Pagué 25 mil de luz en efectivo" no proponía nada.** El esquema de
+`registrar_gasto` decía que la categoría "tiene que matchear una de las
+listadas"; sin una parecida (el negocio no tiene "Servicios"), el modelo
+contestaba en texto. Ahora propone la más parecida o una palabra corta
+("Luz"), y la tarjeta arranca en "Elegí una categoría" (antes quedaba elegida
+la primera de la lista, y se podía confirmar sin mirar) con lo dicho en la
+descripción. Sin categorías, el select dice que se creen en Gastos ›
+Categorías. Probado contra Groq con un negocio sin "Servicios", sin
+categorías y con "Servicios": las seis frases proponen el gasto.
+
+**2. "Juan, le quedó chica la remera y quiere devolverla" (el profe).** El
+asistente solo sabía ventas, compras y gastos. Ahora:
+- **`registrar_devolucion`** en `interprete.js`: cliente, productos con
+  cantidad, reintegro (solo si dice que se le devolvió la plata) y motivo. Lo
+  opcional no es `required`: Groq valida el esquema y el modelo omite lo que
+  sería null. Regla nueva en el prompt: "le quedó chica", "vino fallado" es
+  una devolución aunque esté en presente; y todo se cuenta desde el negocio
+  ("Rosa compró…" es una venta: en la prueba salía como compra).
+- **`server.js`:** `registrarDevolucion()` sale del handler de
+  `POST /api/devoluciones` (mismas validaciones y mensajes; el endpoint ahora
+  es una línea), y la usa también el asistente con actor `asistente`.
+  `resolverPropuesta('devolucion')` busca con `ventasParaDevolver()` las
+  ventas del cliente no anuladas con lo que queda por devolver de cada
+  renglón: primero las que tienen todos los productos, de la más nueva a la
+  más vieja, hasta 5, con sus renglones ya armados.
+- **La tarjeta** (`app.js`): de quién, de qué venta (se puede elegir otra),
+  cuánto de cada renglón con lo que queda, "vuelve al stock", si se le
+  devuelve la plata y de qué cuenta, y el motivo.
+- **Esquema:** `asistente_mensajes.operacion_tipo` suma `'devolucion'` a su
+  CHECK. Rebuild en `db/index.js` con el método del de `organizacion_id NOT
+  NULL` (parte del CREATE TABLE actual, cambia solo el CHECK, conserva ids,
+  índices y `sqlite_sequence`, en una transacción). `schema.sql` al día.
+  `npm run verificar-migracion`: 24 de 24 (base nueva, copia de la local y
+  cada respaldo viejo).
+- **Red del manual:** si la IA no ve una operación y el manual tiene algo
+  seguro sobre lo dicho, el asistente muestra eso ("No es algo que pueda
+  cargar, pero esto del manual te puede servir"), sin otra llamada.
+  `clasificarFrase` manda "devolv…" y "le quedó chico" a la IA.
+
+**3. El cupo de Groq se agotó con las pruebas.** El plan gratis de
+`gpt-oss-20b` da 200.000 tokens por día (ventana de 24 horas) y 1000
+pedidos; una frase usa entre 1500 y 2500 tokens: **unas 100 frases por día
+para toda la instalación**. Las corridas de `npm run probar-ia` de este día
+(30 frases cada una, con la misma clave que el servidor) lo agotaron, y el
+sitio contestó "mucho uso" un rato. Desde ahora las pruebas van con el stub;
+`probar-ia` se corre poco y sabiendo que gasta el cupo del sitio. Para usarlo
+en serio (la demo, los conocidos), el Dev Tier de Groq es pago por uso sin
+fijo (decisión de plata del usuario), o una clave aparte para probar.
+
+**Cómo se verificó.** `test/asistente-devolucion.test.js` (7, con el stub):
+propone sobre la venta más nueva y ofrece la otra, confirmada devuelve el
+stock y no se confirma dos veces, el tope de lo que queda con el mismo
+mensaje del alta, el reintegro descuenta la cuenta, sin venta o cliente
+desconocido no se puede confirmar, la venta anulada no se ofrece, y
+`POST /api/devoluciones` responde igual que antes. `npm test` (223), `npm run
+lint` y `verificar-migracion`. En Chrome, compu y 390 px: la tarjeta, la
+devolución registrada y la red del manual, sin errores de consola.
+
+**Falta:** probar contra Groq real la frase del profe cuando vuelva el cupo,
+y publicar (el próximo arranque migra la tabla en la base real, con el
+respaldo automático antes).

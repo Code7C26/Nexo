@@ -1495,6 +1495,9 @@ Implementado hoy (hist. §117, §118):
   manual de uso (`frontend/js/core/manual.js`), buscado en el navegador. La IA
   queda solo para las operaciones. El manual también es una vista
   (`#/ayuda`), y el asistente tiene su página (`#/asistente`).
+- **Operaciones que propone:** venta, compra, gasto y devolución de un
+  cliente (busca la venta; hist. §119). Si la IA no ve una operación y el
+  manual tiene algo seguro, muestra eso.
 - Falta: WhatsApp y las consultas sobre los datos.
 
 ---
