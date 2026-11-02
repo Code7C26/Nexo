@@ -7353,12 +7353,19 @@ function plantillaAsistenteGasto(propuesta) {
 }
 
 function activarAsistenteGasto(raiz, propuesta, mensajeId, turnoEl) {
+  // Sin una categoría que coincida, el select arranca vacío: antes quedaba
+  // elegida la primera de la lista y se confirmaba sin mirarla. Lo que dijo
+  // la persona ("Luz") no se pierde: pasa a la descripción.
   const categoriaSelect = raiz.querySelector(".asistente-categoria");
-  categoriaSelect.innerHTML = categoriasGasto
-    .filter((c) => c.activa)
-    .map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`)
-    .join("");
+  const activas = categoriasGasto.filter((c) => c.activa);
+  const vacia = activas.length ? "Elegí una categoría" : "No hay categorías: creá una en Gastos › Categorías";
+  categoriaSelect.innerHTML =
+    `<option value="">${vacia}</option>` + activas.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
   if (propuesta.categoria.estado === "resuelto") categoriaSelect.value = propuesta.categoria.id;
+  const descripcion = raiz.querySelector(".asistente-descripcion");
+  if (propuesta.categoria.estado !== "resuelto" && propuesta.categoria.valor && !descripcion.value) {
+    descripcion.value = propuesta.categoria.valor;
+  }
 
   poblarSelectCuentas(
     raiz.querySelector(".asistente-cuenta"),

@@ -155,11 +155,16 @@ const HERRAMIENTAS = [
       properties: {
         categoria: {
           type: 'string',
-          description: 'Nombre de una categoría de gasto EXISTENTE (tiene que matchear una de las listadas, no se crean categorías nuevas).'
+          // Antes decía "tiene que matchear una de las listadas" y el modelo, sin
+          // una parecida, no proponía el gasto: la tarjeta de confirmación ya
+          // deja elegir la categoría, y server.js no crea ninguna por nombre.
+          description:
+            'La categoría de gasto de las listadas que más se parezca. Si ninguna se parece, una palabra corta que describa el gasto (por ejemplo "Luz"): la persona elige la categoría antes de confirmar.'
         },
         cuenta: {
           type: 'string',
-          description: 'Nombre de la cuenta de tesorería de la que sale la plata (tiene que matchear una existente).'
+          description:
+            'La cuenta de tesorería de las listadas de la que salió la plata (efectivo, banco, Mercado Pago). Si el texto no lo dice, la de efectivo.'
         },
         proveedor: {
           type: ['string', 'null'],
@@ -217,10 +222,10 @@ Reglas:
 - "a X", "X cada uno" o "X el kilo" es el precio por unidad; "por X" o "X en total" es el total de todas las unidades. Ejemplo: "vendí 4 gorras a 9 mil" es cantidad 4 y precio_unitario 9000; "vendí 4 gorras por 36 mil" también.
 - En "cuenta" va el nombre exacto de una de las cuentas listadas (nunca su tipo).
 - Si el texto dice "ayer", "anteayer" o un día de la semana, calculá la fecha YYYY-MM-DD a partir de la de hoy.
-- Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca.
+- Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca. Si ninguna se parece, llamá igual a registrar_gasto con una palabra corta como categoría: la persona la elige antes de confirmar. Nunca dejes de proponer un gasto porque no encontrás la categoría o la cuenta.
 - No calcules IVA ni retenciones: los precios que dice el texto son finales, y Nexo discrimina el IVA solo.
 - Los montos se dicen de muchas formas: "45 mil", "45 lucas" y "45k" son 45000; "1 palo" o "un millón" es 1000000; "luca" sola es 1000.
-- No inventes un cliente, proveedor, cuenta o categoría que no tenga nada que ver con lo que dice el texto solo para completar el esquema.
+- No inventes un cliente o proveedor que no tenga nada que ver con lo que dice el texto solo para completar el esquema.
 
 Cuentas de tesorería disponibles:
 ${cuentas}
