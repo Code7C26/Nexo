@@ -32,6 +32,19 @@ import {
   revisarCertificado,
   urlQr
 } from './arca.js';
+import {
+  TiendaNubeError,
+  canjearCodigo,
+  cifrarToken,
+  clienteTiendaNube,
+  descifrarToken,
+  firmaValida,
+  firmarEstado,
+  leerEstado,
+  textoEnCastellano,
+  tiendaNubeConfigurada,
+  urlDeAutorizacion
+} from './tiendanube.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -90,7 +103,15 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+// Los webhooks de las integraciones (CLAUDE.md §32) se firman sobre el cuerpo
+// tal cual llegó: se guarda solo para esas rutas, antes de parsearlo.
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      if (req.url.startsWith('/api/integraciones/')) req.cuerpoCrudo = Buffer.from(buf);
+    }
+  })
+);
 
 /* ---------- Páginas públicas y la app (hist. §100) ---------- */
 
@@ -1685,6 +1706,76 @@ app.post('/api/publico/consulta', (req, res) => {
 // público — no contiene datos del negocio, y protegerlo obligaría a
 // servir la pantalla de login por una vía separada del resto de la app.
 // Todos los datos reales están detrás de /api.
+
+// Tienda Nube (etapa G, CLAUDE.md §32): lo que llega desde Tienda Nube y no
+// trae la sesión de Nexo. El resto de la integración está más abajo, en
+// "Integraciones".
+//
+// La vuelta del permiso: el navegador de quien conectó llega acá desde Tienda
+// Nube con el código y el `state`. Es una navegación, no un fetch: responde
+// siempre con una redirección a la página de la integración, con el resultado
+// en ?tiendanube=.
+app.get('/api/integraciones/tiendanube/callback', asincrono(async (req, res) => {
+  const volver = (resultado, extra = '') => res.redirect(`/app?tiendanube=${resultado}${extra}#/configuracion/tienda-nube`);
+  if (!tiendaNubeConfigurada()) return volver('no-disponible');
+  const sesion = sesionValida(leerCookie(req, COOKIE_SESION));
+  const conState = req.query.state !== undefined && req.query.state !== '';
+  const estado = conState ? leerEstado(req.query.state) : null;
+  // Con `state`, el negocio es el que pidió conectar, y tiene que volver la
+  // misma persona: uno vencido, alterado o de otra sesión no conecta nada.
+  // Sin `state` (la app se instaló desde Tienda Nube) el negocio sería el de
+  // la sesión, pero el código podría ser de la tienda de un tercero (el
+  // ataque de "atar" una cuenta ajena): no se conecta solo, se pide
+  // confirmarlo en Nexo viendo el nombre de la tienda.
+  if (conState && (!estado || sesion?.id !== estado.usuarioId)) return volver('error');
+  const organizacionId = estado ? estado.organizacionId : sesion?.organizacion_id;
+  const esAdmin =
+    sesion &&
+    organizacionId &&
+    db
+      .prepare("SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1 AND rol = 'admin'")
+      .get(sesion.id, organizacionId);
+  if (!esAdmin) return volver('sin-sesion');
+  if (typeof req.query.code !== 'string' || !req.query.code) return volver('cancelado');
+  try {
+    const tienda = await tiendaDelCodigo(req.query.code);
+    if (!estado) return volver('confirmar', `&clave=${guardarConexionPendiente({ ...tienda, organizacionId, usuarioId: sesion.id })}`);
+    await conectarTiendaNube(req, { organizacionId, usuarioId: sesion.id, tienda });
+  } catch (err) {
+    if (err instanceof ErrorValidacion) return volver(err.codigo ?? 'error');
+    console.error('[tiendanube] no se pudo conectar:', err.message);
+    return volver('error');
+  }
+  volver('conectada');
+}));
+
+// Los webhooks: Tienda Nube espera un 2xx en menos de 3 segundos, así que se
+// contesta enseguida y el pedido se procesa después. Uno sin firma válida no
+// se procesa. Se repiten y llegan desordenados: lo que hacen es idempotente.
+app.post('/api/integraciones/tiendanube/webhook', (req, res) => {
+  if (!firmaValida(req.cuerpoCrudo, req.get('x-linkedstore-hmac-sha256'))) {
+    return res.status(401).json({ error: 'Firma inválida.' });
+  }
+  res.json({ ok: true });
+  setImmediate(() =>
+    atenderWebhookTiendaNube(req.body).catch((err) => console.error('[tiendanube] webhook:', err.message))
+  );
+});
+
+// Los tres webhooks de privacidad que Tienda Nube exige a toda app (Ley
+// 25.326 y LGPD). Los clientes y las ventas son del negocio, no de Nexo: lo
+// que se borra es lo que Nexo guardó de Tienda Nube.
+app.post('/api/integraciones/tiendanube/privacidad/:tipo', (req, res) => {
+  if (!firmaValida(req.cuerpoCrudo, req.get('x-linkedstore-hmac-sha256'))) {
+    return res.status(401).json({ error: 'Firma inválida.' });
+  }
+  if (!['tienda', 'borrar-cliente', 'datos-cliente'].includes(req.params.tipo)) {
+    return res.status(404).json({ error: 'Ruta no encontrada.' });
+  }
+  atenderPrivacidadTiendaNube(req.params.tipo, req.body ?? {});
+  res.json({ ok: true });
+});
+
 app.use('/api', autenticar);
 
 // Una pestaña que quedó mostrando otro negocio (hist. §77). La sesión es una
@@ -4822,6 +4913,8 @@ function registrarMovimientoStock({
   // Es el único punto que escribe stock, así que cortar acá cubre venta,
   // edición, anulación y devolución de un servicio sin tocar cada una.
   if (esServicio(producto_id)) return { changes: 0, lastInsertRowid: null };
+  // Por lo mismo, de acá sale el aviso a las tiendas conectadas (§32).
+  programarSincronizacion(organizacion_id);
   return db
     .prepare(
       `INSERT INTO movimientos_stock
@@ -6120,6 +6213,52 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   res.status(201).json(resultadoEmision(await autorizarFactura(req, facturaId)));
 }));
 
+// Por qué una venta no se puede anular, o null si se puede. Lo usan el botón
+// de anular y la cancelación de un pedido de Tienda Nube (hist. §122).
+function motivoParaNoAnular(venta) {
+  if (venta.estado === 'anulada') return 'Esta venta ya está anulada.';
+  if (db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(venta.id)) {
+    return 'Esta venta tiene una factura asociada, no se puede anular.';
+  }
+  if (db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(venta.id)) {
+    return 'Esta venta tiene cobros registrados, no se puede anular.';
+  }
+  if (db.prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'").get(venta.id)) {
+    return 'Esta venta tiene una devolución asociada, no se puede anular.';
+  }
+  return null;
+}
+
+// Anula la venta: devuelve el stock y salda la deuda del cliente. Se llama
+// dentro de una transacción, y quien llama registra la auditoría.
+function revertirVentaAnulada(venta, organizacionId) {
+  db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(venta.id);
+
+  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(organizacionId);
+  const items = db
+    .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
+    .all(venta.id);
+  let total = 0;
+  for (const item of items) {
+    registrarMovimientoStock({
+      producto_id: item.producto_id,
+      variante_id: item.variante_id,
+      deposito_id: depositoVenta,
+      tipo: 'entrada',
+      cantidad: item.cantidad,
+      origen: 'venta',
+      venta_id: venta.id,
+      nota: 'Reversión por anulación',
+      organizacion_id: organizacionId
+    });
+    total += item.cantidad * item.precio_unitario;
+  }
+
+  db.prepare(
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
+  ).run(venta.cliente_id, -total, venta.id);
+}
+
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
@@ -6129,56 +6268,13 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
-  if (venta.estado === 'anulada') {
-    return res.status(400).json({ error: 'Esta venta ya está anulada.' });
-  }
-
-  const tieneFactura = db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(ventaId);
-  if (tieneFactura) {
-    return res.status(400).json({ error: 'Esta venta tiene una factura asociada, no se puede anular.' });
-  }
-
-  const tieneCobros = db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(ventaId);
-  if (tieneCobros) {
-    return res.status(400).json({ error: 'Esta venta tiene cobros registrados, no se puede anular.' });
-  }
-
-  const tieneDevolucionAnular = db
-    .prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'")
-    .get(ventaId);
-  if (tieneDevolucionAnular) {
-    return res
-      .status(400)
-      .json({ error: 'Esta venta tiene una devolución asociada, no se puede anular.' });
+  const motivo = motivoParaNoAnular(venta);
+  if (motivo) {
+    return res.status(400).json({ error: motivo });
   }
 
   withTransaction(() => {
-    db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(ventaId);
-
-    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
-    const items = db
-      .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
-      .all(ventaId);
-    let total = 0;
-    for (const item of items) {
-      registrarMovimientoStock({
-        producto_id: item.producto_id,
-        variante_id: item.variante_id,
-        deposito_id: depositoVenta,
-        tipo: 'entrada',
-        cantidad: item.cantidad,
-        origen: 'venta',
-        venta_id: ventaId,
-        nota: 'Reversión por anulación',
-        organizacion_id: req.usuario.organizacion_id
-      });
-      total += item.cantidad * item.precio_unitario;
-    }
-
-    db.prepare(
-      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-    ).run(venta.cliente_id, -total, ventaId);
-
+    revertirVentaAnulada(venta, req.usuario.organizacion_id);
     auditar(req, {
       accion: 'anular',
       entidad: 'venta',
@@ -7279,24 +7375,22 @@ function revertirDevolucion(devolucionId) {
   }
 }
 
-app.post('/api/devoluciones', (req, res) => {
-  const { venta_id, items, motivo, cuenta_tesoreria_id } = req.body;
+// Valida y registra una devolución, todo en una transacción. La usan el alta
+// de siempre y el asistente (hist. §119), así las dos pasan por las mismas
+// reglas: el tope de lo que queda por devolver de cada renglón, la venta no
+// anulada y la cuenta del reintegro del negocio. Un dato inválido sale como
+// ErrorValidacion (el 404 de una venta que no existe, también). `auditoria`
+// suma campos al registro de auditoría (el actor y el mensaje del asistente).
+function registrarDevolucion(req, { venta_id, items, motivo, cuenta_tesoreria_id }, auditoria = {}) {
+  const invalido = (mensaje, status = 400) => Object.assign(new ErrorValidacion(mensaje), { status });
   const ventaId = Number(venta_id);
 
   const venta = db
     .prepare('SELECT id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
-  if (!venta) {
-    return res.status(404).json({ error: 'Venta no encontrada.' });
-  }
-  if (venta.estado === 'anulada') {
-    return res
-      .status(400)
-      .json({ error: 'Esta venta está anulada, no se le puede registrar una devolución.' });
-  }
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'La devolución necesita al menos un item.' });
-  }
+  if (!venta) throw invalido('Venta no encontrada.', 404);
+  if (venta.estado === 'anulada') throw invalido('Esta venta está anulada, no se le puede registrar una devolución.');
+  if (!Array.isArray(items) || items.length === 0) throw invalido('La devolución necesita al menos un item.');
   // La devolución reingresa al MISMO depósito de la venta original: no es
   // una elección del operador, es de dónde salió físicamente la mercadería.
   const depositoDevolucion = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
@@ -7304,22 +7398,16 @@ app.post('/api/devoluciones', (req, res) => {
   const vistos = new Set();
   for (const item of items) {
     const id = Number(item.venta_item_id);
-    if (vistos.has(id)) {
-      return res.status(400).json({ error: 'No se puede repetir el mismo item de la venta.' });
-    }
+    if (vistos.has(id)) throw invalido('No se puede repetir el mismo item de la venta.');
     vistos.add(id);
-    if (!(Number(item.cantidad) > 0)) {
-      return res.status(400).json({ error: 'La cantidad a devolver debe ser mayor a 0.' });
-    }
+    if (!(Number(item.cantidad) > 0)) throw invalido('La cantidad a devolver debe ser mayor a 0.');
   }
 
   if (cuenta_tesoreria_id) {
     const cuenta = db
       .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
       .get(cuenta_tesoreria_id, req.usuario.organizacion_id);
-    if (!cuenta) {
-      return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
-    }
+    if (!cuenta) throw invalido('La cuenta de tesorería no existe.');
   }
 
   const disponibles = new Map(
@@ -7327,18 +7415,14 @@ app.post('/api/devoluciones', (req, res) => {
   );
   for (const item of items) {
     const renglon = disponibles.get(Number(item.venta_item_id));
-    if (!renglon) {
-      return res.status(400).json({ error: 'Uno de los items no pertenece a esta venta.' });
-    }
+    if (!renglon) throw invalido('Uno de los items no pertenece a esta venta.');
     if (Number(item.cantidad) > renglon.disponible) {
       const detalle = renglon.variante_id ? ` (${combinacionVariante(renglon.variante_id)})` : '';
-      return res.status(400).json({
-        error: `No se puede devolver más de lo vendido de "${renglon.nombre}"${detalle} (disponible: ${renglon.disponible}).`
-      });
+      throw invalido(`No se puede devolver más de lo vendido de "${renglon.nombre}"${detalle} (disponible: ${renglon.disponible}).`);
     }
   }
 
-  const devolucionId = withTransaction(() => {
+  return withTransaction(() => {
     const { lastInsertRowid: nuevaId } = db
       .prepare(
         `INSERT INTO devoluciones (venta_id, cuenta_tesoreria_id, motivo, deposito_id, organizacion_id, fecha) VALUES (?, ?, ?, ?, ?, ${HOY_SQL})`
@@ -7372,12 +7456,15 @@ app.post('/api/devoluciones', (req, res) => {
       entidad_id: nuevaId,
       operacion_tipo: 'venta',
       operacion_id: ventaId,
-      detalle: `Devolución #${nuevaId} sobre la venta #${ventaId}`
+      detalle: `Devolución #${nuevaId} sobre la venta #${ventaId}`,
+      ...auditoria
     });
     return nuevaId;
   });
+}
 
-  res.status(201).json({ id: devolucionId });
+app.post('/api/devoluciones', (req, res) => {
+  res.status(201).json({ id: registrarDevolucion(req, req.body) });
 });
 
 // Nota de crédito: comprobante fiscal aparte, opcional — igual que
@@ -11362,13 +11449,114 @@ function resolverPropuesta(tipo, datos, organizacionId) {
     };
   }
 
+  if (tipo === 'devolucion') {
+    const cliente = buscarPorNombre('clientes', datos.cliente, organizacionId);
+    if (cliente.estado === 'no_dado') problemas.push('Falta quién devuelve.');
+    if (cliente.estado === 'no_encontrado') problemas.push(`No encontré al cliente "${cliente.valor}".`);
+    if (cliente.estado === 'ambiguo') problemas.push(`Hay más de un cliente que coincide con "${cliente.valor}".`);
+
+    const pedidos = (Array.isArray(datos.items) ? datos.items : []).map((item) => ({
+      producto: buscarPorNombre('productos', item.producto, organizacionId),
+      cantidad: Number(item.cantidad) > 0 ? Number(item.cantidad) : 1
+    }));
+    if (!pedidos.length) problemas.push('Falta qué devuelve.');
+    for (const { producto } of pedidos) {
+      if (producto.estado === 'ambiguo') problemas.push(`Hay más de un producto que coincide con "${producto.valor}".`);
+      else if (producto.estado !== 'resuelto') problemas.push(`No encontré el producto "${producto.valor ?? '?'}".`);
+    }
+
+    let ventas = [];
+    if (cliente.estado === 'resuelto' && pedidos.length && pedidos.every((p) => p.producto.estado === 'resuelto')) {
+      ventas = ventasParaDevolver(cliente.id, pedidos, organizacionId);
+      if (!ventas.length) {
+        const que = pedidos.map((p) => p.producto.nombre_resuelto).join(', ');
+        problemas.push(`No encontré una venta a ${cliente.nombre_resuelto} con ${que} que se pueda devolver.`);
+      }
+    }
+
+    let reintegro = null;
+    if (datos.reintegro?.cuenta) {
+      const cuenta = buscarPorNombre('cuentas_tesoreria', datos.reintegro.cuenta, organizacionId);
+      if (cuenta.estado !== 'resuelto') problemas.push(`No encontré la cuenta "${datos.reintegro.cuenta}" para devolver la plata.`);
+      reintegro = { cuenta };
+    }
+
+    return {
+      cliente,
+      pedidos,
+      ventas,
+      reintegro,
+      motivo: datos.motivo ?? null,
+      ejecutable: problemas.length === 0,
+      problemas
+    };
+  }
+
   return { ejecutable: false, problemas: ['Tipo de operación desconocido.'] };
+}
+
+// Las ventas de un cliente donde está lo que devuelve, con lo que queda por
+// devolver de cada renglón, de la más nueva a la más vieja (hist. §119). Van
+// primero las que tienen todos los productos. Cada una trae sus renglones ya
+// armados para la tarjeta del asistente, así elegir otra venta no pide nada
+// al servidor. Las anuladas no cuentan, igual que en registrarDevolucion.
+const VENTAS_PARA_DEVOLVER = 5;
+
+function ventasParaDevolver(clienteId, pedidos, organizacionId) {
+  const ventas = db
+    .prepare(
+      `SELECT id, fecha FROM ventas
+        WHERE cliente_id = ? AND organizacion_id = ? AND estado != 'anulada'
+        ORDER BY fecha DESC, id DESC LIMIT 50`
+    )
+    .all(clienteId, organizacionId);
+  const resultado = [];
+  for (const venta of ventas) {
+    const renglones = itemsDevolviblesDeVenta(venta.id).filter((r) => r.disponible > 0);
+    const items = [];
+    for (const pedido of pedidos) {
+      const renglon = renglones.find(
+        (r) => r.producto_id === pedido.producto.id && !items.some((i) => i.venta_item_id === r.venta_item_id)
+      );
+      if (!renglon) continue;
+      items.push({
+        venta_item_id: renglon.venta_item_id,
+        nombre: renglon.variante_id ? `${renglon.nombre} (${combinacionVariante(renglon.variante_id)})` : renglon.nombre,
+        disponible: renglon.disponible,
+        precio_unitario: renglon.precio_unitario,
+        cantidad: Math.min(pedido.cantidad, renglon.disponible)
+      });
+    }
+    if (items.length) resultado.push({ id: venta.id, fecha: venta.fecha, items, completa: items.length === pedidos.length });
+  }
+  return resultado.sort((a, b) => b.completa - a.completa).slice(0, VENTAS_PARA_DEVOLVER);
 }
 
 // Lo que viaja a la IA como contexto del negocio: solo lo de la
 // organización de la sesión (Etapa A, CLAUDE.md §28) — nombres de otra
 // empresa no pueden salir hacia el proveedor de IA.
-function contextoParaInterprete(organizacionId) {
+// Con `texto`, de los productos van solo los que se parecen a la frase (hist.
+// §120): el catálogo entero viajaba en cada pedido, y el plan gratis de Groq
+// cuenta tokens por día. "Se parece" es que alguna palabra del nombre empiece
+// igual que una de la frase (4 letras: "remeras" encuentra "Remera negra").
+const PRODUCTOS_PARA_IA = 40;
+const palabrasDe = (texto) =>
+  String(texto ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .split(/[^a-z0-9ñ]+/)
+    .filter((p) => p.length >= 3)
+    .map((p) => p.slice(0, 4));
+
+function contextoParaInterprete(organizacionId, texto) {
+  let productos = db
+    .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
+    .all(organizacionId);
+  if (texto !== undefined) {
+    const deLaFrase = new Set(palabrasDe(texto));
+    productos = productos.filter((p) => palabrasDe(p.nombre).some((w) => deLaFrase.has(w))).slice(0, PRODUCTOS_PARA_IA);
+  }
   return {
     cuentas: db
       .prepare('SELECT nombre, tipo FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY nombre')
@@ -11376,9 +11564,7 @@ function contextoParaInterprete(organizacionId) {
     categoriasGasto: db
       .prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 AND organizacion_id = ? ORDER BY nombre')
       .all(organizacionId),
-    productos: db
-      .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
-      .all(organizacionId)
+    productos
   };
 }
 
@@ -11387,7 +11573,7 @@ app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
 
   let resultado;
   try {
-    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id));
+    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id, texto));
   } catch (err) {
     if (err instanceof InterpreteError) {
       return res.status(err.status).json({ error: err.message });
@@ -11747,6 +11933,37 @@ app.post('/api/asistente/ejecutar', (req, res) => {
 
     marcarConfirmado(gastoId);
     return res.status(201).json({ id: gastoId, tipo: 'gasto' });
+  }
+
+  if (tipo === 'devolucion') {
+    // Las mismas reglas que el alta de siempre (registrarDevolucion): la
+    // venta tiene que ser de este negocio y no estar anulada, y nada se
+    // devuelve por encima de lo que queda de cada renglón.
+    const items = (Array.isArray(propuesta?.items) ? propuesta.items : []).map((item) => ({
+      venta_item_id: Number(item.venta_item_id),
+      cantidad: Number(item.cantidad),
+      vuelve_stock: item.vuelve_stock !== false
+    }));
+    let devolucionId;
+    try {
+      devolucionId = registrarDevolucion(
+        req,
+        {
+          venta_id: propuesta?.venta_id,
+          items,
+          motivo: typeof propuesta?.motivo === 'string' ? propuesta.motivo : null,
+          cuenta_tesoreria_id: propuesta?.cuenta_tesoreria_id || null
+        },
+        { actor: 'asistente', operacion_tipo: 'asistente_mensaje', operacion_id: mensaje.id }
+      );
+    } catch (err) {
+      if (err instanceof ErrorValidacion) return res.status(err.status).json({ error: err.message });
+      marcarFallido(err.message);
+      return res.status(500).json({ error: 'No se pudo registrar la devolución.' });
+    }
+
+    marcarConfirmado(devolucionId);
+    return res.status(201).json({ id: devolucionId, tipo: 'devolucion' });
   }
 
   return res.status(400).json({ error: 'Tipo de operación desconocido.' });
@@ -16088,6 +16305,1028 @@ app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
   );
 });
 
+/* ---------- Integraciones: Tienda Nube (etapa G, CLAUDE.md §32) ---------- */
+
+// Cómo funciona, de punta a punta:
+// - Conectar: el admin da permiso en Tienda Nube (OAuth) y vuelve por el
+//   callback de más arriba. El token se guarda cifrado.
+// - Publicar: los productos de Nexo se crean en la tienda, y cada variante
+//   queda vinculada (integracion_vinculos). Nunca se vincula por nombre.
+// - Stock y precio: Nexo manda. Lo que se publica es el stock del depósito de
+//   la integración y el precio de su lista, y se manda solo lo que cambió.
+//   Un movimiento de stock programa una pasada a los pocos segundos, y cada
+//   SINCRONIZAR_CADA_MS hay una de todas las tiendas (cubre el precio, que se
+//   edita desde muchas pantallas, y cualquier aviso perdido).
+// - Pedidos: un pedido pagado pasa a ser una venta de Nexo con crearVenta, la
+//   misma de una venta cargada a mano, con su cobro en la cuenta elegida. Un
+//   pedido entra una sola vez (integracion_pedidos). Si no se puede (producto
+//   sin vincular, sin stock), queda pendiente y se reintenta.
+// - Conflictos, decididos de antemano: el stock y el precio de Nexo pisan los
+//   de la tienda; la venta de la tienda baja el stock de Nexo, y la pasada
+//   siguiente le devuelve a la tienda el número de Nexo. Una cancelación no
+//   anula sola una venta que ya pasó a Nexo (puede tener cobro y factura):
+//   queda marcada para que el negocio haga la devolución.
+const EVENTOS_TIENDA_NUBE = ['order/created', 'order/paid', 'order/cancelled', 'product/deleted', 'app/uninstalled'];
+const SINCRONIZAR_CADA_MS = 5 * 60 * 1000;
+const LOG_INTEGRACION_MAX = 500;
+
+const integracionDelNegocio = (organizacionId) =>
+  db.prepare("SELECT * FROM integraciones WHERE organizacion_id = ? AND plataforma = 'tiendanube'").get(organizacionId);
+const integracionPorId = (id) => db.prepare('SELECT * FROM integraciones WHERE id = ?').get(id);
+
+function anotarIntegracion(integracion, tipo, resultado, detalle) {
+  db.prepare(
+    'INSERT INTO integracion_log (integracion_id, tipo, resultado, detalle, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+  ).run(integracion.id, tipo, resultado, String(detalle).slice(0, 1000), integracion.organizacion_id);
+  db.prepare(
+    `DELETE FROM integracion_log WHERE integracion_id = ? AND id <= (
+       SELECT id FROM integracion_log WHERE integracion_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)`
+  ).run(integracion.id, integracion.id, LOG_INTEGRACION_MAX);
+}
+
+// Un cliente de la API por integración, así el límite de pedidos de Tienda
+// Nube se cuenta por tienda entre una pasada y la otra.
+const clientesTiendaNube = new Map();
+function apiDeLaTienda(integracion) {
+  const token = integracion.estado === 'conectada' ? descifrarToken(integracion.token) : null;
+  if (!token) throw new TiendaNubeError('Nexo no tiene permiso en la tienda: volvé a conectarla.', { status: 401 });
+  const guardado = clientesTiendaNube.get(integracion.id);
+  if (guardado?.token === token && guardado.tiendaId === integracion.cuenta_externa) return guardado.api;
+  const api = clienteTiendaNube({ tiendaId: integracion.cuenta_externa, token });
+  clientesTiendaNube.set(integracion.id, { token, tiendaId: integracion.cuenta_externa, api });
+  return api;
+}
+
+// Lo que cobra la tienda entra, de entrada, en la cuenta de Mercado Pago del
+// negocio (Pago Nube y Mercado Pago son lo más común); si no tiene, en la
+// primera. Se cambia en la página.
+function cuentaParaLaTienda(organizacionId) {
+  return (
+    db
+      .prepare(
+        `SELECT id FROM cuentas_tesoreria WHERE organizacion_id = ?
+          ORDER BY CASE tipo WHEN 'mercadopago' THEN 0 WHEN 'banco' THEN 1 ELSE 2 END, id LIMIT 1`
+      )
+      .get(organizacionId)?.id ?? null
+  );
+}
+
+// El código de Tienda Nube a cambio del permiso, con el nombre de la tienda.
+async function tiendaDelCodigo(codigo) {
+  const { token, tiendaId } = await canjearCodigo(codigo);
+  let tienda = {};
+  try {
+    tienda = (await clienteTiendaNube({ tiendaId, token }).tienda()) ?? {};
+  } catch (err) {
+    console.error('[tiendanube] no se pudo leer la tienda:', err.message);
+  }
+  return {
+    token,
+    tiendaId,
+    nombre: textoEnCastellano(tienda.name) || `Tienda ${tiendaId}`,
+    url: tienda.url_with_protocol || (tienda.original_domain ? `https://${tienda.original_domain}` : null)
+  };
+}
+
+// Una instalación hecha desde Tienda Nube, esperando que el admin la confirme
+// en Nexo (ver el callback). En memoria y por 10 minutos: si el servidor se
+// reinicia en el medio, se conecta otra vez desde Nexo.
+const conexionesPendientes = new Map();
+function guardarConexionPendiente(datos) {
+  const ahora = Date.now();
+  for (const [clave, p] of conexionesPendientes) if (p.vence < ahora) conexionesPendientes.delete(clave);
+  const clave = randomBytes(18).toString('base64url');
+  conexionesPendientes.set(clave, { ...datos, vence: ahora + 10 * 60 * 1000 });
+  return clave;
+}
+function conexionPendienteDe(req) {
+  const pendiente = conexionesPendientes.get(String(req.body?.clave ?? req.query?.clave ?? ''));
+  const vale =
+    pendiente &&
+    pendiente.vence > Date.now() &&
+    pendiente.usuarioId === req.usuario.id &&
+    pendiente.organizacionId === req.usuario.organizacion_id;
+  return vale ? pendiente : null;
+}
+
+async function conectarTiendaNube(req, { organizacionId, usuarioId, tienda: { token, tiendaId, nombre, url } }) {
+  const enOtroNegocio = db
+    .prepare(
+      `SELECT 1 FROM integraciones
+        WHERE plataforma = 'tiendanube' AND cuenta_externa = ? AND estado = 'conectada' AND organizacion_id <> ?`
+    )
+    .get(tiendaId, organizacionId);
+  if (enOtroNegocio) {
+    const err = new ErrorValidacion('Esa tienda ya está conectada a otro negocio de Nexo.');
+    err.codigo = 'en-otro-negocio';
+    throw err;
+  }
+  const ahora = new Date().toISOString();
+  const integracionId = withTransaction(() => {
+    const anterior = integracionDelNegocio(organizacionId);
+    let id;
+    if (anterior) {
+      // Otra tienda: los vínculos de la anterior no sirven para esta, y sus
+      // pedidos viejos no se traen. Los pedidos ya traídos quedan, con su venta.
+      const otraTienda = anterior.cuenta_externa !== tiendaId;
+      if (otraTienda) db.prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ?').run(anterior.id);
+      db.prepare(
+        `UPDATE integraciones
+            SET estado = 'conectada', cuenta_externa = ?, nombre_cuenta = ?, url_cuenta = ?, token = ?,
+                conectada_en = ?, conectada_por = ?, pedidos_desde = ?
+          WHERE id = ?`
+      ).run(tiendaId, nombre, url, cifrarToken(token), ahora, usuarioId, otraTienda ? ahora : anterior.pedidos_desde, anterior.id);
+      id = anterior.id;
+    } else {
+      id = db
+        .prepare(
+          `INSERT INTO integraciones
+             (plataforma, cuenta_externa, nombre_cuenta, url_cuenta, token, cuenta_tesoreria_id, pedidos_desde,
+              conectada_en, conectada_por, organizacion_id)
+           VALUES ('tiendanube', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(tiendaId, nombre, url, cifrarToken(token), cuentaParaLaTienda(organizacionId), ahora, ahora, usuarioId, organizacionId)
+        .lastInsertRowid;
+    }
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      usuario_id: usuarioId,
+      organizacion_id: organizacionId,
+      operacion_tipo: 'integracion',
+      operacion_id: id,
+      detalle: `Conectó la tienda de Tienda Nube "${nombre}"`
+    });
+    return id;
+  });
+  const integracion = integracionPorId(integracionId);
+  anotarIntegracion(integracion, 'conexion', 'ok', `Tienda "${nombre}" conectada.`);
+  await activarAvisosTiendaNube(req, integracion);
+  programarSincronizacion(organizacionId);
+}
+
+// Los webhooks apuntan a la dirección pública de Nexo, que tiene que ser
+// https (Tienda Nube no acepta otra). En la compu no hay: los pedidos llegan
+// igual con la pasada periódica.
+async function activarAvisosTiendaNube(req, integracion) {
+  const base = urlPublica(req);
+  if (!base.startsWith('https://') || /^https:\/\/(localhost|127\.|\[::1\])/.test(base)) {
+    anotarIntegracion(integracion, 'webhook', 'error', 'Sin avisos al instante: esta dirección de Nexo no es pública. Los pedidos se traen cada 5 minutos.');
+    return;
+  }
+  const destino = `${base}/api/integraciones/tiendanube/webhook`;
+  try {
+    const api = apiDeLaTienda(integracion);
+    const existentes = (await api.webhooks()) ?? [];
+    for (const evento of EVENTOS_TIENDA_NUBE) {
+      if (!existentes.some((w) => w.event === evento && w.url === destino)) await api.crearWebhook(evento, destino);
+    }
+    anotarIntegracion(integracion, 'webhook', 'ok', 'Avisos de pedidos activados: cada venta de la tienda llega al momento.');
+  } catch (err) {
+    anotarIntegracion(integracion, 'webhook', 'error', `No se pudieron activar los avisos (${err.message}). Los pedidos se traen cada 5 minutos.`);
+  }
+}
+
+function desconectarIntegracion(integracion, motivo, usuarioId = null) {
+  withTransaction(() => {
+    db.prepare("UPDATE integraciones SET estado = 'desconectada', token = NULL WHERE id = ?").run(integracion.id);
+    registrarAuditoria({
+      actor: usuarioId ? 'operador' : 'sistema',
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: integracion.organizacion_id,
+      usuario_id: usuarioId,
+      organizacion_id: integracion.organizacion_id,
+      operacion_tipo: 'integracion',
+      operacion_id: integracion.id,
+      detalle: `Desconectó la tienda de Tienda Nube "${integracion.nombre_cuenta}"`
+    });
+    anotarIntegracion(integracion, 'desconexion', 'ok', motivo);
+  });
+  clientesTiendaNube.delete(integracion.id);
+}
+
+async function atenderWebhookTiendaNube(cuerpo) {
+  const integracion = db
+    .prepare("SELECT * FROM integraciones WHERE plataforma = 'tiendanube' AND cuenta_externa = ? AND estado = 'conectada'")
+    .get(String(cuerpo?.store_id ?? ''));
+  if (!integracion) return;
+  const evento = String(cuerpo.event ?? '');
+  if (evento === 'app/uninstalled') {
+    desconectarIntegracion(integracion, 'Se desinstaló la app de Nexo desde Tienda Nube.');
+  } else if (evento === 'product/deleted') {
+    const { changes } = db
+      .prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ? AND externo_producto_id = ?')
+      .run(integracion.id, String(cuerpo.id));
+    if (changes) anotarIntegracion(integracion, 'publicacion', 'ok', 'Se borró un producto en la tienda: dejó de estar vinculado.');
+  } else if (evento.startsWith('order/') && cuerpo.id != null) {
+    await traerPedido(integracion, cuerpo.id);
+  }
+}
+
+function atenderPrivacidadTiendaNube(tipo, cuerpo) {
+  const integraciones = db
+    .prepare("SELECT * FROM integraciones WHERE plataforma = 'tiendanube' AND cuenta_externa = ?")
+    .all(String(cuerpo.store_id ?? ''));
+  for (const integracion of integraciones) {
+    withTransaction(() => {
+      if (tipo === 'tienda') {
+        // Llega 48 horas después de desinstalar: se borra lo que Nexo guardó de
+        // la tienda. Las ventas que ya armó son del negocio y quedan.
+        db.prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ?').run(integracion.id);
+        db.prepare('UPDATE integracion_pedidos SET datos = NULL WHERE integracion_id = ?').run(integracion.id);
+        db.prepare("UPDATE integraciones SET estado = 'desconectada', token = NULL WHERE id = ?").run(integracion.id);
+        anotarIntegracion(integracion, 'desconexion', 'ok', 'Tienda Nube pidió borrar los datos de la tienda: se borraron los vínculos y los pedidos guardados. Las ventas quedan.');
+      } else if (tipo === 'borrar-cliente') {
+        const pedidos = (Array.isArray(cuerpo.orders_to_redact) ? cuerpo.orders_to_redact : []).map(String);
+        let borrados = 0;
+        for (const externoId of pedidos) {
+          borrados += db
+            .prepare('UPDATE integracion_pedidos SET datos = NULL WHERE integracion_id = ? AND externo_id = ?')
+            .run(integracion.id, externoId).changes;
+        }
+        anotarIntegracion(integracion, 'webhook', 'ok', `Tienda Nube pidió borrar los datos de un cliente: se borraron ${borrados} pedido(s) guardados. Su ficha de cliente es de tu negocio y no se toca.`);
+      } else {
+        anotarIntegracion(integracion, 'webhook', 'ok', 'Tienda Nube avisó que un cliente pidió sus datos: lo que tenés de él está en su ficha de cliente.');
+      }
+    });
+  }
+}
+
+/* --- Stock y precio --- */
+
+// El precio que se publica: el de la lista de la integración, con la misma
+// cadena que el punto de venta (variante → precio propio de la variante →
+// producto). Es el final, con IVA (hist. §112).
+function precioParaPublicar(productoId, varianteId, listaId) {
+  if (varianteId) {
+    return db
+      .prepare(
+        `SELECT COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio
+           FROM producto_variantes
+           JOIN productos ON productos.id = producto_variantes.producto_id
+           LEFT JOIN variante_precios ON variante_precios.variante_id = producto_variantes.id AND variante_precios.lista_precio_id = ?
+          WHERE producto_variantes.id = ?`
+      )
+      .get(listaId ?? null, varianteId)?.precio ?? 0;
+  }
+  return (
+    db
+      .prepare(
+        `SELECT COALESCE(producto_precios.precio, productos.precio_venta) AS precio
+           FROM productos
+           LEFT JOIN producto_precios ON producto_precios.producto_id = productos.id AND producto_precios.lista_precio_id = ?
+          WHERE productos.id = ?`
+      )
+      .get(listaId ?? null, productoId)?.precio ?? 0
+  );
+}
+
+// El stock que se publica: el del depósito de la integración, entero y nunca
+// negativo (Tienda Nube no acepta otro). Un producto o una variante inactivos
+// publican 0: no se pueden vender. Un servicio no tiene stock: null.
+function stockParaPublicar({ producto_id, variante_id, tipo, activo, variante_activa }, depositoId) {
+  if (tipo === 'servicio') return null;
+  if (!activo || variante_activa === 0) return 0;
+  const fila = variante_id
+    ? db
+        .prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?')
+        .get(variante_id, depositoId)
+    : db.prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?').get(producto_id, depositoId);
+  return Math.max(0, Math.floor(fila?.cantidad ?? 0));
+}
+
+const listaDeLaIntegracion = (integracion) =>
+  integracion.lista_precio_id ??
+  db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?').get(integracion.organizacion_id)?.id ??
+  null;
+const depositoDeLaIntegracion = (integracion) =>
+  integracion.deposito_id ?? depositoPredeterminadoId(integracion.organizacion_id);
+
+// Lo reservado por los pedidos con pago online que todavía no se pagaron:
+// cuánto de cada variante de la tienda. Pasado RESERVA_HORAS se libera (un
+// pago que no llega en tres días ya no se espera).
+const RESERVA_HORAS = 72;
+function reservadoPorVariante(integracion) {
+  const desde = new Date(Date.now() - RESERVA_HORAS * 60 * 60 * 1000).toISOString();
+  const reservado = new Map();
+  const filas = db
+    .prepare("SELECT datos FROM integracion_pedidos WHERE integracion_id = ? AND estado = 'esperando_pago' AND recibido_en >= ?")
+    .all(integracion.id, desde);
+  for (const { datos } of filas) {
+    let pedido;
+    try {
+      pedido = JSON.parse(datos ?? 'null');
+    } catch {
+      continue;
+    }
+    for (const linea of Array.isArray(pedido?.products) ? pedido.products : []) {
+      const clave = String(linea.variant_id);
+      reservado.set(clave, (reservado.get(clave) ?? 0) + (Number(linea.quantity) || 0));
+    }
+  }
+  return reservado;
+}
+
+async function sincronizarStockYPrecio(integracion) {
+  const listaId = listaDeLaIntegracion(integracion);
+  const depositoId = depositoDeLaIntegracion(integracion);
+  const reservado = reservadoPorVariante(integracion);
+  const publicable = (v) => {
+    const stock = stockParaPublicar(v, depositoId);
+    return stock === null ? null : Math.max(0, stock - Math.ceil(reservado.get(v.externo_variante_id) ?? 0));
+  };
+  const cambios = db
+    .prepare(
+      `SELECT integracion_vinculos.*, productos.tipo, productos.activo, producto_variantes.activo AS variante_activa
+         FROM integracion_vinculos
+         JOIN productos ON productos.id = integracion_vinculos.producto_id
+         LEFT JOIN producto_variantes ON producto_variantes.id = integracion_vinculos.variante_id
+        WHERE integracion_vinculos.integracion_id = ?`
+    )
+    .all(integracion.id)
+    .map((v) => ({ ...v, precio: redondear2(precioParaPublicar(v.producto_id, v.variante_id, listaId)), stock: publicable(v) }))
+    .filter((v) => v.precio !== v.ultimo_precio || (v.stock !== null && v.stock !== v.ultimo_stock));
+  if (!cambios.length) return 0;
+
+  const api = apiDeLaTienda(integracion);
+  const guardar = db.prepare('UPDATE integracion_vinculos SET ultimo_precio = ?, ultimo_stock = ? WHERE id = ?');
+  let enviados = 0;
+  const fallidos = [];
+  // Tienda Nube acepta hasta 50 variantes por pedido.
+  for (let i = 0; i < cambios.length; i += 50) {
+    const tanda = cambios.slice(i, i + 50);
+    const porProducto = new Map();
+    for (const v of tanda) {
+      if (!porProducto.has(v.externo_producto_id)) porProducto.set(v.externo_producto_id, []);
+      porProducto.get(v.externo_producto_id).push({
+        id: Number(v.externo_variante_id),
+        price: v.precio,
+        ...(v.stock === null ? {} : { inventory_levels: [{ stock: v.stock }] })
+      });
+    }
+    const respuesta = await api.actualizarStockYPrecio(
+      [...porProducto].map(([id, variants]) => ({ id: Number(id), variants }))
+    );
+    // La respuesta marca cada variante con success; una sin marca se toma
+    // como hecha.
+    const fallo = new Set();
+    for (const producto of Array.isArray(respuesta) ? respuesta : []) {
+      for (const variante of producto?.variants ?? []) {
+        if (variante?.success === false) fallo.add(String(variante.id));
+      }
+    }
+    for (const v of tanda) {
+      if (fallo.has(v.externo_variante_id)) fallidos.push(v);
+      else {
+        guardar.run(v.precio, v.stock, v.id);
+        enviados++;
+      }
+    }
+  }
+  if (enviados) anotarIntegracion(integracion, 'stock', 'ok', `Stock y precio al día en la tienda (${enviados} ${enviados === 1 ? 'variante' : 'variantes'}).`);
+  if (fallidos.length) anotarIntegracion(integracion, 'stock', 'error', `Tienda Nube no aceptó el stock o el precio de ${fallidos.length} ${fallidos.length === 1 ? 'variante' : 'variantes'}.`);
+  return enviados;
+}
+
+// Un movimiento de stock pide una pasada a los pocos segundos: junta los de
+// una misma venta en una sola. Si el movimiento después se deshace (ROLLBACK),
+// la pasada no encuentra nada que mandar.
+const sincronizacionesProgramadas = new Map();
+function programarSincronizacion(organizacionId, demoraMs = 3000) {
+  if (!organizacionId || sincronizacionesProgramadas.has(organizacionId)) return;
+  const integracion = db
+    .prepare("SELECT id FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada'")
+    .get(organizacionId);
+  if (!integracion) return;
+  const timer = setTimeout(() => {
+    sincronizacionesProgramadas.delete(organizacionId);
+    sincronizarIntegracion(integracion.id, { pedidos: false }).catch(() => {});
+  }, demoraMs);
+  timer.unref();
+  sincronizacionesProgramadas.set(organizacionId, timer);
+}
+
+/* --- Pedidos --- */
+
+// El cliente de un pedido: el del mismo mail o documento si ya existe en el
+// negocio, si no uno nuevo con los datos del pedido.
+function clienteDelPedido(organizacionId, pedido) {
+  const c = pedido.customer ?? {};
+  const email = normalizarMail(c.email ?? pedido.contact_email ?? '');
+  const documento = String(c.identification ?? pedido.contact_identification ?? '').replace(/\D/g, '') || null;
+  if (email) {
+    const fila = db.prepare('SELECT id FROM clientes WHERE organizacion_id = ? AND lower(email) = ?').get(organizacionId, email);
+    if (fila) return fila.id;
+  }
+  if (documento) {
+    const fila = db.prepare('SELECT id FROM clientes WHERE organizacion_id = ? AND documento = ?').get(organizacionId, documento);
+    if (fila) return fila.id;
+  }
+  const nombre = String(c.name || pedido.contact_name || pedido.billing_name || '').trim() || 'Cliente de Tienda Nube';
+  const telefono = String(c.phone || pedido.contact_phone || '').trim() || null;
+  return db
+    .prepare('INSERT INTO clientes (nombre, email, telefono, documento, organizacion_id) VALUES (?, ?, ?, ?, ?)')
+    .run(nombre, email || null, telefono, documento, organizacionId).lastInsertRowid;
+}
+
+function guardarPedido(integracion, pedido, cambios) {
+  const ahora = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO integracion_pedidos (integracion_id, externo_id, numero, estado, venta_id, error, datos, recibido_en, actualizado_en, organizacion_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (integracion_id, externo_id) DO UPDATE
+       SET numero = excluded.numero, estado = excluded.estado, venta_id = COALESCE(excluded.venta_id, venta_id),
+           error = excluded.error, datos = excluded.datos, actualizado_en = excluded.actualizado_en`
+  ).run(
+    integracion.id,
+    String(pedido.id),
+    pedido.number != null ? String(pedido.number) : null,
+    cambios.estado,
+    cambios.venta_id ?? null,
+    cambios.error ?? null,
+    JSON.stringify(pedido),
+    ahora,
+    ahora,
+    integracion.organizacion_id
+  );
+}
+
+const fechaDelPedido = (pedido) => {
+  const momento = new Date(pedido.paid_at || pedido.created_at || Date.now());
+  return (Number.isNaN(momento.getTime()) ? new Date() : momento).toLocaleDateString('sv-SE', { timeZone: ZONA_HORARIA });
+};
+
+// Los medios de pago que cobra el propio negocio (transferencia, efectivo al
+// retirar, "a convenir"): Tienda Nube los marca con gateway "offline" o
+// "not-provided". Los demás (Pago Nube, Mercado Pago) se cobran online.
+const PAGO_MANUAL = new Set(['offline', 'not-provided']);
+const esPagoManual = (pedido) => PAGO_MANUAL.has(pedido.gateway);
+
+const cuentaDeCobro = (integracion) =>
+  integracion.cuenta_tesoreria_id
+    ? db
+        .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+        .get(integracion.cuenta_tesoreria_id, integracion.organizacion_id)
+    : null;
+
+// Lo que falta cobrar de una venta: su total menos lo cobrado.
+function saldoDeLaVenta(ventaId) {
+  const { total } = db
+    .prepare('SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS total FROM venta_items WHERE venta_id = ?')
+    .get(ventaId);
+  const { cobrado } = db.prepare('SELECT COALESCE(SUM(importe), 0) AS cobrado FROM cobros WHERE venta_id = ?').get(ventaId);
+  return redondear2(total - cobrado);
+}
+
+// Decide qué hacer con un pedido tal como lo da Tienda Nube. Todo lo que toca
+// la base es síncrono: dos avisos del mismo pedido no pueden armar dos ventas.
+// - Pagado: es una venta con su cobro.
+// - Sin pagar, con pago manual: es una venta por cobrar (la deuda queda en la
+//   cuenta corriente del cliente), y el negocio registra el cobro en Nexo.
+//   Cuando lo marca pagado en Tienda Nube, Nexo cobra solo lo que falte.
+// - Sin pagar, con pago online: todavía no es una venta (muchos se abandonan),
+//   pero sus unidades se reservan en el stock que se publica.
+// - Cancelado: si ya era venta sin cobros, se anula sola; si tiene cobros o
+//   factura, queda marcado para que el negocio haga la devolución.
+function procesarPedido(integracion, pedido) {
+  const fila = db
+    .prepare('SELECT * FROM integracion_pedidos WHERE integracion_id = ? AND externo_id = ?')
+    .get(integracion.id, String(pedido.id));
+  const pagado = pedido.payment_status === 'paid';
+  const cancelado =
+    pedido.status === 'cancelled' || ['voided', 'refunded', 'abandoned'].includes(pedido.payment_status);
+  if (cancelado) return cancelarPedido(integracion, pedido, fila);
+  if (fila?.estado === 'importado') {
+    if (pagado) cobrarLoQueFalta(integracion, pedido, fila.venta_id);
+    return 'importado';
+  }
+  if (fila?.estado === 'cancelado') return 'cancelado';
+  // Los pedidos de antes de conectar no se traen: ya se vendieron sin Nexo.
+  const creado = new Date(pedido.created_at ?? 0).getTime();
+  if (!fila && !(creado >= new Date(integracion.pedidos_desde).getTime())) return null;
+  if (pagado || esPagoManual(pedido)) return importarPedido(integracion, pedido, fila, { cobrar: pagado });
+  if (fila?.estado !== 'esperando_pago') {
+    guardarPedido(integracion, pedido, { estado: 'esperando_pago' });
+    anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${pedido.number ?? pedido.id} esperando el pago online: sus unidades quedan reservadas en la tienda.`);
+    programarSincronizacion(integracion.organizacion_id);
+  }
+  return 'esperando_pago';
+}
+
+function cancelarPedido(integracion, pedido, fila) {
+  if (!fila || fila.estado === 'cancelado') return fila?.estado ?? null;
+  const numero = pedido.number ?? pedido.id;
+  const organizacionId = integracion.organizacion_id;
+  const venta = fila.venta_id
+    ? db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?').get(fila.venta_id, organizacionId)
+    : null;
+  // Sin cobros, factura ni devolución, la venta se anula sola: no hay plata de
+  // por medio. Con algo de eso, la decide el negocio.
+  const motivo = venta && venta.estado !== 'anulada' ? motivoParaNoAnular(venta) : null;
+  const error = motivo
+    ? `Se canceló en Tienda Nube después de pasar a la venta #${venta.id}, que ya tiene cobros o factura. Si devolviste la plata, hacé la devolución de esa venta.`
+    : null;
+  withTransaction(() => {
+    if (venta && venta.estado !== 'anulada' && !motivo) {
+      revertirVentaAnulada(venta, organizacionId);
+      registrarAuditoria({
+        actor: 'sistema',
+        accion: 'anular',
+        entidad: 'venta',
+        entidad_id: venta.id,
+        organizacion_id: organizacionId,
+        operacion_tipo: 'integracion',
+        operacion_id: integracion.id,
+        detalle: `Venta #${venta.id} anulada: se canceló el pedido #${numero} en Tienda Nube`
+      });
+    }
+    guardarPedido(integracion, pedido, { estado: 'cancelado', venta_id: fila.venta_id, error });
+  });
+  const detalle = error ?? (venta && venta.estado !== 'anulada' ? `La venta #${venta.id} quedó anulada y el stock volvió.` : 'Se liberó lo reservado.');
+  anotarIntegracion(integracion, 'pedido', error ? 'error' : 'ok', `Pedido #${numero} cancelado en la tienda. ${detalle}`);
+  programarSincronizacion(organizacionId);
+  return 'cancelado';
+}
+
+// Un pedido que ya era venta por cobrar y se pagó en la tienda: se registra
+// lo que falte. Si el negocio ya lo cobró en Nexo, no queda nada que cobrar.
+function cobrarLoQueFalta(integracion, pedido, ventaId) {
+  const organizacionId = integracion.organizacion_id;
+  const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?').get(ventaId, organizacionId);
+  const cuenta = cuentaDeCobro(integracion);
+  if (!venta || venta.estado === 'anulada' || !cuenta) return;
+  const saldo = saldoDeLaVenta(ventaId);
+  if (saldo < 0.01) return;
+  const numero = pedido.number ?? pedido.id;
+  withTransaction(() => {
+    const cobroId = registrarCobro(ventaId, venta.cliente_id, saldo, cuenta.id, `Cobrado en Tienda Nube (pedido #${numero})`, organizacionId);
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'cobro',
+      entidad_id: cobroId,
+      organizacion_id: organizacionId,
+      operacion_tipo: 'venta',
+      operacion_id: ventaId,
+      detalle: `Cobro de $${saldo} en la venta #${ventaId}: se pagó el pedido #${numero} en Tienda Nube`
+    });
+  });
+  anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${numero} pagado en la tienda: se registró el cobro de $${saldo} en la venta #${ventaId}.`);
+}
+
+function importarPedido(integracion, pedido, fila, { cobrar }) {
+  const organizacionId = integracion.organizacion_id;
+  const numero = pedido.number ?? pedido.id;
+  const lineas = Array.isArray(pedido.products) ? pedido.products : [];
+  // El descuento del pedido (cupón, medio de pago) se reparte entre los
+  // renglones según su valor, como el envío de una compra (CLAUDE.md §7).
+  const subtotal = lineas.reduce((acc, l) => acc + Number(l.price) * Number(l.quantity), 0);
+  const descuento = Math.max(0, Number(pedido.discount) || 0);
+  const factor = subtotal > 0 && descuento > 0 ? Math.max(0, (subtotal - descuento) / subtotal) : 1;
+  const buscarVinculo = db.prepare(
+    'SELECT producto_id, variante_id FROM integracion_vinculos WHERE integracion_id = ? AND externo_variante_id = ?'
+  );
+  const items = [];
+  let error = lineas.length ? null : 'El pedido no tiene productos.';
+  for (const linea of lineas) {
+    const vinculo = buscarVinculo.get(integracion.id, String(linea.variant_id));
+    if (!vinculo) {
+      error = `"${linea.name}" no está vinculado a un producto de Nexo. Publicalo desde Nexo, o cargá la venta a mano.`;
+      break;
+    }
+    items.push({
+      producto_id: vinculo.producto_id,
+      variante_id: vinculo.variante_id,
+      cantidad: Number(linea.quantity),
+      precio_unitario: redondear2(Number(linea.price) * factor)
+    });
+  }
+  const depositoId = depositoDeLaIntegracion(integracion);
+  error ??= validarItemsVenta(items) ?? validarStockDisponible(items, depositoId, organizacionId);
+
+  let ventaId = null;
+  if (!error) {
+    try {
+      ventaId = withTransaction(() => {
+        exigirLugarEnPlan(organizacionId, 'ventas_mes');
+        const clienteId = clienteDelPedido(organizacionId, pedido);
+        const id = crearVenta({
+          cliente_id: clienteId,
+          items,
+          fecha: fechaDelPedido(pedido),
+          lista_precio_id: integracion.lista_precio_id,
+          deposito_id: integracion.deposito_id,
+          organizacion_id: organizacionId
+        });
+        const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
+        const cuenta = cobrar ? cuentaDeCobro(integracion) : null;
+        if (cuenta && total > 0) registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en Tienda Nube (pedido #${numero})`, organizacionId);
+        guardarPedido(integracion, pedido, { estado: 'importado', venta_id: id });
+        registrarAuditoria({
+          actor: 'sistema',
+          accion: 'crear',
+          entidad: 'venta',
+          entidad_id: id,
+          organizacion_id: organizacionId,
+          operacion_tipo: 'integracion',
+          operacion_id: integracion.id,
+          detalle: `Venta #${id} desde Tienda Nube (pedido #${numero})`
+        });
+        return id;
+      });
+    } catch (err) {
+      if (!(err instanceof ErrorBulk || err instanceof ErrorValidacion)) {
+        console.error(`[tiendanube] pedido ${pedido.id}:`, err);
+        error = 'No se pudo armar la venta por un error de Nexo. Probá reintentar.';
+      } else error = err.message;
+    }
+  }
+  if (ventaId) {
+    const envio = Number(pedido.shipping_cost_customer) || 0;
+    const porCobrar = cobrar
+      ? ''
+      : ` Sin cobrar todavía (${pedido.gateway_name || 'pago a convenir'}): registrá el cobro cuando llegue la plata.`;
+    anotarIntegracion(
+      integracion,
+      'pedido',
+      'ok',
+      `Pedido #${numero} → venta #${ventaId}.${porCobrar}${envio > 0 ? ` El envío que pagó el cliente ($${envio}) todavía no se suma a la venta.` : ''}`
+    );
+    // Sale de la reserva (si estaba esperando el pago) y pasa al stock de la
+    // venta: se vuelve a publicar.
+    if (fila?.estado === 'esperando_pago') programarSincronizacion(organizacionId);
+    return 'importado';
+  }
+  // Pendiente: se anota una vez por motivo, no en cada reintento.
+  guardarPedido(integracion, pedido, { estado: 'pendiente', error });
+  if (fila?.error !== error) anotarIntegracion(integracion, 'pedido', 'error', `Pedido #${numero} sin pasar a venta: ${error}`);
+  return 'pendiente';
+}
+
+async function traerPedido(integracion, externoId) {
+  try {
+    return procesarPedido(integracion, await apiDeLaTienda(integracion).pedido(externoId));
+  } catch (err) {
+    anotarIntegracion(integracion, 'pedido', 'error', `No se pudo leer el pedido ${externoId} de la tienda (${err.message}).`);
+    return null;
+  }
+}
+
+// Los pedidos que cambiaron desde la última pasada (con una hora de margen),
+// por si se perdió un aviso. Tienda Nube responde 404 a una página vacía.
+async function traerPedidosRecientes(integracion) {
+  const api = apiDeLaTienda(integracion);
+  const desde = new Date(
+    Math.max(
+      new Date(integracion.pedidos_desde).getTime(),
+      integracion.ultima_sincronizacion ? new Date(integracion.ultima_sincronizacion).getTime() - 60 * 60 * 1000 : 0
+    )
+  ).toISOString();
+  let procesados = 0;
+  for (let pagina = 1; pagina <= 5; pagina++) {
+    let pedidos;
+    try {
+      pedidos = await api.pedidos({ updated_at_min: desde, per_page: '50', page: String(pagina) });
+    } catch (err) {
+      if (err.status === 404) break;
+      throw err;
+    }
+    if (!Array.isArray(pedidos) || !pedidos.length) break;
+    for (const pedido of pedidos) {
+      procesarPedido(integracionPorId(integracion.id), pedido);
+      procesados++;
+    }
+    if (pedidos.length < 50) break;
+  }
+  return procesados;
+}
+
+/* --- La pasada --- */
+
+const sincronizando = new Set();
+async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
+  if (sincronizando.has(integracionId)) return;
+  sincronizando.add(integracionId);
+  try {
+    const integracion = integracionPorId(integracionId);
+    if (integracion?.estado !== 'conectada') return;
+    const inicio = new Date().toISOString();
+    try {
+      if (pedidos) await traerPedidosRecientes(integracion);
+      await sincronizarStockYPrecio(integracionPorId(integracionId));
+      db.prepare('UPDATE integraciones SET ultima_sincronizacion = ? WHERE id = ?').run(inicio, integracionId);
+    } catch (err) {
+      // Sin permiso (la app se desinstaló sin aviso): queda desconectada.
+      if (err.status === 401) desconectarIntegracion(integracion, 'Tienda Nube ya no le da permiso a Nexo: volvé a conectar la tienda.');
+      else anotarIntegracion(integracion, 'stock', 'error', `No se pudo sincronizar con la tienda (${err.message}).`);
+    }
+  } finally {
+    sincronizando.delete(integracionId);
+  }
+}
+
+async function sincronizarTodas() {
+  if (!tiendaNubeConfigurada()) return;
+  const ids = db.prepare("SELECT id FROM integraciones WHERE plataforma = 'tiendanube' AND estado = 'conectada'").all();
+  for (const { id } of ids) await sincronizarIntegracion(id);
+}
+
+/* --- Publicar productos --- */
+
+// Un producto de Nexo como producto de Tienda Nube: sus atributos (hasta 3,
+// el tope de Tienda Nube) y una variante por cada variante activa, o una sola
+// sin atributos. Lo que no se publica sigue igual en Nexo.
+function productoParaTiendaNube(producto, integracion) {
+  const listaId = listaDeLaIntegracion(integracion);
+  const depositoId = depositoDeLaIntegracion(integracion);
+  const atributos = db
+    .prepare('SELECT id, nombre FROM producto_atributos WHERE producto_id = ? ORDER BY orden')
+    .all(producto.id);
+  const variantes = db
+    .prepare('SELECT id, sku, activo FROM producto_variantes WHERE producto_id = ? AND activo = 1 ORDER BY id')
+    .all(producto.id);
+  if (variantes.length && atributos.length > 3) {
+    throw new ErrorValidacion(`"${producto.nombre}" tiene ${atributos.length} atributos y Tienda Nube acepta hasta 3.`);
+  }
+  const valorDe = db.prepare(
+    `SELECT producto_atributo_valores.valor FROM producto_variante_valores
+       JOIN producto_atributo_valores ON producto_atributo_valores.id = producto_variante_valores.valor_id
+      WHERE producto_variante_valores.variante_id = ? AND producto_variante_valores.atributo_id = ?`
+  );
+  const filas = variantes.length
+    ? variantes.map((v) => ({ producto_id: producto.id, variante_id: v.id, sku: v.sku, variante_activa: 1 }))
+    : [{ producto_id: producto.id, variante_id: null, sku: producto.sku }];
+  const servicio = producto.tipo === 'servicio';
+  const cuerpo = {
+    name: { es: producto.nombre },
+    ...(producto.descripcion ? { description: { es: producto.descripcion } } : {}),
+    ...(variantes.length ? { attributes: atributos.map((a) => ({ es: a.nombre })) } : {}),
+    variants: filas.map((f) => {
+      const stock = stockParaPublicar({ ...f, tipo: producto.tipo, activo: producto.activo }, depositoId);
+      return {
+        price: redondear2(precioParaPublicar(f.producto_id, f.variante_id, listaId)),
+        ...(f.sku ? { sku: f.sku } : {}),
+        // Un servicio se vende sin tope: stock vacío es "sin límite".
+        stock: servicio ? '' : stock,
+        ...(variantes.length ? { values: atributos.map((a) => ({ es: valorDe.get(f.variante_id, a.id)?.valor ?? '-' })) } : {})
+      };
+    })
+  };
+  return { cuerpo, filas };
+}
+
+async function publicarProducto(integracion, producto) {
+  const { cuerpo, filas } = productoParaTiendaNube(producto, integracion);
+  const creado = await apiDeLaTienda(integracion).crearProducto(cuerpo);
+  const variantes = Array.isArray(creado?.variants) ? creado.variants : [];
+  if (!creado?.id || variantes.length !== filas.length) {
+    throw new TiendaNubeError(`Tienda Nube no devolvió las variantes de "${producto.nombre}".`);
+  }
+  // Tienda Nube devuelve las variantes en el orden en que se mandaron; con
+  // SKU, se confirma por SKU.
+  const ahora = new Date().toISOString();
+  withTransaction(() => {
+    const insertar = db.prepare(
+      `INSERT INTO integracion_vinculos
+         (integracion_id, producto_id, variante_id, externo_producto_id, externo_variante_id, ultimo_stock, ultimo_precio, creado_en, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    filas.forEach((f, i) => {
+      const externa = (f.sku && variantes.find((v) => v.sku === f.sku)) || variantes[i];
+      const enviada = cuerpo.variants[i];
+      insertar.run(
+        integracion.id,
+        f.producto_id,
+        f.variante_id,
+        String(creado.id),
+        String(externa.id),
+        enviada.stock === '' ? null : enviada.stock,
+        enviada.price,
+        ahora,
+        integracion.organizacion_id
+      );
+    });
+  });
+}
+
+/* --- Rutas --- */
+
+function integracionConectadaDe(req) {
+  const integracion = integracionDelNegocio(req.usuario.organizacion_id);
+  if (integracion?.estado !== 'conectada') throw new ErrorValidacion('Primero conectá tu Tienda Nube.');
+  return integracion;
+}
+
+app.get('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const integracion = integracionDelNegocio(organizacionId);
+  const base = { disponible: tiendaNubeConfigurada(), conectada: integracion?.estado === 'conectada' };
+  if (!integracion) return res.json(base);
+  const contar = (sql) => db.prepare(sql).get(integracion.id).n;
+  res.json({
+    ...base,
+    tienda: { nombre: integracion.nombre_cuenta, url: integracion.url_cuenta, id: integracion.cuenta_externa },
+    conectada_en: integracion.conectada_en,
+    ultima_sincronizacion: integracion.ultima_sincronizacion,
+    lista_precio_id: integracion.lista_precio_id,
+    deposito_id: integracion.deposito_id,
+    cuenta_tesoreria_id: integracion.cuenta_tesoreria_id,
+    productos_publicados: contar('SELECT COUNT(DISTINCT producto_id) AS n FROM integracion_vinculos WHERE integracion_id = ?'),
+    pedidos_importados: contar("SELECT COUNT(*) AS n FROM integracion_pedidos WHERE integracion_id = ? AND estado = 'importado'"),
+    pedidos: db
+      .prepare(
+        `SELECT id, externo_id, numero, estado, venta_id, error, actualizado_en
+           FROM integracion_pedidos WHERE integracion_id = ?
+          ORDER BY error IS NULL, actualizado_en DESC LIMIT 30`
+      )
+      .all(integracion.id)
+      // Lo que falta cobrar de las que son venta (las de pago manual).
+      .map((p) => ({ ...p, por_cobrar: p.estado === 'importado' && p.venta_id ? Math.max(0, saldoDeLaVenta(p.venta_id)) : 0 })),
+    actividad: db
+      .prepare('SELECT fecha, tipo, resultado, detalle FROM integracion_log WHERE integracion_id = ? ORDER BY id DESC LIMIT 30')
+      .all(integracion.id)
+  });
+});
+
+app.post('/api/integraciones/tiendanube/conectar', soloAdmin, (req, res) => {
+  if (!tiendaNubeConfigurada()) {
+    return res.status(503).json({ error: 'Tienda Nube todavía no está disponible en este servidor.' });
+  }
+  res.json({
+    url: urlDeAutorizacion(firmarEstado({ usuarioId: req.usuario.id, organizacionId: req.usuario.organizacion_id }))
+  });
+});
+
+// La instalación hecha desde Tienda Nube: qué tienda es, y confirmarla.
+app.get('/api/integraciones/tiendanube/pendiente', soloAdmin, (req, res) => {
+  const pendiente = conexionPendienteDe(req);
+  if (!pendiente) return res.status(404).json({ error: 'Pasó mucho tiempo: conectá la tienda de nuevo desde acá.' });
+  res.json({ nombre: pendiente.nombre, url: pendiente.url });
+});
+
+app.post('/api/integraciones/tiendanube/confirmar', soloAdmin, asincrono(async (req, res) => {
+  const pendiente = conexionPendienteDe(req);
+  if (!pendiente) return res.status(404).json({ error: 'Pasó mucho tiempo: conectá la tienda de nuevo desde acá.' });
+  conexionesPendientes.delete(String(req.body.clave));
+  await conectarTiendaNube(req, { organizacionId: pendiente.organizacionId, usuarioId: pendiente.usuarioId, tienda: pendiente });
+  res.json({ ok: true });
+}));
+
+app.put('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const integracion = integracionConectadaDe(req);
+  const valor = (campo) => (req.body[campo] === undefined ? integracion[campo] : req.body[campo] ? Number(req.body[campo]) : null);
+  const listaId = valor('lista_precio_id');
+  const depositoId = valor('deposito_id');
+  const cuentaId = valor('cuenta_tesoreria_id');
+  if (listaId && !listaPrecioValida(listaId, organizacionId)) {
+    return res.status(400).json({ error: 'La lista de precios no existe.' });
+  }
+  if (depositoId && !depositoActivoValido(depositoId, organizacionId)) {
+    return res.status(400).json({ error: 'El depósito no existe o está inactivo.' });
+  }
+  if (cuentaId && !db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?').get(cuentaId, organizacionId)) {
+    return res.status(400).json({ error: 'La cuenta no existe.' });
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE integraciones SET lista_precio_id = ?, deposito_id = ?, cuenta_tesoreria_id = ? WHERE id = ?').run(
+      listaId,
+      depositoId,
+      cuentaId,
+      integracion.id
+    );
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'integracion',
+      operacion_id: integracion.id,
+      valor_anterior: JSON.stringify({ lista_precio_id: integracion.lista_precio_id, deposito_id: integracion.deposito_id, cuenta_tesoreria_id: integracion.cuenta_tesoreria_id }),
+      valor_nuevo: JSON.stringify({ lista_precio_id: listaId, deposito_id: depositoId, cuenta_tesoreria_id: cuentaId }),
+      detalle: 'Cambió la lista, el depósito o la cuenta de Tienda Nube'
+    });
+  });
+  // Con otra lista u otro depósito cambia lo publicado: se manda ya.
+  programarSincronizacion(organizacionId, 0);
+  res.json({ ok: true });
+});
+
+app.post('/api/integraciones/tiendanube/desconectar', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  // Se sacan los avisos de Tienda Nube antes de soltar el permiso. Si falla,
+  // igual se desconecta: sin token, un aviso que llegue no encuentra tienda.
+  try {
+    const api = apiDeLaTienda(integracion);
+    for (const w of (await api.webhooks()) ?? []) {
+      if (String(w.url).endsWith('/api/integraciones/tiendanube/webhook')) await api.borrarWebhook(w.id);
+    }
+  } catch (err) {
+    console.error('[tiendanube] no se pudieron borrar los avisos:', err.message);
+  }
+  desconectarIntegracion(integracion, `${req.usuario.nombre || req.usuario.usuario} desconectó la tienda desde Nexo.`, req.usuario.id);
+  res.json({ ok: true });
+}));
+
+app.post('/api/integraciones/tiendanube/sincronizar', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  await sincronizarIntegracion(integracion.id);
+  res.json({ ok: true });
+}));
+
+// Los productos que se pueden publicar, con cuáles ya están en la tienda.
+// Los planes de socios no: se cobran desde Socios.
+app.get('/api/integraciones/tiendanube/productos', soloAdmin, (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  res.json(
+    db
+      .prepare(
+        `SELECT productos.id, productos.nombre, productos.sku, productos.tipo, productos.activo,
+                (SELECT COUNT(*) FROM producto_variantes WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes,
+                EXISTS (SELECT 1 FROM integracion_vinculos
+                         WHERE integracion_vinculos.integracion_id = ? AND integracion_vinculos.producto_id = productos.id) AS publicado
+           FROM productos
+          WHERE productos.organizacion_id = ? AND productos.activo = 1
+            AND NOT EXISTS (SELECT 1 FROM planes_socio WHERE planes_socio.producto_id = productos.id)
+          ORDER BY productos.nombre COLLATE NOCASE`
+      )
+      .all(integracion.id, req.usuario.organizacion_id)
+      .map((p) => ({ ...p, publicado: Boolean(p.publicado) }))
+  );
+});
+
+// Publica los productos elegidos, de a uno: si uno falla, los demás siguen.
+// Hasta 50 por pedido, para no esperar minutos una respuesta.
+app.post('/api/integraciones/tiendanube/publicar', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  const ids = req.body?.producto_ids;
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50 || !ids.every(esIdValido)) {
+    return res.status(400).json({ error: 'Elegí entre 1 y 50 productos.' });
+  }
+  const buscar = db.prepare(
+    `SELECT * FROM productos WHERE id = ? AND organizacion_id = ? AND activo = 1
+        AND NOT EXISTS (SELECT 1 FROM integracion_vinculos WHERE integracion_id = ? AND producto_id = productos.id)`
+  );
+  const publicados = [];
+  const errores = [];
+  for (const id of [...new Set(ids)]) {
+    const producto = buscar.get(id, req.usuario.organizacion_id, integracion.id);
+    if (!producto) continue;
+    try {
+      await publicarProducto(integracion, producto);
+      publicados.push(producto.nombre);
+    } catch (err) {
+      if (!(err instanceof TiendaNubeError || err instanceof ErrorValidacion)) throw err;
+      errores.push({ producto: producto.nombre, error: err.message });
+    }
+  }
+  if (publicados.length) {
+    anotarIntegracion(integracion, 'publicacion', 'ok', `Publicados en la tienda: ${publicados.join(', ')}.`);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: req.usuario.organizacion_id,
+      operacion_tipo: 'integracion',
+      operacion_id: integracion.id,
+      detalle: `Publicó en Tienda Nube: ${publicados.join(', ')}`.slice(0, 500)
+    });
+  }
+  for (const e of errores) anotarIntegracion(integracion, 'publicacion', 'error', `No se publicó "${e.producto}": ${e.error}`);
+  res.json({ publicados: publicados.length, errores });
+}));
+
+// Reintentar un pedido pendiente: se vuelve a leer de la tienda (pudo
+// cambiar), y si no contesta, con lo guardado.
+app.post('/api/integraciones/tiendanube/pedidos/:id/reintentar', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  const fila = db
+    .prepare("SELECT * FROM integracion_pedidos WHERE id = ? AND integracion_id = ? AND estado = 'pendiente'")
+    .get(Number(req.params.id), integracion.id);
+  if (!fila) return res.status(404).json({ error: 'No hay un pedido pendiente con ese número.' });
+  let pedido;
+  try {
+    pedido = await apiDeLaTienda(integracion).pedido(fila.externo_id);
+  } catch {
+    pedido = fila.datos ? JSON.parse(fila.datos) : null;
+  }
+  if (!pedido) return res.status(502).json({ error: 'Tienda Nube no contestó. Probá en unos minutos.' });
+  const estado = procesarPedido(integracionPorId(integracion.id), pedido);
+  const actualizado = db.prepare('SELECT estado, venta_id, error FROM integracion_pedidos WHERE id = ?').get(fila.id);
+  res.json({ estado: estado ?? actualizado.estado, venta_id: actualizado.venta_id, error: actualizado.error });
+}));
+
+// Una venta cancelada en la tienda que ya era venta: el negocio ya la revisó
+// (hizo la devolución, o no hacía falta) y deja de aparecer arriba.
+app.post('/api/integraciones/tiendanube/pedidos/:id/revisado', soloAdmin, (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  const { changes } = db
+    .prepare("UPDATE integracion_pedidos SET error = NULL WHERE id = ? AND integracion_id = ? AND estado = 'cancelado'")
+    .run(Number(req.params.id), integracion.id);
+  if (!changes) return res.status(404).json({ error: 'Pedido no encontrado.' });
+  res.json({ ok: true });
+});
+
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
 // Express. Va después de todas las rutas y de `autenticar`.
 app.use('/api', (req, res) => {
@@ -16137,6 +17376,8 @@ process.on('unhandledRejection', (motivo) => {
 // de atender, y cada 6 horas.
 borrarNegociosVencidos();
 setInterval(borrarNegociosVencidos, 6 * 60 * 60 * 1000).unref();
+// Las tiendas conectadas (CLAUDE.md §32): pedidos, stock y precio.
+setInterval(() => sincronizarTodas().catch((err) => console.error('[integraciones]', err)), SINCRONIZAR_CADA_MS).unref();
 
 app.listen(PORT, process.env.NEXO_HOST || undefined, () => {
   console.log(`Nexo backend escuchando en http://${process.env.NEXO_HOST || 'localhost'}:${PORT}`);

@@ -48,6 +48,7 @@ const PRECACHE = [
   "/css/styles.css",
   "/fonts/inter.woff2",
   "/img/iconos.svg",
+  "/img/tiendanube.svg",
   "/img/app/icono-192.png",
   "/img/app/apple-touch-icon.png",
   "/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png",
@@ -94,6 +95,7 @@ const PRECACHE = [
   "/js/dominios/primeros-pasos.js",
   "/js/dominios/problema.js",
   "/js/dominios/socios.js",
+  "/js/dominios/tienda-nube.js",
   "/js/dominios/trabajos.js",
   "/js/dominios/usuarios.js",
 ];

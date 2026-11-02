@@ -60,7 +60,7 @@ export const SECCIONES = [
     preguntas: ["cómo uso el asistente", "puedo cargar una venta hablando", "cómo dicto", "para qué sirve el asistente", "puedo hablarle", "cómo cargo por voz"],
     palabras: ["asistente", "ia", "inteligencia", "voz", "dictar", "microfono", "hablar", "audio", "chat"],
     bloques: [
-      "El asistente entiende frases como las que le dirías a alguien: \"vendí 3 remeras a Juan por 45 mil y me pagó por Mercado Pago\", \"compré 10 pantalones a Textil Norte a 9 mil cada uno\" o \"pagué 25 mil de luz en efectivo\".",
+      "El asistente entiende frases como las que le dirías a alguien: \"vendí 3 remeras a Juan por 45 mil y me pagó por Mercado Pago\", \"compré 10 pantalones a Textil Norte a 9 mil cada uno\", \"pagué 25 mil de luz en efectivo\" o \"Juan me devolvió la remera, le quedó chica\".",
       { pasos: [
         "Abrí el asistente con el botón de brillitos, o desde **Asistente** en el menú.",
         "Escribí lo que pasó, o tocá el **micrófono**, decilo y tocalo otra vez para terminar.",
@@ -251,7 +251,8 @@ export const SECCIONES = [
         "Tocá **Registrar devolución**."
       ] },
       "Los productos vuelven al stock y se descuenta de la venta. Si la venta estaba facturada, desde la devolución tocás **Emitir nota de crédito**.",
-      "Todas las devoluciones quedan en **Devoluciones**."
+      "Todas las devoluciones quedan en **Devoluciones**.",
+      "También se la podés contar al asistente: \"Juan me devolvió la remera, le quedó chica\". Busca la venta y te muestra qué se devuelve antes de cargarlo."
     ],
     ver: ["anular-venta", "facturar"]
   },

@@ -86,7 +86,12 @@ test('Groq: manda las herramientas con su esquema y lee la llamada como propuest
   assert.equal(cuerpo.model, 'openai/gpt-oss-20b');
   assert.equal(cuerpo.reasoning_effort, 'low');
   assert.equal(cuerpo.tool_choice, 'auto');
-  assert.deepEqual(cuerpo.tools.map((t) => t.function.name), ['registrar_venta', 'registrar_compra', 'registrar_gasto']);
+  assert.deepEqual(cuerpo.tools.map((t) => t.function.name), [
+    'registrar_venta',
+    'registrar_compra',
+    'registrar_gasto',
+    'registrar_devolucion'
+  ]);
   assert.equal(cuerpo.tools[0].type, 'function');
   assert.ok(cuerpo.tools[0].function.parameters.required.includes('cliente'));
   // El catálogo va en el prompt de sistema, primero (lo que Groq cachea), y

@@ -28,14 +28,16 @@ function puertoLibre() {
 // tests pueden afirmar sobre el código de error.
 export function crearCliente(url) {
   const cookies = new Map();
-  async function pedir(metodo, ruta, cuerpo, cabeceras = {}) {
+  async function pedir(metodo, ruta, cuerpo, cabeceras = {}, opciones = {}) {
     const headers = { 'content-type': 'application/json', ...cabeceras };
     if (cookies.size) headers.cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     const res = await fetch(url + ruta, {
       method: metodo,
       headers,
       // Un string se manda tal cual: sirve para probar JSON malformado.
-      body: cuerpo === undefined ? undefined : typeof cuerpo === 'string' ? cuerpo : JSON.stringify(cuerpo)
+      body: cuerpo === undefined ? undefined : typeof cuerpo === 'string' ? cuerpo : JSON.stringify(cuerpo),
+      // { redirect: 'manual' } deja ver adónde manda una redirección.
+      ...opciones
     });
     for (const linea of res.headers.getSetCookie()) {
       const [par] = linea.split(';');

@@ -155,11 +155,16 @@ const HERRAMIENTAS = [
       properties: {
         categoria: {
           type: 'string',
-          description: 'Nombre de una categoría de gasto EXISTENTE (tiene que matchear una de las listadas, no se crean categorías nuevas).'
+          // Antes decía "tiene que matchear una de las listadas" y el modelo, sin
+          // una parecida, no proponía el gasto: la tarjeta de confirmación ya
+          // deja elegir la categoría, y server.js no crea ninguna por nombre.
+          description:
+            'La categoría de gasto de las listadas que más se parezca. Si ninguna se parece, una palabra corta que describa el gasto (por ejemplo "Luz"): la persona elige la categoría antes de confirmar.'
         },
         cuenta: {
           type: 'string',
-          description: 'Nombre de la cuenta de tesorería de la que sale la plata (tiene que matchear una existente).'
+          description:
+            'La cuenta de tesorería de las listadas de la que salió la plata (efectivo, banco, Mercado Pago). Si el texto no lo dice, la de efectivo.'
         },
         proveedor: {
           type: ['string', 'null'],
@@ -181,13 +186,55 @@ const HERRAMIENTAS = [
       required: ['categoria', 'cuenta', 'proveedor', 'importe', 'tipo', 'descripcion', 'fecha'],
       additionalProperties: false
     }
+  },
+  {
+    // hist. §119: "Juan, le quedó chica la remera y quiere devolverla". La
+    // venta la busca server.js entre las del cliente; acá solo van nombres.
+    // Lo opcional no es `required`: Groq valida el esquema y el modelo omite
+    // los campos que serían null.
+    name: 'registrar_devolucion',
+    description:
+      'Registra que un cliente devolvió, o quiere devolver, productos que se le vendieron (le quedó chico, vino fallado, lo cambia). Nexo busca la venta. No sirve para devolverle algo a un proveedor.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        cliente: { type: 'string', description: 'Nombre del cliente que devuelve.' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              producto: {
+                type: 'string',
+                description: 'Nombre del producto tal como aparece en el catálogo (aunque sea parcial).'
+              },
+              cantidad: { type: 'number', description: 'Cuántas unidades devuelve. Si no lo dice, 1.' }
+            },
+            required: ['producto'],
+            additionalProperties: false
+          }
+        },
+        reintegro: {
+          type: ['object', 'null'],
+          description:
+            'Solo si el texto dice que se le devolvió la plata: de qué cuenta salió. Si no lo dice (le queda a favor, o lo cambia por otra cosa), null.',
+          properties: { cuenta: { type: 'string', description: 'Nombre de una de las cuentas listadas.' } },
+          required: ['cuenta'],
+          additionalProperties: false
+        },
+        motivo: { type: ['string', 'null'], description: 'Por qué lo devuelve, si lo dice (le quedó chico, vino fallado).' }
+      },
+      required: ['cliente', 'items'],
+      additionalProperties: false
+    }
   }
 ];
 
 const TIPO_POR_HERRAMIENTA = {
   registrar_venta: 'venta',
   registrar_compra: 'compra',
-  registrar_gasto: 'gasto'
+  registrar_gasto: 'gasto',
+  registrar_devolucion: 'devolucion'
 };
 
 // El contexto del negocio (cuentas, categorías, catálogo) es lo único
@@ -203,11 +250,14 @@ function construirSystemPrompt(contexto) {
   const categorias = listar(contexto.categoriasGasto, (c) => `- ${c.nombre} (${c.tipo})`);
   // El catálogo puede crecer mucho; se acota para no inflar el prompt de
   // forma innecesaria — alcanza para que el modelo matchee nombres.
-  const productos = listar(contexto.productos.slice(0, 300), (p) => `- ${p.nombre}`);
+  // server.js ya manda solo los que se parecen a la frase (hist. §120).
+  const productos = contexto.productos.length
+    ? contexto.productos.slice(0, 300).map((p) => `- ${p.nombre}`).join('\n')
+    : '(ninguno se parece a lo que dijo)';
 
   return `Sos el intérprete de operaciones por texto de Nexo, un sistema de gestión para pymes.
 
-Tu única función es traducir una frase en lenguaje natural a UNA llamada a una de las herramientas disponibles (registrar_venta, registrar_compra, registrar_gasto). VOS NO EJECUTÁS NADA — solo proponés una operación, que un humano va a revisar y confirmar antes de que se aplique. Si el texto no describe con claridad una venta, compra o gasto ya sucedidos (una pregunta, un saludo, un pedido ambiguo), NO llames a ninguna herramienta: respondé en texto plano, en una frase breve, explicando que no identificaste una operación.
+Tu única función es traducir una frase en lenguaje natural a UNA llamada a una de las herramientas disponibles (registrar_venta, registrar_compra, registrar_gasto, registrar_devolucion). VOS NO EJECUTÁS NADA — solo proponés una operación, que un humano va a revisar y confirmar antes de que se aplique. Si el texto no describe con claridad una venta, una compra, un gasto o la devolución de un cliente (una pregunta, un saludo, un pedido ambiguo), NO llames a ninguna herramienta: respondé en texto plano, en una frase breve, explicando que no identificaste una operación.
 
 Reglas:
 - Usá siempre NOMBRES, nunca inventes IDs — eso lo resuelve Nexo después.
@@ -217,10 +267,12 @@ Reglas:
 - "a X", "X cada uno" o "X el kilo" es el precio por unidad; "por X" o "X en total" es el total de todas las unidades. Ejemplo: "vendí 4 gorras a 9 mil" es cantidad 4 y precio_unitario 9000; "vendí 4 gorras por 36 mil" también.
 - En "cuenta" va el nombre exacto de una de las cuentas listadas (nunca su tipo).
 - Si el texto dice "ayer", "anteayer" o un día de la semana, calculá la fecha YYYY-MM-DD a partir de la de hoy.
-- Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca.
+- Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca. Si ninguna se parece, llamá igual a registrar_gasto con una palabra corta como categoría: la persona la elige antes de confirmar. Nunca dejes de proponer un gasto porque no encontrás la categoría o la cuenta.
 - No calcules IVA ni retenciones: los precios que dice el texto son finales, y Nexo discrimina el IVA solo.
 - Los montos se dicen de muchas formas: "45 mil", "45 lucas" y "45k" son 45000; "1 palo" o "un millón" es 1000000; "luca" sola es 1000.
-- No inventes un cliente, proveedor, cuenta o categoría que no tenga nada que ver con lo que dice el texto solo para completar el esquema.
+- Todo se cuenta desde el negocio: si un cliente "compró" o "se llevó" algo, para el negocio es una venta (registrar_venta); registrar_compra es solo mercadería que el negocio le compró a un proveedor.
+- Si un cliente devolvió algo o lo quiere devolver o cambiar ("le quedó chica la remera", "vino fallado"), es una devolución: registrar_devolucion, aunque esté dicho en presente.
+- No inventes un cliente o proveedor que no tenga nada que ver con lo que dice el texto solo para completar el esquema.
 
 Cuentas de tesorería disponibles:
 ${cuentas}
@@ -228,7 +280,7 @@ ${cuentas}
 Categorías de gasto disponibles:
 ${categorias}
 
-Catálogo de productos (para ventas — una venta NO puede crear un producto nuevo):
+Productos del catálogo que se parecen a la frase (una venta NO puede crear un producto nuevo; si el que dice no está acá, usá el nombre tal cual lo dijo):
 ${productos}`;
 }
 
@@ -448,7 +500,7 @@ export async function transcribir(audio, tipo, palabras = []) {
 // ni depender de tener una API key configurada. NO es un intento de NLU
 // real — usa una mini-sintaxis de prueba tipo "venta: campo=valor;
 // campo=valor". Se activa con NEXO_INTERPRETE=stub. Cualquier texto que no
-// empiece con "venta:", "compra:" o "gasto:" se interpreta como "sin
+// empiece con "venta:", "compra:", "gasto:" o "devolucion:" se interpreta como "sin
 // operación", igual que haría el modelo real con un saludo.
 function parsearItems(partes) {
   const crudos = partes.item ? [partes.item] : partes.items ? partes.items.split('|') : [];
@@ -459,7 +511,7 @@ function parsearItems(partes) {
 }
 
 function interpretarStub(texto) {
-  const match = texto.trim().match(/^(venta|compra|gasto):\s*(.*)$/is);
+  const match = texto.trim().match(/^(venta|compra|gasto|devolucion):\s*(.*)$/is);
   if (!match) {
     return { tipo: null, mensaje: 'No reconocí ninguna operación en ese texto.' };
   }
@@ -482,6 +534,17 @@ function interpretarStub(texto) {
     return {
       tipo: 'venta',
       datos: { cliente: partes.cliente ?? null, items: parsearItems(partes), cobro, fecha: partes.fecha ?? null }
+    };
+  }
+  if (tipo === 'devolucion') {
+    return {
+      tipo: 'devolucion',
+      datos: {
+        cliente: partes.cliente ?? null,
+        items: parsearItems(partes).map(({ producto, cantidad }) => ({ producto, cantidad })),
+        reintegro: partes.reintegro ? { cuenta: partes.reintegro } : null,
+        motivo: partes.motivo ?? null
+      }
     };
   }
   if (tipo === 'compra') {

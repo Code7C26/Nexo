@@ -10672,3 +10672,213 @@ para el asistente.
 - Capturas o videos cortos por sección.
 - Las preguntas sobre los números del negocio ("¿cuánto vendí este mes?") hoy
   llevan a Resumen; el punto 4 del plan las va a contestar con los datos.
+
+## 119. El asistente registra devoluciones, propone siempre el gasto, y el cupo de Groq, 2 de noviembre de 2026
+
+Dos cosas que el usuario y su profesor probaron en el sitio y no anduvieron, y
+lo que se aprendió del cupo de Groq.
+
+**1. "Pagué 25 mil de luz en efectivo" no proponía nada.** El esquema de
+`registrar_gasto` decía que la categoría "tiene que matchear una de las
+listadas"; sin una parecida (el negocio no tiene "Servicios"), el modelo
+contestaba en texto. Ahora propone la más parecida o una palabra corta
+("Luz"), y la tarjeta arranca en "Elegí una categoría" (antes quedaba elegida
+la primera de la lista, y se podía confirmar sin mirar) con lo dicho en la
+descripción. Sin categorías, el select dice que se creen en Gastos ›
+Categorías. Probado contra Groq con un negocio sin "Servicios", sin
+categorías y con "Servicios": las seis frases proponen el gasto.
+
+**2. "Juan, le quedó chica la remera y quiere devolverla" (el profe).** El
+asistente solo sabía ventas, compras y gastos. Ahora:
+- **`registrar_devolucion`** en `interprete.js`: cliente, productos con
+  cantidad, reintegro (solo si dice que se le devolvió la plata) y motivo. Lo
+  opcional no es `required`: Groq valida el esquema y el modelo omite lo que
+  sería null. Regla nueva en el prompt: "le quedó chica", "vino fallado" es
+  una devolución aunque esté en presente; y todo se cuenta desde el negocio
+  ("Rosa compró…" es una venta: en la prueba salía como compra).
+- **`server.js`:** `registrarDevolucion()` sale del handler de
+  `POST /api/devoluciones` (mismas validaciones y mensajes; el endpoint ahora
+  es una línea), y la usa también el asistente con actor `asistente`.
+  `resolverPropuesta('devolucion')` busca con `ventasParaDevolver()` las
+  ventas del cliente no anuladas con lo que queda por devolver de cada
+  renglón: primero las que tienen todos los productos, de la más nueva a la
+  más vieja, hasta 5, con sus renglones ya armados.
+- **La tarjeta** (`app.js`): de quién, de qué venta (se puede elegir otra),
+  cuánto de cada renglón con lo que queda, "vuelve al stock", si se le
+  devuelve la plata y de qué cuenta, y el motivo.
+- **Esquema:** `asistente_mensajes.operacion_tipo` suma `'devolucion'` a su
+  CHECK. Rebuild en `db/index.js` con el método del de `organizacion_id NOT
+  NULL` (parte del CREATE TABLE actual, cambia solo el CHECK, conserva ids,
+  índices y `sqlite_sequence`, en una transacción). `schema.sql` al día.
+  `npm run verificar-migracion`: 24 de 24 (base nueva, copia de la local y
+  cada respaldo viejo).
+- **Red del manual:** si la IA no ve una operación y el manual tiene algo
+  seguro sobre lo dicho, el asistente muestra eso ("No es algo que pueda
+  cargar, pero esto del manual te puede servir"), sin otra llamada.
+  `clasificarFrase` manda "devolv…" y "le quedó chico" a la IA.
+
+**3. El cupo de Groq se agotó con las pruebas.** El plan gratis de
+`gpt-oss-20b` da 200.000 tokens por día (ventana de 24 horas) y 1000
+pedidos; una frase usa entre 1500 y 2500 tokens: **unas 100 frases por día
+para toda la instalación**. Las corridas de `npm run probar-ia` de este día
+(30 frases cada una, con la misma clave que el servidor) lo agotaron, y el
+sitio contestó "mucho uso" un rato. Desde ahora las pruebas van con el stub;
+`probar-ia` se corre poco y sabiendo que gasta el cupo del sitio. Para usarlo
+en serio (la demo, los conocidos), el Dev Tier de Groq es pago por uso sin
+fijo (decisión de plata del usuario), o una clave aparte para probar.
+
+**Cómo se verificó.** `test/asistente-devolucion.test.js` (7, con el stub):
+propone sobre la venta más nueva y ofrece la otra, confirmada devuelve el
+stock y no se confirma dos veces, el tope de lo que queda con el mismo
+mensaje del alta, el reintegro descuenta la cuenta, sin venta o cliente
+desconocido no se puede confirmar, la venta anulada no se ofrece, y
+`POST /api/devoluciones` responde igual que antes. `npm test` (223), `npm run
+lint` y `verificar-migracion`. En Chrome, compu y 390 px: la tarjeta, la
+devolución registrada y la red del manual, sin errores de consola.
+
+**Falta:** probar contra Groq real la frase del profe cuando vuelva el cupo,
+y publicar (el próximo arranque migra la tabla en la base real, con el
+respaldo automático antes).
+
+## 120. Que el asistente responda a todo: la charla, "llevame a…" y menos tokens, 2 de noviembre de 2026
+
+Pedido del usuario: "la idea es que el asistente y la app en general respondan
+a cualquier cosa que el público pueda llegar a poner". Plan en tres bloques
+(anotado en `handoff.md`, punto 3d): 1) lo que se contesta sin IA, 2) más
+operaciones con la IA, 3) preguntas sobre los números. Este § es el bloque 1.
+
+**Qué se hizo.**
+- `clasificarFrase` (core/buscar-ayuda.js) suma dos tipos, sin IA:
+  - **charla**: saludo, gracias, despedida y "¿qué podés hacer?/ayuda". Se
+    sacan las fórmulas una tras otra ("buenas, ¿cómo andás?") y es charla
+    solo si no queda nada con contenido: "hola, vendí 3 remeras" es una venta.
+  - **navegar**: "llevame a ventas", "abrí el stock", "quiero ver la caja",
+    con 21 pantallas. El asistente lleva solo (y en el celular cierra el
+    panel). "Abrí la caja" no navega: es abrir el turno del mostrador, y lo
+    contesta el manual.
+- **Nadie queda trabado:** el saludo, "¿qué podés hacer?", la pregunta que el
+  manual no tiene ("Eso no lo sé: estoy para ayudarte con tu negocio") y lo
+  que la IA no entiende ("No entendí qué querés cargar") muestran lo que el
+  asistente sabe hacer, con un ejemplo que se toca para cada cosa
+  (`htmlCapacidades`, dominios/ayuda.js). Los ejemplos pasan a un click
+  delegado: también andan los que aparecen en las respuestas.
+- **Menos tokens por frase:** `contextoParaInterprete(org, texto)` manda a la
+  IA solo los productos con una palabra que empiece igual (4 letras) que una
+  de la frase, hasta 40, en vez del catálogo entero (hasta 300). El prompt
+  dice que son "los que se parecen a la frase".
+
+**Cómo se verificó.** `test/ayuda.test.js` suma la charla (7 frases y "hola,
+vendí…" como venta) y la navegación (6 frases a vistas que existen, y "abrí
+la caja" al manual). `npm test` (225) y `npm run lint`. En Chrome, compu y
+390 px: hola, la capital de Francia, una frase sin sentido, gracias, tocar un
+ejemplo y "llevame a ventas"; solo la frase sin sentido llegó a la IA.
+
+**Sigue:** bloque 2 (cobrar a un cliente, pagar a un proveedor, rotura o
+pérdida de stock, alta de cliente o producto, presupuesto, anotar una
+consulta), con las herramientas que se mandan elegidas según la frase para
+no agrandar cada pedido; y bloque 3, el punto 4 del plan.
+
+## 121. Tienda Nube: la base de integraciones, publicar, stock y precio, y los pedidos como ventas, 2 de noviembre de 2026
+
+Punto 5 del plan hasta el 20 de noviembre ("base de integraciones y Mercado
+Libre"). Se empezó por Tienda Nube porque su app ya estaba creada (49947) con
+las claves en el `.env`; las de Mercado Libre siguen vacías. La base común de
+CLAUDE.md §32 sirve igual para las dos.
+
+**Esquema (aditivo, cuatro tablas nuevas, nada existente cambia).**
+- `integraciones`: una por negocio y plataforma. La tienda (`cuenta_externa`),
+  el token cifrado, la lista y el depósito que se publican, la cuenta donde
+  entra lo cobrado y `pedidos_desde` (lo anterior a conectar no se trae). Un
+  índice parcial impide que una tienda conectada esté en dos negocios.
+- `integracion_vinculos`: variante de la tienda ↔ producto o variante de
+  Nexo, con lo último que se mandó (stock y precio). Nunca por nombre.
+- `integracion_pedidos`: cada pedido una sola vez (UNIQUE), con su venta, su
+  estado (importado, pendiente, cancelado) y el error si no pasó.
+- `integracion_log`: la actividad, hasta 500 filas por integración.
+- `verificar-migracion`: 24 de 24 casos, la base real intacta.
+
+**Backend.** `backend/tiendanube.js` (sin dependencias, como `arca.js`, no
+toca la base): OAuth, `state` firmado con HMAC y vencimiento, firma de
+webhooks (`x-linkedstore-hmac-sha256`), token cifrado con AES-256-GCM (clave
+derivada del secreto de la app, sin variable nueva) y el cliente de la API
+2025-03 con el límite de 40/2 por segundo. En `server.js`:
+- **Conectar:** el callback (público) exige que el `state` sea válido y de la
+  misma persona. Sin `state` (la app se instaló desde Tienda Nube) no conecta
+  solo: guarda el permiso 10 minutos y pide confirmarlo en Nexo viendo el
+  nombre de la tienda. Así un tercero no puede atar su tienda al negocio de
+  otro (el test lo encontró: la primera versión caía al negocio de la sesión).
+- **Webhooks:** order/created, paid y cancelled, product/deleted y
+  app/uninstalled, solo si la dirección es https pública. Contestan enseguida
+  y procesan después. Los tres de privacidad (`/privacidad/tienda`,
+  `borrar-cliente`, `datos-cliente`) borran lo que Nexo guardó de Tienda Nube;
+  los clientes y las ventas son del negocio y quedan.
+- **Publicar:** crea el producto con sus atributos (hasta 3), una variante
+  por variante activa, precio de la lista y stock del depósito. Un servicio va
+  sin tope de stock.
+- **Stock y precio:** Nexo manda. `registrarMovimientoStock` programa una
+  pasada a los 3 segundos, y cada 5 minutos hay una de todas las tiendas
+  (cubre los precios, que se editan desde muchas pantallas). Se manda solo lo
+  que cambió, de a 50 variantes (`PATCH /products/stock-price`).
+- **Pedidos:** uno pagado pasa a venta con `crearVenta` (la misma de una
+  venta a mano), en el depósito y con la lista de la integración, y su cobro
+  en la cuenta elegida. El cliente se busca por mail o documento, si no se
+  crea. El descuento del pedido se reparte entre los renglones. Si un producto
+  no está vinculado o no hay stock, queda pendiente y se reintenta. Una
+  cancelación de algo que ya es venta no la anula sola (puede tener cobro y
+  factura): queda marcada para hacer la devolución. Auditoría con actor
+  `sistema`.
+
+**Frontend.** Configuración → Canales de venta → Tienda Nube
+(`frontend/js/dominios/tienda-nube.js`): los dos pasos, la confirmación de
+una instalación hecha desde Tienda Nube, y conectada: lista, depósito y
+cuenta, productos para publicar, pedidos (con "Reintentar", "Ver venta" y "Ya
+lo revisé") y la actividad.
+
+**Cómo se verificó.** `backend/test/tiendanube.test.js` (12 tests) contra un
+Tienda Nube falso: permisos, `state` trucho, ajeno o sin sesión, token fuera
+de la descarga de datos, publicar simple y con variantes, el stock que sale
+solo después de una venta, webhook sin firma, pedido → venta una sola vez,
+pendiente, cancelado, privacidad, desinstalar y la confirmación. `npm test`
+(237) y `npm run lint`. En Chrome, compu y 390 px, con una demo (Tienda Nube
+falso + base temporal): conectar de punta a punta, publicar dos productos y
+traer dos pedidos (uno pasó a venta, el otro quedó para revisar).
+
+**No se pudo probar contra Tienda Nube de verdad:** la redirección de la app
+apunta al sitio publicado. Se prueba al publicar (ver `handoff.md`).
+
+**Queda para después:** el envío que paga el cliente no se suma a la venta
+(el log lo avisa), el canal de la venta y la comisión (lista de "lo que le
+falta a la venta para e-commerce"), vincular productos que ya estaban en la
+tienda (por SKU, confirmado a mano), fotos, y si va solo en el plan Pro.
+
+## 122. Tienda Nube: pedidos sin pagar, cobros y el logo, 2 de noviembre de 2026
+
+Pregunta del usuario: "¿no pueden entrar pedidos todavía no pagados? Así el
+usuario también administra los cobros". Se separó por medio de pago (Tienda
+Nube marca con `gateway` "offline" o "not-provided" los que cobra el negocio):
+- **Pago manual** (transferencia, efectivo, a convenir): entra apenas se crea,
+  como venta por cobrar (la deuda en la cuenta corriente del cliente). El
+  negocio registra el cobro en Nexo. Cuando lo marca pagado en Tienda Nube,
+  Nexo cobra solo lo que falte (`cobrarLoQueFalta`): sin duplicar lo cobrado.
+  La API de Tienda Nube no deja marcar un pedido como pagado desde afuera.
+- **Pago online sin terminar:** no es venta (muchos se abandonan), queda
+  `esperando_pago` y sus unidades se descuentan del stock que se publica
+  (`reservadoPorVariante`, hasta 72 horas). Al pagarse pasa a venta cobrada.
+- **Cancelado:** si ya era venta sin cobros, factura ni devolución, se anula
+  sola (`motivoParaNoAnular` y `revertirVentaAnulada`, sacadas del botón de
+  anular, que sigue igual). Con cobros o factura queda para la devolución.
+  `abandoned` cuenta como cancelado.
+- La página muestra "Por cobrar" con lo que falta, "Esperando el pago", y los
+  pedidos pasaron de tabla a lista (el panel mide ~320 px en Configuración y
+  la tabla no entraba).
+- **Logo:** `frontend/img/tiendanube.svg`, tomado del encabezado de
+  tiendanube.com (no hay kit de marca público), como sprite con `<use>` para
+  que tome el color del tema. Es el título de la página.
+- El CHECK de `integracion_pedidos.estado` suma `esperando_pago`: la tabla no
+  estaba publicada, así que no hizo falta migración.
+
+**Cómo se verificó.** `tiendanube.test.js` (15): online pendiente reserva y
+al pagarse es venta; manual por cobrar, cobro parcial en Nexo y el resto solo
+al pagarse en la tienda, una sola vez; cancelado sin cobros se anula y el
+stock vuelve. `npm test` (240), lint, `verificar-migracion` (24 de 24). En
+Chrome, compu y 390 px, oscuro y claro, con la demo.

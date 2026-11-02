@@ -1962,6 +1962,58 @@ for (const [tabla, columna] of [
   }
 }
 
+// El asistente registra devoluciones (hist. §119): asistente_mensajes.
+// operacion_tipo suma 'devolucion' a su CHECK, que SQLite no deja cambiar sin
+// reconstruir la tabla (CLAUDE.md §34). Mismo método que el rebuild de
+// organizacion_id NOT NULL de más arriba: se parte del CREATE TABLE que la
+// tabla tiene hoy y se cambia solo el CHECK (si el texto no aparece una vez
+// exacta, el arranque se corta en vez de adivinar); los ids, los índices y
+// sqlite_sequence se conservan, todo en una transacción. Nada referencia a
+// esta tabla por FK. Re-ejecutable: con el CHECK nuevo no hace nada.
+const CHECK_OPERACION_VIEJO = /CHECK\s*\(\s*operacion_tipo\s+IN\s*\(\s*'venta',\s*'compra',\s*'gasto'\s*\)\s*\)/gi;
+const CHECK_OPERACION_NUEVO = "CHECK (operacion_tipo IN ('venta', 'compra', 'gasto', 'devolucion'))";
+const mensajesSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'asistente_mensajes'").get().sql;
+if (!mensajesSql.includes("'devolucion'")) {
+  if (cuantas(mensajesSql, CHECK_OPERACION_VIEJO) !== 1) {
+    throw new Error('asistente_mensajes: no se reconoce el CHECK de operacion_tipo para sumarle devolucion');
+  }
+  const crear = mensajesSql
+    .replace(CHECK_OPERACION_VIEJO, CHECK_OPERACION_NUEVO)
+    .replace(/^CREATE TABLE\s+("?)\w+\1/, 'CREATE TABLE asistente_mensajes_nueva');
+  const dependientes = db
+    .prepare(
+      "SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger') AND tbl_name = 'asistente_mensajes' AND sql IS NOT NULL ORDER BY rowid"
+    )
+    .all();
+  const columnas = db
+    .prepare('PRAGMA table_info(asistente_mensajes)')
+    .all()
+    .map((col) => col.name)
+    .join(', ');
+  const secuencia = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'asistente_mensajes'").get();
+  const vistas = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' ORDER BY rowid").all();
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    for (const { name } of vistas) db.exec(`DROP VIEW ${name}`);
+    db.exec(crear);
+    db.exec(`INSERT INTO asistente_mensajes_nueva (${columnas}) SELECT ${columnas} FROM asistente_mensajes`);
+    db.exec('DROP TABLE asistente_mensajes');
+    db.exec('ALTER TABLE asistente_mensajes_nueva RENAME TO asistente_mensajes');
+    for (const { sql } of dependientes) db.exec(sql);
+    db.exec("DELETE FROM sqlite_sequence WHERE name = 'asistente_mensajes'");
+    if (secuencia) db.prepare("INSERT INTO sqlite_sequence (name, seq) VALUES ('asistente_mensajes', ?)").run(secuencia.seq);
+    for (const { sql } of vistas) db.exec(sql);
+    const huerfanas = db.prepare('PRAGMA foreign_key_check(asistente_mensajes)').all();
+    if (huerfanas.length) throw new Error(`asistente_mensajes: ${huerfanas.length} fila(s) con FK rota`);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

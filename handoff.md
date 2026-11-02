@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §118);
+    siguiente número (hoy el último es §122);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,16 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (1 de noviembre de 2026)
+## Estado actual (2 de noviembre de 2026)
+
+**Lo último (2 de noviembre, hist. §121 y §122): Tienda Nube hecha.**
+Configuración → Canales de venta → Tienda Nube: conectar (OAuth), publicar
+productos, stock y precio que se mandan solos y pedidos que pasan a venta:
+cobrada si se pagó online, por cobrar si el pago es manual (§122). Probado
+contra un Tienda Nube falso (15 tests) y en Chrome
+con una demo; **falta probarlo contra la tienda demo de verdad**, que necesita
+el sitio publicado (la redirección de la app apunta ahí). Pasos en "Qué
+sigue", punto 5.
 
 **Para retomar (sesión del 29 de octubre):**
 1. **El panel de la plataforma está hecho y publicado** (hist. §111, PR #32).
@@ -1096,14 +1105,58 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      noviembre** (hist. §118, pedido del usuario). `#/ayuda` (Configuración ›
      Ayuda › Manual de uso, 40 secciones en `core/manual.js`), `#/asistente`
      con su página, y las preguntas de uso se contestan con el manual en el
-     navegador, sin la IA. **Falta que el usuario lo vea** y que el manual se
-     revise al final.
+     navegador, sin la IA. **Publicado el 2 de noviembre** (PR #40). **Falta
+     que el usuario lo vea** y que el manual se revise al final.
+  3c. **El asistente registra devoluciones y siempre propone el gasto**
+     (hist. §119, lo probaron el usuario y su profesor en el sitio). Suma una
+     migración chica (`asistente_mensajes.operacion_tipo` acepta
+     `devolucion`). **Sin publicar todavía.**
+     - **Cupo de Groq:** unas 100 frases por día para todo Nexo (200.000
+       tokens). Las pruebas de este día lo agotaron: **no correr
+       `probar-ia` con la clave del servidor** salvo lo justo. Para la demo,
+       el Dev Tier de Groq (pago por uso) lo decide el usuario.
+  3d. **Que el asistente responda a cualquier cosa** (pedido del usuario del
+     2 de noviembre: "que el asistente y la app en general respondan a
+     cualquier cosa que el público pueda llegar a poner"). Tres bloques:
+     1. ~~Sin IA: saludos, gracias, "¿qué podés hacer?", "llevame a…", y
+        nunca un "no identifiqué" seco; menos productos por pedido~~
+        **hecho** (hist. §120), sin publicar.
+     2. Más operaciones con la IA: cobrar a un cliente, pagar a un proveedor,
+        rotura o pérdida de stock, alta de cliente o producto, presupuesto,
+        anotar una consulta. Mandar solo las herramientas que tengan que ver
+        con la frase, para no agrandar cada pedido.
+     3. Preguntas sobre los números: es el punto 4 de abajo.
+     - **Para después (dicho por el usuario el 2 de noviembre, "eso guardalo
+       para después"):** los bloques 2 y 3, publicar lo de hist. §119 y §120
+       (con la migración de `asistente_mensajes`) y decidir el plan pago de
+       Groq. Todo está commiteado en `solla`, sin publicar: el sitio sigue
+       con lo del PR #40.
   4. Preguntas de solo lectura en el asistente (hoy solo tiene
      `registrar_venta`, `registrar_compra` y `registrar_gasto`). Las de
      cómo se usa ya las contesta el manual (hist. §118): este punto es para
      las de los números ("¿cuánto vendí este mes?"), que hoy llevan a
      Resumen.
   5. Base de integraciones (CLAUDE.md §32) y Mercado Libre (punto 14).
+     - **Tienda Nube hecha el 2 de noviembre** (hist. §121), commiteada en
+       `solla` y sin publicar. La base (`integraciones`, vínculos, pedidos y
+       log) sirve igual para Mercado Libre.
+     - **Para probarla de verdad, al publicar:** cargar `TIENDANUBE_APP_ID` y
+       `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env` (con el comando de
+       PowerShell que las lee del `.env`), entrar al sitio como admin,
+       Configuración → Tienda Nube → Conectar, elegir la tienda demo
+       (nexo330), publicar un producto y crear un pedido con `POST /orders`
+       (la tienda demo no vende) para ver que llega como venta.
+     - **Decidido por mí, para revisar:** Nexo manda en el stock y el precio
+       (pisa los de la tienda); un pedido con pago manual entra al crearse,
+       como venta por cobrar, y uno online recién pagado (mientras tanto
+       reserva stock 72 horas); una cancelación anula sola la venta sin
+       cobros, y la que tiene cobros o factura queda para la devolución; lo cobrado entra en la cuenta de Mercado Pago (se
+       cambia en la página); los pedidos de antes de conectar no se traen.
+     - **Pregunta para el usuario:** ¿Tienda Nube (y Mercado Libre) solo en el
+       plan Pro, como dice la landing ("muy pronto")? Hoy está para todos,
+       como ARCA.
+     - Falta: Mercado Libre (cuando estén sus claves), el envío y el canal
+       en la venta, vincular productos que ya estaban en la tienda, fotos.
 - **Del 9 al 15:**
   1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
   2. WhatsApp (ver abajo).
@@ -1570,6 +1623,24 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        la misma lógica que una venta cargada a mano, y sin duplicarse.
    - Para la demo, usuarios de prueba de Mercado Libre (se crean por API).
    - Gratis.
+   - **Lo que le falta a la venta para e-commerce** (visto con el usuario el
+     2 de noviembre; hoy solo la compra tiene envío):
+     - el canal de la venta (mostrador, Mercado Libre, Tienda Nube,
+       WhatsApp), para la rentabilidad por canal de CLAUDE.md §20;
+     - la comisión y el envío que cobra el canal como costo de la venta: si
+       no, la ganancia de un vendedor de Mercado Libre sale falsa;
+     - el envío de la venta: dirección, estado (por preparar → despachado →
+       entregado), empresa y seguimiento, copiado del canal o cargado a mano
+       en el envío propio, con una lista "para despachar hoy";
+     - stock reservado de los pedidos pagos que todavía no salieron.
+     - la ficha del producto para publicar: hoy tiene nombre, SKU, precio,
+       categoría, descripción, variantes y stock. Faltan fotos, peso y
+       medidas (los piden los envíos), código de barras, marca y precio de
+       oferta. Lo de la vidriera (SEO, diseño, orden) queda en cada canal.
+       Las fotos van al disco del servidor: una carga para los dos canales.
+     - Las etiquetas y la elección del correo quedan en Mercado Envíos y
+       Envío Nube. Son columnas nuevas en `ventas`: explicar la migración
+       antes (CLAUDE.md §34).
 15. **G: Tienda Nube** (1–2 sesiones), sobre la misma base. Gratis para
    partners, con una tienda demo.
 
@@ -1665,7 +1736,17 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   en su portal de desarrolladores. No hay sandbox: se prueba en producción entre
   usuarios de prueba (hasta 10, se crean por API y caducan).
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
-  tienda demo y la app. La tienda demo es gratis pero no admite ventas: para la
+  tienda demo y la app.
+  - **Hecho el 2 de noviembre:** app 49947, "Para tus clientes" (sin la
+    revisión de la tienda de aplicaciones), con la redirección a
+    `/api/integraciones/tiendanube/callback`, la página `/app`, Editar
+    productos, Ver pedidos y los tres webhooks de privacidad en
+    `/api/integraciones/tiendanube/privacidad/{tienda,borrar-cliente,datos-cliente}`.
+    Las rutas existen desde hist. §121 (sin publicar todavía).
+    Tienda demo: https://nexo330.mitiendanube.com, vacía a propósito: los
+    productos los sube Nexo al instalar la app ("publicar en Tienda Nube").
+    `TIENDANUBE_APP_ID` y `TIENDANUBE_CLIENT_SECRET` en el `.env` de la compu
+    (las de Mercado Libre y WhatsApp, vacías). La tienda demo es gratis pero no admite ventas: para la
   demo, probar crear la orden con `POST /orders` y confirmar que dispara
   `order/created`.
 - **Meta (etapa 11):**
@@ -1677,6 +1758,16 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **ARCA en producción.** Cada empresa usa su propio certificado, o delega el
   servicio en el CUIT de Nexo.
 - **Producción de WhatsApp.** Pide verificar un negocio real ante Meta.
+- **Correo Argentino y Andreani** (posible mejora, pedida por el usuario el 2
+  de noviembre). Va después del envío en la venta (etapa 14): cotizar,
+  generar la etiqueta y seguir el envío desde una venta con envío propio.
+  - Las dos APIs piden un contrato comercial de cada negocio, con sus
+    credenciales guardadas por empresa (CLAUDE.md §32). Para Nexo es gratis.
+  - No se puede probar sin un contrato real: no entra en la presentación.
+  - Alternativa: un servicio que junta varios correos en una API (Enviopack,
+    Zippin), sin contrato con cada uno, pero cobra por envío. Es decisión de
+    plata.
+  - Las condiciones de cada API se confirman al planificarla.
 - **Fuera de alcance (CLAUDE.md §39):**
   - métricas de Meta Ads: la API es gratis, pero leer cuentas de otros negocios
     pide revisión de la app y verificación de negocio, semanas de trámite;
