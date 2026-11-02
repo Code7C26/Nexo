@@ -1529,18 +1529,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_integracion_vinculos_nexo
 -- Cada pedido del canal que llegó a Nexo, una sola vez (UNIQUE): los webhooks
 -- se repiten y llegan desordenados, y la pasada periódica vuelve a pedir los
 -- recientes. venta_id: la venta que armó. estado:
--- - importado: ya es una venta;
+-- - importado: ya es una venta (cobrada, o por cobrar si el pago es manual);
+-- - esperando_pago: pago online sin terminar; no es venta, pero reserva sus
+--   unidades en el stock que se publica (hist. §122);
 -- - pendiente: no se pudo armar (un producto sin vincular, sin stock); se
 --   reintenta solo y desde la página, y `error` dice por qué;
--- - cancelado: se canceló en el canal. Si ya era una venta no se toca sola
---   (puede tener cobros y factura): queda para que el negocio la devuelva.
+-- - cancelado: se canceló en el canal. Una venta sin cobros se anula sola;
+--   con cobros o factura queda para que el negocio la devuelva.
 -- datos: el pedido tal como vino, para reintentar sin volver a pedirlo.
 CREATE TABLE IF NOT EXISTS integracion_pedidos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
   externo_id TEXT NOT NULL,
   numero TEXT,
-  estado TEXT NOT NULL CHECK (estado IN ('importado', 'pendiente', 'cancelado')),
+  estado TEXT NOT NULL CHECK (estado IN ('importado', 'esperando_pago', 'pendiente', 'cancelado')),
   venta_id INTEGER REFERENCES ventas(id),
   error TEXT,
   datos TEXT,

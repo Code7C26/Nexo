@@ -3379,8 +3379,8 @@
                  los ajustes, publicar productos, los pedidos y la actividad. -->
             <section class="config-pagina col-admin" data-seccion="tienda-nube" aria-labelledby="configTnTitulo" hidden>
               <header class="config-pagina-head">
-                <h2 id="configTnTitulo" tabindex="-1">Tienda Nube</h2>
-                <p>Publicá tus productos en tu tienda online desde Nexo. El stock y el precio se mantienen al día solos, y cada venta de la tienda entra como una venta de Nexo, con su cobro.</p>
+                <h2 id="configTnTitulo" class="tn-titulo" tabindex="-1"><svg class="tn-logo" role="img" aria-label="Tienda Nube"><use href="/img/tiendanube.svg#logo"></use></svg></h2>
+                <p>Publicá tus productos en tu tienda online desde Nexo. El stock y el precio se mantienen al día solos, y cada venta de la tienda entra como una venta de Nexo: cobrada si se pagó online, o por cobrar si te paga por transferencia o en efectivo.</p>
               </header>
 
               <div class="fe-estado" id="tnEstado" aria-live="polite"></div>
@@ -3452,19 +3452,7 @@
                     <h2 id="tnPedidosTitulo">Pedidos de la tienda</h2>
                     <button type="button" class="btn btn-secundario" id="btnTnSincronizar">Buscar pedidos ahora</button>
                   </div>
-                  <div class="tabla-scroll">
-                    <table class="ledger-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Pedido</th>
-                          <th scope="col">Estado</th>
-                          <th scope="col">Detalle</th>
-                          <th scope="col"></th>
-                        </tr>
-                      </thead>
-                      <tbody id="tnPedidosBody"></tbody>
-                    </table>
-                  </div>
+                  <ul class="tn-pedidos" id="tnPedidos"></ul>
                 </section>
 
                 <section class="panel" aria-labelledby="tnActividadTitulo">

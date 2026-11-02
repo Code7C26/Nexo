@@ -12,7 +12,7 @@
 import { avisar, confirmar } from "../core/ui.js";
 import { api } from "../core/api.js";
 import { invocar, registrar } from "../core/registro.js";
-import { esc, fechaHoraAR } from "../core/formato.js";
+import { esc, fechaHoraAR, money } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
 
 const estadoEl = document.getElementById("tnEstado");
@@ -151,32 +151,36 @@ function actualizarBotonPublicar() {
 
 const ESTADO_PEDIDO = {
   importado: ["status-cobrado", "Es venta"],
+  esperando_pago: ["status-info", "Esperando el pago"],
   pendiente: ["status-pendiente", "Para revisar"],
   cancelado: ["status-vencido", "Cancelado"]
 };
 
 function pintarPedidos() {
-  const cuerpo = document.getElementById("tnPedidosBody");
+  const lista = document.getElementById("tnPedidos");
   if (!estado.pedidos.length) {
-    cuerpo.innerHTML = `<tr><td colspan="4" class="tn-vacio celda-wrap">Todavía no llegó ningún pedido pagado de la tienda.</td></tr>`;
+    lista.innerHTML = `<li><p class="tn-vacio">Todavía no llegó ningún pedido de la tienda.</p></li>`;
     return;
   }
-  cuerpo.innerHTML = estado.pedidos
+  lista.innerHTML = estado.pedidos
     .map((p) => {
-      const [clase, texto] = ESTADO_PEDIDO[p.estado];
-      const detalle = p.error ?? (p.venta_id ? `Venta #${p.venta_id}` : "—");
+      const [clase, texto] = p.por_cobrar > 0 ? ["status-pendiente", "Por cobrar"] : ESTADO_PEDIDO[p.estado];
+      const venta = p.venta_id ? `Venta #${p.venta_id}${p.por_cobrar > 0 ? ` · falta cobrar ${money(p.por_cobrar)}` : ""}` : null;
+      const reservado = p.estado === "esperando_pago" ? "Pago online sin terminar: sus unidades quedan reservadas en la tienda." : null;
+      const detalle = p.error ?? venta ?? reservado ?? "—";
       const acciones = [
         p.venta_id ? `<button type="button" class="btn-link" data-venta="${p.venta_id}">Ver venta</button>` : "",
         p.estado === "pendiente" ? `<button type="button" class="btn-link" data-reintentar="${p.id}">Reintentar</button>` : "",
         p.estado === "cancelado" && p.error ? `<button type="button" class="btn-link" data-revisado="${p.id}">Ya lo revisé</button>` : ""
       ].join(" ");
       return `
-      <tr>
-        <td data-label="Pedido" class="mono">#${esc(p.numero ?? p.externo_id)}</td>
-        <td data-label="Estado"><span class="status ${clase}">${texto}</span></td>
-        <td data-label="Detalle" class="celda-wrap">${esc(detalle)}</td>
-        <td data-label="">${acciones}</td>
-      </tr>`;
+      <li class="tn-pedido">
+        <div class="tn-pedido-texto">
+          <p class="tn-pedido-titulo"><span class="mono">Pedido #${esc(p.numero ?? p.externo_id)}</span> <span class="status ${clase}">${texto}</span></p>
+          <p class="tn-pedido-detalle">${esc(detalle)}</p>
+        </div>
+        <div class="tn-pedido-acciones">${acciones}</div>
+      </li>`;
     })
     .join("");
 }
@@ -306,7 +310,7 @@ btnSincronizar.addEventListener("click", async () => {
   }
 });
 
-document.getElementById("tnPedidosBody").addEventListener("click", async (e) => {
+document.getElementById("tnPedidos").addEventListener("click", async (e) => {
   const boton = e.target.closest("button");
   if (!boton) return;
   if (boton.dataset.venta) {

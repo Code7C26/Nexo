@@ -6925,6 +6925,27 @@ a.segmento {
    tarjetas de Factura electrónica. Conectada: los ajustes, la lista de
    productos para publicar (una fila tocable por producto), los pedidos y la
    actividad. */
+.tn-titulo { line-height: 0; }
+.tn-logo { width: 160px; height: 40px; color: var(--ink); fill: currentColor; }
+/* Pedidos: una fila por pedido, con el número y el estado arriba, el
+   detalle debajo y los botones a la derecha (abajo en el celular). */
+.tn-pedidos { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.tn-pedido {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.tn-pedido-texto { flex: 1; min-width: 0; }
+.tn-pedido-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; font-weight: 500; }
+.tn-pedido-detalle { margin: var(--sp-1) 0 0; font-size: var(--txt-sm); line-height: 1.5; color: var(--ink-muted); overflow-wrap: anywhere; }
+.tn-pedido-acciones { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-1); }
+.tn-pedido-acciones:empty { display: none; }
+@media (max-width: 560px) {
+  .tn-pedido { flex-direction: column; align-items: stretch; }
+  .tn-pedido-acciones { flex-direction: row; justify-content: flex-start; gap: var(--sp-4); }
+}
 .tn-conectada {
   display: flex;
   flex-direction: column;

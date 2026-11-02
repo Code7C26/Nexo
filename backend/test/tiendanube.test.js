@@ -319,26 +319,87 @@ test('un pedido pagado pasa a ser una venta con su cobro, una sola vez', async (
   assert.equal(clientes.filter((c) => /luc/i.test(c.nombre)).length, 1);
 });
 
-test('un pedido de algo sin vincular queda pendiente, y uno sin pagar no entra', async () => {
+test('un pedido de algo sin vincular queda pendiente, y lo que hay que revisar va arriba', async () => {
   falso.pedidos.set(
     '3',
     pedidoDeLaTienda(3, { products: [{ product_id: 1, variant_id: 99999, name: 'Algo que no es de Nexo', price: '500', quantity: 1 }] })
   );
-  falso.pedidos.set('4', pedidoDeLaTienda(4, { payment_status: 'pending' }));
   await webhook({ store_id: Number(TIENDA), event: 'order/created', id: 3 });
-  await webhook({ store_id: Number(TIENDA), event: 'order/created', id: 4 });
   assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '3')));
-  await esperar(200);
   const { pedidos } = await estadoDe(admin);
   const pendiente = pedidos.find((p) => p.externo_id === '3');
   assert.equal(pendiente.estado, 'pendiente');
   assert.match(pendiente.error, /no está vinculado/);
-  assert.equal(pedidos[0].externo_id, '3', 'lo que hay que revisar va arriba');
-  assert.ok(!pedidos.some((p) => p.externo_id === '4'));
+  assert.equal(pedidos[0].externo_id, '3');
 
   const r = await admin.post(`/api/integraciones/tiendanube/pedidos/${pendiente.id}/reintentar`);
   assert.equal(r.status, 200);
   assert.equal(r.json.estado, 'pendiente');
+});
+
+const stockEnNexo = async () => (await admin.get('/api/stock')).json.find((s) => s.producto_id === remera).stock_total;
+const ultimoStockPublicado = () => enviados('PATCH', '/products/stock-price').at(-1)?.datos[0].variants[0].inventory_levels?.[0].stock;
+
+test('pago online sin terminar: no es venta, pero reserva sus unidades en la tienda; al pagarse, es venta', async () => {
+  const antes = await stockEnNexo();
+  falso.pedidos.set('4', pedidoDeLaTienda(4, { payment_status: 'pending', gateway: 'pago-nube', products: [{ ...pedidoDeLaTienda(4).products[0], quantity: 2 }] }));
+  await webhook({ store_id: Number(TIENDA), event: 'order/created', id: 4 });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '4' && p.estado === 'esperando_pago')));
+  assert.equal(await stockEnNexo(), antes, 'en Nexo no se vendió nada');
+  assert.ok(await hasta(() => ultimoStockPublicado() === antes - 2, 80), 'la tienda publica 2 menos');
+
+  falso.pedidos.set('4', { ...falso.pedidos.get('4'), payment_status: 'paid' });
+  await webhook({ store_id: Number(TIENDA), event: 'order/paid', id: 4 });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '4' && p.estado === 'importado')));
+  assert.equal(await stockEnNexo(), antes - 2);
+  const pedido = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '4');
+  assert.equal(pedido.por_cobrar, 0, 'cobrado online');
+});
+
+test('pago manual: entra como venta por cobrar, y al pagarse en la tienda se cobra solo lo que falta', async () => {
+  assert.equal((await admin.post('/api/stock/ajuste', { producto_id: remera, cantidad: 20 })).status, 201);
+  const antes = await stockEnNexo();
+  falso.pedidos.set('5', pedidoDeLaTienda(5, { payment_status: 'pending', gateway: 'offline', gateway_name: 'Transferencia bancaria' }));
+  await webhook({ store_id: Number(TIENDA), event: 'order/created', id: 5 });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '5' && p.estado === 'importado')));
+  let pedido = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '5');
+  assert.equal(pedido.por_cobrar, 30000);
+  assert.equal(await stockEnNexo(), antes - 2, 'ya es venta: baja el stock');
+  assert.equal((await admin.get(`/api/ventas/${pedido.venta_id}/cobros`)).json.length, 0);
+
+  // El negocio cobra una parte en Nexo; después lo marca pagado en Tienda Nube.
+  const { cuenta_tesoreria_id } = await estadoDe(admin);
+  const cobro = await admin.post(`/api/ventas/${pedido.venta_id}/cobros`, { importe: 10000, cuenta_tesoreria_id });
+  assert.equal(cobro.status, 201, cobro.texto);
+  falso.pedidos.set('5', { ...falso.pedidos.get('5'), payment_status: 'paid', gateway: 'internal' });
+  await webhook({ store_id: Number(TIENDA), event: 'order/paid', id: 5 });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '5').por_cobrar === 0));
+  const cobros = (await admin.get(`/api/ventas/${pedido.venta_id}/cobros`)).json;
+  assert.deepEqual(cobros.map((c) => c.importe).sort((a, b) => a - b), [10000, 20000]);
+
+  // El mismo aviso otra vez no cobra de nuevo.
+  await webhook({ store_id: Number(TIENDA), event: 'order/paid', id: 5 });
+  await esperar(300);
+  assert.equal((await admin.get(`/api/ventas/${pedido.venta_id}/cobros`)).json.length, 2);
+  pedido = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '5');
+  assert.equal(pedido.estado, 'importado');
+});
+
+test('cancelado sin cobros: la venta se anula sola y el stock vuelve', async () => {
+  const antes = await stockEnNexo();
+  falso.pedidos.set('6', pedidoDeLaTienda(6, { payment_status: 'pending', gateway: 'not-provided' }));
+  await webhook({ store_id: Number(TIENDA), event: 'order/created', id: 6 });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '6' && p.estado === 'importado')));
+  const { venta_id } = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '6');
+  assert.equal(await stockEnNexo(), antes - 2);
+
+  falso.pedidos.set('6', { ...falso.pedidos.get('6'), status: 'cancelled' });
+  await webhook({ store_id: Number(TIENDA), event: 'order/cancelled', id: 6 });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '6' && p.estado === 'cancelado')));
+  const pedido = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '6');
+  assert.equal(pedido.error, null, 'no queda nada para revisar');
+  assert.equal((await admin.get(`/api/ventas/${venta_id}`)).json.estado, 'anulada');
+  assert.equal(await stockEnNexo(), antes);
 });
 
 test('cancelado en la tienda después de ser venta: queda marcado y la venta no se toca', async () => {

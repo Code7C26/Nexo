@@ -6213,6 +6213,52 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   res.status(201).json(resultadoEmision(await autorizarFactura(req, facturaId)));
 }));
 
+// Por qué una venta no se puede anular, o null si se puede. Lo usan el botón
+// de anular y la cancelación de un pedido de Tienda Nube (hist. §122).
+function motivoParaNoAnular(venta) {
+  if (venta.estado === 'anulada') return 'Esta venta ya está anulada.';
+  if (db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(venta.id)) {
+    return 'Esta venta tiene una factura asociada, no se puede anular.';
+  }
+  if (db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(venta.id)) {
+    return 'Esta venta tiene cobros registrados, no se puede anular.';
+  }
+  if (db.prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'").get(venta.id)) {
+    return 'Esta venta tiene una devolución asociada, no se puede anular.';
+  }
+  return null;
+}
+
+// Anula la venta: devuelve el stock y salda la deuda del cliente. Se llama
+// dentro de una transacción, y quien llama registra la auditoría.
+function revertirVentaAnulada(venta, organizacionId) {
+  db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(venta.id);
+
+  const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(organizacionId);
+  const items = db
+    .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
+    .all(venta.id);
+  let total = 0;
+  for (const item of items) {
+    registrarMovimientoStock({
+      producto_id: item.producto_id,
+      variante_id: item.variante_id,
+      deposito_id: depositoVenta,
+      tipo: 'entrada',
+      cantidad: item.cantidad,
+      origen: 'venta',
+      venta_id: venta.id,
+      nota: 'Reversión por anulación',
+      organizacion_id: organizacionId
+    });
+    total += item.cantidad * item.precio_unitario;
+  }
+
+  db.prepare(
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
+  ).run(venta.cliente_id, -total, venta.id);
+}
+
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
@@ -6222,56 +6268,13 @@ app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
-  if (venta.estado === 'anulada') {
-    return res.status(400).json({ error: 'Esta venta ya está anulada.' });
-  }
-
-  const tieneFactura = db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(ventaId);
-  if (tieneFactura) {
-    return res.status(400).json({ error: 'Esta venta tiene una factura asociada, no se puede anular.' });
-  }
-
-  const tieneCobros = db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(ventaId);
-  if (tieneCobros) {
-    return res.status(400).json({ error: 'Esta venta tiene cobros registrados, no se puede anular.' });
-  }
-
-  const tieneDevolucionAnular = db
-    .prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'")
-    .get(ventaId);
-  if (tieneDevolucionAnular) {
-    return res
-      .status(400)
-      .json({ error: 'Esta venta tiene una devolución asociada, no se puede anular.' });
+  const motivo = motivoParaNoAnular(venta);
+  if (motivo) {
+    return res.status(400).json({ error: motivo });
   }
 
   withTransaction(() => {
-    db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(ventaId);
-
-    const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
-    const items = db
-      .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
-      .all(ventaId);
-    let total = 0;
-    for (const item of items) {
-      registrarMovimientoStock({
-        producto_id: item.producto_id,
-        variante_id: item.variante_id,
-        deposito_id: depositoVenta,
-        tipo: 'entrada',
-        cantidad: item.cantidad,
-        origen: 'venta',
-        venta_id: ventaId,
-        nota: 'Reversión por anulación',
-        organizacion_id: req.usuario.organizacion_id
-      });
-      total += item.cantidad * item.precio_unitario;
-    }
-
-    db.prepare(
-      `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-    ).run(venta.cliente_id, -total, ventaId);
-
+    revertirVentaAnulada(venta, req.usuario.organizacion_id);
     auditar(req, {
       accion: 'anular',
       entidad: 'venta',
@@ -16601,9 +16604,39 @@ const listaDeLaIntegracion = (integracion) =>
 const depositoDeLaIntegracion = (integracion) =>
   integracion.deposito_id ?? depositoPredeterminadoId(integracion.organizacion_id);
 
+// Lo reservado por los pedidos con pago online que todavía no se pagaron:
+// cuánto de cada variante de la tienda. Pasado RESERVA_HORAS se libera (un
+// pago que no llega en tres días ya no se espera).
+const RESERVA_HORAS = 72;
+function reservadoPorVariante(integracion) {
+  const desde = new Date(Date.now() - RESERVA_HORAS * 60 * 60 * 1000).toISOString();
+  const reservado = new Map();
+  const filas = db
+    .prepare("SELECT datos FROM integracion_pedidos WHERE integracion_id = ? AND estado = 'esperando_pago' AND recibido_en >= ?")
+    .all(integracion.id, desde);
+  for (const { datos } of filas) {
+    let pedido;
+    try {
+      pedido = JSON.parse(datos ?? 'null');
+    } catch {
+      continue;
+    }
+    for (const linea of Array.isArray(pedido?.products) ? pedido.products : []) {
+      const clave = String(linea.variant_id);
+      reservado.set(clave, (reservado.get(clave) ?? 0) + (Number(linea.quantity) || 0));
+    }
+  }
+  return reservado;
+}
+
 async function sincronizarStockYPrecio(integracion) {
   const listaId = listaDeLaIntegracion(integracion);
   const depositoId = depositoDeLaIntegracion(integracion);
+  const reservado = reservadoPorVariante(integracion);
+  const publicable = (v) => {
+    const stock = stockParaPublicar(v, depositoId);
+    return stock === null ? null : Math.max(0, stock - Math.ceil(reservado.get(v.externo_variante_id) ?? 0));
+  };
   const cambios = db
     .prepare(
       `SELECT integracion_vinculos.*, productos.tipo, productos.activo, producto_variantes.activo AS variante_activa
@@ -16613,7 +16646,7 @@ async function sincronizarStockYPrecio(integracion) {
         WHERE integracion_vinculos.integracion_id = ?`
     )
     .all(integracion.id)
-    .map((v) => ({ ...v, precio: redondear2(precioParaPublicar(v.producto_id, v.variante_id, listaId)), stock: stockParaPublicar(v, depositoId) }))
+    .map((v) => ({ ...v, precio: redondear2(precioParaPublicar(v.producto_id, v.variante_id, listaId)), stock: publicable(v) }))
     .filter((v) => v.precio !== v.ultimo_precio || (v.stock !== null && v.stock !== v.ultimo_stock));
   if (!cambios.length) return 0;
 
@@ -16725,31 +16758,125 @@ const fechaDelPedido = (pedido) => {
   return (Number.isNaN(momento.getTime()) ? new Date() : momento).toLocaleDateString('sv-SE', { timeZone: ZONA_HORARIA });
 };
 
+// Los medios de pago que cobra el propio negocio (transferencia, efectivo al
+// retirar, "a convenir"): Tienda Nube los marca con gateway "offline" o
+// "not-provided". Los demás (Pago Nube, Mercado Pago) se cobran online.
+const PAGO_MANUAL = new Set(['offline', 'not-provided']);
+const esPagoManual = (pedido) => PAGO_MANUAL.has(pedido.gateway);
+
+const cuentaDeCobro = (integracion) =>
+  integracion.cuenta_tesoreria_id
+    ? db
+        .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+        .get(integracion.cuenta_tesoreria_id, integracion.organizacion_id)
+    : null;
+
+// Lo que falta cobrar de una venta: su total menos lo cobrado.
+function saldoDeLaVenta(ventaId) {
+  const { total } = db
+    .prepare('SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS total FROM venta_items WHERE venta_id = ?')
+    .get(ventaId);
+  const { cobrado } = db.prepare('SELECT COALESCE(SUM(importe), 0) AS cobrado FROM cobros WHERE venta_id = ?').get(ventaId);
+  return redondear2(total - cobrado);
+}
+
 // Decide qué hacer con un pedido tal como lo da Tienda Nube. Todo lo que toca
 // la base es síncrono: dos avisos del mismo pedido no pueden armar dos ventas.
+// - Pagado: es una venta con su cobro.
+// - Sin pagar, con pago manual: es una venta por cobrar (la deuda queda en la
+//   cuenta corriente del cliente), y el negocio registra el cobro en Nexo.
+//   Cuando lo marca pagado en Tienda Nube, Nexo cobra solo lo que falte.
+// - Sin pagar, con pago online: todavía no es una venta (muchos se abandonan),
+//   pero sus unidades se reservan en el stock que se publica.
+// - Cancelado: si ya era venta sin cobros, se anula sola; si tiene cobros o
+//   factura, queda marcado para que el negocio haga la devolución.
 function procesarPedido(integracion, pedido) {
   const fila = db
     .prepare('SELECT * FROM integracion_pedidos WHERE integracion_id = ? AND externo_id = ?')
     .get(integracion.id, String(pedido.id));
-  const numero = pedido.number ?? pedido.id;
-  const cancelado = pedido.status === 'cancelled' || ['voided', 'refunded'].includes(pedido.payment_status);
-  if (cancelado) {
-    if (!fila || fila.estado === 'cancelado') return fila?.estado ?? null;
-    const error = fila.venta_id
-      ? `Se canceló en Tienda Nube después de pasar a la venta #${fila.venta_id}. Si devolviste la plata, hacé la devolución de esa venta.`
-      : null;
-    guardarPedido(integracion, pedido, { estado: 'cancelado', venta_id: fila.venta_id, error });
-    anotarIntegracion(integracion, 'pedido', fila.venta_id ? 'error' : 'ok', `Pedido #${numero} cancelado en la tienda.${error ? ` ${error}` : ''}`);
-    return 'cancelado';
+  const pagado = pedido.payment_status === 'paid';
+  const cancelado =
+    pedido.status === 'cancelled' || ['voided', 'refunded', 'abandoned'].includes(pedido.payment_status);
+  if (cancelado) return cancelarPedido(integracion, pedido, fila);
+  if (fila?.estado === 'importado') {
+    if (pagado) cobrarLoQueFalta(integracion, pedido, fila.venta_id);
+    return 'importado';
   }
-  if (fila?.estado === 'importado' || pedido.payment_status !== 'paid') return fila?.estado ?? null;
+  if (fila?.estado === 'cancelado') return 'cancelado';
   // Los pedidos de antes de conectar no se traen: ya se vendieron sin Nexo.
   const creado = new Date(pedido.created_at ?? 0).getTime();
   if (!fila && !(creado >= new Date(integracion.pedidos_desde).getTime())) return null;
-  return importarPedido(integracion, pedido, fila);
+  if (pagado || esPagoManual(pedido)) return importarPedido(integracion, pedido, fila, { cobrar: pagado });
+  if (fila?.estado !== 'esperando_pago') {
+    guardarPedido(integracion, pedido, { estado: 'esperando_pago' });
+    anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${pedido.number ?? pedido.id} esperando el pago online: sus unidades quedan reservadas en la tienda.`);
+    programarSincronizacion(integracion.organizacion_id);
+  }
+  return 'esperando_pago';
 }
 
-function importarPedido(integracion, pedido, fila) {
+function cancelarPedido(integracion, pedido, fila) {
+  if (!fila || fila.estado === 'cancelado') return fila?.estado ?? null;
+  const numero = pedido.number ?? pedido.id;
+  const organizacionId = integracion.organizacion_id;
+  const venta = fila.venta_id
+    ? db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?').get(fila.venta_id, organizacionId)
+    : null;
+  // Sin cobros, factura ni devolución, la venta se anula sola: no hay plata de
+  // por medio. Con algo de eso, la decide el negocio.
+  const motivo = venta && venta.estado !== 'anulada' ? motivoParaNoAnular(venta) : null;
+  const error = motivo
+    ? `Se canceló en Tienda Nube después de pasar a la venta #${venta.id}, que ya tiene cobros o factura. Si devolviste la plata, hacé la devolución de esa venta.`
+    : null;
+  withTransaction(() => {
+    if (venta && venta.estado !== 'anulada' && !motivo) {
+      revertirVentaAnulada(venta, organizacionId);
+      registrarAuditoria({
+        actor: 'sistema',
+        accion: 'anular',
+        entidad: 'venta',
+        entidad_id: venta.id,
+        organizacion_id: organizacionId,
+        operacion_tipo: 'integracion',
+        operacion_id: integracion.id,
+        detalle: `Venta #${venta.id} anulada: se canceló el pedido #${numero} en Tienda Nube`
+      });
+    }
+    guardarPedido(integracion, pedido, { estado: 'cancelado', venta_id: fila.venta_id, error });
+  });
+  const detalle = error ?? (venta && venta.estado !== 'anulada' ? `La venta #${venta.id} quedó anulada y el stock volvió.` : 'Se liberó lo reservado.');
+  anotarIntegracion(integracion, 'pedido', error ? 'error' : 'ok', `Pedido #${numero} cancelado en la tienda. ${detalle}`);
+  programarSincronizacion(organizacionId);
+  return 'cancelado';
+}
+
+// Un pedido que ya era venta por cobrar y se pagó en la tienda: se registra
+// lo que falte. Si el negocio ya lo cobró en Nexo, no queda nada que cobrar.
+function cobrarLoQueFalta(integracion, pedido, ventaId) {
+  const organizacionId = integracion.organizacion_id;
+  const venta = db.prepare('SELECT id, cliente_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?').get(ventaId, organizacionId);
+  const cuenta = cuentaDeCobro(integracion);
+  if (!venta || venta.estado === 'anulada' || !cuenta) return;
+  const saldo = saldoDeLaVenta(ventaId);
+  if (saldo < 0.01) return;
+  const numero = pedido.number ?? pedido.id;
+  withTransaction(() => {
+    const cobroId = registrarCobro(ventaId, venta.cliente_id, saldo, cuenta.id, `Cobrado en Tienda Nube (pedido #${numero})`, organizacionId);
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'crear',
+      entidad: 'cobro',
+      entidad_id: cobroId,
+      organizacion_id: organizacionId,
+      operacion_tipo: 'venta',
+      operacion_id: ventaId,
+      detalle: `Cobro de $${saldo} en la venta #${ventaId}: se pagó el pedido #${numero} en Tienda Nube`
+    });
+  });
+  anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${numero} pagado en la tienda: se registró el cobro de $${saldo} en la venta #${ventaId}.`);
+}
+
+function importarPedido(integracion, pedido, fila, { cobrar }) {
   const organizacionId = integracion.organizacion_id;
   const numero = pedido.number ?? pedido.id;
   const lineas = Array.isArray(pedido.products) ? pedido.products : [];
@@ -16794,9 +16921,7 @@ function importarPedido(integracion, pedido, fila) {
           organizacion_id: organizacionId
         });
         const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
-        const cuenta = integracion.cuenta_tesoreria_id
-          ? db.prepare('SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?').get(integracion.cuenta_tesoreria_id, organizacionId)
-          : null;
+        const cuenta = cobrar ? cuentaDeCobro(integracion) : null;
         if (cuenta && total > 0) registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en Tienda Nube (pedido #${numero})`, organizacionId);
         guardarPedido(integracion, pedido, { estado: 'importado', venta_id: id });
         registrarAuditoria({
@@ -16820,12 +16945,18 @@ function importarPedido(integracion, pedido, fila) {
   }
   if (ventaId) {
     const envio = Number(pedido.shipping_cost_customer) || 0;
+    const porCobrar = cobrar
+      ? ''
+      : ` Sin cobrar todavía (${pedido.gateway_name || 'pago a convenir'}): registrá el cobro cuando llegue la plata.`;
     anotarIntegracion(
       integracion,
       'pedido',
       'ok',
-      `Pedido #${numero} → venta #${ventaId}.${envio > 0 ? ` El envío que pagó el cliente ($${envio}) todavía no se suma a la venta.` : ''}`
+      `Pedido #${numero} → venta #${ventaId}.${porCobrar}${envio > 0 ? ` El envío que pagó el cliente ($${envio}) todavía no se suma a la venta.` : ''}`
     );
+    // Sale de la reserva (si estaba esperando el pago) y pasa al stock de la
+    // venta: se vuelve a publicar.
+    if (fila?.estado === 'esperando_pago') programarSincronizacion(organizacionId);
     return 'importado';
   }
   // Pendiente: se anota una vez por motivo, no en cada reintento.
@@ -17010,7 +17141,9 @@ app.get('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
            FROM integracion_pedidos WHERE integracion_id = ?
           ORDER BY error IS NULL, actualizado_en DESC LIMIT 30`
       )
-      .all(integracion.id),
+      .all(integracion.id)
+      // Lo que falta cobrar de las que son venta (las de pago manual).
+      .map((p) => ({ ...p, por_cobrar: p.estado === 'importado' && p.venta_id ? Math.max(0, saldoDeLaVenta(p.venta_id)) : 0 })),
     actividad: db
       .prepare('SELECT fecha, tipo, resultado, detalle FROM integracion_log WHERE integracion_id = ? ORDER BY id DESC LIMIT 30')
       .all(integracion.id)
