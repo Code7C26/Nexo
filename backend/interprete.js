@@ -250,7 +250,10 @@ function construirSystemPrompt(contexto) {
   const categorias = listar(contexto.categoriasGasto, (c) => `- ${c.nombre} (${c.tipo})`);
   // El catálogo puede crecer mucho; se acota para no inflar el prompt de
   // forma innecesaria — alcanza para que el modelo matchee nombres.
-  const productos = listar(contexto.productos.slice(0, 300), (p) => `- ${p.nombre}`);
+  // server.js ya manda solo los que se parecen a la frase (hist. §120).
+  const productos = contexto.productos.length
+    ? contexto.productos.slice(0, 300).map((p) => `- ${p.nombre}`).join('\n')
+    : '(ninguno se parece a lo que dijo)';
 
   return `Sos el intérprete de operaciones por texto de Nexo, un sistema de gestión para pymes.
 
@@ -277,7 +280,7 @@ ${cuentas}
 Categorías de gasto disponibles:
 ${categorias}
 
-Catálogo de productos (para ventas — una venta NO puede crear un producto nuevo):
+Productos del catálogo que se parecen a la frase (una venta NO puede crear un producto nuevo; si el que dice no está acá, usá el nombre tal cual lo dijo):
 ${productos}`;
 }
 

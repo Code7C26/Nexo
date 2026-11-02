@@ -69,6 +69,40 @@ function botonPantalla(seccion, clase = "btn btn-secundario") {
 
 const enlaceSeccion = (s) => `<a href="#/ayuda/${s.id}">${esc(s.titulo)}</a>`;
 
+/* ---------- La charla del asistente (hist. §120) ---------- */
+
+// Lo que sabe hacer, con ejemplos que se tocan: va al saludo, a "¿qué podés
+// hacer?" y a todo lo que no tiene respuesta, para que nadie quede trabado.
+const EJEMPLOS = [
+  ["Cargar una venta", "Vendí 2 remeras a Juan a 15 mil cada una, pagó en efectivo"],
+  ["Cargar una compra", "Compré 10 pantalones a Textil Norte a 9 mil cada uno"],
+  ["Cargar un gasto", "Pagué 25 mil de luz en efectivo"],
+  ["Registrar una devolución", "Juan me devolvió la remera, le quedó chica"],
+  ["Preguntar cómo se hace algo", "¿Cómo anulo una venta?"],
+  ["Ir a una pantalla", "Llevame a ventas"]
+];
+
+export const htmlCapacidades = () => `<p>Esto es lo que puedo hacer. Tocá un ejemplo para probarlo:</p>
+  <ul class="asistente-capacidades">${EJEMPLOS.map(
+    ([que, ejemplo]) => `<li><span>${que}</span><button type="button" class="asistente-sugerencia">${ejemplo}</button></li>`
+  ).join("")}</ul>`;
+
+const CHARLAS = {
+  saludo: () => `<p>¡Hola! Contame qué pasó en el negocio o preguntame lo que necesites.</p>${htmlCapacidades()}`,
+  gracias: () => "<p>¡De nada! Si necesitás algo más, acá estoy.</p>",
+  despedida: () => "<p>¡Hasta luego! Cuando vuelvas, acá estoy.</p>",
+  capacidades: htmlCapacidades
+};
+
+export function respuestaDeCharla(charla) {
+  return `<div class="asistente-ayuda">${(CHARLAS[charla] ?? CHARLAS.capacidades)()}</div>`;
+}
+
+// "Llevame a ventas": el asistente lleva solo; el enlace queda por si vuelve.
+export function respuestaDeNavegar({ hash, nombre }) {
+  return `<div class="asistente-ayuda"><p>Te llevo a <a href="${esc(hash)}">${esc(nombre)}</a>.</p></div>`;
+}
+
 /* ---------- La respuesta del asistente ---------- */
 
 // resultados: lo que devuelve buscarEnManual (o clasificarFrase), de más a
@@ -77,11 +111,13 @@ export function respuestaDeAyuda(resultados) {
   const [mejor, ...otros] = resultados;
   const ayudaGeneral = `<p class="form-note">Si querías cargar algo, contámelo como algo que ya pasó: "vendí…", "compré…", "pagué…".</p>`;
 
+  // Nada que ver con el manual ("¿cuál es la capital de Francia?"): se dice
+  // con amabilidad qué sí se puede hacer, en vez de un "no encontré" seco.
   if (!mejor || mejor.puntaje < PUNTAJE_DUDOSO) {
     return `<div class="asistente-ayuda">
-      <p>No encontré eso en el manual.</p>
+      <p>Eso no lo sé: estoy para ayudarte con tu negocio en Nexo.</p>
+      ${htmlCapacidades()}
       <p class="asistente-ayuda-acciones"><a class="btn-link" href="#/ayuda">Ver el manual</a><a class="btn-link" href="#/configuracion/problema">Avisar un problema</a></p>
-      ${ayudaGeneral}
     </div>`;
   }
 

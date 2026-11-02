@@ -89,6 +89,40 @@ test('las operaciones siguen yendo a la IA', () => {
   }
 });
 
+test('la charla se contesta sin la IA, y "hola, vendí…" sigue siendo una venta (hist. §120)', () => {
+  const casos = [
+    ['hola', 'saludo'],
+    ['Buenas, ¿cómo andás?', 'saludo'],
+    ['gracias!', 'gracias'],
+    ['dale, gracias', 'gracias'],
+    ['chau', 'despedida'],
+    ['¿qué podés hacer?', 'capacidades'],
+    ['ayuda', 'capacidades']
+  ];
+  for (const [frase, charla] of casos) assert.deepEqual(clasificarFrase(frase), { tipo: 'charla', charla }, frase);
+  assert.equal(clasificarFrase('hola, vendí 3 remeras a Juan').tipo, 'operacion');
+});
+
+test('"llevame a…" lleva a la pantalla; "abrí la caja" es del mostrador y lo contesta el manual', () => {
+  const casos = [
+    ['llevame a ventas', '#/ventas'],
+    ['abrí el stock', '#/stock'],
+    ['quiero ver la caja', '#/caja'],
+    ['ir a cuentas corrientes', '#/cuentas-corrientes'],
+    ['mostrame los clientes', '#/clientes'],
+    ['abrime el manual', '#/ayuda']
+  ];
+  for (const [frase, hash] of casos) {
+    const r = clasificarFrase(frase);
+    assert.equal(r.tipo, 'navegar', frase);
+    assert.equal(r.pantalla.hash, hash, frase);
+    assert.ok(vistas.has(hash.slice(2)), `${hash} no es una vista`);
+  }
+  const caja = clasificarFrase('abrí la caja');
+  assert.equal(caja.tipo, 'ayuda');
+  assert.equal(caja.resultados[0].seccion.id, 'punto-de-venta');
+});
+
 test('una pregunta que el manual no tiene no se contesta como si supiera', () => {
   for (const frase of ['¿cómo funciona la bicicleta?', '¿cuál es la capital de Francia?', '¿me recomendás una película?']) {
     const { tipo, resultados } = clasificarFrase(frase);

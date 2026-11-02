@@ -11439,7 +11439,28 @@ function ventasParaDevolver(clienteId, pedidos, organizacionId) {
 // Lo que viaja a la IA como contexto del negocio: solo lo de la
 // organización de la sesión (Etapa A, CLAUDE.md §28) — nombres de otra
 // empresa no pueden salir hacia el proveedor de IA.
-function contextoParaInterprete(organizacionId) {
+// Con `texto`, de los productos van solo los que se parecen a la frase (hist.
+// §120): el catálogo entero viajaba en cada pedido, y el plan gratis de Groq
+// cuenta tokens por día. "Se parece" es que alguna palabra del nombre empiece
+// igual que una de la frase (4 letras: "remeras" encuentra "Remera negra").
+const PRODUCTOS_PARA_IA = 40;
+const palabrasDe = (texto) =>
+  String(texto ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .split(/[^a-z0-9ñ]+/)
+    .filter((p) => p.length >= 3)
+    .map((p) => p.slice(0, 4));
+
+function contextoParaInterprete(organizacionId, texto) {
+  let productos = db
+    .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
+    .all(organizacionId);
+  if (texto !== undefined) {
+    const deLaFrase = new Set(palabrasDe(texto));
+    productos = productos.filter((p) => palabrasDe(p.nombre).some((w) => deLaFrase.has(w))).slice(0, PRODUCTOS_PARA_IA);
+  }
   return {
     cuentas: db
       .prepare('SELECT nombre, tipo FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY nombre')
@@ -11447,9 +11468,7 @@ function contextoParaInterprete(organizacionId) {
     categoriasGasto: db
       .prepare('SELECT nombre, tipo FROM categorias_gasto WHERE activa = 1 AND organizacion_id = ? ORDER BY nombre')
       .all(organizacionId),
-    productos: db
-      .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
-      .all(organizacionId)
+    productos
   };
 }
 
@@ -11458,7 +11477,7 @@ app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
 
   let resultado;
   try {
-    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id));
+    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id, texto));
   } catch (err) {
     if (err instanceof InterpreteError) {
       return res.status(err.status).json({ error: err.message });

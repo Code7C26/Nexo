@@ -2602,6 +2602,17 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 .asistente-ayuda-origen .ico { width: 13px; height: 13px; }
+/* "Esto es lo que puedo hacer" (hist. §120): qué, y un ejemplo que se toca. */
+.asistente-capacidades {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.asistente-capacidades li { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.asistente-capacidades li > span { font-size: var(--txt-xs); color: var(--ink-muted); }
 .asistente-ayuda-acciones {
   display: flex;
   flex-wrap: wrap;

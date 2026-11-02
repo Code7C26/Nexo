@@ -136,11 +136,76 @@ const COMO_SE_HACE = /\b(como|donde) (hago|hacer|puedo|se|cargo|paso|veo|pongo|a
 const OPERACION =
   /\b(vendi|vendimos|le vendi|compre|compramos|le compre|pague|pagamos|cobre|cobramos|gaste|gastamos|me pago|me pagaron|entraron|llegaron|se llevo|se llevaron|cargue|devolv\w*|le quedo (chico|chica|grande|corto|corta))\b/;
 
+// La charla (hist. §120): lo que no es una operación ni una duda de uso, pero
+// merece respuesta. Cuenta solo si después no queda nada con contenido: "hola,
+// vendí 3 remeras" es una venta, no un saludo.
+const CHARLA = [
+  ["saludo", /^(hola+|holis|buenas|buen dia|buenos dias|buenas tardes|buenas noches|que tal|como (andas|va|estas)|hey|ey)\b/],
+  ["gracias", /^(gracias|muchas gracias|mil gracias|genial|perfecto|dale|ok|okey|listo|joya|buenisimo|barbaro|excelente|de diez|copado)\b/],
+  ["despedida", /^(chau|chao|adios|nos vemos|hasta luego|hasta manana|hasta despues)\b/],
+  ["capacidades", /^(que (podes|puedes|sabes|haces)( hacer)?|para que (servis|sirve esto)|como te uso|ayuda|ayudame|help|menu|opciones)\b/]
+];
+
+// "Llevame a ventas", "abrí el stock", "quiero ver la caja": el nombre de la
+// pantalla, con o sin artículo. "Abrí la caja" no: en el mostrador eso es
+// abrir el turno, y lo contesta el manual.
+const IR_A = /^(llevame|lleva me|ir|anda|andá|vamos|pasame|mostrame|abrime|abri|abrir|entra|entrar|quiero ver|ver)( a| al)?( la| el| los| las| mis| mi)? (.+)$/;
+const PANTALLAS = [
+  [/^(resumen|inicio|tablero|dashboard|estadisticas|numeros)$/, "#/dashboard", "Resumen"],
+  [/^(punto de venta|pos|mostrador)$/, "#/pos", "Punto de venta"],
+  [/^ventas?$/, "#/ventas", "Ventas"],
+  [/^compras?$/, "#/compras", "Compras"],
+  [/^(stock|inventario)$/, "#/stock", "Stock"],
+  [/^(caja|tesoreria|cuentas)$/, "#/caja", "Caja"],
+  [/^gastos?$/, "#/gastos", "Gastos"],
+  [/^(clientes?|crm|consultas)$/, "#/clientes", "Clientes"],
+  [/^proveedor(es)?$/, "#/proveedores", "Proveedores"],
+  [/^(productos?|catalogo|servicios|articulos)$/, "#/productos", "Productos"],
+  [/^presupuestos?$/, "#/presupuestos", "Presupuestos"],
+  [/^facturas?$/, "#/facturas", "Facturas"],
+  [/^devoluciones$/, "#/devoluciones", "Devoluciones"],
+  [/^(cuentas corrientes|deudas|deudores)$/, "#/cuentas-corrientes", "Cuentas corrientes"],
+  [/^trabajos$/, "#/trabajos", "Trabajos"],
+  [/^abonos$/, "#/abonos", "Abonos"],
+  [/^socios$/, "#/socios", "Socios"],
+  [/^papelera$/, "#/papelera", "Papelera"],
+  [/^auditoria$/, "#/auditoria", "Auditoría"],
+  [/^(configuracion|ajustes)$/, "#/configuracion", "Configuración"],
+  [/^(manual|ayuda)$/, "#/ayuda", "Manual de uso"]
+];
+
+function pantallaPedida(limpio) {
+  const pedido = IR_A.exec(limpio);
+  if (!pedido) return null;
+  const [, verbo, , , nombre] = pedido;
+  const encontrada = PANTALLAS.find(([patron]) => patron.test(nombre.trim()));
+  if (!encontrada || (verbo.startsWith("abr") && encontrada[1] === "#/caja")) return null;
+  return { hash: encontrada[1], nombre: encontrada[2] };
+}
+
 // Qué hacer con una frase del asistente:
-// - "operacion": va a la IA, como siempre (venta, compra o gasto).
+// - "operacion": va a la IA, como siempre (venta, compra, gasto o devolución).
 // - "ayuda": se contesta con el manual; `resultados` puede venir vacío.
+// - "charla": un saludo, un gracias, un chau o "¿qué podés hacer?" (`charla`).
+// - "navegar": "llevame a ventas" (`pantalla`: { hash, nombre }).
 export function clasificarFrase(texto) {
   const limpio = normalizar(texto);
+  // Se sacan las fórmulas una tras otra ("buenas, ¿cómo andás?" son dos): es
+  // charla si no queda nada más, y cuenta la primera.
+  let resto = limpio;
+  let primera = null;
+  for (let sacada = true; sacada; ) {
+    sacada = false;
+    for (const [charla, patron] of CHARLA) {
+      if (!patron.test(resto)) continue;
+      primera ??= charla;
+      resto = resto.replace(patron, "").trim();
+      sacada = true;
+    }
+  }
+  if (primera && !raices(resto).length) return { tipo: "charla", charla: primera };
+  const pantalla = pantallaPedida(limpio);
+  if (pantalla) return { tipo: "navegar", pantalla };
   const esPregunta =
     PREGUNTA_DE_USO.test(limpio) || COMO_SE_HACE.test(limpio) || /\?\s*$/.test(String(texto).trim());
   if (esPregunta) return { tipo: "ayuda", resultados: buscarEnManual(texto) };

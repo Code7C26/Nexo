@@ -67,7 +67,7 @@ import "./dominios/primeros-pasos.js";
 import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
-import { respuestaDeAyuda } from "./dominios/ayuda.js";
+import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
 
@@ -6762,12 +6762,14 @@ asistenteTextoEl.addEventListener("input", asistenteAjustarAltoTextarea);
 
 // Un ejemplo de la bienvenida llena el cuadro para editarlo: no se envía
 // solo, igual que todo lo demás del asistente (CLAUDE.md §21).
-document.querySelectorAll(".asistente-sugerencia").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    asistenteTextoEl.value = btn.textContent;
-    asistenteAjustarAltoTextarea();
-    asistenteTextoEl.focus();
-  });
+// Delegado: también los ejemplos que pinta el asistente en sus respuestas
+// (hist. §120), que no existen al cargar la página.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".asistente-sugerencia");
+  if (!btn) return;
+  asistenteTextoEl.value = btn.textContent;
+  asistenteAjustarAltoTextarea();
+  asistenteTextoEl.focus();
 });
 
 function asistenteScrollAlFinal() {
@@ -6806,9 +6808,17 @@ formAsistente.addEventListener("submit", async (e) => {
 
   // "¿Cómo hago…?" se contesta con el manual, en el navegador y sin la IA
   // (hist. §118); la IA queda para cargar operaciones.
+  // La charla y el "llevame a…" tampoco (hist. §120).
   const frase = clasificarFrase(texto);
-  if (frase.tipo === "ayuda") {
-    turnoRespuesta.innerHTML = respuestaDeAyuda(frase.resultados);
+  if (frase.tipo !== "operacion") {
+    if (frase.tipo === "ayuda") turnoRespuesta.innerHTML = respuestaDeAyuda(frase.resultados);
+    if (frase.tipo === "charla") turnoRespuesta.innerHTML = respuestaDeCharla(frase.charla);
+    if (frase.tipo === "navegar") {
+      turnoRespuesta.innerHTML = respuestaDeNavegar(frase.pantalla);
+      // En el celular el panel tapa la pantalla: se cierra al llevar.
+      if (window.matchMedia("(max-width: 860px)").matches) asistenteCerrar();
+      location.hash = frase.pantalla.hash;
+    }
     asistenteScrollAlFinal();
     return;
   }
@@ -6984,7 +6994,7 @@ function asistenteRenderRespuesta(turnoEl, data, texto) {
     turnoEl.innerHTML =
       delManual[0]?.puntaje >= PUNTAJE_SEGURO
         ? `<p>No es algo que pueda cargar, pero esto del manual te puede servir:</p>${respuestaDeAyuda(delManual)}`
-        : `<p>${esc(data.mensaje ?? "No identifiqué ninguna operación en ese texto.")}</p>`;
+        : `<div class="asistente-ayuda"><p>No entendí qué querés cargar.</p>${htmlCapacidades()}</div>`;
     return;
   }
 
