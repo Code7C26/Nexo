@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §125);
+    siguiente número (hoy el último es §126);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,19 @@
 
 ## Estado actual (3 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §125): producción básica, primera parte,
+**Lo último (3 de noviembre, hist. §126): producción básica, segunda parte,
+hecha y sin publicar.** Lo que se usa al vender (la caja, la bolsa):
+- cada producto dice qué lleva, por cada uno o una vez por venta
+  (Producción → Al vender, o el botón "Al vender" de su ficha);
+- el alta de venta y el punto de venta lo proponen debajo de los renglones, y
+  se cambia en el momento; lo que quedó sale del stock (origen `consumo`) y
+  entra al costo y al margen de la venta y al resultado;
+- una venta que no lo dice (Tienda Nube, Mercado Libre, presupuestos) lleva lo
+  de siempre, hasta donde alcance el stock.
+
+Suma una migración aditiva: `componentes_venta` y `venta_consumos`.
+
+**Antes (3 de noviembre, hist. §125): producción básica, primera parte,
 hecha y sin publicar.** Módulo "Producción" (Configuración → Funciones;
 prendido de partida en Emprendimiento):
 - recetas: qué lleva cada cosa y cuánto suele rendir;
@@ -30,8 +42,7 @@ prendido de partida en Emprendimiento):
 - anular, que devuelve todo y saca ese costo del promedio.
 
 Suma una migración: cuatro tablas nuevas, `movimientos_stock.produccion_id` y
-los orígenes `produccion` y `consumo` (rebuild del CHECK, como §124). Falta la
-segunda parte ("Qué sigue", producción básica).
+los orígenes `produccion` y `consumo` (rebuild del CHECK, como §124).
 
 **Antes (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
 publicar.** El punto 8c de "Qué sigue", salvo importar desde una planilla.
@@ -1079,9 +1090,9 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 
 **Decidido por el usuario el 2 de noviembre: producción básica, sí o sí antes
 de la presentación.** Saca "producción con recetas/insumos" de CLAUDE.md §39.
-**Primera parte hecha el 3 de noviembre (hist. §125): recetas y producir.**
-Sigue la segunda: lo que se descuenta al vender (packaging y decants, con el
-origen `consumo`, que ya está en el CHECK) y los reportes. El caso: un amigo que hace mafaldas compra
+**Hechas el 3 de noviembre: recetas y producir (hist. §125) y lo que se usa al
+vender (hist. §126).** Queda: "¿cuántas puedo hacer?", lo usado al vender en
+los reportes por producto, y los decants. El caso: un amigo que hace mafaldas compra
 materiales y los combina, y la gente que vende comida. "Primero las básicas"
 para un negocio muy chico; lo complejo, después. Pide:
 - **Receta:** qué materiales lleva cada producto y cuánto. Los materiales son
@@ -1109,10 +1120,16 @@ para un negocio muy chico; lo complejo, después. Pide:
 
 Diseño: hist. §125.
 
-**Próxima sesión (dicho por el usuario el 3 de noviembre): lo que se descuenta
-solo al vender** (packaging que varía en cada venta, con el origen
-`consumo`). **Los decants no son prioridad:** se ven después. Abrir un frasco
-ya se puede como producción (receta "Perfume (ml)" = 1 frasco, rinde 100).
+**Lo que se descuenta al vender, hecho el 3 de noviembre (hist. §126).**
+**Decidido por mí, para revisar:** una venta que no dice qué se usó (Tienda
+Nube, Mercado Libre, presupuesto o trabajo que pasa a venta) lleva lo de
+siempre hasta donde alcance el stock, sin frenarse; lo que elige quien vende se
+respeta y sin stock no se vende. **Falta que el usuario lo vea.** **Los decants
+no son prioridad** (dicho por el usuario): ya se pueden armar con esto si el
+perfume se maneja en ml (decant = 5 ml de perfume + 1 frasquito, al vender), y
+abrir un frasco ya se puede como producción (receta "Perfume (ml)" = 1 frasco,
+rinde 100). **Sigue:** "¿cuántas puedo hacer?" (la tercera sesión de la
+estimación), o volver al orden de abajo.
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
