@@ -1065,6 +1065,29 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 **Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
 vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 
+**Decidido por el usuario el 2 de noviembre: producción básica, sí o sí antes
+de la presentación.** Saca "producción con recetas/insumos" de CLAUDE.md §39.
+Es lo próximo a planificar. El caso: un amigo que hace mafaldas compra
+materiales y los combina, y la gente que vende comida. "Primero las básicas"
+para un negocio muy chico; lo complejo, después. Pide:
+- **Receta:** qué materiales lleva cada producto y cuánto. Los materiales son
+  productos comunes, que se compran con las compras de siempre.
+- **Producir:** descuenta los materiales y suma el producto, con un costo que
+  sale de lo que costaron los materiales.
+- **Flexible:** la misma cantidad de material no siempre da lo mismo. La
+  receta es lo que *suele* llevar; al producir se anota lo que salió de
+  verdad (y lo que se usó, si cambió), y el costo sale de lo real.
+- **Packaging:** componentes que se descuentan solos al vender, aunque el
+  producto sea comprado (la caja, la bolsa), como en cualquier e-commerce.
+- **Todo integrado:** stock, costo promedio y margen, reportes, y avisos de
+  materiales bajos.
+
+Diseño a grandes rasgos: un módulo reusable que se prende en Funciones
+(CLAUDE.md §29) y los orígenes `produccion` y `consumo` en
+`movimientos_stock` (rebuild del CHECK, como hist. §124). Además, las
+recetas en una tabla propia. Antes de tocar el esquema, explicárselo al
+usuario (§34).
+
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
   del titular. Solo se hacen detalles cortos.

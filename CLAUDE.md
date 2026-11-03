@@ -1560,6 +1560,7 @@ excepciones).
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Hecha (Mercado Libre falta probarlo con la cuenta real) |
 | H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
 | I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | En curso (voz hecha; falta WhatsApp) |
+| J | Producción básica: recetas, producir, packaging (§5, §29) | El negocio chico que fabrica lo que vende (comida, mafaldas) no tiene cómo costearlo | Pendiente, antes de la presentación (decidido el 2 de noviembre) |
 
 El detalle de cada etapa en curso (qué está hecho y qué falta) vive en
 `handoff.md`; esta columna solo da el estado grueso.
@@ -1577,9 +1578,12 @@ con el equipo:
   PWA (§31) hasta que haya una razón concreta para necesitar más.
 - Sucursales con operación offline y sincronización diferida (más allá del
   soporte offline básico de lectura de la PWA).
-- Producción con recetas/insumos (relevante para gastronomía) como módulo
-  propio — puede aparecer si un perfil de rubro lo necesita (§29), pero no es
-  parte del alcance actual.
+- ~~Producción con recetas/insumos~~: **sale de esta lista** (decisión del
+  usuario del 2 de noviembre de 2026). La versión básica entra antes de la
+  presentación como módulo reusable (§29): receta, producir con lo que salió
+  de verdad, costo desde los insumos y packaging que se descuenta al vender.
+  Ver `handoff.md`. Lo industrial (planificación, mermas por lote) sigue
+  afuera.
 - Gestión de empleados y sueldos.
 - Contabilidad de partida doble / libro mayor contable formal (Nexo lleva
   tesorería y cuentas corrientes, no reemplaza a un sistema contable).
