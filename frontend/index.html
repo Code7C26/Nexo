@@ -5318,6 +5318,25 @@
     </div>
   </div>
   <!-- Cerrar como perdida: el motivo, con los más comunes a un toque. -->
+  <!-- El plan de un negocio, desde la plataforma (solo NEXO_ADMIN_PLATAFORMA). -->
+  <div class="modal" id="modalPlanNegocio" role="dialog" aria-modal="true" aria-labelledby="modalPlanNegocioTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalPlanNegocioTitulo">Cambiar el plan</h3>
+        <button class="modal-close" id="modalPlanNegocioClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPlanNegocio" class="form">
+        <label>Plan
+          <select name="plan" required></select>
+        </label>
+        <label>Hasta
+          <input type="date" name="hasta" />
+        </label>
+        <p class="form-note">Vacío, no vence. Cuando vence, el negocio pasa a Gratis sin perder nada. Queda en su auditoría.</p>
+        <button type="submit" class="btn btn-primary btn-full">Guardar plan</button>
+      </form>
+    </div>
+  </div>
   <div class="modal" id="modalPerdida" role="dialog" aria-modal="true" aria-labelledby="modalPerdidaTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

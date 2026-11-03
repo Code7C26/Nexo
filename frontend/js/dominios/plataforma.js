@@ -4,15 +4,15 @@
  * toda la instalación. Tres pestañas por subruta (#/plataforma/resumen,
  * /cuentas y /negocios), como Trabajos.
  *
- * Solo lee (GET /api/plataforma/*). Los datos son de todos los negocios, así
- * que el backend lo cierra con soloPlataforma (NEXO_ADMIN_PLATAFORMA) y de
- * cada negocio da conteos, nunca sus datos. Cambiar un plan sigue siendo
- * `npm run plan` en el servidor.
+ * Lee (GET /api/plataforma/*) y cambia el plan de un negocio (PUT
+ * /api/plataforma/negocios/:id/plan, como `npm run plan`). Los datos son de
+ * todos los negocios, así que el backend lo cierra con soloPlataforma
+ * (NEXO_ADMIN_PLATAFORMA) y de cada negocio da conteos, nunca sus datos.
  */
 
 import { api } from "../core/api.js";
 import { celdaMovil, esc, esPlataforma, fechaAR, fechaHoraAR, numero } from "../core/formato.js";
-import { filaVacia, tablaCargando } from "../core/ui.js";
+import { avisar, filaVacia, tablaCargando } from "../core/ui.js";
 import { alEntrarEnVista } from "../core/registro.js";
 
 const PESTANAS = ["resumen", "cuentas", "negocios"];
@@ -152,9 +152,10 @@ async function cargarCuentas() {
 // El plan que rige, y por qué si no es el guardado (venció la prueba).
 function planDeNegocio(n) {
   const nombre = `<span class="celda-principal">${esc(n.plan_nombre)}</span>`;
-  if (n.plan !== n.plan_vigente) return `${nombre}<span class="celda-meta">Venció el ${esc(fechaAR(n.plan_vence))}</span>`;
-  if (n.plan_vence) return `${nombre}<span class="celda-meta">Hasta el ${esc(fechaAR(n.plan_vence))}</span>`;
-  return nombre;
+  const cambiar = n.se_borra ? "" : `<button type="button" class="btn-link" data-plan-negocio="${n.id}">Cambiar</button>`;
+  if (n.plan !== n.plan_vigente) return `${nombre}<span class="celda-meta">Venció el ${esc(fechaAR(n.plan_vence))}</span>${cambiar}`;
+  if (n.plan_vence) return `${nombre}<span class="celda-meta">Hasta el ${esc(fechaAR(n.plan_vence))}</span>${cambiar}`;
+  return `${nombre}${cambiar}`;
 }
 
 function estadoDeNegocio(n) {
@@ -202,6 +203,56 @@ async function cargarNegocios() {
   negocios = await api("/api/plataforma/negocios", { error: "No se pudieron cargar los negocios." });
   pintarNegocios();
 }
+
+/* ---------- Cambiar el plan ---------- */
+
+const modalPlan = document.getElementById("modalPlanNegocio");
+const formPlan = document.getElementById("formPlanNegocio");
+let cambiandoPlan = null;
+let planes = null;
+
+async function abrirPlan(negocio) {
+  // Los planes, del mismo catálogo que la landing: una vez por sesión.
+  planes ??= (await api("/api/auth/planes", { error: "No se pudieron cargar los planes." })).planes;
+  cambiandoPlan = negocio;
+  formPlan.plan.innerHTML = planes.map((p) => `<option value="${esc(p.clave)}">${esc(p.nombre)}</option>`).join("");
+  // Lo guardado, aunque haya vencido: se ve qué tenía y hasta cuándo.
+  formPlan.plan.value = negocio.plan;
+  formPlan.hasta.value = negocio.plan_vence ?? "";
+  document.getElementById("modalPlanNegocioTitulo").textContent = `Plan de ${negocio.nombre}`;
+  modalPlan.hidden = false;
+}
+
+document.getElementById("platNegociosBody").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-plan-negocio]");
+  if (!boton) return;
+  const negocio = negocios.find((n) => n.id === Number(boton.dataset.planNegocio));
+  if (negocio) abrirPlan(negocio);
+});
+document.getElementById("modalPlanNegocioClose").addEventListener("click", () => {
+  modalPlan.hidden = true;
+});
+modalPlan.addEventListener("click", (e) => {
+  if (e.target === modalPlan) modalPlan.hidden = true;
+});
+formPlan.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const boton = formPlan.querySelector('[type="submit"]');
+  boton.disabled = true;
+  try {
+    await api(`/api/plataforma/negocios/${cambiandoPlan.id}/plan`, {
+      method: "PUT",
+      body: { plan: formPlan.plan.value, hasta: formPlan.hasta.value || null },
+      error: "No se pudo cambiar el plan."
+    });
+  } finally {
+    boton.disabled = false;
+  }
+  modalPlan.hidden = true;
+  const nombre = planes.find((p) => p.clave === formPlan.plan.value)?.nombre ?? formPlan.plan.value;
+  avisar(`${cambiandoPlan.nombre} pasó a ${nombre}.`, "ok");
+  await cargarNegocios();
+});
 
 /* ---------- Pestañas ---------- */
 
