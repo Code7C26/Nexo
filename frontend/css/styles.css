@@ -7097,6 +7097,53 @@ a.segmento {
   .tn-pedido { flex-direction: column; align-items: stretch; }
   .tn-pedido-acciones { flex-direction: row; justify-content: flex-start; gap: var(--sp-4); }
 }
+
+/* El link de Mercado Pago en "Registrar cobro" (hist. §130): debajo del
+   formulario, separado por una línea; el QR sobre blanco para que se lea
+   también en oscuro. */
+.mp-link {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.mp-link[hidden],
+.mp-link-listo[hidden] { display: none; }
+.mp-link-titulo { margin: 0; font-weight: 600; }
+.mp-link .form-note { margin: 0; }
+.mp-link-listo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.mp-link-qr {
+  width: 168px;
+  height: 168px;
+  padding: var(--sp-2);
+  background: #FFFFFF;
+  border-radius: var(--r-sm);
+  image-rendering: pixelated;
+}
+.mp-link-importe { margin: 0; font-weight: 600; }
+.mp-link-url {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  background: var(--surface);
+}
+.mp-link-acciones {
+  display: flex;
+  gap: var(--sp-2);
+  width: 100%;
+}
+.mp-link-acciones > .btn { flex: 1; justify-content: center; }
 .tn-conectada {
   display: flex;
   flex-direction: column;

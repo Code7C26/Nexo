@@ -11329,3 +11329,164 @@ el campo, el reporte y las tiendas. Sin errores de consola.
 - responder las preguntas de Mercado Libre y los mensajes armados de WhatsApp
   (la idea de Praxia);
 - "Traer mis productos" desde una tienda que ya existe.
+
+## 129. Lo que cuesta vender online: la comisión y el envío, 3 de noviembre de 2026
+
+**Pedido del usuario** (después de publicar §127 y §128 en el PR #45): "seguir
+con las cosas esenciales". Lo esencial que le faltaba a la venta online, de la
+lista de §128: la comisión del canal y el envío.
+
+**Decidido por mí, para revisar:**
+- **La comisión y el envío que paga el negocio son gastos de la venta**
+  (`gastos.venta_id`), no una tabla nueva: un gasto ya tiene categoría,
+  cuenta, egreso de tesorería, anulación, auditoría y entra al resultado.
+  Contablemente son gastos de comercialización (debajo de la ganancia bruta).
+  Van en la cuenta donde entra lo cobrado del canal (Mercado Pago acredita lo
+  cobrado menos la comisión), con las categorías "Comisiones de venta" y
+  "Envíos", que se crean la primera vez.
+- **Mercado Libre:** la comisión (`sale_fee` × cantidad) se registra sola al
+  pasar la venta. El envío que paga el vendedor en Mercado Libre pide otra
+  consulta (`/shipments/{id}/costs`): queda para después.
+- **Tienda Nube:** el envío que paga el negocio (`shipping_cost_owner`) es un
+  gasto de la venta; el que paga el cliente (`shipping_cost_customer`) pasa a
+  ser un renglón "Envío" (un servicio que Nexo crea solo, sin ocupar lugar del
+  plan; si el negocio ya tiene un servicio "Envío", usa ese), así el total y
+  el cobro son los de verdad. La comisión de Tienda Nube no viene en el pedido
+  (depende del plan y del medio de pago): no se registra.
+- Sin cuenta de cobro elegida en el canal no hay de dónde sacar el gasto: la
+  actividad avisa "no se registró: elegí la cuenta donde entra lo cobrado".
+- Anular la venta anula sus gastos (la plata vuelve a la cuenta), y
+  restaurarla los vuelve a aplicar.
+- La ganancia por canal descuenta esos gastos. La ficha de la venta muestra
+  "Costos de vender" y "Te quedó de ganancia" (solo el admin:
+  `costos_de_vender` está en `CLAVES_SENSIBLES`); la tarjeta "Ganancia" sigue
+  siendo la de la mercadería.
+
+**Esquema.** Migración aditiva: `gastos.venta_id` nula con FK a `ventas`,
+sin backfill, e `idx_gastos_venta`.
+
+**Backend.** `crearGasto({ ventaId })`, `registrarCostoDeVender`,
+`anularCostosDeVender` (en `revertirVentaAnulada`) y `restaurarCostosDeVender`
+(en la restauración); `productoDeEnvio` e `insertarProducto(…, { contarEnPlan })`;
+`importarPedido` suma el renglón del envío y los gastos, y la actividad dice
+qué se registró; `costos_de_vender` en la ficha de la venta;
+`SQL_REPORTE_COSTOS_DE_VENDER_POR_CANAL` en el reporte por canal.
+
+**Cómo se verificó.** `tiendanube.test.js`: un pedido con envío de $1.500 que
+paga el cliente y $900 que paga el negocio entra con el renglón "Envío", total
+$31.500 y el gasto de $900; se anula solo al cancelarse en la tienda (el gasto
+también), vuelve al restaurarla y se anula otra vez a mano.
+`mercadolibre.test.js`: la comisión de $4.000 queda como gasto de la venta y
+baja la ganancia de Mercado Libre en el reporte. `npm test` (280), lint,
+`verificar-migracion` (24 de 24) y `npm run regresion` (diferencias
+justificadas: `costos_de_vender` solo para el admin, `venta_id` en los gastos y
+la descarga, los callbacks). En Chrome a 390 px: la ficha con un costo de
+vender y lo que quedó de ganancia.
+
+**Queda:** el envío que paga el vendedor en Mercado Libre, anotar a mano la
+comisión de una venta por Instagram o WhatsApp (el link de Mercado Pago cobra
+la suya), y los mensajes (preguntas de Mercado Libre, WhatsApp armados).
+
+## 130. Mercado Pago: el link de pago y el cobro que entra solo, 3 de noviembre de 2026
+
+**Pedido del usuario:** "seguir con algo vos, yo no voy a poder estar". Lo que
+seguía en "Qué sigue" era Mercado Pago (decidido el 3 de noviembre: "si no se
+nos complica, antes de la presentación"). Se hicieron los pasos 1 (conectar
+la cuenta) y 3 (cobrar con link desde la venta) del plan; el 2 (las
+comisiones reales de Mercado Libre) usa la misma conexión y queda para la
+próxima. Todo contra un Mercado Pago falso: **la app real todavía no existe**
+(trámite del usuario, ver "Trámites del usuario" en `handoff.md`).
+
+**Confirmado en la documentación de Mercado Pago (3 de noviembre):** la
+autorización es `https://auth.mercadopago.com/authorization` con
+`platform_id=mp` y PKCE opcional (S256); el canje y la renovación son
+`POST https://api.mercadopago.com/oauth/token` con **JSON** (no form, a
+diferencia de Mercado Libre); el token dura 180 días y el refresh token
+cambia en cada renovación. Los campos del pago (`transaction_amount`,
+`fee_details[{type, amount, fee_payer}]`,
+`transaction_details.net_received_amount`, `money_release_date`,
+`external_reference`, `collector_id`) salen del mapeo oficial de collections
+a v1/payments. **Sin confirmar:** los nombres exactos de los tipos de
+`fee_details` (la documentación nombra `finance_fee`, `application_fee`,
+`coupon_fee`, `discount_fee`; se escribió de memoria `mercadopago_fee` y
+`financing_fee`). Por eso el desglose no depende del nombre: todo lo que paga
+el vendedor es comisión, salvo lo que diga "financ" (cuotas), y las
+retenciones son lo que falta para llegar al neto. Probarlo con un pago real
+de prueba y ajustar si hace falta.
+
+**Decidido por mí, para revisar:**
+- **Mercado Pago es una integración más** (`integraciones.plataforma =
+  'mercadopago'`): token cifrado, cuenta donde entra lo cobrado, actividad,
+  un negocio por cuenta. No es un canal de venta: no depende del módulo
+  Venta online, no publica stock (la pasada de stock la saltea) y no cuenta
+  para el paso "Conectá tu tienda" de la guía.
+- **El link es por lo que falta cobrar**, o por menos si se completó el
+  importe (una seña); nunca por más. Lleva la venta como referencia
+  (`external_reference = nexo-venta-N`). Crear el link no cambia nada en
+  Nexo. Es de los dos roles, como cobrar.
+- **El pago entra solo** cuando Mercado Pago avisa (o con la pasada cada 5
+  minutos, o con "Ya me pagó"): cobro en la cuenta elegida (de partida la
+  "Mercado Pago" de Caja), y la comisión y las cuotas sin interés como gastos
+  de la venta (hist. §129; categoría nueva "Cuotas sin interés"). Lo que se
+  queda Mercado Pago de impuestos (retenciones) se muestra en el pago y en la
+  actividad, pero no se registra: lo dice CLAUDE.md ("a confirmar, no
+  inventar"). Por eso el saldo de la cuenta en Nexo queda por encima del real
+  en lo retenido, hasta definirlo con un contador.
+- **Lo que no entra solo queda "Para revisar"** con el motivo: la venta ya
+  estaba cobrada, está anulada, el pago es más de lo que faltaba, la
+  referencia es de otro negocio, o no hay cuenta elegida. Nunca se cobra de
+  más ni se elige otra venta. Un pago de otra cuenta (`collector_id`) se
+  ignora. Uno pendiente o rechazado no se anota.
+- **Un pago devuelto o reclamado después de cobrado** no toca el cobro: queda
+  avisado ("hacé la devolución de la venta"), como una cancelación de Tienda
+  Nube con cobros. Un reclamo resuelto a favor vuelve a "Cobrado".
+- **Los avisos** se contestan enseguida y el pago siempre se pide a la API con
+  el token del negocio. Si la app tiene clave de avisos
+  (`MERCADOPAGO_WEBHOOK_SECRET`), un aviso sin firma válida se descarta. La
+  dirección de cada link lleva `?cuenta=<user_id>` para saber de qué negocio
+  es. Sin dirección pública (la compu) no se manda `notification_url`.
+- **"Cobrar" en la ficha de la venta:** en el celular la fila de Ventas no
+  muestra el botón, así que no había cómo cobrar una venta desde Ventas (solo
+  desde Cuentas corrientes). Ahora la ficha lo tiene mientras falte cobrar, y
+  se refresca sola después del cobro.
+
+**Esquema.** Migración (`db/index.js`, `ampliarCheck`, mismo método que §124):
+rebuild de `integraciones` (CHECK de plataforma suma `mercadopago`) y de
+`integracion_log` (tipo suma `pago`), conservando ids, índices y secuencia;
+las cuatro tablas que apuntan a `integraciones` se controlan con
+`foreign_key_check` antes del COMMIT. Tabla nueva `integracion_pagos` (cada
+pago una sola vez, con su desglose, motivo y `revisado_en`).
+
+**Backend.** `backend/mercadopago.js` (OAuth con PKCE, permiso cifrado,
+firma de avisos, cliente de la API, `desgloseDelPago`, la referencia). En
+`server.js`: callback y avisos (públicos), "Integraciones: Mercado Pago"
+(`procesarPagoMP`, la pasada, la renovación de a uno) y las rutas
+`GET/PUT /api/integraciones/mercadopago`, `conectar`, `desconectar`,
+`sincronizar`, `pagos/:id/revisado` (admin) y `POST /api/ventas/:id/link-de-pago`
+y `/revisar-pagos` (los dos roles). `ventaParaCobrar` sale del cobro a mano y
+lo usan los dos. `/api/negocio` suma `mercado_pago.conectado`.
+
+**Frontend.** Configuración → Cobros → Mercado Pago (`dominios/mercado-pago.js`):
+los pasos, la cuenta donde entra, los pagos (con comisión, cuotas,
+retenciones, neto y cuándo se libera) y la actividad. En "Registrar cobro":
+"¿Te paga a distancia?" con el link, su QR, Copiar, WhatsApp (`wa.me` con el
+texto armado) y "Ya me pagó: revisar".
+
+**Cómo se verificó.** `mercadopago.test.js` (10) contra un Mercado Pago falso:
+el permiso (state, PKCE, la vuelta exacta, `platform_id`), la conexión
+cifrada y única por cuenta, el link (importe, referencia, aviso,
+idempotencia, seña, venta ajena), el pago que entra una sola vez aunque el
+aviso se repita (cobro, gastos, retenciones aparte, saldo de Caja), un aviso
+sin firma ignorado, lo que queda para revisar, el devuelto, "Ya me pagó", la
+renovación de a uno con dos pedidos a la par, y desconectar. `npm test` (290),
+lint, `verificar-migracion` (24 de 24, la base real sin cambios) y
+`npm run regresion` (diferencias justificadas: las rutas nuevas,
+`mercado_pago` en `/api/negocio` y los callbacks que devuelven `index.html`).
+En Chrome a 390 px, con una demo contra el falso: conectar, cobrar desde la
+ficha, el link con su QR, "Ya me pagó" (la ficha queda cobrada con sus costos
+de vender) y la página con el pago. Sin errores de consola.
+
+**Queda:** probarlo con la app real y usuarios de prueba; el paso 2 (las
+comisiones reales de Mercado Libre desde el pago); el 4 (pagos que no
+salieron de Nexo); el 5 (QR en el punto de venta) y el 6 (la cuenta
+conciliada).

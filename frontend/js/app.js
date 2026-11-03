@@ -60,6 +60,7 @@ import "./dominios/baja.js";
 import "./dominios/factura-electronica.js";
 import "./dominios/tienda-nube.js";
 import "./dominios/mercado-libre.js";
+import "./dominios/mercado-pago.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
@@ -4476,6 +4477,9 @@ async function abrirFichaVenta(id) {
   // backend ya lo rechaza, esto es para no invitar a un click que va a
   // fallar.
   document.getElementById("btnEditarVenta").hidden = venta.facturada || venta.tiene_devolucion;
+  // En el celular la fila de la lista no muestra "Cobrar": se cobra desde acá
+  // (y desde acá se manda el link de Mercado Pago, hist. §130).
+  document.getElementById("btnCobrarVentaFicha").hidden = venta.estado === "anulada" || !(venta.neto - venta.cobrado > 0.005);
   document.getElementById("btnDevolverVenta").hidden =
     venta.estado === "anulada" || venta.items.every((i) => i.disponible_devolucion <= 0);
 
@@ -4524,6 +4528,28 @@ async function abrirFichaVenta(id) {
     )
     .join("");
 
+  // La comisión y el envío que pagó el negocio (hist. §129): el empleado no
+  // los recibe (el servidor los poda, como el costo).
+  const costosDeVender = venta.costos_de_vender ?? [];
+  document.getElementById("fichaVentaCostosPanel").hidden = costosDeVender.length === 0;
+  // La tarjeta "Ganancia" es la de la mercadería; la última fila dice lo que
+  // quedó después de vender.
+  const quedo = venta.margen - costosDeVender.reduce((acc, c) => acc + c.importe, 0);
+  document.getElementById("fichaVentaCostos").innerHTML =
+    costosDeVender
+      .map(
+        (c) => `
+        <tr>
+          <td data-label="Qué">${esc(c.descripcion || c.categoria)}</td>
+          <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
+        </tr>`
+      )
+      .join("") +
+    `<tr>
+      <td data-label="Qué"><strong>Te quedó de ganancia</strong></td>
+      <td data-label="Importe" class="align-right mono ${quedo < 0 ? "saldo-negativo" : ""}"><strong>${money(quedo)}</strong></td>
+    </tr>`;
+
   // Las devoluciones de esta venta viven en su propio caché (cargarDevoluciones,
   // ya resuelto para cuando se navega acá); el panel entero se oculta si no hay
   // ninguna, para no mostrar una tabla vacía en la mayoría de las ventas.
@@ -4559,6 +4585,12 @@ document.getElementById("btnEditarVenta").addEventListener("click", async () => 
   abrirModalVenta(await api(`/api/ventas/${ventaFichaId}`, { error: "No se pudo cargar la venta." }));
 });
 document.getElementById("btnVolverVentas").addEventListener("click", () => mostrarVista("ventas"));
+document.getElementById("btnCobrarVentaFicha").addEventListener("click", () => abrirModalCobrarVenta(ventaFichaId));
+// Cobrada desde su ficha: la ficha muestra lo cobrado al toque.
+document.addEventListener("cobro-registrado", (e) => {
+  const ficha = document.querySelector('[data-view="venta-detalle"]');
+  if (e.detail?.ventaId === ventaFichaId && !ficha.hidden) abrirFichaVenta(ventaFichaId);
+});
 
 const modalFacturarVenta = document.getElementById("modalFacturarVenta");
 
@@ -4619,7 +4651,8 @@ function renderHistorialPagos(contenedorId, lista) {
 
 async function abrirModalCobrarVenta(id) {
   ventaACobrarId = id;
-  const venta = ventas.find((v) => v.id === id);
+  // Desde la ficha puede ser una venta que la lista todavía no trajo.
+  const venta = ventas.find((v) => v.id === id) ?? (await api(`/api/ventas/${id}`, { error: "No se pudo cargar la venta." }));
   document.getElementById("cobroVentaTotal").textContent = money(venta.neto);
   document.getElementById("cobroVentaCobrado").textContent = money(venta.cobrado);
   document.getElementById("cobroVentaSaldo").textContent = money(venta.neto - venta.cobrado);
@@ -4628,9 +4661,91 @@ async function abrirModalCobrarVenta(id) {
 
   const cobros = await api(`/api/ventas/${id}/cobros`);
   renderHistorialPagos("cobroVentaHistorial", cobros);
+  prepararLinkMercadoPago(venta.neto - venta.cobrado);
 
   modalCobrarVenta.hidden = false;
 }
+
+/* --- El link de Mercado Pago (hist. §130) --- */
+
+// Con la cuenta conectada, "Registrar cobro" ofrece además mandarle al
+// cliente un link de pago. El cobro no se registra acá: entra solo cuando
+// paga (o con "Ya me pagó", si el aviso no llegó).
+const cobroMp = document.getElementById("cobroVentaMp");
+const cobroMpListo = document.getElementById("cobroMpListo");
+const btnCobroMpLink = document.getElementById("btnCobroMpLink");
+
+function prepararLinkMercadoPago(saldo) {
+  cobroMp.hidden = !(negocio.mercado_pago?.conectado && saldo > 0);
+  cobroMpListo.hidden = true;
+  btnCobroMpLink.hidden = false;
+}
+
+btnCobroMpLink.addEventListener("click", async () => {
+  const importe = parseFloat(document.querySelector('#formCobrarVenta input[name="importe"]').value);
+  btnCobroMpLink.disabled = true;
+  let link;
+  try {
+    link = await api(`/api/ventas/${ventaACobrarId}/link-de-pago`, {
+      method: "POST",
+      body: importe > 0 ? { importe } : {},
+      error: "No se pudo crear el link de pago."
+    });
+  } finally {
+    btnCobroMpLink.disabled = false;
+  }
+  document.getElementById("cobroMpUrl").value = link.url;
+  document.getElementById("cobroMpImporte").textContent = `Link por ${money(link.importe)}`;
+  document.getElementById("btnCobroMpWhatsapp").href = `https://wa.me/?text=${encodeURIComponent(
+    `Te paso el link para pagar ${money(link.importe)} con Mercado Pago: ${link.url}`
+  )}`;
+  // El QR, para que lo escanee desde el celular si está enfrente.
+  const qr = document.getElementById("cobroMpQr");
+  try {
+    await cargarQr();
+    const codigo = window.qrcode(0, "M");
+    codigo.addData(link.url);
+    codigo.make();
+    qr.src = codigo.createDataURL(4, 0);
+    qr.hidden = false;
+  } catch {
+    qr.hidden = true;
+  }
+  btnCobroMpLink.hidden = true;
+  cobroMpListo.hidden = false;
+});
+
+document.getElementById("btnCobroMpCopiar").addEventListener("click", async () => {
+  const campo = document.getElementById("cobroMpUrl");
+  try {
+    await navigator.clipboard.writeText(campo.value);
+  } catch {
+    campo.select();
+    document.execCommand("copy");
+  }
+  avisar("Link copiado.", "ok");
+});
+
+document.getElementById("btnCobroMpRevisar").addEventListener("click", async (e) => {
+  const boton = e.currentTarget;
+  boton.disabled = true;
+  let r;
+  try {
+    r = await api(`/api/ventas/${ventaACobrarId}/revisar-pagos`, { method: "POST", error: "No se pudo revisar Mercado Pago." });
+  } finally {
+    boton.disabled = false;
+  }
+  if (r.cobrados > 0) {
+    await refrescar([cargarVentas(), cargarCaja(), cargarClientes(), recargar("cuentasCorrientes")]);
+    modalCobrarVenta.hidden = true;
+    avisar(r.cobrados === 1 ? "Entró el pago de Mercado Pago." : `Entraron ${r.cobrados} pagos de Mercado Pago.`, "ok");
+    document.dispatchEvent(new CustomEvent("cobro-registrado", { detail: { ventaId: ventaACobrarId } }));
+  } else if (r.sin_asignar > 0) {
+    avisar("Llegó un pago que no se pudo cobrar solo. Miralo en Configuración → Mercado Pago.", "atencion");
+  } else {
+    avisar("Todavía no llegó ningún pago de este link.", "atencion");
+  }
+});
 
 document.getElementById("modalCobrarVentaClose").addEventListener("click", () => {
   modalCobrarVenta.hidden = true;

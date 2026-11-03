@@ -324,6 +324,18 @@ export const RUTAS_PERMISOS = {
   'POST /api/integraciones/mercadolibre/desvincular': 'admin',
   'POST /api/integraciones/mercadolibre/pedidos/:id/reintentar': 'admin',
   'POST /api/integraciones/mercadolibre/pedidos/:id/revisado': 'admin',
+  // Mercado Pago (hist. §130): conectarlo es admin; el link de pago y "Ya me
+  // pagó" son de los dos roles, como cobrar una venta.
+  'GET /api/integraciones/mercadopago/callback': 'publico',
+  'POST /api/integraciones/mercadopago/notificaciones': 'publico',
+  'GET /api/integraciones/mercadopago': 'admin',
+  'PUT /api/integraciones/mercadopago': 'admin',
+  'POST /api/integraciones/mercadopago/conectar': 'admin',
+  'POST /api/integraciones/mercadopago/desconectar': 'admin',
+  'POST /api/integraciones/mercadopago/sincronizar': 'admin',
+  'POST /api/integraciones/mercadopago/pagos/:id/revisado': 'admin',
+  'POST /api/ventas/:id/link-de-pago': 'ambos',
+  'POST /api/ventas/:id/revisar-pagos': 'ambos',
   // Lo que ya tenía el negocio al empezar con Nexo (handoff 8c): stock con
   // su costo, saldos y ventas de antes. Admin, como el ajuste de stock.
   'GET /api/carga-inicial': 'admin',

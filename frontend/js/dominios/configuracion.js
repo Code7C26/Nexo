@@ -421,6 +421,9 @@ const PAGINAS = {
   "tienda-nube": { admin: true, modulo: "canales", alEntrar: () => invocar("pintar:tienda-nube") },
   // Mercado Libre: dominios/mercado-libre.js (etapa G).
   "mercado-libre": { admin: true, modulo: "canales", alEntrar: () => invocar("pintar:mercado-libre") },
+  // Mercado Pago: dominios/mercado-pago.js (hist. §130). No es un canal de
+  // venta: no depende del módulo Venta online.
+  "mercado-pago": { admin: true, alEntrar: () => invocar("pintar:mercado-pago") },
   // Descargar los datos y dar de baja el negocio: dominios/baja.js (hist. §109).
   baja: { admin: true, alEntrar: () => invocar("pintar:baja") },
   // El plan de Nexo lo pinta dominios/plan.js (hist. §99).

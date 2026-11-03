@@ -894,7 +894,11 @@ CREATE TABLE IF NOT EXISTS gastos (
   descripcion TEXT,
   comprobante TEXT,
   estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo',
-  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- La venta de la que es costo (hist. §129): la comisión de Mercado Libre o
+  -- el envío que paga el negocio. Se anula y se restaura con ella, y cuenta en
+  -- la ganancia de su canal. NULL = un gasto del negocio, como siempre.
+  venta_id INTEGER REFERENCES ventas(id)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo
@@ -1602,7 +1606,9 @@ CREATE INDEX IF NOT EXISTS idx_crm_actividades_oportunidad ON crm_actividades(op
 CREATE INDEX IF NOT EXISTS idx_crm_actividades_cliente ON crm_actividades(cliente_id);
 
 -- Integraciones con canales de venta (etapa G, CLAUDE.md §32). Una fila por
--- negocio y plataforma: hoy Tienda Nube, después Mercado Libre.
+-- negocio y plataforma: Tienda Nube, Mercado Libre y Mercado Pago (hist.
+-- §130: no es un canal, es dónde se cobra; usa el permiso, la cuenta y la
+-- actividad, y no la lista, el depósito ni los pedidos).
 -- - cuenta_externa: la tienda (o el vendedor) del otro lado. Una tienda
 --   conectada está en un solo negocio a la vez (índice de abajo): si no, un
 --   webhook no sabría a cuál va.
@@ -1615,7 +1621,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_actividades_cliente ON crm_actividades(client
 -- - pedidos_desde: los pedidos de antes no se traen (son de antes de Nexo).
 CREATE TABLE IF NOT EXISTS integraciones (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  plataforma TEXT NOT NULL CHECK (plataforma IN ('tiendanube', 'mercadolibre')),
+  plataforma TEXT NOT NULL CHECK (plataforma IN ('tiendanube', 'mercadolibre', 'mercadopago')),
   estado TEXT NOT NULL DEFAULT 'conectada' CHECK (estado IN ('conectada', 'desconectada')),
   cuenta_externa TEXT NOT NULL,
   nombre_cuenta TEXT,
@@ -1694,9 +1700,50 @@ CREATE TABLE IF NOT EXISTS integracion_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
-  tipo TEXT NOT NULL CHECK (tipo IN ('conexion', 'desconexion', 'publicacion', 'stock', 'pedido', 'webhook')),
+  tipo TEXT NOT NULL CHECK (tipo IN ('conexion', 'desconexion', 'publicacion', 'stock', 'pedido', 'webhook', 'pago')),
   resultado TEXT NOT NULL CHECK (resultado IN ('ok', 'error')),
   detalle TEXT NOT NULL,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 CREATE INDEX IF NOT EXISTS idx_integracion_log ON integracion_log(integracion_id, id);
+
+-- Cada pago de Mercado Pago que llegó a Nexo, una sola vez (hist. §130): los
+-- avisos se repiten y la pasada periódica vuelve a mirar los recientes. Hoy
+-- solo los que salieron de un link de Nexo (referencia nexo-venta-N). estado:
+-- - cobrado: ya es un cobro de la venta (cobro_id), con la comisión y el
+--   costo de las cuotas como gastos de la venta;
+-- - sin_asignar: no se pudo cobrar (la venta ya estaba paga, anulada, o el
+--   pago supera lo que falta); motivo dice por qué, y el negocio decide;
+-- - devuelto / en_disputa: Mercado Pago lo devolvió o el cliente lo
+--   reclamó después de cobrado. El cobro no se toca solo: queda avisado para
+--   hacer la devolución en Nexo.
+-- Los importes son los de Mercado Pago (ver desgloseDelPago en
+-- mercadopago.js). retenciones va aparte y no es gasto: falta definirlo con
+-- un contador (CLAUDE.md, reglas a confirmar). revisado_en: cuándo el negocio
+-- marcó como visto uno que pedía atención (sin asignar, devuelto, en disputa).
+CREATE TABLE IF NOT EXISTS integracion_pagos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
+  externo_id TEXT NOT NULL,
+  estado TEXT NOT NULL CHECK (estado IN ('cobrado', 'sin_asignar', 'devuelto', 'en_disputa')),
+  venta_id INTEGER REFERENCES ventas(id),
+  cobro_id INTEGER REFERENCES cobros(id),
+  importe REAL NOT NULL,
+  comision REAL NOT NULL DEFAULT 0,
+  financiacion REAL NOT NULL DEFAULT 0,
+  retenciones REAL NOT NULL DEFAULT 0,
+  neto REAL,
+  medio TEXT,
+  cuotas INTEGER,
+  pagador TEXT,
+  referencia TEXT,
+  aprobado_en TEXT,
+  libera_en TEXT,
+  motivo TEXT,
+  revisado_en TEXT,
+  recibido_en TEXT NOT NULL,
+  actualizado_en TEXT NOT NULL,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (integracion_id, externo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_integracion_pagos_venta ON integracion_pagos(venta_id);

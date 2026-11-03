@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §128);
+    siguiente número (hoy el último es §130);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,39 @@
 
 ## Estado actual (3 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §128): tipo "Tienda online", hecho y
-commiteado en `solla`, sin publicar.** Pedido del usuario ("e-commerce, y
+**Lo último (3 de noviembre, hist. §130): Mercado Pago, pasos 1 y 3 del plan,
+hechos y commiteados en `solla`, sin publicar** (sesión sin el usuario:
+"seguir con algo vos").
+- Configuración → Cobros → Mercado Pago: conectar la cuenta (OAuth con PKCE,
+  como Mercado Libre) y elegir adónde entra la plata;
+- "Registrar cobro" ofrece un link de Mercado Pago (con QR, Copiar y
+  WhatsApp); cuando el cliente paga, el cobro entra solo, con la comisión y
+  las cuotas sin interés como gastos de la venta. Las retenciones se muestran,
+  no se registran. Lo que no entra solo queda "Para revisar";
+- la ficha de la venta suma "Cobrar" (en el celular no había cómo cobrar desde
+  Ventas);
+- migración: rebuild del CHECK de `integraciones` e `integracion_log`, y la
+  tabla `integracion_pagos`;
+- **probado solo contra un Mercado Pago falso.** Falta el trámite del usuario
+  (la app en el portal de Mercado Pago, ver "Trámites del usuario") y probarlo
+  con usuarios de prueba. **Falta que el usuario lo vea.**
+
+**Antes (3 de noviembre, hist. §129): la comisión y el envío de la venta
+online, hechos y commiteados en `solla`, sin publicar.**
+- la comisión de Mercado Libre y el envío que paga el negocio en Tienda Nube
+  son gastos de la venta (`gastos.venta_id`, migración aditiva), en la cuenta
+  del canal; se anulan y se restauran con ella;
+- el envío que paga el cliente en Tienda Nube es un renglón "Envío";
+- la ganancia por canal los descuenta, y la ficha de la venta muestra "Costos
+  de vender" y lo que quedó;
+- **sigue: Mercado Pago** (ver "Qué sigue"), el envío del vendedor en Mercado Libre
+  y los mensajes; después, lo de
+  Praxia (balanza, ofertas, cobrar a cuenta en el punto de venta).
+
+**Publicado el 3 de noviembre (PR #45): §127 y §128.**
+
+**Antes (3 de noviembre, hist. §128): tipo "Tienda online", hecho y
+publicado (PR #45).** Pedido del usuario ("e-commerce, y
 muchos locales venden digitalmente y viceversa"):
 - tipo nuevo, con Venta online, Consultas, Compras, Stock y Producción (la
   caja y la bolsa del envío), sin punto de venta;
@@ -32,12 +63,10 @@ muchos locales venden digitalmente y viceversa"):
 - migración aditiva: `ventas.canal` nula, completada con la tienda o `local`
   donde se sabe; el módulo solo se prende a los negocios viejos con una tienda
   conectada.
-- **Falta que el usuario lo vea**, y para un negocio digital completo: la
-  comisión de cada canal como costo, el envío, y responder preguntas de
-  Mercado Libre / mensajes de WhatsApp.
+- **Falta que el usuario lo vea.**
 
 **Antes (3 de noviembre, hist. §127): código de barras propio, hecho y
-commiteado en `solla`, sin publicar.** Primera idea de Praxia:
+publicado (PR #45).** Primera idea de Praxia:
 - el producto y cada variante tienen su código de barras, aparte del SKU, único
   por empresa entre los dos y guardado sin espacios;
 - el lector del punto de venta lo busca antes que el SKU; Tienda Nube lo
@@ -1169,8 +1198,60 @@ sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
   la investigación), que se apoya en ese campo; después ofertas con vigencia y
   cobrar a cuenta y gastos desde el punto de venta.
 - En el medio, el usuario pidió el tipo "Tienda online": **hecho** (hist.
-  §128), sin publicar. Lo que le falta (comisiones, envío, mensajes) está en
-  "Estado actual".
+  §128, publicado en el PR #45), y la comisión y el envío (hist. §129, sin
+  publicar).
+
+**Mercado Pago (decidido por el usuario el 3 de noviembre: "si no se nos
+complica, antes de la presentación, puede sumar bastante").** Va primero en lo
+esencial que queda de la venta online, y reemplaza "anotar a mano la comisión
+de una venta por Instagram o WhatsApp". Unas tres sesiones (1 a 3, después 4
+a 6):
+1. ~~**Conectar la cuenta**~~ **hecho el 3 de noviembre (hist. §130)**, contra
+   un Mercado Pago falso. **Trámite del usuario:** crear la aplicación en el
+   portal de desarrolladores de Mercado Pago (gratis) y mandar sus claves al
+   servidor como las de Mercado Libre (ver "Trámites del usuario").
+2. **Las comisiones reales de las ventas de Mercado Libre:** la venta dice qué
+   pago tuvo; del pago salen la comisión y el costo de las cuotas sin interés,
+   y reemplazan al `sale_fee` de hist. §129 (mismos gastos de la venta,
+   categorías "Comisiones de venta" y una nueva para las cuotas). Confirmar
+   antes en la documentación actual los nombres de los campos del desglose
+   (comisión, financiación, neto, fecha en que se libera la plata): se
+   escribieron de memoria.
+3. ~~**Cobrar con link o QR desde la venta**~~ **hecho el 3 de noviembre
+   (hist. §130)**: link de Checkout Pro desde "Registrar cobro", con QR, y el
+   cobro, la comisión y las cuotas que entran solos. **Sigue el paso 2**, que
+   usa la misma conexión: en la venta de Mercado Libre, `payments[].id` →
+   `apiDeMercadoPago(...).pago(id)` → `desgloseDelPago` reemplaza al
+   `sale_fee` de §129. Ojo: hace falta que el negocio tenga conectados los
+   dos (es la misma cuenta, pero son dos permisos).
+4. **Pagos sin asignar:** los que no salieron de Nexo (QR genérico, transferencia)
+   se listan con una sugerencia por monto y fecha, y el negocio confirma de qué
+   venta son. Nunca se asignan solos (CLAUDE.md §32).
+5. **QR en el punto de venta** (sumado por el usuario el 3 de noviembre): un
+   medio de cobro "QR de Mercado Pago" en el mostrador. Nexo arma el QR con el
+   monto exacto y la venta como referencia (el QR dinámico de Mercado Pago,
+   que pide dar de alta una sucursal y una caja en Mercado Pago, una vez, desde
+   Nexo); la pantalla espera el pago y cierra la venta sola, con la comisión
+   como gasto. Si el cliente no paga o Mercado Pago no contesta, se cobra con
+   otro medio como siempre. Va con el turno de caja de hist. §67.
+6. **La cuenta Mercado Pago de Caja, conciliada** (sumado por el usuario el 3
+   de noviembre): la cuenta de tesorería de tipo Mercado Pago queda vinculada
+   a la cuenta real.
+   - Nexo compara su saldo con el de Mercado Pago y muestra la diferencia.
+   - Avisa lo raro: plata que entró o salió de Mercado Pago sin venta, compra,
+     gasto o cobro de Nexo que la explique, cobros de Nexo en la cuenta Mercado
+     Pago que no aparecen allá, y pagos devueltos o en disputa.
+   - Los avisos van a "Para revisar" (la idea de Praxia, punto 7 de
+     `docs/investigacion-praxia.md`), con un botón para asignarlo a una venta,
+     registrarlo como gasto o marcarlo como visto. Nunca se registra nada solo.
+   - Confirmar en la documentación qué movimientos de salida da la API (los
+     cobros entrantes salen de la búsqueda de pagos; los egresos quizás pidan
+     el reporte de liquidaciones).
+- **Retenciones (IIBB, ganancias, IVA):** CLAUDE.md las deja "a confirmar, no
+  inventar". Se muestran aparte en el pago, sin cargarlas como gasto, hasta
+  definirlas con un contador.
+- Si se complica (aprobación de la aplicación, campos distintos de lo
+  esperado), queda para después de la presentación y no frena lo demás.
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
@@ -1884,6 +1965,24 @@ octubre).
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
+- **Mercado Pago (hist. §130, lo que falta para probarlo de verdad):**
+  1. En https://www.mercadopago.com.ar/developers/panel/app, "Crear
+     aplicación" (gratis), tipo Checkout Pro / pagos online, con la cuenta de
+     Santino.
+  2. En la app: URL de redireccionamiento
+     `https://<dirección pública de Nexo>/api/integraciones/mercadopago/callback`
+     (idéntica; si se prende PKCE en la app, Nexo ya lo manda), y en
+     Webhooks la misma dirección con `/notificaciones` en vez de `/callback`,
+     con el evento "Pagos". Ahí da la "clave secreta" de los avisos.
+  3. Mandar al servidor `MERCADOPAGO_APP_ID` (el "Client ID" o número de la
+     app), `MERCADOPAGO_CLIENT_SECRET` y `MERCADOPAGO_WEBHOOK_SECRET` (la clave
+     de los avisos), con el mismo comando de PowerShell de Mercado Libre.
+  4. Crear dos cuentas de prueba (vendedor y comprador) en "Cuentas de
+     prueba" del panel, conectar el vendedor desde Nexo, crear un link en una
+     venta y pagarlo con el comprador y una tarjeta de prueba.
+  5. Mirar en Configuración → Mercado Pago que la comisión, las cuotas y las
+     retenciones salgan bien: los nombres de `fee_details` se escribieron de
+     memoria (hist. §130).
 - ~~**Backblaze:**~~ hecho el 2 de noviembre (cuenta en EU Central, bucket
   privado `nexo-respaldos-solla`, clave solo para ese bucket).
 - ~~**Groq:**~~ cuenta y clave hechas el 2 de noviembre (la clave en el

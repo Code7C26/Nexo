@@ -1632,6 +1632,7 @@
           <div class="panel-head">
             <h2 id="fichaVentaTitulo">—</h2>
             <div class="panel-acciones">
+              <button class="btn btn-secundario" id="btnCobrarVentaFicha"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg> Cobrar</button>
               <button class="btn btn-secundario" id="btnDevolverVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg> Devolver</button>
               <button class="btn btn-primary" id="btnEditarVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
@@ -1702,6 +1703,25 @@
               </tr>
             </thead>
             <tbody id="fichaVentaConsumos"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <!-- La comisión del canal y el envío que pagó el negocio (hist. §129):
+             gastos de esta venta, solo para el admin. -->
+        <section class="panel col-admin" id="fichaVentaCostosPanel" hidden>
+          <div class="panel-head">
+            <h2>Costos de vender</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Qué</th>
+                <th scope="col" class="align-right">Importe</th>
+              </tr>
+            </thead>
+            <tbody id="fichaVentaCostos"></tbody>
           </table>
           </div>
         </section>
@@ -3425,6 +3445,16 @@
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
+            <!-- Mercado Pago (hist. §130): no es un canal de venta, así que no
+                 depende de Venta online: cobra lo del local y lo de internet. -->
+            <div class="config-grupo col-admin">
+              <p class="config-grupo-titulo">Cobros</p>
+              <a class="config-item" href="#/configuracion/mercado-pago" data-seccion="mercado-pago">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#wallet"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Mercado Pago</span><span class="config-item-desc" id="configMercadoPagoResumen">Cobrá con un link y que entre solo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+            </div>
             <div class="config-grupo col-admin">
               <p class="config-grupo-titulo">Tu plan</p>
               <a class="config-item" href="#/configuracion/plan" data-seccion="plan">
@@ -3846,6 +3876,67 @@
                 <section class="panel" aria-labelledby="mlActividadTitulo">
                   <div class="panel-head"><h2 id="mlActividadTitulo">Actividad</h2></div>
                   <ul class="tn-actividad" id="mlActividad"></ul>
+                </section>
+              </div>
+            </section>
+
+            <!-- Mercado Pago (hist. §130): la pinta dominios/mercado-pago.js.
+                 Sin conectar, los pasos; conectada, adónde entra lo cobrado,
+                 los pagos que llegaron y la actividad. -->
+            <section class="config-pagina col-admin" data-seccion="mercado-pago" aria-labelledby="configMpTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configMpTitulo" tabindex="-1">Mercado Pago</h2>
+                <p>Mandale a tu cliente un link de pago desde la venta. Cuando paga, el cobro entra solo en Nexo, con la comisión y el costo de las cuotas anotados como gastos de esa venta.</p>
+              </header>
+
+              <div class="fe-estado" id="mpEstado" aria-live="polite"></div>
+
+              <ol class="fe-pasos" id="mpPasos" hidden>
+                <li class="fe-paso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Tené tu cuenta de Mercado Pago</p>
+                    <p class="config-tarjeta-texto">La de <a href="https://www.mercadopago.com.ar" target="_blank" rel="noopener noreferrer">mercadopago.com.ar</a> donde querés recibir la plata. Si vendés en Mercado Libre, es la misma cuenta.</p>
+                  </div>
+                </li>
+                <li class="fe-paso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Conectala con Nexo</p>
+                    <p class="config-tarjeta-texto">Te lleva a Mercado Pago para que le des permiso a Nexo, y volvés acá solo. Nexo nunca te pide la contraseña, y no puede sacar plata de tu cuenta: solo arma links de pago y lee los pagos que llegan.</p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p>Lo podés desconectar cuando quieras.</p>
+                    <button type="button" class="btn btn-primary" id="btnMpConectar">Conectar mi Mercado Pago</button>
+                  </div>
+                </li>
+              </ol>
+
+              <div class="tn-conectada" id="mpConectada" hidden>
+                <form class="form config-tarjeta" id="formMpAjustes" novalidate>
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo">Adónde entra la plata</p>
+                    <label>Lo cobrado con Mercado Pago entra en
+                      <select name="cuenta_tesoreria_id" id="mpCuenta"></select>
+                    </label>
+                    <p class="campo-ayuda">Elegí la cuenta de Caja que es tu Mercado Pago. De ahí salen también la comisión y las cuotas sin interés de cada cobro, como en tu resumen de Mercado Pago.</p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p>Vale para los próximos pagos.</p>
+                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                  </div>
+                </form>
+
+                <section class="panel" aria-labelledby="mpPagosTitulo">
+                  <div class="panel-head">
+                    <h2 id="mpPagosTitulo">Pagos que llegaron</h2>
+                    <button type="button" class="btn btn-secundario" id="btnMpSincronizar">Buscar pagos ahora</button>
+                  </div>
+                  <p class="tn-ayuda">Los de los links que mandaste desde Nexo. Lo que Mercado Pago retiene de impuestos se muestra acá, pero no se anota como gasto.</p>
+                  <ul class="tn-pedidos" id="mpPagos"></ul>
+                </section>
+
+                <section class="panel" aria-labelledby="mpActividadTitulo">
+                  <div class="panel-head"><h2 id="mpActividadTitulo">Actividad</h2></div>
+                  <ul class="tn-actividad" id="mpActividad"></ul>
                 </section>
               </div>
             </section>
@@ -6058,6 +6149,24 @@
         </label>
         <button type="submit" class="btn btn-primary btn-full">Registrar cobro</button>
       </form>
+      <!-- El link de Mercado Pago (hist. §130): solo con la cuenta conectada.
+           Lo arma app.js. Va por el importe de arriba si se completó (una
+           seña), o por todo lo que falta. -->
+      <div class="mp-link" id="cobroVentaMp" hidden>
+        <p class="mp-link-titulo">¿Te paga a distancia?</p>
+        <p class="form-note">Mandale un link de Mercado Pago. Cuando paga, el cobro entra solo en esta venta.</p>
+        <button type="button" class="btn btn-secundario btn-full" id="btnCobroMpLink"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#wallet"></use></svg> Crear link de Mercado Pago</button>
+        <div class="mp-link-listo" id="cobroMpListo" hidden>
+          <img class="mp-link-qr" id="cobroMpQr" alt="Código QR del link de pago" hidden />
+          <p class="mp-link-importe" id="cobroMpImporte"></p>
+          <input type="text" class="mp-link-url" id="cobroMpUrl" readonly aria-label="Link de pago" />
+          <div class="mp-link-acciones">
+            <button type="button" class="btn btn-secundario" id="btnCobroMpCopiar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#copy"></use></svg> Copiar</button>
+            <a class="btn btn-secundario" id="btnCobroMpWhatsapp" target="_blank" rel="noopener noreferrer"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#message-circle"></use></svg> WhatsApp</a>
+          </div>
+          <button type="button" class="btn-link" id="btnCobroMpRevisar">Ya me pagó: revisar</button>
+        </div>
+      </div>
     </div>
   </div>
 
