@@ -1187,7 +1187,8 @@ sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
 **Mercado Pago (decidido por el usuario el 3 de noviembre: "si no se nos
 complica, antes de la presentación, puede sumar bastante").** Va primero en lo
 esencial que queda de la venta online, y reemplaza "anotar a mano la comisión
-de una venta por Instagram o WhatsApp". Unas dos sesiones:
+de una venta por Instagram o WhatsApp". Unas tres sesiones (1 a 3, después 4
+a 6):
 1. **Conectar la cuenta** con el permiso del dueño (OAuth, como Mercado Libre
    en `backend/mercadolibre.js`: token cifrado en `integraciones`, renovación
    de a uno, avisos de pago verificados pidiendo el pago con el token, nunca
@@ -1207,6 +1208,26 @@ de una venta por Instagram o WhatsApp". Unas dos sesiones:
 4. **Pagos sin asignar:** los que no salieron de Nexo (QR genérico, transferencia)
    se listan con una sugerencia por monto y fecha, y el negocio confirma de qué
    venta son. Nunca se asignan solos (CLAUDE.md §32).
+5. **QR en el punto de venta** (sumado por el usuario el 3 de noviembre): un
+   medio de cobro "QR de Mercado Pago" en el mostrador. Nexo arma el QR con el
+   monto exacto y la venta como referencia (el QR dinámico de Mercado Pago,
+   que pide dar de alta una sucursal y una caja en Mercado Pago, una vez, desde
+   Nexo); la pantalla espera el pago y cierra la venta sola, con la comisión
+   como gasto. Si el cliente no paga o Mercado Pago no contesta, se cobra con
+   otro medio como siempre. Va con el turno de caja de hist. §67.
+6. **La cuenta Mercado Pago de Caja, conciliada** (sumado por el usuario el 3
+   de noviembre): la cuenta de tesorería de tipo Mercado Pago queda vinculada
+   a la cuenta real.
+   - Nexo compara su saldo con el de Mercado Pago y muestra la diferencia.
+   - Avisa lo raro: plata que entró o salió de Mercado Pago sin venta, compra,
+     gasto o cobro de Nexo que la explique, cobros de Nexo en la cuenta Mercado
+     Pago que no aparecen allá, y pagos devueltos o en disputa.
+   - Los avisos van a "Para revisar" (la idea de Praxia, punto 7 de
+     `docs/investigacion-praxia.md`), con un botón para asignarlo a una venta,
+     registrarlo como gasto o marcarlo como visto. Nunca se registra nada solo.
+   - Confirmar en la documentación qué movimientos de salida da la API (los
+     cobros entrantes salen de la búsqueda de pagos; los egresos quizás pidan
+     el reporte de liquidaciones).
 - **Retenciones (IIBB, ganancias, IVA):** CLAUDE.md las deja "a confirmar, no
   inventar". Se muestran aparte en el pago, sin cargarlas como gasto, hasta
   definirlas con un contador.
