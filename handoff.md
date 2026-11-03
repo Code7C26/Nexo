@@ -1107,9 +1107,12 @@ para un negocio muy chico; lo complejo, después. Pide:
 - **Todo integrado:** stock, costo promedio y margen, reportes, y avisos de
   materiales bajos.
 
-Diseño: hist. §125. Para la segunda parte, abrir un frasco ya se puede como
-producción (receta "Perfume (ml)" = 1 frasco, rinde 100): queda decidir con
-el usuario si alcanza así o si prefiere comprar el perfume ya en ml.
+Diseño: hist. §125.
+
+**Próxima sesión (dicho por el usuario el 3 de noviembre): lo que se descuenta
+solo al vender** (packaging que varía en cada venta, con el origen
+`consumo`). **Los decants no son prioridad:** se ven después. Abrir un frasco
+ya se puede como producción (receta "Perfume (ml)" = 1 frasco, rinde 100).
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
