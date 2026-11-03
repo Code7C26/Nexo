@@ -35,6 +35,7 @@ import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, 
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { crearConsumos } from "./core/al-vender.js";
+import { CANALES_VENTA } from "./core/canales.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
@@ -604,6 +605,29 @@ function renderReporteClientes(lista) {
   });
 }
 
+// Por canal (hist. §128): la ganancia ya descuenta lo que se usó al vender.
+function renderReporteCanales(lista) {
+  const body = document.getElementById("reporteCanalesBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(7, "No hay ventas en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (c) => `
+    <tr>
+      <td data-label="Canal">${esc(c.nombre)}</td>
+      <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
+      <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
+      <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
+      <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
+      <td data-label="Margen" class="align-right mono">${porcentaje(c.margen_pct)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
 async function cargarReporteVentas() {
   // GET /api/reportes/ventas es admin-only (rentabilidad por producto,
   // categoría y cliente); se llama tras mutaciones de venta igual que
@@ -612,6 +636,7 @@ async function cargarReporteVentas() {
   tablaCargando("reporteProductosBody", 6);
   tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
+  tablaCargando("reporteCanalesBody", 7);
 
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
@@ -628,6 +653,7 @@ async function cargarReporteVentas() {
   renderReporteProductos(datos.productos);
   renderReporteCategorias(datos.categorias);
   renderReporteClientes(datos.clientes);
+  renderReporteCanales(datos.canales);
 }
 
 /* ---------- Reportes: qué se compra ---------- */
@@ -3925,6 +3951,10 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
 
 const selVentas = crearSeleccion("ventasBody");
 
+// Lo que no se vendió en el local dice por dónde (hist. §128), en la tabla y
+// en la línea del celular; lo del local y lo sin indicar, nada.
+const canalFueraDelLocal = (canal) => (canal && canal !== "local" ? (CANALES_VENTA[canal] ?? null) : null);
+
 function renderVentas(lista) {
   const body = document.getElementById("ventasBody");
   body.innerHTML = "";
@@ -3969,10 +3999,10 @@ function renderVentas(lista) {
       ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente" class="m-titulo">${esc(v.cliente)}</td>
-      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), resumen)}
+      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), canalFueraDelLocal(v.canal), resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(resumen || "—")}${
         v.carga_inicial && !esSaldo ? ' <span class="status">De antes de Nexo</span>' : ""
-      }</td>
+      }${canalFueraDelLocal(v.canal) ? ` <span class="status">${esc(canalFueraDelLocal(v.canal))}</span>` : ""}</td>
       <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono m-valor">${money(v.total)}</td>
@@ -4101,6 +4131,12 @@ const filtrosVentas = crearFiltros(
     { clave: "cliente", etiqueta: "Cliente", tipo: "texto" },
     { clave: "items_resumen", etiqueta: "Productos", tipo: "texto" },
     {
+      clave: "canal",
+      etiqueta: "Por dónde",
+      tipo: "select",
+      opciones: Object.entries(CANALES_VENTA).map(([valor, texto]) => ({ valor, texto }))
+    },
+    {
       clave: "estado_cobro",
       etiqueta: "Estado de cobro",
       tipo: "select",
@@ -4206,6 +4242,29 @@ function poblarSelectCondicionPago(selector) {
 let ventaCondicionTocada = false;
 
 // desde: { cliente, crm_oportunidad_id } cuando sale de una consulta.
+const CLAVE_CANAL = "nexo.ventaCanal";
+function canalRecordado() {
+  try {
+    return localStorage.getItem(CLAVE_CANAL) ?? "";
+  } catch {
+    return "";
+  }
+}
+function recordarCanal(canal) {
+  try {
+    localStorage.setItem(CLAVE_CANAL, canal);
+  } catch {
+    // Sin almacenamiento, la próxima arranca en "Sin indicar".
+  }
+}
+function poblarSelectCanal(select, elegido) {
+  select.innerHTML = [
+    '<option value="">Sin indicar</option>',
+    ...Object.entries(CANALES_VENTA).map(([valor, texto]) => `<option value="${valor}">${esc(texto)}</option>`)
+  ].join("");
+  select.value = Object.hasOwn(CANALES_VENTA, elegido ?? "") ? elegido : "";
+}
+
 async function abrirModalVenta(venta = null, desde = null) {
   ventaEditandoId = venta?.id ?? null;
   ventaDeConsulta = desde?.crm_oportunidad_id ?? null;
@@ -4216,6 +4275,9 @@ async function abrirModalVenta(venta = null, desde = null) {
   const form = document.getElementById("formVenta");
   form.cliente.value = venta?.cliente ?? desde?.cliente ?? "";
   form.fecha.value = venta?.fecha ?? hoyISO();
+  // Por dónde te compró (hist. §128): al editar, el que tiene; al crear, el
+  // último que se eligió en este navegador.
+  poblarSelectCanal(form.canal, venta ? venta.canal : canalRecordado());
 
   poblarSelectListasPrecios("#ventaListaPrecio");
   // Al editar, respeta la lista con la que se hizo la venta; al crear, si
@@ -4376,6 +4438,11 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     consumos: consumosVenta.leer(),
     ...datosCondicionPago(form)
   };
+  // Con Venta online apagado no se manda: la edición conserva el que tenía.
+  if (moduloActivo("canales")) {
+    body.canal = form.canal.value || null;
+    if (!ventaEditandoId) recordarCanal(form.canal.value);
+  }
   const consultaId = ventaEditandoId ? null : ventaDeConsulta;
   if (consultaId) body.crm_oportunidad_id = consultaId;
 
@@ -4415,6 +4482,7 @@ async function abrirFichaVenta(id) {
   const campos = [
     ["Cliente", venta.cliente],
     ["Fecha", fechaAR(venta.fecha)],
+    ...(venta.canal ? [["Por dónde", CANALES_VENTA[venta.canal] ?? venta.canal]] : []),
     ["Cobrado", `${money(venta.cobrado)} de ${money(venta.neto)}`],
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
     ["Facturada", venta.facturada ? "Sí" : "No"]

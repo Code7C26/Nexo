@@ -391,7 +391,13 @@ CREATE TABLE IF NOT EXISTS ventas (
   -- para cobrarse y vencer con el circuito de siempre (los cobros y el aging
   -- cuelgan de una venta), y no entra en los reportes de ventas, que suman
   -- renglones. NULL en cualquier otra venta.
-  saldo_inicial REAL
+  saldo_inicial REAL,
+  -- Por dónde entró la venta (hist. §128): clave de CANALES_VENTA en
+  -- server.js ('local', 'tiendanube', 'mercadolibre', 'instagram'...), sin
+  -- CHECK, como el origen de una consulta. La pone sola el punto de venta
+  -- ('local') y cada tienda conectada; en el alta la elige quien vende. NULL
+  -- = sin indicar.
+  canal TEXT
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (

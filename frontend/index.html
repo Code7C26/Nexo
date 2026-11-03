@@ -506,6 +506,30 @@
           </div>
         </section>
 
+        <!-- Por dónde se vende (hist. §128): con Venta online prendido. La
+             ganancia ya descuenta lo que se usó al vender (la caja, la bolsa). -->
+        <section class="panel" data-modulo="canales">
+          <div class="panel-head">
+            <h2>Por canal</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Canal</th>
+                <th scope="col" class="align-right">Ventas</th>
+                <th scope="col" class="align-right">Total</th>
+                <th scope="col" class="align-right">Ticket promedio</th>
+                <th scope="col" class="align-right">Ganancia</th>
+                <th scope="col" class="align-right">Margen</th>
+                <th scope="col" class="align-right">% del total</th>
+              </tr>
+            </thead>
+            <tbody id="reporteCanalesBody"></tbody>
+          </table>
+          </div>
+        </section>
+
         <!-- Qué se compra: espejo de "Qué se vende" del lado de compras.
              Comparte el mismo filtro de fecha de arriba (#filtrosResumen),
              no uno propio. -->
@@ -3386,7 +3410,7 @@
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
-            <div class="config-grupo col-admin">
+            <div class="config-grupo col-admin" data-modulo="canales">
               <p class="config-grupo-titulo">Canales de venta</p>
               <!-- Los canales llevan su logo en vez de un ícono del sprite: la
                    nube de Tienda Nube y el apretón de manos de Mercado Libre. -->
@@ -5353,6 +5377,12 @@
         </label>
         <label>Fecha
           <input type="date" name="fecha" required />
+        </label>
+        <!-- Por dónde te compró (hist. §128), con Venta online prendido. Las
+             opciones salen de core/canales.js; arranca en el último que se
+             eligió en este navegador (app.js). -->
+        <label data-modulo="canales">Por dónde te compró
+          <select name="canal" id="ventaCanal"></select>
         </label>
         <!-- El plazo pactado. Nexo calcula la fecha de vencimiento sola sobre
              la fecha de arriba; "Fecha puntual" muestra el input de al lado

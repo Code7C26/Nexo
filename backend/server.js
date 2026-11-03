@@ -6047,7 +6047,7 @@ app.get('/api/ventas', (req, res) => {
   const ventas = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
-              ventas.carga_inicial, ventas.saldo_inicial, ventas.fecha_vencimiento,
+              ventas.carga_inicial, ventas.saldo_inicial, ventas.fecha_vencimiento, ventas.canal,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(iva), 0)
@@ -6097,7 +6097,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
               ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
-              ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial,
+              ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial, ventas.canal,
               EXISTS (SELECT 1 FROM devoluciones
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
          FROM ventas
@@ -6310,6 +6310,27 @@ function validarStockDisponible(items, depositoId, organizacionId) {
   return null;
 }
 
+// Por dónde entró una venta (hist. §128, ventas.canal). 'local' lo pone el
+// punto de venta, y cada tienda conectada el suyo; en el alta lo elige quien
+// vende. La misma lista, con los mismos nombres, está en
+// frontend/js/core/canales.js.
+const CANALES_VENTA = {
+  local: 'En el local',
+  tiendanube: 'Tienda Nube',
+  mercadolibre: 'Mercado Libre',
+  instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
+  facebook: 'Facebook',
+  web: 'Página propia',
+  otro: 'Otro'
+};
+// Vacío es sin indicar; lo que no está en la lista no se guarda.
+function normalizarCanal(canal) {
+  if (canal === undefined || canal === null || canal === '') return null;
+  if (typeof canal !== 'string' || !Object.hasOwn(CANALES_VENTA, canal)) throw new ErrorBulk('El canal de venta no es válido.');
+  return canal;
+}
+
 // Crea la venta con todos sus efectos: items, salida de stock, costo
 // histórico congelado y deuda en la cuenta corriente.
 // IMPORTANTE: asume que el stock ya se validó y que se la llama DENTRO de
@@ -6330,8 +6351,11 @@ function crearVenta({
   // porque el stock que se cargó ya es el de hoy.
   carga_inicial = false,
   // Lo que se usó al vender (hist. §126): undefined es "lo de siempre".
-  consumos
+  consumos,
+  // Por dónde entró (CANALES_VENTA); sin él, sin indicar.
+  canal
 }) {
+  const canalVenta = normalizarCanal(canal);
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
   // existe. organizacion_id es obligatorio (CLAUDE.md §28): un cliente
@@ -6368,10 +6392,20 @@ function crearVenta({
 
   const { lastInsertRowid: nuevaVentaId } = db
     .prepare(
-      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial, canal)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id, carga_inicial ? 1 : 0);
+    .run(
+      clienteRow.id,
+      fechaVenta,
+      listaPrecioId,
+      depositoId,
+      venc.condicion,
+      venc.vencimiento,
+      organizacion_id,
+      carga_inicial ? 1 : 0,
+      canalVenta
+    );
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
@@ -6433,7 +6467,7 @@ function crearVenta({
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos, canal } =
     req.body;
 
   const errorItems = validarItemsVenta(items);
@@ -6468,6 +6502,7 @@ app.post('/api/ventas', (req, res) => {
         condicion_pago,
         fecha_vencimiento,
         consumos,
+        canal,
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
@@ -6491,7 +6526,7 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos, canal } =
     req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
@@ -6501,11 +6536,19 @@ app.put('/api/ventas/:id', (req, res) => {
 
   const venta = db
     .prepare(
-      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento, carga_inicial, canal FROM ventas WHERE id = ? AND organizacion_id = ?'
     )
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  // Sin canal en el pedido, queda el que tenía (el de una tienda conectada,
+  // por ejemplo, que la pantalla no muestra para elegir).
+  let canalEdicion;
+  try {
+    canalEdicion = canal === undefined ? venta.canal : normalizarCanal(canal);
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
   }
   // Editar revierte y vuelve a aplicar el stock, que una venta de antes de
   // Nexo nunca descontó (handoff 8c): se anula y se carga de nuevo.
@@ -6689,7 +6732,7 @@ app.put('/api/ventas/:id', (req, res) => {
     db.prepare(
       `UPDATE ventas
           SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ?,
-              condicion_pago = ?, fecha_vencimiento = ?
+              condicion_pago = ?, fecha_vencimiento = ?, canal = ?
         WHERE id = ?`
     ).run(
       clienteRow.id,
@@ -6698,6 +6741,7 @@ app.put('/api/ventas/:id', (req, res) => {
       depositoId,
       vencEdicion.condicion,
       vencEdicion.vencimiento,
+      canalEdicion,
       ventaId
     );
 
@@ -11572,6 +11616,50 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE = db.prepare(
     GROUP BY ventas.cliente_id`
 );
 
+// Por canal (hist. §128): mismo armado que por cliente, agrupado por
+// ventas.canal ('' = sin indicar, para que netearPorId tenga una clave). El
+// costo suma lo que se usó al vender (la caja, la bolsa del envío; hist.
+// §126), que es parte del resultado y cambia mucho de un canal a otro.
+const SQL_REPORTE_VENTAS_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id,
+          COUNT(DISTINCT ventas.id) AS cantidad_ventas,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas,
+          SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo
+     FROM venta_items
+     JOIN ventas ON ventas.id = venta_items.venta_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
+const SQL_REPORTE_CONSUMOS_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id,
+          SUM(venta_consumos.cantidad * venta_consumos.costo_unitario_historico) AS costo
+     FROM venta_consumos
+     JOIN ventas ON ventas.id = venta_consumos.venta_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
+const SQL_REPORTE_DEVOLUCIONES_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}) AS ventas,
+          SUM(CASE WHEN devolucion_items.vuelve_stock
+                   THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
+                   ELSE 0 END) AS costo
+     FROM devolucion_items
+     JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
+     JOIN ventas ON ventas.id = devoluciones.venta_id
+    WHERE devoluciones.estado = 'activa'
+      AND (? IS NULL OR devoluciones.fecha >= ?)
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
+
 const redondear2 = (n) => Math.round(n * 100) / 100;
 const margenPct = (ganancia, ventas) => (ventas > 0 ? redondear2((ganancia / ventas) * 100) : 0);
 
@@ -11697,6 +11785,24 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     })
     .sort((a, b) => b.ventas - a.ventas);
 
+  const consumosPorCanal = new Map(SQL_REPORTE_CONSUMOS_POR_CANAL.all(...rango).map((c) => [c.id, c.costo]));
+  const canales = netearPorId(SQL_REPORTE_VENTAS_POR_CANAL.all(...rango), SQL_REPORTE_DEVOLUCIONES_POR_CANAL.all(...rango), () => null)
+    .map((c) => {
+      const costo = c.costo + (consumosPorCanal.get(c.id) ?? 0);
+      const ganancia = redondear2(c.ventas - costo);
+      return {
+        canal: c.id || null,
+        nombre: CANALES_VENTA[c.id] ?? 'Sin indicar',
+        cantidad_ventas: c.cantidad_ventas ?? 0,
+        ventas: redondear2(c.ventas),
+        ganancia,
+        margen_pct: margenPct(ganancia, c.ventas),
+        ticket_promedio: c.cantidad_ventas > 0 ? redondear2(c.ventas / c.cantidad_ventas) : 0,
+        participacion_pct: resultado.ventas > 0 ? redondear2((c.ventas / resultado.ventas) * 100) : 0
+      };
+    })
+    .sort((a, b) => b.ventas - a.ventas);
+
   res.json({
     rango: { desde, hasta, acotado },
     totales: {
@@ -11709,7 +11815,8 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     },
     productos,
     categorias,
-    clientes
+    clientes,
+    canales
   });
 });
 
@@ -13794,7 +13901,12 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
     socios: contar('SELECT COUNT(*) AS n FROM socios WHERE organizacion_id = ?'),
     trabajos: contar('SELECT COUNT(*) AS n FROM trabajos WHERE organizacion_id = ?'),
     abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?'),
-    consultas: contar('SELECT COUNT(*) AS n FROM crm_oportunidades WHERE organizacion_id = ?')
+    consultas: contar('SELECT COUNT(*) AS n FROM crm_oportunidades WHERE organizacion_id = ?'),
+    // Venta online (hist. §128): una tienda conectada, o alguna venta anotada
+    // con un canal de internet (quien vende solo por Instagram o WhatsApp).
+    venta_online:
+      contar("SELECT COUNT(*) AS n FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada'") > 0 ||
+      contar("SELECT COUNT(*) AS n FROM ventas WHERE organizacion_id = ? AND canal IS NOT NULL AND canal <> 'local'") > 0
   });
 });
 
@@ -14544,6 +14656,7 @@ app.post('/api/pos/ventas', (req, res) => {
         cliente_id,
         items,
         consumos,
+        canal: 'local',
         organizacion_id: organizacionId
       });
       const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
@@ -17833,6 +17946,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           fecha: fechaDelPedido(pedido),
           lista_precio_id: integracion.lista_precio_id,
           deposito_id: integracion.deposito_id,
+          canal: integracion.plataforma,
           organizacion_id: organizacionId
         });
         const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));

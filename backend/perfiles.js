@@ -14,9 +14,17 @@
 // se vende mientras no hay nada cargado (hist. §78, §88); sin él, "productos".
 // `etapas_crm` son las etapas abiertas con que nace el embudo de consultas
 // (hist. §89); Ganada y Perdida son comunes a todos y no se listan.
-export const MODULOS = ['pos', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios'];
+export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios'];
 export const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
+  // Lo de vender por internet (hist. §128): las tiendas conectadas (Tienda
+  // Nube, Mercado Libre) y por dónde entró cada venta. Cualquier negocio lo
+  // puede prender: el local que también vende online, y al revés.
+  canales: {
+    nombre: 'Venta online',
+    descripcion: 'Tienda Nube y Mercado Libre conectados, y por dónde te compró cada uno: el local, Instagram, WhatsApp o tu tienda.',
+    icono: 'globe'
+  },
   crm: { nombre: 'Consultas', descripcion: 'Los que preguntan y todavía no compraron: de dónde llegaron, en qué quedó y qué falta hacer.', icono: 'funnel' },
   presupuestos: { nombre: 'Presupuestos', descripcion: 'Armá presupuestos y pasalos a venta cuando te los aceptan.', icono: 'file-text' },
   trabajos: { nombre: 'Trabajos', descripcion: 'Lo que tenés que hacer para cada cliente: cuándo, quién y, al terminar, la venta.', icono: 'clipboard-list' },
@@ -42,8 +50,23 @@ export const PERFILES_RUBRO = {
     icono: 'sprout',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['compras', 'stock', 'produccion'],
+    modulos: ['canales', 'compras', 'stock', 'produccion'],
     etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
+  },
+  // Quien vende sobre todo por internet (hist. §128): su tienda, Mercado
+  // Libre, Instagram y WhatsApp. Trae las consultas (las preguntas de antes de
+  // comprar), compras y stock (lo que se sincroniza con las tiendas) y
+  // producción, que es donde vive lo que se usa al vender: la caja, la bolsa y
+  // la etiqueta del envío, que entran al costo. Sin punto de venta: si también
+  // atiende un local, lo suma en Funciones.
+  ecommerce: {
+    nombre: 'Tienda online',
+    descripcion: 'Vendés por tu tienda, Mercado Libre, Instagram o WhatsApp: stock y precios al día en todos lados, y cuánto te deja cada canal.',
+    icono: 'globe',
+    unidad_defecto: 'unidad',
+    tipo_defecto: 'producto',
+    modulos: ['canales', 'crm', 'compras', 'stock', 'produccion'],
+    etapas_crm: ['Consulta', 'Le pasé el precio', 'Esperando el pago']
   },
   comercio: {
     nombre: 'Comercio general',
@@ -51,7 +74,7 @@ export const PERFILES_RUBRO = {
     icono: 'store',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'crm', 'presupuestos', 'compras', 'stock'],
+    modulos: ['pos', 'canales', 'crm', 'presupuestos', 'compras', 'stock'],
     etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   carniceria: {

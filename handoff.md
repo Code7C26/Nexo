@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §127);
+    siguiente número (hoy el último es §128);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,22 @@
 
 ## Estado actual (3 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §127): código de barras propio, hecho y
+**Lo último (3 de noviembre, hist. §128): tipo "Tienda online", hecho y
+commiteado en `solla`, sin publicar.** Pedido del usuario ("e-commerce, y
+muchos locales venden digitalmente y viceversa"):
+- tipo nuevo, con Venta online, Consultas, Compras, Stock y Producción (la
+  caja y la bolsa del envío), sin punto de venta;
+- módulo nuevo "Venta online" (`canales`) que cualquier negocio prende: las
+  tiendas conectadas, el "Por dónde te compró" de cada venta, el reporte por
+  canal (con lo usado al vender en el costo) y un paso de la guía;
+- migración aditiva: `ventas.canal` nula, completada con la tienda o `local`
+  donde se sabe; el módulo solo se prende a los negocios viejos con una tienda
+  conectada.
+- **Falta que el usuario lo vea**, y para un negocio digital completo: la
+  comisión de cada canal como costo, el envío, y responder preguntas de
+  Mercado Libre / mensajes de WhatsApp.
+
+**Antes (3 de noviembre, hist. §127): código de barras propio, hecho y
 commiteado en `solla`, sin publicar.** Primera idea de Praxia:
 - el producto y cada variante tienen su código de barras, aparte del SKU, único
   por empresa entre los dos y guardado sin espacios;
@@ -1153,6 +1168,9 @@ sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
 - **sigue: etiquetas de balanza** (el código con el PLU y el peso, punto 1 de
   la investigación), que se apoya en ese campo; después ofertas con vigencia y
   cobrar a cuenta y gastos desde el punto de venta.
+- En el medio, el usuario pidió el tipo "Tienda online": **hecho** (hist.
+  §128), sin publicar. Lo que le falta (comisiones, envío, mensajes) está en
+  "Estado actual".
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos

@@ -49,6 +49,17 @@ function pasos(c) {
       boton: "btnNuevoProducto"
     }
   ];
+  // Venta online (hist. §128): justo después del catálogo, que es lo que se
+  // publica. Queda hecho con una tienda conectada o con una venta anotada
+  // por Instagram, WhatsApp u otro canal de internet.
+  if (moduloActivo("canales")) {
+    lista.push({
+      titulo: "Conectá tu tienda online",
+      detalle: "Tienda Nube o Mercado Libre: el stock y los precios se actualizan solos, y cada pedido entra como venta. Si vendés por Instagram o WhatsApp, anotá por dónde al cargar la venta.",
+      hecho: c.venta_online,
+      hash: "#/configuracion/tienda-nube"
+    });
+  }
   if (moduloActivo("socios")) {
     lista.push(
       {

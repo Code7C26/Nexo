@@ -438,11 +438,11 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   // toca los módulos (hist. §88): siguen los que tenía.
   const negocio = (await adminA.get('/api/negocio')).json;
   assert.equal(negocio.rubro, 'comercio');
-  assert.deepEqual(negocio.modulos, ['pos', 'crm', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual(negocio.modulos, ['pos', 'canales', 'crm', 'presupuestos', 'compras', 'stock']);
   const comoCarniceria = await adminA.put('/api/negocio', { nombre: negocio.nombre, rubro: 'carniceria' });
   assert.equal(comoCarniceria.status, 200, comoCarniceria.texto);
   const carniceria = (await empleadoA.get('/api/negocio')).json;
-  assert.deepEqual(carniceria.modulos, ['pos', 'crm', 'presupuestos', 'compras', 'stock']);
+  assert.deepEqual(carniceria.modulos, ['pos', 'canales', 'crm', 'presupuestos', 'compras', 'stock']);
   assert.equal(carniceria.unidad_defecto, 'kg');
   const asado = await adminA.post('/api/productos', { nombre: 'Asado', precio_venta: 9000 });
   assert.equal((await adminA.get('/api/productos')).json.find((p) => p.id === asado.json.id).unidad, 'kg');
@@ -456,7 +456,7 @@ test('unidades con decimales, servicios sin stock y tipo de negocio (hist. §70)
   assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, ['pos']);
   await adminA.put('/api/negocio', { modulos: [] });
   assert.deepEqual((await adminA.get('/api/negocio')).json.modulos, []);
-  await adminA.put('/api/negocio', { modulos: ['pos', 'crm', 'presupuestos', 'compras', 'stock'] });
+  await adminA.put('/api/negocio', { modulos: ['pos', 'canales', 'crm', 'presupuestos', 'compras', 'stock'] });
 });
 
 test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist. §73)', async () => {
