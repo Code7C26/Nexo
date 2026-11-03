@@ -11033,3 +11033,75 @@ antes, y cómo se ven en Ventas.
 usuario si las ventas que el hermano ya cargó con costo 0 se corrigen: el
 costo de una venta queda congelado (CLAUDE.md §8), así que hoy muestran 100 %
 de margen.
+
+## 125. Producción básica, primera parte: recetas y producir, 3 de noviembre de 2026
+
+Etapa J de CLAUDE.md §38, decidida por el usuario el 2 de noviembre para antes
+de la presentación. Es la primera de las dos sesiones estimadas: recetas y
+producir. La segunda es lo que se descuenta al vender (packaging, decants) y
+los reportes.
+
+**Esquema** (explicado en el plan antes de tocarlo, §34):
+- Tablas nuevas, todas con `organizacion_id`: `recetas` (producto o variante,
+  `rinde`, nota; una por producto o variante con
+  `idx_recetas_producto ON recetas(producto_id, COALESCE(variante_id, 0))`),
+  `receta_items`, `producciones` (cantidad que salió, `costo_total`,
+  `costo_unitario`, depósito, estado activa/anulada) y `produccion_items` (lo
+  usado, con su costo congelado).
+- `movimientos_stock.produccion_id` (ALTER aditivo) y el CHECK de `origen`
+  suma `'produccion'` y `'consumo'`. `consumo` todavía no se usa: es para el
+  packaging de la segunda parte, y se sumó ahora para no rehacer la tabla dos
+  veces en la base real.
+- El rebuild de hist. §124 pasó a `ampliarOrigenesDeStock(antes, nuevos)` en
+  `db/index.js`, llamada dos veces en orden: una base de antes de §124 pasa por
+  las dos.
+
+**Cómo funciona** (`server.js`, sección "Producción"):
+- Una receta es una plantilla: materiales (productos comunes, sin servicios,
+  nunca lo mismo que se produce, cada uno una vez) y cuánto suele rendir. Se
+  puede borrar: las producciones guardan lo que usaron. Su costo es el de hoy
+  de cada material.
+- Producir: lo que salió de verdad y lo que se usó de verdad. Sin stock de un
+  material en el depósito no se produce. Salen los materiales (`salida`) y
+  entra el producto (`entrada` con `costo_unitario` = lo usado / lo que
+  salió), así que `costoDelHistorial` lo promedia solo. Los materiales no
+  cambian de costo.
+- Anular (admin): los movimientos contrarios, si lo producido sigue en el
+  depósito. `SIN_PRODUCCIONES_ANULADAS` saca del costo promedio la entrada y la
+  reversión de una anulada: una de 380 en vez de 38 no deja el costo torcido.
+- Permisos: recetas y anular, admin; ver y producir, los dos roles (quien
+  cocina suele ser el empleado). Los costos van con nombres de
+  `CLAVES_SENSIBLES`, y en la auditoría el costo promedio va como
+  `precio_costo` para que el filtro lo pode.
+- Auditoría sobre el producto con `operacion_tipo` 'receta' o 'produccion',
+  como trabajos y consultas, sin tocar el CHECK de entidades.
+- Módulo `produccion` en `perfiles.js`, prendido en Emprendimiento. Ícono
+  `chef-hat` sumado al sprite.
+
+**Frontend** (`dominios/produccion.js`, vista `#/produccion`):
+- Pestañas Producciones y Recetas, y dos páginas de tarjetas numeradas (las
+  clases del alta de socio): producir (`/producir` o `/producir/<receta>`) y
+  la receta (`/receta` o `/receta/<id>`, solo admin).
+- Producir: "¿Qué hiciste?", "¿Cuánto ibas a hacer?" (escala los materiales de
+  la receta que nadie tocó), "¿Qué usaste?" (renglones `.item-row` propios con
+  "Hay N" en rojo si no alcanza) y "¿Cuánto salió de verdad?" (sigue a lo
+  planeado hasta que se toca). El pie muestra el costo (admin).
+- Ficha de la producción con anular. En la ficha del producto, botón
+  "Receta" (admin, con el módulo). Los movimientos dicen "Producción #N":
+  las tres cadenas que armaban el origen en `app.js` pasaron a
+  `origenMovimiento()`.
+
+**Cómo se verificó.** `produccion.test.js` (8): receta con costo, una por
+producto, editar y borrar; validaciones; producir con lo real distinto de la
+receta y el promedio de dos tandas; sin material no mueve nada; anular
+devuelve todo y saca el costo, y no se puede si ya se vendió; variantes;
+aislamiento entre negocios; el empleado sin costos ni recetas. `npm test`
+(264), lint y `verificar-migracion` (24 de 24, la base real sin cambios). En
+Chrome con el seed, a 632 px y a 1366: prender la función, armar la receta
+de mafaldas ($ 85 cada una), producir 19 de 20 con menos harina ($ 94,74),
+la ficha, el producto con su costo y el movimiento, y el empleado sin costos.
+
+**Queda (segunda parte):** lo que se descuenta al vender (packaging que
+cambia en cada venta, decants: 5 ml de perfume + 1 frasquito), reportes, y
+"¿cuántas puedo hacer?". Abrir un frasco ya se puede como producción (receta
+"Perfume (ml)" = 1 frasco, rinde 100).

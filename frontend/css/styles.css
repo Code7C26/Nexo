@@ -1729,6 +1729,7 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="compras"]) [data-modulo="compras"],
 :root:not([data-modulos~="stock"]) [data-modulo="stock"],
 :root:not([data-modulos~="socios"]) [data-modulo="socios"],
+:root:not([data-modulos~="produccion"]) [data-modulo="produccion"],
 /* La pestaña Servicios de Productos (hist. §88): un servicio no tiene stock. */
 .solo-servicios [data-modulo="stock"] {
   display: none;
@@ -6802,6 +6803,7 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 
 .planes-vista,
 .trabajos-vista,
+.produccion-vista,
 .plataforma-vista {
   display: flex;
   flex-direction: column;
@@ -6810,6 +6812,7 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 
 .planes-pestana,
 .trabajos-pestana,
+.produccion-pestana,
 .plataforma-pestana {
   display: flex;
   flex-direction: column;
@@ -6819,7 +6822,21 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 
 .planes-pestana[hidden],
 .trabajos-pestana[hidden],
+.produccion-pestana[hidden],
 .plataforma-pestana[hidden] { display: none; }
+
+/* En las páginas de producir y de la receta no van las pestañas. */
+#produccionMenu[hidden] { display: none; }
+
+/* Producción (Etapa J): en cada material, cuánto hay; en rojo si no alcanza. */
+.item-row .item-hay {
+  flex: 0 0 auto;
+  min-width: 96px;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  text-align: right;
+}
+.item-row .item-hay.es-poco { color: var(--accent-danger); font-weight: 600; }
 
 /* Dentro de una pestaña la separación la da el gap: el margen propio de la
    franja la duplicaba. */

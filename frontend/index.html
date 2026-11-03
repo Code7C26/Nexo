@@ -147,6 +147,14 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chart-column"></use></svg> Reportes de stock
           </a>
         </div>
+        <!-- Producción (Etapa J, dominios/produccion.js): un módulo que se
+             prende por negocio (lo trae el emprendimiento). -->
+        <div class="nav-seccion" data-modulo="produccion">
+          <p class="nav-grupo">Producción</p>
+          <a href="#" class="nav-item" data-view="produccion">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chef-hat"></use></svg> Producción
+          </a>
+        </div>
         <div class="nav-seccion">
           <p class="nav-grupo">Finanzas</p>
           <a href="#" class="nav-item" data-view="caja">
@@ -2100,6 +2108,193 @@
         </section>
       </section>
 
+      <!-- Vista: Producción (Etapa J, dominios/produccion.js). Pestañas
+           Producciones (#/produccion/historial) y Recetas
+           (#/produccion/recetas), y dos páginas: producir
+           (#/produccion/producir, o /producir/<receta>) y la receta
+           (#/produccion/receta, o /receta/<id>). Páginas, no modales. -->
+      <section class="view" data-view="produccion" hidden>
+        <div class="produccion-vista">
+          <nav class="segmentos planes-menu" aria-label="Producción" id="produccionMenu">
+            <a class="segmento" href="#/produccion/historial" data-pestana="historial">Producciones</a>
+            <a class="segmento" href="#/produccion/recetas" data-pestana="recetas">Recetas</a>
+          </nav>
+
+          <section class="panel produccion-pestana" data-pestana="historial">
+            <div class="panel-head">
+              <h2>Producciones</h2>
+              <a class="btn btn-primary btn-nuevo" href="#/produccion/producir"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Producir</a>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Qué se hizo</th>
+                  <th scope="col">Depósito</th>
+                  <th scope="col" class="align-right">Salieron</th>
+                  <th scope="col" class="align-right col-admin">Costo de cada uno</th>
+                  <th scope="col">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="produccionesBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel produccion-pestana" data-pestana="recetas" hidden>
+            <div class="panel-head">
+              <h2>Recetas</h2>
+              <a class="btn btn-primary btn-nuevo col-admin" href="#/produccion/receta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva receta</a>
+            </div>
+            <p class="opciones-nota">Lo que suele llevar cada cosa que hacés. Al producir, Nexo lo propone y vos corregís lo que usaste y lo que salió de verdad.</p>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Qué se hace</th>
+                  <th scope="col">Lleva</th>
+                  <th scope="col" class="align-right">Rinde</th>
+                  <th scope="col" class="align-right col-admin">Costo de cada uno</th>
+                  <th scope="col"><span class="visualmente-oculto">Producir</span></th>
+                </tr>
+              </thead>
+              <tbody id="recetasBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <div class="socio-alta produccion-pestana" data-pestana="producir" hidden>
+            <a class="btn-link" href="#/produccion/historial"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Producciones</a>
+            <form class="socio-alta-form" id="formProducir" novalidate>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Qué hiciste?</p>
+                  <div class="socio-alta-grupo">
+                    <label>Producto
+                      <input type="text" name="producto" list="produccionProductos" autocomplete="off" placeholder="Empezá a escribir su nombre" />
+                    </label>
+                    <label data-campo="variante" hidden>Variante
+                      <select name="variante_id"></select>
+                    </label>
+                    <div class="form-fila">
+                      <label>¿Cuánto ibas a hacer?
+                        <input type="number" name="plan" min="0" step="any" inputmode="decimal" />
+                      </label>
+                      <label data-campo="deposito" hidden>Depósito
+                        <select name="deposito_id"></select>
+                      </label>
+                    </div>
+                    <p class="opciones-nota" data-nota="receta" aria-live="polite"></p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿Qué usaste?</p>
+                  <p class="opciones-nota">Corregí lo que no coincida con lo que usaste de verdad: eso es lo que sale del stock.</p>
+                  <div class="item-rows" data-materiales></div>
+                  <button type="button" class="btn-link" data-accion="agregar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Agregar material</button>
+                </div>
+              </div>
+
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">3</span> ¿Cuánto salió de verdad?</p>
+                  <div class="socio-alta-grupo">
+                    <label>Salieron
+                      <input type="number" name="cantidad" min="0" step="any" inputmode="decimal" required />
+                    </label>
+                    <label>Nota
+                      <input type="text" name="nota" maxlength="500" autocomplete="off" placeholder="Opcional" />
+                    </label>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p data-resumen aria-live="polite">Elegí qué hiciste.</p>
+                  <button type="submit" class="btn btn-primary">Producir</button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <div class="socio-alta produccion-pestana" data-pestana="receta" hidden>
+            <a class="btn-link" href="#/produccion/recetas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Recetas</a>
+            <form class="socio-alta-form" id="formReceta" novalidate>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿De qué es la receta?</p>
+                  <div class="socio-alta-grupo">
+                    <label>Producto
+                      <input type="text" name="producto" list="produccionProductos" autocomplete="off" placeholder="Lo que hacés y vendés" />
+                    </label>
+                    <label data-campo="variante" hidden>Variante
+                      <select name="variante_id"></select>
+                    </label>
+                    <label>¿Cuánto rinde?
+                      <input type="number" name="rinde" min="0" step="any" inputmode="decimal" required placeholder="Ej: 40" />
+                    </label>
+                    <p class="opciones-nota">Lo que suele salir con los materiales de abajo. Si a veces sale distinto, se corrige al producir.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿Qué lleva?</p>
+                  <p class="opciones-nota">Los materiales son productos como cualquier otro: los comprás con las compras de siempre, y de ahí sale su costo.</p>
+                  <div class="item-rows" data-materiales></div>
+                  <button type="button" class="btn-link" data-accion="agregar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Agregar material</button>
+                  <label>Nota
+                    <input type="text" name="nota" maxlength="500" autocomplete="off" placeholder="Opcional: el horno, el tiempo, un truco" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p data-resumen aria-live="polite"></p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" data-accion="borrar" hidden>Borrar receta</button>
+                    <button type="submit" class="btn btn-primary">Guardar receta</button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+          <datalist id="produccionProductos"></datalist>
+        </div>
+      </section>
+
+      <!-- Vista: ficha de una producción -->
+      <section class="view" data-view="produccion-detalle" hidden>
+        <button type="button" class="btn-link" id="btnVolverProducciones"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a producciones</button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="fichaProduccionTitulo">—</h2>
+            <div class="panel-acciones" id="fichaProduccionAcciones"></div>
+          </div>
+          <dl class="ficha-datos" id="fichaProduccionDatos"></dl>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Lo que se usó</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Material</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right col-admin">Costo</th>
+              </tr>
+            </thead>
+            <tbody id="fichaProduccionItems"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
       <!-- Vista: Productos. Con productos y servicios cargados, dos pestañas
            (#/productos/productos y #/productos/servicios, hist. §88); con uno
            solo, no hay pestañas. -->
@@ -2150,6 +2345,7 @@
           <div class="panel-head">
             <h2 id="fichaProductoNombre">—</h2>
             <div class="panel-acciones">
+              <button class="btn btn-secundario col-admin" id="btnRecetaProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chef-hat"></use></svg> Receta</button>
               <button class="btn btn-secundario" id="btnVariantesProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Variantes</button>
               <button class="btn btn-primary" id="btnEditarProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>

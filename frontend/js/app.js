@@ -64,6 +64,7 @@ import "./dominios/pos.js";
 import "./dominios/socios.js";
 import "./dominios/trabajos.js";
 import "./dominios/abonos.js";
+import "./dominios/produccion.js";
 import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
 import "./dominios/carga-inicial.js";
@@ -1920,6 +1921,20 @@ function activarEdicionPrecio(span) {
 // La ficha se arma con la fila que ya está en el array `productos` (la
 // lista trae todo lo que hace falta), así que el único fetch es el del
 // historial de movimientos.
+// De dónde salió un movimiento de stock: la operación con su número. Es texto
+// plano (lo que se imprime lo escapa quien lo usa, o sale de acá sin datos del
+// usuario). La ficha del producto, Stock y la auditoría de movimientos.
+function origenMovimiento(m) {
+  if (m.origen === "venta") return `Venta #${m.venta_id}`;
+  if (m.origen === "compra") return `Compra #${m.compra_id}`;
+  if (m.origen === "devolucion") return `Devolución #${m.devolucion_id}`;
+  if (m.origen === "devolucion_proveedor") return `Devolución a proveedor #${m.devolucion_proveedor_id}`;
+  if (m.origen === "transferencia") return `Transferencia #${m.transferencia_id}`;
+  if (m.origen === "produccion") return `Producción #${m.produccion_id}`;
+  if (m.origen === "stock_inicial") return "Stock inicial";
+  return "Ajuste manual";
+}
+
 async function abrirFichaProducto(id) {
   productoFichaId = id;
   const producto = productos.find((p) => p.id === id);
@@ -1936,6 +1951,7 @@ async function abrirFichaProducto(id) {
   document.getElementById("fichaProductoStrip").hidden = esServicio;
   document.getElementById("fichaProductoMovimientosPanel").hidden = esServicio;
   document.getElementById("btnVariantesProducto").hidden = esServicio;
+  document.getElementById("btnRecetaProducto").hidden = esServicio;
 
   const campos = [
     ...(esServicio ? [] : [["SKU", producto.sku]]),
@@ -2003,16 +2019,7 @@ async function abrirFichaProducto(id) {
       ? filaVacia(5, "Este producto todavía no tiene movimientos de stock.")
       : movimientos
           .map((m) => {
-            const origen =
-              m.origen === "venta"
-                ? `Venta #${m.venta_id}`
-                : m.origen === "compra"
-                ? `Compra #${m.compra_id}`
-                : m.origen === "devolucion"
-                ? `Devolución #${m.devolucion_id}`
-                : m.origen === "stock_inicial"
-                ? "Stock inicial"
-                : "Ajuste manual";
+            const origen = origenMovimiento(m);
             const signo = m.delta > 0 ? "+" : "";
             return `
         <tr>
@@ -2685,6 +2692,9 @@ function renderVariantesTabla() {
   });
 }
 
+// La receta del producto (dominios/produccion.js), con el módulo prendido.
+document.getElementById("btnRecetaProducto").addEventListener("click", () => invocar("abrirReceta:producto", productoFichaId));
+
 document.getElementById("btnVariantesProducto").addEventListener("click", async () => {
   variantesProductoId = productoFichaId;
   const producto = productos.find((p) => p.id === productoFichaId);
@@ -3102,20 +3112,7 @@ function renderMovimientosStock(movimientos) {
   }
   body.innerHTML = movimientos
     .map((m) => {
-      const origen =
-        m.origen === "venta"
-          ? `Venta #${m.venta_id}`
-          : m.origen === "compra"
-          ? `Compra #${m.compra_id}`
-          : m.origen === "devolucion"
-          ? `Devolución #${m.devolucion_id}`
-          : m.origen === "devolucion_proveedor"
-          ? `Devolución a proveedor #${m.devolucion_proveedor_id}`
-          : m.origen === "transferencia"
-          ? `Transferencia #${m.transferencia_id}`
-          : m.origen === "stock_inicial"
-          ? "Stock inicial"
-          : "Ajuste manual";
+      const origen = origenMovimiento(m);
       const signo = m.tipo === "salida" ? "-" : m.tipo === "entrada" ? "+" : m.cantidad >= 0 ? "+" : "-";
       return `
     <tr>
@@ -3215,7 +3212,8 @@ const filtrosStockMov = crearFiltros(
         { valor: "devolucion_proveedor", texto: "Devolución a proveedor" },
         { valor: "transferencia", texto: "Transferencia" },
         { valor: "ajuste_manual", texto: "Ajuste manual" },
-        { valor: "stock_inicial", texto: "Stock inicial" }
+        { valor: "stock_inicial", texto: "Stock inicial" },
+        { valor: "produccion", texto: "Producción" }
       ]
     },
     { clave: "cantidad", etiqueta: "Cantidad", tipo: "numero" },
@@ -7723,16 +7721,7 @@ let auditoriaMovCache = [];
 
 function armarAuditoriaMovimientos() {
   const deStock = movimientosStockCache.map((m) => {
-    const origen =
-      m.origen === "venta"
-        ? `Venta #${m.venta_id}`
-        : m.origen === "compra"
-        ? `Compra #${m.compra_id}`
-        : m.origen === "devolucion"
-        ? `Devolución #${m.devolucion_id}`
-        : m.origen === "stock_inicial"
-        ? "Stock inicial"
-        : "Ajuste manual";
+    const origen = origenMovimiento(m);
     const salida = m.tipo === "salida" || (m.tipo === "ajuste" && m.cantidad < 0);
     return {
       fecha: m.fecha,

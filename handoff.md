@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §124);
+    siguiente número (hoy el último es §125);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,9 +19,21 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (2 de noviembre de 2026)
+## Estado actual (3 de noviembre de 2026)
 
-**Lo último (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
+**Lo último (3 de noviembre, hist. §125): producción básica, primera parte,
+hecha y sin publicar.** Módulo "Producción" (Configuración → Funciones;
+prendido de partida en Emprendimiento):
+- recetas: qué lleva cada cosa y cuánto suele rendir;
+- producir: lo que se usó y lo que salió de verdad, con el costo que sale de
+  los materiales y entra al costo promedio;
+- anular, que devuelve todo y saca ese costo del promedio.
+
+Suma una migración: cuatro tablas nuevas, `movimientos_stock.produccion_id` y
+los orígenes `produccion` y `consumo` (rebuild del CHECK, como §124). Falta la
+segunda parte ("Qué sigue", producción básica).
+
+**Antes (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
 publicar.** El punto 8c de "Qué sigue", salvo importar desde una planilla.
 El alta pregunta "¿Tu negocio ya venía funcionando?" (paso 7), y con "Sí" entra
 directo a Configuración → Lo que ya tenías:
@@ -1067,7 +1079,9 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
 
 **Decidido por el usuario el 2 de noviembre: producción básica, sí o sí antes
 de la presentación.** Saca "producción con recetas/insumos" de CLAUDE.md §39.
-Es lo próximo a planificar. El caso: un amigo que hace mafaldas compra
+**Primera parte hecha el 3 de noviembre (hist. §125): recetas y producir.**
+Sigue la segunda: lo que se descuenta al vender (packaging y decants, con el
+origen `consumo`, que ya está en el CHECK) y los reportes. El caso: un amigo que hace mafaldas compra
 materiales y los combina, y la gente que vende comida. "Primero las básicas"
 para un negocio muy chico; lo complejo, después. Pide:
 - **Receta:** qué materiales lleva cada producto y cuánto. Los materiales son
@@ -1093,11 +1107,9 @@ para un negocio muy chico; lo complejo, después. Pide:
 - **Todo integrado:** stock, costo promedio y margen, reportes, y avisos de
   materiales bajos.
 
-Diseño a grandes rasgos: un módulo reusable que se prende en Funciones
-(CLAUDE.md §29) y los orígenes `produccion` y `consumo` en
-`movimientos_stock` (rebuild del CHECK, como hist. §124). Además, las
-recetas en una tabla propia. Antes de tocar el esquema, explicárselo al
-usuario (§34).
+Diseño: hist. §125. Para la segunda parte, abrir un frasco ya se puede como
+producción (receta "Perfume (ml)" = 1 frasco, rinde 100): queda decidir con
+el usuario si alcanza así o si prefiere comprar el perfume ya en ml.
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos

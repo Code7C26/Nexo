@@ -25,6 +25,8 @@ const MODULO_DE_VISTA = {
   "devolucion-proveedor-detalle": "compras",
   stock: "stock",
   "reportes-stock": "stock",
+  produccion: "produccion",
+  "produccion-detalle": "produccion",
   ingreso: "socios",
   socios: "socios",
   "socio-detalle": "socios",
@@ -67,6 +69,7 @@ const VISTAS_CONSTRUIDAS = {
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
   stock: { titulo: "Stock", dominio: "Stock" },
   "reportes-stock": { titulo: "Reportes de stock", dominio: "Stock" },
+  produccion: { titulo: "Producción", dominio: "Producción" },
   caja: { titulo: "Caja", dominio: "Finanzas" },
   "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
@@ -93,6 +96,7 @@ const VISTAS_CONSTRUIDAS = {
   "cliente-detalle": { titulo: "Cliente", dominio: "Maestros", nav: "clientes", esFicha: true },
   "proveedor-detalle": { titulo: "Proveedor", dominio: "Maestros", nav: "proveedores", esFicha: true },
   "socio-detalle": { titulo: "Socio", dominio: "Socios", nav: "socios", esFicha: true },
+  "produccion-detalle": { titulo: "Producción", dominio: "Producción", nav: "produccion", esFicha: true },
 
   placeholder: { titulo: "Próximamente", dominio: "Nexo", esFicha: true }
 };

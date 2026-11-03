@@ -1217,6 +1217,11 @@ Implementado hoy (Etapa F, §38):
 - **Abonos:** módulo reusable, prendido en Servicios. Un servicio que un
   cliente paga cada tantos meses; cada cuota es una venta, armada con el mismo
   mecanismo que las cuotas de socios.
+- **Producción (Etapa J, hist. §125):** módulo reusable, prendido en
+  Emprendimiento. La receta dice qué materiales lleva cada producto y cuánto
+  suele rendir; al producir se anota lo que se usó y lo que salió de verdad,
+  y el costo sale de los materiales. Falta lo que se descuenta al vender
+  (packaging, decants).
 - **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
   `handoff.md`). Un gimnasio también compra y vende productos: su preset
   combina comercio con socios.
@@ -1560,7 +1565,7 @@ excepciones).
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Hecha (Mercado Libre falta probarlo con la cuenta real) |
 | H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
 | I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | En curso (voz hecha; falta WhatsApp) |
-| J | Producción básica: recetas, producir, packaging (§5, §29) | El negocio chico que fabrica lo que vende (comida, mafaldas) no tiene cómo costearlo | Pendiente, antes de la presentación (decidido el 2 de noviembre) |
+| J | Producción básica: recetas, producir, packaging (§5, §29) | El negocio chico que fabrica lo que vende (comida, mafaldas) no tiene cómo costearlo | En curso: recetas y producir hechos; falta lo que se descuenta al vender |
 
 El detalle de cada etapa en curso (qué está hecho y qué falta) vive en
 `handoff.md`; esta columna solo da el estado grueso.
