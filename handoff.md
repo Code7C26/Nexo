@@ -22,7 +22,7 @@
 ## Estado actual (3 de noviembre de 2026)
 
 **Lo último (3 de noviembre, hist. §126): producción básica, segunda parte,
-hecha y sin publicar.** Lo que se usa al vender (la caja, la bolsa):
+hecha y publicada (PR #43, junto con §125).** Lo que se usa al vender (la caja, la bolsa):
 - cada producto dice qué lleva, por cada uno o una vez por venta
   (Producción → Al vender, o el botón "Al vender" de su ficha);
 - el alta de venta y el punto de venta lo proponen debajo de los renglones, y
@@ -34,7 +34,7 @@ hecha y sin publicar.** Lo que se usa al vender (la caja, la bolsa):
 Suma una migración aditiva: `componentes_venta` y `venta_consumos`.
 
 **Antes (3 de noviembre, hist. §125): producción básica, primera parte,
-hecha y sin publicar.** Módulo "Producción" (Configuración → Funciones;
+hecha y publicada (PR #43).** Módulo "Producción" (Configuración → Funciones;
 prendido de partida en Emprendimiento):
 - recetas: qué lleva cada cosa y cuánto suele rendir;
 - producir: lo que se usó y lo que salió de verdad, con el costo que sale de
