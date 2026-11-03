@@ -57,6 +57,7 @@ import "./dominios/plan.js";
 import "./dominios/baja.js";
 import "./dominios/factura-electronica.js";
 import "./dominios/tienda-nube.js";
+import "./dominios/mercado-libre.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
@@ -65,6 +66,7 @@ import "./dominios/trabajos.js";
 import "./dominios/abonos.js";
 import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
+import "./dominios/carga-inicial.js";
 import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
@@ -2008,6 +2010,8 @@ async function abrirFichaProducto(id) {
                 ? `Compra #${m.compra_id}`
                 : m.origen === "devolucion"
                 ? `Devolución #${m.devolucion_id}`
+                : m.origen === "stock_inicial"
+                ? "Stock inicial"
                 : "Ajuste manual";
             const signo = m.delta > 0 ? "+" : "";
             return `
@@ -3109,6 +3113,8 @@ function renderMovimientosStock(movimientos) {
           ? `Devolución a proveedor #${m.devolucion_proveedor_id}`
           : m.origen === "transferencia"
           ? `Transferencia #${m.transferencia_id}`
+          : m.origen === "stock_inicial"
+          ? "Stock inicial"
           : "Ajuste manual";
       const signo = m.tipo === "salida" ? "-" : m.tipo === "entrada" ? "+" : m.cantidad >= 0 ? "+" : "-";
       return `
@@ -3208,7 +3214,8 @@ const filtrosStockMov = crearFiltros(
         { valor: "devolucion", texto: "Devolución" },
         { valor: "devolucion_proveedor", texto: "Devolución a proveedor" },
         { valor: "transferencia", texto: "Transferencia" },
-        { valor: "ajuste_manual", texto: "Ajuste manual" }
+        { valor: "ajuste_manual", texto: "Ajuste manual" },
+        { valor: "stock_inicial", texto: "Stock inicial" }
       ]
     },
     { clave: "cantidad", etiqueta: "Cantidad", tipo: "numero" },
@@ -3918,8 +3925,14 @@ function renderVentas(lista) {
     const tr = document.createElement("tr");
     tr.className = "fila-clickeable";
 
+    // Un saldo anterior a Nexo (handoff 8c) no tiene renglones: no se factura,
+    // y en vez de productos dice qué es.
+    const esSaldo = v.saldo_inicial != null;
+    const resumen = esSaldo ? "Saldo de antes de Nexo" : v.items_resumen;
     const accionFactura = v.facturada
       ? `<span class="status status-cobrado">Facturada</span>`
+      : esSaldo
+      ? ""
       : `<button type="button" class="btn-fila btn-facturar-venta" data-id="${v.id}">Facturar</button>`;
     const accionCobro =
       v.estado_cobro === "cobrado"
@@ -3930,15 +3943,17 @@ function renderVentas(lista) {
     // nada más para no invitar a un click que ya sabemos que va a fallar).
     const accionAnular =
       !v.facturada && !v.tiene_devolucion && v.estado_cobro === "pendiente" && esAdmin()
-        ? `<button type="button" class="btn-icon-danger btn-anular-venta" data-id="${v.id}" title="Anular venta" aria-label="Anular venta">${ICONO_TACHO}</button>`
+        ? `<button type="button" class="btn-icon-danger btn-anular-venta" data-id="${v.id}" data-antes="${v.carga_inicial ? 1 : ""}" title="Anular venta" aria-label="Anular venta">${ICONO_TACHO}</button>`
         : "";
 
     tr.innerHTML = `
       ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente" class="m-titulo">${esc(v.cliente)}</td>
-      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), v.items_resumen)}
-      <td data-label="Productos" class="celda-wrap">${esc(v.items_resumen || "—")}</td>
+      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), resumen)}
+      <td data-label="Productos" class="celda-wrap">${esc(resumen || "—")}${
+        v.carga_inicial && !esSaldo ? ' <span class="status">De antes de Nexo</span>' : ""
+      }</td>
       <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono m-valor">${money(v.total)}</td>
@@ -3978,7 +3993,10 @@ function renderVentas(lista) {
     btn.addEventListener("click", async () => {
       if (
         !(await confirmar({
-          cuerpo: "¿Anular esta venta? Va a la papelera y el stock vuelve al depósito.",
+          // Una de antes de Nexo nunca descontó stock (handoff 8c).
+          cuerpo: btn.dataset.antes
+            ? "¿Anular esta venta? Va a la papelera y sale de la cuenta del cliente."
+            : "¿Anular esta venta? Va a la papelera y el stock vuelve al depósito.",
           aceptar: "Anular venta",
           destructivo: true
         }))
@@ -4956,8 +4974,11 @@ function renderCompras(lista) {
         : `<button type="button" class="btn-fila btn-pagar-compra" data-id="${c.id}">Pagar</button>`;
     // Una vez recibida no se puede volver atrás (el costo promedio ya se
     // recalculó), así que el selector se reemplaza por texto plano.
+    // Un saldo anterior a Nexo (handoff 8c) no trajo mercadería.
     const celdaEnvio =
-      c.estado_envio === "recibido"
+      c.saldo_inicial != null
+        ? `<span class="status">Saldo de antes de Nexo</span>`
+        : c.estado_envio === "recibido"
         ? `<span class="status status-cobrado">Recibido</span>`
         : `<select class="select-inline select-estado-envio" data-id="${c.id}">${Object.entries(ENVIO_LABEL)
             .map(
@@ -7709,6 +7730,8 @@ function armarAuditoriaMovimientos() {
         ? `Compra #${m.compra_id}`
         : m.origen === "devolucion"
         ? `Devolución #${m.devolucion_id}`
+        : m.origen === "stock_inicial"
+        ? "Stock inicial"
         : "Ajuste manual";
     const salida = m.tipo === "salida" || (m.tipo === "ajuste" && m.cantidad < 0);
     return {

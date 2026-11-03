@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §122);
+    siguiente número (hoy el último es §124);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,48 @@
 
 ## Estado actual (2 de noviembre de 2026)
 
-**Lo último (2 de noviembre, hist. §121 y §122): Tienda Nube hecha.**
+**Lo último (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
+publicar.** El punto 8c de "Qué sigue", salvo importar desde una planilla.
+El alta pregunta "¿Tu negocio ya venía funcionando?" (paso 7), y con "Sí" entra
+directo a Configuración → Lo que ya tenías:
+- el stock de hoy con lo que costó cada uno, y el alta en la misma planilla;
+- lo que te deben y lo que debés, como saldos anteriores;
+- la plata de hoy;
+- las ventas recientes, que no mueven stock ni caja.
+
+Lo pidió el usuario por su hermano (mates), que tenía que inventar una compra
+para cargar el costo. Su cuenta ya existe: lo encuentra en Configuración o en
+Stock → "Stock inicial". **Para decidir con el usuario:** sus ventas ya
+cargadas con costo 0 muestran 100 % de margen, porque el costo de una venta
+queda congelado (CLAUDE.md §8).
+
+**Antes (2 de noviembre, hist. §123): Mercado Libre hecho, sin publicar.**
+Configuración → Canales de venta → Mercado Libre: conectar (OAuth con PKCE,
+el token se renueva solo), vincular cada publicación con un producto de Nexo
+(el SKU lo sugiere, "Traer su stock" opcional), stock y precio que manda Nexo,
+y ventas que entran cobradas. Probado contra un Mercado Libre falso (11 tests)
+y en Chrome con una demo. En el menú de Configuración, Tienda Nube lleva la
+nube y Mercado Libre su emblema (pedido del usuario). **Falta:** publicar,
+cargar `MERCADOLIBRE_APP_ID` y `MERCADOLIBRE_CLIENT_SECRET` en el servidor y
+probar con usuarios de prueba (pasos en "Qué sigue", punto 5).
+
+**Orden acordado con el usuario (2 de noviembre, al cerrar la sesión):**
+1. ~~La mejora pendiente~~: era la carga inicial, hecha en `solla` (hist.
+   §124).
+2. **Lo que sigue: publicar todo junto** (Mercado Libre + la carga inicial):
+   PR a `main` con el CI en verde. La migración reconstruye
+   `movimientos_stock` (pasó `verificar-migracion` con la base real), y el
+   arranque respalda la base antes.
+3. **Las claves en el servidor:** el usuario las da por cargadas, pero el 2 de
+   noviembre `/etc/nexo/nexo.env` no tenía ninguna línea `MERCADOLIBRE_`
+   (comprobado por ssh contando líneas, sin ver valores; las de Tienda Nube
+   sí están). Las dos están en el `.env` de la compu. Al publicar, mandarlas
+   con el comando de PowerShell de siempre y reiniciar.
+4. **El usuario no tiene una cuenta de Mercado Libre con productos
+   publicados.** No hace falta: Mercado Libre da usuarios de prueba que
+   pueden publicar y comprar entre ellos (ver "Qué sigue", punto 5).
+
+**Antes (2 de noviembre, hist. §121 y §122): Tienda Nube hecha.**
 Configuración → Canales de venta → Tienda Nube: conectar (OAuth), publicar
 productos, stock y precio que se mandan solos y pedidos que pasan a venta:
 cobrada si se pagó online, por cobrar si el pago es manual (§122). Probado
@@ -1140,22 +1181,83 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
      - **Tienda Nube hecha el 2 de noviembre** (hist. §121), commiteada en
        `solla` y sin publicar. La base (`integraciones`, vínculos, pedidos y
        log) sirve igual para Mercado Libre.
-     - **Para probarla de verdad, al publicar:** cargar `TIENDANUBE_APP_ID` y
-       `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env` (con el comando de
-       PowerShell que las lee del `.env`), entrar al sitio como admin,
-       Configuración → Tienda Nube → Conectar, elegir la tienda demo
-       (nexo330), publicar un producto y crear un pedido con `POST /orders`
-       (la tienda demo no vende) para ver que llega como venta.
+     - **Publicado el 2 de noviembre** (PR #41, junto con §119 y §120), con
+       `TIENDANUBE_APP_ID` y `TIENDANUBE_CLIENT_SECRET` en `/etc/nexo/nexo.env`
+       (comprobado desde afuera: el callback ya no dice "no-disponible").
+     - **Probada contra Tienda Nube de verdad el 2 de noviembre**, en el negocio
+       "Gonzalo José Solla" con la tienda nexo330: publicar un producto, un
+       pedido "Pago pendiente" (gateway not-provided) que entró al momento como
+       venta por cobrar y bajó el stock, y su cancelación, que anuló sola la
+       venta y devolvió el stock. Quedan el producto "Producto de prueba (Tienda
+       Nube)" desactivado, el cliente "Cliente de Prueba" y la venta #34
+       anulada. Una orden de compra con un mail .test la rechaza Tienda Nube.
      - **Decidido por mí, para revisar:** Nexo manda en el stock y el precio
        (pisa los de la tienda); un pedido con pago manual entra al crearse,
        como venta por cobrar, y uno online recién pagado (mientras tanto
        reserva stock 72 horas); una cancelación anula sola la venta sin
        cobros, y la que tiene cobros o factura queda para la devolución; lo cobrado entra en la cuenta de Mercado Pago (se
        cambia en la página); los pedidos de antes de conectar no se traen.
+     - **Decidido por el usuario el 2 de noviembre: Nexo manda** en el stock y
+       el precio. Razón: el stock lo cambian las ventas y las compras, y las
+       compras solo se registran en Nexo; que la tienda se actualice sola al
+       cargar una compra es lo cómodo. **"Traer mis productos" desde una
+       tienda que ya existe queda para después**, si sobra tiempo: crear en Nexo
+       los productos de la tienda (o vincularlos por SKU), con el stock como
+       ajuste "importado de Tienda Nube". Los cambios de la tienda hacia Nexo
+       (stock como ajuste por la diferencia, nunca copiando el número) se
+       pensaron y quedan descartados por ahora.
      - **Pregunta para el usuario:** ¿Tienda Nube (y Mercado Libre) solo en el
        plan Pro, como dice la landing ("muy pronto")? Hoy está para todos,
        como ARCA.
-     - Falta: Mercado Libre (cuando estén sus claves), el envío y el canal
+     - **Mercado Libre hecho el 2 de noviembre (hist. §123), commiteado en
+       `solla` y sin publicar.** Para probarlo de verdad:
+       1. publicar (PR a `main`) y mandar `MERCADOLIBRE_APP_ID` y
+          `MERCADOLIBRE_CLIENT_SECRET` a `/etc/nexo/nexo.env` (mismo comando
+          de PowerShell que Tienda Nube);
+       2. crear dos usuarios de prueba (vendedor y comprador) por API:
+          `POST https://api.mercadolibre.com/users/test_user` con
+          `{"site_id":"MLA"}` y el token de cualquier cuenta real (la de
+          Santino, con la que se creó la app, sirve). Devuelve usuario y
+          contraseña; hasta 10, y caducan si no se usan. Entrar a Mercado
+          Libre con el vendedor de prueba y conectarlo desde Nexo;
+       3. publicar algo con el vendedor de prueba (en el título,
+          "Item de testeo – Por favor, NO OFERTAR", como pide Mercado Libre),
+          vincularlo en Nexo, y comprarlo con el comprador de prueba (con
+          tarjetas de prueba de Mercado Pago): tiene que entrar como venta
+          cobrada y bajar el stock en los dos lados.
+       - **Decidido por mí, para revisar:** vincular a mano (nunca por
+         nombre); "Traer su stock" es opcional y sin marcarlo manda Nexo; un
+         producto puede ir en varias publicaciones (clásica y premium); con
+         variantes a distinto precio va solo el stock (Mercado Libre usa un
+         precio por publicación); el comprador se reconoce por su número en
+         las notas del cliente; la comisión se anota pero no se descuenta.
+       - Queda para después: publicar desde Nexo, crear en Nexo las
+         publicaciones que no existen ("Traer mis productos", igual que en
+         Tienda Nube), la comisión como costo y el envío.
+     - Plan original (2 de noviembre), ya hecho:
+       1. `backend/mercadolibre.js` como `tiendanube.js`: OAuth con `state`
+          firmado. Diferencia clave: el token dura 6 horas y se renueva con un
+          refresh token que cambia en cada uso; hay que guardarlo cifrado, y
+          renovar de a uno a la vez (si dos pedidos renuevan juntos, uno pierde
+          el permiso).
+       2. Avisos: Mercado Libre **no los firma**. Se contestan 200 enseguida y
+          se confía solo en lo que devuelve su API con el token del negocio
+          (pedir `/orders/{id}` con ese token es la verificación).
+       3. **En Mercado Libre lo normal es vincular, no publicar:** el vendedor ya
+          tiene publicaciones, y publicar desde Nexo pide fotos y los atributos
+          obligatorios de cada categoría (marca, modelo, código), que Nexo no
+          tiene. Primero: listar sus publicaciones, vincularlas por SKU
+          (`seller_custom_field` o el atributo `SELLER_SKU`) confirmando a mano,
+          y crear en Nexo las que no existan. Publicar desde Nexo, después.
+       4. Stock y precio: Nexo manda, como en Tienda Nube (decisión del
+          usuario), con la misma pasada y la reserva de pedidos.
+       5. Ventas: `orders_v2` → pedido pagado → venta cobrada en la cuenta de
+          Mercado Pago, con `crearVenta`. La comisión (`sale_fee`) queda para
+          después (lista de e-commerce de más abajo).
+       6. Probar con usuarios de prueba de Mercado Libre (se crean por API).
+       - **La documentación de Mercado Libre devolvió 403 a WebFetch**: leerla
+         con curl y un User-Agent de navegador, o desde el navegador.
+     - Falta también: el envío y el canal
        en la venta, vincular productos que ya estaban en la tienda, fotos.
 - **Del 9 al 15:**
   1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
@@ -1492,8 +1594,10 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      campo trampa del alta. Para después: un mail de recordatorio unos días
      antes del borrado.
    - Las migraciones son aditivas y están explicadas en el documento.
-8c. **Carga inicial: empezar con un negocio que ya existe** (pedido del
-   usuario del 28 de octubre, **no ahora**, sin fecha). Lo vio cuando su
+8c. **Carga inicial: empezar con un negocio que ya existe. Hecha (hist.
+   §124), salvo importar desde una planilla**, que es lo que queda de este
+   punto (su diseño, en "Importar", abajo). Pedido del usuario del 28 de
+   octubre. Lo vio cuando su
    hermano, que vende mates, tuvo que registrar una compra para cargar el
    stock que ya tenía. La mayoría de los que usen Nexo ya tienen un negocio
    andando: el primer día tienen que poder cargar lo que tienen, lo que les
@@ -1735,6 +1839,15 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **Mercado Libre (etapa 14):** cuenta propia de Mercado Libre y crear la app
   en su portal de desarrolladores. No hay sandbox: se prueba en producción entre
   usuarios de prueba (hasta 10, se crean por API y caducan).
+  - **Hecho el 2 de noviembre:** app creada en Mercado Libre Developers (cuenta
+    de Santino). El nombre corto "nexo" estaba tomado por otra app de Mercado
+    Libre (es único en todo el sitio); se usó otro. Cargadas en la app:
+    redirección `https://nexosystem.duckdns.org/api/integraciones/mercadolibre/callback`
+    y avisos en `.../api/integraciones/mercadolibre/notificaciones`, con los
+    tópicos `orders_v2` e `items`. **Esas rutas todavía no existen.**
+  - `MERCADOLIBRE_APP_ID` (16 dígitos) y `MERCADOLIBRE_CLIENT_SECRET` (32) en el
+    `.env` de la compu; **faltan en el servidor** (mismo comando de PowerShell
+    que Tienda Nube, al publicar).
 - **Tienda Nube (etapa 15):** registrarse en el programa de partners, crear una
   tienda demo y la app.
   - **Hecho el 2 de noviembre:** app 49947, "Para tus clientes" (sin la

@@ -10882,3 +10882,154 @@ al pagarse es venta; manual por cobrar, cobro parcial en Nexo y el resto solo
 al pagarse en la tienda, una sola vez; cancelado sin cobros se anula y el
 stock vuelve. `npm test` (240), lint, `verificar-migracion` (24 de 24). En
 Chrome, compu y 390 px, oscuro y claro, con la demo.
+
+## 123. Mercado Libre y los logos de los canales, 2 de noviembre de 2026
+
+Pedido del usuario: "seguir con lo de Mercado Libre", con su logo como el de
+Tienda Nube, y que en el menú de Configuración el ícono de cada canal sea su
+logo (la nube de Tienda Nube, el apretón de manos de Mercado Libre).
+
+**Mercado Libre, sobre la base de Tienda Nube** (CLAUDE.md §32):
+- `backend/mercadolibre.js`, sin dependencias: OAuth con `state` firmado y
+  PKCE (el `code_verifier` sale del mismo `state` con el secreto de la app: no
+  se guarda nada), canje y renovación del token, cliente de la API y el
+  cifrado del permiso. La documentación se leyó con curl y User-Agent de
+  navegador (a WebFetch le da 403).
+- **El permiso:** el token dura 6 horas y el refresh token sirve una sola vez.
+  Se guardan juntos y cifrados en `integraciones.token` (sin columnas nuevas),
+  y `tokenVigente` renueva de a uno por vez: dos pedidos a la par comparten la
+  misma renovación. Un `invalid_grant` desconecta la integración.
+- **Vincular, no publicar:** `GET .../publicaciones` lista las del vendedor
+  (hasta 500, sin las finalizadas), una fila por variación, con el SKU
+  (`SELLER_SKU` o `seller_custom_field`) como sugerencia si un solo producto
+  de Nexo lo tiene. Se elige a mano; el servidor vuelve a leer la publicación
+  y solo vincula lo que es del vendedor conectado. "Traer su stock" ajusta el
+  stock de Nexo al de Mercado Libre (un ajuste con su movimiento y auditoría)
+  antes de vincular; si no, manda Nexo. Las publicaciones Full no reciben
+  stock.
+- **Stock y precio, manda Nexo:** un PUT por publicación con lo que cambió.
+  Mercado Libre usa un precio para todas las variaciones: si en Nexo las
+  variantes tienen precios distintos, va solo el stock y se avisa una vez. Un
+  aviso de `items` con otro precio u otro stock que el mandado hace que se
+  vuelva a mandar el de Nexo; el aviso del cambio propio no dispara nada.
+- **Ventas:** `pedidoDeMercadoLibre` traduce la venta al formato del pedido de
+  Tienda Nube y pasa por el mismo `procesarPedido`: pagada es venta cobrada,
+  sin pagar reserva unidades, cancelada libera o anula. El comprador se
+  reconoce por su número, anotado en las notas del cliente ("Comprador de
+  Mercado Libre #…"): Mercado Libre no da el mail. La comisión (`sale_fee`)
+  se anota en la actividad pero todavía no se descuenta de la ganancia.
+- **Avisos:** `/notificaciones` contesta enseguida (Mercado Libre pide menos de
+  500 ms) y solo mira `orders_v2` e `items` de la app de Nexo. No vienen
+  firmados: se pide la venta o la publicación a la API con el token del
+  vendedor.
+- **Lo común a los dos canales:** `guardarConexion`, `vinculosParaPublicar`,
+  `programarSincronizacion` (ahora pasa por todas las integraciones del
+  negocio) y las rutas de estado, ajustes, buscar ahora, reintentar y
+  revisado, que son la misma función registrada con la ruta literal de cada
+  canal (así las sigue viendo `permisos.test.js`). Los textos dicen el canal.
+- **Índice:** `idx_integracion_vinculos_nexo` era único por producto y no
+  dejaba vincular un producto a dos publicaciones (en Mercado Libre es común
+  la clásica y la premium). Se reemplazó por `idx_integracion_vinculos_producto`
+  (no único) y `db/index.js` borra el viejo (re-ejecutable).
+- La CSP suma `https://http2.mlstatic.com` en `img-src` (las fotos de las
+  publicaciones).
+
+**Frontend:** Configuración → Canales de venta → Mercado Libre
+(`dominios/mercado-libre.js`): los pasos, los ajustes, la lista de
+publicaciones con foto, selector y "Traer su stock", las ventas y la
+actividad. Lo que comparten las dos páginas de canales pasó a
+`core/canales.js` (ajustes, pedidos, actividad) y Tienda Nube lo usa.
+
+**Logos:** `frontend/img/mercadolibre.svg` con `#emblema` (de theSVG, MIT) y
+`#logo` (el emblema y la palabra, de Wikimedia Commons, en el color del
+texto). `tiendanube.svg` suma `#nube`. En el menú van con `.ico-marca`.
+Al armar el SVG quedaron atributos `inkscape:` sin su espacio de nombres y el
+navegador cortaba el archivo ahí (se veía solo el emblema): se sacaron.
+
+**Cómo se verificó.** `mercadolibre.test.js` (11), contra un Mercado Libre
+falso: permiso con PKCE y `state` trucho, ajeno o sin sesión; cuenta en otro
+negocio; listar con sugerencia por SKU; vincular con y sin traer el stock;
+precios distintos en variaciones; venta pagada una sola vez y el comprador
+sin duplicar; reserva y cancelación; Nexo manda tras un cambio en Mercado
+Libre; dos pedidos a la par con el token vencido; permiso revocado.
+`tiendanube.test.js` sigue 15 de 15. `npm test` (251), lint y
+`verificar-migracion` (24 de 24). En Chrome, compu y 390 px, con una demo
+local (Mercado Libre falso): conectar, vincular y los logos del menú.
+
+**Sin probar contra Mercado Libre de verdad:** la redirección de la app apunta
+al sitio publicado. Falta publicar, cargar `MERCADOLIBRE_APP_ID` y
+`MERCADOLIBRE_CLIENT_SECRET` en el servidor y probar con usuarios de prueba.
+
+## 124. Lo que ya tenías: la carga inicial de un negocio que ya existe, 2 de noviembre de 2026
+
+**Pedido del usuario** (2 de noviembre, retomando el punto 8c del 28 de
+octubre): su hermano creó la cuenta de su emprendimiento de mates y no podía
+cargar sus productos con el costo que ya tenían: tenía que inventar una
+compra. "La mayoría ya tiene negocios que ya sirven." Pidió que el alta
+pregunte si el negocio ya funcionaba y que se cargue desde Configuración. La
+planilla de Excel queda para después. Lo del stock máximo que vio el hermano
+era la venta frenada por no tener stock: lo esperado, según el usuario.
+
+**Esquema** (`schema.sql` y `db/index.js`, explicado antes de tocarlo):
+- `movimientos_stock.origen` suma `'stock_inicial'`. Es un rebuild por el
+  CHECK, con el método del de `asistente_mensajes`: parte del CREATE TABLE
+  de hoy, cambia solo el CHECK y conserva ids, índices, `sqlite_sequence` y
+  vistas, en una transacción.
+- Aditivas: `organizaciones.ya_funcionaba` (1, 0 o NULL si no se preguntó),
+  `ventas.carga_inicial` (default 0), `ventas.saldo_inicial` y
+  `compras.saldo_inicial` (NULL salvo en un saldo anterior).
+
+**Cómo funciona cada parte** (backend en `server.js`, "Carga inicial"):
+- **Stock:** declarar "en este depósito hay N y cada uno costó C" es un
+  `ajuste` hasta N, con `costo_unitario` C. En el costo promedio, el stock
+  inicial reemplaza el costo de lo que había en ese depósito y se promedia con
+  el de los otros (`costoConStockInicial`). `recalcularCostoProducto` y su par
+  de variante pasan a usar `costoDelHistorial`, que lo entiende, así que
+  editar una compra después no lo pierde. La planilla deja dar de alta
+  productos en la misma fila (`insertarProducto`, separado de
+  `POST /api/productos`). No genera deuda ni toca la caja.
+- **Lo que te deben / lo que debés:** un "saldo anterior" es una venta (o
+  compra) sin renglones con `saldo_inicial` = el importe. Así se cobra, se
+  paga, vence y entra en el aging con el circuito de siempre. Los totales
+  suman `saldo_inicial` en el listado, el detalle, el cobro, el pago, anular,
+  restaurar y las fichas. No entra en los reportes (suman renglones), ni en
+  "cantidad de compras", "dejaron de comprar" o el rango de fechas. No se
+  factura ni se edita.
+- **La plata de hoy:** la página pide lo que hay hoy en cada cuenta, y el
+  saldo inicial queda en eso menos lo que ya se movió en Nexo (PATCH de la
+  cuenta, sin endpoint nuevo).
+- **Ventas recientes:** `crearVenta({ carga_inicial: true })` no mueve stock.
+  Cobrada, lleva su cobro (con la cuenta, para saber cómo se pagó) sin
+  movimiento de tesorería. Sin cobrar, es deuda del cliente ("Consumidor
+  final" no fía). Cuentan en los reportes y no en el tope de ventas del plan.
+  No se editan; al anularlas no se devuelve stock, y lo cobrado antes de Nexo
+  no frena la anulación (`SQL_COBROS_CON_CAJA`, solo para ellas).
+- Todo es admin (`permisos.js`) y queda en la auditoría.
+
+**Frontend:**
+- Alta: paso 7, "¿Tu negocio ya venía funcionando?". "Completar después" del
+  paso 6 ahora lleva a ese paso. Con "Sí", `sessionStorage` deja una marca y
+  `dominios/carga-inicial.js` abre `#/configuracion/lo-que-tenias` al
+  arrancar.
+- Configuración → "Lo que ya tenías" (`dominios/carga-inicial.js`): un
+  resumen con las cinco partes y su estado, y una página para cada una.
+- Accesos y textos en el resto de la app:
+  - el paso en la guía de primeros pasos (solo con `ya_funcionaba`);
+  - "Stock inicial" en la pantalla de Stock;
+  - "Stock inicial" como origen en los movimientos;
+  - "Saldo de antes de Nexo" en Ventas y Compras.
+
+**Cómo se verificó.** `carga-inicial.test.js` (5): el alta y "Agregar
+negocio" con la pregunta; stock con alta en la planilla, redeclarar,
+promedio con una compra y recálculo al editarla; saldos que se cobran,
+pagan, vencen, anulan y restauran; ventas que no mueven stock ni caja y
+cuentan en el resumen; aislamiento entre negocios. `npm test` (256), lint y
+`verificar-migracion` (24 de 24, la base real sin cambios). En Chrome, a
+390 px y en la compu: alta completa con el paso 7, entrada directa a la
+página, planilla con dos productos nuevos, un saldo, la plata y una venta de
+antes, y cómo se ven en Ventas.
+
+**Queda:** importar desde una planilla (CSV o `.xlsx`), y decidir con el
+usuario si las ventas que el hermano ya cargó con costo 0 se corrigen: el
+costo de una venta queda congelado (CLAUDE.md §8), así que hoy muestran 100 %
+de margen.

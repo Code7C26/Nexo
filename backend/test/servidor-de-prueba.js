@@ -198,7 +198,7 @@ export async function confirmarMailDeAlta(servidor, email) {
 // alta confirma el mail con el código que le llega (hist. §108).
 export async function registrarEmpresa(
   servidor,
-  { empresa, usuario, email = `${usuario}@nexo.test`, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro' }
+  { empresa, usuario, email = `${usuario}@nexo.test`, nombre = 'Admin', password = 'clave-segura-1', plan = 'pro', extra = {} }
 ) {
   const comprobante = await confirmarMailDeAlta(servidor, email);
   const cliente = crearCliente(servidor.url);
@@ -209,7 +209,9 @@ export async function registrarEmpresa(
     nombre,
     password,
     plan,
-    ...ACEPTA
+    ...ACEPTA,
+    // Lo que el alta guiada suma al cuerpo (por ejemplo, ya_funcionaba).
+    ...extra
   });
   if (r.status !== 201) throw new Error(`Registro falló (${r.status}): ${r.texto}`);
   return cliente;

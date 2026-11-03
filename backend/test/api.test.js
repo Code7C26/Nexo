@@ -511,11 +511,11 @@ test('datos del negocio: actualización parcial, CUIT y condición fiscal (hist.
 });
 
 test('socios: planes con duraciones, cuotas sin cron, cobro, ingreso, baja y aislamiento (hist. §74 y §75)', async () => {
-  const hoy = new Date().toLocaleDateString('sv-SE');
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
   const haceDias = (n) => {
     const d = new Date();
     d.setDate(d.getDate() - n);
-    return d.toLocaleDateString('sv-SE');
+    return d.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
   };
   const opcion = (plan, meses) => plan.opciones.find((o) => o.meses === meses);
 
@@ -897,8 +897,8 @@ test('servicios: catálogo por hora, trabajos desde un presupuesto y terminar en
 });
 
 test('abonos: la cuota del período, alta hacia atrás, precio desde la siguiente, baja y aislamiento (hist. §79)', async () => {
-  const hoy = new Date().toLocaleDateString('sv-SE');
-  const haceDias = (n) => new Date(Date.now() - n * 86400000).toLocaleDateString('sv-SE');
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const haceDias = (n) => new Date(Date.now() - n * 86400000).toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
   const mantenimiento = await adminA.post('/api/productos', { nombre: 'Mantenimiento mensual', precio_venta: 20000, tipo: 'servicio' });
   assert.equal(mantenimiento.status, 201, mantenimiento.texto);
   const base = { cliente: 'Estudio Ríos', producto_id: mantenimiento.json.id, precio: 20000, meses: 1 };

@@ -6926,7 +6926,71 @@ a.segmento {
    productos para publicar (una fila tocable por producto), los pedidos y la
    actividad. */
 .tn-titulo { line-height: 0; }
+/* El logo es más alto que un título: un poco de aire antes del texto. */
+.config-pagina-head .tn-titulo { margin-bottom: var(--sp-2); }
 .tn-logo { width: 160px; height: 40px; color: var(--ink); fill: currentColor; }
+/* Mercado Libre (dominios/mercado-libre.js): el emblema con sus colores y la
+   palabra en el color del texto. */
+.ml-logo { width: 127px; height: 40px; color: var(--ink); }
+
+/* Los canales de venta llevan su logo en el menú de Configuración, en lugar
+   de un ícono del sprite: la nube de Tienda Nube toma el color de los demás
+   íconos; el emblema de Mercado Libre va con sus colores y un poco más
+   ancho, porque es ovalado. */
+.ico-marca { fill: currentColor; stroke: none; }
+.config-item-icono .ico-marca-color { width: 22px; height: 16px; }
+
+/* Las publicaciones para vincular: la foto, el título y los datos, y abajo
+   qué producto de Nexo es. En pantallas anchas el botón de desvincular va a
+   la derecha. */
+.ml-buscar { width: 100%; max-width: 420px; margin: 0 0 var(--sp-3); }
+.ml-buscar[hidden] { display: none; }
+.ml-publicaciones { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.ml-publicaciones > li { border-bottom: 1px solid var(--line); }
+.ml-publicaciones > li[hidden] { display: none; }
+.ml-publicacion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+.ml-foto {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  object-fit: contain;
+}
+.ml-publicacion-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.ml-publicacion-titulo { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.ml-publicacion-titulo a { color: inherit; }
+.ml-publicacion-detalle { margin: 0; font-size: var(--txt-xs); color: var(--ink-faint); overflow-wrap: anywhere; }
+.ml-publicacion-vinculo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+/* El selector de cada publicación, como los de los formularios. */
+.ml-elegir select {
+  width: 100%;
+  max-width: 420px;
+  min-height: var(--control-h);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  font-size: var(--txt-sm);
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+.ml-elegir select:hover { border-color: var(--ink-faint); }
+.ml-traer { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--txt-sm); color: var(--ink-muted); }
+.ml-traer input { flex: none; width: 18px; height: 18px; }
+.ml-publicacion .campo-ayuda { margin: 0; }
 /* Pedidos: una fila por pedido, con el número y el estado arriba, el
    detalle debajo y los botones a la derecha (abajo en el celular). */
 .tn-pedidos { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
@@ -8443,4 +8507,109 @@ a.segmento {
   .item-row .item-precio { flex: 1 1 0; }
   .item-row .item-subtotal { flex: 0 0 auto; min-width: 80px; text-align: right; }
   .item-row-remove { display: grid; place-items: center; width: 44px; height: 44px; }
+}
+
+/* Lo que ya tenías (handoff 8c, dominios/carga-inicial.js). Celular primero:
+   cada renglón es una tarjetita con el nombre arriba y los campos abajo; en
+   la compu, una fila con el nombre a la izquierda y los campos en columnas. */
+.ci-volver {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  align-self: flex-start;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+.ci-volver:hover { color: var(--ink); }
+
+.ci-partes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.ci-parte {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-4);
+  align-items: start;
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.ci-parte-icono {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--surface-sunk);
+  color: var(--ink-muted);
+}
+.ci-parte.es-hecha .ci-parte-icono { background: var(--accent-ok-bg); color: var(--accent-ok); }
+.ci-parte-texto { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.ci-parte-estado { margin: var(--sp-1) 0 0; }
+.ci-parte > .btn { grid-column: 1 / -1; justify-self: stretch; justify-content: center; min-height: 44px; }
+
+.ci-barra { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: end; }
+.ci-barra > label { flex: 1 1 200px; max-width: 320px; }
+.ci-barra > .search { flex: 1 1 220px; }
+.ci-barra:not(:has(> :not([hidden]))) { display: none; }
+
+.ci-planilla, .ci-saldos { list-style: none; margin: 0; padding: 0; }
+.ci-fila {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: end;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.ci-fila:first-child { padding-top: 0; }
+.ci-fila[hidden] { display: none; }
+.ci-fila-nombre { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ci-fila-nombre strong { font-weight: 500; overflow-wrap: anywhere; }
+.ci-fila-nombre span { font-size: var(--txt-xs); color: var(--ink-faint); }
+.ci-campo { display: flex; flex-direction: column; gap: 4px; font-size: var(--txt-xs); color: var(--ink-muted); min-width: 0; }
+.ci-campo input, .ci-campo select { min-height: 44px; width: 100%; }
+.ci-campo-nombre { grid-column: 1 / -1; }
+.ci-fila-nueva, .ci-renglon { position: relative; padding-right: 48px; }
+.ci-quitar { position: absolute; top: var(--sp-3); right: 0; display: grid; place-items: center; width: 44px; height: 44px; }
+.ci-fila:first-child .ci-quitar { top: 0; }
+.ci-fila-nueva .ci-campo-precio { grid-column: 1 / -1; }
+.ci-sumar { align-self: flex-start; }
+.ci-vacio { padding: var(--sp-3) 0; color: var(--ink-muted); font-size: var(--txt-sm); }
+
+.ci-saldo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-1) var(--sp-3);
+  align-items: center;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.ci-saldo:last-child { border-bottom: 0; }
+.ci-saldo-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ci-saldo-texto strong { font-weight: 500; overflow-wrap: anywhere; }
+.ci-saldo-texto span { font-size: var(--txt-xs); color: var(--ink-faint); overflow-wrap: anywhere; }
+.ci-saldo-importe { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.ci-saldo .btn-link { grid-column: 1 / -1; justify-self: start; min-height: 32px; }
+
+.ci-venta-pie { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); }
+.ci-cobro { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin: 0; padding: 0; border: 0; }
+.ci-cobro legend { width: 100%; margin-bottom: var(--sp-2); font-size: var(--txt-sm); font-weight: 500; }
+.ci-radio { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--txt-sm); }
+.form-fila > label[hidden] { display: none; }
+
+@media (min-width: 861px) {
+  .ci-parte { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+  .ci-parte > .btn { grid-column: auto; justify-self: end; }
+
+  .ci-fila { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  .ci-fila-nombre { grid-column: auto; }
+  .ci-fila-nueva { grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr)); align-items: end; }
+  .ci-fila-nueva .ci-campo-nombre, .ci-fila-nueva .ci-campo-precio, .ci-renglon .ci-campo-nombre { grid-column: auto; }
+  .ci-quitar { top: 50%; transform: translateY(-50%); }
+  .ci-fila:first-child .ci-quitar { top: 50%; }
+  #ciPlataLista .ci-fila { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+
+  .ci-saldo { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .ci-saldo .btn-link { grid-column: auto; }
 }

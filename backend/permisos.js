@@ -291,5 +291,29 @@ export const RUTAS_PERMISOS = {
   'GET /api/integraciones/tiendanube/productos': 'admin',
   'POST /api/integraciones/tiendanube/publicar': 'admin',
   'POST /api/integraciones/tiendanube/pedidos/:id/reintentar': 'admin',
-  'POST /api/integraciones/tiendanube/pedidos/:id/revisado': 'admin'
+  'POST /api/integraciones/tiendanube/pedidos/:id/revisado': 'admin',
+  // Mercado Libre (etapa G): la vuelta del permiso y los avisos llegan sin la
+  // sesión de Nexo (el callback la lee él mismo; los avisos no confían en lo
+  // que traen y se fijan en la API).
+  'GET /api/integraciones/mercadolibre/callback': 'publico',
+  'POST /api/integraciones/mercadolibre/notificaciones': 'publico',
+  'GET /api/integraciones/mercadolibre': 'admin',
+  'PUT /api/integraciones/mercadolibre': 'admin',
+  'POST /api/integraciones/mercadolibre/conectar': 'admin',
+  'POST /api/integraciones/mercadolibre/desconectar': 'admin',
+  'POST /api/integraciones/mercadolibre/sincronizar': 'admin',
+  'GET /api/integraciones/mercadolibre/publicaciones': 'admin',
+  'POST /api/integraciones/mercadolibre/vincular': 'admin',
+  'POST /api/integraciones/mercadolibre/desvincular': 'admin',
+  'POST /api/integraciones/mercadolibre/pedidos/:id/reintentar': 'admin',
+  'POST /api/integraciones/mercadolibre/pedidos/:id/revisado': 'admin',
+  // Lo que ya tenía el negocio al empezar con Nexo (handoff 8c): stock con
+  // su costo, saldos y ventas de antes. Admin, como el ajuste de stock.
+  'GET /api/carga-inicial': 'admin',
+  'GET /api/carga-inicial/stock': 'admin',
+  'POST /api/carga-inicial/stock': 'admin',
+  'GET /api/carga-inicial/saldos': 'admin',
+  'POST /api/carga-inicial/saldos': 'admin',
+  'GET /api/carga-inicial/ventas': 'admin',
+  'POST /api/carga-inicial/ventas': 'admin'
 };

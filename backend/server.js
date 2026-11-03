@@ -45,6 +45,7 @@ import {
   tiendaNubeConfigurada,
   urlDeAutorizacion
 } from './tiendanube.js';
+import * as mercadoLibre from './mercadolibre.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -64,12 +65,13 @@ const HOY_SQL = 'fecha_de_hoy()';
 // Sin script inline: un XSS que lograra meter HTML no podría ejecutar nada.
 // style-src permite inline porque las plantillas de la app arman atributos
 // style="" (anchos de barras, colores). img-src suma data: (los íconos de los
-// avisos en styles.css) y blob: (lo que arma el PDF de un comprobante).
+// avisos en styles.css), blob: (lo que arma el PDF de un comprobante) y el
+// servidor de fotos de Mercado Libre (las de las publicaciones para vincular).
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://http2.mlstatic.com",
   "font-src 'self'",
   "connect-src 'self'",
   "worker-src 'self'",
@@ -992,6 +994,12 @@ function valoresNegocio(datos) {
   ];
 }
 
+// Lo que contestó al final del alta (handoff 8c): si el negocio ya venía
+// funcionando. Sin respuesta, NULL.
+function yaFuncionaba(cuerpo) {
+  return typeof cuerpo?.ya_funcionaba === 'boolean' ? Number(cuerpo.ya_funcionaba) : null;
+}
+
 // Crea el negocio con sus catálogos base (depósito, lista, cuentas). Va
 // adentro de la transacción de quien lo llama, que después le suma su admin.
 function insertarNegocio(datos) {
@@ -1216,7 +1224,12 @@ app.post('/api/auth/registro', (req, res) => {
     } else {
       orgId = insertarNegocio(datos);
     }
-    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, planVence, orgId);
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ?, ya_funcionaba = ? WHERE id = ?').run(
+      plan,
+      planVence,
+      yaFuncionaba(req.body),
+      orgId
+    );
     const info = db
       .prepare(
         `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email,
@@ -1776,6 +1789,47 @@ app.post('/api/integraciones/tiendanube/privacidad/:tipo', (req, res) => {
   res.json({ ok: true });
 });
 
+// Mercado Libre (etapa G, CLAUDE.md §32): la vuelta del permiso y los avisos.
+// El resto está en "Integraciones: Mercado Libre".
+//
+// La vuelta siempre trae `state`: el permiso solo se pide desde Nexo. Tiene
+// que volver la misma persona que lo pidió, y seguir siendo admin del negocio.
+app.get('/api/integraciones/mercadolibre/callback', asincrono(async (req, res) => {
+  const volver = (resultado) => res.redirect(`/app?mercadolibre=${resultado}#/configuracion/mercado-libre`);
+  if (!mercadoLibre.mercadoLibreConfigurada()) return volver('no-disponible');
+  if (req.query.error) return volver('cancelado');
+  const sesion = sesionValida(leerCookie(req, COOKIE_SESION));
+  const estado = mercadoLibre.leerEstado(req.query.state);
+  if (!estado || sesion?.id !== estado.usuarioId) return volver(sesion ? 'error' : 'sin-sesion');
+  const esAdmin = db
+    .prepare("SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1 AND rol = 'admin'")
+    .get(sesion.id, estado.organizacionId);
+  if (!esAdmin) return volver('sin-sesion');
+  if (typeof req.query.code !== 'string' || !req.query.code) return volver('cancelado');
+  try {
+    const permiso = await mercadoLibre.canjearCodigo(req.query.code, req.query.state, vueltaMercadoLibre(req));
+    await conectarMercadoLibre(req, { organizacionId: estado.organizacionId, usuarioId: sesion.id, permiso });
+  } catch (err) {
+    if (err instanceof ErrorValidacion) return volver(err.codigo ?? 'error');
+    console.error('[mercadolibre] no se pudo conectar:', err.message);
+    return volver('error');
+  }
+  volver('conectada');
+}));
+
+// Los avisos de Mercado Libre: hay que contestar en menos de 500 ms, o los
+// deja de mandar. No vienen firmados, así que el aviso es solo un "andá a
+// mirar": se pide la venta o la publicación a la API, con el token del
+// vendedor, y se usa lo que devuelve.
+app.post('/api/integraciones/mercadolibre/notificaciones', (req, res) => {
+  res.json({ ok: true });
+  const aviso = req.body ?? {};
+  if (!mercadoLibre.esNuestraApp(aviso.application_id)) return;
+  setImmediate(() =>
+    atenderAvisoMercadoLibre(aviso).catch((err) => console.error('[mercadolibre] aviso:', err.message))
+  );
+});
+
 app.use('/api', autenticar);
 
 // Una pestaña que quedó mostrando otro negocio (hist. §77). La sesión es una
@@ -2114,9 +2168,9 @@ const SELECT_CLIENTE_CON_TOTALES = `
             FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
            WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa') AS total_gastado,
          (SELECT COUNT(*) FROM ventas
-           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa') AS cantidad_compras,
+           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NULL) AS cantidad_compras,
          (SELECT MAX(fecha) FROM ventas
-           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa') AS ultima_compra,
+           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NULL) AS ultima_compra,
          COALESCE((SELECT saldo FROM saldo_cc_clientes
                     WHERE saldo_cc_clientes.cliente_id = clientes.id), 0) AS deuda
     FROM clientes`;
@@ -2140,9 +2194,9 @@ app.get('/api/clientes/:id', (req, res) => {
 
   const historial = db
     .prepare(
-      `SELECT ventas.id, ventas.fecha, ventas.estado,
+      `SELECT ventas.id, ventas.fecha, ventas.estado, ventas.carga_inicial, ventas.saldo_inicial,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS total,
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id) + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado
          FROM ventas WHERE ventas.cliente_id = ?
@@ -3829,20 +3883,32 @@ app.post('/api/productos', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  let id;
+  try {
+    id = insertarProducto(req.body, req.usuario.organizacion_id);
+  } catch (err) {
+    if (err instanceof ErrorValidacion) return res.status(400).json({ error: err.message });
+    throw err;
+  }
+  res.status(201).json({ id });
+});
 
+// Da de alta un producto ya validado (validarProducto) y devuelve su id. Lo
+// usan el alta de siempre y la planilla del stock inicial (handoff 8c).
+function insertarProducto(cuerpo, organizacionId) {
   const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos,
-    alicuota_iva } = req.body;
+    alicuota_iva } = cuerpo;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
-  const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
+  const perfil = perfilDeEmpresa(organizacionId);
   // Uno inactivo no cuenta para el tope del plan (hist. §98).
-  if (!(activo === false || activo === 0)) exigirLugarEnPlan(req.usuario.organizacion_id, 'productos');
+  if (!(activo === false || activo === 0)) exigirLugarEnPlan(organizacionId, 'productos');
 
   let lastInsertRowid;
   try {
     // precio_costo arranca en 0 a propósito: un producto recién creado
     // todavía no se compró, así que no tiene costo real. Lo va a fijar la
-    // primera compra que lo incluya.
+    // primera compra que lo incluya, o su stock inicial.
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
@@ -3858,7 +3924,7 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         normalizarStockMaximo(stock_maximo),
         normalizarCategoriaId(categoria_id),
         normalizarMargenObjetivo(margen_objetivo),
-        req.usuario.organizacion_id,
+        organizacionId,
         unidad ?? perfil.unidad_defecto,
         tipo ?? perfil.tipo_defecto,
         normalizarDescripcion(descripcion),
@@ -3867,12 +3933,12 @@ app.post('/api/productos', soloAdmin, (req, res) => {
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ error: 'Ya existe un producto con ese SKU.' });
+      throw new ErrorValidacion(skuNormalizado ? `Ya existe un producto con el SKU "${skuNormalizado}".` : 'Ya existe un producto con ese SKU.');
     }
     throw err;
   }
-  res.status(201).json({ id: lastInsertRowid });
-});
+  return Number(lastInsertRowid);
+}
 
 // Campos que la edición EN LOTE puede tocar. Deliberadamente más chico que
 // las 7 columnas del PATCH singular: nombre y sku quedan afuera porque
@@ -4724,9 +4790,10 @@ app.get('/api/proveedores/:id', (req, res) => {
 
   const historial = db
     .prepare(
-      `SELECT compras.id, compras.fecha, compras.estado, compras.estado_envio,
+      `SELECT compras.id, compras.fecha, compras.estado, compras.estado_envio, compras.saldo_inicial,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM compra_items WHERE compra_items.compra_id = compras.id) + compras.costo_envio AS total,
+                 FROM compra_items WHERE compra_items.compra_id = compras.id) + compras.costo_envio
+                + COALESCE(compras.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM pagos WHERE pagos.compra_id = compras.id) AS pagado
          FROM compras WHERE compras.proveedor_id = ?
@@ -5304,8 +5371,9 @@ app.get('/api/ventas', (req, res) => {
   const ventas = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
+              ventas.carga_inicial, ventas.saldo_inicial, ventas.fecha_vencimiento,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS total,
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id) + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(iva), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) AS iva,
               (SELECT COALESCE(SUM((precio_unitario - costo_unitario_historico) * cantidad - iva), 0)
@@ -5333,7 +5401,9 @@ app.get('/api/ventas', (req, res) => {
       const neto = v.total - v.devuelto;
       return {
         ...v,
-        costo_total: v.total - v.iva - v.margen,
+        // El saldo anterior (handoff 8c) no es venta de mercadería: ni costo ni margen.
+        costo_total: v.total - (v.saldo_inicial ?? 0) - v.iva - v.margen,
+        carga_inicial: Boolean(v.carga_inicial),
         facturada: Boolean(v.facturada),
         tiene_devolucion: Boolean(v.tiene_devolucion),
         neto,
@@ -5349,7 +5419,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
               ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
-              ventas.condicion_pago, ventas.fecha_vencimiento,
+              ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial,
               EXISTS (SELECT 1 FROM devoluciones
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
          FROM ventas
@@ -5381,7 +5451,8 @@ app.get('/api/ventas/:id', (req, res) => {
     )
     .all(ventaId);
 
-  const total = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
+  // El saldo anterior (handoff 8c) no tiene renglones: su total es el importe.
+  const total = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0) + (venta.saldo_inicial ?? 0);
   const costoTotal = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
   const devuelto = items.reduce((acc, i) => acc + i.cantidad_devuelta * i.precio_unitario, 0);
   const neto = total - devuelto;
@@ -5393,6 +5464,7 @@ app.get('/api/ventas/:id', (req, res) => {
   res.json({
     ...venta,
     tiene_devolucion: Boolean(venta.tiene_devolucion),
+    carga_inicial: Boolean(venta.carga_inicial),
     items: items.map((i) => ({
       ...i,
       combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
@@ -5404,7 +5476,7 @@ app.get('/api/ventas/:id', (req, res) => {
     total,
     iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     costo_total: costoTotal,
-    margen: total - items.reduce((acc, i) => acc + i.iva, 0) - costoTotal,
+    margen: total - (venta.saldo_inicial ?? 0) - items.reduce((acc, i) => acc + i.iva, 0) - costoTotal,
     devuelto,
     neto,
     cobrado,
@@ -5570,7 +5642,10 @@ function crearVenta({
   deposito_id,
   condicion_pago,
   fecha_vencimiento,
-  organizacion_id
+  organizacion_id,
+  // Una venta de antes de empezar con Nexo (handoff 8c): no mueve stock,
+  // porque el stock que se cargó ya es el de hoy.
+  carga_inicial = false
 }) {
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
@@ -5608,10 +5683,10 @@ function crearVenta({
 
   const { lastInsertRowid: nuevaVentaId } = db
     .prepare(
-      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id);
+    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id, carga_inicial ? 1 : 0);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
@@ -5638,16 +5713,18 @@ function crearVenta({
       condicionIva
     );
     insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
-    registrarMovimientoStock({
-      producto_id: item.producto_id,
-      variante_id: varianteId,
-      deposito_id: depositoResuelto,
-      tipo: 'salida',
-      cantidad: item.cantidad,
-      origen: 'venta',
-      venta_id: nuevaVentaId,
-      organizacion_id
-    });
+    if (!carga_inicial) {
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        variante_id: varianteId,
+        deposito_id: depositoResuelto,
+        tipo: 'salida',
+        cantidad: item.cantidad,
+        origen: 'venta',
+        venta_id: nuevaVentaId,
+        organizacion_id
+      });
+    }
     // Ya NO se pisa productos.precio_venta con el precio de esta venta
     // (CLAUDE.md §18): con varias listas de precios, una venta con un
     // precio puntual (descuento, negociación) bajaría en silencio el
@@ -5735,11 +5812,16 @@ app.put('/api/ventas/:id', (req, res) => {
 
   const venta = db
     .prepare(
-      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?'
     )
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  // Editar revierte y vuelve a aplicar el stock, que una venta de antes de
+  // Nexo nunca descontó (handoff 8c): se anula y se carga de nuevo.
+  if (venta.carga_inicial) {
+    return res.status(400).json({ error: MENSAJE_CARGA_INICIAL_NO_SE_EDITA });
   }
 
   // El vencimiento se recalcula porque depende de la fecha de la venta y
@@ -6016,7 +6098,8 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
   const venta = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, ventas.estado,
-              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id)
+                + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
        FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
@@ -6118,7 +6201,7 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
 
   const venta = db
     .prepare(
-      `SELECT ventas.id, ventas.cliente_id, ventas.estado, ventas.fecha, ventas.fecha_vencimiento
+      `SELECT ventas.id, ventas.cliente_id, ventas.estado, ventas.fecha, ventas.fecha_vencimiento, ventas.saldo_inicial
          FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
     .get(ventaId, req.usuario.organizacion_id);
@@ -6127,6 +6210,9 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   }
   if (venta.estado === 'anulada') {
     return res.status(400).json({ error: 'No se puede facturar una venta anulada.' });
+  }
+  if (venta.saldo_inicial != null) {
+    return res.status(400).json({ error: MENSAJE_SALDO_ANTERIOR });
   }
   // Una venta con plazo es a cuenta corriente, y su vencimiento es el del pago.
   const aPlazo = Boolean(venta.fecha_vencimiento && venta.fecha_vencimiento > venta.fecha);
@@ -6220,7 +6306,8 @@ function motivoParaNoAnular(venta) {
   if (db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(venta.id)) {
     return 'Esta venta tiene una factura asociada, no se puede anular.';
   }
-  if (db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(venta.id)) {
+  // Lo cobrado antes de Nexo (handoff 8c) no entró a ninguna caja: no frena.
+  if (db.prepare(venta.carga_inicial ? SQL_COBROS_CON_CAJA : 'SELECT 1 FROM cobros WHERE venta_id = ?').get(venta.id)) {
     return 'Esta venta tiene cobros registrados, no se puede anular.';
   }
   if (db.prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'").get(venta.id)) {
@@ -6229,16 +6316,38 @@ function motivoParaNoAnular(venta) {
   return null;
 }
 
+// Los cobros de una venta que entraron a una caja. Los de una venta de antes
+// de Nexo (handoff 8c) no tienen movimiento de tesorería.
+const SQL_COBROS_CON_CAJA = `SELECT 1 FROM cobros
+  JOIN movimientos_tesoreria ON movimientos_tesoreria.cobro_id = cobros.id
+ WHERE cobros.venta_id = ? LIMIT 1`;
+
+// Lo que queda debiendo una venta en su cuenta corriente: su total (los
+// renglones, o el saldo anterior) menos lo cobrado. Al anularla se compensa
+// eso: lo cobrado antes de Nexo no se devuelve, y una venta con cobros que
+// entraron a la caja no se puede anular (motivoParaNoAnular).
+function deudaDeLaVenta(ventaId) {
+  return db
+    .prepare(
+      `SELECT (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id)
+              + COALESCE(ventas.saldo_inicial, 0)
+              - (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS deuda
+         FROM ventas WHERE id = ?`
+    )
+    .get(ventaId).deuda;
+}
+
 // Anula la venta: devuelve el stock y salda la deuda del cliente. Se llama
-// dentro de una transacción, y quien llama registra la auditoría.
+// dentro de una transacción, y quien llama registra la auditoría. Una venta de
+// antes de Nexo no había descontado stock: no lo devuelve.
 function revertirVentaAnulada(venta, organizacionId) {
+  const deuda = deudaDeLaVenta(venta.id);
   db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(venta.id);
 
   const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(organizacionId);
-  const items = db
-    .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
-    .all(venta.id);
-  let total = 0;
+  const items = venta.carga_inicial
+    ? []
+    : db.prepare('SELECT producto_id, variante_id, cantidad FROM venta_items WHERE venta_id = ?').all(venta.id);
   for (const item of items) {
     registrarMovimientoStock({
       producto_id: item.producto_id,
@@ -6251,19 +6360,18 @@ function revertirVentaAnulada(venta, organizacionId) {
       nota: 'Reversión por anulación',
       organizacion_id: organizacionId
     });
-    total += item.cantidad * item.precio_unitario;
   }
 
   db.prepare(
     `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-  ).run(venta.cliente_id, -total, venta.id);
+  ).run(venta.cliente_id, -deuda, venta.id);
 }
 
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
   const venta = db
-    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
@@ -6295,7 +6403,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
 
   const venta = db
-    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
@@ -6305,14 +6413,17 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   }
   const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
-  const items = db
-    .prepare(
-      `SELECT venta_items.producto_id, venta_items.variante_id, venta_items.cantidad,
-              venta_items.precio_unitario, productos.nombre
-         FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
-        WHERE venta_id = ?`
-    )
-    .all(ventaId);
+  // Una venta de antes de Nexo (handoff 8c) no descuenta stock, tampoco al
+  // restaurarla.
+  const items = venta.carga_inicial
+    ? []
+    : db
+        .prepare(
+          `SELECT venta_items.producto_id, venta_items.variante_id, venta_items.cantidad, productos.nombre
+             FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+            WHERE venta_id = ?`
+        )
+        .all(ventaId);
 
   const buscarStockDeposito = db.prepare(
     'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
@@ -6335,7 +6446,6 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
 
-    let total = 0;
     for (const item of items) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -6348,12 +6458,12 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
         nota: 'Restaurada desde la papelera',
         organizacion_id: req.usuario.organizacion_id
       });
-      total += item.cantidad * item.precio_unitario;
     }
 
+    // Vuelve la deuda que se compensó al anularla (deudaDeLaVenta).
     db.prepare(
       `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-    ).run(venta.cliente_id, total, ventaId);
+    ).run(venta.cliente_id, deudaDeLaVenta(ventaId), ventaId);
 
     auditar(req, {
       accion: 'restaurar',
@@ -7704,7 +7814,7 @@ app.get('/api/compras', soloAdmin, (req, res) => {
     .prepare(
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
               compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
-              compras.comprobante_letra, compras.comprobante_numero,
+              compras.comprobante_letra, compras.comprobante_numero, compras.saldo_inicial, compras.fecha_vencimiento,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
                  FROM compra_items WHERE compra_items.compra_id = compras.id) AS subtotal,
               (SELECT COALESCE(SUM(importe), 0)
@@ -7720,7 +7830,8 @@ app.get('/api/compras', soloAdmin, (req, res) => {
     .all(req.usuario.organizacion_id);
   res.json(
     compras.map((c) => {
-      const total = c.subtotal + c.costo_envio;
+      // El saldo anterior (handoff 8c) no tiene renglones: su total es el importe.
+      const total = c.subtotal + c.costo_envio + (c.saldo_inicial ?? 0);
       const neto = total - c.devuelto;
       return {
         ...c,
@@ -7742,6 +7853,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
               compras.deposito_id, depositos.nombre AS deposito,
               compras.condicion_pago, compras.fecha_vencimiento,
               compras.comprobante_letra, compras.comprobante_numero, proveedores.condicion_iva AS proveedor_condicion_iva,
+              compras.saldo_inicial,
               EXISTS (SELECT 1 FROM devoluciones_proveedor
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
          FROM compras
@@ -7776,7 +7888,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
     .all(compraId);
 
   const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
-  const total = subtotal + compra.costo_envio;
+  const total = subtotal + compra.costo_envio + (compra.saldo_inicial ?? 0);
   const devuelto = items.reduce((acc, i) => acc + i.cantidad_devuelta * i.precio_unitario, 0);
   const neto = total - devuelto;
   const { pagado } = db
@@ -8071,12 +8183,15 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const compra = db
     .prepare(
       `SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, fecha, condicion_pago,
-              fecha_vencimiento, comprobante_letra, comprobante_numero
+              fecha_vencimiento, comprobante_letra, comprobante_numero, saldo_inicial
          FROM compras WHERE id = ? AND organizacion_id = ?`
     )
     .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
+  }
+  if (compra.saldo_inicial != null) {
+    return res.status(400).json({ error: MENSAJE_CARGA_INICIAL_NO_SE_EDITA });
   }
 
   // Mismo criterio que en la edición de ventas (ver ahí el porqué).
@@ -8475,10 +8590,15 @@ function aplicarStockCompra(compraId) {
 // movimientos viejos, de antes de que existiera la columna
 // movimientos_stock.costo_unitario, caen en cascada al
 // costo_real_unitario que quedó guardado en compra_items de esa compra.
+//
+// El stock inicial (handoff 8c) es la excepción a "los ajustes no tocan el
+// costo": dice cuánto había en un depósito y cuánto costó cada unidad, así
+// que reemplaza al costo del stock que había en ESE depósito, y se promedia
+// con el de los demás (ver costoConStockInicial).
 function recalcularCostoProducto(productoId) {
   const movimientos = db
     .prepare(
-      `SELECT tipo, cantidad, costo_unitario, compra_id
+      `SELECT tipo, cantidad, costo_unitario, compra_id, origen, deposito_id
          FROM movimientos_stock
         WHERE producto_id = ? AND variante_id IS NULL
         ORDER BY fecha, id`
@@ -8489,27 +8609,45 @@ function recalcularCostoProducto(productoId) {
     'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND producto_id = ? AND variante_id IS NULL'
   );
 
+  const costo = costoDelHistorial(movimientos, (m) => buscarCostoCompra.get(m.compra_id, productoId)?.costo_real_unitario ?? null);
+  db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?').run(costo, productoId);
+  return costo;
+}
+
+// El costo promedio ponderado que deja un historial de movimientos, en orden.
+// `costoDeCompra(m)` da el de un movimiento viejo de compra sin costo propio.
+function costoDelHistorial(movimientos, costoDeCompra) {
   let stock = 0;
   let costo = 0;
+  const porDeposito = new Map();
   for (const m of movimientos) {
-    if (m.tipo === 'entrada') {
+    const enDeposito = porDeposito.get(m.deposito_id) ?? 0;
+    const delta = m.tipo === 'salida' ? -m.cantidad : m.cantidad;
+    if (m.origen === 'stock_inicial') {
+      costo = costoConStockInicial({ total: stock, enDeposito, declarado: enDeposito + delta, costo, costoDeclarado: m.costo_unitario });
+    } else if (m.tipo === 'entrada') {
       let costoEntrada = m.costo_unitario;
-      if (costoEntrada === null && m.compra_id) {
-        costoEntrada = buscarCostoCompra.get(m.compra_id, productoId)?.costo_real_unitario ?? null;
-      }
+      if (costoEntrada === null && m.compra_id) costoEntrada = costoDeCompra(m);
       if (costoEntrada !== null) {
         const stockPrevio = Math.max(stock, 0);
         costo = (stockPrevio * costo + m.cantidad * costoEntrada) / (stockPrevio + m.cantidad);
       }
-      stock += m.cantidad;
-    } else {
-      // 'salida' resta, 'ajuste' ya viene con signo — ninguno toca el costo.
-      stock += m.tipo === 'salida' ? -m.cantidad : m.cantidad;
     }
+    // 'salida' resta, 'ajuste' ya viene con signo — ninguno toca el costo.
+    stock += delta;
+    porDeposito.set(m.deposito_id, enDeposito + delta);
   }
-
-  db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?').run(costo, productoId);
   return costo;
+}
+
+// El costo después de declarar el stock inicial de un depósito: lo que hay en
+// los otros depósitos sigue a su costo, y lo de este pasa a valer lo
+// declarado. Sin stock en ningún lado, queda el declarado: es el último costo
+// que se conoce.
+function costoConStockInicial({ total, enDeposito, declarado, costo, costoDeclarado }) {
+  const otros = Math.max(total - enDeposito, 0);
+  const aca = Math.max(declarado, 0);
+  return otros + aca > 0 ? (otros * costo + aca * costoDeclarado) / (otros + aca) : costoDeclarado;
 }
 
 // Espejo exacto de recalcularCostoProducto, a nivel variante: mismo
@@ -8519,7 +8657,7 @@ function recalcularCostoProducto(productoId) {
 function recalcularCostoVariante(varianteId) {
   const movimientos = db
     .prepare(
-      `SELECT tipo, cantidad, costo_unitario, compra_id
+      `SELECT tipo, cantidad, costo_unitario, compra_id, origen, deposito_id
          FROM movimientos_stock
         WHERE variante_id = ?
         ORDER BY fecha, id`
@@ -8530,23 +8668,7 @@ function recalcularCostoVariante(varianteId) {
     'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND variante_id = ?'
   );
 
-  let stock = 0;
-  let costo = 0;
-  for (const m of movimientos) {
-    if (m.tipo === 'entrada') {
-      let costoEntrada = m.costo_unitario;
-      if (costoEntrada === null && m.compra_id) {
-        costoEntrada = buscarCostoCompra.get(m.compra_id, varianteId)?.costo_real_unitario ?? null;
-      }
-      if (costoEntrada !== null) {
-        const stockPrevio = Math.max(stock, 0);
-        costo = (stockPrevio * costo + m.cantidad * costoEntrada) / (stockPrevio + m.cantidad);
-      }
-      stock += m.cantidad;
-    } else {
-      stock += m.tipo === 'salida' ? -m.cantidad : m.cantidad;
-    }
-  }
+  const costo = costoDelHistorial(movimientos, (m) => buscarCostoCompra.get(m.compra_id, varianteId)?.costo_real_unitario ?? null);
 
   db.prepare('UPDATE producto_variantes SET precio_costo = ? WHERE id = ?').run(costo, varianteId);
   return costo;
@@ -8557,7 +8679,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
 
   const compra = db
     .prepare(
-      'SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, saldo_inicial FROM compras WHERE id = ? AND organizacion_id = ?'
     )
     .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
@@ -8637,7 +8759,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
       const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
       db.prepare(
         `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-      ).run(compra.proveedor_id, -(subtotal + compra.costo_envio), compraId);
+      ).run(compra.proveedor_id, -(subtotal + compra.costo_envio + (compra.saldo_inicial ?? 0)), compraId);
     }
 
     auditar(req, {
@@ -8660,7 +8782,7 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
 
   const compra = db
     .prepare(
-      'SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, proveedor_id, estado, estado_envio, costo_envio, saldo_inicial FROM compras WHERE id = ? AND organizacion_id = ?'
     )
     .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
@@ -8701,7 +8823,7 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
       .get(compraId);
     db.prepare(
       `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-    ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
+    ).run(compra.proveedor_id, subtotal + compra.costo_envio + (compra.saldo_inicial ?? 0), compraId);
 
     if (compra.estado_envio === 'recibido') {
       aplicarStockCompra(compraId);
@@ -8838,7 +8960,8 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
   const compra = db
     .prepare(
       `SELECT compras.id, compras.proveedor_id, compras.estado, compras.costo_envio,
-              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id) AS total,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id)
+                + COALESCE(compras.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE compra_id = compras.id) AS pagado,
               ${SUBQUERY_DEVUELTO_COMPRA} AS devuelto
        FROM compras WHERE compras.id = ? AND compras.organizacion_id = ?`
@@ -10305,10 +10428,10 @@ const MAX_BUCKETS = 40;
 // query preparada.
 const SQL_LIMITES_OPERACIONES = db.prepare(
   `SELECT MIN(fecha) AS primera, MAX(fecha) AS ultima FROM (
-     SELECT fecha FROM ventas WHERE estado = 'activa' AND organizacion_id = ?
+     SELECT fecha FROM ventas WHERE estado = 'activa' AND saldo_inicial IS NULL AND organizacion_id = ?
      UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo' AND organizacion_id = ?
      UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa' AND organizacion_id = ?
-     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa' AND saldo_inicial IS NULL AND organizacion_id = ?
      UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa' AND organizacion_id = ?
    )`
 );
@@ -12647,6 +12770,7 @@ function usoDelPlan(organizacionId, hoy = fechaDeHoy()) {
     ventas_mes: contar(
       `SELECT COUNT(*) AS n FROM ventas
         WHERE organizacion_id = ? AND estado = 'activa' AND fecha >= ? AND fecha < ?
+          AND carga_inicial = 0
           AND id NOT IN (SELECT venta_id FROM cuotas_socio)
           AND id NOT IN (SELECT venta_id FROM cuotas_abono)`,
       desde,
@@ -12909,8 +13033,13 @@ app.get('/api/negocio', (req, res) => {
 app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
   const id = req.usuario.organizacion_id;
   const contar = (sql, ...extra) => db.prepare(sql).get(id, ...extra).n;
-  const negocio = db.prepare('SELECT documento, direccion, telefono FROM organizaciones WHERE id = ?').get(id);
+  const negocio = db.prepare('SELECT documento, direccion, telefono, ya_funcionaba FROM organizaciones WHERE id = ?').get(id);
+  // "Lo que ya tenías" (handoff 8c): el paso es de quien dijo en el alta que
+  // su negocio ya venía funcionando, y queda hecho con cualquier parte cargada.
+  const carga = estadoCargaInicial(id);
   res.json({
+    ya_funcionaba: negocio.ya_funcionaba === 1,
+    carga_inicial: Object.values(carga).some((parte) => parte.cantidad > 0),
     datos_negocio: Boolean(negocio.documento || negocio.direccion || negocio.telefono),
     catalogo: contar(
       'SELECT COUNT(*) AS n FROM productos WHERE organizacion_id = ? AND activo = 1 AND id NOT IN (SELECT producto_id FROM planes_socio)'
@@ -13098,6 +13227,7 @@ app.post('/api/negocios', (req, res) => {
   const token = leerCookie(req, COOKIE_SESION);
   const id = withTransaction(() => {
     const orgId = insertarNegocio(datos);
+    db.prepare('UPDATE organizaciones SET ya_funcionaba = ? WHERE id = ?').run(yaFuncionaba(req.body), orgId);
     db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan.plan, plan.plan_vence, orgId);
     sumarAlNegocio(req.usuario.id, orgId, 'admin');
     registrarAuditoria({
@@ -16062,7 +16192,7 @@ app.get('/api/crm/inactivos', (req, res) => {
                           LEFT JOIN crm_oportunidades o ON o.id = a.oportunidad_id
                          WHERE a.organizacion_id = clientes.organizacion_id AND a.hecha = 0
                            AND COALESCE(a.cliente_id, o.cliente_id) = clientes.id) AS con_seguimiento
-           FROM clientes JOIN ventas ON ventas.cliente_id = clientes.id AND ventas.estado = 'activa'
+           FROM clientes JOIN ventas ON ventas.cliente_id = clientes.id AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NULL
           WHERE clientes.organizacion_id = ? AND clientes.nombre <> ?
           GROUP BY clientes.id
          HAVING COUNT(ventas.id) >= 2 AND MAX(ventas.fecha) < ?
@@ -16330,8 +16460,13 @@ const EVENTOS_TIENDA_NUBE = ['order/created', 'order/paid', 'order/cancelled', '
 const SINCRONIZAR_CADA_MS = 5 * 60 * 1000;
 const LOG_INTEGRACION_MAX = 500;
 
-const integracionDelNegocio = (organizacionId) =>
-  db.prepare("SELECT * FROM integraciones WHERE organizacion_id = ? AND plataforma = 'tiendanube'").get(organizacionId);
+// Lo de pedidos, stock y actividad sirve igual para Tienda Nube y Mercado
+// Libre (más abajo): cambia cómo se habla con cada uno, no qué hace Nexo.
+const NOMBRE_CANAL = { tiendanube: 'Tienda Nube', mercadolibre: 'Mercado Libre' };
+const canal = (integracion) => NOMBRE_CANAL[integracion.plataforma];
+
+const integracionDelNegocio = (organizacionId, plataforma = 'tiendanube') =>
+  db.prepare('SELECT * FROM integraciones WHERE organizacion_id = ? AND plataforma = ?').get(organizacionId, plataforma);
 const integracionPorId = (id) => db.prepare('SELECT * FROM integraciones WHERE id = ?').get(id);
 
 function anotarIntegracion(integracion, tipo, resultado, detalle) {
@@ -16409,33 +16544,36 @@ function conexionPendienteDe(req) {
   return vale ? pendiente : null;
 }
 
-async function conectarTiendaNube(req, { organizacionId, usuarioId, tienda: { token, tiendaId, nombre, url } }) {
+// Guarda la conexión de un negocio con su cuenta en el canal (la tienda, o el
+// vendedor de Mercado Libre), con el permiso ya cifrado. Una cuenta del canal
+// va a un solo negocio de Nexo. Devuelve la integración.
+function guardarConexion({ plataforma, organizacionId, usuarioId, cuentaExterna, nombre, url, tokenCifrado }) {
   const enOtroNegocio = db
     .prepare(
       `SELECT 1 FROM integraciones
-        WHERE plataforma = 'tiendanube' AND cuenta_externa = ? AND estado = 'conectada' AND organizacion_id <> ?`
+        WHERE plataforma = ? AND cuenta_externa = ? AND estado = 'conectada' AND organizacion_id <> ?`
     )
-    .get(tiendaId, organizacionId);
+    .get(plataforma, cuentaExterna, organizacionId);
   if (enOtroNegocio) {
-    const err = new ErrorValidacion('Esa tienda ya está conectada a otro negocio de Nexo.');
+    const err = new ErrorValidacion(`Esa cuenta de ${NOMBRE_CANAL[plataforma]} ya está conectada a otro negocio de Nexo.`);
     err.codigo = 'en-otro-negocio';
     throw err;
   }
   const ahora = new Date().toISOString();
   const integracionId = withTransaction(() => {
-    const anterior = integracionDelNegocio(organizacionId);
+    const anterior = integracionDelNegocio(organizacionId, plataforma);
     let id;
     if (anterior) {
-      // Otra tienda: los vínculos de la anterior no sirven para esta, y sus
+      // Otra cuenta: los vínculos de la anterior no sirven para esta, y sus
       // pedidos viejos no se traen. Los pedidos ya traídos quedan, con su venta.
-      const otraTienda = anterior.cuenta_externa !== tiendaId;
-      if (otraTienda) db.prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ?').run(anterior.id);
+      const otraCuenta = anterior.cuenta_externa !== cuentaExterna;
+      if (otraCuenta) db.prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ?').run(anterior.id);
       db.prepare(
         `UPDATE integraciones
             SET estado = 'conectada', cuenta_externa = ?, nombre_cuenta = ?, url_cuenta = ?, token = ?,
                 conectada_en = ?, conectada_por = ?, pedidos_desde = ?
           WHERE id = ?`
-      ).run(tiendaId, nombre, url, cifrarToken(token), ahora, usuarioId, otraTienda ? ahora : anterior.pedidos_desde, anterior.id);
+      ).run(cuentaExterna, nombre, url, tokenCifrado, ahora, usuarioId, otraCuenta ? ahora : anterior.pedidos_desde, anterior.id);
       id = anterior.id;
     } else {
       id = db
@@ -16443,9 +16581,9 @@ async function conectarTiendaNube(req, { organizacionId, usuarioId, tienda: { to
           `INSERT INTO integraciones
              (plataforma, cuenta_externa, nombre_cuenta, url_cuenta, token, cuenta_tesoreria_id, pedidos_desde,
               conectada_en, conectada_por, organizacion_id)
-           VALUES ('tiendanube', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(tiendaId, nombre, url, cifrarToken(token), cuentaParaLaTienda(organizacionId), ahora, ahora, usuarioId, organizacionId)
+        .run(plataforma, cuentaExterna, nombre, url, tokenCifrado, cuentaParaLaTienda(organizacionId), ahora, ahora, usuarioId, organizacionId)
         .lastInsertRowid;
     }
     registrarAuditoria({
@@ -16456,11 +16594,23 @@ async function conectarTiendaNube(req, { organizacionId, usuarioId, tienda: { to
       organizacion_id: organizacionId,
       operacion_tipo: 'integracion',
       operacion_id: id,
-      detalle: `Conectó la tienda de Tienda Nube "${nombre}"`
+      detalle: `Conectó ${NOMBRE_CANAL[plataforma]}: "${nombre}"`
     });
     return id;
   });
-  const integracion = integracionPorId(integracionId);
+  return integracionPorId(integracionId);
+}
+
+async function conectarTiendaNube(req, { organizacionId, usuarioId, tienda: { token, tiendaId, nombre, url } }) {
+  const integracion = guardarConexion({
+    plataforma: 'tiendanube',
+    organizacionId,
+    usuarioId,
+    cuentaExterna: tiendaId,
+    nombre,
+    url,
+    tokenCifrado: cifrarToken(token)
+  });
   anotarIntegracion(integracion, 'conexion', 'ok', `Tienda "${nombre}" conectada.`);
   await activarAvisosTiendaNube(req, integracion);
   programarSincronizacion(organizacionId);
@@ -16500,11 +16650,12 @@ function desconectarIntegracion(integracion, motivo, usuarioId = null) {
       organizacion_id: integracion.organizacion_id,
       operacion_tipo: 'integracion',
       operacion_id: integracion.id,
-      detalle: `Desconectó la tienda de Tienda Nube "${integracion.nombre_cuenta}"`
+      detalle: `Desconectó ${canal(integracion)}: "${integracion.nombre_cuenta}"`
     });
     anotarIntegracion(integracion, 'desconexion', 'ok', motivo);
   });
   clientesTiendaNube.delete(integracion.id);
+  clientesMercadoLibre.delete(integracion.id);
 }
 
 async function atenderWebhookTiendaNube(cuerpo) {
@@ -16629,7 +16780,9 @@ function reservadoPorVariante(integracion) {
   return reservado;
 }
 
-async function sincronizarStockYPrecio(integracion) {
+// Cada vínculo con el precio y el stock que corresponde publicar hoy (el
+// stock, menos lo reservado por pedidos sin pagar).
+function vinculosParaPublicar(integracion) {
   const listaId = listaDeLaIntegracion(integracion);
   const depositoId = depositoDeLaIntegracion(integracion);
   const reservado = reservadoPorVariante(integracion);
@@ -16637,7 +16790,7 @@ async function sincronizarStockYPrecio(integracion) {
     const stock = stockParaPublicar(v, depositoId);
     return stock === null ? null : Math.max(0, stock - Math.ceil(reservado.get(v.externo_variante_id) ?? 0));
   };
-  const cambios = db
+  return db
     .prepare(
       `SELECT integracion_vinculos.*, productos.tipo, productos.activo, producto_variantes.activo AS variante_activa
          FROM integracion_vinculos
@@ -16646,8 +16799,13 @@ async function sincronizarStockYPrecio(integracion) {
         WHERE integracion_vinculos.integracion_id = ?`
     )
     .all(integracion.id)
-    .map((v) => ({ ...v, precio: redondear2(precioParaPublicar(v.producto_id, v.variante_id, listaId)), stock: publicable(v) }))
-    .filter((v) => v.precio !== v.ultimo_precio || (v.stock !== null && v.stock !== v.ultimo_stock));
+    .map((v) => ({ ...v, precio: redondear2(precioParaPublicar(v.producto_id, v.variante_id, listaId)), stock: publicable(v) }));
+}
+
+const cambioDePublicacion = (v) => v.precio !== v.ultimo_precio || (v.stock !== null && v.stock !== v.ultimo_stock);
+
+async function sincronizarStockYPrecio(integracion) {
+  const cambios = vinculosParaPublicar(integracion).filter(cambioDePublicacion);
   if (!cambios.length) return 0;
 
   const api = apiDeLaTienda(integracion);
@@ -16696,13 +16854,13 @@ async function sincronizarStockYPrecio(integracion) {
 const sincronizacionesProgramadas = new Map();
 function programarSincronizacion(organizacionId, demoraMs = 3000) {
   if (!organizacionId || sincronizacionesProgramadas.has(organizacionId)) return;
-  const integracion = db
+  const conectadas = db
     .prepare("SELECT id FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada'")
-    .get(organizacionId);
-  if (!integracion) return;
-  const timer = setTimeout(() => {
+    .all(organizacionId);
+  if (!conectadas.length) return;
+  const timer = setTimeout(async () => {
     sincronizacionesProgramadas.delete(organizacionId);
-    sincronizarIntegracion(integracion.id, { pedidos: false }).catch(() => {});
+    for (const { id } of conectadas) await sincronizarIntegracion(id, { pedidos: false }).catch(() => {});
   }, demoraMs);
   timer.unref();
   sincronizacionesProgramadas.set(organizacionId, timer);
@@ -16711,9 +16869,18 @@ function programarSincronizacion(organizacionId, demoraMs = 3000) {
 /* --- Pedidos --- */
 
 // El cliente de un pedido: el del mismo mail o documento si ya existe en el
-// negocio, si no uno nuevo con los datos del pedido.
-function clienteDelPedido(organizacionId, pedido) {
+// negocio, si no uno nuevo con los datos del pedido. Mercado Libre no da el
+// mail del comprador: se lo reconoce por su número, anotado en la ficha
+// (customer.ref, "Comprador de Mercado Libre #123").
+function clienteDelPedido(integracion, pedido) {
+  const organizacionId = integracion.organizacion_id;
   const c = pedido.customer ?? {};
+  if (c.ref) {
+    const fila = db
+      .prepare('SELECT id FROM clientes WHERE organizacion_id = ? AND (notas = ? OR notas LIKE ?)')
+      .get(organizacionId, c.ref, `${c.ref} (%`);
+    if (fila) return fila.id;
+  }
   const email = normalizarMail(c.email ?? pedido.contact_email ?? '');
   const documento = String(c.identification ?? pedido.contact_identification ?? '').replace(/\D/g, '') || null;
   if (email) {
@@ -16724,11 +16891,12 @@ function clienteDelPedido(organizacionId, pedido) {
     const fila = db.prepare('SELECT id FROM clientes WHERE organizacion_id = ? AND documento = ?').get(organizacionId, documento);
     if (fila) return fila.id;
   }
-  const nombre = String(c.name || pedido.contact_name || pedido.billing_name || '').trim() || 'Cliente de Tienda Nube';
+  const nombre = String(c.name || pedido.contact_name || pedido.billing_name || '').trim() || `Cliente de ${canal(integracion)}`;
   const telefono = String(c.phone || pedido.contact_phone || '').trim() || null;
+  const notas = c.ref ? (c.nickname ? `${c.ref} (${c.nickname})` : c.ref) : null;
   return db
-    .prepare('INSERT INTO clientes (nombre, email, telefono, documento, organizacion_id) VALUES (?, ?, ?, ?, ?)')
-    .run(nombre, email || null, telefono, documento, organizacionId).lastInsertRowid;
+    .prepare('INSERT INTO clientes (nombre, email, telefono, documento, notas, organizacion_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(nombre, email || null, telefono, documento, notas, organizacionId).lastInsertRowid;
 }
 
 function guardarPedido(integracion, pedido, cambios) {
@@ -16826,7 +16994,7 @@ function cancelarPedido(integracion, pedido, fila) {
   // por medio. Con algo de eso, la decide el negocio.
   const motivo = venta && venta.estado !== 'anulada' ? motivoParaNoAnular(venta) : null;
   const error = motivo
-    ? `Se canceló en Tienda Nube después de pasar a la venta #${venta.id}, que ya tiene cobros o factura. Si devolviste la plata, hacé la devolución de esa venta.`
+    ? `Se canceló en ${canal(integracion)} después de pasar a la venta #${venta.id}, que ya tiene cobros o factura. Si devolviste la plata, hacé la devolución de esa venta.`
     : null;
   withTransaction(() => {
     if (venta && venta.estado !== 'anulada' && !motivo) {
@@ -16839,13 +17007,13 @@ function cancelarPedido(integracion, pedido, fila) {
         organizacion_id: organizacionId,
         operacion_tipo: 'integracion',
         operacion_id: integracion.id,
-        detalle: `Venta #${venta.id} anulada: se canceló el pedido #${numero} en Tienda Nube`
+        detalle: `Venta #${venta.id} anulada: se canceló el pedido #${numero} en ${canal(integracion)}`
       });
     }
     guardarPedido(integracion, pedido, { estado: 'cancelado', venta_id: fila.venta_id, error });
   });
   const detalle = error ?? (venta && venta.estado !== 'anulada' ? `La venta #${venta.id} quedó anulada y el stock volvió.` : 'Se liberó lo reservado.');
-  anotarIntegracion(integracion, 'pedido', error ? 'error' : 'ok', `Pedido #${numero} cancelado en la tienda. ${detalle}`);
+  anotarIntegracion(integracion, 'pedido', error ? 'error' : 'ok', `Pedido #${numero} cancelado en ${canal(integracion)}. ${detalle}`);
   programarSincronizacion(organizacionId);
   return 'cancelado';
 }
@@ -16861,7 +17029,7 @@ function cobrarLoQueFalta(integracion, pedido, ventaId) {
   if (saldo < 0.01) return;
   const numero = pedido.number ?? pedido.id;
   withTransaction(() => {
-    const cobroId = registrarCobro(ventaId, venta.cliente_id, saldo, cuenta.id, `Cobrado en Tienda Nube (pedido #${numero})`, organizacionId);
+    const cobroId = registrarCobro(ventaId, venta.cliente_id, saldo, cuenta.id, `Cobrado en ${canal(integracion)} (pedido #${numero})`, organizacionId);
     registrarAuditoria({
       actor: 'sistema',
       accion: 'crear',
@@ -16870,10 +17038,10 @@ function cobrarLoQueFalta(integracion, pedido, ventaId) {
       organizacion_id: organizacionId,
       operacion_tipo: 'venta',
       operacion_id: ventaId,
-      detalle: `Cobro de $${saldo} en la venta #${ventaId}: se pagó el pedido #${numero} en Tienda Nube`
+      detalle: `Cobro de $${saldo} en la venta #${ventaId}: se pagó el pedido #${numero} en ${canal(integracion)}`
     });
   });
-  anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${numero} pagado en la tienda: se registró el cobro de $${saldo} en la venta #${ventaId}.`);
+  anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${numero} pagado en ${canal(integracion)}: se registró el cobro de $${saldo} en la venta #${ventaId}.`);
 }
 
 function importarPedido(integracion, pedido, fila, { cobrar }) {
@@ -16893,7 +17061,10 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
   for (const linea of lineas) {
     const vinculo = buscarVinculo.get(integracion.id, String(linea.variant_id));
     if (!vinculo) {
-      error = `"${linea.name}" no está vinculado a un producto de Nexo. Publicalo desde Nexo, o cargá la venta a mano.`;
+      error =
+        integracion.plataforma === 'mercadolibre'
+          ? `"${linea.name}" no está vinculada a un producto de Nexo. Vinculá la publicación, o cargá la venta a mano.`
+          : `"${linea.name}" no está vinculado a un producto de Nexo. Publicalo desde Nexo, o cargá la venta a mano.`;
       break;
     }
     items.push({
@@ -16911,7 +17082,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
     try {
       ventaId = withTransaction(() => {
         exigirLugarEnPlan(organizacionId, 'ventas_mes');
-        const clienteId = clienteDelPedido(organizacionId, pedido);
+        const clienteId = clienteDelPedido(integracion, pedido);
         const id = crearVenta({
           cliente_id: clienteId,
           items,
@@ -16922,7 +17093,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
         });
         const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
         const cuenta = cobrar ? cuentaDeCobro(integracion) : null;
-        if (cuenta && total > 0) registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en Tienda Nube (pedido #${numero})`, organizacionId);
+        if (cuenta && total > 0) registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en ${canal(integracion)} (pedido #${numero})`, organizacionId);
         guardarPedido(integracion, pedido, { estado: 'importado', venta_id: id });
         registrarAuditoria({
           actor: 'sistema',
@@ -16932,27 +17103,31 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           organizacion_id: organizacionId,
           operacion_tipo: 'integracion',
           operacion_id: integracion.id,
-          detalle: `Venta #${id} desde Tienda Nube (pedido #${numero})`
+          detalle: `Venta #${id} desde ${canal(integracion)} (pedido #${numero})`
         });
         return id;
       });
     } catch (err) {
       if (!(err instanceof ErrorBulk || err instanceof ErrorValidacion)) {
-        console.error(`[tiendanube] pedido ${pedido.id}:`, err);
+        console.error(`[${integracion.plataforma}] pedido ${pedido.id}:`, err);
         error = 'No se pudo armar la venta por un error de Nexo. Probá reintentar.';
       } else error = err.message;
     }
   }
   if (ventaId) {
     const envio = Number(pedido.shipping_cost_customer) || 0;
-    const porCobrar = cobrar
-      ? ''
-      : ` Sin cobrar todavía (${pedido.gateway_name || 'pago a convenir'}): registrá el cobro cuando llegue la plata.`;
+    // El nombre del medio de pago, si Tienda Nube da uno legible ("Transferencia
+    // bancaria"); con un código ("not-provided"), es a convenir.
+    const medio = [pedido.gateway_name, pedido.payment_details?.method].find((t) => t && !/^[a-z_-]+$/.test(t)) ?? 'a convenir';
+    const porCobrar = cobrar ? '' : ` Sin cobrar todavía (${medio}): registrá el cobro cuando llegue la plata.`;
+    // Lo que cobra Mercado Libre por vender (pedido.comision): todavía no se
+    // descuenta de la ganancia de la venta.
+    const comision = Number(pedido.comision) || 0;
     anotarIntegracion(
       integracion,
       'pedido',
       'ok',
-      `Pedido #${numero} → venta #${ventaId}.${porCobrar}${envio > 0 ? ` El envío que pagó el cliente ($${envio}) todavía no se suma a la venta.` : ''}`
+      `Pedido #${numero} → venta #${ventaId}.${porCobrar}${envio > 0 ? ` El envío que pagó el cliente ($${envio}) todavía no se suma a la venta.` : ''}${comision > 0 ? ` La comisión de ${canal(integracion)} ($${redondear2(comision)}) todavía no se descuenta de la ganancia.` : ''}`
     );
     // Sale de la reserva (si estaba esperando el pago) y pasa al stock de la
     // venta: se vuelve a publicar.
@@ -16965,11 +17140,18 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
   return 'pendiente';
 }
 
+// Un pedido tal como lo entiende procesarPedido: el de Tienda Nube viene así;
+// la venta de Mercado Libre se traduce (pedidoDeMercadoLibre).
+async function leerPedidoDelCanal(integracion, externoId) {
+  if (integracion.plataforma === 'mercadolibre') return pedidoDeMercadoLibre(await apiDeMercadoLibre(integracion).venta(externoId));
+  return apiDeLaTienda(integracion).pedido(externoId);
+}
+
 async function traerPedido(integracion, externoId) {
   try {
-    return procesarPedido(integracion, await apiDeLaTienda(integracion).pedido(externoId));
+    return procesarPedido(integracion, await leerPedidoDelCanal(integracion, externoId));
   } catch (err) {
-    anotarIntegracion(integracion, 'pedido', 'error', `No se pudo leer el pedido ${externoId} de la tienda (${err.message}).`);
+    anotarIntegracion(integracion, 'pedido', 'error', `No se pudo leer el pedido ${externoId} de ${canal(integracion)} (${err.message}).`);
     return null;
   }
 }
@@ -17013,14 +17195,16 @@ async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
     const integracion = integracionPorId(integracionId);
     if (integracion?.estado !== 'conectada') return;
     const inicio = new Date().toISOString();
+    const mercadoLibreSi = integracion.plataforma === 'mercadolibre';
     try {
-      if (pedidos) await traerPedidosRecientes(integracion);
-      await sincronizarStockYPrecio(integracionPorId(integracionId));
+      if (pedidos) await (mercadoLibreSi ? traerVentasRecientesML(integracion) : traerPedidosRecientes(integracion));
+      await (mercadoLibreSi ? sincronizarPublicacionesML : sincronizarStockYPrecio)(integracionPorId(integracionId));
       db.prepare('UPDATE integraciones SET ultima_sincronizacion = ? WHERE id = ?').run(inicio, integracionId);
     } catch (err) {
-      // Sin permiso (la app se desinstaló sin aviso): queda desconectada.
-      if (err.status === 401) desconectarIntegracion(integracion, 'Tienda Nube ya no le da permiso a Nexo: volvé a conectar la tienda.');
-      else anotarIntegracion(integracion, 'stock', 'error', `No se pudo sincronizar con la tienda (${err.message}).`);
+      // Sin permiso (la app se desinstaló sin aviso, o el vendedor lo sacó):
+      // queda desconectada.
+      if (err.status === 401) desconectarIntegracion(integracion, `${canal(integracion)} ya no le da permiso a Nexo: volvé a conectar tu cuenta.`);
+      else anotarIntegracion(integracion, 'stock', 'error', `No se pudo sincronizar con ${canal(integracion)} (${err.message}).`);
     }
   } finally {
     sincronizando.delete(integracionId);
@@ -17028,8 +17212,16 @@ async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
 }
 
 async function sincronizarTodas() {
-  if (!tiendaNubeConfigurada()) return;
-  const ids = db.prepare("SELECT id FROM integraciones WHERE plataforma = 'tiendanube' AND estado = 'conectada'").all();
+  const plataformas = [
+    ...(tiendaNubeConfigurada() ? ['tiendanube'] : []),
+    ...(mercadoLibre.mercadoLibreConfigurada() ? ['mercadolibre'] : [])
+  ];
+  if (!plataformas.length) return;
+  const ids = db
+    .prepare(
+      `SELECT id FROM integraciones WHERE estado = 'conectada' AND plataforma IN (${plataformas.map(() => '?').join(',')})`
+    )
+    .all(...plataformas);
   for (const { id } of ids) await sincronizarIntegracion(id);
 }
 
@@ -17113,16 +17305,28 @@ async function publicarProducto(integracion, producto) {
 
 /* --- Rutas --- */
 
-function integracionConectadaDe(req) {
-  const integracion = integracionDelNegocio(req.usuario.organizacion_id);
-  if (integracion?.estado !== 'conectada') throw new ErrorValidacion('Primero conectá tu Tienda Nube.');
+function integracionConectadaDe(req, plataforma = 'tiendanube') {
+  const integracion = integracionDelNegocio(req.usuario.organizacion_id, plataforma);
+  if (integracion?.estado !== 'conectada') {
+    throw new ErrorValidacion(plataforma === 'mercadolibre' ? 'Primero conectá tu cuenta de Mercado Libre.' : 'Primero conectá tu Tienda Nube.');
+  }
   return integracion;
 }
 
-app.get('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
+// Las rutas que son iguales en los dos canales (el estado, los ajustes,
+// buscar ahora, los pedidos) son la misma función, registrada para los dos:
+// el canal sale de la dirección.
+const plataformaDe = (req) => req.path.split('/')[3];
+const canalConfigurado = (plataforma) =>
+  plataforma === 'mercadolibre' ? mercadoLibre.mercadoLibreConfigurada() : tiendaNubeConfigurada();
+
+// `tienda` es la cuenta en el canal: la tienda de Tienda Nube, o el vendedor
+// de Mercado Libre.
+function verCanal(req, res) {
   const organizacionId = req.usuario.organizacion_id;
-  const integracion = integracionDelNegocio(organizacionId);
-  const base = { disponible: tiendaNubeConfigurada(), conectada: integracion?.estado === 'conectada' };
+  const plataforma = plataformaDe(req);
+  const integracion = integracionDelNegocio(organizacionId, plataforma);
+  const base = { disponible: canalConfigurado(plataforma), conectada: integracion?.estado === 'conectada' };
   if (!integracion) return res.json(base);
   const contar = (sql) => db.prepare(sql).get(integracion.id).n;
   res.json({
@@ -17134,6 +17338,7 @@ app.get('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
     deposito_id: integracion.deposito_id,
     cuenta_tesoreria_id: integracion.cuenta_tesoreria_id,
     productos_publicados: contar('SELECT COUNT(DISTINCT producto_id) AS n FROM integracion_vinculos WHERE integracion_id = ?'),
+    publicaciones_vinculadas: contar('SELECT COUNT(DISTINCT externo_producto_id) AS n FROM integracion_vinculos WHERE integracion_id = ?'),
     pedidos_importados: contar("SELECT COUNT(*) AS n FROM integracion_pedidos WHERE integracion_id = ? AND estado = 'importado'"),
     pedidos: db
       .prepare(
@@ -17148,7 +17353,9 @@ app.get('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
       .prepare('SELECT fecha, tipo, resultado, detalle FROM integracion_log WHERE integracion_id = ? ORDER BY id DESC LIMIT 30')
       .all(integracion.id)
   });
-});
+}
+app.get('/api/integraciones/tiendanube', soloAdmin, verCanal);
+app.get('/api/integraciones/mercadolibre', soloAdmin, verCanal);
 
 app.post('/api/integraciones/tiendanube/conectar', soloAdmin, (req, res) => {
   if (!tiendaNubeConfigurada()) {
@@ -17174,9 +17381,9 @@ app.post('/api/integraciones/tiendanube/confirmar', soloAdmin, asincrono(async (
   res.json({ ok: true });
 }));
 
-app.put('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
+function guardarAjustesCanal(req, res) {
   const organizacionId = req.usuario.organizacion_id;
-  const integracion = integracionConectadaDe(req);
+  const integracion = integracionConectadaDe(req, plataformaDe(req));
   const valor = (campo) => (req.body[campo] === undefined ? integracion[campo] : req.body[campo] ? Number(req.body[campo]) : null);
   const listaId = valor('lista_precio_id');
   const depositoId = valor('deposito_id');
@@ -17205,13 +17412,15 @@ app.put('/api/integraciones/tiendanube', soloAdmin, (req, res) => {
       operacion_id: integracion.id,
       valor_anterior: JSON.stringify({ lista_precio_id: integracion.lista_precio_id, deposito_id: integracion.deposito_id, cuenta_tesoreria_id: integracion.cuenta_tesoreria_id }),
       valor_nuevo: JSON.stringify({ lista_precio_id: listaId, deposito_id: depositoId, cuenta_tesoreria_id: cuentaId }),
-      detalle: 'Cambió la lista, el depósito o la cuenta de Tienda Nube'
+      detalle: `Cambió la lista, el depósito o la cuenta de ${canal(integracion)}`
     });
   });
   // Con otra lista u otro depósito cambia lo publicado: se manda ya.
   programarSincronizacion(organizacionId, 0);
   res.json({ ok: true });
-});
+}
+app.put('/api/integraciones/tiendanube', soloAdmin, guardarAjustesCanal);
+app.put('/api/integraciones/mercadolibre', soloAdmin, guardarAjustesCanal);
 
 app.post('/api/integraciones/tiendanube/desconectar', soloAdmin, asincrono(async (req, res) => {
   const integracion = integracionConectadaDe(req);
@@ -17229,11 +17438,13 @@ app.post('/api/integraciones/tiendanube/desconectar', soloAdmin, asincrono(async
   res.json({ ok: true });
 }));
 
-app.post('/api/integraciones/tiendanube/sincronizar', soloAdmin, asincrono(async (req, res) => {
-  const integracion = integracionConectadaDe(req);
+const sincronizarCanal = asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req, plataformaDe(req));
   await sincronizarIntegracion(integracion.id);
   res.json({ ok: true });
-}));
+});
+app.post('/api/integraciones/tiendanube/sincronizar', soloAdmin, sincronizarCanal);
+app.post('/api/integraciones/mercadolibre/sincronizar', soloAdmin, sincronizarCanal);
 
 // Los productos que se pueden publicar, con cuáles ya están en la tienda.
 // Los planes de socios no: se cobran desde Socios.
@@ -17298,33 +17509,1057 @@ app.post('/api/integraciones/tiendanube/publicar', soloAdmin, asincrono(async (r
 
 // Reintentar un pedido pendiente: se vuelve a leer de la tienda (pudo
 // cambiar), y si no contesta, con lo guardado.
-app.post('/api/integraciones/tiendanube/pedidos/:id/reintentar', soloAdmin, asincrono(async (req, res) => {
-  const integracion = integracionConectadaDe(req);
+const reintentarPedidoCanal = asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req, plataformaDe(req));
   const fila = db
     .prepare("SELECT * FROM integracion_pedidos WHERE id = ? AND integracion_id = ? AND estado = 'pendiente'")
     .get(Number(req.params.id), integracion.id);
   if (!fila) return res.status(404).json({ error: 'No hay un pedido pendiente con ese número.' });
   let pedido;
   try {
-    pedido = await apiDeLaTienda(integracion).pedido(fila.externo_id);
+    pedido = await leerPedidoDelCanal(integracion, fila.externo_id);
   } catch {
     pedido = fila.datos ? JSON.parse(fila.datos) : null;
   }
-  if (!pedido) return res.status(502).json({ error: 'Tienda Nube no contestó. Probá en unos minutos.' });
+  if (!pedido) return res.status(502).json({ error: `${canal(integracion)} no contestó. Probá en unos minutos.` });
   const estado = procesarPedido(integracionPorId(integracion.id), pedido);
   const actualizado = db.prepare('SELECT estado, venta_id, error FROM integracion_pedidos WHERE id = ?').get(fila.id);
   res.json({ estado: estado ?? actualizado.estado, venta_id: actualizado.venta_id, error: actualizado.error });
-}));
+});
+app.post('/api/integraciones/tiendanube/pedidos/:id/reintentar', soloAdmin, reintentarPedidoCanal);
+app.post('/api/integraciones/mercadolibre/pedidos/:id/reintentar', soloAdmin, reintentarPedidoCanal);
 
 // Una venta cancelada en la tienda que ya era venta: el negocio ya la revisó
 // (hizo la devolución, o no hacía falta) y deja de aparecer arriba.
-app.post('/api/integraciones/tiendanube/pedidos/:id/revisado', soloAdmin, (req, res) => {
-  const integracion = integracionConectadaDe(req);
+function pedidoRevisadoCanal(req, res) {
+  const integracion = integracionConectadaDe(req, plataformaDe(req));
   const { changes } = db
     .prepare("UPDATE integracion_pedidos SET error = NULL WHERE id = ? AND integracion_id = ? AND estado = 'cancelado'")
     .run(Number(req.params.id), integracion.id);
   if (!changes) return res.status(404).json({ error: 'Pedido no encontrado.' });
   res.json({ ok: true });
+}
+app.post('/api/integraciones/tiendanube/pedidos/:id/revisado', soloAdmin, pedidoRevisadoCanal);
+app.post('/api/integraciones/mercadolibre/pedidos/:id/revisado', soloAdmin, pedidoRevisadoCanal);
+
+/* ---------- Integraciones: Mercado Libre (etapa G, CLAUDE.md §32) ---------- */
+
+// La misma base que Tienda Nube (vínculos, pedidos, actividad, la pasada), con
+// tres diferencias:
+// - Vincular, no publicar: el vendedor ya tiene sus publicaciones, y crearlas
+//   desde Nexo pide fotos y los datos que exige cada categoría. Se elige a mano
+//   qué publicación (o variación) es qué producto de Nexo, con el SKU como
+//   sugerencia. Nunca se vincula por nombre.
+// - El permiso vence cada 6 horas y se renueva solo (tokenVigente).
+// - Los avisos no vienen firmados: dicen qué mirar, y lo que vale es lo que
+//   devuelve la API con el token del vendedor.
+// Stock y precio: Nexo manda, como en Tienda Nube (decidido por el usuario el
+// 2 de noviembre). Una venta pagada pasa a ser una venta de Nexo cobrada en
+// la cuenta elegida; una sin pagar reserva sus unidades.
+
+// La dirección de vuelta del permiso: tiene que ser idéntica a la cargada en
+// la app de Mercado Libre.
+function vueltaMercadoLibre(req) {
+  return process.env.MERCADOLIBRE_REDIRECT_URI || `${urlPublica(req)}/api/integraciones/mercadolibre/callback`;
+}
+
+// El token se renueva de a uno por vez: el refresh token sirve una sola vez, y
+// dos renovaciones a la par dejarían a una con uno ya gastado (ver
+// mercadolibre.js). La segunda espera la promesa de la primera.
+const clientesMercadoLibre = new Map();
+const renovacionesMercadoLibre = new Map();
+async function tokenVigente(integracionId) {
+  const integracion = integracionPorId(integracionId);
+  const permiso = integracion?.estado === 'conectada' ? mercadoLibre.descifrarPermiso(integracion.token) : null;
+  if (!permiso) {
+    throw new mercadoLibre.MercadoLibreError('Nexo no tiene permiso en tu cuenta de Mercado Libre: volvé a conectarla.', { status: 401 });
+  }
+  if (permiso.vence > Date.now()) return permiso.token;
+  if (!renovacionesMercadoLibre.has(integracionId)) {
+    const renovacion = (async () => {
+      try {
+        const nuevo = await mercadoLibre.renovarPermiso(permiso.refresh);
+        db.prepare("UPDATE integraciones SET token = ? WHERE id = ? AND estado = 'conectada'").run(
+          mercadoLibre.cifrarPermiso(nuevo),
+          integracionId
+        );
+        return nuevo.token;
+      } finally {
+        renovacionesMercadoLibre.delete(integracionId);
+      }
+    })();
+    renovacionesMercadoLibre.set(integracionId, renovacion);
+  }
+  return renovacionesMercadoLibre.get(integracionId);
+}
+
+function apiDeMercadoLibre(integracion) {
+  let api = clientesMercadoLibre.get(integracion.id);
+  if (!api) {
+    api = mercadoLibre.clienteMercadoLibre({ token: () => tokenVigente(integracion.id) });
+    clientesMercadoLibre.set(integracion.id, api);
+  }
+  return api;
+}
+
+const esDireccionPublica = (base) => base.startsWith('https://') && !/^https:\/\/(localhost|127\.|\[::1\])/.test(base);
+
+async function conectarMercadoLibre(req, { organizacionId, usuarioId, permiso }) {
+  let vendedor = {};
+  try {
+    vendedor = (await mercadoLibre.clienteMercadoLibre({ token: async () => permiso.token }).yo()) ?? {};
+  } catch (err) {
+    console.error('[mercadolibre] no se pudo leer el vendedor:', err.message);
+  }
+  const nombre = vendedor.nickname || `Vendedor ${permiso.usuarioId}`;
+  const integracion = guardarConexion({
+    plataforma: 'mercadolibre',
+    organizacionId,
+    usuarioId,
+    cuentaExterna: permiso.usuarioId,
+    nombre,
+    url: vendedor.permalink || null,
+    tokenCifrado: mercadoLibre.cifrarPermiso(permiso)
+  });
+  clientesMercadoLibre.delete(integracion.id);
+  anotarIntegracion(integracion, 'conexion', 'ok', `Cuenta "${nombre}" conectada.`);
+  // Los avisos de Mercado Libre son de la app de Nexo, no de cada vendedor:
+  // llegan solos a la dirección pública. En la compu no hay.
+  if (esDireccionPublica(urlPublica(req))) {
+    anotarIntegracion(integracion, 'webhook', 'ok', 'Las ventas de Mercado Libre llegan al momento.');
+  } else {
+    anotarIntegracion(integracion, 'webhook', 'error', 'Sin avisos al instante: esta dirección de Nexo no es pública. Las ventas se traen cada 5 minutos.');
+  }
+  programarSincronizacion(organizacionId);
+}
+
+/* --- Ventas --- */
+
+// Una venta de Mercado Libre como la entiende procesarPedido (el formato del
+// pedido de Tienda Nube). Mercado Libre la cobra siempre por Mercado Pago:
+// pagada es venta cobrada, sin pagar es reserva, nunca "pago manual".
+// variant_id: la variación vendida, o la publicación si no tiene variaciones
+// (es el externo_variante_id del vínculo).
+const VENTA_PAGADA_ML = new Set(['paid', 'partially_refunded']);
+const VENTA_CANCELADA_ML = new Set(['cancelled', 'invalid']);
+function pedidoDeMercadoLibre(venta) {
+  if (!venta?.id) throw new mercadoLibre.MercadoLibreError('Mercado Libre no devolvió la venta.');
+  const comprador = venta.buyer ?? {};
+  const items = Array.isArray(venta.order_items) ? venta.order_items : [];
+  return {
+    id: String(venta.id),
+    number: String(venta.id),
+    created_at: venta.date_created,
+    paid_at: VENTA_PAGADA_ML.has(venta.status) ? venta.date_closed ?? null : null,
+    status: VENTA_CANCELADA_ML.has(venta.status) ? 'cancelled' : 'open',
+    payment_status: VENTA_PAGADA_ML.has(venta.status) ? 'paid' : 'pending',
+    gateway: 'mercadopago',
+    gateway_name: 'Mercado Pago',
+    discount: 0,
+    products: items.map((i) => ({
+      variant_id: String(i.item?.variation_id ?? i.item?.id ?? ''),
+      name: i.item?.title ?? 'Publicación',
+      quantity: Number(i.quantity) || 0,
+      price: Number(i.unit_price) || 0
+    })),
+    customer: {
+      name: [comprador.first_name, comprador.last_name].filter(Boolean).join(' ') || comprador.nickname || '',
+      nickname: comprador.nickname ?? null,
+      ref: comprador.id != null ? `Comprador de Mercado Libre #${comprador.id}` : null
+    },
+    // sale_fee es por unidad.
+    comision: items.reduce((acc, i) => acc + (Number(i.sale_fee) || 0) * (Number(i.quantity) || 0), 0)
+  };
+}
+
+// Las ventas que cambiaron desde la última pasada (con una hora de margen),
+// por si se perdió un aviso. Mercado Libre pide la fecha con su zona.
+async function traerVentasRecientesML(integracion) {
+  const api = apiDeMercadoLibre(integracion);
+  const desde = new Date(
+    Math.max(
+      new Date(integracion.pedidos_desde).getTime(),
+      integracion.ultima_sincronizacion ? new Date(integracion.ultima_sincronizacion).getTime() - 60 * 60 * 1000 : 0
+    )
+  )
+    .toISOString()
+    .replace('Z', '-00:00');
+  let procesadas = 0;
+  for (let offset = 0; offset < 250; offset += 50) {
+    const respuesta = await api.ventas({
+      seller: integracion.cuenta_externa,
+      'order.date_last_updated.from': desde,
+      sort: 'date_asc',
+      limit: '50',
+      offset: String(offset)
+    });
+    const ventas = Array.isArray(respuesta?.results) ? respuesta.results : [];
+    for (const venta of ventas) {
+      procesarPedido(integracionPorId(integracion.id), pedidoDeMercadoLibre(venta));
+      procesadas++;
+    }
+    if (ventas.length < 50) break;
+  }
+  return procesadas;
+}
+
+/* --- Stock y precio --- */
+
+// Un error de una publicación se anota una vez, no en cada pasada.
+const erroresAnotadosML = new Set();
+function anotarErrorDePublicacion(integracion, itemId, mensaje) {
+  const clave = `${integracion.id}:${itemId}:${mensaje}`;
+  if (erroresAnotadosML.has(clave)) return;
+  erroresAnotadosML.add(clave);
+  anotarIntegracion(integracion, 'stock', 'error', `Publicación ${itemId}: ${mensaje}`);
+}
+
+// Una publicación por pedido. Mercado Libre usa un solo precio para todas las
+// variaciones de una publicación: si en Nexo sus variantes tienen precios
+// distintos, se manda solo el stock y se avisa.
+async function sincronizarPublicacionesML(integracion) {
+  const porPublicacion = new Map();
+  for (const v of vinculosParaPublicar(integracion)) {
+    if (!porPublicacion.has(v.externo_producto_id)) porPublicacion.set(v.externo_producto_id, []);
+    porPublicacion.get(v.externo_producto_id).push(v);
+  }
+  const api = apiDeMercadoLibre(integracion);
+  const guardar = db.prepare('UPDATE integracion_vinculos SET ultimo_precio = ?, ultimo_stock = ? WHERE id = ?');
+  let enviadas = 0;
+  for (const [itemId, filas] of porPublicacion) {
+    if (!filas.some(cambioDePublicacion)) continue;
+    const conStock = (f) => (f.stock === null ? {} : { available_quantity: f.stock });
+    let cuerpo;
+    if (filas.length === 1 && filas[0].externo_variante_id === itemId) {
+      cuerpo = { price: filas[0].precio, ...conStock(filas[0]) };
+    } else {
+      const precioUnico = new Set(filas.map((f) => f.precio)).size === 1 ? filas[0].precio : null;
+      if (precioUnico === null && filas.some((f) => f.precio !== f.ultimo_precio)) {
+        anotarErrorDePublicacion(
+          integracion,
+          itemId,
+          'sus variantes tienen precios distintos en Nexo, y Mercado Libre usa uno solo para toda la publicación. Se actualizó solo el stock.'
+        );
+      }
+      cuerpo = {
+        variations: filas.map((f) => ({
+          id: Number(f.externo_variante_id),
+          ...(precioUnico === null ? {} : { price: precioUnico }),
+          ...conStock(f)
+        }))
+      };
+    }
+    try {
+      await api.actualizarPublicacion(itemId, cuerpo);
+    } catch (err) {
+      // Sin permiso o sin respuesta: corta la pasada, se reintenta en la próxima.
+      if (err.status === 401 || err.transitorio) throw err;
+      if (err.status === 404) {
+        db.prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ? AND externo_producto_id = ?').run(integracion.id, itemId);
+        anotarIntegracion(integracion, 'publicacion', 'ok', `La publicación ${itemId} ya no existe en Mercado Libre: dejó de estar vinculada.`);
+      } else {
+        anotarErrorDePublicacion(integracion, itemId, `Mercado Libre no aceptó el stock o el precio (${err.message})`);
+      }
+      continue;
+    }
+    for (const f of filas) guardar.run(f.precio, f.stock, f.id);
+    enviadas++;
+  }
+  if (enviadas) {
+    anotarIntegracion(integracion, 'stock', 'ok', `Stock y precio al día en Mercado Libre (${enviadas} ${enviadas === 1 ? 'publicación' : 'publicaciones'}).`);
+  }
+  return enviadas;
+}
+
+/* --- Avisos --- */
+
+async function atenderAvisoMercadoLibre(aviso) {
+  const integracion = db
+    .prepare("SELECT * FROM integraciones WHERE plataforma = 'mercadolibre' AND cuenta_externa = ? AND estado = 'conectada'")
+    .get(String(aviso.user_id ?? ''));
+  if (!integracion) return;
+  const recurso = String(aviso.resource ?? '');
+  if (aviso.topic === 'orders_v2') {
+    const id = recurso.match(/^\/orders\/(\d+)$/)?.[1];
+    if (id) await traerPedido(integracion, id);
+  } else if (aviso.topic === 'items') {
+    const id = recurso.match(/^\/items\/([A-Z]+\d+)$/)?.[1];
+    if (id) await revisarPublicacionML(integracion, id);
+  }
+}
+
+// Una publicación vinculada cambió en Mercado Libre. Si se finalizó, deja de
+// estar vinculada. Si alguien le cambió el precio o el stock allá, se vuelve
+// a mandar lo de Nexo (Nexo manda). Lo que mandó Nexo coincide con lo
+// guardado, así que el aviso de un cambio propio no vuelve a disparar nada.
+async function revisarPublicacionML(integracion, itemId) {
+  const filas = db
+    .prepare('SELECT * FROM integracion_vinculos WHERE integracion_id = ? AND externo_producto_id = ?')
+    .all(integracion.id, itemId);
+  if (!filas.length) return;
+  let item = null;
+  try {
+    item = await apiDeMercadoLibre(integracion).publicacion(itemId);
+  } catch (err) {
+    if (err.status !== 404) {
+      anotarIntegracion(integracion, 'publicacion', 'error', `No se pudo leer la publicación ${itemId} (${err.message}).`);
+      return;
+    }
+  }
+  if (!item || item.status === 'closed' || item.deleted) {
+    db.prepare('DELETE FROM integracion_vinculos WHERE integracion_id = ? AND externo_producto_id = ?').run(integracion.id, itemId);
+    anotarIntegracion(integracion, 'publicacion', 'ok', `La publicación "${item?.title ?? itemId}" se finalizó en Mercado Libre: dejó de estar vinculada.`);
+    return;
+  }
+  const variaciones = Array.isArray(item.variations) ? item.variations : [];
+  const enMercadoLibre = new Map(
+    variaciones.length
+      ? variaciones.map((v) => [String(v.id), { precio: Number(v.price ?? item.price), stock: Number(v.available_quantity) }])
+      : [[String(item.id), { precio: Number(item.price), stock: Number(item.available_quantity) }]]
+  );
+  let distinto = false;
+  for (const f of filas) {
+    const actual = enMercadoLibre.get(f.externo_variante_id);
+    if (!actual) {
+      db.prepare('DELETE FROM integracion_vinculos WHERE id = ?').run(f.id);
+      anotarIntegracion(integracion, 'publicacion', 'ok', `Se borró una variación de "${item.title}" en Mercado Libre: dejó de estar vinculada.`);
+      continue;
+    }
+    const otroPrecio = f.ultimo_precio != null && actual.precio !== f.ultimo_precio;
+    const otroStock = f.ultimo_stock != null && actual.stock !== f.ultimo_stock;
+    if (otroPrecio || otroStock) {
+      db.prepare('UPDATE integracion_vinculos SET ultimo_precio = NULL, ultimo_stock = NULL WHERE id = ?').run(f.id);
+      distinto = true;
+    }
+  }
+  // Con unos segundos de margen: si el cambio fue una venta, su aviso llega a
+  // la par y conviene que la venta entre antes de volver a mandar el stock.
+  if (distinto) programarSincronizacion(integracion.organizacion_id, 15_000);
+}
+
+/* --- Vincular publicaciones --- */
+
+const MAX_PUBLICACIONES_ML = 500;
+
+// Las publicaciones, de a 20 por pedido (el tope de Mercado Libre).
+async function leerPublicacionesML(api, ids) {
+  const items = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const respuesta = await api.variasPublicaciones(ids.slice(i, i + 20));
+    for (const r of Array.isArray(respuesta) ? respuesta : []) if (r?.code === 200 && r.body?.id) items.push(r.body);
+  }
+  return items;
+}
+
+// Una fila por lo que se vende: cada variación, o la publicación si no tiene.
+function filasDePublicacion(item) {
+  const comun = {
+    externo_producto_id: String(item.id),
+    estado: item.status,
+    url: item.permalink ?? null,
+    foto: item.secure_thumbnail ?? item.thumbnail ?? null,
+    // Full: el stock lo maneja el depósito de Mercado Libre, no se puede mandar.
+    full: item.shipping?.logistic_type === 'fulfillment'
+  };
+  const variaciones = Array.isArray(item.variations) ? item.variations : [];
+  if (!variaciones.length) {
+    return [
+      {
+        ...comun,
+        externo_variante_id: String(item.id),
+        titulo: item.title,
+        sku: mercadoLibre.skuDe(item),
+        precio: Number(item.price),
+        stock: Number(item.available_quantity)
+      }
+    ];
+  }
+  return variaciones.map((v) => ({
+    ...comun,
+    externo_variante_id: String(v.id),
+    titulo: mercadoLibre.nombreDeVariacion(item.title, v),
+    sku: mercadoLibre.skuDe(v),
+    precio: Number(v.price ?? item.price),
+    stock: Number(v.available_quantity)
+  }));
+}
+
+// Lo que se puede vincular en Nexo: cada producto activo sin variantes, y
+// cada variante activa. Los planes de socios no: se cobran desde Socios.
+function vendiblesDeNexo(integracion) {
+  const depositoId = depositoDeLaIntegracion(integracion);
+  const filas = db
+    .prepare(
+      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.tipo
+         FROM productos
+        WHERE productos.organizacion_id = ? AND productos.activo = 1
+          AND NOT EXISTS (SELECT 1 FROM producto_variantes WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1)
+          AND NOT EXISTS (SELECT 1 FROM planes_socio WHERE planes_socio.producto_id = productos.id)
+       UNION ALL
+       SELECT productos.id, producto_variantes.id, productos.nombre, producto_variantes.sku, productos.tipo
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND producto_variantes.activo = 1`
+    )
+    .all(integracion.organizacion_id, integracion.organizacion_id);
+  return filas
+    .map((f) => ({
+      producto_id: f.producto_id,
+      variante_id: f.variante_id,
+      nombre: f.variante_id ? `${f.nombre} (${combinacionVariante(f.variante_id)})` : f.nombre,
+      sku: f.sku ?? null,
+      stock: stockParaPublicar({ ...f, activo: 1, variante_activa: 1 }, depositoId)
+    }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+// Un error de Mercado Libre en una ruta: se le muestra su mensaje a quien la
+// usa. Sin permiso es un 409 (hay que volver a conectar), no un 401 de Nexo.
+function siCanalFalla(res, err) {
+  if (!(err instanceof mercadoLibre.MercadoLibreError)) throw err;
+  return res.status(err.status === 401 ? 409 : 502).json({ error: err.message });
+}
+
+app.post('/api/integraciones/mercadolibre/conectar', soloAdmin, (req, res) => {
+  if (!mercadoLibre.mercadoLibreConfigurada()) {
+    return res.status(503).json({ error: 'Mercado Libre todavía no está disponible en este servidor.' });
+  }
+  const estado = mercadoLibre.firmarEstado({ usuarioId: req.usuario.id, organizacionId: req.usuario.organizacion_id });
+  res.json({ url: mercadoLibre.urlDeAutorizacion(estado, vueltaMercadoLibre(req)) });
+});
+
+// Los avisos son de la app, no del vendedor: no hay nada que sacar allá. El
+// permiso que dio el vendedor se lo saca él desde su cuenta de Mercado Libre.
+app.post('/api/integraciones/mercadolibre/desconectar', soloAdmin, (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadolibre');
+  desconectarIntegracion(integracion, `${req.usuario.nombre || req.usuario.usuario} desconectó la cuenta desde Nexo.`, req.usuario.id);
+  res.json({ ok: true });
+});
+
+// Las publicaciones del vendedor (hasta MAX_PUBLICACIONES_ML, sin las
+// finalizadas), cada una con su vínculo si ya lo tiene y, si no, una
+// sugerencia por SKU. Y lo que se puede vincular en Nexo.
+app.get('/api/integraciones/mercadolibre/publicaciones', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadolibre');
+  const api = apiDeMercadoLibre(integracion);
+  const ids = [];
+  let total = 0;
+  let items;
+  try {
+    for (let offset = 0; offset < MAX_PUBLICACIONES_ML; offset += 50) {
+      const pagina = await api.publicaciones(integracion.cuenta_externa, { offset });
+      const resultados = Array.isArray(pagina?.results) ? pagina.results : [];
+      total = Number(pagina?.paging?.total) || ids.length + resultados.length;
+      ids.push(...resultados);
+      if (resultados.length < 50 || ids.length >= total) break;
+    }
+    items = await leerPublicacionesML(api, ids);
+  } catch (err) {
+    return siCanalFalla(res, err);
+  }
+  const opciones = vendiblesDeNexo(integracion);
+  // La sugerencia por SKU, solo si un único producto de Nexo lo tiene.
+  const porSku = new Map();
+  for (const o of opciones) {
+    if (!o.sku) continue;
+    const clave = o.sku.toLowerCase();
+    porSku.set(clave, porSku.has(clave) ? null : o);
+  }
+  const vinculos = new Map(
+    db
+      .prepare('SELECT id, producto_id, variante_id, externo_variante_id FROM integracion_vinculos WHERE integracion_id = ?')
+      .all(integracion.id)
+      .map((v) => [v.externo_variante_id, v])
+  );
+  const nombreDe = (productoId, varianteId) =>
+    opciones.find((o) => o.producto_id === productoId && (o.variante_id ?? null) === (varianteId ?? null))?.nombre ??
+    db.prepare('SELECT nombre FROM productos WHERE id = ?').get(productoId)?.nombre ??
+    '—';
+  const publicaciones = items
+    .filter((item) => item.status !== 'closed')
+    .flatMap(filasDePublicacion)
+    .map((f) => {
+      const vinculo = vinculos.get(f.externo_variante_id);
+      const sugerida = !vinculo && f.sku ? porSku.get(f.sku.toLowerCase()) : null;
+      return {
+        ...f,
+        vinculo: vinculo
+          ? { id: vinculo.id, producto_id: vinculo.producto_id, variante_id: vinculo.variante_id, nombre: nombreDe(vinculo.producto_id, vinculo.variante_id) }
+          : null,
+        sugerencia: sugerida ? { producto_id: sugerida.producto_id, variante_id: sugerida.variante_id } : null
+      };
+    });
+  res.json({ total, publicaciones, opciones });
+}));
+
+// Vincula publicaciones (o variaciones) con productos de Nexo. Se vuelven a
+// leer de Mercado Libre: solo se vincula lo que es del vendedor conectado.
+// traer_stock: antes de vincular, el stock de Nexo pasa a ser el de Mercado
+// Libre (un ajuste, con su movimiento). Si no, Nexo manda su stock.
+app.post('/api/integraciones/mercadolibre/vincular', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadolibre');
+  const organizacionId = req.usuario.organizacion_id;
+  const pedidos = req.body?.vinculos;
+  if (!Array.isArray(pedidos) || !pedidos.length || pedidos.length > 50) {
+    return res.status(400).json({ error: 'Elegí entre 1 y 50 publicaciones.' });
+  }
+  let filas;
+  try {
+    const ids = [...new Set(pedidos.map((p) => String(p?.externo_producto_id ?? '')))].filter((id) => /^[A-Z]+\d+$/.test(id));
+    const items = (await leerPublicacionesML(apiDeMercadoLibre(integracion), ids)).filter(
+      (item) => String(item.seller_id) === integracion.cuenta_externa && item.status !== 'closed'
+    );
+    filas = new Map(items.flatMap(filasDePublicacion).map((f) => [f.externo_variante_id, f]));
+  } catch (err) {
+    return siCanalFalla(res, err);
+  }
+  const depositoId = depositoDeLaIntegracion(integracion);
+  const ya = db.prepare('SELECT 1 FROM integracion_vinculos WHERE integracion_id = ? AND externo_variante_id = ?');
+  const insertar = db.prepare(
+    `INSERT INTO integracion_vinculos
+       (integracion_id, producto_id, variante_id, externo_producto_id, externo_variante_id, ultimo_stock, ultimo_precio, creado_en, organizacion_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const vinculados = [];
+  const errores = [];
+  for (const pedido of pedidos) {
+    const fila = filas.get(String(pedido?.externo_variante_id ?? ''));
+    if (!fila || fila.externo_producto_id !== String(pedido.externo_producto_id)) {
+      errores.push({ titulo: String(pedido?.externo_variante_id ?? '—'), error: 'No es una publicación activa de tu cuenta.' });
+      continue;
+    }
+    const producto = esIdValido(pedido.producto_id)
+      ? db.prepare('SELECT * FROM productos WHERE id = ? AND organizacion_id = ? AND activo = 1').get(pedido.producto_id, organizacionId)
+      : null;
+    const varianteId = pedido.variante_id == null ? null : Number(pedido.variante_id);
+    const variante = varianteId
+      ? db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1').get(varianteId, producto?.id ?? 0)
+      : null;
+    let error = null;
+    if (!producto) error = 'Elegí un producto de Nexo.';
+    else if (tieneVariantesActivas(producto.id) ? !variante : varianteId) error = `Elegí la variante de "${producto.nombre}".`;
+    else if (ya.get(integracion.id, fila.externo_variante_id)) error = 'Ya está vinculada.';
+    if (error) {
+      errores.push({ titulo: fila.titulo, error });
+      continue;
+    }
+    withTransaction(() => {
+      if (pedido.traer_stock && producto.tipo !== 'servicio' && !fila.full && Number.isFinite(fila.stock)) {
+        const anterior = varianteId
+          ? db.prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?').get(varianteId, depositoId)?.cantidad ?? 0
+          : db.prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?').get(producto.id, depositoId)?.cantidad ?? 0;
+        const diferencia = fila.stock - anterior;
+        if (diferencia !== 0) {
+          registrarMovimientoStock({
+            producto_id: producto.id,
+            variante_id: varianteId,
+            deposito_id: depositoId,
+            tipo: 'ajuste',
+            cantidad: diferencia,
+            origen: 'ajuste_manual',
+            nota: `Stock traído de Mercado Libre al vincular (${fila.externo_producto_id})`,
+            organizacion_id: organizacionId
+          });
+          auditar(req, {
+            accion: 'editar',
+            entidad: 'stock',
+            entidad_id: producto.id,
+            operacion_tipo: 'integracion',
+            operacion_id: integracion.id,
+            valor_anterior: JSON.stringify({ stock: anterior }),
+            valor_nuevo: JSON.stringify({ stock: fila.stock }),
+            detalle: `Stock de "${fila.titulo}" traído de Mercado Libre: ${anterior} → ${fila.stock}`
+          });
+        }
+      }
+      // Lo que tiene hoy la publicación: la pasada manda solo lo que difiera
+      // de Nexo.
+      insertar.run(
+        integracion.id,
+        producto.id,
+        varianteId,
+        fila.externo_producto_id,
+        fila.externo_variante_id,
+        fila.full ? null : fila.stock,
+        fila.precio,
+        new Date().toISOString(),
+        organizacionId
+      );
+    });
+    vinculados.push(fila.titulo);
+  }
+  if (vinculados.length) {
+    anotarIntegracion(integracion, 'publicacion', 'ok', `Vinculadas: ${vinculados.join(', ')}.`);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'integracion',
+      operacion_id: integracion.id,
+      detalle: `Vinculó en Mercado Libre: ${vinculados.join(', ')}`.slice(0, 500)
+    });
+    programarSincronizacion(organizacionId, 0);
+  }
+  res.json({ vinculados: vinculados.length, errores });
+}));
+
+app.post('/api/integraciones/mercadolibre/desvincular', soloAdmin, (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadolibre');
+  const vinculo = db
+    .prepare('SELECT * FROM integracion_vinculos WHERE id = ? AND integracion_id = ?')
+    .get(Number(req.body?.id), integracion.id);
+  if (!vinculo) return res.status(404).json({ error: 'Esa publicación no está vinculada.' });
+  const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(vinculo.producto_id)?.nombre ?? '';
+  withTransaction(() => {
+    db.prepare('DELETE FROM integracion_vinculos WHERE id = ?').run(vinculo.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: req.usuario.organizacion_id,
+      operacion_tipo: 'integracion',
+      operacion_id: integracion.id,
+      detalle: `Desvinculó la publicación ${vinculo.externo_producto_id} de "${producto}"`
+    });
+  });
+  anotarIntegracion(integracion, 'publicacion', 'ok', `La publicación ${vinculo.externo_producto_id} dejó de estar vinculada a "${producto}". Nexo ya no le cambia el stock ni el precio.`);
+  res.json({ ok: true });
+});
+
+/* ---------- Carga inicial: empezar con un negocio que ya existe (handoff 8c) ---------- */
+//
+// La mayoría de los negocios que llegan a Nexo ya venían funcionando: el
+// primer día tienen que poder cargar lo que tienen sin inventar compras ni
+// ventas. Cada parte se carga por separado y en cualquier orden:
+// - el stock de cada depósito con su costo (movimientos 'stock_inicial');
+// - lo que les deben y lo que deben: un "saldo anterior" por cliente o
+//   proveedor, que nace como venta o compra sin renglones para cobrarse,
+//   pagarse y vencer con el circuito de siempre (ventas.saldo_inicial);
+// - la plata de cada cuenta: el saldo inicial que ya existía (PUT de la
+//   cuenta, desde la pantalla);
+// - las ventas recientes: no mueven stock ni caja, porque lo que se cargó
+//   arriba ya es lo de hoy, pero cuentan en los reportes.
+// Solo el admin, y todo queda en la auditoría.
+
+const MENSAJE_SALDO_ANTERIOR = 'Es un saldo de antes de empezar con Nexo: no tiene renglones para facturar.';
+const MENSAJE_CARGA_INICIAL_NO_SE_EDITA =
+  'Esto es de antes de empezar con Nexo y no se edita: anulalo y cargalo de nuevo desde Configuración → Lo que ya tenías.';
+const MAX_FILAS_CARGA_INICIAL = 1000;
+const NOTA_COBRO_ANTERIOR = 'Cobrada antes de empezar con Nexo';
+
+// Una fecha de antes de Nexo: válida y no futura. Sin fecha, hoy.
+function fechaDeCargaInicial(valor) {
+  if (valor === undefined || valor === null || valor === '') return fechaDeHoy();
+  const fecha = validarFecha(valor);
+  if (!fecha || fecha > fechaDeHoy()) throw new ErrorValidacion('La fecha no es válida: tiene que ser de hoy o de antes.');
+  return fecha;
+}
+
+// El vencimiento de un saldo o de una venta sin cobrar: opcional, y nunca
+// antes de la fecha. Sin vencimiento vence en la fecha misma (contado).
+function vencimientoDeCargaInicial(fecha, valor) {
+  if (valor === undefined || valor === null || valor === '') return { condicion: 'contado', vencimiento: fecha };
+  const vencimiento = validarFecha(valor);
+  if (!vencimiento) throw new ErrorValidacion('La fecha en que vence no es válida.');
+  if (vencimiento < fecha) throw new ErrorValidacion('No puede vencer antes de la fecha en que nació la deuda.');
+  return { condicion: 'manual', vencimiento };
+}
+
+const cantidadDeStock = (valor) => esNumeroValido(valor) && valor >= 0;
+
+// Cuánto se cargó de cada parte, para la página y la guía de primeros pasos.
+function estadoCargaInicial(organizacionId) {
+  const uno = (sql) => db.prepare(sql).get(organizacionId);
+  return {
+    stock: uno(
+      `SELECT COUNT(DISTINCT producto_id || ':' || COALESCE(variante_id, '')) AS cantidad
+         FROM movimientos_stock WHERE organizacion_id = ? AND origen = 'stock_inicial'`
+    ),
+    te_deben: uno(
+      `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
+         FROM ventas WHERE organizacion_id = ? AND estado = 'activa' AND saldo_inicial IS NOT NULL`
+    ),
+    debes: uno(
+      `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
+         FROM compras WHERE organizacion_id = ? AND estado = 'activa' AND saldo_inicial IS NOT NULL`
+    ),
+    caja: uno(
+      `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
+         FROM cuentas_tesoreria WHERE organizacion_id = ? AND saldo_inicial <> 0`
+    ),
+    ventas: uno(
+      `SELECT COUNT(*) AS cantidad,
+              COALESCE(SUM((SELECT SUM(cantidad * precio_unitario) FROM venta_items WHERE venta_id = ventas.id)), 0) AS total
+         FROM ventas WHERE organizacion_id = ? AND estado = 'activa' AND carga_inicial = 1 AND saldo_inicial IS NULL`
+    )
+  };
+}
+
+app.get('/api/carga-inicial', soloAdmin, (req, res) => {
+  const { ya_funcionaba: yaFuncionaba } = db
+    .prepare('SELECT ya_funcionaba FROM organizaciones WHERE id = ?')
+    .get(req.usuario.organizacion_id);
+  res.json({ ya_funcionaba: yaFuncionaba, ...estadoCargaInicial(req.usuario.organizacion_id) });
+});
+
+// El depósito de la planilla: el pedido, o el predeterminado.
+function depositoDeCargaInicial(valor, organizacionId) {
+  const id = valor ? Number(valor) : depositoPredeterminadoId(organizacionId);
+  const deposito = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(id, organizacionId);
+  if (!deposito) throw new ErrorValidacion('El depósito no existe o está inactivo.');
+  return deposito;
+}
+
+// La planilla del stock inicial de un depósito: un renglón por producto con
+// stock (o por variante, si tiene), con lo que hay hoy y su costo.
+app.get('/api/carga-inicial/stock', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const deposito = depositoDeCargaInicial(req.query.deposito_id, org);
+  const productos = db
+    .prepare(
+      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.unidad,
+              productos.precio_costo AS costo, productos.precio_venta,
+              COALESCE(stock_por_deposito.cantidad, 0) AS stock,
+              EXISTS (SELECT 1 FROM movimientos_stock m
+                       WHERE m.producto_id = productos.id AND m.variante_id IS NULL AND m.deposito_id = ?
+                         AND m.origen = 'stock_inicial') AS cargado
+         FROM productos
+         LEFT JOIN stock_por_deposito
+           ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND productos.tipo = 'producto'
+          AND NOT EXISTS (SELECT 1 FROM producto_variantes v WHERE v.producto_id = productos.id AND v.activo = 1)`
+    )
+    .all(deposito.id, deposito.id, org);
+  const variantes = db
+    .prepare(
+      `SELECT producto_variantes.producto_id, producto_variantes.id AS variante_id, productos.nombre,
+              producto_variantes.sku, productos.unidad, producto_variantes.precio_costo AS costo,
+              productos.precio_venta,
+              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock,
+              EXISTS (SELECT 1 FROM movimientos_stock m
+                       WHERE m.variante_id = producto_variantes.id AND m.deposito_id = ?
+                         AND m.origen = 'stock_inicial') AS cargado
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+         LEFT JOIN stock_variante_por_deposito
+           ON stock_variante_por_deposito.variante_id = producto_variantes.id AND stock_variante_por_deposito.deposito_id = ?
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND productos.tipo = 'producto'
+          AND producto_variantes.activo = 1`
+    )
+    .all(deposito.id, deposito.id, org)
+    .map((v) => ({ ...v, variante: combinacionVariante(v.variante_id) }));
+  const filas = [...productos.map((p) => ({ ...p, variante: null })), ...variantes]
+    .map((f) => ({ ...f, cargado: Boolean(f.cargado) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || (a.variante ?? '').localeCompare(b.variante ?? '', 'es'));
+  res.json({ deposito, filas });
+});
+
+// Declara lo que hay de un producto (o variante) en un depósito y cuánto
+// costó cada unidad: un 'ajuste' hasta esa cantidad, con su costo, y el costo
+// promedio recalculado desde el historial (costoDelHistorial). No genera
+// deuda ni toca la caja. Devuelve false si no cambia nada. Adentro de una
+// transacción.
+function aplicarStockInicial(req, { producto, varianteId, deposito, cantidad, costo }) {
+  const org = req.usuario.organizacion_id;
+  const enDeposito = varianteId
+    ? db.prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?').get(varianteId, deposito.id)
+        ?.cantidad ?? 0
+    : db.prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?').get(producto.id, deposito.id)
+        ?.cantidad ?? 0;
+  const costoAnterior = varianteId
+    ? db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?').get(varianteId).precio_costo
+    : producto.precio_costo;
+  // Las cantidades son REAL: 1,25 kg menos 1,2 no da 0,05 exacto.
+  const delta = Math.round((cantidad - enDeposito) * 1000) / 1000;
+  if (delta === 0 && Math.abs(costo - costoAnterior) < 0.005) return false;
+
+  registrarMovimientoStock({
+    producto_id: producto.id,
+    variante_id: varianteId,
+    deposito_id: deposito.id,
+    tipo: 'ajuste',
+    cantidad: delta,
+    origen: 'stock_inicial',
+    costo_unitario: costo,
+    nota: 'Stock inicial',
+    organizacion_id: org
+  });
+  const costoNuevo = varianteId ? recalcularCostoVariante(varianteId) : recalcularCostoProducto(producto.id);
+  const nombre = varianteId ? `${producto.nombre} (${combinacionVariante(varianteId)})` : producto.nombre;
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'stock',
+    entidad_id: producto.id,
+    valor_anterior: JSON.stringify({ stock: enDeposito, costo: costoAnterior, deposito: deposito.nombre }),
+    valor_nuevo: JSON.stringify({ stock: cantidad, costo: redondear2(costoNuevo), deposito: deposito.nombre }),
+    detalle: `Stock inicial de "${nombre}" en "${deposito.nombre}": ${enDeposito} → ${cantidad}, a $${costo} cada uno`
+  });
+  return true;
+}
+
+// Guarda la planilla: `filas` son productos que ya existen y `nuevos`, los
+// que se dan de alta en la misma planilla (nombre, precio, SKU y unidad).
+app.post('/api/carga-inicial/stock', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const filas = req.body?.filas ?? [];
+  const nuevos = req.body?.nuevos ?? [];
+  if (!Array.isArray(filas) || !Array.isArray(nuevos)) {
+    return res.status(400).json({ error: 'La planilla no es válida.' });
+  }
+  if (filas.length + nuevos.length === 0) {
+    return res.status(400).json({ error: 'No hay nada para guardar.' });
+  }
+  if (filas.length + nuevos.length > MAX_FILAS_CARGA_INICIAL) {
+    return res.status(400).json({ error: `Se pueden guardar hasta ${MAX_FILAS_CARGA_INICIAL} renglones por vez.` });
+  }
+  const deposito = depositoDeCargaInicial(req.body?.deposito_id, org);
+
+  const buscarProducto = db.prepare('SELECT id, nombre, tipo, precio_costo FROM productos WHERE id = ? AND organizacion_id = ? AND activo = 1');
+  const contarVariantes = db.prepare('SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1');
+  const buscarVariante = db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1');
+  const claves = new Set();
+  const aplicar = [];
+  for (const fila of filas) {
+    if (!esIdValido(fila?.producto_id) || (fila.variante_id != null && !esIdValido(fila.variante_id))) {
+      return res.status(400).json({ error: 'Uno de los renglones no tiene un producto válido.' });
+    }
+    const producto = buscarProducto.get(fila.producto_id, org);
+    if (!producto) return res.status(400).json({ error: 'Uno de los productos no existe.' });
+    if (producto.tipo === 'servicio') return res.status(400).json({ error: errorServicioSinStock(producto.nombre) });
+    const varianteId = fila.variante_id ?? null;
+    if (varianteId ? !buscarVariante.get(varianteId, producto.id) : contarVariantes.get(producto.id).n > 0) {
+      return res.status(400).json({
+        error: varianteId ? `La variante de "${producto.nombre}" no existe.` : `"${producto.nombre}" tiene variantes: cargá cada una.`
+      });
+    }
+    if (!cantidadDeStock(fila.cantidad) || !cantidadDeStock(fila.costo)) {
+      return res.status(400).json({ error: `Revisá "${producto.nombre}": la cantidad y el costo son números de 0 para arriba.` });
+    }
+    const clave = `${producto.id}:${varianteId ?? ''}`;
+    if (claves.has(clave)) return res.status(400).json({ error: `"${producto.nombre}" está dos veces en la planilla.` });
+    claves.add(clave);
+    aplicar.push({ producto, varianteId, cantidad: fila.cantidad, costo: fila.costo });
+  }
+  const nombresNuevos = new Set();
+  for (const nuevo of nuevos) {
+    const datos = { nombre: nuevo?.nombre, precio_venta: nuevo?.precio_venta, unidad: nuevo?.unidad, tipo: 'producto' };
+    const error = typeof datos.nombre === 'string' ? validarProducto(datos, org) : 'El producto necesita un nombre.';
+    if (error) return res.status(400).json({ error: nuevo?.nombre ? `"${nuevo.nombre}": ${error}` : error });
+    if (nuevo.sku != null && typeof nuevo.sku !== 'string') return res.status(400).json({ error: 'El SKU no es válido.' });
+    if (!cantidadDeStock(nuevo.cantidad) || !cantidadDeStock(nuevo.costo)) {
+      return res.status(400).json({ error: `Revisá "${nuevo.nombre}": la cantidad y el costo son números de 0 para arriba.` });
+    }
+    const clave = nuevo.nombre.trim().toLowerCase();
+    if (nombresNuevos.has(clave)) return res.status(400).json({ error: `"${nuevo.nombre}" está dos veces en la planilla.` });
+    nombresNuevos.add(clave);
+  }
+
+  const resultado = withTransaction(() => {
+    let cambiados = 0;
+    for (const fila of aplicar) {
+      if (aplicarStockInicial(req, { ...fila, deposito })) cambiados += 1;
+    }
+    for (const nuevo of nuevos) {
+      const id = insertarProducto({ nombre: nuevo.nombre, sku: nuevo.sku, precio_venta: nuevo.precio_venta, unidad: nuevo.unidad, tipo: 'producto' }, org);
+      auditar(req, { accion: 'crear', entidad: 'producto', entidad_id: id, detalle: `Producto "${nuevo.nombre.trim()}" creado en el stock inicial` });
+      const producto = buscarProducto.get(id, org);
+      aplicarStockInicial(req, { producto, varianteId: null, deposito, cantidad: nuevo.cantidad, costo: nuevo.costo });
+      cambiados += 1;
+    }
+    return { cambiados, creados: nuevos.length };
+  });
+  res.json(resultado);
+});
+
+// Lo que les deben y lo que deben, de antes de Nexo, que todavía no se cerró.
+app.get('/api/carga-inicial/saldos', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const clientes = db
+    .prepare(
+      `SELECT ventas.id, ventas.cliente_id AS entidad_id, clientes.nombre, ventas.fecha, ventas.fecha_vencimiento AS vencimiento,
+              ventas.saldo_inicial AS importe,
+              (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cancelado
+         FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+        WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NOT NULL
+        ORDER BY ventas.id DESC`
+    )
+    .all(org);
+  const proveedores = db
+    .prepare(
+      `SELECT compras.id, compras.proveedor_id AS entidad_id, proveedores.nombre, compras.fecha, compras.fecha_vencimiento AS vencimiento,
+              compras.saldo_inicial AS importe,
+              (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE pagos.compra_id = compras.id) AS cancelado
+         FROM compras JOIN proveedores ON proveedores.id = compras.proveedor_id
+        WHERE compras.organizacion_id = ? AND compras.estado = 'activa' AND compras.saldo_inicial IS NOT NULL
+        ORDER BY compras.id DESC`
+    )
+    .all(org);
+  res.json({ clientes, proveedores });
+});
+
+// Un proveedor por id (de la empresa) o por nombre, creándolo si no existe:
+// el mismo criterio que resolverCliente.
+function resolverProveedor(nombre, proveedorId, organizacionId) {
+  if (proveedorId) {
+    const fila = db.prepare('SELECT id FROM proveedores WHERE id = ? AND organizacion_id = ?').get(Number(proveedorId), organizacionId);
+    if (!fila) throw new ErrorValidacion('El proveedor no existe.');
+    return fila;
+  }
+  const texto = typeof nombre === 'string' ? nombre.trim() : '';
+  if (!texto) throw new ErrorValidacion('Indicá el proveedor.');
+  const fila = db.prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?').get(texto, organizacionId);
+  if (fila) return fila;
+  return { id: db.prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)').run(texto, organizacionId).lastInsertRowid };
+}
+
+// Un saldo anterior: { tipo: 'cliente' | 'proveedor', entidad_id o nombre,
+// importe, fecha, vencimiento }.
+app.post('/api/carga-inicial/saldos', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { tipo, entidad_id: entidadId, nombre, importe } = req.body ?? {};
+  if (tipo !== 'cliente' && tipo !== 'proveedor') return res.status(400).json({ error: 'El tipo de saldo no es válido.' });
+  if (!esNumeroValido(importe) || !(importe > 0)) return res.status(400).json({ error: 'El importe tiene que ser un número mayor a 0.' });
+  const fecha = fechaDeCargaInicial(req.body.fecha);
+  const venc = vencimientoDeCargaInicial(fecha, req.body.vencimiento);
+  const monto = redondear2(importe);
+
+  const id = withTransaction(() => {
+    if (tipo === 'cliente') {
+      const cliente = resolverCliente(nombre, entidadId, org);
+      const ventaId = Number(
+        db
+          .prepare(
+            `INSERT INTO ventas (cliente_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial, saldo_inicial)
+             VALUES (?, ?, ?, ?, ?, 1, ?)`
+          )
+          .run(cliente.id, fecha, venc.condicion, venc.vencimiento, org, monto).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'venta', ?, ?, ${HOY_SQL})`
+      ).run(cliente.id, monto, ventaId);
+      auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: ventaId, detalle: `Saldo anterior de un cliente: $${monto} (venta #${ventaId})` });
+      return ventaId;
+    }
+    const proveedor = resolverProveedor(nombre, entidadId, org);
+    const compraId = Number(
+      db
+        .prepare(
+          `INSERT INTO compras (proveedor_id, fecha, estado, estado_envio, stock_aplicado, condicion_pago, fecha_vencimiento,
+                                organizacion_id, saldo_inicial)
+           VALUES (?, ?, 'activa', 'recibido', 1, ?, ?, ?, ?)`
+        )
+        .run(proveedor.id, fecha, venc.condicion, venc.vencimiento, org, monto).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'compra', ?, ?, ${HOY_SQL})`
+    ).run(proveedor.id, monto, compraId);
+    auditar(req, { accion: 'crear', entidad: 'compra', entidad_id: compraId, detalle: `Saldo anterior con un proveedor: $${monto} (compra #${compraId})` });
+    return compraId;
+  });
+  res.status(201).json({ id });
+});
+
+// Las ventas de antes de Nexo que se cargaron, con sus renglones resumidos.
+app.get('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT ventas.id, ventas.fecha, ventas.cliente_id, clientes.nombre AS cliente,
+                (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
+                (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
+                (SELECT GROUP_CONCAT(
+                          (CASE WHEN venta_items.cantidad = CAST(venta_items.cantidad AS INTEGER)
+                                THEN CAST(venta_items.cantidad AS INTEGER)
+                                ELSE venta_items.cantidad END) || ' × ' || productos.nombre, ', ')
+                   FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+                  WHERE venta_items.venta_id = ventas.id) AS items_resumen
+           FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+          WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.carga_inicial = 1
+            AND ventas.saldo_inicial IS NULL
+          ORDER BY ventas.fecha DESC, ventas.id DESC`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+// Una venta de antes de Nexo: { fecha, cliente_id o cliente, items, cobrada,
+// cuenta_tesoreria_id (con qué se cobró), vencimiento (si no se cobró) }. No
+// mueve stock ni caja. Cobrada, lleva su cobro (con la cuenta, para saber
+// cómo se pagó) sin movimiento de tesorería; sin cobrar, es deuda del
+// cliente, y "Consumidor final" no fía (como en el punto de venta).
+app.post('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { cliente_id: clienteId, items, cobrada } = req.body ?? {};
+  const cliente = typeof req.body?.cliente === 'string' && req.body.cliente.trim() ? req.body.cliente.trim() : null;
+  const errorItems = validarItemsVenta(items);
+  if (errorItems) return res.status(400).json({ error: errorItems });
+  if (!req.body?.fecha) return res.status(400).json({ error: 'Indicá la fecha de la venta.' });
+  const fecha = fechaDeCargaInicial(req.body.fecha);
+  if (typeof cobrada !== 'boolean') return res.status(400).json({ error: 'Indicá si la venta se cobró.' });
+
+  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const contarVariantes = db.prepare('SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1');
+  const buscarVariante = db.prepare('SELECT 1 FROM producto_variantes WHERE id = ? AND producto_id = ?');
+  for (const item of items) {
+    const producto = buscarProducto.get(item.producto_id, org);
+    if (!producto) return res.status(400).json({ error: 'Uno de los productos de la venta no existe.' });
+    if (item.variante_id ? !buscarVariante.get(item.variante_id, item.producto_id) : contarVariantes.get(item.producto_id).n > 0) {
+      return res.status(400).json({ error: `"${producto.nombre}" tiene variantes: elegí una.` });
+    }
+  }
+
+  let cuentaId = null;
+  let venc = { condicion: 'contado', vencimiento: fecha };
+  if (cobrada) {
+    cuentaId = Number(req.body.cuenta_tesoreria_id);
+    if (!db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?').get(cuentaId, org)) {
+      return res.status(400).json({ error: 'Elegí con qué te pagaron.' });
+    }
+  } else {
+    if (!clienteId && (!cliente || cliente === CONSUMIDOR_FINAL)) {
+      return res.status(400).json({ error: 'Una venta sin cobrar necesita el cliente que te la debe.' });
+    }
+    venc = vencimientoDeCargaInicial(fecha, req.body.vencimiento);
+  }
+
+  let ventaId;
+  try {
+    ventaId = withTransaction(() => {
+      const id = crearVenta({
+        cliente: cliente ?? (clienteId ? undefined : CONSUMIDOR_FINAL),
+        cliente_id: clienteId,
+        items,
+        fecha,
+        condicion_pago: venc.condicion,
+        fecha_vencimiento: venc.condicion === 'manual' ? venc.vencimiento : undefined,
+        organizacion_id: org,
+        carga_inicial: true
+      });
+      if (cobrada) {
+        const { cliente_id: clienteVenta } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
+        const total = redondear2(items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0));
+        if (total > 0) {
+          const cobroId = db
+            .prepare('INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, fecha) VALUES (?, ?, ?, ?, ?)')
+            .run(id, total, cuentaId, NOTA_COBRO_ANTERIOR, fecha).lastInsertRowid;
+          db.prepare(
+            `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id, fecha) VALUES (?, 'cobro', ?, ?, ?, ${HOY_SQL})`
+          ).run(clienteVenta, -total, id, cobroId);
+        }
+      }
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'venta',
+        entidad_id: id,
+        detalle: `Venta #${id} de antes de empezar con Nexo (${fecha}), ${cobrada ? 'cobrada' : 'sin cobrar'}`
+      });
+      return id;
+    });
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
+  }
+  res.status(201).json({ id: ventaId });
 });
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
