@@ -142,6 +142,40 @@ test('un negocio en baja sale con la fecha en que se borra', async () => {
   }
 });
 
+test('la plataforma cambia el plan de un negocio, y queda en su auditoría', async () => {
+  const id = (await duenio.get('/api/plataforma/negocios')).json.find((n) => n.nombre === 'Almacén Uno').id;
+  const ruta = `/api/plataforma/negocios/${id}/plan`;
+  try {
+    const r = await duenio.put(ruta, { plan: 'gratis', hasta: '2099-12-31' });
+    assert.equal(r.status, 200, r.texto);
+    const almacen = (await duenio.get('/api/plataforma/negocios')).json.find((n) => n.id === id);
+    assert.equal(almacen.plan, 'gratis');
+    assert.equal(almacen.plan_vence, '2099-12-31');
+    const auditoria = enBase((base) =>
+      base
+        .prepare("SELECT detalle, organizacion_id FROM auditoria WHERE entidad = 'organizacion' AND entidad_id = ? ORDER BY id DESC")
+        .get(id)
+    );
+    assert.equal(auditoria.organizacion_id, id);
+    assert.match(auditoria.detalle, /Gratis hasta el 2099-12-31/);
+
+    assert.equal((await duenio.put(ruta, { plan: 'oro' })).status, 400);
+    assert.equal((await duenio.put(ruta, { plan: 'pro', hasta: '2020-01-01' })).status, 400);
+    assert.equal((await duenio.put(ruta, { plan: 'pro', hasta: '2099-02-30' })).status, 400);
+    assert.equal((await duenio.put('/api/plataforma/negocios/999999/plan', { plan: 'pro' })).status, 404);
+  } finally {
+    assert.equal((await duenio.put(ruta, { plan: 'pro', hasta: null })).status, 200);
+  }
+});
+
+test('un negocio no se cambia el plan a sí mismo', async () => {
+  const id = (await duenio.get('/api/plataforma/negocios')).json.find((n) => n.nombre === 'Almacén Uno').id;
+  for (const cliente of [uno.admin, uno.empleado]) {
+    const r = await cliente.put(`/api/plataforma/negocios/${id}/plan`, { plan: 'pro' });
+    assert.equal(r.status, 404);
+  }
+});
+
 test('con el mail sin confirmar, la cuenta de la lista tampoco entra', async () => {
   enBase((base) => base.prepare("UPDATE usuarios SET email_verificado = NULL WHERE email = 'duenio@nexo.test'").run());
   try {

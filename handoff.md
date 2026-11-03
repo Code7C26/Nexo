@@ -919,9 +919,12 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
     se generan solas y nunca se frenan ni cuentan.
   - Una alta que crea productos dentro de una transacción la llama con
     `nuevos = 0` después del INSERT, así el throw la deshace.
-- **El plan no se cambia por la API.** Se cambia con `npm run plan` en el
-  servidor, y `PUT /api/negocio` no lo toca. Hacerlo editable desde la app
-  dejaría a cualquier negocio pasarse a Pro gratis.
+- **Un negocio no se cambia el plan a sí mismo.** Lo cambia la plataforma:
+  Plataforma → Negocios → "Cambiar" (`PUT /api/plataforma/negocios/:id/plan`,
+  solo `NEXO_ADMIN_PLATAFORMA`, desde el 3 de noviembre, para dar Pro a
+  quien prueba mientras el plan no se cobra) o `npm run plan` en el
+  servidor. `PUT /api/negocio` no lo toca: dejaría a cualquiera pasarse a
+  Pro gratis.
 - **Plan vencido = Gratis, sin borrar nada:** el negocio sigue viendo y
   editando lo que tiene, solo no suma más allá del tope.
 - **Los negocios que existían antes de §98 quedaron en Pro sin vencimiento**

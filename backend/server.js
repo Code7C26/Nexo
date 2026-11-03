@@ -17430,6 +17430,39 @@ app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
   );
 });
 
+// Cambiar el plan de un negocio (pedido del usuario del 3 de noviembre: dar
+// Pro a quien prueba Nexo mientras el plan no se cobra). Lo mismo que
+// `npm run plan`, solo para NEXO_ADMIN_PLATAFORMA: ningún negocio se cambia
+// el plan a sí mismo, y el cambio queda en la auditoría de ese negocio.
+app.put('/api/plataforma/negocios/:id/plan', soloPlataforma, (req, res) => {
+  const negocio = db
+    .prepare('SELECT id, nombre, plan, plan_vence FROM organizaciones WHERE id = ? AND baja_hecha IS NULL')
+    .get(Number(req.params.id));
+  if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado.' });
+  const plan = req.body?.plan;
+  if (typeof plan !== 'string' || !esPlan(plan)) return res.status(400).json({ error: 'El plan no es válido.' });
+  let hasta = null;
+  if (req.body?.hasta != null && req.body.hasta !== '') {
+    hasta = validarFecha(req.body.hasta);
+    if (!hasta || sumarDias(hasta, 0) !== hasta) return res.status(400).json({ error: 'La fecha no es válida.' });
+    if (hasta < fechaDeHoy()) return res.status(400).json({ error: 'La fecha ya pasó: el plan vencería en el momento.' });
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, hasta, negocio.id);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: negocio.id,
+      usuario_id: req.usuario.id,
+      organizacion_id: negocio.id,
+      valor_anterior: JSON.stringify({ plan: negocio.plan, plan_vence: negocio.plan_vence }),
+      valor_nuevo: JSON.stringify({ plan, plan_vence: hasta }),
+      detalle: `Plan cambiado a ${PLANES[plan].nombre}${hasta ? ` hasta el ${hasta}` : ' sin vencimiento'} desde la plataforma`
+    });
+  });
+  res.json({ ok: true });
+});
+
 /* ---------- Integraciones: Tienda Nube (etapa G, CLAUDE.md §32) ---------- */
 
 // Cómo funciona, de punta a punta:
