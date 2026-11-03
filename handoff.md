@@ -29,8 +29,8 @@ online, hechos y commiteados en `solla`, sin publicar.**
 - el envío que paga el cliente en Tienda Nube es un renglón "Envío";
 - la ganancia por canal los descuenta, y la ficha de la venta muestra "Costos
   de vender" y lo que quedó;
-- **sigue:** el envío del vendedor en Mercado Libre, anotar a mano la comisión
-  de una venta por Instagram o WhatsApp, y los mensajes; después, lo de
+- **sigue: Mercado Pago** (ver "Qué sigue"), el envío del vendedor en Mercado Libre
+  y los mensajes; después, lo de
   Praxia (balanza, ofertas, cobrar a cuenta en el punto de venta).
 
 **Publicado el 3 de noviembre (PR #45): §127 y §128.**
@@ -1181,8 +1181,37 @@ sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
   la investigación), que se apoya en ese campo; después ofertas con vigencia y
   cobrar a cuenta y gastos desde el punto de venta.
 - En el medio, el usuario pidió el tipo "Tienda online": **hecho** (hist.
-  §128), sin publicar. Lo que le falta (comisiones, envío, mensajes) está en
-  "Estado actual".
+  §128, publicado en el PR #45), y la comisión y el envío (hist. §129, sin
+  publicar).
+
+**Mercado Pago (decidido por el usuario el 3 de noviembre: "si no se nos
+complica, antes de la presentación, puede sumar bastante").** Va primero en lo
+esencial que queda de la venta online, y reemplaza "anotar a mano la comisión
+de una venta por Instagram o WhatsApp". Unas dos sesiones:
+1. **Conectar la cuenta** con el permiso del dueño (OAuth, como Mercado Libre
+   en `backend/mercadolibre.js`: token cifrado en `integraciones`, renovación
+   de a uno, avisos de pago verificados pidiendo el pago con el token, nunca
+   confiando en el aviso). Sin dependencia nueva. **Trámite del usuario:**
+   crear la aplicación en el portal de desarrolladores de Mercado Pago (gratis)
+   y mandar sus claves al servidor como las de Mercado Libre.
+2. **Las comisiones reales de las ventas de Mercado Libre:** la venta dice qué
+   pago tuvo; del pago salen la comisión y el costo de las cuotas sin interés,
+   y reemplazan al `sale_fee` de hist. §129 (mismos gastos de la venta,
+   categorías "Comisiones de venta" y una nueva para las cuotas). Confirmar
+   antes en la documentación actual los nombres de los campos del desglose
+   (comisión, financiación, neto, fecha en que se libera la plata): se
+   escribieron de memoria.
+3. **Cobrar con link o QR desde la venta:** Nexo crea el pago con el número de
+   venta como referencia; al pagarse entra solo el cobro (en la cuenta Mercado
+   Pago), la comisión y las cuotas. Es lo que sirve para Instagram y WhatsApp.
+4. **Pagos sin asignar:** los que no salieron de Nexo (QR genérico, transferencia)
+   se listan con una sugerencia por monto y fecha, y el negocio confirma de qué
+   venta son. Nunca se asignan solos (CLAUDE.md §32).
+- **Retenciones (IIBB, ganancias, IVA):** CLAUDE.md las deja "a confirmar, no
+  inventar". Se muestran aparte en el pago, sin cargarlas como gasto, hasta
+  definirlas con un contador.
+- Si se complica (aprobación de la aplicación, campos distintos de lo
+  esperado), queda para después de la presentación y no frena lo demás.
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
