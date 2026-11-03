@@ -37,9 +37,9 @@ hechos y commiteados en `solla`, sin publicar** (sesión sin el usuario:
   link, como el de Mercado Libre (pedido del usuario);
 - migración: rebuild del CHECK de `integraciones` e `integracion_log`, y la
   tabla `integracion_pagos`;
-- **probado solo contra un Mercado Pago falso.** Falta el trámite del usuario
-  (la app en el portal de Mercado Pago, ver "Trámites del usuario") y probarlo
-  con usuarios de prueba. **Falta que el usuario lo vea.**
+- **probado con un pago real el 3 de noviembre** (venta #35, ver "Trámites
+  del usuario"): conectar, link, aviso firmado, cobro y comisión andan. Falta
+  un pago en cuotas y uno con retenciones.
 
 **Antes (3 de noviembre, hist. §129): la comisión y el envío de la venta
 online, hechos y commiteados en `solla`, sin publicar.**
@@ -1968,7 +1968,23 @@ octubre).
 
 **Trámites del usuario** (todos gratis; hay que tenerlos antes de la etapa que
 los usa; conviene arrancarlos ya, porque algunos tardan días):
-- **Mercado Pago (hist. §130, lo que falta para probarlo de verdad):**
+- ~~**Mercado Pago:**~~ **probado de verdad el 3 de noviembre.** Conectada
+  la segunda cuenta de Santino (SS20250420182002) al negocio "Gonzalo José
+  Solla"; la venta #35 ($100) se pagó con el link desde otra cuenta (el
+  hermano: entre dos cuentas del mismo dueño Mercado Pago no habilita
+  "Pagar") y entró sola por el aviso firmado al instante: cobrada, comisión
+  $7,99 como gasto de la venta, neto $92,01. Falta ver un pago con tarjeta en
+  cuotas (financiación) y uno con retenciones.
+  App "Nexo-system" (número 2169591197651576), creada el 3 de noviembre con
+  Checkout Pro y **"API de Preferences"**. La primera ("Nexo-App", …4890) se
+  creó con "API de Orders" y Mercado Pago no la deja vincular cuentas: "La
+  aplicación no está preparada para conectarse a Mercado Pago", con
+  cualquier cuenta, con o sin PKCE y con cualquier dirección de vuelta.
+  Mercado Pago avisa que Preferences "será descontinuada pronto": pasar
+  `crearLink` a la API de Orders cuando lo anuncien, sin cambiar de app.
+  `MERCADOPAGO_APP_ID` es el número de la app (o el Client ID de Producción),
+  no el de "Cuenta de prueba" (3799…). Mercado Pago no acepta volver a
+  `localhost`: se conecta desde el servidor.
   1. En https://www.mercadopago.com.ar/developers/panel/app, "Crear
      aplicación" (gratis), tipo Checkout Pro / pagos online, con la cuenta de
      Santino.
