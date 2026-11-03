@@ -49,15 +49,13 @@ probar con usuarios de prueba (pasos en "Qué sigue", punto 5).
 **Orden acordado con el usuario (2 de noviembre, al cerrar la sesión):**
 1. ~~La mejora pendiente~~: era la carga inicial, hecha en `solla` (hist.
    §124).
-2. **Lo que sigue: publicar todo junto** (Mercado Libre + la carga inicial):
-   PR a `main` con el CI en verde. La migración reconstruye
-   `movimientos_stock` (pasó `verificar-migracion` con la base real), y el
-   arranque respalda la base antes.
-3. **Las claves en el servidor:** el usuario las da por cargadas, pero el 2 de
-   noviembre `/etc/nexo/nexo.env` no tenía ninguna línea `MERCADOLIBRE_`
-   (comprobado por ssh contando líneas, sin ver valores; las de Tienda Nube
-   sí están). Las dos están en el `.env` de la compu. Al publicar, mandarlas
-   con el comando de PowerShell de siempre y reiniciar.
+2. ~~Publicar todo junto~~: hecho el 2 de noviembre (PR #42). La migración
+   corrió en la base real (CHECK con `stock_inicial`, integridad ok). El
+   primer CI falló por dos tests de socios y abonos que calculaban "hoy" en
+   UTC (fallaban desde las 21 h); se arreglaron en el mismo PR.
+3. ~~Las claves de Mercado Libre en el servidor~~: cargadas el 2 de noviembre
+   con el comando de PowerShell, y el proceso las tiene. **Falta probar
+   Mercado Libre con los usuarios de prueba** ("Qué sigue", punto 5).
 4. **El usuario no tiene una cuenta de Mercado Libre con productos
    publicados.** No hace falta: Mercado Libre da usuarios de prueba que
    pueden publicar y comprar entre ellos (ver "Qué sigue", punto 5).
