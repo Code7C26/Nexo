@@ -1957,6 +1957,7 @@ async function abrirFichaProducto(id) {
 
   const campos = [
     ...(esServicio ? [] : [["SKU", producto.sku]]),
+    ...(producto.codigo_barras || !(esServicio || producto.tiene_variantes) ? [["Código de barras", producto.codigo_barras]] : []),
     ["Categoría", producto.categoria],
     ...(producto.descripcion ? [["Descripción", producto.descripcion]] : []),
     [
@@ -2003,6 +2004,7 @@ async function abrirFichaProducto(id) {
       <tr>
         <td data-label="Combinación">${esc(v.combinacion)}</td>
         <td data-label="SKU">${esc(v.sku || "—")}</td>
+        <td data-label="Código de barras" class="mono">${esc(v.codigo_barras || "—")}</td>
         <td data-label="Costo" class="align-right col-admin mono">${money(v.precio_costo)}</td>
         <td data-label="Precio" class="align-right mono">${
           v.precio_venta > 0 ? money(v.precio_venta) : '<span class="precio-sin-configurar">Sin precio</span>'
@@ -2134,7 +2136,7 @@ function listaProductosVisible() {
   const porTexto = productos.filter(
     (p) =>
       (!catalogoMixto() || tipoDeProducto(p) === pestanaProductos) &&
-      [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
+      [p.nombre, p.sku, p.codigo_barras].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
   return filtrosProductos.aplicar(porTexto);
 }
@@ -2179,6 +2181,7 @@ alEntrarEnVista("productos", (subruta) => {
 const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Nombre", valor: (p) => p.nombre },
   { titulo: "SKU", valor: (p) => p.sku },
+  { titulo: "Código de barras", valor: (p) => p.codigo_barras },
   { titulo: "Categoría", valor: (p) => p.categoria },
   { titulo: "Costo", valor: (p) => p.precio_costo, admin: true },
   { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
@@ -2421,6 +2424,7 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   const form = document.getElementById("formProducto");
   form.nombre.value = producto?.nombre ?? "";
   form.sku.value = producto?.sku ?? "";
+  form.codigo_barras.value = producto?.codigo_barras ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
@@ -2453,10 +2457,21 @@ function mostrarCamposSegunTipo() {
   form.nombre.placeholder = `Nombre del ${palabra}`;
   document.getElementById("productoStockCampos").hidden = esServicio;
   document.getElementById("productoSkuCampo").hidden = esServicio && !form.sku.value;
+  // Con variantes, el código va en cada una: lo que el lector encuentra es la
+  // variante, no el producto.
+  const conVariantes = productos.find((p) => p.id === productoEditandoId)?.variantes_count > 0;
+  document.getElementById("productoCodigoBarrasCampo").hidden = (esServicio || conVariantes) && !form.codigo_barras.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
   document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
+// El lector termina cada lectura con Enter: en el código de barras no guarda
+// el formulario a medio llenar, pasa al campo siguiente.
+document.getElementById("formProducto").codigo_barras.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  e.target.form.descripcion.focus();
+});
 
 document.getElementById("btnNuevoProducto").addEventListener("click", () =>
   abrirModalProducto(null, { tipo: catalogoMixto() ? pestanaProductos : undefined })
@@ -2478,6 +2493,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   const datos = {
     nombre: form.nombre.value,
     sku: form.sku.value || null,
+    codigo_barras: form.codigo_barras.value || null,
     descripcion: form.descripcion.value,
     // La duración es de un servicio: un producto no la manda.
     duracion_minutos: form.tipo.value === "servicio" && form.duracion_minutos.value !== "" ? Number(form.duracion_minutos.value) : null,
@@ -2648,7 +2664,7 @@ function preciosPorListaVarianteHtml(v) {
 function renderVariantesTabla() {
   const body = document.getElementById("variantesProductoBody");
   if (variantesCache.length === 0) {
-    body.innerHTML = filaVacia(7, "Todavía no hay variantes creadas.");
+    body.innerHTML = filaVacia(8, "Todavía no hay variantes creadas.");
     return;
   }
   body.innerHTML = variantesCache
@@ -2657,6 +2673,7 @@ function renderVariantesTabla() {
     <tr class="${v.activo ? "" : "fila-anulada"}" data-variante-id="${v.id}">
       <td data-label="Combinación">${esc(v.combinacion)}</td>
       <td data-label="SKU"><input type="text" class="variante-sku" value="${esc(v.sku ?? "")}" placeholder="—" /></td>
+      <td data-label="Código de barras"><input type="text" class="variante-codigo-barras" value="${esc(v.codigo_barras ?? "")}" placeholder="—" autocomplete="off" maxlength="60" /></td>
       <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${esc(v.precio_venta ?? "")}" placeholder="Sin precio propio" /></td>
       <td data-label="Precios por lista" class="variante-precios-lista">${preciosPorListaVarianteHtml(v)}</td>
       <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
@@ -2671,6 +2688,7 @@ function renderVariantesTabla() {
       const fila = btn.closest("tr");
       const varianteId = fila.dataset.varianteId;
       const sku = fila.querySelector(".variante-sku").value.trim();
+      const codigoBarras = fila.querySelector(".variante-codigo-barras").value.trim();
       const precio = fila.querySelector(".variante-precio").value;
       const activo = fila.querySelector(".variante-activa").checked;
       // Igual que en Productos: un input vacío significa "sin precio propio
@@ -2680,7 +2698,7 @@ function renderVariantesTabla() {
       fila.querySelectorAll(".variante-precio-lista").forEach((input) => {
         if (input.value !== "") precios[input.dataset.listaId] = Number(input.value);
       });
-      const body = { sku: sku || null, precio_venta: precio === "" ? null : Number(precio), activo };
+      const body = { sku: sku || null, codigo_barras: codigoBarras || null, precio_venta: precio === "" ? null : Number(precio), activo };
       if (Object.keys(precios).length > 0) body.precios = precios;
       await api(`/api/productos/${variantesProductoId}/variantes/${varianteId}`, {
         method: "PATCH",

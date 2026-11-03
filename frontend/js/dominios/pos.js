@@ -151,11 +151,15 @@ async function cargarTodo() {
 
 function fijarCatalogo(items) {
   // Las palabras del nombre, la categoría y el SKU, más el SKU entero (así
-  // "gor-01-m" también se encuentra tal cual se tipea).
+  // "gor-01-m" también se encuentra tal cual se tipea) y el código de barras.
   catalogo = items.map((i) => ({
     ...i,
     clave: claveDe(i),
-    palabras: [...palabrasDe(`${i.nombre} ${i.categoria ?? ""} ${i.sku ?? ""}`), normalizar(i.sku).trim()].filter(Boolean)
+    palabras: [
+      ...palabrasDe(`${i.nombre} ${i.categoria ?? ""} ${i.sku ?? ""}`),
+      normalizar(i.sku).trim(),
+      normalizar(i.codigo_barras).trim()
+    ].filter(Boolean)
   }));
   porClave = new Map(catalogo.map((i) => [i.clave, i]));
 }
@@ -346,11 +350,15 @@ posBuscar.addEventListener("keydown", (e) => {
   if (consulta) agregarPorCodigo(consulta);
 });
 
-// El SKU exacto gana; si no, sirve un único resultado que se pueda vender.
-// Si hay varios, la grilla queda filtrada para elegir con el dedo.
+// Gana el código de barras exacto (sin espacios, como lo guarda Nexo), después
+// el SKU exacto; si no, sirve un único resultado que se pueda vender. Si hay
+// varios, la grilla queda filtrada para elegir con el dedo.
 function agregarPorCodigo(codigo) {
   const buscado = codigo.toLowerCase();
-  const exacto = catalogo.find((i) => i.sku && i.sku.trim().toLowerCase() === buscado);
+  const sinEspacios = buscado.replace(/\s+/g, "");
+  const exacto =
+    catalogo.find((i) => i.codigo_barras && i.codigo_barras.toLowerCase() === sinEspacios) ??
+    catalogo.find((i) => i.sku && i.sku.trim().toLowerCase() === buscado);
   const candidatos = exacto ? [exacto] : filtrar(codigo).filter(hayStock);
   if (candidatos.length === 1) {
     posBuscar.value = "";

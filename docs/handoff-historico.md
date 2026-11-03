@@ -11184,3 +11184,61 @@ punto de venta, sin errores de consola.
 vender en los reportes, y los decants (5 ml de perfume + 1 frasquito, que ya
 se puede armar con esto si el perfume está en ml). Un componente con precio
 $ 0 aparece en el catálogo del punto de venta como cualquier producto.
+
+## 127. Código de barras propio en el producto y la variante, 3 de noviembre de 2026
+
+**Por qué.** Primera idea de Praxia (`docs/investigacion-praxia.md` §4): el
+lector del punto de venta buscaba el código leído en el SKU, así que para que
+un envasado entrara con el lector había que cargar el código del envase como
+SKU. Un negocio con SKU propios tenía que elegir. CLAUDE.md §4 ya pedía el
+campo. Es también la base de las etiquetas de balanza.
+
+**Decidido por mí, para revisar:**
+- Un campo aparte del SKU, en el producto y en cada variante. Se guarda sin
+  espacios (en el envase viene en grupos: "7 790387 000154"), hasta 48
+  caracteres ASCII visibles (el tope de Tienda Nube), sin validar el dígito
+  verificador: los códigos internos o de balanza no siempre lo cumplen.
+- Único por empresa **entre productos y variantes**: un código identifica una
+  sola cosa que se vende. Los índices únicos cubren cada tabla y
+  `codigoDeBarrasOcupado` (server.js) las dos juntas, con el nombre de quien
+  ya lo tiene en el error. Otra empresa puede usar el mismo.
+- El lector busca primero el código de barras exacto, después el SKU exacto
+  y después la búsqueda por palabras. Si un código coincide con el SKU de otro
+  producto, gana el código de barras.
+- Un producto con variantes no muestra el campo (cada variante lleva el suyo),
+  salvo que ya tenga uno cargado. Un servicio tampoco.
+- Al publicar en Tienda Nube, cada variante manda su `barcode`.
+- La carga inicial (planilla) y Mercado Libre (GTIN) no lo toman todavía.
+
+**Backend.** Migración aditiva (`db/index.js`): `codigo_barras TEXT` nula en
+`productos` y `producto_variantes`, sin backfill, con
+`idx_productos_org_codigo_barras` e `idx_producto_variantes_org_codigo_barras`.
+`schema.sql` la tiene al final de cada tabla. `server.js`:
+`normalizarCodigoBarras`, `errorCodigoDeBarras` (en `validarProducto`) y
+`codigoDeBarrasOcupado`; el alta, la edición (auditada en el diff) y las
+variantes (alta y edición); `SELECT_PRODUCTO`, `SELECT_VARIANTE` y
+`/api/pos/catalogo` lo devuelven. La edición en lote no lo toca, igual que el
+SKU.
+
+**Frontend.** Campo "Código de barras" en el formulario de producto (Enter,
+que es lo que manda el lector, no guarda: pasa al campo siguiente), columna en
+la tabla de variantes y en la de la ficha, dato en la ficha, búsqueda del
+catálogo y CSV. `dominios/pos.js` lo suma a las palabras y lo busca primero en
+`agregarPorCodigo` (lector y cámara).
+
+**Cómo se verificó.** `codigo-barras.test.js` (5): sin espacios y vacío es
+null; rechazo de lo raro y lo largo; único entre productos y variantes, sin
+chocar consigo mismo, y libre en otra empresa; auditoría; catálogo del punto
+de venta. `npm test` (276), lint, `verificar-migracion` (24 de 24, la base
+real sin cambios) y `npm run regresion` (diferencias justificadas: el campo
+nuevo en `null` en productos, variantes, el catálogo del punto de venta y la
+descarga del negocio, y los callbacks que devuelven `index.html`). En Chrome
+con el seed: alta con el
+código en grupos (se guardó sin espacios, Enter no cerró el formulario),
+búsqueda del catálogo por código, lectura en el punto de venta que sumó el
+producto al ticket, código de una variante y campo oculto en un producto con
+variantes.
+
+**Queda:** las etiquetas de balanza (código con PLU y peso), tomarlo en la
+planilla de la carga inicial y en "Traer mis productos", y el GTIN de Mercado
+Libre.

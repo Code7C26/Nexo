@@ -321,7 +321,9 @@ vendibles con su propio SKU y precio por lista), categorías, listas de
 precios, margen objetivo con alerta, unidad de medida (unidad, kg, g, l,
 ml, m, con cantidades decimales) y tipo producto/servicio (un servicio no
 maneja stock) y alícuota de IVA (21 % de partida; el precio de venta es el
-final, con IVA incluido; hist. §112).
+final, con IVA incluido; hist. §112). Código de barras en el producto y en
+cada variante, aparte del SKU y único por empresa entre los dos; el lector
+del punto de venta lo busca primero (hist. §127).
 
 ---
 

@@ -2040,6 +2040,20 @@ if (!db.prepare('PRAGMA table_info(movimientos_stock)').all().some((col) => col.
   db.exec('ALTER TABLE movimientos_stock ADD COLUMN produccion_id INTEGER REFERENCES producciones(id)');
 }
 
+// Código de barras del producto y de la variante (ver schema.sql): aditiva y
+// nula, sin backfill (el que hoy lo tiene cargado como SKU sigue entrando por
+// el SKU). Único por empresa en cada tabla, como el SKU; entre las dos tablas
+// lo controla server.js.
+for (const tabla of ['productos', 'producto_variantes']) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === 'codigo_barras')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN codigo_barras TEXT`);
+  }
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_org_codigo_barras ON productos(organizacion_id, codigo_barras)');
+db.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_org_codigo_barras ON producto_variantes(organizacion_id, codigo_barras)'
+);
+
 // movimientos_stock.origen suma valores dos veces:
 // - 'stock_inicial' (handoff 8c): lo que había en cada depósito al empezar con
 //   Nexo, con su costo;

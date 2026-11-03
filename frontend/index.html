@@ -2460,6 +2460,7 @@
               <tr>
                 <th scope="col">Combinación</th>
                 <th scope="col">SKU</th>
+                <th scope="col">Código de barras</th>
                 <th scope="col" class="align-right col-admin">Costo</th>
                 <th scope="col" class="align-right">Precio</th>
                 <th scope="col" class="align-right">Stock</th>
@@ -5719,6 +5720,7 @@
             <tr>
               <th scope="col">Combinación</th>
               <th scope="col">SKU</th>
+              <th scope="col">Código de barras</th>
               <th scope="col" class="align-right">Precio de venta</th>
               <th scope="col">Precios por lista</th>
               <th scope="col" class="align-right">Stock</th>
@@ -5834,6 +5836,12 @@
              cuánto tarda (hist. §78): mostrarCamposSegunTipo() en app.js. -->
         <label id="productoSkuCampo">SKU
           <input type="text" name="sku" placeholder="Opcional" />
+        </label>
+        <!-- Con variantes, cada una lleva el suyo (Variantes): el campo se
+             oculta si está vacío. Con el lector, Enter no guarda el
+             formulario (app.js). -->
+        <label id="productoCodigoBarrasCampo">Código de barras
+          <input type="text" name="codigo_barras" placeholder="Opcional: el del envase" autocomplete="off" maxlength="60" />
         </label>
         <label>Descripción
           <textarea name="descripcion" rows="2" maxlength="500" placeholder="Opcional: qué incluye"></textarea>

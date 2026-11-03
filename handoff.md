@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §126);
+    siguiente número (hoy el último es §127);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,16 @@
 
 ## Estado actual (3 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §126): producción básica, segunda parte,
+**Lo último (3 de noviembre, hist. §127): código de barras propio, hecho y
+commiteado en `solla`, sin publicar.** Primera idea de Praxia:
+- el producto y cada variante tienen su código de barras, aparte del SKU, único
+  por empresa entre los dos y guardado sin espacios;
+- el lector del punto de venta lo busca antes que el SKU; Tienda Nube lo
+  recibe al publicar;
+- suma una migración aditiva (`codigo_barras` nula en `productos` y
+  `producto_variantes`, con sus índices únicos).
+
+**Antes (3 de noviembre, hist. §126): producción básica, segunda parte,
 hecha y publicada (PR #43, junto con §125).** Lo que se usa al vender (la caja, la bolsa):
 - cada producto dice qué lleva, por cada uno o una vez por venta
   (Producción → Al vender, o el botón "Al vender" de su ficha);
@@ -1138,10 +1147,12 @@ vigencia y por cantidad, recargo por medio de pago (depende del 8d), y cobrar a
 cuenta, gastos de caja, ventas del día y accesos rápidos desde el punto de
 venta; después, puntos y premios, mensajes de WhatsApp armados, "Para revisar"
 en el tablero, ventas por hora, gastos fijos que se repiten y permisos por
-sección. **Nada está planificado todavía.** Lo primero, si se elige el
-mostrador: **un campo código de barras en producto y variante** (hoy el lector
-busca en el SKU, y no hay otro campo; CLAUDE.md §4 lo pide). Es la base de la
-balanza. **El usuario dijo "después seguimos":** a elegir con él al retomar.
+sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
+- ~~código de barras en producto y variante~~ **hecho** (hist. §127), sin
+  publicar;
+- **sigue: etiquetas de balanza** (el código con el PLU y el peso, punto 1 de
+  la investigación), que se apoya en ese campo; después ofertas con vigencia y
+  cobrar a cuenta y gastos desde el punto de venta.
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos

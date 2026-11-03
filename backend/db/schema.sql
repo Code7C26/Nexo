@@ -237,7 +237,14 @@ CREATE TABLE IF NOT EXISTS productos (
   -- Alícuota de IVA con que se factura (CLAUDE.md §4, §33): clave de
   -- ALICUOTAS_IVA en server.js ('21', '10.5', 'exento'...). El precio de venta
   -- es el final, con el IVA adentro.
-  alicuota_iva TEXT NOT NULL DEFAULT '21'
+  alicuota_iva TEXT NOT NULL DEFAULT '21',
+  -- El código de barras impreso en el envase (EAN, UPC o uno propio), aparte
+  -- del SKU, que es el código interno del negocio (CLAUDE.md §4). El lector
+  -- del punto de venta lo busca antes que el SKU. Único por empresa entre
+  -- productos y variantes: los dos índices de db/index.js lo garantizan dentro
+  -- de cada tabla, y server.js (codigoDeBarrasOcupado) entre las dos. NULL =
+  -- sin código.
+  codigo_barras TEXT
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -295,6 +302,8 @@ CREATE TABLE IF NOT EXISTS producto_variantes (
   precio_venta REAL,
   activo INTEGER NOT NULL DEFAULT 1,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- El de cada talle o color, con el mismo criterio que productos.codigo_barras.
+  codigo_barras TEXT,
   FOREIGN KEY (producto_id, organizacion_id) REFERENCES productos(id, organizacion_id)
 );
 
