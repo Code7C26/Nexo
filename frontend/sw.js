@@ -50,6 +50,7 @@ const PRECACHE = [
   "/img/iconos.svg",
   "/img/tiendanube.svg",
   "/img/mercadolibre.svg",
+  "/img/mercadopago.svg",
   "/img/app/icono-192.png",
   "/img/app/apple-touch-icon.png",
   "/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png",

@@ -7019,6 +7019,8 @@ a.segmento {
 /* Mercado Libre (dominios/mercado-libre.js): el emblema con sus colores y la
    palabra en el color del texto. */
 .ml-logo { width: 127px; height: 40px; color: var(--ink); }
+.mp-logo { width: 154px; height: 40px; color: var(--ink); }
+.mp-emblema { width: 22px; height: 16px; }
 
 /* Los canales de venta llevan su logo en el menú de Configuración, en lugar
    de un ícono del sprite: la nube de Tienda Nube toma el color de los demás

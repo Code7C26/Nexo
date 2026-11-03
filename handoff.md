@@ -32,6 +32,9 @@ hechos y commiteados en `solla`, sin publicar** (sesión sin el usuario:
   no se registran. Lo que no entra solo queda "Para revisar";
 - la ficha de la venta suma "Cobrar" (en el celular no había cómo cobrar desde
   Ventas);
+- el logo celeste de Mercado Pago (`frontend/img/mercadopago.svg`, de theSVG,
+  MIT) en el menú de Configuración, el título de su página y el botón del
+  link, como el de Mercado Libre (pedido del usuario);
 - migración: rebuild del CHECK de `integraciones` e `integracion_log`, y la
   tabla `integracion_pagos`;
 - **probado solo contra un Mercado Pago falso.** Falta el trámite del usuario
