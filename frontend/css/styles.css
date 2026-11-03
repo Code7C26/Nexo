@@ -5894,6 +5894,11 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 
 /* Botones de a varios donde se elige uno (qué socios mostrar, si el socio
    nuevo ya es cliente): aria-pressed marca el elegido. */
+/* El display de abajo le gana al [hidden] del navegador: sin esta regla, las
+   pestañas que se ocultan (Productos | Servicios con un solo tipo cargado, las
+   de Producción en sus páginas) se seguían viendo. */
+.segmentos[hidden] { display: none; }
+
 .segmentos {
   display: inline-flex;
   flex-wrap: wrap;
@@ -6825,8 +6830,6 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 .produccion-pestana[hidden],
 .plataforma-pestana[hidden] { display: none; }
 
-/* En las páginas de producir y de la receta no van las pestañas. */
-#produccionMenu[hidden] { display: none; }
 
 /* Producción (Etapa J): en cada material, cuánto hay; en rojo si no alcanza. */
 .item-row .item-hay {
