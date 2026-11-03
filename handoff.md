@@ -1079,6 +1079,17 @@ para un negocio muy chico; lo complejo, después. Pide:
   verdad (y lo que se usó, si cambió), y el costo sale de lo real.
 - **Packaging:** componentes que se descuentan solos al vender, aunque el
   producto sea comprado (la caja, la bolsa), como en cualquier e-commerce.
+  **Varía en cada venta** (a veces ninguna bolsa, a veces dos): Nexo propone
+  lo de siempre y se cambia en el momento; se descuenta lo que quedó.
+- **Fraccionar (ejemplo del usuario, que vende decants de perfume y tuvo que
+  hacerse un sistema propio porque ninguno lo resolvía):** el perfume en ml y
+  el decant de 5 ml con "5 ml de ese perfume + 1 frasquito", que se descuenta
+  al vender. Es el mismo mecanismo que el packaging. A decidir al arrancar:
+  comprar el perfume ya en ml, o "abrir" el frasco como una producción (1
+  frasco → 100 ml).
+- **Estimación dada al usuario:** dos sesiones (1: recetas y producir; 2: lo
+  que se arma al vender, packaging y fraccionado, y reportes), y una tercera
+  si da (packaging editable en el punto de venta y "¿cuántas puedo hacer?").
 - **Todo integrado:** stock, costo promedio y margen, reportes, y avisos de
   materiales bajos.
 
