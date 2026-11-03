@@ -1131,6 +1131,18 @@ abrir un frasco ya se puede como producción (receta "Perfume (ml)" = 1 frasco,
 rinde 100). **Sigue:** "¿cuántas puedo hacer?" (la tercera sesión de la
 estimación), o volver al orden de abajo.
 
+**Ideas de Praxia (3 de noviembre, `docs/investigacion-praxia.md`).** Praxia es
+el sistema de un compañero con carnicería. Lo que a Nexo le falta, verificado
+en el código y ordenado por prioridad: etiquetas de balanza, ofertas con
+vigencia y por cantidad, recargo por medio de pago (depende del 8d), y cobrar a
+cuenta, gastos de caja, ventas del día y accesos rápidos desde el punto de
+venta; después, puntos y premios, mensajes de WhatsApp armados, "Para revisar"
+en el tablero, ventas por hora, gastos fijos que se repiten y permisos por
+sección. **Nada está planificado todavía.** Lo primero, si se elige el
+mostrador: **un campo código de barras en producto y variante** (hoy el lector
+busca en el SKU, y no hay otro campo; CLAUDE.md §4 lo pide). Es la base de la
+balanza. **El usuario dijo "después seguimos":** a elegir con él al retomar.
+
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
   del titular. Solo se hacen detalles cortos.
