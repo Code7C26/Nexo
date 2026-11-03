@@ -10882,3 +10882,80 @@ al pagarse es venta; manual por cobrar, cobro parcial en Nexo y el resto solo
 al pagarse en la tienda, una sola vez; cancelado sin cobros se anula y el
 stock vuelve. `npm test` (240), lint, `verificar-migracion` (24 de 24). En
 Chrome, compu y 390 px, oscuro y claro, con la demo.
+
+## 123. Mercado Libre y los logos de los canales, 2 de noviembre de 2026
+
+Pedido del usuario: "seguir con lo de Mercado Libre", con su logo como el de
+Tienda Nube, y que en el menú de Configuración el ícono de cada canal sea su
+logo (la nube de Tienda Nube, el apretón de manos de Mercado Libre).
+
+**Mercado Libre, sobre la base de Tienda Nube** (CLAUDE.md §32):
+- `backend/mercadolibre.js`, sin dependencias: OAuth con `state` firmado y
+  PKCE (el `code_verifier` sale del mismo `state` con el secreto de la app: no
+  se guarda nada), canje y renovación del token, cliente de la API y el
+  cifrado del permiso. La documentación se leyó con curl y User-Agent de
+  navegador (a WebFetch le da 403).
+- **El permiso:** el token dura 6 horas y el refresh token sirve una sola vez.
+  Se guardan juntos y cifrados en `integraciones.token` (sin columnas nuevas),
+  y `tokenVigente` renueva de a uno por vez: dos pedidos a la par comparten la
+  misma renovación. Un `invalid_grant` desconecta la integración.
+- **Vincular, no publicar:** `GET .../publicaciones` lista las del vendedor
+  (hasta 500, sin las finalizadas), una fila por variación, con el SKU
+  (`SELLER_SKU` o `seller_custom_field`) como sugerencia si un solo producto
+  de Nexo lo tiene. Se elige a mano; el servidor vuelve a leer la publicación
+  y solo vincula lo que es del vendedor conectado. "Traer su stock" ajusta el
+  stock de Nexo al de Mercado Libre (un ajuste con su movimiento y auditoría)
+  antes de vincular; si no, manda Nexo. Las publicaciones Full no reciben
+  stock.
+- **Stock y precio, manda Nexo:** un PUT por publicación con lo que cambió.
+  Mercado Libre usa un precio para todas las variaciones: si en Nexo las
+  variantes tienen precios distintos, va solo el stock y se avisa una vez. Un
+  aviso de `items` con otro precio u otro stock que el mandado hace que se
+  vuelva a mandar el de Nexo; el aviso del cambio propio no dispara nada.
+- **Ventas:** `pedidoDeMercadoLibre` traduce la venta al formato del pedido de
+  Tienda Nube y pasa por el mismo `procesarPedido`: pagada es venta cobrada,
+  sin pagar reserva unidades, cancelada libera o anula. El comprador se
+  reconoce por su número, anotado en las notas del cliente ("Comprador de
+  Mercado Libre #…"): Mercado Libre no da el mail. La comisión (`sale_fee`)
+  se anota en la actividad pero todavía no se descuenta de la ganancia.
+- **Avisos:** `/notificaciones` contesta enseguida (Mercado Libre pide menos de
+  500 ms) y solo mira `orders_v2` e `items` de la app de Nexo. No vienen
+  firmados: se pide la venta o la publicación a la API con el token del
+  vendedor.
+- **Lo común a los dos canales:** `guardarConexion`, `vinculosParaPublicar`,
+  `programarSincronizacion` (ahora pasa por todas las integraciones del
+  negocio) y las rutas de estado, ajustes, buscar ahora, reintentar y
+  revisado, que son la misma función registrada con la ruta literal de cada
+  canal (así las sigue viendo `permisos.test.js`). Los textos dicen el canal.
+- **Índice:** `idx_integracion_vinculos_nexo` era único por producto y no
+  dejaba vincular un producto a dos publicaciones (en Mercado Libre es común
+  la clásica y la premium). Se reemplazó por `idx_integracion_vinculos_producto`
+  (no único) y `db/index.js` borra el viejo (re-ejecutable).
+- La CSP suma `https://http2.mlstatic.com` en `img-src` (las fotos de las
+  publicaciones).
+
+**Frontend:** Configuración → Canales de venta → Mercado Libre
+(`dominios/mercado-libre.js`): los pasos, los ajustes, la lista de
+publicaciones con foto, selector y "Traer su stock", las ventas y la
+actividad. Lo que comparten las dos páginas de canales pasó a
+`core/canales.js` (ajustes, pedidos, actividad) y Tienda Nube lo usa.
+
+**Logos:** `frontend/img/mercadolibre.svg` con `#emblema` (de theSVG, MIT) y
+`#logo` (el emblema y la palabra, de Wikimedia Commons, en el color del
+texto). `tiendanube.svg` suma `#nube`. En el menú van con `.ico-marca`.
+Al armar el SVG quedaron atributos `inkscape:` sin su espacio de nombres y el
+navegador cortaba el archivo ahí (se veía solo el emblema): se sacaron.
+
+**Cómo se verificó.** `mercadolibre.test.js` (11), contra un Mercado Libre
+falso: permiso con PKCE y `state` trucho, ajeno o sin sesión; cuenta en otro
+negocio; listar con sugerencia por SKU; vincular con y sin traer el stock;
+precios distintos en variaciones; venta pagada una sola vez y el comprador
+sin duplicar; reserva y cancelación; Nexo manda tras un cambio en Mercado
+Libre; dos pedidos a la par con el token vencido; permiso revocado.
+`tiendanube.test.js` sigue 15 de 15. `npm test` (251), lint y
+`verificar-migracion` (24 de 24). En Chrome, compu y 390 px, con una demo
+local (Mercado Libre falso): conectar, vincular y los logos del menú.
+
+**Sin probar contra Mercado Libre de verdad:** la redirección de la app apunta
+al sitio publicado. Falta publicar, cargar `MERCADOLIBRE_APP_ID` y
+`MERCADOLIBRE_CLIENT_SECRET` en el servidor y probar con usuarios de prueba.
