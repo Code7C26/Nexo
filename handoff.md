@@ -31,6 +31,21 @@ nube y Mercado Libre su emblema (pedido del usuario). **Falta:** publicar,
 cargar `MERCADOLIBRE_APP_ID` y `MERCADOLIBRE_CLIENT_SECRET` en el servidor y
 probar con usuarios de prueba (pasos en "Qué sigue", punto 5).
 
+**Orden acordado con el usuario (2 de noviembre, al cerrar la sesión):**
+1. **Próxima sesión:** el usuario trae una mejora de algo que había quedado
+   pendiente de antes (no dijo cuál: preguntarle al arrancar). Se hace sobre
+   `solla`, arriba de Mercado Libre.
+2. **Después, publicar todo junto** (Mercado Libre + esa mejora): PR a `main`
+   con el CI en verde.
+3. **Las claves en el servidor:** el usuario las da por cargadas, pero el 2 de
+   noviembre `/etc/nexo/nexo.env` no tenía ninguna línea `MERCADOLIBRE_`
+   (comprobado por ssh contando líneas, sin ver valores; las de Tienda Nube
+   sí están). Las dos están en el `.env` de la compu. Al publicar, mandarlas
+   con el comando de PowerShell de siempre y reiniciar.
+4. **El usuario no tiene una cuenta de Mercado Libre con productos
+   publicados.** No hace falta: Mercado Libre da usuarios de prueba que
+   pueden publicar y comprar entre ellos (ver "Qué sigue", punto 5).
+
 **Antes (2 de noviembre, hist. §121 y §122): Tienda Nube hecha.**
 Configuración → Canales de venta → Tienda Nube: conectar (OAuth), publicar
 productos, stock y precio que se mandan solos y pedidos que pasan a venta:
@@ -1183,10 +1198,17 @@ vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
        1. publicar (PR a `main`) y mandar `MERCADOLIBRE_APP_ID` y
           `MERCADOLIBRE_CLIENT_SECRET` a `/etc/nexo/nexo.env` (mismo comando
           de PowerShell que Tienda Nube);
-       2. crear usuarios de prueba por API (`POST /users/test_user` con el
-          token de la cuenta de Santino) y conectar uno desde Nexo;
-       3. publicar algo en el vendedor de prueba, vincularlo, y comprarlo con
-          el comprador de prueba: tiene que entrar como venta cobrada.
+       2. crear dos usuarios de prueba (vendedor y comprador) por API:
+          `POST https://api.mercadolibre.com/users/test_user` con
+          `{"site_id":"MLA"}` y el token de cualquier cuenta real (la de
+          Santino, con la que se creó la app, sirve). Devuelve usuario y
+          contraseña; hasta 10, y caducan si no se usan. Entrar a Mercado
+          Libre con el vendedor de prueba y conectarlo desde Nexo;
+       3. publicar algo con el vendedor de prueba (en el título,
+          "Item de testeo – Por favor, NO OFERTAR", como pide Mercado Libre),
+          vincularlo en Nexo, y comprarlo con el comprador de prueba (con
+          tarjetas de prueba de Mercado Pago): tiene que entrar como venta
+          cobrada y bajar el stock en los dos lados.
        - **Decidido por mí, para revisar:** vincular a mano (nunca por
          nombre); "Traer su stock" es opcional y sin marcarlo manda Nexo; un
          producto puede ir en varias publicaciones (clásica y premium); con
