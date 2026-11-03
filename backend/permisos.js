@@ -118,6 +118,11 @@ export const RUTAS_PERMISOS = {
   'GET /api/producciones/:id': 'ambos',
   'POST /api/producciones': 'ambos',
   'POST /api/producciones/:id/anular': 'admin',
+  // Lo que se usa al vender (hist. §126): quien vende ve lo que se propone; lo
+  // que lleva cada producto lo arma el admin, como la receta.
+  'GET /api/componentes-venta': 'ambos',
+  'GET /api/productos/:id/componentes-venta': 'ambos',
+  'PUT /api/productos/:id/componentes-venta': 'admin',
   'GET /api/trabajos': 'ambos',
   'GET /api/trabajos/responsables': 'ambos',
   'GET /api/trabajos/:id': 'ambos',

@@ -59,6 +59,7 @@ const PRECACHE = [
   "/js/app.js",
   "/js/alta.js",
   "/js/core/aceptacion.js",
+  "/js/core/al-vender.js",
   "/js/core/api.js",
   "/js/core/barra-inferior.js",
   "/js/core/buscar-ayuda.js",

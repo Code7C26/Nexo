@@ -5730,6 +5730,225 @@ app.post('/api/producciones/:id/anular', soloAdmin, (req, res) => {
   res.json({ id: produccion.id });
 });
 
+/* ---------- Lo que se usa al vender (Etapa J, hist. §126) ---------- */
+//
+// La caja, la bolsa, el frasquito: lo que se gasta al vender algo sin
+// venderse. Cada producto dice qué suele llevar (componentes_venta), por cada
+// unidad o una vez por venta. Al vender, Nexo lo propone y se cambia en el
+// momento (a veces ninguna bolsa, a veces dos); lo que quedó se guarda en
+// venta_consumos con su costo congelado, sale del stock con origen 'consumo'
+// y entra al costo de la venta. La configuración es del admin; quien vende
+// (los dos roles) ve la propuesta y la cambia.
+
+const MAX_COMPONENTES = 100;
+const claveComponente = (c) => `${c.producto_id}:${c.variante_id ?? ''}`;
+
+// Lo que lleva cada producto de la empresa, por id de producto.
+function componentesPorProducto(org) {
+  const porProducto = new Map();
+  const filas = db
+    .prepare(
+      `SELECT componentes_venta.producto_id AS vendido_id, componentes_venta.componente_id AS producto_id,
+              componentes_venta.componente_variante_id AS variante_id, componentes_venta.cantidad,
+              componentes_venta.por_venta, productos.nombre AS producto, productos.unidad
+         FROM componentes_venta JOIN productos ON productos.id = componentes_venta.componente_id
+        WHERE componentes_venta.organizacion_id = ?
+        ORDER BY componentes_venta.id`
+    )
+    .all(org);
+  for (const { vendido_id, ...fila } of filas) {
+    if (!porProducto.has(vendido_id)) porProducto.set(vendido_id, []);
+    porProducto.get(vendido_id).push({ ...fila, por_venta: Boolean(fila.por_venta), nombre: nombreConVariante(fila) });
+  }
+  return porProducto;
+}
+
+// Lo que se propone para unos renglones: lo de cada unidad se suma, y lo de
+// una vez por venta va una sola vez (lo más que pida alguno de los productos).
+// El frontend arma la misma cuenta con GET /api/componentes-venta.
+function consumosPropuestos(items, org) {
+  const porProducto = componentesPorProducto(org);
+  const porUnidad = new Map();
+  const porVenta = new Map();
+  for (const item of items) {
+    for (const c of porProducto.get(item.producto_id) ?? []) {
+      const clave = claveComponente(c);
+      if (c.por_venta) porVenta.set(clave, { c, cantidad: Math.max(porVenta.get(clave)?.cantidad ?? 0, c.cantidad) });
+      else porUnidad.set(clave, { c, cantidad: (porUnidad.get(clave)?.cantidad ?? 0) + c.cantidad * Number(item.cantidad) });
+    }
+  }
+  const total = new Map();
+  for (const mapa of [porUnidad, porVenta]) {
+    for (const [clave, { c, cantidad: cuanto }] of mapa) {
+      total.set(clave, { producto_id: c.producto_id, variante_id: c.variante_id, cantidad: redondear3((total.get(clave)?.cantidad ?? 0) + cuanto) });
+    }
+  }
+  return [...total.values()];
+}
+
+// Los consumos que llegan de quien vende: cada artículo una vez, con cantidad.
+// Una lista vacía es válida: esta vez no se usó nada.
+function consumosDeVenta(org, consumos) {
+  if (!Array.isArray(consumos)) throw new ErrorValidacion('Lo que se usa al vender no es válido.');
+  if (consumos.length > MAX_COMPONENTES) throw new ErrorValidacion(`Se pueden usar hasta ${MAX_COMPONENTES} cosas al vender.`);
+  const claves = new Set();
+  return consumos.map((c) => {
+    if (!esNumeroValido(c?.cantidad) || redondear3(c.cantidad) <= 0) {
+      throw new ErrorValidacion('Cada cosa que se usa al vender lleva una cantidad mayor a 0.');
+    }
+    const articulo = articuloDeProduccion(org, c.producto_id, c.variante_id ?? null);
+    const clave = claveComponente(articulo);
+    if (claves.has(clave)) throw new ErrorValidacion(`"${articulo.nombre}" está dos veces en lo que se usa al vender.`);
+    claves.add(clave);
+    return { ...articulo, cantidad: redondear3(c.cantidad) };
+  });
+}
+
+// Descuenta lo que se usó en una venta, después de sus renglones: el stock que
+// queda ya es sin lo vendido. `consumos` undefined es "lo de siempre" (una
+// venta de Tienda Nube, un presupuesto que pasa a venta): va lo propuesto
+// hasta donde alcance el stock, porque una bolsa que falta no frena una venta
+// que ya pasó, y un componente dado de baja se saltea. Una lista es lo que
+// eligió quien vende, y sin stock no se vende.
+function registrarConsumosVenta({ venta_id, items, consumos, deposito_id, organizacion_id, nota = null }) {
+  const automatico = consumos === undefined;
+  const lista = automatico
+    ? consumosPropuestos(items, organizacion_id).flatMap((c) => {
+        try {
+          return [{ ...articuloDeProduccion(organizacion_id, c.producto_id, c.variante_id), cantidad: c.cantidad }];
+        } catch (err) {
+          if (err instanceof ErrorValidacion) return [];
+          throw err;
+        }
+      })
+    : consumosDeVenta(organizacion_id, consumos);
+  const insertar = db.prepare(
+    'INSERT INTO venta_consumos (venta_id, producto_id, variante_id, cantidad, costo_unitario_historico) VALUES (?, ?, ?, ?, ?)'
+  );
+  for (const c of lista) {
+    const hay = Math.max(stockEnDeposito(c, deposito_id), 0);
+    let usa = c.cantidad;
+    if (usa > hay) {
+      if (!automatico) {
+        const deposito = db.prepare('SELECT nombre FROM depositos WHERE id = ?').get(deposito_id);
+        throw new ErrorValidacion(
+          `No alcanza "${c.nombre}" en "${deposito.nombre}": hay ${hay} y se usan ${usa} al vender. Cambiá lo que se usa o cargá la compra.`
+        );
+      }
+      usa = hay;
+    }
+    if (usa <= 0) continue;
+    insertar.run(venta_id, c.producto_id, c.variante_id, usa, c.costo);
+    registrarMovimientoStock({
+      producto_id: c.producto_id,
+      variante_id: c.variante_id,
+      deposito_id,
+      tipo: 'salida',
+      cantidad: usa,
+      origen: 'consumo',
+      venta_id,
+      nota,
+      organizacion_id
+    });
+  }
+}
+
+// Vuelve al stock lo que se usó en una venta (al anularla o antes de
+// editarla). Las filas quedan: la anulada las conserva para restaurarla, y la
+// edición las reemplaza.
+function devolverConsumosVenta(ventaId, depositoId, organizacionId, nota) {
+  const consumos = db.prepare('SELECT producto_id, variante_id, cantidad FROM venta_consumos WHERE venta_id = ?').all(ventaId);
+  for (const c of consumos) {
+    registrarMovimientoStock({
+      ...c,
+      deposito_id: depositoId,
+      tipo: 'entrada',
+      origen: 'consumo',
+      venta_id: ventaId,
+      nota,
+      organizacion_id: organizacionId
+    });
+  }
+}
+
+// Lo que se usó en una venta, para su ficha.
+function consumosDeLaVenta(ventaId) {
+  return db
+    .prepare(
+      `SELECT venta_consumos.producto_id, venta_consumos.variante_id, venta_consumos.cantidad,
+              venta_consumos.costo_unitario_historico, productos.nombre AS producto, productos.unidad
+         FROM venta_consumos JOIN productos ON productos.id = venta_consumos.producto_id
+        WHERE venta_consumos.venta_id = ?
+        ORDER BY venta_consumos.id`
+    )
+    .all(ventaId)
+    .map((c) => ({ ...c, nombre: nombreConVariante(c) }));
+}
+
+// Todo lo configurado, para que el alta de venta y el punto de venta armen la
+// propuesta sin ir al servidor en cada renglón. El stock es el del depósito
+// predeterminado, para avisar si no alcanza: el servidor controla el de la venta.
+app.get('/api/componentes-venta', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const depositoId = depositoPredeterminadoId(org);
+  const porProducto = componentesPorProducto(org);
+  res.json(
+    [...porProducto].map(([producto_id, componentes]) => ({
+      producto_id,
+      componentes: componentes.map((c) => ({ ...c, stock: stockEnDeposito(c, depositoId) }))
+    }))
+  );
+});
+
+const productoDeLaEmpresa = (org, id) =>
+  db.prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?').get(Number(id), org);
+
+app.get('/api/productos/:id/componentes-venta', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producto = productoDeLaEmpresa(org, req.params.id);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+  res.json({ producto_id: producto.id, nombre: producto.nombre, componentes: componentesPorProducto(org).get(producto.id) ?? [] });
+});
+
+const resumenComponentes = (lista) =>
+  JSON.stringify(lista.map((c) => `${c.cantidad} ${c.nombre}${c.por_venta ? ' por venta' : ''}`));
+
+// Reemplaza lo que lleva un producto. Una lista vacía lo deja sin nada.
+app.put('/api/productos/:id/componentes-venta', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producto = productoDeLaEmpresa(org, req.params.id);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+  const entrada = req.body?.componentes;
+  if (!Array.isArray(entrada)) return res.status(400).json({ error: 'Lo que lleva al venderse no es válido.' });
+  const componentes = consumosDeVenta(org, entrada).map((c, i) => {
+    if (c.producto_id === producto.id) throw new ErrorValidacion(`"${producto.nombre}" no puede usarse a sí mismo al venderse.`);
+    return { ...c, por_venta: entrada[i].por_venta === true };
+  });
+  const antes = componentesPorProducto(org).get(producto.id) ?? [];
+
+  withTransaction(() => {
+    db.prepare('DELETE FROM componentes_venta WHERE producto_id = ? AND organizacion_id = ?').run(producto.id, org);
+    const insertar = db.prepare(
+      `INSERT INTO componentes_venta (producto_id, componente_id, componente_variante_id, cantidad, por_venta, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    for (const c of componentes) insertar.run(producto.id, c.producto_id, c.variante_id, c.cantidad, c.por_venta ? 1 : 0, org);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: producto.id,
+      operacion_tipo: 'al_vender',
+      operacion_id: producto.id,
+      valor_anterior: resumenComponentes(antes),
+      valor_nuevo: resumenComponentes(componentes),
+      detalle: componentes.length
+        ? `Lo que lleva "${producto.nombre}" al venderse: ${componentes.map((c) => c.nombre).join(', ')}`
+        : `"${producto.nombre}" ya no lleva nada al venderse`
+    });
+  });
+  res.json({ producto_id: producto.id, componentes: componentes.length });
+});
+
 /* ---------- Ventas ---------- */
 
 // devuelto: plata acreditada por devoluciones activas de esta venta (ver
@@ -5754,7 +5973,9 @@ app.get('/api/ventas', (req, res) => {
               (SELECT COALESCE(SUM(iva), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) AS iva,
               (SELECT COALESCE(SUM((precio_unitario - costo_unitario_historico) * cantidad - iva), 0)
-                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS margen,
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id)
+                - (SELECT COALESCE(SUM(cantidad * costo_unitario_historico), 0)
+                     FROM venta_consumos WHERE venta_consumos.venta_id = ventas.id) AS margen,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto,
@@ -5830,7 +6051,11 @@ app.get('/api/ventas/:id', (req, res) => {
 
   // El saldo anterior (handoff 8c) no tiene renglones: su total es el importe.
   const total = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0) + (venta.saldo_inicial ?? 0);
-  const costoTotal = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
+  // Lo que se usó al venderla (hist. §126) es parte de su costo.
+  const consumos = consumosDeLaVenta(ventaId);
+  const costoTotal =
+    items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0) +
+    consumos.reduce((acc, c) => acc + c.cantidad * c.costo_unitario_historico, 0);
   const devuelto = items.reduce((acc, i) => acc + i.cantidad_devuelta * i.precio_unitario, 0);
   const neto = total - devuelto;
   const { cobrado } = db
@@ -5850,6 +6075,7 @@ app.get('/api/ventas/:id', (req, res) => {
       ganancia: (i.precio_unitario - i.costo_unitario_historico) * i.cantidad - i.iva,
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
     })),
+    consumos,
     total,
     iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     costo_total: costoTotal,
@@ -6022,7 +6248,9 @@ function crearVenta({
   organizacion_id,
   // Una venta de antes de empezar con Nexo (handoff 8c): no mueve stock,
   // porque el stock que se cargó ya es el de hoy.
-  carga_inicial = false
+  carga_inicial = false,
+  // Lo que se usó al vender (hist. §126): undefined es "lo de siempre".
+  consumos
 }) {
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
@@ -6110,6 +6338,9 @@ function crearVenta({
     // venta_items, como siempre.
     total += item.cantidad * item.precio_unitario;
   }
+  if (!carga_inicial) {
+    registrarConsumosVenta({ venta_id: nuevaVentaId, items, consumos, deposito_id: depositoResuelto, organizacion_id });
+  }
 
   // Toda venta aumenta la deuda del cliente; se salda con cobros. No
   // hace falta un flag "es a crédito": una venta cobrada al instante
@@ -6122,7 +6353,7 @@ function crearVenta({
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
     req.body;
 
   const errorItems = validarItemsVenta(items);
@@ -6156,6 +6387,7 @@ app.post('/api/ventas', (req, res) => {
         deposito_id,
         condicion_pago,
         fecha_vencimiento,
+        consumos,
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
@@ -6179,7 +6411,7 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
     req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
@@ -6369,6 +6601,8 @@ app.put('/api/ventas/:id', (req, res) => {
         organizacion_id: req.usuario.organizacion_id
       });
     }
+    devolverConsumosVenta(ventaId, depositoOriginal, req.usuario.organizacion_id, 'Reversión por edición');
+    db.prepare('DELETE FROM venta_consumos WHERE venta_id = ?').run(ventaId);
 
     // 2) Reemplazar cliente, fecha e items.
     const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
@@ -6424,6 +6658,13 @@ app.put('/api/ventas/:id', (req, res) => {
       // en crearVenta (CLAUDE.md §18).
       total += item.cantidad * item.precio_unitario;
     }
+    registrarConsumosVenta({
+      venta_id: ventaId,
+      items,
+      consumos,
+      deposito_id: depositoResuelto,
+      organizacion_id: req.usuario.organizacion_id
+    });
 
     // 3) Ajustar la cuenta corriente (no se reemplaza el movimiento
     // original, se compensa — mismo criterio que anular). Si el cliente
@@ -6738,6 +6979,7 @@ function revertirVentaAnulada(venta, organizacionId) {
       organizacion_id: organizacionId
     });
   }
+  if (!venta.carga_inicial) devolverConsumosVenta(venta.id, depositoVenta, organizacionId, 'Reversión por anulación');
 
   db.prepare(
     `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
@@ -6819,9 +7061,35 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
       });
     }
   }
+  // Lo que se usó al venderla (hist. §126) vuelve a salir igual, sumado a lo
+  // vendido del mismo artículo.
+  const consumos = venta.carga_inicial ? [] : consumosDeLaVenta(ventaId);
+  for (const c of consumos) {
+    const vendido = items
+      .filter((i) => i.producto_id === c.producto_id && (i.variante_id ?? null) === (c.variante_id ?? null))
+      .reduce((acc, i) => acc + i.cantidad, 0);
+    if (stockEnDeposito(c, depositoVenta) < c.cantidad + vendido) {
+      return res.status(400).json({
+        error: `No hay stock suficiente de "${c.nombre}", que se usó al venderla, para restaurar esta venta.`
+      });
+    }
+  }
 
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
+    for (const c of consumos) {
+      registrarMovimientoStock({
+        producto_id: c.producto_id,
+        variante_id: c.variante_id,
+        deposito_id: depositoVenta,
+        tipo: 'salida',
+        cantidad: c.cantidad,
+        origen: 'consumo',
+        venta_id: ventaId,
+        nota: 'Restaurada desde la papelera',
+        organizacion_id: req.usuario.organizacion_id
+      });
+    }
 
     for (const item of items) {
       registrarMovimientoStock({
@@ -10717,6 +10985,16 @@ const SQL_RESULTADO_VENTAS = db.prepare(
       AND ventas.organizacion_id = ?`
 );
 
+// Lo que se usó al vender (hist. §126) es costo de las ventas del período.
+const SQL_RESULTADO_CONSUMOS = db.prepare(
+  `SELECT COALESCE(SUM(venta_consumos.cantidad * venta_consumos.costo_unitario_historico), 0) AS costo
+     FROM ventas JOIN venta_consumos ON venta_consumos.venta_id = ventas.id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?`
+);
+
 const SQL_RESULTADO_GASTOS = db.prepare(
   `SELECT COALESCE(SUM(CASE WHEN tipo = 'operativo' THEN importe END), 0) AS operativos,
           COALESCE(SUM(CASE WHEN tipo = 'inversion' THEN importe END), 0) AS inversiones,
@@ -10764,7 +11042,7 @@ function calcularResultado(desde, hasta, organizacionId) {
   const devoluciones = SQL_RESULTADO_DEVOLUCIONES.get(...rango);
 
   const ventasNetas = ventas.total - devoluciones.importe;
-  const costoNeto = ventas.costo - devoluciones.costo;
+  const costoNeto = ventas.costo + SQL_RESULTADO_CONSUMOS.get(...rango).costo - devoluciones.costo;
   const gananciaBruta = ventasNetas - costoNeto;
 
   return {
@@ -14142,7 +14420,7 @@ app.get('/api/pos/catalogo', (req, res) => {
 // corriente del cliente, así que hace falta un cliente de verdad: a
 // "Consumidor final" no se le fía.
 app.post('/api/pos/ventas', (req, res) => {
-  const { turno_caja_id, cliente_id, items, cobros = [] } = req.body;
+  const { turno_caja_id, cliente_id, items, cobros = [], consumos } = req.body;
   const organizacionId = req.usuario.organizacion_id;
   const turno = turnoDeLaEmpresa(Number(turno_caja_id), organizacionId);
   if (!turno || turno.estado !== 'abierto') {
@@ -14185,6 +14463,7 @@ app.post('/api/pos/ventas', (req, res) => {
         cliente: cliente_id ? undefined : CONSUMIDOR_FINAL,
         cliente_id,
         items,
+        consumos,
         organizacion_id: organizacionId
       });
       const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);

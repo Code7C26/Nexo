@@ -34,6 +34,7 @@ import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion
 import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
+import { crearConsumos } from "./core/al-vender.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
@@ -1931,6 +1932,7 @@ function origenMovimiento(m) {
   if (m.origen === "devolucion_proveedor") return `Devolución a proveedor #${m.devolucion_proveedor_id}`;
   if (m.origen === "transferencia") return `Transferencia #${m.transferencia_id}`;
   if (m.origen === "produccion") return `Producción #${m.produccion_id}`;
+  if (m.origen === "consumo") return `Al vender, venta #${m.venta_id}`;
   if (m.origen === "stock_inicial") return "Stock inicial";
   return "Ajuste manual";
 }
@@ -2694,6 +2696,7 @@ function renderVariantesTabla() {
 
 // La receta del producto (dominios/produccion.js), con el módulo prendido.
 document.getElementById("btnRecetaProducto").addEventListener("click", () => invocar("abrirReceta:producto", productoFichaId));
+document.getElementById("btnAlVenderProducto").addEventListener("click", () => invocar("abrirAlVender:producto", productoFichaId));
 
 document.getElementById("btnVariantesProducto").addEventListener("click", async () => {
   variantesProductoId = productoFichaId;
@@ -4117,10 +4120,16 @@ let ventaFichaId = null;
 const modalVenta = document.getElementById("modalVenta");
 const ventaItemsEl = document.getElementById("ventaItems");
 
+// Lo que se usa al vender (hist. §126): se propone con los renglones.
+const consumosVenta = crearConsumos(document.getElementById("ventaConsumos"));
+
 function actualizarTotalVenta() {
   document.getElementById("ventaTotal").textContent = money(totalItems(ventaItemsEl));
 }
-ventaItemsEl.addEventListener("item-change", actualizarTotalVenta);
+ventaItemsEl.addEventListener("item-change", () => {
+  actualizarTotalVenta();
+  consumosVenta.proponer(leerItemsVenta(ventaItemsEl));
+});
 
 // Modo alta y modo edición comparten el mismo modal: sin venta se arranca
 // en blanco, con venta se precargan cliente/fecha/items y el submit más
@@ -4223,6 +4232,8 @@ async function abrirModalVenta(venta = null, desde = null) {
   }
 
   ventaItemsEl.innerHTML = "";
+  await consumosVenta.cargar();
+  consumosVenta.reiniciar();
   if (venta) {
     for (const item of venta.items) {
       agregarFilaItemVenta(ventaItemsEl, productos);
@@ -4262,6 +4273,7 @@ async function abrirModalVenta(venta = null, desde = null) {
       }
       actualizarSubtotalFila(fila);
     }
+    consumosVenta.fijar(venta.consumos, leerItemsVenta(ventaItemsEl));
   } else {
     agregarFilaItemVenta(ventaItemsEl, productos);
   }
@@ -4343,6 +4355,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     items,
     lista_precio_id: form.lista_precio_id.value || null,
     deposito_id: form.deposito_id.value || null,
+    consumos: consumosVenta.leer(),
     ...datosCondicionPago(form)
   };
   const consultaId = ventaEditandoId ? null : ventaDeConsulta;
@@ -4408,6 +4421,19 @@ async function abrirFichaVenta(id) {
             i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : "—"
           }</td>
           <td data-label="Ganancia" class="align-right mono col-admin">${money(i.ganancia)}</td>
+        </tr>`
+    )
+    .join("");
+
+  // Lo que se usó al venderla (hist. §126): el panel solo si hubo algo.
+  document.getElementById("fichaVentaConsumosPanel").hidden = venta.consumos.length === 0;
+  document.getElementById("fichaVentaConsumos").innerHTML = venta.consumos
+    .map(
+      (c) => `
+        <tr>
+          <td data-label="Qué">${esc(c.nombre)}</td>
+          <td data-label="Cantidad" class="align-right mono">${esc(cantidad(c.cantidad, c.unidad))}</td>
+          <td data-label="Costo" class="align-right mono col-admin">${esAdmin() ? money(c.cantidad * c.costo_unitario_historico) : ""}</td>
         </tr>`
     )
     .join("");

@@ -10,6 +10,10 @@
  *   se usó y cuánto salió de verdad. Con receta, propone los materiales para
  *   lo que se iba a hacer, y se corrigen en el momento.
  * - La receta (#/produccion/receta, o /receta/<id>): solo el admin la guarda.
+ * - Al vender (#/produccion/al-vender): lo que se usa al vender cada cosa sin
+ *   venderse (la caja, la bolsa; hist. §126), y su página
+ *   (#/produccion/lleva, o /lleva/<producto>), solo del admin. La propuesta al
+ *   vender la arma core/al-vender.js.
  * - La ficha de una producción, con anular (admin).
  *
  * Los materiales son renglones .item-row propios (producto, variante y
@@ -24,7 +28,9 @@ import { icono } from "../core/iconos.js";
 import { alEntrarEnVista, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 
-const PESTANAS = ["historial", "recetas", "producir", "receta"];
+const PESTANAS = ["historial", "recetas", "al-vender", "producir", "receta", "lleva"];
+// Las páginas: sin las pestañas arriba, y con un id opcional.
+const PAGINAS = ["producir", "receta", "lleva"];
 const ESTADOS = {
   activa: { texto: "Hecha", clase: "status-cobrado" },
   anulada: { texto: "Anulada", clase: "" }
@@ -32,6 +38,9 @@ const ESTADOS = {
 
 // Lo que maneja stock y está activo: lo que se produce y los materiales.
 let productos = [];
+// Todo el catálogo, también servicios y dados de baja: lo que se vende y los
+// nombres de lo que ya tiene algo cargado.
+let catalogo = [];
 let depositos = [];
 let recetas = [];
 let fichaProduccion = null;
@@ -65,7 +74,12 @@ const redondear3 = (n) => Math.round(n * 1000) / 1000;
 
 async function cargarCatalogo() {
   const [lista, deps] = await Promise.all([api("/api/productos"), api("/api/depositos")]);
+  catalogo = lista;
   productos = lista.filter((p) => p.activo && p.tipo === "producto");
+  document.getElementById("produccionVendibles").innerHTML = lista
+    .filter((p) => p.activo)
+    .map((p) => `<option value="${esc(p.nombre)}"></option>`)
+    .join("");
   depositos = deps.filter((d) => d.activo);
   variantesCache.clear();
   document.getElementById("produccionProductos").innerHTML = productos
@@ -104,16 +118,27 @@ const varianteDelForm = (form) =>
 
 // Un renglón: el material, su variante y cuánto. `base` es la cantidad por
 // unidad producida que viene de la receta: con ella se recalcula al cambiar lo
-// que se iba a hacer, hasta que alguien la toca a mano.
-function agregarMaterial(contenedor, { producto_id = null, variante_id = null, cantidad: cuanto = "", base = null } = {}) {
+// que se iba a hacer, hasta que alguien la toca a mano. Con `por_venta`
+// (true o false) es un renglón de Al vender: dice si va "por cada uno" o "una
+// vez por venta".
+function agregarMaterial(contenedor, { producto_id = null, variante_id = null, cantidad: cuanto = "", base = null, por_venta = null } = {}) {
+  const alVender = por_venta !== null;
   const fila = document.createElement("div");
-  fila.className = "item-row";
+  fila.className = alVender ? "item-row item-row-al-vender" : "item-row";
   fila.innerHTML = `
-    <input type="text" class="item-producto" list="produccionProductos" placeholder="Material…" aria-label="Material" autocomplete="off" />
-    <select class="item-variante-id" hidden aria-label="Variante del material"></select>
+    <input type="text" class="item-producto" list="produccionProductos" placeholder="${alVender ? "Qué se usa…" : "Material…"}" aria-label="${alVender ? "Qué se usa" : "Material"}" autocomplete="off" />
+    <select class="item-variante-id" hidden aria-label="Variante"></select>
     <input type="number" class="item-cantidad" min="0" step="any" inputmode="decimal" placeholder="Cant." aria-label="Cantidad" />
-    <span class="item-hay" aria-live="polite"></span>
-    <button type="button" class="item-row-remove" aria-label="Quitar material">${icono("x")}</button>`;
+    ${
+      alVender
+        ? `<select class="item-por" aria-label="Cada cuánto">
+             <option value="unidad">por cada uno</option>
+             <option value="venta">una vez por venta</option>
+           </select>`
+        : `<span class="item-hay" aria-live="polite"></span>`
+    }
+    <button type="button" class="item-row-remove" aria-label="Quitar">${icono("x")}</button>`;
+  if (alVender) fila.querySelector(".item-por").value = por_venta ? "venta" : "unidad";
   const entrada = fila.querySelector(".item-producto");
   const selector = fila.querySelector(".item-variante-id");
   const cantidadInput = fila.querySelector(".item-cantidad");
@@ -174,6 +199,7 @@ async function materialDeFila(fila) {
 // stock de todos los depósitos: el servidor controla el del depósito elegido.
 async function pintarHay(fila) {
   const hay = fila.querySelector(".item-hay");
+  if (!hay) return;
   const material = await materialDeFila(fila);
   if (!material || (material.producto.tiene_variantes && !material.variante)) {
     hay.textContent = "";
@@ -186,8 +212,9 @@ async function pintarHay(fila) {
 }
 
 // Los materiales cargados, como los pide el servidor. Un renglón a medio
-// cargar corta con un mensaje; uno vacío del todo se ignora.
-async function leerMateriales(contenedor) {
+// cargar corta con un mensaje; uno vacío del todo se ignora. Lo de Al vender
+// puede quedar sin nada (`vacio`).
+async function leerMateriales(contenedor, { vacio = false } = {}) {
   const items = [];
   for (const fila of contenedor.querySelectorAll(".item-row")) {
     const texto = fila.querySelector(".item-producto").value.trim();
@@ -199,9 +226,15 @@ async function leerMateriales(contenedor) {
       return { error: `Elegí la variante de "${material.producto.nombre}".` };
     }
     if (!(cuanto > 0)) return { error: `Poné cuánto de "${material.producto.nombre}".` };
-    items.push({ producto_id: material.producto.id, variante_id: material.variante?.id ?? null, cantidad: redondear3(cuanto) });
+    const por = fila.querySelector(".item-por");
+    items.push({
+      producto_id: material.producto.id,
+      variante_id: material.variante?.id ?? null,
+      cantidad: redondear3(cuanto),
+      ...(por ? { por_venta: por.value === "venta" } : {})
+    });
   }
-  if (items.length === 0) return { error: "Cargá al menos un material." };
+  if (items.length === 0 && !vacio) return { error: "Cargá al menos un material." };
   return { items };
 }
 
@@ -523,6 +556,147 @@ botonBorrar.addEventListener("click", async () => {
   mostrarVista("produccion", { subruta: "recetas" });
 });
 
+/* ---------- Al vender (#/produccion/al-vender) ---------- */
+
+const nombreDe = (id) => catalogo.find((p) => p.id === id)?.nombre ?? "—";
+const resumenAlVender = (componentes) =>
+  componentes.map((c) => `${cantidad(c.cantidad, c.unidad)} ${c.nombre}${c.por_venta ? " por venta" : ""}`).join(", ");
+// Lo que cuesta hoy venderlo de a uno: lo de cada uno, más lo de cada venta.
+const costoAlVender = (componentes) =>
+  componentes.reduce((acc, c) => acc + c.cantidad * (catalogo.find((p) => p.id === c.producto_id)?.precio_costo ?? 0), 0);
+
+async function cargarAlVender() {
+  tablaCargando("alVenderBody", 3);
+  const [configurados] = await Promise.all([api("/api/componentes-venta"), cargarCatalogo()]);
+  const body = document.getElementById("alVenderBody");
+  if (configurados.length === 0) {
+    body.innerHTML = esAdmin()
+      ? filaVacia(3, "Todavía no cargaste nada. Si al vender usás una caja, una bolsa o un frasquito, cargalo: se descuenta solo.", {
+          accionTexto: "+ Cargar",
+          accionId: "btnPrimeroAlVender"
+        })
+      : filaVacia(3, "Todavía no hay nada: lo carga el administrador del negocio.");
+    return;
+  }
+  body.innerHTML = configurados
+    .map((t) => ({ ...t, nombre: nombreDe(t.producto_id) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+    .map(
+      (t) => `
+    <tr class="${esAdmin() ? "fila-clickeable" : ""}" data-id="${t.producto_id}">
+      <td data-label="Lo que vendés" class="m-titulo">${esc(t.nombre)}</td>
+      ${celdaMovil(resumenAlVender(t.componentes))}
+      <td data-label="Se usa">${esc(resumenAlVender(t.componentes))}</td>
+      <td data-label="Costo de hoy" class="align-right mono m-valor col-admin">${esAdmin() ? money(costoAlVender(t.componentes)) : ""}</td>
+    </tr>`
+    )
+    .join("");
+}
+
+document.getElementById("alVenderBody").addEventListener("click", (e) => {
+  if (e.target.closest("#btnPrimeroAlVender")) {
+    mostrarVista("produccion", { subruta: "lleva" });
+    return;
+  }
+  const fila = e.target.closest("tr[data-id]");
+  if (fila && esAdmin()) mostrarVista("produccion", { subruta: `lleva/${fila.dataset.id}` });
+});
+
+const formAlVender = document.getElementById("formAlVender");
+const materialesAlVender = formAlVender.querySelector("[data-materiales]");
+const botonNoUsar = formAlVender.querySelector('[data-accion="borrar"]');
+// El producto de la página, ya resuelto: el que vino en la ruta o el elegido.
+let vendido = null;
+
+const vendiblePorNombre = (nombre) => {
+  const buscado = nombre.trim().toLowerCase();
+  return catalogo.find((p) => p.activo && p.nombre.trim().toLowerCase() === buscado) ?? null;
+};
+
+async function prepararAlVender(productoId) {
+  formAlVender.reset();
+  vendido = null;
+  await cargarCatalogo();
+  const producto = productoId ? (catalogo.find((p) => p.id === productoId) ?? null) : null;
+  // El producto de algo ya cargado no cambia: sería otro.
+  formAlVender.producto.disabled = Boolean(producto);
+  if (producto) formAlVender.producto.value = producto.nombre;
+  await mostrarLoQueLleva(producto);
+  (producto ? materialesAlVender.querySelector(".item-producto") : formAlVender.producto).focus();
+}
+
+// Con el producto elegido, lo que ya tiene cargado (o un renglón vacío).
+async function mostrarLoQueLleva(producto) {
+  vendido = producto;
+  materialesAlVender.innerHTML = "";
+  const componentes = producto
+    ? (await api(`/api/productos/${producto.id}/componentes-venta`, { error: "No se pudo cargar lo que lleva." })).componentes
+    : [];
+  botonNoUsar.hidden = componentes.length === 0;
+  for (const c of componentes) {
+    await agregarMaterial(materialesAlVender, { producto_id: c.producto_id, variante_id: c.variante_id, cantidad: c.cantidad, por_venta: c.por_venta });
+  }
+  if (componentes.length === 0) await agregarMaterial(materialesAlVender, { por_venta: false });
+  await resumirAlVender();
+}
+
+async function resumirAlVender() {
+  const resumen = formAlVender.querySelector("[data-resumen]");
+  if (!esAdmin() || !vendido) {
+    resumen.textContent = "";
+    return;
+  }
+  const costo = await costoMateriales(materialesAlVender);
+  resumen.textContent = costo > 0 ? `Con los costos de hoy, suma ${money(costo)} a vender uno.` : "";
+}
+
+formAlVender.producto.addEventListener("input", () => {
+  const producto = vendiblePorNombre(formAlVender.producto.value);
+  if (producto?.id !== vendido?.id) mostrarLoQueLleva(producto);
+});
+materialesAlVender.addEventListener("material-change", resumirAlVender);
+formAlVender.querySelector('[data-accion="agregar"]').addEventListener("click", () => agregarMaterial(materialesAlVender, { por_venta: false }));
+
+async function guardarAlVender(items) {
+  const boton = formAlVender.querySelector('[type="submit"]');
+  boton.disabled = true;
+  try {
+    await api(`/api/productos/${vendido.id}/componentes-venta`, {
+      method: "PUT",
+      body: { componentes: items },
+      error: "No se pudo guardar."
+    });
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+formAlVender.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!vendido) return avisar("Elegí qué vendés: tiene que ser uno de tus productos.", "error");
+  const { items, error } = await leerMateriales(materialesAlVender, { vacio: true });
+  if (error) return avisar(error, "error");
+  await guardarAlVender(items);
+  avisar(
+    items.length ? `Listo: al vender "${vendido.nombre}", Nexo lo propone y lo descuenta.` : `"${vendido.nombre}" ya no usa nada al venderse.`,
+    "ok"
+  );
+  mostrarVista("produccion", { subruta: "al-vender" });
+});
+
+botonNoUsar.addEventListener("click", async () => {
+  if (!vendido) return;
+  const seguro = await confirmar({
+    cuerpo: `¿Dejar de usar algo al vender "${vendido.nombre}"? Las ventas que ya hiciste no cambian.`,
+    aceptar: "No usar nada",
+    destructivo: true
+  });
+  if (!seguro) return;
+  await guardarAlVender([]);
+  avisar(`"${vendido.nombre}" ya no usa nada al venderse.`, "ok");
+  mostrarVista("produccion", { subruta: "al-vender" });
+});
+
 /* ---------- Ficha de una producción ---------- */
 
 function pintarFicha(p) {
@@ -584,18 +758,20 @@ document.getElementById("btnVolverProducciones").addEventListener("click", () =>
 
 /* ---------- Entrar a la vista ---------- */
 
-// La subruta es la pestaña, y la página con su id: "producir/3", "receta/5".
+// La subruta es la pestaña, y la página con su id: "producir/3", "receta/5",
+// "lleva/8".
 async function entrarAProduccion(subruta) {
   const [nombre, id] = (subruta ?? "").split("/");
   let pestana = PESTANAS.includes(nombre) ? nombre : "historial";
-  // Una receta la guarda solo el admin.
+  // Una receta y lo que lleva algo al venderse los guarda solo el admin.
   if (pestana === "receta" && !esAdmin()) pestana = "recetas";
-  const esperada = id && (pestana === "producir" || pestana === "receta") ? `${pestana}/${id}` : pestana;
+  if (pestana === "lleva" && !esAdmin()) pestana = "al-vender";
+  const esperada = id && PAGINAS.includes(pestana) ? `${pestana}/${id}` : pestana;
   if (subruta !== esperada) history.replaceState(null, "", `#/produccion/${esperada}`);
 
   for (const seccion of document.querySelectorAll(".produccion-pestana")) seccion.hidden = seccion.dataset.pestana !== pestana;
   const menu = document.getElementById("produccionMenu");
-  menu.hidden = pestana === "producir" || pestana === "receta";
+  menu.hidden = PAGINAS.includes(pestana);
   for (const enlace of menu.querySelectorAll(".segmento")) {
     if (enlace.dataset.pestana === pestana) enlace.setAttribute("aria-current", "page");
     else enlace.removeAttribute("aria-current");
@@ -603,7 +779,9 @@ async function entrarAProduccion(subruta) {
 
   if (pestana === "historial") await cargarProducciones();
   else if (pestana === "recetas") await cargarRecetas();
+  else if (pestana === "al-vender") await cargarAlVender();
   else if (pestana === "producir") await prepararProducir(Number(id) || null);
+  else if (pestana === "lleva") await prepararAlVender(Number(id) || null);
   else await prepararReceta(Number(id) || null);
 }
 
@@ -613,6 +791,9 @@ registrar("abrirReceta:producto", async (productoId) => {
   if (!suya) productoPendiente = productoId;
   mostrarVista("produccion", { subruta: suya ? `receta/${suya.id}` : "receta" });
 });
+
+// Desde la ficha del producto (app.js): lo que lleva al venderse.
+registrar("abrirAlVender:producto", (productoId) => mostrarVista("produccion", { subruta: `lleva/${productoId}` }));
 
 alEntrarEnVista("produccion", entrarAProduccion);
 registrar("cargar:producciones", cargarProducciones);

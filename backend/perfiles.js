@@ -25,7 +25,7 @@ export const MODULOS_INFO = {
   stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
   produccion: {
     nombre: 'Producción',
-    descripcion: 'Si hacés lo que vendés: la receta de cada cosa, y al producir, lo que te costó cada una.',
+    descripcion: 'Si hacés lo que vendés: la receta de cada cosa, lo que te costó cada una, y la caja o la bolsa que se usan al vender.',
     icono: 'chef-hat'
   },
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }

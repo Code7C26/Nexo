@@ -10,6 +10,7 @@ import { camposFicha, cantidad, esFraccionable, esc, fechaHoraAR, money, numero 
 import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
+import { crearConsumos } from "../core/al-vender.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
@@ -40,6 +41,8 @@ const posCliente = document.getElementById("posCliente");
 const modalPosCobro = document.getElementById("modalPosCobro");
 const modalPosCierre = document.getElementById("modalPosCierre");
 const modalPosCamara = document.getElementById("modalPosCamara");
+// Lo que se usa al vender (hist. §126): la bolsa, la caja, que se cambian acá.
+const consumosPos = crearConsumos(document.getElementById("posConsumos"));
 
 const redondear = (n) => Math.round(n * 100) / 100;
 const redondearCantidad = (n) => Math.round(n * 1000) / 1000;
@@ -120,7 +123,8 @@ async function cargarTodo() {
     api("/api/turnos-caja?estado=abierto", { error: "No se pudo consultar la caja." }),
     api("/api/tesoreria", { error: "No se pudieron cargar las cuentas de tesorería." }),
     api("/api/pos/catalogo", { error: "No se pudo cargar el catálogo." }),
-    api("/api/clientes", { error: "No se pudieron cargar los clientes." })
+    api("/api/clientes", { error: "No se pudieron cargar los clientes." }),
+    consumosPos.cargar()
   ]);
   cuentas = tesoreria.cuentas;
   cajas = cuentas.filter((c) => c.tipo === "efectivo");
@@ -476,6 +480,12 @@ function leerCarrito() {
     .map((r) => ({ clave: r.clave, cantidad: Math.min(r.cantidad, tope(porClave.get(r.clave))) }));
 }
 
+const itemsDelCarrito = () =>
+  carrito.map((r) => {
+    const item = porClave.get(r.clave);
+    return { producto_id: item.producto_id, variante_id: item.variante_id, cantidad: r.cantidad, precio_unitario: item.precio };
+  });
+
 const totalCarrito = () =>
   redondear(carrito.reduce((acc, r) => acc + r.cantidad * porClave.get(r.clave).precio, 0));
 
@@ -507,6 +517,8 @@ function renderTicket() {
       .join("");
   }
   ultimaAgregada = null;
+  if (carrito.length === 0) consumosPos.reiniciar();
+  else consumosPos.proponer(itemsDelCarrito());
 
   document.getElementById("posTotal").textContent = money(total);
   document.getElementById("posBarraTotal").textContent = money(total);
@@ -718,10 +730,8 @@ document.getElementById("formPosCobro").addEventListener("submit", async (e) => 
   const body = {
     turno_caja_id: turno.id,
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
-    items: carrito.map((r) => {
-      const item = porClave.get(r.clave);
-      return { producto_id: item.producto_id, variante_id: item.variante_id, cantidad: r.cantidad, precio_unitario: item.precio };
-    }),
+    items: itemsDelCarrito(),
+    consumos: consumosPos.leer(),
     cobros: cobrosParaEnviar(vuelto)
   };
   const venta = await enviando(submit, () =>

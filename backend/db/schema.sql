@@ -689,6 +689,38 @@ CREATE TABLE IF NOT EXISTS produccion_items (
   costo_unitario REAL NOT NULL DEFAULT 0
 );
 
+-- Lo que se usa al vender un producto sin venderse (Etapa J, hist. §126): la
+-- caja, la bolsa, el frasquito. Es lo que Nexo propone al vender; en cada venta
+-- se cambia, y lo que quedó va a venta_consumos. `cantidad` es por cada unidad
+-- vendida, o una sola vez por venta con `por_venta` (la bolsa: una aunque se
+-- lleven seis). Es del producto entero, con todas sus variantes; el componente
+-- sí puede ser una variante.
+CREATE TABLE IF NOT EXISTS componentes_venta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  componente_id INTEGER NOT NULL REFERENCES productos(id),
+  componente_variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  por_venta INTEGER NOT NULL DEFAULT 0 CHECK (por_venta IN (0, 1)),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_componentes_venta
+  ON componentes_venta(producto_id, componente_id, COALESCE(componente_variante_id, 0));
+
+-- Lo que se usó de verdad en una venta (hist. §126), con el costo congelado
+-- como el de venta_items (§8): entra al costo y al margen de la venta y al
+-- resultado. Sale del stock con movimientos 'consumo' que la referencian por
+-- venta_id. Hereda la empresa de la venta, como venta_items.
+CREATE TABLE IF NOT EXISTS venta_consumos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  venta_id INTEGER NOT NULL REFERENCES ventas(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  costo_unitario_historico REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_venta_consumos_venta ON venta_consumos(venta_id);
+
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
 -- origen 'stock_inicial' (handoff 8c): lo que había en el depósito al empezar

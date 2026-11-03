@@ -1119,6 +1119,7 @@
               </label>
               <datalist id="posClientes"></datalist>
               <ul class="pos-renglones" id="posRenglones"></ul>
+              <div id="posConsumos" hidden></div>
               <div class="pos-total">
                 <span>Total</span>
                 <span class="pos-total-valor mono" id="posTotal">$0,00</span>
@@ -1662,6 +1663,25 @@
           </div>
         </section>
 
+        <!-- Lo que se usó al venderla (hist. §126): la caja, la bolsa. -->
+        <section class="panel" id="fichaVentaConsumosPanel" hidden>
+          <div class="panel-head">
+            <h2>Se usó al vender</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Qué</th>
+                <th scope="col" class="align-right">Cantidad</th>
+                <th scope="col" class="align-right col-admin">Costo</th>
+              </tr>
+            </thead>
+            <tbody id="fichaVentaConsumos"></tbody>
+          </table>
+          </div>
+        </section>
+
         <section class="panel" id="fichaVentaDevolucionesPanel" hidden>
           <div class="panel-head">
             <h2>Devoluciones de esta venta</h2>
@@ -2109,15 +2129,18 @@
       </section>
 
       <!-- Vista: Producción (Etapa J, dominios/produccion.js). Pestañas
-           Producciones (#/produccion/historial) y Recetas
-           (#/produccion/recetas), y dos páginas: producir
-           (#/produccion/producir, o /producir/<receta>) y la receta
-           (#/produccion/receta, o /receta/<id>). Páginas, no modales. -->
+           Producciones (#/produccion/historial), Recetas
+           (#/produccion/recetas) y Al vender (#/produccion/al-vender), y tres
+           páginas: producir (#/produccion/producir, o /producir/<receta>), la
+           receta (#/produccion/receta, o /receta/<id>) y lo que lleva un
+           producto al venderse (#/produccion/lleva, o /lleva/<producto>).
+           Páginas, no modales. -->
       <section class="view" data-view="produccion" hidden>
         <div class="produccion-vista">
           <nav class="segmentos planes-menu" aria-label="Producción" id="produccionMenu">
             <a class="segmento" href="#/produccion/historial" data-pestana="historial">Producciones</a>
             <a class="segmento" href="#/produccion/recetas" data-pestana="recetas">Recetas</a>
+            <a class="segmento" href="#/produccion/al-vender" data-pestana="al-vender">Al vender</a>
           </nav>
 
           <section class="panel produccion-pestana" data-pestana="historial">
@@ -2160,6 +2183,26 @@
                 </tr>
               </thead>
               <tbody id="recetasBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel produccion-pestana" data-pestana="al-vender" hidden>
+            <div class="panel-head">
+              <h2>Al vender</h2>
+              <a class="btn btn-primary btn-nuevo col-admin" href="#/produccion/lleva"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Cargar</a>
+            </div>
+            <p class="opciones-nota">Lo que se usa al vender sin venderse: la caja, la bolsa, el frasquito. Al vender, Nexo lo propone y se cambia en el momento si esa vez fue distinto; lo que quedó sale del stock y entra al costo de la venta.</p>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Lo que vendés</th>
+                  <th scope="col">Se usa</th>
+                  <th scope="col" class="align-right col-admin">Costo de hoy</th>
+                </tr>
+              </thead>
+              <tbody id="alVenderBody"></tbody>
             </table>
             </div>
           </section>
@@ -2260,7 +2303,40 @@
               </div>
             </form>
           </div>
+          <div class="socio-alta produccion-pestana" data-pestana="lleva" hidden>
+            <a class="btn-link" href="#/produccion/al-vender"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Al vender</a>
+            <form class="socio-alta-form" id="formAlVender" novalidate>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Qué vendés?</p>
+                  <div class="socio-alta-grupo">
+                    <label>Producto
+                      <input type="text" name="producto" list="produccionVendibles" autocomplete="off" placeholder="Empezá a escribir su nombre" />
+                    </label>
+                    <p class="opciones-nota">Vale para todas sus variantes.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿Qué se usa al venderlo?</p>
+                  <p class="opciones-nota">La caja de cada uno, o la bolsa una sola vez por venta aunque se lleven seis. Son productos como cualquier otro: se compran con las compras de siempre.</p>
+                  <div class="item-rows" data-materiales></div>
+                  <button type="button" class="btn-link" data-accion="agregar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Agregar</button>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p data-resumen aria-live="polite"></p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" data-accion="borrar" hidden>No usar nada</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
           <datalist id="produccionProductos"></datalist>
+          <datalist id="produccionVendibles"></datalist>
         </div>
       </section>
 
@@ -2346,6 +2422,7 @@
             <h2 id="fichaProductoNombre">—</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnRecetaProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chef-hat"></use></svg> Receta</button>
+              <button class="btn btn-secundario col-admin" id="btnAlVenderProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Al vender</button>
               <button class="btn btn-secundario" id="btnVariantesProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Variantes</button>
               <button class="btn btn-primary" id="btnEditarProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
@@ -5295,6 +5372,7 @@
         </label>
         <div class="item-rows" id="ventaItems"></div>
         <button type="button" class="btn-add-item" id="btnAgregarItemVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>agregar <span data-termino="singular">producto</span></span></button>
+        <div id="ventaConsumos" hidden></div>
         <datalist id="productosVenta"></datalist>
         <p class="item-total">Total: <span class="mono" id="ventaTotal">$0,00</span></p>
         <button type="submit" class="btn btn-primary btn-full" id="formVentaSubmit">Registrar venta</button>
