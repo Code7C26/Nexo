@@ -11184,3 +11184,148 @@ punto de venta, sin errores de consola.
 vender en los reportes, y los decants (5 ml de perfume + 1 frasquito, que ya
 se puede armar con esto si el perfume está en ml). Un componente con precio
 $ 0 aparece en el catálogo del punto de venta como cualquier producto.
+
+## 127. Código de barras propio en el producto y la variante, 3 de noviembre de 2026
+
+**Por qué.** Primera idea de Praxia (`docs/investigacion-praxia.md` §4): el
+lector del punto de venta buscaba el código leído en el SKU, así que para que
+un envasado entrara con el lector había que cargar el código del envase como
+SKU. Un negocio con SKU propios tenía que elegir. CLAUDE.md §4 ya pedía el
+campo. Es también la base de las etiquetas de balanza.
+
+**Decidido por mí, para revisar:**
+- Un campo aparte del SKU, en el producto y en cada variante. Se guarda sin
+  espacios (en el envase viene en grupos: "7 790387 000154"), hasta 48
+  caracteres ASCII visibles (el tope de Tienda Nube), sin validar el dígito
+  verificador: los códigos internos o de balanza no siempre lo cumplen.
+- Único por empresa **entre productos y variantes**: un código identifica una
+  sola cosa que se vende. Los índices únicos cubren cada tabla y
+  `codigoDeBarrasOcupado` (server.js) las dos juntas, con el nombre de quien
+  ya lo tiene en el error. Otra empresa puede usar el mismo.
+- El lector busca primero el código de barras exacto, después el SKU exacto
+  y después la búsqueda por palabras. Si un código coincide con el SKU de otro
+  producto, gana el código de barras.
+- Un producto con variantes no muestra el campo (cada variante lleva el suyo),
+  salvo que ya tenga uno cargado. Un servicio tampoco.
+- Al publicar en Tienda Nube, cada variante manda su `barcode`.
+- La carga inicial (planilla) y Mercado Libre (GTIN) no lo toman todavía.
+
+**Backend.** Migración aditiva (`db/index.js`): `codigo_barras TEXT` nula en
+`productos` y `producto_variantes`, sin backfill, con
+`idx_productos_org_codigo_barras` e `idx_producto_variantes_org_codigo_barras`.
+`schema.sql` la tiene al final de cada tabla. `server.js`:
+`normalizarCodigoBarras`, `errorCodigoDeBarras` (en `validarProducto`) y
+`codigoDeBarrasOcupado`; el alta, la edición (auditada en el diff) y las
+variantes (alta y edición); `SELECT_PRODUCTO`, `SELECT_VARIANTE` y
+`/api/pos/catalogo` lo devuelven. La edición en lote no lo toca, igual que el
+SKU.
+
+**Frontend.** Campo "Código de barras" en el formulario de producto (Enter,
+que es lo que manda el lector, no guarda: pasa al campo siguiente), columna en
+la tabla de variantes y en la de la ficha, dato en la ficha, búsqueda del
+catálogo y CSV. `dominios/pos.js` lo suma a las palabras y lo busca primero en
+`agregarPorCodigo` (lector y cámara).
+
+**Cómo se verificó.** `codigo-barras.test.js` (5): sin espacios y vacío es
+null; rechazo de lo raro y lo largo; único entre productos y variantes, sin
+chocar consigo mismo, y libre en otra empresa; auditoría; catálogo del punto
+de venta. `npm test` (276), lint, `verificar-migracion` (24 de 24, la base
+real sin cambios) y `npm run regresion` (diferencias justificadas: el campo
+nuevo en `null` en productos, variantes, el catálogo del punto de venta y la
+descarga del negocio, y los callbacks que devuelven `index.html`). En Chrome
+con el seed: alta con el
+código en grupos (se guardó sin espacios, Enter no cerró el formulario),
+búsqueda del catálogo por código, lectura en el punto de venta que sumó el
+producto al ticket, código de una variante y campo oculto en un producto con
+variantes.
+
+**Queda:** las etiquetas de balanza (código con PLU y peso), tomarlo en la
+planilla de la carga inicial y en "Traer mis productos", y el GTIN de Mercado
+Libre.
+
+## 128. Tienda online: el tipo de negocio, el módulo Venta online y el canal de cada venta, 3 de noviembre de 2026
+
+**Pedido del usuario:** "un tipo de negocio que se llame e-commerce, que tenga
+Tienda Nube, Mercado Libre y todas las cosas que necesita un negocio digital
+(también tener en cuenta que muchos locales venden digitalmente y viceversa)".
+
+**Qué faltaba.** Tienda Nube y Mercado Libre ya estaban, para todos los tipos,
+en Configuración. Le faltaba a un negocio digital: saber por qué canal entró
+cada venta (la venta no lo guardaba: solo las de una tienda conectada se
+podían rastrear por `integracion_pedidos`), cuánto deja cada canal, y que el
+alta lo guíe a conectar su tienda.
+
+**Decidido por mí, para revisar:**
+- **Tipo "Tienda online"** (`ecommerce` en `perfiles.js`; preset, sin código
+  propio, CLAUDE.md §29): Venta online, Consultas, Compras, Stock y Producción
+  (ahí vive lo que se usa al vender: la caja, la bolsa y la etiqueta del envío,
+  que entran al costo). Sin punto de venta: si atiende un local, lo suma.
+  Embudo: Consulta, Le pasé el precio, Esperando el pago. Ícono `globe`
+  (nuevo en el sprite).
+- **Módulo "Venta online"** (`canales`): las páginas de Tienda Nube y Mercado
+  Libre, el "Por dónde te compró" del alta de venta, el reporte por canal y un
+  paso de la guía. Lo trae Tienda online, Emprendimiento y Comercio; cualquier
+  negocio lo prende en Funciones (el local que vende online, y al revés).
+  Como todo módulo, oculta la interfaz: las rutas, los avisos de las tiendas y
+  la sincronización siguen andando.
+- **Canal de la venta** (`ventas.canal`, sin CHECK como el origen de una
+  consulta): En el local, Tienda Nube, Mercado Libre, Instagram, WhatsApp,
+  Facebook, Página propia, Otro. El punto de venta pone `local` y cada tienda
+  conectada el suyo; en el alta lo elige quien vende (arranca en el último
+  elegido en ese navegador) y se cambia al editar. Vacío = sin indicar.
+- La lista vive dos veces (`CANALES_VENTA` en `server.js` y en
+  `frontend/js/core/canales.js`), con un comentario en cada una.
+- **Migración de los negocios que ya existían:** el módulo solo se le prende
+  al que ya conectó una tienda (nadie pierde lo que usa). No por su tipo, a
+  diferencia de las consultas de §89: un comercio que ya terminó la guía la
+  volvería a ver con "Conectá tu tienda" pendiente.
+- **El paso de la guía** ("Conectá tu tienda online") queda hecho con una
+  tienda conectada o con una venta anotada por un canal de internet: quien
+  vende solo por Instagram no necesita conectar nada.
+- **La ganancia por canal** descuenta lo que se usó al vender, que cambia
+  mucho de un canal a otro (el envío lleva bolsa, el mostrador no).
+- Landing: "Tienda online" suma su tarjeta, y "Carnicería y verdulería" con
+  "Kiosco y almacén" pasan a una sola, para que la grilla siga en seis.
+
+**Esquema.** Migración aditiva (`db/index.js`), en una transacción y solo en
+el arranque que suma la columna: `ventas.canal TEXT` nula; la completa con la
+plataforma de la tienda (por `integracion_pedidos`) y con `local` para las del
+punto de venta; el resto queda sin indicar. Prende el módulo a quien tiene una
+integración. `schema.sql` la tiene al final de `ventas`.
+
+**Backend.** `CANALES_VENTA` y `normalizarCanal` (ErrorBulk si no está en la
+lista); `crearVenta({ canal })`; `POST /api/ventas` y `PUT /api/ventas/:id`
+(sin canal en el pedido conserva el que tenía); el punto de venta con
+`local`, `procesarPedido` con la plataforma; `canal` en `GET /api/ventas` y la
+ficha; `canales` en `GET /api/reportes/ventas` (cantidad, total, ticket,
+ganancia con lo usado al vender, margen y participación, neteado contra
+devoluciones); `venta_online` en `GET /api/negocio/primeros-pasos`.
+
+**Frontend.** "Por dónde te compró" en el alta de venta (`data-modulo`), la
+pastilla del canal en la lista (y en la línea del celular) cuando no es el
+local, el filtro "Por dónde", el dato en la ficha, el panel "Por canal" en
+Estadísticas, el paso de la guía, y las tiendas de Configuración con
+`data-modulo="canales"` (el enlace directo con el módulo apagado vuelve a
+Configuración).
+
+**Cómo se verificó.** `canales-venta.test.js` (4): el preset y sumar el módulo
+a un kiosco; guardar, conservar, cambiar y borrar el canal, y rechazar uno
+inventado; el punto de venta siempre `local`; el reporte por canal (con la
+bolsa del envío en el costo, la suma igual al total y nada de otro negocio).
+`registro.test.js` y `api.test.js` actualizados con el tipo y el módulo nuevos.
+`npm test` (280), lint, `verificar-migracion` (24 de 24, la base real sin
+cambios) y `npm run regresion` (diferencias justificadas: el tipo y el módulo
+nuevos, `canal` en las ventas, `canales` en el reporte, Venta online en el
+comercio sembrado, `venta_online` en la guía, la columna nueva en la descarga
+y los callbacks que devuelven `index.html`). En Chrome con el seed, a 390 px:
+venta por Instagram desde la pantalla (guardada, recordada y visible en la
+lista), el reporte por canal, la tarjeta del tipo, y el módulo apagado oculta
+el campo, el reporte y las tiendas. Sin errores de consola.
+
+**Queda, para que un negocio digital esté completo:**
+- la comisión de Mercado Libre (`sale_fee`, ya se lee) y de Tienda Nube como
+  costo de la venta, para la ganancia real por canal;
+- el envío: lo que cobra y lo que paga, y quién lo paga;
+- responder las preguntas de Mercado Libre y los mensajes armados de WhatsApp
+  (la idea de Praxia);
+- "Traer mis productos" desde una tienda que ya existe.

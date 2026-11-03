@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §126);
+    siguiente número (hoy el último es §128);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,31 @@
 
 ## Estado actual (3 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §126): producción básica, segunda parte,
+**Lo último (3 de noviembre, hist. §128): tipo "Tienda online", hecho y
+commiteado en `solla`, sin publicar.** Pedido del usuario ("e-commerce, y
+muchos locales venden digitalmente y viceversa"):
+- tipo nuevo, con Venta online, Consultas, Compras, Stock y Producción (la
+  caja y la bolsa del envío), sin punto de venta;
+- módulo nuevo "Venta online" (`canales`) que cualquier negocio prende: las
+  tiendas conectadas, el "Por dónde te compró" de cada venta, el reporte por
+  canal (con lo usado al vender en el costo) y un paso de la guía;
+- migración aditiva: `ventas.canal` nula, completada con la tienda o `local`
+  donde se sabe; el módulo solo se prende a los negocios viejos con una tienda
+  conectada.
+- **Falta que el usuario lo vea**, y para un negocio digital completo: la
+  comisión de cada canal como costo, el envío, y responder preguntas de
+  Mercado Libre / mensajes de WhatsApp.
+
+**Antes (3 de noviembre, hist. §127): código de barras propio, hecho y
+commiteado en `solla`, sin publicar.** Primera idea de Praxia:
+- el producto y cada variante tienen su código de barras, aparte del SKU, único
+  por empresa entre los dos y guardado sin espacios;
+- el lector del punto de venta lo busca antes que el SKU; Tienda Nube lo
+  recibe al publicar;
+- suma una migración aditiva (`codigo_barras` nula en `productos` y
+  `producto_variantes`, con sus índices únicos).
+
+**Antes (3 de noviembre, hist. §126): producción básica, segunda parte,
 hecha y publicada (PR #43, junto con §125).** Lo que se usa al vender (la caja, la bolsa):
 - cada producto dice qué lleva, por cada uno o una vez por venta
   (Producción → Al vender, o el botón "Al vender" de su ficha);
@@ -1130,6 +1154,23 @@ perfume se maneja en ml (decant = 5 ml de perfume + 1 frasquito, al vender), y
 abrir un frasco ya se puede como producción (receta "Perfume (ml)" = 1 frasco,
 rinde 100). **Sigue:** "¿cuántas puedo hacer?" (la tercera sesión de la
 estimación), o volver al orden de abajo.
+
+**Ideas de Praxia (3 de noviembre, `docs/investigacion-praxia.md`).** Praxia es
+el sistema de un compañero con carnicería. Lo que a Nexo le falta, verificado
+en el código y ordenado por prioridad: etiquetas de balanza, ofertas con
+vigencia y por cantidad, recargo por medio de pago (depende del 8d), y cobrar a
+cuenta, gastos de caja, ventas del día y accesos rápidos desde el punto de
+venta; después, puntos y premios, mensajes de WhatsApp armados, "Para revisar"
+en el tablero, ventas por hora, gastos fijos que se repiten y permisos por
+sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
+- ~~código de barras en producto y variante~~ **hecho** (hist. §127), sin
+  publicar;
+- **sigue: etiquetas de balanza** (el código con el PLU y el peso, punto 1 de
+  la investigación), que se apoya en ese campo; después ofertas con vigencia y
+  cobrar a cuenta y gastos desde el punto de venta.
+- En el medio, el usuario pidió el tipo "Tienda online": **hecho** (hist.
+  §128), sin publicar. Lo que le falta (comisiones, envío, mensajes) está en
+  "Estado actual".
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos

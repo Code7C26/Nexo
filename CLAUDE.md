@@ -321,7 +321,9 @@ vendibles con su propio SKU y precio por lista), categorías, listas de
 precios, margen objetivo con alerta, unidad de medida (unidad, kg, g, l,
 ml, m, con cantidades decimales) y tipo producto/servicio (un servicio no
 maneja stock) y alícuota de IVA (21 % de partida; el precio de venta es el
-final, con IVA incluido; hist. §112).
+final, con IVA incluido; hist. §112). Código de barras en el producto y en
+cada variante, aparte del SKU y único por empresa entre los dos; el lector
+del punto de venta lo busca primero (hist. §127).
 
 ---
 
@@ -898,8 +900,9 @@ Ampliación (para competir con sistemas reales, ver §37):
 
 Implementado hoy: dashboard con resultado del período y comparación contra el
 período anterior, qué se vende / qué se compra, stock a reponer y valorizado,
-rotación, cuentas corrientes con aging. Las tres ampliaciones de arriba son
-las que faltan (§20, §38).
+rotación, cuentas corrientes con aging, y ventas y ganancia por canal (hist.
+§128; sin las comisiones de cada canal todavía). Faltan ventas por vendedor y
+las comparativas (§20, §38).
 
 ---
 
@@ -1191,9 +1194,9 @@ El comercio general (el que ya está construido) es el primer perfil y sigue
 siendo el foco hasta que el núcleo esté maduro (§38).
 
 Implementado hoy (Etapa F, §38):
-- **Tipos de negocio:** comercio general (incluye indumentaria y ferretería),
-  carnicería, verdulería, kiosco o almacén, servicios y gimnasio. Se eligen al
-  crear la empresa. Cambiarlo después es una página aparte de Configuración
+- **Tipos de negocio:** emprendimiento, tienda online, comercio general
+  (incluye indumentaria y ferretería), carnicería, verdulería, kiosco o
+  almacén, servicios y gimnasio. Se eligen al crear la empresa. Cambiarlo después es una página aparte de Configuración
   que avisa qué cambia: solo con qué unidad y tipo nace un producto nuevo.
 - **Cada tipo es un preset** (`PERFILES_RUBRO` en `backend/perfiles.js`): la
   unidad y el tipo con que nace un producto (kg en carnicería, servicio en
@@ -1223,6 +1226,11 @@ Implementado hoy (Etapa F, §38):
   y el costo sale de los materiales. Lo que se usa al vender (la caja, la
   bolsa; hist. §126) se propone en cada venta, se cambia en el momento y entra
   al costo de la venta. Faltan "¿cuántas puedo hacer?" y los decants.
+- **Venta online (hist. §128):** módulo reusable, prendido en Tienda online,
+  Emprendimiento y Comercio: las tiendas conectadas (§32), por dónde entró
+  cada venta (`ventas.canal`: el local, Tienda Nube, Mercado Libre, Instagram,
+  WhatsApp…) y la ganancia por canal. Un local que vende online lo prende, y
+  una tienda online que abre un local suma el punto de venta.
 - **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
   `handoff.md`). Un gimnasio también compra y vende productos: su preset
   combina comercio con socios.

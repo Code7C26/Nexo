@@ -1722,6 +1722,7 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
    se ve solo si está en <html data-modulos>, que pone core/negocio.js. Hasta
    que llega el negocio no se ve ninguna: así aparecen, pero no desaparecen. */
 :root:not([data-modulos~="pos"]) [data-modulo="pos"],
+:root:not([data-modulos~="canales"]) [data-modulo="canales"],
 :root:not([data-modulos~="crm"]) [data-modulo="crm"],
 :root:not([data-modulos~="presupuestos"]) [data-modulo="presupuestos"],
 :root:not([data-modulos~="trabajos"]) [data-modulo="trabajos"],

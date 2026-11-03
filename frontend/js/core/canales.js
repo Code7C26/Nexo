@@ -11,6 +11,21 @@ import { api } from "./api.js";
 import { invocar } from "./registro.js";
 import { esc, fechaHoraAR, money } from "./formato.js";
 
+// Por dónde entró una venta (hist. §128): la misma lista, con los mismos
+// nombres, que CANALES_VENTA en server.js. Tienda Nube y Mercado Libre los
+// pone sola la tienda conectada; se pueden elegir a mano para quien vende ahí
+// sin conectarla.
+export const CANALES_VENTA = {
+  local: "En el local",
+  tiendanube: "Tienda Nube",
+  mercadolibre: "Mercado Libre",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  facebook: "Facebook",
+  web: "Página propia",
+  otro: "Otro"
+};
+
 // Los tres selectores de "qué se publica y adónde entra la plata".
 export async function pintarAjustesCanal(estado, { lista, deposito, cuenta }) {
   const [listas, depositos, cuentas] = await Promise.all([

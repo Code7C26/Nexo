@@ -35,6 +35,7 @@ import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, 
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { crearConsumos } from "./core/al-vender.js";
+import { CANALES_VENTA } from "./core/canales.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
@@ -604,6 +605,29 @@ function renderReporteClientes(lista) {
   });
 }
 
+// Por canal (hist. §128): la ganancia ya descuenta lo que se usó al vender.
+function renderReporteCanales(lista) {
+  const body = document.getElementById("reporteCanalesBody");
+  if (lista.length === 0) {
+    body.innerHTML = filaVacia(7, "No hay ventas en este período.");
+    return;
+  }
+  body.innerHTML = lista
+    .map(
+      (c) => `
+    <tr>
+      <td data-label="Canal">${esc(c.nombre)}</td>
+      <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
+      <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
+      <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
+      <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
+      <td data-label="Margen" class="align-right mono">${porcentaje(c.margen_pct)}</td>
+      <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
+    </tr>`
+    )
+    .join("");
+}
+
 async function cargarReporteVentas() {
   // GET /api/reportes/ventas es admin-only (rentabilidad por producto,
   // categoría y cliente); se llama tras mutaciones de venta igual que
@@ -612,6 +636,7 @@ async function cargarReporteVentas() {
   tablaCargando("reporteProductosBody", 6);
   tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
+  tablaCargando("reporteCanalesBody", 7);
 
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
@@ -628,6 +653,7 @@ async function cargarReporteVentas() {
   renderReporteProductos(datos.productos);
   renderReporteCategorias(datos.categorias);
   renderReporteClientes(datos.clientes);
+  renderReporteCanales(datos.canales);
 }
 
 /* ---------- Reportes: qué se compra ---------- */
@@ -1957,6 +1983,7 @@ async function abrirFichaProducto(id) {
 
   const campos = [
     ...(esServicio ? [] : [["SKU", producto.sku]]),
+    ...(producto.codigo_barras || !(esServicio || producto.tiene_variantes) ? [["Código de barras", producto.codigo_barras]] : []),
     ["Categoría", producto.categoria],
     ...(producto.descripcion ? [["Descripción", producto.descripcion]] : []),
     [
@@ -2003,6 +2030,7 @@ async function abrirFichaProducto(id) {
       <tr>
         <td data-label="Combinación">${esc(v.combinacion)}</td>
         <td data-label="SKU">${esc(v.sku || "—")}</td>
+        <td data-label="Código de barras" class="mono">${esc(v.codigo_barras || "—")}</td>
         <td data-label="Costo" class="align-right col-admin mono">${money(v.precio_costo)}</td>
         <td data-label="Precio" class="align-right mono">${
           v.precio_venta > 0 ? money(v.precio_venta) : '<span class="precio-sin-configurar">Sin precio</span>'
@@ -2134,7 +2162,7 @@ function listaProductosVisible() {
   const porTexto = productos.filter(
     (p) =>
       (!catalogoMixto() || tipoDeProducto(p) === pestanaProductos) &&
-      [p.nombre, p.sku].some((campo) => (campo ?? "").toLowerCase().includes(q))
+      [p.nombre, p.sku, p.codigo_barras].some((campo) => (campo ?? "").toLowerCase().includes(q))
   );
   return filtrosProductos.aplicar(porTexto);
 }
@@ -2179,6 +2207,7 @@ alEntrarEnVista("productos", (subruta) => {
 const COLUMNAS_CSV_PRODUCTOS = [
   { titulo: "Nombre", valor: (p) => p.nombre },
   { titulo: "SKU", valor: (p) => p.sku },
+  { titulo: "Código de barras", valor: (p) => p.codigo_barras },
   { titulo: "Categoría", valor: (p) => p.categoria },
   { titulo: "Costo", valor: (p) => p.precio_costo, admin: true },
   { titulo: "Valorizado", valor: (p) => p.valorizado, admin: true },
@@ -2421,6 +2450,7 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   const form = document.getElementById("formProducto");
   form.nombre.value = producto?.nombre ?? "";
   form.sku.value = producto?.sku ?? "";
+  form.codigo_barras.value = producto?.codigo_barras ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
@@ -2453,10 +2483,21 @@ function mostrarCamposSegunTipo() {
   form.nombre.placeholder = `Nombre del ${palabra}`;
   document.getElementById("productoStockCampos").hidden = esServicio;
   document.getElementById("productoSkuCampo").hidden = esServicio && !form.sku.value;
+  // Con variantes, el código va en cada una: lo que el lector encuentra es la
+  // variante, no el producto.
+  const conVariantes = productos.find((p) => p.id === productoEditandoId)?.variantes_count > 0;
+  document.getElementById("productoCodigoBarrasCampo").hidden = (esServicio || conVariantes) && !form.codigo_barras.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
   document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
+// El lector termina cada lectura con Enter: en el código de barras no guarda
+// el formulario a medio llenar, pasa al campo siguiente.
+document.getElementById("formProducto").codigo_barras.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  e.target.form.descripcion.focus();
+});
 
 document.getElementById("btnNuevoProducto").addEventListener("click", () =>
   abrirModalProducto(null, { tipo: catalogoMixto() ? pestanaProductos : undefined })
@@ -2478,6 +2519,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
   const datos = {
     nombre: form.nombre.value,
     sku: form.sku.value || null,
+    codigo_barras: form.codigo_barras.value || null,
     descripcion: form.descripcion.value,
     // La duración es de un servicio: un producto no la manda.
     duracion_minutos: form.tipo.value === "servicio" && form.duracion_minutos.value !== "" ? Number(form.duracion_minutos.value) : null,
@@ -2648,7 +2690,7 @@ function preciosPorListaVarianteHtml(v) {
 function renderVariantesTabla() {
   const body = document.getElementById("variantesProductoBody");
   if (variantesCache.length === 0) {
-    body.innerHTML = filaVacia(7, "Todavía no hay variantes creadas.");
+    body.innerHTML = filaVacia(8, "Todavía no hay variantes creadas.");
     return;
   }
   body.innerHTML = variantesCache
@@ -2657,6 +2699,7 @@ function renderVariantesTabla() {
     <tr class="${v.activo ? "" : "fila-anulada"}" data-variante-id="${v.id}">
       <td data-label="Combinación">${esc(v.combinacion)}</td>
       <td data-label="SKU"><input type="text" class="variante-sku" value="${esc(v.sku ?? "")}" placeholder="—" /></td>
+      <td data-label="Código de barras"><input type="text" class="variante-codigo-barras" value="${esc(v.codigo_barras ?? "")}" placeholder="—" autocomplete="off" maxlength="60" /></td>
       <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${esc(v.precio_venta ?? "")}" placeholder="Sin precio propio" /></td>
       <td data-label="Precios por lista" class="variante-precios-lista">${preciosPorListaVarianteHtml(v)}</td>
       <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
@@ -2671,6 +2714,7 @@ function renderVariantesTabla() {
       const fila = btn.closest("tr");
       const varianteId = fila.dataset.varianteId;
       const sku = fila.querySelector(".variante-sku").value.trim();
+      const codigoBarras = fila.querySelector(".variante-codigo-barras").value.trim();
       const precio = fila.querySelector(".variante-precio").value;
       const activo = fila.querySelector(".variante-activa").checked;
       // Igual que en Productos: un input vacío significa "sin precio propio
@@ -2680,7 +2724,7 @@ function renderVariantesTabla() {
       fila.querySelectorAll(".variante-precio-lista").forEach((input) => {
         if (input.value !== "") precios[input.dataset.listaId] = Number(input.value);
       });
-      const body = { sku: sku || null, precio_venta: precio === "" ? null : Number(precio), activo };
+      const body = { sku: sku || null, codigo_barras: codigoBarras || null, precio_venta: precio === "" ? null : Number(precio), activo };
       if (Object.keys(precios).length > 0) body.precios = precios;
       await api(`/api/productos/${variantesProductoId}/variantes/${varianteId}`, {
         method: "PATCH",
@@ -3907,6 +3951,10 @@ document.getElementById("formPresupuesto").addEventListener("submit", async (e) 
 
 const selVentas = crearSeleccion("ventasBody");
 
+// Lo que no se vendió en el local dice por dónde (hist. §128), en la tabla y
+// en la línea del celular; lo del local y lo sin indicar, nada.
+const canalFueraDelLocal = (canal) => (canal && canal !== "local" ? (CANALES_VENTA[canal] ?? null) : null);
+
 function renderVentas(lista) {
   const body = document.getElementById("ventasBody");
   body.innerHTML = "";
@@ -3951,10 +3999,10 @@ function renderVentas(lista) {
       ${selVentas.celda(v.id)}
       <td data-label="N°" class="mono">#${v.id}</td>
       <td data-label="Cliente" class="m-titulo">${esc(v.cliente)}</td>
-      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), resumen)}
+      ${celdaMovil(`#${v.id}`, fechaAR(v.fecha), canalFueraDelLocal(v.canal), resumen)}
       <td data-label="Productos" class="celda-wrap">${esc(resumen || "—")}${
         v.carga_inicial && !esSaldo ? ' <span class="status">De antes de Nexo</span>' : ""
-      }</td>
+      }${canalFueraDelLocal(v.canal) ? ` <span class="status">${esc(canalFueraDelLocal(v.canal))}</span>` : ""}</td>
       <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
       <td data-label="Costo" class="align-right mono col-admin">${money(v.costo_total)}</td>
       <td data-label="Total" class="align-right mono m-valor">${money(v.total)}</td>
@@ -4083,6 +4131,12 @@ const filtrosVentas = crearFiltros(
     { clave: "cliente", etiqueta: "Cliente", tipo: "texto" },
     { clave: "items_resumen", etiqueta: "Productos", tipo: "texto" },
     {
+      clave: "canal",
+      etiqueta: "Por dónde",
+      tipo: "select",
+      opciones: Object.entries(CANALES_VENTA).map(([valor, texto]) => ({ valor, texto }))
+    },
+    {
       clave: "estado_cobro",
       etiqueta: "Estado de cobro",
       tipo: "select",
@@ -4188,6 +4242,29 @@ function poblarSelectCondicionPago(selector) {
 let ventaCondicionTocada = false;
 
 // desde: { cliente, crm_oportunidad_id } cuando sale de una consulta.
+const CLAVE_CANAL = "nexo.ventaCanal";
+function canalRecordado() {
+  try {
+    return localStorage.getItem(CLAVE_CANAL) ?? "";
+  } catch {
+    return "";
+  }
+}
+function recordarCanal(canal) {
+  try {
+    localStorage.setItem(CLAVE_CANAL, canal);
+  } catch {
+    // Sin almacenamiento, la próxima arranca en "Sin indicar".
+  }
+}
+function poblarSelectCanal(select, elegido) {
+  select.innerHTML = [
+    '<option value="">Sin indicar</option>',
+    ...Object.entries(CANALES_VENTA).map(([valor, texto]) => `<option value="${valor}">${esc(texto)}</option>`)
+  ].join("");
+  select.value = Object.hasOwn(CANALES_VENTA, elegido ?? "") ? elegido : "";
+}
+
 async function abrirModalVenta(venta = null, desde = null) {
   ventaEditandoId = venta?.id ?? null;
   ventaDeConsulta = desde?.crm_oportunidad_id ?? null;
@@ -4198,6 +4275,9 @@ async function abrirModalVenta(venta = null, desde = null) {
   const form = document.getElementById("formVenta");
   form.cliente.value = venta?.cliente ?? desde?.cliente ?? "";
   form.fecha.value = venta?.fecha ?? hoyISO();
+  // Por dónde te compró (hist. §128): al editar, el que tiene; al crear, el
+  // último que se eligió en este navegador.
+  poblarSelectCanal(form.canal, venta ? venta.canal : canalRecordado());
 
   poblarSelectListasPrecios("#ventaListaPrecio");
   // Al editar, respeta la lista con la que se hizo la venta; al crear, si
@@ -4358,6 +4438,11 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
     consumos: consumosVenta.leer(),
     ...datosCondicionPago(form)
   };
+  // Con Venta online apagado no se manda: la edición conserva el que tenía.
+  if (moduloActivo("canales")) {
+    body.canal = form.canal.value || null;
+    if (!ventaEditandoId) recordarCanal(form.canal.value);
+  }
   const consultaId = ventaEditandoId ? null : ventaDeConsulta;
   if (consultaId) body.crm_oportunidad_id = consultaId;
 
@@ -4397,6 +4482,7 @@ async function abrirFichaVenta(id) {
   const campos = [
     ["Cliente", venta.cliente],
     ["Fecha", fechaAR(venta.fecha)],
+    ...(venta.canal ? [["Por dónde", CANALES_VENTA[venta.canal] ?? venta.canal]] : []),
     ["Cobrado", `${money(venta.cobrado)} de ${money(venta.neto)}`],
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
     ["Facturada", venta.facturada ? "Sí" : "No"]

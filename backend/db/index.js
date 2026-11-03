@@ -2040,6 +2040,57 @@ if (!db.prepare('PRAGMA table_info(movimientos_stock)').all().some((col) => col.
   db.exec('ALTER TABLE movimientos_stock ADD COLUMN produccion_id INTEGER REFERENCES producciones(id)');
 }
 
+// Código de barras del producto y de la variante (ver schema.sql): aditiva y
+// nula, sin backfill (el que hoy lo tiene cargado como SKU sigue entrando por
+// el SKU). Único por empresa en cada tabla, como el SKU; entre las dos tablas
+// lo controla server.js.
+for (const tabla of ['productos', 'producto_variantes']) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === 'codigo_barras')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN codigo_barras TEXT`);
+  }
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_org_codigo_barras ON productos(organizacion_id, codigo_barras)');
+db.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_org_codigo_barras ON producto_variantes(organizacion_id, codigo_barras)'
+);
+
+// Por dónde entró cada venta, y el módulo "Venta online" (hist. §128, ver
+// schema.sql). Aditiva y nula. Solo en el arranque que suma la columna, así
+// es re-ejecutable y un admin que apaga el módulo no lo vuelve a ver prendido:
+// - el canal de lo que ya se sabe: la venta de una tienda conectada es de esa
+//   tienda, y la del punto de venta, del local; el resto queda sin indicar;
+// - el módulo: a cada negocio que ya existía se le prende solo si ya conectó
+//   una tienda, así nadie pierde lo que usa. A diferencia de las consultas
+//   (hist. §89), no por su tipo: un comercio que ya terminó los primeros pasos
+//   volvería a ver la guía con "Conectá tu tienda" pendiente. Lo prende en
+//   Funciones cuando quiera vender online.
+if (!db.prepare('PRAGMA table_info(ventas)').all().some((col) => col.name === 'canal')) {
+  db.exec('BEGIN');
+  try {
+    db.exec('ALTER TABLE ventas ADD COLUMN canal TEXT');
+    db.exec(`
+      UPDATE ventas SET canal = (
+        SELECT integraciones.plataforma FROM integracion_pedidos
+          JOIN integraciones ON integraciones.id = integracion_pedidos.integracion_id
+         WHERE integracion_pedidos.venta_id = ventas.id)
+       WHERE EXISTS (SELECT 1 FROM integracion_pedidos WHERE integracion_pedidos.venta_id = ventas.id);
+      UPDATE ventas SET canal = 'local' WHERE canal IS NULL AND turno_caja_id IS NOT NULL;
+    `);
+    const conTienda = db.prepare('SELECT 1 FROM integraciones WHERE organizacion_id = ?');
+    for (const { id, modulos } of db.prepare('SELECT id, modulos FROM organizaciones').all()) {
+      const actuales = (modulos ?? '').split(' ').filter(Boolean);
+      if (actuales.includes('canales') || !conTienda.get(id)) continue;
+      const conCanales = MODULOS.filter((m) => m === 'canales' || actuales.includes(m));
+      const desconocidos = actuales.filter((m) => !MODULOS.includes(m));
+      db.prepare('UPDATE organizaciones SET modulos = ? WHERE id = ?').run([...conCanales, ...desconocidos].join(' '), id);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
 // movimientos_stock.origen suma valores dos veces:
 // - 'stock_inicial' (handoff 8c): lo que había en cada depósito al empezar con
 //   Nexo, con su costo;

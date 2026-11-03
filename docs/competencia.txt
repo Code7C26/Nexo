@@ -1,2 +1,3 @@
 https://duxsoftware.com.ar/
 https://contagram.com/
+https://praxia-pos.vercel.app/ (de un compañero; análisis en docs/investigacion-praxia.md)

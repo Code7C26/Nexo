@@ -2092,7 +2092,9 @@ class ErrorPlan extends ErrorBulk {
 function mensajeDeError(err) {
   if (err instanceof ErrorBulk || err instanceof ErrorValidacion) return err.message;
   if (String(err.message).includes('UNIQUE constraint failed')) {
-    return 'Ya existe un producto con ese SKU.';
+    return String(err.message).includes('codigo_barras')
+      ? 'Ya existe un producto con ese código de barras.'
+      : 'Ya existe un producto con ese SKU.';
   }
   throw err;
 }
@@ -3683,7 +3685,7 @@ function valorizadoProducto(precioCosto, stock, stockVariantes, valorizadoVarian
 }
 
 const SELECT_PRODUCTO = `
-  SELECT productos.id, productos.nombre, productos.sku, productos.precio_costo,
+  SELECT productos.id, productos.nombre, productos.sku, productos.codigo_barras, productos.precio_costo,
          productos.precio_venta, productos.activo,
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
@@ -3820,16 +3822,62 @@ function normalizarDuracion(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
 }
 
+// El código de barras se guarda sin espacios: en el envase suele venir
+// impreso en grupos ("7 791234 567890") y el lector lo manda todo junto.
+// Vacío es NULL. Lo que no es texto queda como vino, para que lo rechace
+// errorCodigoDeBarras.
+const MAX_CODIGO_BARRAS = 48;
+function normalizarCodigoBarras(valor) {
+  if (typeof valor !== 'string') return valor ?? null;
+  const codigo = valor.replace(/\s+/g, '');
+  return codigo === '' ? null : codigo;
+}
+function errorCodigoDeBarras(valor) {
+  const codigo = normalizarCodigoBarras(valor);
+  if (codigo === null) return null;
+  if (typeof codigo !== 'string' || codigo.length > MAX_CODIGO_BARRAS || !/^[\x21-\x7e]+$/.test(codigo)) {
+    return `El código de barras no es válido: hasta ${MAX_CODIGO_BARRAS} números, letras o signos, sin acentos.`;
+  }
+  return null;
+}
+// Un código identifica una sola cosa que se vende: no puede estar en dos
+// productos, ni en un producto y una variante. Los índices únicos cubren cada
+// tabla por separado; esto, las dos juntas. Devuelve el error o null, sin
+// contar la fila que se está editando.
+function codigoDeBarrasOcupado(codigo, organizacionId, { productoId = null, varianteId = null } = {}) {
+  if (codigo === null) return null;
+  const producto = db
+    .prepare('SELECT nombre FROM productos WHERE organizacion_id = ? AND codigo_barras = ? AND (? IS NULL OR id <> ?)')
+    .get(organizacionId, codigo, productoId, productoId);
+  if (producto) return `El código de barras ${codigo} ya es de "${producto.nombre}".`;
+  const variante = db
+    .prepare(
+      `SELECT producto_variantes.id, productos.nombre
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+        WHERE producto_variantes.organizacion_id = ? AND producto_variantes.codigo_barras = ?
+          AND (? IS NULL OR producto_variantes.id <> ?)`
+    )
+    .get(organizacionId, codigo, varianteId, varianteId);
+  if (variante) return `El código de barras ${codigo} ya es de "${variante.nombre} — ${combinacionVariante(variante.id)}".`;
+  return null;
+}
+
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
 function validarProducto(
-  { nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos, alicuota_iva },
+  {
+    nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos, alicuota_iva,
+    codigo_barras
+  },
   organizacionId
 ) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
+  const errorCodigo = errorCodigoDeBarras(codigo_barras);
+  if (errorCodigo) return errorCodigo;
   if (descripcion != null && typeof descripcion !== 'string') {
     return 'La descripción no es válida.';
   }
@@ -3897,8 +3945,11 @@ app.post('/api/productos', soloAdmin, (req, res) => {
 // usan el alta de siempre y la planilla del stock inicial (handoff 8c).
 function insertarProducto(cuerpo, organizacionId) {
   const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos,
-    alicuota_iva } = cuerpo;
+    alicuota_iva, codigo_barras } = cuerpo;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
+  const codigoBarras = normalizarCodigoBarras(codigo_barras);
+  const ocupado = codigoDeBarrasOcupado(codigoBarras, organizacionId);
+  if (ocupado) throw new ErrorValidacion(ocupado);
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(organizacionId);
   // Uno inactivo no cuenta para el tope del plan (hist. §98).
@@ -3912,8 +3963,8 @@ function insertarProducto(cuerpo, organizacionId) {
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
-                                descripcion, duracion_minutos, alicuota_iva)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                descripcion, duracion_minutos, alicuota_iva, codigo_barras)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -3929,9 +3980,13 @@ function insertarProducto(cuerpo, organizacionId) {
         tipo ?? perfil.tipo_defecto,
         normalizarDescripcion(descripcion),
         normalizarDuracion(duracion_minutos),
-        alicuota_iva == null ? '21' : String(alicuota_iva)
+        alicuota_iva == null ? '21' : String(alicuota_iva),
+        codigoBarras
       ));
   } catch (err) {
+    if (String(err.message).includes('UNIQUE constraint failed') && String(err.message).includes('codigo_barras')) {
+      throw new ErrorValidacion(`Ya existe un producto con el código de barras ${codigoBarras}.`);
+    }
     if (String(err.message).includes('UNIQUE constraint failed')) {
       throw new ErrorValidacion(skuNormalizado ? `Ya existe un producto con el SKU "${skuNormalizado}".` : 'Ya existe un producto con ese SKU.');
     }
@@ -3992,7 +4047,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
     .prepare(
       `SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo,
-              descripcion, duracion_minutos, alicuota_iva
+              descripcion, duracion_minutos, alicuota_iva, codigo_barras
          FROM productos WHERE id = ? AND organizacion_id = ?`
     )
     .get(productoId, req.usuario.organizacion_id);
@@ -4064,8 +4119,11 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     tipo: fusionado.tipo ?? 'producto',
     descripcion: normalizarDescripcion(fusionado.descripcion),
     duracion_minutos: normalizarDuracion(fusionado.duracion_minutos),
-    alicuota_iva: fusionado.alicuota_iva == null ? '21' : String(fusionado.alicuota_iva)
+    alicuota_iva: fusionado.alicuota_iva == null ? '21' : String(fusionado.alicuota_iva),
+    codigo_barras: normalizarCodigoBarras(fusionado.codigo_barras)
   };
+  const ocupado = codigoDeBarrasOcupado(nuevo.codigo_barras, req.usuario.organizacion_id, { productoId });
+  if (ocupado) throw new ErrorBulk(ocupado);
   // Pasar a servicio deja de controlar el stock: si todavía tiene, se perdería
   // de vista. Primero se ajusta a 0.
   if (producto.tipo !== 'servicio' && nuevo.tipo === 'servicio') {
@@ -4106,7 +4164,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
     'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo',
-    'descripcion', 'duracion_minutos', 'alicuota_iva'
+    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras'
   ]);
 
   withTransaction(() => {
@@ -4116,7 +4174,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     db.prepare(
       `UPDATE productos
           SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
-              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?
+              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -4132,6 +4190,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.descripcion,
       nuevo.duracion_minutos,
       nuevo.alicuota_iva,
+      nuevo.codigo_barras,
       productoId
     );
     if (preciosPorLista) {
@@ -4450,7 +4509,7 @@ app.delete('/api/productos/:id/atributos/:atributoId/valores/:valorId', soloAdmi
 });
 
 const SELECT_VARIANTE = `
-  SELECT producto_variantes.id, producto_variantes.producto_id, producto_variantes.sku,
+  SELECT producto_variantes.id, producto_variantes.producto_id, producto_variantes.sku, producto_variantes.codigo_barras,
          producto_variantes.precio_costo, producto_variantes.precio_venta, producto_variantes.activo,
          COALESCE(stock_variante_actual.cantidad, 0) AS stock
     FROM producto_variantes
@@ -4577,7 +4636,12 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
   if (!producto) {
     return res.status(404).json({ error: 'Producto no encontrado.' });
   }
-  const { valores, sku, precio_venta, activo } = req.body;
+  const { valores, sku, precio_venta, activo, codigo_barras } = req.body;
+  const errorCodigo = errorCodigoDeBarras(codigo_barras);
+  if (errorCodigo) return res.status(400).json({ error: errorCodigo });
+  const codigoBarras = normalizarCodigoBarras(codigo_barras);
+  const ocupado = codigoDeBarrasOcupado(codigoBarras, req.usuario.organizacion_id);
+  if (ocupado) return res.status(400).json({ error: ocupado });
   const errorCombinacion = validarCombinacionVariante(productoId, valores);
   if (errorCombinacion) {
     return res.status(400).json({ error: errorCombinacion });
@@ -4597,14 +4661,15 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
     withTransaction(() => {
       ({ lastInsertRowid } = db
         .prepare(
-          'INSERT INTO producto_variantes (producto_id, sku, precio_venta, activo, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+          'INSERT INTO producto_variantes (producto_id, sku, precio_venta, activo, organizacion_id, codigo_barras) VALUES (?, ?, ?, ?, ?, ?)'
         )
         .run(
           productoId,
           skuNormalizado,
           precioVentaNormalizado,
           activo === false || activo === 0 ? 0 : 1,
-          req.usuario.organizacion_id
+          req.usuario.organizacion_id,
+          codigoBarras
         ));
       const insertValor = db.prepare(
         'INSERT INTO producto_variante_valores (variante_id, atributo_id, valor_id) VALUES (?, ?, ?)'
@@ -4621,7 +4686,11 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
     });
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ error: 'Ya existe una variante con ese SKU.' });
+      return res.status(400).json({
+        error: String(err.message).includes('codigo_barras')
+          ? 'Ya existe una variante con ese código de barras.'
+          : 'Ya existe una variante con ese SKU.'
+      });
     }
     throw err;
   }
@@ -4631,7 +4700,8 @@ app.post('/api/productos/:id/variantes', soloAdmin, (req, res) => {
 // La combinación de valores de una variante no se edita después de creada
 // (evitaría corromper el significado de variante_id en movimientos ya
 // generados); para corregir un error se desactiva y se crea una nueva. Acá
-// solo se editan sku, precio_venta, activo y el precio por lista.
+// solo se editan sku, código de barras, precio_venta, activo y el precio por
+// lista.
 app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
   const productoId = Number(req.params.id);
   const varianteId = Number(req.params.varianteId);
@@ -4645,8 +4715,13 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
   if (!variante) {
     return res.status(404).json({ error: 'Variante no encontrada.' });
   }
-  const { sku, precio_venta, activo, precios } = req.body;
+  const { sku, precio_venta, activo, precios, codigo_barras } = req.body;
   const skuNormalizado = sku === undefined ? variante.sku : sku && String(sku).trim() ? String(sku).trim() : null;
+  const errorCodigo = errorCodigoDeBarras(codigo_barras);
+  if (errorCodigo) return res.status(400).json({ error: errorCodigo });
+  const codigoBarras = codigo_barras === undefined ? variante.codigo_barras : normalizarCodigoBarras(codigo_barras);
+  const ocupado = codigoDeBarrasOcupado(codigoBarras, req.usuario.organizacion_id, { varianteId });
+  if (ocupado) return res.status(400).json({ error: ocupado });
   let precioVentaNormalizado = variante.precio_venta;
   if (precio_venta !== undefined) {
     precioVentaNormalizado = precio_venta === null || precio_venta === '' ? null : Number(precio_venta);
@@ -4672,15 +4747,16 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
     }
   }
 
-  const nuevo = { sku: skuNormalizado, precio_venta: precioVentaNormalizado, activo: activoNormalizado };
-  const cambios = diffCampos(variante, nuevo, ['sku', 'precio_venta', 'activo']);
+  const nuevo = { sku: skuNormalizado, precio_venta: precioVentaNormalizado, activo: activoNormalizado, codigo_barras: codigoBarras };
+  const cambios = diffCampos(variante, nuevo, ['sku', 'precio_venta', 'activo', 'codigo_barras']);
 
   try {
     withTransaction(() => {
-      db.prepare('UPDATE producto_variantes SET sku = ?, precio_venta = ?, activo = ? WHERE id = ?').run(
+      db.prepare('UPDATE producto_variantes SET sku = ?, precio_venta = ?, activo = ?, codigo_barras = ? WHERE id = ?').run(
         nuevo.sku,
         nuevo.precio_venta,
         nuevo.activo,
+        nuevo.codigo_barras,
         varianteId
       );
       if (preciosPorLista) {
@@ -4706,7 +4782,11 @@ app.patch('/api/productos/:id/variantes/:varianteId', soloAdmin, (req, res) => {
     });
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ error: 'Ya existe una variante con ese SKU.' });
+      return res.status(400).json({
+        error: String(err.message).includes('codigo_barras')
+          ? 'Ya existe una variante con ese código de barras.'
+          : 'Ya existe una variante con ese SKU.'
+      });
     }
     throw err;
   }
@@ -5967,7 +6047,7 @@ app.get('/api/ventas', (req, res) => {
   const ventas = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
-              ventas.carga_inicial, ventas.saldo_inicial, ventas.fecha_vencimiento,
+              ventas.carga_inicial, ventas.saldo_inicial, ventas.fecha_vencimiento, ventas.canal,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(iva), 0)
@@ -6017,7 +6097,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
               ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
-              ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial,
+              ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial, ventas.canal,
               EXISTS (SELECT 1 FROM devoluciones
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
          FROM ventas
@@ -6230,6 +6310,27 @@ function validarStockDisponible(items, depositoId, organizacionId) {
   return null;
 }
 
+// Por dónde entró una venta (hist. §128, ventas.canal). 'local' lo pone el
+// punto de venta, y cada tienda conectada el suyo; en el alta lo elige quien
+// vende. La misma lista, con los mismos nombres, está en
+// frontend/js/core/canales.js.
+const CANALES_VENTA = {
+  local: 'En el local',
+  tiendanube: 'Tienda Nube',
+  mercadolibre: 'Mercado Libre',
+  instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
+  facebook: 'Facebook',
+  web: 'Página propia',
+  otro: 'Otro'
+};
+// Vacío es sin indicar; lo que no está en la lista no se guarda.
+function normalizarCanal(canal) {
+  if (canal === undefined || canal === null || canal === '') return null;
+  if (typeof canal !== 'string' || !Object.hasOwn(CANALES_VENTA, canal)) throw new ErrorBulk('El canal de venta no es válido.');
+  return canal;
+}
+
 // Crea la venta con todos sus efectos: items, salida de stock, costo
 // histórico congelado y deuda en la cuenta corriente.
 // IMPORTANTE: asume que el stock ya se validó y que se la llama DENTRO de
@@ -6250,8 +6351,11 @@ function crearVenta({
   // porque el stock que se cargó ya es el de hoy.
   carga_inicial = false,
   // Lo que se usó al vender (hist. §126): undefined es "lo de siempre".
-  consumos
+  consumos,
+  // Por dónde entró (CANALES_VENTA); sin él, sin indicar.
+  canal
 }) {
+  const canalVenta = normalizarCanal(canal);
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
   // existe. organizacion_id es obligatorio (CLAUDE.md §28): un cliente
@@ -6288,10 +6392,20 @@ function crearVenta({
 
   const { lastInsertRowid: nuevaVentaId } = db
     .prepare(
-      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial, canal)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id, carga_inicial ? 1 : 0);
+    .run(
+      clienteRow.id,
+      fechaVenta,
+      listaPrecioId,
+      depositoId,
+      venc.condicion,
+      venc.vencimiento,
+      organizacion_id,
+      carga_inicial ? 1 : 0,
+      canalVenta
+    );
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
@@ -6353,7 +6467,7 @@ function crearVenta({
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos, canal } =
     req.body;
 
   const errorItems = validarItemsVenta(items);
@@ -6388,6 +6502,7 @@ app.post('/api/ventas', (req, res) => {
         condicion_pago,
         fecha_vencimiento,
         consumos,
+        canal,
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
@@ -6411,7 +6526,7 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos, canal } =
     req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
@@ -6421,11 +6536,19 @@ app.put('/api/ventas/:id', (req, res) => {
 
   const venta = db
     .prepare(
-      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento, carga_inicial, canal FROM ventas WHERE id = ? AND organizacion_id = ?'
     )
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  // Sin canal en el pedido, queda el que tenía (el de una tienda conectada,
+  // por ejemplo, que la pantalla no muestra para elegir).
+  let canalEdicion;
+  try {
+    canalEdicion = canal === undefined ? venta.canal : normalizarCanal(canal);
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
   }
   // Editar revierte y vuelve a aplicar el stock, que una venta de antes de
   // Nexo nunca descontó (handoff 8c): se anula y se carga de nuevo.
@@ -6609,7 +6732,7 @@ app.put('/api/ventas/:id', (req, res) => {
     db.prepare(
       `UPDATE ventas
           SET cliente_id = ?, fecha = COALESCE(?, fecha), lista_precio_id = ?, deposito_id = ?,
-              condicion_pago = ?, fecha_vencimiento = ?
+              condicion_pago = ?, fecha_vencimiento = ?, canal = ?
         WHERE id = ?`
     ).run(
       clienteRow.id,
@@ -6618,6 +6741,7 @@ app.put('/api/ventas/:id', (req, res) => {
       depositoId,
       vencEdicion.condicion,
       vencEdicion.vencimiento,
+      canalEdicion,
       ventaId
     );
 
@@ -11492,6 +11616,50 @@ const SQL_REPORTE_DEVOLUCIONES_POR_CLIENTE = db.prepare(
     GROUP BY ventas.cliente_id`
 );
 
+// Por canal (hist. §128): mismo armado que por cliente, agrupado por
+// ventas.canal ('' = sin indicar, para que netearPorId tenga una clave). El
+// costo suma lo que se usó al vender (la caja, la bolsa del envío; hist.
+// §126), que es parte del resultado y cambia mucho de un canal a otro.
+const SQL_REPORTE_VENTAS_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id,
+          COUNT(DISTINCT ventas.id) AS cantidad_ventas,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas,
+          SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo
+     FROM venta_items
+     JOIN ventas ON ventas.id = venta_items.venta_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
+const SQL_REPORTE_CONSUMOS_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id,
+          SUM(venta_consumos.cantidad * venta_consumos.costo_unitario_historico) AS costo
+     FROM venta_consumos
+     JOIN ventas ON ventas.id = venta_consumos.venta_id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
+const SQL_REPORTE_DEVOLUCIONES_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id,
+          SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}) AS ventas,
+          SUM(CASE WHEN devolucion_items.vuelve_stock
+                   THEN devolucion_items.cantidad * devolucion_items.costo_unitario_historico
+                   ELSE 0 END) AS costo
+     FROM devolucion_items
+     JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
+     JOIN ventas ON ventas.id = devoluciones.venta_id
+    WHERE devoluciones.estado = 'activa'
+      AND (? IS NULL OR devoluciones.fecha >= ?)
+      AND (? IS NULL OR devoluciones.fecha <= ?)
+      AND devoluciones.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
+
 const redondear2 = (n) => Math.round(n * 100) / 100;
 const margenPct = (ganancia, ventas) => (ventas > 0 ? redondear2((ganancia / ventas) * 100) : 0);
 
@@ -11617,6 +11785,24 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     })
     .sort((a, b) => b.ventas - a.ventas);
 
+  const consumosPorCanal = new Map(SQL_REPORTE_CONSUMOS_POR_CANAL.all(...rango).map((c) => [c.id, c.costo]));
+  const canales = netearPorId(SQL_REPORTE_VENTAS_POR_CANAL.all(...rango), SQL_REPORTE_DEVOLUCIONES_POR_CANAL.all(...rango), () => null)
+    .map((c) => {
+      const costo = c.costo + (consumosPorCanal.get(c.id) ?? 0);
+      const ganancia = redondear2(c.ventas - costo);
+      return {
+        canal: c.id || null,
+        nombre: CANALES_VENTA[c.id] ?? 'Sin indicar',
+        cantidad_ventas: c.cantidad_ventas ?? 0,
+        ventas: redondear2(c.ventas),
+        ganancia,
+        margen_pct: margenPct(ganancia, c.ventas),
+        ticket_promedio: c.cantidad_ventas > 0 ? redondear2(c.ventas / c.cantidad_ventas) : 0,
+        participacion_pct: resultado.ventas > 0 ? redondear2((c.ventas / resultado.ventas) * 100) : 0
+      };
+    })
+    .sort((a, b) => b.ventas - a.ventas);
+
   res.json({
     rango: { desde, hasta, acotado },
     totales: {
@@ -11629,7 +11815,8 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     },
     productos,
     categorias,
-    clientes
+    clientes,
+    canales
   });
 });
 
@@ -13714,7 +13901,12 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
     socios: contar('SELECT COUNT(*) AS n FROM socios WHERE organizacion_id = ?'),
     trabajos: contar('SELECT COUNT(*) AS n FROM trabajos WHERE organizacion_id = ?'),
     abonos: contar('SELECT COUNT(*) AS n FROM abonos WHERE organizacion_id = ?'),
-    consultas: contar('SELECT COUNT(*) AS n FROM crm_oportunidades WHERE organizacion_id = ?')
+    consultas: contar('SELECT COUNT(*) AS n FROM crm_oportunidades WHERE organizacion_id = ?'),
+    // Venta online (hist. §128): una tienda conectada, o alguna venta anotada
+    // con un canal de internet (quien vende solo por Instagram o WhatsApp).
+    venta_online:
+      contar("SELECT COUNT(*) AS n FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada'") > 0 ||
+      contar("SELECT COUNT(*) AS n FROM ventas WHERE organizacion_id = ? AND canal IS NOT NULL AND canal <> 'local'") > 0
   });
 });
 
@@ -14358,8 +14550,8 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
 });
 
 // Lo que se puede vender desde el mostrador: cada producto activo sin
-// variantes, y cada variante activa como un ítem propio (con su SKU, que es
-// lo que lee el lector de código de barras). Precio de la lista
+// variantes, y cada variante activa como un ítem propio (con su código de
+// barras y su SKU, que es lo que busca el lector). Precio de la lista
 // predeterminada, con la misma cadena que la pantalla de ventas (variante →
 // precio propio de la variante → producto), y stock del depósito
 // predeterminado, que es de donde sale una venta de mostrador. Los planes de
@@ -14373,7 +14565,7 @@ app.get('/api/pos/catalogo', (req, res) => {
     .get(organizacionId)?.id;
   const productos = db
     .prepare(
-      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku,
+      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.codigo_barras,
               productos.precio_venta AS precio, COALESCE(stock_por_deposito.cantidad, 0) AS stock,
               categorias.nombre AS categoria, productos.unidad, productos.tipo
          FROM productos
@@ -14389,7 +14581,7 @@ app.get('/api/pos/catalogo', (req, res) => {
   const variantes = db
     .prepare(
       `SELECT productos.id AS producto_id, producto_variantes.id AS variante_id, productos.nombre,
-              producto_variantes.sku,
+              producto_variantes.sku, producto_variantes.codigo_barras,
               COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio,
               COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, categorias.nombre AS categoria,
               productos.unidad, productos.tipo
@@ -14464,6 +14656,7 @@ app.post('/api/pos/ventas', (req, res) => {
         cliente_id,
         items,
         consumos,
+        canal: 'local',
         organizacion_id: organizacionId
       });
       const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
@@ -17753,6 +17946,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           fecha: fechaDelPedido(pedido),
           lista_precio_id: integracion.lista_precio_id,
           deposito_id: integracion.deposito_id,
+          canal: integracion.plataforma,
           organizacion_id: organizacionId
         });
         const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
@@ -17901,7 +18095,7 @@ function productoParaTiendaNube(producto, integracion) {
     .prepare('SELECT id, nombre FROM producto_atributos WHERE producto_id = ? ORDER BY orden')
     .all(producto.id);
   const variantes = db
-    .prepare('SELECT id, sku, activo FROM producto_variantes WHERE producto_id = ? AND activo = 1 ORDER BY id')
+    .prepare('SELECT id, sku, codigo_barras, activo FROM producto_variantes WHERE producto_id = ? AND activo = 1 ORDER BY id')
     .all(producto.id);
   if (variantes.length && atributos.length > 3) {
     throw new ErrorValidacion(`"${producto.nombre}" tiene ${atributos.length} atributos y Tienda Nube acepta hasta 3.`);
@@ -17912,8 +18106,8 @@ function productoParaTiendaNube(producto, integracion) {
       WHERE producto_variante_valores.variante_id = ? AND producto_variante_valores.atributo_id = ?`
   );
   const filas = variantes.length
-    ? variantes.map((v) => ({ producto_id: producto.id, variante_id: v.id, sku: v.sku, variante_activa: 1 }))
-    : [{ producto_id: producto.id, variante_id: null, sku: producto.sku }];
+    ? variantes.map((v) => ({ producto_id: producto.id, variante_id: v.id, sku: v.sku, codigo_barras: v.codigo_barras, variante_activa: 1 }))
+    : [{ producto_id: producto.id, variante_id: null, sku: producto.sku, codigo_barras: producto.codigo_barras }];
   const servicio = producto.tipo === 'servicio';
   const cuerpo = {
     name: { es: producto.nombre },
@@ -17924,6 +18118,8 @@ function productoParaTiendaNube(producto, integracion) {
       return {
         price: redondear2(precioParaPublicar(f.producto_id, f.variante_id, listaId)),
         ...(f.sku ? { sku: f.sku } : {}),
+        // Tienda Nube acepta hasta 48 caracteres, el mismo tope de Nexo.
+        ...(f.codigo_barras ? { barcode: f.codigo_barras } : {}),
         // Un servicio se vende sin tope: stock vacío es "sin límite".
         stock: servicio ? '' : stock,
         ...(variantes.length ? { values: atributos.map((a) => ({ es: valorDe.get(f.variante_id, a.id)?.valor ?? '-' })) } : {})
