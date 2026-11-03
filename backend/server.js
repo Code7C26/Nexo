@@ -994,6 +994,12 @@ function valoresNegocio(datos) {
   ];
 }
 
+// Lo que contestó al final del alta (handoff 8c): si el negocio ya venía
+// funcionando. Sin respuesta, NULL.
+function yaFuncionaba(cuerpo) {
+  return typeof cuerpo?.ya_funcionaba === 'boolean' ? Number(cuerpo.ya_funcionaba) : null;
+}
+
 // Crea el negocio con sus catálogos base (depósito, lista, cuentas). Va
 // adentro de la transacción de quien lo llama, que después le suma su admin.
 function insertarNegocio(datos) {
@@ -1218,7 +1224,12 @@ app.post('/api/auth/registro', (req, res) => {
     } else {
       orgId = insertarNegocio(datos);
     }
-    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, planVence, orgId);
+    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ?, ya_funcionaba = ? WHERE id = ?').run(
+      plan,
+      planVence,
+      yaFuncionaba(req.body),
+      orgId
+    );
     const info = db
       .prepare(
         `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, debe_cambiar_password, email,
@@ -2157,9 +2168,9 @@ const SELECT_CLIENTE_CON_TOTALES = `
             FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
            WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa') AS total_gastado,
          (SELECT COUNT(*) FROM ventas
-           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa') AS cantidad_compras,
+           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NULL) AS cantidad_compras,
          (SELECT MAX(fecha) FROM ventas
-           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa') AS ultima_compra,
+           WHERE ventas.cliente_id = clientes.id AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NULL) AS ultima_compra,
          COALESCE((SELECT saldo FROM saldo_cc_clientes
                     WHERE saldo_cc_clientes.cliente_id = clientes.id), 0) AS deuda
     FROM clientes`;
@@ -2183,9 +2194,9 @@ app.get('/api/clientes/:id', (req, res) => {
 
   const historial = db
     .prepare(
-      `SELECT ventas.id, ventas.fecha, ventas.estado,
+      `SELECT ventas.id, ventas.fecha, ventas.estado, ventas.carga_inicial, ventas.saldo_inicial,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS total,
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id) + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado
          FROM ventas WHERE ventas.cliente_id = ?
@@ -3872,20 +3883,32 @@ app.post('/api/productos', soloAdmin, (req, res) => {
   if (error) {
     return res.status(400).json({ error });
   }
+  let id;
+  try {
+    id = insertarProducto(req.body, req.usuario.organizacion_id);
+  } catch (err) {
+    if (err instanceof ErrorValidacion) return res.status(400).json({ error: err.message });
+    throw err;
+  }
+  res.status(201).json({ id });
+});
 
+// Da de alta un producto ya validado (validarProducto) y devuelve su id. Lo
+// usan el alta de siempre y la planilla del stock inicial (handoff 8c).
+function insertarProducto(cuerpo, organizacionId) {
   const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos,
-    alicuota_iva } = req.body;
+    alicuota_iva } = cuerpo;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
-  const perfil = perfilDeEmpresa(req.usuario.organizacion_id);
+  const perfil = perfilDeEmpresa(organizacionId);
   // Uno inactivo no cuenta para el tope del plan (hist. §98).
-  if (!(activo === false || activo === 0)) exigirLugarEnPlan(req.usuario.organizacion_id, 'productos');
+  if (!(activo === false || activo === 0)) exigirLugarEnPlan(organizacionId, 'productos');
 
   let lastInsertRowid;
   try {
     // precio_costo arranca en 0 a propósito: un producto recién creado
     // todavía no se compró, así que no tiene costo real. Lo va a fijar la
-    // primera compra que lo incluya.
+    // primera compra que lo incluya, o su stock inicial.
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
@@ -3901,7 +3924,7 @@ app.post('/api/productos', soloAdmin, (req, res) => {
         normalizarStockMaximo(stock_maximo),
         normalizarCategoriaId(categoria_id),
         normalizarMargenObjetivo(margen_objetivo),
-        req.usuario.organizacion_id,
+        organizacionId,
         unidad ?? perfil.unidad_defecto,
         tipo ?? perfil.tipo_defecto,
         normalizarDescripcion(descripcion),
@@ -3910,12 +3933,12 @@ app.post('/api/productos', soloAdmin, (req, res) => {
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ error: 'Ya existe un producto con ese SKU.' });
+      throw new ErrorValidacion(skuNormalizado ? `Ya existe un producto con el SKU "${skuNormalizado}".` : 'Ya existe un producto con ese SKU.');
     }
     throw err;
   }
-  res.status(201).json({ id: lastInsertRowid });
-});
+  return Number(lastInsertRowid);
+}
 
 // Campos que la edición EN LOTE puede tocar. Deliberadamente más chico que
 // las 7 columnas del PATCH singular: nombre y sku quedan afuera porque
@@ -4767,9 +4790,10 @@ app.get('/api/proveedores/:id', (req, res) => {
 
   const historial = db
     .prepare(
-      `SELECT compras.id, compras.fecha, compras.estado, compras.estado_envio,
+      `SELECT compras.id, compras.fecha, compras.estado, compras.estado_envio, compras.saldo_inicial,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM compra_items WHERE compra_items.compra_id = compras.id) + compras.costo_envio AS total,
+                 FROM compra_items WHERE compra_items.compra_id = compras.id) + compras.costo_envio
+                + COALESCE(compras.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM pagos WHERE pagos.compra_id = compras.id) AS pagado
          FROM compras WHERE compras.proveedor_id = ?
@@ -5347,8 +5371,9 @@ app.get('/api/ventas', (req, res) => {
   const ventas = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
+              ventas.carga_inicial, ventas.saldo_inicial, ventas.fecha_vencimiento,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
-                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS total,
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id) + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(iva), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) AS iva,
               (SELECT COALESCE(SUM((precio_unitario - costo_unitario_historico) * cantidad - iva), 0)
@@ -5376,7 +5401,9 @@ app.get('/api/ventas', (req, res) => {
       const neto = v.total - v.devuelto;
       return {
         ...v,
-        costo_total: v.total - v.iva - v.margen,
+        // El saldo anterior (handoff 8c) no es venta de mercadería: ni costo ni margen.
+        costo_total: v.total - (v.saldo_inicial ?? 0) - v.iva - v.margen,
+        carga_inicial: Boolean(v.carga_inicial),
         facturada: Boolean(v.facturada),
         tiene_devolucion: Boolean(v.tiene_devolucion),
         neto,
@@ -5392,7 +5419,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, clientes.nombre AS cliente, ventas.fecha, ventas.estado,
               ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
-              ventas.condicion_pago, ventas.fecha_vencimiento,
+              ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial,
               EXISTS (SELECT 1 FROM devoluciones
                        WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
          FROM ventas
@@ -5424,7 +5451,8 @@ app.get('/api/ventas/:id', (req, res) => {
     )
     .all(ventaId);
 
-  const total = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
+  // El saldo anterior (handoff 8c) no tiene renglones: su total es el importe.
+  const total = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0) + (venta.saldo_inicial ?? 0);
   const costoTotal = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
   const devuelto = items.reduce((acc, i) => acc + i.cantidad_devuelta * i.precio_unitario, 0);
   const neto = total - devuelto;
@@ -5436,6 +5464,7 @@ app.get('/api/ventas/:id', (req, res) => {
   res.json({
     ...venta,
     tiene_devolucion: Boolean(venta.tiene_devolucion),
+    carga_inicial: Boolean(venta.carga_inicial),
     items: items.map((i) => ({
       ...i,
       combinacion: i.variante_id ? combinacionVariante(i.variante_id) : null,
@@ -5447,7 +5476,7 @@ app.get('/api/ventas/:id', (req, res) => {
     total,
     iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     costo_total: costoTotal,
-    margen: total - items.reduce((acc, i) => acc + i.iva, 0) - costoTotal,
+    margen: total - (venta.saldo_inicial ?? 0) - items.reduce((acc, i) => acc + i.iva, 0) - costoTotal,
     devuelto,
     neto,
     cobrado,
@@ -5613,7 +5642,10 @@ function crearVenta({
   deposito_id,
   condicion_pago,
   fecha_vencimiento,
-  organizacion_id
+  organizacion_id,
+  // Una venta de antes de empezar con Nexo (handoff 8c): no mueve stock,
+  // porque el stock que se cargó ya es el de hoy.
+  carga_inicial = false
 }) {
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
@@ -5651,10 +5683,10 @@ function crearVenta({
 
   const { lastInsertRowid: nuevaVentaId } = db
     .prepare(
-      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ventas (cliente_id, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id);
+    .run(clienteRow.id, fechaVenta, listaPrecioId, depositoId, venc.condicion, venc.vencimiento, organizacion_id, carga_inicial ? 1 : 0);
 
   const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
   // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
@@ -5681,16 +5713,18 @@ function crearVenta({
       condicionIva
     );
     insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
-    registrarMovimientoStock({
-      producto_id: item.producto_id,
-      variante_id: varianteId,
-      deposito_id: depositoResuelto,
-      tipo: 'salida',
-      cantidad: item.cantidad,
-      origen: 'venta',
-      venta_id: nuevaVentaId,
-      organizacion_id
-    });
+    if (!carga_inicial) {
+      registrarMovimientoStock({
+        producto_id: item.producto_id,
+        variante_id: varianteId,
+        deposito_id: depositoResuelto,
+        tipo: 'salida',
+        cantidad: item.cantidad,
+        origen: 'venta',
+        venta_id: nuevaVentaId,
+        organizacion_id
+      });
+    }
     // Ya NO se pisa productos.precio_venta con el precio de esta venta
     // (CLAUDE.md §18): con varias listas de precios, una venta con un
     // precio puntual (descuento, negociación) bajaría en silencio el
@@ -5778,11 +5812,16 @@ app.put('/api/ventas/:id', (req, res) => {
 
   const venta = db
     .prepare(
-      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento FROM ventas WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, cliente_id, deposito_id, estado, fecha, condicion_pago, fecha_vencimiento, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?'
     )
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
+  }
+  // Editar revierte y vuelve a aplicar el stock, que una venta de antes de
+  // Nexo nunca descontó (handoff 8c): se anula y se carga de nuevo.
+  if (venta.carga_inicial) {
+    return res.status(400).json({ error: MENSAJE_CARGA_INICIAL_NO_SE_EDITA });
   }
 
   // El vencimiento se recalcula porque depende de la fecha de la venta y
@@ -6059,7 +6098,8 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
   const venta = db
     .prepare(
       `SELECT ventas.id, ventas.cliente_id, ventas.estado,
-              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id)
+                + COALESCE(ventas.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
        FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
@@ -6161,7 +6201,7 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
 
   const venta = db
     .prepare(
-      `SELECT ventas.id, ventas.cliente_id, ventas.estado, ventas.fecha, ventas.fecha_vencimiento
+      `SELECT ventas.id, ventas.cliente_id, ventas.estado, ventas.fecha, ventas.fecha_vencimiento, ventas.saldo_inicial
          FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
     .get(ventaId, req.usuario.organizacion_id);
@@ -6170,6 +6210,9 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   }
   if (venta.estado === 'anulada') {
     return res.status(400).json({ error: 'No se puede facturar una venta anulada.' });
+  }
+  if (venta.saldo_inicial != null) {
+    return res.status(400).json({ error: MENSAJE_SALDO_ANTERIOR });
   }
   // Una venta con plazo es a cuenta corriente, y su vencimiento es el del pago.
   const aPlazo = Boolean(venta.fecha_vencimiento && venta.fecha_vencimiento > venta.fecha);
@@ -6263,7 +6306,8 @@ function motivoParaNoAnular(venta) {
   if (db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(venta.id)) {
     return 'Esta venta tiene una factura asociada, no se puede anular.';
   }
-  if (db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(venta.id)) {
+  // Lo cobrado antes de Nexo (handoff 8c) no entró a ninguna caja: no frena.
+  if (db.prepare(venta.carga_inicial ? SQL_COBROS_CON_CAJA : 'SELECT 1 FROM cobros WHERE venta_id = ?').get(venta.id)) {
     return 'Esta venta tiene cobros registrados, no se puede anular.';
   }
   if (db.prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'").get(venta.id)) {
@@ -6272,16 +6316,38 @@ function motivoParaNoAnular(venta) {
   return null;
 }
 
+// Los cobros de una venta que entraron a una caja. Los de una venta de antes
+// de Nexo (handoff 8c) no tienen movimiento de tesorería.
+const SQL_COBROS_CON_CAJA = `SELECT 1 FROM cobros
+  JOIN movimientos_tesoreria ON movimientos_tesoreria.cobro_id = cobros.id
+ WHERE cobros.venta_id = ? LIMIT 1`;
+
+// Lo que queda debiendo una venta en su cuenta corriente: su total (los
+// renglones, o el saldo anterior) menos lo cobrado. Al anularla se compensa
+// eso: lo cobrado antes de Nexo no se devuelve, y una venta con cobros que
+// entraron a la caja no se puede anular (motivoParaNoAnular).
+function deudaDeLaVenta(ventaId) {
+  return db
+    .prepare(
+      `SELECT (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id)
+              + COALESCE(ventas.saldo_inicial, 0)
+              - (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS deuda
+         FROM ventas WHERE id = ?`
+    )
+    .get(ventaId).deuda;
+}
+
 // Anula la venta: devuelve el stock y salda la deuda del cliente. Se llama
-// dentro de una transacción, y quien llama registra la auditoría.
+// dentro de una transacción, y quien llama registra la auditoría. Una venta de
+// antes de Nexo no había descontado stock: no lo devuelve.
 function revertirVentaAnulada(venta, organizacionId) {
+  const deuda = deudaDeLaVenta(venta.id);
   db.prepare("UPDATE ventas SET estado = 'anulada' WHERE id = ?").run(venta.id);
 
   const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(organizacionId);
-  const items = db
-    .prepare('SELECT producto_id, variante_id, cantidad, precio_unitario FROM venta_items WHERE venta_id = ?')
-    .all(venta.id);
-  let total = 0;
+  const items = venta.carga_inicial
+    ? []
+    : db.prepare('SELECT producto_id, variante_id, cantidad FROM venta_items WHERE venta_id = ?').all(venta.id);
   for (const item of items) {
     registrarMovimientoStock({
       producto_id: item.producto_id,
@@ -6294,19 +6360,18 @@ function revertirVentaAnulada(venta, organizacionId) {
       nota: 'Reversión por anulación',
       organizacion_id: organizacionId
     });
-    total += item.cantidad * item.precio_unitario;
   }
 
   db.prepare(
     `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-  ).run(venta.cliente_id, -total, venta.id);
+  ).run(venta.cliente_id, -deuda, venta.id);
 }
 
 app.post('/api/ventas/:id/anular', soloAdmin, (req, res) => {
   const ventaId = Number(req.params.id);
 
   const venta = db
-    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
@@ -6338,7 +6403,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   exigirLugarEnPlan(req.usuario.organizacion_id, 'ventas_mes');
 
   const venta = db
-    .prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?')
     .get(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
@@ -6348,14 +6413,17 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   }
   const depositoVenta = venta.deposito_id ?? depositoPredeterminadoId(req.usuario.organizacion_id);
 
-  const items = db
-    .prepare(
-      `SELECT venta_items.producto_id, venta_items.variante_id, venta_items.cantidad,
-              venta_items.precio_unitario, productos.nombre
-         FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
-        WHERE venta_id = ?`
-    )
-    .all(ventaId);
+  // Una venta de antes de Nexo (handoff 8c) no descuenta stock, tampoco al
+  // restaurarla.
+  const items = venta.carga_inicial
+    ? []
+    : db
+        .prepare(
+          `SELECT venta_items.producto_id, venta_items.variante_id, venta_items.cantidad, productos.nombre
+             FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+            WHERE venta_id = ?`
+        )
+        .all(ventaId);
 
   const buscarStockDeposito = db.prepare(
     'SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?'
@@ -6378,7 +6446,6 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
 
-    let total = 0;
     for (const item of items) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -6391,12 +6458,12 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
         nota: 'Restaurada desde la papelera',
         organizacion_id: req.usuario.organizacion_id
       });
-      total += item.cantidad * item.precio_unitario;
     }
 
+    // Vuelve la deuda que se compensó al anularla (deudaDeLaVenta).
     db.prepare(
       `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-    ).run(venta.cliente_id, total, ventaId);
+    ).run(venta.cliente_id, deudaDeLaVenta(ventaId), ventaId);
 
     auditar(req, {
       accion: 'restaurar',
@@ -7747,7 +7814,7 @@ app.get('/api/compras', soloAdmin, (req, res) => {
     .prepare(
       `SELECT compras.id, compras.proveedor_id, proveedores.nombre AS proveedor, compras.fecha,
               compras.estado, compras.estado_envio, compras.costo_envio, compras.stock_aplicado,
-              compras.comprobante_letra, compras.comprobante_numero,
+              compras.comprobante_letra, compras.comprobante_numero, compras.saldo_inicial, compras.fecha_vencimiento,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0)
                  FROM compra_items WHERE compra_items.compra_id = compras.id) AS subtotal,
               (SELECT COALESCE(SUM(importe), 0)
@@ -7763,7 +7830,8 @@ app.get('/api/compras', soloAdmin, (req, res) => {
     .all(req.usuario.organizacion_id);
   res.json(
     compras.map((c) => {
-      const total = c.subtotal + c.costo_envio;
+      // El saldo anterior (handoff 8c) no tiene renglones: su total es el importe.
+      const total = c.subtotal + c.costo_envio + (c.saldo_inicial ?? 0);
       const neto = total - c.devuelto;
       return {
         ...c,
@@ -7785,6 +7853,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
               compras.deposito_id, depositos.nombre AS deposito,
               compras.condicion_pago, compras.fecha_vencimiento,
               compras.comprobante_letra, compras.comprobante_numero, proveedores.condicion_iva AS proveedor_condicion_iva,
+              compras.saldo_inicial,
               EXISTS (SELECT 1 FROM devoluciones_proveedor
                        WHERE devoluciones_proveedor.compra_id = compras.id AND devoluciones_proveedor.estado = 'activa') AS tiene_devolucion
          FROM compras
@@ -7819,7 +7888,7 @@ app.get('/api/compras/:id', soloAdmin, (req, res) => {
     .all(compraId);
 
   const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
-  const total = subtotal + compra.costo_envio;
+  const total = subtotal + compra.costo_envio + (compra.saldo_inicial ?? 0);
   const devuelto = items.reduce((acc, i) => acc + i.cantidad_devuelta * i.precio_unitario, 0);
   const neto = total - devuelto;
   const { pagado } = db
@@ -8114,12 +8183,15 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
   const compra = db
     .prepare(
       `SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, fecha, condicion_pago,
-              fecha_vencimiento, comprobante_letra, comprobante_numero
+              fecha_vencimiento, comprobante_letra, comprobante_numero, saldo_inicial
          FROM compras WHERE id = ? AND organizacion_id = ?`
     )
     .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
     return res.status(404).json({ error: 'Compra no encontrada.' });
+  }
+  if (compra.saldo_inicial != null) {
+    return res.status(400).json({ error: MENSAJE_CARGA_INICIAL_NO_SE_EDITA });
   }
 
   // Mismo criterio que en la edición de ventas (ver ahí el porqué).
@@ -8518,10 +8590,15 @@ function aplicarStockCompra(compraId) {
 // movimientos viejos, de antes de que existiera la columna
 // movimientos_stock.costo_unitario, caen en cascada al
 // costo_real_unitario que quedó guardado en compra_items de esa compra.
+//
+// El stock inicial (handoff 8c) es la excepción a "los ajustes no tocan el
+// costo": dice cuánto había en un depósito y cuánto costó cada unidad, así
+// que reemplaza al costo del stock que había en ESE depósito, y se promedia
+// con el de los demás (ver costoConStockInicial).
 function recalcularCostoProducto(productoId) {
   const movimientos = db
     .prepare(
-      `SELECT tipo, cantidad, costo_unitario, compra_id
+      `SELECT tipo, cantidad, costo_unitario, compra_id, origen, deposito_id
          FROM movimientos_stock
         WHERE producto_id = ? AND variante_id IS NULL
         ORDER BY fecha, id`
@@ -8532,27 +8609,45 @@ function recalcularCostoProducto(productoId) {
     'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND producto_id = ? AND variante_id IS NULL'
   );
 
+  const costo = costoDelHistorial(movimientos, (m) => buscarCostoCompra.get(m.compra_id, productoId)?.costo_real_unitario ?? null);
+  db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?').run(costo, productoId);
+  return costo;
+}
+
+// El costo promedio ponderado que deja un historial de movimientos, en orden.
+// `costoDeCompra(m)` da el de un movimiento viejo de compra sin costo propio.
+function costoDelHistorial(movimientos, costoDeCompra) {
   let stock = 0;
   let costo = 0;
+  const porDeposito = new Map();
   for (const m of movimientos) {
-    if (m.tipo === 'entrada') {
+    const enDeposito = porDeposito.get(m.deposito_id) ?? 0;
+    const delta = m.tipo === 'salida' ? -m.cantidad : m.cantidad;
+    if (m.origen === 'stock_inicial') {
+      costo = costoConStockInicial({ total: stock, enDeposito, declarado: enDeposito + delta, costo, costoDeclarado: m.costo_unitario });
+    } else if (m.tipo === 'entrada') {
       let costoEntrada = m.costo_unitario;
-      if (costoEntrada === null && m.compra_id) {
-        costoEntrada = buscarCostoCompra.get(m.compra_id, productoId)?.costo_real_unitario ?? null;
-      }
+      if (costoEntrada === null && m.compra_id) costoEntrada = costoDeCompra(m);
       if (costoEntrada !== null) {
         const stockPrevio = Math.max(stock, 0);
         costo = (stockPrevio * costo + m.cantidad * costoEntrada) / (stockPrevio + m.cantidad);
       }
-      stock += m.cantidad;
-    } else {
-      // 'salida' resta, 'ajuste' ya viene con signo — ninguno toca el costo.
-      stock += m.tipo === 'salida' ? -m.cantidad : m.cantidad;
     }
+    // 'salida' resta, 'ajuste' ya viene con signo — ninguno toca el costo.
+    stock += delta;
+    porDeposito.set(m.deposito_id, enDeposito + delta);
   }
-
-  db.prepare('UPDATE productos SET precio_costo = ? WHERE id = ?').run(costo, productoId);
   return costo;
+}
+
+// El costo después de declarar el stock inicial de un depósito: lo que hay en
+// los otros depósitos sigue a su costo, y lo de este pasa a valer lo
+// declarado. Sin stock en ningún lado, queda el declarado: es el último costo
+// que se conoce.
+function costoConStockInicial({ total, enDeposito, declarado, costo, costoDeclarado }) {
+  const otros = Math.max(total - enDeposito, 0);
+  const aca = Math.max(declarado, 0);
+  return otros + aca > 0 ? (otros * costo + aca * costoDeclarado) / (otros + aca) : costoDeclarado;
 }
 
 // Espejo exacto de recalcularCostoProducto, a nivel variante: mismo
@@ -8562,7 +8657,7 @@ function recalcularCostoProducto(productoId) {
 function recalcularCostoVariante(varianteId) {
   const movimientos = db
     .prepare(
-      `SELECT tipo, cantidad, costo_unitario, compra_id
+      `SELECT tipo, cantidad, costo_unitario, compra_id, origen, deposito_id
          FROM movimientos_stock
         WHERE variante_id = ?
         ORDER BY fecha, id`
@@ -8573,23 +8668,7 @@ function recalcularCostoVariante(varianteId) {
     'SELECT costo_real_unitario FROM compra_items WHERE compra_id = ? AND variante_id = ?'
   );
 
-  let stock = 0;
-  let costo = 0;
-  for (const m of movimientos) {
-    if (m.tipo === 'entrada') {
-      let costoEntrada = m.costo_unitario;
-      if (costoEntrada === null && m.compra_id) {
-        costoEntrada = buscarCostoCompra.get(m.compra_id, varianteId)?.costo_real_unitario ?? null;
-      }
-      if (costoEntrada !== null) {
-        const stockPrevio = Math.max(stock, 0);
-        costo = (stockPrevio * costo + m.cantidad * costoEntrada) / (stockPrevio + m.cantidad);
-      }
-      stock += m.cantidad;
-    } else {
-      stock += m.tipo === 'salida' ? -m.cantidad : m.cantidad;
-    }
-  }
+  const costo = costoDelHistorial(movimientos, (m) => buscarCostoCompra.get(m.compra_id, varianteId)?.costo_real_unitario ?? null);
 
   db.prepare('UPDATE producto_variantes SET precio_costo = ? WHERE id = ?').run(costo, varianteId);
   return costo;
@@ -8600,7 +8679,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
 
   const compra = db
     .prepare(
-      'SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado FROM compras WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, proveedor_id, deposito_id, estado, costo_envio, stock_aplicado, saldo_inicial FROM compras WHERE id = ? AND organizacion_id = ?'
     )
     .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
@@ -8680,7 +8759,7 @@ app.post('/api/compras/:id/anular', soloAdmin, (req, res) => {
       const subtotal = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
       db.prepare(
         `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-      ).run(compra.proveedor_id, -(subtotal + compra.costo_envio), compraId);
+      ).run(compra.proveedor_id, -(subtotal + compra.costo_envio + (compra.saldo_inicial ?? 0)), compraId);
     }
 
     auditar(req, {
@@ -8703,7 +8782,7 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
 
   const compra = db
     .prepare(
-      'SELECT id, proveedor_id, estado, estado_envio, costo_envio FROM compras WHERE id = ? AND organizacion_id = ?'
+      'SELECT id, proveedor_id, estado, estado_envio, costo_envio, saldo_inicial FROM compras WHERE id = ? AND organizacion_id = ?'
     )
     .get(compraId, req.usuario.organizacion_id);
   if (!compra) {
@@ -8744,7 +8823,7 @@ app.post('/api/compras/:id/restaurar', soloAdmin, (req, res) => {
       .get(compraId);
     db.prepare(
       `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
-    ).run(compra.proveedor_id, subtotal + compra.costo_envio, compraId);
+    ).run(compra.proveedor_id, subtotal + compra.costo_envio + (compra.saldo_inicial ?? 0), compraId);
 
     if (compra.estado_envio === 'recibido') {
       aplicarStockCompra(compraId);
@@ -8881,7 +8960,8 @@ app.post('/api/compras/:id/pagos', soloAdmin, (req, res) => {
   const compra = db
     .prepare(
       `SELECT compras.id, compras.proveedor_id, compras.estado, compras.costo_envio,
-              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id) AS total,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM compra_items WHERE compra_id = compras.id)
+                + COALESCE(compras.saldo_inicial, 0) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE compra_id = compras.id) AS pagado,
               ${SUBQUERY_DEVUELTO_COMPRA} AS devuelto
        FROM compras WHERE compras.id = ? AND compras.organizacion_id = ?`
@@ -10348,10 +10428,10 @@ const MAX_BUCKETS = 40;
 // query preparada.
 const SQL_LIMITES_OPERACIONES = db.prepare(
   `SELECT MIN(fecha) AS primera, MAX(fecha) AS ultima FROM (
-     SELECT fecha FROM ventas WHERE estado = 'activa' AND organizacion_id = ?
+     SELECT fecha FROM ventas WHERE estado = 'activa' AND saldo_inicial IS NULL AND organizacion_id = ?
      UNION ALL SELECT fecha FROM gastos WHERE estado = 'activo' AND organizacion_id = ?
      UNION ALL SELECT fecha FROM devoluciones WHERE estado = 'activa' AND organizacion_id = ?
-     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa' AND organizacion_id = ?
+     UNION ALL SELECT fecha FROM compras WHERE estado = 'activa' AND saldo_inicial IS NULL AND organizacion_id = ?
      UNION ALL SELECT fecha FROM devoluciones_proveedor WHERE estado = 'activa' AND organizacion_id = ?
    )`
 );
@@ -12690,6 +12770,7 @@ function usoDelPlan(organizacionId, hoy = fechaDeHoy()) {
     ventas_mes: contar(
       `SELECT COUNT(*) AS n FROM ventas
         WHERE organizacion_id = ? AND estado = 'activa' AND fecha >= ? AND fecha < ?
+          AND carga_inicial = 0
           AND id NOT IN (SELECT venta_id FROM cuotas_socio)
           AND id NOT IN (SELECT venta_id FROM cuotas_abono)`,
       desde,
@@ -12952,8 +13033,13 @@ app.get('/api/negocio', (req, res) => {
 app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
   const id = req.usuario.organizacion_id;
   const contar = (sql, ...extra) => db.prepare(sql).get(id, ...extra).n;
-  const negocio = db.prepare('SELECT documento, direccion, telefono FROM organizaciones WHERE id = ?').get(id);
+  const negocio = db.prepare('SELECT documento, direccion, telefono, ya_funcionaba FROM organizaciones WHERE id = ?').get(id);
+  // "Lo que ya tenías" (handoff 8c): el paso es de quien dijo en el alta que
+  // su negocio ya venía funcionando, y queda hecho con cualquier parte cargada.
+  const carga = estadoCargaInicial(id);
   res.json({
+    ya_funcionaba: negocio.ya_funcionaba === 1,
+    carga_inicial: Object.values(carga).some((parte) => parte.cantidad > 0),
     datos_negocio: Boolean(negocio.documento || negocio.direccion || negocio.telefono),
     catalogo: contar(
       'SELECT COUNT(*) AS n FROM productos WHERE organizacion_id = ? AND activo = 1 AND id NOT IN (SELECT producto_id FROM planes_socio)'
@@ -13141,6 +13227,7 @@ app.post('/api/negocios', (req, res) => {
   const token = leerCookie(req, COOKIE_SESION);
   const id = withTransaction(() => {
     const orgId = insertarNegocio(datos);
+    db.prepare('UPDATE organizaciones SET ya_funcionaba = ? WHERE id = ?').run(yaFuncionaba(req.body), orgId);
     db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan.plan, plan.plan_vence, orgId);
     sumarAlNegocio(req.usuario.id, orgId, 'admin');
     registrarAuditoria({
@@ -16105,7 +16192,7 @@ app.get('/api/crm/inactivos', (req, res) => {
                           LEFT JOIN crm_oportunidades o ON o.id = a.oportunidad_id
                          WHERE a.organizacion_id = clientes.organizacion_id AND a.hecha = 0
                            AND COALESCE(a.cliente_id, o.cliente_id) = clientes.id) AS con_seguimiento
-           FROM clientes JOIN ventas ON ventas.cliente_id = clientes.id AND ventas.estado = 'activa'
+           FROM clientes JOIN ventas ON ventas.cliente_id = clientes.id AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NULL
           WHERE clientes.organizacion_id = ? AND clientes.nombre <> ?
           GROUP BY clientes.id
          HAVING COUNT(ventas.id) >= 2 AND MAX(ventas.fecha) < ?
@@ -18036,6 +18123,443 @@ app.post('/api/integraciones/mercadolibre/desvincular', soloAdmin, (req, res) =>
   });
   anotarIntegracion(integracion, 'publicacion', 'ok', `La publicación ${vinculo.externo_producto_id} dejó de estar vinculada a "${producto}". Nexo ya no le cambia el stock ni el precio.`);
   res.json({ ok: true });
+});
+
+/* ---------- Carga inicial: empezar con un negocio que ya existe (handoff 8c) ---------- */
+//
+// La mayoría de los negocios que llegan a Nexo ya venían funcionando: el
+// primer día tienen que poder cargar lo que tienen sin inventar compras ni
+// ventas. Cada parte se carga por separado y en cualquier orden:
+// - el stock de cada depósito con su costo (movimientos 'stock_inicial');
+// - lo que les deben y lo que deben: un "saldo anterior" por cliente o
+//   proveedor, que nace como venta o compra sin renglones para cobrarse,
+//   pagarse y vencer con el circuito de siempre (ventas.saldo_inicial);
+// - la plata de cada cuenta: el saldo inicial que ya existía (PUT de la
+//   cuenta, desde la pantalla);
+// - las ventas recientes: no mueven stock ni caja, porque lo que se cargó
+//   arriba ya es lo de hoy, pero cuentan en los reportes.
+// Solo el admin, y todo queda en la auditoría.
+
+const MENSAJE_SALDO_ANTERIOR = 'Es un saldo de antes de empezar con Nexo: no tiene renglones para facturar.';
+const MENSAJE_CARGA_INICIAL_NO_SE_EDITA =
+  'Esto es de antes de empezar con Nexo y no se edita: anulalo y cargalo de nuevo desde Configuración → Lo que ya tenías.';
+const MAX_FILAS_CARGA_INICIAL = 1000;
+const NOTA_COBRO_ANTERIOR = 'Cobrada antes de empezar con Nexo';
+
+// Una fecha de antes de Nexo: válida y no futura. Sin fecha, hoy.
+function fechaDeCargaInicial(valor) {
+  if (valor === undefined || valor === null || valor === '') return fechaDeHoy();
+  const fecha = validarFecha(valor);
+  if (!fecha || fecha > fechaDeHoy()) throw new ErrorValidacion('La fecha no es válida: tiene que ser de hoy o de antes.');
+  return fecha;
+}
+
+// El vencimiento de un saldo o de una venta sin cobrar: opcional, y nunca
+// antes de la fecha. Sin vencimiento vence en la fecha misma (contado).
+function vencimientoDeCargaInicial(fecha, valor) {
+  if (valor === undefined || valor === null || valor === '') return { condicion: 'contado', vencimiento: fecha };
+  const vencimiento = validarFecha(valor);
+  if (!vencimiento) throw new ErrorValidacion('La fecha en que vence no es válida.');
+  if (vencimiento < fecha) throw new ErrorValidacion('No puede vencer antes de la fecha en que nació la deuda.');
+  return { condicion: 'manual', vencimiento };
+}
+
+const cantidadDeStock = (valor) => esNumeroValido(valor) && valor >= 0;
+
+// Cuánto se cargó de cada parte, para la página y la guía de primeros pasos.
+function estadoCargaInicial(organizacionId) {
+  const uno = (sql) => db.prepare(sql).get(organizacionId);
+  return {
+    stock: uno(
+      `SELECT COUNT(DISTINCT producto_id || ':' || COALESCE(variante_id, '')) AS cantidad
+         FROM movimientos_stock WHERE organizacion_id = ? AND origen = 'stock_inicial'`
+    ),
+    te_deben: uno(
+      `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
+         FROM ventas WHERE organizacion_id = ? AND estado = 'activa' AND saldo_inicial IS NOT NULL`
+    ),
+    debes: uno(
+      `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
+         FROM compras WHERE organizacion_id = ? AND estado = 'activa' AND saldo_inicial IS NOT NULL`
+    ),
+    caja: uno(
+      `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
+         FROM cuentas_tesoreria WHERE organizacion_id = ? AND saldo_inicial <> 0`
+    ),
+    ventas: uno(
+      `SELECT COUNT(*) AS cantidad,
+              COALESCE(SUM((SELECT SUM(cantidad * precio_unitario) FROM venta_items WHERE venta_id = ventas.id)), 0) AS total
+         FROM ventas WHERE organizacion_id = ? AND estado = 'activa' AND carga_inicial = 1 AND saldo_inicial IS NULL`
+    )
+  };
+}
+
+app.get('/api/carga-inicial', soloAdmin, (req, res) => {
+  const { ya_funcionaba: yaFuncionaba } = db
+    .prepare('SELECT ya_funcionaba FROM organizaciones WHERE id = ?')
+    .get(req.usuario.organizacion_id);
+  res.json({ ya_funcionaba: yaFuncionaba, ...estadoCargaInicial(req.usuario.organizacion_id) });
+});
+
+// El depósito de la planilla: el pedido, o el predeterminado.
+function depositoDeCargaInicial(valor, organizacionId) {
+  const id = valor ? Number(valor) : depositoPredeterminadoId(organizacionId);
+  const deposito = db
+    .prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?')
+    .get(id, organizacionId);
+  if (!deposito) throw new ErrorValidacion('El depósito no existe o está inactivo.');
+  return deposito;
+}
+
+// La planilla del stock inicial de un depósito: un renglón por producto con
+// stock (o por variante, si tiene), con lo que hay hoy y su costo.
+app.get('/api/carga-inicial/stock', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const deposito = depositoDeCargaInicial(req.query.deposito_id, org);
+  const productos = db
+    .prepare(
+      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.unidad,
+              productos.precio_costo AS costo, productos.precio_venta,
+              COALESCE(stock_por_deposito.cantidad, 0) AS stock,
+              EXISTS (SELECT 1 FROM movimientos_stock m
+                       WHERE m.producto_id = productos.id AND m.variante_id IS NULL AND m.deposito_id = ?
+                         AND m.origen = 'stock_inicial') AS cargado
+         FROM productos
+         LEFT JOIN stock_por_deposito
+           ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND productos.tipo = 'producto'
+          AND NOT EXISTS (SELECT 1 FROM producto_variantes v WHERE v.producto_id = productos.id AND v.activo = 1)`
+    )
+    .all(deposito.id, deposito.id, org);
+  const variantes = db
+    .prepare(
+      `SELECT producto_variantes.producto_id, producto_variantes.id AS variante_id, productos.nombre,
+              producto_variantes.sku, productos.unidad, producto_variantes.precio_costo AS costo,
+              productos.precio_venta,
+              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock,
+              EXISTS (SELECT 1 FROM movimientos_stock m
+                       WHERE m.variante_id = producto_variantes.id AND m.deposito_id = ?
+                         AND m.origen = 'stock_inicial') AS cargado
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+         LEFT JOIN stock_variante_por_deposito
+           ON stock_variante_por_deposito.variante_id = producto_variantes.id AND stock_variante_por_deposito.deposito_id = ?
+        WHERE productos.organizacion_id = ? AND productos.activo = 1 AND productos.tipo = 'producto'
+          AND producto_variantes.activo = 1`
+    )
+    .all(deposito.id, deposito.id, org)
+    .map((v) => ({ ...v, variante: combinacionVariante(v.variante_id) }));
+  const filas = [...productos.map((p) => ({ ...p, variante: null })), ...variantes]
+    .map((f) => ({ ...f, cargado: Boolean(f.cargado) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || (a.variante ?? '').localeCompare(b.variante ?? '', 'es'));
+  res.json({ deposito, filas });
+});
+
+// Declara lo que hay de un producto (o variante) en un depósito y cuánto
+// costó cada unidad: un 'ajuste' hasta esa cantidad, con su costo, y el costo
+// promedio recalculado desde el historial (costoDelHistorial). No genera
+// deuda ni toca la caja. Devuelve false si no cambia nada. Adentro de una
+// transacción.
+function aplicarStockInicial(req, { producto, varianteId, deposito, cantidad, costo }) {
+  const org = req.usuario.organizacion_id;
+  const enDeposito = varianteId
+    ? db.prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?').get(varianteId, deposito.id)
+        ?.cantidad ?? 0
+    : db.prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?').get(producto.id, deposito.id)
+        ?.cantidad ?? 0;
+  const costoAnterior = varianteId
+    ? db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?').get(varianteId).precio_costo
+    : producto.precio_costo;
+  // Las cantidades son REAL: 1,25 kg menos 1,2 no da 0,05 exacto.
+  const delta = Math.round((cantidad - enDeposito) * 1000) / 1000;
+  if (delta === 0 && Math.abs(costo - costoAnterior) < 0.005) return false;
+
+  registrarMovimientoStock({
+    producto_id: producto.id,
+    variante_id: varianteId,
+    deposito_id: deposito.id,
+    tipo: 'ajuste',
+    cantidad: delta,
+    origen: 'stock_inicial',
+    costo_unitario: costo,
+    nota: 'Stock inicial',
+    organizacion_id: org
+  });
+  const costoNuevo = varianteId ? recalcularCostoVariante(varianteId) : recalcularCostoProducto(producto.id);
+  const nombre = varianteId ? `${producto.nombre} (${combinacionVariante(varianteId)})` : producto.nombre;
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'stock',
+    entidad_id: producto.id,
+    valor_anterior: JSON.stringify({ stock: enDeposito, costo: costoAnterior, deposito: deposito.nombre }),
+    valor_nuevo: JSON.stringify({ stock: cantidad, costo: redondear2(costoNuevo), deposito: deposito.nombre }),
+    detalle: `Stock inicial de "${nombre}" en "${deposito.nombre}": ${enDeposito} → ${cantidad}, a $${costo} cada uno`
+  });
+  return true;
+}
+
+// Guarda la planilla: `filas` son productos que ya existen y `nuevos`, los
+// que se dan de alta en la misma planilla (nombre, precio, SKU y unidad).
+app.post('/api/carga-inicial/stock', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const filas = req.body?.filas ?? [];
+  const nuevos = req.body?.nuevos ?? [];
+  if (!Array.isArray(filas) || !Array.isArray(nuevos)) {
+    return res.status(400).json({ error: 'La planilla no es válida.' });
+  }
+  if (filas.length + nuevos.length === 0) {
+    return res.status(400).json({ error: 'No hay nada para guardar.' });
+  }
+  if (filas.length + nuevos.length > MAX_FILAS_CARGA_INICIAL) {
+    return res.status(400).json({ error: `Se pueden guardar hasta ${MAX_FILAS_CARGA_INICIAL} renglones por vez.` });
+  }
+  const deposito = depositoDeCargaInicial(req.body?.deposito_id, org);
+
+  const buscarProducto = db.prepare('SELECT id, nombre, tipo, precio_costo FROM productos WHERE id = ? AND organizacion_id = ? AND activo = 1');
+  const contarVariantes = db.prepare('SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1');
+  const buscarVariante = db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1');
+  const claves = new Set();
+  const aplicar = [];
+  for (const fila of filas) {
+    if (!esIdValido(fila?.producto_id) || (fila.variante_id != null && !esIdValido(fila.variante_id))) {
+      return res.status(400).json({ error: 'Uno de los renglones no tiene un producto válido.' });
+    }
+    const producto = buscarProducto.get(fila.producto_id, org);
+    if (!producto) return res.status(400).json({ error: 'Uno de los productos no existe.' });
+    if (producto.tipo === 'servicio') return res.status(400).json({ error: errorServicioSinStock(producto.nombre) });
+    const varianteId = fila.variante_id ?? null;
+    if (varianteId ? !buscarVariante.get(varianteId, producto.id) : contarVariantes.get(producto.id).n > 0) {
+      return res.status(400).json({
+        error: varianteId ? `La variante de "${producto.nombre}" no existe.` : `"${producto.nombre}" tiene variantes: cargá cada una.`
+      });
+    }
+    if (!cantidadDeStock(fila.cantidad) || !cantidadDeStock(fila.costo)) {
+      return res.status(400).json({ error: `Revisá "${producto.nombre}": la cantidad y el costo son números de 0 para arriba.` });
+    }
+    const clave = `${producto.id}:${varianteId ?? ''}`;
+    if (claves.has(clave)) return res.status(400).json({ error: `"${producto.nombre}" está dos veces en la planilla.` });
+    claves.add(clave);
+    aplicar.push({ producto, varianteId, cantidad: fila.cantidad, costo: fila.costo });
+  }
+  const nombresNuevos = new Set();
+  for (const nuevo of nuevos) {
+    const datos = { nombre: nuevo?.nombre, precio_venta: nuevo?.precio_venta, unidad: nuevo?.unidad, tipo: 'producto' };
+    const error = typeof datos.nombre === 'string' ? validarProducto(datos, org) : 'El producto necesita un nombre.';
+    if (error) return res.status(400).json({ error: nuevo?.nombre ? `"${nuevo.nombre}": ${error}` : error });
+    if (nuevo.sku != null && typeof nuevo.sku !== 'string') return res.status(400).json({ error: 'El SKU no es válido.' });
+    if (!cantidadDeStock(nuevo.cantidad) || !cantidadDeStock(nuevo.costo)) {
+      return res.status(400).json({ error: `Revisá "${nuevo.nombre}": la cantidad y el costo son números de 0 para arriba.` });
+    }
+    const clave = nuevo.nombre.trim().toLowerCase();
+    if (nombresNuevos.has(clave)) return res.status(400).json({ error: `"${nuevo.nombre}" está dos veces en la planilla.` });
+    nombresNuevos.add(clave);
+  }
+
+  const resultado = withTransaction(() => {
+    let cambiados = 0;
+    for (const fila of aplicar) {
+      if (aplicarStockInicial(req, { ...fila, deposito })) cambiados += 1;
+    }
+    for (const nuevo of nuevos) {
+      const id = insertarProducto({ nombre: nuevo.nombre, sku: nuevo.sku, precio_venta: nuevo.precio_venta, unidad: nuevo.unidad, tipo: 'producto' }, org);
+      auditar(req, { accion: 'crear', entidad: 'producto', entidad_id: id, detalle: `Producto "${nuevo.nombre.trim()}" creado en el stock inicial` });
+      const producto = buscarProducto.get(id, org);
+      aplicarStockInicial(req, { producto, varianteId: null, deposito, cantidad: nuevo.cantidad, costo: nuevo.costo });
+      cambiados += 1;
+    }
+    return { cambiados, creados: nuevos.length };
+  });
+  res.json(resultado);
+});
+
+// Lo que les deben y lo que deben, de antes de Nexo, que todavía no se cerró.
+app.get('/api/carga-inicial/saldos', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const clientes = db
+    .prepare(
+      `SELECT ventas.id, ventas.cliente_id AS entidad_id, clientes.nombre, ventas.fecha, ventas.fecha_vencimiento AS vencimiento,
+              ventas.saldo_inicial AS importe,
+              (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cancelado
+         FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+        WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.saldo_inicial IS NOT NULL
+        ORDER BY ventas.id DESC`
+    )
+    .all(org);
+  const proveedores = db
+    .prepare(
+      `SELECT compras.id, compras.proveedor_id AS entidad_id, proveedores.nombre, compras.fecha, compras.fecha_vencimiento AS vencimiento,
+              compras.saldo_inicial AS importe,
+              (SELECT COALESCE(SUM(importe), 0) FROM pagos WHERE pagos.compra_id = compras.id) AS cancelado
+         FROM compras JOIN proveedores ON proveedores.id = compras.proveedor_id
+        WHERE compras.organizacion_id = ? AND compras.estado = 'activa' AND compras.saldo_inicial IS NOT NULL
+        ORDER BY compras.id DESC`
+    )
+    .all(org);
+  res.json({ clientes, proveedores });
+});
+
+// Un proveedor por id (de la empresa) o por nombre, creándolo si no existe:
+// el mismo criterio que resolverCliente.
+function resolverProveedor(nombre, proveedorId, organizacionId) {
+  if (proveedorId) {
+    const fila = db.prepare('SELECT id FROM proveedores WHERE id = ? AND organizacion_id = ?').get(Number(proveedorId), organizacionId);
+    if (!fila) throw new ErrorValidacion('El proveedor no existe.');
+    return fila;
+  }
+  const texto = typeof nombre === 'string' ? nombre.trim() : '';
+  if (!texto) throw new ErrorValidacion('Indicá el proveedor.');
+  const fila = db.prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?').get(texto, organizacionId);
+  if (fila) return fila;
+  return { id: db.prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)').run(texto, organizacionId).lastInsertRowid };
+}
+
+// Un saldo anterior: { tipo: 'cliente' | 'proveedor', entidad_id o nombre,
+// importe, fecha, vencimiento }.
+app.post('/api/carga-inicial/saldos', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { tipo, entidad_id: entidadId, nombre, importe } = req.body ?? {};
+  if (tipo !== 'cliente' && tipo !== 'proveedor') return res.status(400).json({ error: 'El tipo de saldo no es válido.' });
+  if (!esNumeroValido(importe) || !(importe > 0)) return res.status(400).json({ error: 'El importe tiene que ser un número mayor a 0.' });
+  const fecha = fechaDeCargaInicial(req.body.fecha);
+  const venc = vencimientoDeCargaInicial(fecha, req.body.vencimiento);
+  const monto = redondear2(importe);
+
+  const id = withTransaction(() => {
+    if (tipo === 'cliente') {
+      const cliente = resolverCliente(nombre, entidadId, org);
+      const ventaId = Number(
+        db
+          .prepare(
+            `INSERT INTO ventas (cliente_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial, saldo_inicial)
+             VALUES (?, ?, ?, ?, ?, 1, ?)`
+          )
+          .run(cliente.id, fecha, venc.condicion, venc.vencimiento, org, monto).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'venta', ?, ?, ${HOY_SQL})`
+      ).run(cliente.id, monto, ventaId);
+      auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: ventaId, detalle: `Saldo anterior de un cliente: $${monto} (venta #${ventaId})` });
+      return ventaId;
+    }
+    const proveedor = resolverProveedor(nombre, entidadId, org);
+    const compraId = Number(
+      db
+        .prepare(
+          `INSERT INTO compras (proveedor_id, fecha, estado, estado_envio, stock_aplicado, condicion_pago, fecha_vencimiento,
+                                organizacion_id, saldo_inicial)
+           VALUES (?, ?, 'activa', 'recibido', 1, ?, ?, ?, ?)`
+        )
+        .run(proveedor.id, fecha, venc.condicion, venc.vencimiento, org, monto).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO movimientos_cc_proveedores (proveedor_id, tipo, importe, compra_id, fecha) VALUES (?, 'compra', ?, ?, ${HOY_SQL})`
+    ).run(proveedor.id, monto, compraId);
+    auditar(req, { accion: 'crear', entidad: 'compra', entidad_id: compraId, detalle: `Saldo anterior con un proveedor: $${monto} (compra #${compraId})` });
+    return compraId;
+  });
+  res.status(201).json({ id });
+});
+
+// Las ventas de antes de Nexo que se cargaron, con sus renglones resumidos.
+app.get('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT ventas.id, ventas.fecha, ventas.cliente_id, clientes.nombre AS cliente,
+                (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
+                (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
+                (SELECT GROUP_CONCAT(
+                          (CASE WHEN venta_items.cantidad = CAST(venta_items.cantidad AS INTEGER)
+                                THEN CAST(venta_items.cantidad AS INTEGER)
+                                ELSE venta_items.cantidad END) || ' × ' || productos.nombre, ', ')
+                   FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+                  WHERE venta_items.venta_id = ventas.id) AS items_resumen
+           FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+          WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.carga_inicial = 1
+            AND ventas.saldo_inicial IS NULL
+          ORDER BY ventas.fecha DESC, ventas.id DESC`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+// Una venta de antes de Nexo: { fecha, cliente_id o cliente, items, cobrada,
+// cuenta_tesoreria_id (con qué se cobró), vencimiento (si no se cobró) }. No
+// mueve stock ni caja. Cobrada, lleva su cobro (con la cuenta, para saber
+// cómo se pagó) sin movimiento de tesorería; sin cobrar, es deuda del
+// cliente, y "Consumidor final" no fía (como en el punto de venta).
+app.post('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { cliente_id: clienteId, items, cobrada } = req.body ?? {};
+  const cliente = typeof req.body?.cliente === 'string' && req.body.cliente.trim() ? req.body.cliente.trim() : null;
+  const errorItems = validarItemsVenta(items);
+  if (errorItems) return res.status(400).json({ error: errorItems });
+  if (!req.body?.fecha) return res.status(400).json({ error: 'Indicá la fecha de la venta.' });
+  const fecha = fechaDeCargaInicial(req.body.fecha);
+  if (typeof cobrada !== 'boolean') return res.status(400).json({ error: 'Indicá si la venta se cobró.' });
+
+  const buscarProducto = db.prepare('SELECT nombre FROM productos WHERE id = ? AND organizacion_id = ?');
+  const contarVariantes = db.prepare('SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1');
+  const buscarVariante = db.prepare('SELECT 1 FROM producto_variantes WHERE id = ? AND producto_id = ?');
+  for (const item of items) {
+    const producto = buscarProducto.get(item.producto_id, org);
+    if (!producto) return res.status(400).json({ error: 'Uno de los productos de la venta no existe.' });
+    if (item.variante_id ? !buscarVariante.get(item.variante_id, item.producto_id) : contarVariantes.get(item.producto_id).n > 0) {
+      return res.status(400).json({ error: `"${producto.nombre}" tiene variantes: elegí una.` });
+    }
+  }
+
+  let cuentaId = null;
+  let venc = { condicion: 'contado', vencimiento: fecha };
+  if (cobrada) {
+    cuentaId = Number(req.body.cuenta_tesoreria_id);
+    if (!db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?').get(cuentaId, org)) {
+      return res.status(400).json({ error: 'Elegí con qué te pagaron.' });
+    }
+  } else {
+    if (!clienteId && (!cliente || cliente === CONSUMIDOR_FINAL)) {
+      return res.status(400).json({ error: 'Una venta sin cobrar necesita el cliente que te la debe.' });
+    }
+    venc = vencimientoDeCargaInicial(fecha, req.body.vencimiento);
+  }
+
+  let ventaId;
+  try {
+    ventaId = withTransaction(() => {
+      const id = crearVenta({
+        cliente: cliente ?? (clienteId ? undefined : CONSUMIDOR_FINAL),
+        cliente_id: clienteId,
+        items,
+        fecha,
+        condicion_pago: venc.condicion,
+        fecha_vencimiento: venc.condicion === 'manual' ? venc.vencimiento : undefined,
+        organizacion_id: org,
+        carga_inicial: true
+      });
+      if (cobrada) {
+        const { cliente_id: clienteVenta } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
+        const total = redondear2(items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0));
+        if (total > 0) {
+          const cobroId = db
+            .prepare('INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, fecha) VALUES (?, ?, ?, ?, ?)')
+            .run(id, total, cuentaId, NOTA_COBRO_ANTERIOR, fecha).lastInsertRowid;
+          db.prepare(
+            `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id, fecha) VALUES (?, 'cobro', ?, ?, ?, ${HOY_SQL})`
+          ).run(clienteVenta, -total, id, cobroId);
+        }
+      }
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'venta',
+        entidad_id: id,
+        detalle: `Venta #${id} de antes de empezar con Nexo (${fecha}), ${cobrada ? 'cobrada' : 'sin cobrar'}`
+      });
+      return id;
+    });
+  } catch (err) {
+    return res.status(400).json({ error: mensajeDeError(err) });
+  }
+  res.status(201).json({ id: ventaId });
 });
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de

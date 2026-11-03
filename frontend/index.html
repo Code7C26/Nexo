@@ -1976,6 +1976,7 @@
           <div class="panel-head">
             <h2>Stock</h2>
             <div class="panel-acciones">
+              <a class="btn btn-secundario col-admin" href="#/configuracion/stock-inicial" title="Lo que ya tenías antes de Nexo, con lo que te costó"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg> Stock inicial</a>
               <button class="btn btn-secundario col-admin" id="btnDepositos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#warehouse"></use></svg> Depósitos</button>
               <button class="btn btn-secundario" id="btnExportarStock"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
               <button class="btn btn-secundario" id="btnTransferirStock"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#arrow-right-left"></use></svg> Transferir</button>
@@ -3080,6 +3081,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Datos del negocio</span><span class="config-item-desc">Nombre, dirección y contacto</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/lo-que-tenias" data-seccion="lo-que-tenias">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Lo que ya tenías</span><span class="config-item-desc">Stock, deudas y plata de antes de Nexo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/funciones" data-seccion="funciones">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Funciones</span><span class="config-item-desc">Qué secciones ves en el menú</span></span>
@@ -3822,6 +3828,179 @@
               </form>
             </section>
 
+            <!-- Lo que ya tenías (handoff 8c): lo maneja dominios/carga-inicial.js.
+                 Una página resume las cinco partes, y cada parte es su página. -->
+            <section class="config-pagina col-admin" data-seccion="lo-que-tenias" aria-labelledby="configCargaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configCargaTitulo" tabindex="-1">Lo que ya tenías</h2>
+                <p>Si tu negocio ya venía funcionando, cargá lo que tenés hoy y Nexo arranca con tus números de verdad. Cada parte va por separado y en el orden que quieras, y ninguna inventa compras ni ventas.</p>
+              </header>
+              <ol class="ci-partes" id="ciPartes"></ol>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="stock-inicial" aria-labelledby="configStockInicialTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configStockInicialTitulo" tabindex="-1">Tu stock de hoy</h2>
+                <p>Para cada producto, cuántos tenés hoy y cuánto te costó cada uno (con el envío, si lo pagaste vos). Con ese costo Nexo calcula cuánto ganás en cada venta. No genera deudas ni toca la caja.</p>
+              </header>
+              <form class="form config-tarjeta" id="formStockInicial" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <div class="ci-barra">
+                    <label id="ciDepositoCampo" hidden>Depósito
+                      <select id="ciDeposito"></select>
+                    </label>
+                    <input type="search" class="search" id="ciBuscar" placeholder="Buscar por nombre o SKU" aria-label="Buscar producto" hidden />
+                  </div>
+                  <ul class="ci-planilla" id="ciPlanilla"></ul>
+                  <button type="button" class="btn btn-secundario ci-sumar" id="btnCiSumarProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar uno que no está</button>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p id="ciStockResumen" aria-live="polite"></p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="te-deben" aria-labelledby="configDebenTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configDebenTitulo" tabindex="-1">Lo que te deben</h2>
+                <p>Lo que cada cliente te quedó debiendo antes de empezar con Nexo. Queda en su cuenta corriente, vence cuando le digas y se cobra como cualquier venta, desde Cuentas corrientes.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCiDeben" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <div class="form-fila">
+                    <label>Cliente
+                      <input type="text" name="nombre" list="ciDebenNombres" maxlength="120" autocomplete="off" placeholder="Si ya es cliente, el nombre de su ficha" />
+                    </label>
+                    <label>Cuánto te debe
+                      <input type="number" name="importe" min="0" step="any" inputmode="decimal" placeholder="$ 0" />
+                    </label>
+                  </div>
+                  <div class="form-fila">
+                    <label>Desde cuándo
+                      <input type="date" name="fecha" />
+                    </label>
+                    <label>Vence <span class="campo-opcional">(opcional)</span>
+                      <input type="date" name="vencimiento" />
+                    </label>
+                  </div>
+                  <datalist id="ciDebenNombres"></datalist>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Vence es cuándo te lo tienen que pagar. Sin fecha, vence el mismo día en que nació la deuda.</p>
+                  <button type="submit" class="btn btn-primary">Agregar</button>
+                </div>
+              </form>
+              <section class="panel" aria-labelledby="ciDebenListaTitulo">
+                <div class="panel-head"><h2 id="ciDebenListaTitulo">Lo que ya cargaste</h2></div>
+                <ul class="ci-saldos" id="ciDebenLista"></ul>
+              </section>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="lo-que-debes" aria-labelledby="configDebesTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configDebesTitulo" tabindex="-1">Lo que debés</h2>
+                <p>Lo que les debías a tus proveedores antes de empezar con Nexo. Queda en su cuenta corriente y se paga como cualquier compra, desde Cuentas corrientes.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCiDebes" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <div class="form-fila">
+                    <label>Proveedor
+                      <input type="text" name="nombre" list="ciDebesNombres" maxlength="120" autocomplete="off" placeholder="Si ya es proveedor, el nombre de su ficha" />
+                    </label>
+                    <label>Cuánto le debés
+                      <input type="number" name="importe" min="0" step="any" inputmode="decimal" placeholder="$ 0" />
+                    </label>
+                  </div>
+                  <div class="form-fila">
+                    <label>Desde cuándo
+                      <input type="date" name="fecha" />
+                    </label>
+                    <label>Vence <span class="campo-opcional">(opcional)</span>
+                      <input type="date" name="vencimiento" />
+                    </label>
+                  </div>
+                  <datalist id="ciDebesNombres"></datalist>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Vence es cuándo se lo tenés que pagar. Sin fecha, vence el mismo día en que nació la deuda.</p>
+                  <button type="submit" class="btn btn-primary">Agregar</button>
+                </div>
+              </form>
+              <section class="panel" aria-labelledby="ciDebesListaTitulo">
+                <div class="panel-head"><h2 id="ciDebesListaTitulo">Lo que ya cargaste</h2></div>
+                <ul class="ci-saldos" id="ciDebesLista"></ul>
+              </section>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="plata-inicial" aria-labelledby="configPlataTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configPlataTitulo" tabindex="-1">La plata de hoy</h2>
+                <p>Cuánto hay hoy en cada cuenta: lo que contás en la caja, y lo que dice el banco y Mercado Pago. Si ya cargaste ventas o gastos en Nexo, se tienen en cuenta.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCiPlata" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <ul class="ci-planilla" id="ciPlataLista"></ul>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>¿Tenés otra cuenta? Sumala en Caja.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina col-admin" data-seccion="ventas-anteriores" aria-labelledby="configVentasAntTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configVentasAntTitulo" tabindex="-1">Ventas recientes</h2>
+                <p>Opcional: las ventas de esta semana o de este mes, para que tus reportes no arranquen vacíos. No descuentan stock ni suman a la caja, porque lo que cargaste ya es lo de hoy. Una que te deben queda en la cuenta del cliente: no la cargues también en "Lo que te deben".</p>
+              </header>
+              <form class="form config-tarjeta" id="formCiVentas" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <div class="form-fila">
+                    <label>Fecha
+                      <input type="date" name="fecha" required />
+                    </label>
+                    <label>Cliente
+                      <input type="text" name="cliente" list="ciVentaClientes" maxlength="120" autocomplete="off" />
+                      <span class="campo-ayuda" id="ciVentaClienteAyuda"></span>
+                    </label>
+                  </div>
+                  <datalist id="ciVentaClientes"></datalist>
+                  <ul class="ci-planilla" id="ciVentaRenglones"></ul>
+                  <div class="ci-venta-pie">
+                    <button type="button" class="btn btn-secundario" id="btnCiSumarRenglon"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar otro</button>
+                    <strong class="mono" id="ciVentaTotal" aria-live="polite"></strong>
+                  </div>
+                  <fieldset class="ci-cobro">
+                    <legend>¿Te la pagaron?</legend>
+                    <label class="ci-radio"><input type="radio" name="cobrada" value="si" checked /> Sí</label>
+                    <label class="ci-radio"><input type="radio" name="cobrada" value="no" /> No, me la deben</label>
+                  </fieldset>
+                  <div class="form-fila">
+                    <label id="ciVentaCuentaCampo">Cómo te pagaron
+                      <select name="cuenta"></select>
+                    </label>
+                    <label id="ciVentaVenceCampo" hidden>Vence <span class="campo-opcional">(opcional)</span>
+                      <input type="date" name="vencimiento" />
+                    </label>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Se guarda con el costo de hoy de cada producto.</p>
+                  <button type="submit" class="btn btn-primary">Guardar venta</button>
+                </div>
+              </form>
+              <section class="panel" aria-labelledby="ciVentasListaTitulo">
+                <div class="panel-head"><h2 id="ciVentasListaTitulo">Lo que ya cargaste</h2></div>
+                <ul class="ci-saldos" id="ciVentasLista"></ul>
+              </section>
+            </section>
+
             <!-- Mi cuenta: la persona, no el negocio. La ven los dos roles, y
                  también la abre el círculo de perfil del pie del menú. -->
             <!-- Descargar los datos y dar de baja el negocio (hist. §109): lo
@@ -4321,7 +4500,7 @@
         </div>
         <div class="alta-progreso">
           <p class="alta-progreso-texto" id="altaProgreso" aria-live="polite">Paso 1 de 6 · Tu cuenta</p>
-          <ol class="alta-pasos" id="altaPasos" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li></ol>
+          <ol class="alta-pasos" id="altaPasos" aria-hidden="true"><li></li><li></li><li></li><li></li><li></li><li></li><li></li></ol>
         </div>
         <p class="alta-ya-tengo" id="altaYaTengo">¿Ya tenés cuenta? <button type="button" class="btn-link" id="altaIrALogin">Ingresá</button></p>
         <button type="button" class="btn btn-secundario alta-cancelar" id="altaCancelar" hidden>Cancelar</button>
@@ -4449,7 +4628,6 @@
             <h1 tabindex="-1">Datos para tus comprobantes</h1>
             <p>Encabezan los presupuestos y las facturas que imprimas. Si no los tenés a mano, completalos después en Configuración.</p>
           </div>
-          <p class="form-note alta-error" id="altaError" role="alert" hidden></p>
           <div class="form-fila">
             <label>CUIT
               <input type="text" id="altaCuit" maxlength="13" inputmode="numeric" placeholder="20-12345678-9" />
@@ -4473,8 +4651,45 @@
             <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
             <div class="alta-acciones-fin">
               <button type="button" class="btn btn-secundario" id="altaDespues">Completar después</button>
-              <button type="submit" class="btn btn-primary" id="altaCrear">Crear cuenta</button>
+              <button type="submit" class="btn btn-primary">Continuar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
             </div>
+          </div>
+        </form>
+
+        <!-- Lo que ya tenía el negocio (handoff 8c): con "Sí", entra directo a
+             Configuración → Lo que ya tenías. -->
+        <form class="form alta-paso alta-paso-ancho" data-paso="7" novalidate hidden>
+          <div class="alta-encabezado">
+            <h1 tabindex="-1">¿Tu negocio ya venía funcionando?</h1>
+            <p>Si ya tenías mercadería, clientes que te deben o plata en la caja, cargalo ahora y Nexo arranca con tus números de hoy. Lo podés hacer después.</p>
+          </div>
+          <p class="form-note alta-error" id="altaError" role="alert" hidden></p>
+          <fieldset class="opciones">
+            <legend class="visualmente-oculto">¿Tu negocio ya venía funcionando?</legend>
+            <div class="opciones-tarjetas">
+              <label class="opcion-tarjeta">
+                <input type="radio" name="ya_funcionaba" value="si" checked />
+                <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#boxes"></use></svg></span>
+                <span class="opcion-tarjeta-texto">
+                  <span class="opcion-tarjeta-nombre">Sí, quiero cargar lo que ya tengo</span>
+                  <span class="opcion-tarjeta-desc">Tu stock con lo que te costó, lo que te deben, lo que debés y la plata de hoy. Sin inventar compras ni ventas.</span>
+                </span>
+                <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+              </label>
+              <label class="opcion-tarjeta">
+                <input type="radio" name="ya_funcionaba" value="no" />
+                <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#sprout"></use></svg></span>
+                <span class="opcion-tarjeta-texto">
+                  <span class="opcion-tarjeta-nombre">No, arranco de cero</span>
+                  <span class="opcion-tarjeta-desc">Empezás con todo vacío. Si después te acordás de algo, lo cargás desde Configuración.</span>
+                </span>
+                <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+              </label>
+            </div>
+          </fieldset>
+          <div class="alta-acciones">
+            <button type="button" class="btn btn-secundario" data-atras><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Atrás</button>
+            <button type="submit" class="btn btn-primary" id="altaCrear">Crear cuenta</button>
           </div>
         </form>
       </div>

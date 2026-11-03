@@ -2019,6 +2019,75 @@ if (!mensajesSql.includes("'devolucion'")) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Carga inicial (handoff 8c): empezar con un negocio que ya existe. Aditivas
+// y nulables (o con default), sin backfill: lo que ya está cargado no es de
+// antes de Nexo, y los negocios de antes quedan sin respuesta a la pregunta
+// del alta (ver schema.sql).
+for (const [tabla, columna] of [
+  ['organizaciones', 'ya_funcionaba INTEGER'],
+  ['ventas', 'carga_inicial INTEGER NOT NULL DEFAULT 0'],
+  ['ventas', 'saldo_inicial REAL'],
+  ['compras', 'saldo_inicial REAL']
+]) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
+  }
+}
+
+// movimientos_stock.origen suma 'stock_inicial' (handoff 8c): lo que había en
+// cada depósito al empezar con Nexo, con su costo. Mismo método que el rebuild
+// de asistente_mensajes de arriba (CLAUDE.md §34): se parte del CREATE TABLE
+// que la tabla tiene hoy, se cambia solo el CHECK (si el texto no aparece una
+// vez exacta, el arranque se corta en vez de adivinar), y se conservan los
+// ids, los índices y sqlite_sequence; las vistas de stock se tiran y se
+// recrean. Nada referencia a esta tabla por FK. En una transacción, y
+// re-ejecutable: con el CHECK nuevo no hace nada.
+const CHECK_ORIGEN_VIEJO =
+  /CHECK\s*\(\s*origen\s+IN\s*\(\s*'venta',\s*'compra',\s*'ajuste_manual',\s*'devolucion',\s*'devolucion_proveedor',\s*'transferencia'\s*\)\s*\)/gi;
+const CHECK_ORIGEN_NUEVO =
+  "CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia', 'stock_inicial'))";
+const movimientosSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_stock'").get().sql;
+if (!movimientosSql.includes("'stock_inicial'")) {
+  if (cuantas(movimientosSql, CHECK_ORIGEN_VIEJO) !== 1) {
+    throw new Error('movimientos_stock: no se reconoce el CHECK de origen para sumarle stock_inicial');
+  }
+  const crear = movimientosSql
+    .replace(CHECK_ORIGEN_VIEJO, CHECK_ORIGEN_NUEVO)
+    .replace(/^CREATE TABLE\s+("?)\w+\1/, 'CREATE TABLE movimientos_stock_nueva');
+  const dependientes = db
+    .prepare(
+      "SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger') AND tbl_name = 'movimientos_stock' AND sql IS NOT NULL ORDER BY rowid"
+    )
+    .all();
+  const columnas = db
+    .prepare('PRAGMA table_info(movimientos_stock)')
+    .all()
+    .map((col) => col.name)
+    .join(', ');
+  const secuencia = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'movimientos_stock'").get();
+  const vistas = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' ORDER BY rowid").all();
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    for (const { name } of vistas) db.exec(`DROP VIEW ${name}`);
+    db.exec(crear);
+    db.exec(`INSERT INTO movimientos_stock_nueva (${columnas}) SELECT ${columnas} FROM movimientos_stock`);
+    db.exec('DROP TABLE movimientos_stock');
+    db.exec('ALTER TABLE movimientos_stock_nueva RENAME TO movimientos_stock');
+    for (const { sql } of dependientes) db.exec(sql);
+    db.exec("DELETE FROM sqlite_sequence WHERE name = 'movimientos_stock'");
+    if (secuencia) db.prepare("INSERT INTO sqlite_sequence (name, seq) VALUES ('movimientos_stock', ?)").run(secuencia.seq);
+    for (const { sql } of vistas) db.exec(sql);
+    const huerfanas = db.prepare('PRAGMA foreign_key_check(movimientos_stock)').all();
+    if (huerfanas.length) throw new Error(`movimientos_stock: ${huerfanas.length} fila(s) con FK rota`);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

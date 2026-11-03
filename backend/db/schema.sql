@@ -372,7 +372,17 @@ CREATE TABLE IF NOT EXISTS ventas (
   lista_precio_id INTEGER REFERENCES listas_precios(id),
   -- El turno de caja en el que se hizo la venta, si fue desde el punto de
   -- venta (CLAUDE.md §30). NULL en las ventas de la pantalla administrativa.
-  turno_caja_id INTEGER REFERENCES turnos_caja(id)
+  turno_caja_id INTEGER REFERENCES turnos_caja(id),
+  -- Carga inicial (handoff 8c): una venta de antes de empezar con Nexo. No
+  -- mueve stock ni caja, porque el stock y la plata que se cargaron ya son
+  -- los de hoy, pero cuenta en los reportes y su saldo sin cobrar es deuda.
+  carga_inicial INTEGER NOT NULL DEFAULT 0,
+  -- Lo que un cliente ya debía al empezar con Nexo ("saldo anterior"). Una
+  -- venta así no tiene renglones: su total es este importe. Nace como venta
+  -- para cobrarse y vencer con el circuito de siempre (los cobros y el aging
+  -- cuelgan de una venta), y no entra en los reportes de ventas, que suman
+  -- renglones. NULL en cualquier otra venta.
+  saldo_inicial REAL
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -524,7 +534,10 @@ CREATE TABLE IF NOT EXISTS compras (
   -- número, libre. Solo la A a un negocio inscripto discrimina IVA (crédito
   -- fiscal). NULL en las compras anteriores y sin comprobante.
   comprobante_letra TEXT,
-  comprobante_numero TEXT
+  comprobante_numero TEXT,
+  -- Lo que ya se le debía a este proveedor al empezar con Nexo (handoff 8c):
+  -- mismo criterio que ventas.saldo_inicial. Sin renglones ni stock.
+  saldo_inicial REAL
 );
 
 -- costo_real_unitario = precio_unitario + la parte del envío que le toca a
@@ -621,6 +634,10 @@ CREATE TABLE IF NOT EXISTS transferencias (
 
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
+-- origen 'stock_inicial' (handoff 8c): lo que había en el depósito al empezar
+-- con Nexo. Es un 'ajuste' hasta la cantidad declarada, con el costo de cada
+-- unidad, y ese costo reemplaza al del stock que había en ese depósito (ver
+-- recalcularCostoProducto en server.js).
 -- deposito_id es NOT NULL: toda unidad de stock vive en algún depósito
 -- físico concreto, nunca "en general" (CLAUDE.md §5/§19).
 -- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
@@ -634,7 +651,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   deposito_id INTEGER NOT NULL REFERENCES depositos(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
   cantidad REAL NOT NULL,
-  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia')),
+  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia', 'stock_inicial')),
   -- origen_id: deprecado, reemplazado por venta_id/compra_id (con FK real
   -- de verdad). Se conserva sin usar por compatibilidad con filas viejas;
   -- se puede eliminar en una limpieza posterior.
@@ -1022,7 +1039,11 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- número de ingresos brutos y la fecha de inicio de actividades (AAAA-MM-DD).
   razon_social TEXT,
   ingresos_brutos TEXT,
-  inicio_actividades TEXT
+  inicio_actividades TEXT,
+  -- Lo que contestó al final del alta (handoff 8c): 1 = el negocio ya venía
+  -- funcionando y quiere cargar lo que ya tiene, 0 = arranca de cero. NULL =
+  -- no se le preguntó (los negocios de antes).
+  ya_funcionaba INTEGER
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

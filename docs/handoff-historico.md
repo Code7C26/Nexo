@@ -10959,3 +10959,77 @@ local (Mercado Libre falso): conectar, vincular y los logos del menú.
 **Sin probar contra Mercado Libre de verdad:** la redirección de la app apunta
 al sitio publicado. Falta publicar, cargar `MERCADOLIBRE_APP_ID` y
 `MERCADOLIBRE_CLIENT_SECRET` en el servidor y probar con usuarios de prueba.
+
+## 124. Lo que ya tenías: la carga inicial de un negocio que ya existe, 2 de noviembre de 2026
+
+**Pedido del usuario** (2 de noviembre, retomando el punto 8c del 28 de
+octubre): su hermano creó la cuenta de su emprendimiento de mates y no podía
+cargar sus productos con el costo que ya tenían: tenía que inventar una
+compra. "La mayoría ya tiene negocios que ya sirven." Pidió que el alta
+pregunte si el negocio ya funcionaba y que se cargue desde Configuración. La
+planilla de Excel queda para después. Lo del stock máximo que vio el hermano
+era la venta frenada por no tener stock: lo esperado, según el usuario.
+
+**Esquema** (`schema.sql` y `db/index.js`, explicado antes de tocarlo):
+- `movimientos_stock.origen` suma `'stock_inicial'`. Es un rebuild por el
+  CHECK, con el método del de `asistente_mensajes`: parte del CREATE TABLE
+  de hoy, cambia solo el CHECK y conserva ids, índices, `sqlite_sequence` y
+  vistas, en una transacción.
+- Aditivas: `organizaciones.ya_funcionaba` (1, 0 o NULL si no se preguntó),
+  `ventas.carga_inicial` (default 0), `ventas.saldo_inicial` y
+  `compras.saldo_inicial` (NULL salvo en un saldo anterior).
+
+**Cómo funciona cada parte** (backend en `server.js`, "Carga inicial"):
+- **Stock:** declarar "en este depósito hay N y cada uno costó C" es un
+  `ajuste` hasta N, con `costo_unitario` C. En el costo promedio, el stock
+  inicial reemplaza el costo de lo que había en ese depósito y se promedia con
+  el de los otros (`costoConStockInicial`). `recalcularCostoProducto` y su par
+  de variante pasan a usar `costoDelHistorial`, que lo entiende, así que
+  editar una compra después no lo pierde. La planilla deja dar de alta
+  productos en la misma fila (`insertarProducto`, separado de
+  `POST /api/productos`). No genera deuda ni toca la caja.
+- **Lo que te deben / lo que debés:** un "saldo anterior" es una venta (o
+  compra) sin renglones con `saldo_inicial` = el importe. Así se cobra, se
+  paga, vence y entra en el aging con el circuito de siempre. Los totales
+  suman `saldo_inicial` en el listado, el detalle, el cobro, el pago, anular,
+  restaurar y las fichas. No entra en los reportes (suman renglones), ni en
+  "cantidad de compras", "dejaron de comprar" o el rango de fechas. No se
+  factura ni se edita.
+- **La plata de hoy:** la página pide lo que hay hoy en cada cuenta, y el
+  saldo inicial queda en eso menos lo que ya se movió en Nexo (PATCH de la
+  cuenta, sin endpoint nuevo).
+- **Ventas recientes:** `crearVenta({ carga_inicial: true })` no mueve stock.
+  Cobrada, lleva su cobro (con la cuenta, para saber cómo se pagó) sin
+  movimiento de tesorería. Sin cobrar, es deuda del cliente ("Consumidor
+  final" no fía). Cuentan en los reportes y no en el tope de ventas del plan.
+  No se editan; al anularlas no se devuelve stock, y lo cobrado antes de Nexo
+  no frena la anulación (`SQL_COBROS_CON_CAJA`, solo para ellas).
+- Todo es admin (`permisos.js`) y queda en la auditoría.
+
+**Frontend:**
+- Alta: paso 7, "¿Tu negocio ya venía funcionando?". "Completar después" del
+  paso 6 ahora lleva a ese paso. Con "Sí", `sessionStorage` deja una marca y
+  `dominios/carga-inicial.js` abre `#/configuracion/lo-que-tenias` al
+  arrancar.
+- Configuración → "Lo que ya tenías" (`dominios/carga-inicial.js`): un
+  resumen con las cinco partes y su estado, y una página para cada una.
+- Accesos y textos en el resto de la app:
+  - el paso en la guía de primeros pasos (solo con `ya_funcionaba`);
+  - "Stock inicial" en la pantalla de Stock;
+  - "Stock inicial" como origen en los movimientos;
+  - "Saldo de antes de Nexo" en Ventas y Compras.
+
+**Cómo se verificó.** `carga-inicial.test.js` (5): el alta y "Agregar
+negocio" con la pregunta; stock con alta en la planilla, redeclarar,
+promedio con una compra y recálculo al editarla; saldos que se cobran,
+pagan, vencen, anulan y restauran; ventas que no mueven stock ni caja y
+cuentan en el resumen; aislamiento entre negocios. `npm test` (256), lint y
+`verificar-migracion` (24 de 24, la base real sin cambios). En Chrome, a
+390 px y en la compu: alta completa con el paso 7, entrada directa a la
+página, planilla con dos productos nuevos, un saldo, la plata y una venta de
+antes, y cómo se ven en Ventas.
+
+**Queda:** importar desde una planilla (CSV o `.xlsx`), y decidir con el
+usuario si las ventas que el hermano ya cargó con costo 0 se corrigen: el
+costo de una venta queda congelado (CLAUDE.md §8), así que hoy muestran 100 %
+de margen.

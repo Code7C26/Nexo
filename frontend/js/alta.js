@@ -2,7 +2,8 @@
  * alta.js
  * Alta guiada de una cuenta (hist. §73): tu cuenta, el código que llega al
  * mail (hist. §108), tu negocio, el tipo de negocio, sus secciones y los
- * datos de los comprobantes, en seis pasos a pantalla completa. El backend
+ * datos de los comprobantes y si el negocio ya venía funcionando (handoff
+ * 8c), en siete pasos a pantalla completa. El backend
  * crea todo junto al final, en una sola transacción (POST /api/auth/registro):
  * los pasos son solo de la interfaz, salvo el código, que el backend confirma
  * en el momento y canjea por un comprobante que el alta lleva al final.
@@ -27,8 +28,12 @@ import { declaraMenor, leerAceptacion } from "./core/aceptacion.js";
 import { codigoCompleto, esperarParaReenviar, prepararCampoCodigo } from "./core/codigo.js";
 
 // El número de cada paso es el data-paso de su <form>.
-const PASO = { cuenta: 1, codigo: 2, negocio: 3, tipo: 4, secciones: 5, comprobantes: 6 };
-const NOMBRES_PASO = ["Tu cuenta", "Tu mail", "Tu negocio", "Tipo de negocio", "Secciones", "Comprobantes"];
+const PASO = { cuenta: 1, codigo: 2, negocio: 3, tipo: 4, secciones: 5, comprobantes: 6, yaFuncionaba: 7 };
+const NOMBRES_PASO = ["Tu cuenta", "Tu mail", "Tu negocio", "Tipo de negocio", "Secciones", "Comprobantes", "Lo que ya tenés"];
+// Quien contesta que su negocio ya venía funcionando entra directo a cargar
+// lo que tiene (handoff 8c): lo lee dominios/carga-inicial.js al arrancar la
+// app, que a veces es recién después de recargar la página.
+const CLAVE_ABRIR_CARGA_INICIAL = "nexo.abrirCargaInicial";
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Lo que cambia entre crear una cuenta y agregar un negocio a la que ya se
@@ -58,6 +63,9 @@ let aceptacion = null;
 // confirmó ({ email, valor }). Cambiar el mail en el paso 1 los deja sin uso.
 let codigoMandadoA = null;
 let comprobante = null;
+// Si en el paso 6 completó los datos de los comprobantes o eligió hacerlo
+// después.
+let conComprobantes = true;
 
 const formDelPaso = (n) => formularios[n - 1];
 // El número que ve quien completa el alta, y el de la dirección: en "Agregar
@@ -380,7 +388,8 @@ const VALIDAR = {
       return errorEn(email, "Revisá el email: tiene que ser como nombre@dominio.com.");
     }
     return true;
-  }
+  },
+  [PASO.yaFuncionaba]: () => true
 };
 
 // Al llegar a las secciones se marcan las del tipo elegido, salvo que se
@@ -408,12 +417,17 @@ for (const form of formularios) {
     if (paso === PASO.cuenta) return pasarAlCodigo();
     if (paso === PASO.codigo) return confirmarCodigo();
     if (paso === PASO.tipo) prepararModulos();
+    if (paso === PASO.comprobantes) conComprobantes = true;
     if (paso < NOMBRES_PASO.length) irAPaso(paso + 1);
-    else crearCuenta({ conComprobantes: true });
+    else crearCuenta();
   });
 }
 
-campo("altaDespues").addEventListener("click", () => crearCuenta({ conComprobantes: false }));
+campo("altaDespues").addEventListener("click", () => {
+  conComprobantes = false;
+  limpiarErrores(formDelPaso(PASO.comprobantes));
+  irAPaso(PASO.yaFuncionaba);
+});
 
 /* ---------- Crear la cuenta ---------- */
 
@@ -423,12 +437,14 @@ function volverAlMail(texto) {
   history.go(PASO.cuenta - paso);
 }
 
-async function crearCuenta({ conComprobantes }) {
+async function crearCuenta() {
   const error = campo("altaError");
   error.hidden = true;
+  const yaFuncionaba = formDelPaso(PASO.yaFuncionaba).querySelector('input[name="ya_funcionaba"]:checked').value === "si";
   const delNegocio = {
     rubro: formDelPaso(PASO.tipo).querySelector('input[name="rubro"]:checked').value,
-    modulos: [...contenedorModulos.querySelectorAll('input[name="modulo"]:checked')].map((c) => c.value)
+    modulos: [...contenedorModulos.querySelectorAll('input[name="modulo"]:checked')].map((c) => c.value),
+    ya_funcionaba: yaFuncionaba
   };
   // Una cuenta nueva lleva la persona y el negocio (que ahí se llama
   // `empresa`); un negocio más, solo el negocio.
@@ -456,7 +472,7 @@ async function crearCuenta({ conComprobantes }) {
   }
 
   const crear = campo("altaCrear");
-  const botones = [crear, campo("altaDespues"), ...formDelPaso(PASO.comprobantes).querySelectorAll("[data-atras]")];
+  const botones = [crear, ...formDelPaso(PASO.yaFuncionaba).querySelectorAll("[data-atras]")];
   botones.forEach((b) => (b.disabled = true));
   crear.textContent = modo.creando;
   try {
@@ -475,6 +491,13 @@ async function crearCuenta({ conComprobantes }) {
       return;
     }
     history.replaceState(null, "", location.pathname + location.search);
+    if (yaFuncionaba) {
+      try {
+        sessionStorage.setItem(CLAVE_ABRIR_CARGA_INICIAL, "1");
+      } catch {
+        /* sin almacenamiento entra al Resumen, y la guía lleva igual */
+      }
+    }
     cerrar(() => opciones.alTerminar(modo === MODOS.negocio ? { id: datos.id, nombre: cuerpo.nombre } : datos.usuario));
   } finally {
     botones.forEach((b) => (b.disabled = false));

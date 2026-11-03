@@ -396,6 +396,19 @@ document.addEventListener("nexo:instalable", pintarInstalar);
 
 const PAGINAS = {
   negocio: { admin: true, form: formNegocio, alEntrar: pintarNegocio },
+  // Lo que ya tenía el negocio al empezar con Nexo: dominios/carga-inicial.js
+  // (handoff 8c). Cada parte es su página, y todas marcan el mismo ítem.
+  "lo-que-tenias": { admin: true, alEntrar: () => invocar("pintar:carga-inicial", "lo-que-tenias") },
+  "stock-inicial": {
+    admin: true,
+    modulo: "stock",
+    menu: "lo-que-tenias",
+    alEntrar: () => invocar("pintar:carga-inicial", "stock-inicial")
+  },
+  "te-deben": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "te-deben") },
+  "lo-que-debes": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "lo-que-debes") },
+  "plata-inicial": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "plata-inicial") },
+  "ventas-anteriores": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "ventas-anteriores") },
   funciones: { admin: true, form: formFunciones, alEntrar: pintarFunciones },
   "cambiar-tipo": { admin: true, form: formCambiarTipo, alEntrar: pintarCambiarTipo, menu: "funciones" },
   // Las etapas del embudo de consultas las pinta dominios/crm.js (hist. §90).

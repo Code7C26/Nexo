@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §123);
+    siguiente número (hoy el último es §124);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,22 @@
 
 ## Estado actual (2 de noviembre de 2026)
 
-**Lo último (2 de noviembre, hist. §123): Mercado Libre hecho, sin publicar.**
+**Lo último (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
+publicar.** El punto 8c de "Qué sigue", salvo importar desde una planilla.
+El alta pregunta "¿Tu negocio ya venía funcionando?" (paso 7), y con "Sí" entra
+directo a Configuración → Lo que ya tenías:
+- el stock de hoy con lo que costó cada uno, y el alta en la misma planilla;
+- lo que te deben y lo que debés, como saldos anteriores;
+- la plata de hoy;
+- las ventas recientes, que no mueven stock ni caja.
+
+Lo pidió el usuario por su hermano (mates), que tenía que inventar una compra
+para cargar el costo. Su cuenta ya existe: lo encuentra en Configuración o en
+Stock → "Stock inicial". **Para decidir con el usuario:** sus ventas ya
+cargadas con costo 0 muestran 100 % de margen, porque el costo de una venta
+queda congelado (CLAUDE.md §8).
+
+**Antes (2 de noviembre, hist. §123): Mercado Libre hecho, sin publicar.**
 Configuración → Canales de venta → Mercado Libre: conectar (OAuth con PKCE,
 el token se renueva solo), vincular cada publicación con un producto de Nexo
 (el SKU lo sugiere, "Traer su stock" opcional), stock y precio que manda Nexo,
@@ -32,11 +47,12 @@ cargar `MERCADOLIBRE_APP_ID` y `MERCADOLIBRE_CLIENT_SECRET` en el servidor y
 probar con usuarios de prueba (pasos en "Qué sigue", punto 5).
 
 **Orden acordado con el usuario (2 de noviembre, al cerrar la sesión):**
-1. **Próxima sesión:** el usuario trae una mejora de algo que había quedado
-   pendiente de antes (no dijo cuál: preguntarle al arrancar). Se hace sobre
-   `solla`, arriba de Mercado Libre.
-2. **Después, publicar todo junto** (Mercado Libre + esa mejora): PR a `main`
-   con el CI en verde.
+1. ~~La mejora pendiente~~: era la carga inicial, hecha en `solla` (hist.
+   §124).
+2. **Lo que sigue: publicar todo junto** (Mercado Libre + la carga inicial):
+   PR a `main` con el CI en verde. La migración reconstruye
+   `movimientos_stock` (pasó `verificar-migracion` con la base real), y el
+   arranque respalda la base antes.
 3. **Las claves en el servidor:** el usuario las da por cargadas, pero el 2 de
    noviembre `/etc/nexo/nexo.env` no tenía ninguna línea `MERCADOLIBRE_`
    (comprobado por ssh contando líneas, sin ver valores; las de Tienda Nube
@@ -1578,8 +1594,10 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      campo trampa del alta. Para después: un mail de recordatorio unos días
      antes del borrado.
    - Las migraciones son aditivas y están explicadas en el documento.
-8c. **Carga inicial: empezar con un negocio que ya existe** (pedido del
-   usuario del 28 de octubre, **no ahora**, sin fecha). Lo vio cuando su
+8c. **Carga inicial: empezar con un negocio que ya existe. Hecha (hist.
+   §124), salvo importar desde una planilla**, que es lo que queda de este
+   punto (su diseño, en "Importar", abajo). Pedido del usuario del 28 de
+   octubre. Lo vio cuando su
    hermano, que vende mates, tuvo que registrar una compra para cargar el
    stock que ya tenía. La mayoría de los que usen Nexo ya tienen un negocio
    andando: el primer día tienen que poder cargar lo que tienen, lo que les

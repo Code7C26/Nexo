@@ -29,6 +29,18 @@ function pasos(c) {
       hecho: c.datos_negocio,
       hash: "#/configuracion/negocio"
     },
+    // Para quien contestó en el alta que su negocio ya venía funcionando
+    // (handoff 8c): queda hecho con cualquier parte cargada.
+    ...(c.ya_funcionaba
+      ? [
+          {
+            titulo: "Cargá lo que ya tenías",
+            detalle: "Tu stock con lo que te costó, lo que te deben, lo que debés y la plata de hoy, para arrancar con tus números reales.",
+            hecho: c.carga_inicial,
+            hash: "#/configuracion/lo-que-tenias"
+          }
+        ]
+      : []),
     {
       titulo: `Cargá tu primer ${termino("singular")}`,
       detalle: `Lo que vendés, con su precio. Después podés sumar ${termino("plural")} de a uno o editarlos en lote.`,

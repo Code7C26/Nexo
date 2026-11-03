@@ -10,7 +10,8 @@
 // - negocios: si se pueden sumar negocios desde este (solo Pro);
 // - productos: los activos, servicios incluidos;
 // - ventas_mes: las ventas del mes, sin anular, que cargó una persona (las
-//   cuotas de socios y abonos que se generan solas no cuentan).
+//   cuotas de socios y abonos que se generan solas no cuentan, ni las de
+//   antes de empezar con Nexo, handoff 8c).
 //
 // Decisión del usuario del 27 de octubre de 2026: Gratis, Emprendedor a
 // $ 19.900 y Pro a $ 34.900 por mes. Los topes de Emprendedor y la prueba de
