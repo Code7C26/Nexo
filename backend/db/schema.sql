@@ -1506,10 +1506,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_integraciones_cuenta
 
 -- El vínculo explícito entre lo que se vende en el canal y lo de Nexo
 -- (CLAUDE.md §32): nunca se deduce por nombre. Se arma al publicar un
--- producto desde Nexo. Un producto sin variantes es una sola fila con
--- variante_id NULL (en Tienda Nube tiene igual su variante "virtual").
+-- producto desde Nexo (Tienda Nube) o al elegir a mano qué publicación es qué
+-- producto (Mercado Libre). Un producto sin variantes es una sola fila con
+-- variante_id NULL (en Tienda Nube tiene igual su variante "virtual"; en
+-- Mercado Libre, externo_variante_id es la publicación misma).
 -- ultimo_stock y ultimo_precio: lo último que se le mandó al canal, para
 -- mandar solo lo que cambió.
+-- Un mismo producto puede estar en más de una publicación (en Mercado Libre
+-- es común la clásica y la premium): el índice por producto no es único.
 CREATE TABLE IF NOT EXISTS integracion_vinculos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   integracion_id INTEGER NOT NULL REFERENCES integraciones(id),
@@ -1523,8 +1527,8 @@ CREATE TABLE IF NOT EXISTS integracion_vinculos (
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   UNIQUE (integracion_id, externo_variante_id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_integracion_vinculos_nexo
-  ON integracion_vinculos(integracion_id, producto_id, COALESCE(variante_id, 0));
+CREATE INDEX IF NOT EXISTS idx_integracion_vinculos_producto
+  ON integracion_vinculos(integracion_id, producto_id, variante_id);
 
 -- Cada pedido del canal que llegó a Nexo, una sola vez (UNIQUE): los webhooks
 -- se repiten y llegan desordenados, y la pasada periódica vuelve a pedir los

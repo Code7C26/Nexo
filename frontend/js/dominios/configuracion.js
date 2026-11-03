@@ -405,6 +405,8 @@ const PAGINAS = {
   "factura-electronica": { admin: true, alEntrar: () => invocar("pintar:factura-electronica") },
   // Tienda Nube: dominios/tienda-nube.js (etapa G).
   "tienda-nube": { admin: true, alEntrar: () => invocar("pintar:tienda-nube") },
+  // Mercado Libre: dominios/mercado-libre.js (etapa G).
+  "mercado-libre": { admin: true, alEntrar: () => invocar("pintar:mercado-libre") },
   // Descargar los datos y dar de baja el negocio: dominios/baja.js (hist. §109).
   baja: { admin: true, alEntrar: () => invocar("pintar:baja") },
   // El plan de Nexo lo pinta dominios/plan.js (hist. §99).

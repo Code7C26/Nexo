@@ -11,9 +11,16 @@
 
 import { avisar, confirmar } from "../core/ui.js";
 import { api } from "../core/api.js";
-import { invocar, registrar } from "../core/registro.js";
-import { esc, fechaHoraAR, money } from "../core/formato.js";
+import { registrar } from "../core/registro.js";
+import { esc, fechaHoraAR } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
+import {
+  escucharAjustesCanal,
+  escucharPedidosCanal,
+  pintarActividadCanal,
+  pintarAjustesCanal,
+  pintarPedidosCanal
+} from "../core/canales.js";
 
 const estadoEl = document.getElementById("tnEstado");
 const pasos = document.getElementById("tnPasos");
@@ -81,30 +88,12 @@ function pintarEstado() {
   document.getElementById("btnTnDesconectar").addEventListener("click", desconectar);
 }
 
-async function pintarAjustes() {
-  const [listas, depositos, cuentas] = await Promise.all([
-    api("/api/listas-precios", { error: "No se pudieron cargar las listas de precios." }),
-    api("/api/depositos", { error: "No se pudieron cargar los depósitos." }),
-    api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." })
-  ]);
-  const opciones = (filas, elegido, primera) =>
-    [
-      `<option value="">${esc(primera)}</option>`,
-      ...filas.map((f) => `<option value="${f.id}"${f.id === elegido ? " selected" : ""}>${esc(f.nombre)}</option>`)
-    ].join("");
-  const predeterminado = (filas, campo) => filas.find((f) => f[campo])?.nombre ?? "—";
-  document.getElementById("tnLista").innerHTML = opciones(
-    listas.filter((l) => l.activa !== 0),
-    estado.lista_precio_id,
-    `La predeterminada (${predeterminado(listas, "es_predeterminada")})`
-  );
-  document.getElementById("tnDeposito").innerHTML = opciones(
-    depositos.filter((d) => d.activo !== 0),
-    estado.deposito_id,
-    `El predeterminado (${predeterminado(depositos, "es_predeterminado")})`
-  );
-  document.getElementById("tnCuenta").innerHTML = opciones(cuentas, estado.cuenta_tesoreria_id, "No registrar el cobro");
-}
+const pintarAjustes = () =>
+  pintarAjustesCanal(estado, {
+    lista: document.getElementById("tnLista"),
+    deposito: document.getElementById("tnDeposito"),
+    cuenta: document.getElementById("tnCuenta")
+  });
 
 async function pintarProductos() {
   const productos = await api("/api/integraciones/tiendanube/productos", { error: "No se pudieron cargar los productos." });
@@ -149,55 +138,14 @@ function actualizarBotonPublicar() {
   btnPublicar.textContent = n ? `Publicar ${n}` : "Publicar";
 }
 
-const ESTADO_PEDIDO = {
-  importado: ["status-cobrado", "Es venta"],
-  esperando_pago: ["status-info", "Esperando el pago"],
-  pendiente: ["status-pendiente", "Para revisar"],
-  cancelado: ["status-vencido", "Cancelado"]
-};
+const pintarPedidos = () =>
+  pintarPedidosCanal(document.getElementById("tnPedidos"), estado.pedidos, {
+    vacio: "Todavía no llegó ningún pedido de la tienda.",
+    titulo: "Pedido",
+    reservado: "Pago online sin terminar: sus unidades quedan reservadas en la tienda."
+  });
 
-function pintarPedidos() {
-  const lista = document.getElementById("tnPedidos");
-  if (!estado.pedidos.length) {
-    lista.innerHTML = `<li><p class="tn-vacio">Todavía no llegó ningún pedido de la tienda.</p></li>`;
-    return;
-  }
-  lista.innerHTML = estado.pedidos
-    .map((p) => {
-      const [clase, texto] = p.por_cobrar > 0 ? ["status-pendiente", "Por cobrar"] : ESTADO_PEDIDO[p.estado];
-      const venta = p.venta_id ? `Venta #${p.venta_id}${p.por_cobrar > 0 ? ` · falta cobrar ${money(p.por_cobrar)}` : ""}` : null;
-      const reservado = p.estado === "esperando_pago" ? "Pago online sin terminar: sus unidades quedan reservadas en la tienda." : null;
-      const detalle = p.error ?? venta ?? reservado ?? "—";
-      const acciones = [
-        p.venta_id ? `<button type="button" class="btn-link" data-venta="${p.venta_id}">Ver venta</button>` : "",
-        p.estado === "pendiente" ? `<button type="button" class="btn-link" data-reintentar="${p.id}">Reintentar</button>` : "",
-        p.estado === "cancelado" && p.error ? `<button type="button" class="btn-link" data-revisado="${p.id}">Ya lo revisé</button>` : ""
-      ].join(" ");
-      return `
-      <li class="tn-pedido">
-        <div class="tn-pedido-texto">
-          <p class="tn-pedido-titulo"><span class="mono">Pedido #${esc(p.numero ?? p.externo_id)}</span> <span class="status ${clase}">${texto}</span></p>
-          <p class="tn-pedido-detalle">${esc(detalle)}</p>
-        </div>
-        <div class="tn-pedido-acciones">${acciones}</div>
-      </li>`;
-    })
-    .join("");
-}
-
-function pintarActividad() {
-  document.getElementById("tnActividad").innerHTML = estado.actividad.length
-    ? estado.actividad
-        .map(
-          (a) => `
-      <li>
-        <span class="tn-actividad-fecha">${esc(fechaHoraAR(a.fecha))}</span>
-        <span class="${a.resultado === "error" ? "tn-actividad-error" : ""}">${esc(a.detalle)}</span>
-      </li>`
-        )
-        .join("")
-    : `<li><p class="tn-vacio">Sin actividad todavía.</p></li>`;
-}
+const pintarActividad = () => pintarActividadCanal(document.getElementById("tnActividad"), estado.actividad);
 
 async function pintarConfirmacion() {
   let tienda;
@@ -264,13 +212,7 @@ document.getElementById("btnTnNoConfirmar").addEventListener("click", () => {
   avisar("No se conectó. Si querés sacar a Nexo de tu tienda, desinstalalo desde sus aplicaciones.", "atencion");
 });
 
-formAjustes.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const datos = Object.fromEntries([...new FormData(formAjustes)].map(([k, v]) => [k, v ? Number(v) : null]));
-  await api("/api/integraciones/tiendanube", { method: "PUT", body: datos, error: "No se pudieron guardar los cambios." });
-  avisar("Guardado. La tienda se actualiza en unos segundos.", "ok");
-  await cargar();
-});
+escucharAjustesCanal(formAjustes, "tiendanube", { aviso: "Guardado. La tienda se actualiza en unos segundos.", recargar: cargar });
 
 listaProductos.addEventListener("change", actualizarBotonPublicar);
 
@@ -310,27 +252,7 @@ btnSincronizar.addEventListener("click", async () => {
   }
 });
 
-document.getElementById("tnPedidos").addEventListener("click", async (e) => {
-  const boton = e.target.closest("button");
-  if (!boton) return;
-  if (boton.dataset.venta) {
-    invocar("abrirFicha:venta", Number(boton.dataset.venta));
-  } else if (boton.dataset.reintentar) {
-    const r = await api(`/api/integraciones/tiendanube/pedidos/${boton.dataset.reintentar}/reintentar`, {
-      method: "POST",
-      error: "No se pudo reintentar el pedido."
-    });
-    if (r.estado === "importado") avisar(`Listo: el pedido es la venta #${r.venta_id}.`, "ok");
-    else avisar(r.error ?? "Sigue sin poder pasar a venta.", "atencion");
-    await cargar();
-  } else if (boton.dataset.revisado) {
-    await api(`/api/integraciones/tiendanube/pedidos/${boton.dataset.revisado}/revisado`, {
-      method: "POST",
-      error: "No se pudo marcar el pedido."
-    });
-    await cargar();
-  }
-});
+escucharPedidosCanal(document.getElementById("tnPedidos"), "tiendanube", cargar);
 
 async function desconectar() {
   const ok = await confirmar({

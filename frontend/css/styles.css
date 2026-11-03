@@ -6926,7 +6926,71 @@ a.segmento {
    productos para publicar (una fila tocable por producto), los pedidos y la
    actividad. */
 .tn-titulo { line-height: 0; }
+/* El logo es más alto que un título: un poco de aire antes del texto. */
+.config-pagina-head .tn-titulo { margin-bottom: var(--sp-2); }
 .tn-logo { width: 160px; height: 40px; color: var(--ink); fill: currentColor; }
+/* Mercado Libre (dominios/mercado-libre.js): el emblema con sus colores y la
+   palabra en el color del texto. */
+.ml-logo { width: 127px; height: 40px; color: var(--ink); }
+
+/* Los canales de venta llevan su logo en el menú de Configuración, en lugar
+   de un ícono del sprite: la nube de Tienda Nube toma el color de los demás
+   íconos; el emblema de Mercado Libre va con sus colores y un poco más
+   ancho, porque es ovalado. */
+.ico-marca { fill: currentColor; stroke: none; }
+.config-item-icono .ico-marca-color { width: 22px; height: 16px; }
+
+/* Las publicaciones para vincular: la foto, el título y los datos, y abajo
+   qué producto de Nexo es. En pantallas anchas el botón de desvincular va a
+   la derecha. */
+.ml-buscar { width: 100%; max-width: 420px; margin: 0 0 var(--sp-3); }
+.ml-buscar[hidden] { display: none; }
+.ml-publicaciones { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.ml-publicaciones > li { border-bottom: 1px solid var(--line); }
+.ml-publicaciones > li[hidden] { display: none; }
+.ml-publicacion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+.ml-foto {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  object-fit: contain;
+}
+.ml-publicacion-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.ml-publicacion-titulo { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.ml-publicacion-titulo a { color: inherit; }
+.ml-publicacion-detalle { margin: 0; font-size: var(--txt-xs); color: var(--ink-faint); overflow-wrap: anywhere; }
+.ml-publicacion-vinculo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+/* El selector de cada publicación, como los de los formularios. */
+.ml-elegir select {
+  width: 100%;
+  max-width: 420px;
+  min-height: var(--control-h);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  font-size: var(--txt-sm);
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+.ml-elegir select:hover { border-color: var(--ink-faint); }
+.ml-traer { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--txt-sm); color: var(--ink-muted); }
+.ml-traer input { flex: none; width: 18px; height: 18px; }
+.ml-publicacion .campo-ayuda { margin: 0; }
 /* Pedidos: una fila por pedido, con el número y el estado arriba, el
    detalle debajo y los botones a la derecha (abajo en el celular). */
 .tn-pedidos { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }

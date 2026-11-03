@@ -3108,9 +3108,16 @@
             </div>
             <div class="config-grupo col-admin">
               <p class="config-grupo-titulo">Canales de venta</p>
+              <!-- Los canales llevan su logo en vez de un ícono del sprite: la
+                   nube de Tienda Nube y el apretón de manos de Mercado Libre. -->
               <a class="config-item" href="#/configuracion/tienda-nube" data-seccion="tienda-nube">
-                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg></span>
+                <span class="config-item-icono"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 37.5 27"><use href="/img/tiendanube.svg#nube"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Tienda Nube</span><span class="config-item-desc" id="configTiendaNubeResumen">Tu tienda online, conectada a Nexo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/mercado-libre" data-seccion="mercado-libre">
+                <span class="config-item-icono"><svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadolibre.svg#emblema"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Mercado Libre</span><span class="config-item-desc" id="configMercadoLibreResumen">Tus publicaciones, conectadas a Nexo</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
@@ -3458,6 +3465,83 @@
                 <section class="panel" aria-labelledby="tnActividadTitulo">
                   <div class="panel-head"><h2 id="tnActividadTitulo">Actividad</h2></div>
                   <ul class="tn-actividad" id="tnActividad"></ul>
+                </section>
+              </div>
+            </section>
+
+            <!-- Mercado Libre (etapa G, CLAUDE.md §32): la pinta
+                 dominios/mercado-libre.js. Sin conectar, los pasos;
+                 conectada, los ajustes, vincular las publicaciones con los
+                 productos de Nexo, las ventas y la actividad. -->
+            <section class="config-pagina col-admin" data-seccion="mercado-libre" aria-labelledby="configMlTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configMlTitulo" class="tn-titulo" tabindex="-1"><svg class="ml-logo" role="img" aria-label="Mercado Libre" viewBox="0 0 330 104"><use href="/img/mercadolibre.svg#logo"></use></svg></h2>
+                <p>Conectá tus publicaciones de Mercado Libre con tus productos de Nexo. El stock y el precio se mantienen al día solos, y cada venta de Mercado Libre entra como una venta de Nexo, ya cobrada.</p>
+              </header>
+
+              <div class="fe-estado" id="mlEstado" aria-live="polite"></div>
+
+              <ol class="fe-pasos" id="mlPasos" hidden>
+                <li class="fe-paso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Tené tu cuenta de vendedor</p>
+                    <p class="config-tarjeta-texto">La de <a href="https://www.mercadolibre.com.ar" target="_blank" rel="noopener noreferrer">mercadolibre.com.ar</a> con la que ya publicás. Tus publicaciones quedan como están: Nexo no crea ni borra ninguna.</p>
+                  </div>
+                </li>
+                <li class="fe-paso">
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo"><span class="fe-paso-marca" aria-hidden="true"></span> Conectala con Nexo</p>
+                    <p class="config-tarjeta-texto">Te lleva a Mercado Libre para que le des permiso a Nexo, y volvés acá solo. Nexo nunca te pide la contraseña de tu cuenta.</p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p>Lo podés desconectar cuando quieras.</p>
+                    <button type="button" class="btn btn-primary" id="btnMlConectar">Conectar mi Mercado Libre</button>
+                  </div>
+                </li>
+              </ol>
+
+              <div class="tn-conectada" id="mlConectada" hidden>
+                <form class="form config-tarjeta" id="formMlAjustes" novalidate>
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo">Qué se publica y adónde entra la plata</p>
+                    <label>Precio de la lista
+                      <select name="lista_precio_id" id="mlLista"></select>
+                    </label>
+                    <label>Stock del depósito
+                      <select name="deposito_id" id="mlDeposito"></select>
+                    </label>
+                    <label>Lo cobrado en Mercado Libre entra en
+                      <select name="cuenta_tesoreria_id" id="mlCuenta"></select>
+                    </label>
+                    <p class="campo-ayuda">Nexo manda: si cambiás el stock o el precio en Mercado Libre, Nexo lo vuelve a poner como está acá. Si allá vendés más caro (por la comisión), creá una lista de precios para Mercado Libre y elegila arriba.</p>
+                  </div>
+                  <div class="config-tarjeta-pie">
+                    <p>Cambiarlo actualiza tus publicaciones enseguida.</p>
+                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                  </div>
+                </form>
+
+                <section class="panel" aria-labelledby="mlPublicacionesTitulo">
+                  <div class="panel-head">
+                    <h2 id="mlPublicacionesTitulo">Tus publicaciones</h2>
+                    <button type="button" class="btn btn-primary" id="btnMlVincular" disabled>Vincular</button>
+                  </div>
+                  <p class="tn-ayuda">Elegí qué producto de Nexo es cada publicación. Si tienen el mismo SKU, ya viene elegido. Al vincular, la publicación toma el precio y el stock de Nexo; si el stock que vale es el de Mercado Libre, marcá “Traer su stock”.</p>
+                  <input type="search" class="search ml-buscar" id="mlBuscar" placeholder="Buscar por título, SKU o número" aria-label="Buscar publicaciones" hidden />
+                  <ul class="ml-publicaciones" id="mlPublicaciones"></ul>
+                </section>
+
+                <section class="panel" aria-labelledby="mlPedidosTitulo">
+                  <div class="panel-head">
+                    <h2 id="mlPedidosTitulo">Ventas de Mercado Libre</h2>
+                    <button type="button" class="btn btn-secundario" id="btnMlSincronizar">Buscar ventas ahora</button>
+                  </div>
+                  <ul class="tn-pedidos" id="mlPedidos"></ul>
+                </section>
+
+                <section class="panel" aria-labelledby="mlActividadTitulo">
+                  <div class="panel-head"><h2 id="mlActividadTitulo">Actividad</h2></div>
+                  <ul class="tn-actividad" id="mlActividad"></ul>
                 </section>
               </div>
             </section>

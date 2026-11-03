@@ -57,6 +57,7 @@ import "./dominios/plan.js";
 import "./dominios/baja.js";
 import "./dominios/factura-electronica.js";
 import "./dominios/tienda-nube.js";
+import "./dominios/mercado-libre.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";

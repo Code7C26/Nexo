@@ -42,6 +42,11 @@ const schemaSql = readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 const crmYaExistia = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'crm_etapas'").get());
 db.exec(schemaSql);
 
+// integracion_vinculos: el índice único por producto (hist. §121) impedía
+// vincular un producto a dos publicaciones de Mercado Libre. schema.sql ya
+// crea el índice nuevo, que no es único; acá se borra el viejo. Re-ejecutable.
+db.exec('DROP INDEX IF EXISTS idx_integracion_vinculos_nexo');
+
 // organizaciones: no es un dato de ejemplo, es infraestructura real —
 // usuarios.organizacion_id la necesita para existir, y desde la Etapa A
 // (CLAUDE.md §28) todas las tablas de negocio cuelgan de ella. Se siembra
