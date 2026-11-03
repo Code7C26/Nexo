@@ -2158,6 +2158,14 @@ function ampliarOrigenesDeStock(antes, nuevos) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Los costos de vender de una venta (hist. §129, ver schema.sql): la comisión
+// de Mercado Libre y el envío que paga el negocio son gastos de esa venta.
+// Aditiva y nula, sin backfill: los gastos de antes son del negocio.
+if (!db.prepare('PRAGMA table_info(gastos)').all().some((col) => col.name === 'venta_id')) {
+  db.exec('ALTER TABLE gastos ADD COLUMN venta_id INTEGER REFERENCES ventas(id)');
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_gastos_venta ON gastos(venta_id)');
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

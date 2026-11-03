@@ -385,13 +385,34 @@ test('pago manual: entra como venta por cobrar, y al pagarse en la tienda se cob
   assert.equal(pedido.estado, 'importado');
 });
 
-test('cancelado sin cobros: la venta se anula sola y el stock vuelve', async () => {
+test('cancelado sin cobros: la venta se anula sola, el stock vuelve y el envío que pagó el negocio también', async () => {
   const antes = await stockEnNexo();
-  falso.pedidos.set('6', pedidoDeLaTienda(6, { payment_status: 'pending', gateway: 'not-provided' }));
+  // El cliente paga $1.500 de envío, y al negocio el envío le cuesta $900
+  // (hist. §129).
+  falso.pedidos.set(
+    '6',
+    pedidoDeLaTienda(6, { payment_status: 'pending', gateway: 'not-provided', shipping_cost_customer: '1500.00', shipping_cost_owner: '900.00' })
+  );
   await webhook({ store_id: Number(TIENDA), event: 'order/created', id: 6 });
   assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos.some((p) => p.externo_id === '6' && p.estado === 'importado')));
   const { venta_id } = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '6');
   assert.equal(await stockEnNexo(), antes - 2);
+  const venta = (await admin.get(`/api/ventas/${venta_id}`)).json;
+  assert.deepEqual(
+    venta.items.map((i) => [i.producto, i.precio_unitario]),
+    [
+      ['Remera lisa', 15000],
+      ['Envío', 1500]
+    ]
+  );
+  assert.equal(venta.total, 31500);
+  assert.equal(venta.canal, 'tiendanube');
+  assert.deepEqual(
+    venta.costos_de_vender.map((c) => [c.categoria, c.importe]),
+    [['Envíos', 900]]
+  );
+  const gastoEnvio = () => fetchGastos().then((gastos) => gastos.find((g) => g.id === venta.costos_de_vender[0].id));
+  assert.equal((await gastoEnvio()).estado, 'activo');
 
   falso.pedidos.set('6', { ...falso.pedidos.get('6'), status: 'cancelled' });
   await webhook({ store_id: Number(TIENDA), event: 'order/cancelled', id: 6 });
@@ -400,7 +421,15 @@ test('cancelado sin cobros: la venta se anula sola y el stock vuelve', async () 
   assert.equal(pedido.error, null, 'no queda nada para revisar');
   assert.equal((await admin.get(`/api/ventas/${venta_id}`)).json.estado, 'anulada');
   assert.equal(await stockEnNexo(), antes);
+  // El gasto del envío se anuló con la venta, y vuelve si se restaura.
+  assert.equal((await gastoEnvio()).estado, 'anulado');
+  assert.equal((await admin.post(`/api/ventas/${venta_id}/restaurar`)).status, 200);
+  assert.equal((await gastoEnvio()).estado, 'activo');
+  assert.equal((await admin.post(`/api/ventas/${venta_id}/anular`)).status, 200);
+  assert.equal((await gastoEnvio()).estado, 'anulado');
 });
+
+const fetchGastos = async () => (await admin.get('/api/gastos')).json;
 
 test('cancelado en la tienda después de ser venta: queda marcado y la venta no se toca', async () => {
   const antes = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '1');

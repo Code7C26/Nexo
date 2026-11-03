@@ -376,7 +376,16 @@ test('una venta pagada pasa a Nexo con su cobro, una sola vez, y el comprador no
   assert.equal(venta.cliente, 'Ana Paz');
   const cobros = (await admin.get(`/api/ventas/${pedido.venta_id}/cobros`)).json;
   assert.equal(cobros.reduce((a, c) => a + c.importe, 0), 36000);
-  assert.ok(estado.actividad.some((a) => /comisión de Mercado Libre \(\$4000\)/.test(a.detalle)));
+  assert.ok(estado.actividad.some((a) => /comisión de Mercado Libre \(\$4000\) quedó como gasto/.test(a.detalle)));
+  // La comisión es un gasto de la venta (hist. §129), y baja la ganancia de
+  // Mercado Libre en el reporte por canal.
+  assert.deepEqual(
+    venta.costos_de_vender.map((c) => [c.categoria, c.importe]),
+    [['Comisiones de venta', 4000]]
+  );
+  assert.equal(venta.canal, 'mercadolibre');
+  const porCanal = (await admin.get('/api/reportes/ventas')).json.canales.find((c) => c.canal === 'mercadolibre');
+  assert.equal(porCanal.ganancia, Math.round((36000 - venta.costo_total - 4000) * 100) / 100);
   assert.equal((await admin.get('/api/stock')).json.find((s) => s.producto_id === remera).stock_total, 2);
 
   // Otra compra del mismo comprador: mismo cliente.

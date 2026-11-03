@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §128);
+    siguiente número (hoy el último es §129);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,22 @@
 
 ## Estado actual (3 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §128): tipo "Tienda online", hecho y
-commiteado en `solla`, sin publicar.** Pedido del usuario ("e-commerce, y
+**Lo último (3 de noviembre, hist. §129): la comisión y el envío de la venta
+online, hechos y commiteados en `solla`, sin publicar.**
+- la comisión de Mercado Libre y el envío que paga el negocio en Tienda Nube
+  son gastos de la venta (`gastos.venta_id`, migración aditiva), en la cuenta
+  del canal; se anulan y se restauran con ella;
+- el envío que paga el cliente en Tienda Nube es un renglón "Envío";
+- la ganancia por canal los descuenta, y la ficha de la venta muestra "Costos
+  de vender" y lo que quedó;
+- **sigue:** el envío del vendedor en Mercado Libre, anotar a mano la comisión
+  de una venta por Instagram o WhatsApp, y los mensajes; después, lo de
+  Praxia (balanza, ofertas, cobrar a cuenta en el punto de venta).
+
+**Publicado el 3 de noviembre (PR #45): §127 y §128.**
+
+**Antes (3 de noviembre, hist. §128): tipo "Tienda online", hecho y
+publicado (PR #45).** Pedido del usuario ("e-commerce, y
 muchos locales venden digitalmente y viceversa"):
 - tipo nuevo, con Venta online, Consultas, Compras, Stock y Producción (la
   caja y la bolsa del envío), sin punto de venta;
@@ -32,12 +46,10 @@ muchos locales venden digitalmente y viceversa"):
 - migración aditiva: `ventas.canal` nula, completada con la tienda o `local`
   donde se sabe; el módulo solo se prende a los negocios viejos con una tienda
   conectada.
-- **Falta que el usuario lo vea**, y para un negocio digital completo: la
-  comisión de cada canal como costo, el envío, y responder preguntas de
-  Mercado Libre / mensajes de WhatsApp.
+- **Falta que el usuario lo vea.**
 
 **Antes (3 de noviembre, hist. §127): código de barras propio, hecho y
-commiteado en `solla`, sin publicar.** Primera idea de Praxia:
+publicado (PR #45).** Primera idea de Praxia:
 - el producto y cada variante tienen su código de barras, aparte del SKU, único
   por empresa entre los dos y guardado sin espacios;
 - el lector del punto de venta lo busca antes que el SKU; Tienda Nube lo

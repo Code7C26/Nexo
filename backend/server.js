@@ -1888,7 +1888,9 @@ const CLAVES_SENSIBLES = new Set([
   'costo_unitario',
   'costo_unitario_historico',
   'margen_objetivo',
-  'margen_bajo_objetivo'
+  'margen_bajo_objetivo',
+  // La comisión y el envío que paga el negocio en cada venta (hist. §129).
+  'costos_de_vender'
 ]);
 
 function podarSensibles(valor) {
@@ -3942,8 +3944,9 @@ app.post('/api/productos', soloAdmin, (req, res) => {
 });
 
 // Da de alta un producto ya validado (validarProducto) y devuelve su id. Lo
-// usan el alta de siempre y la planilla del stock inicial (handoff 8c).
-function insertarProducto(cuerpo, organizacionId) {
+// usan el alta de siempre y la planilla del stock inicial (handoff 8c), y el
+// envío que crea Nexo solo (productoDeEnvio), que no frena por el tope del plan.
+function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) {
   const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos,
     alicuota_iva, codigo_barras } = cuerpo;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
@@ -3953,7 +3956,7 @@ function insertarProducto(cuerpo, organizacionId) {
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(organizacionId);
   // Uno inactivo no cuenta para el tope del plan (hist. §98).
-  if (!(activo === false || activo === 0)) exigirLugarEnPlan(organizacionId, 'productos');
+  if (contarEnPlan && !(activo === false || activo === 0)) exigirLugarEnPlan(organizacionId, 'productos');
 
   let lastInsertRowid;
   try {
@@ -6142,9 +6145,21 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare('SELECT COALESCE(SUM(importe), 0) AS cobrado FROM cobros WHERE venta_id = ?')
     .get(ventaId);
   const facturada = Boolean(db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(ventaId));
+  // Los costos de vender (hist. §129): la comisión del canal y el envío que
+  // pagó el negocio, gastos de esta venta. Para el empleado se podan
+  // (CLAVES_SENSIBLES), como el costo.
+  const costosDeVender = db
+    .prepare(
+      `SELECT gastos.id, categorias_gasto.nombre AS categoria, gastos.descripcion, gastos.importe
+         FROM gastos JOIN categorias_gasto ON categorias_gasto.id = gastos.categoria_id
+        WHERE gastos.venta_id = ? AND gastos.estado = 'activo'
+        ORDER BY gastos.id`
+    )
+    .all(ventaId);
 
   res.json({
     ...venta,
+    costos_de_vender: costosDeVender,
     tiene_devolucion: Boolean(venta.tiene_devolucion),
     carga_inicial: Boolean(venta.carga_inicial),
     items: items.map((i) => ({
@@ -7104,6 +7119,7 @@ function revertirVentaAnulada(venta, organizacionId) {
     });
   }
   if (!venta.carga_inicial) devolverConsumosVenta(venta.id, depositoVenta, organizacionId, 'Reversión por anulación');
+  anularCostosDeVender(venta.id);
 
   db.prepare(
     `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
@@ -7201,6 +7217,7 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
 
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
+    restaurarCostosDeVender(ventaId);
     for (const c of consumos) {
       registrarMovimientoStock({
         producto_id: c.producto_id,
@@ -10767,8 +10784,9 @@ app.post('/api/gastos', (req, res) => {
 // validados por validarGasto() (categoriaId/cuentaId/proveedorId/monto/
 // tipo con nombres resueltos a ID). Asume que se la llama DENTRO de una
 // transacción.
-function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante, organizacionId }) {
+function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante, organizacionId, ventaId = null }) {
   const columnas = [
+    'venta_id',
     'categoria_id',
     'cuenta_tesoreria_id',
     'proveedor_id',
@@ -10779,6 +10797,7 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
     'organizacion_id'
   ];
   const valores = [
+    ventaId,
     categoriaId,
     cuentaId,
     proveedorId,
@@ -10796,6 +10815,53 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
 
   insertarMovimientoGasto(nuevoGastoId, cuentaId, monto, fecha, descripcion, organizacionId);
   return nuevoGastoId;
+}
+
+// Los costos de vender de una venta (hist. §129): la comisión de un canal y
+// el envío que paga el negocio. Cada uno es un gasto operativo de la venta,
+// en la cuenta donde entró el cobro (el canal acredita lo cobrado menos eso),
+// con su categoría, que se crea la primera vez. Dentro de una transacción.
+const CATEGORIAS_COSTO_DE_VENDER = { comision: 'Comisiones de venta', envio: 'Envíos' };
+function registrarCostoDeVender({ ventaId, tipo, importe, cuentaId, fecha, descripcion, organizacionId }) {
+  const nombre = CATEGORIAS_COSTO_DE_VENDER[tipo];
+  let categoria = db.prepare('SELECT id, tipo FROM categorias_gasto WHERE organizacion_id = ? AND nombre = ?').get(organizacionId, nombre);
+  if (!categoria) {
+    const { lastInsertRowid } = db
+      .prepare("INSERT INTO categorias_gasto (nombre, tipo, organizacion_id) VALUES (?, 'operativo', ?)")
+      .run(nombre, organizacionId);
+    categoria = { id: Number(lastInsertRowid), tipo: 'operativo' };
+  }
+  return crearGasto({
+    categoriaId: categoria.id,
+    cuentaId,
+    proveedorId: null,
+    monto: redondear2(importe),
+    tipo: categoria.tipo,
+    fecha,
+    descripcion,
+    organizacionId,
+    ventaId
+  });
+}
+
+// Al anular una venta, sus costos de vender se anulan con ella (la plata
+// vuelve a la cuenta); al restaurarla, vuelven. Dentro de una transacción.
+function anularCostosDeVender(ventaId) {
+  const ids = db.prepare("SELECT id FROM gastos WHERE venta_id = ? AND estado = 'activo'").all(ventaId).map((g) => g.id);
+  for (const id of ids) {
+    db.prepare("UPDATE gastos SET estado = 'anulado' WHERE id = ?").run(id);
+    db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(id);
+  }
+  return ids;
+}
+function restaurarCostosDeVender(ventaId) {
+  const gastos = db
+    .prepare("SELECT id, cuenta_tesoreria_id, importe, fecha, descripcion, organizacion_id FROM gastos WHERE venta_id = ? AND estado = 'anulado'")
+    .all(ventaId);
+  for (const g of gastos) {
+    db.prepare("UPDATE gastos SET estado = 'activo' WHERE id = ?").run(g.id);
+    insertarMovimientoGasto(g.id, g.cuenta_tesoreria_id, g.importe, g.fecha, g.descripcion, g.organizacion_id);
+  }
 }
 
 function insertarMovimientoGasto(gastoId, cuentaId, monto, fecha, descripcion, organizacionId) {
@@ -11644,6 +11710,16 @@ const SQL_REPORTE_CONSUMOS_POR_CANAL = db.prepare(
       AND ventas.organizacion_id = ?
     GROUP BY COALESCE(ventas.canal, '')`
 );
+const SQL_REPORTE_COSTOS_DE_VENDER_POR_CANAL = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS id, SUM(gastos.importe) AS costo
+     FROM gastos
+     JOIN ventas ON ventas.id = gastos.venta_id
+    WHERE gastos.estado = 'activo' AND ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, '')`
+);
 const SQL_REPORTE_DEVOLUCIONES_POR_CANAL = db.prepare(
   `SELECT COALESCE(ventas.canal, '') AS id,
           SUM(devolucion_items.cantidad * devolucion_items.precio_unitario - ${SQL_IVA_DEVUELTO}) AS ventas,
@@ -11785,10 +11861,16 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     })
     .sort((a, b) => b.ventas - a.ventas);
 
-  const consumosPorCanal = new Map(SQL_REPORTE_CONSUMOS_POR_CANAL.all(...rango).map((c) => [c.id, c.costo]));
+  // Lo que se usó al vender, más la comisión y el envío (hist. §126, §129).
+  const costosExtraPorCanal = new Map(SQL_REPORTE_CONSUMOS_POR_CANAL.all(...rango).map((c) => [c.id, c.costo]));
+  // Los costos de vender de cada canal (hist. §129): la comisión y el envío
+  // que paga el negocio, gastos de las ventas de ese canal.
+  for (const c of SQL_REPORTE_COSTOS_DE_VENDER_POR_CANAL.all(...rango)) {
+    costosExtraPorCanal.set(c.id, (costosExtraPorCanal.get(c.id) ?? 0) + c.costo);
+  }
   const canales = netearPorId(SQL_REPORTE_VENTAS_POR_CANAL.all(...rango), SQL_REPORTE_DEVOLUCIONES_POR_CANAL.all(...rango), () => null)
     .map((c) => {
-      const costo = c.costo + (consumosPorCanal.get(c.id) ?? 0);
+      const costo = c.costo + (costosExtraPorCanal.get(c.id) ?? 0);
       const ganancia = redondear2(c.ventas - costo);
       return {
         canal: c.id || null,
@@ -17901,6 +17983,17 @@ function cobrarLoQueFalta(integracion, pedido, ventaId) {
   anotarIntegracion(integracion, 'pedido', 'ok', `Pedido #${numero} pagado en ${canal(integracion)}: se registró el cobro de $${saldo} en la venta #${ventaId}.`);
 }
 
+// El renglón del envío que paga el cliente (hist. §129): un servicio "Envío"
+// del negocio, que se crea la primera vez. Si ya tiene uno con ese nombre (lo
+// cargó él para cobrarlo a mano), se usa ese.
+function productoDeEnvio(organizacionId) {
+  const existente = db
+    .prepare("SELECT id FROM productos WHERE organizacion_id = ? AND tipo = 'servicio' AND LOWER(nombre) = 'envío' ORDER BY activo DESC, id LIMIT 1")
+    .get(organizacionId);
+  if (existente) return existente.id;
+  return insertarProducto({ nombre: 'Envío', precio_venta: 0, tipo: 'servicio', unidad: 'unidad' }, organizacionId, { contarEnPlan: false });
+}
+
 function importarPedido(integracion, pedido, fila, { cobrar }) {
   const organizacionId = integracion.organizacion_id;
   const numero = pedido.number ?? pedido.id;
@@ -17935,23 +18028,47 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
   error ??= validarItemsVenta(items) ?? validarStockDisponible(items, depositoId, organizacionId);
 
   let ventaId = null;
+  // Lo que se registró además de la mercadería (hist. §129), para la actividad.
+  let extras = null;
   if (!error) {
     try {
       ventaId = withTransaction(() => {
         exigirLugarEnPlan(organizacionId, 'ventas_mes');
         const clienteId = clienteDelPedido(integracion, pedido);
+        // El envío que pagó el cliente es parte de lo que cobró la tienda: va
+        // como un renglón más, así el total y el cobro son los de verdad.
+        const envio = redondear2(Math.max(0, Number(pedido.shipping_cost_customer) || 0));
+        const itemsVenta =
+          envio > 0 ? [...items, { producto_id: productoDeEnvio(organizacionId), variante_id: null, cantidad: 1, precio_unitario: envio }] : items;
         const id = crearVenta({
           cliente_id: clienteId,
-          items,
+          items: itemsVenta,
           fecha: fechaDelPedido(pedido),
           lista_precio_id: integracion.lista_precio_id,
           deposito_id: integracion.deposito_id,
           canal: integracion.plataforma,
           organizacion_id: organizacionId
         });
-        const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
+        const total = redondear2(itemsVenta.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
         const cuenta = cobrar ? cuentaDeCobro(integracion) : null;
         if (cuenta && total > 0) registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en ${canal(integracion)} (pedido #${numero})`, organizacionId);
+        // Los costos de vender: la comisión del canal (Mercado Libre la manda
+        // en cada venta) y el envío que paga el negocio, como gastos de la
+        // venta en la cuenta del canal. Sin cuenta elegida no hay de dónde
+        // sacarlos: quedan avisados en la actividad.
+        const cuentaCanal = cuentaDeCobro(integracion);
+        const comision = redondear2(Math.max(0, Number(pedido.comision) || 0));
+        const envioPropio = redondear2(Math.max(0, Number(pedido.shipping_cost_owner) || 0));
+        if (cuentaCanal) {
+          const comun = { ventaId: id, cuentaId: cuentaCanal.id, fecha: fechaDelPedido(pedido), organizacionId };
+          if (comision > 0) {
+            registrarCostoDeVender({ ...comun, tipo: 'comision', importe: comision, descripcion: `Comisión de ${canal(integracion)}, venta #${id} (pedido #${numero})` });
+          }
+          if (envioPropio > 0) {
+            registrarCostoDeVender({ ...comun, tipo: 'envio', importe: envioPropio, descripcion: `Envío de la venta #${id} (pedido #${numero})` });
+          }
+        }
+        extras = { envio, comision, envioPropio, conCuenta: Boolean(cuentaCanal) };
         guardarPedido(integracion, pedido, { estado: 'importado', venta_id: id });
         registrarAuditoria({
           actor: 'sistema',
@@ -17973,19 +18090,25 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
     }
   }
   if (ventaId) {
-    const envio = Number(pedido.shipping_cost_customer) || 0;
+    const { envio, comision, envioPropio, conCuenta } = extras;
     // El nombre del medio de pago, si Tienda Nube da uno legible ("Transferencia
     // bancaria"); con un código ("not-provided"), es a convenir.
     const medio = [pedido.gateway_name, pedido.payment_details?.method].find((t) => t && !/^[a-z_-]+$/.test(t)) ?? 'a convenir';
     const porCobrar = cobrar ? '' : ` Sin cobrar todavía (${medio}): registrá el cobro cuando llegue la plata.`;
-    // Lo que cobra Mercado Libre por vender (pedido.comision): todavía no se
-    // descuenta de la ganancia de la venta.
-    const comision = Number(pedido.comision) || 0;
+    const costo = (texto, importe) =>
+      importe > 0
+        ? conCuenta
+          ? ` ${texto} ($${importe}) quedó como gasto de la venta.`
+          : ` ${texto} ($${importe}) no se registró: elegí la cuenta donde entra lo cobrado.`
+        : '';
     anotarIntegracion(
       integracion,
       'pedido',
       'ok',
-      `Pedido #${numero} → venta #${ventaId}.${porCobrar}${envio > 0 ? ` El envío que pagó el cliente ($${envio}) todavía no se suma a la venta.` : ''}${comision > 0 ? ` La comisión de ${canal(integracion)} ($${redondear2(comision)}) todavía no se descuenta de la ganancia.` : ''}`
+      `Pedido #${numero} → venta #${ventaId}.${porCobrar}${envio > 0 ? ` El envío que pagó el cliente ($${envio}) va como renglón.` : ''}${costo(
+        `La comisión de ${canal(integracion)}`,
+        comision
+      )}${costo('El envío que pagás vos', envioPropio)}`
     );
     // Sale de la reserva (si estaba esperando el pago) y pasa al stock de la
     // venta: se vuelve a publicar.

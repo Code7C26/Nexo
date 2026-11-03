@@ -894,7 +894,11 @@ CREATE TABLE IF NOT EXISTS gastos (
   descripcion TEXT,
   comprobante TEXT,
   estado TEXT NOT NULL CHECK (estado IN ('activo', 'anulado')) DEFAULT 'activo',
-  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- La venta de la que es costo (hist. §129): la comisión de Mercado Libre o
+  -- el envío que paga el negocio. Se anula y se restaura con ella, y cuenta en
+  -- la ganancia de su canal. NULL = un gasto del negocio, como siempre.
+  venta_id INTEGER REFERENCES ventas(id)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo

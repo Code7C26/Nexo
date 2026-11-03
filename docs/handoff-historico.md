@@ -11329,3 +11329,60 @@ el campo, el reporte y las tiendas. Sin errores de consola.
 - responder las preguntas de Mercado Libre y los mensajes armados de WhatsApp
   (la idea de Praxia);
 - "Traer mis productos" desde una tienda que ya existe.
+
+## 129. Lo que cuesta vender online: la comisión y el envío, 3 de noviembre de 2026
+
+**Pedido del usuario** (después de publicar §127 y §128 en el PR #45): "seguir
+con las cosas esenciales". Lo esencial que le faltaba a la venta online, de la
+lista de §128: la comisión del canal y el envío.
+
+**Decidido por mí, para revisar:**
+- **La comisión y el envío que paga el negocio son gastos de la venta**
+  (`gastos.venta_id`), no una tabla nueva: un gasto ya tiene categoría,
+  cuenta, egreso de tesorería, anulación, auditoría y entra al resultado.
+  Contablemente son gastos de comercialización (debajo de la ganancia bruta).
+  Van en la cuenta donde entra lo cobrado del canal (Mercado Pago acredita lo
+  cobrado menos la comisión), con las categorías "Comisiones de venta" y
+  "Envíos", que se crean la primera vez.
+- **Mercado Libre:** la comisión (`sale_fee` × cantidad) se registra sola al
+  pasar la venta. El envío que paga el vendedor en Mercado Libre pide otra
+  consulta (`/shipments/{id}/costs`): queda para después.
+- **Tienda Nube:** el envío que paga el negocio (`shipping_cost_owner`) es un
+  gasto de la venta; el que paga el cliente (`shipping_cost_customer`) pasa a
+  ser un renglón "Envío" (un servicio que Nexo crea solo, sin ocupar lugar del
+  plan; si el negocio ya tiene un servicio "Envío", usa ese), así el total y
+  el cobro son los de verdad. La comisión de Tienda Nube no viene en el pedido
+  (depende del plan y del medio de pago): no se registra.
+- Sin cuenta de cobro elegida en el canal no hay de dónde sacar el gasto: la
+  actividad avisa "no se registró: elegí la cuenta donde entra lo cobrado".
+- Anular la venta anula sus gastos (la plata vuelve a la cuenta), y
+  restaurarla los vuelve a aplicar.
+- La ganancia por canal descuenta esos gastos. La ficha de la venta muestra
+  "Costos de vender" y "Te quedó de ganancia" (solo el admin:
+  `costos_de_vender` está en `CLAVES_SENSIBLES`); la tarjeta "Ganancia" sigue
+  siendo la de la mercadería.
+
+**Esquema.** Migración aditiva: `gastos.venta_id` nula con FK a `ventas`,
+sin backfill, e `idx_gastos_venta`.
+
+**Backend.** `crearGasto({ ventaId })`, `registrarCostoDeVender`,
+`anularCostosDeVender` (en `revertirVentaAnulada`) y `restaurarCostosDeVender`
+(en la restauración); `productoDeEnvio` e `insertarProducto(…, { contarEnPlan })`;
+`importarPedido` suma el renglón del envío y los gastos, y la actividad dice
+qué se registró; `costos_de_vender` en la ficha de la venta;
+`SQL_REPORTE_COSTOS_DE_VENDER_POR_CANAL` en el reporte por canal.
+
+**Cómo se verificó.** `tiendanube.test.js`: un pedido con envío de $1.500 que
+paga el cliente y $900 que paga el negocio entra con el renglón "Envío", total
+$31.500 y el gasto de $900; se anula solo al cancelarse en la tienda (el gasto
+también), vuelve al restaurarla y se anula otra vez a mano.
+`mercadolibre.test.js`: la comisión de $4.000 queda como gasto de la venta y
+baja la ganancia de Mercado Libre en el reporte. `npm test` (280), lint,
+`verificar-migracion` (24 de 24) y `npm run regresion` (diferencias
+justificadas: `costos_de_vender` solo para el admin, `venta_id` en los gastos y
+la descarga, los callbacks). En Chrome a 390 px: la ficha con un costo de
+vender y lo que quedó de ganancia.
+
+**Queda:** el envío que paga el vendedor en Mercado Libre, anotar a mano la
+comisión de una venta por Instagram o WhatsApp (el link de Mercado Pago cobra
+la suya), y los mensajes (preguntas de Mercado Libre, WhatsApp armados).

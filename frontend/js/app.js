@@ -4524,6 +4524,28 @@ async function abrirFichaVenta(id) {
     )
     .join("");
 
+  // La comisión y el envío que pagó el negocio (hist. §129): el empleado no
+  // los recibe (el servidor los poda, como el costo).
+  const costosDeVender = venta.costos_de_vender ?? [];
+  document.getElementById("fichaVentaCostosPanel").hidden = costosDeVender.length === 0;
+  // La tarjeta "Ganancia" es la de la mercadería; la última fila dice lo que
+  // quedó después de vender.
+  const quedo = venta.margen - costosDeVender.reduce((acc, c) => acc + c.importe, 0);
+  document.getElementById("fichaVentaCostos").innerHTML =
+    costosDeVender
+      .map(
+        (c) => `
+        <tr>
+          <td data-label="Qué">${esc(c.descripcion || c.categoria)}</td>
+          <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
+        </tr>`
+      )
+      .join("") +
+    `<tr>
+      <td data-label="Qué"><strong>Te quedó de ganancia</strong></td>
+      <td data-label="Importe" class="align-right mono ${quedo < 0 ? "saldo-negativo" : ""}"><strong>${money(quedo)}</strong></td>
+    </tr>`;
+
   // Las devoluciones de esta venta viven en su propio caché (cargarDevoluciones,
   // ya resuelto para cuando se navega acá); el panel entero se oculta si no hay
   // ninguna, para no mostrar una tabla vacía en la mayoría de las ventas.
