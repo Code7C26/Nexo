@@ -46,6 +46,7 @@ import {
   urlDeAutorizacion
 } from './tiendanube.js';
 import * as mercadoLibre from './mercadolibre.js';
+import * as mercadoPago from './mercadopago.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1827,6 +1828,51 @@ app.post('/api/integraciones/mercadolibre/notificaciones', (req, res) => {
   if (!mercadoLibre.esNuestraApp(aviso.application_id)) return;
   setImmediate(() =>
     atenderAvisoMercadoLibre(aviso).catch((err) => console.error('[mercadolibre] aviso:', err.message))
+  );
+});
+
+// Mercado Pago (hist. §130): la vuelta del permiso y los avisos de pago. El
+// resto está en "Integraciones: Mercado Pago". La vuelta, como la de Mercado
+// Libre: la misma persona que lo pidió, y todavía admin del negocio.
+app.get('/api/integraciones/mercadopago/callback', asincrono(async (req, res) => {
+  const volver = (resultado) => res.redirect(`/app?mercadopago=${resultado}#/configuracion/mercado-pago`);
+  if (!mercadoPago.mercadoPagoConfigurado()) return volver('no-disponible');
+  if (req.query.error) return volver('cancelado');
+  const sesion = sesionValida(leerCookie(req, COOKIE_SESION));
+  const estado = mercadoPago.leerEstado(req.query.state);
+  if (!estado || sesion?.id !== estado.usuarioId) return volver(sesion ? 'error' : 'sin-sesion');
+  const esAdmin = db
+    .prepare("SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1 AND rol = 'admin'")
+    .get(sesion.id, estado.organizacionId);
+  if (!esAdmin) return volver('sin-sesion');
+  if (typeof req.query.code !== 'string' || !req.query.code) return volver('cancelado');
+  try {
+    const permiso = await mercadoPago.canjearCodigo(req.query.code, req.query.state, vueltaMercadoPago(req));
+    await conectarMercadoPago({ organizacionId: estado.organizacionId, usuarioId: sesion.id, permiso });
+  } catch (err) {
+    if (err instanceof ErrorValidacion) return volver(err.codigo ?? 'error');
+    console.error('[mercadopago] no se pudo conectar:', err.message);
+    return volver('error');
+  }
+  volver('conectada');
+}));
+
+// Los avisos de Mercado Pago llegan en dos formatos (webhook: ?type=payment&
+// data.id=…; IPN: ?topic=payment&id=…). Se contesta enseguida, y el pago se
+// pide a la API con el token del negocio: el aviso no dice nada que se use.
+// `cuenta` la pone Nexo en la dirección de cada link (ver el link de pago);
+// el webhook de la app la manda como user_id.
+app.post('/api/integraciones/mercadopago/notificaciones', (req, res) => {
+  res.json({ ok: true });
+  const cuerpo = req.body ?? {};
+  const tipo = String(req.query.type ?? req.query.topic ?? cuerpo.type ?? cuerpo.topic ?? '');
+  const dataId = req.query['data.id'] ?? cuerpo.data?.id ?? (tipo === 'payment' ? req.query.id : undefined);
+  const pagoId = String(dataId ?? '');
+  if (tipo !== 'payment' || !/^\d{1,30}$/.test(pagoId)) return;
+  if (!mercadoPago.avisoFirmado({ firma: req.get('x-signature'), pedidoId: req.get('x-request-id'), dataId: pagoId })) return;
+  const cuenta = String(req.query.cuenta ?? cuerpo.user_id ?? '');
+  setImmediate(() =>
+    atenderAvisoMercadoPago(cuenta, pagoId).catch((err) => console.error('[mercadopago] aviso:', err.message))
   );
 });
 
@@ -6852,16 +6898,7 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
   const ventaId = Number(req.params.id);
   const { importe, cuenta_tesoreria_id, nota } = req.body;
 
-  const venta = db
-    .prepare(
-      `SELECT ventas.id, ventas.cliente_id, ventas.estado,
-              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id)
-                + COALESCE(ventas.saldo_inicial, 0) AS total,
-              (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
-              ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
-       FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
-    )
-    .get(ventaId, req.usuario.organizacion_id);
+  const venta = ventaParaCobrar(ventaId, req.usuario.organizacion_id);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -6872,10 +6909,7 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
     return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
   }
 
-  // La mercadería devuelta ya no es plata que se le pueda reclamar al
-  // cliente: el saldo pendiente se calcula sobre el neto, no sobre el
-  // total bruto de la venta.
-  const saldoPendiente = venta.total - venta.devuelto - venta.cobrado;
+  const saldoPendiente = venta.saldo;
   if (!esNumeroValido(importe) || !(importe > 0)) {
     return res.status(400).json({ error: 'El importe del cobro tiene que ser un número mayor a 0.' });
   }
@@ -6910,6 +6944,24 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
 
   res.status(201).json({ id: cobroId });
 });
+
+// La venta con lo que falta cobrar, o null si no es del negocio. La mercadería
+// devuelta ya no es plata que se le pueda reclamar al cliente: el saldo se
+// calcula sobre el neto, no sobre el total bruto de la venta. Lo usan el cobro
+// a mano y el de Mercado Pago (hist. §130).
+function ventaParaCobrar(ventaId, organizacionId) {
+  const venta = db
+    .prepare(
+      `SELECT ventas.id, ventas.cliente_id, ventas.estado,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id)
+                + COALESCE(ventas.saldo_inicial, 0) AS total,
+              (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
+              ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
+       FROM ventas WHERE ventas.id = ? AND ventas.organizacion_id = ?`
+    )
+    .get(ventaId, organizacionId);
+  return venta ? { ...venta, saldo: venta.total - venta.devuelto - venta.cobrado } : null;
+}
 
 // Inserta el cobro y sus dos efectos (ingreso a tesorería, baja de la
 // cuenta corriente del cliente). Sin validación propia — el llamador ya
@@ -10821,7 +10873,9 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
 // el envío que paga el negocio. Cada uno es un gasto operativo de la venta,
 // en la cuenta donde entró el cobro (el canal acredita lo cobrado menos eso),
 // con su categoría, que se crea la primera vez. Dentro de una transacción.
-const CATEGORIAS_COSTO_DE_VENDER = { comision: 'Comisiones de venta', envio: 'Envíos' };
+// Las cuotas sin interés que paga el negocio en un cobro de Mercado Pago (hist.
+// §130) van aparte de la comisión: se deciden distinto (ofrecerlas o no).
+const CATEGORIAS_COSTO_DE_VENDER = { comision: 'Comisiones de venta', envio: 'Envíos', cuotas: 'Cuotas sin interés' };
 function registrarCostoDeVender({ ventaId, tipo, importe, cuentaId, fecha, descripcion, organizacionId }) {
   const nombre = CATEGORIAS_COSTO_DE_VENDER[tipo];
   let categoria = db.prepare('SELECT id, tipo FROM categorias_gasto WHERE organizacion_id = ? AND nombre = ?').get(organizacionId, nombre);
@@ -13953,7 +14007,9 @@ app.get('/api/negocio', (req, res) => {
     ...perfilDeEmpresa(req.usuario.organizacion_id),
     perfiles: catalogoTiposNegocio(),
     plan: planDelNegocio(req.usuario.organizacion_id),
-    planes: catalogoPlanes()
+    planes: catalogoPlanes(),
+    // Para ofrecer el link de pago al cobrar (hist. §130), en los dos roles.
+    mercado_pago: { conectado: mercadoPagoConectado(req.usuario.organizacion_id) }
   });
 });
 
@@ -13987,7 +14043,7 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
     // Venta online (hist. §128): una tienda conectada, o alguna venta anotada
     // con un canal de internet (quien vende solo por Instagram o WhatsApp).
     venta_online:
-      contar("SELECT COUNT(*) AS n FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada'") > 0 ||
+      contar("SELECT COUNT(*) AS n FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada' AND plataforma <> 'mercadopago'") > 0 ||
       contar("SELECT COUNT(*) AS n FROM ventas WHERE organizacion_id = ? AND canal IS NOT NULL AND canal <> 'local'") > 0
   });
 });
@@ -17401,7 +17457,9 @@ const LOG_INTEGRACION_MAX = 500;
 
 // Lo de pedidos, stock y actividad sirve igual para Tienda Nube y Mercado
 // Libre (más abajo): cambia cómo se habla con cada uno, no qué hace Nexo.
-const NOMBRE_CANAL = { tiendanube: 'Tienda Nube', mercadolibre: 'Mercado Libre' };
+// Mercado Pago (hist. §130) no es un canal de venta, pero comparte la conexión,
+// la cuenta y la actividad: el nombre va acá para los mensajes comunes.
+const NOMBRE_CANAL = { tiendanube: 'Tienda Nube', mercadolibre: 'Mercado Libre', mercadopago: 'Mercado Pago' };
 const canal = (integracion) => NOMBRE_CANAL[integracion.plataforma];
 
 const integracionDelNegocio = (organizacionId, plataforma = 'tiendanube') =>
@@ -17595,6 +17653,7 @@ function desconectarIntegracion(integracion, motivo, usuarioId = null) {
   });
   clientesTiendaNube.delete(integracion.id);
   clientesMercadoLibre.delete(integracion.id);
+  clientesMercadoPago.delete(integracion.id);
 }
 
 async function atenderWebhookTiendaNube(cuerpo) {
@@ -17789,12 +17848,12 @@ async function sincronizarStockYPrecio(integracion) {
 
 // Un movimiento de stock pide una pasada a los pocos segundos: junta los de
 // una misma venta en una sola. Si el movimiento después se deshace (ROLLBACK),
-// la pasada no encuentra nada que mandar.
+// la pasada no encuentra nada que mandar. Mercado Pago no publica nada: no va.
 const sincronizacionesProgramadas = new Map();
 function programarSincronizacion(organizacionId, demoraMs = 3000) {
   if (!organizacionId || sincronizacionesProgramadas.has(organizacionId)) return;
   const conectadas = db
-    .prepare("SELECT id FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada'")
+    .prepare("SELECT id FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada' AND plataforma <> 'mercadopago'")
     .all(organizacionId);
   if (!conectadas.length) return;
   const timer = setTimeout(async () => {
@@ -18178,6 +18237,11 @@ async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
     const inicio = new Date().toISOString();
     const mercadoLibreSi = integracion.plataforma === 'mercadolibre';
     try {
+      if (integracion.plataforma === 'mercadopago') {
+        await revisarPagosRecientesMP(integracion);
+        db.prepare('UPDATE integraciones SET ultima_sincronizacion = ? WHERE id = ?').run(inicio, integracionId);
+        return;
+      }
       if (pedidos) await (mercadoLibreSi ? traerVentasRecientesML(integracion) : traerPedidosRecientes(integracion));
       await (mercadoLibreSi ? sincronizarPublicacionesML : sincronizarStockYPrecio)(integracionPorId(integracionId));
       db.prepare('UPDATE integraciones SET ultima_sincronizacion = ? WHERE id = ?').run(inicio, integracionId);
@@ -18185,7 +18249,10 @@ async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
       // Sin permiso (la app se desinstaló sin aviso, o el vendedor lo sacó):
       // queda desconectada.
       if (err.status === 401) desconectarIntegracion(integracion, `${canal(integracion)} ya no le da permiso a Nexo: volvé a conectar tu cuenta.`);
-      else anotarIntegracion(integracion, 'stock', 'error', `No se pudo sincronizar con ${canal(integracion)} (${err.message}).`);
+      else {
+        const tipo = integracion.plataforma === 'mercadopago' ? 'pago' : 'stock';
+        anotarIntegracion(integracion, tipo, 'error', `No se pudo sincronizar con ${canal(integracion)} (${err.message}).`);
+      }
     }
   } finally {
     sincronizando.delete(integracionId);
@@ -18195,7 +18262,8 @@ async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
 async function sincronizarTodas() {
   const plataformas = [
     ...(tiendaNubeConfigurada() ? ['tiendanube'] : []),
-    ...(mercadoLibre.mercadoLibreConfigurada() ? ['mercadolibre'] : [])
+    ...(mercadoLibre.mercadoLibreConfigurada() ? ['mercadolibre'] : []),
+    ...(mercadoPago.mercadoPagoConfigurado() ? ['mercadopago'] : [])
   ];
   if (!plataformas.length) return;
   const ids = db
@@ -18291,7 +18359,13 @@ async function publicarProducto(integracion, producto) {
 function integracionConectadaDe(req, plataforma = 'tiendanube') {
   const integracion = integracionDelNegocio(req.usuario.organizacion_id, plataforma);
   if (integracion?.estado !== 'conectada') {
-    throw new ErrorValidacion(plataforma === 'mercadolibre' ? 'Primero conectá tu cuenta de Mercado Libre.' : 'Primero conectá tu Tienda Nube.');
+    throw new ErrorValidacion(
+      {
+        tiendanube: 'Primero conectá tu Tienda Nube.',
+        mercadolibre: 'Primero conectá tu cuenta de Mercado Libre.',
+        mercadopago: 'Primero conectá tu cuenta de Mercado Pago.'
+      }[plataforma]
+    );
   }
   return integracion;
 }
@@ -19107,6 +19181,408 @@ app.post('/api/integraciones/mercadolibre/desvincular', soloAdmin, (req, res) =>
   anotarIntegracion(integracion, 'publicacion', 'ok', `La publicación ${vinculo.externo_producto_id} dejó de estar vinculada a "${producto}". Nexo ya no le cambia el stock ni el precio.`);
   res.json({ ok: true });
 });
+
+/* ---------- Integraciones: Mercado Pago (hist. §130) ---------- */
+//
+// No es un canal de venta: es dónde se cobra. Hoy, el link de pago de una
+// venta (Checkout Pro): Nexo lo arma por lo que falta cobrar, con la venta
+// como referencia, y cuando el cliente paga el cobro entra solo en la cuenta
+// elegida, con la comisión y el costo de las cuotas sin interés como gastos de
+// la venta (hist. §129). Sirve para lo que se vende por Instagram o WhatsApp.
+// Decidido de antemano (CLAUDE.md §32):
+// - un pago se lee siempre de la API con el token del negocio, nunca del aviso;
+// - un pago va a una venta solo por la referencia que puso Nexo, y solo si
+//   entra en lo que falta cobrar. Si no, queda "sin asignar" y decide el
+//   negocio: Nexo nunca cobra de más ni elige otra venta;
+// - un pago devuelto o en disputa después de cobrado no toca el cobro: queda
+//   avisado, para hacer la devolución en Nexo;
+// - las retenciones se muestran, no se registran (falta definirlas con un
+//   contador);
+// - los pagos que no salieron de Nexo (el QR del local, una transferencia)
+//   todavía no se traen: es el paso 4 del plan (handoff.md).
+
+function vueltaMercadoPago(req) {
+  return process.env.MERCADOPAGO_REDIRECT_URI || `${urlPublica(req)}/api/integraciones/mercadopago/callback`;
+}
+
+const mercadoPagoConectado = (organizacionId) =>
+  mercadoPago.mercadoPagoConfigurado() && integracionDelNegocio(organizacionId, 'mercadopago')?.estado === 'conectada';
+
+// El token se renueva de a uno por vez, como el de Mercado Libre: el refresh
+// token cambia en cada renovación.
+const clientesMercadoPago = new Map();
+const renovacionesMercadoPago = new Map();
+async function tokenVigenteMP(integracionId) {
+  const integracion = integracionPorId(integracionId);
+  const permiso = integracion?.estado === 'conectada' ? mercadoPago.descifrarPermiso(integracion.token) : null;
+  if (!permiso) {
+    throw new mercadoPago.MercadoPagoError('Nexo no tiene permiso en tu cuenta de Mercado Pago: volvé a conectarla.', { status: 401 });
+  }
+  if (permiso.vence > Date.now()) return permiso.token;
+  if (!renovacionesMercadoPago.has(integracionId)) {
+    const renovacion = (async () => {
+      try {
+        const nuevo = await mercadoPago.renovarPermiso(permiso.refresh);
+        db.prepare("UPDATE integraciones SET token = ? WHERE id = ? AND estado = 'conectada'").run(
+          mercadoPago.cifrarPermiso(nuevo),
+          integracionId
+        );
+        return nuevo.token;
+      } finally {
+        renovacionesMercadoPago.delete(integracionId);
+      }
+    })();
+    renovacionesMercadoPago.set(integracionId, renovacion);
+  }
+  return renovacionesMercadoPago.get(integracionId);
+}
+
+function apiDeMercadoPago(integracion) {
+  let api = clientesMercadoPago.get(integracion.id);
+  if (!api) {
+    api = mercadoPago.clienteMercadoPago({ token: () => tokenVigenteMP(integracion.id) });
+    clientesMercadoPago.set(integracion.id, api);
+  }
+  return api;
+}
+
+async function conectarMercadoPago({ organizacionId, usuarioId, permiso }) {
+  let cuenta = {};
+  try {
+    cuenta = (await mercadoPago.clienteMercadoPago({ token: async () => permiso.token }).yo()) ?? {};
+  } catch (err) {
+    console.error('[mercadopago] no se pudo leer la cuenta:', err.message);
+  }
+  const nombre = cuenta.nickname || cuenta.email || `Cuenta ${permiso.usuarioId}`;
+  const integracion = guardarConexion({
+    plataforma: 'mercadopago',
+    organizacionId,
+    usuarioId,
+    cuentaExterna: permiso.usuarioId,
+    nombre,
+    url: null,
+    tokenCifrado: mercadoPago.cifrarPermiso(permiso)
+  });
+  clientesMercadoPago.delete(integracion.id);
+  anotarIntegracion(integracion, 'conexion', 'ok', `Cuenta "${nombre}" conectada.`);
+}
+
+/* --- Los pagos --- */
+
+// "Mercado Pago, pago 123 (tarjeta de crédito en 3 cuotas)": la nota del
+// cobro, para reconocerlo en la venta y en Caja.
+function notaDelPagoMP(externoId, d) {
+  const medio = mercadoPago.NOMBRE_MEDIO[d.medio] ?? null;
+  const cuotas = d.cuotas > 1 ? ` en ${d.cuotas} cuotas` : '';
+  return `Mercado Pago, pago ${externoId}${medio ? ` (${medio}${cuotas})` : ''}`;
+}
+
+const ESTADO_DESPUES_MP = { refunded: 'devuelto', charged_back: 'devuelto', in_mediation: 'en_disputa', approved: 'cobrado' };
+
+// Decide qué hacer con un pago tal como lo da Mercado Pago. Todo es síncrono
+// (dos avisos del mismo pago no pueden cobrar dos veces). Devuelve el estado
+// en que quedó y si es nuevo, o null si no es un pago de un link de Nexo.
+function procesarPagoMP(integracion, pago) {
+  if (!pago?.id || String(pago.collector_id ?? '') !== integracion.cuenta_externa) return null;
+  const ventaId = mercadoPago.ventaDeLaReferencia(pago.external_reference);
+  if (!ventaId) return null;
+  const organizacionId = integracion.organizacion_id;
+  const externoId = String(pago.id);
+  const estadoMP = String(pago.status ?? '');
+  const ahora = new Date().toISOString();
+  return withTransaction(() => {
+    const previo = db
+      .prepare('SELECT * FROM integracion_pagos WHERE integracion_id = ? AND externo_id = ?')
+      .get(integracion.id, externoId);
+    if (previo) {
+      // Ya se procesó: solo cambia si después lo devolvieron, lo reclamaron,
+      // o el reclamo se resolvió a favor del negocio.
+      const despues = ESTADO_DESPUES_MP[estadoMP];
+      const cambia =
+        previo.cobro_id &&
+        despues &&
+        despues !== previo.estado &&
+        !(previo.estado === 'devuelto' && despues !== 'devuelto');
+      if (!cambia) return { estado: previo.estado, nuevo: false };
+      db.prepare('UPDATE integracion_pagos SET estado = ?, revisado_en = NULL, actualizado_en = ? WHERE id = ?').run(despues, ahora, previo.id);
+      const aviso = {
+        devuelto: `El pago ${externoId} de la venta #${previo.venta_id} se devolvió en Mercado Pago ($${previo.importe}). El cobro sigue en Nexo: si corresponde, hacé la devolución de la venta.`,
+        en_disputa: `El cliente reclamó el pago ${externoId} de la venta #${previo.venta_id} en Mercado Pago ($${previo.importe}). Mercado Pago retiene la plata hasta resolverlo.`,
+        cobrado: `Se resolvió a tu favor el reclamo del pago ${externoId} de la venta #${previo.venta_id}.`
+      }[despues];
+      anotarIntegracion(integracion, 'pago', despues === 'cobrado' ? 'ok' : 'error', aviso);
+      return { estado: despues, nuevo: false };
+    }
+    // Pendiente, en proceso o rechazado: todavía no hay plata. Se vuelve a
+    // mirar en el próximo aviso o en la pasada.
+    if (estadoMP !== 'approved') return null;
+
+    const d = mercadoPago.desgloseDelPago(pago);
+    const venta = ventaParaCobrar(ventaId, organizacionId);
+    const cuenta = cuentaDeCobro(integracion);
+    let motivo = null;
+    if (!venta) motivo = `La venta #${ventaId} del link no existe en este negocio.`;
+    else if (venta.estado === 'anulada') motivo = `La venta #${ventaId} está anulada.`;
+    else if (venta.saldo <= 0.005) motivo = `La venta #${ventaId} ya estaba cobrada.`;
+    else if (d.importe > redondear2(venta.saldo) + 0.005) {
+      motivo = `El pago ($${d.importe}) es más de lo que faltaba cobrar de la venta #${ventaId} ($${redondear2(venta.saldo)}).`;
+    } else if (!(d.importe > 0)) motivo = 'El pago no tiene importe.';
+    else if (!cuenta) motivo = 'Elegí en Configuración → Mercado Pago la cuenta donde entra lo cobrado.';
+
+    let cobroId = null;
+    if (!motivo) {
+      cobroId = registrarCobro(ventaId, venta.cliente_id, d.importe, cuenta.id, notaDelPagoMP(externoId, d), organizacionId);
+      const comun = { ventaId, cuentaId: cuenta.id, organizacionId };
+      if (d.comision > 0) {
+        registrarCostoDeVender({ ...comun, tipo: 'comision', importe: d.comision, descripcion: `Comisión de Mercado Pago, venta #${ventaId} (pago ${externoId})` });
+      }
+      if (d.financiacion > 0) {
+        registrarCostoDeVender({ ...comun, tipo: 'cuotas', importe: d.financiacion, descripcion: `Cuotas sin interés, venta #${ventaId} (pago ${externoId})` });
+      }
+      registrarAuditoria({
+        actor: 'sistema',
+        accion: 'crear',
+        entidad: 'cobro',
+        entidad_id: cobroId,
+        organizacion_id: organizacionId,
+        operacion_tipo: 'venta',
+        operacion_id: ventaId,
+        detalle: `Cobro #${cobroId} de $${d.importe} sobre la venta #${ventaId}, con Mercado Pago (pago ${externoId})`
+      });
+    }
+    const estado = motivo ? 'sin_asignar' : 'cobrado';
+    db.prepare(
+      `INSERT INTO integracion_pagos
+         (integracion_id, externo_id, estado, venta_id, cobro_id, importe, comision, financiacion, retenciones, neto,
+          medio, cuotas, pagador, referencia, aprobado_en, libera_en, motivo, recibido_en, actualizado_en, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      integracion.id,
+      externoId,
+      estado,
+      venta ? ventaId : null,
+      cobroId,
+      d.importe,
+      d.comision,
+      d.financiacion,
+      d.retenciones,
+      d.neto,
+      d.medio,
+      d.cuotas,
+      d.pagador ? String(d.pagador).slice(0, 120) : null,
+      String(pago.external_reference).slice(0, 80),
+      d.aprobadoEn,
+      d.liberaEn,
+      motivo,
+      ahora,
+      ahora,
+      organizacionId
+    );
+    if (motivo) {
+      anotarIntegracion(integracion, 'pago', 'error', `Llegó un pago de $${d.importe} (pago ${externoId}) que no se cobró: ${motivo}`);
+    } else {
+      const descuentos = [
+        d.comision > 0 ? `comisión $${d.comision}` : null,
+        d.financiacion > 0 ? `cuotas sin interés $${d.financiacion}` : null
+      ].filter(Boolean);
+      const retenido = d.retenciones > 0 ? ` Mercado Pago retuvo además $${d.retenciones} de impuestos.` : '';
+      anotarIntegracion(
+        integracion,
+        'pago',
+        'ok',
+        `Pago de $${d.importe} → cobro de la venta #${ventaId}.${descuentos.length ? ` Quedó como gasto de la venta: ${descuentos.join(' y ')}.` : ''}${retenido}`
+      );
+    }
+    return { estado, nuevo: true };
+  });
+}
+
+async function atenderAvisoMercadoPago(cuenta, pagoId) {
+  if (!mercadoPago.mercadoPagoConfigurado() || !cuenta) return;
+  const integracion = db
+    .prepare("SELECT * FROM integraciones WHERE plataforma = 'mercadopago' AND cuenta_externa = ? AND estado = 'conectada'")
+    .get(cuenta);
+  if (!integracion) return;
+  let pago;
+  try {
+    pago = await apiDeMercadoPago(integracion).pago(pagoId);
+  } catch (err) {
+    if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+    else if (err.status !== 404) throw err;
+    return;
+  }
+  procesarPagoMP(integracionPorId(integracion.id), pago);
+}
+
+// La pasada periódica: los pagos que cambiaron en los últimos 3 días (los que
+// se perdieron un aviso, y los devueltos después). De a 50, hasta 200.
+async function revisarPagosRecientesMP(integracion) {
+  const api = apiDeMercadoPago(integracion);
+  for (let offset = 0; offset < 200; offset += 50) {
+    const r = await api.buscarPagos({
+      sort: 'date_last_updated',
+      criteria: 'desc',
+      range: 'date_last_updated',
+      begin_date: 'NOW-3DAYS',
+      end_date: 'NOW',
+      limit: '50',
+      offset: String(offset)
+    });
+    const pagos = Array.isArray(r?.results) ? r.results : [];
+    for (const pago of pagos) procesarPagoMP(integracionPorId(integracion.id), pago);
+    if (pagos.length < 50) break;
+  }
+}
+
+// Un error de Mercado Pago en una ruta: su mensaje, para quien la usa. Sin
+// permiso es un 409 (hay que volver a conectar), no un 401 de Nexo.
+function siMercadoPagoFalla(res, err) {
+  if (!(err instanceof mercadoPago.MercadoPagoError)) throw err;
+  return res.status(err.status === 401 ? 409 : 502).json({ error: err.message });
+}
+
+/* --- Rutas --- */
+
+const SIN_MERCADO_PAGO = 'Para cobrar con un link, el administrador tiene que conectar Mercado Pago en Configuración.';
+
+app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
+  const integracion = integracionDelNegocio(req.usuario.organizacion_id, 'mercadopago');
+  const base = { disponible: mercadoPago.mercadoPagoConfigurado(), conectada: integracion?.estado === 'conectada' };
+  if (!integracion) return res.json(base);
+  res.json({
+    ...base,
+    cuenta: { nombre: integracion.nombre_cuenta, id: integracion.cuenta_externa },
+    conectada_en: integracion.conectada_en,
+    ultima_sincronizacion: integracion.ultima_sincronizacion,
+    cuenta_tesoreria_id: integracion.cuenta_tesoreria_id,
+    cobrados: db
+      .prepare("SELECT COUNT(*) AS n FROM integracion_pagos WHERE integracion_id = ? AND estado = 'cobrado'")
+      .get(integracion.id).n,
+    // Primero los que piden atención y nadie marcó como vistos.
+    pagos: db
+      .prepare(
+        `SELECT id, externo_id, estado, venta_id, importe, comision, financiacion, retenciones, neto, medio, cuotas,
+                pagador, aprobado_en, libera_en, motivo, revisado_en
+           FROM integracion_pagos WHERE integracion_id = ?
+          ORDER BY (estado <> 'cobrado' AND revisado_en IS NULL) DESC, id DESC LIMIT 30`
+      )
+      .all(integracion.id),
+    actividad: db
+      .prepare('SELECT fecha, tipo, resultado, detalle FROM integracion_log WHERE integracion_id = ? ORDER BY id DESC LIMIT 30')
+      .all(integracion.id)
+  });
+});
+
+app.post('/api/integraciones/mercadopago/conectar', soloAdmin, (req, res) => {
+  if (!mercadoPago.mercadoPagoConfigurado()) {
+    return res.status(503).json({ error: 'Mercado Pago todavía no está disponible en este servidor.' });
+  }
+  const estado = mercadoPago.firmarEstado({ usuarioId: req.usuario.id, organizacionId: req.usuario.organizacion_id });
+  res.json({ url: mercadoPago.urlDeAutorizacion(estado, vueltaMercadoPago(req)) });
+});
+
+// Solo la cuenta donde entra lo cobrado: la lista y el depósito no se usan.
+app.put('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
+  req.body = { cuenta_tesoreria_id: req.body?.cuenta_tesoreria_id };
+  guardarAjustesCanal(req, res);
+});
+
+app.post('/api/integraciones/mercadopago/sincronizar', soloAdmin, sincronizarCanal);
+
+// El permiso se lo saca el negocio desde su cuenta de Mercado Pago; acá Nexo
+// lo suelta. Los links que ya se mandaron siguen andando allá, pero sus pagos
+// ya no entran solos: se registran a mano.
+app.post('/api/integraciones/mercadopago/desconectar', soloAdmin, (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadopago');
+  desconectarIntegracion(integracion, `${req.usuario.nombre || req.usuario.usuario} desconectó la cuenta desde Nexo.`, req.usuario.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/integraciones/mercadopago/pagos/:id/revisado', soloAdmin, (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadopago');
+  const { changes } = db
+    .prepare("UPDATE integracion_pagos SET revisado_en = ? WHERE id = ? AND integracion_id = ? AND estado <> 'cobrado'")
+    .run(new Date().toISOString(), Number(req.params.id), integracion.id);
+  if (!changes) return res.status(404).json({ error: 'Ese pago no está para revisar.' });
+  res.json({ ok: true });
+});
+
+// El link de pago de una venta, por lo que falta cobrar (o menos, si se pide
+// un importe: una seña). Es de los dos roles, como cobrar. No cambia nada en
+// Nexo: el cobro entra cuando el cliente paga.
+app.post('/api/ventas/:id/link-de-pago', asincrono(async (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  if (!mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
+  const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+  const venta = ventaParaCobrar(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  if (venta.estado === 'anulada') return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
+  const saldo = redondear2(venta.saldo);
+  if (!(saldo > 0)) return res.status(400).json({ error: 'Esta venta ya está cobrada.' });
+  let importe = saldo;
+  if (req.body?.importe !== undefined && req.body.importe !== null && req.body.importe !== '') {
+    importe = redondear2(Number(req.body.importe));
+    if (!esNumeroValido(Number(req.body.importe)) || !(importe > 0)) {
+      return res.status(400).json({ error: 'El importe del link tiene que ser un número mayor a 0.' });
+    }
+    if (importe > saldo) return res.status(400).json({ error: `El importe supera lo que falta cobrar ($${saldo}).` });
+  }
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId)?.nombre || 'Nexo';
+  const email = db.prepare('SELECT email FROM clientes WHERE id = ?').get(venta.cliente_id)?.email;
+  const base = urlPublica(req);
+  const preferencia = {
+    items: [{ id: `venta-${venta.id}`, title: `${negocio} · venta #${venta.id}`.slice(0, 250), quantity: 1, unit_price: importe, currency_id: 'ARS' }],
+    external_reference: mercadoPago.referenciaDeVenta(venta.id),
+    metadata: { nexo_venta_id: venta.id },
+    ...(email ? { payer: { email } } : {}),
+    // Los avisos van a Nexo solo si tiene dirección pública (Mercado Pago no
+    // acepta otra). En la compu, los pagos entran con la pasada o con
+    // "Ya me pagó".
+    ...(esDireccionPublica(base)
+      ? { notification_url: `${base}/api/integraciones/mercadopago/notificaciones?cuenta=${encodeURIComponent(integracion.cuenta_externa)}` }
+      : {})
+  };
+  let link;
+  try {
+    link = await apiDeMercadoPago(integracion).crearLink(preferencia, randomBytes(16).toString('hex'));
+  } catch (err) {
+    if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+    return siMercadoPagoFalla(res, err);
+  }
+  if (!link?.init_point) return res.status(502).json({ error: 'Mercado Pago no devolvió el link.' });
+  anotarIntegracion(integracion, 'pago', 'ok', `Link de pago de $${importe} para la venta #${venta.id}.`);
+  res.json({ url: link.init_point, importe });
+}));
+
+// "Ya me pagó": busca en Mercado Pago los pagos de los links de esta venta, por
+// si el aviso no llegó (o no hay dirección pública). Lo que encuentra pasa por
+// el mismo camino que un aviso.
+app.post('/api/ventas/:id/revisar-pagos', asincrono(async (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  if (!mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
+  const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+  const venta = ventaParaCobrar(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  let encontrados;
+  try {
+    encontrados = await apiDeMercadoPago(integracion).buscarPagos({
+      external_reference: mercadoPago.referenciaDeVenta(venta.id),
+      sort: 'date_created',
+      criteria: 'desc',
+      limit: '50'
+    });
+  } catch (err) {
+    if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+    return siMercadoPagoFalla(res, err);
+  }
+  const resultados = (Array.isArray(encontrados?.results) ? encontrados.results : [])
+    .map((pago) => procesarPagoMP(integracionPorId(integracion.id), pago))
+    .filter((r) => r?.nuevo);
+  res.json({
+    cobrados: resultados.filter((r) => r.estado === 'cobrado').length,
+    sin_asignar: resultados.filter((r) => r.estado === 'sin_asignar').length
+  });
+}));
 
 /* ---------- Carga inicial: empezar con un negocio que ya existe (handoff 8c) ---------- */
 //

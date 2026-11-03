@@ -2166,6 +2166,68 @@ if (!db.prepare('PRAGMA table_info(gastos)').all().some((col) => col.name === 'v
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_gastos_venta ON gastos(venta_id)');
 
+// Mercado Pago (hist. §130, ver schema.sql): integraciones.plataforma suma
+// 'mercadopago' e integracion_log.tipo suma 'pago'. Mismo método que el
+// rebuild de movimientos_stock de arriba: se cambia solo el CHECK del CREATE
+// TABLE que la tabla tiene hoy (si no aparece una vez exacta, el arranque se
+// corta), con los ids, los índices y sqlite_sequence. integracion_vinculos,
+// integracion_pedidos, integracion_log e integracion_pagos referencian a
+// integraciones por FK: con las FK apagadas el DROP no las toca, y al
+// renombrar la tabla nueva vuelven a apuntar a ella; foreign_key_check lo
+// confirma antes del COMMIT. Re-ejecutable: con el CHECK nuevo no hace nada.
+ampliarCheck(
+  'integraciones',
+  /CHECK\s*\(\s*plataforma\s+IN\s*\(\s*'tiendanube',\s*'mercadolibre'\s*\)\s*\)/gi,
+  "CHECK (plataforma IN ('tiendanube', 'mercadolibre', 'mercadopago'))",
+  "'mercadopago'",
+  ['integracion_vinculos', 'integracion_pedidos', 'integracion_log', 'integracion_pagos']
+);
+ampliarCheck(
+  'integracion_log',
+  /CHECK\s*\(\s*tipo\s+IN\s*\(\s*'conexion',\s*'desconexion',\s*'publicacion',\s*'stock',\s*'pedido',\s*'webhook'\s*\)\s*\)/gi,
+  "CHECK (tipo IN ('conexion', 'desconexion', 'publicacion', 'stock', 'pedido', 'webhook', 'pago'))",
+  "'pago'"
+);
+
+function ampliarCheck(tabla, viejo, nuevo, marca, hijas = []) {
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tabla).sql;
+  if (sql.includes(marca)) return;
+  if (cuantas(sql, viejo) !== 1) throw new Error(`${tabla}: no se reconoce el CHECK para sumarle ${marca}`);
+  const crear = sql.replace(viejo, nuevo).replace(/^CREATE TABLE\s+("?)\w+\1/, `CREATE TABLE ${tabla}_nueva`);
+  const dependientes = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger') AND tbl_name = ? AND sql IS NOT NULL ORDER BY rowid")
+    .all(tabla);
+  const columnas = db
+    .prepare(`PRAGMA table_info(${tabla})`)
+    .all()
+    .map((col) => col.name)
+    .join(', ');
+  const secuencia = db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(tabla);
+  const vistas = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'view' ORDER BY rowid").all();
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    for (const { name } of vistas) db.exec(`DROP VIEW ${name}`);
+    db.exec(crear);
+    db.exec(`INSERT INTO ${tabla}_nueva (${columnas}) SELECT ${columnas} FROM ${tabla}`);
+    db.exec(`DROP TABLE ${tabla}`);
+    db.exec(`ALTER TABLE ${tabla}_nueva RENAME TO ${tabla}`);
+    for (const { sql: indice } of dependientes) db.exec(indice);
+    db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tabla);
+    if (secuencia) db.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)').run(tabla, secuencia.seq);
+    for (const { sql: vista } of vistas) db.exec(vista);
+    for (const t of [tabla, ...hijas]) {
+      const huerfanas = db.prepare(`PRAGMA foreign_key_check(${t})`).all();
+      if (huerfanas.length) throw new Error(`${t}: ${huerfanas.length} fila(s) con FK rota`);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo

@@ -1371,6 +1371,11 @@ Implementado hoy (hist. §121, §123): la base común, **Tienda Nube** y
   pedido con pago manual entra como venta por cobrar y uno online sin pagar
   reserva stock (hist. §122); una cancelación anula sola la venta sin cobros.
 - Sin `state` válido el permiso no se conecta solo: se confirma en Nexo.
+- **Mercado Pago** (hist. §130), sobre la misma base, como dónde se cobra y
+  no como canal: el link de pago de una venta (`backend/mercadopago.js`), y el
+  pago que entra solo como cobro, con la comisión y las cuotas como gastos de
+  la venta; lo que no entra solo queda para revisar, y las retenciones se
+  muestran sin registrarse. Probado contra uno falso: falta la app real.
 
 ---
 
