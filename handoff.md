@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §124);
+    siguiente número (hoy el último es §126);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,9 +19,32 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (2 de noviembre de 2026)
+## Estado actual (3 de noviembre de 2026)
 
-**Lo último (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
+**Lo último (3 de noviembre, hist. §126): producción básica, segunda parte,
+hecha y sin publicar.** Lo que se usa al vender (la caja, la bolsa):
+- cada producto dice qué lleva, por cada uno o una vez por venta
+  (Producción → Al vender, o el botón "Al vender" de su ficha);
+- el alta de venta y el punto de venta lo proponen debajo de los renglones, y
+  se cambia en el momento; lo que quedó sale del stock (origen `consumo`) y
+  entra al costo y al margen de la venta y al resultado;
+- una venta que no lo dice (Tienda Nube, Mercado Libre, presupuestos) lleva lo
+  de siempre, hasta donde alcance el stock.
+
+Suma una migración aditiva: `componentes_venta` y `venta_consumos`.
+
+**Antes (3 de noviembre, hist. §125): producción básica, primera parte,
+hecha y sin publicar.** Módulo "Producción" (Configuración → Funciones;
+prendido de partida en Emprendimiento):
+- recetas: qué lleva cada cosa y cuánto suele rendir;
+- producir: lo que se usó y lo que salió de verdad, con el costo que sale de
+  los materiales y entra al costo promedio;
+- anular, que devuelve todo y saca ese costo del promedio.
+
+Suma una migración: cuatro tablas nuevas, `movimientos_stock.produccion_id` y
+los orígenes `produccion` y `consumo` (rebuild del CHECK, como §124).
+
+**Antes (2 de noviembre, hist. §124): "Lo que ya tenías", hecho y sin
 publicar.** El punto 8c de "Qué sigue", salvo importar desde una planilla.
 El alta pregunta "¿Tu negocio ya venía funcionando?" (paso 7), y con "Sí" entra
 directo a Configuración → Lo que ya tenías:
@@ -49,15 +72,13 @@ probar con usuarios de prueba (pasos en "Qué sigue", punto 5).
 **Orden acordado con el usuario (2 de noviembre, al cerrar la sesión):**
 1. ~~La mejora pendiente~~: era la carga inicial, hecha en `solla` (hist.
    §124).
-2. **Lo que sigue: publicar todo junto** (Mercado Libre + la carga inicial):
-   PR a `main` con el CI en verde. La migración reconstruye
-   `movimientos_stock` (pasó `verificar-migracion` con la base real), y el
-   arranque respalda la base antes.
-3. **Las claves en el servidor:** el usuario las da por cargadas, pero el 2 de
-   noviembre `/etc/nexo/nexo.env` no tenía ninguna línea `MERCADOLIBRE_`
-   (comprobado por ssh contando líneas, sin ver valores; las de Tienda Nube
-   sí están). Las dos están en el `.env` de la compu. Al publicar, mandarlas
-   con el comando de PowerShell de siempre y reiniciar.
+2. ~~Publicar todo junto~~: hecho el 2 de noviembre (PR #42). La migración
+   corrió en la base real (CHECK con `stock_inicial`, integridad ok). El
+   primer CI falló por dos tests de socios y abonos que calculaban "hoy" en
+   UTC (fallaban desde las 21 h); se arreglaron en el mismo PR.
+3. ~~Las claves de Mercado Libre en el servidor~~: cargadas el 2 de noviembre
+   con el comando de PowerShell, y el proceso las tiene. **Falta probar
+   Mercado Libre con los usuarios de prueba** ("Qué sigue", punto 5).
 4. **El usuario no tiene una cuenta de Mercado Libre con productos
    publicados.** No hace falta: Mercado Libre da usuarios de prueba que
    pueden publicar y comprar entre ellos (ver "Qué sigue", punto 5).
@@ -1066,6 +1087,49 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
 vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).
+
+**Decidido por el usuario el 2 de noviembre: producción básica, sí o sí antes
+de la presentación.** Saca "producción con recetas/insumos" de CLAUDE.md §39.
+**Hechas el 3 de noviembre: recetas y producir (hist. §125) y lo que se usa al
+vender (hist. §126).** Queda: "¿cuántas puedo hacer?", lo usado al vender en
+los reportes por producto, y los decants. El caso: un amigo que hace mafaldas compra
+materiales y los combina, y la gente que vende comida. "Primero las básicas"
+para un negocio muy chico; lo complejo, después. Pide:
+- **Receta:** qué materiales lleva cada producto y cuánto. Los materiales son
+  productos comunes, que se compran con las compras de siempre.
+- **Producir:** descuenta los materiales y suma el producto, con un costo que
+  sale de lo que costaron los materiales.
+- **Flexible:** la misma cantidad de material no siempre da lo mismo. La
+  receta es lo que *suele* llevar; al producir se anota lo que salió de
+  verdad (y lo que se usó, si cambió), y el costo sale de lo real.
+- **Packaging:** componentes que se descuentan solos al vender, aunque el
+  producto sea comprado (la caja, la bolsa), como en cualquier e-commerce.
+  **Varía en cada venta** (a veces ninguna bolsa, a veces dos): Nexo propone
+  lo de siempre y se cambia en el momento; se descuenta lo que quedó.
+- **Fraccionar (ejemplo del usuario, que vende decants de perfume y tuvo que
+  hacerse un sistema propio porque ninguno lo resolvía):** el perfume en ml y
+  el decant de 5 ml con "5 ml de ese perfume + 1 frasquito", que se descuenta
+  al vender. Es el mismo mecanismo que el packaging. A decidir al arrancar:
+  comprar el perfume ya en ml, o "abrir" el frasco como una producción (1
+  frasco → 100 ml).
+- **Estimación dada al usuario:** dos sesiones (1: recetas y producir; 2: lo
+  que se arma al vender, packaging y fraccionado, y reportes), y una tercera
+  si da (packaging editable en el punto de venta y "¿cuántas puedo hacer?").
+- **Todo integrado:** stock, costo promedio y margen, reportes, y avisos de
+  materiales bajos.
+
+Diseño: hist. §125.
+
+**Lo que se descuenta al vender, hecho el 3 de noviembre (hist. §126).**
+**Decidido por mí, para revisar:** una venta que no dice qué se usó (Tienda
+Nube, Mercado Libre, presupuesto o trabajo que pasa a venta) lleva lo de
+siempre hasta donde alcance el stock, sin frenarse; lo que elige quien vende se
+respeta y sin stock no se vende. **Falta que el usuario lo vea.** **Los decants
+no son prioridad** (dicho por el usuario): ya se pueden armar con esto si el
+perfume se maneja en ml (decant = 5 ml de perfume + 1 frasquito, al vender), y
+abrir un frasco ya se puede como producción (receta "Perfume (ml)" = 1 frasco,
+rinde 100). **Sigue:** "¿cuántas puedo hacer?" (la tercera sesión de la
+estimación), o volver al orden de abajo.
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos

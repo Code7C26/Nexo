@@ -14,7 +14,7 @@
 // se vende mientras no hay nada cargado (hist. §78, §88); sin él, "productos".
 // `etapas_crm` son las etapas abiertas con que nace el embudo de consultas
 // (hist. §89); Ganada y Perdida son comunes a todos y no se listan.
-export const MODULOS = ['pos', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'socios'];
+export const MODULOS = ['pos', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios'];
 export const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   crm: { nombre: 'Consultas', descripcion: 'Los que preguntan y todavía no compraron: de dónde llegaron, en qué quedó y qué falta hacer.', icono: 'funnel' },
@@ -23,20 +23,26 @@ export const MODULOS_INFO = {
   abonos: { nombre: 'Abonos', descripcion: 'Servicios que tus clientes pagan todos los meses, con la cuota que se arma sola.', icono: 'repeat' },
   compras: { nombre: 'Compras', descripcion: 'Lo que le comprás a tus proveedores y lo que les debés.', icono: 'truck' },
   stock: { nombre: 'Stock', descripcion: 'Cuánto tenés de cada producto, en uno o en varios depósitos.', icono: 'warehouse' },
+  produccion: {
+    nombre: 'Producción',
+    descripcion: 'Si hacés lo que vendés: la receta de cada cosa, lo que te costó cada una, y la caja o la bolsa que se usan al vender.',
+    icono: 'chef-hat'
+  },
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
 };
 export const PERFILES_RUBRO = {
   // El más chico (hist. §99): quien vende por su cuenta y quiere saber cuánto
   // vende y cuánto gana. Va primero en el alta. Trae solo compras y stock
   // (hist. §107): sin ellos no hay costo para saber cuánto gana ni forma de
-  // cargar la mercadería; el resto lo suma en Configuración → Funciones.
+  // cargar la mercadería; el resto lo suma en Configuración → Funciones. La
+  // producción (Etapa J) también: muchos hacen lo que venden.
   emprendimiento: {
     nombre: 'Emprendimiento',
     descripcion: 'Vendés por tu cuenta (comida, ropa, artesanías): anotá cada venta y mirá cuánto ganás.',
     icono: 'sprout',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['compras', 'stock'],
+    modulos: ['compras', 'stock', 'produccion'],
     etapas_crm: ['Consulta', 'Presupuesto enviado', 'Negociación']
   },
   comercio: {

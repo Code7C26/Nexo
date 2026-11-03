@@ -2034,25 +2034,44 @@ for (const [tabla, columna] of [
   }
 }
 
-// movimientos_stock.origen suma 'stock_inicial' (handoff 8c): lo que había en
-// cada depósito al empezar con Nexo, con su costo. Mismo método que el rebuild
-// de asistente_mensajes de arriba (CLAUDE.md §34): se parte del CREATE TABLE
-// que la tabla tiene hoy, se cambia solo el CHECK (si el texto no aparece una
-// vez exacta, el arranque se corta en vez de adivinar), y se conservan los
-// ids, los índices y sqlite_sequence; las vistas de stock se tiran y se
-// recrean. Nada referencia a esta tabla por FK. En una transacción, y
-// re-ejecutable: con el CHECK nuevo no hace nada.
-const CHECK_ORIGEN_VIEJO =
-  /CHECK\s*\(\s*origen\s+IN\s*\(\s*'venta',\s*'compra',\s*'ajuste_manual',\s*'devolucion',\s*'devolucion_proveedor',\s*'transferencia'\s*\)\s*\)/gi;
-const CHECK_ORIGEN_NUEVO =
-  "CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia', 'stock_inicial'))";
-const movimientosSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_stock'").get().sql;
-if (!movimientosSql.includes("'stock_inicial'")) {
-  if (cuantas(movimientosSql, CHECK_ORIGEN_VIEJO) !== 1) {
-    throw new Error('movimientos_stock: no se reconoce el CHECK de origen para sumarle stock_inicial');
+// Producción básica (Etapa J): el movimiento de una producción la referencia.
+// Aditiva y nula para todo lo de antes.
+if (!db.prepare('PRAGMA table_info(movimientos_stock)').all().some((col) => col.name === 'produccion_id')) {
+  db.exec('ALTER TABLE movimientos_stock ADD COLUMN produccion_id INTEGER REFERENCES producciones(id)');
+}
+
+// movimientos_stock.origen suma valores dos veces:
+// - 'stock_inicial' (handoff 8c): lo que había en cada depósito al empezar con
+//   Nexo, con su costo;
+// - 'produccion' y 'consumo' (Etapa J): lo que mueve una producción, y lo que
+//   se gasta al vender sin venderse (packaging, la segunda parte).
+// Mismo método que el rebuild de asistente_mensajes de arriba (CLAUDE.md
+// §34): se parte del CREATE TABLE que la tabla tiene hoy, se cambia solo el
+// CHECK (si el texto no aparece una vez exacta, el arranque se corta en vez de
+// adivinar), y se conservan los ids, los índices y sqlite_sequence; las vistas
+// de stock se tiran y se recrean. Nada referencia a esta tabla por FK. En una
+// transacción, y re-ejecutable: con el CHECK nuevo no hace nada. Una base de
+// antes de 8c pasa por los dos, en orden.
+const checkDeOrigen = (valores) => {
+  const lista = valores.map((v) => `'${v}'`);
+  return {
+    regex: new RegExp(`CHECK\\s*\\(\\s*origen\\s+IN\\s*\\(\\s*${lista.join(',\\s*')}\\s*\\)\\s*\\)`, 'gi'),
+    texto: `CHECK (origen IN (${lista.join(', ')}))`
+  };
+};
+const ORIGENES_DE_STOCK = ['venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia'];
+ampliarOrigenesDeStock(ORIGENES_DE_STOCK, ['stock_inicial']);
+ampliarOrigenesDeStock([...ORIGENES_DE_STOCK, 'stock_inicial'], ['produccion', 'consumo']);
+
+function ampliarOrigenesDeStock(antes, nuevos) {
+  const movimientosSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'movimientos_stock'").get().sql;
+  if (movimientosSql.includes(`'${nuevos[0]}'`)) return;
+  const viejo = checkDeOrigen(antes);
+  if (cuantas(movimientosSql, viejo.regex) !== 1) {
+    throw new Error(`movimientos_stock: no se reconoce el CHECK de origen para sumarle ${nuevos.join(' y ')}`);
   }
   const crear = movimientosSql
-    .replace(CHECK_ORIGEN_VIEJO, CHECK_ORIGEN_NUEVO)
+    .replace(viejo.regex, checkDeOrigen([...antes, ...nuevos]).texto)
     .replace(/^CREATE TABLE\s+("?)\w+\1/, 'CREATE TABLE movimientos_stock_nueva');
   const dependientes = db
     .prepare(

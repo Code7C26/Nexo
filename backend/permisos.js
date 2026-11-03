@@ -106,6 +106,23 @@ export const RUTAS_PERMISOS = {
   'GET /api/transferencias': 'ambos',
   'POST /api/transferencias': 'ambos',
   'POST /api/transferencias/:id/anular': 'admin',
+  // Producción (Etapa J): producir es de los dos roles, porque quien cocina
+  // suele ser el empleado (no ve costos: CLAVES_SENSIBLES). Las recetas y
+  // anular, del admin, como el resto del catálogo y las anulaciones.
+  'GET /api/recetas': 'ambos',
+  'GET /api/recetas/:id': 'ambos',
+  'POST /api/recetas': 'admin',
+  'PUT /api/recetas/:id': 'admin',
+  'DELETE /api/recetas/:id': 'admin',
+  'GET /api/producciones': 'ambos',
+  'GET /api/producciones/:id': 'ambos',
+  'POST /api/producciones': 'ambos',
+  'POST /api/producciones/:id/anular': 'admin',
+  // Lo que se usa al vender (hist. §126): quien vende ve lo que se propone; lo
+  // que lleva cada producto lo arma el admin, como la receta.
+  'GET /api/componentes-venta': 'ambos',
+  'GET /api/productos/:id/componentes-venta': 'ambos',
+  'PUT /api/productos/:id/componentes-venta': 'admin',
   'GET /api/trabajos': 'ambos',
   'GET /api/trabajos/responsables': 'ambos',
   'GET /api/trabajos/:id': 'ambos',

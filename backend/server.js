@@ -4220,7 +4220,8 @@ app.get('/api/productos/:id/movimientos', (req, res) => {
 
   const movimientos = db
     .prepare(
-      `SELECT id, tipo, cantidad, origen, venta_id, compra_id, devolucion_id, fecha, nota
+      `SELECT id, tipo, cantidad, origen, venta_id, compra_id, devolucion_id, devolucion_proveedor_id,
+              transferencia_id, produccion_id, fecha, nota
          FROM movimientos_stock
         WHERE producto_id = ?
         ORDER BY fecha, id`
@@ -4731,7 +4732,8 @@ app.get('/api/productos/:id/variantes/:varianteId/movimientos', (req, res) => {
 
   const movimientos = db
     .prepare(
-      `SELECT id, tipo, cantidad, origen, venta_id, compra_id, devolucion_id, fecha, nota
+      `SELECT id, tipo, cantidad, origen, venta_id, compra_id, devolucion_id, devolucion_proveedor_id,
+              transferencia_id, produccion_id, fecha, nota
          FROM movimientos_stock
         WHERE variante_id = ?
         ORDER BY fecha, id`
@@ -4973,6 +4975,7 @@ function registrarMovimientoStock({
   devolucion_id = null,
   devolucion_proveedor_id = null,
   transferencia_id = null,
+  produccion_id = null,
   costo_unitario = null,
   nota = null,
   organizacion_id
@@ -4986,8 +4989,8 @@ function registrarMovimientoStock({
     .prepare(
       `INSERT INTO movimientos_stock
          (producto_id, variante_id, deposito_id, tipo, cantidad, origen, venta_id, compra_id,
-          devolucion_id, devolucion_proveedor_id, transferencia_id, costo_unitario, nota, organizacion_id, fecha)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
+          devolucion_id, devolucion_proveedor_id, transferencia_id, produccion_id, costo_unitario, nota, organizacion_id, fecha)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
     )
     .run(
       producto_id,
@@ -5001,6 +5004,7 @@ function registrarMovimientoStock({
       devolucion_id,
       devolucion_proveedor_id,
       transferencia_id,
+      produccion_id,
       costo_unitario,
       nota,
       organizacion_id
@@ -5183,7 +5187,7 @@ app.get('/api/movimientos-stock', (req, res) => {
               movimientos_stock.cantidad, movimientos_stock.origen, movimientos_stock.nota,
               movimientos_stock.venta_id, movimientos_stock.compra_id, movimientos_stock.devolucion_id,
               movimientos_stock.devolucion_proveedor_id, movimientos_stock.transferencia_id,
-              movimientos_stock.producto_id, movimientos_stock.deposito_id,
+              movimientos_stock.produccion_id, movimientos_stock.producto_id, movimientos_stock.deposito_id,
               productos.nombre AS producto, depositos.nombre AS deposito
          FROM movimientos_stock
          JOIN productos ON productos.id = movimientos_stock.producto_id
@@ -5353,6 +5357,598 @@ app.post('/api/transferencias/:id/anular', soloAdmin, (req, res) => {
   res.json({ id: transferenciaId });
 });
 
+/* ---------- Producción (CLAUDE.md §29, Etapa J de §38) ---------- */
+//
+// El módulo `produccion`, para el negocio que hace lo que vende:
+// - la receta de un producto (o variante): qué materiales lleva, cuánto de
+//   cada uno y cuánto suele rendir. Es lo que se propone al producir;
+// - producir: salen los materiales que se usaron de verdad y entra lo que
+//   salió de verdad, con el costo de lo usado (cantidad × costo de hoy de cada
+//   material, dividido lo que salió), que entra al costo promedio (§7);
+// - anular: los movimientos contrarios, y el costo promedio deja de contarla
+//   (SIN_PRODUCCIONES_ANULADAS).
+// Recetas y anular son del admin. Producir es de los dos roles (quien cocina
+// suele ser el empleado), y el costo no le llega (CLAVES_SENSIBLES). La
+// auditoría va sobre el producto, con operacion_tipo 'receta' o 'produccion',
+// como trabajos y consultas: sin tocar el CHECK de entidades.
+
+const MAX_MATERIALES = 100;
+const redondear3 = (n) => Math.round(n * 1000) / 1000;
+const claveArticulo = (a) => `${a.producto_id}:${a.variante_id ?? ''}`;
+
+// Un producto (o variante) de la empresa que maneja stock: lo que se produce o
+// un material, con su nombre para los mensajes y su costo de hoy. Lanza
+// ErrorValidacion con el texto para el usuario.
+function articuloDeProduccion(org, productoId, varianteId) {
+  if (!esIdValido(productoId) || (varianteId != null && !esIdValido(varianteId))) {
+    throw new ErrorValidacion('Falta elegir el producto.');
+  }
+  const producto = db
+    .prepare('SELECT id, nombre, tipo, unidad, precio_costo FROM productos WHERE id = ? AND organizacion_id = ? AND activo = 1')
+    .get(productoId, org);
+  if (!producto) throw new ErrorValidacion('El producto no existe o está dado de baja.');
+  if (producto.tipo === 'servicio') throw new ErrorValidacion(errorServicioSinStock(producto.nombre));
+  const base = { producto_id: producto.id, unidad: producto.unidad };
+  if (varianteId == null) {
+    if (db.prepare('SELECT 1 FROM producto_variantes WHERE producto_id = ? AND activo = 1').get(producto.id)) {
+      throw new ErrorValidacion(`Elegí la variante de "${producto.nombre}".`);
+    }
+    return { ...base, variante_id: null, nombre: producto.nombre, costo: producto.precio_costo };
+  }
+  const variante = db
+    .prepare('SELECT id, precio_costo FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1')
+    .get(varianteId, producto.id);
+  if (!variante) throw new ErrorValidacion(`La variante de "${producto.nombre}" no existe o está dada de baja.`);
+  return { ...base, variante_id: variante.id, nombre: `${producto.nombre} (${combinacionVariante(variante.id)})`, costo: variante.precio_costo };
+}
+
+// Los materiales de una receta o de una producción: cada uno una vez, nunca lo
+// mismo que se produce, y con cantidad.
+function materialesDeProduccion(org, items, producido) {
+  if (!Array.isArray(items) || items.length === 0) throw new ErrorValidacion('Cargá al menos un material.');
+  if (items.length > MAX_MATERIALES) throw new ErrorValidacion(`Se pueden cargar hasta ${MAX_MATERIALES} materiales.`);
+  const claves = new Set();
+  return items.map((item) => {
+    if (!esNumeroValido(item?.cantidad) || redondear3(item.cantidad) <= 0) {
+      throw new ErrorValidacion('Cada material lleva una cantidad mayor a 0.');
+    }
+    const articulo = articuloDeProduccion(org, item.producto_id, item.variante_id ?? null);
+    const clave = claveArticulo(articulo);
+    if (clave === claveArticulo(producido)) throw new ErrorValidacion(`"${articulo.nombre}" no puede ser material de sí mismo.`);
+    if (claves.has(clave)) throw new ErrorValidacion(`"${articulo.nombre}" está dos veces: sumá las cantidades en un solo renglón.`);
+    claves.add(clave);
+    return { ...articulo, cantidad: redondear3(item.cantidad) };
+  });
+}
+
+function stockEnDeposito(articulo, depositoId) {
+  const fila = articulo.variante_id
+    ? db
+        .prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?')
+        .get(articulo.variante_id, depositoId)
+    : db.prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?').get(articulo.producto_id, depositoId);
+  return redondear3(fila?.cantidad ?? 0);
+}
+
+// El depósito pedido, o el predeterminado.
+function depositoDeProduccion(valor, org) {
+  const id = valor ? Number(valor) : depositoPredeterminadoId(org);
+  const deposito = db.prepare('SELECT id, nombre FROM depositos WHERE id = ? AND activo = 1 AND organizacion_id = ?').get(id, org);
+  if (!deposito) throw new ErrorValidacion('El depósito no existe o está inactivo.');
+  return deposito;
+}
+
+const nombreConVariante = (fila) => (fila.variante_id ? `${fila.producto} (${combinacionVariante(fila.variante_id)})` : fila.producto);
+
+// Una receta con sus materiales, su costo de hoy por unidad producida y el
+// stock de cada material en el depósito.
+function detalleReceta(receta, depositoId) {
+  const items = db
+    .prepare(
+      `SELECT receta_items.producto_id, receta_items.variante_id, receta_items.cantidad,
+              productos.nombre AS producto, productos.unidad,
+              COALESCE(producto_variantes.precio_costo, productos.precio_costo) AS costo_unitario
+         FROM receta_items
+         JOIN productos ON productos.id = receta_items.producto_id
+         LEFT JOIN producto_variantes ON producto_variantes.id = receta_items.variante_id
+        WHERE receta_items.receta_id = ?
+        ORDER BY receta_items.id`
+    )
+    .all(receta.id)
+    .map((i) => ({ ...i, nombre: nombreConVariante(i), stock: stockEnDeposito(i, depositoId) }));
+  const costoTanda = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario, 0);
+  return { ...receta, nombre: nombreConVariante(receta), items, costo: redondear2(costoTanda / receta.rinde) };
+}
+
+const SELECT_RECETA = `
+  SELECT recetas.id, recetas.producto_id, recetas.variante_id, recetas.rinde, recetas.nota,
+         productos.nombre AS producto, productos.unidad
+    FROM recetas JOIN productos ON productos.id = recetas.producto_id`;
+
+app.get('/api/recetas', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const depositoId = depositoPredeterminadoId(org);
+  const recetas = db
+    .prepare(`${SELECT_RECETA} WHERE recetas.organizacion_id = ? ORDER BY productos.nombre COLLATE NOCASE, recetas.id`)
+    .all(org)
+    .map((r) => detalleReceta(r, depositoId));
+  res.json(recetas);
+});
+
+app.get('/api/recetas/:id', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const receta = db.prepare(`${SELECT_RECETA} WHERE recetas.id = ? AND recetas.organizacion_id = ?`).get(Number(req.params.id), org);
+  if (!receta) return res.status(404).json({ error: 'Receta no encontrada.' });
+  res.json(detalleReceta(receta, depositoDeProduccion(req.query.deposito_id, org).id));
+});
+
+// Lo que se guarda de una receta: rinde y materiales (el producto es fijo).
+function datosDeReceta(org, cuerpo, producido) {
+  if (!esNumeroValido(cuerpo?.rinde) || redondear3(cuerpo.rinde) <= 0) {
+    throw new ErrorValidacion('Poné cuánto rinde la receta: un número mayor a 0.');
+  }
+  const nota = typeof cuerpo.nota === 'string' && cuerpo.nota.trim() ? cuerpo.nota.trim().slice(0, 500) : null;
+  return { rinde: redondear3(cuerpo.rinde), nota, materiales: materialesDeProduccion(org, cuerpo.items, producido) };
+}
+
+const resumenReceta = (rinde, materiales) =>
+  JSON.stringify({ rinde, materiales: materiales.map((m) => `${m.cantidad} ${m.nombre}`) });
+
+function guardarMaterialesReceta(recetaId, materiales) {
+  const insertar = db.prepare('INSERT INTO receta_items (receta_id, producto_id, variante_id, cantidad) VALUES (?, ?, ?, ?)');
+  for (const m of materiales) insertar.run(recetaId, m.producto_id, m.variante_id, m.cantidad);
+}
+
+app.post('/api/recetas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producido = articuloDeProduccion(org, req.body?.producto_id, req.body?.variante_id ?? null);
+  const { rinde, nota, materiales } = datosDeReceta(org, req.body, producido);
+  const existe = db
+    .prepare('SELECT id FROM recetas WHERE producto_id = ? AND COALESCE(variante_id, 0) = ?')
+    .get(producido.producto_id, producido.variante_id ?? 0);
+  if (existe) return res.status(400).json({ error: `"${producido.nombre}" ya tiene receta: editala.`, receta_id: existe.id });
+
+  const id = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO recetas (producto_id, variante_id, rinde, nota, organizacion_id) VALUES (?, ?, ?, ?, ?)')
+      .run(producido.producto_id, producido.variante_id, rinde, nota, org);
+    guardarMaterialesReceta(lastInsertRowid, materiales);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'producto',
+      entidad_id: producido.producto_id,
+      operacion_tipo: 'receta',
+      operacion_id: Number(lastInsertRowid),
+      valor_nuevo: resumenReceta(rinde, materiales),
+      detalle: `Receta de "${producido.nombre}": rinde ${rinde}, con ${materiales.length} material${materiales.length === 1 ? '' : 'es'}`
+    });
+    return Number(lastInsertRowid);
+  });
+  res.status(201).json({ id });
+});
+
+app.put('/api/recetas/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const receta = db.prepare(`${SELECT_RECETA} WHERE recetas.id = ? AND recetas.organizacion_id = ?`).get(Number(req.params.id), org);
+  if (!receta) return res.status(404).json({ error: 'Receta no encontrada.' });
+  const producido = { producto_id: receta.producto_id, variante_id: receta.variante_id };
+  const { rinde, nota, materiales } = datosDeReceta(org, req.body, producido);
+  const antes = detalleReceta(receta, depositoPredeterminadoId(org));
+
+  withTransaction(() => {
+    db.prepare('UPDATE recetas SET rinde = ?, nota = ? WHERE id = ?').run(rinde, nota, receta.id);
+    db.prepare('DELETE FROM receta_items WHERE receta_id = ?').run(receta.id);
+    guardarMaterialesReceta(receta.id, materiales);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: receta.producto_id,
+      operacion_tipo: 'receta',
+      operacion_id: receta.id,
+      valor_anterior: resumenReceta(antes.rinde, antes.items),
+      valor_nuevo: resumenReceta(rinde, materiales),
+      detalle: `Receta de "${antes.nombre}" editada`
+    });
+  });
+  res.json({ id: receta.id });
+});
+
+// Una receta es una plantilla: borrarla no toca las producciones, que guardan
+// lo que usaron.
+app.delete('/api/recetas/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const receta = db.prepare(`${SELECT_RECETA} WHERE recetas.id = ? AND recetas.organizacion_id = ?`).get(Number(req.params.id), org);
+  if (!receta) return res.status(404).json({ error: 'Receta no encontrada.' });
+  const antes = detalleReceta(receta, depositoPredeterminadoId(org));
+  withTransaction(() => {
+    db.prepare('DELETE FROM receta_items WHERE receta_id = ?').run(receta.id);
+    db.prepare('DELETE FROM recetas WHERE id = ?').run(receta.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'producto',
+      entidad_id: receta.producto_id,
+      operacion_tipo: 'receta',
+      operacion_id: receta.id,
+      valor_anterior: resumenReceta(antes.rinde, antes.items),
+      detalle: `Receta de "${antes.nombre}" borrada`
+    });
+  });
+  res.json({ id: receta.id });
+});
+
+const SELECT_PRODUCCION = `
+  SELECT producciones.id, producciones.fecha, producciones.estado, producciones.nota,
+         producciones.producto_id, producciones.variante_id, productos.nombre AS producto, productos.unidad,
+         producciones.cantidad, producciones.costo_total, producciones.costo_unitario,
+         producciones.deposito_id, depositos.nombre AS deposito
+    FROM producciones
+    JOIN productos ON productos.id = producciones.producto_id
+    JOIN depositos ON depositos.id = producciones.deposito_id`;
+
+app.get('/api/producciones', (req, res) => {
+  const producciones = db
+    .prepare(`${SELECT_PRODUCCION} WHERE producciones.organizacion_id = ? ORDER BY producciones.fecha DESC, producciones.id DESC LIMIT ?`)
+    .all(req.usuario.organizacion_id, limiteDeConsulta(req.query.limit))
+    .map((p) => ({ ...p, nombre: nombreConVariante(p) }));
+  res.json(producciones);
+});
+
+app.get('/api/producciones/:id', (req, res) => {
+  const produccion = db
+    .prepare(`${SELECT_PRODUCCION} WHERE producciones.id = ? AND producciones.organizacion_id = ?`)
+    .get(Number(req.params.id), req.usuario.organizacion_id);
+  if (!produccion) return res.status(404).json({ error: 'Producción no encontrada.' });
+  const items = db
+    .prepare(
+      `SELECT produccion_items.producto_id, produccion_items.variante_id, produccion_items.cantidad,
+              produccion_items.costo_unitario, productos.nombre AS producto, productos.unidad
+         FROM produccion_items JOIN productos ON productos.id = produccion_items.producto_id
+        WHERE produccion_items.produccion_id = ?
+        ORDER BY produccion_items.id`
+    )
+    .all(produccion.id)
+    .map((i) => ({ ...i, nombre: nombreConVariante(i) }));
+  res.json({ ...produccion, nombre: nombreConVariante(produccion), items });
+});
+
+// Producir: lo que salió de verdad (cantidad) con lo que se usó de verdad
+// (items). Sin stock de un material en el depósito no se produce: igual que
+// una venta, Nexo no deja stock negativo.
+app.post('/api/producciones', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producido = articuloDeProduccion(org, req.body?.producto_id, req.body?.variante_id ?? null);
+  if (!esNumeroValido(req.body?.cantidad) || redondear3(req.body.cantidad) <= 0) {
+    return res.status(400).json({ error: 'Poné cuánto salió: un número mayor a 0.' });
+  }
+  const cantidad = redondear3(req.body.cantidad);
+  const deposito = depositoDeProduccion(req.body?.deposito_id, org);
+  const materiales = materialesDeProduccion(org, req.body?.items, producido);
+  const nota = typeof req.body?.nota === 'string' && req.body.nota.trim() ? req.body.nota.trim().slice(0, 500) : null;
+  for (const m of materiales) {
+    const hay = stockEnDeposito(m, deposito.id);
+    if (m.cantidad > hay) {
+      return res.status(400).json({
+        error: `No alcanza "${m.nombre}" en "${deposito.nombre}": hay ${hay} y se usan ${m.cantidad}. Cargá la compra o el stock que tenés.`
+      });
+    }
+  }
+  const costoTotal = redondear2(materiales.reduce((acc, m) => acc + m.cantidad * m.costo, 0));
+  const costoUnitario = costoTotal / cantidad;
+
+  const id = withTransaction(() => {
+    const produccionId = Number(
+      db
+        .prepare(
+          `INSERT INTO producciones (producto_id, variante_id, deposito_id, cantidad, costo_total, costo_unitario, nota, organizacion_id, fecha)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
+        )
+        .run(producido.producto_id, producido.variante_id, deposito.id, cantidad, costoTotal, costoUnitario, nota, org).lastInsertRowid
+    );
+    const insertarItem = db.prepare(
+      'INSERT INTO produccion_items (produccion_id, producto_id, variante_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?, ?)'
+    );
+    const comun = { deposito_id: deposito.id, origen: 'produccion', produccion_id: produccionId, organizacion_id: org };
+    for (const m of materiales) {
+      insertarItem.run(produccionId, m.producto_id, m.variante_id, m.cantidad, m.costo);
+      registrarMovimientoStock({ ...comun, producto_id: m.producto_id, variante_id: m.variante_id, tipo: 'salida', cantidad: m.cantidad });
+    }
+    registrarMovimientoStock({
+      ...comun,
+      producto_id: producido.producto_id,
+      variante_id: producido.variante_id,
+      tipo: 'entrada',
+      cantidad,
+      costo_unitario: costoUnitario
+    });
+    const costoNuevo = producido.variante_id ? recalcularCostoVariante(producido.variante_id) : recalcularCostoProducto(producido.producto_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'stock',
+      entidad_id: producido.producto_id,
+      operacion_tipo: 'produccion',
+      operacion_id: produccionId,
+      valor_nuevo: JSON.stringify({
+        cantidad,
+        costo_unitario: redondear2(costoUnitario),
+        // El costo promedio que queda: con este nombre lo poda el filtro del empleado.
+        precio_costo: redondear2(costoNuevo),
+        materiales: materiales.map((m) => `${m.cantidad} ${m.nombre}`)
+      }),
+      detalle: `Producción #${produccionId}: ${cantidad} "${producido.nombre}" en "${deposito.nombre}"`
+    });
+    return produccionId;
+  });
+  res.status(201).json({ id });
+});
+
+// Anular: lo producido sale y los materiales vuelven, en el mismo depósito.
+// Si lo producido ya se vendió, no se puede: como una compra (§23).
+app.post('/api/producciones/:id/anular', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const produccion = db
+    .prepare(`${SELECT_PRODUCCION} WHERE producciones.id = ? AND producciones.organizacion_id = ?`)
+    .get(Number(req.params.id), org);
+  if (!produccion) return res.status(404).json({ error: 'Producción no encontrada.' });
+  if (produccion.estado === 'anulada') return res.status(400).json({ error: 'Esta producción ya está anulada.' });
+  const nombre = nombreConVariante(produccion);
+  if (stockEnDeposito(produccion, produccion.deposito_id) < produccion.cantidad) {
+    return res.status(400).json({
+      error: `Ya no están las ${produccion.cantidad} "${nombre}" en "${produccion.deposito}" (se vendieron o se movieron): no se puede anular.`
+    });
+  }
+  const movimientos = db
+    .prepare('SELECT producto_id, variante_id, tipo, cantidad FROM movimientos_stock WHERE produccion_id = ? ORDER BY id')
+    .all(produccion.id);
+
+  withTransaction(() => {
+    // Primero el estado: así el costo promedio que se recalcula abajo ya no la cuenta.
+    db.prepare("UPDATE producciones SET estado = 'anulada' WHERE id = ?").run(produccion.id);
+    for (const m of movimientos) {
+      registrarMovimientoStock({
+        producto_id: m.producto_id,
+        variante_id: m.variante_id,
+        deposito_id: produccion.deposito_id,
+        tipo: m.tipo === 'salida' ? 'entrada' : 'salida',
+        cantidad: m.cantidad,
+        origen: 'produccion',
+        produccion_id: produccion.id,
+        nota: 'Reversión por anulación',
+        organizacion_id: org
+      });
+    }
+    if (produccion.variante_id) recalcularCostoVariante(produccion.variante_id);
+    else recalcularCostoProducto(produccion.producto_id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'stock',
+      entidad_id: produccion.producto_id,
+      operacion_tipo: 'produccion',
+      operacion_id: produccion.id,
+      detalle: `Producción #${produccion.id} de ${produccion.cantidad} "${nombre}" anulada`
+    });
+  });
+  res.json({ id: produccion.id });
+});
+
+/* ---------- Lo que se usa al vender (Etapa J, hist. §126) ---------- */
+//
+// La caja, la bolsa, el frasquito: lo que se gasta al vender algo sin
+// venderse. Cada producto dice qué suele llevar (componentes_venta), por cada
+// unidad o una vez por venta. Al vender, Nexo lo propone y se cambia en el
+// momento (a veces ninguna bolsa, a veces dos); lo que quedó se guarda en
+// venta_consumos con su costo congelado, sale del stock con origen 'consumo'
+// y entra al costo de la venta. La configuración es del admin; quien vende
+// (los dos roles) ve la propuesta y la cambia.
+
+const MAX_COMPONENTES = 100;
+const claveComponente = (c) => `${c.producto_id}:${c.variante_id ?? ''}`;
+
+// Lo que lleva cada producto de la empresa, por id de producto.
+function componentesPorProducto(org) {
+  const porProducto = new Map();
+  const filas = db
+    .prepare(
+      `SELECT componentes_venta.producto_id AS vendido_id, componentes_venta.componente_id AS producto_id,
+              componentes_venta.componente_variante_id AS variante_id, componentes_venta.cantidad,
+              componentes_venta.por_venta, productos.nombre AS producto, productos.unidad
+         FROM componentes_venta JOIN productos ON productos.id = componentes_venta.componente_id
+        WHERE componentes_venta.organizacion_id = ?
+        ORDER BY componentes_venta.id`
+    )
+    .all(org);
+  for (const { vendido_id, ...fila } of filas) {
+    if (!porProducto.has(vendido_id)) porProducto.set(vendido_id, []);
+    porProducto.get(vendido_id).push({ ...fila, por_venta: Boolean(fila.por_venta), nombre: nombreConVariante(fila) });
+  }
+  return porProducto;
+}
+
+// Lo que se propone para unos renglones: lo de cada unidad se suma, y lo de
+// una vez por venta va una sola vez (lo más que pida alguno de los productos).
+// El frontend arma la misma cuenta con GET /api/componentes-venta.
+function consumosPropuestos(items, org) {
+  const porProducto = componentesPorProducto(org);
+  const porUnidad = new Map();
+  const porVenta = new Map();
+  for (const item of items) {
+    for (const c of porProducto.get(item.producto_id) ?? []) {
+      const clave = claveComponente(c);
+      if (c.por_venta) porVenta.set(clave, { c, cantidad: Math.max(porVenta.get(clave)?.cantidad ?? 0, c.cantidad) });
+      else porUnidad.set(clave, { c, cantidad: (porUnidad.get(clave)?.cantidad ?? 0) + c.cantidad * Number(item.cantidad) });
+    }
+  }
+  const total = new Map();
+  for (const mapa of [porUnidad, porVenta]) {
+    for (const [clave, { c, cantidad: cuanto }] of mapa) {
+      total.set(clave, { producto_id: c.producto_id, variante_id: c.variante_id, cantidad: redondear3((total.get(clave)?.cantidad ?? 0) + cuanto) });
+    }
+  }
+  return [...total.values()];
+}
+
+// Los consumos que llegan de quien vende: cada artículo una vez, con cantidad.
+// Una lista vacía es válida: esta vez no se usó nada.
+function consumosDeVenta(org, consumos) {
+  if (!Array.isArray(consumos)) throw new ErrorValidacion('Lo que se usa al vender no es válido.');
+  if (consumos.length > MAX_COMPONENTES) throw new ErrorValidacion(`Se pueden usar hasta ${MAX_COMPONENTES} cosas al vender.`);
+  const claves = new Set();
+  return consumos.map((c) => {
+    if (!esNumeroValido(c?.cantidad) || redondear3(c.cantidad) <= 0) {
+      throw new ErrorValidacion('Cada cosa que se usa al vender lleva una cantidad mayor a 0.');
+    }
+    const articulo = articuloDeProduccion(org, c.producto_id, c.variante_id ?? null);
+    const clave = claveComponente(articulo);
+    if (claves.has(clave)) throw new ErrorValidacion(`"${articulo.nombre}" está dos veces en lo que se usa al vender.`);
+    claves.add(clave);
+    return { ...articulo, cantidad: redondear3(c.cantidad) };
+  });
+}
+
+// Descuenta lo que se usó en una venta, después de sus renglones: el stock que
+// queda ya es sin lo vendido. `consumos` undefined es "lo de siempre" (una
+// venta de Tienda Nube, un presupuesto que pasa a venta): va lo propuesto
+// hasta donde alcance el stock, porque una bolsa que falta no frena una venta
+// que ya pasó, y un componente dado de baja se saltea. Una lista es lo que
+// eligió quien vende, y sin stock no se vende.
+function registrarConsumosVenta({ venta_id, items, consumos, deposito_id, organizacion_id, nota = null }) {
+  const automatico = consumos === undefined;
+  const lista = automatico
+    ? consumosPropuestos(items, organizacion_id).flatMap((c) => {
+        try {
+          return [{ ...articuloDeProduccion(organizacion_id, c.producto_id, c.variante_id), cantidad: c.cantidad }];
+        } catch (err) {
+          if (err instanceof ErrorValidacion) return [];
+          throw err;
+        }
+      })
+    : consumosDeVenta(organizacion_id, consumos);
+  const insertar = db.prepare(
+    'INSERT INTO venta_consumos (venta_id, producto_id, variante_id, cantidad, costo_unitario_historico) VALUES (?, ?, ?, ?, ?)'
+  );
+  for (const c of lista) {
+    const hay = Math.max(stockEnDeposito(c, deposito_id), 0);
+    let usa = c.cantidad;
+    if (usa > hay) {
+      if (!automatico) {
+        const deposito = db.prepare('SELECT nombre FROM depositos WHERE id = ?').get(deposito_id);
+        throw new ErrorValidacion(
+          `No alcanza "${c.nombre}" en "${deposito.nombre}": hay ${hay} y se usan ${usa} al vender. Cambiá lo que se usa o cargá la compra.`
+        );
+      }
+      usa = hay;
+    }
+    if (usa <= 0) continue;
+    insertar.run(venta_id, c.producto_id, c.variante_id, usa, c.costo);
+    registrarMovimientoStock({
+      producto_id: c.producto_id,
+      variante_id: c.variante_id,
+      deposito_id,
+      tipo: 'salida',
+      cantidad: usa,
+      origen: 'consumo',
+      venta_id,
+      nota,
+      organizacion_id
+    });
+  }
+}
+
+// Vuelve al stock lo que se usó en una venta (al anularla o antes de
+// editarla). Las filas quedan: la anulada las conserva para restaurarla, y la
+// edición las reemplaza.
+function devolverConsumosVenta(ventaId, depositoId, organizacionId, nota) {
+  const consumos = db.prepare('SELECT producto_id, variante_id, cantidad FROM venta_consumos WHERE venta_id = ?').all(ventaId);
+  for (const c of consumos) {
+    registrarMovimientoStock({
+      ...c,
+      deposito_id: depositoId,
+      tipo: 'entrada',
+      origen: 'consumo',
+      venta_id: ventaId,
+      nota,
+      organizacion_id: organizacionId
+    });
+  }
+}
+
+// Lo que se usó en una venta, para su ficha.
+function consumosDeLaVenta(ventaId) {
+  return db
+    .prepare(
+      `SELECT venta_consumos.producto_id, venta_consumos.variante_id, venta_consumos.cantidad,
+              venta_consumos.costo_unitario_historico, productos.nombre AS producto, productos.unidad
+         FROM venta_consumos JOIN productos ON productos.id = venta_consumos.producto_id
+        WHERE venta_consumos.venta_id = ?
+        ORDER BY venta_consumos.id`
+    )
+    .all(ventaId)
+    .map((c) => ({ ...c, nombre: nombreConVariante(c) }));
+}
+
+// Todo lo configurado, para que el alta de venta y el punto de venta armen la
+// propuesta sin ir al servidor en cada renglón. El stock es el del depósito
+// predeterminado, para avisar si no alcanza: el servidor controla el de la venta.
+app.get('/api/componentes-venta', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const depositoId = depositoPredeterminadoId(org);
+  const porProducto = componentesPorProducto(org);
+  res.json(
+    [...porProducto].map(([producto_id, componentes]) => ({
+      producto_id,
+      componentes: componentes.map((c) => ({ ...c, stock: stockEnDeposito(c, depositoId) }))
+    }))
+  );
+});
+
+const productoDeLaEmpresa = (org, id) =>
+  db.prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?').get(Number(id), org);
+
+app.get('/api/productos/:id/componentes-venta', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producto = productoDeLaEmpresa(org, req.params.id);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+  res.json({ producto_id: producto.id, nombre: producto.nombre, componentes: componentesPorProducto(org).get(producto.id) ?? [] });
+});
+
+const resumenComponentes = (lista) =>
+  JSON.stringify(lista.map((c) => `${c.cantidad} ${c.nombre}${c.por_venta ? ' por venta' : ''}`));
+
+// Reemplaza lo que lleva un producto. Una lista vacía lo deja sin nada.
+app.put('/api/productos/:id/componentes-venta', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producto = productoDeLaEmpresa(org, req.params.id);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+  const entrada = req.body?.componentes;
+  if (!Array.isArray(entrada)) return res.status(400).json({ error: 'Lo que lleva al venderse no es válido.' });
+  const componentes = consumosDeVenta(org, entrada).map((c, i) => {
+    if (c.producto_id === producto.id) throw new ErrorValidacion(`"${producto.nombre}" no puede usarse a sí mismo al venderse.`);
+    return { ...c, por_venta: entrada[i].por_venta === true };
+  });
+  const antes = componentesPorProducto(org).get(producto.id) ?? [];
+
+  withTransaction(() => {
+    db.prepare('DELETE FROM componentes_venta WHERE producto_id = ? AND organizacion_id = ?').run(producto.id, org);
+    const insertar = db.prepare(
+      `INSERT INTO componentes_venta (producto_id, componente_id, componente_variante_id, cantidad, por_venta, organizacion_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    for (const c of componentes) insertar.run(producto.id, c.producto_id, c.variante_id, c.cantidad, c.por_venta ? 1 : 0, org);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: producto.id,
+      operacion_tipo: 'al_vender',
+      operacion_id: producto.id,
+      valor_anterior: resumenComponentes(antes),
+      valor_nuevo: resumenComponentes(componentes),
+      detalle: componentes.length
+        ? `Lo que lleva "${producto.nombre}" al venderse: ${componentes.map((c) => c.nombre).join(', ')}`
+        : `"${producto.nombre}" ya no lleva nada al venderse`
+    });
+  });
+  res.json({ producto_id: producto.id, componentes: componentes.length });
+});
+
 /* ---------- Ventas ---------- */
 
 // devuelto: plata acreditada por devoluciones activas de esta venta (ver
@@ -5377,7 +5973,9 @@ app.get('/api/ventas', (req, res) => {
               (SELECT COALESCE(SUM(iva), 0)
                  FROM venta_items WHERE venta_items.venta_id = ventas.id) AS iva,
               (SELECT COALESCE(SUM((precio_unitario - costo_unitario_historico) * cantidad - iva), 0)
-                 FROM venta_items WHERE venta_items.venta_id = ventas.id) AS margen,
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id)
+                - (SELECT COALESCE(SUM(cantidad * costo_unitario_historico), 0)
+                     FROM venta_consumos WHERE venta_consumos.venta_id = ventas.id) AS margen,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto,
@@ -5453,7 +6051,11 @@ app.get('/api/ventas/:id', (req, res) => {
 
   // El saldo anterior (handoff 8c) no tiene renglones: su total es el importe.
   const total = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0) + (venta.saldo_inicial ?? 0);
-  const costoTotal = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
+  // Lo que se usó al venderla (hist. §126) es parte de su costo.
+  const consumos = consumosDeLaVenta(ventaId);
+  const costoTotal =
+    items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0) +
+    consumos.reduce((acc, c) => acc + c.cantidad * c.costo_unitario_historico, 0);
   const devuelto = items.reduce((acc, i) => acc + i.cantidad_devuelta * i.precio_unitario, 0);
   const neto = total - devuelto;
   const { cobrado } = db
@@ -5473,6 +6075,7 @@ app.get('/api/ventas/:id', (req, res) => {
       ganancia: (i.precio_unitario - i.costo_unitario_historico) * i.cantidad - i.iva,
       disponible_devolucion: i.cantidad - i.cantidad_devuelta
     })),
+    consumos,
     total,
     iva: Math.round(items.reduce((acc, i) => acc + i.iva, 0) * 100) / 100,
     costo_total: costoTotal,
@@ -5645,7 +6248,9 @@ function crearVenta({
   organizacion_id,
   // Una venta de antes de empezar con Nexo (handoff 8c): no mueve stock,
   // porque el stock que se cargó ya es el de hoy.
-  carga_inicial = false
+  carga_inicial = false,
+  // Lo que se usó al vender (hist. §126): undefined es "lo de siempre".
+  consumos
 }) {
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
@@ -5733,6 +6338,9 @@ function crearVenta({
     // venta_items, como siempre.
     total += item.cantidad * item.precio_unitario;
   }
+  if (!carga_inicial) {
+    registrarConsumosVenta({ venta_id: nuevaVentaId, items, consumos, deposito_id: depositoResuelto, organizacion_id });
+  }
 
   // Toda venta aumenta la deuda del cliente; se salda con cobros. No
   // hace falta un flag "es a crédito": una venta cobrada al instante
@@ -5745,7 +6353,7 @@ function crearVenta({
 }
 
 app.post('/api/ventas', (req, res) => {
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
     req.body;
 
   const errorItems = validarItemsVenta(items);
@@ -5779,6 +6387,7 @@ app.post('/api/ventas', (req, res) => {
         deposito_id,
         condicion_pago,
         fecha_vencimiento,
+        consumos,
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: id, detalle: `Venta #${id} creada` });
@@ -5802,7 +6411,7 @@ app.post('/api/ventas', (req, res) => {
 // aplicar con los items nuevos, mismo patrón que la edición de compras.
 app.put('/api/ventas/:id', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento } =
+  const { cliente, cliente_id, items, fecha, lista_precio_id, deposito_id, condicion_pago, fecha_vencimiento, consumos } =
     req.body;
 
   const listaPrecioId = lista_precio_id ? Number(lista_precio_id) : null;
@@ -5992,6 +6601,8 @@ app.put('/api/ventas/:id', (req, res) => {
         organizacion_id: req.usuario.organizacion_id
       });
     }
+    devolverConsumosVenta(ventaId, depositoOriginal, req.usuario.organizacion_id, 'Reversión por edición');
+    db.prepare('DELETE FROM venta_consumos WHERE venta_id = ?').run(ventaId);
 
     // 2) Reemplazar cliente, fecha e items.
     const clienteRow = resolverCliente(cliente, cliente_id, req.usuario.organizacion_id);
@@ -6047,6 +6658,13 @@ app.put('/api/ventas/:id', (req, res) => {
       // en crearVenta (CLAUDE.md §18).
       total += item.cantidad * item.precio_unitario;
     }
+    registrarConsumosVenta({
+      venta_id: ventaId,
+      items,
+      consumos,
+      deposito_id: depositoResuelto,
+      organizacion_id: req.usuario.organizacion_id
+    });
 
     // 3) Ajustar la cuenta corriente (no se reemplaza el movimiento
     // original, se compensa — mismo criterio que anular). Si el cliente
@@ -6361,6 +6979,7 @@ function revertirVentaAnulada(venta, organizacionId) {
       organizacion_id: organizacionId
     });
   }
+  if (!venta.carga_inicial) devolverConsumosVenta(venta.id, depositoVenta, organizacionId, 'Reversión por anulación');
 
   db.prepare(
     `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'ajuste', ?, ?, ${HOY_SQL})`
@@ -6442,9 +7061,35 @@ app.post('/api/ventas/:id/restaurar', soloAdmin, (req, res) => {
       });
     }
   }
+  // Lo que se usó al venderla (hist. §126) vuelve a salir igual, sumado a lo
+  // vendido del mismo artículo.
+  const consumos = venta.carga_inicial ? [] : consumosDeLaVenta(ventaId);
+  for (const c of consumos) {
+    const vendido = items
+      .filter((i) => i.producto_id === c.producto_id && (i.variante_id ?? null) === (c.variante_id ?? null))
+      .reduce((acc, i) => acc + i.cantidad, 0);
+    if (stockEnDeposito(c, depositoVenta) < c.cantidad + vendido) {
+      return res.status(400).json({
+        error: `No hay stock suficiente de "${c.nombre}", que se usó al venderla, para restaurar esta venta.`
+      });
+    }
+  }
 
   withTransaction(() => {
     db.prepare("UPDATE ventas SET estado = 'activa' WHERE id = ?").run(ventaId);
+    for (const c of consumos) {
+      registrarMovimientoStock({
+        producto_id: c.producto_id,
+        variante_id: c.variante_id,
+        deposito_id: depositoVenta,
+        tipo: 'salida',
+        cantidad: c.cantidad,
+        origen: 'consumo',
+        venta_id: ventaId,
+        nota: 'Restaurada desde la papelera',
+        organizacion_id: req.usuario.organizacion_id
+      });
+    }
 
     for (const item of items) {
       registrarMovimientoStock({
@@ -8595,12 +9240,20 @@ function aplicarStockCompra(compraId) {
 // costo": dice cuánto había en un depósito y cuánto costó cada unidad, así
 // que reemplaza al costo del stock que había en ESE depósito, y se promedia
 // con el de los demás (ver costoConStockInicial).
+//
+// Una producción anulada no cuenta (SIN_PRODUCCIONES_ANULADAS): su entrada y
+// su reversión suman cero en cada depósito, y sacarlas del historial borra
+// también el costo con que había entrado (una de 380 en vez de 38 no deja el
+// promedio torcido).
+const SIN_PRODUCCIONES_ANULADAS = `(produccion_id IS NULL OR produccion_id NOT IN
+           (SELECT id FROM producciones WHERE estado = 'anulada'))`;
+
 function recalcularCostoProducto(productoId) {
   const movimientos = db
     .prepare(
       `SELECT tipo, cantidad, costo_unitario, compra_id, origen, deposito_id
          FROM movimientos_stock
-        WHERE producto_id = ? AND variante_id IS NULL
+        WHERE producto_id = ? AND variante_id IS NULL AND ${SIN_PRODUCCIONES_ANULADAS}
         ORDER BY fecha, id`
     )
     .all(productoId);
@@ -8659,7 +9312,7 @@ function recalcularCostoVariante(varianteId) {
     .prepare(
       `SELECT tipo, cantidad, costo_unitario, compra_id, origen, deposito_id
          FROM movimientos_stock
-        WHERE variante_id = ?
+        WHERE variante_id = ? AND ${SIN_PRODUCCIONES_ANULADAS}
         ORDER BY fecha, id`
     )
     .all(varianteId);
@@ -10332,6 +10985,16 @@ const SQL_RESULTADO_VENTAS = db.prepare(
       AND ventas.organizacion_id = ?`
 );
 
+// Lo que se usó al vender (hist. §126) es costo de las ventas del período.
+const SQL_RESULTADO_CONSUMOS = db.prepare(
+  `SELECT COALESCE(SUM(venta_consumos.cantidad * venta_consumos.costo_unitario_historico), 0) AS costo
+     FROM ventas JOIN venta_consumos ON venta_consumos.venta_id = ventas.id
+    WHERE ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?`
+);
+
 const SQL_RESULTADO_GASTOS = db.prepare(
   `SELECT COALESCE(SUM(CASE WHEN tipo = 'operativo' THEN importe END), 0) AS operativos,
           COALESCE(SUM(CASE WHEN tipo = 'inversion' THEN importe END), 0) AS inversiones,
@@ -10379,7 +11042,7 @@ function calcularResultado(desde, hasta, organizacionId) {
   const devoluciones = SQL_RESULTADO_DEVOLUCIONES.get(...rango);
 
   const ventasNetas = ventas.total - devoluciones.importe;
-  const costoNeto = ventas.costo - devoluciones.costo;
+  const costoNeto = ventas.costo + SQL_RESULTADO_CONSUMOS.get(...rango).costo - devoluciones.costo;
   const gananciaBruta = ventasNetas - costoNeto;
 
   return {
@@ -13757,7 +14420,7 @@ app.get('/api/pos/catalogo', (req, res) => {
 // corriente del cliente, así que hace falta un cliente de verdad: a
 // "Consumidor final" no se le fía.
 app.post('/api/pos/ventas', (req, res) => {
-  const { turno_caja_id, cliente_id, items, cobros = [] } = req.body;
+  const { turno_caja_id, cliente_id, items, cobros = [], consumos } = req.body;
   const organizacionId = req.usuario.organizacion_id;
   const turno = turnoDeLaEmpresa(Number(turno_caja_id), organizacionId);
   if (!turno || turno.estado !== 'abierto') {
@@ -13800,6 +14463,7 @@ app.post('/api/pos/ventas', (req, res) => {
         cliente: cliente_id ? undefined : CONSUMIDOR_FINAL,
         cliente_id,
         items,
+        consumos,
         organizacion_id: organizacionId
       });
       const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);

@@ -15,6 +15,7 @@
 <symbol id="carrot" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 16a1 1 0 0 0-7-7q-4 4-5.987 12.385a.5.5 0 0 0 .602.602Q11 20 15 16l-3-3" /><path d="M15 9q4 4 7 0-3-4-7 0 4-4 0-7-4 3 0 7" /><path d="m8 15-2.58-2.58" /></symbol>
 <symbol id="chart-column" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></symbol>
 <symbol id="check" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5" /></symbol>
+<symbol id="chef-hat" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z" /><path d="M6 17h12" /></symbol>
 <symbol id="chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m6 9 6 6 6-6" /></symbol>
 <symbol id="chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m15 18-6-6 6-6" /></symbol>
 <symbol id="chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6" /></symbol>

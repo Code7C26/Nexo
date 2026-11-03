@@ -632,12 +632,105 @@ CREATE TABLE IF NOT EXISTS transferencias (
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
+-- Producción básica (CLAUDE.md §29, Etapa J de §38): el módulo `produccion`.
+-- Una receta dice qué materiales lleva un producto (o una variante) y cuánto
+-- suele rendir. Es lo que se propone al producir, nunca lo que se descuenta
+-- sin mirar: la misma cantidad de material no siempre da lo mismo. Los
+-- materiales son productos comunes, comprados con las compras de siempre. Una
+-- receta por producto o variante (idx_recetas_producto). No guarda costo: se
+-- calcula con el de hoy de cada material. Es una plantilla, así que se puede
+-- borrar: las producciones guardan lo que usaron, no la receta.
+CREATE TABLE IF NOT EXISTS recetas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  rinde REAL NOT NULL CHECK (rinde > 0),
+  nota TEXT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_recetas_producto ON recetas(producto_id, COALESCE(variante_id, 0));
+
+CREATE TABLE IF NOT EXISTS receta_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  receta_id INTEGER NOT NULL REFERENCES recetas(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0)
+);
+
+-- Una producción: lo que salió de verdad (cantidad) y lo que se usó de verdad
+-- (produccion_items), aunque no coincidan con la receta. El costo se congela
+-- al producir, como el de una venta (§8): costo_total es lo usado a su costo
+-- de ese momento, y costo_unitario = costo_total / cantidad es lo que entra al
+-- costo promedio del producto (§7). Mueve stock con movimientos 'produccion'
+-- que la referencian por produccion_id, todos en su depósito: una salida por
+-- material y una entrada del producto. Anular revierte con los contrarios,
+-- nunca borra filas, y el costo promedio deja de contarla.
+CREATE TABLE IF NOT EXISTS producciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  deposito_id INTEGER NOT NULL REFERENCES depositos(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  costo_total REAL NOT NULL DEFAULT 0,
+  costo_unitario REAL NOT NULL DEFAULT 0,
+  fecha TEXT NOT NULL DEFAULT (date('now')),
+  estado TEXT NOT NULL CHECK (estado IN ('activa', 'anulada')) DEFAULT 'activa',
+  nota TEXT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+
+CREATE TABLE IF NOT EXISTS produccion_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  produccion_id INTEGER NOT NULL REFERENCES producciones(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  costo_unitario REAL NOT NULL DEFAULT 0
+);
+
+-- Lo que se usa al vender un producto sin venderse (Etapa J, hist. §126): la
+-- caja, la bolsa, el frasquito. Es lo que Nexo propone al vender; en cada venta
+-- se cambia, y lo que quedó va a venta_consumos. `cantidad` es por cada unidad
+-- vendida, o una sola vez por venta con `por_venta` (la bolsa: una aunque se
+-- lleven seis). Es del producto entero, con todas sus variantes; el componente
+-- sí puede ser una variante.
+CREATE TABLE IF NOT EXISTS componentes_venta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  componente_id INTEGER NOT NULL REFERENCES productos(id),
+  componente_variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  por_venta INTEGER NOT NULL DEFAULT 0 CHECK (por_venta IN (0, 1)),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_componentes_venta
+  ON componentes_venta(producto_id, componente_id, COALESCE(componente_variante_id, 0));
+
+-- Lo que se usó de verdad en una venta (hist. §126), con el costo congelado
+-- como el de venta_items (§8): entra al costo y al margen de la venta y al
+-- resultado. Sale del stock con movimientos 'consumo' que la referencian por
+-- venta_id. Hereda la empresa de la venta, como venta_items.
+CREATE TABLE IF NOT EXISTS venta_consumos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  venta_id INTEGER NOT NULL REFERENCES ventas(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  cantidad REAL NOT NULL CHECK (cantidad > 0),
+  costo_unitario_historico REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_venta_consumos_venta ON venta_consumos(venta_id);
+
 -- tipo 'entrada'/'salida': cantidad siempre positiva, el signo lo pone el tipo.
 -- tipo 'ajuste': cantidad puede ser negativa (correccion manual de stock).
 -- origen 'stock_inicial' (handoff 8c): lo que había en el depósito al empezar
 -- con Nexo. Es un 'ajuste' hasta la cantidad declarada, con el costo de cada
 -- unidad, y ese costo reemplaza al del stock que había en ese depósito (ver
 -- recalcularCostoProducto en server.js).
+-- origen 'produccion' (Etapa J): lo que mueve una producción, con
+-- produccion_id. 'consumo' es lo que se gasta al vender sin venderse (la caja,
+-- la bolsa, los ml de un decant): lo usa la segunda parte de la producción
+-- básica, y se sumó al mismo tiempo para no rehacer la tabla dos veces.
 -- deposito_id es NOT NULL: toda unidad de stock vive en algún depósito
 -- físico concreto, nunca "en general" (CLAUDE.md §5/§19).
 -- organizacion_id: mismo patrón multi-tenant que ventas/compras (CLAUDE.md
@@ -651,7 +744,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   deposito_id INTEGER NOT NULL REFERENCES depositos(id),
   tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'salida', 'ajuste')),
   cantidad REAL NOT NULL,
-  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia', 'stock_inicial')),
+  origen TEXT NOT NULL CHECK (origen IN ('venta', 'compra', 'ajuste_manual', 'devolucion', 'devolucion_proveedor', 'transferencia', 'stock_inicial', 'produccion', 'consumo')),
   -- origen_id: deprecado, reemplazado por venta_id/compra_id (con FK real
   -- de verdad). Se conserva sin usar por compatibilidad con filas viejas;
   -- se puede eliminar en una limpieza posterior.
@@ -661,6 +754,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
   devolucion_id INTEGER REFERENCES devoluciones(id),
   devolucion_proveedor_id INTEGER REFERENCES devoluciones_proveedor(id),
   transferencia_id INTEGER REFERENCES transferencias(id),
+  produccion_id INTEGER REFERENCES producciones(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   -- Costo real de la unidad que entra (con el envío ya prorrateado).
   -- Solo tiene sentido en las entradas por compra; en salidas y ajustes

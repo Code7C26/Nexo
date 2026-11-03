@@ -11033,3 +11033,154 @@ antes, y cómo se ven en Ventas.
 usuario si las ventas que el hermano ya cargó con costo 0 se corrigen: el
 costo de una venta queda congelado (CLAUDE.md §8), así que hoy muestran 100 %
 de margen.
+
+## 125. Producción básica, primera parte: recetas y producir, 3 de noviembre de 2026
+
+Etapa J de CLAUDE.md §38, decidida por el usuario el 2 de noviembre para antes
+de la presentación. Es la primera de las dos sesiones estimadas: recetas y
+producir. La segunda es lo que se descuenta al vender (packaging, decants) y
+los reportes.
+
+**Esquema** (explicado en el plan antes de tocarlo, §34):
+- Tablas nuevas, todas con `organizacion_id`: `recetas` (producto o variante,
+  `rinde`, nota; una por producto o variante con
+  `idx_recetas_producto ON recetas(producto_id, COALESCE(variante_id, 0))`),
+  `receta_items`, `producciones` (cantidad que salió, `costo_total`,
+  `costo_unitario`, depósito, estado activa/anulada) y `produccion_items` (lo
+  usado, con su costo congelado).
+- `movimientos_stock.produccion_id` (ALTER aditivo) y el CHECK de `origen`
+  suma `'produccion'` y `'consumo'`. `consumo` todavía no se usa: es para el
+  packaging de la segunda parte, y se sumó ahora para no rehacer la tabla dos
+  veces en la base real.
+- El rebuild de hist. §124 pasó a `ampliarOrigenesDeStock(antes, nuevos)` en
+  `db/index.js`, llamada dos veces en orden: una base de antes de §124 pasa por
+  las dos.
+
+**Cómo funciona** (`server.js`, sección "Producción"):
+- Una receta es una plantilla: materiales (productos comunes, sin servicios,
+  nunca lo mismo que se produce, cada uno una vez) y cuánto suele rendir. Se
+  puede borrar: las producciones guardan lo que usaron. Su costo es el de hoy
+  de cada material.
+- Producir: lo que salió de verdad y lo que se usó de verdad. Sin stock de un
+  material en el depósito no se produce. Salen los materiales (`salida`) y
+  entra el producto (`entrada` con `costo_unitario` = lo usado / lo que
+  salió), así que `costoDelHistorial` lo promedia solo. Los materiales no
+  cambian de costo.
+- Anular (admin): los movimientos contrarios, si lo producido sigue en el
+  depósito. `SIN_PRODUCCIONES_ANULADAS` saca del costo promedio la entrada y la
+  reversión de una anulada: una de 380 en vez de 38 no deja el costo torcido.
+- Permisos: recetas y anular, admin; ver y producir, los dos roles (quien
+  cocina suele ser el empleado). Los costos van con nombres de
+  `CLAVES_SENSIBLES`, y en la auditoría el costo promedio va como
+  `precio_costo` para que el filtro lo pode.
+- Auditoría sobre el producto con `operacion_tipo` 'receta' o 'produccion',
+  como trabajos y consultas, sin tocar el CHECK de entidades.
+- Módulo `produccion` en `perfiles.js`, prendido en Emprendimiento. Ícono
+  `chef-hat` sumado al sprite.
+
+**Frontend** (`dominios/produccion.js`, vista `#/produccion`):
+- Pestañas Producciones y Recetas, y dos páginas de tarjetas numeradas (las
+  clases del alta de socio): producir (`/producir` o `/producir/<receta>`) y
+  la receta (`/receta` o `/receta/<id>`, solo admin).
+- Producir: "¿Qué hiciste?", "¿Cuánto ibas a hacer?" (escala los materiales de
+  la receta que nadie tocó), "¿Qué usaste?" (renglones `.item-row` propios con
+  "Hay N" en rojo si no alcanza) y "¿Cuánto salió de verdad?" (sigue a lo
+  planeado hasta que se toca). El pie muestra el costo (admin).
+- Ficha de la producción con anular. En la ficha del producto, botón
+  "Receta" (admin, con el módulo). Los movimientos dicen "Producción #N":
+  las tres cadenas que armaban el origen en `app.js` pasaron a
+  `origenMovimiento()`.
+
+**Cómo se verificó.** `produccion.test.js` (8): receta con costo, una por
+producto, editar y borrar; validaciones; producir con lo real distinto de la
+receta y el promedio de dos tandas; sin material no mueve nada; anular
+devuelve todo y saca el costo, y no se puede si ya se vendió; variantes;
+aislamiento entre negocios; el empleado sin costos ni recetas. `npm test`
+(264), lint y `verificar-migracion` (24 de 24, la base real sin cambios). En
+Chrome con el seed, a 632 px y a 1366: prender la función, armar la receta
+de mafaldas ($ 85 cada una), producir 19 de 20 con menos harina ($ 94,74),
+la ficha, el producto con su costo y el movimiento, y el empleado sin costos.
+
+**Queda (segunda parte):** lo que se descuenta al vender (packaging que
+cambia en cada venta, decants: 5 ml de perfume + 1 frasquito), reportes, y
+"¿cuántas puedo hacer?". Abrir un frasco ya se puede como producción (receta
+"Perfume (ml)" = 1 frasco, rinde 100).
+
+## 126. Producción básica, segunda parte: lo que se usa al vender, 3 de noviembre de 2026
+
+Etapa J de CLAUDE.md §38, segunda de las dos sesiones estimadas. El pedido
+del usuario: el packaging (la caja, la bolsa) que se descuenta solo al vender,
+aunque el producto sea comprado, y que **varía en cada venta**: Nexo propone
+lo de siempre y se cambia en el momento. Los decants quedaron para después
+(dicho por el usuario).
+
+**Esquema** (aditivo, sin rebuild: el origen `consumo` ya estaba en el CHECK
+desde §125):
+- `componentes_venta`: lo que lleva cada producto al venderse (producto,
+  componente con su variante opcional, cantidad, `por_venta` 0/1,
+  `organizacion_id`). Índice único por producto + componente + variante. Es
+  del producto entero, con todas sus variantes.
+- `venta_consumos`: lo que se usó de verdad en una venta, con
+  `costo_unitario_historico` congelado como `venta_items` (§8). Hereda la
+  empresa de la venta.
+
+**Cómo funciona** (`server.js`, sección "Lo que se usa al vender"):
+- `cantidad` es por cada unidad vendida, o una sola vez por venta con
+  `por_venta` (la bolsa: una aunque se lleven seis; si dos productos piden
+  bolsa por venta, va la mayor, no la suma). `consumosPropuestos` arma la
+  propuesta; `core/al-vender.js` hace la misma cuenta en el navegador.
+- `crearVenta` recibe `consumos`. **Decidido por mí, para revisar:**
+  - `undefined` es "lo de siempre", hasta donde alcance el stock: una venta de
+    Tienda Nube, Mercado Libre, un presupuesto o un trabajo que pasa a venta
+    no se frena porque falte una bolsa, y un componente dado de baja se
+    saltea.
+  - Una lista (la que manda quien vende, aunque sea vacía) se respeta tal
+    cual, y sin stock no se vende (400, nada a mitad de camino).
+- Sale del stock con movimientos `salida` / `consumo` con `venta_id`, después
+  de los renglones (el stock que se mira ya es sin lo vendido).
+- Editar devuelve lo usado y aplica lo nuevo; anular lo devuelve; restaurar lo
+  vuelve a sacar (y controla el stock, sumado a lo vendido del mismo
+  artículo). Las devoluciones no lo tocan: la bolsa ya se usó.
+- Entra al costo: `costo_total` y `margen` de la lista y la ficha de la venta,
+  y el costo de mercadería del resultado (`SQL_RESULTADO_CONSUMOS`). Los
+  reportes por producto, categoría y cliente **no** lo cuentan (no es de
+  ningún producto en particular): queda anotado para los reportes.
+- Rutas: `GET /api/componentes-venta` (ambos, con el stock del depósito
+  predeterminado), `GET /api/productos/:id/componentes-venta` (ambos) y `PUT`
+  (admin, auditado sobre el producto con `operacion_tipo` 'al_vender'). Los
+  costos van con nombres de `CLAVES_SENSIBLES`.
+- La descripción del módulo Producción suma "la caja o la bolsa que se usan al
+  vender".
+
+**Frontend:**
+- `core/al-vender.js` (`crearConsumos`): el bloque "Se usa al vender" debajo de
+  los renglones del alta de venta y del ticket del punto de venta. Propone con
+  los renglones sin pisar lo tocado; "x" lo saca y no lo vuelve a proponer;
+  "+ Usar otra cosa…" suma cualquier componente configurado; "Hay N" en rojo
+  si no alcanza. Al editar una venta parte de lo que usó. Si no puede cargar
+  la configuración, no manda nada y el servidor pone lo de siempre.
+- Producción: pestaña "Al vender" (lo configurado, con el costo de hoy para el
+  admin) y la página `#/produccion/lleva/<producto>` (admin), con los
+  renglones de materiales más "por cada uno / una vez por venta" y "No usar
+  nada". Botón "Al vender" en la ficha del producto (admin, con el módulo).
+- La ficha de la venta muestra "Se usó al vender" (el costo, solo el admin).
+  Los movimientos dicen "Al vender, venta #N".
+
+**Cómo se verificó.** `al-vender.test.js` (7): configurar y validar; lo de
+siempre (3 cajas por unidad + 1 bolsa por venta) con su costo en la venta, la
+lista y el resultado; lo elegido por quien vende y la lista vacía; sin stock
+lo elegido frena y lo de siempre no; anular, restaurar y editar; el punto de
+venta con el empleado sin costos; aislamiento entre negocios. `npm test`
+(271), lint, `verificar-migracion` (24 de 24, la base real sin cambios) y
+`npm run regresion` (diferencias justificadas: rutas nuevas, `consumos: []`
+en la ficha de venta, la descripción del módulo y los callbacks que devuelven
+`index.html`). `regresion-head.mjs` suma las rutas con parámetros de
+producción, que faltaban desde §125. En Chrome con el seed, a 1366 y a 390 px:
+la página, la lista, el alta de venta (propone, avisa "Hay 1", no pisa lo
+tocado al cambiar la cantidad; costo 1.420 = 4 × 300 + 4 × 50 + 20) y el
+punto de venta, sin errores de consola.
+
+**Queda:** "¿cuántas puedo hacer?" con el stock de los materiales, lo usado al
+vender en los reportes, y los decants (5 ml de perfume + 1 frasquito, que ya
+se puede armar con esto si el perfume está en ml). Un componente con precio
+$ 0 aparece en el catálogo del punto de venta como cualquier producto.
