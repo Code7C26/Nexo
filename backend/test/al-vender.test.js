@@ -10,10 +10,11 @@ import { crearEmpleado, levantarServidor, registrarEmpresa } from './servidor-de
 
 let servidor;
 let n;
+let negocio;
 
 before(async () => {
   servidor = await levantarServidor();
-  n = await registrarEmpresa(servidor, { empresa: 'Mafaldas Ana', usuario: 'mafaldasana' });
+  n = negocio = await registrarEmpresa(servidor, { empresa: 'Mafaldas Ana', usuario: 'mafaldasana' });
 });
 
 after(async () => {
@@ -22,7 +23,7 @@ after(async () => {
 
 // Mafaldas para vender, cajas (una por unidad) y bolsas (una por venta), con
 // stock y costo. `tanda` distingue los nombres de cada test.
-async function catalogo(tanda, { cajas = 20, bolsas = 10 } = {}) {
+async function catalogo(tanda, { cajas = 20, bolsas = 10 } = {}, n = negocio) {
   const mafalda = (await n.post('/api/productos', { nombre: `Mafalda ${tanda}`, precio_venta: 900 })).json.id;
   const caja = (await n.post('/api/productos', { nombre: `Caja ${tanda}`, precio_venta: 0 })).json.id;
   const bolsa = (await n.post('/api/productos', { nombre: `Bolsa ${tanda}`, precio_venta: 0 })).json.id;
@@ -221,4 +222,31 @@ test('otra empresa no ve ni usa lo de esta', async () => {
   });
   assert.equal(ajena.status, 400);
   assert.equal(await stockDe(n, caja), 20);
+});
+
+// Adónde fue la plata de la venta (hist. §131): cada costo con su porcentaje
+// y el promedio del negocio, para ver qué está raro. Va en un negocio aparte
+// para que las ventas de los otros tests no muevan el promedio.
+test('adónde fue la plata: el packaging con su porcentaje, contra el promedio del negocio', async () => {
+  const otro = await registrarEmpresa(servidor, { empresa: 'Mafaldas Desglose', usuario: 'mafdesglose' });
+  const { mafalda, bolsa } = await catalogo('H', {}, otro);
+  // Tres ventas de lo de siempre: una mafalda de $900, caja $50 y bolsa $20.
+  for (let i = 0; i < 3; i += 1) assert.equal((await vender(otro, mafalda, 1)).status, 201);
+  const normal = (await otro.get(`/api/ventas/${(await vender(otro, mafalda, 1)).json.id}`)).json.desglose_costos;
+  assert.equal(normal.base, 900);
+  const packaging = normal.filas.find((f) => f.clave === 'consumos');
+  assert.equal(packaging.importe, 70);
+  assert.ok(Math.abs(packaging.promedio_pct - 70 / 900) < 1e-9);
+  assert.equal(packaging.alto, false);
+  const mercaderia = normal.filas.find((f) => f.clave === 'mercaderia');
+  assert.equal(mercaderia.importe, 300);
+  assert.equal(normal.quedo.importe, 900 - 300 - 70);
+  assert.equal(normal.quedo.bajo, false);
+
+  // Una venta con cinco bolsas más: el packaging sale más que lo normal.
+  const rara = await vender(otro, mafalda, 1, { consumos: [{ producto_id: bolsa, cantidad: 6 }] });
+  assert.equal(rara.status, 201, rara.texto);
+  const desglose = (await otro.get(`/api/ventas/${rara.json.id}`)).json.desglose_costos;
+  assert.equal(desglose.filas.find((f) => f.clave === 'consumos').alto, true);
+  assert.equal(desglose.quedo.importe, 900 - 300 - 120);
 });

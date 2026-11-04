@@ -4464,6 +4464,51 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   avisar(idEditado ? `Venta #${idEditado} actualizada.` : consultaId ? "Venta registrada: la consulta quedó ganada." : "Venta registrada.", "ok");
 });
 
+// Adónde fue la plata de la venta (hist. §131): una barra con cada costo y lo
+// que quedó, y la lista con su importe, su porcentaje y el promedio del
+// negocio. El empleado no la recibe (el servidor la poda, como el costo).
+// Los colores van por clave: los gastos de la venta rotan entre tres.
+const COLOR_DESGLOSE = { mercaderia: "var(--ink-faint)", consumos: "var(--naranja)", iva: "var(--line-strong)" };
+const COLORES_GASTO_DESGLOSE = ["var(--violeta)", "var(--info)", "var(--accent-warn)"];
+function pintarDesgloseVenta(desglose) {
+  document.getElementById("fichaVentaCostosPanel").hidden = !desglose;
+  if (!desglose) return;
+  let gasto = 0;
+  const filas = desglose.filas.map((f) => ({
+    ...f,
+    color: COLOR_DESGLOSE[f.clave] ?? COLORES_GASTO_DESGLOSE[gasto++ % COLORES_GASTO_DESGLOSE.length]
+  }));
+  const quedo = { ...desglose.quedo, nombre: "Te quedó", color: "var(--accent-ok)" };
+
+  document.getElementById("fichaVentaDesgloseSub").textContent =
+    `De los ${money(desglose.base)} que pagó el cliente. El promedio es el de tus ventas de los últimos ${desglose.dias_promedio} días.`;
+  const barra = document.getElementById("fichaVentaDesgloseBarra");
+  barra.innerHTML = [...filas, quedo]
+    .filter((f) => f.pct > 0)
+    .map((f) => `<span style="flex-grow:${Number(f.pct)};background:${esc(f.color)}" title="${esc(f.nombre)}: ${porcentaje(f.pct * 100)}"></span>`)
+    .join("");
+  barra.setAttribute("aria-label", [...filas, quedo].map((f) => `${f.nombre}: ${porcentaje(f.pct * 100)}`).join(", "));
+
+  const promedio = (f, aviso) =>
+    f.promedio_pct == null
+      ? ""
+      : `<span class="desglose-promedio">Tu promedio: ${porcentaje(f.promedio_pct * 100)}</span>${aviso ? ` <span class="status status-aviso">${aviso}</span>` : ""}`;
+  const item = (f, { aviso, total = false } = {}) => `
+    <li class="desglose-item${total ? " desglose-total" : ""}">
+      <span class="desglose-color" style="background:${esc(f.color)}" aria-hidden="true"></span>
+      <div class="desglose-que">
+        <span class="desglose-nombre">${esc(f.nombre)}</span>
+        ${(f.detalle ?? []).map((d) => `<span class="desglose-detalle">${esc(d)}</span>`).join("")}
+        <span class="desglose-comparacion">${promedio(f, aviso)}</span>
+      </div>
+      <span class="desglose-importe mono${f.importe < 0 ? " saldo-negativo" : ""}">${money(f.importe)}</span>
+      <span class="desglose-pct mono${f.importe < 0 ? " saldo-negativo" : ""}">${porcentaje(f.pct * 100)}</span>
+    </li>`;
+  document.getElementById("fichaVentaCostos").innerHTML =
+    filas.map((f) => item(f, { aviso: f.alto ? "Más que lo normal" : "" })).join("") +
+    item(quedo, { aviso: quedo.bajo ? "Menos que lo normal" : "", total: true });
+}
+
 async function abrirFichaVenta(id) {
   ventaFichaId = id;
   const venta = await api(`/api/ventas/${id}`, {
@@ -4528,27 +4573,7 @@ async function abrirFichaVenta(id) {
     )
     .join("");
 
-  // La comisión y el envío que pagó el negocio (hist. §129): el empleado no
-  // los recibe (el servidor los poda, como el costo).
-  const costosDeVender = venta.costos_de_vender ?? [];
-  document.getElementById("fichaVentaCostosPanel").hidden = costosDeVender.length === 0;
-  // La tarjeta "Ganancia" es la de la mercadería; la última fila dice lo que
-  // quedó después de vender.
-  const quedo = venta.margen - costosDeVender.reduce((acc, c) => acc + c.importe, 0);
-  document.getElementById("fichaVentaCostos").innerHTML =
-    costosDeVender
-      .map(
-        (c) => `
-        <tr>
-          <td data-label="Qué">${esc(c.descripcion || c.categoria)}</td>
-          <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
-        </tr>`
-      )
-      .join("") +
-    `<tr>
-      <td data-label="Qué"><strong>Te quedó de ganancia</strong></td>
-      <td data-label="Importe" class="align-right mono ${quedo < 0 ? "saldo-negativo" : ""}"><strong>${money(quedo)}</strong></td>
-    </tr>`;
+  pintarDesgloseVenta(venta.desglose_costos);
 
   // Las devoluciones de esta venta viven en su propio caché (cargarDevoluciones,
   // ya resuelto para cuando se navega acá); el panel entero se oculta si no hay

@@ -1707,23 +1707,19 @@
           </div>
         </section>
 
-        <!-- La comisión del canal y el envío que pagó el negocio (hist. §129):
-             gastos de esta venta, solo para el admin. -->
+        <!-- Adónde fue la plata (hist. §131): de lo que pagó el cliente, cuánto
+             fue mercadería, packaging, cada gasto de la venta (comisión, envío,
+             cuotas) e IVA, con su porcentaje contra el promedio del negocio.
+             Solo para el admin. -->
         <section class="panel col-admin" id="fichaVentaCostosPanel" hidden>
           <div class="panel-head">
-            <h2>Costos de vender</h2>
+            <div>
+              <h2>Adónde fue la plata</h2>
+              <p class="panel-sub" id="fichaVentaDesgloseSub"></p>
+            </div>
           </div>
-          <div class="tabla-scroll">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th scope="col">Qué</th>
-                <th scope="col" class="align-right">Importe</th>
-              </tr>
-            </thead>
-            <tbody id="fichaVentaCostos"></tbody>
-          </table>
-          </div>
+          <div class="desglose-barra" id="fichaVentaDesgloseBarra" role="img"></div>
+          <ul class="desglose-lista" id="fichaVentaCostos"></ul>
         </section>
 
         <section class="panel" id="fichaVentaDevolucionesPanel" hidden>

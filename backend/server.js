@@ -1936,7 +1936,9 @@ const CLAVES_SENSIBLES = new Set([
   'margen_objetivo',
   'margen_bajo_objetivo',
   // La comisión y el envío que paga el negocio en cada venta (hist. §129).
-  'costos_de_vender'
+  'costos_de_vender',
+  // Adónde fue la plata de la venta, con sus porcentajes (hist. §131).
+  'desglose_costos'
 ]);
 
 function podarSensibles(valor) {
@@ -6014,6 +6016,124 @@ function consumosDeLaVenta(ventaId) {
     .map((c) => ({ ...c, nombre: nombreConVariante(c) }));
 }
 
+// Adónde fue la plata de una venta (pedido del usuario, 4 de noviembre): de
+// lo que pagó el cliente, cuánto fue mercadería, lo usado al vender (la caja,
+// la bolsa), cada categoría de gasto de la venta (comisión, envío, cuotas), el
+// IVA y lo que quedó, cada uno con su porcentaje y el promedio del negocio en
+// los últimos 90 días, para ver qué se puede bajar o qué está raro.
+// El promedio de un costo se mide entre las ventas que lo tuvieron (la
+// comisión, contra las ventas con comisión), y pide al menos 3 para comparar.
+const DIAS_PROMEDIO_DESGLOSE = 90;
+const VENTAS_MINIMAS_PROMEDIO = 3;
+function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacionId }) {
+  const base = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
+  if (!(base > 0)) return null;
+
+  const filtro = `ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.carga_inicial = 0
+                  AND ventas.fecha >= ? AND ventas.id <> ?`;
+  const params = [organizacionId, sumarDias(fechaDeHoy(), -DIAS_PROMEDIO_DESGLOSE), venta.id];
+  const totalDeLaVenta = '(SELECT SUM(cantidad * precio_unitario) FROM venta_items WHERE venta_id = ventas.id)';
+  // Por venta, para comparar la mercadería y el IVA solo contra las ventas que
+  // los tuvieron: un servicio no tiene costo de mercadería y bajaría el promedio.
+  const general = db
+    .prepare(
+      `SELECT COUNT(*) AS n, SUM(t.total) AS total, SUM(t.costo) AS costo, SUM(t.iva) AS iva,
+              SUM(CASE WHEN t.costo > 0 THEN 1 ELSE 0 END) AS n_costo,
+              SUM(CASE WHEN t.costo > 0 THEN t.total ELSE 0 END) AS total_costo,
+              SUM(CASE WHEN t.iva > 0 THEN 1 ELSE 0 END) AS n_iva,
+              SUM(CASE WHEN t.iva > 0 THEN t.total ELSE 0 END) AS total_iva
+         FROM (SELECT SUM(venta_items.cantidad * venta_items.precio_unitario) AS total,
+                      SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo, SUM(venta_items.iva) AS iva
+                 FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
+                WHERE ${filtro}
+                GROUP BY ventas.id) t`
+    )
+    .get(...params);
+  const deConsumos = db
+    .prepare(
+      `SELECT COUNT(*) AS n, SUM(t.total) AS total, SUM(t.importe) AS importe FROM (
+         SELECT ${totalDeLaVenta} AS total,
+                (SELECT SUM(cantidad * costo_unitario_historico) FROM venta_consumos WHERE venta_id = ventas.id) AS importe
+           FROM ventas
+          WHERE ${filtro} AND EXISTS (SELECT 1 FROM venta_consumos WHERE venta_id = ventas.id)) t`
+    )
+    .get(...params);
+  const porCategoria = new Map(
+    db
+      .prepare(
+        `SELECT t.categoria_id, COUNT(*) AS n, SUM(t.total) AS total, SUM(t.importe) AS importe FROM (
+           SELECT gastos.categoria_id, ventas.id, ${totalDeLaVenta} AS total, SUM(gastos.importe) AS importe
+             FROM gastos JOIN ventas ON ventas.id = gastos.venta_id
+            WHERE gastos.estado = 'activo' AND ${filtro}
+            GROUP BY gastos.categoria_id, ventas.id) t
+          GROUP BY t.categoria_id`
+      )
+      .all(...params)
+      .map((c) => [c.categoria_id, c])
+  );
+
+  const promedio = (agregado, campo) =>
+    agregado && agregado.n >= VENTAS_MINIMAS_PROMEDIO && agregado.total > 0 ? (agregado[campo] ?? 0) / agregado.total : null;
+  const fila = (clave, nombre, importe, promedioPct, detalle = []) => ({
+    clave,
+    nombre,
+    importe: redondear2(importe),
+    pct: importe / base,
+    promedio_pct: promedioPct,
+    // Más que lo normal: un cuarto más que el promedio y al menos un punto.
+    alto: promedioPct != null && importe / base > promedioPct * 1.25 && importe / base - promedioPct >= 0.01,
+    detalle
+  });
+
+  const filas = [];
+  const costoMercaderia = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
+  // Una venta de servicios no tiene mercadería: la fila en cero sería ruido.
+  if (costoMercaderia > 0) {
+    filas.push(
+      fila('mercaderia', 'Mercadería', costoMercaderia, promedio({ n: general.n_costo, total: general.total_costo, costo: general.costo }, 'costo'))
+    );
+  }
+  const costoConsumos = consumos.reduce((acc, c) => acc + c.cantidad * c.costo_unitario_historico, 0);
+  if (costoConsumos > 0) {
+    filas.push(
+      fila('consumos', 'Packaging (lo usado al vender)', costoConsumos, promedio(deConsumos, 'importe'), consumos.map((c) => c.nombre))
+    );
+  }
+  const categorias = new Map();
+  for (const g of costosDeVender) {
+    const cat = categorias.get(g.categoria_id) ?? { nombre: g.categoria, importe: 0, detalle: [] };
+    cat.importe += g.importe;
+    if (g.descripcion) cat.detalle.push(g.descripcion);
+    categorias.set(g.categoria_id, cat);
+  }
+  for (const [id, cat] of categorias) {
+    filas.push(fila(`gasto:${id}`, cat.nombre, cat.importe, promedio(porCategoria.get(id), 'importe'), cat.detalle));
+  }
+  const iva = items.reduce((acc, i) => acc + i.iva, 0);
+  if (iva > 0) filas.push(fila('iva', 'IVA (es del fisco)', iva, promedio({ n: general.n_iva, total: general.total_iva, iva: general.iva }, 'iva')));
+
+  // Lo que quedó: el promedio sale de todas las ventas, con todos sus costos.
+  const costos = filas.reduce((acc, f) => acc + f.importe, 0);
+  const gastosTodos = [...porCategoria.values()].reduce((acc, c) => acc + (c.importe ?? 0), 0);
+  const quedoPromedio =
+    general.n >= VENTAS_MINIMAS_PROMEDIO && general.total > 0
+      ? (general.total - general.costo - (general.iva ?? 0) - (deConsumos.importe ?? 0) - gastosTodos) / general.total
+      : null;
+  const quedo = base - costos;
+  return {
+    base: redondear2(base),
+    dias_promedio: DIAS_PROMEDIO_DESGLOSE,
+    filas,
+    quedo: {
+      importe: redondear2(quedo),
+      pct: quedo / base,
+      promedio_pct: quedoPromedio,
+      // Menos que lo normal: un cuarto menos que el promedio y al menos dos puntos.
+      bajo: quedoPromedio != null && quedo / base < quedoPromedio * 0.75 && quedoPromedio - quedo / base >= 0.02
+    }
+  };
+}
+
 // Todo lo configurado, para que el alta de venta y el punto de venta armen la
 // propuesta sin ir al servidor en cada renglón. El stock es el del depósito
 // predeterminado, para avisar si no alcanza: el servidor controla el de la venta.
@@ -6196,7 +6316,7 @@ app.get('/api/ventas/:id', (req, res) => {
   // (CLAVES_SENSIBLES), como el costo.
   const costosDeVender = db
     .prepare(
-      `SELECT gastos.id, categorias_gasto.nombre AS categoria, gastos.descripcion, gastos.importe
+      `SELECT gastos.id, gastos.categoria_id, categorias_gasto.nombre AS categoria, gastos.descripcion, gastos.importe
          FROM gastos JOIN categorias_gasto ON categorias_gasto.id = gastos.categoria_id
         WHERE gastos.venta_id = ? AND gastos.estado = 'activo'
         ORDER BY gastos.id`
@@ -6206,6 +6326,7 @@ app.get('/api/ventas/:id', (req, res) => {
   res.json({
     ...venta,
     costos_de_vender: costosDeVender,
+    desglose_costos: desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacionId: req.usuario.organizacion_id }),
     tiene_devolucion: Boolean(venta.tiene_devolucion),
     carga_inicial: Boolean(venta.carga_inicial),
     items: items.map((i) => ({
@@ -10876,6 +10997,11 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
 // Las cuotas sin interés que paga el negocio en un cobro de Mercado Pago (hist.
 // §130) van aparte de la comisión: se deciden distinto (ofrecerlas o no).
 const CATEGORIAS_COSTO_DE_VENDER = { comision: 'Comisiones de venta', envio: 'Envíos', cuotas: 'Cuotas sin interés' };
+// "6,29 %": la descripción de una comisión dice qué parte se llevó (hist. §131),
+// así se lee también en Gastos, lejos de la venta. El espacio no se corta.
+function porcentajeDe(parte, base) {
+  return `${(base > 0 ? (parte / base) * 100 : 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}\u00a0%`;
+}
 function registrarCostoDeVender({ ventaId, tipo, importe, cuentaId, fecha, descripcion, organizacionId }) {
   const nombre = CATEGORIAS_COSTO_DE_VENDER[tipo];
   let categoria = db.prepare('SELECT id, tipo FROM categorias_gasto WHERE organizacion_id = ? AND nombre = ?').get(organizacionId, nombre);
@@ -18154,7 +18280,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
         if (cuentaCanal) {
           const comun = { ventaId: id, cuentaId: cuentaCanal.id, fecha: fechaDelPedido(pedido), organizacionId };
           if (comision > 0) {
-            registrarCostoDeVender({ ...comun, tipo: 'comision', importe: comision, descripcion: `Comisión de ${canal(integracion)}, venta #${id} (pedido #${numero})` });
+            registrarCostoDeVender({ ...comun, tipo: 'comision', importe: comision, descripcion: `Comisión de ${canal(integracion)} (${porcentajeDe(comision, total - envio)} de la venta), venta #${id} (pedido #${numero})` });
           }
           if (envioPropio > 0) {
             registrarCostoDeVender({ ...comun, tipo: 'envio', importe: envioPropio, descripcion: `Envío de la venta #${id} (pedido #${numero})` });
@@ -19367,10 +19493,10 @@ function procesarPagoMP(integracion, pago) {
       cobroId = registrarCobro(ventaId, venta.cliente_id, d.importe, cuenta.id, notaDelPagoMP(externoId, d), organizacionId);
       const comun = { ventaId, cuentaId: cuenta.id, organizacionId };
       if (d.comision > 0) {
-        registrarCostoDeVender({ ...comun, tipo: 'comision', importe: d.comision, descripcion: `Comisión de Mercado Pago, venta #${ventaId} (pago ${externoId})` });
+        registrarCostoDeVender({ ...comun, tipo: 'comision', importe: d.comision, descripcion: `Comisión de Mercado Pago (${porcentajeDe(d.comision, d.importe)} del pago), venta #${ventaId} (pago ${externoId})` });
       }
       if (d.financiacion > 0) {
-        registrarCostoDeVender({ ...comun, tipo: 'cuotas', importe: d.financiacion, descripcion: `Cuotas sin interés, venta #${ventaId} (pago ${externoId})` });
+        registrarCostoDeVender({ ...comun, tipo: 'cuotas', importe: d.financiacion, descripcion: `Cuotas sin interés (${porcentajeDe(d.financiacion, d.importe)} del pago), venta #${ventaId} (pago ${externoId})` });
       }
       registrarAuditoria({
         actor: 'sistema',

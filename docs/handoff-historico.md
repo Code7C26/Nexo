@@ -11490,3 +11490,69 @@ de vender) y la página con el pago. Sin errores de consola.
 comisiones reales de Mercado Libre desde el pago); el 4 (pagos que no
 salieron de Nexo); el 5 (QR en el punto de venta) y el 6 (la cuenta
 conciliada).
+
+## 131. Adónde fue la plata de cada venta, 4 de noviembre de 2026
+
+**Pedido del usuario** (4 de noviembre): "la comisión de Mercado Pago que se
+clasifica como gasto [...] está bueno, pero también quiero que se aclare el
+porcentaje [...] Y en la misma venta, que salgan todos los porcentajes de lo
+que consumió ese costo. Que no sea simplemente todo costo. Sea comisión de
+Mercado Pago, envío, packaging y todas las categorías de gasto de esa venta
+[...] El dueño puede ver qué puede bajar o qué está bien y qué está medio
+raro. Que cada venta tenga como su fichita de eso."
+
+**Qué se hizo.**
+- **El porcentaje en la descripción de la comisión:** "Comisión de Mercado
+  Pago (6,29 % del pago), venta #35 (pago …)", "Cuotas sin interés (… del
+  pago)" y "Comisión de Mercado Libre (13 % de la venta)" (sobre los
+  productos, sin el envío que paga el cliente). Así se lee también en Gastos,
+  lejos de la venta. Entre el número y el "%" va un espacio que no se corta.
+  Las comisiones ya registradas conservan su descripción vieja (no se
+  reescribieron); la ficha les calcula el porcentaje igual.
+- **"Adónde fue la plata" en la ficha de la venta** (reemplaza "Costos de
+  vender", solo admin): una barra con los colores de cada parte y una lista
+  con lo que pagó el cliente repartido en mercadería, packaging (lo usado al
+  vender, §126), cada categoría de gasto de la venta (comisiones, envíos,
+  cuotas sin interés, o la que sea), IVA si es responsable inscripto, y "Te
+  quedó". Cada fila tiene importe, porcentaje y, debajo, el detalle (la
+  descripción de cada gasto, qué se usó al vender).
+- **Contra el promedio del negocio:** "Tu promedio: X %" de los últimos 90
+  días (ventas activas, sin la carga inicial ni la venta misma). Cada costo se
+  compara solo contra las ventas que lo tuvieron (la comisión contra las
+  ventas con comisión; la mercadería contra las ventas con costo, para que los
+  servicios no bajen el promedio), y pide al menos 3 ventas.
+  - "Más que lo normal" (naranja) si un costo es un cuarto más que el
+    promedio y al menos un punto más.
+  - "Menos que lo normal" en "Te quedó" si es un cuarto menos que el promedio
+    y al menos dos puntos menos.
+  - Los umbrales son decisión mía, para revisar con el uso.
+- **La base es lo que pagó el cliente** (los renglones, con IVA), igual que
+  la ganancia de la tarjeta. Las devoluciones no se descuentan, como en la
+  ganancia de siempre. Una venta sin renglones (saldo anterior) no tiene
+  desglose. Una fila de mercadería en cero (venta de servicios) no se muestra.
+
+**Backend.** `desgloseDeLaVenta` (junto a `consumosDeLaVenta`, en
+`server.js`) arma `desglose_costos` en `GET /api/ventas/:id`: `{ base,
+dias_promedio, filas: [{ clave, nombre, importe, pct, promedio_pct, alto,
+detalle }], quedo: { importe, pct, promedio_pct, bajo } }`. Tres consultas de
+agregados (por venta, con consumos y por categoría de gasto), SQL portable.
+`desglose_costos` está en `CLAVES_SENSIBLES`: el empleado no lo recibe.
+`porcentajeDe` arma el texto de las descripciones. Sin cambios de esquema.
+
+**Frontend.** `pintarDesgloseVenta` en `app.js`, el panel
+`#fichaVentaCostosPanel` de `index.html` y las clases `.desglose-*` de
+`styles.css` (en el celular, importe y porcentaje apilados a la derecha).
+Colores: mercadería gris, packaging naranja, gastos violeta/azul/rojo, IVA
+gris oscuro y lo que quedó verde.
+
+**Cómo se verificó.** `mercadopago.test.js` (el porcentaje en las
+descripciones, el desglose y que el empleado no lo ve) y un test nuevo en
+`al-vender.test.js` (negocio aparte: tres ventas normales, el promedio del
+packaging, y una con seis bolsas que sale "Más que lo normal"). `npm test`
+(293), lint y `npm run regresion` (diferencias justificadas: el campo nuevo
+solo para el admin y los callbacks que devuelven `index.html`). En Chrome con
+una base sembrada y comisiones y envíos cargados: en la compu y a 390 px, sin
+scroll horizontal.
+
+**Queda:** que el usuario lo vea; el manual (`core/manual.js`) se actualiza en
+la revisión final, como está acordado.

@@ -308,8 +308,21 @@ test('el pago aprobado entra una sola vez: cobro, comisión y cuotas como gastos
   assert.equal(venta.estado_cobro, 'cobrado');
   const costos = venta.costos_de_vender.map((c) => [c.categoria, c.importe]).sort();
   assert.deepEqual(costos, [['Comisiones de venta', 1500], ['Cuotas sin interés', 2000]]);
-  // El empleado no ve los costos de vender.
-  assert.equal((await empleado.get(`/api/ventas/${ventaA}`)).json.costos_de_vender, undefined);
+  // La descripción dice qué parte del pago se llevó (hist. §131).
+  assert.deepEqual(venta.costos_de_vender.map((c) => c.descripcion.match(/\((.+) del pago\)/)[1]).sort(), ['5\u00a0%', '6,67\u00a0%']);
+  // Adónde fue la plata: cada costo con su porcentaje de la venta, y lo que quedó.
+  const desglose = venta.desglose_costos;
+  assert.equal(desglose.base, 30000);
+  const comision = desglose.filas.find((f) => f.nombre === 'Comisiones de venta');
+  assert.equal(comision.importe, 1500);
+  assert.equal(comision.pct, 0.05);
+  assert.equal(desglose.filas.find((f) => f.nombre === 'Cuotas sin interés').importe, 2000);
+  const costosTotales = desglose.filas.reduce((acc, f) => acc + f.importe, 0);
+  assert.equal(desglose.quedo.importe, 30000 - costosTotales);
+  // El empleado no ve los costos de vender ni el desglose.
+  const deEmpleado = (await empleado.get(`/api/ventas/${ventaA}`)).json;
+  assert.equal(deEmpleado.costos_de_vender, undefined);
+  assert.equal(deEmpleado.desglose_costos, undefined);
 
   const estado = await estadoDe(admin);
   assert.equal(estado.cobrados, 1);

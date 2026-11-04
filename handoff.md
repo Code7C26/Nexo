@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §130);
+    siguiente número (hoy el último es §131);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,9 +19,20 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (3 de noviembre de 2026)
+## Estado actual (4 de noviembre de 2026)
 
-**Lo último (3 de noviembre, hist. §130): Mercado Pago, pasos 1 y 3 del plan,
+**Lo último (4 de noviembre, hist. §131): "Adónde fue la plata" de cada
+venta, hecho y commiteado en `solla`, sin publicar.** Pedido del usuario
+("que cada venta tenga su fichita"):
+- la ficha de la venta reparte lo que pagó el cliente en mercadería,
+  packaging, cada categoría de gasto de la venta (comisión, envío, cuotas),
+  IVA y "Te quedó", con importe, porcentaje y el promedio del negocio en 90
+  días; marca "Más que lo normal" / "Menos que lo normal";
+- la descripción de la comisión (Mercado Pago, Mercado Libre) y de las
+  cuotas dice el porcentaje ("6,29 % del pago"), también en Gastos;
+- sin cambios de esquema. **Falta que el usuario lo vea.**
+
+**Antes (3 de noviembre, hist. §130): Mercado Pago, pasos 1 y 3 del plan,
 hechos y commiteados en `solla`, sin publicar** (sesión sin el usuario:
 "seguir con algo vos").
 - Configuración → Cobros → Mercado Pago: conectar la cuenta (OAuth con PKCE,

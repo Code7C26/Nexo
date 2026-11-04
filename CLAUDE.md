@@ -501,6 +501,10 @@ identificado por usuario existe (hay login y roles, ver §35), pero el reporte
 IVA (hist. §113, §114): cada renglón congela su alícuota y su IVA. Para un
 responsable inscripto, la ganancia, el margen y el resultado se miden sin
 IVA (es del fisco, no ingreso); para los demás no cambia nada.
+La ficha de cada venta muestra adónde fue la plata: mercadería, packaging,
+cada gasto de la venta (comisión con su porcentaje, envío, cuotas), IVA y lo
+que quedó, cada uno con su porcentaje contra el promedio del negocio (hist.
+§131).
 
 ---
 
