@@ -108,6 +108,8 @@ async function vincular(cliente, telefono) {
   assert.equal(pedido.status, 200, pedido.texto);
   const [respuesta] = await conversar(telefono, texto(`NEXO ${pedido.json.codigo}`));
   assert.match(respuesta.texto, /quedó vinculado/);
+  // Al celular argentino se le contesta sin el 9 que trae el aviso.
+  assert.equal(respuesta.para, telefono.replace(/^549/, '54'));
   return pedido.json;
 }
 
