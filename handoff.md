@@ -2138,6 +2138,13 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   - cargar hasta 5 teléfonos de prueba.
 
 **Después de la presentación:**
+- **Ofertas en presupuestos** (charlado con el usuario el 4 de noviembre, "lo
+  dejamos para después"): el presupuesto propone el precio de la oferta como
+  el alta de venta, y cada renglón guarda la oferta y el precio de lista
+  (columnas nuevas en `presupuesto_items`). La regla: el presupuesto respeta
+  su precio hasta su propio vencimiento aunque la oferta termine antes, y al
+  convertirlo la venta conserva la oferta del presupuesto (hoy el precio pasa
+  bien, pero la venta quedaría sin el nombre de la oferta).
 - **ARCA en producción.** Cada empresa usa su propio certificado, o delega el
   servicio en el CUIT de Nexo.
 - **Producción de WhatsApp.** Pide verificar un negocio real ante Meta.
