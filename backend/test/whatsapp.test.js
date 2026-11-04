@@ -1,6 +1,6 @@
 // WhatsApp como canal del asistente (hist. §134), contra un WhatsApp falso en
 // la misma máquina: el saludo del webhook, la firma de los avisos, vincular el
-// teléfono con el código de Mi cuenta, y una frase (escrita o en audio) que
+// teléfono con el código de Configuración → WhatsApp, y una frase (escrita o en audio) que
 // vuelve como propuesta con botones y se registra recién al confirmar, con
 // las mismas reglas que el asistente de la web. Va aparte porque cada archivo
 // levanta su servidor.
@@ -145,7 +145,7 @@ test('el saludo del webhook: solo con el token de Nexo', async () => {
   assert.equal(mal.status, 403);
 });
 
-test('vincular: con el código de Mi cuenta, y sin firma no se atiende nada', async () => {
+test('vincular: con el código de Configuración, y sin firma no se atiende nada', async () => {
   assert.deepEqual((await admin.get('/api/whatsapp')).json, { disponible: true, numero: '15550100100', vinculo: null });
 
   // Un número sin vincular recibe cómo hacerlo.
