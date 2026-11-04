@@ -3735,7 +3735,7 @@ function valorizadoProducto(precioCosto, stock, stockVariantes, valorizadoVarian
 }
 
 const SELECT_PRODUCTO = `
-  SELECT productos.id, productos.nombre, productos.sku, productos.codigo_barras, productos.precio_costo,
+  SELECT productos.id, productos.nombre, productos.sku, productos.codigo_barras, productos.plu, productos.precio_costo,
          productos.precio_venta, productos.activo,
          productos.stock_minimo, productos.stock_maximo,
          productos.categoria_id, categorias.nombre AS categoria,
@@ -3890,6 +3890,27 @@ function errorCodigoDeBarras(valor) {
   }
   return null;
 }
+// El PLU de la balanza (hist. §132): un número de hasta 6 cifras, guardado
+// sin los ceros de adelante (la etiqueta lo trae con ceros: "00123" es 123).
+const MAX_PLU = 999999;
+function normalizarPlu(valor) {
+  if (valor == null || valor === '') return null;
+  return typeof valor === 'string' && /^\s*\d+\s*$/.test(valor) ? Number(valor) : valor;
+}
+function errorPlu(valor) {
+  const plu = normalizarPlu(valor);
+  if (plu === null) return null;
+  if (!Number.isInteger(plu) || plu < 1 || plu > MAX_PLU) return 'El código de balanza (PLU) es un número de 1 a 999999.';
+  return null;
+}
+function pluOcupado(plu, organizacionId, productoId = null) {
+  if (plu === null) return null;
+  const otro = db
+    .prepare('SELECT nombre FROM productos WHERE organizacion_id = ? AND plu = ? AND (? IS NULL OR id <> ?)')
+    .get(organizacionId, plu, productoId, productoId);
+  return otro ? `El código de balanza ${plu} ya es de "${otro.nombre}".` : null;
+}
+
 // Un código identifica una sola cosa que se vende: no puede estar en dos
 // productos, ni en un producto y una variante. Los índices únicos cubren cada
 // tabla por separado; esto, las dos juntas. Devuelve el error o null, sin
@@ -3919,14 +3940,14 @@ function codigoDeBarrasOcupado(codigo, organizacionId, { productoId = null, vari
 function validarProducto(
   {
     nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos, alicuota_iva,
-    codigo_barras
+    codigo_barras, plu
   },
   organizacionId
 ) {
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
-  const errorCodigo = errorCodigoDeBarras(codigo_barras);
+  const errorCodigo = errorCodigoDeBarras(codigo_barras) ?? errorPlu(plu);
   if (errorCodigo) return errorCodigo;
   if (descripcion != null && typeof descripcion !== 'string') {
     return 'La descripción no es válida.';
@@ -3996,10 +4017,11 @@ app.post('/api/productos', soloAdmin, (req, res) => {
 // envío que crea Nexo solo (productoDeEnvio), que no frena por el tope del plan.
 function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) {
   const { nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos,
-    alicuota_iva, codigo_barras } = cuerpo;
+    alicuota_iva, codigo_barras, plu } = cuerpo;
   const skuNormalizado = sku && sku.trim() ? sku.trim() : null;
   const codigoBarras = normalizarCodigoBarras(codigo_barras);
-  const ocupado = codigoDeBarrasOcupado(codigoBarras, organizacionId);
+  const pluNormalizado = normalizarPlu(plu);
+  const ocupado = codigoDeBarrasOcupado(codigoBarras, organizacionId) ?? pluOcupado(pluNormalizado, organizacionId);
   if (ocupado) throw new ErrorValidacion(ocupado);
   // Sin unidad ni tipo, los del tipo de negocio (una carnicería vende por kg).
   const perfil = perfilDeEmpresa(organizacionId);
@@ -4014,8 +4036,8 @@ function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) 
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
-                                descripcion, duracion_minutos, alicuota_iva, codigo_barras)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -4032,11 +4054,15 @@ function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) 
         normalizarDescripcion(descripcion),
         normalizarDuracion(duracion_minutos),
         alicuota_iva == null ? '21' : String(alicuota_iva),
-        codigoBarras
+        codigoBarras,
+        pluNormalizado
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed') && String(err.message).includes('codigo_barras')) {
       throw new ErrorValidacion(`Ya existe un producto con el código de barras ${codigoBarras}.`);
+    }
+    if (String(err.message).includes('UNIQUE constraint failed') && String(err.message).includes('plu')) {
+      throw new ErrorValidacion(`Ya existe un producto con el código de balanza ${pluNormalizado}.`);
     }
     if (String(err.message).includes('UNIQUE constraint failed')) {
       throw new ErrorValidacion(skuNormalizado ? `Ya existe un producto con el SKU "${skuNormalizado}".` : 'Ya existe un producto con ese SKU.');
@@ -4098,7 +4124,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
     .prepare(
       `SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo,
-              descripcion, duracion_minutos, alicuota_iva, codigo_barras
+              descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu
          FROM productos WHERE id = ? AND organizacion_id = ?`
     )
     .get(productoId, req.usuario.organizacion_id);
@@ -4171,9 +4197,12 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     descripcion: normalizarDescripcion(fusionado.descripcion),
     duracion_minutos: normalizarDuracion(fusionado.duracion_minutos),
     alicuota_iva: fusionado.alicuota_iva == null ? '21' : String(fusionado.alicuota_iva),
-    codigo_barras: normalizarCodigoBarras(fusionado.codigo_barras)
+    codigo_barras: normalizarCodigoBarras(fusionado.codigo_barras),
+    plu: normalizarPlu(fusionado.plu)
   };
-  const ocupado = codigoDeBarrasOcupado(nuevo.codigo_barras, req.usuario.organizacion_id, { productoId });
+  const ocupado =
+    codigoDeBarrasOcupado(nuevo.codigo_barras, req.usuario.organizacion_id, { productoId }) ??
+    pluOcupado(nuevo.plu, req.usuario.organizacion_id, productoId);
   if (ocupado) throw new ErrorBulk(ocupado);
   // Pasar a servicio deja de controlar el stock: si todavía tiene, se perdería
   // de vista. Primero se ajusta a 0.
@@ -4215,7 +4244,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
     'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo',
-    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras'
+    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras', 'plu'
   ]);
 
   withTransaction(() => {
@@ -4225,7 +4254,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     db.prepare(
       `UPDATE productos
           SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
-              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?
+              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?, plu = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -4242,6 +4271,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.duracion_minutos,
       nuevo.alicuota_iva,
       nuevo.codigo_barras,
+      nuevo.plu,
       productoId
     );
     if (preciosPorLista) {
@@ -14104,7 +14134,7 @@ app.get('/api/negocio', (req, res) => {
   const negocio = db
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
-              razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado
+              razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado, balanza_formato
          FROM organizaciones
         WHERE id = ?`
     )
@@ -14121,9 +14151,11 @@ app.get('/api/negocio', (req, res) => {
   // sensible.
   // La factura electrónica, para los formularios (el punto de venta lo pone
   // ARCA) y para el comprobante impreso (la leyenda de prueba).
-  const { arca_punto_venta: arcaPuntoVenta, arca_verificado: arcaVerificado, ...datos } = negocio;
+  const { arca_punto_venta: arcaPuntoVenta, arca_verificado: arcaVerificado, balanza_formato: balanzaFormato, ...datos } = negocio;
   res.json({
     ...datos,
+    // Las etiquetas de la balanza (hist. §132): el punto de venta las lee.
+    balanza: balanzaFormato ? JSON.parse(balanzaFormato) : null,
     factura_electronica: {
       activa: facturaElectronicaActiva(negocio),
       punto_venta: arcaPuntoVenta,
@@ -14172,6 +14204,50 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
       contar("SELECT COUNT(*) AS n FROM integraciones WHERE organizacion_id = ? AND estado = 'conectada' AND plataforma <> 'mercadopago'") > 0 ||
       contar("SELECT COUNT(*) AS n FROM ventas WHERE organizacion_id = ? AND canal IS NOT NULL AND canal <> 'local'") > 0
   });
+});
+
+// El formato de las etiquetas de la balanza (hist. §132), o null para dejar
+// de usarla. Las mismas reglas que frontend/js/core/balanza.js
+// (errorDeFormato), que deduce el formato de una etiqueta real.
+function errorFormatoBalanza(formato) {
+  if (!formato || typeof formato !== 'object' || Array.isArray(formato)) return 'El formato de la etiqueta no es válido.';
+  const { prefijo, plu_digitos: pluDigitos, valor, decimales } = formato;
+  const decimalesValidos = { peso: [3, 2], importe: [0, 2, 1] }[valor];
+  if (typeof prefijo !== 'string' || !/^2\d?$/.test(prefijo)) return 'El código de la balanza empieza con 2 y uno o dos números.';
+  if (!Number.isInteger(pluDigitos) || pluDigitos < 3 || pluDigitos > 6) return 'El PLU tiene que tener de 3 a 6 números.';
+  if (!decimalesValidos) return 'La etiqueta trae el peso o el importe.';
+  if (!decimalesValidos.includes(decimales)) return 'Los decimales del valor no son válidos.';
+  const digitosValor = 12 - prefijo.length - pluDigitos;
+  if (digitosValor < 4 || digitosValor > 7) return 'El prefijo, el PLU y el valor no suman los 13 números de la etiqueta.';
+  return null;
+}
+
+app.put('/api/negocio/balanza', soloAdmin, (req, res) => {
+  const { formato } = req.body ?? {};
+  const organizacionId = req.usuario.organizacion_id;
+  let guardado = null;
+  if (formato != null) {
+    const error = errorFormatoBalanza(formato);
+    if (error) return res.status(400).json({ error });
+    // Solo las cuatro claves: nada más del cuerpo llega a la base.
+    guardado = { prefijo: formato.prefijo, plu_digitos: formato.plu_digitos, valor: formato.valor, decimales: formato.decimales };
+  }
+  const anterior = db.prepare('SELECT balanza_formato FROM organizaciones WHERE id = ?').get(organizacionId).balanza_formato;
+  const nuevo = guardado ? JSON.stringify(guardado) : null;
+  withTransaction(() => {
+    db.prepare('UPDATE organizaciones SET balanza_formato = ? WHERE id = ?').run(nuevo, organizacionId);
+    if (anterior !== nuevo) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        valor_anterior: anterior,
+        valor_nuevo: nuevo,
+        detalle: nuevo ? 'Formato de las etiquetas de la balanza guardado' : 'Dejó de usar las etiquetas de la balanza'
+      });
+    }
+  });
+  res.json({ balanza: guardado });
 });
 
 app.put('/api/negocio', soloAdmin, (req, res) => {
@@ -14829,7 +14905,7 @@ app.get('/api/pos/catalogo', (req, res) => {
     .get(organizacionId)?.id;
   const productos = db
     .prepare(
-      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.codigo_barras,
+      `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.codigo_barras, productos.plu,
               productos.precio_venta AS precio, COALESCE(stock_por_deposito.cantidad, 0) AS stock,
               categorias.nombre AS categoria, productos.unidad, productos.tipo
          FROM productos

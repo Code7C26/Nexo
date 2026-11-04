@@ -3410,6 +3410,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Etapas de las consultas</span><span class="config-item-desc">Los pasos de tu embudo</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/balanza" data-seccion="balanza" data-modulo="pos">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#scan-barcode"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Balanza</span><span class="config-item-desc" id="configBalanzaResumen">Que el mostrador lea sus etiquetas</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/comprobantes" data-seccion="comprobantes">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
@@ -4597,6 +4602,53 @@
                   </button>
                 </div>
               </form>
+            </section>
+
+            <!-- Etiquetas de balanza (hist. §132): lo arma dominios/balanza.js. El
+                 formato se deduce de una etiqueta real; si más de uno la
+                 explica, pide otra. -->
+            <section class="config-pagina col-admin" data-seccion="balanza" aria-labelledby="configBalanzaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configBalanzaTitulo" tabindex="-1">Balanza</h2>
+                <p>Si tu balanza imprime etiquetas con código de barras, el punto de venta las lee: el producto entra con su peso, al precio de hoy de Nexo (nunca el de la etiqueta).</p>
+              </header>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Tus etiquetas</p>
+                  <p class="config-tarjeta-texto" id="balanzaEstado"></p>
+                </div>
+                <div class="config-tarjeta-pie" id="balanzaEstadoPie" hidden>
+                  <button type="button" class="btn btn-secundario" id="btnBalanzaQuitar">Dejar de usarla</button>
+                </div>
+              </div>
+              <form class="form config-tarjeta" id="formBalanza" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo" id="balanzaFormTitulo">Configurala con una etiqueta</p>
+                  <p class="config-tarjeta-texto">Pesá cualquier producto, pasá la etiqueta con el lector y copiá lo que tiene impreso. Nexo se da cuenta solo de cómo arma el código tu balanza.</p>
+                  <label>Código de la etiqueta
+                    <input type="text" name="codigo" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Pasala con el lector, o tipeá los 13 números" />
+                  </label>
+                  <label>Código del producto en la balanza (PLU)
+                    <input type="text" name="plu" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="Ej.: 123" />
+                  </label>
+                  <div class="form-fila">
+                    <label>Peso impreso (kg)
+                      <input type="number" name="peso" min="0" step="0.001" inputmode="decimal" placeholder="Ej.: 1,250" />
+                    </label>
+                    <label>Importe impreso ($)
+                      <input type="number" name="importe" min="0" step="0.01" inputmode="decimal" placeholder="Ej.: 11250" />
+                    </label>
+                  </div>
+                  <p class="campo-ayuda">Con uno de los dos alcanza. Si la etiqueta trae los dos, cargá los dos.</p>
+                  <div class="balanza-resultado" id="balanzaResultado" aria-live="polite" hidden></div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnBalanzaOtra" hidden>Empezar de nuevo</button>
+                  <button type="submit" class="btn btn-secundario" id="btnBalanzaProbar">Probar la etiqueta</button>
+                  <button type="button" class="btn btn-primary" id="btnBalanzaGuardar" hidden>Usar este formato</button>
+                </div>
+              </form>
+              <p class="campo-ayuda">Después, en cada producto que pesás, cargá su <strong>código de balanza (PLU)</strong>: es el número con el que lo tenés en la balanza.</p>
             </section>
 
             <!-- Avisar un problema (handoff.md, "Orden", punto 2): para los dos
@@ -5979,6 +6031,11 @@
              formulario (app.js). -->
         <label id="productoCodigoBarrasCampo">Código de barras
           <input type="text" name="codigo_barras" placeholder="Opcional: el del envase" autocomplete="off" maxlength="60" />
+        </label>
+        <!-- El PLU de la balanza que imprime etiquetas (hist. §132): solo para
+             lo que se vende por peso o volumen, o si ya tiene uno. -->
+        <label id="productoPluCampo">Código de balanza (PLU)
+          <input type="text" name="plu" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Opcional: el número del producto en la balanza" autocomplete="off" />
         </label>
         <label>Descripción
           <textarea name="descripcion" rows="2" maxlength="500" placeholder="Opcional: qué incluye"></textarea>

@@ -74,6 +74,7 @@ import "./dominios/carga-inicial.js";
 import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
+import "./dominios/balanza.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
@@ -1985,6 +1986,7 @@ async function abrirFichaProducto(id) {
   const campos = [
     ...(esServicio ? [] : [["SKU", producto.sku]]),
     ...(producto.codigo_barras || !(esServicio || producto.tiene_variantes) ? [["Código de barras", producto.codigo_barras]] : []),
+    ...(producto.plu ? [["Código de balanza (PLU)", String(producto.plu)]] : []),
     ["Categoría", producto.categoria],
     ...(producto.descripcion ? [["Descripción", producto.descripcion]] : []),
     [
@@ -2452,6 +2454,7 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   form.nombre.value = producto?.nombre ?? "";
   form.sku.value = producto?.sku ?? "";
   form.codigo_barras.value = producto?.codigo_barras ?? "";
+  form.plu.value = producto?.plu ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
@@ -2488,10 +2491,14 @@ function mostrarCamposSegunTipo() {
   // variante, no el producto.
   const conVariantes = productos.find((p) => p.id === productoEditandoId)?.variantes_count > 0;
   document.getElementById("productoCodigoBarrasCampo").hidden = (esServicio || conVariantes) && !form.codigo_barras.value;
+  // La balanza pesa: el PLU es de lo que se vende por peso o volumen.
+  document.getElementById("productoPluCampo").hidden =
+    (esServicio || conVariantes || !["kg", "g", "l", "ml"].includes(form.unidad.value)) && !form.plu.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
   document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
+document.getElementById("formProducto").unidad.addEventListener("change", mostrarCamposSegunTipo);
 // El lector termina cada lectura con Enter: en el código de barras no guarda
 // el formulario a medio llenar, pasa al campo siguiente.
 document.getElementById("formProducto").codigo_barras.addEventListener("keydown", (e) => {
@@ -2521,6 +2528,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     nombre: form.nombre.value,
     sku: form.sku.value || null,
     codigo_barras: form.codigo_barras.value || null,
+    plu: form.plu.value.trim() || null,
     descripcion: form.descripcion.value,
     // La duración es de un servicio: un producto no la manda.
     duracion_minutos: form.tipo.value === "servicio" && form.duracion_minutos.value !== "" ? Number(form.duracion_minutos.value) : null,

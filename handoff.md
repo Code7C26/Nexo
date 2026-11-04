@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §131);
+    siguiente número (hoy el último es §132);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -31,6 +31,19 @@ venta, hecho y commiteado en `solla`, sin publicar.** Pedido del usuario
 - la descripción de la comisión (Mercado Pago, Mercado Libre) y de las
   cuotas dice el porcentaje ("6,29 % del pago"), también en Gastos;
 - sin cambios de esquema. **Falta que el usuario lo vea.**
+
+**También el 4 de noviembre (hist. §132): etiquetas de balanza, hechas y
+commiteadas en `solla`, sin publicar.** Punto 1 de las ideas de Praxia:
+- cada producto que se pesa tiene su código de balanza (PLU), único por
+  negocio;
+- Configuración → Balanza deduce el formato de la etiqueta de una etiqueta
+  real (código, PLU y peso o importe impresos), y pide otra si dos formatos
+  la explican;
+- el punto de venta lee la etiqueta: el renglón entra con el peso, al precio
+  de hoy (con importe, el peso sale de importe ÷ precio);
+- migración aditiva: `productos.plu` y `organizaciones.balanza_formato`.
+- **Falta probarla con una balanza de verdad** (la del compañero de Praxia
+  sirve): el formato se dedujo con etiquetas armadas a mano.
 
 **Antes (3 de noviembre, hist. §130): Mercado Pago, pasos 1 y 3 del plan,
 hechos y commiteados en `solla`, sin publicar** (sesión sin el usuario:
@@ -1211,8 +1224,9 @@ en el tablero, ventas por hora, gastos fijos que se repiten y permisos por
 sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
 - ~~código de barras en producto y variante~~ **hecho** (hist. §127), sin
   publicar;
-- **sigue: etiquetas de balanza** (el código con el PLU y el peso, punto 1 de
-  la investigación), que se apoya en ese campo; después ofertas con vigencia y
+- ~~etiquetas de balanza~~ **hechas el 4 de noviembre** (hist. §132), sin
+  publicar;
+- **sigue: ofertas con vigencia** (punto 2 de la investigación), y después
   cobrar a cuenta y gastos desde el punto de venta.
 - En el medio, el usuario pidió el tipo "Tienda online": **hecho** (hist.
   §128, publicado en el PR #45), y la comisión y el envío (hist. §129, sin

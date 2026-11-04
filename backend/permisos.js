@@ -275,6 +275,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/negocio': 'ambos',
   'GET /api/negocio/primeros-pasos': 'admin',
   'PUT /api/negocio': 'admin',
+  // El formato de las etiquetas de la balanza (hist. §132).
+  'PUT /api/negocio/balanza': 'admin',
   // Descargar los datos y dar de baja el negocio (hist. §109): llevan costos
   // y borran todo.
   'GET /api/negocio/exportar': 'admin',

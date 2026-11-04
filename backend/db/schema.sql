@@ -244,7 +244,11 @@ CREATE TABLE IF NOT EXISTS productos (
   -- productos y variantes: los dos índices de db/index.js lo garantizan dentro
   -- de cada tabla, y server.js (codigoDeBarrasOcupado) entre las dos. NULL =
   -- sin código.
-  codigo_barras TEXT
+  codigo_barras TEXT,
+  -- El PLU: el código corto del producto en la balanza, que la etiqueta trae
+  -- junto con el peso o el importe (hist. §132). Único por empresa; NULL = no
+  -- se pesa en una balanza con etiquetas.
+  plu INTEGER
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -1156,7 +1160,12 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- Lo que contestó al final del alta (handoff 8c): 1 = el negocio ya venía
   -- funcionando y quiere cargar lo que ya tiene, 0 = arranca de cero. NULL =
   -- no se le preguntó (los negocios de antes).
-  ya_funcionaba INTEGER
+  ya_funcionaba INTEGER,
+  -- El formato de las etiquetas de su balanza (hist. §132), como JSON:
+  -- {"prefijo":"20","plu_digitos":5,"valor":"peso","decimales":3}. Se lee
+  -- en JS (frontend/js/core/balanza.js), sin funciones JSON del motor. NULL =
+  -- sin balanza.
+  balanza_formato TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

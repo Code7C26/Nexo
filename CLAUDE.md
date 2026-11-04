@@ -323,7 +323,9 @@ ml, m, con cantidades decimales) y tipo producto/servicio (un servicio no
 maneja stock) y alícuota de IVA (21 % de partida; el precio de venta es el
 final, con IVA incluido; hist. §112). Código de barras en el producto y en
 cada variante, aparte del SKU y único por empresa entre los dos; el lector
-del punto de venta lo busca primero (hist. §127).
+del punto de venta lo busca primero (hist. §127). Código de balanza (PLU)
+en lo que se pesa: el punto de venta lee la etiqueta de la balanza (hist.
+§132).
 
 ---
 
@@ -1273,7 +1275,9 @@ tesorería) y la pantalla `frontend/js/dominios/pos.js`, para los dos roles.
 La pantalla busca por nombre o SKU, y toma el SKU que tipea el lector físico
 con Enter o la cámara donde el navegador tiene `BarcodeDetector`. Cobra con
 uno o varios medios, con vuelto (solo en efectivo), y deja saldo en cuenta
-corriente solo si hay un cliente real ("Consumidor final" no fía). Queda
+corriente solo si hay un cliente real ("Consumidor final" no fía). Lee
+también las etiquetas de la balanza (Configuración → Balanza deduce su
+formato; el precio es el de hoy, nunca el de la etiqueta; hist. §132). Queda
 para después: descuentos y precio editable en el mostrador, alta rápida de
 cliente y venta sin conexión.
 

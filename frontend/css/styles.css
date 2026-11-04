@@ -8795,3 +8795,20 @@ a.segmento {
   }
   .desglose-pct { font-size: var(--txt-sm); font-weight: 600; color: var(--ink); }
 }
+
+/* Configuración → Balanza (hist. §132): lo que deduce el asistente de una
+   etiqueta real. */
+.balanza-resultado {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--surface-sunk);
+  font-size: var(--txt-sm);
+}
+.balanza-resultado[hidden] { display: none; }
+.balanza-resultado p { margin: 0 0 var(--sp-2); }
+.balanza-resultado p:last-child { margin-bottom: 0; }
+.balanza-resultado ul { margin: 0 0 var(--sp-2); padding-left: 20px; }
+.balanza-error { color: var(--accent-danger); }
+/* El pie de "Tus etiquetas" solo con la balanza configurada. */
+.config-tarjeta-pie[hidden] { display: none; }
