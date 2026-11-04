@@ -8876,3 +8876,18 @@ a.segmento {
 .item-row input.item-precio-oferta { color: var(--accent-ok); font-weight: 600; }
 .item-ofertas { margin: calc(-1 * var(--sp-1)) 0 var(--sp-2); text-align: right; font-size: var(--txt-sm); }
 .item-ofertas[hidden] { display: none; }
+
+/* Mi cuenta → WhatsApp (hist. §134): el mensaje para vincular, grande y
+   fácil de copiar. */
+.perfil-whatsapp-codigo { display: grid; gap: var(--sp-2); justify-items: start; margin-top: var(--sp-2); }
+.perfil-whatsapp-codigo[hidden] { display: none; }
+.perfil-whatsapp-codigo p { margin: 0; }
+.perfil-whatsapp-mensaje {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  user-select: all;
+}

@@ -47,6 +47,7 @@ import {
 } from './tiendanube.js';
 import * as mercadoLibre from './mercadolibre.js';
 import * as mercadoPago from './mercadopago.js';
+import * as whatsapp from './whatsapp.js';
 // Las reglas de las ofertas (hist. §133) son las mismas que usa la pantalla:
 // se importa el módulo del frontend, que es puro, en vez de copiarlo.
 import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
@@ -1877,6 +1878,32 @@ app.post('/api/integraciones/mercadopago/notificaciones', (req, res) => {
   setImmediate(() =>
     atenderAvisoMercadoPago(cuenta, pagoId).catch((err) => console.error('[mercadopago] aviso:', err.message))
   );
+});
+
+// WhatsApp (hist. §134). El saludo con que Meta da de alta el webhook: devuelve
+// el desafío solo si el token es el de Nexo.
+app.get('/api/integraciones/whatsapp/webhook', (req, res) => {
+  const desafio = whatsapp.saludoDelWebhook({
+    modo: req.query['hub.mode'],
+    tokenRecibido: req.query['hub.verify_token'],
+    desafio: req.query['hub.challenge']
+  });
+  if (desafio === null) return res.status(403).json({ error: 'Token de verificación inválido.' });
+  res.type('text/plain').send(desafio);
+});
+
+// Los mensajes. Se contesta enseguida (Meta reintenta si se demora) y se
+// atienden después, de a uno: así un doble toque en "Confirmar" no registra
+// dos veces. Un aviso sin la firma de Meta se descarta.
+let colaWhatsApp = Promise.resolve();
+app.post('/api/integraciones/whatsapp/webhook', (req, res) => {
+  res.sendStatus(200);
+  if (!whatsapp.avisoFirmado(req.cuerpoCrudo, req.get('x-hub-signature-256'))) return;
+  for (const mensaje of whatsapp.mensajesDelAviso(req.body)) {
+    colaWhatsApp = colaWhatsApp
+      .then(() => atenderWhatsApp(mensaje))
+      .catch((err) => console.error('[whatsapp] mensaje:', err.message));
+  }
 });
 
 app.use('/api', autenticar);
@@ -13189,47 +13216,43 @@ function contextoParaInterprete(organizacionId, texto) {
   };
 }
 
-app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
-  const { texto } = req.body;
-
-  let resultado;
-  try {
-    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id, texto));
-  } catch (err) {
-    if (err instanceof InterpreteError) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    throw err;
-  }
-
+// La frase → la propuesta, guardada en asistente_mensajes para confirmarla.
+// La usan la web (abajo) y WhatsApp (hist. §134): las dos pasan por acá y por
+// la misma confirmación. Lanza InterpreteError si la IA no está o falla.
+async function proponerDesdeTexto(texto, organizacionId) {
+  const resultado = await interpretar(texto, contextoParaInterprete(organizacionId, texto));
   if (!resultado.tipo) {
-    return res.json({
-      mensaje_id: null,
-      tipo: null,
-      mensaje: resultado.mensaje,
-      propuesta: null,
-      ejecutable: false,
-      problemas: []
-    });
+    return { mensaje_id: null, tipo: null, mensaje: resultado.mensaje, propuesta: null, ejecutable: false, problemas: [] };
   }
 
-  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, req.usuario.organizacion_id);
+  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, organizacionId);
 
   const { lastInsertRowid: mensajeId } = db
     .prepare(
       `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
        VALUES (?, ?, 'interpretado', ?, ?)`
     )
-    .run(texto, JSON.stringify(propuesta), resultado.tipo, req.usuario.organizacion_id);
+    .run(texto, JSON.stringify(propuesta), resultado.tipo, organizacionId);
 
-  res.json({
+  return {
     mensaje_id: Number(mensajeId),
     tipo: resultado.tipo,
     mensaje: null,
     propuesta,
     ejecutable: propuesta.ejecutable,
     problemas: propuesta.problemas
-  });
+  };
+}
+
+app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
+  try {
+    res.json(await proponerDesdeTexto(req.body.texto, req.usuario.organizacion_id));
+  } catch (err) {
+    if (err instanceof InterpreteError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    throw err;
+  }
 }));
 
 // La voz (handoff, "IA"): el audio grabado en el navegador se pasa a texto y
@@ -13296,7 +13319,10 @@ app.post('/api/asistente/:id/descartar', (req, res) => {
 // vuelve a verificar que cada id referenciado exista de verdad antes de
 // usarlo, y corre las mismas validaciones de negocio que los endpoints
 // manuales. Todo dentro de una única transacción (CLAUDE.md §23).
-app.post('/api/asistente/ejecutar', (req, res) => {
+// Es una función con nombre porque WhatsApp (hist. §134) la llama con la
+// persona del teléfono vinculado como req.usuario: la misma ejecución, las
+// mismas validaciones y la misma auditoría que desde la web.
+function ejecutarPropuesta(req, res) {
   const { mensaje_id: mensajeId, tipo, propuesta } = req.body;
 
   // organizacion_id en el lookup (Etapa A, CLAUDE.md §28): sin este filtro,
@@ -13588,7 +13614,312 @@ app.post('/api/asistente/ejecutar', (req, res) => {
   }
 
   return res.status(400).json({ error: 'Tipo de operación desconocido.' });
+}
+
+app.post('/api/asistente/ejecutar', ejecutarPropuesta);
+
+/* ---------- WhatsApp: el asistente por WhatsApp (CLAUDE.md §36, hist. §134) ---------- */
+//
+// Otra entrada al mismo asistente, no un circuito propio: la frase (o la nota
+// de voz, pasada a texto con Whisper) va a proponerDesdeTexto, la propuesta
+// vuelve con botones Confirmar y Cancelar, y confirmar llama a
+// ejecutarPropuesta con la persona del teléfono como si hubiera tocado
+// Confirmar en la web: mismas validaciones, mismo rol y auditoría con actor
+// 'asistente' (CLAUDE.md §21). Nada se registra sin confirmar.
+//
+// El teléfono se vincula desde Mi cuenta con un código que la persona manda
+// al número de Nexo: el negocio sale del vínculo, nunca del mensaje (CLAUDE.md
+// §28). Solo gestión del negocio, nunca charla abierta: Meta prohíbe los
+// asistentes de uso general en la API.
+//
+// Las devoluciones no se confirman por acá: piden elegir de qué venta, y eso
+// se hace en la app.
+
+const CODIGO_WHATSAPP_MINUTOS = 10;
+// El cupo de la IA es de toda la instalación: nadie lo gasta solo.
+const WHATSAPP_POR_HORA = 30;
+const CODIGO_EN_MENSAJE = /^\s*(?:nexo\s*)?(\d{6})\s*$/i;
+const AYUDA_WHATSAPP =
+  'Contame lo que vendiste, compraste o gastaste, escrito o en un audio. Por ejemplo: "Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago". Antes de registrar nada te pido que lo confirmes.';
+const hashCodigoWhatsApp = (codigo) => createHash('sha256').update(`whatsapp:${codigo}`).digest('hex');
+const pesosWhatsApp = (n) =>
+  Number(n ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const nombreEnPropuesta = (campo, siNo = '—') => campo?.nombre_resuelto ?? campo?.valor ?? siNo;
+
+// El vínculo vivo de una persona (vinculado), con el nombre del negocio.
+function vinculoDeUsuario(usuarioId) {
+  return db
+    .prepare(
+      `SELECT whatsapp_vinculos.*, organizaciones.nombre AS negocio
+         FROM whatsapp_vinculos JOIN organizaciones ON organizaciones.id = whatsapp_vinculos.organizacion_id
+        WHERE whatsapp_vinculos.usuario_id = ? AND whatsapp_vinculos.estado = 'vinculado'`
+    )
+    .get(usuarioId);
+}
+
+// Quién opera desde un teléfono: la persona vinculada, con su rol en ese
+// negocio, si todavía trabaja ahí y ni ella ni el negocio se dieron de baja.
+// Tiene la forma de req.usuario que necesitan ejecutarPropuesta y auditar.
+function usuarioDelVinculo(vinculo) {
+  return (
+    db
+      .prepare(
+        `SELECT usuarios.id, usuarios.nombre, pertenencia.rol, pertenencia.organizacion_id
+           FROM usuarios
+           JOIN usuario_organizaciones pertenencia
+             ON pertenencia.usuario_id = usuarios.id AND pertenencia.organizacion_id = ?
+           JOIN organizaciones negocio ON negocio.id = pertenencia.organizacion_id
+          WHERE usuarios.id = ? AND pertenencia.activo = 1 AND usuarios.baja IS NULL AND negocio.baja_pedida IS NULL`
+      )
+      .get(vinculo.organizacion_id, vinculo.usuario_id) ?? null
+  );
+}
+
+app.get('/api/whatsapp', (req, res) => {
+  const vinculo = vinculoDeUsuario(req.usuario.id);
+  res.json({
+    disponible: whatsapp.whatsAppConfigurado(),
+    numero: whatsapp.numeroDeNexo() || null,
+    vinculo: vinculo
+      ? { telefono: vinculo.telefono, negocio: vinculo.negocio, organizacion_id: vinculo.organizacion_id, desde: vinculo.vinculado_en }
+      : null
+  });
 });
+
+// Un código nuevo para vincular el teléfono al negocio activo. Reemplaza el
+// pendiente que hubiera; el vínculo de antes sigue hasta que llegue el código.
+app.post('/api/whatsapp/vincular', (req, res) => {
+  if (!whatsapp.whatsAppConfigurado()) return res.status(503).json({ error: 'WhatsApp todavía no está disponible en Nexo.' });
+  if (!req.usuario.organizacion_id) return res.status(400).json({ error: 'Entrá a un negocio para vincular WhatsApp.' });
+  const ocupado = db.prepare(
+    "SELECT 1 FROM whatsapp_vinculos WHERE codigo_hash = ? AND estado = 'pendiente' AND codigo_vence > datetime('now')"
+  );
+  let codigo;
+  do codigo = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  while (ocupado.get(hashCodigoWhatsApp(codigo)));
+  withTransaction(() => {
+    db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja', codigo_hash = NULL WHERE usuario_id = ? AND estado = 'pendiente'").run(
+      req.usuario.id
+    );
+    db.prepare(
+      `INSERT INTO whatsapp_vinculos (usuario_id, organizacion_id, codigo_hash, codigo_vence, estado)
+       VALUES (?, ?, ?, datetime('now', ?), 'pendiente')`
+    ).run(req.usuario.id, req.usuario.organizacion_id, hashCodigoWhatsApp(codigo), `+${CODIGO_WHATSAPP_MINUTOS} minutes`);
+  });
+  const numero = whatsapp.numeroDeNexo();
+  res.json({
+    codigo,
+    numero,
+    enlace: `https://wa.me/${numero}?text=${encodeURIComponent(`NEXO ${codigo}`)}`,
+    minutos: CODIGO_WHATSAPP_MINUTOS
+  });
+});
+
+app.delete('/api/whatsapp/vinculo', (req, res) => {
+  const vinculo = vinculoDeUsuario(req.usuario.id);
+  if (!vinculo) return res.status(404).json({ error: 'No tenés WhatsApp vinculado.' });
+  withTransaction(() => {
+    db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja' WHERE id = ?").run(vinculo.id);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: req.usuario.id,
+      usuario_id: req.usuario.id,
+      organizacion_id: vinculo.organizacion_id,
+      operacion_tipo: 'whatsapp',
+      operacion_id: vinculo.id,
+      detalle: `WhatsApp desvinculado (terminado en ${vinculo.telefono.slice(-4)})`
+    });
+  });
+  res.status(204).end();
+});
+
+// La propuesta en palabras, para el mensaje con los botones.
+function resumenParaWhatsApp(tipo, p) {
+  const renglones = (items, palabra) =>
+    items.map((i) => `• ${i.cantidad} × ${nombreEnPropuesta(i.producto, '?')}, ${palabra} ${pesosWhatsApp(i.precio_unitario)}`).join('\n');
+  const fecha = p.fecha ? `\nFecha: ${p.fecha.split('-').reverse().join('/')}` : '';
+  if (tipo === 'venta') {
+    const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0);
+    const cobro = p.cobro
+      ? `Cobrado: ${pesosWhatsApp(p.cobro.importe ?? total)} en ${nombreEnPropuesta(p.cobro.cuenta)}`
+      : 'Sin cobro: queda en su cuenta corriente.';
+    return `Venta a ${nombreEnPropuesta(p.cliente, 'sin cliente')}${fecha}\n${renglones(p.items, 'a')}\nTotal: ${pesosWhatsApp(total)}\n${cobro}`;
+  }
+  if (tipo === 'compra') {
+    const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0) + (Number(p.costo_envio) || 0);
+    const envio = Number(p.costo_envio) > 0 ? `\nEnvío: ${pesosWhatsApp(p.costo_envio)}` : '';
+    return `Compra a ${nombreEnPropuesta(p.proveedor, 'sin proveedor')}${fecha}\n${renglones(p.items, 'costo')}${envio}\nTotal: ${pesosWhatsApp(total)}`;
+  }
+  if (tipo === 'gasto') {
+    const detalle = p.descripcion ? `: ${p.descripcion}` : '';
+    return `Gasto de ${pesosWhatsApp(p.importe)} en ${nombreEnPropuesta(p.categoria)}${detalle}${fecha}\nPagado con ${nombreEnPropuesta(p.cuenta)}`;
+  }
+  const que = (p.pedidos ?? []).map((x) => `${x.cantidad} × ${nombreEnPropuesta(x.producto, '?')}`).join(', ');
+  return `Devolución de ${nombreEnPropuesta(p.cliente, 'sin cliente')}: ${que || '—'}`;
+}
+
+// ejecutarPropuesta con la persona del teléfono, como si hubiera tocado
+// Confirmar en la web. Devuelve { status, cuerpo }.
+function ejecutarComo(usuario, body) {
+  let status = 200;
+  let cuerpo = null;
+  const res = {
+    status(codigo) {
+      status = codigo;
+      return this;
+    },
+    json(datos) {
+      cuerpo = datos;
+      return this;
+    }
+  };
+  try {
+    ejecutarPropuesta({ usuario, body }, res);
+  } catch (err) {
+    const conocido = err instanceof ErrorBulk || err instanceof ErrorValidacion;
+    if (!conocido) console.error('[whatsapp] ejecutar:', err.message);
+    status = 400;
+    cuerpo = { error: conocido ? err.message : 'No se pudo registrar.' };
+  }
+  return { status, cuerpo };
+}
+
+const REGISTRADO_WHATSAPP = { venta: 'la venta', compra: 'la compra', gasto: 'el gasto' };
+
+async function vincularWhatsApp(mensaje, filaId, responder) {
+  const codigo = CODIGO_EN_MENSAJE.exec(mensaje.texto)[1];
+  const pendiente = db
+    .prepare(
+      `SELECT whatsapp_vinculos.*, organizaciones.nombre AS negocio
+         FROM whatsapp_vinculos JOIN organizaciones ON organizaciones.id = whatsapp_vinculos.organizacion_id
+        WHERE whatsapp_vinculos.codigo_hash = ? AND whatsapp_vinculos.estado = 'pendiente'
+          AND whatsapp_vinculos.codigo_vence > datetime('now')`
+    )
+    .get(hashCodigoWhatsApp(codigo));
+  if (!pendiente) return responder('Ese código no sirve: puede haber vencido. Pedí otro en Nexo, en Mi cuenta → WhatsApp.');
+  withTransaction(() => {
+    // El teléfono deja la cuenta que tuviera, y la cuenta el teléfono de antes.
+    db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja' WHERE estado = 'vinculado' AND (telefono = ? OR usuario_id = ?)").run(
+      mensaje.de,
+      pendiente.usuario_id
+    );
+    db.prepare(
+      `UPDATE whatsapp_vinculos
+          SET estado = 'vinculado', telefono = ?, codigo_hash = NULL, codigo_vence = NULL, vinculado_en = datetime('now')
+        WHERE id = ?`
+    ).run(mensaje.de, pendiente.id);
+    db.prepare('UPDATE whatsapp_mensajes SET vinculo_id = ? WHERE id = ?').run(pendiente.id, filaId);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: pendiente.usuario_id,
+      usuario_id: pendiente.usuario_id,
+      organizacion_id: pendiente.organizacion_id,
+      operacion_tipo: 'whatsapp',
+      operacion_id: pendiente.id,
+      detalle: `WhatsApp vinculado (terminado en ${mensaje.de.slice(-4)})`
+    });
+  });
+  return responder(`¡Listo! Este número quedó vinculado a ${pendiente.negocio}.\n\n${AYUDA_WHATSAPP}`);
+}
+
+// Un toque en Confirmar o Cancelar: solo sobre una propuesta que armó este
+// mismo teléfono, en este negocio, y que siga sin confirmar.
+async function responderBotonWhatsApp(mensaje, vinculo, usuario, responder) {
+  const partes = /^(si|no):(\d+)$/.exec(mensaje.boton);
+  if (!partes) return;
+  const propuesta = db
+    .prepare(
+      `SELECT asistente_mensajes.id, asistente_mensajes.estado, asistente_mensajes.operacion_tipo, asistente_mensajes.propuesta_json
+         FROM whatsapp_mensajes JOIN asistente_mensajes ON asistente_mensajes.id = whatsapp_mensajes.asistente_mensaje_id
+        WHERE whatsapp_mensajes.asistente_mensaje_id = ? AND whatsapp_mensajes.vinculo_id = ? AND asistente_mensajes.organizacion_id = ?`
+    )
+    .get(Number(partes[2]), vinculo.id, usuario.organizacion_id);
+  if (!propuesta) return responder('No encontré esa propuesta.');
+  if (propuesta.estado !== 'interpretado') return responder('Esa propuesta ya se confirmó o se canceló.');
+  if (partes[1] === 'no') {
+    db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(propuesta.id);
+    return responder('Listo, no registré nada.');
+  }
+  const { status, cuerpo } = ejecutarComo(usuario, {
+    mensaje_id: propuesta.id,
+    tipo: propuesta.operacion_tipo,
+    propuesta: JSON.parse(propuesta.propuesta_json)
+  });
+  if (status < 300) return responder(`Listo: registré ${REGISTRADO_WHATSAPP[cuerpo.tipo] ?? 'la operación'} #${cuerpo.id}.`);
+  return responder(`No lo pude registrar: ${cuerpo?.error ?? 'error desconocido'}`);
+}
+
+async function atenderWhatsApp(mensaje) {
+  // Cada mensaje una sola vez: Meta reintenta los avisos.
+  const { changes, lastInsertRowid } = db
+    .prepare('INSERT OR IGNORE INTO whatsapp_mensajes (wa_id, telefono, tipo) VALUES (?, ?, ?)')
+    .run(mensaje.id, mensaje.de, mensaje.tipo);
+  if (!changes) return;
+  const filaId = Number(lastInsertRowid);
+  const responder = (texto) => whatsapp.mandarTexto(mensaje.de, texto);
+
+  const { n } = db
+    .prepare("SELECT COUNT(*) AS n FROM whatsapp_mensajes WHERE telefono = ? AND recibido_en > datetime('now', '-1 hour')")
+    .get(mensaje.de);
+  if (n > WHATSAPP_POR_HORA) {
+    // Se avisa una sola vez; los que siguen no se contestan.
+    if (n === WHATSAPP_POR_HORA + 1) await responder('Mandaste muchos mensajes en la última hora. Probá de nuevo en un rato.');
+    return;
+  }
+
+  if (mensaje.tipo === 'texto' && CODIGO_EN_MENSAJE.test(mensaje.texto)) return vincularWhatsApp(mensaje, filaId, responder);
+
+  const vinculo = db.prepare("SELECT * FROM whatsapp_vinculos WHERE telefono = ? AND estado = 'vinculado'").get(mensaje.de);
+  if (!vinculo) {
+    return responder('Hola. Este número no está vinculado a ninguna cuenta de Nexo. Para usarlo, entrá a Nexo y vinculalo en Mi cuenta → WhatsApp.');
+  }
+  db.prepare('UPDATE whatsapp_mensajes SET vinculo_id = ? WHERE id = ?').run(vinculo.id, filaId);
+  const usuario = usuarioDelVinculo(vinculo);
+  if (!usuario) return responder('Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincular WhatsApp desde Mi cuenta.');
+
+  if (mensaje.tipo === 'boton') return responderBotonWhatsApp(mensaje, vinculo, usuario, responder);
+  if (mensaje.tipo === 'otro') return responder(`Por ahora entiendo textos y audios.\n\n${AYUDA_WHATSAPP}`);
+
+  let texto = mensaje.texto;
+  try {
+    if (mensaje.tipo === 'audio') {
+      if (!vozDisponible()) return responder('Todavía no puedo escuchar audios: ¿me lo escribís?');
+      const { buffer, mime } = await whatsapp.bajarAudio(mensaje.audio.id);
+      // Los nombres del negocio ayudan a que Whisper los escriba bien.
+      const { cuentas, productos } = contextoParaInterprete(usuario.organizacion_id);
+      texto = await transcribir(buffer, mime, [...cuentas, ...productos.slice(0, 40)].map((f) => f.nombre));
+      if (!texto?.trim()) return responder('No te entendí el audio. ¿Me lo escribís?');
+      await responder(`Entendí: "${texto.trim()}"`);
+    }
+    if (!texto?.trim()) return responder(AYUDA_WHATSAPP);
+
+    const resultado = await proponerDesdeTexto(texto, usuario.organizacion_id);
+    if (!resultado.tipo) return responder(`${resultado.mensaje ? `${resultado.mensaje}\n\n` : ''}${AYUDA_WHATSAPP}`);
+    db.prepare('UPDATE whatsapp_mensajes SET asistente_mensaje_id = ? WHERE id = ?').run(resultado.mensaje_id, filaId);
+    const resumen = resumenParaWhatsApp(resultado.tipo, resultado.propuesta);
+    const descartar = () => db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(resultado.mensaje_id);
+
+    if (resultado.tipo === 'devolucion') {
+      descartar();
+      return responder(`${resumen}\n\nLas devoluciones se cargan en la app, para elegir de qué venta: en Nexo, desde el asistente o desde la venta.`);
+    }
+    if (!resultado.ejecutable) {
+      descartar();
+      return responder(`${resumen}\n\nPara registrarlo me falta:\n• ${resultado.problemas.join('\n• ')}\n\nMandámelo de nuevo con eso, o cargalo en la app.`);
+    }
+    return whatsapp.mandarBotones(mensaje.de, `${resumen}\n\n¿Lo registro?`, [
+      { id: `si:${resultado.mensaje_id}`, titulo: 'Confirmar' },
+      { id: `no:${resultado.mensaje_id}`, titulo: 'Cancelar' }
+    ]);
+  } catch (err) {
+    if (err instanceof InterpreteError) return responder(err.message);
+    if (err instanceof whatsapp.WhatsAppError) throw err;
+    console.error('[whatsapp] atender:', err.message);
+    return responder('Algo salió mal y no lo pude procesar. Probá de nuevo en un rato.');
+  }
+}
 
 /* ---------- Auditoría (CLAUDE.md §22) ---------- */
 
@@ -15042,6 +15373,10 @@ app.post('/api/auth/baja-cuenta', (req, res) => {
     for (const tabla of ['sesiones', 'tokens_cuenta', 'codigos_mail']) {
       db.prepare(`DELETE FROM ${tabla} WHERE usuario_id = ?`).run(id);
     }
+    // El teléfono de WhatsApp también es un dato suyo (hist. §134).
+    db.prepare(
+      "UPDATE whatsapp_vinculos SET estado = 'baja', telefono = NULL, codigo_hash = NULL WHERE usuario_id = ?"
+    ).run(id);
   });
 
   if (cuenta.email) {

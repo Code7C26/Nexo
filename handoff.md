@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §133);
+    siguiente número (hoy el último es §134);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,22 @@
 
 ## Estado actual (4 de noviembre de 2026)
 
-**Lo último (4 de noviembre, hist. §133): ofertas con vigencia, hechas y
+**Lo último (4 de noviembre, hist. §134): WhatsApp como canal del asistente,
+hecho y commiteado en `solla`, sin publicar.** Pedido del usuario como
+próximo paso:
+- Mi cuenta → WhatsApp: la persona manda "NEXO <código>" desde su celular al
+  número de Nexo y queda vinculada al negocio activo;
+- un texto o una nota de voz vuelve como propuesta con Confirmar y Cancelar, y
+  se registra con la misma ejecución, rol y auditoría que la web
+  (`proponerDesdeTexto` y `ejecutarPropuesta`, sacados de las rutas del
+  asistente); las devoluciones se terminan en la app;
+- `backend/whatsapp.js` sin dependencias; tablas nuevas `whatsapp_vinculos` y
+  `whatsapp_mensajes`;
+- **probado contra un WhatsApp falso.** Para la prueba de verdad falta la app
+  de Meta: es el trámite del usuario (pasos en "Trámites del usuario" →
+  Meta), y después mandar las cinco claves al servidor.
+
+**También el 4 de noviembre (hist. §133): ofertas con vigencia, hechas y
 commiteadas en `solla`, sin publicar.** Punto 2 de las ideas de Praxia:
 - Productos → Ofertas (admin): en porcentaje, en pesos o a precio fijo, sobre
   productos, categorías o todo, en una lista o en todas, entre fechas y ciertos
@@ -1302,6 +1317,17 @@ a 6):
   definirlas con un contador.
 - Si se complica (aprobación de la aplicación, campos distintos de lo
   esperado), queda para después de la presentación y no frena lo demás.
+- **Idea del usuario (4 de noviembre, "dejalo como idea"): "Cobros y
+  cuotas".** En e-commerce cuesta saber cuánto se come vender en cuotas: la
+  comisión de Mercado Pago, el costo de las cuotas sin interés y el IVA sobre
+  esas comisiones. Una sección (por ejemplo "Cobros y cuotas") que junte todo
+  lo que cobró Mercado Pago, y en cada producto una calculadora: cuánto hay
+  que cobrarlo en cuotas para ganar lo que se quiere (como la que tiene
+  Mercado Pago adentro). Por eso muchos suben el precio de lista y hacen
+  descuento por transferencia: con las ofertas por medio de pago (el recargo
+  del punto 3 de Praxia, o una oferta "por transferencia") se armaría en
+  Nexo. Base que ya existe: la comisión y las cuotas de cada pago como gastos
+  de la venta (hist. §130) y "adónde fue la plata" (hist. §131).
 
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
@@ -1377,7 +1403,7 @@ a 6):
        instalación (el servidor espera y reintenta si es poco).
      - **Publicado el 2 de noviembre** (PR #39) y con `GROQ_API_KEY` en
        `/etc/nexo/nexo.env`: comprobado que el proceso la tiene cargada.
-     - **Falta que el usuario pruebe el dictado en el celular, con su voz.**
+     - El usuario probó el dictado (dicho el 4 de noviembre).
   3b. **Manual en la app y asistente que responde con él: hecho el 2 de
      noviembre** (hist. §118, pedido del usuario). `#/ayuda` (Configuración ›
      Ayuda › Manual de uso, 40 secciones en `core/manual.js`), `#/asistente`
@@ -1497,7 +1523,8 @@ a 6):
        en la venta, vincular productos que ya estaban en la tienda, fotos.
 - **Del 9 al 15:**
   1. Terminar Mercado Libre y hacer Tienda Nube (punto 15).
-  2. WhatsApp (ver abajo).
+  2. ~~WhatsApp~~ **hecho el 4 de noviembre** (hist. §134), sin publicar;
+     falta la app de Meta (trámite del usuario) y probarlo de verdad.
   3. Si da: importar desde una planilla (punto 8c), sugerencias en el Resumen
      (CLAUDE.md §36), logo del negocio y descuentos en el punto de venta.
 - **Del 16 al 19, solo presentación:** ninguna función nueva de producto.
@@ -2132,10 +2159,32 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     (las de Mercado Libre y WhatsApp, vacías). La tienda demo es gratis pero no admite ventas: para la
   demo, probar crear la orden con `POST /orders` y confirmar que dispara
   `order/created`.
-- **Meta (etapa 11):**
-  - cuenta de Meta for Developers;
-  - una app con el producto WhatsApp;
-  - cargar hasta 5 teléfonos de prueba.
+- **Meta (etapa 11): lo único que falta para WhatsApp** (el código está desde
+  hist. §134). Pasos que le pasé el 4 de noviembre:
+  1. En https://developers.facebook.com, entrar con su Facebook y registrarse
+     como desarrollador (gratis).
+  2. "Crear app" → caso de uso "Conectarse con clientes a través de WhatsApp"
+     (tipo Negocio). Pide una cuenta comercial de Meta: se crea ahí mismo.
+  3. En la app, WhatsApp → Configuración de la API: Meta da un número de
+     prueba. Anotar el **Phone number ID** (`WHATSAPP_PHONE_NUMBER_ID`) y el
+     número (`WHATSAPP_NUMERO`). En "Para", sumar su celular (y hasta 4 más) y
+     verificarlo con el código que le llega.
+  4. Configuración de la app → Básica: la **clave secreta de la app**
+     (`WHATSAPP_APP_SECRET`).
+  5. El token: el de la página de la API vence en 24 horas y sirve para
+     probar. Para que dure, en la configuración del negocio (business.facebook.com)
+     → Usuarios del sistema → crear uno de administrador, asignarle la app y
+     generar un token sin vencimiento con `whatsapp_business_messaging` y
+     `whatsapp_business_management` (`WHATSAPP_TOKEN`).
+  6. Mandar al servidor las cinco variables con el comando de PowerShell de
+     siempre: las cuatro de arriba y `WHATSAPP_VERIFY_TOKEN`, una palabra
+     larga inventada (la genero yo si quiere).
+  7. Publicar, y en WhatsApp → Configuración → Webhook: dirección
+     `https://nexosystem.duckdns.org/api/integraciones/whatsapp/webhook`, el
+     mismo `WHATSAPP_VERIFY_TOKEN`, y suscribir el campo **messages**.
+  8. Probar: Mi cuenta → WhatsApp → mandar el código, y después una venta por
+     texto y por audio.
+  - El número de prueba es gratis y llega a 5 teléfonos: alcanza para la demo.
 
 **Después de la presentación:**
 - **Ofertas en presupuestos** (charlado con el usuario el 4 de noviembre, "lo

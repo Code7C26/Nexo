@@ -11706,3 +11706,80 @@ la consola.
 **Queda:** que el usuario lo vea; ofertas en presupuestos si hace falta;
 mostrar la oferta también en los resultados de búsqueda del mostrador; el
 manual en la revisión final.
+
+## 134. WhatsApp como canal del asistente, 4 de noviembre de 2026
+
+**Por qué.** El usuario lo eligió como próximo paso ("tendríamos que hacer
+WhatsApp, que eso estaría buenísimo"). Es el diferencial de la etapa I
+(CLAUDE.md §36, §38), con el diseño del 1 de noviembre de `handoff.md`.
+
+**Qué se hizo.**
+- **Vincular el teléfono** (Mi cuenta → WhatsApp, los dos roles): Nexo da un
+  código de 6 números que vence a los 10 minutos, y la persona lo manda desde
+  su celular al número de Nexo ("NEXO 123456", con un enlace wa.me que lo
+  deja escrito). Así queda probado que el teléfono es suyo, sin SMS. La página
+  pregunta cada 3 segundos y pasa sola a "vinculado". El vínculo es con el
+  negocio activo: el negocio sale de ahí, nunca del mensaje (CLAUDE.md §28).
+  Una persona tiene un teléfono y un teléfono una persona; vincular otro da de
+  baja el anterior. "Desvincular" lo corta. Se audita en `usuario`
+  (`operacion_tipo` 'whatsapp').
+- **Un mensaje:** texto o nota de voz (Whisper, como el dictado, y primero
+  contesta "Entendí: …"). Va a `proponerDesdeTexto`, la misma función que usa
+  ahora `POST /api/asistente/interpretar`, y vuelve un resumen (cliente,
+  renglones, total, cobro) con los botones Confirmar y Cancelar. Confirmar
+  llama a `ejecutarPropuesta` (el handler de `POST /api/asistente/ejecutar`,
+  ahora con nombre) con la persona del teléfono y su rol: mismas
+  validaciones, tope del plan y auditoría con actor `asistente`. Un empleado
+  no registra compras, igual que en la web.
+- Lo que falta para registrar se contesta en palabras, sin botones; lo que no
+  es una operación, con la ayuda de qué mandar; las devoluciones, con que se
+  terminan en la app (piden elegir de qué venta).
+- **Seguridad:** avisos con la firma de Meta (HMAC del cuerpo crudo con el
+  secreto de la app) o se descartan; cada mensaje una sola vez (UNIQUE del id
+  de Meta, que reintenta); se atienden de a uno (un doble toque no registra
+  dos veces); un botón solo vale para una propuesta armada desde ese mismo
+  teléfono vinculado, en ese negocio, y sin confirmar; tope de 30 mensajes por
+  hora por teléfono (el cupo de Groq es de toda la instalación); la persona
+  tiene que seguir activa en el negocio, y ni ella ni el negocio dados de baja.
+  La baja de la cuenta borra el teléfono.
+- **Decidido por mí:** el código va del celular a Nexo (y no Nexo manda un
+  código al celular) para no pagar ni depender de plantillas de Meta; el
+  vínculo es con un negocio a la vez; las devoluciones no se confirman por
+  WhatsApp; la versión de la API es `v25.0` (la del ejemplo de Meta de mayo de
+  2026), configurable con `WHATSAPP_API_VERSION`.
+
+**Esquema.** Dos tablas nuevas en `schema.sql`, sin tocar las que existen:
+`whatsapp_vinculos` (persona, negocio, teléfono, código como hash con
+vencimiento, estado pendiente → vinculado → baja; únicos el teléfono y la
+persona vinculados) y `whatsapp_mensajes` (id de Meta único, teléfono,
+vínculo y la propuesta que armó). La descarga y la baja del negocio las cubren
+solas; `codigo_hash` no sale en la descarga (por el nombre).
+
+**Backend.** `backend/whatsapp.js` (sin dependencias, como `mercadopago.js`):
+el saludo del webhook, la firma, leer los mensajes de un aviso, mandar texto o
+botones y bajar un audio. En `server.js`: las rutas públicas
+`GET/POST /api/integraciones/whatsapp/webhook` (antes de `autenticar`, con el
+cuerpo crudo); `GET /api/whatsapp`, `POST /api/whatsapp/vincular` y
+`DELETE /api/whatsapp/vinculo` (los dos roles); y la sección "WhatsApp"
+(`atenderWhatsApp`, `vincularWhatsApp`, `responderBotonWhatsApp`,
+`resumenParaWhatsApp`, `ejecutarComo`). Variables: `WHATSAPP_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` y
+`WHATSAPP_NUMERO`; sin ellas, Mi cuenta no muestra la tarjeta.
+
+**Frontend.** La tarjeta de WhatsApp en Mi cuenta (`index.html`,
+`dominios/perfil.js`, estilos al final de `styles.css`).
+
+**Cómo se verificó.** `whatsapp.test.js` (7) contra un WhatsApp falso: el
+saludo (bien y mal), vincular (sin firma no pasa nada, código equivocado,
+código usado, auditoría), una venta escrita (resumen y botones, el aviso
+repetido no se procesa dos veces, la venta registrada con actor `asistente`,
+otro toque dice "ya se confirmó"), cancelar, lo que falta y la charla, una
+nota de voz, el empleado que no puede registrar una compra, el botón de una
+propuesta ajena, y desvincular. `npm test` (306) y lint. En Chrome a 390 px:
+Mi cuenta da el código y el enlace wa.me; con un aviso firmado a mano la
+página pasó sola a "vinculado". Contra Meta de verdad no se probó: falta su
+app (trámite del usuario).
+
+**Queda:** la app de Meta y la prueba de punta a punta con el número de
+prueba; las consultas sobre los datos ("¿cuánto vendí hoy?"); que WhatsApp
+cree una consulta en el CRM; producción (verificar un negocio real ante Meta).

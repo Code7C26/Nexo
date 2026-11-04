@@ -1077,6 +1077,49 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 
+-- WhatsApp como canal del asistente (CLAUDE.md §36, hist. §134). El teléfono
+-- de una persona, vinculado a su cuenta y a un negocio: el negocio sale de
+-- acá, nunca del mensaje (CLAUDE.md §28). Se vincula desde Mi cuenta: Nexo da
+-- un código de 6 números y la persona lo manda por WhatsApp al número de Nexo,
+-- así queda probado que el teléfono es suyo, sin SMS.
+-- estado: pendiente (esperando el código; telefono NULL) → vinculado → baja.
+-- codigo_hash / codigo_vence: el código, guardado como hash (como los de
+-- codigos_mail), y hasta cuándo sirve (UTC, como datetime('now')).
+-- Una persona tiene un solo teléfono vinculado, y un teléfono una sola
+-- persona; un código pendiente puede convivir con el vínculo de antes (el
+-- que cambia de teléfono), que se da de baja cuando el nuevo se confirma.
+CREATE TABLE IF NOT EXISTS whatsapp_vinculos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  telefono TEXT,
+  codigo_hash TEXT,
+  codigo_vence TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('pendiente', 'vinculado', 'baja')),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  vinculado_en TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_vinculos_telefono
+  ON whatsapp_vinculos(telefono) WHERE estado = 'vinculado';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_vinculos_usuario
+  ON whatsapp_vinculos(usuario_id) WHERE estado = 'vinculado';
+
+-- Cada mensaje que llegó por WhatsApp. wa_id es el id de Meta: Meta reintenta
+-- un aviso si no le contestan a tiempo, y el UNIQUE hace que el mismo mensaje
+-- no se procese dos veces. vinculo_id es NULL si el teléfono no estaba
+-- vinculado; asistente_mensaje_id, la propuesta que armó (la que pueden
+-- confirmar sus botones). Hija de whatsapp_vinculos (hereda su empresa).
+CREATE TABLE IF NOT EXISTS whatsapp_mensajes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wa_id TEXT NOT NULL UNIQUE,
+  telefono TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  recibido_en TEXT NOT NULL DEFAULT (datetime('now')),
+  vinculo_id INTEGER REFERENCES whatsapp_vinculos(id),
+  asistente_mensaje_id INTEGER REFERENCES asistente_mensajes(id)
+);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_mensajes_telefono ON whatsapp_mensajes(telefono, recibido_en);
+
 -- Auditoría central unificada (CLAUDE.md §22). Registra el ACTO del
 -- operador (crear/editar/anular/...), no el efecto contable: eso ya lo
 -- cubren movimientos_stock/movimientos_tesoreria/movimientos_cc_* (que

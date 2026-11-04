@@ -4691,6 +4691,28 @@
                   <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
                 </div>
               </form>
+              <!-- WhatsApp (hist. §134, dominios/perfil.js): el teléfono de
+                   la persona, para usar el asistente por WhatsApp en el
+                   negocio activo. Solo si Nexo tiene WhatsApp configurado. -->
+              <div class="form config-tarjeta" id="perfilWhatsApp" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">WhatsApp</p>
+                  <p class="form-note" id="perfilWhatsAppTexto"></p>
+                  <div class="perfil-whatsapp-codigo" id="perfilWhatsAppCodigo" hidden>
+                    <p>Mandá este mensaje desde tu celular al número de Nexo:</p>
+                    <p class="perfil-whatsapp-mensaje mono" id="perfilWhatsAppMensaje"></p>
+                    <a class="btn btn-primary" id="perfilWhatsAppAbrir" href="#" target="_blank" rel="noopener">Abrir WhatsApp</a>
+                    <p class="form-note" id="perfilWhatsAppVence"></p>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p id="perfilWhatsAppPie">Nada se registra sin que lo confirmes con un botón.</p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" id="perfilWhatsAppDesvincular" hidden>Desvincular</button>
+                    <button type="button" class="btn btn-primary" id="perfilWhatsAppVincular">Vincular mi WhatsApp</button>
+                  </div>
+                </div>
+              </div>
               <div class="form config-tarjeta">
                 <div class="config-tarjeta-pie config-cuenta-salir">
                   <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el mail y la contraseña.</p>

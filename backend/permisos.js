@@ -254,6 +254,11 @@ export const RUTAS_PERMISOS = {
   'POST /api/asistente/transcribir': 'ambos',
   'POST /api/asistente/:id/descartar': 'ambos',
   'POST /api/asistente/ejecutar': 'ambos',
+  // WhatsApp (hist. §134): cada persona vincula su propio teléfono, con el rol
+  // que tiene en el negocio (la ejecución lo vuelve a mirar).
+  'GET /api/whatsapp': 'ambos',
+  'POST /api/whatsapp/vincular': 'ambos',
+  'DELETE /api/whatsapp/vinculo': 'ambos',
   'GET /api/auditoria': 'ambos',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
@@ -338,6 +343,10 @@ export const RUTAS_PERMISOS = {
   // pagó" son de los dos roles, como cobrar una venta.
   'GET /api/integraciones/mercadopago/callback': 'publico',
   'POST /api/integraciones/mercadopago/notificaciones': 'publico',
+  // Los avisos de WhatsApp (hist. §134): los manda Meta, firmados con el
+  // secreto de la app; el GET es el saludo con que se da de alta el webhook.
+  'GET /api/integraciones/whatsapp/webhook': 'publico',
+  'POST /api/integraciones/whatsapp/webhook': 'publico',
   'GET /api/integraciones/mercadopago': 'admin',
   'PUT /api/integraciones/mercadopago': 'admin',
   'POST /api/integraciones/mercadopago/conectar': 'admin',
