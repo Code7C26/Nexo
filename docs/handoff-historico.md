@@ -11783,3 +11783,39 @@ app (trámite del usuario).
 **Queda:** la app de Meta y la prueba de punta a punta con el número de
 prueba; las consultas sobre los datos ("¿cuánto vendí hoy?"); que WhatsApp
 cree una consulta en el CRM; producción (verificar un negocio real ante Meta).
+
+## §135. WhatsApp con página propia (4 de noviembre de 2026)
+
+**Pedido del usuario** (al publicar §134): que WhatsApp tenga su página en
+Configuración y el logo, fuera de Mi cuenta. En la sesión: "seguir con los
+cambios mínimos pendientes así pruebo".
+
+**Qué cambió.** Solo frontend y textos, sin cambios de esquema ni de rutas:
+- `#/configuracion/whatsapp` (los dos roles: el número es de cada persona),
+  pintada por `dominios/whatsapp.js`, que se lleva el código que estaba en
+  `dominios/perfil.js`. Tiene el logo en el título, la tarjeta "Tu número"
+  (vincular, el código, Abrir WhatsApp, desvincular) y "Qué mandarle", con
+  una venta, una compra, un gasto y una devolución como burbujas del chat.
+- El ítem del menú va en "Tu cuenta", debajo de Mi cuenta, con
+  `/img/whatsapp.svg#emblema` y el número vinculado como descripción. La
+  página del asistente suma la tarjeta "También por WhatsApp", que lleva ahí.
+  Ítem y tarjeta se muestran solo si `GET /api/whatsapp` dice `disponible`
+  (se consulta al entrar a Configuración o al asistente); por URL, sin
+  WhatsApp configurado, la página dice que todavía no está disponible.
+- Mi cuenta ya no tiene la tarjeta. Los mensajes del bot que decían "Mi
+  cuenta → WhatsApp" dicen "Configuración → WhatsApp".
+- `sw.js` precachea `whatsapp.svg` y el módulo nuevo.
+
+**Qué falló en el camino.** El aviso "todavía no está disponible" se veía
+aunque WhatsApp estuviera configurado: `.fe-estado-linea` es `display: flex`
+y le ganaba a `hidden`. Se sumó `.fe-estado-linea[hidden]` (y
+`.config-item[hidden]`, que tampoco tenía).
+
+**Cómo se verificó.** `npm test` (306) y lint. En Chrome, con una base
+sembrada y las cinco variables de WhatsApp falsas: el admin a 1366 px y el
+empleado a 390 px abren la página, piden el código y ven el ítem del menú; el
+asistente muestra la tarjeta; Mi cuenta ya no tiene la de antes; sin errores
+de consola.
+
+**Queda:** la prueba de punta a punta con el celular y el número de prueba
+de Meta.

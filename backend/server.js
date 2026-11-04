@@ -13797,7 +13797,7 @@ async function vincularWhatsApp(mensaje, filaId, responder) {
           AND whatsapp_vinculos.codigo_vence > datetime('now')`
     )
     .get(hashCodigoWhatsApp(codigo));
-  if (!pendiente) return responder('Ese código no sirve: puede haber vencido. Pedí otro en Nexo, en Mi cuenta → WhatsApp.');
+  if (!pendiente) return responder('Ese código no sirve: puede haber vencido. Pedí otro en Nexo, en Configuración → WhatsApp.');
   withTransaction(() => {
     // El teléfono deja la cuenta que tuviera, y la cuenta el teléfono de antes.
     db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja' WHERE estado = 'vinculado' AND (telefono = ? OR usuario_id = ?)").run(
@@ -13873,11 +13873,11 @@ async function atenderWhatsApp(mensaje) {
 
   const vinculo = db.prepare("SELECT * FROM whatsapp_vinculos WHERE telefono = ? AND estado = 'vinculado'").get(mensaje.de);
   if (!vinculo) {
-    return responder('Hola. Este número no está vinculado a ninguna cuenta de Nexo. Para usarlo, entrá a Nexo y vinculalo en Mi cuenta → WhatsApp.');
+    return responder('Hola. Este número no está vinculado a ninguna cuenta de Nexo. Para usarlo, entrá a Nexo y vinculalo en Configuración → WhatsApp.');
   }
   db.prepare('UPDATE whatsapp_mensajes SET vinculo_id = ? WHERE id = ?').run(vinculo.id, filaId);
   const usuario = usuarioDelVinculo(vinculo);
-  if (!usuario) return responder('Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincular WhatsApp desde Mi cuenta.');
+  if (!usuario) return responder('Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincularlo desde Configuración → WhatsApp.');
 
   if (mensaje.tipo === 'boton') return responderBotonWhatsApp(mensaje, vinculo, usuario, responder);
   if (mensaje.tipo === 'otro') return responder(`Por ahora entiendo textos y audios.\n\n${AYUDA_WHATSAPP}`);

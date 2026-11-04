@@ -40,7 +40,7 @@ const secretoApp = () => process.env.WHATSAPP_APP_SECRET;
 const version = () => process.env.WHATSAPP_API_VERSION || 'v25.0';
 const urlApi = () => (process.env.WHATSAPP_API_URL || 'https://graph.facebook.com').replace(/\/+$/, '');
 
-// Sin las claves no hay canal: Mi cuenta no lo ofrece.
+// Sin las claves no hay canal: Configuración no lo ofrece.
 export const whatsAppConfigurado = () =>
   Boolean(token() && numeroId() && secretoApp() && process.env.WHATSAPP_VERIFY_TOKEN && process.env.WHATSAPP_NUMERO);
 

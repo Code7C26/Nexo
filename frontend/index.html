@@ -277,6 +277,12 @@
               <h3>Dictar</h3>
               <p>Tocá el micrófono, decí lo que pasó y tocalo de nuevo para terminar.</p>
             </div>
+            <!-- El mismo asistente por WhatsApp (hist. §135): solo si Nexo lo
+                 tiene configurado (dominios/whatsapp.js). -->
+            <a class="asistente-guia-tarjeta asistente-guia-whatsapp" id="asistenteGuiaWhatsApp" href="#/configuracion/whatsapp" hidden>
+              <h3><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg> También por WhatsApp</h3>
+              <p id="asistenteGuiaWhatsAppTexto">Mandale tus ventas a Nexo desde el celular, escritas o en un audio.</p>
+            </a>
             <a class="btn-link" href="#/ayuda"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg> Ver el manual completo</a>
           </aside>
         </div>
@@ -3666,6 +3672,13 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Mi cuenta</span><span class="config-item-desc">Contraseña y cerrar sesión</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <!-- Lleva su logo, como los canales. Se muestra solo si Nexo
+                   tiene WhatsApp configurado (dominios/whatsapp.js). -->
+              <a class="config-item" href="#/configuracion/whatsapp" data-seccion="whatsapp" id="configWhatsAppItem" hidden>
+                <span class="config-item-icono"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">WhatsApp</span><span class="config-item-desc" id="configWhatsAppResumen">Cargá ventas con un mensaje</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema e instalar como app</span></span>
@@ -4691,28 +4704,6 @@
                   <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
                 </div>
               </form>
-              <!-- WhatsApp (hist. §134, dominios/perfil.js): el teléfono de
-                   la persona, para usar el asistente por WhatsApp en el
-                   negocio activo. Solo si Nexo tiene WhatsApp configurado. -->
-              <div class="form config-tarjeta" id="perfilWhatsApp" hidden>
-                <div class="config-tarjeta-cuerpo">
-                  <p class="config-tarjeta-titulo">WhatsApp</p>
-                  <p class="form-note" id="perfilWhatsAppTexto"></p>
-                  <div class="perfil-whatsapp-codigo" id="perfilWhatsAppCodigo" hidden>
-                    <p>Mandá este mensaje desde tu celular al número de Nexo:</p>
-                    <p class="perfil-whatsapp-mensaje mono" id="perfilWhatsAppMensaje"></p>
-                    <a class="btn btn-primary" id="perfilWhatsAppAbrir" href="#" target="_blank" rel="noopener">Abrir WhatsApp</a>
-                    <p class="form-note" id="perfilWhatsAppVence"></p>
-                  </div>
-                </div>
-                <div class="config-tarjeta-pie">
-                  <p id="perfilWhatsAppPie">Nada se registra sin que lo confirmes con un botón.</p>
-                  <div class="config-tarjeta-botones">
-                    <button type="button" class="btn-link" id="perfilWhatsAppDesvincular" hidden>Desvincular</button>
-                    <button type="button" class="btn btn-primary" id="perfilWhatsAppVincular">Vincular mi WhatsApp</button>
-                  </div>
-                </div>
-              </div>
               <div class="form config-tarjeta">
                 <div class="config-tarjeta-pie config-cuenta-salir">
                   <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el mail y la contraseña.</p>
@@ -4736,6 +4727,60 @@
                   <button type="submit" class="btn btn-peligro">Dar de baja mi cuenta</button>
                 </div>
               </form>
+            </section>
+
+            <!-- WhatsApp (hist. §134, §135): la pinta dominios/whatsapp.js,
+                 para los dos roles. El teléfono es de la persona y queda
+                 vinculado al negocio activo. Solo si Nexo tiene WhatsApp
+                 configurado; si no, el aviso de abajo. -->
+            <section class="config-pagina" data-seccion="whatsapp" aria-labelledby="configWhatsAppTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configWhatsAppTitulo" class="wa-titulo" tabindex="-1"><svg class="wa-logo" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg> WhatsApp</h2>
+                <p>Mandale a Nexo lo que vendiste, compraste o gastaste, escrito o en un audio, sin abrir la app. Te contesta cómo lo entendió, y no se registra nada hasta que tocás Confirmar.</p>
+              </header>
+
+              <p class="fe-estado-linea" id="waNoDisponible" hidden>
+                <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg>
+                WhatsApp todavía no está disponible en Nexo.
+              </p>
+
+              <div class="form config-tarjeta" id="waVinculo" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Tu número</p>
+                  <p class="config-tarjeta-texto" id="waTexto"></p>
+                  <div class="wa-codigo" id="waCodigo" hidden>
+                    <p>Mandá este mensaje desde tu celular al número de Nexo:</p>
+                    <p class="wa-mensaje mono" id="waMensaje"></p>
+                    <a class="btn btn-primary" id="waAbrir" href="#" target="_blank" rel="noopener">
+                      <svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg> Abrir WhatsApp
+                    </a>
+                    <p class="form-note" id="waVence"></p>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Nada se registra sin que lo confirmes con un botón.</p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" id="waDesvincular" hidden>Desvincular</button>
+                    <button type="button" class="btn btn-primary" id="waVincular">Vincular mi WhatsApp</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form config-tarjeta" id="waEjemplos" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Qué mandarle</p>
+                  <p class="config-tarjeta-texto">Contáselo como a una persona. Con un audio también anda.</p>
+                  <ul class="wa-ejemplos">
+                    <li><span class="wa-ejemplo-tipo">Una venta</span><span class="wa-burbuja">Vendí 2 buzos a Sole a 28 mil cada uno, pagó en efectivo</span></li>
+                    <li><span class="wa-ejemplo-tipo">Una compra</span><span class="wa-burbuja">Compré 24 gaseosas a Distribuidora Sur a 2100 cada una</span></li>
+                    <li><span class="wa-ejemplo-tipo">Un gasto</span><span class="wa-burbuja">Pagué 45 mil de alquiler por transferencia</span></li>
+                    <li><span class="wa-ejemplo-tipo">Una devolución</span><span class="wa-burbuja">Sole me devolvió un buzo</span><span class="wa-ejemplo-nota">Te manda el enlace para terminarla en Nexo.</span></li>
+                  </ul>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Se carga en el negocio al que vinculaste el número. Para usarlo en otro, entrá a ese negocio y vinculalo de nuevo.</p>
+                </div>
+              </div>
             </section>
 
             <section class="config-pagina" data-seccion="apariencia" aria-labelledby="configAparienciaTitulo" hidden>

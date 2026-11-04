@@ -443,6 +443,8 @@ const PAGINAS = {
   },
   "categorias-gastos": { admin: true, alEntrar: () => recargar("gastos").then(() => invocar("pintar:categorias-gastos")) },
   cuenta: { admin: false, alEntrar: () => invocar("pintar:cuenta") },
+  // WhatsApp, el teléfono de cada persona: dominios/whatsapp.js (hist. §135).
+  whatsapp: { admin: false, alEntrar: () => invocar("pintar:whatsapp") },
   // Avisar un problema: dominios/problema.js (handoff.md, "Orden", punto 2).
   problema: { admin: false, alEntrar: () => invocar("pintar:problema") },
   apariencia: {
