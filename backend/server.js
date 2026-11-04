@@ -1898,7 +1898,12 @@ app.get('/api/integraciones/whatsapp/webhook', (req, res) => {
 let colaWhatsApp = Promise.resolve();
 app.post('/api/integraciones/whatsapp/webhook', (req, res) => {
   res.sendStatus(200);
-  if (!whatsapp.avisoFirmado(req.cuerpoCrudo, req.get('x-hub-signature-256'))) return;
+  // Si los avisos de Meta llegan y se descartan todos, casi siempre es
+  // WHATSAPP_APP_SECRET mal cargada: sin esta línea no quedaba rastro.
+  if (!whatsapp.avisoFirmado(req.cuerpoCrudo, req.get('x-hub-signature-256'))) {
+    console.warn('[whatsapp] aviso descartado: la firma no coincide con WHATSAPP_APP_SECRET.');
+    return;
+  }
   for (const mensaje of whatsapp.mensajesDelAviso(req.body)) {
     colaWhatsApp = colaWhatsApp
       .then(() => atenderWhatsApp(mensaje))
