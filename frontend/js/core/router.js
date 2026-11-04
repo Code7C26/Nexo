@@ -52,6 +52,8 @@ const VISTAS_CONSTRUIDAS = {
   // El manual (hist. §118): se entra desde Configuración › Ayuda, que queda marcada.
   ayuda: { titulo: "Manual de uso", dominio: "Ayuda", nav: "configuracion" },
   productos: { titulo: "Productos", termino: "Plural", dominio: "Maestros" },
+  // Las ofertas (hist. §133): se entra desde Productos, que queda marcada.
+  ofertas: { titulo: "Ofertas", dominio: "Maestros", nav: "productos" },
   // Con el módulo crm, la página de clientes es el CRM (hist. §91).
   clientes: { titulo: "Clientes", tituloConModulo: ["crm", "CRM"], dominio: "Maestros" },
   proveedores: { titulo: "Proveedores", dominio: "Maestros" },
@@ -120,7 +122,8 @@ const VISTAS_SOLO_ADMIN = new Set([
   "compra-detalle",
   "devoluciones-proveedor",
   "devolucion-proveedor-detalle",
-  "planes-socio"
+  "planes-socio",
+  "ofertas"
 ]);
 
 // `subruta` es lo que va después de la vista en el hash (#/configuracion/negocio):

@@ -2,7 +2,9 @@
 // pasa por scripts/lint.mjs: ese script controla que las reglas se apliquen y
 // que ningún archivo quede afuera en silencio (hist. §54).
 //
-// Es .mjs y no .js porque el package.json de la raíz no es "type": "module".
+// Es .mjs y no .js de cuando el package.json de la raíz no era "type":
+// "module" (lo es desde hist. §133, para que el servidor importe módulos de
+// frontend/js/core).
 import js from '@eslint/js';
 import globals from 'globals';
 

@@ -833,6 +833,13 @@ Lista de precios
 de
 Precio del producto en esa lista.
 
+Implementado hoy: ofertas con vigencia sobre las listas (hist. §133), sin
+tocar sus precios: porcentaje, monto o precio fijo, por producto, categoría o
+todo, en una lista o en todas, entre fechas y ciertos días; con cantidad
+mínima son promociones por cantidad. Dos no se suman (gana la más barata). El
+punto de venta y el alta de venta las aplican, y cada renglón de venta guarda
+la oferta y el precio de lista de ese momento.
+
 ---
 
 # 19. MULTIDEPÓSITO

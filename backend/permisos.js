@@ -78,6 +78,13 @@ export const RUTAS_PERMISOS = {
   'GET /api/listas-precios': 'ambos',
   'POST /api/listas-precios': 'admin',
   'PATCH /api/listas-precios/:id': 'admin',
+  // Ofertas con vigencia (hist. §133): el mostrador las aplica, así que
+  // verlas es de los dos; crearlas, editarlas y pausarlas es admin, como los
+  // precios.
+  'GET /api/ofertas': 'ambos',
+  'POST /api/ofertas': 'admin',
+  'PUT /api/ofertas/:id': 'admin',
+  'PATCH /api/ofertas/:id': 'admin',
   'GET /api/depositos': 'ambos',
   'POST /api/depositos': 'admin',
   'PATCH /api/depositos/:id': 'admin',

@@ -47,6 +47,9 @@ import {
 } from './tiendanube.js';
 import * as mercadoLibre from './mercadolibre.js';
 import * as mercadoPago from './mercadopago.js';
+// Las reglas de las ofertas (hist. §133) son las mismas que usa la pantalla:
+// se importa el módulo del frontend, que es puro, en vez de copiarlo.
+import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -3553,6 +3556,316 @@ app.patch('/api/listas-precios/:id', soloAdmin, (req, res) => {
   res.json({ id: listaId });
 });
 
+/* ---------- Ofertas con vigencia (hist. §133) ---------- */
+//
+// Bajan el precio de lista por un tiempo, sin tocar las listas (ver ofertas en
+// schema.sql). Cuándo vale una y cuál gana lo dice frontend/js/core/ofertas.js:
+// la pantalla propone el precio con esas reglas y crearVenta anota, con las
+// mismas, la oferta de cada renglón. Verlas es de los dos roles (el mostrador
+// las aplica); crearlas, editarlas y pausarlas es del admin, como los precios.
+// Se audita en la organización (operacion_tipo 'oferta'), como la balanza:
+// sumar 'oferta' al CHECK de auditoria pediría reconstruir la tabla.
+
+const MAX_ALCANCE_OFERTA = 500;
+const LARGO_NOMBRE_OFERTA = 80;
+const numerosDeTexto = (texto) => (texto ? texto.split(',').map(Number) : []);
+
+// Las ofertas del negocio como las lee core/ofertas.js: con sus productos y
+// categorías, y los días como listas de números.
+function ofertasDelNegocio(org, { soloActivas = false } = {}) {
+  const filas = db
+    .prepare(
+      `SELECT ofertas.*, listas_precios.nombre AS lista
+         FROM ofertas
+         LEFT JOIN listas_precios ON listas_precios.id = ofertas.lista_precio_id
+        WHERE ofertas.organizacion_id = ? ${soloActivas ? 'AND ofertas.activa = 1' : ''}
+        ORDER BY ofertas.id`
+    )
+    .all(org);
+  if (!filas.length) return [];
+  const alcance = new Map(filas.map((o) => [o.id, { productos: [], categorias: [] }]));
+  const filasAlcance = db
+    .prepare(
+      `SELECT oferta_alcance.oferta_id, oferta_alcance.producto_id, oferta_alcance.categoria_id
+         FROM oferta_alcance JOIN ofertas ON ofertas.id = oferta_alcance.oferta_id
+        WHERE ofertas.organizacion_id = ?
+        ORDER BY oferta_alcance.id`
+    )
+    .all(org);
+  for (const fila of filasAlcance) {
+    const deLaOferta = alcance.get(fila.oferta_id);
+    if (!deLaOferta) continue;
+    if (fila.producto_id) deLaOferta.productos.push(fila.producto_id);
+    else deLaOferta.categorias.push(fila.categoria_id);
+  }
+  return filas.map((o) => ({
+    id: o.id,
+    nombre: o.nombre,
+    tipo: o.tipo,
+    valor: o.valor,
+    cantidad_minima: o.cantidad_minima,
+    lista_precio_id: o.lista_precio_id,
+    lista: o.lista,
+    alcance: o.alcance,
+    ...alcance.get(o.id),
+    desde: o.desde,
+    hasta: o.hasta,
+    dias_semana: numerosDeTexto(o.dias_semana),
+    dias_mes: numerosDeTexto(o.dias_mes),
+    activa: Boolean(o.activa),
+    creado_en: o.creado_en
+  }));
+}
+
+const ofertaDelNegocio = (id, org) => ofertasDelNegocio(org).find((o) => o.id === id) ?? null;
+
+// Ids sin repetir que existen en la tabla del negocio, o un error.
+function idsDelNegocio(valor, tabla, org, { nombre, vacio }) {
+  if (!Array.isArray(valor) || valor.length === 0) throw new ErrorValidacion(vacio);
+  if (valor.length > MAX_ALCANCE_OFERTA) throw new ErrorValidacion(`Una oferta puede tener hasta ${MAX_ALCANCE_OFERTA} ${nombre}.`);
+  const ids = [...new Set(valor.map(Number))];
+  const existe = db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ? AND organizacion_id = ?`);
+  if (ids.some((id) => !esIdValido(id) || !existe.get(id, org))) throw new ErrorValidacion(`Alguno de los ${nombre} elegidos no existe.`);
+  return ids;
+}
+
+// Días de la semana (1 a 7) o del mes (1 a 31): ordenados y sin repetir. Vacío,
+// o todos los de la semana, es "todos los días": null.
+function diasDeOferta(valor, maximo, mensaje) {
+  if (valor == null || (Array.isArray(valor) && valor.length === 0)) return null;
+  if (!Array.isArray(valor) || valor.some((d) => !Number.isInteger(d) || d < 1 || d > maximo)) throw new ErrorValidacion(mensaje);
+  const dias = [...new Set(valor)].sort((a, b) => a - b);
+  return maximo === 7 && dias.length === 7 ? null : dias.join(',');
+}
+
+// Lo que se guarda de una oferta, validado.
+function datosDeOferta(org, cuerpo) {
+  const nombre = typeof cuerpo?.nombre === 'string' ? cuerpo.nombre.trim() : '';
+  if (!nombre) throw new ErrorValidacion('Ponele un nombre a la oferta.');
+  if (nombre.length > LARGO_NOMBRE_OFERTA) throw new ErrorValidacion(`El nombre puede tener hasta ${LARGO_NOMBRE_OFERTA} letras.`);
+  const { tipo, alcance } = cuerpo;
+  if (!Object.hasOwn(TIPOS_OFERTA, tipo)) throw new ErrorValidacion('Elegí cómo baja el precio la oferta.');
+  if (!esNumeroValido(cuerpo.valor) || redondear2(cuerpo.valor) <= 0) {
+    throw new ErrorValidacion(tipo === 'porcentaje' ? 'Poné el porcentaje de la oferta.' : 'Poné el importe de la oferta.');
+  }
+  const valor = redondear2(cuerpo.valor);
+  if (tipo === 'porcentaje' && valor >= 100) throw new ErrorValidacion('El porcentaje tiene que ser menor a 100.');
+  let cantidadMinima = null;
+  if (cuerpo.cantidad_minima != null && cuerpo.cantidad_minima !== '') {
+    if (!esNumeroValido(cuerpo.cantidad_minima) || redondear3(cuerpo.cantidad_minima) <= 0) {
+      throw new ErrorValidacion('La cantidad mínima tiene que ser mayor a 0.');
+    }
+    cantidadMinima = redondear3(cuerpo.cantidad_minima);
+  }
+  const listaId = cuerpo.lista_precio_id ? Number(cuerpo.lista_precio_id) : null;
+  if (listaId && !listaPrecioValida(listaId, org)) throw new ErrorValidacion('La lista de precios elegida no existe.');
+  if (!Object.hasOwn(ALCANCES_OFERTA, alcance)) throw new ErrorValidacion('Elegí qué productos toca la oferta.');
+  const productos =
+    alcance === 'productos'
+      ? idsDelNegocio(cuerpo.productos, 'productos', org, { nombre: 'productos', vacio: 'Elegí al menos un producto.' })
+      : [];
+  const categorias =
+    alcance === 'categorias'
+      ? idsDelNegocio(cuerpo.categorias, 'categorias', org, { nombre: 'categorías', vacio: 'Elegí al menos una categoría.' })
+      : [];
+  const desde = validarFecha(cuerpo.desde);
+  if (!desde) throw new ErrorValidacion('Poné desde qué día vale la oferta.');
+  let hasta = null;
+  if (cuerpo.hasta) {
+    hasta = validarFecha(cuerpo.hasta);
+    if (!hasta) throw new ErrorValidacion('La fecha de fin no es válida.');
+    if (hasta < desde) throw new ErrorValidacion('La oferta no puede terminar antes de empezar.');
+  }
+  return {
+    nombre,
+    tipo,
+    valor,
+    cantidad_minima: cantidadMinima,
+    lista_precio_id: listaId,
+    alcance,
+    productos,
+    categorias,
+    desde,
+    hasta,
+    dias_semana: diasDeOferta(cuerpo.dias_semana, 7, 'Los días de la semana no son válidos.'),
+    dias_mes: diasDeOferta(cuerpo.dias_mes, 31, 'Los días del mes van del 1 al 31.')
+  };
+}
+
+function guardarAlcanceOferta(ofertaId, { productos, categorias }) {
+  db.prepare('DELETE FROM oferta_alcance WHERE oferta_id = ?').run(ofertaId);
+  const insertar = db.prepare('INSERT INTO oferta_alcance (oferta_id, producto_id, categoria_id) VALUES (?, ?, ?)');
+  for (const id of productos) insertar.run(ofertaId, id, null);
+  for (const id of categorias) insertar.run(ofertaId, null, id);
+}
+
+// Para la auditoría: qué hace y cuándo vale, en palabras.
+const resumenOferta = (oferta) =>
+  JSON.stringify({
+    nombre: oferta.nombre,
+    oferta: describirOferta(oferta),
+    vigencia: describirVigencia({ ...oferta, dias_semana: numerosDeTexto(oferta.dias_semana), dias_mes: numerosDeTexto(oferta.dias_mes) }),
+    lista: oferta.lista_precio_id,
+    alcance: oferta.alcance,
+    productos: oferta.productos,
+    categorias: oferta.categorias
+  });
+// Los días vienen como texto de la base o como lista de la API.
+const conDiasEnTexto = (oferta) => ({
+  ...oferta,
+  dias_semana: Array.isArray(oferta.dias_semana) ? oferta.dias_semana.join(',') || null : oferta.dias_semana,
+  dias_mes: Array.isArray(oferta.dias_mes) ? oferta.dias_mes.join(',') || null : oferta.dias_mes
+});
+
+app.get('/api/ofertas', (req, res) => {
+  res.json(ofertasDelNegocio(req.usuario.organizacion_id));
+});
+
+app.post('/api/ofertas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const datos = datosDeOferta(org, req.body);
+  const id = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO ofertas (organizacion_id, nombre, tipo, valor, cantidad_minima, lista_precio_id, alcance, desde, hasta,
+                              dias_semana, dias_mes, creado_por)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        org,
+        datos.nombre,
+        datos.tipo,
+        datos.valor,
+        datos.cantidad_minima,
+        datos.lista_precio_id,
+        datos.alcance,
+        datos.desde,
+        datos.hasta,
+        datos.dias_semana,
+        datos.dias_mes,
+        req.usuario.id
+      );
+    const nuevoId = Number(lastInsertRowid);
+    guardarAlcanceOferta(nuevoId, datos);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'oferta',
+      operacion_id: nuevoId,
+      valor_nuevo: resumenOferta(datos),
+      detalle: `Oferta "${datos.nombre}" creada`
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+app.put('/api/ofertas/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const antes = ofertaDelNegocio(Number(req.params.id), org);
+  if (!antes) return res.status(404).json({ error: 'Oferta no encontrada.' });
+  const datos = datosDeOferta(org, req.body);
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE ofertas SET nombre = ?, tipo = ?, valor = ?, cantidad_minima = ?, lista_precio_id = ?, alcance = ?, desde = ?, hasta = ?,
+                          dias_semana = ?, dias_mes = ?
+        WHERE id = ?`
+    ).run(
+      datos.nombre,
+      datos.tipo,
+      datos.valor,
+      datos.cantidad_minima,
+      datos.lista_precio_id,
+      datos.alcance,
+      datos.desde,
+      datos.hasta,
+      datos.dias_semana,
+      datos.dias_mes,
+      antes.id
+    );
+    guardarAlcanceOferta(antes.id, datos);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'oferta',
+      operacion_id: antes.id,
+      valor_anterior: resumenOferta(conDiasEnTexto(antes)),
+      valor_nuevo: resumenOferta(datos),
+      detalle: `Oferta "${datos.nombre}" editada`
+    });
+  });
+  res.json({ id: antes.id });
+});
+
+// Pausarla o volver a prenderla. No se borra: las ventas que la usaron la
+// nombran.
+app.patch('/api/ofertas/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const oferta = ofertaDelNegocio(Number(req.params.id), org);
+  if (!oferta) return res.status(404).json({ error: 'Oferta no encontrada.' });
+  if (typeof req.body?.activa !== 'boolean') return res.status(400).json({ error: 'Falta si la oferta queda activa o pausada.' });
+  const activa = req.body.activa;
+  if (activa !== oferta.activa) {
+    withTransaction(() => {
+      db.prepare('UPDATE ofertas SET activa = ? WHERE id = ?').run(activa ? 1 : 0, oferta.id);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'organizacion',
+        entidad_id: org,
+        operacion_tipo: 'oferta',
+        operacion_id: oferta.id,
+        valor_anterior: JSON.stringify({ activa: oferta.activa }),
+        valor_nuevo: JSON.stringify({ activa }),
+        detalle: `Oferta "${oferta.nombre}" ${activa ? 'activada de nuevo' : 'pausada'}`
+      });
+    });
+  }
+  res.json({ id: oferta.id, activa });
+});
+
+// El precio de lista de un renglón, con la misma cadena que la pantalla de
+// ventas (precioVarianteEnLista en app.js): el de la variante en la lista, el
+// propio de la variante, el del producto en la lista y el del producto (que es
+// el de la predeterminada).
+function precioDeLista(productoId, varianteId, listaId) {
+  const delProducto = db
+    .prepare(
+      `SELECT COALESCE(producto_precios.precio, productos.precio_venta) AS precio
+         FROM productos
+         LEFT JOIN producto_precios ON producto_precios.producto_id = productos.id AND producto_precios.lista_precio_id = ?
+        WHERE productos.id = ?`
+    )
+    .get(listaId ?? null, productoId)?.precio;
+  if (!varianteId) return delProducto ?? 0;
+  const deLaVariante = db
+    .prepare(
+      `SELECT COALESCE(variante_precios.precio, producto_variantes.precio_venta) AS precio
+         FROM producto_variantes
+         LEFT JOIN variante_precios ON variante_precios.variante_id = producto_variantes.id AND variante_precios.lista_precio_id = ?
+        WHERE producto_variantes.id = ?`
+    )
+    .get(listaId ?? null, varianteId)?.precio;
+  return deLaVariante ?? delProducto ?? 0;
+}
+
+// La oferta de un renglón de venta que se está creando: { oferta_id,
+// precio_lista } si el precio cobrado es el de la oferta que gana ese día, o
+// null (sin oferta, o un precio puesto a mano). listaId es la de la venta ya
+// resuelta: sin lista, la predeterminada.
+function ofertaDelRenglon(ofertas, item, varianteId, listaId, fecha) {
+  const precioLista = precioDeLista(item.producto_id, varianteId, listaId);
+  const categoriaId = db.prepare('SELECT categoria_id FROM productos WHERE id = ?').get(item.producto_id)?.categoria_id ?? null;
+  const mejor = mejorOferta(
+    ofertas,
+    { producto_id: item.producto_id, categoria_id: categoriaId, lista_id: listaId, cantidad: Number(item.cantidad), precio_lista: precioLista },
+    fecha
+  );
+  if (!mejor || Math.abs(mejor.precio - Number(item.precio_unitario)) >= 0.005) return null;
+  return { oferta_id: mejor.oferta.id, precio_lista: precioLista };
+}
+
 /* ---------- Depósitos (CLAUDE.md §5/§19) ---------- */
 //
 // Calcado de listas de precios (arriba): mismas dos validaciones (nombre
@@ -6317,12 +6630,14 @@ app.get('/api/ventas/:id', (req, res) => {
       `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
               venta_items.alicuota_iva, venta_items.iva,
+              venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista,
               COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
                   FROM devolucion_items JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
                  WHERE devolucion_items.venta_item_id = venta_items.id AND devoluciones.estado = 'activa'
               ), 0) AS cantidad_devuelta
          FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+         LEFT JOIN ofertas ON ofertas.id = venta_items.oferta_id
         WHERE venta_id = ?
         ORDER BY venta_items.id`
     )
@@ -6625,10 +6940,19 @@ function crearVenta({
   // del producto padre.
   const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
   const insertItem = db.prepare(
-    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
+                              oferta_id, precio_lista)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const condicionIva = condicionIvaNegocio(organizacion_id);
+  // Las ofertas (hist. §133): la de cada renglón es la que ganaba el día de
+  // la venta, en su lista (sin lista, la predeterminada), y se anota solo si
+  // el precio cobrado es el suyo.
+  const ofertas = ofertasDelNegocio(organizacion_id, { soloActivas: true });
+  const listaDeLaVenta =
+    listaPrecioId ??
+    db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?').get(organizacion_id)?.id ??
+    null;
 
   let total = 0;
   for (const item of items) {
@@ -6643,7 +6967,19 @@ function crearVenta({
       { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
       condicionIva
     );
-    insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
+    const conOferta = ofertas.length ? ofertaDelRenglon(ofertas, item, varianteId, listaDeLaVenta, fechaVenta) : null;
+    insertItem.run(
+      nuevaVentaId,
+      item.producto_id,
+      varianteId,
+      item.cantidad,
+      item.precio_unitario,
+      costoActual,
+      alicuota_iva,
+      iva,
+      conOferta?.oferta_id ?? null,
+      conOferta?.precio_lista ?? null
+    );
     if (!carga_inicial) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -6962,10 +7298,18 @@ app.put('/api/ventas/:id', (req, res) => {
     const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
     const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
     const insertItem = db.prepare(
-      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
+                                oferta_id, precio_lista)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const condicionIva = condicionIvaNegocio(req.usuario.organizacion_id);
+    // Las ofertas, como al crearla (hist. §133): las del día de la venta.
+    const ofertas = ofertasDelNegocio(req.usuario.organizacion_id, { soloActivas: true });
+    const listaDeLaVenta =
+      listaPrecioId ??
+      db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?').get(req.usuario.organizacion_id)?.id ??
+      null;
+    const fechaDeLaVenta = fecha || venta.fecha;
 
     let total = 0;
     for (const item of items) {
@@ -6979,7 +7323,19 @@ app.put('/api/ventas/:id', (req, res) => {
         { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
         condicionIva
       );
-      insertItem.run(ventaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
+      const conOferta = ofertas.length ? ofertaDelRenglon(ofertas, item, varianteId, listaDeLaVenta, fechaDeLaVenta) : null;
+      insertItem.run(
+        ventaId,
+        item.producto_id,
+        varianteId,
+        item.cantidad,
+        item.precio_unitario,
+        costoActual,
+        alicuota_iva,
+        iva,
+        conOferta?.oferta_id ?? null,
+        conOferta?.precio_lista ?? null
+      );
       registrarMovimientoStock({
         producto_id: item.producto_id,
         variante_id: varianteId,
@@ -14907,7 +15263,7 @@ app.get('/api/pos/catalogo', (req, res) => {
     .prepare(
       `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.codigo_barras, productos.plu,
               productos.precio_venta AS precio, COALESCE(stock_por_deposito.cantidad, 0) AS stock,
-              categorias.nombre AS categoria, productos.unidad, productos.tipo
+              productos.categoria_id, categorias.nombre AS categoria, productos.unidad, productos.tipo
          FROM productos
          LEFT JOIN stock_por_deposito
            ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
@@ -14923,7 +15279,7 @@ app.get('/api/pos/catalogo', (req, res) => {
       `SELECT productos.id AS producto_id, producto_variantes.id AS variante_id, productos.nombre,
               producto_variantes.sku, producto_variantes.codigo_barras,
               COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio,
-              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, categorias.nombre AS categoria,
+              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, productos.categoria_id, categorias.nombre AS categoria,
               productos.unidad, productos.tipo
          FROM producto_variantes
          JOIN productos ON productos.id = producto_variantes.producto_id
@@ -14938,9 +15294,11 @@ app.get('/api/pos/catalogo', (req, res) => {
     )
     .all(listaId ?? null, depositoId, organizacionId)
     .map((v) => ({ ...v, nombre: `${v.nombre} — ${combinacionVariante(v.variante_id)}` }));
-  // Un servicio no tiene tope: stock null.
+  // Un servicio no tiene tope: stock null. La lista es la de las ofertas
+  // (hist. §133): el mostrador vende con la predeterminada.
   res.json(
     [...productos, ...variantes]
+      .map((i) => ({ ...i, lista_precio_id: listaId ?? null }))
       .map((i) => (i.tipo === 'servicio' ? { ...i, stock: null } : i))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   );

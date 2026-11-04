@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §132);
+    siguiente número (hoy el último es §133);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,26 @@
 
 ## Estado actual (4 de noviembre de 2026)
 
-**Lo último (4 de noviembre, hist. §131): "Adónde fue la plata" de cada
-venta, hecho y commiteado en `solla`, sin publicar.** Pedido del usuario
+**Lo último (4 de noviembre, hist. §133): ofertas con vigencia, hechas y
+commiteadas en `solla`, sin publicar.** Punto 2 de las ideas de Praxia:
+- Productos → Ofertas (admin): en porcentaje, en pesos o a precio fijo, sobre
+  productos, categorías o todo, en una lista o en todas, entre fechas y ciertos
+  días de la semana o del mes; con cantidad mínima, promoción por cantidad (los
+  escalones son varias ofertas). Dos no se suman: gana la más barata. "Los
+  precios de un día" muestra qué cambia;
+- el punto de venta y el alta de venta las aplican (tachado, nombre, "Ahorra
+  $ X", y la promoción que se gana llevando más); la venta anota en cada
+  renglón la oferta y el precio de lista, y la ficha los muestra;
+- las reglas viven en `frontend/js/core/ofertas.js`, que el servidor importa
+  tal cual (la raíz pasó a `"type": "module"`);
+- migración: tablas `ofertas` y `oferta_alcance`, y `venta_items.oferta_id` y
+  `precio_lista` (aditivas). **Falta que el usuario lo vea.**
+
+**Publicado el 4 de noviembre (PR #49): §131 y §132**, sin esperar a mirar el
+servidor (pedido del usuario).
+
+**Antes (4 de noviembre, hist. §131): "Adónde fue la plata" de cada
+venta.** Pedido del usuario
 ("que cada venta tenga su fichita"):
 - la ficha de la venta reparte lo que pagó el cliente en mercadería,
   packaging, cada categoría de gasto de la venta (comisión, envío, cuotas),
@@ -32,8 +50,8 @@ venta, hecho y commiteado en `solla`, sin publicar.** Pedido del usuario
   cuotas dice el porcentaje ("6,29 % del pago"), también en Gastos;
 - sin cambios de esquema. **Falta que el usuario lo vea.**
 
-**También el 4 de noviembre (hist. §132): etiquetas de balanza, hechas y
-commiteadas en `solla`, sin publicar.** Punto 1 de las ideas de Praxia:
+**También el 4 de noviembre (hist. §132): etiquetas de balanza.** Punto 1 de
+las ideas de Praxia:
 - cada producto que se pesa tiene su código de balanza (PLU), único por
   negocio;
 - Configuración → Balanza deduce el formato de la etiqueta de una etiqueta
@@ -1222,12 +1240,13 @@ cuenta, gastos de caja, ventas del día y accesos rápidos desde el punto de
 venta; después, puntos y premios, mensajes de WhatsApp armados, "Para revisar"
 en el tablero, ventas por hora, gastos fijos que se repiten y permisos por
 sección. **El 3 de noviembre el usuario pidió "seguir con las mejoras":**
-- ~~código de barras en producto y variante~~ **hecho** (hist. §127), sin
+- ~~código de barras en producto y variante~~ **hecho** (hist. §127);
+- ~~etiquetas de balanza~~ **hechas el 4 de noviembre** (hist. §132,
+  publicadas en el PR #49);
+- ~~ofertas con vigencia~~ **hechas el 4 de noviembre** (hist. §133), sin
   publicar;
-- ~~etiquetas de balanza~~ **hechas el 4 de noviembre** (hist. §132), sin
-  publicar;
-- **sigue: ofertas con vigencia** (punto 2 de la investigación), y después
-  cobrar a cuenta y gastos desde el punto de venta.
+- **sigue: cobrar a cuenta y gastos desde el punto de venta** (punto 4 de la
+  investigación; el recargo por medio de pago, punto 3, espera al 8d).
 - En el medio, el usuario pidió el tipo "Tienda online": **hecho** (hist.
   §128, publicado en el PR #45), y la comisión y el envío (hist. §129, sin
   publicar).

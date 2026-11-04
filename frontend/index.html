@@ -1148,6 +1148,7 @@
                 <span>Total</span>
                 <span class="pos-total-valor mono" id="posTotal">$0,00</span>
               </div>
+              <p class="oferta-ahorro pos-ahorro" id="posAhorro" aria-live="polite" hidden></p>
               <button type="button" class="btn btn-primary btn-full pos-btn-cobrar" id="btnPosCobrar" title="Cobrar (F9)" disabled>Cobrar</button>
             </aside>
           </div>
@@ -2425,6 +2426,7 @@
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnCategoriasProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
               <button class="btn btn-secundario col-admin" id="btnListasPrecios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Listas de precios</button>
+              <a class="btn btn-secundario col-admin" href="#/ofertas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#percent"></use></svg> Ofertas</a>
               <button class="btn btn-primary btn-nuevo" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span id="btnNuevoProductoTermino">producto</span></span></button>
             </div>
           </div>
@@ -2451,6 +2453,167 @@
           </table>
           </div>
         </section>
+      </section>
+
+      <!-- Vista: Ofertas con vigencia (hist. §133, dominios/ofertas.js). La
+           lista (#/ofertas) y la página de cada una (#/ofertas/nueva,
+           #/ofertas/<id>), solo del admin. -->
+      <section class="view" data-view="ofertas" hidden>
+        <section class="panel ofertas-pagina" data-pagina="lista">
+          <div class="panel-head">
+            <h2>Ofertas</h2>
+            <a class="btn btn-primary btn-nuevo" href="#/ofertas/nueva"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nueva oferta</span></a>
+          </div>
+          <p class="opciones-nota">Bajan el precio por un tiempo, sin tocar tus listas. Arrancan y terminan solas, y el punto de venta y las ventas las aplican: si dos tocan lo mismo, gana la más barata.</p>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Oferta</th>
+                <th scope="col">Qué toca</th>
+                <th scope="col">Cuándo</th>
+                <th scope="col">Estado</th>
+              </tr>
+            </thead>
+            <tbody id="ofertasBody"></tbody>
+          </table>
+          </div>
+          <section class="ofertas-dia" aria-labelledby="ofertasDiaTitulo">
+            <div class="ofertas-dia-head">
+              <h3 id="ofertasDiaTitulo">Los precios de un día</h3>
+              <label class="ofertas-dia-fecha"><span class="visualmente-oculto">Día</span>
+                <input type="date" id="ofertasDia" />
+              </label>
+            </div>
+            <p class="opciones-nota">Lo que cambia de precio ese día con las ofertas, en la lista predeterminada y por una unidad.</p>
+            <ul class="ofertas-dia-lista" id="ofertasDiaLista"></ul>
+          </section>
+        </section>
+
+        <div class="socio-alta ofertas-pagina" data-pagina="oferta" hidden>
+          <a class="btn-link" href="#/ofertas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Ofertas</a>
+          <form class="socio-alta-form" id="formOferta" novalidate>
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Cuánto baja?</p>
+                <label>Nombre
+                  <input type="text" name="nombre" maxlength="80" autocomplete="off" placeholder="Ej: Martes de vacuno" required />
+                </label>
+                <fieldset class="opciones">
+                  <legend>Cómo baja el precio</legend>
+                  <div class="opciones-tarjetas" id="ofertaTipo">
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="tipo" value="porcentaje" checked />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#percent"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Un porcentaje menos</span>
+                        <span class="opcion-tarjeta-desc">Ej: 15 % menos sobre el precio de lista.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="tipo" value="monto" />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#banknote"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Un monto menos</span>
+                        <span class="opcion-tarjeta-desc">Ej: $ 500 menos en cada unidad o kilo.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="tipo" value="precio" />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">A un precio fijo</span>
+                        <span class="opcion-tarjeta-desc">Ej: a $ 9.000 el kilo, sin importar el de la lista.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                  </div>
+                </fieldset>
+                <div class="socio-alta-grupo">
+                  <label><span data-texto-valor>Porcentaje</span>
+                    <span class="campo-sufijo"><input type="number" name="valor" min="0" step="0.01" inputmode="decimal" required /><span aria-hidden="true" data-sufijo>%</span></span>
+                  </label>
+                  <label>Desde cuánto <small>(opcional)</small>
+                    <input type="number" name="cantidad_minima" min="0" step="any" inputmode="decimal" placeholder="Cualquier cantidad" />
+                  </label>
+                </div>
+                <p class="opciones-nota">Con una cantidad es una promoción por cantidad: "2 kg o más a $ 9.000 el kilo". Para escalones, armá una oferta por cada uno.</p>
+              </div>
+            </div>
+
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿A qué?</p>
+                <fieldset class="opciones">
+                  <legend>Qué toca</legend>
+                  <div class="opciones-tarjetas opciones-tarjetas-compactas" id="ofertaAlcance">
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="alcance" value="productos" checked />
+                      <span class="opcion-tarjeta-texto"><span class="opcion-tarjeta-nombre">Productos elegidos</span></span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="alcance" value="categorias" />
+                      <span class="opcion-tarjeta-texto"><span class="opcion-tarjeta-nombre">Categorías</span></span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="alcance" value="todo" />
+                      <span class="opcion-tarjeta-texto"><span class="opcion-tarjeta-nombre">Todo el catálogo</span></span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                  </div>
+                </fieldset>
+                <div class="ofertas-alcance" data-alcance="productos">
+                  <label>Agregar un producto
+                    <input type="text" id="ofertaBuscarProducto" list="ofertaProductos" autocomplete="off" placeholder="Empezá a escribir su nombre" />
+                  </label>
+                  <datalist id="ofertaProductos"></datalist>
+                  <div class="chips-elegir" id="ofertaProductosElegidos" aria-live="polite"></div>
+                  <p class="opciones-nota">Un producto con variantes entra con todas.</p>
+                </div>
+                <fieldset class="opciones" data-alcance="categorias" hidden>
+                  <legend>Categorías</legend>
+                  <div class="chips-elegir" id="ofertaCategorias"></div>
+                </fieldset>
+                <label>Lista de precios
+                  <select name="lista_precio_id" id="ofertaLista"></select>
+                </label>
+              </div>
+            </div>
+
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">3</span> ¿Cuándo?</p>
+                <div class="socio-alta-grupo">
+                  <label>Desde
+                    <input type="date" name="desde" required />
+                  </label>
+                  <label>Hasta <small>(opcional)</small>
+                    <input type="date" name="hasta" />
+                  </label>
+                </div>
+                <fieldset class="opciones">
+                  <legend>Qué días de la semana</legend>
+                  <div class="chips-elegir" id="ofertaDiasSemana"></div>
+                  <p class="opciones-nota">Sin ninguno marcado, todos los días.</p>
+                </fieldset>
+                <label>Qué días del mes <small>(opcional)</small>
+                  <input type="text" name="dias_mes" inputmode="numeric" autocomplete="off" placeholder="Ej: 1, 15" />
+                </label>
+              </div>
+              <div class="config-tarjeta-pie">
+                <p data-resumen aria-live="polite"></p>
+                <div class="config-tarjeta-botones">
+                  <button type="button" class="btn-link" data-accion="pausar" hidden>Pausar</button>
+                  <button type="submit" class="btn btn-primary">Guardar oferta</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
       </section>
 
       <!-- Vista: ficha de un producto -->
@@ -5565,6 +5728,7 @@
         <div id="ventaConsumos" hidden></div>
         <datalist id="productosVenta"></datalist>
         <p class="item-total">Total: <span class="mono" id="ventaTotal">$0,00</span></p>
+        <p class="oferta-ahorro item-ofertas" id="ventaOfertas" aria-live="polite" hidden></p>
         <button type="submit" class="btn btn-primary btn-full" id="formVentaSubmit">Registrar venta</button>
       </form>
     </div>
