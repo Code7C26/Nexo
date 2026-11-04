@@ -47,6 +47,10 @@ import {
 } from './tiendanube.js';
 import * as mercadoLibre from './mercadolibre.js';
 import * as mercadoPago from './mercadopago.js';
+import * as whatsapp from './whatsapp.js';
+// Las reglas de las ofertas (hist. §133) son las mismas que usa la pantalla:
+// se importa el módulo del frontend, que es puro, en vez de copiarlo.
+import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1876,6 +1880,32 @@ app.post('/api/integraciones/mercadopago/notificaciones', (req, res) => {
   );
 });
 
+// WhatsApp (hist. §134). El saludo con que Meta da de alta el webhook: devuelve
+// el desafío solo si el token es el de Nexo.
+app.get('/api/integraciones/whatsapp/webhook', (req, res) => {
+  const desafio = whatsapp.saludoDelWebhook({
+    modo: req.query['hub.mode'],
+    tokenRecibido: req.query['hub.verify_token'],
+    desafio: req.query['hub.challenge']
+  });
+  if (desafio === null) return res.status(403).json({ error: 'Token de verificación inválido.' });
+  res.type('text/plain').send(desafio);
+});
+
+// Los mensajes. Se contesta enseguida (Meta reintenta si se demora) y se
+// atienden después, de a uno: así un doble toque en "Confirmar" no registra
+// dos veces. Un aviso sin la firma de Meta se descarta.
+let colaWhatsApp = Promise.resolve();
+app.post('/api/integraciones/whatsapp/webhook', (req, res) => {
+  res.sendStatus(200);
+  if (!whatsapp.avisoFirmado(req.cuerpoCrudo, req.get('x-hub-signature-256'))) return;
+  for (const mensaje of whatsapp.mensajesDelAviso(req.body)) {
+    colaWhatsApp = colaWhatsApp
+      .then(() => atenderWhatsApp(mensaje))
+      .catch((err) => console.error('[whatsapp] mensaje:', err.message));
+  }
+});
+
 app.use('/api', autenticar);
 
 // Una pestaña que quedó mostrando otro negocio (hist. §77). La sesión es una
@@ -3552,6 +3582,316 @@ app.patch('/api/listas-precios/:id', soloAdmin, (req, res) => {
   });
   res.json({ id: listaId });
 });
+
+/* ---------- Ofertas con vigencia (hist. §133) ---------- */
+//
+// Bajan el precio de lista por un tiempo, sin tocar las listas (ver ofertas en
+// schema.sql). Cuándo vale una y cuál gana lo dice frontend/js/core/ofertas.js:
+// la pantalla propone el precio con esas reglas y crearVenta anota, con las
+// mismas, la oferta de cada renglón. Verlas es de los dos roles (el mostrador
+// las aplica); crearlas, editarlas y pausarlas es del admin, como los precios.
+// Se audita en la organización (operacion_tipo 'oferta'), como la balanza:
+// sumar 'oferta' al CHECK de auditoria pediría reconstruir la tabla.
+
+const MAX_ALCANCE_OFERTA = 500;
+const LARGO_NOMBRE_OFERTA = 80;
+const numerosDeTexto = (texto) => (texto ? texto.split(',').map(Number) : []);
+
+// Las ofertas del negocio como las lee core/ofertas.js: con sus productos y
+// categorías, y los días como listas de números.
+function ofertasDelNegocio(org, { soloActivas = false } = {}) {
+  const filas = db
+    .prepare(
+      `SELECT ofertas.*, listas_precios.nombre AS lista
+         FROM ofertas
+         LEFT JOIN listas_precios ON listas_precios.id = ofertas.lista_precio_id
+        WHERE ofertas.organizacion_id = ? ${soloActivas ? 'AND ofertas.activa = 1' : ''}
+        ORDER BY ofertas.id`
+    )
+    .all(org);
+  if (!filas.length) return [];
+  const alcance = new Map(filas.map((o) => [o.id, { productos: [], categorias: [] }]));
+  const filasAlcance = db
+    .prepare(
+      `SELECT oferta_alcance.oferta_id, oferta_alcance.producto_id, oferta_alcance.categoria_id
+         FROM oferta_alcance JOIN ofertas ON ofertas.id = oferta_alcance.oferta_id
+        WHERE ofertas.organizacion_id = ?
+        ORDER BY oferta_alcance.id`
+    )
+    .all(org);
+  for (const fila of filasAlcance) {
+    const deLaOferta = alcance.get(fila.oferta_id);
+    if (!deLaOferta) continue;
+    if (fila.producto_id) deLaOferta.productos.push(fila.producto_id);
+    else deLaOferta.categorias.push(fila.categoria_id);
+  }
+  return filas.map((o) => ({
+    id: o.id,
+    nombre: o.nombre,
+    tipo: o.tipo,
+    valor: o.valor,
+    cantidad_minima: o.cantidad_minima,
+    lista_precio_id: o.lista_precio_id,
+    lista: o.lista,
+    alcance: o.alcance,
+    ...alcance.get(o.id),
+    desde: o.desde,
+    hasta: o.hasta,
+    dias_semana: numerosDeTexto(o.dias_semana),
+    dias_mes: numerosDeTexto(o.dias_mes),
+    activa: Boolean(o.activa),
+    creado_en: o.creado_en
+  }));
+}
+
+const ofertaDelNegocio = (id, org) => ofertasDelNegocio(org).find((o) => o.id === id) ?? null;
+
+// Ids sin repetir que existen en la tabla del negocio, o un error.
+function idsDelNegocio(valor, tabla, org, { nombre, vacio }) {
+  if (!Array.isArray(valor) || valor.length === 0) throw new ErrorValidacion(vacio);
+  if (valor.length > MAX_ALCANCE_OFERTA) throw new ErrorValidacion(`Una oferta puede tener hasta ${MAX_ALCANCE_OFERTA} ${nombre}.`);
+  const ids = [...new Set(valor.map(Number))];
+  const existe = db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ? AND organizacion_id = ?`);
+  if (ids.some((id) => !esIdValido(id) || !existe.get(id, org))) throw new ErrorValidacion(`Alguno de los ${nombre} elegidos no existe.`);
+  return ids;
+}
+
+// Días de la semana (1 a 7) o del mes (1 a 31): ordenados y sin repetir. Vacío,
+// o todos los de la semana, es "todos los días": null.
+function diasDeOferta(valor, maximo, mensaje) {
+  if (valor == null || (Array.isArray(valor) && valor.length === 0)) return null;
+  if (!Array.isArray(valor) || valor.some((d) => !Number.isInteger(d) || d < 1 || d > maximo)) throw new ErrorValidacion(mensaje);
+  const dias = [...new Set(valor)].sort((a, b) => a - b);
+  return maximo === 7 && dias.length === 7 ? null : dias.join(',');
+}
+
+// Lo que se guarda de una oferta, validado.
+function datosDeOferta(org, cuerpo) {
+  const nombre = typeof cuerpo?.nombre === 'string' ? cuerpo.nombre.trim() : '';
+  if (!nombre) throw new ErrorValidacion('Ponele un nombre a la oferta.');
+  if (nombre.length > LARGO_NOMBRE_OFERTA) throw new ErrorValidacion(`El nombre puede tener hasta ${LARGO_NOMBRE_OFERTA} letras.`);
+  const { tipo, alcance } = cuerpo;
+  if (!Object.hasOwn(TIPOS_OFERTA, tipo)) throw new ErrorValidacion('Elegí cómo baja el precio la oferta.');
+  if (!esNumeroValido(cuerpo.valor) || redondear2(cuerpo.valor) <= 0) {
+    throw new ErrorValidacion(tipo === 'porcentaje' ? 'Poné el porcentaje de la oferta.' : 'Poné el importe de la oferta.');
+  }
+  const valor = redondear2(cuerpo.valor);
+  if (tipo === 'porcentaje' && valor >= 100) throw new ErrorValidacion('El porcentaje tiene que ser menor a 100.');
+  let cantidadMinima = null;
+  if (cuerpo.cantidad_minima != null && cuerpo.cantidad_minima !== '') {
+    if (!esNumeroValido(cuerpo.cantidad_minima) || redondear3(cuerpo.cantidad_minima) <= 0) {
+      throw new ErrorValidacion('La cantidad mínima tiene que ser mayor a 0.');
+    }
+    cantidadMinima = redondear3(cuerpo.cantidad_minima);
+  }
+  const listaId = cuerpo.lista_precio_id ? Number(cuerpo.lista_precio_id) : null;
+  if (listaId && !listaPrecioValida(listaId, org)) throw new ErrorValidacion('La lista de precios elegida no existe.');
+  if (!Object.hasOwn(ALCANCES_OFERTA, alcance)) throw new ErrorValidacion('Elegí qué productos toca la oferta.');
+  const productos =
+    alcance === 'productos'
+      ? idsDelNegocio(cuerpo.productos, 'productos', org, { nombre: 'productos', vacio: 'Elegí al menos un producto.' })
+      : [];
+  const categorias =
+    alcance === 'categorias'
+      ? idsDelNegocio(cuerpo.categorias, 'categorias', org, { nombre: 'categorías', vacio: 'Elegí al menos una categoría.' })
+      : [];
+  const desde = validarFecha(cuerpo.desde);
+  if (!desde) throw new ErrorValidacion('Poné desde qué día vale la oferta.');
+  let hasta = null;
+  if (cuerpo.hasta) {
+    hasta = validarFecha(cuerpo.hasta);
+    if (!hasta) throw new ErrorValidacion('La fecha de fin no es válida.');
+    if (hasta < desde) throw new ErrorValidacion('La oferta no puede terminar antes de empezar.');
+  }
+  return {
+    nombre,
+    tipo,
+    valor,
+    cantidad_minima: cantidadMinima,
+    lista_precio_id: listaId,
+    alcance,
+    productos,
+    categorias,
+    desde,
+    hasta,
+    dias_semana: diasDeOferta(cuerpo.dias_semana, 7, 'Los días de la semana no son válidos.'),
+    dias_mes: diasDeOferta(cuerpo.dias_mes, 31, 'Los días del mes van del 1 al 31.')
+  };
+}
+
+function guardarAlcanceOferta(ofertaId, { productos, categorias }) {
+  db.prepare('DELETE FROM oferta_alcance WHERE oferta_id = ?').run(ofertaId);
+  const insertar = db.prepare('INSERT INTO oferta_alcance (oferta_id, producto_id, categoria_id) VALUES (?, ?, ?)');
+  for (const id of productos) insertar.run(ofertaId, id, null);
+  for (const id of categorias) insertar.run(ofertaId, null, id);
+}
+
+// Para la auditoría: qué hace y cuándo vale, en palabras.
+const resumenOferta = (oferta) =>
+  JSON.stringify({
+    nombre: oferta.nombre,
+    oferta: describirOferta(oferta),
+    vigencia: describirVigencia({ ...oferta, dias_semana: numerosDeTexto(oferta.dias_semana), dias_mes: numerosDeTexto(oferta.dias_mes) }),
+    lista: oferta.lista_precio_id,
+    alcance: oferta.alcance,
+    productos: oferta.productos,
+    categorias: oferta.categorias
+  });
+// Los días vienen como texto de la base o como lista de la API.
+const conDiasEnTexto = (oferta) => ({
+  ...oferta,
+  dias_semana: Array.isArray(oferta.dias_semana) ? oferta.dias_semana.join(',') || null : oferta.dias_semana,
+  dias_mes: Array.isArray(oferta.dias_mes) ? oferta.dias_mes.join(',') || null : oferta.dias_mes
+});
+
+app.get('/api/ofertas', (req, res) => {
+  res.json(ofertasDelNegocio(req.usuario.organizacion_id));
+});
+
+app.post('/api/ofertas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const datos = datosDeOferta(org, req.body);
+  const id = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO ofertas (organizacion_id, nombre, tipo, valor, cantidad_minima, lista_precio_id, alcance, desde, hasta,
+                              dias_semana, dias_mes, creado_por)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        org,
+        datos.nombre,
+        datos.tipo,
+        datos.valor,
+        datos.cantidad_minima,
+        datos.lista_precio_id,
+        datos.alcance,
+        datos.desde,
+        datos.hasta,
+        datos.dias_semana,
+        datos.dias_mes,
+        req.usuario.id
+      );
+    const nuevoId = Number(lastInsertRowid);
+    guardarAlcanceOferta(nuevoId, datos);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'oferta',
+      operacion_id: nuevoId,
+      valor_nuevo: resumenOferta(datos),
+      detalle: `Oferta "${datos.nombre}" creada`
+    });
+    return nuevoId;
+  });
+  res.status(201).json({ id });
+});
+
+app.put('/api/ofertas/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const antes = ofertaDelNegocio(Number(req.params.id), org);
+  if (!antes) return res.status(404).json({ error: 'Oferta no encontrada.' });
+  const datos = datosDeOferta(org, req.body);
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE ofertas SET nombre = ?, tipo = ?, valor = ?, cantidad_minima = ?, lista_precio_id = ?, alcance = ?, desde = ?, hasta = ?,
+                          dias_semana = ?, dias_mes = ?
+        WHERE id = ?`
+    ).run(
+      datos.nombre,
+      datos.tipo,
+      datos.valor,
+      datos.cantidad_minima,
+      datos.lista_precio_id,
+      datos.alcance,
+      datos.desde,
+      datos.hasta,
+      datos.dias_semana,
+      datos.dias_mes,
+      antes.id
+    );
+    guardarAlcanceOferta(antes.id, datos);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'oferta',
+      operacion_id: antes.id,
+      valor_anterior: resumenOferta(conDiasEnTexto(antes)),
+      valor_nuevo: resumenOferta(datos),
+      detalle: `Oferta "${datos.nombre}" editada`
+    });
+  });
+  res.json({ id: antes.id });
+});
+
+// Pausarla o volver a prenderla. No se borra: las ventas que la usaron la
+// nombran.
+app.patch('/api/ofertas/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const oferta = ofertaDelNegocio(Number(req.params.id), org);
+  if (!oferta) return res.status(404).json({ error: 'Oferta no encontrada.' });
+  if (typeof req.body?.activa !== 'boolean') return res.status(400).json({ error: 'Falta si la oferta queda activa o pausada.' });
+  const activa = req.body.activa;
+  if (activa !== oferta.activa) {
+    withTransaction(() => {
+      db.prepare('UPDATE ofertas SET activa = ? WHERE id = ?').run(activa ? 1 : 0, oferta.id);
+      auditar(req, {
+        accion: 'cambiar_estado',
+        entidad: 'organizacion',
+        entidad_id: org,
+        operacion_tipo: 'oferta',
+        operacion_id: oferta.id,
+        valor_anterior: JSON.stringify({ activa: oferta.activa }),
+        valor_nuevo: JSON.stringify({ activa }),
+        detalle: `Oferta "${oferta.nombre}" ${activa ? 'activada de nuevo' : 'pausada'}`
+      });
+    });
+  }
+  res.json({ id: oferta.id, activa });
+});
+
+// El precio de lista de un renglón, con la misma cadena que la pantalla de
+// ventas (precioVarianteEnLista en app.js): el de la variante en la lista, el
+// propio de la variante, el del producto en la lista y el del producto (que es
+// el de la predeterminada).
+function precioDeLista(productoId, varianteId, listaId) {
+  const delProducto = db
+    .prepare(
+      `SELECT COALESCE(producto_precios.precio, productos.precio_venta) AS precio
+         FROM productos
+         LEFT JOIN producto_precios ON producto_precios.producto_id = productos.id AND producto_precios.lista_precio_id = ?
+        WHERE productos.id = ?`
+    )
+    .get(listaId ?? null, productoId)?.precio;
+  if (!varianteId) return delProducto ?? 0;
+  const deLaVariante = db
+    .prepare(
+      `SELECT COALESCE(variante_precios.precio, producto_variantes.precio_venta) AS precio
+         FROM producto_variantes
+         LEFT JOIN variante_precios ON variante_precios.variante_id = producto_variantes.id AND variante_precios.lista_precio_id = ?
+        WHERE producto_variantes.id = ?`
+    )
+    .get(listaId ?? null, varianteId)?.precio;
+  return deLaVariante ?? delProducto ?? 0;
+}
+
+// La oferta de un renglón de venta que se está creando: { oferta_id,
+// precio_lista } si el precio cobrado es el de la oferta que gana ese día, o
+// null (sin oferta, o un precio puesto a mano). listaId es la de la venta ya
+// resuelta: sin lista, la predeterminada.
+function ofertaDelRenglon(ofertas, item, varianteId, listaId, fecha) {
+  const precioLista = precioDeLista(item.producto_id, varianteId, listaId);
+  const categoriaId = db.prepare('SELECT categoria_id FROM productos WHERE id = ?').get(item.producto_id)?.categoria_id ?? null;
+  const mejor = mejorOferta(
+    ofertas,
+    { producto_id: item.producto_id, categoria_id: categoriaId, lista_id: listaId, cantidad: Number(item.cantidad), precio_lista: precioLista },
+    fecha
+  );
+  if (!mejor || Math.abs(mejor.precio - Number(item.precio_unitario)) >= 0.005) return null;
+  return { oferta_id: mejor.oferta.id, precio_lista: precioLista };
+}
 
 /* ---------- Depósitos (CLAUDE.md §5/§19) ---------- */
 //
@@ -6317,12 +6657,14 @@ app.get('/api/ventas/:id', (req, res) => {
       `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
               venta_items.alicuota_iva, venta_items.iva,
+              venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista,
               COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
                   FROM devolucion_items JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
                  WHERE devolucion_items.venta_item_id = venta_items.id AND devoluciones.estado = 'activa'
               ), 0) AS cantidad_devuelta
          FROM venta_items JOIN productos ON productos.id = venta_items.producto_id
+         LEFT JOIN ofertas ON ofertas.id = venta_items.oferta_id
         WHERE venta_id = ?
         ORDER BY venta_items.id`
     )
@@ -6625,10 +6967,19 @@ function crearVenta({
   // del producto padre.
   const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
   const insertItem = db.prepare(
-    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
+                              oferta_id, precio_lista)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const condicionIva = condicionIvaNegocio(organizacion_id);
+  // Las ofertas (hist. §133): la de cada renglón es la que ganaba el día de
+  // la venta, en su lista (sin lista, la predeterminada), y se anota solo si
+  // el precio cobrado es el suyo.
+  const ofertas = ofertasDelNegocio(organizacion_id, { soloActivas: true });
+  const listaDeLaVenta =
+    listaPrecioId ??
+    db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?').get(organizacion_id)?.id ??
+    null;
 
   let total = 0;
   for (const item of items) {
@@ -6643,7 +6994,19 @@ function crearVenta({
       { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
       condicionIva
     );
-    insertItem.run(nuevaVentaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
+    const conOferta = ofertas.length ? ofertaDelRenglon(ofertas, item, varianteId, listaDeLaVenta, fechaVenta) : null;
+    insertItem.run(
+      nuevaVentaId,
+      item.producto_id,
+      varianteId,
+      item.cantidad,
+      item.precio_unitario,
+      costoActual,
+      alicuota_iva,
+      iva,
+      conOferta?.oferta_id ?? null,
+      conOferta?.precio_lista ?? null
+    );
     if (!carga_inicial) {
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -6962,10 +7325,18 @@ app.put('/api/ventas/:id', (req, res) => {
     const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
     const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
     const insertItem = db.prepare(
-      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
+                                oferta_id, precio_lista)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const condicionIva = condicionIvaNegocio(req.usuario.organizacion_id);
+    // Las ofertas, como al crearla (hist. §133): las del día de la venta.
+    const ofertas = ofertasDelNegocio(req.usuario.organizacion_id, { soloActivas: true });
+    const listaDeLaVenta =
+      listaPrecioId ??
+      db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?').get(req.usuario.organizacion_id)?.id ??
+      null;
+    const fechaDeLaVenta = fecha || venta.fecha;
 
     let total = 0;
     for (const item of items) {
@@ -6979,7 +7350,19 @@ app.put('/api/ventas/:id', (req, res) => {
         { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
         condicionIva
       );
-      insertItem.run(ventaId, item.producto_id, varianteId, item.cantidad, item.precio_unitario, costoActual, alicuota_iva, iva);
+      const conOferta = ofertas.length ? ofertaDelRenglon(ofertas, item, varianteId, listaDeLaVenta, fechaDeLaVenta) : null;
+      insertItem.run(
+        ventaId,
+        item.producto_id,
+        varianteId,
+        item.cantidad,
+        item.precio_unitario,
+        costoActual,
+        alicuota_iva,
+        iva,
+        conOferta?.oferta_id ?? null,
+        conOferta?.precio_lista ?? null
+      );
       registrarMovimientoStock({
         producto_id: item.producto_id,
         variante_id: varianteId,
@@ -12833,47 +13216,43 @@ function contextoParaInterprete(organizacionId, texto) {
   };
 }
 
-app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
-  const { texto } = req.body;
-
-  let resultado;
-  try {
-    resultado = await interpretar(texto, contextoParaInterprete(req.usuario.organizacion_id, texto));
-  } catch (err) {
-    if (err instanceof InterpreteError) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    throw err;
-  }
-
+// La frase → la propuesta, guardada en asistente_mensajes para confirmarla.
+// La usan la web (abajo) y WhatsApp (hist. §134): las dos pasan por acá y por
+// la misma confirmación. Lanza InterpreteError si la IA no está o falla.
+async function proponerDesdeTexto(texto, organizacionId) {
+  const resultado = await interpretar(texto, contextoParaInterprete(organizacionId, texto));
   if (!resultado.tipo) {
-    return res.json({
-      mensaje_id: null,
-      tipo: null,
-      mensaje: resultado.mensaje,
-      propuesta: null,
-      ejecutable: false,
-      problemas: []
-    });
+    return { mensaje_id: null, tipo: null, mensaje: resultado.mensaje, propuesta: null, ejecutable: false, problemas: [] };
   }
 
-  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, req.usuario.organizacion_id);
+  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, organizacionId);
 
   const { lastInsertRowid: mensajeId } = db
     .prepare(
       `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
        VALUES (?, ?, 'interpretado', ?, ?)`
     )
-    .run(texto, JSON.stringify(propuesta), resultado.tipo, req.usuario.organizacion_id);
+    .run(texto, JSON.stringify(propuesta), resultado.tipo, organizacionId);
 
-  res.json({
+  return {
     mensaje_id: Number(mensajeId),
     tipo: resultado.tipo,
     mensaje: null,
     propuesta,
     ejecutable: propuesta.ejecutable,
     problemas: propuesta.problemas
-  });
+  };
+}
+
+app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
+  try {
+    res.json(await proponerDesdeTexto(req.body.texto, req.usuario.organizacion_id));
+  } catch (err) {
+    if (err instanceof InterpreteError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    throw err;
+  }
 }));
 
 // La voz (handoff, "IA"): el audio grabado en el navegador se pasa a texto y
@@ -12940,7 +13319,10 @@ app.post('/api/asistente/:id/descartar', (req, res) => {
 // vuelve a verificar que cada id referenciado exista de verdad antes de
 // usarlo, y corre las mismas validaciones de negocio que los endpoints
 // manuales. Todo dentro de una única transacción (CLAUDE.md §23).
-app.post('/api/asistente/ejecutar', (req, res) => {
+// Es una función con nombre porque WhatsApp (hist. §134) la llama con la
+// persona del teléfono vinculado como req.usuario: la misma ejecución, las
+// mismas validaciones y la misma auditoría que desde la web.
+function ejecutarPropuesta(req, res) {
   const { mensaje_id: mensajeId, tipo, propuesta } = req.body;
 
   // organizacion_id en el lookup (Etapa A, CLAUDE.md §28): sin este filtro,
@@ -13232,7 +13614,312 @@ app.post('/api/asistente/ejecutar', (req, res) => {
   }
 
   return res.status(400).json({ error: 'Tipo de operación desconocido.' });
+}
+
+app.post('/api/asistente/ejecutar', ejecutarPropuesta);
+
+/* ---------- WhatsApp: el asistente por WhatsApp (CLAUDE.md §36, hist. §134) ---------- */
+//
+// Otra entrada al mismo asistente, no un circuito propio: la frase (o la nota
+// de voz, pasada a texto con Whisper) va a proponerDesdeTexto, la propuesta
+// vuelve con botones Confirmar y Cancelar, y confirmar llama a
+// ejecutarPropuesta con la persona del teléfono como si hubiera tocado
+// Confirmar en la web: mismas validaciones, mismo rol y auditoría con actor
+// 'asistente' (CLAUDE.md §21). Nada se registra sin confirmar.
+//
+// El teléfono se vincula desde Mi cuenta con un código que la persona manda
+// al número de Nexo: el negocio sale del vínculo, nunca del mensaje (CLAUDE.md
+// §28). Solo gestión del negocio, nunca charla abierta: Meta prohíbe los
+// asistentes de uso general en la API.
+//
+// Las devoluciones no se confirman por acá: piden elegir de qué venta, y eso
+// se hace en la app.
+
+const CODIGO_WHATSAPP_MINUTOS = 10;
+// El cupo de la IA es de toda la instalación: nadie lo gasta solo.
+const WHATSAPP_POR_HORA = 30;
+const CODIGO_EN_MENSAJE = /^\s*(?:nexo\s*)?(\d{6})\s*$/i;
+const AYUDA_WHATSAPP =
+  'Contame lo que vendiste, compraste o gastaste, escrito o en un audio. Por ejemplo: "Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago". Antes de registrar nada te pido que lo confirmes.';
+const hashCodigoWhatsApp = (codigo) => createHash('sha256').update(`whatsapp:${codigo}`).digest('hex');
+const pesosWhatsApp = (n) =>
+  Number(n ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const nombreEnPropuesta = (campo, siNo = '—') => campo?.nombre_resuelto ?? campo?.valor ?? siNo;
+
+// El vínculo vivo de una persona (vinculado), con el nombre del negocio.
+function vinculoDeUsuario(usuarioId) {
+  return db
+    .prepare(
+      `SELECT whatsapp_vinculos.*, organizaciones.nombre AS negocio
+         FROM whatsapp_vinculos JOIN organizaciones ON organizaciones.id = whatsapp_vinculos.organizacion_id
+        WHERE whatsapp_vinculos.usuario_id = ? AND whatsapp_vinculos.estado = 'vinculado'`
+    )
+    .get(usuarioId);
+}
+
+// Quién opera desde un teléfono: la persona vinculada, con su rol en ese
+// negocio, si todavía trabaja ahí y ni ella ni el negocio se dieron de baja.
+// Tiene la forma de req.usuario que necesitan ejecutarPropuesta y auditar.
+function usuarioDelVinculo(vinculo) {
+  return (
+    db
+      .prepare(
+        `SELECT usuarios.id, usuarios.nombre, pertenencia.rol, pertenencia.organizacion_id
+           FROM usuarios
+           JOIN usuario_organizaciones pertenencia
+             ON pertenencia.usuario_id = usuarios.id AND pertenencia.organizacion_id = ?
+           JOIN organizaciones negocio ON negocio.id = pertenencia.organizacion_id
+          WHERE usuarios.id = ? AND pertenencia.activo = 1 AND usuarios.baja IS NULL AND negocio.baja_pedida IS NULL`
+      )
+      .get(vinculo.organizacion_id, vinculo.usuario_id) ?? null
+  );
+}
+
+app.get('/api/whatsapp', (req, res) => {
+  const vinculo = vinculoDeUsuario(req.usuario.id);
+  res.json({
+    disponible: whatsapp.whatsAppConfigurado(),
+    numero: whatsapp.numeroDeNexo() || null,
+    vinculo: vinculo
+      ? { telefono: vinculo.telefono, negocio: vinculo.negocio, organizacion_id: vinculo.organizacion_id, desde: vinculo.vinculado_en }
+      : null
+  });
 });
+
+// Un código nuevo para vincular el teléfono al negocio activo. Reemplaza el
+// pendiente que hubiera; el vínculo de antes sigue hasta que llegue el código.
+app.post('/api/whatsapp/vincular', (req, res) => {
+  if (!whatsapp.whatsAppConfigurado()) return res.status(503).json({ error: 'WhatsApp todavía no está disponible en Nexo.' });
+  if (!req.usuario.organizacion_id) return res.status(400).json({ error: 'Entrá a un negocio para vincular WhatsApp.' });
+  const ocupado = db.prepare(
+    "SELECT 1 FROM whatsapp_vinculos WHERE codigo_hash = ? AND estado = 'pendiente' AND codigo_vence > datetime('now')"
+  );
+  let codigo;
+  do codigo = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  while (ocupado.get(hashCodigoWhatsApp(codigo)));
+  withTransaction(() => {
+    db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja', codigo_hash = NULL WHERE usuario_id = ? AND estado = 'pendiente'").run(
+      req.usuario.id
+    );
+    db.prepare(
+      `INSERT INTO whatsapp_vinculos (usuario_id, organizacion_id, codigo_hash, codigo_vence, estado)
+       VALUES (?, ?, ?, datetime('now', ?), 'pendiente')`
+    ).run(req.usuario.id, req.usuario.organizacion_id, hashCodigoWhatsApp(codigo), `+${CODIGO_WHATSAPP_MINUTOS} minutes`);
+  });
+  const numero = whatsapp.numeroDeNexo();
+  res.json({
+    codigo,
+    numero,
+    enlace: `https://wa.me/${numero}?text=${encodeURIComponent(`NEXO ${codigo}`)}`,
+    minutos: CODIGO_WHATSAPP_MINUTOS
+  });
+});
+
+app.delete('/api/whatsapp/vinculo', (req, res) => {
+  const vinculo = vinculoDeUsuario(req.usuario.id);
+  if (!vinculo) return res.status(404).json({ error: 'No tenés WhatsApp vinculado.' });
+  withTransaction(() => {
+    db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja' WHERE id = ?").run(vinculo.id);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: req.usuario.id,
+      usuario_id: req.usuario.id,
+      organizacion_id: vinculo.organizacion_id,
+      operacion_tipo: 'whatsapp',
+      operacion_id: vinculo.id,
+      detalle: `WhatsApp desvinculado (terminado en ${vinculo.telefono.slice(-4)})`
+    });
+  });
+  res.status(204).end();
+});
+
+// La propuesta en palabras, para el mensaje con los botones.
+function resumenParaWhatsApp(tipo, p) {
+  const renglones = (items, palabra) =>
+    items.map((i) => `• ${i.cantidad} × ${nombreEnPropuesta(i.producto, '?')}, ${palabra} ${pesosWhatsApp(i.precio_unitario)}`).join('\n');
+  const fecha = p.fecha ? `\nFecha: ${p.fecha.split('-').reverse().join('/')}` : '';
+  if (tipo === 'venta') {
+    const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0);
+    const cobro = p.cobro
+      ? `Cobrado: ${pesosWhatsApp(p.cobro.importe ?? total)} en ${nombreEnPropuesta(p.cobro.cuenta)}`
+      : 'Sin cobro: queda en su cuenta corriente.';
+    return `Venta a ${nombreEnPropuesta(p.cliente, 'sin cliente')}${fecha}\n${renglones(p.items, 'a')}\nTotal: ${pesosWhatsApp(total)}\n${cobro}`;
+  }
+  if (tipo === 'compra') {
+    const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0) + (Number(p.costo_envio) || 0);
+    const envio = Number(p.costo_envio) > 0 ? `\nEnvío: ${pesosWhatsApp(p.costo_envio)}` : '';
+    return `Compra a ${nombreEnPropuesta(p.proveedor, 'sin proveedor')}${fecha}\n${renglones(p.items, 'costo')}${envio}\nTotal: ${pesosWhatsApp(total)}`;
+  }
+  if (tipo === 'gasto') {
+    const detalle = p.descripcion ? `: ${p.descripcion}` : '';
+    return `Gasto de ${pesosWhatsApp(p.importe)} en ${nombreEnPropuesta(p.categoria)}${detalle}${fecha}\nPagado con ${nombreEnPropuesta(p.cuenta)}`;
+  }
+  const que = (p.pedidos ?? []).map((x) => `${x.cantidad} × ${nombreEnPropuesta(x.producto, '?')}`).join(', ');
+  return `Devolución de ${nombreEnPropuesta(p.cliente, 'sin cliente')}: ${que || '—'}`;
+}
+
+// ejecutarPropuesta con la persona del teléfono, como si hubiera tocado
+// Confirmar en la web. Devuelve { status, cuerpo }.
+function ejecutarComo(usuario, body) {
+  let status = 200;
+  let cuerpo = null;
+  const res = {
+    status(codigo) {
+      status = codigo;
+      return this;
+    },
+    json(datos) {
+      cuerpo = datos;
+      return this;
+    }
+  };
+  try {
+    ejecutarPropuesta({ usuario, body }, res);
+  } catch (err) {
+    const conocido = err instanceof ErrorBulk || err instanceof ErrorValidacion;
+    if (!conocido) console.error('[whatsapp] ejecutar:', err.message);
+    status = 400;
+    cuerpo = { error: conocido ? err.message : 'No se pudo registrar.' };
+  }
+  return { status, cuerpo };
+}
+
+const REGISTRADO_WHATSAPP = { venta: 'la venta', compra: 'la compra', gasto: 'el gasto' };
+
+async function vincularWhatsApp(mensaje, filaId, responder) {
+  const codigo = CODIGO_EN_MENSAJE.exec(mensaje.texto)[1];
+  const pendiente = db
+    .prepare(
+      `SELECT whatsapp_vinculos.*, organizaciones.nombre AS negocio
+         FROM whatsapp_vinculos JOIN organizaciones ON organizaciones.id = whatsapp_vinculos.organizacion_id
+        WHERE whatsapp_vinculos.codigo_hash = ? AND whatsapp_vinculos.estado = 'pendiente'
+          AND whatsapp_vinculos.codigo_vence > datetime('now')`
+    )
+    .get(hashCodigoWhatsApp(codigo));
+  if (!pendiente) return responder('Ese código no sirve: puede haber vencido. Pedí otro en Nexo, en Mi cuenta → WhatsApp.');
+  withTransaction(() => {
+    // El teléfono deja la cuenta que tuviera, y la cuenta el teléfono de antes.
+    db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja' WHERE estado = 'vinculado' AND (telefono = ? OR usuario_id = ?)").run(
+      mensaje.de,
+      pendiente.usuario_id
+    );
+    db.prepare(
+      `UPDATE whatsapp_vinculos
+          SET estado = 'vinculado', telefono = ?, codigo_hash = NULL, codigo_vence = NULL, vinculado_en = datetime('now')
+        WHERE id = ?`
+    ).run(mensaje.de, pendiente.id);
+    db.prepare('UPDATE whatsapp_mensajes SET vinculo_id = ? WHERE id = ?').run(pendiente.id, filaId);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: pendiente.usuario_id,
+      usuario_id: pendiente.usuario_id,
+      organizacion_id: pendiente.organizacion_id,
+      operacion_tipo: 'whatsapp',
+      operacion_id: pendiente.id,
+      detalle: `WhatsApp vinculado (terminado en ${mensaje.de.slice(-4)})`
+    });
+  });
+  return responder(`¡Listo! Este número quedó vinculado a ${pendiente.negocio}.\n\n${AYUDA_WHATSAPP}`);
+}
+
+// Un toque en Confirmar o Cancelar: solo sobre una propuesta que armó este
+// mismo teléfono, en este negocio, y que siga sin confirmar.
+async function responderBotonWhatsApp(mensaje, vinculo, usuario, responder) {
+  const partes = /^(si|no):(\d+)$/.exec(mensaje.boton);
+  if (!partes) return;
+  const propuesta = db
+    .prepare(
+      `SELECT asistente_mensajes.id, asistente_mensajes.estado, asistente_mensajes.operacion_tipo, asistente_mensajes.propuesta_json
+         FROM whatsapp_mensajes JOIN asistente_mensajes ON asistente_mensajes.id = whatsapp_mensajes.asistente_mensaje_id
+        WHERE whatsapp_mensajes.asistente_mensaje_id = ? AND whatsapp_mensajes.vinculo_id = ? AND asistente_mensajes.organizacion_id = ?`
+    )
+    .get(Number(partes[2]), vinculo.id, usuario.organizacion_id);
+  if (!propuesta) return responder('No encontré esa propuesta.');
+  if (propuesta.estado !== 'interpretado') return responder('Esa propuesta ya se confirmó o se canceló.');
+  if (partes[1] === 'no') {
+    db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(propuesta.id);
+    return responder('Listo, no registré nada.');
+  }
+  const { status, cuerpo } = ejecutarComo(usuario, {
+    mensaje_id: propuesta.id,
+    tipo: propuesta.operacion_tipo,
+    propuesta: JSON.parse(propuesta.propuesta_json)
+  });
+  if (status < 300) return responder(`Listo: registré ${REGISTRADO_WHATSAPP[cuerpo.tipo] ?? 'la operación'} #${cuerpo.id}.`);
+  return responder(`No lo pude registrar: ${cuerpo?.error ?? 'error desconocido'}`);
+}
+
+async function atenderWhatsApp(mensaje) {
+  // Cada mensaje una sola vez: Meta reintenta los avisos.
+  const { changes, lastInsertRowid } = db
+    .prepare('INSERT OR IGNORE INTO whatsapp_mensajes (wa_id, telefono, tipo) VALUES (?, ?, ?)')
+    .run(mensaje.id, mensaje.de, mensaje.tipo);
+  if (!changes) return;
+  const filaId = Number(lastInsertRowid);
+  const responder = (texto) => whatsapp.mandarTexto(mensaje.de, texto);
+
+  const { n } = db
+    .prepare("SELECT COUNT(*) AS n FROM whatsapp_mensajes WHERE telefono = ? AND recibido_en > datetime('now', '-1 hour')")
+    .get(mensaje.de);
+  if (n > WHATSAPP_POR_HORA) {
+    // Se avisa una sola vez; los que siguen no se contestan.
+    if (n === WHATSAPP_POR_HORA + 1) await responder('Mandaste muchos mensajes en la última hora. Probá de nuevo en un rato.');
+    return;
+  }
+
+  if (mensaje.tipo === 'texto' && CODIGO_EN_MENSAJE.test(mensaje.texto)) return vincularWhatsApp(mensaje, filaId, responder);
+
+  const vinculo = db.prepare("SELECT * FROM whatsapp_vinculos WHERE telefono = ? AND estado = 'vinculado'").get(mensaje.de);
+  if (!vinculo) {
+    return responder('Hola. Este número no está vinculado a ninguna cuenta de Nexo. Para usarlo, entrá a Nexo y vinculalo en Mi cuenta → WhatsApp.');
+  }
+  db.prepare('UPDATE whatsapp_mensajes SET vinculo_id = ? WHERE id = ?').run(vinculo.id, filaId);
+  const usuario = usuarioDelVinculo(vinculo);
+  if (!usuario) return responder('Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincular WhatsApp desde Mi cuenta.');
+
+  if (mensaje.tipo === 'boton') return responderBotonWhatsApp(mensaje, vinculo, usuario, responder);
+  if (mensaje.tipo === 'otro') return responder(`Por ahora entiendo textos y audios.\n\n${AYUDA_WHATSAPP}`);
+
+  let texto = mensaje.texto;
+  try {
+    if (mensaje.tipo === 'audio') {
+      if (!vozDisponible()) return responder('Todavía no puedo escuchar audios: ¿me lo escribís?');
+      const { buffer, mime } = await whatsapp.bajarAudio(mensaje.audio.id);
+      // Los nombres del negocio ayudan a que Whisper los escriba bien.
+      const { cuentas, productos } = contextoParaInterprete(usuario.organizacion_id);
+      texto = await transcribir(buffer, mime, [...cuentas, ...productos.slice(0, 40)].map((f) => f.nombre));
+      if (!texto?.trim()) return responder('No te entendí el audio. ¿Me lo escribís?');
+      await responder(`Entendí: "${texto.trim()}"`);
+    }
+    if (!texto?.trim()) return responder(AYUDA_WHATSAPP);
+
+    const resultado = await proponerDesdeTexto(texto, usuario.organizacion_id);
+    if (!resultado.tipo) return responder(`${resultado.mensaje ? `${resultado.mensaje}\n\n` : ''}${AYUDA_WHATSAPP}`);
+    db.prepare('UPDATE whatsapp_mensajes SET asistente_mensaje_id = ? WHERE id = ?').run(resultado.mensaje_id, filaId);
+    const resumen = resumenParaWhatsApp(resultado.tipo, resultado.propuesta);
+    const descartar = () => db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(resultado.mensaje_id);
+
+    if (resultado.tipo === 'devolucion') {
+      descartar();
+      return responder(`${resumen}\n\nLas devoluciones se cargan en la app, para elegir de qué venta: en Nexo, desde el asistente o desde la venta.`);
+    }
+    if (!resultado.ejecutable) {
+      descartar();
+      return responder(`${resumen}\n\nPara registrarlo me falta:\n• ${resultado.problemas.join('\n• ')}\n\nMandámelo de nuevo con eso, o cargalo en la app.`);
+    }
+    return whatsapp.mandarBotones(mensaje.de, `${resumen}\n\n¿Lo registro?`, [
+      { id: `si:${resultado.mensaje_id}`, titulo: 'Confirmar' },
+      { id: `no:${resultado.mensaje_id}`, titulo: 'Cancelar' }
+    ]);
+  } catch (err) {
+    if (err instanceof InterpreteError) return responder(err.message);
+    if (err instanceof whatsapp.WhatsAppError) throw err;
+    console.error('[whatsapp] atender:', err.message);
+    return responder('Algo salió mal y no lo pude procesar. Probá de nuevo en un rato.');
+  }
+}
 
 /* ---------- Auditoría (CLAUDE.md §22) ---------- */
 
@@ -14686,6 +15373,10 @@ app.post('/api/auth/baja-cuenta', (req, res) => {
     for (const tabla of ['sesiones', 'tokens_cuenta', 'codigos_mail']) {
       db.prepare(`DELETE FROM ${tabla} WHERE usuario_id = ?`).run(id);
     }
+    // El teléfono de WhatsApp también es un dato suyo (hist. §134).
+    db.prepare(
+      "UPDATE whatsapp_vinculos SET estado = 'baja', telefono = NULL, codigo_hash = NULL WHERE usuario_id = ?"
+    ).run(id);
   });
 
   if (cuenta.email) {
@@ -14907,7 +15598,7 @@ app.get('/api/pos/catalogo', (req, res) => {
     .prepare(
       `SELECT productos.id AS producto_id, NULL AS variante_id, productos.nombre, productos.sku, productos.codigo_barras, productos.plu,
               productos.precio_venta AS precio, COALESCE(stock_por_deposito.cantidad, 0) AS stock,
-              categorias.nombre AS categoria, productos.unidad, productos.tipo
+              productos.categoria_id, categorias.nombre AS categoria, productos.unidad, productos.tipo
          FROM productos
          LEFT JOIN stock_por_deposito
            ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
@@ -14923,7 +15614,7 @@ app.get('/api/pos/catalogo', (req, res) => {
       `SELECT productos.id AS producto_id, producto_variantes.id AS variante_id, productos.nombre,
               producto_variantes.sku, producto_variantes.codigo_barras,
               COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio,
-              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, categorias.nombre AS categoria,
+              COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock, productos.categoria_id, categorias.nombre AS categoria,
               productos.unidad, productos.tipo
          FROM producto_variantes
          JOIN productos ON productos.id = producto_variantes.producto_id
@@ -14938,9 +15629,11 @@ app.get('/api/pos/catalogo', (req, res) => {
     )
     .all(listaId ?? null, depositoId, organizacionId)
     .map((v) => ({ ...v, nombre: `${v.nombre} — ${combinacionVariante(v.variante_id)}` }));
-  // Un servicio no tiene tope: stock null.
+  // Un servicio no tiene tope: stock null. La lista es la de las ofertas
+  // (hist. §133): el mostrador vende con la predeterminada.
   res.json(
     [...productos, ...variantes]
+      .map((i) => ({ ...i, lista_precio_id: listaId ?? null }))
       .map((i) => (i.tipo === 'servicio' ? { ...i, stock: null } : i))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   );

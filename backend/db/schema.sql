@@ -335,6 +335,54 @@ CREATE TABLE IF NOT EXISTS variante_precios (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_variante_precios_unico
   ON variante_precios(variante_id, lista_precio_id);
 
+-- Ofertas con vigencia (hist. §133): bajan el precio de lista por un tiempo,
+-- sin tocar las listas (CLAUDE.md §18). Las reglas (qué oferta gana, cuándo
+-- vale) están en frontend/js/core/ofertas.js, que usan igual la pantalla y
+-- server.js.
+-- tipo: 'porcentaje' (valor < 100), 'monto' (pesos menos por unidad) o
+--   'precio' (el precio por unidad).
+-- cantidad_minima: NULL = cualquier cantidad; con un número, es una promoción
+--   por cantidad ("2 kg o más"), en la unidad del producto.
+-- lista_precio_id: NULL = en todas las listas.
+-- alcance: 'productos' y 'categorias' tienen sus filas en oferta_alcance;
+--   'todo' no tiene ninguna.
+-- desde/hasta: AAAA-MM-DD en el día del negocio, los dos incluidos; hasta
+--   NULL = sin fin.
+-- dias_semana / dias_mes: los números separados por coma ("2,4" = martes y
+--   jueves, 1 es lunes; "1,15"), que se leen en JS. NULL = todos los días.
+-- activa: 0 es pausada. Una oferta no se borra: los renglones que la usaron
+--   la nombran (venta_items.oferta_id).
+CREATE TABLE IF NOT EXISTS ofertas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  nombre TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('porcentaje', 'monto', 'precio')),
+  valor REAL NOT NULL CHECK (valor > 0),
+  cantidad_minima REAL CHECK (cantidad_minima IS NULL OR cantidad_minima > 0),
+  lista_precio_id INTEGER REFERENCES listas_precios(id),
+  alcance TEXT NOT NULL CHECK (alcance IN ('productos', 'categorias', 'todo')),
+  desde TEXT NOT NULL,
+  hasta TEXT,
+  dias_semana TEXT,
+  dias_mes TEXT,
+  activa INTEGER NOT NULL DEFAULT 1 CHECK (activa IN (0, 1)),
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ofertas_org ON ofertas(organizacion_id, activa);
+
+-- A qué productos o categorías toca una oferta: una fila por cada uno, con
+-- uno solo de los dos. Un producto incluye todas sus variantes. Hija de
+-- ofertas (hereda su empresa).
+CREATE TABLE IF NOT EXISTS oferta_alcance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  oferta_id INTEGER NOT NULL REFERENCES ofertas(id),
+  producto_id INTEGER REFERENCES productos(id),
+  categoria_id INTEGER REFERENCES categorias(id),
+  CHECK ((producto_id IS NULL) <> (categoria_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_oferta_alcance_oferta ON oferta_alcance(oferta_id);
+
 -- Mismo criterio que clientes: un proveedor puede nacer cargado a mano
 -- desde la pantalla de Proveedores, o creado automáticamente al registrar
 -- una compra con un nombre nuevo. En ese segundo caso solo tiene nombre y
@@ -423,7 +471,13 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- IVA incluido en cantidad × precio (hist. §113). Alícuota NULL = no se
   -- discriminó: el negocio no es inscripto, o la venta es anterior.
   alicuota_iva TEXT,
-  iva REAL NOT NULL DEFAULT 0
+  iva REAL NOT NULL DEFAULT 0,
+  -- La oferta que bajó el precio de este renglón (hist. §133) y el precio de
+  -- lista de ese momento, para el tachado y el "Ahorraste". Las anota
+  -- crearVenta solo si precio_unitario es el de la oferta que valía ese día;
+  -- NULL las dos = sin oferta.
+  oferta_id INTEGER REFERENCES ofertas(id),
+  precio_lista REAL
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
@@ -1022,6 +1076,49 @@ CREATE TABLE IF NOT EXISTS asistente_mensajes (
   error TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
+
+-- WhatsApp como canal del asistente (CLAUDE.md §36, hist. §134). El teléfono
+-- de una persona, vinculado a su cuenta y a un negocio: el negocio sale de
+-- acá, nunca del mensaje (CLAUDE.md §28). Se vincula desde Mi cuenta: Nexo da
+-- un código de 6 números y la persona lo manda por WhatsApp al número de Nexo,
+-- así queda probado que el teléfono es suyo, sin SMS.
+-- estado: pendiente (esperando el código; telefono NULL) → vinculado → baja.
+-- codigo_hash / codigo_vence: el código, guardado como hash (como los de
+-- codigos_mail), y hasta cuándo sirve (UTC, como datetime('now')).
+-- Una persona tiene un solo teléfono vinculado, y un teléfono una sola
+-- persona; un código pendiente puede convivir con el vínculo de antes (el
+-- que cambia de teléfono), que se da de baja cuando el nuevo se confirma.
+CREATE TABLE IF NOT EXISTS whatsapp_vinculos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  telefono TEXT,
+  codigo_hash TEXT,
+  codigo_vence TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('pendiente', 'vinculado', 'baja')),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  vinculado_en TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_vinculos_telefono
+  ON whatsapp_vinculos(telefono) WHERE estado = 'vinculado';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_vinculos_usuario
+  ON whatsapp_vinculos(usuario_id) WHERE estado = 'vinculado';
+
+-- Cada mensaje que llegó por WhatsApp. wa_id es el id de Meta: Meta reintenta
+-- un aviso si no le contestan a tiempo, y el UNIQUE hace que el mismo mensaje
+-- no se procese dos veces. vinculo_id es NULL si el teléfono no estaba
+-- vinculado; asistente_mensaje_id, la propuesta que armó (la que pueden
+-- confirmar sus botones). Hija de whatsapp_vinculos (hereda su empresa).
+CREATE TABLE IF NOT EXISTS whatsapp_mensajes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wa_id TEXT NOT NULL UNIQUE,
+  telefono TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  recibido_en TEXT NOT NULL DEFAULT (datetime('now')),
+  vinculo_id INTEGER REFERENCES whatsapp_vinculos(id),
+  asistente_mensaje_id INTEGER REFERENCES asistente_mensajes(id)
+);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_mensajes_telefono ON whatsapp_mensajes(telefono, recibido_en);
 
 -- Auditoría central unificada (CLAUDE.md §22). Registra el ACTO del
 -- operador (crear/editar/anular/...), no el efecto contable: eso ya lo

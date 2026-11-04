@@ -11621,3 +11621,165 @@ PLU sin producto avisó.
 **Queda:** probarla con una balanza de verdad (Systel, Kretz…) y sus
 etiquetas; la balanza por caja si un negocio tiene dos distintas; el manual
 en la revisión final.
+
+## 133. Ofertas con vigencia, 4 de noviembre de 2026
+
+**Por qué.** Punto 2 de las ideas de Praxia (`docs/investigacion-praxia.md`),
+el que seguía en "Qué sigue" después de las etiquetas de balanza (§132). El
+usuario pidió "publicar lo anterior sin esperar al servidor y después seguir":
+§131 y §132 salieron en el PR #49, y esta etapa es lo que seguía.
+
+**Qué se hizo.**
+- **La oferta:** baja el precio de lista en un porcentaje, en pesos por unidad
+  o a un precio fijo; sobre productos elegidos (con todas sus variantes),
+  categorías o todo el catálogo; en una lista o en todas. Vale desde una fecha,
+  con fin opcional, y si se quiere solo ciertos días de la semana o del mes.
+  Con una cantidad mínima es una promoción por cantidad ("3 o más a $ 6.500");
+  los escalones son varias ofertas con mínimos distintos.
+- **Las reglas** (`frontend/js/core/ofertas.js`, puro): dos ofertas no se
+  suman, gana la que deja el precio más bajo (si empatan, la más vieja); la
+  que no baja el precio no se aplica; `proximaPromocion` es el escalón más
+  cercano que se gana llevando más.
+- **La página** (Productos → Ofertas, `#/ofertas`, solo admin): la lista por
+  estado (vigente, hoy no, próxima, pausada, terminada) y "Los precios de un
+  día" (qué cambia ese día, con la promoción por cantidad). Cada oferta en su
+  página (`#/ofertas/nueva`, `#/ofertas/<id>`), en tres pasos (cuánto baja, a
+  qué, cuándo), con un resumen en palabras y "Pausar". No se borra: las
+  ventas la nombran.
+- **El punto de venta:** el precio de cada renglón es el de la oferta que gana
+  hoy con esa cantidad: el de lista tachado, el nombre de la oferta, "Llevando
+  3 o más: $ 6.500 c/u" antes de llegar, "Ahorra $ X con las ofertas" bajo el
+  total y "Ahorró $ X" al terminar.
+- **El alta de venta:** el precio sugerido es el de la oferta (con la cantidad,
+  la lista y la fecha de la venta), en verde, y bajo el total "Con <oferta>:
+  ahorra $ X". Un precio puesto a mano manda. Cambiar la lista o la fecha
+  recalcula los renglones que siguen con el precio sugerido. Presupuestos y
+  el asistente no aplican ofertas.
+- **La ficha de la venta:** cada renglón con oferta muestra su nombre y el de
+  lista tachado, y los datos suman "Ahorró con ofertas".
+- **Decidido por mí:** el servidor anota la oferta de un renglón solo si el
+  precio cobrado es el de la que gana ese día (la pantalla y el servidor usan
+  el mismo módulo); un precio a mano queda sin oferta, sin error. La vigencia
+  es por día, en el día del negocio. Se audita en la organización
+  (`operacion_tipo` 'oferta'), como la balanza, para no reconstruir el CHECK
+  de `auditoria`. Las ventas no tienen comprobante propio (imprimen la
+  factura, en formato ARCA): el "ticket" con la oferta es el de la pantalla.
+
+**Esquema.** Tablas nuevas en `schema.sql`: `ofertas` (organizacion_id, tipo,
+valor, cantidad_minima, lista_precio_id, alcance, desde, hasta, dias_semana y
+dias_mes como texto "2,4", activa) y `oferta_alcance` (producto o categoría,
+uno de los dos). Migración aditiva en `db/index.js`: `venta_items.oferta_id` y
+`venta_items.precio_lista`, nulas y sin backfill, con un índice parcial. La
+descarga y la baja del negocio las cubren solas (se arman del esquema).
+
+**Backend.** `server.js` importa `frontend/js/core/ofertas.js` tal cual (por
+eso el `package.json` de la raíz pasó a `"type": "module"`, que además saca
+el aviso de Node en los tests que importan módulos del front). Sección
+"Ofertas con vigencia": `ofertasDelNegocio`, `datosDeOferta` (valida todo,
+también que productos, categorías y lista sean del negocio), `GET` (los dos
+roles), `POST`, `PUT` y `PATCH` (activa) de `/api/ofertas` (admin, en
+`permisos.js`), `precioDeLista` (la cadena de `precioVarianteEnLista` de
+app.js) y `ofertaDelRenglon`, que usan `crearVenta` y la edición de una venta.
+`GET /api/ventas/:id` trae la oferta de cada renglón; `/api/pos/catalogo`, la
+categoría y la lista.
+
+**Frontend.** `core/ofertas.js`, `dominios/ofertas.js` (los dos en `sw.js`),
+la vista en `index.html` y el router (admin, marca Productos), el ícono
+`percent` en el sprite, `dominios/pos.js` (`precioDelRenglon`) y el renglón y
+la ficha de venta en `app.js`.
+
+**Cómo se verificó.** `ofertas.test.js` (3): las reglas (vigencia por fecha,
+día de la semana y del mes, alcance y lista, cuánto baja, la que encarece, cuál
+gana, el escalón), las rutas (validaciones, empleado 403, otro negocio 404,
+auditoría) y la venta (anota al precio de la oferta, no a mano, la promoción
+de la mayorista solo en esa lista, pausada no). `npm test` (299), lint,
+`verificar-migracion` (24 de 24, la base real igual) y `npm run regresion`
+(diferencias justificadas: `/api/ofertas` nueva, la categoría y la lista en el
+catálogo del mostrador, la oferta en los renglones de la ficha y en la
+descarga, y los callbacks que devuelven `index.html`). En Chrome a 390 px: la
+oferta creada desde la página, la lista y los precios del día; en el mostrador
+1 remera a $ 7.200 (20 %) con "Llevando 3 o más", que con 3 pasó a $ 6.500, y
+la venta anotó las dos ofertas; la ficha con el tachado y "Ahorró"; el alta
+con la promoción al llegar a 3 y el precio a mano que manda. Sin errores en
+la consola.
+
+**Queda:** que el usuario lo vea; ofertas en presupuestos si hace falta;
+mostrar la oferta también en los resultados de búsqueda del mostrador; el
+manual en la revisión final.
+
+## 134. WhatsApp como canal del asistente, 4 de noviembre de 2026
+
+**Por qué.** El usuario lo eligió como próximo paso ("tendríamos que hacer
+WhatsApp, que eso estaría buenísimo"). Es el diferencial de la etapa I
+(CLAUDE.md §36, §38), con el diseño del 1 de noviembre de `handoff.md`.
+
+**Qué se hizo.**
+- **Vincular el teléfono** (Mi cuenta → WhatsApp, los dos roles): Nexo da un
+  código de 6 números que vence a los 10 minutos, y la persona lo manda desde
+  su celular al número de Nexo ("NEXO 123456", con un enlace wa.me que lo
+  deja escrito). Así queda probado que el teléfono es suyo, sin SMS. La página
+  pregunta cada 3 segundos y pasa sola a "vinculado". El vínculo es con el
+  negocio activo: el negocio sale de ahí, nunca del mensaje (CLAUDE.md §28).
+  Una persona tiene un teléfono y un teléfono una persona; vincular otro da de
+  baja el anterior. "Desvincular" lo corta. Se audita en `usuario`
+  (`operacion_tipo` 'whatsapp').
+- **Un mensaje:** texto o nota de voz (Whisper, como el dictado, y primero
+  contesta "Entendí: …"). Va a `proponerDesdeTexto`, la misma función que usa
+  ahora `POST /api/asistente/interpretar`, y vuelve un resumen (cliente,
+  renglones, total, cobro) con los botones Confirmar y Cancelar. Confirmar
+  llama a `ejecutarPropuesta` (el handler de `POST /api/asistente/ejecutar`,
+  ahora con nombre) con la persona del teléfono y su rol: mismas
+  validaciones, tope del plan y auditoría con actor `asistente`. Un empleado
+  no registra compras, igual que en la web.
+- Lo que falta para registrar se contesta en palabras, sin botones; lo que no
+  es una operación, con la ayuda de qué mandar; las devoluciones, con que se
+  terminan en la app (piden elegir de qué venta).
+- **Seguridad:** avisos con la firma de Meta (HMAC del cuerpo crudo con el
+  secreto de la app) o se descartan; cada mensaje una sola vez (UNIQUE del id
+  de Meta, que reintenta); se atienden de a uno (un doble toque no registra
+  dos veces); un botón solo vale para una propuesta armada desde ese mismo
+  teléfono vinculado, en ese negocio, y sin confirmar; tope de 30 mensajes por
+  hora por teléfono (el cupo de Groq es de toda la instalación); la persona
+  tiene que seguir activa en el negocio, y ni ella ni el negocio dados de baja.
+  La baja de la cuenta borra el teléfono.
+- **Decidido por mí:** el código va del celular a Nexo (y no Nexo manda un
+  código al celular) para no pagar ni depender de plantillas de Meta; el
+  vínculo es con un negocio a la vez; las devoluciones no se confirman por
+  WhatsApp; la versión de la API es `v25.0` (la del ejemplo de Meta de mayo de
+  2026), configurable con `WHATSAPP_API_VERSION`.
+
+**Esquema.** Dos tablas nuevas en `schema.sql`, sin tocar las que existen:
+`whatsapp_vinculos` (persona, negocio, teléfono, código como hash con
+vencimiento, estado pendiente → vinculado → baja; únicos el teléfono y la
+persona vinculados) y `whatsapp_mensajes` (id de Meta único, teléfono,
+vínculo y la propuesta que armó). La descarga y la baja del negocio las cubren
+solas; `codigo_hash` no sale en la descarga (por el nombre).
+
+**Backend.** `backend/whatsapp.js` (sin dependencias, como `mercadopago.js`):
+el saludo del webhook, la firma, leer los mensajes de un aviso, mandar texto o
+botones y bajar un audio. En `server.js`: las rutas públicas
+`GET/POST /api/integraciones/whatsapp/webhook` (antes de `autenticar`, con el
+cuerpo crudo); `GET /api/whatsapp`, `POST /api/whatsapp/vincular` y
+`DELETE /api/whatsapp/vinculo` (los dos roles); y la sección "WhatsApp"
+(`atenderWhatsApp`, `vincularWhatsApp`, `responderBotonWhatsApp`,
+`resumenParaWhatsApp`, `ejecutarComo`). Variables: `WHATSAPP_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` y
+`WHATSAPP_NUMERO`; sin ellas, Mi cuenta no muestra la tarjeta.
+
+**Frontend.** La tarjeta de WhatsApp en Mi cuenta (`index.html`,
+`dominios/perfil.js`, estilos al final de `styles.css`).
+
+**Cómo se verificó.** `whatsapp.test.js` (7) contra un WhatsApp falso: el
+saludo (bien y mal), vincular (sin firma no pasa nada, código equivocado,
+código usado, auditoría), una venta escrita (resumen y botones, el aviso
+repetido no se procesa dos veces, la venta registrada con actor `asistente`,
+otro toque dice "ya se confirmó"), cancelar, lo que falta y la charla, una
+nota de voz, el empleado que no puede registrar una compra, el botón de una
+propuesta ajena, y desvincular. `npm test` (306) y lint. En Chrome a 390 px:
+Mi cuenta da el código y el enlace wa.me; con un aviso firmado a mano la
+página pasó sola a "vinculado". Contra Meta de verdad no se probó: falta su
+app (trámite del usuario).
+
+**Queda:** la app de Meta y la prueba de punta a punta con el número de
+prueba; las consultas sobre los datos ("¿cuánto vendí hoy?"); que WhatsApp
+cree una consulta en el CRM; producción (verificar un negocio real ante Meta).

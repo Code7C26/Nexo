@@ -833,6 +833,13 @@ Lista de precios
 de
 Precio del producto en esa lista.
 
+Implementado hoy: ofertas con vigencia sobre las listas (hist. §133), sin
+tocar sus precios: porcentaje, monto o precio fijo, por producto, categoría o
+todo, en una lista o en todas, entre fechas y ciertos días; con cantidad
+mínima son promociones por cantidad. Dos no se suman (gana la más barata). El
+punto de venta y el alta de venta las aplican, y cada renglón de venta guarda
+la oferta y el precio de lista de ese momento.
+
 ---
 
 # 19. MULTIDEPÓSITO
@@ -1543,7 +1550,13 @@ Implementado hoy (hist. §117, §118):
 - **Operaciones que propone:** venta, compra, gasto y devolución de un
   cliente (busca la venta; hist. §119). Si la IA no ve una operación y el
   manual tiene algo seguro, muestra eso.
-- Falta: WhatsApp y las consultas sobre los datos.
+- **WhatsApp (hist. §134):** cada persona vincula su teléfono desde Mi
+  cuenta, mandando un código al número de Nexo; el negocio sale del vínculo.
+  Un texto o una nota de voz sigue el mismo camino que en la web
+  (`proponerDesdeTexto` → botones Confirmar/Cancelar → `ejecutarPropuesta`
+  con la persona y su rol). Las devoluciones se terminan en la app. Hecho
+  contra un WhatsApp falso: falta la app de Meta (trámite del usuario).
+- Falta: las consultas sobre los datos.
 
 ---
 

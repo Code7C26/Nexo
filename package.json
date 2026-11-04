@@ -1,6 +1,7 @@
 {
   "name": "nexo",
   "private": true,
+  "type": "module",
   "description": "Herramientas de desarrollo del repo (lint). La app vive en backend/ y frontend/.",
   "engines": {
     "node": ">=22.13"

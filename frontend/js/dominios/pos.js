@@ -6,12 +6,13 @@
  * venta común con sus cobros, colgada del turno abierto de la caja.
  */
 
-import { camposFicha, cantidad, esFraccionable, esc, fechaHoraAR, money, numero } from "../core/formato.js";
+import { camposFicha, cantidad, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
 import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
 import { crearConsumos } from "../core/al-vender.js";
 import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
+import { mejorOferta, proximaPromocion } from "../core/ofertas.js";
 import { negocio } from "../core/negocio.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
@@ -28,6 +29,9 @@ let cajaId = null;
 let turno = null; // resumen del turno abierto de la caja elegida
 let catalogo = [];
 let porClave = new Map();
+// Las ofertas del negocio (hist. §133): el precio de cada renglón es el de la
+// que gana hoy con esa cantidad, como lo calcula el servidor al anotarla.
+let ofertas = [];
 let clientes = [];
 // Venta en curso: [{ clave, cantidad }]. Precio y stock salen del catálogo.
 let carrito = [];
@@ -126,7 +130,8 @@ async function cargarTodo() {
     api("/api/tesoreria", { error: "No se pudieron cargar las cuentas de tesorería." }),
     api("/api/pos/catalogo", { error: "No se pudo cargar el catálogo." }),
     api("/api/clientes", { error: "No se pudieron cargar los clientes." }),
-    consumosPos.cargar()
+    consumosPos.cargar(),
+    api("/api/ofertas", { error: "No se pudieron cargar las ofertas." }).then((lista) => (ofertas = lista))
   ]);
   cuentas = tesoreria.cuentas;
   cajas = cuentas.filter((c) => c.tipo === "efectivo");
@@ -522,14 +527,32 @@ function leerCarrito() {
     .map((r) => ({ clave: r.clave, cantidad: Math.min(r.cantidad, tope(porClave.get(r.clave))) }));
 }
 
+// El precio de un renglón con su cantidad: el de la oferta que gana hoy, o el
+// de lista. promo es la promoción por cantidad que se gana llevando más.
+function precioDelRenglon(r) {
+  const item = porClave.get(r.clave);
+  const renglon = {
+    producto_id: item.producto_id,
+    categoria_id: item.categoria_id,
+    lista_id: item.lista_precio_id,
+    cantidad: r.cantidad,
+    precio_lista: item.precio
+  };
+  const hoy = hoyISO();
+  const mejor = mejorOferta(ofertas, renglon, hoy);
+  return { precio: mejor?.precio ?? item.precio, oferta: mejor?.oferta ?? null, promo: proximaPromocion(ofertas, renglon, hoy) };
+}
+
 const itemsDelCarrito = () =>
   carrito.map((r) => {
     const item = porClave.get(r.clave);
-    return { producto_id: item.producto_id, variante_id: item.variante_id, cantidad: r.cantidad, precio_unitario: item.precio };
+    return { producto_id: item.producto_id, variante_id: item.variante_id, cantidad: r.cantidad, precio_unitario: precioDelRenglon(r).precio };
   });
 
-const totalCarrito = () =>
-  redondear(carrito.reduce((acc, r) => acc + r.cantidad * porClave.get(r.clave).precio, 0));
+const totalCarrito = () => redondear(carrito.reduce((acc, r) => acc + r.cantidad * precioDelRenglon(r).precio, 0));
+// Lo que bajaron las ofertas en toda la venta.
+const ahorroCarrito = () =>
+  redondear(carrito.reduce((acc, r) => acc + r.cantidad * (porClave.get(r.clave).precio - precioDelRenglon(r).precio), 0));
 
 function renderTicket() {
   const total = totalCarrito();
@@ -540,19 +563,27 @@ function renderTicket() {
     posRenglones.innerHTML = carrito
       .map((r) => {
         const item = porClave.get(r.clave);
+        const { precio, oferta, promo } = precioDelRenglon(r);
         const nuevo = r.clave === ultimaAgregada ? " pos-renglon-nuevo" : "";
+        const tachado = oferta ? `<s class="precio-tachado">${money(item.precio)}</s> ` : "";
+        const etiqueta = oferta ? `<span class="oferta-etiqueta">${esc(oferta.nombre)}</span>` : "";
+        // La promoción por cantidad, antes de llegar a ella.
+        const proxima = promo
+          ? `<span class="oferta-proxima">Llevando ${esc(cantidad(promo.oferta.cantidad_minima, item.unidad))} o más: ${money(promo.precio)} ${esc(porUnidad(item))}</span>`
+          : "";
         return `
           <li class="pos-renglon${nuevo}" data-clave="${esc(r.clave)}">
             <div class="pos-renglon-info">
-              <span class="pos-renglon-nombre">${esc(item.nombre)}</span>
-              <span class="pos-renglon-precio mono">${money(item.precio)} ${esc(porUnidad(item))}</span>
+              <span class="pos-renglon-nombre">${esc(item.nombre)}${etiqueta}</span>
+              <span class="pos-renglon-precio mono">${tachado}${money(precio)} ${esc(porUnidad(item))}</span>
+              ${proxima}
             </div>
             <div class="pos-cantidad">
               <button type="button" class="pos-cantidad-btn" data-accion="menos" aria-label="Menos">${icono("minus")}</button>
               <input type="number" class="pos-cantidad-input" value="${Number(r.cantidad)}" min="0" step="any" inputmode="decimal" aria-label="Cantidad de ${esc(item.nombre)}" />
               <button type="button" class="pos-cantidad-btn" data-accion="mas" aria-label="Más">${icono("plus")}</button>
             </div>
-            <span class="pos-renglon-subtotal mono">${money(r.cantidad * item.precio)}</span>
+            <span class="pos-renglon-subtotal mono">${money(r.cantidad * precio)}</span>
             <button type="button" class="btn-icon pos-renglon-quitar" data-accion="quitar" aria-label="Quitar ${esc(item.nombre)}">${icono("trash-2")}</button>
           </li>`;
       })
@@ -563,6 +594,10 @@ function renderTicket() {
   else consumosPos.proponer(itemsDelCarrito());
 
   document.getElementById("posTotal").textContent = money(total);
+  const ahorro = ahorroCarrito();
+  const posAhorro = document.getElementById("posAhorro");
+  posAhorro.hidden = !(ahorro >= CENTAVO);
+  posAhorro.textContent = ahorro >= CENTAVO ? `Ahorra ${money(ahorro)} con las ofertas` : "";
   document.getElementById("posBarraTotal").textContent = money(total);
   // Se cuentan renglones, no unidades: 0,750 kg de asado es un producto.
   document.getElementById("posBarraCantidad").textContent =
@@ -785,7 +820,7 @@ document.getElementById("formPosCobro").addEventListener("submit", async (e) => 
     throw err;
   });
 
-  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente });
+  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito() });
   carrito = [];
   guardarCarrito();
   posCliente.value = "";
@@ -795,15 +830,19 @@ document.getElementById("formPosCobro").addEventListener("submit", async (e) => 
   refrescar([recargar("ventas", "stock", "productos", "clientes", "caja", "cuentasCorrientes", "panelResumen", "reporteStock")]);
 });
 
-function mostrarExito({ id, vuelto, falta, cliente }) {
+function mostrarExito({ id, vuelto, falta, cliente, ahorro }) {
   document.getElementById("formPosCobro").hidden = true;
   document.getElementById("posExito").hidden = false;
   document.getElementById("posExitoTitulo").textContent = `Venta #${id} registrada`;
   document.getElementById("posExitoVueltoWrap").hidden = vuelto <= 0;
   document.getElementById("posExitoVuelto").textContent = money(vuelto);
   const nota = document.getElementById("posExitoNota");
-  nota.hidden = !(falta >= CENTAVO);
-  nota.textContent = falta >= CENTAVO ? `Quedaron ${money(falta)} en la cuenta corriente de ${cliente.nombre}.` : "";
+  const notas = [
+    ahorro >= CENTAVO ? `Ahorró ${money(ahorro)} con las ofertas.` : "",
+    falta >= CENTAVO ? `Quedaron ${money(falta)} en la cuenta corriente de ${cliente.nombre}.` : ""
+  ].filter(Boolean);
+  nota.hidden = notas.length === 0;
+  nota.textContent = notas.join(" ");
   document.getElementById("btnPosNuevaVenta").focus();
 }
 

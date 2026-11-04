@@ -1,6 +1,7 @@
 /**
  * dominios/perfil.js
- * Mi cuenta: el mail (hist. §102), cambio de contraseña y cerrar sesión. Es una página de
+ * Mi cuenta: el mail (hist. §102), cambio de contraseña, WhatsApp (hist. §134)
+ * y cerrar sesión. Es una página de
  * Configuración (#/configuracion/cuenta) para los dos roles, y la abre también
  * el círculo de perfil del pie del menú. Antes era un modal aparte.
  */
@@ -8,7 +9,7 @@
 import { api } from "../core/api.js";
 import { esc } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
-import { avisar } from "../core/ui.js";
+import { avisar, confirmar } from "../core/ui.js";
 import { alEntrarEnVista, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 import { codigoCompleto, esperarParaReenviar, prepararCampoCodigo } from "../core/codigo.js";
@@ -29,6 +30,7 @@ function pintarCuenta() {
   document.getElementById("formBajaCuenta").reset();
   document.getElementById("bajaCuentaError").hidden = true;
   pintarMail();
+  pintarWhatsApp();
 }
 registrar("pintar:cuenta", pintarCuenta);
 
@@ -256,4 +258,79 @@ document.getElementById("btnCerrarSesion").addEventListener("click", () => {
   // más seguro que intentar desmontar los listeners de este archivo a
   // mano.
   window.nexoCerrarSesion?.();
+});
+
+/* ---------- WhatsApp (hist. §134) ---------- */
+
+// Vincular es mandar un código desde el celular al número de Nexo: así queda
+// probado que el teléfono es de quien lo vincula. Mientras se espera el
+// mensaje, la página pregunta cada pocos segundos si ya llegó.
+const ESPERA_WHATSAPP_MS = 3000;
+let esperaWhatsApp = null;
+
+function dejarDeEsperarWhatsApp() {
+  clearInterval(esperaWhatsApp);
+  esperaWhatsApp = null;
+}
+
+async function pintarWhatsApp() {
+  dejarDeEsperarWhatsApp();
+  const tarjeta = document.getElementById("perfilWhatsApp");
+  const estado = await api("/api/whatsapp", { error: "No se pudo consultar WhatsApp." });
+  tarjeta.hidden = !estado.disponible;
+  if (!estado.disponible) return;
+  document.getElementById("perfilWhatsAppCodigo").hidden = true;
+  const texto = document.getElementById("perfilWhatsAppTexto");
+  const vincular = document.getElementById("perfilWhatsAppVincular");
+  const desvincular = document.getElementById("perfilWhatsAppDesvincular");
+  if (estado.vinculo) {
+    texto.replaceChildren(
+      "Tu WhatsApp ",
+      Object.assign(document.createElement("strong"), { textContent: `+${estado.vinculo.telefono}` }),
+      ` está vinculado a ${estado.vinculo.negocio}. Mandale al número de Nexo lo que vendiste, compraste o gastaste, escrito o en un audio.`
+    );
+    vincular.textContent = "Vincular otro número";
+    desvincular.hidden = false;
+  } else {
+    texto.textContent =
+      "Registrá ventas, compras y gastos mandando un mensaje o un audio por WhatsApp, como con el asistente. Se usa en el negocio en el que estás ahora.";
+    vincular.textContent = "Vincular mi WhatsApp";
+    desvincular.hidden = true;
+  }
+}
+
+document.getElementById("perfilWhatsAppVincular").addEventListener("click", async () => {
+  const pedido = await api("/api/whatsapp/vincular", { method: "POST", error: "No se pudo empezar a vincular WhatsApp." });
+  document.getElementById("perfilWhatsAppMensaje").textContent = `NEXO ${pedido.codigo}`;
+  document.getElementById("perfilWhatsAppAbrir").href = pedido.enlace;
+  document.getElementById("perfilWhatsAppVence").textContent =
+    `El código vence en ${pedido.minutos} minutos. Cuando llegue, esta página se actualiza sola.`;
+  document.getElementById("perfilWhatsAppCodigo").hidden = false;
+
+  dejarDeEsperarWhatsApp();
+  const hasta = Date.now() + pedido.minutos * 60_000;
+  const antes = (await api("/api/whatsapp")).vinculo?.telefono ?? null;
+  esperaWhatsApp = setInterval(async () => {
+    // Fuera de la página, o vencido el código, se deja de preguntar.
+    const pagina = document.querySelector('.config-pagina[data-seccion="cuenta"]');
+    if (Date.now() > hasta || !pagina || pagina.hidden) return dejarDeEsperarWhatsApp();
+    const estado = await api("/api/whatsapp").catch(() => null);
+    if (estado?.vinculo && estado.vinculo.telefono !== antes) {
+      avisar("WhatsApp vinculado: ya podés mandarle tus ventas.", "ok");
+      pintarWhatsApp();
+    }
+  }, ESPERA_WHATSAPP_MS);
+});
+
+document.getElementById("perfilWhatsAppDesvincular").addEventListener("click", async () => {
+  const seguro = await confirmar({
+    titulo: "Desvincular WhatsApp",
+    cuerpo: "Ese número deja de poder registrar cosas en Nexo. Lo podés volver a vincular cuando quieras.",
+    aceptar: "Desvincular",
+    destructivo: true
+  });
+  if (!seguro) return;
+  await api("/api/whatsapp/vinculo", { method: "DELETE", error: "No se pudo desvincular WhatsApp." });
+  avisar("WhatsApp desvinculado.", "ok");
+  pintarWhatsApp();
 });

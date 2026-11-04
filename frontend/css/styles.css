@@ -8812,3 +8812,82 @@ a.segmento {
 .balanza-error { color: var(--accent-danger); }
 /* El pie de "Tus etiquetas" solo con la balanza configurada. */
 .config-tarjeta-pie[hidden] { display: none; }
+
+/* Ofertas con vigencia (hist. §133): la lista, "Los precios de un día" y lo
+   que muestran el mostrador y la venta: el precio de lista tachado y lo que
+   se ahorró. */
+.ofertas-cuanto {
+  display: block;
+  color: var(--ink-muted);
+  font-size: var(--txt-xs);
+  font-weight: 400;
+}
+.ofertas-dia {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+.ofertas-dia-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.ofertas-dia-head h3 { margin: 0; font-size: var(--txt-sm); }
+.ofertas-dia-lista { list-style: none; margin: var(--sp-2) 0 0; padding: 0; }
+.ofertas-dia-lista li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--txt-sm);
+}
+.ofertas-dia-lista li:last-child { border-bottom: 0; }
+.ofertas-dia-nombre small,
+.ofertas-dia-promo {
+  display: block;
+  color: var(--ink-muted);
+  font-size: var(--txt-xs);
+}
+.ofertas-dia-precio { text-align: right; }
+.ofertas-dia-precio s,
+.precio-tachado { color: var(--ink-muted); font-weight: 400; }
+.ofertas-dia-vacio { color: var(--ink-muted); }
+.ofertas-alcance .chips-elegir { margin-top: var(--sp-2); }
+.ofertas-alcance .chip .ico { width: 14px; height: 14px; }
+/* "Ahorraste" y el nombre de la oferta, en verde: es plata a favor. */
+.oferta-ahorro { color: var(--accent-ok); font-weight: 600; }
+.oferta-etiqueta {
+  display: inline-block;
+  margin-left: var(--sp-1);
+  color: var(--accent-ok);
+  font-size: var(--txt-xs);
+  font-weight: 600;
+}
+.oferta-proxima { color: var(--ink-muted); font-size: var(--txt-xs); }
+.pos-renglon-info .oferta-proxima { display: block; }
+.pos-ahorro { margin: var(--sp-1) 0 var(--sp-2); text-align: right; font-size: var(--txt-sm); }
+.pos-ahorro[hidden] { display: none; }
+/* El precio del renglón del alta de venta que sale de una oferta. */
+.item-row input.item-precio-oferta { color: var(--accent-ok); font-weight: 600; }
+.item-ofertas { margin: calc(-1 * var(--sp-1)) 0 var(--sp-2); text-align: right; font-size: var(--txt-sm); }
+.item-ofertas[hidden] { display: none; }
+
+/* Mi cuenta → WhatsApp (hist. §134): el mensaje para vincular, grande y
+   fácil de copiar. */
+.perfil-whatsapp-codigo { display: grid; gap: var(--sp-2); justify-items: start; margin-top: var(--sp-2); }
+.perfil-whatsapp-codigo[hidden] { display: none; }
+.perfil-whatsapp-codigo p { margin: 0; }
+.perfil-whatsapp-mensaje {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  user-select: all;
+}

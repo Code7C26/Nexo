@@ -36,6 +36,7 @@ import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { crearConsumos } from "./core/al-vender.js";
 import { CANALES_VENTA } from "./core/canales.js";
+import { mejorOferta } from "./core/ofertas.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
 import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
@@ -75,6 +76,7 @@ import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
 import "./dominios/balanza.js";
+import "./dominios/ofertas.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
@@ -1483,6 +1485,65 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   // precio sugerido de la variante elegida sin refetchear (variantesDeProducto
   // ya cachea por producto, esto solo evita recorrer la lista de nuevo).
   let variantesFila = [];
+  // Las ofertas (hist. §133), solo en el alta de venta: el precio sugerido es
+  // el de la que gana con la cantidad y la fecha de la venta, hasta que
+  // alguien lo cambia a mano. La fila guarda la oferta y el de lista
+  // (data-oferta, data-precio-lista) para el resumen de abajo del total.
+  const formDeLaFila = contenedor.closest("form");
+  const conOfertas = formDeLaFila?.id === "formVenta";
+  let precioLista = null;
+  let precioTocado = false;
+  function aplicarOferta() {
+    delete fila.dataset.oferta;
+    delete fila.dataset.precioLista;
+    precio.classList.remove("item-precio-oferta");
+    precio.removeAttribute("title");
+    // Con el precio sugerido (no puesto a mano), cambiar la lista o la fecha
+    // lo vuelve a calcular: ver "repreciar" y reproponerPreciosPorLista.
+    if (precioLista && !precioTocado) fila.dataset.sugerido = "1";
+    else delete fila.dataset.sugerido;
+    if (precioTocado) return;
+    if (!precioLista) {
+      precio.value = "";
+      return;
+    }
+    const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
+    const mejor =
+      conOfertas && producto
+        ? mejorOferta(
+            ofertasVenta,
+            {
+              producto_id: producto.id,
+              categoria_id: producto.categoria_id,
+              lista_id: Number(listaPrecioDelFormulario(contenedor)) || listaPrecioPredeterminada()?.id,
+              cantidad: Number(cantidad.value) || 1,
+              precio_lista: precioLista
+            },
+            formDeLaFila.fecha?.value || hoyISO()
+          )
+        : null;
+    precio.value = mejor?.precio ?? precioLista;
+    if (mejor) {
+      fila.dataset.oferta = mejor.oferta.nombre;
+      fila.dataset.precioLista = precioLista;
+      precio.classList.add("item-precio-oferta");
+      precio.title = `${mejor.oferta.nombre}: ${money(precioLista)} de lista`;
+    }
+  }
+  // El precio de lista del producto o la variante recién elegidos.
+  function sugerirPrecio(sugerido) {
+    precioLista = sugerido > 0 ? sugerido : null;
+    precioTocado = false;
+    aplicarOferta();
+  }
+  fila.addEventListener("repreciar", () => {
+    const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
+    if (!producto || !fila.dataset.sugerido) return;
+    const variante = varianteSelect.hidden ? null : variantesFila.find((v) => v.id === Number(varianteSelect.value));
+    const lista = listaPrecioDelFormulario(contenedor);
+    sugerirPrecio(variante ? precioVarianteEnLista(variante, producto, lista) : precioProductoEnLista(producto, lista));
+    actualizarSubtotalFila(fila);
+  });
 
   productoInput.addEventListener("input", async () => {
     // Búsqueda por nombre exacto (vía <datalist>, no un <select> cerrado):
@@ -1498,8 +1559,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
       // elegida (ni propio ni el fallback de precio_venta), se deja el
       // campo vacío en vez de rellenarlo con el costo — así queda claro que
       // hay que ponerle un precio, no un número que parece uno.
-      const precioSugerido = precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor));
-      precio.value = precioSugerido > 0 ? precioSugerido : "";
+      sugerirPrecio(precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor)));
       if (producto.tiene_variantes) {
         variantesFila = await variantesDeProducto(producto.id);
         varianteSelect.innerHTML =
@@ -1527,6 +1587,8 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
       varianteSelect.hidden = true;
       varianteSelect.value = "";
       cantidad.removeAttribute("max");
+      precioLista = null;
+      delete fila.dataset.oferta;
     }
     actualizarSubtotalFila(fila);
     contenedor.dispatchEvent(new Event("item-change"));
@@ -1550,8 +1612,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     if (opcion && opcion.value) {
       const variante = variantesFila.find((v) => v.id === Number(opcion.value));
       const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
-      const precioSugerido = precioVarianteEnLista(variante, producto, listaPrecioDelFormulario(contenedor));
-      precio.value = precioSugerido > 0 ? precioSugerido : "";
+      sugerirPrecio(precioVarianteEnLista(variante, producto, listaPrecioDelFormulario(contenedor)));
       actualizarSubtotalFila(fila);
     }
     contenedor.dispatchEvent(new Event("item-change"));
@@ -1559,6 +1620,13 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
 
   fila.querySelectorAll(".item-cantidad, .item-precio").forEach((input) => {
     input.addEventListener("input", () => {
+      // Un precio puesto a mano manda; la cantidad puede ganar una promoción.
+      if (input === precio) {
+        precioTocado = true;
+        aplicarOferta();
+      } else if (precioLista) {
+        aplicarOferta();
+      }
       actualizarSubtotalFila(fila);
       contenedor.dispatchEvent(new Event("item-change"));
     });
@@ -1648,6 +1716,13 @@ async function reproponerPreciosPorLista(contenedor, listaProductos) {
   for (const fila of contenedor.querySelectorAll(".item-row")) {
     const productoId = Number(fila.querySelector(".item-producto-id").value);
     if (!productoId) continue;
+    // El renglón que todavía tiene el precio sugerido lo recalcula solo, con
+    // las ofertas (hist. §133).
+    if (fila.dataset.sugerido) {
+      fila.dispatchEvent(new Event("repreciar"));
+      cambios++;
+      continue;
+    }
     const producto = listaProductos.find((p) => p.id === productoId);
     if (!producto) continue;
     const varianteSelect = fila.querySelector(".item-variante-id");
@@ -4182,12 +4257,27 @@ let ventaFichaId = null;
 
 const modalVenta = document.getElementById("modalVenta");
 const ventaItemsEl = document.getElementById("ventaItems");
+// Las ofertas del negocio, al abrir el alta (hist. §133).
+let ofertasVenta = [];
 
 // Lo que se usa al vender (hist. §126): se propone con los renglones.
 const consumosVenta = crearConsumos(document.getElementById("ventaConsumos"));
 
 function actualizarTotalVenta() {
   document.getElementById("ventaTotal").textContent = money(totalItems(ventaItemsEl));
+  // Las ofertas que bajaron algún renglón, y cuánto ahorra (hist. §133).
+  let ahorro = 0;
+  const nombres = new Set();
+  for (const fila of ventaItemsEl.querySelectorAll(".item-row[data-oferta]")) {
+    const cantidad = Number(fila.querySelector(".item-cantidad").value) || 0;
+    ahorro += cantidad * (Number(fila.dataset.precioLista) - Number(fila.querySelector(".item-precio").value));
+    nombres.add(fila.dataset.oferta);
+  }
+  const ofertasEl = document.getElementById("ventaOfertas");
+  ofertasEl.hidden = nombres.size === 0;
+  // Sin cantidad todavía no hay ahorro que mostrar: solo qué oferta va.
+  const conCuales = `Con ${[...nombres].join(", ")}`;
+  ofertasEl.textContent = nombres.size ? (ahorro >= 0.005 ? `${conCuales}: ahorra ${money(ahorro)}` : conCuales) : "";
 }
 ventaItemsEl.addEventListener("item-change", () => {
   actualizarTotalVenta();
@@ -4276,6 +4366,7 @@ function poblarSelectCanal(select, elegido) {
 
 async function abrirModalVenta(venta = null, desde = null) {
   ventaEditandoId = venta?.id ?? null;
+  ofertasVenta = await api("/api/ofertas", { error: "No se pudieron cargar las ofertas." });
   ventaDeConsulta = desde?.crm_oportunidad_id ?? null;
   ventaCondicionTocada = false;
   document.getElementById("modalVentaTitulo").textContent = venta ? "Editar venta" : "Nueva venta";
@@ -4382,6 +4473,11 @@ modalVenta.addEventListener("click", (e) => {
 });
 document.getElementById("ventaListaPrecio").addEventListener("change", () => {
   reproponerPreciosPorLista(ventaItemsEl, productos);
+});
+// Las ofertas valen por día (hist. §133): otra fecha puede cambiar el precio.
+document.getElementById("formVenta").fecha.addEventListener("change", () => {
+  for (const fila of ventaItemsEl.querySelectorAll(".item-row[data-sugerido]")) fila.dispatchEvent(new Event("repreciar"));
+  ventaItemsEl.dispatchEvent(new Event("item-change"));
 });
 document.getElementById("ventaCondicionPago").addEventListener("change", () => {
   ventaCondicionTocada = true;
@@ -4536,11 +4632,16 @@ async function abrirFichaVenta(id) {
   document.getElementById("btnDevolverVenta").hidden =
     venta.estado === "anulada" || venta.items.every((i) => i.disponible_devolucion <= 0);
 
+  const ahorroConOfertas = venta.items
+    .filter((i) => i.oferta_id)
+    .reduce((acc, i) => acc + i.cantidad * (i.precio_lista - i.precio_unitario), 0);
   const campos = [
     ["Cliente", venta.cliente],
     ["Fecha", fechaAR(venta.fecha)],
     ...(venta.canal ? [["Por dónde", CANALES_VENTA[venta.canal] ?? venta.canal]] : []),
     ["Cobrado", `${money(venta.cobrado)} de ${money(venta.neto)}`],
+    // Lo que bajaron las ofertas (hist. §133), si alguna se aplicó.
+    ...(ahorroConOfertas >= 0.005 ? [["Ahorró con ofertas", html(`<span class="oferta-ahorro">${esc(money(ahorroConOfertas))}</span>`)]] : []),
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
     ["Facturada", venta.facturada ? "Sí" : "No"]
   ];
@@ -4556,9 +4657,11 @@ async function abrirFichaVenta(id) {
     .map(
       (i) => `
         <tr>
-          <td data-label="Producto">${esc(i.producto)}</td>
+          <td data-label="Producto">${esc(i.producto)}${i.oferta ? `<span class="oferta-etiqueta">${esc(i.oferta)}</span>` : ""}</td>
           <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
-          <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
+          <td data-label="Precio unit." class="align-right mono">${
+            i.oferta_id ? `<s class="precio-tachado">${money(i.precio_lista)}</s> ` : ""
+          }${money(i.precio_unitario)}</td>
           <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
           <td data-label="Devuelto" class="align-right mono">${
             i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : "—"

@@ -2064,6 +2064,18 @@ if (!db.prepare('PRAGMA table_info(organizaciones)').all().some((col) => col.nam
   db.exec('ALTER TABLE organizaciones ADD COLUMN balanza_formato TEXT');
 }
 
+// Ofertas con vigencia (hist. §133, ver schema.sql): las tablas nuevas las
+// crea schema.sql; acá, la oferta y el precio de lista de cada renglón de
+// venta. Aditivas y nulas, sin backfill: una venta de antes no tuvo oferta.
+const columnasVentaItems = db.prepare('PRAGMA table_info(venta_items)').all();
+if (!columnasVentaItems.some((col) => col.name === 'oferta_id')) {
+  db.exec('ALTER TABLE venta_items ADD COLUMN oferta_id INTEGER REFERENCES ofertas(id)');
+}
+if (!columnasVentaItems.some((col) => col.name === 'precio_lista')) {
+  db.exec('ALTER TABLE venta_items ADD COLUMN precio_lista REAL');
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_venta_items_oferta ON venta_items(oferta_id) WHERE oferta_id IS NOT NULL');
+
 // Por dónde entró cada venta, y el módulo "Venta online" (hist. §128, ver
 // schema.sql). Aditiva y nula. Solo en el arranque que suma la columna, así
 // es re-ejecutable y un admin que apaga el módulo no lo vuelve a ver prendido:
