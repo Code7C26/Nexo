@@ -118,10 +118,16 @@ async function pedir(ruta, { metodo = 'GET', cuerpo, crudo = false } = {}) {
 
 const cortar = (texto, largo) => (texto.length > largo ? `${texto.slice(0, largo - 1)}…` : texto);
 
+// Un celular argentino llega en los avisos con el 9 después del 54
+// (5493516166567), pero Meta no acepta mandarle a ese formato: hay que
+// mandarle sin el 9 (543516166567), que es también como se carga en la lista
+// del número de prueba. El vínculo guarda el número como llega.
+export const destinatario = (telefono) => String(telefono).replace(/^549(\d{10})$/, '54$1');
+
 export function mandarTexto(para, texto) {
   return pedir(`/${numeroId()}/messages`, {
     metodo: 'POST',
-    cuerpo: { messaging_product: 'whatsapp', to: para, type: 'text', text: { body: cortar(String(texto), LARGO_TEXTO) } }
+    cuerpo: { messaging_product: 'whatsapp', to: destinatario(para), type: 'text', text: { body: cortar(String(texto), LARGO_TEXTO) } }
   });
 }
 
@@ -132,7 +138,7 @@ export function mandarBotones(para, texto, botones) {
     metodo: 'POST',
     cuerpo: {
       messaging_product: 'whatsapp',
-      to: para,
+      to: destinatario(para),
       type: 'interactive',
       interactive: {
         type: 'button',
