@@ -42,12 +42,12 @@ webhook verificado y `messages` suscrito en Meta (app Nexo-app, número de
 prueba +1 555 141 8019, gratis 90 días).
 
 **Después (4 de noviembre, hist. §135): WhatsApp con página propia, hecho y
-commiteado en `solla`, sin publicar.** Configuración → WhatsApp
+publicado (PR #51).** Configuración → WhatsApp
 (`dominios/whatsapp.js`, los dos roles), con el logo, el vínculo que estaba
 en Mi cuenta y ejemplos de qué mandar; ítem en "Tu cuenta" y una tarjeta en
 la página del asistente, solo si WhatsApp está configurado. **Falta la prueba
-con el celular:** publicar, vincular desde Configuración → WhatsApp y mandar
-una venta al número de prueba.
+con el celular:** vincular desde Configuración → WhatsApp y mandar una venta
+al número de prueba.
 
 **También el 4 de noviembre (hist. §133): ofertas con vigencia, hechas y
 commiteadas en `solla`, sin publicar.** Punto 2 de las ideas de Praxia:
