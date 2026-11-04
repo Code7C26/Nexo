@@ -323,7 +323,9 @@ ml, m, con cantidades decimales) y tipo producto/servicio (un servicio no
 maneja stock) y alícuota de IVA (21 % de partida; el precio de venta es el
 final, con IVA incluido; hist. §112). Código de barras en el producto y en
 cada variante, aparte del SKU y único por empresa entre los dos; el lector
-del punto de venta lo busca primero (hist. §127).
+del punto de venta lo busca primero (hist. §127). Código de balanza (PLU)
+en lo que se pesa: el punto de venta lee la etiqueta de la balanza (hist.
+§132).
 
 ---
 
@@ -501,6 +503,10 @@ identificado por usuario existe (hay login y roles, ver §35), pero el reporte
 IVA (hist. §113, §114): cada renglón congela su alícuota y su IVA. Para un
 responsable inscripto, la ganancia, el margen y el resultado se miden sin
 IVA (es del fisco, no ingreso); para los demás no cambia nada.
+La ficha de cada venta muestra adónde fue la plata: mercadería, packaging,
+cada gasto de la venta (comisión con su porcentaje, envío, cuotas), IVA y lo
+que quedó, cada uno con su porcentaje contra el promedio del negocio (hist.
+§131).
 
 ---
 
@@ -1269,7 +1275,9 @@ tesorería) y la pantalla `frontend/js/dominios/pos.js`, para los dos roles.
 La pantalla busca por nombre o SKU, y toma el SKU que tipea el lector físico
 con Enter o la cámara donde el navegador tiene `BarcodeDetector`. Cobra con
 uno o varios medios, con vuelto (solo en efectivo), y deja saldo en cuenta
-corriente solo si hay un cliente real ("Consumidor final" no fía). Queda
+corriente solo si hay un cliente real ("Consumidor final" no fía). Lee
+también las etiquetas de la balanza (Configuración → Balanza deduce su
+formato; el precio es el de hoy, nunca el de la etiqueta; hist. §132). Queda
 para después: descuentos y precio editable en el mostrador, alta rápida de
 cliente y venta sin conexión.
 

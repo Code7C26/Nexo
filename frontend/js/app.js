@@ -74,6 +74,7 @@ import "./dominios/carga-inicial.js";
 import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
+import "./dominios/balanza.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
@@ -1985,6 +1986,7 @@ async function abrirFichaProducto(id) {
   const campos = [
     ...(esServicio ? [] : [["SKU", producto.sku]]),
     ...(producto.codigo_barras || !(esServicio || producto.tiene_variantes) ? [["Código de barras", producto.codigo_barras]] : []),
+    ...(producto.plu ? [["Código de balanza (PLU)", String(producto.plu)]] : []),
     ["Categoría", producto.categoria],
     ...(producto.descripcion ? [["Descripción", producto.descripcion]] : []),
     [
@@ -2452,6 +2454,7 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   form.nombre.value = producto?.nombre ?? "";
   form.sku.value = producto?.sku ?? "";
   form.codigo_barras.value = producto?.codigo_barras ?? "";
+  form.plu.value = producto?.plu ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
   form.categoria_id.value = producto?.categoria_id ?? "";
@@ -2488,10 +2491,14 @@ function mostrarCamposSegunTipo() {
   // variante, no el producto.
   const conVariantes = productos.find((p) => p.id === productoEditandoId)?.variantes_count > 0;
   document.getElementById("productoCodigoBarrasCampo").hidden = (esServicio || conVariantes) && !form.codigo_barras.value;
+  // La balanza pesa: el PLU es de lo que se vende por peso o volumen.
+  document.getElementById("productoPluCampo").hidden =
+    (esServicio || conVariantes || !["kg", "g", "l", "ml"].includes(form.unidad.value)) && !form.plu.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
   document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
+document.getElementById("formProducto").unidad.addEventListener("change", mostrarCamposSegunTipo);
 // El lector termina cada lectura con Enter: en el código de barras no guarda
 // el formulario a medio llenar, pasa al campo siguiente.
 document.getElementById("formProducto").codigo_barras.addEventListener("keydown", (e) => {
@@ -2521,6 +2528,7 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     nombre: form.nombre.value,
     sku: form.sku.value || null,
     codigo_barras: form.codigo_barras.value || null,
+    plu: form.plu.value.trim() || null,
     descripcion: form.descripcion.value,
     // La duración es de un servicio: un producto no la manda.
     duracion_minutos: form.tipo.value === "servicio" && form.duracion_minutos.value !== "" ? Number(form.duracion_minutos.value) : null,
@@ -4464,6 +4472,51 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
   avisar(idEditado ? `Venta #${idEditado} actualizada.` : consultaId ? "Venta registrada: la consulta quedó ganada." : "Venta registrada.", "ok");
 });
 
+// Adónde fue la plata de la venta (hist. §131): una barra con cada costo y lo
+// que quedó, y la lista con su importe, su porcentaje y el promedio del
+// negocio. El empleado no la recibe (el servidor la poda, como el costo).
+// Los colores van por clave: los gastos de la venta rotan entre tres.
+const COLOR_DESGLOSE = { mercaderia: "var(--ink-faint)", consumos: "var(--naranja)", iva: "var(--line-strong)" };
+const COLORES_GASTO_DESGLOSE = ["var(--violeta)", "var(--info)", "var(--accent-warn)"];
+function pintarDesgloseVenta(desglose) {
+  document.getElementById("fichaVentaCostosPanel").hidden = !desglose;
+  if (!desglose) return;
+  let gasto = 0;
+  const filas = desglose.filas.map((f) => ({
+    ...f,
+    color: COLOR_DESGLOSE[f.clave] ?? COLORES_GASTO_DESGLOSE[gasto++ % COLORES_GASTO_DESGLOSE.length]
+  }));
+  const quedo = { ...desglose.quedo, nombre: "Te quedó", color: "var(--accent-ok)" };
+
+  document.getElementById("fichaVentaDesgloseSub").textContent =
+    `De los ${money(desglose.base)} que pagó el cliente. El promedio es el de tus ventas de los últimos ${desglose.dias_promedio} días.`;
+  const barra = document.getElementById("fichaVentaDesgloseBarra");
+  barra.innerHTML = [...filas, quedo]
+    .filter((f) => f.pct > 0)
+    .map((f) => `<span style="flex-grow:${Number(f.pct)};background:${esc(f.color)}" title="${esc(f.nombre)}: ${porcentaje(f.pct * 100)}"></span>`)
+    .join("");
+  barra.setAttribute("aria-label", [...filas, quedo].map((f) => `${f.nombre}: ${porcentaje(f.pct * 100)}`).join(", "));
+
+  const promedio = (f, aviso) =>
+    f.promedio_pct == null
+      ? ""
+      : `<span class="desglose-promedio">Tu promedio: ${porcentaje(f.promedio_pct * 100)}</span>${aviso ? ` <span class="status status-aviso">${aviso}</span>` : ""}`;
+  const item = (f, { aviso, total = false } = {}) => `
+    <li class="desglose-item${total ? " desglose-total" : ""}">
+      <span class="desglose-color" style="background:${esc(f.color)}" aria-hidden="true"></span>
+      <div class="desglose-que">
+        <span class="desglose-nombre">${esc(f.nombre)}</span>
+        ${(f.detalle ?? []).map((d) => `<span class="desglose-detalle">${esc(d)}</span>`).join("")}
+        <span class="desglose-comparacion">${promedio(f, aviso)}</span>
+      </div>
+      <span class="desglose-importe mono${f.importe < 0 ? " saldo-negativo" : ""}">${money(f.importe)}</span>
+      <span class="desglose-pct mono${f.importe < 0 ? " saldo-negativo" : ""}">${porcentaje(f.pct * 100)}</span>
+    </li>`;
+  document.getElementById("fichaVentaCostos").innerHTML =
+    filas.map((f) => item(f, { aviso: f.alto ? "Más que lo normal" : "" })).join("") +
+    item(quedo, { aviso: quedo.bajo ? "Menos que lo normal" : "", total: true });
+}
+
 async function abrirFichaVenta(id) {
   ventaFichaId = id;
   const venta = await api(`/api/ventas/${id}`, {
@@ -4528,27 +4581,7 @@ async function abrirFichaVenta(id) {
     )
     .join("");
 
-  // La comisión y el envío que pagó el negocio (hist. §129): el empleado no
-  // los recibe (el servidor los poda, como el costo).
-  const costosDeVender = venta.costos_de_vender ?? [];
-  document.getElementById("fichaVentaCostosPanel").hidden = costosDeVender.length === 0;
-  // La tarjeta "Ganancia" es la de la mercadería; la última fila dice lo que
-  // quedó después de vender.
-  const quedo = venta.margen - costosDeVender.reduce((acc, c) => acc + c.importe, 0);
-  document.getElementById("fichaVentaCostos").innerHTML =
-    costosDeVender
-      .map(
-        (c) => `
-        <tr>
-          <td data-label="Qué">${esc(c.descripcion || c.categoria)}</td>
-          <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
-        </tr>`
-      )
-      .join("") +
-    `<tr>
-      <td data-label="Qué"><strong>Te quedó de ganancia</strong></td>
-      <td data-label="Importe" class="align-right mono ${quedo < 0 ? "saldo-negativo" : ""}"><strong>${money(quedo)}</strong></td>
-    </tr>`;
+  pintarDesgloseVenta(venta.desglose_costos);
 
   // Las devoluciones de esta venta viven en su propio caché (cargarDevoluciones,
   // ya resuelto para cuando se navega acá); el panel entero se oculta si no hay

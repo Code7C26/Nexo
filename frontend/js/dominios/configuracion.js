@@ -413,6 +413,8 @@ const PAGINAS = {
   "cambiar-tipo": { admin: true, form: formCambiarTipo, alEntrar: pintarCambiarTipo, menu: "funciones" },
   // Las etapas del embudo de consultas las pinta dominios/crm.js (hist. §90).
   "etapas-consultas": { admin: true, modulo: "crm", alEntrar: () => invocar("pintar:etapasConsultas") },
+  // Las etiquetas de la balanza: dominios/balanza.js (hist. §132).
+  balanza: { admin: true, modulo: "pos", alEntrar: () => invocar("pintar:balanza") },
   comprobantes: { admin: true, form: formComprobantes, alEntrar: pintarComprobantes },
   // Factura electrónica con ARCA: dominios/factura-electronica.js (etapa E).
   "factura-electronica": { admin: true, alEntrar: () => invocar("pintar:factura-electronica") },

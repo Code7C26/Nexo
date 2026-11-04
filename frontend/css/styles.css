@@ -8749,3 +8749,66 @@ a.segmento {
   .ci-saldo { grid-template-columns: minmax(0, 1fr) auto auto; }
   .ci-saldo .btn-link { grid-column: auto; }
 }
+
+/* Adónde fue la plata de una venta (hist. §131): una barra con cada costo y
+   lo que quedó, y debajo la lista con su importe y su porcentaje. En el
+   celular el importe y el porcentaje se apilan a la derecha. */
+.desglose-barra {
+  display: flex;
+  height: 14px;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  background: var(--surface-sunk);
+  gap: 2px;
+  margin-bottom: var(--sp-4);
+}
+.desglose-barra span { flex-basis: 0; min-width: 3px; }
+.desglose-lista { list-style: none; margin: 0; padding: 0; }
+.desglose-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-areas: "color que importe" "color que pct";
+  grid-template-rows: auto 1fr;
+  column-gap: var(--sp-3);
+  align-items: start;
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+.desglose-item:first-child { border-top: 0; padding-top: 0; }
+.desglose-color { grid-area: color; width: 10px; height: 10px; border-radius: 3px; margin-top: 5px; }
+.desglose-que { grid-area: que; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.desglose-nombre { font-weight: 500; }
+.desglose-detalle { font-size: var(--txt-xs); color: var(--ink-muted); overflow-wrap: anywhere; }
+.desglose-comparacion:empty { display: none; }
+.desglose-comparacion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: 2px; }
+.desglose-promedio { font-size: var(--txt-xs); color: var(--ink-faint); }
+.desglose-importe { grid-area: importe; text-align: right; }
+.desglose-pct { grid-area: pct; text-align: right; font-size: var(--txt-xs); color: var(--ink-muted); }
+.desglose-total { border-top-color: var(--line-strong); }
+.desglose-total .desglose-nombre,
+.desglose-total .desglose-importe { font-weight: 600; }
+
+@media (min-width: 720px) {
+  .desglose-item {
+    grid-template-columns: 10px minmax(0, 1fr) 140px 72px;
+    grid-template-areas: "color que importe pct";
+  }
+  .desglose-pct { font-size: var(--txt-sm); font-weight: 600; color: var(--ink); }
+}
+
+/* Configuración → Balanza (hist. §132): lo que deduce el asistente de una
+   etiqueta real. */
+.balanza-resultado {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--surface-sunk);
+  font-size: var(--txt-sm);
+}
+.balanza-resultado[hidden] { display: none; }
+.balanza-resultado p { margin: 0 0 var(--sp-2); }
+.balanza-resultado p:last-child { margin-bottom: 0; }
+.balanza-resultado ul { margin: 0 0 var(--sp-2); padding-left: 20px; }
+.balanza-error { color: var(--accent-danger); }
+/* El pie de "Tus etiquetas" solo con la balanza configurada. */
+.config-tarjeta-pie[hidden] { display: none; }

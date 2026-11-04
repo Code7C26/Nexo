@@ -11,6 +11,8 @@ import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
 import { crearConsumos } from "../core/al-vender.js";
+import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
+import { negocio } from "../core/negocio.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
@@ -351,14 +353,20 @@ posBuscar.addEventListener("keydown", (e) => {
 });
 
 // Gana el código de barras exacto (sin espacios, como lo guarda Nexo), después
-// el SKU exacto; si no, sirve un único resultado que se pueda vender. Si hay
-// varios, la grilla queda filtrada para elegir con el dedo.
+// la etiqueta de la balanza y el SKU exacto; si no, sirve un único resultado
+// que se pueda vender. Si hay varios, la grilla queda filtrada para elegir con
+// el dedo.
 function agregarPorCodigo(codigo) {
   const buscado = codigo.toLowerCase();
   const sinEspacios = buscado.replace(/\s+/g, "");
-  const exacto =
-    catalogo.find((i) => i.codigo_barras && i.codigo_barras.toLowerCase() === sinEspacios) ??
-    catalogo.find((i) => i.sku && i.sku.trim().toLowerCase() === buscado);
+  const delEnvase = catalogo.find((i) => i.codigo_barras && i.codigo_barras.toLowerCase() === sinEspacios);
+  if (!delEnvase && agregarEtiqueta(sinEspacios)) {
+    // La grilla quedó filtrada por los números de la etiqueta.
+    posBuscar.value = "";
+    renderCatalogo();
+    return;
+  }
+  const exacto = delEnvase ?? catalogo.find((i) => i.sku && i.sku.trim().toLowerCase() === buscado);
   const candidatos = exacto ? [exacto] : filtrar(codigo).filter(hayStock);
   if (candidatos.length === 1) {
     posBuscar.value = "";
@@ -371,6 +379,32 @@ function agregarPorCodigo(codigo) {
     posBuscar.select();
   }
   renderCatalogo();
+}
+
+// La etiqueta de la balanza (hist. §132): el renglón entra con el peso que
+// trae, al precio de hoy (nunca el de la etiqueta). Devuelve si el código era
+// una etiqueta, aunque no se haya podido sumar (ya avisó por qué).
+function agregarEtiqueta(codigo) {
+  const formato = negocio.balanza;
+  const lectura = formato ? leerEtiqueta(codigo, formato) : null;
+  if (!lectura) return false;
+  const item = catalogo.find((i) => i.plu === lectura.plu);
+  if (!item) {
+    avisar(`La etiqueta es del código de balanza ${lectura.plu}, y ningún producto lo tiene. Cargalo en el producto.`, "atencion");
+    return true;
+  }
+  const cuanto = cantidadDeEtiqueta(lectura, formato, item);
+  if (!(cuanto > 0)) {
+    avisar(
+      item.precio > 0
+        ? `"${item.nombre}" no se vende por peso: cambiá su unidad para leer la etiqueta.`
+        : `"${item.nombre}" no tiene precio: sin él no se sabe cuánto pesa.`,
+      "atencion"
+    );
+    return true;
+  }
+  sumar(item.clave, cuanto);
+  return true;
 }
 
 // Tocar un producto o leer su código: por unidad suma uno; por peso, volumen

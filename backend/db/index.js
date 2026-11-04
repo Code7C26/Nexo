@@ -2054,6 +2054,16 @@ db.exec(
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_variantes_org_codigo_barras ON producto_variantes(organizacion_id, codigo_barras)'
 );
 
+// Etiquetas de balanza (hist. §132, ver schema.sql): el PLU del producto y el
+// formato de la etiqueta del negocio. Aditivas y nulas, sin backfill.
+if (!db.prepare('PRAGMA table_info(productos)').all().some((col) => col.name === 'plu')) {
+  db.exec('ALTER TABLE productos ADD COLUMN plu INTEGER');
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_productos_org_plu ON productos(organizacion_id, plu)');
+if (!db.prepare('PRAGMA table_info(organizaciones)').all().some((col) => col.name === 'balanza_formato')) {
+  db.exec('ALTER TABLE organizaciones ADD COLUMN balanza_formato TEXT');
+}
+
 // Por dónde entró cada venta, y el módulo "Venta online" (hist. §128, ver
 // schema.sql). Aditiva y nula. Solo en el arranque que suma la columna, así
 // es re-ejecutable y un admin que apaga el módulo no lo vuelve a ver prendido:
