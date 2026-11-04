@@ -36,6 +36,19 @@ próximo paso:
   de Meta: es el trámite del usuario (pasos en "Trámites del usuario" →
   Meta), y después mandar las cinco claves al servidor.
 
+**Publicado el 4 de noviembre (PR #50): §133 y §134.** WhatsApp ya está
+conectado en el servidor: las cinco claves en `/etc/nexo/nexo.env`, el
+webhook verificado y `messages` suscrito en Meta (app Nexo-app, número de
+prueba +1 555 141 8019, gratis 90 días). **Falta la prueba con el celular**
+(vincular desde Mi cuenta y mandar una venta). **Sigue, pedido del usuario:**
+WhatsApp con página propia en Configuración y el logo, fuera de Mi cuenta:
+mover la tarjeta `#perfilWhatsApp` de Mi cuenta (`index.html`) y su código
+de `dominios/perfil.js` a un `dominios/whatsapp.js` con la página
+`#/configuracion/whatsapp` (los dos roles, entrada en `PAGINAS` de
+`configuracion.js`), un ítem en el menú con `/img/whatsapp.svg#emblema` (ya
+creado, de Simple Icons, CC0; sumarlo a `sw.js`), ejemplos de qué mandar, y
+un acceso desde la página del asistente.
+
 **También el 4 de noviembre (hist. §133): ofertas con vigencia, hechas y
 commiteadas en `solla`, sin publicar.** Punto 2 de las ideas de Praxia:
 - Productos → Ofertas (admin): en porcentaje, en pesos o a precio fijo, sobre
