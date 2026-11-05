@@ -38,13 +38,12 @@ anteriores de "Lo que ya tenías": con fecha y cobro, sin mover stock ni caja):
 
 **Probado entero contra una base local** (cuenta sembrada pasada a Pro):
 carga sin errores y se ve bien en Resumen, Producción, Socios y Trabajos.
+Cada negocio nace con dirección y teléfono (`PUT /api/negocio`), así la guía
+"Primeros pasos" solo deja pendiente "Sumá a alguien de tu equipo", que se
+oculta con "Ocultar la guía" (localStorage, por negocio); verificado en los
+cinco con `GET /api/negocio/primeros-pasos`.
 **Sin correr todavía en la cuenta del usuario.** Antes:
-1. **Arreglar la guía "Primeros pasos"**, que queda arriba del Resumen de cada
-   negocio con "Completá los datos de tu negocio": cargarle a cada uno
-   dirección, teléfono y mail con `PUT /api/negocio` (el paso lo da por hecho
-   `c.datos_negocio`; ver qué campos mira, quizás el CUIT). "Sumá a alguien
-   de tu equipo" queda: se oculta con "Ocultar la guía" (localStorage, por
-   negocio).
+1. ~~Arreglar la guía "Primeros pasos"~~: hecho (5 de noviembre).
 2. **El negocio del usuario tiene que estar en Pro** (sumar negocios es de
    Pro, y el nuevo hereda el plan): Plataforma → Negocios → "Cambiar". Tope:
    5 negocios nuevos por hora y por cuenta.
