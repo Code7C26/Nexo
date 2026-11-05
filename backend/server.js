@@ -21323,7 +21323,7 @@ app.get('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
   res.json(
     db
       .prepare(
-        `SELECT ventas.id, ventas.fecha, ventas.cliente_id, clientes.nombre AS cliente,
+        `SELECT ventas.id, ventas.fecha, ventas.cliente_id, clientes.nombre AS cliente, ventas.canal,
                 (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
                 (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
                 (SELECT GROUP_CONCAT(

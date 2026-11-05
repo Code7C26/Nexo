@@ -13,6 +13,7 @@
  */
 
 import { api } from "../core/api.js";
+import { CANALES_VENTA } from "../core/canales.js";
 import { avisar, confirmar } from "../core/ui.js";
 import { esc, fechaAR, hoyISO, money, numero } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
@@ -502,6 +503,11 @@ async function pintarVentas() {
     cargarCatalogoVentas()
   ]);
   formVentas.cuenta.innerHTML = cuentas.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
+  // Por dónde entró (hist. §138): solo con el módulo de venta online.
+  formVentas.canal.innerHTML = [
+    '<option value="">Sin indicar</option>',
+    ...Object.entries(CANALES_VENTA).map(([valor, texto]) => `<option value="${valor}">${esc(texto)}</option>`)
+  ].join("");
   campo("ciVentaClientes").innerHTML = clientes.map((c) => `<option value="${esc(c.nombre)}"></option>`).join("");
   renglones.innerHTML = renglonHtml();
   actualizarTotalVenta();
@@ -513,7 +519,9 @@ async function pintarVentas() {
           return `
       <li class="ci-saldo">
         <div class="ci-saldo-texto">
-          <strong>${esc(fechaAR(v.fecha))} · ${esc(v.cliente)}</strong>
+          <strong>${esc(fechaAR(v.fecha))} · ${esc(v.cliente)}${
+            v.canal && v.canal !== "local" && CANALES_VENTA[v.canal] ? ` · ${esc(CANALES_VENTA[v.canal])}` : ""
+          }</strong>
           <span>${esc(v.items_resumen ?? "")}</span>
         </div>
         <span class="ci-saldo-importe mono">${esc(money(v.total))}
@@ -586,7 +594,8 @@ formVentas.addEventListener("submit", async (e) => {
         items,
         cobrada,
         cuenta_tesoreria_id: cobrada ? Number(formVentas.cuenta.value) : null,
-        vencimiento: cobrada ? null : formVentas.vencimiento.value || null
+        vencimiento: cobrada ? null : formVentas.vencimiento.value || null,
+        canal: moduloActivo("canales") ? formVentas.canal.value || null : null
       },
       error: "No se pudo guardar la venta."
     });
@@ -595,11 +604,13 @@ formVentas.addEventListener("submit", async (e) => {
   } finally {
     boton.disabled = false;
   }
-  // La fecha queda: casi siempre se cargan varias del mismo día.
+  // La fecha y el canal quedan: casi siempre se cargan varias del mismo día.
   const fecha = formVentas.fecha.value;
+  const canal = formVentas.canal.value;
   avisar("Venta guardada.", "ok");
   await pintarVentas();
   formVentas.fecha.value = fecha;
+  formVentas.canal.value = canal;
   renglones.querySelector("select").focus();
   refrescarApp("ventas", "cuentasCorrientes", "clientes");
 });
