@@ -22,6 +22,7 @@ import { esAdmin, esc, money, numero } from "../core/formato.js";
 import { barrasHorizontales, dona, montarColumnas } from "../core/graficos.js";
 import { icono } from "../core/iconos.js";
 import { moduloActivo, negocio } from "../core/negocio.js";
+import { rangoDePeriodo } from "../core/periodos.js";
 import { invocar } from "../core/registro.js";
 import { avisar } from "../core/ui.js";
 
@@ -59,32 +60,10 @@ let fechas = null;
 // Contra qué compara la evolución: la lee app.js al pedirla.
 export const comparacion = () => tablero.comparar;
 
-// El rango del período elegido, en la zona del navegador (es la del negocio
-// para quien lo usa). "Este mes" y "Este año" van hasta hoy: un gráfico
-// por día con el resto del mes en cero diría que las ventas se cayeron.
+// El rango del período elegido (core/periodos.js), o las fechas tipeadas.
 export function rangoResumen() {
   if (fechas) return { ...(fechas.desde ? { desde: fechas.desde } : {}), ...(fechas.hasta ? { hasta: fechas.hasta } : {}) };
-  const iso = (d) => d.toLocaleDateString("sv-SE");
-  const hoy = new Date();
-  const hace = (dias) => {
-    const d = new Date(hoy);
-    d.setDate(d.getDate() - dias);
-    return iso(d);
-  };
-  switch (tablero.periodo) {
-    case "hoy":
-      return { desde: iso(hoy), hasta: iso(hoy) };
-    case "7":
-      return { desde: hace(6), hasta: iso(hoy) };
-    case "mes":
-      return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
-    case "anio":
-      return { desde: `${hoy.getFullYear()}-01-01`, hasta: iso(hoy) };
-    case "todo":
-      return {};
-    default:
-      return { desde: hace(29), hasta: iso(hoy) };
-  }
+  return rangoDePeriodo(tablero.periodo);
 }
 
 const contenedor = document.getElementById("tablero");

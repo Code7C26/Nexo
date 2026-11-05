@@ -5410,6 +5410,7 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 :root:not([data-rol="admin"]) .nav-item[data-view="reportes-stock"],
 :root:not([data-rol="admin"]) .nav-item[data-view="papelera"],
 :root:not([data-rol="admin"]) .nav-item[data-view="compras"],
+:root:not([data-rol="admin"]) .nav-item[data-view="venta-online"],
 :root:not([data-rol="admin"]) .nav-item[data-view="devoluciones-proveedor"],
 :root:not([data-rol="admin"]) .nav-item[data-view="configuracion"] {
   display: none;
@@ -8932,21 +8933,22 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
    pantalla, así la barra lateral abierta o cerrada no lo rompe.
    ============================================================ */
 
-/* Colores de las series: azul, naranja y violeta, validados como
-   conjunto (separación para daltonismo y contraste con la tarjeta) en
-   los dos temas. Los del tema oscuro van un escalón más oscuros que
-   --info/--naranja/--violeta, que son para texto chico y en un gráfico
-   quedaban fuera de la banda de luminosidad. */
+/* Colores de las series: azul, naranja y aguamarina, validados como
+   conjunto con todos los pares (en una dona todos se tocan) para
+   daltonismo y visión normal, en los dos temas. Con violeta en vez de
+   aguamarina, el azul y el violeta no se distinguían; un cuarto color ya
+   no pasa: lo demás va en gris. En el tema claro el aguamarina tiene poco
+   contraste con la tarjeta: por eso toda leyenda lleva nombre y cifra. */
 :root {
-  --serie-1: #3B8EEA;
-  --serie-2: #E26A2C;
-  --serie-3: #9085E9;
+  --serie-1: #3987E5;
+  --serie-2: #D95926;
+  --serie-3: #199E70;
   --serie-otras: #5C5C5C;
 }
 :root[data-tema="claro"] {
-  --serie-1: #2563EB;
-  --serie-2: #C2410C;
-  --serie-3: #6D28D9;
+  --serie-1: #2A78D6;
+  --serie-2: #EB6834;
+  --serie-3: #1BAF7A;
   --serie-otras: #A3A3A3;
 }
 
@@ -9368,3 +9370,167 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   .area-animar .area-dibujo,
   .ranking-barra span { animation: none; }
 }
+
+/* ============================================================
+   Venta online (hist. §138, dominios/venta-online.js)
+   La misma grilla que el Resumen: en la compu, 12 columnas con el
+   ancho de cada pieza; en el celular, una columna.
+   ============================================================ */
+
+[data-view="venta-online"] { container: online / inline-size; }
+.online-grilla {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+@container online (min-width: 880px) {
+  .online-grilla { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--sp-5) var(--sp-4); }
+  .online-grilla > .ancho-12 { grid-column: span 12; }
+  .online-grilla > .ancho-8 { grid-column: span 8; }
+  .online-grilla > .ancho-4 { grid-column: span 4; }
+  .online-grilla .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-4); }
+  .online-grilla > .ancho-12 > .kpis .kpi-cifra { font-size: 30px; }
+}
+.online-grilla .kpi { padding-bottom: 0; }
+.online-nota { margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
+
+/* Las líneas de cada canal, con su color fijo. */
+.area-linea.serie-1 { stroke: var(--serie-1); }
+.area-linea.serie-2 { stroke: var(--serie-2); }
+.area-linea.serie-3 { stroke: var(--serie-3); }
+.area-linea.serie-otras { stroke: var(--serie-otras); }
+.area-punto.serie-1 { fill: var(--serie-1); }
+.area-punto.serie-2 { fill: var(--serie-2); }
+.area-punto.serie-3 { fill: var(--serie-3); }
+.area-punto.serie-otras { fill: var(--serie-otras); }
+.leyenda-linea { height: 3px; border-radius: 2px; }
+
+/* El logo de cada canal, en un cuadradito como los íconos del Resumen. */
+.canal-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  color: var(--ink);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.canal-logo .ico { width: 20px; height: 20px; }
+.canal-logo .ico-marca-color { width: 24px; height: 17px; }
+.canal-logo-tiendanube { color: #0059D5; }
+:root:not([data-tema="claro"]) .canal-logo-tiendanube { color: #5B9BFF; }
+.canal-logo-whatsapp { color: #25D366; }
+.canal-logo-instagram { color: #E1306C; }
+
+/* ---------- Cada canal ---------- */
+
+.online-canales {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--sp-3);
+}
+.canal-tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.canal-cabeza { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.canal-cabeza h3 { margin: 0; font-family: var(--font-body); font-size: var(--txt-sm); font-weight: 600; }
+.canal-cabeza p { margin: 0; font-size: var(--txt-2xs); color: var(--ink-muted); }
+.canal-tarjeta .kpi-cifra { font-size: var(--txt-xl); }
+.canal-datos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+}
+.canal-datos dt { font-size: var(--txt-2xs); color: var(--ink-muted); }
+.canal-datos dd { margin: 0; font-size: var(--txt-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Adónde fue lo que entró: una barra partida en tres, con 2px de aire
+   entre partes. La mercadería en gris, lo que cuesta vender en naranja y
+   lo que quedó en azul. */
+.canal-reparto {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  background: var(--surface-sunk);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+.canal-reparto span { display: block; height: 100%; min-width: 0; }
+.canal-reparto span[style="width:0.0%"] { display: none; }
+.reparto-mercaderia { background: var(--serie-otras); }
+.reparto-vender { background: var(--serie-2); }
+.reparto-quedo { background: var(--serie-1); }
+.canal-reparto-leyenda {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.canal-reparto-leyenda li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--sp-2);
+}
+.canal-reparto-leyenda strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.canal-reparto-leyenda small { grid-column: 2 / -1; font-size: var(--txt-2xs); }
+.leyenda-marca.reparto-mercaderia { background: var(--serie-otras); }
+.leyenda-marca.reparto-vender { background: var(--serie-2); }
+.leyenda-marca.reparto-quedo { background: var(--serie-1); }
+
+/* ---------- Publicidad ---------- */
+
+.publicidad-roas { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-4); }
+.publicidad-roas .kpi-cifra { font-size: 40px; }
+.publicidad-roas .kpi-cifra::after { content: "×"; margin-left: 2px; color: var(--ink-muted); font-weight: 500; }
+.publicidad-roas span:last-child { font-size: var(--txt-sm); color: var(--ink-muted); }
+.publicidad-datos { display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.publicidad-datos div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--txt-sm);
+}
+.publicidad-datos dt { color: var(--ink-muted); }
+.publicidad-datos dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.online-vacio { margin: 0 0 var(--sp-4); font-size: var(--txt-sm); color: var(--ink-muted); }
+
+/* ---------- Tus tiendas ---------- */
+
+.online-tiendas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-3);
+}
+.tienda-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease;
+}
+.tienda-item:hover { border-color: var(--line-strong); background: var(--surface-hover); }
+.tienda-item:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.tienda-texto { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: var(--txt-2xs); color: var(--ink-muted); }
+.tienda-texto strong { font-size: var(--txt-sm); color: var(--ink); }
+.tienda-aviso { color: var(--accent-danger); font-weight: 600; }
+.tienda-accion { font-size: var(--txt-xs); font-weight: 600; color: var(--accent); }
+.tienda-item:not(.is-conectada) .canal-logo { opacity: 0.55; }

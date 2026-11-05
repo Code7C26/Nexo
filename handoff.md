@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §137);
+    siguiente número (hoy el último es §138);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,14 +21,25 @@
 
 ## Estado actual (5 de noviembre de 2026)
 
-**Lo último (5 de noviembre, hist. §137): el Resumen como tablero, hecho y
-sin commitear** (rama `Tosi`). Pedido del usuario con capturas de referencia:
+**Lo último (5 de noviembre, hist. §138): la página Venta online, hecha y sin
+commitear** (rama `Tosi`). Pedido del usuario: una sección de e-commerce con
+gráficos y logos. `#/venta-online` (módulo canales, admin): cifras online,
+ventas por canal, dona, una tarjeta por canal con su logo y adónde fue la
+plata, publicidad (gasto de la categoría Publicidad de Gastos: ROAS, costo
+por venta), lo más vendido por canal y las tiendas conectadas. La paleta de
+series pasó a azul, naranja y aguamarina (el violeta no se distinguía del
+azul). **Meta Ads queda afuera** ("lo dejamos por si escalamos", 5 de
+noviembre; CLAUDE.md §39). **Falta:** que el usuario lo vea, commitear y
+publicar. Los negocios de ejemplo ya cargados tienen la historia "Sin
+indicar": renombrar el viejo y volver a correr la demo para verla con canales.
+
+**Antes (5 de noviembre, hist. §137): el Resumen como tablero, publicado
+(PR #59).** Pedido del usuario con capturas de referencia:
 un pantallazo vistoso arriba y el detalle abajo, y que "Comparar con" no
 parezca HTML básico. Período y comparación en botones de Nexo (el período se
 guarda por persona; arranca en 30 días), grilla de 12 columnas en la compu,
 tarjetas con su línea chica, "Ventas y ganancia" en área grande, dona de
-cobros, y la evolución agrupada por semana de 32 a 183 días. **Falta:** que
-el usuario lo vea, commitear y publicar.
+cobros, y la evolución agrupada por semana de 32 a 183 días.
 
 **Antes (5 de noviembre, hist. §136): el Resumen en piezas y
 personalizable, publicado (PR #58).** Pedido del usuario

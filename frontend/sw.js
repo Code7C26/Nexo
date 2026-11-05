@@ -52,6 +52,7 @@ const PRECACHE = [
   "/img/mercadolibre.svg",
   "/img/mercadopago.svg",
   "/img/whatsapp.svg",
+  "/img/instagram.svg",
   "/img/app/icono-192.png",
   "/img/app/apple-touch-icon.png",
   "/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png",
@@ -81,6 +82,7 @@ const PRECACHE = [
   "/js/core/maestros.js",
   "/js/core/manual.js",
   "/js/core/negocio.js",
+  "/js/core/periodos.js",
   "/js/core/registro.js",
   "/js/core/router.js",
   "/js/core/seleccion.js",
@@ -113,6 +115,7 @@ const PRECACHE = [
   "/js/dominios/tienda-nube.js",
   "/js/dominios/trabajos.js",
   "/js/dominios/usuarios.js",
+  "/js/dominios/venta-online.js",
   "/js/dominios/whatsapp.js",
 ];
 

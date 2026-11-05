@@ -914,7 +914,9 @@ Ampliación (para competir con sistemas reales, ver §37):
 Implementado hoy: dashboard con resultado del período y comparación contra el
 período anterior, qué se vende / qué se compra, stock a reponer y valorizado,
 rotación, cuentas corrientes con aging, y ventas y ganancia por canal (hist.
-§128; sin las comisiones de cada canal todavía). El Resumen va en piezas que
+§128), con su página propia ("Venta online", hist. §138): lo que queda en
+cada canal después de comisiones, envíos y cuotas, y lo que rinde la
+publicidad anotada en Gastos. El Resumen va en piezas que
 cada persona muestra, oculta y ordena, con el armado de su tipo de negocio de
 partida (hist. §136): suma cuándo se vende (día y hora), dónde entró la plata,
 quién vendió, lo más vendido en barras, lo que hay que mirar hoy y la
@@ -1247,8 +1249,9 @@ Implementado hoy (Etapa F, §38):
 - **Venta online (hist. §128):** módulo reusable, prendido en Tienda online,
   Emprendimiento y Comercio: las tiendas conectadas (§32), por dónde entró
   cada venta (`ventas.canal`: el local, Tienda Nube, Mercado Libre, Instagram,
-  WhatsApp…) y la ganancia por canal. Un local que vende online lo prende, y
-  una tienda online que abre un local suma el punto de venta.
+  WhatsApp…) y la ganancia por canal, con su página de números (hist. §138).
+  Un local que vende online lo prende, y una tienda online que abre un local
+  suma el punto de venta.
 - **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
   `handoff.md`). Un gimnasio también compra y vende productos: su preset
   combina comercio con socios.

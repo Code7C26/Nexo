@@ -107,6 +107,9 @@
           <a href="#" class="nav-item" data-view="ventas">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg> Ventas
           </a>
+          <a href="#" class="nav-item" data-view="venta-online" data-modulo="canales">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#globe"></use></svg> Venta online
+          </a>
           <a href="#" class="nav-item" data-view="devoluciones">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg> Devoluciones
           </a>
@@ -836,6 +839,108 @@
           </section>
         </div>
         </div>
+        </div>
+      </section>
+
+      <!-- Vista: Venta online (hist. §138, dominios/venta-online.js): cuánto
+           entra por cada canal, cuánto queda después de venderlo ahí, y qué
+           rinde la publicidad. Del módulo Venta online y del admin. -->
+      <section class="view" data-view="venta-online" hidden>
+        <div class="resumen-barra">
+          <div class="segmentos" role="group" aria-label="Período" id="onlinePeriodo">
+            <button type="button" class="segmento" data-periodo="hoy" aria-pressed="false">Hoy</button>
+            <button type="button" class="segmento" data-periodo="7" aria-pressed="false">7 días</button>
+            <button type="button" class="segmento" data-periodo="30" aria-pressed="true">30 días</button>
+            <button type="button" class="segmento" data-periodo="mes" aria-pressed="false">Este mes</button>
+            <button type="button" class="segmento" data-periodo="anio" aria-pressed="false">Este año</button>
+            <button type="button" class="segmento" data-periodo="todo" aria-pressed="false">Todo</button>
+          </div>
+          <div class="resumen-acciones">
+            <a class="btn btn-secundario" href="#/configuracion/tienda-nube"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#settings"></use></svg> Tus tiendas</a>
+          </div>
+        </div>
+        <p class="nota-plana resumen-rango" id="onlineRango"></p>
+
+        <div class="online-grilla">
+          <div class="pieza ancho-12">
+            <div class="kpis" role="group" aria-label="Venta online del período">
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#globe"></use></svg></span>Ventas online</h3>
+              <p class="kpi-cifra" id="onlineVentas">$0</p>
+              <p class="kpi-nota" id="onlineVentasNota"></p>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>Pedidos online</h3>
+              <p class="kpi-cifra" id="onlinePedidos">$0</p>
+              <p class="kpi-nota" id="onlinePedidosNota"></p>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>Ticket promedio</h3>
+              <p class="kpi-cifra" id="onlineTicket">$0</p>
+              <p class="kpi-nota" id="onlineTicketNota"></p>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Te quedó</h3>
+              <p class="kpi-cifra" id="onlineGanancia">$0</p>
+              <p class="kpi-nota" id="onlineGananciaNota"></p>
+            </article>
+            </div>
+          </div>
+
+          <div class="pieza ancho-8">
+            <section class="panel" aria-labelledby="onlineSerieTitulo">
+              <div class="panel-head">
+                <h2 id="onlineSerieTitulo">Ventas por canal</h2>
+                <ul class="leyenda" id="onlineLeyenda" aria-label="Referencias"></ul>
+              </div>
+              <div class="grafico grafico-area" id="graficoOnline"></div>
+            </section>
+          </div>
+          <div class="pieza ancho-4">
+            <section class="panel" aria-labelledby="onlineDonaTitulo">
+              <div class="panel-head">
+                <h2 id="onlineDonaTitulo">De dónde vienen</h2>
+              </div>
+              <div class="dona-cont" id="onlineDona"></div>
+            </section>
+          </div>
+
+          <div class="pieza ancho-12">
+            <section class="panel" aria-labelledby="onlineCanalesTitulo">
+              <div class="panel-head">
+                <h2 id="onlineCanalesTitulo">Cada canal</h2>
+              </div>
+              <p class="form-note online-nota">Lo que entró por cada canal y adónde fue: la mercadería (con lo que se usó al vender), lo que cobra el canal por vender ahí (comisión, envío, cuotas) y lo que te quedó.</p>
+              <div class="online-canales" id="onlineCanales"></div>
+            </section>
+          </div>
+
+          <div class="pieza ancho-4">
+            <section class="panel" aria-labelledby="onlinePublicidadTitulo">
+              <div class="panel-head">
+                <h2 id="onlinePublicidadTitulo">Publicidad</h2>
+              </div>
+              <div id="onlinePublicidad"></div>
+            </section>
+          </div>
+          <div class="pieza ancho-8">
+            <section class="panel" aria-labelledby="onlineProductosTitulo">
+              <div class="panel-head">
+                <h2 id="onlineProductosTitulo">Lo más vendido en cada canal</h2>
+                <div class="segmentos" role="group" aria-label="Canal" id="onlineProductosCanal"></div>
+              </div>
+              <div class="ranking-cont" id="onlineProductos"></div>
+            </section>
+          </div>
+
+          <div class="pieza ancho-12">
+            <section class="panel" aria-labelledby="onlineTiendasTitulo">
+              <div class="panel-head">
+                <h2 id="onlineTiendasTitulo">Tus tiendas</h2>
+              </div>
+              <div class="online-tiendas" id="onlineTiendas"></div>
+            </section>
+          </div>
         </div>
       </section>
 

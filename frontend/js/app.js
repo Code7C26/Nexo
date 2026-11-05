@@ -80,6 +80,7 @@ import "./dominios/plataforma.js";
 import "./dominios/problema.js";
 import "./dominios/balanza.js";
 import "./dominios/ofertas.js";
+import "./dominios/venta-online.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";

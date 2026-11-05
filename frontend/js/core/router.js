@@ -30,7 +30,8 @@ const MODULO_DE_VISTA = {
   ingreso: "socios",
   socios: "socios",
   "socio-detalle": "socios",
-  "planes-socio": "socios"
+  "planes-socio": "socios",
+  "venta-online": "canales"
 };
 
 // Un título y un dominio por vista, para que la topbar diga siempre
@@ -62,6 +63,7 @@ const VISTAS_CONSTRUIDAS = {
   trabajos: { titulo: "Trabajos", dominio: "Embudo de venta" },
   abonos: { titulo: "Abonos", dominio: "Embudo de venta" },
   ventas: { titulo: "Ventas", dominio: "Embudo de venta" },
+  "venta-online": { titulo: "Venta online", dominio: "Embudo de venta" },
   devoluciones: { titulo: "Devoluciones", dominio: "Embudo de venta" },
   facturas: { titulo: "Facturas", dominio: "Embudo de venta" },
   ingreso: { titulo: "Ingreso", dominio: "Socios" },
@@ -123,7 +125,8 @@ const VISTAS_SOLO_ADMIN = new Set([
   "devoluciones-proveedor",
   "devolucion-proveedor-detalle",
   "planes-socio",
-  "ofertas"
+  "ofertas",
+  "venta-online"
 ]);
 
 // `subruta` es lo que va después de la vista en el hash (#/configuracion/negocio):
