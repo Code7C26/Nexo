@@ -1462,6 +1462,33 @@ formato** (pedido del usuario): emoji por tipo (🛒 venta, 📦 compra, 💸 ga
 "❌ Cancelar" (`resumenParaWhatsApp`, `AYUDA_WHATSAPP` y `atenderWhatsApp` en
 `backend/server.js`; tests adaptados). Falta verlo en el celular.
 
+**El costo de los servicios (pedido del usuario el 5 de noviembre, sin
+arrancar).** En Clima Sur todo servicio vendido da 100 % de margen: el costo
+de un producto (`precio_costo`) sale solo de compras o de producción, y un
+servicio no se compra, así que queda en 0. Hoy la única vía es "lo que se usa
+al vender" (`componentes_venta`, que sirve para un servicio y se aplica al
+terminar un trabajo), pero vive en Producción y el material necesita Compras y
+Stock, que el tipo Servicios no trae. Lo que decidió el usuario:
+- **Los materiales del servicio son un concepto aparte** de lo que se usa al
+  vender: son lo que hace al servicio (el gas de una carga, los caños de una
+  instalación), no un extra. Se cargan en la ficha del servicio como "lo que
+  suele llevar"; cada trabajo los copia y se cambian ahí (se usó 1,5 kg y no
+  1). Al terminar el trabajo pasan a la venta con el costo congelado, salen
+  del stock y entran al margen.
+- **Mano de obra, a elección del usuario en cada servicio:** costo fijo
+  ($15.000 por instalación) o costo por hora (por la duración estimada, hist.
+  §78; en el trabajo se corrigen las horas reales). Se congela en la venta y
+  va en "adónde fue la plata" (hist. §131) como renglón propio con su %,
+  separado de los materiales.
+- **"Lo que se usa al vender" cambia de nombre** a "Packaging" o "Extras" (el
+  nombre, a elegir al arrancar), para que no se confunda con los materiales.
+- **A diseñar al arrancar:** las tablas (materiales del servicio y del
+  trabajo, y dónde se congela la mano de obra; explicar la migración antes,
+  CLAUDE.md §34), qué pasa con Compras y Stock apagados (prenderlos o
+  avisar), la venta directa de un servicio sin trabajo (punto de venta, alta
+  de venta), y cargarle materiales y mano de obra a Clima Sur en
+  `scripts/demo.mjs`.
+
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
   del titular. Solo se hacen detalles cortos.
