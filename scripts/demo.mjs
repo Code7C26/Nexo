@@ -22,12 +22,14 @@
 // presupuestos, trabajos y socios.
 import { parseArgs } from 'node:util';
 
+// La dirección y el teléfono dan por hecho "Completá los datos de tu negocio"
+// en la guía de Primeros pasos, y salen en los presupuestos.
 const NEGOCIOS = {
-  lola: { nombre: 'Lola Indumentaria', rubro: 'comercio', armar: armarLola },
-  mafaldas: { nombre: 'Mafaldas de Sofi', rubro: 'emprendimiento', armar: armarMafaldas },
-  gimnasio: { nombre: 'Gimnasio Fuerza', rubro: 'gimnasio', armar: armarGimnasio },
-  clima: { nombre: 'Clima Sur', rubro: 'servicios', armar: armarClima },
-  carniceria: { nombre: 'Carnicería Don Ramón', rubro: 'carniceria', armar: armarCarniceria }
+  lola: { nombre: 'Lola Indumentaria', rubro: 'comercio', datos: { direccion: 'Rivera Indarte 182, Córdoba', telefono: '351 611-2040' }, armar: armarLola },
+  mafaldas: { nombre: 'Mafaldas de Sofi', rubro: 'emprendimiento', datos: { direccion: 'Nueva Córdoba, Córdoba', telefono: '351 645-7781' }, armar: armarMafaldas },
+  gimnasio: { nombre: 'Gimnasio Fuerza', rubro: 'gimnasio', datos: { direccion: 'Av. Vélez Sarsfield 2150, Córdoba', telefono: '351 466-1100' }, armar: armarGimnasio },
+  clima: { nombre: 'Clima Sur', rubro: 'servicios', datos: { direccion: 'Av. Sabattini 3420, Córdoba', telefono: '351 489-3355' }, armar: armarClima },
+  carniceria: { nombre: 'Carnicería Don Ramón', rubro: 'carniceria', datos: { direccion: 'Av. Japón 1650, Córdoba', telefono: '351 474-8820' }, armar: armarCarniceria }
 };
 
 /* ---------- Conexión ---------- */
@@ -625,13 +627,14 @@ async function principal() {
   const existentes = new Set((await api.get('/api/negocios')).map((negocio) => negocio.nombre));
   const claves = op.solo ? [op.solo] : Object.keys(NEGOCIOS);
   for (const [indice, clave] of claves.entries()) {
-    const { nombre, rubro, armar } = NEGOCIOS[clave];
+    const { nombre, rubro, datos, armar } = NEGOCIOS[clave];
     if (existentes.has(nombre)) {
       console.log(`- ${nombre}: ya existe, lo salteo.`);
       continue;
     }
     process.stdout.write(`- ${nombre}: creando… `);
     await api.post('/api/negocios', { nombre, rubro, ya_funcionaba: true });
+    await api.put('/api/negocio', datos);
     const resumen = await armar(await contexto(api, 1000 + indice));
     console.log(`listo (${resumen}).`);
   }
