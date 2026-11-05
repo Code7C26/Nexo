@@ -1489,6 +1489,15 @@ Stock, que el tipo Servicios no trae. Lo que decidió el usuario:
   de venta), y cargarle materiales y mano de obra a Clima Sur en
   `scripts/demo.mjs`.
 
+**Entrar con Google (pedido del usuario el 5 de noviembre, sin arrancar).**
+Gratis y sin dependencias (OAuth con `fetch` y el token verificado con
+`node:crypto`), pero no es chico: el flujo de ida y vuelta con `state`, la
+cuenta que ya existe con ese mail (Google lo da verificado, así que se vincula
+sola), la cuenta nueva que sigue al alta guiada sin el paso de la contraseña,
+el botón en el login y la CSP. **Trámite del usuario antes:** crear el
+cliente OAuth en Google Cloud Console (gratis) con la dirección de vuelta del
+servidor, y pasar el id y la clave al `.env` del servidor.
+
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
   del titular. Solo se hacen detalles cortos.
