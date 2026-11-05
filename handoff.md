@@ -2195,8 +2195,24 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
   7. Publicar, y en WhatsApp → Configuración → Webhook: dirección
      `https://nexosystem.duckdns.org/api/integraciones/whatsapp/webhook`, el
      mismo `WHATSAPP_VERIFY_TOKEN`, y suscribir el campo **messages**.
-  8. Probar: Mi cuenta → WhatsApp → mandar el código, y después una venta por
-     texto y por audio.
+  8. **Publicar la app** (menú Publicar; pide la URL de privacidad, la de
+     condiciones y la de eliminación de datos: `/privacidad`, `/terminos` y
+     `/privacidad`). Sin publicar, Meta solo manda los avisos de prueba del
+     panel, nunca los mensajes reales, ni los del dueño (aprendido el 5 de
+     noviembre).
+  9. **Suscribir la app a la cuenta de WhatsApp:** en el Explorador de la API
+     Graph, con Nexo-app y `whatsapp_business_management`,
+     `POST 873217219182553/subscribed_apps`. El GET mostraba solo "WA DevX
+     Webhook Events 1P App", una de Meta: con el webhook configurado y
+     `messages` suscrito, igual no llegaba nada.
+  10. Probar: Configuración → WhatsApp → mandar el código, y después una
+     venta por texto y por audio. **El número de prueba no se abre desde
+     wa.me** ("no está en WhatsApp"): primero se le manda al celular la
+     plantilla de prueba desde Configuración de la API ("Enviar mensaje"), y
+     se responde el código en ese chat.
+  - Los celulares argentinos llegan con el 9 (549…) y se les contesta sin él
+    (hist. §135, `destinatario()`). El registro anota el aviso mal firmado y
+    el que va a otro número (el botón Probar del panel usa uno inventado).
   - El número de prueba es gratis y llega a 5 teléfonos: alcanza para la demo.
 
 **Después de la presentación:**
