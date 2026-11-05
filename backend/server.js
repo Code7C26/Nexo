@@ -13,6 +13,7 @@ import {
   MODULOS,
   MODULOS_INFO,
   PERFILES_RUBRO,
+  PERIODOS_TABLERO,
   PIEZAS_TABLERO,
   RUBRO_POR_DEFECTO,
   RUBROS_PROXIMAMENTE,
@@ -11862,6 +11863,9 @@ app.get('/api/resumen', soloAdmin, (req, res) => {
 /* ---------- Resumen: evolución y comparación de períodos ---------- */
 
 const CAMPOS_RESULTADO = [
+  'cantidad_ventas',
+  'ticket_promedio',
+  'unidades',
   'ventas',
   'costo_mercaderia',
   'ganancia_bruta',
@@ -11983,6 +11987,9 @@ function diffDias(desde, hasta) {
 function granularidadDe(desde, hasta) {
   const dias = diffDias(desde, hasta) + 1;
   if (dias <= 31) return 'dia';
+  // Por semana hasta medio año (hist. §136): dos meses por mes son dos puntos,
+  // y el gráfico de ventas del Resumen no dice nada.
+  if (dias <= 183) return 'semana';
   if (dias <= 731) return 'mes'; // ~2 años, hasta 25 buckets
   return 'anio';
 }
@@ -12007,6 +12014,27 @@ function generarBuckets(desde, hasta, granularidad) {
         parcial: false
       });
       cursor = sumarDias(cursor, 1);
+    }
+    return buckets;
+  }
+
+  // Semanas de lunes a domingo, recortadas contra el rango como los meses.
+  // Se nombran por el día en que empiezan dentro del rango.
+  if (granularidad === 'semana') {
+    let lunes = sumarDias(desde, -diaDeLaSemana(desde));
+    while (lunes <= hasta && buckets.length < MAX_BUCKETS) {
+      const domingo = sumarDias(lunes, 6);
+      const bDesde = maxISO(lunes, desde);
+      const bHasta = minISO(domingo, hasta);
+      const { d, m } = partesISO(bDesde);
+      buckets.push({
+        clave: lunes,
+        etiqueta: `${String(d).padStart(2, '0')}/${String(m + 1).padStart(2, '0')}`,
+        desde: bDesde,
+        hasta: bHasta,
+        parcial: bDesde !== lunes || bHasta !== domingo
+      });
+      lunes = sumarDias(lunes, 7);
     }
     return buckets;
   }
@@ -12110,6 +12138,22 @@ function variacion(actual, anterior) {
   return { abs, pct: (abs / Math.abs(anterior)) * 100, comparable: true, cruza_cero: cruzaCero };
 }
 
+// El resultado más cuántas ventas hubo, el ticket promedio y las unidades
+// (hist. §136), con los mismos números que GET /api/reportes/ventas: las
+// unidades devueltas se restan, y el ticket es lo vendido sobre la cantidad.
+function resultadoConVentas(desde, hasta, organizacionId) {
+  const resultado = calcularResultado(desde, hasta, organizacionId);
+  const rango = [desde ?? null, desde ?? null, hasta ?? null, hasta ?? null, organizacionId];
+  const vendidas = SQL_REPORTE_UNIDADES_VENTAS.get(...rango);
+  const devueltas = SQL_REPORTE_UNIDADES_DEVOLUCIONES.get(...rango);
+  return {
+    ...resultado,
+    cantidad_ventas: vendidas.cantidad_ventas,
+    ticket_promedio: vendidas.cantidad_ventas > 0 ? Math.round((resultado.ventas / vendidas.cantidad_ventas) * 100) / 100 : 0,
+    unidades: vendidas.unidades - devueltas.unidades
+  };
+}
+
 app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
@@ -12137,8 +12181,8 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
 
   const granularidad = granularidadDe(desde, hasta);
   const buckets = generarBuckets(desde, hasta, granularidad);
-  const serie = buckets.map((b) => ({ ...b, ...calcularResultado(b.desde, b.hasta, organizacionId) }));
-  const total = calcularResultado(desde, hasta, organizacionId);
+  const serie = buckets.map((b) => ({ ...b, ...resultadoConVentas(b.desde, b.hasta, organizacionId) }));
+  const total = resultadoConVentas(desde, hasta, organizacionId);
 
   let anterior = null;
   let delta = null;
@@ -12153,7 +12197,7 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
     const rangoAnterior = comparar === 'anio' ? mismoPeriodoAnioAnterior(desde, hasta) : periodoAnterior(desde, hasta);
     const hayOperacionAntes = primera !== null && primera <= rangoAnterior.hasta;
     if (hayOperacionAntes) {
-      const resultadoAnterior = calcularResultado(rangoAnterior.desde, rangoAnterior.hasta, organizacionId);
+      const resultadoAnterior = resultadoConVentas(rangoAnterior.desde, rangoAnterior.hasta, organizacionId);
       anterior = { rango: rangoAnterior, ...resultadoAnterior };
       delta = {};
       for (const campo of CAMPOS_RESULTADO) {
@@ -13090,7 +13134,7 @@ app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
 
 /* ---------- El Resumen de cada persona (hist. §136) ---------- */
 //
-// Qué piezas ve, en qué orden y contra qué compara. Es de la persona en este
+// Qué piezas ve, en qué orden, contra qué compara y qué período mira. Es de la persona en este
 // negocio (usuario_organizaciones.tablero), como las métricas de inicio de
 // Shopify: dos admins del mismo negocio miran cosas distintas. Sin armar, el
 // del tipo de negocio. Es una preferencia de pantalla, no un dato del negocio:
@@ -13118,7 +13162,7 @@ app.get('/api/tablero', soloAdmin, (req, res) => {
 });
 
 app.put('/api/tablero', soloAdmin, (req, res) => {
-  const { orden, ocultas, comparar } = req.body ?? {};
+  const { orden, ocultas, comparar, periodo } = req.body ?? {};
   const lista = (valor) => Array.isArray(valor) && valor.every((p) => PIEZAS_TABLERO.includes(p));
   if (!lista(orden) || !lista(ocultas) || new Set(orden).size !== orden.length) {
     return res.status(400).json({ error: 'Las piezas del Resumen no son válidas.' });
@@ -13126,8 +13170,11 @@ app.put('/api/tablero', soloAdmin, (req, res) => {
   if (comparar !== undefined && comparar !== 'anterior' && comparar !== 'anio') {
     return res.status(400).json({ error: 'La comparación no es válida.' });
   }
+  if (periodo !== undefined && !PERIODOS_TABLERO.includes(periodo)) {
+    return res.status(400).json({ error: 'El período no es válido.' });
+  }
   SQL_GUARDAR_TABLERO.run(
-    JSON.stringify({ orden, ocultas, comparar: comparar ?? 'anterior' }),
+    JSON.stringify({ orden, ocultas, comparar: comparar ?? 'anterior', periodo: periodo ?? '30' }),
     req.usuario.id,
     req.usuario.organizacion_id
   );

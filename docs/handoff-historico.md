@@ -11887,3 +11887,51 @@ orden, y cambiar la comparación cambia los textos; sin errores de consola.
 **Queda:** que el usuario lo vea en el sitio; gráficos por pieza de
 socios o producción (hoy un gimnasio ve sus deudas en "Para mirar hoy");
 el manual de uso (se revisa una sola vez, al final).
+
+## §137. El Resumen como tablero (5 de noviembre de 2026)
+
+**Pedido del usuario** (con capturas de tableros de referencia, "no copies esa
+estética"): el selector "Comparar con" se veía como HTML básico; que arriba
+haya un pantallazo vistoso de lo más importante, con muchos gráficos, sobre
+todo en la compu, y más abajo lo específico y las listas.
+
+**Qué cambió:**
+- **La barra de arriba** usa los botones de Nexo (`.segmentos`): el período
+  (Hoy, 7 días, 30 días, Este mes, Este año, Todo, Fechas) y "vs. período
+  anterior / vs. año pasado". Reemplaza al filtro genérico ("Filtrar" con
+  chips) en el Resumen. El período se guarda por persona con el resto del
+  tablero (`periodo` en el JSON, `PERIODOS_TABLERO` en `perfiles.js`; arranca
+  en 30 días); "Fechas" no se guarda. "Este mes" y "Este año" van hasta hoy.
+- **Grilla:** en la compu el Resumen es una grilla de 12 columnas (container
+  query sobre la vista, no sobre la pantalla) donde cada pieza tiene su ancho
+  (la tendencia 8, cobros 4, etc.) y `grid-auto-flow: dense` llena los huecos
+  cuando la persona reordena u oculta; en el celular, una columna.
+- **El pantallazo:** cuatro tarjetas de resultado con su línea chica (la
+  forma del período) y la comparación; "Ventas y ganancia", un gráfico de
+  área grande con guía y detalle al señalar (pieza nueva `tendencia`); la
+  dona de dónde entró la plata; y cuatro tarjetas chicas (cantidad de
+  ventas, ticket, unidades y cobrado), las tres primeras con su comparación.
+  "Para mirar hoy" suma un medidor de lo vencido.
+- **Backend:** `/api/resumen/evolucion` agrupa por semana de 32 a 183 días
+  (dos meses por mes eran dos puntos), y cada período, el total y el de
+  comparación traen `cantidad_ventas`, `ticket_promedio` y `unidades`
+  (`resultadoConVentas`), con su delta.
+- **Colores de las series:** azul, naranja y violeta, validados como conjunto
+  (separación para daltonismo y contraste) en los dos temas con el validador
+  de la guía de gráficos; en el oscuro van un escalón más oscuros que
+  `--info/--naranja/--violeta`, que quedaban fuera de la banda. Tokens
+  `--serie-1` a `--serie-3` y `--serie-otras`. Más de tres cuentas van juntas
+  en "Otras".
+- `core/graficos.js` suma `lineaChica`, `montarArea` y `dona`.
+
+**Qué falló en el camino.** Las fechas del eje del gráfico grande se pisaban
+(la primera va alineada a la izquierda y la cuenta no lo sabía): ahora se
+mide el borde de cada etiqueta. Las líneas chicas quedaban a distinta altura
+según la nota de cada tarjeta: van al pie con `margin-top: auto`.
+
+**Cómo se verificó.** `npm test` (309) y lint. En Chrome headless con los
+negocios de ejemplo: Lola y Mafaldas a 1440 px en oscuro y claro, la
+carnicería y el gimnasio a 390 px; sin errores de consola.
+
+**Queda:** que el usuario lo vea; en el celular los períodos se deslizan de
+costado ("Todo" y "Fechas" quedan a la derecha).

@@ -171,3 +171,256 @@ export function montarColumnas(contenedor, { titulo }) {
     dibujar(true);
   };
 }
+
+// La línea chica de una tarjeta del Resumen: solo la forma, sin ejes ni
+// cifras (la cifra es la de la tarjeta). Se estira al ancho de la tarjeta
+// con preserveAspectRatio="none", y vector-effect deja el trazo en 1,5px
+// aunque se estire. El último punto va marcado: es el período más nuevo.
+// Con menos de dos períodos no hay forma que mostrar.
+export function lineaChica(valores) {
+  if (valores.length < 2) return "";
+  const W = 100;
+  const H = 32;
+  const min = Math.min(...valores);
+  const max = Math.max(...valores);
+  const alto = max - min || 1;
+  const puntos = valores.map((v, i) => [(i / (valores.length - 1)) * W, 3 + (1 - (v - min) / alto) * (H - 6)]);
+  const linea = puntos.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`).join("");
+  const [xf, yf] = puntos.at(-1);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" focusable="false">
+      <path class="linea-chica-area" d="${linea}L${W},${H}L0,${H}Z" />
+      <path class="linea-chica" d="${linea}" />
+    </svg>
+    <span class="linea-chica-punto" style="left:${xf.toFixed(2)}%;top:${((yf / H) * 100).toFixed(2)}%"></span>`;
+}
+
+// La tendencia del Resumen: un área para lo vendido y una línea para lo que
+// se ganó, sobre el mismo eje en pesos (las dos son plata del mismo
+// período). Se dibuja al ancho real y se redibuja si cambia, como las
+// columnas; al señalar un período, una guía vertical y el detalle.
+//   montarArea(contenedor, { titulo }) devuelve dibujar(serie, opciones), con
+//   opciones { etiqueta(p), series: [{ clase, valor(p), area }], corto(n),
+//   detalle(p) → [[nombre, texto], ...], vacio }
+export function montarArea(contenedor, { titulo }) {
+  let serie = [];
+  let opciones = null;
+  let anchoDibujado = 0;
+  let ocultarTip = () => {};
+
+  new ResizeObserver(() => {
+    if (opciones && Math.round(contenedor.clientWidth) !== anchoDibujado) dibujar(false);
+  }).observe(contenedor);
+  document.addEventListener("pointerdown", (e) => {
+    if (!contenedor.contains(e.target)) ocultarTip();
+  });
+
+  function dibujar(animar) {
+    const { etiqueta, series, corto, detalle, vacio } = opciones;
+    const hayDatos = serie.some((p) => series.some((s) => s.valor(p) !== 0));
+    if (serie.length < 2 || !hayDatos) {
+      anchoDibujado = 0;
+      const texto = serie.length < 2 && hayDatos ? "Elegí un período más largo para ver cómo viene." : vacio ?? "Sin ventas en este período.";
+      contenedor.innerHTML = `<p class="tabla-vacia">${esc(texto)}</p>`;
+      return;
+    }
+    const W = Math.round(contenedor.clientWidth);
+    if (W === 0) return;
+    anchoDibujado = W;
+    const H = W < 480 ? 210 : 330;
+    const M = { top: 12, right: 8, bottom: 28, left: 52 };
+    const pw = W - M.left - M.right;
+    const ph = H - M.top - M.bottom;
+
+    const todos = serie.flatMap((p) => series.map((s) => s.valor(p)));
+    let maxV = Math.max(0, ...todos);
+    let minV = Math.min(0, ...todos);
+    if (maxV === minV) maxV = 1;
+    const paso = pasoRedondo(maxV - minV, 4);
+    maxV = Math.ceil(maxV / paso) * paso;
+    minV = Math.floor(minV / paso) * paso;
+    const y = (v) => M.top + ((maxV - v) / (maxV - minV)) * ph;
+    const x = (i) => M.left + (i / (serie.length - 1)) * pw;
+    const ultima = serie.length - 1;
+
+    const marcas = [];
+    for (let v = minV; v <= maxV + paso / 2; v += paso) marcas.push(v);
+    const ejeY = marcas
+      .map((v) => {
+        const yv = y(v).toFixed(1);
+        return `<line class="${v === 0 ? "grafico-base" : "grafico-grilla"}" x1="${M.left}" y1="${yv}" x2="${W - M.right}" y2="${yv}" />
+        <text x="${M.left - 8}" y="${yv}" text-anchor="end" dominant-baseline="middle">${esc(corto(v))}</text>`;
+      })
+      .join("");
+
+    // Las etiquetas del eje X que entran sin pisarse: la primera, la última y,
+    // del medio, las que dejan aire con la anterior y con la última. La primera
+    // va alineada a la izquierda y la última a la derecha, así que cada una
+    // ocupa distinto: se mide el borde de cada una (~7,4px por carácter).
+    const banda = pw / ultima;
+    const bordes = (i) => {
+      const w = String(etiqueta(serie[i])).length * 7.4;
+      if (i === 0) return [x(0), x(0) + w];
+      if (i === ultima) return [x(ultima) - w, x(ultima)];
+      return [x(i) - w / 2, x(i) + w / 2];
+    };
+    const inicioUltima = bordes(ultima)[0];
+    // Si la primera y la última no entran juntas (muy angosto), va la última.
+    const visibles = new Set(inicioUltima >= bordes(0)[1] + 8 ? [0, ultima] : [ultima]);
+    let finAnterior = visibles.has(0) ? bordes(0)[1] : -Infinity;
+    for (let k = 1; k < ultima; k++) {
+      const [izq, der] = bordes(k);
+      if (izq >= finAnterior + 10 && der <= inicioUltima - 10) {
+        visibles.add(k);
+        finAnterior = der;
+      }
+    }
+    const etiquetasX = serie
+      .map((p, k) => {
+        if (!visibles.has(k)) return "";
+        const ancla = k === 0 ? "start" : k === ultima ? "end" : "middle";
+        return `<text x="${x(k).toFixed(1)}" y="${H - 8}" text-anchor="${ancla}">${esc(etiqueta(p))}</text>`;
+      })
+      .join("");
+
+    const trazo = (valor) => serie.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(valor(p)).toFixed(1)}`).join("");
+    const y0 = y(Math.max(minV, 0)).toFixed(1);
+    const dibujos = series
+      .map((s) => {
+        const d = trazo(s.valor);
+        const area = s.area ? `<path class="area-relleno ${esc(s.clase)}" d="${d}L${x(ultima).toFixed(1)},${y0}L${x(0).toFixed(1)},${y0}Z" />` : "";
+        return `${area}<path class="area-linea ${esc(s.clase)}" d="${d}" />`;
+      })
+      .join("");
+
+    // Franjas invisibles para el mouse y el dedo, una por período.
+    const franjas = serie
+      .map((_, i) => {
+        const x0 = Math.max(M.left, x(i) - banda / 2);
+        const x1 = Math.min(W - M.right, x(i) + banda / 2);
+        return `<rect class="area-franja" data-i="${i}" x="${x0.toFixed(1)}" y="${M.top}" width="${(x1 - x0).toFixed(1)}" height="${ph}" />`;
+      })
+      .join("");
+
+    const descripcion = `${titulo}, de ${etiqueta(serie[0])} a ${etiqueta(serie[ultima])}. Con las flechas se recorre período por período.`;
+    contenedor.innerHTML = `
+      <svg class="${animar ? "area-animar" : ""}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" tabindex="0">
+        <title>${esc(descripcion)}</title>
+        ${ejeY}
+        <g class="area-dibujo">${dibujos}</g>
+        <line class="area-guia" x1="0" y1="${M.top}" x2="0" y2="${M.top + ph}" visibility="hidden" />
+        ${series.map((s) => `<circle class="area-punto ${esc(s.clase)}" r="4" visibility="hidden" />`).join("")}
+        ${etiquetasX}
+        ${franjas}
+      </svg>
+      <div class="grafico-tip" hidden></div>`;
+
+    const svg = contenedor.querySelector("svg");
+    const tip = contenedor.querySelector(".grafico-tip");
+    const guia = svg.querySelector(".area-guia");
+    const puntos = [...svg.querySelectorAll(".area-punto")];
+    let activo = null;
+    const mostrar = (i) => {
+      activo = i;
+      const p = serie[i];
+      guia.setAttribute("x1", x(i));
+      guia.setAttribute("x2", x(i));
+      guia.setAttribute("visibility", "visible");
+      puntos.forEach((c, k) => {
+        c.setAttribute("cx", x(i));
+        c.setAttribute("cy", y(series[k].valor(p)));
+        c.setAttribute("visibility", "visible");
+      });
+      const filas = detalle(p)
+        .map(([nombre, texto]) => `<div><dt>${esc(nombre)}</dt><dd>${esc(texto)}</dd></div>`)
+        .join("");
+      tip.innerHTML = `<strong>${esc(etiqueta(p))}${p.parcial ? " (en curso)" : ""}</strong><dl>${filas}</dl>`;
+      tip.hidden = false;
+      const ancho = tip.offsetWidth;
+      tip.style.left = `${x(i) + 16 + ancho <= W ? x(i) + 16 : Math.max(0, x(i) - 16 - ancho)}px`;
+    };
+    const ocultar = () => {
+      activo = null;
+      guia.setAttribute("visibility", "hidden");
+      puntos.forEach((c) => c.setAttribute("visibility", "hidden"));
+      tip.hidden = true;
+    };
+    ocultarTip = ocultar;
+    svg.addEventListener("pointerover", (e) => {
+      const franja = e.target.closest(".area-franja");
+      if (franja) mostrar(Number(franja.dataset.i));
+    });
+    svg.addEventListener("pointerleave", (e) => {
+      if (e.pointerType === "mouse") ocultar();
+    });
+    svg.addEventListener("focus", () => mostrar(activo ?? ultima));
+    svg.addEventListener("blur", ocultar);
+    svg.addEventListener("keydown", (e) => {
+      const destino = { ArrowLeft: (activo ?? 0) - 1, ArrowRight: (activo ?? -1) + 1, Home: 0, End: ultima }[e.key];
+      if (destino === undefined) return;
+      e.preventDefault();
+      mostrar(Math.min(ultima, Math.max(0, destino)));
+    });
+  }
+
+  return (nuevaSerie, nuevasOpciones) => {
+    serie = nuevaSerie;
+    opciones = nuevasOpciones;
+    dibujar(true);
+  };
+}
+
+// Una dona para repartir un total entre pocas partes (dónde entró la plata).
+// Hasta tres partes con su color (--serie-1 a 3, validados para quien no
+// distingue colores) y el resto junto en "Otras", en gris: un cuarto color ya
+// no se distingue bien. Al lado, la lista con el nombre, la cifra y el
+// porcentaje, así el color nunca es lo único que dice cuál es cuál.
+//   lista: filas ya ordenadas de mayor a menor; nombre(f), valor(f), cifra(n)
+export function dona(lista, { nombre, valor, cifra, centro, vacio = "Sin datos en este período." }) {
+  const positivas = lista.filter((f) => valor(f) > 0);
+  if (positivas.length === 0) return `<p class="tabla-vacia">${esc(vacio)}</p>`;
+  const partes = positivas.slice(0, 3).map((f, i) => ({ nombre: nombre(f), valor: valor(f), clase: `serie-${i + 1}` }));
+  const resto = positivas.slice(3).reduce((acc, f) => acc + valor(f), 0);
+  if (resto > 0) partes.push({ nombre: "Otras", valor: resto, clase: "serie-otras" });
+  const total = partes.reduce((acc, p) => acc + p.valor, 0);
+
+  // Cada parte es un arco del mismo círculo (stroke-dasharray), con aire
+  // entre una y otra para que se separen sin depender del color.
+  const R = 42;
+  const largo = 2 * Math.PI * R;
+  const aire = partes.length > 1 ? 1.5 : 0;
+  let recorrido = 0;
+  const arcos = partes
+    .map((p) => {
+      const tramo = (p.valor / total) * largo;
+      const lleno = Math.max(tramo - aire, 0.5);
+      const arco = `<circle class="dona-arco ${esc(p.clase)}" r="${R}" cx="50" cy="50" stroke-dasharray="${lleno.toFixed(2)} ${(largo - lleno).toFixed(
+        2
+      )}" stroke-dashoffset="${(-recorrido).toFixed(2)}" />`;
+      recorrido += tramo;
+      return arco;
+    })
+    .join("");
+  const pct = (v) => `${Math.round((v / total) * 100)} %`;
+  const resumen = partes.map((p) => `${p.nombre}: ${pct(p.valor)}`).join(", ");
+  const leyenda = partes
+    .map(
+      (p) => `<li>
+          <span class="leyenda-marca ${esc(p.clase)}" aria-hidden="true"></span>
+          <span class="dona-nombre">${esc(p.nombre)}</span>
+          <span class="dona-cifra">${esc(cifra(p.valor))}</span>
+          <span class="dona-pct">${esc(pct(p.valor))}</span>
+        </li>`
+    )
+    .join("");
+  return `
+    <div class="dona">
+      <div class="dona-grafico">
+        <svg viewBox="0 0 100 100" role="img" aria-label="${esc(resumen)}">
+          <circle class="dona-fondo" r="${R}" cx="50" cy="50" />
+          <g transform="rotate(-90 50 50)">${arcos}</g>
+        </svg>
+        <div class="dona-centro"><span class="dona-total">${esc(cifra(total))}</span><span class="dona-etiqueta">${esc(centro)}</span></div>
+      </div>
+      <ul class="dona-leyenda">${leyenda}</ul>
+    </div>`;
+}

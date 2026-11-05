@@ -34,8 +34,8 @@ import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion
 import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
-import { barrasHorizontales, pasoRedondo, pathBarra } from "./core/graficos.js";
-import { cargarTablero, comparacion } from "./dominios/tablero.js";
+import { barrasHorizontales, lineaChica, montarArea, pasoRedondo, pathBarra } from "./core/graficos.js";
+import { cargarTablero, comparacion, prepararTablero, rangoResumen } from "./dominios/tablero.js";
 import { crearConsumos } from "./core/al-vender.js";
 import { CANALES_VENTA } from "./core/canales.js";
 import { mejorOferta } from "./core/ofertas.js";
@@ -98,12 +98,21 @@ document.getElementById("todayDate").textContent = new Date().toLocaleDateString
 // El resultado lo calcula el backend, que es quien puede recorrer ventas
 // y gastos con el rango de fechas aplicado. Acá solo se muestra.
 //
-// El filtro de fecha, sea "este mes" o un desde/hasta tipeado, se traduce
-// a un rango concreto que entiende el backend. La usan tanto cargarResumen
-// como cargarEvolucion, así los dos fetch quedan sobre el mismo rango.
-function rangoActualResumen() {
-  const filtroFecha = filtrosResumen.filtros.find((f) => f.campo === "fecha");
-  return filtroFecha ? rangoDeFiltroFecha(filtroFecha) : {};
+// El período elegido arriba del Resumen ("30 días", "Este mes", unas fechas;
+// dominios/tablero.js) se traduce a un rango concreto que entiende el
+// backend. Lo usan todas las cargas del Resumen, así quedan sobre el mismo.
+const rangoActualResumen = () => rangoResumen();
+
+// Las cifras grandes de las tarjetas van sin centavos: $ 6.454.470 se lee de
+// un vistazo y $ 6.454.470,00 se corta en el celular. El importe exacto queda
+// en el title.
+const pesos = (n) =>
+  n == null ? "—" : n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+function ponerCifra(id, valor, formato = pesos) {
+  const el = document.getElementById(id);
+  el.textContent = formato(valor);
+  el.title = formato === pesos ? money(valor) : "";
+  return el;
 }
 
 async function cargarResumen() {
@@ -117,17 +126,18 @@ async function cargarResumen() {
   const params = new URLSearchParams(rango).toString();
   const resumen = await api(`/api/resumen${params ? "?" + params : ""}`);
 
-  document.getElementById("sumVentas").textContent = money(resumen.ventas);
-  document.getElementById("sumCosto").textContent = money(resumen.costo_mercaderia);
-  document.getElementById("sumGananciaBruta").textContent = money(resumen.ganancia_bruta);
-  document.getElementById("sumGastosOperativos").textContent = money(resumen.gastos_operativos);
+  ponerCifra("sumVentas", resumen.ventas);
+  ponerCifra("sumGananciaBruta", resumen.ganancia_bruta);
+  ponerCifra("sumGastosOperativos", resumen.gastos_operativos);
+  // Debajo de la ganancia, de dónde sale: lo que costó la mercadería y el margen.
+  const margen = resumen.ventas > 0 ? ` (margen ${porcentaje((resumen.ganancia_bruta / resumen.ventas) * 100)})` : "";
+  document.getElementById("sumCosto").textContent = `Costo de mercadería ${pesos(resumen.costo_mercaderia)}${margen}`;
   document.getElementById("sumInversiones").textContent = money(resumen.inversiones);
   document.getElementById("sumRetiros").textContent = money(resumen.retiros);
 
   // Un resultado negativo es información importante, no un detalle: va en
   // rojo para que no pase desapercibido entre el resto de los números.
-  const elResultado = document.getElementById("sumResultado");
-  elResultado.textContent = money(resumen.resultado);
+  const elResultado = ponerCifra("sumResultado", resumen.resultado);
   elResultado.classList.toggle("saldo-negativo", resumen.resultado < 0);
   elResultado.classList.toggle("ledger-ok", resumen.resultado >= 0);
 
@@ -145,6 +155,9 @@ async function cargarResumen() {
 // resto: un aumento de gastos operativos es peor, no mejor, y pintarlo de
 // verde porque el número subió sería directamente incorrecto.
 const MEJOR_SI_SUBE = {
+  cantidad_ventas: true,
+  ticket_promedio: true,
+  unidades: true,
   ventas: true,
   ganancia_bruta: true,
   gastos_operativos: false,
@@ -168,7 +181,8 @@ function formatearDelta(campo, delta) {
   const flecha = delta.abs > 0 ? icono("arrow-up-right") : delta.abs < 0 ? icono("arrow-down-right") : "";
   // La pastilla lleva el porcentaje; el importe del cambio queda en el
   // tooltip, para no apilar dos cifras debajo de la cifra principal.
-  const abs = `${delta.abs > 0 ? "+" : delta.abs < 0 ? "−" : ""}${money(Math.abs(delta.abs))}`;
+  const formato = campo === "cantidad_ventas" || campo === "unidades" ? numero : money;
+  const abs = `${delta.abs > 0 ? "+" : delta.abs < 0 ? "−" : ""}${formato(Math.abs(delta.abs))}`;
   const ref = `<span class="ledger-delta-ref">${esc(referenciaDelta.vs)}</span>`;
   if (delta.cruza_cero) {
     // Un porcentaje acá sería técnicamente correcto pero absurdo de leer
@@ -192,7 +206,10 @@ function renderDeltas(data) {
     ["ventas", "deltaVentas"],
     ["ganancia_bruta", "deltaGananciaBruta"],
     ["gastos_operativos", "deltaGastosOperativos"],
-    ["resultado", "deltaResultado"]
+    ["resultado", "deltaResultado"],
+    ["cantidad_ventas", "deltaCantidadVentas"],
+    ["ticket_promedio", "deltaTicketPromedio"],
+    ["unidades", "deltaUnidades"]
   ]) {
     document.getElementById(id).innerHTML = formatearDelta(campo, data.delta?.[campo]);
   }
@@ -448,11 +465,35 @@ async function cargarEvolucion() {
   if (mio !== tokenEvolucion) return;
 
   document.getElementById("graficoGranularidad").textContent =
-    { dia: "por día", mes: "por mes", anio: "por año" }[data.granularidad] ?? "";
+    { dia: "por día", semana: "por semana", mes: "por mes", anio: "por año" }[data.granularidad] ?? "";
 
   renderDeltas(data);
   renderTablaEvolucion(data.serie);
   renderGraficoResultado(data.serie);
+  renderTendencia(data.serie);
+  // La línea chica de cada tarjeta, de la misma serie.
+  for (const el of document.querySelectorAll("[data-linea]")) {
+    el.innerHTML = lineaChica(data.serie.map((p) => p[el.dataset.linea] ?? 0));
+  }
+}
+
+// Ventas y ganancia (hist. §136): la pieza grande del pantallazo.
+const dibujarTendencia = montarArea(document.getElementById("graficoTendencia"), { titulo: "Ventas y ganancia bruta por período" });
+function renderTendencia(serie) {
+  dibujarTendencia(serie, {
+    etiqueta: (p) => p.etiqueta,
+    series: [
+      { clase: "serie-ventas", valor: (p) => p.ventas, area: true },
+      { clase: "serie-ganancia", valor: (p) => p.ganancia_bruta }
+    ],
+    corto: moneyCorto,
+    detalle: (p) => [
+      ["Ventas", money(p.ventas)],
+      ["Ganancia bruta", money(p.ganancia_bruta)],
+      ["Margen", p.ventas > 0 ? porcentaje((p.ganancia_bruta / p.ventas) * 100) : "—"],
+      ["Ventas hechas", numero(p.cantidad_ventas)]
+    ]
+  });
 }
 
 // Las tres operaciones que mueven plata, juntas y ordenadas por fecha. Se
@@ -508,16 +549,12 @@ function renderUltimosMovimientos(rango = {}) {
     .join("");
 }
 
-const filtrosResumen = crearFiltros(
-  "filtrosResumen",
-  [{ clave: "fecha", etiqueta: "Fecha", tipo: "fecha" }],
-  () => cargarPanelResumen()
-);
-
 // Único punto de entrada para refrescar la vista Resumen completa: las dos
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
+// Antes, cómo armó la persona su Resumen: de ahí sale el período.
 async function cargarPanelResumen() {
+  await prepararTablero();
   await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras(), cargarReporteIva(), cargarTablero(rangoActualResumen())]);
 }
 
@@ -543,7 +580,8 @@ function pintarRankings() {
     cifra: (f) => money(porGanancia ? f.ganancia : f.ventas),
     detalle: (f) =>
       porGanancia ? `${porcentaje(f.margen_pct)} de margen` : `Cantidad ${numero(f.unidades)} · ${porcentaje(f.participacion_pct)} del total`,
-    vacio: "No hay ventas en este período."
+    vacio: "No hay ventas en este período.",
+    maximo: 6
   };
   const ordenar = (lista) => (porGanancia ? [...lista].sort((a, b) => b.ganancia - a.ganancia) : lista);
   document.getElementById("reporteProductosBarras").innerHTML = barrasHorizontales(ordenar(rankingProductos), opciones);
@@ -671,10 +709,9 @@ async function cargarReporteVentas() {
   const params = new URLSearchParams(rango).toString();
   const datos = await api(`/api/reportes/ventas${params ? "?" + params : ""}`);
 
-  document.getElementById("reporteVentasNetas").textContent = money(datos.totales.ventas_netas);
-  document.getElementById("reporteTicketPromedio").textContent = money(datos.totales.ticket_promedio);
-  document.getElementById("reporteCantidadVentas").textContent = numero(datos.totales.cantidad_ventas);
-  document.getElementById("reporteUnidades").textContent = numero(datos.totales.unidades);
+  ponerCifra("reporteTicketPromedio", datos.totales.ticket_promedio);
+  ponerCifra("reporteCantidadVentas", datos.totales.cantidad_ventas, numero);
+  ponerCifra("reporteUnidades", datos.totales.unidades, numero);
 
   renderReporteProductos(datos.productos);
   renderReporteCategorias(datos.categorias);

@@ -8924,8 +8924,33 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 
 /* ============================================================
    El Resumen en piezas (hist. §136, dominios/tablero.js)
-   Cada pieza es un bloque que la persona muestra, oculta y ordena.
+   Arriba, el pantallazo: las cifras con su línea, la tendencia y
+   los gráficos chicos. Abajo, el detalle. Cada pieza la muestra,
+   oculta y ordena cada persona. En la compu es una grilla de 12
+   columnas donde cada pieza tiene su ancho; en el celular, una
+   columna. Se mide el ancho del Resumen (container query) y no la
+   pantalla, así la barra lateral abierta o cerrada no lo rompe.
    ============================================================ */
+
+/* Colores de las series: azul, naranja y violeta, validados como
+   conjunto (separación para daltonismo y contraste con la tarjeta) en
+   los dos temas. Los del tema oscuro van un escalón más oscuros que
+   --info/--naranja/--violeta, que son para texto chico y en un gráfico
+   quedaban fuera de la banda de luminosidad. */
+:root {
+  --serie-1: #3B8EEA;
+  --serie-2: #E26A2C;
+  --serie-3: #9085E9;
+  --serie-otras: #5C5C5C;
+}
+:root[data-tema="claro"] {
+  --serie-1: #2563EB;
+  --serie-2: #C2410C;
+  --serie-3: #6D28D9;
+  --serie-otras: #A3A3A3;
+}
+
+[data-view="dashboard"] { container: resumen / inline-size; }
 
 /* Hasta saber cómo lo armó la persona, las piezas no se ven: si no,
    aparecen en el orden del HTML y saltan a su lugar. Si algo falla antes,
@@ -8933,41 +8958,252 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .tablero:not(.is-listo) > .pieza { opacity: 0; animation: tablero-aparecer 0s 1.5s forwards; }
 @keyframes tablero-aparecer { to { opacity: 1; } }
 
-.pieza { margin-bottom: var(--sp-5); }
+.tablero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+.pieza {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 .pieza > :last-child,
 [data-view="dashboard"] .pieza > .panel:last-child { margin-bottom: 0; }
+/* Las piezas de una misma fila quedan del mismo alto. */
+.pieza > .panel:only-of-type { flex: 1; }
 .pieza-oculta,
 /* La de IVA sin ser inscripto: todo lo de adentro está oculto. */
 .pieza:not(:has(> :not([hidden]))) { display: none; }
 
-/* El período, contra qué se compara y "Personalizar". */
+@container resumen (min-width: 880px) {
+  .tablero {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    gap: var(--sp-5) var(--sp-4);
+  }
+  .tablero > .pieza { grid-column: span 12; }
+  .tablero > [data-pieza="tendencia"],
+  .tablero > [data-pieza="cuando"],
+  .tablero > [data-pieza="clientes"] { grid-column: span 8; }
+  .tablero > [data-pieza="cobros"],
+  .tablero > [data-pieza="pendiente"],
+  .tablero > [data-pieza="vendedores"] { grid-column: span 4; }
+  .tablero > [data-pieza="productos"],
+  .tablero > [data-pieza="categorias"] { grid-column: span 6; }
+}
+
+/* ---------- La barra: período, comparación y Personalizar ---------- */
+
 .resumen-barra {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2) var(--sp-4);
-  margin-bottom: var(--sp-4);
+  gap: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
 }
-.resumen-barra .nota-plana { margin: 0; }
-.resumen-controles {
+.resumen-barra[hidden] { display: none; }
+.resumen-barra .segmento { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.resumen-barra .segmento .ico { width: 14px; height: 14px; }
+.resumen-acciones {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+  margin-left: auto;
 }
-.resumen-controles[hidden] { display: none; }
-.resumen-comparar {
-  display: inline-flex;
-  align-items: center;
+.resumen-fechas {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-2);
   font-size: var(--txt-xs);
   color: var(--ink-muted);
 }
-.resumen-comparar select { width: auto; min-height: 36px; }
+.resumen-fechas[hidden] { display: none; }
+.resumen-fechas label { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.resumen-fechas input { width: auto; min-height: 34px; }
+.resumen-rango { margin-bottom: var(--sp-4); }
 
-/* Rankings en barras (core/graficos.js, barrasHorizontales). La primera
-   va en azul: es el dato clave, como la columna más alta. */
+/* En el celular los períodos se deslizan de costado en vez de partirse
+   en dos renglones. */
+@container resumen (max-width: 640px) {
+  .resumen-barra > #resumenPeriodo {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .resumen-acciones { margin-left: 0; }
+}
+
+/* ---------- Las tarjetas de cifras ---------- */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+@container resumen (min-width: 880px) {
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-4); }
+}
+.kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-4) 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.kpi-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-1);
+  font-family: var(--font-body);
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.kpi-titulo .ledger-icono { width: 24px; height: 24px; }
+.kpi-titulo .ledger-icono .ico { width: 13px; height: 13px; }
+.kpi-cifra {
+  margin: 0;
+  font-size: var(--txt-xl);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container resumen (min-width: 880px) {
+  .kpis:not(.kpis-chicas) .kpi-cifra { font-size: 30px; }
+}
+.kpi-delta { margin: 0; }
+.kpi-nota { margin: 0; font-size: var(--txt-2xs); color: var(--ink-muted); }
+/* Sin la línea, la tarjeta igual cierra con aire. */
+.kpi > :last-child:not(.kpi-linea) { margin-bottom: var(--sp-4); }
+
+/* La línea chica: la forma del período, pegada al pie de la tarjeta. */
+.kpi-linea {
+  position: relative;
+  height: 40px;
+  /* Al pie de la tarjeta, aunque la de al lado tenga una nota más. */
+  margin: auto calc(-1 * var(--sp-4)) 0;
+  padding-top: var(--sp-2);
+  box-sizing: content-box;
+}
+.kpi-linea:empty { height: var(--sp-4); }
+.kpi-linea svg { display: block; width: 100%; height: 100%; }
+.linea-chica { fill: none; stroke: var(--ink-faint); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.linea-chica-area { fill: var(--ink); opacity: 0.05; }
+.linea-chica-punto {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  box-sizing: content-box;
+  transform: translate(-2px, 0);
+}
+
+/* Inversiones y retiros, debajo de las tarjetas y en voz baja. */
+.pieza[data-pieza="resultado"] .nota-fuera {
+  margin-top: var(--sp-3);
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--txt-xs);
+}
+
+/* ---------- Ventas y ganancia: el gráfico grande ---------- */
+
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.leyenda li { display: inline-flex; align-items: center; gap: 6px; }
+.leyenda-marca { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; background: var(--serie-otras); }
+.leyenda-ventas,
+.leyenda-marca.serie-1 { background: var(--serie-1); }
+.leyenda-ganancia { height: 3px; border-radius: 2px; background: var(--ink); }
+.leyenda-marca.serie-2 { background: var(--serie-2); }
+.leyenda-marca.serie-3 { background: var(--serie-3); }
+
+.grafico-area { margin: 0; }
+.area-relleno.serie-ventas { fill: var(--serie-1); opacity: 0.16; }
+.area-linea { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.area-linea.serie-ventas { stroke: var(--serie-1); }
+.area-linea.serie-ganancia { stroke: var(--ink); }
+.area-guia { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.area-punto { stroke: var(--surface); stroke-width: 2; pointer-events: none; }
+.area-punto.serie-ventas { fill: var(--serie-1); }
+.area-punto.serie-ganancia { fill: var(--ink); }
+.area-franja { fill: transparent; }
+.grafico-area text,
+.grafico-area line { pointer-events: none; }
+/* El gráfico se dibuja de izquierda a derecha al llegar datos nuevos. */
+.area-animar .area-dibujo { animation: area-entrar var(--dur-3) var(--ease-out) both; }
+@keyframes area-entrar { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* ---------- Dónde entró la plata: la dona ---------- */
+
+.dona {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4) var(--sp-5);
+}
+.dona-grafico { position: relative; flex: none; width: 150px; height: 150px; }
+.dona-grafico svg { display: block; width: 100%; height: 100%; }
+.dona-fondo { fill: none; stroke: var(--surface-sunk); stroke-width: 13; }
+.dona-arco { fill: none; stroke-width: 13; }
+.dona-arco.serie-1 { stroke: var(--serie-1); }
+.dona-arco.serie-2 { stroke: var(--serie-2); }
+.dona-arco.serie-3 { stroke: var(--serie-3); }
+.dona-arco.serie-otras { stroke: var(--serie-otras); }
+.dona-centro {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.dona-total { font-size: var(--txt-md); font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.dona-etiqueta { font-size: var(--txt-2xs); color: var(--ink-muted); }
+.dona-leyenda {
+  flex: 1 1 180px;
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--txt-sm);
+}
+.dona-leyenda li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--sp-2);
+}
+.dona-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dona-cifra { font-weight: 600; font-variant-numeric: tabular-nums; }
+.dona-pct { grid-column: 2 / -1; font-size: var(--txt-2xs); color: var(--ink-muted); }
+
+/* ---------- Rankings en barras (core/graficos.js, barrasHorizontales) ---------- */
+
 .ranking {
   list-style: none;
   margin: 0;
@@ -9008,7 +9244,8 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   transform-origin: left;
   animation: ranking-crecer var(--dur-3) var(--ease-out) both;
 }
-.ranking-fila:first-child .ranking-barra span { background: var(--accent); }
+/* La primera va en azul: es el dato clave, como la columna más alta. */
+.ranking-fila:first-child .ranking-barra span { background: var(--serie-1); }
 @keyframes ranking-crecer { from { transform: scaleX(0); } }
 .ranking-detalle {
   display: block;
@@ -9029,10 +9266,12 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .ranking-todos summary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-bg); border-radius: var(--r-xs); }
 .ranking-todos[open] summary { margin-bottom: var(--sp-3); }
 .panel-head .segmentos { flex-shrink: 0; }
+.panel-head:has(.segmentos, .leyenda) { flex-wrap: wrap; }
 
-/* Cuándo se vende: dos gráficos de columnas, apilados en el celular. */
+/* ---------- Cuándo se vende: dos gráficos de columnas ---------- */
+
 .cuando-grilla { display: grid; gap: var(--sp-5); }
-@media (min-width: 861px) {
+@container resumen (min-width: 640px) {
   .cuando-grilla { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
 }
 .cuando-titulo {
@@ -9044,8 +9283,8 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 }
 .columnas { margin: 0; }
 .columnas-barra { fill: var(--ink-faint); }
-.columnas-barra.is-max { fill: var(--accent); }
-.columnas text.is-max { fill: var(--accent); font-weight: 600; }
+.columnas-barra.is-max { fill: var(--serie-1); }
+.columnas text.is-max { fill: var(--ink); font-weight: 600; }
 .columnas-lectura {
   min-height: 1.5em;
   margin: var(--sp-2) 0 0;
@@ -9053,7 +9292,8 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   font-variant-numeric: tabular-nums;
 }
 
-/* Para mirar hoy: tarjetas que llevan a cada pantalla. */
+/* ---------- Para mirar hoy ---------- */
+
 .pendiente-grilla {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -9063,7 +9303,7 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
   color: var(--ink);
   text-decoration: none;
   border: 1px solid var(--line);
@@ -9073,10 +9313,21 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .pendiente-item:hover { border-color: var(--line-strong); background: var(--surface-hover); }
 .pendiente-item:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 .pendiente-etiqueta { font-size: var(--txt-xs); font-weight: 600; color: var(--ink-muted); }
-.pendiente-cifra { font-size: var(--txt-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pendiente-cifra { font-size: var(--txt-lg); font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .pendiente-detalle { font-size: var(--txt-2xs); color: var(--ink-muted); }
+/* Cuánto de lo que se debe ya venció. */
+.pendiente-medidor {
+  display: block;
+  height: 6px;
+  margin: 2px 0;
+  background: var(--surface-sunk);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+.pendiente-medidor span { display: block; height: 100%; width: 0; background: var(--accent-danger); border-radius: inherit; }
 
-/* Personalizar: una casilla y dos flechas por pieza. */
+/* ---------- Personalizar: una casilla y dos flechas por pieza ---------- */
+
 .tablero-lista {
   list-style: none;
   margin: var(--sp-4) 0;
@@ -9111,4 +9362,9 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 @media (max-width: 860px) {
   .tablero-acciones { flex-direction: column-reverse; }
   .tablero-acciones .btn { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .area-animar .area-dibujo,
+  .ranking-barra span { animation: none; }
 }
