@@ -8,7 +8,17 @@ import { interpretar, InterpreteError, transcribir, vozDisponible } from './inte
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
-import { CATALOGO_POR_DEFECTO, MODULOS, MODULOS_INFO, PERFILES_RUBRO, RUBRO_POR_DEFECTO, RUBROS_PROXIMAMENTE, modulosDelPreset } from './perfiles.js';
+import {
+  CATALOGO_POR_DEFECTO,
+  MODULOS,
+  MODULOS_INFO,
+  PERFILES_RUBRO,
+  PIEZAS_TABLERO,
+  RUBRO_POR_DEFECTO,
+  RUBROS_PROXIMAMENTE,
+  modulosDelPreset,
+  resolverTablero
+} from './perfiles.js';
 import { DIAS_PRUEBA, PLANES, PLAN_POR_DEFECTO, esPlan, planEfectivo, planQuePermite } from './planes.js';
 import { TERMINOS_VERSION, completarPaginaLegal, titularIncompleto, validarAceptacion } from './legal.js';
 import {
@@ -12071,6 +12081,17 @@ function periodoAnterior(desde, hasta) {
   return { desde: sumarDias(desde, -n), hasta: sumarDias(desde, -1) };
 }
 
+// Las mismas fechas un año antes (hist. §136), para comparar contra la misma
+// temporada: un comercio vende distinto en diciembre que en marzo. El 29 de
+// febrero cae en el 28: fechaISO lo pasaría al 1 de marzo.
+function mismoPeriodoAnioAnterior(desde, hasta) {
+  const unAnioAntes = (iso) => {
+    const { y, m, d } = partesISO(iso);
+    return fechaISO(y - 1, m, Math.min(d, Number(fechaISO(y - 1, m + 1, 0).slice(8))));
+  };
+  return { desde: unAnioAntes(desde), hasta: unAnioAntes(hasta) };
+}
+
 // Compara actual contra anterior. El denominador usa el VALOR ABSOLUTO de
 // `anterior` a propósito: con el signo puesto, mejorar de -100 a -50 daría
 // -50% y se leería como un empeoramiento; en valor absoluto da +50%, y así
@@ -12125,8 +12146,11 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
   // inicio del rango a mano: si es abierto, el período anterior sería
   // vacío por construcción (no hay nada antes del comienzo del historial)
   // y mostrar 0 o -100% ahí sería mentir, no informar.
+  // ?comparar=anio compara contra las mismas fechas del año pasado; si no,
+  // contra el período anterior.
+  const comparar = req.query.comparar === 'anio' ? 'anio' : 'anterior';
   if (desdeParam) {
-    const rangoAnterior = periodoAnterior(desde, hasta);
+    const rangoAnterior = comparar === 'anio' ? mismoPeriodoAnioAnterior(desde, hasta) : periodoAnterior(desde, hasta);
     const hayOperacionAntes = primera !== null && primera <= rangoAnterior.hasta;
     if (hayOperacionAntes) {
       const resultadoAnterior = calcularResultado(rangoAnterior.desde, rangoAnterior.hasta, organizacionId);
@@ -12138,7 +12162,7 @@ app.get('/api/resumen/evolucion', soloAdmin, (req, res) => {
     }
   }
 
-  res.json({ rango: { desde, hasta, acotado }, granularidad, total, serie, anterior, delta });
+  res.json({ rango: { desde, hasta, acotado }, granularidad, comparar, total, serie, anterior, delta });
 });
 
 /* ---------- Reportes: qué se vende y a quién (CLAUDE.md §20) ---------- */
@@ -12919,6 +12943,201 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
   };
 
   res.json({ rango: { desde, hasta, acotado }, resumen, productos });
+});
+
+/* ---------- Reportes: las piezas nuevas del Resumen (hist. §136) ---------- */
+//
+// Lo que los sistemas de mostrador muestran de entrada (cuándo se vende, por
+// dónde entra la plata, quién vendió) y lo que hay que mirar hoy (lo que te
+// deben, lo que debés, el stock a reponer). Solo lectura y admin, como el
+// resto del Resumen.
+//
+// La venta guarda el día pero no la hora ni quién la hizo: los dos salen de su
+// registro de auditoría de alta (CLAUDE.md §22), que tiene el instante en UTC y
+// el usuario. Una venta de "Lo que ya tenías" (carga_inicial) se cargó después,
+// así que su hora es la de la carga: cuenta por día, no por hora. Los importes
+// van sin IVA, como el resto de los reportes, y sin restar devoluciones: es
+// cuándo y a quién se le vende, no el resultado.
+const SQL_TABLERO_VENTAS = db.prepare(
+  `SELECT ventas.id, ventas.fecha, ventas.carga_inicial,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS total,
+          alta.fecha AS creada, alta.actor AS actor, alta.usuario_id AS usuario_id, usuarios.nombre AS vendedor
+     FROM ventas
+     JOIN venta_items ON venta_items.venta_id = ventas.id
+     LEFT JOIN auditoria AS alta ON alta.id = (
+            SELECT MIN(a.id) FROM auditoria AS a
+             WHERE a.entidad = 'venta' AND a.accion = 'crear'
+               AND a.entidad_id = ventas.id AND a.organizacion_id = ventas.organizacion_id)
+     LEFT JOIN usuarios ON usuarios.id = alta.usuario_id
+    WHERE ventas.estado = 'activa'
+      AND ventas.fecha >= ? AND ventas.fecha <= ?
+      AND ventas.organizacion_id = ?
+    GROUP BY ventas.id, ventas.fecha, ventas.carga_inicial, alta.fecha, alta.actor, alta.usuario_id, usuarios.nombre`
+);
+
+// Dónde entró la plata: los cobros del período por cuenta (la caja, el banco,
+// Mercado Pago). Un cobro no tiene empresa propia: la hereda de su venta.
+const SQL_TABLERO_COBROS = db.prepare(
+  `SELECT cuentas_tesoreria.id, cuentas_tesoreria.nombre, cuentas_tesoreria.tipo,
+          COUNT(*) AS cantidad, SUM(cobros.importe) AS importe
+     FROM cobros
+     JOIN ventas ON ventas.id = cobros.venta_id
+     JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
+    WHERE ventas.estado = 'activa'
+      AND cobros.fecha >= ? AND cobros.fecha <= ?
+      AND ventas.organizacion_id = ?
+    GROUP BY cuentas_tesoreria.id, cuentas_tesoreria.nombre, cuentas_tesoreria.tipo
+    ORDER BY importe DESC`
+);
+
+const HORA_DEL_NEGOCIO = new Intl.DateTimeFormat('en-US', { timeZone: ZONA_HORARIA, hour: 'numeric', hourCycle: 'h23' });
+// "AAAA-MM-DD HH:MM:SS" en UTC (datetime('now')) → la hora en la zona del negocio.
+const horaDelNegocio = (utc) => Number(HORA_DEL_NEGOCIO.format(new Date(`${utc.replace(' ', 'T')}Z`))) % 24;
+// 0 = lunes … 6 = domingo, como se lee una semana acá.
+const diaDeLaSemana = (iso) => {
+  const { y, m, d } = partesISO(iso);
+  return (new Date(Date.UTC(y, m, d)).getUTCDay() + 6) % 7;
+};
+
+// Lo que te deben y lo que debés hoy, con la parte vencida. Mismo saldo que
+// Cuentas corrientes: por persona, y solo si debe (un saldo a favor no
+// compensa la deuda de otro); lo vencido es lo impago con el vencimiento ya
+// pasado.
+function deudaDelTablero(saldos, hoy) {
+  const porEntidad = new Map();
+  for (const s of saldos) {
+    const e = porEntidad.get(s.entidad_id) ?? { saldo: 0, vencido: 0 };
+    e.saldo += s.pendiente;
+    if (s.pendiente > 0 && s.vencimiento < hoy) e.vencido += s.pendiente;
+    porEntidad.set(s.entidad_id, e);
+  }
+  const deben = [...porEntidad.values()].filter((e) => e.saldo > 0.005);
+  return {
+    total: redondear2(deben.reduce((acc, e) => acc + e.saldo, 0)),
+    vencido: redondear2(deben.reduce((acc, e) => acc + Math.min(e.vencido, e.saldo), 0)),
+    cantidad: deben.length
+  };
+}
+
+app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const { primera } = SQL_LIMITES_OPERACIONES.get(organizacionId, organizacionId, organizacionId, organizacionId, organizacionId);
+  const desde = validarFecha(req.query.desde) ?? minISO(primera ?? hoy, hoy);
+  const hasta = validarFecha(req.query.hasta) ?? hoy;
+
+  const dias = Array.from({ length: 7 }, (_, dia) => ({ dia, ventas: 0, cantidad: 0 }));
+  const horas = Array.from({ length: 24 }, (_, hora) => ({ hora, ventas: 0, cantidad: 0 }));
+  const vendedores = new Map();
+  let sinHora = 0;
+  for (const v of SQL_TABLERO_VENTAS.all(desde, hasta, organizacionId)) {
+    const dia = dias[diaDeLaSemana(v.fecha)];
+    dia.ventas += v.total;
+    dia.cantidad += 1;
+    if (v.creada && !v.carga_inicial) {
+      const hora = horas[horaDelNegocio(v.creada)];
+      hora.ventas += v.total;
+      hora.cantidad += 1;
+    } else {
+      sinHora += 1;
+    }
+    // Las que entran solas (una tienda conectada, la cuota de un socio) no
+    // tienen quién las vendió.
+    const clave = v.usuario_id ? `u${v.usuario_id}` : v.actor === 'sistema' ? 'sistema' : 'sin_dato';
+    const nombre = v.usuario_id
+      ? v.vendedor || '(cuenta dada de baja)'
+      : v.actor === 'sistema'
+        ? 'Entraron solas'
+        : 'Sin dato';
+    const fila = vendedores.get(clave) ?? { clave, nombre, cantidad_ventas: 0, ventas: 0 };
+    fila.cantidad_ventas += 1;
+    fila.ventas += v.total;
+    vendedores.set(clave, fila);
+  }
+  const redondearFila = (f) => ({ ...f, ventas: redondear2(f.ventas) });
+
+  ponerAbonosAlDia(organizacionId);
+  const porCobrar = deudaDelTablero(
+    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', organizacionId),
+    hoy
+  );
+  const porPagar = deudaDelTablero(
+    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras', organizacionId),
+    hoy
+  );
+  const stock = db
+    .prepare(`${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? AND productos.tipo = 'producto' AND productos.activo = 1`)
+    .all(organizacionId)
+    .map(decorarProducto);
+
+  res.json({
+    rango: { desde, hasta },
+    dias: dias.map(redondearFila),
+    horas: horas.map(redondearFila),
+    sin_hora: sinHora,
+    cobros: SQL_TABLERO_COBROS.all(desde, hasta, organizacionId).map((c) => ({ ...c, importe: redondear2(c.importe) })),
+    vendedores: [...vendedores.values()]
+      .map((f) => ({ ...redondearFila(f), ticket_promedio: redondear2(f.ventas / f.cantidad_ventas) }))
+      .sort((a, b) => b.ventas - a.ventas),
+    pendiente: {
+      por_cobrar: porCobrar,
+      por_pagar: porPagar,
+      sin_stock: stock.filter((p) => p.estado_stock === 'sin_stock').length,
+      stock_bajo: stock.filter((p) => p.estado_stock === 'bajo').length
+    }
+  });
+});
+
+/* ---------- El Resumen de cada persona (hist. §136) ---------- */
+//
+// Qué piezas ve, en qué orden y contra qué compara. Es de la persona en este
+// negocio (usuario_organizaciones.tablero), como las métricas de inicio de
+// Shopify: dos admins del mismo negocio miran cosas distintas. Sin armar, el
+// del tipo de negocio. Es una preferencia de pantalla, no un dato del negocio:
+// no va a la auditoría.
+const SQL_TABLERO_DE_LA_PERSONA = db.prepare(
+  'SELECT tablero FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ?'
+);
+const SQL_GUARDAR_TABLERO = db.prepare(
+  'UPDATE usuario_organizaciones SET tablero = ? WHERE usuario_id = ? AND organizacion_id = ?'
+);
+
+function tableroDeLaPersona(req) {
+  const fila = SQL_TABLERO_DE_LA_PERSONA.get(req.usuario.id, req.usuario.organizacion_id);
+  let guardado;
+  try {
+    guardado = fila?.tablero ? JSON.parse(fila.tablero) : null;
+  } catch {
+    guardado = null; // uno roto vuelve al del tipo, en vez de romper el Resumen
+  }
+  return resolverTablero(guardado, perfilDeEmpresa(req.usuario.organizacion_id).rubro);
+}
+
+app.get('/api/tablero', soloAdmin, (req, res) => {
+  res.json(tableroDeLaPersona(req));
+});
+
+app.put('/api/tablero', soloAdmin, (req, res) => {
+  const { orden, ocultas, comparar } = req.body ?? {};
+  const lista = (valor) => Array.isArray(valor) && valor.every((p) => PIEZAS_TABLERO.includes(p));
+  if (!lista(orden) || !lista(ocultas) || new Set(orden).size !== orden.length) {
+    return res.status(400).json({ error: 'Las piezas del Resumen no son válidas.' });
+  }
+  if (comparar !== undefined && comparar !== 'anterior' && comparar !== 'anio') {
+    return res.status(400).json({ error: 'La comparación no es válida.' });
+  }
+  SQL_GUARDAR_TABLERO.run(
+    JSON.stringify({ orden, ocultas, comparar: comparar ?? 'anterior' }),
+    req.usuario.id,
+    req.usuario.organizacion_id
+  );
+  res.json(tableroDeLaPersona(req));
+});
+
+// Volver al del tipo de negocio.
+app.delete('/api/tablero', soloAdmin, (req, res) => {
+  SQL_GUARDAR_TABLERO.run(null, req.usuario.id, req.usuario.organizacion_id);
+  res.json(tableroDeLaPersona(req));
 });
 
 /* ---------- Asistente (operaciones por texto) ---------- */

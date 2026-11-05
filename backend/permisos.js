@@ -249,6 +249,11 @@ export const RUTAS_PERMISOS = {
   'GET /api/reportes/compras': 'admin',
   'GET /api/reportes/iva': 'admin',
   'GET /api/reportes/stock': 'admin',
+  // Las piezas nuevas del Resumen y cómo lo armó cada persona (hist. §136).
+  'GET /api/reportes/tablero': 'admin',
+  'GET /api/tablero': 'admin',
+  'PUT /api/tablero': 'admin',
+  'DELETE /api/tablero': 'admin',
   'GET /api/asistente/capacidades': 'ambos',
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/transcribir': 'ambos',

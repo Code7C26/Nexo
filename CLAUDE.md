@@ -497,9 +497,9 @@ No recalcular posteriormente la rentabilidad histórica usando el costo actual d
 
 Implementado hoy: cabecera y detalle con costo histórico congelado, margen y
 ganancia por renglón, lista de precios y depósito de origen (con fallback al
-predeterminado), condición de pago y vencimiento para aging real. Vendedor
-identificado por usuario existe (hay login y roles, ver §35), pero el reporte
-"ventas por vendedor" todavía no está construido (§20). El
+predeterminado), condición de pago y vencimiento para aging real. Quién la
+vendió y a qué hora salen de su alta en la auditoría, y el Resumen los muestra
+(hist. §136). El
 IVA (hist. §113, §114): cada renglón congela su alícuota y su IVA. Para un
 responsable inscripto, la ganancia, el margen y el resultado se miden sin
 IVA (es del fisco, no ingreso); para los demás no cambia nada.
@@ -914,8 +914,11 @@ Ampliación (para competir con sistemas reales, ver §37):
 Implementado hoy: dashboard con resultado del período y comparación contra el
 período anterior, qué se vende / qué se compra, stock a reponer y valorizado,
 rotación, cuentas corrientes con aging, y ventas y ganancia por canal (hist.
-§128; sin las comisiones de cada canal todavía). Faltan ventas por vendedor y
-las comparativas (§20, §38).
+§128; sin las comisiones de cada canal todavía). El Resumen va en piezas que
+cada persona muestra, oculta y ordena, con el armado de su tipo de negocio de
+partida (hist. §136): suma cuándo se vende (día y hora), dónde entró la plata,
+quién vendió, lo más vendido en barras, lo que hay que mirar hoy y la
+comparación contra el mismo período del año pasado.
 
 ---
 
@@ -1599,7 +1602,7 @@ excepciones).
 | E | ARCA: homologación → producción (§33) | Depende de C | Homologación hecha; falta producción |
 | F | Perfiles de rubro + unidad de medida fraccionable (§29, §4) | Abre carnicería/verdulería/etc. sin tocar el núcleo | Hecha (socios y cuotas, en curso) |
 | G | Integraciones: Mercado Libre, Tienda Nube (§32) | Se apoya en que stock y precios ya son sólidos | Hecha (Mercado Libre falta probarlo con la cuenta real) |
-| H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | Pendiente |
+| H | Reportes avanzados y dashboard por rubro (§20) | Rinde más con volumen real de datos | En curso: Resumen personalizable con preset por tipo (hist. §136) |
 | I | IA: voz y WhatsApp (§36) | El diferencial del producto, sobre un núcleo ya maduro | En curso (voz hecha; falta WhatsApp) |
 | J | Producción básica: recetas, producir, packaging (§5, §29) | El negocio chico que fabrica lo que vende (comida, mafaldas) no tiene cómo costearlo | En curso: recetas, producir y lo que se usa al vender hechos; faltan "¿cuántas puedo hacer?" y los decants |
 

@@ -149,3 +149,77 @@ export function modulosDelPreset(rubro) {
 export function etapasCrmDelPreset(rubro) {
   return PERFILES_RUBRO[Object.hasOwn(PERFILES_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO].etapas_crm;
 }
+
+// Las piezas del Resumen (hist. §136), en el orden de la pantalla. Cada
+// persona arma el suyo (usuario_organizaciones.tablero); sin armar, ve el de
+// su tipo de negocio. Una pieza de un módulo apagado, o la de IVA sin ser
+// responsable inscripto, no se ve aunque esté elegida: eso lo resuelve la
+// pantalla, como el resto de lo que depende de un módulo.
+export const PIEZAS_TABLERO = [
+  'resultado',
+  'pendiente',
+  'evolucion',
+  'ventas',
+  'cuando',
+  'productos',
+  'categorias',
+  'cobros',
+  'vendedores',
+  'clientes',
+  'canales',
+  'movimientos',
+  'compras',
+  'iva'
+];
+
+// Qué piezas trae cada tipo, y en qué orden (es parte del preset, como los
+// módulos; CLAUDE.md §29). Lo que no está en la lista nace oculto, y se suma
+// desde "Personalizar". El mostrador (carnicería, verdulería, kiosco) mira
+// cuándo se vende y por dónde entra la plata; la tienda online, por qué
+// canal; servicios y gimnasio, lo que les deben.
+const TABLERO_DEL_RUBRO = {
+  emprendimiento: ['resultado', 'ventas', 'productos', 'evolucion', 'pendiente', 'cobros', 'canales', 'clientes', 'compras', 'iva'],
+  ecommerce: ['resultado', 'canales', 'ventas', 'productos', 'evolucion', 'cobros', 'pendiente', 'clientes', 'compras', 'iva'],
+  comercio: [
+    'resultado',
+    'pendiente',
+    'evolucion',
+    'ventas',
+    'cuando',
+    'productos',
+    'categorias',
+    'cobros',
+    'vendedores',
+    'clientes',
+    'canales',
+    'compras',
+    'iva'
+  ],
+  carniceria: ['resultado', 'ventas', 'cuando', 'productos', 'cobros', 'pendiente', 'evolucion', 'vendedores', 'categorias', 'compras', 'iva'],
+  verduleria: ['resultado', 'ventas', 'cuando', 'productos', 'cobros', 'pendiente', 'evolucion', 'vendedores', 'categorias', 'compras', 'iva'],
+  kiosco: ['resultado', 'ventas', 'cuando', 'productos', 'cobros', 'pendiente', 'evolucion', 'vendedores', 'categorias', 'compras', 'iva'],
+  servicios: ['resultado', 'pendiente', 'evolucion', 'ventas', 'clientes', 'productos', 'cobros', 'vendedores', 'iva'],
+  gimnasio: ['resultado', 'pendiente', 'ventas', 'cuando', 'cobros', 'productos', 'evolucion', 'vendedores', 'clientes', 'compras', 'iva']
+};
+
+// El Resumen del tipo: el orden completo (las del tipo primero y el resto
+// atrás) y cuáles nacen ocultas. Un tipo desconocido es comercio.
+export function tableroDelPreset(rubro) {
+  const visibles = TABLERO_DEL_RUBRO[Object.hasOwn(TABLERO_DEL_RUBRO, rubro ?? '') ? rubro : RUBRO_POR_DEFECTO];
+  const ocultas = PIEZAS_TABLERO.filter((p) => !visibles.includes(p));
+  return { orden: [...visibles, ...ocultas], ocultas, comparar: 'anterior' };
+}
+
+// Lo que guardó una persona, completado y depurado contra las piezas de hoy:
+// una que ya no existe se cae, y una nueva (sumada después de que la persona
+// armó el suyo) va al final, visible, para que se entere de que está.
+export function resolverTablero(guardado, rubro) {
+  const preset = tableroDelPreset(rubro);
+  if (!guardado) return { ...preset, personalizado: false };
+  const orden = (Array.isArray(guardado.orden) ? guardado.orden : []).filter(
+    (p, i, lista) => PIEZAS_TABLERO.includes(p) && lista.indexOf(p) === i
+  );
+  for (const p of preset.orden) if (!orden.includes(p)) orden.push(p);
+  const ocultas = Array.isArray(guardado.ocultas) ? orden.filter((p) => guardado.ocultas.includes(p)) : [];
+  return { orden, ocultas, comparar: guardado.comparar === 'anio' ? 'anio' : 'anterior', personalizado: true };
+}

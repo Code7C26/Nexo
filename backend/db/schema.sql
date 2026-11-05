@@ -1369,6 +1369,10 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
   activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
   fecha_alta TEXT NOT NULL DEFAULT (datetime('now')),
   ultimo_acceso TEXT,
+  -- Cómo armó esta persona su Resumen en este negocio (hist. §136): JSON con
+  -- el orden de las piezas, las ocultas y contra qué compara. NULL = el del
+  -- tipo de negocio (tableroDelPreset en perfiles.js).
+  tablero TEXT,
   PRIMARY KEY (usuario_id, organizacion_id)
 );
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
