@@ -6711,6 +6711,12 @@
         </dl>
         <p class="form-note" id="posCobroNota" aria-live="polite" hidden></p>
         <button type="submit" class="btn btn-primary btn-full" id="formPosCobroSubmit">Confirmar venta</button>
+        <!-- Fiar todo sin cobrar nada: la venta queda en la cuenta corriente
+             del cliente. Sin cliente, avisa que hay que elegirlo. -->
+        <button type="button" class="btn btn-secundario btn-full" id="btnPosACuenta">
+          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg>
+          Dejar en cuenta corriente
+        </button>
       </form>
       <div class="pos-exito" id="posExito" hidden>
         <svg class="ico pos-exito-ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg>
