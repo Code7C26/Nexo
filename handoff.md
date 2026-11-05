@@ -1388,6 +1388,52 @@ a 6):
   Nexo. Base que ya existe: la comisión y las cuotas de cada pago como gastos
   de la venta (hist. §130) y "adónde fue la plata" (hist. §131).
 
+**Pendiente (pedido del usuario el 5 de noviembre): un Resumen mejor, con más
+gráficos, mejores estadísticas y personalizable.** No está planificado ni
+empezado; antes de arrancar se define el alcance con el usuario (CLAUDE.md §27).
+Va con la etapa H (CLAUDE.md §20, §38).
+- **Hoy tiene:** las tarjetas (ventas, costo, ganancia bruta, gastos,
+  resultado; inversiones y retiros aparte) con la comparación contra el
+  período anterior, **un solo gráfico** (resultado por período, SVG a mano en
+  `dibujarGraficoResultado`, `frontend/js/app.js`), la tabla de evolución, los
+  últimos movimientos y las tablas de qué se vende, qué se compra e IVA.
+  Datos: `GET /api/resumen`, `/api/resumen/evolucion` y `/api/reportes/*`
+  (todos solo admin).
+- **Gráficos y números que faltan** (ideas, a elegir con el usuario): ventas
+  por día de la semana y por hora (también lo pide Praxia), por medio de
+  cobro, los productos y categorías que más venden y más ganan (barras en vez
+  de solo tabla), ticket promedio y cantidad de ventas, cuentas por cobrar y
+  por pagar con su aging, stock a reponer, ventas por canal, ventas por
+  vendedor y comparativas interanuales (las dos que §20 da por faltantes).
+- **Personalizable:** cada tarjeta y gráfico es una pieza que se muestra u
+  oculta y se reordena. A decidir: si se guarda por persona o por negocio
+  (por persona parece lo natural; en la base, no en `localStorage`, para que
+  siga en otro celular: es un cambio de esquema que se explica antes, §34), y
+  que cada tipo de negocio traiga su Resumen por defecto como preset (§29: un
+  gimnasio mira socios y cuotas; una carnicería, kilos y ventas por hora; sin
+  `if (rubro === ...)`).
+- **Cómo:** los gráficos siguen en SVG a mano, sin librería (cero
+  dependencias), reusando lo del gráfico actual (ancho real con
+  `ResizeObserver`, colores por variable CSS para el modo oscuro, tooltip con
+  mouse, dedo y teclado). Mobile-first. Sin tipografía monoespaciada nueva (el
+  usuario la rechazó).
+
+**Del amigo que vende medialunas (5 de noviembre, cuenta nueva probándose):**
+fía mucho desde el punto de venta. **Hecho el 5 de noviembre, sin commitear:**
+el cobro del punto de venta tiene "Dejar en cuenta corriente", que registra la
+venta sin cobros y deja el total en la cuenta del cliente
+(`registrarVenta` en `frontend/js/dominios/pos.js`). Sin cliente (o con
+"Consumidor final") avisa que hay que elegirlo; el backend ya lo rechazaba.
+Antes había que borrar el importe y confirmar (sigue sirviendo para fiar una
+parte).
+
+**También el 5 de noviembre, sin commitear: los mensajes de WhatsApp con
+formato** (pedido del usuario): emoji por tipo (🛒 venta, 📦 compra, 💸 gasto,
+↩️ devolución), negrita de WhatsApp en el título y el total, ✅ al registrar,
+❌ en los errores, ⚠️ cuando falta un dato y botones "✅ Confirmar" y
+"❌ Cancelar" (`resumenParaWhatsApp`, `AYUDA_WHATSAPP` y `atenderWhatsApp` en
+`backend/server.js`; tests adaptados). Falta verlo en el celular.
+
 **Lo que decidió el usuario el 1 de noviembre:**
 - **Lo legal espera** hasta que se busque vender: términos, privacidad y datos
   del titular. Solo se hacen detalles cortos.

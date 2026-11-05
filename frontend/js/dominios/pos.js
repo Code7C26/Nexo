@@ -799,26 +799,51 @@ function cobrosParaEnviar(vuelto) {
     .map(([cuenta_tesoreria_id, importe]) => ({ cuenta_tesoreria_id, importe }));
 }
 
-document.getElementById("formPosCobro").addEventListener("submit", async (e) => {
+const btnPosACuenta = document.getElementById("btnPosACuenta");
+
+document.getElementById("formPosCobro").addEventListener("submit", (e) => {
   e.preventDefault();
   const { vuelto, falta, error } = calcularCobro();
   if (error) return;
+  registrarVenta({ cobros: cobrosParaEnviar(vuelto), vuelto, falta });
+});
+
+// Fiar todo de un toque, sin borrar el importe: la venta va sin cobros y el
+// total queda en la cuenta corriente del cliente. A "Consumidor final" no se
+// le fía, así que sin cliente se vuelve a elegirlo.
+btnPosACuenta.addEventListener("click", () => {
+  if (!cobro.cliente) {
+    avisar("Para dejarlo en cuenta corriente, elegí el cliente.", "atencion");
+    cerrarCobro();
+    posCliente.focus();
+    return;
+  }
+  registrarVenta({ cobros: [], vuelto: 0, falta: cobro.total });
+});
+
+async function registrarVenta({ cobros, vuelto, falta }) {
   const submit = document.getElementById("formPosCobroSubmit");
   const body = {
     turno_caja_id: turno.id,
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
     items: itemsDelCarrito(),
     consumos: consumosPos.leer(),
-    cobros: cobrosParaEnviar(vuelto)
+    cobros
   };
+  // Los dos botones quedan apagados: un toque en cada uno no son dos ventas.
+  btnPosACuenta.disabled = true;
   const venta = await enviando(submit, () =>
     api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." })
-  ).catch((err) => {
-    // El stock o la caja pudieron cambiar desde otro puesto: se vuelve a
-    // leer todo para que lo que se ve sea lo que hay.
-    refrescar([cargarTodo()]);
-    throw err;
-  });
+  )
+    .catch((err) => {
+      // El stock o la caja pudieron cambiar desde otro puesto: se vuelve a
+      // leer todo para que lo que se ve sea lo que hay.
+      refrescar([cargarTodo()]);
+      throw err;
+    })
+    .finally(() => {
+      btnPosACuenta.disabled = false;
+    });
 
   mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito() });
   carrito = [];
@@ -828,7 +853,7 @@ document.getElementById("formPosCobro").addEventListener("submit", async (e) => 
   refrescar([cargarTodo()]);
   // El resto de Nexo se entera sin frenar la venta siguiente.
   refrescar([recargar("ventas", "stock", "productos", "clientes", "caja", "cuentasCorrientes", "panelResumen", "reporteStock")]);
-});
+}
 
 function mostrarExito({ id, vuelto, falta, cliente, ahorro }) {
   document.getElementById("formPosCobro").hidden = true;
