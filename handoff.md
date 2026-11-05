@@ -19,10 +19,56 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (4 de noviembre de 2026)
+## Estado actual (5 de noviembre de 2026)
 
-**Lo último (4 de noviembre, hist. §134): WhatsApp como canal del asistente,
-hecho y commiteado en `solla`, sin publicar.** Pedido del usuario como
+**Lo último (5 de noviembre): negocios de ejemplo para la presentación, a
+medio hacer.** Pedido del usuario: "varios tipos de negocio en mi cuenta, para
+explicar todas las funciones". `scripts/demo.mjs` (`npm run demo -- --email
+<mail>`, la contraseña la pide sin mostrarla) entra por la API a la cuenta y
+suma cinco negocios, cada uno con 4 a 6 semanas de historia (ventas
+anteriores de "Lo que ya tenías": con fecha y cobro, sin mover stock ni caja):
+- **Lola Indumentaria** (comercio): talles, 3 compras, ofertas, presupuesto
+  mayorista, CRM, Instagram y WhatsApp, la caja abierta;
+- **Mafaldas de Sofi** (emprendimiento): 3 recetas, 4 producciones, bolsa y
+  sticker al vender;
+- **Gimnasio Fuerza**: 13 socios (2 deben), 3 planes, combo, la barra;
+- **Clima Sur** (servicios): presupuestos, 3 trabajos (uno terminado y
+  cobrado a medias), 4 abonos;
+- **Carnicería Don Ramón**: por kilo con PLU, balanza configurada, ofertas.
+
+**Probado entero contra una base local** (cuenta sembrada pasada a Pro):
+carga sin errores y se ve bien en Resumen, Producción, Socios y Trabajos.
+Cada negocio nace con dirección y teléfono (`PUT /api/negocio`), así la guía
+"Primeros pasos" solo deja pendiente "Sumá a alguien de tu equipo", que se
+oculta con "Ocultar la guía" (localStorage, por negocio); verificado en los
+cinco con `GET /api/negocio/primeros-pasos`.
+**Sin correr todavía en la cuenta del usuario.** Antes:
+1. ~~Arreglar la guía "Primeros pasos"~~: hecho (5 de noviembre).
+2. **El negocio del usuario tiene que estar en Pro** (sumar negocios es de
+   Pro, y el nuevo hereda el plan): Plataforma → Negocios → "Cambiar". Tope:
+   5 negocios nuevos por hora y por cuenta.
+3. El usuario lo corre desde la raíz:
+   `npm run demo -- --email santinosolla22@gmail.com` (o `--solo <clave>`).
+   Un negocio que ya existe con ese nombre se saltea.
+
+Las producciones salen con la fecha de hoy (la ruta no acepta otra).
+
+**WhatsApp anda de punta a punta (5 de noviembre).** El usuario vinculó su
+celular y Nexo le contestó. Faltaba publicar la app de Meta y suscribirla a
+la cuenta de WhatsApp (pasos en "Trámites del usuario" → Meta). PR #52 a #55,
+publicados: contestar a los celulares argentinos sin el 9, el registro anota
+el aviso descartado por firma o por otro número, y la página se entera al
+volver de WhatsApp. **Sigue:** probar una venta por texto y por audio.
+**Después, decidido por el usuario:** el número real con un chip (foto y
+nombre "Nexo"; el de prueba no deja editar el perfil), con margen antes del
+20. **Para decidir:** la política de privacidad publicada dice Gemini y no
+nombra Groq, WhatsApp ni Mercado Pago; actualizarla pide volver a aceptarla
+(se le preguntó al usuario, sin respuesta). **Revisar:** si el
+`WHATSAPP_TOKEN` del servidor es el de 24 h, deja de andar; poner el del
+usuario del sistema (paso 5 de Meta).
+
+**Antes (4 de noviembre, hist. §134): WhatsApp como canal del asistente,
+hecho y publicado (PR #50).** Pedido del usuario como
 próximo paso:
 - Mi cuenta → WhatsApp: la persona manda "NEXO <código>" desde su celular al
   número de Nexo y queda vinculada al negocio activo;
@@ -2210,6 +2256,10 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
      wa.me** ("no está en WhatsApp"): primero se le manda al celular la
      plantilla de prueba desde Configuración de la API ("Enviar mensaje"), y
      se responde el código en ese chat.
+  - El perfil del número de prueba no se edita: queda "Test Number" y sin foto
+    (lo dice WhatsApp Manager → Números de teléfono → Perfil). Para la demo,
+    guardarlo como contacto "Nexo". Con el número real: nombre "Nexo" (lo
+    aprueba Meta), el ícono de 1024 × 1024, una descripción y el sitio.
   - Los celulares argentinos llegan con el 9 (549…) y se les contesta sin él
     (hist. §135, `destinatario()`). El registro anota el aviso mal firmado y
     el que va a otro número (el botón Probar del panel usa uno inventado).
