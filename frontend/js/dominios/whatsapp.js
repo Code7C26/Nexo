@@ -47,6 +47,7 @@ alEntrarEnVista("asistente", revisarAccesos);
 // mensaje, la página pregunta cada pocos segundos si ya llegó.
 const ESPERA_WHATSAPP_MS = 3000;
 let espera = null;
+let revisarSiLlego = () => {};
 
 function dejarDeEsperar() {
   clearInterval(espera);
@@ -92,17 +93,28 @@ document.getElementById("waVincular").addEventListener("click", async () => {
 
   dejarDeEsperar();
   const hasta = Date.now() + pedido.minutos * 60_000;
-  const antes = (await api("/api/whatsapp")).vinculo?.telefono ?? null;
-  espera = setInterval(async () => {
+  // El vínculo de antes, con su fecha: volver a vincular el mismo número
+  // también cuenta como llegado.
+  const marca = (vinculo) => (vinculo ? `${vinculo.telefono}|${vinculo.desde}` : null);
+  const antes = marca((await api("/api/whatsapp")).vinculo);
+  revisarSiLlego = async () => {
     // Fuera de la página, o vencido el código, se deja de preguntar.
     const pagina = document.querySelector('.config-pagina[data-seccion="whatsapp"]');
     if (Date.now() > hasta || !pagina || pagina.hidden) return dejarDeEsperar();
     const estado = await api("/api/whatsapp").catch(() => null);
-    if (estado?.vinculo && estado.vinculo.telefono !== antes) {
+    if (espera && estado?.vinculo && marca(estado.vinculo) !== antes) {
+      dejarDeEsperar();
       avisar("WhatsApp vinculado: ya podés mandarle tus ventas.", "ok");
       pintarWhatsApp();
     }
-  }, ESPERA_WHATSAPP_MS);
+  };
+  espera = setInterval(revisarSiLlego, ESPERA_WHATSAPP_MS);
+});
+
+// Con la página tapada (la persona está en WhatsApp), el navegador frena el
+// reloj a una vez por minuto o menos: al volver se pregunta enseguida.
+document.addEventListener("visibilitychange", () => {
+  if (espera && document.visibilityState === "visible") revisarSiLlego();
 });
 
 document.getElementById("waDesvincular").addEventListener("click", async () => {
