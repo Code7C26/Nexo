@@ -318,8 +318,23 @@
         <section class="panel para-hoy-resumen" id="paraHoyResumen" data-modulo="crm" aria-labelledby="paraHoyResumenTitulo" hidden></section>
 
         <div class="filtros" id="filtrosResumen"></div>
-        <p class="nota-plana" id="resumenRangoNota"></p>
+        <!-- El período elegido, contra qué se compara y "Personalizar" (hist.
+             §136): cada persona arma su Resumen, dominios/tablero.js. -->
+        <div class="resumen-barra">
+          <p class="nota-plana" id="resumenRangoNota"></p>
+          <div class="resumen-controles" id="resumenControles" hidden>
+            <label class="resumen-comparar">Comparar con
+              <select id="resumenComparar">
+                <option value="anterior">el período anterior</option>
+                <option value="anio">el año pasado</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-secundario" id="btnPersonalizarResumen"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layout-dashboard"></use></svg> Personalizar</button>
+          </div>
+        </div>
 
+        <div class="tablero" id="tablero">
+        <div class="pieza" data-pieza="resultado">
         <!-- Ledger summary strip: el elemento firma del diseño -->
         <section class="ledger-strip" aria-label="Resultado del período">
           <div class="ledger-item">
@@ -363,7 +378,36 @@
             <span><strong>Retiros</strong> <span class="mono" id="sumRetiros">$0,00</span></span>
           </p>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="pendiente">
+        <!-- Lo que hay que mirar hoy (hist. §136): lo que te deben, lo que
+             debés y el stock a reponer. No depende del filtro de fecha. -->
+        <section class="panel" aria-labelledby="pendienteTitulo">
+          <div class="panel-head">
+            <h2 id="pendienteTitulo">Para mirar hoy</h2>
+          </div>
+          <div class="pendiente-grilla">
+            <a class="pendiente-item" href="#/cuentas-corrientes">
+              <span class="pendiente-etiqueta">Te deben</span>
+              <span class="pendiente-cifra mono" id="pendienteCobrar">$0,00</span>
+              <span class="pendiente-detalle" id="pendienteCobrarDetalle"></span>
+            </a>
+            <a class="pendiente-item" href="#/cuentas-corrientes" data-modulo="compras">
+              <span class="pendiente-etiqueta">Debés</span>
+              <span class="pendiente-cifra mono" id="pendientePagar">$0,00</span>
+              <span class="pendiente-detalle" id="pendientePagarDetalle"></span>
+            </a>
+            <a class="pendiente-item" href="#/reportes-stock" data-modulo="stock">
+              <span class="pendiente-etiqueta">Para reponer</span>
+              <span class="pendiente-cifra mono" id="pendienteStock">0</span>
+              <span class="pendiente-detalle" id="pendienteStockDetalle"></span>
+            </a>
+          </div>
+        </section>
+        </div>
+
+        <div class="pieza" data-pieza="evolucion">
         <!-- Evolución del resultado por período, con su comparación contra
              el período anterior ya reflejada en los deltas de arriba. -->
         <section class="panel">
@@ -392,30 +436,9 @@
           </table>
           </div>
         </section>
+        </div>
 
-        <!-- Tabla de movimientos -->
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Últimos movimientos</h2>
-          </div>
-
-          <div class="tabla-scroll">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th scope="col">Fecha</th>
-                <th scope="col">Tipo</th>
-                <th scope="col">Detalle</th>
-                <th scope="col" class="align-right">Importe</th>
-              </tr>
-            </thead>
-            <tbody id="movimientosBody">
-              <!-- filas generadas por js/app.js -->
-            </tbody>
-          </table>
-          </div>
-        </section>
-
+        <div class="pieza" data-pieza="ventas">
         <!-- Qué se vende: fusionado acá (antes vista aparte "reportes-ventas").
              Comparte el mismo filtro de fecha de arriba (#filtrosResumen). -->
         <h2>Qué se vende</h2>
@@ -427,6 +450,11 @@
           </div>
           <div class="ledger-divider" aria-hidden="true"></div>
           <div class="ledger-item">
+            <span class="ledger-label">Cantidad de ventas</span>
+            <span class="ledger-value mono" id="reporteCantidadVentas">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
             <span class="ledger-label">Ticket promedio</span>
             <span class="ledger-value mono" id="reporteTicketPromedio">$0,00</span>
           </div>
@@ -435,13 +463,31 @@
             <span class="ledger-label">Unidades vendidas</span>
             <span class="ledger-value mono" id="reporteUnidades">0</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item ledger-item-total">
-            <span class="ledger-label">Ganancia bruta</span>
-            <span class="ledger-value mono ledger-ok" id="reporteGananciaBruta">$0,00</span>
-          </div>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="cuando">
+        <!-- Cuándo se vende (hist. §136): el día sale de la fecha de la
+             venta; la hora, de su alta en la auditoría. -->
+        <section class="panel" aria-labelledby="cuandoTitulo">
+          <div class="panel-head">
+            <h2 id="cuandoTitulo">Cuándo se vende</h2>
+          </div>
+          <div class="cuando-grilla">
+            <div>
+              <h3 class="cuando-titulo">Por día de la semana</h3>
+              <div class="grafico columnas" id="graficoDias"></div>
+            </div>
+            <div>
+              <h3 class="cuando-titulo">Por hora</h3>
+              <div class="grafico columnas" id="graficoHoras"></div>
+            </div>
+          </div>
+          <p class="grafico-nota" id="cuandoNota" hidden></p>
+        </section>
+        </div>
+
+        <div class="pieza" data-pieza="productos">
         <!-- Ranking de productos por ventas netas (ya restadas las
              devoluciones) — no por unidades, para que un producto caro con
              pocas unidades no quede subestimado frente a uno barato de
@@ -449,7 +495,14 @@
         <section class="panel">
           <div class="panel-head">
             <h2><span data-termino="Plural">Productos</span> más vendidos</h2>
+            <div class="segmentos segmentos-ranking" role="group" aria-label="Ordenar por">
+              <button type="button" class="segmento" data-metrica="ventas" aria-pressed="true">Ventas</button>
+              <button type="button" class="segmento" data-metrica="ganancia" aria-pressed="false">Ganancia</button>
+            </div>
           </div>
+          <div class="ranking-cont" id="reporteProductosBarras"></div>
+          <details class="ranking-todos">
+          <summary>Ver todos</summary>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
@@ -465,15 +518,25 @@
             <tbody id="reporteProductosBody"></tbody>
           </table>
           </div>
+          </details>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="categorias">
         <!-- Un producto sin categoría cae en el balde "Sin categoría"
              (el backend lo arma con GROUP BY sobre categoria_id, que es
              NULL para esos productos) en vez de perderse del reporte. -->
         <section class="panel">
           <div class="panel-head">
             <h2>Ventas por categoría</h2>
+            <div class="segmentos segmentos-ranking" role="group" aria-label="Ordenar por">
+              <button type="button" class="segmento" data-metrica="ventas" aria-pressed="true">Ventas</button>
+              <button type="button" class="segmento" data-metrica="ganancia" aria-pressed="false">Ganancia</button>
+            </div>
           </div>
+          <div class="ranking-cont" id="reporteCategoriasBarras"></div>
+          <details class="ranking-todos">
+          <summary>Ver todos</summary>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
@@ -489,8 +552,30 @@
             <tbody id="reporteCategoriasBody"></tbody>
           </table>
           </div>
+          </details>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="cobros">
+        <section class="panel" aria-labelledby="cobrosTitulo">
+          <div class="panel-head">
+            <h2 id="cobrosTitulo">Dónde entró la plata</h2>
+          </div>
+          <div class="ranking-cont" id="tableroCobros"></div>
+          <p class="grafico-nota">Lo que se cobró en el período, en cada cuenta de Caja, sea de ventas de ahora o de antes.</p>
+        </section>
+        </div>
+
+        <div class="pieza" data-pieza="vendedores">
+        <section class="panel" aria-labelledby="vendedoresTitulo">
+          <div class="panel-head">
+            <h2 id="vendedoresTitulo">Quién vendió</h2>
+          </div>
+          <div class="ranking-cont" id="tableroVendedores"></div>
+        </section>
+        </div>
+
+        <div class="pieza" data-pieza="clientes">
         <section class="panel">
           <div class="panel-head">
             <h2>Mejores clientes</h2>
@@ -511,7 +596,9 @@
           </table>
           </div>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="canales" data-modulo="canales">
         <!-- Por dónde se vende (hist. §128): con Venta online prendido. La
              ganancia ya descuenta lo que se usó al vender (la caja, la bolsa). -->
         <section class="panel" data-modulo="canales">
@@ -535,7 +622,34 @@
           </table>
           </div>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="movimientos">
+        <!-- Tabla de movimientos -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Últimos movimientos</h2>
+          </div>
+
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Detalle</th>
+                <th scope="col" class="align-right">Importe</th>
+              </tr>
+            </thead>
+            <tbody id="movimientosBody">
+              <!-- filas generadas por js/app.js -->
+            </tbody>
+          </table>
+          </div>
+        </section>
+        </div>
+
+        <div class="pieza" data-pieza="compras" data-modulo="compras">
         <!-- Qué se compra: espejo de "Qué se vende" del lado de compras.
              Comparte el mismo filtro de fecha de arriba (#filtrosResumen),
              no uno propio. -->
@@ -622,7 +736,9 @@
           </table>
           </div>
         </section>
+        </div>
 
+        <div class="pieza" data-pieza="iva">
         <!-- IVA del período (hist. §114): solo para un responsable inscripto,
              el único que discrimina. Mismo filtro de fecha de arriba. Los
              dos libros son lo que pide el contador, y se bajan en CSV. -->
@@ -693,7 +809,8 @@
             </div>
           </section>
         </div>
-
+        </div>
+        </div>
       </section>
 
       <!-- Vista: Presupuestos -->
@@ -5462,6 +5579,22 @@
   </div>
 
   <!-- Modal ajuste de stock -->
+  <!-- Personalizar el Resumen (hist. §136, dominios/tablero.js) -->
+  <div class="modal" id="modalTablero" role="dialog" aria-modal="true" aria-labelledby="modalTableroTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalTableroTitulo">Personalizar el Resumen</h3>
+        <button class="modal-close" id="modalTableroClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <p class="form-note">Elegí qué ver y en qué orden. Es tuyo: los demás del negocio ven el suyo.</p>
+      <ol class="tablero-lista" id="tableroLista"></ol>
+      <div class="panel-acciones tablero-acciones">
+        <button type="button" class="btn btn-secundario" id="btnTableroPreset">Volver al de tu tipo de negocio</button>
+        <button type="button" class="btn btn-primary" id="btnTableroGuardar">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="modalAjusteStock" role="dialog" aria-modal="true" aria-labelledby="modalAjusteStockTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

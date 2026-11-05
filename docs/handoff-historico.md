@@ -11819,3 +11819,71 @@ de consola.
 
 **Queda:** la prueba de punta a punta con el celular y el número de prueba
 de Meta.
+
+## §136. El Resumen en piezas, personalizable (5 de noviembre de 2026)
+
+**Pedido del usuario:** "un Resumen mejor, con más gráficos, mejores
+estadísticas y personalizable". Al preguntarle el alcance: "investigá qué se
+usa y decidí vos".
+
+**Qué se investigó.** Square, Loyverse, Shopify y Dux muestran de entrada
+cantidad de ventas y ticket promedio, ventas por hora y por día, por medio
+de cobro, por vendedor, lo más vendido y lo que falta cobrar. Square y
+Shopify dejan sumar, sacar y reordenar las tarjetas (Shopify, por persona).
+
+**Lo decidido:**
+- **Piezas:** el Resumen son 14 bloques (`PIEZAS_TABLERO` en
+  `backend/perfiles.js`): resultado, para mirar hoy, evolución, qué se vende,
+  cuándo se vende, lo más vendido, categorías, dónde entró la plata, quién
+  vendió, clientes, canal, movimientos, compras e IVA. En `index.html` cada
+  uno es un `<div class="pieza" data-pieza>` dentro de `#tablero`.
+- **Personalizar por persona, guardado en la base:** columna nueva
+  `usuario_organizaciones.tablero` (JSON con el orden, las ocultas y contra
+  qué compara; migración aditiva, nula, sin backfill). NULL = el del tipo de
+  negocio.
+- **Preset por tipo** (`TABLERO_DEL_RUBRO`, sin ningún `if` por rubro): el
+  mostrador (carnicería, verdulería, kiosco) pone "cuándo se vende" y "dónde
+  entró la plata" arriba; la tienda online, "por canal"; servicios y
+  gimnasio, "para mirar hoy" (lo que les deben). Una pieza que se suma más
+  adelante le aparece al final, visible, a quien ya armó el suyo.
+- **Comparar** contra el período anterior o contra las mismas fechas del año
+  pasado (`?comparar=anio` en `/api/resumen/evolucion`; el 29 de febrero cae
+  en el 28).
+
+**Qué cambió:**
+- Rutas nuevas, todas admin: `GET /api/reportes/tablero`, y
+  `GET/PUT/DELETE /api/tablero` (DELETE vuelve al del tipo). No va a la
+  auditoría: es una preferencia de pantalla, no un dato del negocio.
+- **La hora y el vendedor de cada venta salen de su alta en la auditoría**
+  (`auditoria`, `entidad = 'venta'`, `accion = 'crear'`): la venta guarda el
+  día pero no la hora ni quién la hizo. La hora se pasa a la zona del negocio
+  (`ZONA_HORARIA`). Las de "Lo que ya tenías" cuentan por día y no por hora
+  (su hora es la de la carga), y el Resumen lo aclara. Lo que entró solo
+  (tiendas, cuotas) sale como "Entraron solas".
+- "Dónde entró la plata": los cobros del período por cuenta de Caja.
+  "Para mirar hoy": lo que te deben y lo que debés con la parte vencida (el
+  mismo saldo que Cuentas corrientes) y los productos sin stock o con poco,
+  cada uno con un link a su pantalla.
+- Lo más vendido y las categorías pasan a barras, por ventas o por
+  ganancia, con la tabla en "Ver todos". "Qué se vende" suma la cantidad de
+  ventas y deja de repetir la ganancia bruta.
+- Frontend: `dominios/tablero.js` (las piezas nuevas, el orden y el modal
+  Personalizar: una casilla y flechas para subir o bajar, porque arrastrar
+  anda mal con el dedo y el teclado) y `core/graficos.js` (barras
+  horizontales en HTML, columnas en SVG, y `pasoRedondo` y `pathBarra`, que
+  salieron de `app.js`).
+
+**Qué falló en el camino.** Con los negocios de ejemplo, "por hora" era una
+sola barra: solo las ventas de hoy tienen hora. Ahora el eje va al menos de
+8 a 20. Un `sed -i` pasó `index.html` a LF; se volvió a CRLF.
+
+**Cómo se verificó.** `npm test` (309, con `test/tablero.test.js` nuevo),
+lint y `verificar-migracion` (base nueva y copia de la real). En Chrome
+headless, sobre un servidor de prueba con los cinco negocios de
+`scripts/demo.mjs`: la carnicería a 1280 px, el gimnasio a 390 px y Lola con
+el modal; ocultar una pieza, subir otra, guardar y recargar mantiene el
+orden, y cambiar la comparación cambia los textos; sin errores de consola.
+
+**Queda:** que el usuario lo vea en el sitio; gráficos por pieza de
+socios o producción (hoy un gimnasio ve sus deudas en "Para mirar hoy");
+el manual de uso (se revisa una sola vez, al final).

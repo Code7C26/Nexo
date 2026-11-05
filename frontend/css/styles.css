@@ -8921,3 +8921,194 @@ a.asistente-guia-whatsapp { color: inherit; text-decoration: none; transition: b
 a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .asistente-guia-whatsapp h3 { display: flex; align-items: center; gap: var(--sp-2); }
 .asistente-guia-whatsapp .ico-marca { width: 16px; height: 16px; }
+
+/* ============================================================
+   El Resumen en piezas (hist. §136, dominios/tablero.js)
+   Cada pieza es un bloque que la persona muestra, oculta y ordena.
+   ============================================================ */
+
+/* Hasta saber cómo lo armó la persona, las piezas no se ven: si no,
+   aparecen en el orden del HTML y saltan a su lugar. Si algo falla antes,
+   la animación las muestra igual al segundo y medio. */
+.tablero:not(.is-listo) > .pieza { opacity: 0; animation: tablero-aparecer 0s 1.5s forwards; }
+@keyframes tablero-aparecer { to { opacity: 1; } }
+
+.pieza { margin-bottom: var(--sp-5); }
+.pieza > :last-child,
+[data-view="dashboard"] .pieza > .panel:last-child { margin-bottom: 0; }
+.pieza-oculta,
+/* La de IVA sin ser inscripto: todo lo de adentro está oculto. */
+.pieza:not(:has(> :not([hidden]))) { display: none; }
+
+/* El período, contra qué se compara y "Personalizar". */
+.resumen-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.resumen-barra .nota-plana { margin: 0; }
+.resumen-controles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.resumen-controles[hidden] { display: none; }
+.resumen-comparar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.resumen-comparar select { width: auto; min-height: 36px; }
+
+/* Rankings en barras (core/graficos.js, barrasHorizontales). La primera
+   va en azul: es el dato clave, como la columna más alta. */
+.ranking {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+.ranking-cabeza {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  font-size: var(--txt-sm);
+}
+.ranking-nombre {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ranking-cifra {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ranking-barra {
+  height: 8px;
+  margin-top: 6px;
+  background: var(--surface-sunk);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+.ranking-barra span {
+  display: block;
+  height: 100%;
+  background: var(--ink-faint);
+  border-radius: inherit;
+  transform-origin: left;
+  animation: ranking-crecer var(--dur-3) var(--ease-out) both;
+}
+.ranking-fila:first-child .ranking-barra span { background: var(--accent); }
+@keyframes ranking-crecer { from { transform: scaleX(0); } }
+.ranking-detalle {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
+}
+
+/* La tabla completa, debajo de las barras. */
+.ranking-todos { margin-top: var(--sp-4); }
+.ranking-todos summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+.ranking-todos summary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-bg); border-radius: var(--r-xs); }
+.ranking-todos[open] summary { margin-bottom: var(--sp-3); }
+.panel-head .segmentos { flex-shrink: 0; }
+
+/* Cuándo se vende: dos gráficos de columnas, apilados en el celular. */
+.cuando-grilla { display: grid; gap: var(--sp-5); }
+@media (min-width: 861px) {
+  .cuando-grilla { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+}
+.cuando-titulo {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-body);
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.columnas { margin: 0; }
+.columnas-barra { fill: var(--ink-faint); }
+.columnas-barra.is-max { fill: var(--accent); }
+.columnas text.is-max { fill: var(--accent); font-weight: 600; }
+.columnas-lectura {
+  min-height: 1.5em;
+  margin: var(--sp-2) 0 0;
+  font-size: var(--txt-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Para mirar hoy: tarjetas que llevan a cada pantalla. */
+.pendiente-grilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+.pendiente-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-4);
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease;
+}
+.pendiente-item:hover { border-color: var(--line-strong); background: var(--surface-hover); }
+.pendiente-item:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.pendiente-etiqueta { font-size: var(--txt-xs); font-weight: 600; color: var(--ink-muted); }
+.pendiente-cifra { font-size: var(--txt-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pendiente-detalle { font-size: var(--txt-2xs); color: var(--ink-muted); }
+
+/* Personalizar: una casilla y dos flechas por pieza. */
+.tablero-lista {
+  list-style: none;
+  margin: var(--sp-4) 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.tablero-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.tablero-elegir {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.tablero-elegir input { flex-shrink: 0; margin-top: 3px; }
+.tablero-elegir strong { display: block; font-size: var(--txt-sm); }
+.tablero-elegir small { display: block; font-size: var(--txt-2xs); color: var(--ink-muted); }
+.tablero-fila.is-oculta strong { color: var(--ink-muted); }
+.tablero-mover { display: flex; gap: 2px; }
+.tablero-mover .btn-icon { min-width: 36px; min-height: 36px; }
+.tablero-mover .btn-icon:disabled { opacity: 0.3; }
+.tablero-subir svg { transform: rotate(180deg); }
+.tablero-acciones { justify-content: space-between; }
+.tablero-acciones .btn[hidden] { display: none; }
+@media (max-width: 860px) {
+  .tablero-acciones { flex-direction: column-reverse; }
+  .tablero-acciones .btn { width: 100%; }
+}

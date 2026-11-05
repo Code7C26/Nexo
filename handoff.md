@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §135);
+    siguiente número (hoy el último es §136);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,30 @@
 
 ## Estado actual (5 de noviembre de 2026)
 
-**Lo último (5 de noviembre): negocios de ejemplo para la presentación, a
-medio hacer.** Pedido del usuario: "varios tipos de negocio en mi cuenta, para
+**Lo último (5 de noviembre, hist. §136): el Resumen en piezas y
+personalizable, hecho y sin commitear** (rama `Tosi`). Pedido del usuario
+("un Resumen mejor, con más gráficos, personalizable"); el alcance lo decidí
+yo después de mirar Square, Loyverse, Shopify y Dux ("investigá qué se usa y
+decidí vos"):
+- 14 piezas que cada persona muestra, oculta y ordena (Resumen →
+  Personalizar), guardadas en la base por persona y negocio
+  (`usuario_organizaciones.tablero`, migración aditiva). Sin armar, el
+  preset del tipo de negocio (`TABLERO_DEL_RUBRO` en `backend/perfiles.js`);
+- nuevas: "Para mirar hoy" (te deben / debés con lo vencido, stock a
+  reponer), "Cuándo se vende" (día y hora), "Dónde entró la plata" (cobros
+  por cuenta), "Quién vendió", lo más vendido y las categorías en barras;
+- "Comparar con el año pasado" además del período anterior;
+- la hora y el vendedor de cada venta salen de su alta en la auditoría: las
+  de "Lo que ya tenías" (toda la historia de los negocios de ejemplo) cuentan
+  por día y no por hora.
+- **Falta:** que el usuario lo vea, commitear y publicar.
+
+**Publicado el 5 de noviembre (PR #56 y #57):** los negocios de ejemplo
+(`scripts/demo.mjs`, ya corrido en la cuenta del usuario, dicho por él), fiar
+desde el punto de venta y los mensajes de WhatsApp con formato.
+
+**Antes (5 de noviembre): negocios de ejemplo para la presentación, hechos
+y corridos en la cuenta del usuario.** Pedido del usuario: "varios tipos de negocio en mi cuenta, para
 explicar todas las funciones". `scripts/demo.mjs` (`npm run demo -- --email
 <mail>`, la contraseña la pide sin mostrarla) entra por la API a la cuenta y
 suma cinco negocios, cada uno con 4 a 6 semanas de historia (ventas
@@ -42,7 +64,8 @@ Cada negocio nace con dirección y teléfono (`PUT /api/negocio`), así la guía
 "Primeros pasos" solo deja pendiente "Sumá a alguien de tu equipo", que se
 oculta con "Ocultar la guía" (localStorage, por negocio); verificado en los
 cinco con `GET /api/negocio/primeros-pasos`.
-**Sin correr todavía en la cuenta del usuario.** Antes:
+**Ya corrido en la cuenta del usuario** (dicho por él el 5 de noviembre). Lo
+que hizo falta:
 1. ~~Arreglar la guía "Primeros pasos"~~: hecho (5 de noviembre).
 2. **El negocio del usuario tiene que estar en Pro** (sumar negocios es de
    Pro, y el nuevo hereda el plan): Plataforma → Negocios → "Cambiar". Tope:
@@ -1388,38 +1411,13 @@ a 6):
   Nexo. Base que ya existe: la comisión y las cuotas de cada pago como gastos
   de la venta (hist. §130) y "adónde fue la plata" (hist. §131).
 
-**Pendiente (pedido del usuario el 5 de noviembre): un Resumen mejor, con más
-gráficos, mejores estadísticas y personalizable.** No está planificado ni
-empezado; antes de arrancar se define el alcance con el usuario (CLAUDE.md §27).
-Va con la etapa H (CLAUDE.md §20, §38).
-- **Hoy tiene:** las tarjetas (ventas, costo, ganancia bruta, gastos,
-  resultado; inversiones y retiros aparte) con la comparación contra el
-  período anterior, **un solo gráfico** (resultado por período, SVG a mano en
-  `dibujarGraficoResultado`, `frontend/js/app.js`), la tabla de evolución, los
-  últimos movimientos y las tablas de qué se vende, qué se compra e IVA.
-  Datos: `GET /api/resumen`, `/api/resumen/evolucion` y `/api/reportes/*`
-  (todos solo admin).
-- **Gráficos y números que faltan** (ideas, a elegir con el usuario): ventas
-  por día de la semana y por hora (también lo pide Praxia), por medio de
-  cobro, los productos y categorías que más venden y más ganan (barras en vez
-  de solo tabla), ticket promedio y cantidad de ventas, cuentas por cobrar y
-  por pagar con su aging, stock a reponer, ventas por canal, ventas por
-  vendedor y comparativas interanuales (las dos que §20 da por faltantes).
-- **Personalizable:** cada tarjeta y gráfico es una pieza que se muestra u
-  oculta y se reordena. A decidir: si se guarda por persona o por negocio
-  (por persona parece lo natural; en la base, no en `localStorage`, para que
-  siga en otro celular: es un cambio de esquema que se explica antes, §34), y
-  que cada tipo de negocio traiga su Resumen por defecto como preset (§29: un
-  gimnasio mira socios y cuotas; una carnicería, kilos y ventas por hora; sin
-  `if (rubro === ...)`).
-- **Cómo:** los gráficos siguen en SVG a mano, sin librería (cero
-  dependencias), reusando lo del gráfico actual (ancho real con
-  `ResizeObserver`, colores por variable CSS para el modo oscuro, tooltip con
-  mouse, dedo y teclado). Mobile-first. Sin tipografía monoespaciada nueva (el
-  usuario la rechazó).
+**Resumen mejor: hecho el 5 de noviembre (hist. §136), sin publicar.** Ideas
+que quedan para la etapa H (CLAUDE.md §20, §38): piezas de socios (activos,
+cuotas del mes) y de producción, ventas por medio de cobro con el recargo de
+Praxia, y deltas también en "Qué se vende".
 
 **Del amigo que vende medialunas (5 de noviembre, cuenta nueva probándose):**
-fía mucho desde el punto de venta. **Hecho el 5 de noviembre, sin commitear:**
+fía mucho desde el punto de venta. **Hecho y publicado el 5 de noviembre (PR #57):**
 el cobro del punto de venta tiene "Dejar en cuenta corriente", que registra la
 venta sin cobros y deja el total en la cuenta del cliente
 (`registrarVenta` en `frontend/js/dominios/pos.js`). Sin cliente (o con
@@ -1427,7 +1425,7 @@ venta sin cobros y deja el total en la cuenta del cliente
 Antes había que borrar el importe y confirmar (sigue sirviendo para fiar una
 parte).
 
-**También el 5 de noviembre, sin commitear: los mensajes de WhatsApp con
+**También el 5 de noviembre, publicado (PR #57): los mensajes de WhatsApp con
 formato** (pedido del usuario): emoji por tipo (🛒 venta, 📦 compra, 💸 gasto,
 ↩️ devolución), negrita de WhatsApp en el título y el total, ✅ al registrar,
 ❌ en los errores, ⚠️ cuando falta un dato y botones "✅ Confirmar" y

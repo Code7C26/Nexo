@@ -34,6 +34,8 @@ import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion
 import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
+import { barrasHorizontales, pasoRedondo, pathBarra } from "./core/graficos.js";
+import { cargarTablero, comparacion } from "./dominios/tablero.js";
 import { crearConsumos } from "./core/al-vender.js";
 import { CANALES_VENTA } from "./core/canales.js";
 import { mejorOferta } from "./core/ofertas.js";
@@ -149,9 +151,17 @@ const MEJOR_SI_SUBE = {
   resultado: true
 };
 
+// Contra qué se compara (hist. §136): el período anterior o las mismas fechas
+// del año pasado, como lo eligió la persona en su Resumen.
+const REFERENCIA_DELTA = {
+  anterior: { vs: "vs. período anterior", sin: "Sin período anterior", nota: "Período anterior" },
+  anio: { vs: "vs. el año pasado", sin: "Sin datos del año pasado", nota: "El año pasado" }
+};
+let referenciaDelta = REFERENCIA_DELTA.anterior;
+
 function formatearDelta(campo, delta) {
   if (!delta || !delta.comparable) {
-    return `<span class="ledger-delta-neutro">Sin período anterior</span>`;
+    return `<span class="ledger-delta-neutro">${esc(referenciaDelta.sin)}</span>`;
   }
   const mejoro = MEJOR_SI_SUBE[campo] ? delta.abs >= 0 : delta.abs <= 0;
   const clase = delta.abs === 0 ? "ledger-delta-neutro" : mejoro ? "ledger-delta-ok" : "ledger-delta-mal";
@@ -159,7 +169,7 @@ function formatearDelta(campo, delta) {
   // La pastilla lleva el porcentaje; el importe del cambio queda en el
   // tooltip, para no apilar dos cifras debajo de la cifra principal.
   const abs = `${delta.abs > 0 ? "+" : delta.abs < 0 ? "−" : ""}${money(Math.abs(delta.abs))}`;
-  const ref = `<span class="ledger-delta-ref">vs. período anterior</span>`;
+  const ref = `<span class="ledger-delta-ref">${esc(referenciaDelta.vs)}</span>`;
   if (delta.cruza_cero) {
     // Un porcentaje acá sería técnicamente correcto pero absurdo de leer
     // (de -1000 a +10 da +101%): se muestra el cambio absoluto, con
@@ -173,8 +183,9 @@ function formatearDelta(campo, delta) {
 function renderDeltas(data) {
   const nota = document.getElementById("resumenRangoNota");
   const rango = (r) => `${fechaAR(r.desde)} al ${fechaAR(r.hasta)}`;
+  referenciaDelta = REFERENCIA_DELTA[data.comparar] ?? REFERENCIA_DELTA.anterior;
   nota.textContent = data.delta
-    ? `Del ${rango(data.rango)}. Período anterior: ${rango(data.anterior.rango)}.`
+    ? `Del ${rango(data.rango)}. ${referenciaDelta.nota}: ${rango(data.anterior.rango)}.`
     : `Del ${rango(data.rango)}${data.rango.acotado ? "" : ", todo lo cargado hasta hoy"}.`;
 
   for (const [campo, id] of [
@@ -239,27 +250,6 @@ new ResizeObserver(() => {
 document.addEventListener("pointerdown", (e) => {
   if (!graficoResultadoEl.contains(e.target)) ocultarTipGrafico();
 });
-
-// Paso "redondo" (1, 2 o 5 × 10^n) para que las marcas del eje Y caigan
-// en cifras que se leen de un vistazo ($20k, $40k) y no en $37.412.
-function pasoRedondo(span, marcas) {
-  const crudo = span / marcas;
-  const magnitud = 10 ** Math.floor(Math.log10(crudo));
-  const n = crudo / magnitud;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * magnitud;
-}
-
-// Barra con la punta redondeada (4px) y la base recta sobre la línea del
-// 0: hacia arriba si el resultado es a favor, hacia abajo si es en contra.
-function pathBarra(x, y0, ancho, alto, haciaArriba) {
-  const r = Math.min(4, ancho / 2, alto);
-  const f = (n) => n.toFixed(1);
-  const punta = haciaArriba ? y0 - alto : y0 + alto;
-  const curva = haciaArriba ? punta + r : punta - r;
-  return `M${f(x)},${f(y0)}V${f(curva)}Q${f(x)},${f(punta)} ${f(x + r)},${f(punta)}H${f(x + ancho - r)}Q${f(
-    x + ancho
-  )},${f(punta)} ${f(x + ancho)},${f(curva)}V${f(y0)}Z`;
-}
 
 function dibujarGraficoResultado({ animar }) {
   const contenedor = graficoResultadoEl;
@@ -453,9 +443,8 @@ async function cargarEvolucion() {
   // la llama sola, para no depender de que quien la use se acuerde del rol.
   if (!esAdmin()) return;
   const mio = ++tokenEvolucion;
-  const rango = rangoActualResumen();
-  const params = new URLSearchParams(rango).toString();
-  const data = await api(`/api/resumen/evolucion${params ? "?" + params : ""}`);
+  const params = new URLSearchParams({ ...rangoActualResumen(), comparar: comparacion() }).toString();
+  const data = await api(`/api/resumen/evolucion?${params}`);
   if (mio !== tokenEvolucion) return;
 
   document.getElementById("graficoGranularidad").textContent =
@@ -529,7 +518,7 @@ const filtrosResumen = crearFiltros(
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
 async function cargarPanelResumen() {
-  await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras(), cargarReporteIva()]);
+  await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras(), cargarReporteIva(), cargarTablero(rangoActualResumen())]);
 }
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
@@ -540,7 +529,41 @@ async function cargarPanelResumen() {
 // solo hace falta pintar la respuesta. Fusionada dentro de Resumen: usa
 // el mismo filtro de fecha (rangoActualResumen), no uno propio.
 
+// Lo más vendido en barras (hist. §136), por ventas o por ganancia, con la
+// tabla completa abajo en "Ver todos". El mismo botón cambia las dos piezas.
+let metricaRanking = "ventas";
+let rankingProductos = [];
+let rankingCategorias = [];
+
+function pintarRankings() {
+  const porGanancia = metricaRanking === "ganancia";
+  const opciones = {
+    nombre: (f) => f.nombre,
+    valor: (f) => (porGanancia ? f.ganancia : f.ventas),
+    cifra: (f) => money(porGanancia ? f.ganancia : f.ventas),
+    detalle: (f) =>
+      porGanancia ? `${porcentaje(f.margen_pct)} de margen` : `Cantidad ${numero(f.unidades)} · ${porcentaje(f.participacion_pct)} del total`,
+    vacio: "No hay ventas en este período."
+  };
+  const ordenar = (lista) => (porGanancia ? [...lista].sort((a, b) => b.ganancia - a.ganancia) : lista);
+  document.getElementById("reporteProductosBarras").innerHTML = barrasHorizontales(ordenar(rankingProductos), opciones);
+  document.getElementById("reporteCategoriasBarras").innerHTML = barrasHorizontales(ordenar(rankingCategorias), opciones);
+}
+
+for (const grupo of document.querySelectorAll(".segmentos-ranking")) {
+  grupo.addEventListener("click", (e) => {
+    const boton = e.target.closest("[data-metrica]");
+    if (!boton) return;
+    metricaRanking = boton.dataset.metrica;
+    for (const b of document.querySelectorAll(".segmentos-ranking [data-metrica]")) {
+      b.setAttribute("aria-pressed", String(b.dataset.metrica === metricaRanking));
+    }
+    pintarRankings();
+  });
+}
+
 function renderReporteProductos(lista) {
+  rankingProductos = lista;
   const body = document.getElementById("reporteProductosBody");
   if (lista.length === 0) {
     body.innerHTML = filaVacia(6, "No hay ventas en este período.");
@@ -565,6 +588,7 @@ function renderReporteProductos(lista) {
 // el backend (GROUP BY sobre categoria_id, que es NULL para esos
 // productos) — no se filtra ni se distingue especialmente acá.
 function renderReporteCategorias(lista) {
+  rankingCategorias = lista;
   const body = document.getElementById("reporteCategoriasBody");
   if (lista.length === 0) {
     body.innerHTML = filaVacia(6, "No hay ventas en este período.");
@@ -649,14 +673,12 @@ async function cargarReporteVentas() {
 
   document.getElementById("reporteVentasNetas").textContent = money(datos.totales.ventas_netas);
   document.getElementById("reporteTicketPromedio").textContent = money(datos.totales.ticket_promedio);
+  document.getElementById("reporteCantidadVentas").textContent = numero(datos.totales.cantidad_ventas);
   document.getElementById("reporteUnidades").textContent = numero(datos.totales.unidades);
-  const elGanancia = document.getElementById("reporteGananciaBruta");
-  elGanancia.textContent = money(datos.totales.ganancia_bruta);
-  elGanancia.classList.toggle("saldo-negativo", datos.totales.ganancia_bruta < 0);
-  elGanancia.classList.toggle("ledger-ok", datos.totales.ganancia_bruta >= 0);
 
   renderReporteProductos(datos.productos);
   renderReporteCategorias(datos.categorias);
+  pintarRankings();
   renderReporteClientes(datos.clientes);
   renderReporteCanales(datos.canales);
 }

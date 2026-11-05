@@ -2188,6 +2188,12 @@ if (!db.prepare('PRAGMA table_info(gastos)').all().some((col) => col.name === 'v
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_gastos_venta ON gastos(venta_id)');
 
+// El Resumen de cada persona (hist. §136, ver schema.sql). Aditiva y nula, sin
+// backfill: NULL es el del tipo de negocio.
+if (!db.prepare('PRAGMA table_info(usuario_organizaciones)').all().some((col) => col.name === 'tablero')) {
+  db.exec('ALTER TABLE usuario_organizaciones ADD COLUMN tablero TEXT');
+}
+
 // Mercado Pago (hist. §130, ver schema.sql): integraciones.plataforma suma
 // 'mercadopago' e integracion_log.tipo suma 'pago'. Mismo método que el
 // rebuild de movimientos_stock de arriba: se cambia solo el CHECK del CREATE
