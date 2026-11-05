@@ -76,8 +76,12 @@ export function mensajesDelAviso(cuerpo) {
   for (const entrada of Array.isArray(cuerpo?.entry) ? cuerpo.entry : []) {
     for (const cambio of Array.isArray(entrada?.changes) ? entrada.changes : []) {
       const valor = cambio?.value;
-      // Solo los que llegan al número de Nexo.
-      if (numeroId() && valor?.metadata?.phone_number_id && String(valor.metadata.phone_number_id) !== String(numeroId())) continue;
+      // Solo los que llegan al número de Nexo. El aviso de prueba del panel de
+      // Meta trae un número inventado: queda anotado, así se ve que llegó.
+      if (numeroId() && valor?.metadata?.phone_number_id && String(valor.metadata.phone_number_id) !== String(numeroId())) {
+        console.warn(`[whatsapp] aviso para otro número (${String(valor.metadata.phone_number_id).slice(0, 20)}): ignorado.`);
+        continue;
+      }
       for (const m of Array.isArray(valor?.messages) ? valor.messages : []) {
         if (typeof m?.id !== 'string' || typeof m?.from !== 'string') continue;
         const base = { id: m.id, de: m.from.replace(/\D/g, '') };
