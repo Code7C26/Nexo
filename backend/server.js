@@ -13645,7 +13645,9 @@ const CODIGO_WHATSAPP_MINUTOS = 10;
 const WHATSAPP_POR_HORA = 30;
 const CODIGO_EN_MENSAJE = /^\s*(?:nexo\s*)?(\d{6})\s*$/i;
 const AYUDA_WHATSAPP =
-  'Contame lo que vendiste, compraste o gastaste, escrito o en un audio. Por ejemplo: "Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago". Antes de registrar nada te pido que lo confirmes.';
+  '👋 Contame lo que vendiste, compraste o gastaste, escrito o en un audio 🎙️\n\n' +
+  'Por ejemplo:\n_"Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago"_\n\n' +
+  'Antes de registrar nada te pido que lo confirmes ✅';
 const hashCodigoWhatsApp = (codigo) => createHash('sha256').update(`whatsapp:${codigo}`).digest('hex');
 const pesosWhatsApp = (n) =>
   Number(n ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -13739,29 +13741,31 @@ app.delete('/api/whatsapp/vinculo', (req, res) => {
   res.status(204).end();
 });
 
-// La propuesta en palabras, para el mensaje con los botones.
+// La propuesta en palabras, para el mensaje con los botones. Con el formato
+// de WhatsApp (*negrita*) y un emoji por tipo de operación, para que se lea
+// de un vistazo en el celular.
 function resumenParaWhatsApp(tipo, p) {
   const renglones = (items, palabra) =>
     items.map((i) => `• ${i.cantidad} × ${nombreEnPropuesta(i.producto, '?')}, ${palabra} ${pesosWhatsApp(i.precio_unitario)}`).join('\n');
-  const fecha = p.fecha ? `\nFecha: ${p.fecha.split('-').reverse().join('/')}` : '';
+  const fecha = p.fecha ? `\n📅 ${p.fecha.split('-').reverse().join('/')}` : '';
   if (tipo === 'venta') {
     const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0);
     const cobro = p.cobro
-      ? `Cobrado: ${pesosWhatsApp(p.cobro.importe ?? total)} en ${nombreEnPropuesta(p.cobro.cuenta)}`
-      : 'Sin cobro: queda en su cuenta corriente.';
-    return `Venta a ${nombreEnPropuesta(p.cliente, 'sin cliente')}${fecha}\n${renglones(p.items, 'a')}\nTotal: ${pesosWhatsApp(total)}\n${cobro}`;
+      ? `💳 Cobrado: ${pesosWhatsApp(p.cobro.importe ?? total)} en ${nombreEnPropuesta(p.cobro.cuenta)}`
+      : '📒 Sin cobro: queda en su cuenta corriente.';
+    return `🛒 *Venta a ${nombreEnPropuesta(p.cliente, 'sin cliente')}*${fecha}\n\n${renglones(p.items, 'a')}\n\n💰 *Total: ${pesosWhatsApp(total)}*\n${cobro}`;
   }
   if (tipo === 'compra') {
     const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0) + (Number(p.costo_envio) || 0);
-    const envio = Number(p.costo_envio) > 0 ? `\nEnvío: ${pesosWhatsApp(p.costo_envio)}` : '';
-    return `Compra a ${nombreEnPropuesta(p.proveedor, 'sin proveedor')}${fecha}\n${renglones(p.items, 'costo')}${envio}\nTotal: ${pesosWhatsApp(total)}`;
+    const envio = Number(p.costo_envio) > 0 ? `\n🚚 Envío: ${pesosWhatsApp(p.costo_envio)}` : '';
+    return `📦 *Compra a ${nombreEnPropuesta(p.proveedor, 'sin proveedor')}*${fecha}\n\n${renglones(p.items, 'costo')}${envio}\n\n💰 *Total: ${pesosWhatsApp(total)}*`;
   }
   if (tipo === 'gasto') {
-    const detalle = p.descripcion ? `: ${p.descripcion}` : '';
-    return `Gasto de ${pesosWhatsApp(p.importe)} en ${nombreEnPropuesta(p.categoria)}${detalle}${fecha}\nPagado con ${nombreEnPropuesta(p.cuenta)}`;
+    const detalle = p.descripcion ? `\n📝 ${p.descripcion}` : '';
+    return `💸 *Gasto de ${pesosWhatsApp(p.importe)}* en ${nombreEnPropuesta(p.categoria)}${detalle}${fecha}\n💳 Pagado con ${nombreEnPropuesta(p.cuenta)}`;
   }
   const que = (p.pedidos ?? []).map((x) => `${x.cantidad} × ${nombreEnPropuesta(x.producto, '?')}`).join(', ');
-  return `Devolución de ${nombreEnPropuesta(p.cliente, 'sin cliente')}: ${que || '—'}`;
+  return `↩️ *Devolución de ${nombreEnPropuesta(p.cliente, 'sin cliente')}*: ${que || '—'}`;
 }
 
 // ejecutarPropuesta con la persona del teléfono, como si hubiera tocado
@@ -13802,7 +13806,7 @@ async function vincularWhatsApp(mensaje, filaId, responder) {
           AND whatsapp_vinculos.codigo_vence > datetime('now')`
     )
     .get(hashCodigoWhatsApp(codigo));
-  if (!pendiente) return responder('Ese código no sirve: puede haber vencido. Pedí otro en Nexo, en Configuración → WhatsApp.');
+  if (!pendiente) return responder('❌ Ese código no sirve: puede haber vencido. Pedí otro en Nexo, en *Configuración → WhatsApp*.');
   withTransaction(() => {
     // El teléfono deja la cuenta que tuviera, y la cuenta el teléfono de antes.
     db.prepare("UPDATE whatsapp_vinculos SET estado = 'baja' WHERE estado = 'vinculado' AND (telefono = ? OR usuario_id = ?)").run(
@@ -13826,7 +13830,7 @@ async function vincularWhatsApp(mensaje, filaId, responder) {
       detalle: `WhatsApp vinculado (terminado en ${mensaje.de.slice(-4)})`
     });
   });
-  return responder(`¡Listo! Este número quedó vinculado a ${pendiente.negocio}.\n\n${AYUDA_WHATSAPP}`);
+  return responder(`✅ ¡Listo! Este número quedó vinculado a *${pendiente.negocio}*.\n\n${AYUDA_WHATSAPP}`);
 }
 
 // Un toque en Confirmar o Cancelar: solo sobre una propuesta que armó este
@@ -13841,19 +13845,19 @@ async function responderBotonWhatsApp(mensaje, vinculo, usuario, responder) {
         WHERE whatsapp_mensajes.asistente_mensaje_id = ? AND whatsapp_mensajes.vinculo_id = ? AND asistente_mensajes.organizacion_id = ?`
     )
     .get(Number(partes[2]), vinculo.id, usuario.organizacion_id);
-  if (!propuesta) return responder('No encontré esa propuesta.');
-  if (propuesta.estado !== 'interpretado') return responder('Esa propuesta ya se confirmó o se canceló.');
+  if (!propuesta) return responder('❌ No encontré esa propuesta.');
+  if (propuesta.estado !== 'interpretado') return responder('ℹ️ Esa propuesta ya se confirmó o se canceló.');
   if (partes[1] === 'no') {
     db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(propuesta.id);
-    return responder('Listo, no registré nada.');
+    return responder('🚫 Cancelado: no registré nada.');
   }
   const { status, cuerpo } = ejecutarComo(usuario, {
     mensaje_id: propuesta.id,
     tipo: propuesta.operacion_tipo,
     propuesta: JSON.parse(propuesta.propuesta_json)
   });
-  if (status < 300) return responder(`Listo: registré ${REGISTRADO_WHATSAPP[cuerpo.tipo] ?? 'la operación'} #${cuerpo.id}.`);
-  return responder(`No lo pude registrar: ${cuerpo?.error ?? 'error desconocido'}`);
+  if (status < 300) return responder(`✅ Listo: registré ${REGISTRADO_WHATSAPP[cuerpo.tipo] ?? 'la operación'} *#${cuerpo.id}*.`);
+  return responder(`❌ No lo pude registrar: ${cuerpo?.error ?? 'error desconocido'}`);
 }
 
 async function atenderWhatsApp(mensaje) {
@@ -13870,7 +13874,7 @@ async function atenderWhatsApp(mensaje) {
     .get(mensaje.de);
   if (n > WHATSAPP_POR_HORA) {
     // Se avisa una sola vez; los que siguen no se contestan.
-    if (n === WHATSAPP_POR_HORA + 1) await responder('Mandaste muchos mensajes en la última hora. Probá de nuevo en un rato.');
+    if (n === WHATSAPP_POR_HORA + 1) await responder('⏳ Mandaste muchos mensajes en la última hora. Probá de nuevo en un rato.');
     return;
   }
 
@@ -13878,25 +13882,25 @@ async function atenderWhatsApp(mensaje) {
 
   const vinculo = db.prepare("SELECT * FROM whatsapp_vinculos WHERE telefono = ? AND estado = 'vinculado'").get(mensaje.de);
   if (!vinculo) {
-    return responder('Hola. Este número no está vinculado a ninguna cuenta de Nexo. Para usarlo, entrá a Nexo y vinculalo en Configuración → WhatsApp.');
+    return responder('👋 Hola. Este número no está vinculado a ninguna cuenta de Nexo.\n\nPara usarlo, entrá a Nexo y vinculalo en *Configuración → WhatsApp* 🔗');
   }
   db.prepare('UPDATE whatsapp_mensajes SET vinculo_id = ? WHERE id = ?').run(vinculo.id, filaId);
   const usuario = usuarioDelVinculo(vinculo);
-  if (!usuario) return responder('Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincularlo desde Configuración → WhatsApp.');
+  if (!usuario) return responder('❌ Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincularlo desde *Configuración → WhatsApp*.');
 
   if (mensaje.tipo === 'boton') return responderBotonWhatsApp(mensaje, vinculo, usuario, responder);
-  if (mensaje.tipo === 'otro') return responder(`Por ahora entiendo textos y audios.\n\n${AYUDA_WHATSAPP}`);
+  if (mensaje.tipo === 'otro') return responder(`🤔 Por ahora entiendo textos y audios.\n\n${AYUDA_WHATSAPP}`);
 
   let texto = mensaje.texto;
   try {
     if (mensaje.tipo === 'audio') {
-      if (!vozDisponible()) return responder('Todavía no puedo escuchar audios: ¿me lo escribís?');
+      if (!vozDisponible()) return responder('🎙️ Todavía no puedo escuchar audios: ¿me lo escribís?');
       const { buffer, mime } = await whatsapp.bajarAudio(mensaje.audio.id);
       // Los nombres del negocio ayudan a que Whisper los escriba bien.
       const { cuentas, productos } = contextoParaInterprete(usuario.organizacion_id);
       texto = await transcribir(buffer, mime, [...cuentas, ...productos.slice(0, 40)].map((f) => f.nombre));
-      if (!texto?.trim()) return responder('No te entendí el audio. ¿Me lo escribís?');
-      await responder(`Entendí: "${texto.trim()}"`);
+      if (!texto?.trim()) return responder('🤔 No te entendí el audio. ¿Me lo escribís?');
+      await responder(`🎙️ Entendí: _"${texto.trim()}"_`);
     }
     if (!texto?.trim()) return responder(AYUDA_WHATSAPP);
 
@@ -13908,21 +13912,21 @@ async function atenderWhatsApp(mensaje) {
 
     if (resultado.tipo === 'devolucion') {
       descartar();
-      return responder(`${resumen}\n\nLas devoluciones se cargan en la app, para elegir de qué venta: en Nexo, desde el asistente o desde la venta.`);
+      return responder(`${resumen}\n\n📱 Las devoluciones se cargan en la app, para elegir de qué venta: en Nexo, desde el asistente o desde la venta.`);
     }
     if (!resultado.ejecutable) {
       descartar();
-      return responder(`${resumen}\n\nPara registrarlo me falta:\n• ${resultado.problemas.join('\n• ')}\n\nMandámelo de nuevo con eso, o cargalo en la app.`);
+      return responder(`${resumen}\n\n⚠️ *Para registrarlo me falta:*\n• ${resultado.problemas.join('\n• ')}\n\nMandámelo de nuevo con eso, o cargalo en la app.`);
     }
-    return whatsapp.mandarBotones(mensaje.de, `${resumen}\n\n¿Lo registro?`, [
-      { id: `si:${resultado.mensaje_id}`, titulo: 'Confirmar' },
-      { id: `no:${resultado.mensaje_id}`, titulo: 'Cancelar' }
+    return whatsapp.mandarBotones(mensaje.de, `${resumen}\n\n*¿Lo registro?*`, [
+      { id: `si:${resultado.mensaje_id}`, titulo: '✅ Confirmar' },
+      { id: `no:${resultado.mensaje_id}`, titulo: '❌ Cancelar' }
     ]);
   } catch (err) {
-    if (err instanceof InterpreteError) return responder(err.message);
+    if (err instanceof InterpreteError) return responder(`❌ ${err.message}`);
     if (err instanceof whatsapp.WhatsAppError) throw err;
     console.error('[whatsapp] atender:', err.message);
-    return responder('Algo salió mal y no lo pude procesar. Probá de nuevo en un rato.');
+    return responder('❌ Algo salió mal y no lo pude procesar. Probá de nuevo en un rato.');
   }
 }
 

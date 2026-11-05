@@ -170,7 +170,7 @@ test('vincular: con el código de Configuración, y sin firma no se atiende nada
   assert.match(mal.texto, /no sirve/);
 
   const [bien] = await conversar(TELEFONO_ADMIN, texto(`nexo ${pedido.json.codigo}`));
-  assert.match(bien.texto, /quedó vinculado a Ropa del Centro/);
+  assert.match(bien.texto, /quedó vinculado a \*Ropa del Centro\*/);
   const { vinculo } = (await admin.get('/api/whatsapp')).json;
   assert.equal(vinculo.telefono, TELEFONO_ADMIN);
   assert.equal(vinculo.negocio, 'Ropa del Centro');
@@ -189,7 +189,7 @@ test('una venta escrita: propone con botones, registra al confirmar y una sola v
   assert.match(propuesta.texto, /2 × Remera/);
   assert.match(propuesta.texto, /¿Lo registro\?/);
   const [si, no] = propuesta.botones;
-  assert.deepEqual([si.title, no.title], ['Confirmar', 'Cancelar']);
+  assert.deepEqual([si.title, no.title], ['✅ Confirmar', '❌ Cancelar']);
 
   // Nada se registró todavía.
   const ventasAntes = (await admin.get('/api/ventas')).json.length;
@@ -199,7 +199,7 @@ test('una venta escrita: propone con botones, registra al confirmar y una sola v
   const id = await avisar(TELEFONO_ADMIN, boton(si.id));
   await avisar(TELEFONO_ADMIN, boton(si.id), { id });
   const [listo] = await respuestas(antes, 1);
-  assert.match(listo.texto, /Listo: registré la venta #\d+/);
+  assert.match(listo.texto, /✅ Listo: registré la venta \*#\d+\*/);
   await new Promise((r) => setTimeout(r, 150));
   assert.equal(enviados.length, antes + 1);
 
@@ -236,7 +236,7 @@ test('cancelar, lo que falta y lo que no es una operación', async () => {
 test('una nota de voz: se transcribe, se muestra qué entendió y propone igual', async () => {
   audios.set('audio-1', Buffer.from('venta: cliente=Luis; item=Remera,1,9000'));
   const [entendi, propuesta] = await conversar(TELEFONO_ADMIN, { type: 'audio', audio: { id: 'audio-1', mime_type: 'audio/ogg' } }, 2);
-  assert.match(entendi.texto, /Entendí: "venta: cliente=Luis/);
+  assert.match(entendi.texto, /Entendí: _"venta: cliente=Luis/);
   assert.match(propuesta.texto, /Venta a Luis/);
   assert.equal(propuesta.botones.length, 2);
 });
