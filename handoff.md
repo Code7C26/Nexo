@@ -28,8 +28,10 @@ Los logos viven en `core/canales.js` (`logoDeCanal`).
 
 **Para quien sigue (5 de noviembre):** todo lo de esta sesión está en `main`
 (PR #57 a #61) y publicado. Pendientes de esta parte, para decidir con el
-usuario: "Qué se compra" todavía tiene las tarjetas viejas (sin línea ni
-gráfico); ~~"Lo que ya tenías" no muestra el canal~~ (hecho el 5 de
+usuario: ~~"Qué se compra" con las tarjetas viejas~~ (hecho el 5 de
+noviembre: tarjetas como "Qué se vende", sin línea ni delta porque
+`/api/reportes/compras` no da serie, y barras con la tabla en "Ver todos";
+sin ver en el navegador); ~~"Lo que ya tenías" no muestra el canal~~ (hecho el 5 de
 noviembre: "Por dónde te compró" en las ventas anteriores, con el módulo
 canales, y el canal en la lista; sin ver en el navegador); los negocios de ejemplo ya cargados en la cuenta del usuario tienen la
 historia "Sin indicar" (renombrar el viejo y volver a correr la demo).
