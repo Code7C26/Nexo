@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §138);
+    siguiente número (hoy el último es §139);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,17 +21,27 @@
 
 ## Estado actual (5 de noviembre de 2026)
 
-**Lo último (5 de noviembre, hist. §138): la página Venta online, hecha y sin
-commitear** (rama `Tosi`). Pedido del usuario: una sección de e-commerce con
+**Lo último (5 de noviembre, hist. §139): Venta online también en el Resumen,
+publicado.** La pieza "Por canal" del Resumen pasa a "Venta online": dona y
+lista con logo, ventas y lo que quedó por canal, con "Ver todo" a la página.
+Los logos viven en `core/canales.js` (`logoDeCanal`).
+
+**Para quien sigue (5 de noviembre):** todo lo de esta sesión está en `main`
+(PR #57 a #61) y publicado. Pendientes de esta parte, para decidir con el
+usuario: "Qué se compra" todavía tiene las tarjetas viejas (sin línea ni
+gráfico); "Lo que ya tenías" no muestra el canal en su planilla (solo por la
+API); los negocios de ejemplo ya cargados en la cuenta del usuario tienen la
+historia "Sin indicar" (renombrar el viejo y volver a correr la demo).
+
+**Antes (5 de noviembre, hist. §138): la página Venta online, publicada (PR
+#60).** Pedido del usuario: una sección de e-commerce con
 gráficos y logos. `#/venta-online` (módulo canales, admin): cifras online,
 ventas por canal, dona, una tarjeta por canal con su logo y adónde fue la
 plata, publicidad (gasto de la categoría Publicidad de Gastos: ROAS, costo
 por venta), lo más vendido por canal y las tiendas conectadas. La paleta de
 series pasó a azul, naranja y aguamarina (el violeta no se distinguía del
 azul). **Meta Ads queda afuera** ("lo dejamos por si escalamos", 5 de
-noviembre; CLAUDE.md §39). **Falta:** que el usuario lo vea, commitear y
-publicar. Los negocios de ejemplo ya cargados tienen la historia "Sin
-indicar": renombrar el viejo y volver a correr la demo para verla con canales.
+noviembre; CLAUDE.md §39).
 
 **Antes (5 de noviembre, hist. §137): el Resumen como tablero, publicado
 (PR #59).** Pedido del usuario con capturas de referencia:

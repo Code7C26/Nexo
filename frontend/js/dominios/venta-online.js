@@ -20,21 +20,9 @@ import { barrasHorizontales, dona, montarArea } from "../core/graficos.js";
 import { icono } from "../core/iconos.js";
 import { rangoDePeriodo } from "../core/periodos.js";
 import { alEntrarEnVista } from "../core/registro.js";
+import { logoDeCanal } from "../core/canales.js";
 
-// El logo de cada canal (los de las marcas, del sprite de cada una) y su color.
-const CANAL = {
-  tiendanube: { logo: '<svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 37.5 27"><use href="/img/tiendanube.svg#nube"></use></svg>' },
-  mercadolibre: {
-    logo: '<svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadolibre.svg#emblema"></use></svg>'
-  },
-  instagram: { logo: '<svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/instagram.svg#emblema"></use></svg>' },
-  whatsapp: { logo: '<svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg>' },
-  local: { logo: icono("store") },
-  mercadopago: {
-    logo: '<svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg>'
-  }
-};
-const logoDe = (canal) => CANAL[canal]?.logo ?? icono("globe");
+const logoDe = logoDeCanal;
 let colores = {};
 const serieDe = (canal) => colores[canal] ?? null;
 const claveDe = (canal) => canal ?? "sin_indicar";

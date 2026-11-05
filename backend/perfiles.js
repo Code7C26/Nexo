@@ -195,7 +195,7 @@ const TABLERO_DEL_RUBRO = {
   carniceria: [...PANORAMA, 'cuando', 'pendiente', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva'],
   verduleria: [...PANORAMA, 'cuando', 'pendiente', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva'],
   kiosco: [...PANORAMA, 'cuando', 'pendiente', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva'],
-  servicios: ['resultado', 'tendencia', 'pendiente', 'ventas', 'clientes', 'cobros', 'productos', 'categorias', 'vendedores', 'evolucion', 'iva'],
+  servicios: ['resultado', 'tendencia', 'pendiente', 'ventas', 'clientes', 'cobros', 'productos', 'categorias', 'evolucion', 'iva'],
   gimnasio: ['resultado', 'tendencia', 'pendiente', 'ventas', 'cuando', 'cobros', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva']
 };
 

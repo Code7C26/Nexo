@@ -378,7 +378,8 @@ export function montarArea(contenedor, { titulo }) {
 //   serie(f), opcional: la clase de color de cada fila ("serie-1"), para que
 //   algo tenga siempre el mismo color (un canal); las que no tienen van
 //   juntas en `otras`. Sin serie(f), las tres más grandes.
-export function dona(lista, { nombre, valor, cifra, centro, serie, otras = "Otras", vacio = "Sin datos en este período." }) {
+//   conLeyenda: false la deja sin su lista, cuando la pantalla arma la suya.
+export function dona(lista, { nombre, valor, cifra, centro, serie, otras = "Otras", conLeyenda = true, vacio = "Sin datos en este período." }) {
   const positivas = lista.filter((f) => valor(f) > 0);
   if (positivas.length === 0) return `<p class="tabla-vacia">${esc(vacio)}</p>`;
   const conColor = serie ? positivas.filter((f) => serie(f)) : positivas.slice(0, 3);
@@ -425,6 +426,6 @@ export function dona(lista, { nombre, valor, cifra, centro, serie, otras = "Otra
         </svg>
         <div class="dona-centro"><span class="dona-total">${esc(cifra(total))}</span><span class="dona-etiqueta">${esc(centro)}</span></div>
       </div>
-      <ul class="dona-leyenda">${leyenda}</ul>
+      ${conLeyenda ? `<ul class="dona-leyenda">${leyenda}</ul>` : ""}
     </div>`;
 }

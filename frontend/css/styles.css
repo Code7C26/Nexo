@@ -9534,3 +9534,29 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .tienda-aviso { color: var(--accent-danger); font-weight: 600; }
 .tienda-accion { font-size: var(--txt-xs); font-weight: 600; color: var(--accent); }
 .tienda-item:not(.is-conectada) .canal-logo { opacity: 0.55; }
+
+/* Venta online en el Resumen: la dona y la lista de canales, que le hace de
+   leyenda con el color, el logo y lo que dejó cada uno. */
+.resumen-canales { display: grid; gap: var(--sp-4); align-items: center; }
+@container resumen (min-width: 560px) {
+  .resumen-canales { grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-5); }
+}
+.resumen-canales .dona { justify-content: center; }
+.resumen-canales-lista { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.resumen-canales-lista li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+.resumen-canales-lista li:last-child { padding-bottom: 0; border-bottom: none; }
+.resumen-canales-lista .canal-logo { width: 30px; height: 30px; }
+.resumen-canales-lista .canal-logo .ico { width: 17px; height: 17px; }
+.resumen-canales-lista .canal-logo .ico-marca-color { width: 21px; height: 15px; }
+.rc-nombre, .rc-cifras { display: grid; gap: 1px; min-width: 0; }
+.rc-nombre strong { font-size: var(--txt-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-cifras { text-align: right; }
+.rc-cifras strong { font-size: var(--txt-sm); font-variant-numeric: tabular-nums; }
+.rc-nombre small, .rc-cifras small { font-size: var(--txt-2xs); color: var(--ink-muted); font-variant-numeric: tabular-nums; }

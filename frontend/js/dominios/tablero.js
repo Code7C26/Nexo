@@ -25,6 +25,7 @@ import { moduloActivo, negocio } from "../core/negocio.js";
 import { rangoDePeriodo } from "../core/periodos.js";
 import { invocar } from "../core/registro.js";
 import { avisar } from "../core/ui.js";
+import { logoDeCanal } from "../core/canales.js";
 
 // Cómo se llama cada pieza en "Personalizar", y cuándo se puede elegir.
 const PIEZAS = {
@@ -38,7 +39,7 @@ const PIEZAS = {
   categorias: { nombre: "Ventas por categoría", descripcion: "En barras, por ventas o por ganancia." },
   vendedores: { nombre: "Quién vendió", descripcion: "Ventas y ticket promedio de cada persona." },
   clientes: { nombre: "Mejores clientes", descripcion: "Quién te compra más y cuándo compró por última vez." },
-  canales: { nombre: "Por canal", descripcion: "El local, la tienda online, Mercado Libre, Instagram…", modulo: "canales" },
+  canales: { nombre: "Venta online", descripcion: "De dónde vienen tus ventas y cuánto te queda en cada canal.", modulo: "canales" },
   evolucion: { nombre: "Evolución del resultado", descripcion: "El resultado período por período, en gráfico y tabla." },
   movimientos: { nombre: "Últimos movimientos", descripcion: "Las últimas ventas, compras, gastos y devoluciones." },
   compras: { nombre: "Qué se compra", descripcion: "Proveedores, productos y categorías de lo comprado.", modulo: "compras" },
@@ -189,15 +190,54 @@ function pintarVendedores(vendedores) {
   });
 }
 
+// Venta online, en chico: la dona y cada canal con su logo, el mismo color
+// que en la página (lo da el servidor) y lo que dejó.
+function pintarCanales({ canales, colores }) {
+  const conVentas = canales.filter((c) => c.cantidad_ventas > 0);
+  const serie = (c) => colores[c.canal] ?? null;
+  document.getElementById("resumenCanalesDona").innerHTML = dona(conVentas, {
+    nombre: (c) => c.nombre,
+    valor: (c) => c.ventas,
+    cifra: pesos,
+    centro: "vendido",
+    serie,
+    otras: "El resto",
+    conLeyenda: false,
+    vacio: "No hay ventas en este período."
+  });
+  document.getElementById("resumenCanalesLista").innerHTML = conVentas
+    .map((c) => {
+      const color = serie(c) ?? "serie-otras";
+      const logo = logoDeCanal(c.canal);
+      const clave = c.canal ?? "sin_indicar";
+      const detalle = `${ventasDe(c.cantidad_ventas)}, ${c.participacion_pct.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`;
+      return `
+      <li>
+        <span class="leyenda-marca ${esc(color)}" aria-hidden="true"></span>
+        <span class="canal-logo canal-logo-${esc(clave)}">${logo}</span>
+        <span class="rc-nombre"><strong>${esc(c.nombre)}</strong><small>${esc(detalle)}</small></span>
+        <span class="rc-cifras"><strong>${esc(pesos(c.ventas))}</strong><small class="${c.ganancia < 0 ? "saldo-negativo" : ""}">Te quedó ${esc(
+          pesos(c.ganancia)
+        )}</small></span>
+      </li>`;
+    })
+    .join("");
+}
+
 // Lo llama cargarPanelResumen (app.js) con el mismo rango que el resto.
 export async function cargarTablero(rango) {
   if (!esAdmin()) return;
   const params = new URLSearchParams(rango).toString();
-  const datos = await api(`/api/reportes/tablero${params ? "?" + params : ""}`);
+  const consulta = params ? "?" + params : "";
+  const [datos, canales] = await Promise.all([
+    api(`/api/reportes/tablero${consulta}`),
+    moduloActivo("canales") ? api(`/api/reportes/canales${consulta}`) : null
+  ]);
   pintarPendiente(datos.pendiente);
   pintarCuando(datos);
   pintarCobros(datos.cobros);
   pintarVendedores(datos.vendedores);
+  if (canales) pintarCanales(canales);
 }
 
 async function guardar(cuerpo, { metodo = "PUT", aviso } = {}) {

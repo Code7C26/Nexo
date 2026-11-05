@@ -628,29 +628,19 @@
         </div>
 
         <div class="pieza" data-pieza="canales" data-modulo="canales">
-        <!-- Por dónde se vende (hist. §128): con Venta online prendido. La
-             ganancia ya descuenta lo que se usó al vender (la caja, la bolsa). -->
-        <section class="panel" data-modulo="canales">
-          <div class="panel-head">
-            <h2>Por canal</h2>
-          </div>
-          <div class="tabla-scroll">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th scope="col">Canal</th>
-                <th scope="col" class="align-right">Ventas</th>
-                <th scope="col" class="align-right">Total</th>
-                <th scope="col" class="align-right">Ticket promedio</th>
-                <th scope="col" class="align-right">Ganancia</th>
-                <th scope="col" class="align-right">Margen</th>
-                <th scope="col" class="align-right">% del total</th>
-              </tr>
-            </thead>
-            <tbody id="reporteCanalesBody"></tbody>
-          </table>
-          </div>
-        </section>
+          <!-- Venta online en el Resumen (hist. §138): de dónde vienen las
+               ventas y lo que queda en cada canal, con los mismos colores y
+               logos que la página Venta online. -->
+          <section class="panel" aria-labelledby="resumenCanalesTitulo">
+            <div class="panel-head">
+              <h2 id="resumenCanalesTitulo">Venta online</h2>
+              <a class="btn-link" href="#/venta-online">Ver todo</a>
+            </div>
+            <div class="resumen-canales">
+              <div class="dona-cont" id="resumenCanalesDona"></div>
+              <ul class="resumen-canales-lista" id="resumenCanalesLista"></ul>
+            </div>
+          </section>
         </div>
 
         <div class="pieza" data-pieza="movimientos">

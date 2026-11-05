@@ -11987,3 +11987,26 @@ Mafaldas a 1440 px (oscuro y claro) y 390 px; sin errores de consola.
   en Configuración y volver a correr `npm run demo -- --solo <clave>`.
 - Lo que ya tenías no muestra el canal en su planilla (solo por la API).
 - Meta Ads, si se escala (CLAUDE.md §39).
+
+## §139. Venta online en el Resumen (5 de noviembre de 2026)
+
+**Pedido del usuario** ("pero en resumen no lo pusiste?"): la pieza "Por
+canal" del Resumen seguía siendo la tabla de antes.
+
+**Qué cambió:**
+- La pieza `canales` del Resumen pasa a llamarse **Venta online**: la dona de
+  dónde vienen las ventas y una lista con el color, el logo, las ventas y lo
+  que quedó en cada canal, con un link "Ver todo" a `#/venta-online`. Usa los
+  mismos colores que la página (`colores` de `GET /api/reportes/canales`, que
+  `cargarTablero` pide cuando el módulo `canales` está prendido). Va a todo el
+  ancho de la grilla.
+- Los logos de los canales pasan a `core/canales.js` (`logoDeCanal`), para la
+  página y el Resumen. `dona()` acepta `conLeyenda: false`, cuando la pantalla
+  arma su propia lista.
+- Se va la tabla vieja (`renderReporteCanales` en `app.js`); los números por
+  canal de `GET /api/reportes/ventas` siguen en la respuesta.
+- El preset de Servicios ya no trae "Quién vendió": quedaba sola en su fila.
+
+**Cómo se verificó.** `npm test` (310) y lint. En Chrome headless, el
+Resumen de Lola a 1440 px: la pieza con los cinco canales, sin errores de
+consola.
