@@ -10,6 +10,7 @@ import { avisar } from "./ui.js";
 import { api } from "./api.js";
 import { invocar } from "./registro.js";
 import { esc, fechaHoraAR, money } from "./formato.js";
+import { icono } from "./iconos.js";
 
 // Por dónde entró una venta (hist. §128): la misma lista, con los mismos
 // nombres, que CANALES_VENTA en server.js. Tienda Nube y Mercado Libre los
@@ -25,6 +26,20 @@ export const CANALES_VENTA = {
   web: "Página propia",
   otro: "Otro"
 };
+
+// El logo de cada canal (hist. §138), de los sprites de cada marca; el local
+// lleva la tienda, y lo que no tiene logo, el globo. Mercado Pago no es un
+// canal (es dónde se cobra), pero sale en "Tus tiendas".
+const LOGOS_CANAL = {
+  tiendanube: '<svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 37.5 27"><use href="/img/tiendanube.svg#nube"></use></svg>',
+  mercadolibre:
+    '<svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadolibre.svg#emblema"></use></svg>',
+  mercadopago:
+    '<svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg>',
+  instagram: '<svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/instagram.svg#emblema"></use></svg>',
+  whatsapp: '<svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg>'
+};
+export const logoDeCanal = (canal) => LOGOS_CANAL[canal] ?? icono(canal === "local" ? "store" : "globe");
 
 // Los tres selectores de "qué se publica y adónde entra la plata".
 export async function pintarAjustesCanal(estado, { lista, deposito, cuenta }) {

@@ -673,29 +673,6 @@ function renderReporteClientes(lista) {
   });
 }
 
-// Por canal (hist. §128): la ganancia ya descuenta lo que se usó al vender.
-function renderReporteCanales(lista) {
-  const body = document.getElementById("reporteCanalesBody");
-  if (lista.length === 0) {
-    body.innerHTML = filaVacia(7, "No hay ventas en este período.");
-    return;
-  }
-  body.innerHTML = lista
-    .map(
-      (c) => `
-    <tr>
-      <td data-label="Canal">${esc(c.nombre)}</td>
-      <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
-      <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
-      <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
-      <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
-      <td data-label="Margen" class="align-right mono">${porcentaje(c.margen_pct)}</td>
-      <td data-label="% del total" class="align-right mono">${porcentaje(c.participacion_pct)}</td>
-    </tr>`
-    )
-    .join("");
-}
-
 async function cargarReporteVentas() {
   // GET /api/reportes/ventas es admin-only (rentabilidad por producto,
   // categoría y cliente); se llama tras mutaciones de venta igual que
@@ -704,7 +681,6 @@ async function cargarReporteVentas() {
   tablaCargando("reporteProductosBody", 6);
   tablaCargando("reporteCategoriasBody", 6);
   tablaCargando("reporteClientesBody", 6);
-  tablaCargando("reporteCanalesBody", 7);
 
   const rango = rangoActualResumen();
   const params = new URLSearchParams(rango).toString();
@@ -718,7 +694,6 @@ async function cargarReporteVentas() {
   renderReporteCategorias(datos.categorias);
   pintarRankings();
   renderReporteClientes(datos.clientes);
-  renderReporteCanales(datos.canales);
 }
 
 /* ---------- Reportes: qué se compra ---------- */
