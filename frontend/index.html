@@ -672,34 +672,32 @@
         <!-- Qué se compra: espejo de "Qué se vende" del lado de compras.
              Comparte el mismo filtro de fecha de arriba (#filtrosResumen),
              no uno propio. -->
-        <h2>Qué se compra</h2>
-
-        <section class="ledger-strip" aria-label="Compras del período">
-          <div class="ledger-item">
-            <span class="ledger-label">Compras netas</span>
-            <span class="ledger-value mono" id="reporteComprasNetas">$0,00</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Ticket promedio</span>
-            <span class="ledger-value mono" id="reporteComprasTicketPromedio">$0,00</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Unidades compradas</span>
-            <span class="ledger-value mono" id="reporteComprasUnidades">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Cantidad de compras</span>
-            <span class="ledger-value mono" id="reporteComprasCantidad">0</span>
-          </div>
-        </section>
+        <div class="kpis kpis-chicas" role="group" aria-label="Compras del período">
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg></span>Compras netas</h3>
+            <p class="kpi-cifra" id="reporteComprasNetas">$0</p>
+          </article>
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>Cantidad de compras</h3>
+            <p class="kpi-cifra" id="reporteComprasCantidad">0</p>
+          </article>
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>Ticket promedio</h3>
+            <p class="kpi-cifra" id="reporteComprasTicketPromedio">$0</p>
+          </article>
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg></span>Unidades compradas</h3>
+            <p class="kpi-cifra" id="reporteComprasUnidades">0</p>
+          </article>
+        </div>
 
         <section class="panel">
           <div class="panel-head">
             <h2>Principales proveedores</h2>
           </div>
+          <div class="ranking-cont" id="reporteComprasProveedoresBarras"></div>
+          <details class="ranking-todos">
+          <summary>Ver todos</summary>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
@@ -714,12 +712,16 @@
             <tbody id="reporteComprasProveedoresBody"></tbody>
           </table>
           </div>
+          </details>
         </section>
 
         <section class="panel">
           <div class="panel-head">
             <h2>Productos más comprados</h2>
           </div>
+          <div class="ranking-cont" id="reporteComprasProductosBarras"></div>
+          <details class="ranking-todos">
+          <summary>Ver todos</summary>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
@@ -733,6 +735,7 @@
             <tbody id="reporteComprasProductosBody"></tbody>
           </table>
           </div>
+          </details>
         </section>
 
         <!-- Un producto sin categoría cae en el balde "Sin categoría"
@@ -741,6 +744,9 @@
           <div class="panel-head">
             <h2>Compras por categoría</h2>
           </div>
+          <div class="ranking-cont" id="reporteComprasCategoriasBarras"></div>
+          <details class="ranking-todos">
+          <summary>Ver todos</summary>
           <div class="tabla-scroll">
           <table class="ledger-table">
             <thead>
@@ -754,6 +760,7 @@
             <tbody id="reporteComprasCategoriasBody"></tbody>
           </table>
           </div>
+          </details>
         </section>
         </div>
 
@@ -4773,6 +4780,9 @@
                     <label>Cliente
                       <input type="text" name="cliente" list="ciVentaClientes" maxlength="120" autocomplete="off" />
                       <span class="campo-ayuda" id="ciVentaClienteAyuda"></span>
+                    </label>
+                    <label data-modulo="canales">Por dónde te compró
+                      <select name="canal"></select>
                     </label>
                   </div>
                   <datalist id="ciVentaClientes"></datalist>

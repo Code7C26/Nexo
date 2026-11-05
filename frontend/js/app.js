@@ -787,6 +787,25 @@ async function cargarReporteCompras() {
   renderReporteComprasProveedores(datos.proveedores);
   renderReporteComprasProductos(datos.productos);
   renderReporteComprasCategorias(datos.categorias);
+
+  // Arriba, en barras como lo que se vende; la tabla completa, en "Ver todos".
+  const enBarras = (lista, detalle) =>
+    barrasHorizontales(lista, {
+      nombre: (f) => f.nombre,
+      valor: (f) => f.compras,
+      cifra: (f) => money(f.compras),
+      detalle,
+      maximo: 5,
+      vacio: "No hay compras en este período."
+    });
+  const comprasDe = (n) => (n === 1 ? "1 compra" : `${numero(n)} compras`);
+  const unidadesDe = (f) => `${numero(f.unidades)} u. · ${porcentaje(f.participacion_pct)} del total`;
+  document.getElementById("reporteComprasProveedoresBarras").innerHTML = enBarras(
+    datos.proveedores,
+    (p) => `${comprasDe(p.cantidad_compras)}, ticket promedio ${money(p.ticket_promedio)}`
+  );
+  document.getElementById("reporteComprasProductosBarras").innerHTML = enBarras(datos.productos, unidadesDe);
+  document.getElementById("reporteComprasCategoriasBarras").innerHTML = enBarras(datos.categorias, unidadesDe);
 }
 
 /* ---------- Reportes: IVA ventas y compras (hist. §114) ---------- */
