@@ -181,7 +181,9 @@ async function contexto(api, semilla) {
       return compra;
     },
     // Las semanas de antes: ventas anteriores con su fecha y su cobro.
-    async historia({ dias = 42, porDia, canasta, clientes = [] }) {
+    // `canales`: por dónde entró cada una, al azar entre los de la lista (los
+    // repetidos pesan más); sin lista, sin indicar.
+    async historia({ dias = 42, porDia, canasta, clientes = [], canales = [] }) {
       let cantidad = 0;
       for (let dia = dias; dia >= 1; dia -= 1) {
         const fecha = diasAtras(dia);
@@ -207,7 +209,8 @@ async function contexto(api, semilla) {
             items: [...renglones.values()],
             ...(cliente ? { cliente_id: cliente.id } : { cliente: 'Consumidor final' }),
             cobrada: true,
-            cuenta_tesoreria_id: r.uno([caja, caja, mp, banco]).id
+            cuenta_tesoreria_id: r.uno([caja, caja, mp, banco]).id,
+            ...(canales.length ? { canal: r.uno(canales) } : {})
           });
           cantidad += 1;
         }
@@ -325,6 +328,7 @@ async function armarLola(n) {
   const ventas = await n.historia({
     porDia: [2, 6],
     clientes,
+    canales: ['local', 'local', 'local', 'instagram', 'instagram', 'tiendanube', 'tiendanube', 'whatsapp'],
     canasta: [[remera, 1, 2], [remera, 1, 3], [oversize, 1, 2], [buzo, 1, 1], [jean, 1, 1], [jogger, 1, 1], [gorra, 1, 1], [medias, 1, 2], [totebag, 1, 1]]
   });
 
@@ -423,7 +427,13 @@ async function armarMafaldas(n) {
   for (const [nombre, telefono] of [['Café Las Rosas', '351 422-8890'], ['Marina Vélez', '351 611-2093'], ['Lucas Bustos', '351 644-1188'], ['Oficina Estudio Pereyra', '351 480-3300']]) {
     clientes.push(await n.cliente({ nombre, telefono }));
   }
-  const ventas = await n.historia({ dias: 28, porDia: [1, 4], clientes, canasta: [[clasica, 6, 12], [choco, 6, 12], [cajaRegalo, 1, 2], [clasica, 12, 24]] });
+  const ventas = await n.historia({
+    dias: 28,
+    porDia: [1, 4],
+    clientes,
+    canales: ['whatsapp', 'whatsapp', 'instagram', 'instagram', 'tiendanube', 'local'],
+    canasta: [[clasica, 6, 12], [choco, 6, 12], [cajaRegalo, 1, 2], [clasica, 12, 24]]
+  });
 
   await n.vender({ items: [[cajaRegalo, 2]], cliente: clientes[1], canal: 'instagram', cuenta: n.mp });
   await n.vender({ items: [[clasica, 12], [choco, 6]], cliente: clientes[3], canal: 'whatsapp', cuenta: n.mp });
@@ -480,7 +490,7 @@ async function armarGimnasio(n) {
   });
   await n.api.post(`/api/socios/${combo.id}/cobros`, { cuenta_tesoreria_id: n.mp.id });
 
-  const ventas = await n.historia({ dias: 28, porDia: [2, 6], canasta: [[agua, 1, 2], [isotonica, 1, 1], [barra, 1, 2], [proteina, 1, 1]] });
+  const ventas = await n.historia({ dias: 28, porDia: [2, 6], canales: ['local'], canasta: [[agua, 1, 2], [isotonica, 1, 1], [barra, 1, 2], [proteina, 1, 1]] });
   await n.mostrador([[[agua, 2]], [[isotonica, 1], [barra, 1]], [[agua, 1]]]);
 
   const consulta = await n.consulta({ nombre: 'Gastón Peralta', telefono: '351 621-7740', interes: 'Pase libre anual', origen: 'instagram', valor_estimado: 310000 });
@@ -594,6 +604,7 @@ async function armarCarniceria(n) {
     dias: 28,
     porDia: [6, 12],
     clientes,
+    canales: ['local'],
     canasta: [[asado, 1, 3], [vacio, 1, 2], [matambre, 1, 2], [nalga, 0.5, 2], [picada, 0.5, 2], [pollo, 1, 3], [pechuga, 0.5, 1.5], [chorizo, 0.5, 1.5], [carbon, 1, 1]]
   });
   await n.vender({ items: [[asado, 8], [vacio, 5], [chorizo, 3]], cliente: parrilla, cobrar: false });

@@ -11935,3 +11935,55 @@ carnicería y el gimnasio a 390 px; sin errores de consola.
 
 **Queda:** que el usuario lo vea; en el celular los períodos se deslizan de
 costado ("Todo" y "Fechas" quedan a la derecha).
+
+## §138. La página Venta online (5 de noviembre de 2026)
+
+**Pedido del usuario:** una sección de e-commerce con gráficos y
+estadísticas de Tienda Nube y Mercado Libre, con los logos, y la publicidad
+de Meta Ads (ROAS, CPA), mirando a Escalafy. **Meta Ads queda afuera**
+(decidido por el usuario: "lo dejamos por si escalamos"): leer las cuentas
+publicitarias de otros negocios pide la revisión de la app y la verificación
+de negocio de Nexo (CUIT), semanas de trámite. CLAUDE.md §39 sigue igual.
+
+**Qué cambió:**
+- **Vista nueva `#/venta-online`** ("Venta online" en el menú, debajo de
+  Ventas; del módulo `canales` y del admin), en `dominios/venta-online.js`:
+  - cuatro tarjetas: ventas online (y qué parte de todo lo vendido son),
+    pedidos, ticket (contra el del local) y lo que quedó;
+  - "Ventas por canal" (una línea por canal) y "De dónde vienen" (dona);
+  - "Cada canal": una tarjeta por canal con su logo, sus números y una barra
+    partida en mercadería, lo que cuesta vender ahí (comisión, envío, cuotas)
+    y lo que quedó;
+  - "Publicidad": el gasto de la categoría **Publicidad** de Gastos contra
+    lo vendido online: cuánto se vendió por cada peso (ROAS), el costo por
+    venta online (CPA) y lo que quedó después de los anuncios;
+  - lo más vendido en cada canal, y "Tus tiendas" (Tienda Nube, Mercado
+    Libre, Mercado Pago: conectada o no, pedidos que esperan el pago o que
+    no entraron).
+- **`GET /api/reportes/canales`** (admin): todo lo de arriba. Online es lo
+  que no es del local ni está sin indicar. Los costos de vender salen de los
+  gastos de cada venta por categoría (`CATEGORIAS_COSTO_DE_VENDER`).
+- **Colores por canal:** los tres canales online que más vendió el negocio
+  en toda su historia, con el color más cercano a su marca si está libre
+  (`coloresDeCanales`); no cambian con el período. Lo demás, en gris.
+- **La paleta de series cambió** (también en el Resumen): azul, naranja y
+  **aguamarina** en vez de violeta. Validada con todos los pares (en una dona
+  todos se tocan): el azul y el violeta no se distinguían ni con visión
+  normal. En §137 se había validado solo entre vecinos.
+- **"Lo que ya tenías" acepta el canal** de cada venta anterior
+  (`POST /api/carga-inicial/ventas`, `canal`), y `scripts/demo.mjs` reparte
+  la historia entre canales (Lola: el local, Instagram, Tienda Nube y
+  WhatsApp; Mafaldas: WhatsApp, Instagram, Tienda Nube y el local).
+- `core/periodos.js` (el rango de cada período, compartido con el Resumen),
+  `img/instagram.svg` (la cámara, dibujada para Nexo), y `dona()` acepta un
+  color fijo por fila.
+
+**Cómo se verificó.** `npm test` (310) y lint. En Chrome headless con Lola y
+Mafaldas a 1440 px (oscuro y claro) y 390 px; sin errores de consola.
+
+**Queda:**
+- Los negocios de ejemplo que ya están en la cuenta del usuario tienen la
+  historia "Sin indicar": para verlos con canales hay que renombrar el viejo
+  en Configuración y volver a correr `npm run demo -- --solo <clave>`.
+- Lo que ya tenías no muestra el canal en su planilla (solo por la API).
+- Meta Ads, si se escala (CLAUDE.md §39).

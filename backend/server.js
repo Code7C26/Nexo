@@ -13132,6 +13132,202 @@ app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
   });
 });
 
+/* ---------- Reportes: venta online (hist. §138) ---------- */
+//
+// La página "Venta online": cuánto entra por cada canal y cuánto queda
+// después de lo que cuesta vender ahí (la mercadería, lo que se usó al vender,
+// la comisión, el envío y las cuotas, que son gastos de la venta; hist. §126,
+// §129, §130), cómo vienen las ventas de cada canal y qué rinde la publicidad.
+// Solo lectura y admin, como el Resumen.
+//
+// La publicidad sale de los gastos de la categoría "Publicidad" (la que usa
+// quien anota lo que pone en anuncios): no hay conexión con Meta Ads (CLAUDE.md
+// §39). El retorno es sobre las ventas online, las que no son del local ni
+// están sin indicar: la publicidad no se atribuye venta por venta.
+const CATEGORIA_PUBLICIDAD = 'Publicidad';
+const CANALES_NO_ONLINE = new Set(['local', '']);
+
+// Los costos de vender de cada canal, por categoría de gasto.
+const SQL_CANALES_COSTOS_DE_VENDER = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS canal, categorias_gasto.nombre AS categoria, SUM(gastos.importe) AS importe
+     FROM gastos
+     JOIN ventas ON ventas.id = gastos.venta_id
+     JOIN categorias_gasto ON categorias_gasto.id = gastos.categoria_id
+    WHERE gastos.estado = 'activo' AND ventas.estado = 'activa'
+      AND (? IS NULL OR ventas.fecha >= ?)
+      AND (? IS NULL OR ventas.fecha <= ?)
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, ''), categorias_gasto.nombre`
+);
+
+// Lo vendido por día y por canal, para la serie.
+const SQL_CANALES_POR_DIA = db.prepare(
+  `SELECT ventas.fecha, COALESCE(ventas.canal, '') AS canal,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas
+     FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
+    WHERE ventas.estado = 'activa'
+      AND ventas.fecha >= ? AND ventas.fecha <= ?
+      AND ventas.organizacion_id = ?
+    GROUP BY ventas.fecha, COALESCE(ventas.canal, '')`
+);
+
+// Lo más vendido de cada canal.
+const SQL_CANALES_PRODUCTOS = db.prepare(
+  `SELECT COALESCE(ventas.canal, '') AS canal, productos.nombre AS nombre,
+          SUM(venta_items.cantidad) AS unidades,
+          SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS ventas
+     FROM venta_items
+     JOIN ventas ON ventas.id = venta_items.venta_id
+     JOIN productos ON productos.id = venta_items.producto_id
+    WHERE ventas.estado = 'activa'
+      AND ventas.fecha >= ? AND ventas.fecha <= ?
+      AND ventas.organizacion_id = ?
+    GROUP BY COALESCE(ventas.canal, ''), venta_items.producto_id, productos.nombre`
+);
+
+const SQL_CANALES_PUBLICIDAD = db.prepare(
+  `SELECT COUNT(*) AS cantidad, COALESCE(SUM(gastos.importe), 0) AS importe
+     FROM gastos JOIN categorias_gasto ON categorias_gasto.id = gastos.categoria_id
+    WHERE gastos.estado = 'activo'
+      AND categorias_gasto.nombre = ? COLLATE NOCASE
+      AND gastos.fecha >= ? AND gastos.fecha <= ?
+      AND gastos.organizacion_id = ?`
+);
+
+// El color de cada canal en los gráficos: sus tres canales online que más
+// vendieron en toda su historia, en ese orden. No depende del período, así un
+// canal no cambia de color al mirar otras fechas; los demás van en gris.
+const SQL_CANALES_DE_SIEMPRE = db.prepare(
+  `SELECT ventas.canal AS canal, SUM(venta_items.cantidad * venta_items.precio_unitario) AS ventas
+     FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
+    WHERE ventas.estado = 'activa' AND ventas.canal IS NOT NULL AND ventas.canal <> 'local'
+      AND ventas.organizacion_id = ?
+    GROUP BY ventas.canal
+    ORDER BY ventas DESC, ventas.canal
+    LIMIT 3`
+);
+
+// Cada canal toma el color más parecido al de su marca si está libre (Tienda
+// Nube el azul, WhatsApp el aguamarina, Mercado Libre e Instagram el naranja),
+// y si no, el primero que quede.
+const COLOR_DE_MARCA = { tiendanube: 'serie-1', mercadolibre: 'serie-2', instagram: 'serie-2', whatsapp: 'serie-3' };
+function coloresDeCanales(canales) {
+  const libres = ['serie-1', 'serie-2', 'serie-3'];
+  const colores = {};
+  for (const canal of canales) {
+    const color = libres.includes(COLOR_DE_MARCA[canal]) ? COLOR_DE_MARCA[canal] : libres[0];
+    colores[canal] = color;
+    libres.splice(libres.indexOf(color), 1);
+  }
+  return colores;
+}
+
+// Las tiendas conectadas, con lo que espera que alguien lo mire.
+const SQL_CANALES_CONEXIONES = db.prepare(
+  `SELECT integraciones.plataforma, integraciones.estado, integraciones.nombre_cuenta, integraciones.ultima_sincronizacion,
+          (SELECT COUNT(*) FROM integracion_pedidos p
+            WHERE p.integracion_id = integraciones.id AND p.estado IN ('esperando_pago', 'pendiente')) AS pedidos_pendientes,
+          (SELECT COUNT(*) FROM integracion_pedidos p
+            WHERE p.integracion_id = integraciones.id AND p.error IS NOT NULL AND p.venta_id IS NULL) AS pedidos_con_error
+     FROM integraciones
+    WHERE integraciones.organizacion_id = ? AND integraciones.plataforma IN ('tiendanube', 'mercadolibre', 'mercadopago')`
+);
+
+app.get('/api/reportes/canales', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const { primera } = SQL_LIMITES_OPERACIONES.get(organizacionId, organizacionId, organizacionId, organizacionId, organizacionId);
+  const desde = validarFecha(req.query.desde) ?? minISO(primera ?? hoy, hoy);
+  const hasta = validarFecha(req.query.hasta) ?? hoy;
+  const rango = [desde, desde, hasta, hasta, organizacionId];
+  const total = calcularResultado(desde, hasta, organizacionId);
+
+  // Lo que cuesta vender en cada canal, partido por categoría: la comisión, el
+  // envío y las cuotas tienen su nombre (CATEGORIAS_COSTO_DE_VENDER); lo demás
+  // va junto.
+  const nombreDeCosto = Object.fromEntries(Object.entries(CATEGORIAS_COSTO_DE_VENDER).map(([clave, nombre]) => [nombre, clave]));
+  const costosDeVender = new Map();
+  for (const fila of SQL_CANALES_COSTOS_DE_VENDER.all(...rango)) {
+    const costos = costosDeVender.get(fila.canal) ?? { comision: 0, envio: 0, cuotas: 0, otros: 0 };
+    costos[nombreDeCosto[fila.categoria] ?? 'otros'] += fila.importe;
+    costosDeVender.set(fila.canal, costos);
+  }
+  const consumos = new Map(SQL_REPORTE_CONSUMOS_POR_CANAL.all(...rango).map((c) => [c.id, c.costo]));
+
+  const canales = netearPorId(SQL_REPORTE_VENTAS_POR_CANAL.all(...rango), SQL_REPORTE_DEVOLUCIONES_POR_CANAL.all(...rango), () => null)
+    .map((c) => {
+      const costos = costosDeVender.get(c.id) ?? { comision: 0, envio: 0, cuotas: 0, otros: 0 };
+      const mercaderia = c.costo + (consumos.get(c.id) ?? 0);
+      const deVender = costos.comision + costos.envio + costos.cuotas + costos.otros;
+      const ganancia = redondear2(c.ventas - mercaderia - deVender);
+      return {
+        canal: c.id || null,
+        nombre: CANALES_VENTA[c.id] ?? 'Sin indicar',
+        online: !CANALES_NO_ONLINE.has(c.id),
+        cantidad_ventas: c.cantidad_ventas ?? 0,
+        ventas: redondear2(c.ventas),
+        mercaderia: redondear2(mercaderia),
+        costos: Object.fromEntries(Object.entries(costos).map(([k, v]) => [k, redondear2(v)])),
+        ganancia,
+        margen_pct: margenPct(ganancia, c.ventas),
+        ticket_promedio: c.cantidad_ventas > 0 ? redondear2(c.ventas / c.cantidad_ventas) : 0,
+        participacion_pct: total.ventas > 0 ? redondear2((c.ventas / total.ventas) * 100) : 0
+      };
+    })
+    .sort((a, b) => b.ventas - a.ventas);
+
+  // La serie, con los mismos períodos que la evolución del Resumen.
+  const granularidad = granularidadDe(desde, hasta);
+  const buckets = generarBuckets(desde, hasta, granularidad);
+  const serie = buckets.map((b) => ({ etiqueta: b.etiqueta, desde: b.desde, hasta: b.hasta, parcial: b.parcial, canales: {} }));
+  for (const fila of SQL_CANALES_POR_DIA.all(desde, hasta, organizacionId)) {
+    const periodo = serie.find((b) => fila.fecha >= b.desde && fila.fecha <= b.hasta);
+    if (!periodo) continue;
+    const clave = fila.canal || 'sin_indicar';
+    periodo.canales[clave] = redondear2((periodo.canales[clave] ?? 0) + fila.ventas);
+  }
+
+  const productos = {};
+  for (const fila of SQL_CANALES_PRODUCTOS.all(desde, hasta, organizacionId)) {
+    const clave = fila.canal || 'sin_indicar';
+    (productos[clave] ??= []).push({ nombre: fila.nombre, unidades: fila.unidades, ventas: redondear2(fila.ventas) });
+  }
+  for (const clave of Object.keys(productos)) productos[clave] = productos[clave].sort((a, b) => b.ventas - a.ventas).slice(0, 5);
+
+  const online = canales.filter((c) => c.online);
+  const ventasOnline = redondear2(online.reduce((acc, c) => acc + c.ventas, 0));
+  const cantidadOnline = online.reduce((acc, c) => acc + c.cantidad_ventas, 0);
+  const gananciaOnline = redondear2(online.reduce((acc, c) => acc + c.ganancia, 0));
+  const publicidad = SQL_CANALES_PUBLICIDAD.get(CATEGORIA_PUBLICIDAD, desde, hasta, organizacionId);
+
+  res.json({
+    rango: { desde, hasta },
+    granularidad,
+    canales,
+    serie,
+    productos,
+    online: {
+      ventas: ventasOnline,
+      cantidad_ventas: cantidadOnline,
+      ticket_promedio: cantidadOnline > 0 ? redondear2(ventasOnline / cantidadOnline) : 0,
+      ganancia: gananciaOnline,
+      participacion_pct: total.ventas > 0 ? redondear2((ventasOnline / total.ventas) * 100) : 0
+    },
+    publicidad: {
+      categoria: CATEGORIA_PUBLICIDAD,
+      gastos: publicidad.cantidad,
+      gasto: redondear2(publicidad.importe),
+      // Por cada peso en anuncios, cuántos de venta online (ROAS) y cuánto
+      // costó cada venta online (CPA). Sin gasto, no hay retorno que medir.
+      roas: publicidad.importe > 0 ? redondear2(ventasOnline / publicidad.importe) : null,
+      costo_por_venta: publicidad.importe > 0 && cantidadOnline > 0 ? redondear2(publicidad.importe / cantidadOnline) : null,
+      ganancia_despues: redondear2(gananciaOnline - publicidad.importe)
+    },
+    colores: coloresDeCanales(SQL_CANALES_DE_SIEMPRE.all(organizacionId).map((c) => c.canal)),
+    conexiones: SQL_CANALES_CONEXIONES.all(organizacionId)
+  });
+});
+
 /* ---------- El Resumen de cada persona (hist. §136) ---------- */
 //
 // Qué piezas ve, en qué orden, contra qué compara y qué período mira. Es de la persona en este
@@ -21196,7 +21392,9 @@ app.post('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
         condicion_pago: venc.condicion,
         fecha_vencimiento: venc.condicion === 'manual' ? venc.vencimiento : undefined,
         organizacion_id: org,
-        carga_inicial: true
+        carga_inicial: true,
+        // Por dónde entró, si quien la carga lo sabe (hist. §138).
+        canal: req.body.canal
       });
       if (cobrada) {
         const { cliente_id: clienteVenta } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);

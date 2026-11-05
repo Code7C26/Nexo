@@ -134,3 +134,45 @@ test('comparar contra el mismo período del año pasado', async () => {
   const bisiesto = (await kiosco.get('/api/resumen/evolucion?desde=2028-02-01&hasta=2028-02-29&comparar=anio')).json;
   assert.deepEqual(bisiesto.anterior.rango, { desde: '2027-02-01', hasta: '2027-02-28' });
 });
+
+test('venta online: cada canal con su ganancia, la serie y lo que rinde la publicidad', async () => {
+  const hoy = fechaDeHoy();
+  const remera = (await tienda.post('/api/productos', { nombre: 'Remera online', precio_venta: 10000 })).json.id;
+  const cargado = await tienda.post('/api/carga-inicial/stock', { filas: [{ producto_id: remera, cantidad: 50, costo: 4000 }] });
+  assert.equal(cargado.status, 200, cargado.texto);
+  const vender = (canal, cantidad) =>
+    tienda.post('/api/ventas', { cliente: 'Ana', canal, items: [{ producto_id: remera, cantidad, precio_unitario: 10000 }] });
+  for (const [canal, cantidad] of [['tiendanube', 3], ['tiendanube', 1], ['instagram', 2], ['local', 5]]) {
+    const r = await vender(canal, cantidad);
+    assert.equal(r.status, 201, r.texto);
+  }
+  // Lo que se puso en anuncios, en la categoría Publicidad.
+  const categoria = (await tienda.post('/api/categorias-gasto', { nombre: 'Publicidad', tipo: 'operativo' })).json.id;
+  const caja = (await tienda.get('/api/cuentas-tesoreria')).json[0];
+  assert.equal((await tienda.post('/api/gastos', { categoria_id: categoria, cuenta_tesoreria_id: caja.id, importe: 12000, fecha: hoy, descripcion: 'Anuncios' })).status, 201);
+
+  const datos = (await tienda.get(`/api/reportes/canales?desde=${hoy}&hasta=${hoy}`)).json;
+  const porCanal = Object.fromEntries(datos.canales.map((c) => [c.canal, c]));
+  assert.deepEqual(
+    [porCanal.tiendanube.cantidad_ventas, porCanal.tiendanube.ventas, porCanal.tiendanube.mercaderia, porCanal.tiendanube.ganancia, porCanal.tiendanube.online],
+    [2, 40000, 16000, 24000, true]
+  );
+  assert.equal(porCanal.local.online, false);
+  // Online: Tienda Nube e Instagram, sin el local.
+  assert.deepEqual(datos.online, { ventas: 60000, cantidad_ventas: 3, ticket_promedio: 20000, ganancia: 36000, participacion_pct: 54.55 });
+  assert.deepEqual(datos.publicidad, { categoria: 'Publicidad', gastos: 1, gasto: 12000, roas: 5, costo_por_venta: 4000, ganancia_despues: 24000 });
+  assert.deepEqual(datos.serie.map((p) => p.canales), [{ tiendanube: 40000, instagram: 20000, local: 50000 }]);
+  assert.deepEqual(datos.productos.instagram, [{ nombre: 'Remera online', unidades: 2, ventas: 20000 }]);
+  // El color de cada canal: los online que más vendieron en toda la historia,
+  // con el de su marca si está libre.
+  assert.deepEqual(datos.colores, { tiendanube: 'serie-1', instagram: 'serie-2' });
+  assert.deepEqual(datos.conexiones, []);
+  // Una venta de antes de empezar con Nexo también puede decir por dónde entró.
+  const anterior = await tienda.post('/api/carga-inicial/ventas', { fecha: hoy, cliente: 'Ana', cobrada: false, canal: 'whatsapp', items: [{ producto_id: remera, cantidad: 1, precio_unitario: 10000 }] });
+  assert.equal(anterior.status, 201, anterior.texto);
+  const conAnterior = (await tienda.get(`/api/reportes/canales?desde=${hoy}&hasta=${hoy}`)).json;
+  assert.equal(conAnterior.canales.find((c) => c.canal === 'whatsapp').ventas, 10000);
+  assert.equal((await tienda.post('/api/carga-inicial/ventas', { fecha: hoy, cliente: 'Ana', cobrada: false, canal: 'tele', items: [{ producto_id: remera, cantidad: 1, precio_unitario: 1 }] })).status, 400);
+  // Es del Resumen: el empleado no lo ve.
+  assert.equal((await empleado.get('/api/reportes/canales')).status, 403);
+});

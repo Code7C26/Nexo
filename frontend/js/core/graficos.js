@@ -375,12 +375,16 @@ export function montarArea(contenedor, { titulo }) {
 // no se distingue bien. Al lado, la lista con el nombre, la cifra y el
 // porcentaje, así el color nunca es lo único que dice cuál es cuál.
 //   lista: filas ya ordenadas de mayor a menor; nombre(f), valor(f), cifra(n)
-export function dona(lista, { nombre, valor, cifra, centro, vacio = "Sin datos en este período." }) {
+//   serie(f), opcional: la clase de color de cada fila ("serie-1"), para que
+//   algo tenga siempre el mismo color (un canal); las que no tienen van
+//   juntas en `otras`. Sin serie(f), las tres más grandes.
+export function dona(lista, { nombre, valor, cifra, centro, serie, otras = "Otras", vacio = "Sin datos en este período." }) {
   const positivas = lista.filter((f) => valor(f) > 0);
   if (positivas.length === 0) return `<p class="tabla-vacia">${esc(vacio)}</p>`;
-  const partes = positivas.slice(0, 3).map((f, i) => ({ nombre: nombre(f), valor: valor(f), clase: `serie-${i + 1}` }));
-  const resto = positivas.slice(3).reduce((acc, f) => acc + valor(f), 0);
-  if (resto > 0) partes.push({ nombre: "Otras", valor: resto, clase: "serie-otras" });
+  const conColor = serie ? positivas.filter((f) => serie(f)) : positivas.slice(0, 3);
+  const partes = conColor.map((f, i) => ({ nombre: nombre(f), valor: valor(f), clase: serie ? serie(f) : `serie-${i + 1}` }));
+  const resto = positivas.filter((f) => !conColor.includes(f)).reduce((acc, f) => acc + valor(f), 0);
+  if (resto > 0) partes.push({ nombre: otras, valor: resto, clase: "serie-otras" });
   const total = partes.reduce((acc, p) => acc + p.valor, 0);
 
   // Cada parte es un arco del mismo círculo (stroke-dasharray), con aire
