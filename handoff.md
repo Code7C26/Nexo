@@ -2210,6 +2210,10 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
      wa.me** ("no está en WhatsApp"): primero se le manda al celular la
      plantilla de prueba desde Configuración de la API ("Enviar mensaje"), y
      se responde el código en ese chat.
+  - El perfil del número de prueba no se edita: queda "Test Number" y sin foto
+    (lo dice WhatsApp Manager → Números de teléfono → Perfil). Para la demo,
+    guardarlo como contacto "Nexo". Con el número real: nombre "Nexo" (lo
+    aprueba Meta), el ícono de 1024 × 1024, una descripción y el sitio.
   - Los celulares argentinos llegan con el 9 (549…) y se les contesta sin él
     (hist. §135, `destinatario()`). El registro anota el aviso mal firmado y
     el que va a otro número (el botón Probar del panel usa uno inventado).
