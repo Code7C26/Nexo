@@ -41,14 +41,16 @@ test('cada tipo trae su Resumen, y cada persona arma el suyo', async () => {
   assert.ok(!deKiosco.ocultas.includes('cuando'));
   assert.deepEqual([...deKiosco.orden].sort(), [...PIEZAS_TABLERO].sort());
   const deTienda = (await tienda.get('/api/tablero')).json;
-  assert.equal(deTienda.orden[1], 'canales');
+  assert.equal(deTienda.orden[4], 'canales');
   assert.ok(deTienda.ocultas.includes('cuando'));
 
-  // Lo guarda, y una pieza que no nombró va al final, visible.
-  const orden = PIEZAS_TABLERO.filter((p) => p !== 'iva').reverse();
-  const guardado = await kiosco.put('/api/tablero', { orden, ocultas: ['movimientos'], comparar: 'anio' });
+  // Lo guarda, y una pieza que no nombró entra en su lugar del preset, visible.
+  const orden = PIEZAS_TABLERO.filter((p) => p !== 'tendencia').reverse();
+  const guardado = await kiosco.put('/api/tablero', { orden, ocultas: ['movimientos'], comparar: 'anio', periodo: 'mes' });
   assert.equal(guardado.status, 200, guardado.texto);
-  assert.deepEqual(guardado.json, { orden: [...orden, 'iva'], ocultas: ['movimientos'], comparar: 'anio', personalizado: true });
+  const conTendencia = [...orden];
+  conTendencia.splice(1, 0, 'tendencia');
+  assert.deepEqual(guardado.json, { orden: conTendencia, ocultas: ['movimientos'], comparar: 'anio', periodo: 'mes', personalizado: true });
   assert.deepEqual((await kiosco.get('/api/tablero')).json, guardado.json);
   // No toca el de otro negocio.
   assert.equal((await tienda.get('/api/tablero')).json.personalizado, false);
@@ -57,7 +59,8 @@ test('cada tipo trae su Resumen, y cada persona arma el suyo', async () => {
     { orden: ['resultado', 'inventada'], ocultas: [] },
     { orden: ['resultado', 'resultado'], ocultas: [] },
     { orden: ['resultado'], ocultas: 'resultado' },
-    { orden: ['resultado'], ocultas: [], comparar: 'siempre' }
+    { orden: ['resultado'], ocultas: [], comparar: 'siempre' },
+    { orden: ['resultado'], ocultas: [], periodo: '90' }
   ]) {
     assert.equal((await kiosco.put('/api/tablero', malo)).status, 400, JSON.stringify(malo));
   }
@@ -115,6 +118,18 @@ test('comparar contra el mismo período del año pasado', async () => {
   const contraAnterior = (await kiosco.get('/api/resumen/evolucion?desde=2026-11-01&hasta=2026-11-07')).json;
   assert.equal(contraAnterior.comparar, 'anterior');
   assert.deepEqual(contraAnterior.anterior.rango, { desde: '2026-10-25', hasta: '2026-10-31' });
+  // La cantidad de ventas y el ticket, con su comparación.
+  // La venta de hoy (la prueba de arriba) contra la del año pasado.
+  assert.equal(contraAnio.total.cantidad_ventas, 1);
+  assert.equal(contraAnio.anterior.cantidad_ventas, 1);
+  assert.equal(contraAnio.anterior.ticket_promedio, 1000);
+  assert.deepEqual([contraAnio.delta.cantidad_ventas.abs, contraAnio.delta.ticket_promedio.abs], [0, 1000]);
+  // Dos meses van por semana, de lunes a domingo, recortadas contra el rango.
+  const semanal = (await kiosco.get('/api/resumen/evolucion?desde=2026-09-01&hasta=2026-10-31')).json;
+  assert.equal(semanal.granularidad, 'semana');
+  assert.deepEqual(semanal.serie[0], { ...semanal.serie[0], desde: '2026-09-01', hasta: '2026-09-06', etiqueta: '01/09', parcial: true });
+  assert.deepEqual([semanal.serie[1].desde, semanal.serie[1].hasta, semanal.serie[1].parcial], ['2026-09-07', '2026-09-13', false]);
+  assert.equal(semanal.serie.at(-1).hasta, '2026-10-31');
   // El 29 de febrero cae en el 28.
   const bisiesto = (await kiosco.get('/api/resumen/evolucion?desde=2028-02-01&hasta=2028-02-29&comparar=anio')).json;
   assert.deepEqual(bisiesto.anterior.rango, { desde: '2027-02-01', hasta: '2027-02-28' });

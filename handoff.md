@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §136);
+    siguiente número (hoy el último es §137);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,17 @@
 
 ## Estado actual (5 de noviembre de 2026)
 
-**Lo último (5 de noviembre, hist. §136): el Resumen en piezas y
-personalizable, hecho y sin commitear** (rama `Tosi`). Pedido del usuario
+**Lo último (5 de noviembre, hist. §137): el Resumen como tablero, hecho y
+sin commitear** (rama `Tosi`). Pedido del usuario con capturas de referencia:
+un pantallazo vistoso arriba y el detalle abajo, y que "Comparar con" no
+parezca HTML básico. Período y comparación en botones de Nexo (el período se
+guarda por persona; arranca en 30 días), grilla de 12 columnas en la compu,
+tarjetas con su línea chica, "Ventas y ganancia" en área grande, dona de
+cobros, y la evolución agrupada por semana de 32 a 183 días. **Falta:** que
+el usuario lo vea, commitear y publicar.
+
+**Antes (5 de noviembre, hist. §136): el Resumen en piezas y
+personalizable, publicado (PR #58).** Pedido del usuario
 ("un Resumen mejor, con más gráficos, personalizable"); el alcance lo decidí
 yo después de mirar Square, Loyverse, Shopify y Dux ("investigá qué se usa y
 decidí vos"):
@@ -37,7 +46,7 @@ decidí vos"):
 - la hora y el vendedor de cada venta salen de su alta en la auditoría: las
   de "Lo que ya tenías" (toda la historia de los negocios de ejemplo) cuentan
   por día y no por hora.
-- **Falta:** que el usuario lo vea, commitear y publicar.
+- **Falta:** que el usuario lo vea.
 
 **Publicado el 5 de noviembre (PR #56 y #57):** los negocios de ejemplo
 (`scripts/demo.mjs`, ya corrido en la cuenta del usuario, dicho por él), fiar
@@ -1411,7 +1420,7 @@ a 6):
   Nexo. Base que ya existe: la comisión y las cuotas de cada pago como gastos
   de la venta (hist. §130) y "adónde fue la plata" (hist. §131).
 
-**Resumen mejor: hecho el 5 de noviembre (hist. §136), sin publicar.** Ideas
+**Resumen mejor: hecho el 5 de noviembre (hist. §136, publicado; §137, sin publicar).** Ideas
 que quedan para la etapa H (CLAUDE.md §20, §38): piezas de socios (activos,
 cuotas del mes) y de producción, ventas por medio de cobro con el recargo de
 Praxia, y deltas también en "Qué se vende".

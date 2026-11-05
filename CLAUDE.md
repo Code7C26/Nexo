@@ -918,7 +918,9 @@ rotación, cuentas corrientes con aging, y ventas y ganancia por canal (hist.
 cada persona muestra, oculta y ordena, con el armado de su tipo de negocio de
 partida (hist. §136): suma cuándo se vende (día y hora), dónde entró la plata,
 quién vendió, lo más vendido en barras, lo que hay que mirar hoy y la
-comparación contra el mismo período del año pasado.
+comparación contra el mismo período del año pasado. Arriba va un pantallazo
+con las cifras y sus líneas, la tendencia de ventas y ganancia y la dona de
+cobros, y abajo el detalle (hist. §137).
 
 ---
 

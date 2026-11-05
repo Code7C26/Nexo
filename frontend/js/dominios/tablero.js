@@ -1,16 +1,17 @@
 /**
  * dominios/tablero.js
  * -----------------------------------------------------------
- * El Resumen de cada persona (hist. §136): qué piezas ve, en qué orden y
- * contra qué compara, más las piezas nuevas que no salen de los reportes de
- * siempre: lo que hay que mirar hoy, cuándo se vende, dónde entró la plata y
- * quién vendió.
+ * El Resumen de cada persona (hist. §136): qué período mira, qué piezas ve,
+ * en qué orden y contra qué compara, más las piezas que no salen de los
+ * reportes de siempre: lo que hay que mirar hoy, cuándo se vende, dónde entró
+ * la plata y quién vendió.
  *
  * Lo guarda el servidor por persona y negocio (GET/PUT/DELETE /api/tablero),
  * así sigue igual en el celular y en la compu; sin armar, es el del tipo de
  * negocio (tableroDelPreset en backend/perfiles.js). Las piezas son los
  * <div class="pieza" data-pieza> del Resumen en index.html: ordenarlas es
- * moverlas dentro de #tablero. Una pieza de un módulo apagado la sigue
+ * moverlas dentro de #tablero, que en la compu es una grilla (styles.css)
+ * donde cada pieza tiene su ancho. Una pieza de un módulo apagado la sigue
  * ocultando el CSS ([data-modulo]); la de IVA, cargarReporteIva.
  *
  * Todo es del admin, como el resto del Resumen.
@@ -18,7 +19,7 @@
 
 import { api } from "../core/api.js";
 import { esAdmin, esc, money, numero } from "../core/formato.js";
-import { barrasHorizontales, montarColumnas } from "../core/graficos.js";
+import { barrasHorizontales, dona, montarColumnas } from "../core/graficos.js";
 import { icono } from "../core/iconos.js";
 import { moduloActivo, negocio } from "../core/negocio.js";
 import { invocar } from "../core/registro.js";
@@ -26,17 +27,18 @@ import { avisar } from "../core/ui.js";
 
 // Cómo se llama cada pieza en "Personalizar", y cuándo se puede elegir.
 const PIEZAS = {
-  resultado: { nombre: "Resultado", descripcion: "Ventas, costo, ganancia, gastos y lo que quedó." },
-  pendiente: { nombre: "Para mirar hoy", descripcion: "Lo que te deben, lo que debés y lo que hay que reponer." },
-  evolucion: { nombre: "Evolución del resultado", descripcion: "El resultado período por período, en gráfico y tabla." },
-  ventas: { nombre: "Qué se vende", descripcion: "Cuánto vendiste, cuántas ventas, ticket promedio y cantidad." },
+  resultado: { nombre: "Resultado", descripcion: "Ventas, ganancia, gastos y lo que quedó, con su línea." },
+  tendencia: { nombre: "Ventas y ganancia", descripcion: "El gráfico grande: cómo vienen las ventas y lo que te dejan." },
+  cobros: { nombre: "Dónde entró la plata", descripcion: "Lo cobrado en cada cuenta: la caja, el banco, Mercado Pago." },
+  ventas: { nombre: "Qué se vende", descripcion: "Cuántas ventas, ticket promedio, unidades y lo cobrado." },
   cuando: { nombre: "Cuándo se vende", descripcion: "Por día de la semana y por hora." },
+  pendiente: { nombre: "Para mirar hoy", descripcion: "Lo que te deben, lo que debés y lo que hay que reponer." },
   productos: { nombre: "Lo más vendido", descripcion: "En barras, por ventas o por ganancia." },
   categorias: { nombre: "Ventas por categoría", descripcion: "En barras, por ventas o por ganancia." },
-  cobros: { nombre: "Dónde entró la plata", descripcion: "Lo cobrado en cada cuenta: la caja, el banco, Mercado Pago." },
   vendedores: { nombre: "Quién vendió", descripcion: "Ventas y ticket promedio de cada persona." },
   clientes: { nombre: "Mejores clientes", descripcion: "Quién te compra más y cuándo compró por última vez." },
   canales: { nombre: "Por canal", descripcion: "El local, la tienda online, Mercado Libre, Instagram…", modulo: "canales" },
+  evolucion: { nombre: "Evolución del resultado", descripcion: "El resultado período por período, en gráfico y tabla." },
   movimientos: { nombre: "Últimos movimientos", descripcion: "Las últimas ventas, compras, gastos y devoluciones." },
   compras: { nombre: "Qué se compra", descripcion: "Proveedores, productos y categorías de lo comprado.", modulo: "compras" },
   iva: { nombre: "IVA", descripcion: "El IVA del período y los libros para el contador.", soloInscripto: true }
@@ -49,13 +51,46 @@ const disponible = (pieza) => {
   return !info.soloInscripto || negocio.condicion_iva === "responsable_inscripto";
 };
 
-let tablero = { orden: Object.keys(PIEZAS), ocultas: [], comparar: "anterior", personalizado: false };
+let tablero = { orden: Object.keys(PIEZAS), ocultas: [], comparar: "anterior", periodo: "30", personalizado: false };
 let cargado = false;
+// "Fechas": un rango tipeado, solo por esta vez (no se guarda en el servidor).
+let fechas = null;
 
 // Contra qué compara la evolución: la lee app.js al pedirla.
 export const comparacion = () => tablero.comparar;
 
+// El rango del período elegido, en la zona del navegador (es la del negocio
+// para quien lo usa). "Este mes" y "Este año" van hasta hoy: un gráfico
+// por día con el resto del mes en cero diría que las ventas se cayeron.
+export function rangoResumen() {
+  if (fechas) return { ...(fechas.desde ? { desde: fechas.desde } : {}), ...(fechas.hasta ? { hasta: fechas.hasta } : {}) };
+  const iso = (d) => d.toLocaleDateString("sv-SE");
+  const hoy = new Date();
+  const hace = (dias) => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() - dias);
+    return iso(d);
+  };
+  switch (tablero.periodo) {
+    case "hoy":
+      return { desde: iso(hoy), hasta: iso(hoy) };
+    case "7":
+      return { desde: hace(6), hasta: iso(hoy) };
+    case "mes":
+      return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
+    case "anio":
+      return { desde: `${hoy.getFullYear()}-01-01`, hasta: iso(hoy) };
+    case "todo":
+      return {};
+    default:
+      return { desde: hace(29), hasta: iso(hoy) };
+  }
+}
+
 const contenedor = document.getElementById("tablero");
+const botonesPeriodo = [...document.querySelectorAll("#resumenPeriodo [data-periodo]")];
+const botonesComparar = [...document.querySelectorAll("#resumenComparar [data-comparar]")];
+const cajaFechas = document.getElementById("resumenFechas");
 
 function aplicarTablero() {
   for (const pieza of tablero.orden) {
@@ -64,34 +99,59 @@ function aplicarTablero() {
     contenedor.append(el);
     el.classList.toggle("pieza-oculta", tablero.ocultas.includes(pieza));
   }
-  document.getElementById("resumenComparar").value = tablero.comparar;
+  const periodo = fechas ? "fechas" : tablero.periodo;
+  for (const b of botonesPeriodo) b.setAttribute("aria-pressed", String(b.dataset.periodo === periodo));
+  for (const b of botonesComparar) b.setAttribute("aria-pressed", String(b.dataset.comparar === tablero.comparar));
+  cajaFechas.hidden = !fechas;
+}
+
+// Lo primero que hace cargarPanelResumen (app.js): traer cómo armó la persona
+// su Resumen, porque de ahí sale el período de todo lo demás. Una sola vez:
+// después, lo que guarda queda en memoria.
+export async function prepararTablero() {
+  if (!esAdmin()) {
+    contenedor.classList.add("is-listo");
+    return;
+  }
+  document.getElementById("resumenControles").hidden = false;
+  if (cargado) return;
+  try {
+    tablero = await api("/api/tablero");
+    cargado = true;
+    aplicarTablero();
+  } finally {
+    contenedor.classList.add("is-listo");
+  }
 }
 
 /* ---------- Las piezas nuevas ---------- */
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const ventasDe = (n) => `${numero(n)} ${n === 1 ? "venta" : "ventas"}`;
+const pesos = (n) => n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
 
 const dibujarDias = montarColumnas(document.getElementById("graficoDias"), { titulo: "Ventas por día de la semana" });
 const dibujarHoras = montarColumnas(document.getElementById("graficoHoras"), { titulo: "Ventas por hora del día" });
 
+// Cada deuda con un medidor: la parte vencida en rojo, sobre el total.
+function pintarDeuda(id, deuda, quien) {
+  const cifra = document.getElementById(id);
+  cifra.textContent = pesos(deuda.total);
+  cifra.title = money(deuda.total);
+  document.getElementById(`${id}Medidor`).style.width = deuda.total > 0 ? `${((deuda.vencido / deuda.total) * 100).toFixed(1)}%` : "0%";
+  document.getElementById(`${id}Detalle`).textContent =
+    deuda.total <= 0 ? "Nada pendiente" : deuda.vencido > 0 ? `${pesos(deuda.vencido)} vencido, de ${quien(deuda.cantidad)}` : `Nada vencido, de ${quien(deuda.cantidad)}`;
+}
+
 function pintarPendiente({ por_cobrar: cobrar, por_pagar: pagar, sin_stock: sinStock, stock_bajo: bajo }) {
-  const detalleDeuda = (d, quien) =>
-    d.total <= 0 ? "Nada pendiente" : d.vencido > 0 ? `${money(d.vencido)} vencido · ${quien(d.cantidad)}` : `Nada vencido · ${quien(d.cantidad)}`;
-  const elCobrar = document.getElementById("pendienteCobrar");
-  elCobrar.textContent = money(cobrar.total);
-  elCobrar.classList.toggle("saldo-negativo", cobrar.vencido > 0);
-  document.getElementById("pendienteCobrarDetalle").textContent = detalleDeuda(cobrar, (n) => (n === 1 ? "1 cliente" : `${n} clientes`));
-  const elPagar = document.getElementById("pendientePagar");
-  elPagar.textContent = money(pagar.total);
-  elPagar.classList.toggle("saldo-negativo", pagar.vencido > 0);
-  document.getElementById("pendientePagarDetalle").textContent = detalleDeuda(pagar, (n) => (n === 1 ? "1 proveedor" : `${n} proveedores`));
+  pintarDeuda("pendienteCobrar", cobrar, (n) => (n === 1 ? "1 cliente" : `${n} clientes`));
+  pintarDeuda("pendientePagar", pagar, (n) => (n === 1 ? "1 proveedor" : `${n} proveedores`));
   const reponer = sinStock + bajo;
   const elStock = document.getElementById("pendienteStock");
   elStock.textContent = reponer === 1 ? "1 producto" : `${numero(reponer)} productos`;
   elStock.classList.toggle("saldo-negativo", sinStock > 0);
   document.getElementById("pendienteStockDetalle").textContent =
-    reponer === 0 ? "Todo con stock" : `${numero(sinStock)} sin stock · ${numero(bajo)} con poco`;
+    reponer === 0 ? "Todo con stock" : `${numero(sinStock)} sin stock y ${numero(bajo)} con poco`;
 }
 
 function pintarCuando({ dias, horas, sin_hora: sinHora }) {
@@ -123,18 +183,21 @@ function pintarCuando({ dias, horas, sin_hora: sinHora }) {
       : `${numero(sinHora)} ventas no cuentan por hora: son de las que cargaste en «Lo que ya tenías», que guardan el día pero no la hora.`;
 }
 
-const TIPO_CUENTA = { efectivo: "Efectivo", banco: "Banco", mercadopago: "Mercado Pago", otro: "Otra" };
-
 function pintarCobros(cobros) {
   const total = cobros.reduce((acc, c) => acc + c.importe, 0);
-  document.getElementById("tableroCobros").innerHTML = barrasHorizontales(cobros, {
+  const cantidad = cobros.reduce((acc, c) => acc + c.cantidad, 0);
+  document.getElementById("tableroCobros").innerHTML = dona(cobros, {
     nombre: (c) => c.nombre,
     valor: (c) => c.importe,
-    cifra: (c) => money(c.importe),
-    detalle: (c) =>
-      `${TIPO_CUENTA[c.tipo] ?? ""} · ${numero(c.cantidad)} ${c.cantidad === 1 ? "cobro" : "cobros"} · ${Math.round((c.importe / total) * 100)}% del total`,
+    cifra: pesos,
+    centro: "cobrado",
     vacio: "No hubo cobros en este período."
   });
+  // La tarjeta "Cobrado" de Qué se vende.
+  const elCobrado = document.getElementById("tableroCobrado");
+  elCobrado.textContent = pesos(total);
+  elCobrado.title = money(total);
+  document.getElementById("tableroCobradoNota").textContent = cantidad === 1 ? "En 1 cobro" : `En ${numero(cantidad)} cobros`;
 }
 
 function pintarVendedores(vendedores) {
@@ -142,29 +205,14 @@ function pintarVendedores(vendedores) {
     nombre: (v) => v.nombre,
     valor: (v) => v.ventas,
     cifra: (v) => money(v.ventas),
-    detalle: (v) => `${ventasDe(v.cantidad_ventas)} · ticket promedio ${money(v.ticket_promedio)}`,
+    detalle: (v) => `${ventasDe(v.cantidad_ventas)}, ticket promedio ${money(v.ticket_promedio)}`,
     vacio: "No hay ventas en este período."
   });
 }
 
-// Lo llama cargarPanelResumen (app.js) con el mismo rango que el resto del
-// Resumen. La primera vez trae también cómo lo armó la persona; después, lo
-// que guarda Personalizar ya queda en memoria.
+// Lo llama cargarPanelResumen (app.js) con el mismo rango que el resto.
 export async function cargarTablero(rango) {
-  if (!esAdmin()) {
-    contenedor.classList.add("is-listo");
-    return;
-  }
-  document.getElementById("resumenControles").hidden = false;
-  try {
-    if (!cargado) {
-      tablero = await api("/api/tablero");
-      cargado = true;
-      aplicarTablero();
-    }
-  } finally {
-    contenedor.classList.add("is-listo");
-  }
+  if (!esAdmin()) return;
   const params = new URLSearchParams(rango).toString();
   const datos = await api(`/api/reportes/tablero${params ? "?" + params : ""}`);
   pintarPendiente(datos.pendiente);
@@ -179,9 +227,43 @@ async function guardar(cuerpo, { metodo = "PUT", aviso } = {}) {
   if (aviso) avisar(aviso, "ok");
 }
 
-// Contra qué comparar se guarda al elegirlo, y vuelve a pedir la evolución.
-document.getElementById("resumenComparar").addEventListener("change", async (e) => {
-  await guardar({ orden: tablero.orden, ocultas: tablero.ocultas, comparar: e.target.value });
+const preferencias = () => ({ orden: tablero.orden, ocultas: tablero.ocultas, comparar: tablero.comparar, periodo: tablero.periodo });
+
+// El período y contra qué comparar se guardan al elegirlos, y se vuelve a
+// cargar el Resumen. "Fechas" abre los dos campos y no se guarda.
+document.getElementById("resumenPeriodo").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-periodo]");
+  if (!boton) return;
+  if (boton.dataset.periodo === "fechas") {
+    fechas = rangoResumen();
+    document.getElementById("resumenDesde").value = fechas.desde ?? "";
+    document.getElementById("resumenHasta").value = fechas.hasta ?? "";
+    aplicarTablero();
+    document.getElementById("resumenDesde").focus();
+    return;
+  }
+  fechas = null;
+  await guardar({ ...preferencias(), periodo: boton.dataset.periodo });
+  await invocar("cargar:panelResumen");
+});
+
+for (const id of ["resumenDesde", "resumenHasta"]) {
+  document.getElementById(id).addEventListener("change", async () => {
+    const desde = document.getElementById("resumenDesde").value;
+    const hasta = document.getElementById("resumenHasta").value;
+    if (desde && hasta && desde > hasta) {
+      avisar("La fecha de inicio es posterior a la de fin.", "atencion");
+      return;
+    }
+    fechas = { desde, hasta };
+    await invocar("cargar:panelResumen");
+  });
+}
+
+document.getElementById("resumenComparar").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-comparar]");
+  if (!boton || boton.dataset.comparar === tablero.comparar) return;
+  await guardar({ ...preferencias(), comparar: boton.dataset.comparar });
   await invocar("cargar:panelResumen");
 });
 
@@ -269,13 +351,13 @@ modal.addEventListener("keydown", (e) => {
 });
 
 document.getElementById("btnTableroGuardar").addEventListener("click", async () => {
-  await guardar({ ...borrador, comparar: tablero.comparar }, { aviso: "Listo: el Resumen quedó como lo armaste." });
+  await guardar({ ...borrador, comparar: tablero.comparar, periodo: tablero.periodo }, { aviso: "Listo: el Resumen quedó como lo armaste." });
   cerrar();
 });
 
 document.getElementById("btnTableroPreset").addEventListener("click", async () => {
-  const comparaba = tablero.comparar;
+  const antes = `${tablero.comparar} ${tablero.periodo}`;
   await guardar(undefined, { metodo: "DELETE", aviso: "Volvió al Resumen de tu tipo de negocio." });
   cerrar();
-  if (comparaba !== tablero.comparar) await invocar("cargar:panelResumen");
+  if (antes !== `${tablero.comparar} ${tablero.periodo}`) await invocar("cargar:panelResumen");
 });

@@ -317,67 +317,86 @@
         <section class="panel primeros-pasos" id="primerosPasos" aria-label="Primeros pasos" hidden></section>
         <section class="panel para-hoy-resumen" id="paraHoyResumen" data-modulo="crm" aria-labelledby="paraHoyResumenTitulo" hidden></section>
 
-        <div class="filtros" id="filtrosResumen"></div>
-        <!-- El período elegido, contra qué se compara y "Personalizar" (hist.
-             §136): cada persona arma su Resumen, dominios/tablero.js. -->
-        <div class="resumen-barra">
-          <p class="nota-plana" id="resumenRangoNota"></p>
-          <div class="resumen-controles" id="resumenControles" hidden>
-            <label class="resumen-comparar">Comparar con
-              <select id="resumenComparar">
-                <option value="anterior">el período anterior</option>
-                <option value="anio">el año pasado</option>
-              </select>
-            </label>
+        <!-- El período, contra qué se compara y "Personalizar" (hist. §136):
+             cada persona arma su Resumen, dominios/tablero.js. -->
+        <div class="resumen-barra" id="resumenControles" hidden>
+          <div class="segmentos" role="group" aria-label="Período" id="resumenPeriodo">
+            <button type="button" class="segmento" data-periodo="hoy" aria-pressed="false">Hoy</button>
+            <button type="button" class="segmento" data-periodo="7" aria-pressed="false">7 días</button>
+            <button type="button" class="segmento" data-periodo="30" aria-pressed="true">30 días</button>
+            <button type="button" class="segmento" data-periodo="mes" aria-pressed="false">Este mes</button>
+            <button type="button" class="segmento" data-periodo="anio" aria-pressed="false">Este año</button>
+            <button type="button" class="segmento" data-periodo="todo" aria-pressed="false">Todo</button>
+            <button type="button" class="segmento" data-periodo="fechas" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar"></use></svg> Fechas</button>
+          </div>
+          <div class="resumen-fechas" id="resumenFechas" hidden>
+            <label>Desde <input type="date" id="resumenDesde" /></label>
+            <label>Hasta <input type="date" id="resumenHasta" /></label>
+          </div>
+          <div class="resumen-acciones">
+            <div class="segmentos" role="group" aria-label="Comparar con" id="resumenComparar">
+              <button type="button" class="segmento" data-comparar="anterior" aria-pressed="true">vs. período anterior</button>
+              <button type="button" class="segmento" data-comparar="anio" aria-pressed="false">vs. año pasado</button>
+            </div>
             <button type="button" class="btn btn-secundario" id="btnPersonalizarResumen"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layout-dashboard"></use></svg> Personalizar</button>
           </div>
         </div>
+        <p class="nota-plana resumen-rango" id="resumenRangoNota"></p>
 
         <div class="tablero" id="tablero">
         <div class="pieza" data-pieza="resultado">
-        <!-- Ledger summary strip: el elemento firma del diseño -->
-        <section class="ledger-strip" aria-label="Resultado del período">
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg></span>Ventas</span>
-            <span class="ledger-value mono" id="sumVentas">$0,00</span>
-            <span class="ledger-delta" id="deltaVentas"></span>
+          <div class="kpis" role="group" aria-label="Resultado del período">
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-cart"></use></svg></span>Ventas</h3>
+              <p class="kpi-cifra" id="sumVentas">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaVentas"></p>
+              
+              <div class="kpi-linea" data-linea="ventas" aria-hidden="true"></div>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Ganancia bruta</h3>
+              <p class="kpi-cifra" id="sumGananciaBruta">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaGananciaBruta"></p>
+              <p class="kpi-nota" id="sumCosto"></p>
+              <div class="kpi-linea" data-linea="ganancia_bruta" aria-hidden="true"></div>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-violeta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg></span>Gastos operativos</h3>
+              <p class="kpi-cifra" id="sumGastosOperativos">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaGastosOperativos"></p>
+              
+              <div class="kpi-linea" data-linea="gastos_operativos" aria-hidden="true"></div>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chart-column"></use></svg></span>Resultado</h3>
+              <p class="kpi-cifra" id="sumResultado">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaResultado"></p>
+              
+              <div class="kpi-linea" data-linea="resultado" aria-hidden="true"></div>
+            </article>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg></span>Costo de mercadería</span>
-            <span class="ledger-value mono" id="sumCosto">$0,00</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg></span>Ganancia bruta</span>
-            <span class="ledger-value mono ledger-ok" id="sumGananciaBruta">$0,00</span>
-            <span class="ledger-delta" id="deltaGananciaBruta"></span>
-          </div>
-        </section>
-
-        <section class="ledger-strip" aria-label="Gastos y resultado">
-          <div class="ledger-item">
-            <span class="ledger-label"><span class="ledger-icono ledger-icono-violeta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg></span>Gastos operativos</span>
-            <span class="ledger-value mono ledger-warn" id="sumGastosOperativos">$0,00</span>
-            <span class="ledger-delta" id="deltaGastosOperativos"></span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item ledger-item-total">
-            <span class="ledger-label"><span class="ledger-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chart-column"></use></svg></span>Resultado</span>
-            <span class="ledger-value mono" id="sumResultado">$0,00</span>
-            <span class="ledger-delta" id="deltaResultado"></span>
-          </div>
-        </section>
-
-        <!-- Inversiones y retiros salieron de la caja pero NO son gasto del
-             período, así que se muestran aparte y no se restan del resultado. -->
-        <section class="panel panel-nota">
+          <!-- Inversiones y retiros salieron de la caja pero NO son gasto del
+               período, así que se muestran aparte y no se restan del resultado. -->
           <p class="nota-fuera">
-            <span>Fuera del resultado: plata que salió de la caja pero no es gasto del negocio.</span>
-            <span><strong>Inversiones</strong> <span class="mono" id="sumInversiones">$0,00</span></span>
-            <span><strong>Retiros</strong> <span class="mono" id="sumRetiros">$0,00</span></span>
+            <span>Fuera del resultado, porque no son gasto del negocio:</span>
+            <span>inversiones <strong class="mono" id="sumInversiones">$0,00</strong></span>
+            <span>retiros <strong class="mono" id="sumRetiros">$0,00</strong></span>
           </p>
-        </section>
+        </div>
+
+        <div class="pieza" data-pieza="tendencia">
+          <!-- La tendencia (hist. §136): lo vendido y lo que se ganó en cada
+               período, de la misma serie que la evolución del resultado. -->
+          <section class="panel" aria-labelledby="tendenciaTitulo">
+            <div class="panel-head">
+              <h2 id="tendenciaTitulo">Ventas y ganancia</h2>
+              <ul class="leyenda" aria-label="Referencias">
+                <li><span class="leyenda-marca leyenda-ventas" aria-hidden="true"></span>Ventas</li>
+                <li><span class="leyenda-marca leyenda-ganancia" aria-hidden="true"></span>Ganancia bruta</li>
+              </ul>
+            </div>
+            <div class="grafico grafico-area" id="graficoTendencia"></div>
+          </section>
         </div>
 
         <div class="pieza" data-pieza="pendiente">
@@ -391,11 +410,13 @@
             <a class="pendiente-item" href="#/cuentas-corrientes">
               <span class="pendiente-etiqueta">Te deben</span>
               <span class="pendiente-cifra mono" id="pendienteCobrar">$0,00</span>
+              <span class="pendiente-medidor" aria-hidden="true"><span id="pendienteCobrarMedidor"></span></span>
               <span class="pendiente-detalle" id="pendienteCobrarDetalle"></span>
             </a>
             <a class="pendiente-item" href="#/cuentas-corrientes" data-modulo="compras">
               <span class="pendiente-etiqueta">Debés</span>
               <span class="pendiente-cifra mono" id="pendientePagar">$0,00</span>
+              <span class="pendiente-medidor" aria-hidden="true"><span id="pendientePagarMedidor"></span></span>
               <span class="pendiente-detalle" id="pendientePagarDetalle"></span>
             </a>
             <a class="pendiente-item" href="#/reportes-stock" data-modulo="stock">
@@ -439,31 +460,36 @@
         </div>
 
         <div class="pieza" data-pieza="ventas">
-        <!-- Qué se vende: fusionado acá (antes vista aparte "reportes-ventas").
-             Comparte el mismo filtro de fecha de arriba (#filtrosResumen). -->
-        <h2>Qué se vende</h2>
-
-        <section class="ledger-strip" aria-label="Ventas del período">
-          <div class="ledger-item">
-            <span class="ledger-label">Ventas netas</span>
-            <span class="ledger-value mono" id="reporteVentasNetas">$0,00</span>
+          <div class="kpis kpis-chicas" role="group" aria-label="Ventas del período">
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>Cantidad de ventas</h3>
+              <p class="kpi-cifra" id="reporteCantidadVentas">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaCantidadVentas"></p>
+              
+              <div class="kpi-linea" data-linea="cantidad_ventas" aria-hidden="true"></div>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>Ticket promedio</h3>
+              <p class="kpi-cifra" id="reporteTicketPromedio">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaTicketPromedio"></p>
+              
+              <div class="kpi-linea" data-linea="ticket_promedio" aria-hidden="true"></div>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg></span>Unidades vendidas</h3>
+              <p class="kpi-cifra" id="reporteUnidades">$0</p>
+              <p class="kpi-delta ledger-delta" id="deltaUnidades"></p>
+              
+              <div class="kpi-linea" data-linea="unidades" aria-hidden="true"></div>
+            </article>
+            <article class="kpi">
+              <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#wallet"></use></svg></span>Cobrado</h3>
+              <p class="kpi-cifra" id="tableroCobrado">$0</p>
+              
+              <p class="kpi-nota" id="tableroCobradoNota"></p>
+              
+            </article>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Cantidad de ventas</span>
-            <span class="ledger-value mono" id="reporteCantidadVentas">0</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Ticket promedio</span>
-            <span class="ledger-value mono" id="reporteTicketPromedio">$0,00</span>
-          </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
-            <span class="ledger-label">Unidades vendidas</span>
-            <span class="ledger-value mono" id="reporteUnidades">0</span>
-          </div>
-        </section>
         </div>
 
         <div class="pieza" data-pieza="cuando">
@@ -561,8 +587,8 @@
           <div class="panel-head">
             <h2 id="cobrosTitulo">Dónde entró la plata</h2>
           </div>
-          <div class="ranking-cont" id="tableroCobros"></div>
-          <p class="grafico-nota">Lo que se cobró en el período, en cada cuenta de Caja, sea de ventas de ahora o de antes.</p>
+          <div class="dona-cont" id="tableroCobros"></div>
+          <p class="grafico-nota">Lo cobrado en el período en cada cuenta de Caja, de ventas de ahora o de antes.</p>
         </section>
         </div>
 
