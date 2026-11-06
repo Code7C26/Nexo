@@ -721,6 +721,20 @@ button { font-family: inherit; cursor: pointer; }
   }
 }
 
+/* Con la sidebar escondida, el contenido usa toda la hoja (pedido del
+   usuario: si no, sobraba media pantalla a la derecha). Llega al borde, así
+   que vuelve a reservar el lugar del círculo del asistente. Solo en la
+   compu, como el resto de la sidebar colapsada (ver arriba). */
+@media (min-width: 861px) {
+  :root[data-sidebar="colapsada"] .main > .topbar,
+  :root[data-sidebar="colapsada"] .main > .view {
+    max-width: none;
+  }
+  :root[data-sidebar="colapsada"] .main {
+    padding-right: calc(56px + var(--sp-5) + var(--sp-3));
+  }
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
