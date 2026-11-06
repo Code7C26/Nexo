@@ -1984,7 +1984,13 @@ const CLAVES_SENSIBLES = new Set([
   // La comisión y el envío que paga el negocio en cada venta (hist. §129).
   'costos_de_vender',
   // Adónde fue la plata de la venta, con sus porcentajes (hist. §131).
-  'desglose_costos'
+  'desglose_costos',
+  // Venta online por canal (hist. §138). La ruta ya es de admin; van igual,
+  // por si alguna vez se reusan en una que no lo sea.
+  'mercaderia',
+  'costos',
+  'costo_por_venta',
+  'ganancia_despues'
 ]);
 
 function podarSensibles(valor) {
