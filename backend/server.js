@@ -1984,7 +1984,13 @@ const CLAVES_SENSIBLES = new Set([
   // La comisión y el envío que paga el negocio en cada venta (hist. §129).
   'costos_de_vender',
   // Adónde fue la plata de la venta, con sus porcentajes (hist. §131).
-  'desglose_costos'
+  'desglose_costos',
+  // Venta online por canal (hist. §138). La ruta ya es de admin; van igual,
+  // por si alguna vez se reusan en una que no lo sea.
+  'mercaderia',
+  'costos',
+  'costo_por_venta',
+  'ganancia_despues'
 ]);
 
 function podarSensibles(valor) {
@@ -12723,6 +12729,26 @@ function netearComprasPorId(filasCompras, filasDevoluciones, resolverNombre) {
   return [...porId.values()];
 }
 
+// Los cuatro números de arriba de "Qué se compra", para un rango: el total
+// sale de las mismas filas por proveedor ya neteadas que el desglose.
+function totalesDeCompras(desde, hasta, organizacionId) {
+  const rango = [desde, desde, hasta, hasta, organizacionId];
+  const unidades = SQL_REPORTE_UNIDADES_COMPRAS.get(...rango);
+  const devueltas = SQL_REPORTE_UNIDADES_DEVOLUCIONES_PROVEEDOR.get(...rango);
+  const porProveedor = netearComprasPorId(
+    SQL_REPORTE_COMPRAS_POR_PROVEEDOR.all(...rango),
+    SQL_REPORTE_DEVOLUCIONES_PROVEEDOR_POR_PROVEEDOR.all(...rango),
+    () => ''
+  );
+  const netas = redondear2(porProveedor.reduce((acc, p) => acc + p.compras, 0));
+  return {
+    compras_netas: netas,
+    cantidad_compras: unidades.cantidad_compras,
+    ticket_promedio: unidades.cantidad_compras > 0 ? redondear2(netas / unidades.cantidad_compras) : 0,
+    unidades: unidades.unidades - devueltas.unidades
+  };
+}
+
 app.get('/api/reportes/compras', soloAdmin, (req, res) => {
   const desdeParam = validarFecha(req.query.desde);
   const hastaParam = validarFecha(req.query.hasta);
@@ -12800,14 +12826,28 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
     }))
     .sort((a, b) => b.compras - a.compras);
 
+  const totales = {
+    compras_netas: comprasNetas,
+    cantidad_compras: cantidadCompras,
+    ticket_promedio: cantidadCompras > 0 ? redondear2(comprasNetas / cantidadCompras) : 0,
+    unidades: comprasUnid.unidades - devolucionesUnid.unidades
+  };
+
+  // Contra el período anterior o el año pasado, con el mismo criterio que
+  // GET /api/resumen/evolucion: solo con el inicio fijado y si hubo algo antes.
+  let delta = null;
+  if (desdeParam) {
+    const rangoAnterior = req.query.comparar === 'anio' ? mismoPeriodoAnioAnterior(desde, hasta) : periodoAnterior(desde, hasta);
+    if (primera !== null && primera <= rangoAnterior.hasta) {
+      const anterior = totalesDeCompras(rangoAnterior.desde, rangoAnterior.hasta, organizacionId);
+      delta = Object.fromEntries(Object.keys(totales).map((campo) => [campo, variacion(totales[campo], anterior[campo])]));
+    }
+  }
+
   res.json({
     rango: { desde, hasta, acotado },
-    totales: {
-      compras_netas: comprasNetas,
-      cantidad_compras: cantidadCompras,
-      ticket_promedio: cantidadCompras > 0 ? redondear2(comprasNetas / cantidadCompras) : 0,
-      unidades: comprasUnid.unidades - devolucionesUnid.unidades
-    },
+    totales,
+    delta,
     proveedores,
     productos,
     categorias

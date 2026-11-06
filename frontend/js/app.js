@@ -173,16 +173,17 @@ const REFERENCIA_DELTA = {
 };
 let referenciaDelta = REFERENCIA_DELTA.anterior;
 
-function formatearDelta(campo, delta) {
+// neutro: comprar más no es ni mejor ni peor, así que va sin verde ni rojo.
+function formatearDelta(campo, delta, { neutro = false } = {}) {
   if (!delta || !delta.comparable) {
     return `<span class="ledger-delta-neutro">${esc(referenciaDelta.sin)}</span>`;
   }
   const mejoro = MEJOR_SI_SUBE[campo] ? delta.abs >= 0 : delta.abs <= 0;
-  const clase = delta.abs === 0 ? "ledger-delta-neutro" : mejoro ? "ledger-delta-ok" : "ledger-delta-mal";
+  const clase = neutro || delta.abs === 0 ? "ledger-delta-neutro" : mejoro ? "ledger-delta-ok" : "ledger-delta-mal";
   const flecha = delta.abs > 0 ? icono("arrow-up-right") : delta.abs < 0 ? icono("arrow-down-right") : "";
   // La pastilla lleva el porcentaje; el importe del cambio queda en el
   // tooltip, para no apilar dos cifras debajo de la cifra principal.
-  const formato = campo === "cantidad_ventas" || campo === "unidades" ? numero : money;
+  const formato = ["cantidad_ventas", "cantidad_compras", "unidades"].includes(campo) ? numero : money;
   const abs = `${delta.abs > 0 ? "+" : delta.abs < 0 ? "−" : ""}${formato(Math.abs(delta.abs))}`;
   const ref = `<span class="ledger-delta-ref">${esc(referenciaDelta.vs)}</span>`;
   if (delta.cruza_cero) {
@@ -776,13 +777,18 @@ async function cargarReporteCompras() {
   tablaCargando("reporteComprasCategoriasBody", 4);
 
   const rango = rangoActualResumen();
-  const params = new URLSearchParams(rango).toString();
-  const datos = await api(`/api/reportes/compras${params ? "?" + params : ""}`);
+  const params = new URLSearchParams({ ...rango, comparar: comparacion() }).toString();
+  const datos = await api(`/api/reportes/compras?${params}`);
 
-  document.getElementById("reporteComprasNetas").textContent = money(datos.totales.compras_netas);
-  document.getElementById("reporteComprasTicketPromedio").textContent = money(datos.totales.ticket_promedio);
-  document.getElementById("reporteComprasUnidades").textContent = numero(datos.totales.unidades);
-  document.getElementById("reporteComprasCantidad").textContent = numero(datos.totales.cantidad_compras);
+  for (const [campo, id, formato] of [
+    ["compras_netas", "reporteComprasNetas", money],
+    ["ticket_promedio", "reporteComprasTicketPromedio", money],
+    ["unidades", "reporteComprasUnidades", numero],
+    ["cantidad_compras", "reporteComprasCantidad", numero]
+  ]) {
+    document.getElementById(id).textContent = formato(datos.totales[campo]);
+    document.getElementById(`${id}Delta`).innerHTML = formatearDelta(campo, datos.delta?.[campo], { neutro: true });
+  }
 
   renderReporteComprasProveedores(datos.proveedores);
   renderReporteComprasProductos(datos.productos);
