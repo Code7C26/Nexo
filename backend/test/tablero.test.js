@@ -176,3 +176,21 @@ test('venta online: cada canal con su ganancia, la serie y lo que rinde la publi
   // Es del Resumen: el empleado no lo ve.
   assert.equal((await empleado.get('/api/reportes/canales')).status, 403);
 });
+
+test('Qué se compra se compara con el período anterior', async () => {
+  const comprar = (cantidad, fecha) =>
+    kiosco.post('/api/compras', { proveedor: 'Distribuidora', fecha, items: [{ producto: 'Alfajor', cantidad, precio_unitario: 400 }] });
+  for (const [cantidad, fecha] of [[10, '2026-10-27'], [15, '2026-11-03']]) {
+    const compra = await comprar(cantidad, fecha);
+    assert.equal(compra.status, 201, compra.texto);
+    // Nace en borrador: el reporte cuenta las confirmadas.
+    assert.equal((await kiosco.post(`/api/compras/${compra.json.id}/confirmar`)).status, 200);
+  }
+  const datos = (await kiosco.get('/api/reportes/compras?desde=2026-11-01&hasta=2026-11-07')).json;
+  assert.equal(datos.totales.compras_netas, 6000);
+  assert.deepEqual([datos.delta.compras_netas.abs, datos.delta.compras_netas.pct], [2000, 50]);
+  assert.equal(datos.delta.cantidad_compras.abs, 0);
+  assert.equal(datos.delta.unidades.abs, 5);
+  // Sin el inicio fijado no hay contra qué comparar.
+  assert.equal((await kiosco.get('/api/reportes/compras')).json.delta, null);
+});
