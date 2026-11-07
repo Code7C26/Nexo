@@ -12010,3 +12010,79 @@ canal" del Resumen seguía siendo la tabla de antes.
 **Cómo se verificó.** `npm test` (310) y lint. En Chrome headless, el
 Resumen de Lola a 1440 px: la pieza con los cinco canales, sin errores de
 consola.
+
+## §140. Probar sin registrarse (7 de noviembre de 2026)
+
+**Por qué.** La consigna del pitch final (simulacro el jueves 12 de
+noviembre, presentación el 20) pide el producto online "para ser probado en
+vivo" y un cierre con una invitación clara (el QR). Hasta acá, probar Nexo
+pedía crear una cuenta con el mail confirmado. Estaba en el plan del 16 al 19
+("cuenta de demo y Probar sin registrarse con QR"); se adelantó por el
+simulacro.
+
+**Qué se decidió (por mí, para revisar):**
+- **Un negocio por visitante**, no una cuenta de demo compartida: con 25
+  personas escaneando el QR a la vez, una compartida se pisa (se verían las
+  ventas de los otros y cualquiera podría borrar cosas). Cada uno tiene el
+  suyo, aislado como cualquier negocio (CLAUDE.md §28), y se borra entero a
+  los 3 días (`EJEMPLO_DIAS`).
+- **Se elige entre los cinco negocios de ejemplo** de `scripts/demo.mjs`
+  (Lola, Mafaldas, Gimnasio, Clima Sur, Carnicería), plan Pro, con su
+  historia.
+- **Reserva:** armar uno son cientos de pedidos a la API (2 a 7 segundos en
+  la compu, varias veces más en la VM), así que el servidor deja
+  `NEXO_EJEMPLOS_RESERVA` listos de cada tipo (2 en production, 0 en
+  desarrollo), de a uno y en segundo plano, en una cola única. Si se acaban,
+  se arma en el momento y el visitante espera ("Armando…"); al llegarle el
+  turno, toma uno de la reserva si quedó listo mientras esperaba. Uno de la
+  reserva que no se armó hoy se descarta (sus "ventas de hoy" serían de
+  ayer).
+- **La cuenta del ejemplo no es de nadie:** mail `prueba-…@nexo.invalid`
+  (RFC 2606: `mandarMail` nunca manda a `.invalid`), contraseña al azar y sin
+  términos aceptados (`terminos_al_dia` sale true para un ejemplo; no se
+  inventa una aceptación).
+- **Lo que pide una cuenta de verdad se rechaza** con `codigo:
+  'solo_con_cuenta'` (`rechazoEnEjemplo`, desde `autenticar`): escribir en
+  `/auth/*` (menos logout), invitaciones, usuarios, crear negocios, la baja,
+  integraciones, factura electrónica y WhatsApp. La IA, hasta 15 frases por
+  negocio de ejemplo (el cupo de Groq es uno para toda la instalación).
+- **Fuera del panel de la plataforma** (no son clientes): `resumen`,
+  `cuentas` y `negocios` los excluyen, y el resumen los cuenta aparte en
+  `pruebas` (en reserva, abiertas, abiertas hoy). El panel todavía no lo
+  muestra en pantalla.
+
+**Qué cambió:**
+- `backend/negocios-de-ejemplo.js`: los armadores salen de
+  `scripts/demo.mjs` (que ahora los importa) con `NEGOCIOS` (más `muestra`,
+  el texto para elegir), `clienteDeApi`, `armarNegocio` y `llenarNegocio`.
+- Migración aditiva: `organizaciones.ejemplo` (la clave; `'armando'`
+  mientras se arma, y al arrancar uno así quedó a medias y se borra) y
+  `ejemplo_vence` (NULL = en la reserva).
+- `server.js`, sección "Probar sin registrarse": `GET /api/ejemplos` y
+  `POST /api/ejemplos` (públicas, en `permisos.js`; 10 por hora por IP),
+  `armarEjemplo` (crea el negocio y la cuenta en la base y lo llena por la
+  propia API con una sesión interna), `reponerReserva`,
+  `borrarEjemplosViejos` (al arrancar y cada media hora: `borrarDatosNegocio`
+  y después la cuenta y la fila del negocio). `/api/auth/estado` dice
+  `ejemplos`, y la sesión trae `usuario.ejemplo` (negocio y vencimiento). Los
+  conteos de "instalación nueva" no cuentan las cuentas de ejemplo.
+- Frontend: "Probar sin registrarte" en el login, la lista para elegir
+  (`#probarPantalla`, también por `#/probar`, el enlace de la landing y del
+  QR), el aviso arriba de la app con "Crear mi cuenta gratis" (sale y abre el
+  alta), y sin la guía de Primeros pasos en un ejemplo. La landing cambia
+  "Ver cómo funciona" por "Probar sin registrarte" (portada y cierre).
+- README al día para el jurado: el enlace para probar, integraciones,
+  WhatsApp, 319 tests y una sección de documentación.
+
+**Cómo se verificó.** `backend/test/ejemplos.test.js` (8: la lista, entrar,
+aislamiento entre dos visitantes, los rechazos, el panel, el borrado al
+vencer reiniciando el servidor y `NEXO_EJEMPLOS=off`). `npm test` (319),
+lint y `verificar-migracion` (24 de 24). En Chrome contra una base local con
+reserva 1: la lista a 390 px, Lola y la Carnicería con su historia a 390 y
+1366 px, el aviso, "Crear mi cuenta gratis" → alta, y `#/probar` con el
+login ya abierto.
+
+**Queda:**
+- Publicarlo (PR a `main`): la migración es aditiva.
+- Mostrar `pruebas` en el panel de la plataforma.
+- La página "Mi cuenta" de un ejemplo muestra el mail `prueba-…`.
