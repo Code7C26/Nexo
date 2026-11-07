@@ -252,6 +252,13 @@
         <p class="topbar-fecha mono" id="todayDate">—</p>
       </header>
 
+      <!-- El negocio de ejemplo de "Probar sin registrarse": lo muestra
+           sesion.js cuando la sesión es de uno. -->
+      <div class="aviso-ejemplo" id="avisoEjemplo" role="status" hidden>
+        <p id="avisoEjemploTexto"></p>
+        <button type="button" class="btn btn-primary btn-chico" id="avisoEjemploCrear">Crear mi cuenta gratis</button>
+      </div>
+
       <!-- Vista: Asistente (hist. §118). La conversación es la misma del panel
            flotante: app.js mueve #asistentePanel a #asistentePaginaChat al
            entrar y lo devuelve al salir, así el hilo sigue. -->
@@ -5201,8 +5208,23 @@
         </label>
         <button type="button" class="btn-link sesion-olvido" id="irARecuperar">¿Te olvidaste la contraseña?</button>
         <button type="submit" class="btn btn-primary">Ingresar</button>
+        <button type="button" class="btn btn-secundario sesion-probar" id="irAProbar" hidden>Probar sin registrarte</button>
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
       </form>
+
+      <!-- "Probar sin registrarse": se elige un negocio de ejemplo y se entra
+           como su dueño (server.js, /api/ejemplos). También es #/probar, el
+           enlace de la landing y del QR de la presentación. -->
+      <div id="probarPantalla" class="form" hidden>
+        <div class="sesion-paso">
+          <h2>Probá Nexo sin registrarte</h2>
+          <p id="probarBajada">Elegí el negocio que más se parezca al tuyo y entrá como su dueño, con semanas de ventas ya cargadas.</p>
+        </div>
+        <p class="form-note" id="probarError" role="alert" hidden></p>
+        <div class="probar-lista" id="probarLista" aria-busy="true"></div>
+        <p class="sesion-nota" id="probarNota"></p>
+        <button type="button" class="btn-link" data-volver-login>Ya tengo cuenta: ingresar</button>
+      </div>
 
       <!-- "¿Te olvidaste la contraseña?" (hist. §105): pide el enlace por
            mail. La respuesta es la misma haya o no una cuenta con ese mail,

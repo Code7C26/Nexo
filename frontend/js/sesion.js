@@ -37,6 +37,7 @@
   const formRecuperar = document.getElementById("formRecuperar");
   const recuperarEnviado = document.getElementById("recuperarEnviado");
   const formRestablecer = document.getElementById("formRestablecer");
+  const probarPantalla = document.getElementById("probarPantalla");
 
   let appInyectada = false;
 
@@ -197,6 +198,7 @@
     formRecuperar.hidden = cual !== "recuperar";
     recuperarEnviado.hidden = cual !== "recuperar-enviado";
     formRestablecer.hidden = cual !== "restablecer";
+    probarPantalla.hidden = cual !== "probar";
     if (cual === "mail") document.getElementById("sumarMailEmail").focus();
     if (cual === "mail-codigo") document.getElementById("sumarMailCodigo").focus();
   }
@@ -275,7 +277,131 @@
     if (nombreEl) nombreEl.textContent = usuario.nombre;
     const rolEl = document.querySelector("[data-usuario-rol]");
     if (rolEl) rolEl.textContent = usuario.rol === "admin" ? "Administrador" : "Empleado";
+    mostrarAvisoEjemplo(usuario.ejemplo);
   }
+
+  // ---------- Probar sin registrarse ----------
+
+  // El aviso de arriba de la app cuando la sesión es de un negocio de ejemplo:
+  // de quién es, cuándo se borra y el camino a una cuenta propia. Con
+  // data-ejemplo, el CSS y la app esconden lo que no corresponde (la guía de
+  // Primeros pasos).
+  function mostrarAvisoEjemplo(ejemplo) {
+    document.documentElement.toggleAttribute("data-ejemplo", !!ejemplo);
+    const aviso = document.getElementById("avisoEjemplo");
+    aviso.hidden = !ejemplo;
+    if (!ejemplo) return;
+    const vence = new Date(`${ejemplo.vence.replace(" ", "T")}Z`);
+    const dia = vence.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+    document.getElementById("avisoEjemploTexto").textContent =
+      `Estás probando Nexo con ${ejemplo.negocio}, un negocio de ejemplo. Cargá lo que quieras: es tuyo, no lo ve nadie más y se borra solo el ${dia}.`;
+  }
+
+  // Sale del ejemplo y abre el alta: la cuenta nueva arranca de cero, con su
+  // propio negocio.
+  document.getElementById("avisoEjemploCrear").addEventListener("click", async () => {
+    try {
+      await fetchOriginal("/api/auth/logout", { method: "POST" });
+    } catch {}
+    try {
+      localStorage.removeItem("nexo.sesion");
+    } catch {}
+    await borrarDatosGuardados();
+    location.replace("/app#/crear-cuenta");
+    location.reload();
+  });
+
+  // La lista de negocios para elegir. Uno que no está listo se arma en el
+  // momento: el botón lo avisa.
+  async function abrirProbar() {
+    ocultarErrorEn("probarError");
+    mostrarPantalla("probar");
+    const lista = document.getElementById("probarLista");
+    lista.replaceChildren();
+    lista.setAttribute("aria-busy", "true");
+    try {
+      const res = await fetchOriginal("/api/ejemplos");
+      const datos = await res.json();
+      if (!datos.disponible) {
+        mostrarErrorEn("probarError", "En esta instalación de Nexo no se puede probar sin una cuenta.");
+        return;
+      }
+      document.getElementById("probarNota").textContent =
+        `Cada visitante tiene el suyo: lo que cargues no lo ve nadie más, y se borra solo en ${datos.dias} días.`;
+      for (const negocio of datos.negocios) lista.append(opcionDeEjemplo(negocio));
+    } catch {
+      mostrarErrorEn("probarError", sinRedNiSesion());
+    } finally {
+      lista.removeAttribute("aria-busy");
+    }
+  }
+
+  function opcionDeEjemplo({ clave, nombre, tipo, icono, muestra, listo }) {
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.className = "probar-opcion";
+    boton.dataset.clave = clave;
+    const icon = document.createElement("span");
+    icon.className = "probar-opcion-icono";
+    icon.innerHTML = `<svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#${encodeURIComponent(icono)}"></use></svg>`;
+    const texto = document.createElement("span");
+    texto.className = "probar-opcion-texto";
+    const titulo = document.createElement("strong");
+    titulo.textContent = nombre;
+    const detalle = document.createElement("span");
+    detalle.textContent = `${tipo} · ${muestra}`;
+    const estado = document.createElement("span");
+    estado.className = "probar-opcion-estado";
+    estado.hidden = true;
+    texto.append(titulo, detalle, estado);
+    boton.append(icon, texto);
+    boton.addEventListener("click", () => entrarAProbar(boton, nombre, listo));
+    return boton;
+  }
+
+  async function entrarAProbar(boton, nombre, listo) {
+    ocultarErrorEn("probarError");
+    const botones = [...document.querySelectorAll(".probar-opcion")];
+    botones.forEach((b) => (b.disabled = true));
+    boton.classList.add("is-cargando");
+    const estado = boton.querySelector(".probar-opcion-estado");
+    estado.textContent = listo ? `Abriendo ${nombre}…` : `Armando ${nombre}: tarda unos segundos…`;
+    estado.hidden = false;
+    try {
+      const res = await fetchOriginal("/api/ejemplos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ negocio: boton.dataset.clave })
+      });
+      const datos = await res.json();
+      if (!res.ok) throw new Error(datos.error || "No se pudo abrir el negocio de ejemplo.");
+      // Lo guardado en este dispositivo puede ser de otra cuenta.
+      await borrarDatosGuardados();
+      if (location.hash.startsWith("#/probar")) history.replaceState(null, "", location.pathname);
+      seguirCon(datos.usuario);
+    } catch (err) {
+      mostrarErrorEn("probarError", navigator.onLine ? err.message : sinRedNiSesion());
+      botones.forEach((b) => (b.disabled = false));
+      boton.classList.remove("is-cargando");
+      estado.hidden = true;
+    }
+  }
+
+  document.getElementById("irAProbar").addEventListener("click", () => {
+    history.pushState(null, "", "#/probar");
+    abrirProbar();
+  });
+
+  // El Atrás del navegador desde la lista vuelve al login, y un enlace a
+  // #/probar con el login ya abierto abre la lista.
+  window.addEventListener("hashchange", () => {
+    if (pantalla.hidden) return;
+    if (location.hash.startsWith("#/probar")) {
+      if (probarPantalla.hidden && !document.getElementById("irAProbar").hidden) abrirProbar();
+    } else if (!probarPantalla.hidden) {
+      mostrarPantalla("login");
+    }
+  });
 
   function arrancarApp(usuario) {
     escribirDatosUsuario(usuario);
@@ -836,7 +962,9 @@
   const MAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   function volverAlLogin(email) {
-    if (location.hash.startsWith("#/restablecer/")) history.replaceState(null, "", location.pathname + location.search);
+    if (location.hash.startsWith("#/restablecer/") || location.hash.startsWith("#/probar")) {
+      history.replaceState(null, "", location.pathname + location.search);
+    }
     if (email) document.getElementById("loginUsuario").value = email;
     mostrarPantalla("login");
     document.getElementById(email ? "loginPassword" : "loginUsuario").focus();
@@ -1072,6 +1200,7 @@
         document.getElementById("irARegistro").hidden = true;
         document.getElementById("sinNegocioCrear").hidden = true;
       }
+      document.getElementById("irAProbar").hidden = !estado.ejemplos;
       if (estado.requiere_bootstrap) {
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
         // no ofrece "Ya tengo cuenta".
@@ -1099,6 +1228,8 @@
         // #/crear-cuenta es el enlace para crear una cuenta (por ejemplo,
         // desde la página pública).
         if (location.hash.startsWith("#/crear-cuenta") && estado.registro_abierto !== false) abrirAlta();
+        // #/probar: "Probar sin registrarse", desde la landing o un QR.
+        else if (location.hash.startsWith("#/probar") && estado.ejemplos) abrirProbar();
         else mostrarPantalla("login");
         // Lo que pasó antes de volver al login: por ahora, la baja de la
         // cuenta (dominios/perfil.js).

@@ -250,6 +250,9 @@ function guardarStub({ para, asunto, texto, html }) {
 export async function mandarMail({ para, asunto, texto, html }) {
   if (!esMailValido(para)) throw new MailError('El mail del destinatario no es válido.');
   if (typeof asunto !== 'string' || /[\r\n]/.test(asunto)) throw new MailError('El asunto no es válido.');
+  // .invalid no existe (RFC 2606): es el de las cuentas de los negocios de
+  // ejemplo de "Probar sin registrarse", que no son de nadie.
+  if (/\.invalid$/i.test(para)) return;
 
   if (process.env.NEXO_MAIL === 'stub') {
     guardarStub({ para, asunto, texto, html });

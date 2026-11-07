@@ -195,7 +195,9 @@ function pintar(lista) {
 }
 
 async function cargarPrimerosPasos() {
-  if (!esAdmin() || localStorage.getItem(claveOculto())) {
+  // En un negocio de ejemplo ("Probar sin registrarse") ya está todo armado,
+  // y sumar gente pide una cuenta de verdad.
+  if (!esAdmin() || document.documentElement.hasAttribute("data-ejemplo") || localStorage.getItem(claveOculto())) {
     panel.hidden = true;
     return;
   }

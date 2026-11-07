@@ -8,6 +8,7 @@ import { interpretar, InterpreteError, transcribir, vozDisponible } from './inte
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
+import { NEGOCIOS as NEGOCIOS_DE_EJEMPLO, clienteDeApi, llenarNegocio } from './negocios-de-ejemplo.js';
 import {
   CATALOGO_POR_DEFECTO,
   MODULOS,
@@ -363,7 +364,7 @@ function sesionValida(token) {
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
               usuarios.debe_cambiar_password, sesiones.organizacion_id,
               usuarios.email, usuarios.email_verificado, usuarios.terminos_version, usuarios.edad,
-              negocio.nombre AS negocio_nombre, negocio.baja_pedida
+              negocio.nombre AS negocio_nombre, negocio.baja_pedida, negocio.ejemplo, negocio.ejemplo_vence
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
          LEFT JOIN usuario_organizaciones pertenencia
@@ -398,7 +399,9 @@ function datosUsuario({
   terminos_version,
   edad,
   negocio_nombre,
-  baja_pedida
+  baja_pedida,
+  ejemplo,
+  ejemplo_vence
 }) {
   return {
     id,
@@ -409,9 +412,12 @@ function datosUsuario({
     organizacion_id,
     email: email ?? null,
     email_verificado: !!email_verificado,
-    terminos_al_dia: terminos_version === TERMINOS_VERSION,
+    // La cuenta de un negocio de ejemplo no es de nadie: no hay quien acepte
+    // los términos (ver "Probar sin registrarse").
+    terminos_al_dia: !!ejemplo || terminos_version === TERMINOS_VERSION,
     edad: edad ?? null,
     negocio_en_baja: baja_pedida ? { nombre: negocio_nombre, se_borra: fechaDeBorrado(baja_pedida) } : null,
+    ejemplo: ejemplo ? { negocio: negocio_nombre, vence: ejemplo_vence } : null,
     plataforma: esAdminPlataforma({ email, email_verificado })
   };
 }
@@ -672,7 +678,7 @@ function autenticar(req, res, next) {
   }
   // Y los términos (etapa 8b, Fase 3): una cuenta de antes, o cualquiera
   // cuando cambia TERMINOS_VERSION, los acepta antes de operar.
-  if (sesion.terminos_version !== TERMINOS_VERSION && !RUTAS_SIN_TERMINOS.has(req.path)) {
+  if (!sesion.ejemplo && sesion.terminos_version !== TERMINOS_VERSION && !RUTAS_SIN_TERMINOS.has(req.path)) {
     return res.status(403).json({ error: 'Aceptá los términos antes de seguir.', codigo: 'faltan_terminos' });
   }
   // Sin negocio (hist. §104) solo alcanza su cuenta (/auth/*: sus invitaciones,
@@ -689,6 +695,10 @@ function autenticar(req, res, next) {
   // datos. Nada más lo lee ni lo escribe.
   if (sesion.baja_pedida && !deLaCuenta && !RUTAS_EN_BAJA.has(req.path)) {
     return res.status(403).json({ error: 'Este negocio se está dando de baja.', codigo: 'negocio_en_baja' });
+  }
+  if (sesion.ejemplo) {
+    const rechazo = rechazoEnEjemplo(req);
+    if (rechazo) return res.status(rechazo.status).json(rechazo.cuerpo);
   }
   next();
 }
@@ -837,7 +847,7 @@ function organizacionUnica() {
 // cookie puede llamar.
 
 app.get('/api/auth/estado', (req, res) => {
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+  const { count } = db.prepare(`SELECT COUNT(*) AS count FROM usuarios WHERE ${SIN_CUENTAS_DE_EJEMPLO}`).get();
   if (count === 0) {
     return res.json({ requiere_bootstrap: true, autenticado: false, usuario: null });
   }
@@ -845,11 +855,13 @@ app.get('/api/auth/estado', (req, res) => {
   const sesion = sesionValida(token);
   // registro_abierto: con NEXO_REGISTRO=off el login no ofrece crear cuenta.
   const registroAbierto = !registroCerrado();
+  // ejemplos: el login ofrece "Probar sin registrarse".
+  const ejemplos = ejemplosDisponibles();
   if (!sesion) {
-    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto });
+    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos });
   }
   renovarSesion(token);
-  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto });
+  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto, ejemplos });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -1227,7 +1239,7 @@ app.post('/api/auth/registro', (req, res) => {
     // Instalación nueva: todavía no hay ningún usuario, así que se adopta la
     // organización que db/index.js sembró al arrancar en vez de dejarla
     // huérfana. Revalidado acá adentro, nunca confiar en el frontend.
-    const { count } = db.prepare('SELECT COUNT(*) AS count FROM usuarios').get();
+    const { count } = db.prepare(`SELECT COUNT(*) AS count FROM usuarios WHERE ${SIN_CUENTAS_DE_EJEMPLO}`).get();
     if (count === 0) {
       orgId = organizacionUnica();
       db.prepare(
@@ -1921,6 +1933,270 @@ app.post('/api/integraciones/whatsapp/webhook', (req, res) => {
       .catch((err) => console.error('[whatsapp] mensaje:', err.message));
   }
 });
+
+/* ---------- Probar sin registrarse ---------- */
+//
+// Quien llega desde la landing o un QR prueba Nexo sin crear una cuenta: elige
+// un negocio de ejemplo (backend/negocios-de-ejemplo.js) y entra como su
+// administrador, con semanas de historia. Cada visitante tiene el suyo, aislado
+// como cualquier negocio (CLAUDE.md §28): lo que carga no lo ve nadie más, y a
+// los EJEMPLO_DIAS se borra entero.
+//
+// Armar uno lleva segundos (cientos de pedidos a la propia API, que pasan por
+// la misma validación y auditoría que un operador), así que el servidor deja
+// algunos listos: la reserva, EJEMPLOS_EN_RESERVA de cada tipo, armados de a
+// uno y en segundo plano. Uno de la reserva que no se armó hoy se descarta: sus
+// "ventas de hoy" serían de ayer. Con la reserva de ese tipo vacía, se arma en
+// el momento y quien lo pidió espera.
+//
+// La cuenta del ejemplo no es de nadie: un mail .invalid (RFC 2606, nunca se
+// entrega), una contraseña al azar que nadie conoce y sin términos aceptados,
+// porque no hay una persona que los acepte ni se guarda nada suyo. Lo que pide
+// una cuenta de verdad se rechaza (rechazoEnEjemplo, desde autenticar).
+const EJEMPLO_DIAS = 3;
+const EJEMPLOS_EN_RESERVA = Math.max(
+  0,
+  Number(process.env.NEXO_EJEMPLOS_RESERVA ?? (process.env.NODE_ENV === 'production' ? 2 : 0)) || 0
+);
+const EJEMPLOS_POR_IP = 10;
+// Mientras se arma, `ejemplo` dice esto y no la clave: no se puede tomar, y al
+// arrancar el servidor uno así quedó a medias y se borra.
+const EJEMPLO_ARMANDO = 'armando';
+const DOMINIO_CUENTA_EJEMPLO = 'nexo.invalid';
+const SIN_CUENTAS_DE_EJEMPLO = `(email IS NULL OR email NOT LIKE '%@${DOMINIO_CUENTA_EJEMPLO}')`;
+// Las frases que cada negocio de ejemplo le puede mandar al asistente: el cupo
+// de la IA es uno solo para toda la instalación (handoff, "Cupo de Groq").
+const EJEMPLO_FRASES_IA = 15;
+const frasesDeEjemplos = new Map();
+
+function ejemplosDisponibles() {
+  return process.env.NEXO_EJEMPLOS !== 'off' && !registroCerrado();
+}
+
+// Lo que en un negocio de ejemplo no se puede, con el mismo `req.path` que
+// autenticar (sin /api): lo de la cuenta (mail, contraseña, baja), sumar gente
+// o negocios, y conectar algo de afuera (tiendas, Mercado Pago, ARCA,
+// WhatsApp), que pide cuentas reales. Leer, sí.
+const ESCRIBIR_SOLO_CON_CUENTA = [
+  /^\/auth\/(?!logout$)/,
+  /^\/invitaciones(\/|$)/,
+  /^\/usuarios(\/|$)/,
+  /^\/negocios$/,
+  /^\/negocio\/baja(\/|$)/,
+  /^\/integraciones(\/|$)/,
+  /^\/factura-electronica(\/|$)/,
+  /^\/whatsapp(\/|$)/
+];
+const RUTAS_DE_LA_IA = new Set(['/asistente/interpretar', '/asistente/transcribir']);
+
+function rechazoEnEjemplo(req) {
+  if (req.method !== 'GET' && ESCRIBIR_SOLO_CON_CUENTA.some((ruta) => ruta.test(req.path))) {
+    return {
+      status: 403,
+      cuerpo: {
+        error: 'En el negocio de ejemplo esto no se puede: necesita una cuenta de verdad. Creá la tuya gratis para usarlo.',
+        codigo: 'solo_con_cuenta'
+      }
+    };
+  }
+  if (RUTAS_DE_LA_IA.has(req.path)) {
+    const usadas = (frasesDeEjemplos.get(req.usuario.organizacion_id) ?? 0) + 1;
+    frasesDeEjemplos.set(req.usuario.organizacion_id, usadas);
+    if (usadas > EJEMPLO_FRASES_IA) {
+      return {
+        status: 429,
+        cuerpo: {
+          error: `En el negocio de ejemplo el asistente contesta hasta ${EJEMPLO_FRASES_IA} frases. Creá tu cuenta gratis para seguir usándolo.`,
+          codigo: 'solo_con_cuenta'
+        }
+      };
+    }
+  }
+  return null;
+}
+
+// La API se llama a sí misma por adentro de la máquina, sin pasar por Caddy.
+const urlInterna = () => `http://${process.env.NEXO_HOST || '127.0.0.1'}:${PORT}`;
+
+// Arma un negocio de ejemplo de `clave` y devuelve su id. `tomado`: nace ya
+// con su vencimiento (para quien lo espera); si no, queda en la reserva. Si
+// algo falla a mitad de camino, vence ya y lo borra la próxima limpieza.
+async function armarEjemplo(clave, { tomado = false } = {}) {
+  const { nombre, rubro } = NEGOCIOS_DE_EJEMPLO[clave];
+  const { datos } = validarNegocioNuevo({ nombre, rubro });
+  let orgId;
+  let usuarioId;
+  withTransaction(() => {
+    orgId = insertarNegocio(datos);
+    db.prepare("UPDATE organizaciones SET plan = 'pro', plan_vence = NULL, ya_funcionaba = 1, ejemplo = ? WHERE id = ?").run(
+      EJEMPLO_ARMANDO,
+      orgId
+    );
+    const email = `prueba-${randomBytes(8).toString('hex')}@${DOMINIO_CUENTA_EJEMPLO}`;
+    const { hash, salt } = hashPassword(randomBytes(24).toString('hex'));
+    const info = db
+      .prepare(
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, email, email_verificado)
+         VALUES (?, ?, 'Invitado', ?, ?, ?, datetime('now'))`
+      )
+      .run(orgId, email, hash, salt, email);
+    usuarioId = Number(info.lastInsertRowid);
+    sumarAlNegocio(usuarioId, orgId, 'admin');
+    registrarAuditoria({
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: orgId,
+      usuario_id: usuarioId,
+      organizacion_id: orgId,
+      detalle: `Negocio de ejemplo "${nombre}" creado para probar Nexo`
+    });
+  });
+  const token = crearSesion(usuarioId, orgId);
+  try {
+    const semilla = 1000 + Object.keys(NEGOCIOS_DE_EJEMPLO).indexOf(clave);
+    await llenarNegocio(clienteDeApi(urlInterna(), `${COOKIE_SESION}=${token}`), clave, { semilla });
+    const vence = tomado ? `datetime('now', '+${EJEMPLO_DIAS} days')` : 'NULL';
+    db.prepare(`UPDATE organizaciones SET ejemplo = ?, ejemplo_vence = ${vence} WHERE id = ?`).run(clave, orgId);
+  } catch (err) {
+    db.prepare("UPDATE organizaciones SET ejemplo = ?, ejemplo_vence = datetime('now') WHERE id = ?").run(clave, orgId);
+    throw err;
+  } finally {
+    db.prepare('DELETE FROM sesiones WHERE token = ?').run(token);
+  }
+  return orgId;
+}
+
+// De a uno por vez, los de la reserva y los que se piden en el momento: armar
+// uno son cientos de escrituras, y node:sqlite atiende una por vez.
+let colaEjemplos = Promise.resolve();
+function enColaDeEjemplos(tarea) {
+  const resultado = colaEjemplos.then(tarea);
+  colaEjemplos = resultado.catch(() => {});
+  return resultado;
+}
+
+// El día de la Argentina de una fecha de SQLite (UTC), como modificador de
+// date(): "-3 hours".
+function aDiaArgentino() {
+  const inicio = new Date(`${inicioDeHoyUTC().replace(' ', 'T')}Z`);
+  const horas = Math.round((inicio.getTime() - new Date(`${fechaDeHoy()}T00:00:00Z`).getTime()) / 3_600_000);
+  return `${horas > 0 ? '-' : '+'}${Math.abs(horas)} hours`;
+}
+
+// Los de la reserva de un tipo, armados hoy.
+function ejemplosEnReserva(clave) {
+  return db
+    .prepare(
+      `SELECT id FROM organizaciones
+        WHERE ejemplo = ? AND ejemplo_vence IS NULL AND baja_hecha IS NULL AND date(fecha_alta, ?) = ?
+        ORDER BY id`
+    )
+    .all(clave, aDiaArgentino(), fechaDeHoy());
+}
+
+// Toma uno listo de la reserva y le pone su vencimiento. Sin await en el
+// medio: dos pedidos a la vez no toman el mismo.
+function tomarDeReserva(clave) {
+  const id = ejemplosEnReserva(clave)[0]?.id;
+  if (id) db.prepare(`UPDATE organizaciones SET ejemplo_vence = datetime('now', '+${EJEMPLO_DIAS} days') WHERE id = ?`).run(id);
+  return id ?? null;
+}
+
+let reponiendoReserva = false;
+async function reponerReserva() {
+  if (reponiendoReserva || !EJEMPLOS_EN_RESERVA || !ejemplosDisponibles()) return;
+  reponiendoReserva = true;
+  try {
+    for (const clave of Object.keys(NEGOCIOS_DE_EJEMPLO)) {
+      while (ejemplosEnReserva(clave).length < EJEMPLOS_EN_RESERVA) {
+        await enColaDeEjemplos(() => armarEjemplo(clave));
+      }
+    }
+  } catch (err) {
+    console.error('[ejemplos] no se pudo armar la reserva:', err.message);
+  } finally {
+    reponiendoReserva = false;
+  }
+}
+
+// Borra los vencidos, los de la reserva que no son de hoy y los que quedaron a
+// medio armar (`alArrancar`: al arrancar no se está armando ninguno; después,
+// solo los que llevan más de una hora así). Se va todo: los datos, la cuenta y
+// la fila del negocio, que nadie más referencia.
+function borrarEjemplosViejos({ alArrancar = false } = {}) {
+  const viejos = db
+    .prepare(
+      `SELECT id FROM organizaciones
+        WHERE ejemplo IS NOT NULL AND baja_hecha IS NULL
+          AND (ejemplo_vence <= datetime('now')
+               OR (ejemplo = ? AND (? OR fecha_alta <= datetime('now', '-1 hour')))
+               OR (ejemplo <> ? AND ejemplo_vence IS NULL AND date(fecha_alta, ?) < ?))`
+    )
+    .all(EJEMPLO_ARMANDO, alArrancar ? 1 : 0, EJEMPLO_ARMANDO, aDiaArgentino(), fechaDeHoy());
+  for (const { id } of viejos) {
+    try {
+      borrarDatosNegocio(id);
+      withTransaction(() => {
+        db.prepare(`DELETE FROM usuarios WHERE organizacion_id = ? AND email LIKE '%@${DOMINIO_CUENTA_EJEMPLO}'`).run(id);
+        db.prepare('DELETE FROM organizaciones WHERE id = ?').run(id);
+      });
+      frasesDeEjemplos.delete(id);
+    } catch (err) {
+      console.error(`[ejemplos] no se pudo borrar el negocio de ejemplo #${id}: ${err.message}`);
+    }
+  }
+  if (viejos.length) console.log(`[ejemplos] se borraron ${viejos.length} negocios de ejemplo.`);
+}
+
+// Para elegir: cada tipo con lo que muestra y si hay uno listo (si no, se arma
+// en el momento y tarda unos segundos).
+app.get('/api/ejemplos', (req, res) => {
+  if (!ejemplosDisponibles()) return res.json({ disponible: false, negocios: [] });
+  res.json({
+    disponible: true,
+    dias: EJEMPLO_DIAS,
+    negocios: Object.entries(NEGOCIOS_DE_EJEMPLO).map(([clave, { nombre, rubro, muestra }]) => ({
+      clave,
+      nombre,
+      tipo: PERFILES_RUBRO[rubro].nombre,
+      icono: PERFILES_RUBRO[rubro].icono,
+      muestra,
+      listo: ejemplosEnReserva(clave).length > 0
+    }))
+  });
+});
+
+// Entrar a probar: toma uno de la reserva (o lo arma) y abre la sesión en él.
+app.post('/api/ejemplos', asincrono(async (req, res) => {
+  if (!ejemplosDisponibles()) return res.status(403).json({ error: 'En esta instalación no se puede probar sin una cuenta.' });
+  const clave = req.body?.negocio;
+  if (typeof clave !== 'string' || !Object.hasOwn(NEGOCIOS_DE_EJEMPLO, clave)) {
+    return res.status(400).json({ error: 'Elegí uno de los negocios de ejemplo.' });
+  }
+  if (registroExcedido(`ejemplo:${req.ip}`, EJEMPLOS_POR_IP)) {
+    return res.status(429).json({ error: 'Abriste varios negocios de ejemplo seguidos. Probá de nuevo más tarde.' });
+  }
+  // Sin uno listo, espera su turno en la cola: el que se estaba armando para
+  // la reserva puede quedar listo antes, y entonces se toma ese.
+  const orgId =
+    tomarDeReserva(clave) ?? (await enColaDeEjemplos(() => tomarDeReserva(clave) ?? armarEjemplo(clave, { tomado: true })));
+  const { usuario_id: usuarioId } = db
+    .prepare("SELECT usuario_id FROM usuario_organizaciones WHERE organizacion_id = ? AND rol = 'admin' ORDER BY rowid LIMIT 1")
+    .get(orgId);
+  const token = crearSesion(usuarioId, orgId);
+  marcarAcceso(usuarioId, orgId);
+  registrarAuditoria({
+    accion: 'login',
+    entidad: 'usuario',
+    entidad_id: usuarioId,
+    usuario_id: usuarioId,
+    organizacion_id: orgId,
+    detalle: 'Entró a probar Nexo con este negocio de ejemplo'
+  });
+  ponerCookieSesion(res, token);
+  res.status(201).json({ usuario: datosUsuario(sesionValida(token)) });
+  setImmediate(reponerReserva);
+}));
 
 app.use('/api', autenticar);
 
@@ -18700,8 +18976,22 @@ app.get('/api/plataforma/resumen', soloPlataforma, (req, res) => {
   const hoy = fechaDeHoy();
   const hace7 = sumarDias(hoy, -6);
   const hace30 = sumarDias(hoy, -29);
-  const cuentas = db.prepare('SELECT id, fecha_alta, ultimo_acceso, email_verificado, baja FROM usuarios').all();
-  const negocios = db.prepare('SELECT id, plan, plan_vence, fecha_alta, baja_pedida, baja_hecha FROM organizaciones').all();
+  // Sin los negocios de ejemplo ni sus cuentas: no son de nadie
+  // ("Probar sin registrarse"). Van aparte, en `pruebas`.
+  const cuentas = db
+    .prepare(`SELECT id, fecha_alta, ultimo_acceso, email_verificado, baja FROM usuarios WHERE ${SIN_CUENTAS_DE_EJEMPLO}`)
+    .all();
+  const negocios = db
+    .prepare('SELECT id, plan, plan_vence, fecha_alta, baja_pedida, baja_hecha FROM organizaciones WHERE ejemplo IS NULL')
+    .all();
+  const pruebas = db
+    .prepare(
+      `SELECT COUNT(CASE WHEN ejemplo_vence IS NULL AND ejemplo <> ? THEN 1 END) AS en_reserva,
+              COUNT(CASE WHEN ejemplo_vence > datetime('now') THEN 1 END) AS abiertas,
+              COUNT(CASE WHEN ejemplo_vence > datetime('now', ?) THEN 1 END) AS abiertas_hoy
+         FROM organizaciones WHERE ejemplo IS NOT NULL AND baja_hecha IS NULL`
+    )
+    .get(EJEMPLO_ARMANDO, `+${EJEMPLO_DIAS - 1} days`);
   const sesiones = usoPorSesion();
   const accesos = db.prepare('SELECT usuario_id, organizacion_id, ultimo_acceso FROM usuario_organizaciones').all();
 
@@ -18755,6 +19045,7 @@ app.get('/api/plataforma/resumen', soloPlataforma, (req, res) => {
       borrados: negocios.filter((n) => n.baja_hecha).length,
       por_plan: porPlan
     },
+    pruebas,
     semanas
   });
 });
@@ -18763,7 +19054,7 @@ app.get('/api/plataforma/cuentas', soloPlataforma, (req, res) => {
   const cuentas = db
     .prepare(
       `SELECT id, nombre, email, email_verificado, fecha_alta, ultimo_acceso, edad, baja
-         FROM usuarios ORDER BY fecha_alta DESC, id DESC`
+         FROM usuarios WHERE ${SIN_CUENTAS_DE_EJEMPLO} ORDER BY fecha_alta DESC, id DESC`
     )
     .all();
   const pertenencias = db
@@ -18815,7 +19106,7 @@ app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
               (SELECT MAX(ultimo_acceso) FROM usuario_organizaciones pertenencia
                 WHERE pertenencia.organizacion_id = negocio.id) AS ultimo_acceso
          FROM organizaciones negocio
-        WHERE negocio.baja_hecha IS NULL
+        WHERE negocio.baja_hecha IS NULL AND negocio.ejemplo IS NULL
         ORDER BY negocio.fecha_alta DESC, negocio.id DESC`
     )
     .all(sumarDias(hoy, -29));
@@ -18842,7 +19133,7 @@ app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
 // el plan a sí mismo, y el cambio queda en la auditoría de ese negocio.
 app.put('/api/plataforma/negocios/:id/plan', soloPlataforma, (req, res) => {
   const negocio = db
-    .prepare('SELECT id, nombre, plan, plan_vence FROM organizaciones WHERE id = ? AND baja_hecha IS NULL')
+    .prepare('SELECT id, nombre, plan, plan_vence FROM organizaciones WHERE id = ? AND baja_hecha IS NULL AND ejemplo IS NULL')
     .get(Number(req.params.id));
   if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado.' });
   const plan = req.body?.plan;
@@ -21511,6 +21802,15 @@ process.on('unhandledRejection', (motivo) => {
 // de atender, y cada 6 horas.
 borrarNegociosVencidos();
 setInterval(borrarNegociosVencidos, 6 * 60 * 60 * 1000).unref();
+// Los negocios de ejemplo de "Probar sin registrarse": los viejos se borran al
+// arrancar y cada media hora, y la reserva se repone un rato después de
+// arrancar (para no demorar el arranque) y después de cada limpieza.
+borrarEjemplosViejos({ alArrancar: true });
+setTimeout(reponerReserva, 20_000).unref();
+setInterval(() => {
+  borrarEjemplosViejos();
+  reponerReserva();
+}, 30 * 60 * 1000).unref();
 // Las tiendas conectadas (CLAUDE.md §32): pedidos, stock y precio.
 setInterval(() => sincronizarTodas().catch((err) => console.error('[integraciones]', err)), SINCRONIZAR_CADA_MS).unref();
 

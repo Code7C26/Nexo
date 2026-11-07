@@ -4160,6 +4160,77 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 .sesion-card .solicitud-acciones .btn-primary { margin-top: 0; min-height: 40px; }
 .sesion-card .solicitud-acciones .btn-link { margin: 0; }
 #sinNegocioCrear.btn-secundario { min-height: 44px; margin-top: var(--sp-1); }
+
+/* "Probar sin registrarse": el botón del login y la lista de negocios de
+   ejemplo, una tarjeta por negocio con su ícono, como las de los tipos del
+   alta guiada. */
+.sesion-card .sesion-probar { min-height: 44px; font-size: var(--txt-md); }
+.sesion-card .sesion-probar[hidden] { display: none; }
+.probar-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.probar-lista[aria-busy="true"]:empty { min-height: 280px; }
+.probar-opcion {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease;
+}
+.probar-opcion:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-bg); }
+.probar-opcion:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.probar-opcion:disabled { cursor: default; opacity: 0.55; }
+.probar-opcion.is-cargando { opacity: 1; border-color: var(--accent); background: var(--accent-bg); }
+.probar-opcion-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  color: var(--ink-muted);
+}
+.probar-opcion-icono .ico { width: 20px; height: 20px; }
+.probar-opcion.is-cargando .probar-opcion-icono { background: var(--accent); color: var(--accent-contrast); }
+.probar-opcion-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.probar-opcion-texto strong { font-weight: 600; }
+.probar-opcion-texto span { font-size: var(--txt-sm); color: var(--ink-muted); line-height: 1.4; }
+.probar-opcion-texto .probar-opcion-estado { color: var(--accent); font-weight: 500; }
+.probar-opcion-texto .probar-opcion-estado[hidden] { display: none; }
+
+/* El aviso de arriba de la app en un negocio de ejemplo: el texto y el
+   camino a una cuenta propia, en una franja del azul de acento. */
+.aviso-ejemplo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+}
+.aviso-ejemplo[hidden] { display: none; }
+.aviso-ejemplo p {
+  margin: 0;
+  flex: 1 1 280px;
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
 /* El display de .btn-link le gana al [hidden] del navegador: la pantalla de
    la invitación muestra u oculta sus botones según quién abre el enlace. */
 .sesion-card .btn-link[hidden] { display: none; }

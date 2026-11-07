@@ -1242,6 +1242,11 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- usuarios.organizacion_id la referencia.
   baja_pedida TEXT,
   baja_hecha TEXT,
+  -- "Probar sin registrarse": la clave del negocio de ejemplo (NULL = un
+  -- negocio de verdad) y cuándo se borra desde que alguien lo tomó (NULL =
+  -- está en la reserva, sin tomar).
+  ejemplo TEXT,
+  ejemplo_vence TEXT,
   -- Factura electrónica (etapa E, CLAUDE.md §33): el punto de venta que el
   -- negocio dio de alta en ARCA para web services, y cuándo se verificó que
   -- Nexo puede facturar por su CUIT. Sin verificar, el negocio no emite
