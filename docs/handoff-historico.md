@@ -12086,3 +12086,28 @@ login ya abierto.
 - Publicarlo (PR a `main`): la migración es aditiva.
 - Mostrar `pruebas` en el panel de la plataforma.
 - La página "Mi cuenta" de un ejemplo muestra el mail `prueba-…`.
+
+## §141. El asistente con IA, solo en Pro (8 de noviembre de 2026)
+
+**Decisión del usuario:** "el asistente tiene que estar en el plan pro", así
+no lo usan los conocidos a los que les da Emprendedor gratis para probar (el
+cupo de Groq es uno solo para todo Nexo). Es la primera función que separa
+planes: hasta acá todos tenían todo y los separaban los topes
+(`backend/planes.js` anota la excepción).
+
+**Qué cambió:** `PLANES.*.asistente` (solo `pro` en true, y Pro lo lista en
+`incluye`, que muestran la landing y la página del plan).
+`soloConAsistente` frena `POST /api/asistente/interpretar` y `/transcribir`
+con 403 `limite_plan`; `GET /api/asistente/capacidades` dice `ia`, y el
+panel muestra "Cargar operaciones con el asistente es del plan Pro" (con
+"Ver los planes" para el admin) y esconde el micrófono. WhatsApp contesta
+que es de Pro. Las preguntas de uso (el manual, en el navegador) siguen para
+todos. Los negocios de ejemplo son Pro: el asistente anda, con su tope de 15
+frases.
+
+**De paso:** el test "comparar con el año pasado" (`tablero.test.js`) tenía
+fija la semana del 1 al 7 de noviembre y falló el 8; pasa a la semana que
+termina hoy.
+
+**Cómo se verificó.** Test nuevo en `planes.test.js` (Gratis y Emprendedor
+frenados en texto y voz, Pro no); `npm test` (320) y lint.

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §140);
+    siguiente número (hoy el último es §141);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -27,6 +27,10 @@ commiteado en `solla`, sin publicar.** Desde la landing, el login o
 su dueño; uno por visitante, borrado a los 3 días, con reserva armada de
 antemano (`NEXO_EJEMPLOS_RESERVA`, 2 por tipo en production). Es el destino
 del QR del pitch. README puesto al día para el jurado.
+
+**8 de noviembre (hist. §141): el asistente con IA pasa a ser solo de Pro**
+(decisión del usuario): Gratis y Emprendedor ven el aviso y siguen con las
+respuestas del manual. Publicado junto con §140.
 
 **Pitch final (consigna del profesor, 7 de noviembre):** simulacro evaluado
 el **jueves 12 de noviembre**, presentación oficial el 20. 30 minutos:
