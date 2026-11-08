@@ -516,13 +516,13 @@ async function armarGimnasio(n) {
 /* ---------- Clima Sur: servicios con presupuestos, trabajos y abonos ---------- */
 
 async function armarClima(n) {
-  const servicio = (nombre, sku, precio_venta) => n.producto({ nombre, sku, precio_venta, tipo: 'servicio', categoria: 'Servicios' });
-  const instalacion = await servicio('Instalación de split hasta 3000 frigorías', 'SRV-INS', 120000);
-  const instalacionGrande = await servicio('Instalación de split de 4500 a 6000 frigorías', 'SRV-INS6', 165000);
-  const mantenimiento = await servicio('Mantenimiento preventivo', 'SRV-MAN', 35000);
-  const carga = await servicio('Carga de gas', 'SRV-GAS', 55000);
-  const visita = await servicio('Visita técnica', 'SRV-VIS', 18000);
-  const kit = await servicio('Kit de instalación (caños y soporte)', 'SRV-KIT', 48000);
+  const servicio = (nombre, sku, precio_venta, categoria) => n.producto({ nombre, sku, precio_venta, tipo: 'servicio', categoria });
+  const instalacion = await servicio('Instalación de split hasta 3000 frigorías', 'SRV-INS', 120000, 'Instalación');
+  const instalacionGrande = await servicio('Instalación de split de 4500 a 6000 frigorías', 'SRV-INS6', 165000, 'Instalación');
+  const mantenimiento = await servicio('Mantenimiento preventivo', 'SRV-MAN', 35000, 'Mantenimiento');
+  const carga = await servicio('Carga de gas', 'SRV-GAS', 55000, 'Reparación');
+  const visita = await servicio('Visita técnica', 'SRV-VIS', 18000, 'Reparación');
+  const kit = await servicio('Kit de instalación (caños y soporte)', 'SRV-KIT', 48000, 'Instalación');
 
   const clientes = [];
   for (const [nombre, telefono, direccion] of [
