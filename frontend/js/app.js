@@ -1984,7 +1984,9 @@ function renderProductos(lista) {
       ${celdaMovil(
         p.sku,
         p.categoria,
-        p.tipo === "servicio" ? "Servicio" : moduloActivo("stock") ? ["Stock", cantidad(p.stock, p.unidad)] : null
+        // "Servicio" solo distingue cuando el catálogo mezcla los dos tipos:
+        // en uno de puros servicios ya lo dice el título.
+        p.tipo === "servicio" ? (catalogoMixto() ? "Servicio" : null) : moduloActivo("stock") ? ["Stock", cantidad(p.stock, p.unidad)] : null
       )}
       <td data-label="SKU" class="col-sku">${esc(p.sku || "—")}</td>
       <td data-label="Categoría">${esc(p.categoria || "—")}</td>

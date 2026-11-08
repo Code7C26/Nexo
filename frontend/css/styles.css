@@ -4004,14 +4004,18 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 /* Fondo en el negro de marca en los dos temas, no var(--bg): igual
    criterio que la sidebar y el marco (es identidad de marca, no una
    preferencia de lectura del tema). La tarjeta sí sigue al tema. */
+/* Con scroll propio y la tarjeta centrada con margin: auto (no con
+   align-items: center): si la tarjeta es más alta que la ventana (la lista
+   de "Probar sin registrarse" en una compu baja), arranca arriba y se
+   scrollea, en vez de cortarse por los dos lados. */
 .sesion-pantalla {
   position: fixed;
   inset: 0;
   background: var(--frame);
   z-index: 100;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--sp-4);
 }
 
@@ -4032,6 +4036,7 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   width: min(400px, 92vw);
+  margin: auto;
   padding: var(--sp-6) var(--sp-6) var(--sp-5);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   display: flex;
@@ -4185,6 +4190,15 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
   gap: var(--sp-2);
 }
 .probar-lista[aria-busy="true"]:empty { min-height: 280px; }
+/* En la compu la tarjeta se ensancha y los negocios van de a dos: en una
+   columna de 400px la lista quedaba larga y angosta en medio de la pantalla.
+   El último, si queda solo, ocupa el ancho. */
+@media (min-width: 760px) {
+  .sesion-card:has(#probarPantalla:not([hidden])) { width: min(720px, 92vw); }
+  .probar-lista { display: grid; grid-template-columns: 1fr 1fr; }
+  .probar-opcion { height: 100%; }
+  .probar-opcion:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
 .probar-opcion {
   display: flex;
   align-items: center;

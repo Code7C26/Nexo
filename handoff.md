@@ -19,10 +19,22 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (7 de noviembre de 2026)
+## Estado actual (8 de noviembre de 2026)
 
-**Lo último (7 de noviembre, hist. §140): "Probar sin registrarse", hecho y
-commiteado en `solla`, sin publicar.** Desde la landing, el login o
+**8 de noviembre, después de §141: guion del pitch y QR, en `solla` sin
+publicar.** `docs/guion-pitch.md` tiene el pitch en el orden de la consigna:
+la demo paso a paso con Lola Indumentaria, el plan B, los números del
+proyecto, los resultados de testing, el bloqueo para contar (ARCA) y el texto
+en inglés. Los roles técnicos del equipo los completan ellos. Los QR al
+sitio y al repositorio están en `docs/qr/`, comprobados con un lector.
+También se arregló "Servicios · Servicio" en Clima Sur: los servicios van en
+Instalación, Mantenimiento y Reparación, y la lista dice "Servicio" solo si
+el catálogo mezcla productos y servicios. Los ejemplos que ya estaban en la
+reserva del servidor conservan la categoría vieja hasta que se usen. Se probó
+`/app#/probar` en el sitio real (Clima Sur) y las cifras cargan.
+
+**Lo último (7 de noviembre, hist. §140): "Probar sin registrarse", publicado
+junto con §141.** Desde la landing, el login o
 `/app#/probar` se elige uno de los cinco negocios de ejemplo y se entra como
 su dueño; uno por visitante, borrado a los 3 días, con reserva armada de
 antemano (`NEXO_EJEMPLOS_RESERVA`, 2 por tipo en production). Es el destino
@@ -1725,15 +1737,14 @@ servidor, y pasar el id y la clave al `.env` del servidor.
   3. Si da: importar desde una planilla (punto 8c), sugerencias en el Resumen
      (CLAUDE.md §36), logo del negocio y descuentos en el punto de venta.
 - **Hasta el simulacro (jueves 12, agregado el 7 de noviembre):**
-  1. ~~"Probar sin registrarse"~~ **hecho** (hist. §140), falta publicarlo.
-  2. Publicar (PR a `main`) y probar `/app#/probar` en el sitio real desde el
-     celular; un rato antes del simulacro, subir `NEXO_EJEMPLOS_RESERVA` (por
+  1. ~~"Probar sin registrarse"~~ **hecho** (hist. §140) y publicado.
+  2. ~~Publicar y probar `/app#/probar` en el sitio real~~ **hecho** el 8 de
+     noviembre (desde la herramienta, con la vista de celular). Un rato antes del simulacro, subir `NEXO_EJEMPLOS_RESERVA` (por
      ejemplo a 5) si se espera mucha gente escaneando a la vez.
-  3. El guion de la demo (qué se muestra y en qué orden, con un negocio de
-     ejemplo armado de antemano) y los datos para I+D: arquitectura, 319
-     tests en el CI, bloqueos reales resueltos (ver la lista en el guion).
-  4. QR al sitio (`/app#/probar`) y al repositorio, para el cierre, los
-     stickers y las tarjetas.
+  3. ~~El guion de la demo y los datos para I+D~~ **hecho** el 8 de
+     noviembre: `docs/guion-pitch.md`. Falta que el equipo complete sus roles,
+     lo ensaye y grabe el video de respaldo.
+  4. ~~QR al sitio y al repositorio~~ **hechos**: `docs/qr/`.
   5. Riesgo de la demo: el cupo gratis de Groq (~100 frases por día para todo
      Nexo). El Dev Tier (pago por uso) lo decide el usuario; si no, ensayar
      sin gastar el cupo del día de la presentación.
