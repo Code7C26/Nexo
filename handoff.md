@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §141);
+    siguiente número (hoy el último es §142);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -32,6 +32,14 @@ Instalación, Mantenimiento y Reparación, y la lista dice "Servicio" solo si
 el catálogo mezcla productos y servicios. Los ejemplos que ya estaban en la
 reserva del servidor conservan la categoría vieja hasta que se usen. Se probó
 `/app#/probar` en el sitio real (Clima Sur) y las cifras cargan.
+
+**8 de noviembre, hist. §142: Nexo en inglés, en `solla` sin publicar.**
+Configuración → Apariencia → Idioma (y "English" al pie de la entrada). El
+texto en castellano es la clave de `frontend/js/idioma/en.js`;
+`traductor.js` traduce la pantalla. Un texto nuevo va a `en.js` (`npm run
+i18n`; `idioma.test.js` lo exige en el CI). Los comprobantes, los mails y
+WhatsApp siguen en castellano. **Sigue (pedido del usuario): la documentación
+final** (guía en `docs/Guia Documentación Final del Proyecto.pdf`).
 
 **Lo último (7 de noviembre, hist. §140): "Probar sin registrarse", publicado
 junto con §141.** Desde la landing, el login o
