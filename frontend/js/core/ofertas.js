@@ -14,6 +14,8 @@
 // oferta que se le aplicó. Las fechas son "AAAA-MM-DD" del día del negocio
 // (fechaDeHoy en el servidor).
 
+import { LOCALE } from "./idioma.js";
+
 export const TIPOS_OFERTA = {
   porcentaje: "Un porcentaje menos",
   monto: "Un monto menos por unidad",
@@ -29,8 +31,8 @@ export const DIAS_SEMANA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"
 const DIAS_SEMANA_PLURAL = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábados", "domingos"];
 
 const redondear = (n) => Math.round(n * 100) / 100;
-const pesos = (n) => n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const numero = (n) => n.toLocaleString("es-AR", { maximumFractionDigits: 3 });
+const pesos = (n) => n.toLocaleString(LOCALE, { style: "currency", currency: "ARS", currencyDisplay: "narrowSymbol", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const numero = (n) => n.toLocaleString(LOCALE, { maximumFractionDigits: 3 });
 const listar = (cosas) => (cosas.length === 1 ? cosas[0] : `${cosas.slice(0, -1).join(", ")} y ${cosas.at(-1)}`);
 const fechaCorta = (iso) => iso.split("-").reverse().join("/");
 

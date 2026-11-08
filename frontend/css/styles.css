@@ -4415,6 +4415,20 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 
 .sesion-legal a:hover { color: var(--ink-muted); }
 
+/* El cambio de idioma del pie, con el aspecto de los enlaces de al lado. */
+.sesion-idioma {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.sesion-idioma:hover { color: var(--ink-muted); }
+
 /* Los datos de cada factura (hist. §116): para quién es y el período, cada uno
    en su recuadro dentro del formulario de facturar. */
 .factura-receptor,
@@ -5499,6 +5513,8 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
    el HTML, como botón hermano para el drawer mobile — si no se incluye
    acá, la hamburguesa queda flotando sola encima del login). Es UI nada
    más: el servidor decide de verdad con la cookie httpOnly. */
+:root[data-traduciendo] body { visibility: hidden; }
+
 :root[data-sesion="cerrada"] .app,
 :root[data-sesion="cerrada"] .nav-toggle {
   display: none;

@@ -19,6 +19,7 @@ import { tarjetasModulos, tarjetasTipo, tipoDeNegocio } from "../core/tipos-nego
 import { CONDICIONES_FISCALES, condicionFiscal, errorCuit, esCondicionFiscal, formatearCuit } from "../core/fiscal.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { aplicarTema, temaActual } from "../core/tema.js";
+import { cambiarIdioma, idioma } from "../core/idioma.js";
 
 // `negocio` queda en memoria para que armarHojaComprobante() no tenga que
 // hacer un fetch cada vez que se imprime: vive en core/negocio.js (lo lee
@@ -342,9 +343,15 @@ formComprobantes.addEventListener("submit", async (e) => {
 
 function pintarApariencia() {
   for (const radio of formApariencia.querySelectorAll('input[name="tema"]')) radio.checked = radio.value === temaActual();
+  for (const radio of formApariencia.querySelectorAll('input[name="idioma"]')) radio.checked = radio.value === idioma;
 }
 
-formApariencia.addEventListener("change", (e) => aplicarTema(e.target.value));
+// El idioma recarga la página (core/idioma.js): todo se vuelve a pintar ya
+// traducido. El tema se aplica en el momento.
+formApariencia.addEventListener("change", (e) => {
+  if (e.target.name === "idioma") cambiarIdioma(e.target.value);
+  else aplicarTema(e.target.value);
+});
 formApariencia.addEventListener("submit", (e) => e.preventDefault());
 // El botón de la sidebar también cambia el tema.
 document.addEventListener("nexo:tema", pintarApariencia);

@@ -84,10 +84,11 @@ import "./dominios/venta-online.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
+import { LOCALE } from "./core/idioma.js";
 
 let facturas = [];
 
-document.getElementById("todayDate").textContent = new Date().toLocaleDateString("es-AR", {
+document.getElementById("todayDate").textContent = new Date().toLocaleDateString(LOCALE, {
   weekday: "long",
   day: "numeric",
   month: "long"
@@ -108,7 +109,7 @@ const rangoActualResumen = () => rangoResumen();
 // un vistazo y $ 6.454.470,00 se corta en el celular. El importe exacto queda
 // en el title.
 const pesos = (n) =>
-  n == null ? "—" : n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+  n == null ? "—" : n.toLocaleString(LOCALE, { style: "currency", currency: "ARS", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 });
 function ponerCifra(id, valor, formato = pesos) {
   const el = document.getElementById(id);
   el.textContent = formato(valor);
@@ -1924,7 +1925,7 @@ function poblarDatalistProductos() {
   document.getElementById("productosVenta").innerHTML = opciones;
 }
 
-const porcentaje = (n) => (n == null ? "—" : `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`);
+const porcentaje = (n) => (n == null ? "—" : `${n.toLocaleString(LOCALE, { maximumFractionDigits: 1 })}%`);
 
 const selProductos = crearSeleccion("productosBody");
 

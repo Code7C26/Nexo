@@ -18,9 +18,15 @@
  *
  * Escrito para quien nunca usó Nexo: los nombres de los botones, tal cual se
  * ven en pantalla. Si un botón cambia de nombre, se cambia acá también.
+ *
+ * En inglés (Configuración → Apariencia → Idioma) cada sección toma su texto
+ * de core/manual-en.js, por el mismo id: una sección nueva se escribe en los dos.
  */
 
-export const GRUPOS = [
+import { idioma } from "./idioma.js";
+import { GRUPOS_EN, SECCIONES_EN } from "./manual-en.js";
+
+const GRUPOS_ES = [
   "Empezar",
   "Productos y servicios",
   "Vender",
@@ -32,7 +38,7 @@ export const GRUPOS = [
   "Tu cuenta y tu equipo"
 ];
 
-export const SECCIONES = [
+const SECCIONES_ES = [
   /* ---------- Empezar ---------- */
   {
     id: "empezar",
@@ -729,3 +735,15 @@ export const SECCIONES = [
     ]
   }
 ];
+
+// En inglés, cada sección con su texto de manual-en.js; el hash de la pantalla,
+// el módulo, admin y las relacionadas no cambian. Sin versión, en castellano.
+export const GRUPOS = idioma === "en" ? GRUPOS_ES.map((g) => GRUPOS_EN[g] ?? g) : GRUPOS_ES;
+export const SECCIONES =
+  idioma === "en"
+    ? SECCIONES_ES.map((s) => {
+        const en = SECCIONES_EN[s.id];
+        if (!en) return s;
+        return { ...s, ...en, grupo: GRUPOS_EN[s.grupo] ?? s.grupo, pantalla: s.pantalla && [s.pantalla[0], en.pantalla ?? s.pantalla[1]] };
+      })
+    : SECCIONES_ES;

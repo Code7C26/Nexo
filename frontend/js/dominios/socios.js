@@ -28,6 +28,7 @@ import { icono } from "../core/iconos.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
+import { LOCALE } from "../core/idioma.js";
 
 const MAX_RESULTADOS = 8;
 const MAX_MESES = 36;
@@ -65,7 +66,7 @@ const normalizar = (s) =>
 const soloDigitos = (s) => String(s ?? "").replace(/\D/g, "");
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 const horaDe = (fechaHora) => fechaHoraAR(fechaHora).slice(-5);
-const porcentaje = (n) => `${n.toLocaleString("es-AR")}%`;
+const porcentaje = (n) => `${n.toLocaleString(LOCALE)}%`;
 const duracionDe = (meses) => NOMBRES_DURACION[meses] ?? (meses % 12 === 0 ? `${meses / 12} años` : `${meses} meses`);
 const planesActivos = (s) => s.planes.filter((p) => p.estado === "activa");
 const opcionesActivas = (plan) => plan.opciones.filter((o) => o.activo);

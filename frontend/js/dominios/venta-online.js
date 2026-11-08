@@ -21,14 +21,15 @@ import { icono } from "../core/iconos.js";
 import { rangoDePeriodo } from "../core/periodos.js";
 import { alEntrarEnVista } from "../core/registro.js";
 import { logoDeCanal } from "../core/canales.js";
+import { LOCALE } from "../core/idioma.js";
 
 const logoDe = logoDeCanal;
 let colores = {};
 const serieDe = (canal) => colores[canal] ?? null;
 const claveDe = (canal) => canal ?? "sin_indicar";
 
-const pesos = (n) => n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
-const pct = (n) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`;
+const pesos = (n) => n.toLocaleString(LOCALE, { style: "currency", currency: "ARS", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 });
+const pct = (n) => `${n.toLocaleString(LOCALE, { maximumFractionDigits: 1 })} %`;
 const ventasDe = (n) => `${numero(n)} ${n === 1 ? "venta" : "ventas"}`;
 
 // El período es de quien mira, en este navegador (no hace falta que viaje).
@@ -187,7 +188,7 @@ function pintarPublicidad({ publicidad, online }) {
       <a class="btn btn-secundario" href="#/gastos">${icono("plus")} Anotar un gasto</a>`;
     return;
   }
-  const roas = publicidad.roas.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const roas = publicidad.roas.toLocaleString(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   caja.innerHTML = `
     <p class="publicidad-roas"><span class="kpi-cifra">${esc(roas)}</span><span>de venta online por cada peso en anuncios</span></p>
     <dl class="publicidad-datos">
@@ -278,7 +279,7 @@ async function cargar() {
   const params = new URLSearchParams(rangoDePeriodo(periodo)).toString();
   const datos = await api(`/api/reportes/canales${params ? "?" + params : ""}`);
   if (mio !== token) return;
-  const rango = (r) => `${new Date(`${r.desde}T12:00`).toLocaleDateString("es-AR")} al ${new Date(`${r.hasta}T12:00`).toLocaleDateString("es-AR")}`;
+  const rango = (r) => `${new Date(`${r.desde}T12:00`).toLocaleDateString(LOCALE)} al ${new Date(`${r.hasta}T12:00`).toLocaleDateString(LOCALE)}`;
   document.getElementById("onlineRango").textContent = `Del ${rango(datos.rango)}.`;
   colores = datos.colores;
   pintarCifras(datos);

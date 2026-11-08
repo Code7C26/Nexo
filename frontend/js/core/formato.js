@@ -5,6 +5,7 @@
  */
 
 import { icono } from "./iconos.js";
+import { LOCALE } from "./idioma.js";
 
 // Guarda contra `null`/`undefined`: con el filtrado de campos sensibles por
 // rol (permisos por rol, backend/server.js) un empleado puede recibir un
@@ -15,9 +16,9 @@ import { icono } from "./iconos.js";
 export const money = (n) =>
   n == null
     ? "—"
-    : n.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
+    : n.toLocaleString(LOCALE, { style: "currency", currency: "ARS", currencyDisplay: "narrowSymbol", minimumFractionDigits: 2 });
 
-export const numero = (n) => (n == null ? "—" : n.toLocaleString("es-AR"));
+export const numero = (n) => (n == null ? "—" : n.toLocaleString(LOCALE));
 
 // Unidades en que se vende un producto (UNIDADES en server.js). Por kg, litro
 // o metro la cantidad lleva decimales; por gramo o mililitro, no. Por hora es
@@ -38,7 +39,7 @@ const ABREVIATURAS = { hora: "h" };
 // el número solo, como hasta ahora.
 export function cantidad(n, unidad) {
   if (n == null) return "—";
-  const texto = n.toLocaleString("es-AR", { maximumFractionDigits: 3 });
+  const texto = n.toLocaleString(LOCALE, { maximumFractionDigits: 3 });
   return !unidad || unidad === "unidad" ? texto : `${texto} ${ABREVIATURAS[unidad] ?? unidad}`;
 }
 
@@ -102,7 +103,7 @@ export function fechaHoraAR(valor) {
 export function moneyCorto(n) {
   const signo = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-  const corto = (v) => v.toLocaleString("es-AR", { maximumFractionDigits: 1 });
+  const corto = (v) => v.toLocaleString(LOCALE, { maximumFractionDigits: 1 });
   if (abs >= 1e6) return `${signo}$${corto(abs / 1e6)}M`;
   if (abs >= 1e3) return `${signo}$${corto(abs / 1e3)}k`;
   return `${signo}$${Math.round(abs)}`;
