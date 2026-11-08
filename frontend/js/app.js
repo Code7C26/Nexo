@@ -7303,13 +7303,15 @@ let grabacion = null; // { recorder, inicio, corte, descartar }
 
 // La primera vez que se abre el panel (no al cargar la app: sin sesión, el
 // pedido daría 401).
+// También avisa si el plan no trae el asistente (solo Pro, backend/planes.js).
 async function asistenteMostrarVoz() {
   if (asistenteVozConsultada) return;
   asistenteVozConsultada = true;
-  if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) return;
   const capacidades = await api("/api/asistente/capacidades").catch(() => null);
-  btnAsistenteVoz.hidden = !capacidades?.voz;
-  document.getElementById("asistenteGuiaVoz").hidden = !capacidades?.voz;
+  document.getElementById("asistenteSinPlan").hidden = capacidades?.ia !== false;
+  const voz = !!capacidades?.voz && !!window.MediaRecorder && !!navigator.mediaDevices?.getUserMedia;
+  btnAsistenteVoz.hidden = !voz;
+  document.getElementById("asistenteGuiaVoz").hidden = !voz;
 }
 
 /* --- La página del asistente (hist. §118) --- */

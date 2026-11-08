@@ -2426,6 +2426,19 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 
+/* Sin el plan Pro: el asistente queda para las preguntas de uso. */
+.asistente-aviso-plan {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--accent-bg);
+  font-size: var(--txt-xs);
+  line-height: 1.5;
+  color: var(--ink);
+}
+.asistente-aviso-plan[hidden] { display: none; }
+.asistente-aviso-plan a { color: var(--accent); font-weight: 500; }
+
 .asistente-sugerencias {
   display: flex;
   flex-direction: column;

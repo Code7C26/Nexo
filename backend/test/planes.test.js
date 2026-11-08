@@ -190,3 +190,20 @@ test('un plan desconocido en el alta responde 400', async () => {
   });
   assert.equal(r.status, 400);
 });
+
+test('el asistente con IA es del plan Pro: Gratis y Emprendedor lo tienen frenado', async () => {
+  const admin = await registrarEmpresa(servidor, { empresa: 'Asistente por plan', usuario: 'asisplan', plan: 'gratis' });
+  const { id } = (await admin.get('/api/negocio')).json;
+  const frase = { texto: 'Vendí 2 remeras a 10 mil' };
+  for (const plan of ['gratis', 'emprendedor']) {
+    if (plan !== 'gratis') scriptPlan('--negocio', String(id), '--plan', plan);
+    assert.deepEqual((await admin.get('/api/asistente/capacidades')).json, { ia: false, voz: false }, plan);
+    const r = await admin.post('/api/asistente/interpretar', frase);
+    assert.ok(esTope(r), `${plan}: ${r.texto}`);
+    const audio = await admin.pedir('POST', '/api/asistente/transcribir', 'x', { 'content-type': 'audio/webm' });
+    assert.ok(esTope(audio), `${plan} (voz): ${audio.texto}`);
+  }
+  scriptPlan('--negocio', String(id), '--plan', 'pro');
+  assert.equal((await admin.get('/api/asistente/capacidades')).json.ia, true);
+  assert.ok(!esTope(await admin.post('/api/asistente/interpretar', frase)));
+});

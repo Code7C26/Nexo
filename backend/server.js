@@ -14027,7 +14027,19 @@ async function proponerDesdeTexto(texto, organizacionId) {
   };
 }
 
-app.post('/api/asistente/interpretar', asincrono(async (req, res) => {
+// El asistente con IA es del plan Pro (backend/planes.js). Las preguntas de
+// uso las contesta el manual en el navegador, sin pasar por acá.
+function negocioConAsistente(organizacionId) {
+  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
+  return !!PLANES[planEfectivo(fila, fechaDeHoy())].asistente;
+}
+const ASISTENTE_SOLO_PRO = 'Cargar ventas, compras y gastos con el asistente es del plan Pro. Igual te puedo contestar cómo se usa Nexo.';
+function soloConAsistente(req, res, next) {
+  if (negocioConAsistente(req.usuario.organizacion_id)) return next();
+  res.status(403).json({ error: ASISTENTE_SOLO_PRO, codigo: 'limite_plan' });
+}
+
+app.post('/api/asistente/interpretar', soloConAsistente, asincrono(async (req, res) => {
   try {
     res.json(await proponerDesdeTexto(req.body.texto, req.usuario.organizacion_id));
   } catch (err) {
@@ -14046,11 +14058,14 @@ const AUDIO_MAX = '4mb';
 const DICTADOS_MAX = 40;
 const dictadosPorUsuario = new Map();
 
+// ia: si el plan del negocio trae el asistente; sin él, el panel lo avisa y
+// queda para las preguntas de uso.
 app.get('/api/asistente/capacidades', (req, res) => {
-  res.json({ voz: vozDisponible() });
+  const ia = negocioConAsistente(req.usuario.organizacion_id);
+  res.json({ ia, voz: ia && vozDisponible() });
 });
 
-app.post('/api/asistente/transcribir', express.raw({ type: 'audio/*', limit: AUDIO_MAX }), asincrono(async (req, res) => {
+app.post('/api/asistente/transcribir', soloConAsistente, express.raw({ type: 'audio/*', limit: AUDIO_MAX }), asincrono(async (req, res) => {
   if (!Buffer.isBuffer(req.body) || !req.body.length) {
     return res.status(400).json({ error: 'No llegó ningún audio.' });
   }
@@ -14667,6 +14682,9 @@ async function atenderWhatsApp(mensaje) {
   if (!usuario) return responder('❌ Tu cuenta ya no tiene acceso a ese negocio. Si sigue siendo tuyo, volvé a vincularlo desde *Configuración → WhatsApp*.');
 
   if (mensaje.tipo === 'boton') return responderBotonWhatsApp(mensaje, vinculo, usuario, responder);
+  if (!negocioConAsistente(usuario.organizacion_id)) {
+    return responder('⭐ El asistente por WhatsApp es del plan *Pro*. Si tu negocio pasa a Pro, seguís cargando ventas, compras y gastos desde acá.');
+  }
   if (mensaje.tipo === 'otro') return responder(`🤔 Por ahora entiendo textos y audios.\n\n${AYUDA_WHATSAPP}`);
 
   let texto = mensaje.texto;

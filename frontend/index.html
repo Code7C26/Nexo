@@ -6889,6 +6889,12 @@
       <p class="asistente-bienvenida">
         Contame una venta, una compra o un gasto como se lo dirías a alguien — te muestro cómo lo entendí antes de cargar nada. También podés preguntarme cómo se hace algo.
       </p>
+      <!-- Sin el plan Pro (backend/planes.js) el asistente solo contesta con
+           el manual: lo muestra app.js según /api/asistente/capacidades. -->
+      <p class="asistente-aviso-plan" id="asistenteSinPlan" hidden>
+        Cargar operaciones con el asistente es del plan Pro. Igual te contesto cómo se usa Nexo.
+        <a href="#/configuracion/plan" class="col-admin">Ver los planes</a>
+      </p>
       <!-- Ejemplos que se pueden tocar: llenan el cuadro, no envían (el
            ejemplo entero no entraba en el placeholder de una línea). -->
       <div class="asistente-sugerencias" aria-label="Ejemplos">

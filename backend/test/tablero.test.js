@@ -109,15 +109,27 @@ test('las piezas nuevas: cuándo se vende, dónde entró la plata, quién vendi�
   assert.equal(datos.pendiente.sin_stock, 0);
 });
 
+// Una fecha AAAA-MM-DD corrida `dias` (o `anios`) para atrás o adelante.
+function correr(fecha, { dias = 0, anios = 0 } = {}) {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  d.setUTCFullYear(d.getUTCFullYear() + anios);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+// La semana que termina hoy: la venta de hoy (la prueba de arriba) contra una
+// del año pasado, en el mismo lugar del rango.
 test('comparar contra el mismo período del año pasado', async () => {
-  assert.equal((await vender('Juan', 1, '2025-11-03')).status, 201);
-  const contraAnio = (await kiosco.get('/api/resumen/evolucion?desde=2026-11-01&hasta=2026-11-07&comparar=anio')).json;
+  const hasta = fechaDeHoy();
+  const desde = correr(hasta, { dias: -6 });
+  assert.equal((await vender('Juan', 1, correr(desde, { dias: 2, anios: -1 }))).status, 201);
+  const contraAnio = (await kiosco.get(`/api/resumen/evolucion?desde=${desde}&hasta=${hasta}&comparar=anio`)).json;
   assert.equal(contraAnio.comparar, 'anio');
-  assert.deepEqual(contraAnio.anterior.rango, { desde: '2025-11-01', hasta: '2025-11-07' });
+  assert.deepEqual(contraAnio.anterior.rango, { desde: correr(desde, { anios: -1 }), hasta: correr(hasta, { anios: -1 }) });
   assert.equal(contraAnio.anterior.ventas, 1000);
-  const contraAnterior = (await kiosco.get('/api/resumen/evolucion?desde=2026-11-01&hasta=2026-11-07')).json;
+  const contraAnterior = (await kiosco.get(`/api/resumen/evolucion?desde=${desde}&hasta=${hasta}`)).json;
   assert.equal(contraAnterior.comparar, 'anterior');
-  assert.deepEqual(contraAnterior.anterior.rango, { desde: '2026-10-25', hasta: '2026-10-31' });
+  assert.deepEqual(contraAnterior.anterior.rango, { desde: correr(desde, { dias: -7 }), hasta: correr(desde, { dias: -1 }) });
   // La cantidad de ventas y el ticket, con su comparación.
   // La venta de hoy (la prueba de arriba) contra la del año pasado.
   assert.equal(contraAnio.total.cantidad_ventas, 1);
