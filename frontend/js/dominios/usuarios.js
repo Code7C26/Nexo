@@ -13,6 +13,7 @@ import { celdaMovil, esc, fechaAR } from "../core/formato.js";
 import { registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 import { limpiarErrores, marcarError } from "../core/campos.js";
+import { LOCALE, formatear } from "../core/idioma.js";
 
 /* ---------- Usuarios (solo admin) ---------- */
 // Calcada del ABM de Cuentas de tesorería (arriba, misma estructura:
@@ -111,7 +112,7 @@ const ROL_INVITACION = { admin: "Administrador", empleado: "Empleado" };
 function vencimiento(enviada) {
   const fecha = new Date(`${enviada.replace(" ", "T")}Z`);
   fecha.setDate(fecha.getDate() + 14);
-  return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+  return fecha.toLocaleDateString(LOCALE, { day: "2-digit", month: "2-digit" });
 }
 
 function renderInvitaciones(lista) {
@@ -300,7 +301,7 @@ async function reactivarUsuario(id) {
 
 async function resetearPasswordUsuario(id) {
   const usuario = usuariosCache.find((u) => u.id === id);
-  const nueva = prompt(`Nueva contraseña temporal para "${usuario?.nombre}" (mínimo 8 caracteres):`);
+  const nueva = prompt(formatear('Nueva contraseña temporal para "{0}" (mínimo 8 caracteres):', usuario?.nombre));
   if (!nueva) return;
   if (nueva.length < 8) {
     avisar("La contraseña tiene que tener al menos 8 caracteres.", "error");

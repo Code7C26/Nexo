@@ -22,6 +22,8 @@
  */
 
 (() => {
+  // Fechas en el formato del idioma de la interfaz (traductor.js).
+  const LOCALE = window.nexoIdioma?.locale ?? "es-AR";
   const pantalla = document.getElementById("sesionPantalla");
   const formLogin = document.getElementById("formLogin");
   // Explícitos: antes se leían como globales implícitas del navegador (cada
@@ -145,11 +147,11 @@
     let cuando = "lo último que se cargó";
     if (ultimoGuardadoEn) {
       const fecha = new Date(ultimoGuardadoEn);
-      const hora = fecha.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+      const hora = fecha.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
       const esHoy = fecha.toDateString() === new Date().toDateString();
       cuando = esHoy
         ? `lo que se cargó a las ${hora}`
-        : `lo que se cargó el ${fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })} a las ${hora}`;
+        : `lo que se cargó el ${fecha.toLocaleDateString(LOCALE, { day: "2-digit", month: "2-digit" })} a las ${hora}`;
     }
     avisoConexion.textContent = `Sin conexión. Estás viendo ${cuando}; no se puede guardar nada hasta que vuelva.`;
     avisoConexion.hidden = false;
@@ -292,7 +294,7 @@
     aviso.hidden = !ejemplo;
     if (!ejemplo) return;
     const vence = new Date(`${ejemplo.vence.replace(" ", "T")}Z`);
-    const dia = vence.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+    const dia = vence.toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "long" });
     document.getElementById("avisoEjemploTexto").textContent =
       `Estás probando Nexo con ${ejemplo.negocio}, un negocio de ejemplo. Cargá lo que quieras: es tuyo, no lo ve nadie más y se borra solo el ${dia}.`;
   }
@@ -447,7 +449,9 @@
       mostrarPantalla("login");
       mostrarErrorEn("loginError", "No se pudo cargar la aplicación. Recargá la página.");
     };
-    document.body.appendChild(script);
+    // En inglés, después del diccionario (traductor.js): lo que app.js arma
+    // con t() o formatear() ya tiene que encontrar la traducción.
+    Promise.resolve(window.nexoIdioma?.listo).finally(() => document.body.appendChild(script));
   }
 
   // Expuesto para que el menú de perfil de app.js (que carga después)
@@ -455,6 +459,14 @@
   // app.js. Recargar la página es más simple y más seguro que intentar
   // desmontar app.js a mano: no hay que rastrear sus ~90 listeners para
   // sacarlos uno por uno.
+  // El idioma desde la pantalla de entrada: el botón ofrece el otro, con su
+  // nombre en ese idioma (traductor.js).
+  const botonIdioma = document.getElementById("sesionIdioma");
+  const otroIdioma = window.nexoIdioma?.idioma === "en" ? "es" : "en";
+  botonIdioma.textContent = otroIdioma === "en" ? "English" : "Español";
+  botonIdioma.lang = otroIdioma;
+  botonIdioma.addEventListener("click", () => window.nexoIdioma?.cambiar(otroIdioma));
+
   window.nexoCerrarSesion = async () => {
     try {
       await fetchOriginal("/api/auth/logout", { method: "POST" });

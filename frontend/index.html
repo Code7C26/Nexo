@@ -17,6 +17,8 @@
   <meta name="apple-mobile-web-app-title" content="Nexo" />
   <link rel="stylesheet" href="/css/styles.css" />
   <script src="/js/arranque.js"></script>
+  <!-- Nexo en inglés: traduce la pantalla desde antes de que se pinte. -->
+  <script src="/js/traductor.js"></script>
 </head>
 <body>
 
@@ -3937,7 +3939,7 @@
               </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
-                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema e instalar como app</span></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema, idioma e instalar como app</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
@@ -5072,6 +5074,30 @@
                       </label>
                     </div>
                   </fieldset>
+                  <!-- El nombre de cada idioma va en ese idioma y no se traduce
+                       (translate="no"): quien no entiende el que está puesto
+                       tiene que poder encontrar el suyo. -->
+                  <fieldset class="opciones">
+                    <legend>Idioma</legend>
+                    <div class="opciones-tarjetas">
+                      <label class="opcion-tarjeta">
+                        <input type="radio" name="idioma" value="es" />
+                        <span class="opcion-tarjeta-texto" translate="no">
+                          <span class="opcion-tarjeta-nombre">Español</span>
+                          <span class="opcion-tarjeta-desc">Castellano de Argentina.</span>
+                        </span>
+                        <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                      </label>
+                      <label class="opcion-tarjeta">
+                        <input type="radio" name="idioma" value="en" />
+                        <span class="opcion-tarjeta-texto" translate="no">
+                          <span class="opcion-tarjeta-nombre">English</span>
+                          <span class="opcion-tarjeta-desc">Dates and numbers in US format.</span>
+                        </span>
+                        <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                      </label>
+                    </div>
+                  </fieldset>
                 </div>
               </form>
               <!-- Instalar como app (PWA, hist. §94): el texto y el botón dependen
@@ -5423,7 +5449,9 @@
         <button type="button" class="btn btn-primary" id="invitacionIngresar" hidden>Ingresar</button>
         <button type="button" class="btn-link" id="invitacionAhoraNo" hidden>Ahora no</button>
       </div>
-      <p class="sesion-legal"><a href="/terminos" target="_blank" rel="noopener">Términos</a> · <a href="/privacidad" target="_blank" rel="noopener">Privacidad</a></p>
+      <!-- El otro idioma, con su nombre en ese idioma (sesion.js): quien no
+           lee castellano tiene que poder encontrarlo antes de entrar. -->
+      <p class="sesion-legal"><a href="/terminos" target="_blank" rel="noopener">Términos</a> · <a href="/privacidad" target="_blank" rel="noopener">Privacidad</a> · <button type="button" class="sesion-idioma" id="sesionIdioma" translate="no"></button></p>
     </div>
   </div>
 
@@ -6969,7 +6997,9 @@
 
        Se oculta con una clase y no con [hidden] para que @media print pueda
        revelarla sin pelearle al user-agent stylesheet con !important. -->
-  <div id="hojaImpresion" class="hoja-impresion" aria-hidden="true"></div>
+  <!-- translate="no": los comprobantes salen siempre en castellano, aunque la
+       interfaz esté en inglés (traductor.js): son documentos fiscales argentinos. -->
+  <div id="hojaImpresion" class="hoja-impresion" aria-hidden="true" translate="no"></div>
 
   <!-- Barra de acciones en lote — aparece al seleccionar filas en cualquier
        tabla. Única y compartida: como solo hay una vista visible a la vez,

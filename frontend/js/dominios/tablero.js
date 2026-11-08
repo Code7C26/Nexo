@@ -26,6 +26,7 @@ import { rangoDePeriodo } from "../core/periodos.js";
 import { invocar } from "../core/registro.js";
 import { avisar } from "../core/ui.js";
 import { logoDeCanal } from "../core/canales.js";
+import { LOCALE, formatear } from "../core/idioma.js";
 
 // Cómo se llama cada pieza en "Personalizar", y cuándo se puede elegir.
 const PIEZAS = {
@@ -108,7 +109,7 @@ export async function prepararTablero() {
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const ventasDe = (n) => `${numero(n)} ${n === 1 ? "venta" : "ventas"}`;
-const pesos = (n) => n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const pesos = (n) => n.toLocaleString(LOCALE, { style: "currency", currency: "ARS", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 });
 
 const dibujarDias = montarColumnas(document.getElementById("graficoDias"), { titulo: "Ventas por día de la semana" });
 const dibujarHoras = montarColumnas(document.getElementById("graficoHoras"), { titulo: "Ventas por hora del día" });
@@ -138,7 +139,7 @@ function pintarCuando({ dias, horas, sin_hora: sinHora }) {
   dibujarDias(dias, {
     etiqueta: (p) => DIAS[p.dia].slice(0, 3),
     valor: (p) => p.ventas,
-    leer: (p) => `${DIAS[p.dia]}: ${money(p.ventas)} en ${ventasDe(p.cantidad)}`
+    leer: (p) => formatear("{0}: {1} en {2}", DIAS[p.dia], money(p.ventas), ventasDe(p.cantidad))
   });
   // De la primera hora con ventas a la última, y al menos de 8 a 20 (un
   // horario de comercio): de 0 a 23 entero, un local de 9 a 20 se ve como dos
@@ -151,7 +152,7 @@ function pintarCuando({ dias, horas, sin_hora: sinHora }) {
     {
       etiqueta: (p) => String(p.hora),
       valor: (p) => p.ventas,
-      leer: (p) => `De ${p.hora} a ${p.hora + 1} h: ${money(p.ventas)} en ${ventasDe(p.cantidad)}`,
+      leer: (p) => formatear("De {0} a {1} h: {2} en {3}", p.hora, p.hora + 1, money(p.ventas), ventasDe(p.cantidad)),
       vacio: sinHora > 0 ? "Las ventas de este período no tienen hora." : "Sin ventas en este período."
     }
   );
@@ -210,7 +211,7 @@ function pintarCanales({ canales, colores }) {
       const color = serie(c) ?? "serie-otras";
       const logo = logoDeCanal(c.canal);
       const clave = c.canal ?? "sin_indicar";
-      const detalle = `${ventasDe(c.cantidad_ventas)}, ${c.participacion_pct.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`;
+      const detalle = `${ventasDe(c.cantidad_ventas)}, ${c.participacion_pct.toLocaleString(LOCALE, { maximumFractionDigits: 1 })} %`;
       return `
       <li>
         <span class="leyenda-marca ${esc(color)}" aria-hidden="true"></span>

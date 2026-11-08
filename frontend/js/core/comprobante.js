@@ -224,7 +224,7 @@ export function armarHojaFactura(f) {
     : "";
 
   return `
-    <div class="hoja hoja-factura">
+    <div translate="no" class="hoja hoja-factura">
       <p class="fac-copia">ORIGINAL</p>
       <header class="fac-cabecera">
         <div class="fac-emisor">
@@ -309,7 +309,7 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
     .join("");
 
   return `
-    <div class="hoja">
+    <div translate="no" class="hoja">
       <header class="hoja-encabezado">
         <div class="hoja-negocio">
           <h1>${esc(negocio.nombre || "—")}</h1>

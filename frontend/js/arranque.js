@@ -13,6 +13,13 @@ try {
   // leer. Si alguien borra esta marca a mano, lo único que pasa es que ve un
   // parpadeo — sesion.js igual pide /api/auth/estado y muestra el login si
   // corresponde.
+  // En inglés, la página no se muestra hasta que traductor.js la traduce
+  // (así no se ve el castellano un instante). Si algo falla, se muestra igual
+  // a los 4 segundos: mejor en castellano que en blanco.
+  if (localStorage.getItem("nexo.idioma") === "en") {
+    document.documentElement.setAttribute("data-traduciendo", "");
+    setTimeout(() => document.documentElement.removeAttribute("data-traduciendo"), 4000);
+  }
   if (localStorage.getItem("nexo.sesion") !== "activa") {
     document.documentElement.setAttribute("data-sesion", "cerrada");
   }

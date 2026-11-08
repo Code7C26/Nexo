@@ -12111,3 +12111,67 @@ termina hoy.
 
 **Cómo se verificó.** Test nuevo en `planes.test.js` (Gratis y Emprendedor
 frenados en texto y voz, Pro no); `npm test` (320) y lint.
+
+## §142. Nexo en inglés (8 de noviembre de 2026)
+
+**Pedido del usuario:** "una versión en inglés de la app, en configuración
+una función para cambiar idioma a inglés". De paso, dos arreglos: "Probar sin
+registrarse" se cortaba en la compu (sin scroll, PR #65, publicado) y "Servicios
+· Servicio" repetido en Clima Sur.
+
+**Diseño (decidido por mí, técnico):**
+- **Sin claves de traducción.** La interfaz sigue escrita en castellano y ese
+  texto es la clave: `frontend/js/idioma/en.js` dice cómo va cada uno en
+  inglés. Reescribir 27.000 líneas de frontend con claves no entraba antes del
+  pitch, y así un texto nuevo sin traducir se ve en castellano en vez de
+  romperse.
+- **`frontend/js/traductor.js`** (script clásico en el `<head>`, antes que
+  `sesion.js`) traduce lo que aparece en pantalla con un MutationObserver: el
+  texto de cada nodo y `placeholder`, `title`, `aria-label`, `alt` y
+  `data-label`. También los mensajes del servidor (errores, auditoría), porque
+  llegan a la pantalla.
+  - Una clave con huecos (`Venta #{0} anulada`) es un patrón, y lo que toma un
+    hueco se traduce a su vez ("{0} cargados" con "productos").
+  - Un patrón necesita una palabra fija de 4 letras o empezar con una de 3
+    ("Del {0} al {1}"); si no, agarraba nombres de producto ("{0} de {1}").
+  - Lo que no es una clave entera se traduce por partes: "6 ventas" (el número
+    queda), frases seguidas, "A · B", "Estado: Pagado", comas.
+  - Para lo demasiado corto ("{0}: {1} en {2}"), `formatear()` de
+    `core/idioma.js` arma el texto ya traducido desde el código (Resumen, el
+    `prompt()` de usuarios).
+  - `[translate="no"]` no se toca: los comprobantes impresos y la factura
+    siguen en castellano (documentos fiscales argentinos), y los nombres
+    "Español"/"English" van en su idioma.
+- **El idioma se guarda en el dispositivo** (`localStorage["nexo.idioma"]`),
+  como el tema: Configuración → Apariencia → Idioma, y "English"/"Español" al
+  pie de la pantalla de entrada. Cambiarlo recarga. Sin cambio de esquema.
+  `arranque.js` oculta la página hasta que el diccionario carga (tope 4 s), y
+  `sesion.js` inyecta `app.js` después.
+- **Fechas y números** en formato de EE. UU.: `LOCALE` de `core/idioma.js`
+  en lugar del `"es-AR"` fijo (menos en `comprobante.js`), y la plata con
+  `currencyDisplay: "narrowSymbol"` ($ y no ARS).
+- **El manual** (`core/manual.js`) tiene su versión entera en
+  `core/manual-en.js`, por id, con preguntas y palabras en inglés para la
+  búsqueda. El servidor lo importa (WhatsApp): `core/idioma.js` lee
+  `globalThis` y en Node queda en castellano.
+- **`scripts/i18n.mjs`** (`npm run i18n`) encuentra los textos con espree (el
+  parser de ESLint, dependencia de desarrollo) y lista los que faltan.
+  `backend/test/idioma.test.js` lo exige en el CI y controla que cada
+  traducción use los mismos `{n}`. No se extraen: la landing, el manual, lo
+  que el intérprete le manda a la IA, los negocios de ejemplo (son datos) y
+  los comprobantes.
+
+**Cómo se verificó.** 323 tests y lint. En el navegador, con una base sembrada
+y en inglés: un barrido de las 40 pantallas que junta lo que quedó en castellano
+(solo nombres de clientes y productos, y detalles viejos de la auditoría), la
+entrada, Apariencia, el manual y la vuelta a castellano.
+
+**Lo que queda:** los mails, los mensajes de WhatsApp y la landing siguen en
+castellano (un idioma por cuenta, en la base, haría falta para los mails).
+Las pantallas que solo se abren con un dato puntual (algunos modales) no se
+recorrieron una por una.
+
+**Para quien siga:** un texto nuevo en la interfaz se suma a `en.js` con la
+misma clave (`npm run i18n` dice cuáles); si el CI falla en `idioma.test.js`,
+es eso. Probar en inglés pide un perfil limpio del navegador: el service
+worker guarda la versión anterior.
