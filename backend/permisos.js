@@ -46,6 +46,9 @@ export const RUTAS_PERMISOS = {
   'POST /api/auth/registro/verificar': 'publico',
   'GET /api/auth/tipos-negocio': 'publico',
   'GET /api/auth/planes': 'publico',
+  // "Probar sin registrarse": elegir y abrir un negocio de ejemplo.
+  'GET /api/ejemplos': 'publico',
+  'POST /api/ejemplos': 'publico',
   'POST /api/publico/consulta': 'publico',
   // El enlace de una invitación (hist. §104): verla y crear la cuenta desde
   // ella, sin sesión. El token prueba que el mail es de quien lo tiene.

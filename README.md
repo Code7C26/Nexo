@@ -9,7 +9,10 @@ argentino (referencias: Dux Software, Contagram). Las reglas de negocio y de
 arquitectura completas viven en [`CLAUDE.md`](CLAUDE.md); este README es la
 puerta de entrada rápida.
 
-**Está publicado en https://nexosystem.duckdns.org**, por ahora para pruebas.
+**Está publicado en https://nexosystem.duckdns.org.** Para verlo funcionando
+sin crear una cuenta: **[Probar sin registrarse](https://nexosystem.duckdns.org/app#/probar)**
+(se elige un negocio de ejemplo y se entra como su dueño, con semanas de
+historia cargadas).
 
 ---
 
@@ -36,10 +39,11 @@ optimizar procesos clave como:
 - CRM, trabajos, abonos y socios con cuotas, según el tipo de negocio
 
 Todo en un solo sistema que se adapta al tipo de negocio (comercio,
-carnicería, verdulería, kiosco, servicios, gimnasio), con varios negocios por
-cuenta y uso desde el celular como app instalable (PWA). Lo que sigue (ver
-[Roadmap](#-roadmap)): facturación electrónica en producción, WhatsApp,
-reportes avanzados e integraciones con Mercado Libre y Tienda Nube.
+emprendimiento, tienda online, carnicería, verdulería, kiosco, servicios,
+gimnasio), con varios negocios por cuenta, uso desde el celular como app
+instalable (PWA), un asistente que registra operaciones por texto, voz y
+WhatsApp, y conexión con Tienda Nube, Mercado Libre y Mercado Pago. Lo que
+sigue está en el [Roadmap](#-roadmap).
 
 ---
 
@@ -64,10 +68,14 @@ hasta negocios con varios puntos de venta.
   Se escribe con SQL portable pensando en migrar a Postgres cuando haga falta
   soportar múltiples empresas en producción concurrente (`CLAUDE.md §34`).
 - Dependencias de producción reales: solo `express` y `@google/genai`
-  (Gemini, el respaldo del asistente IA). Groq, el proveedor principal, va
-  con `fetch` sin dependencia. El mail sale por un cliente SMTP propio sobre
-  `node:tls`, sin dependencia. Criterio del proyecto: minimizar dependencias
-  y costo de infraestructura, no funcionalidad.
+  (Gemini, el respaldo del asistente IA). Todo lo demás está hecho sobre
+  Node, sin librerías: Groq (la IA principal) y Whisper (la voz) con `fetch`;
+  el mail con un cliente SMTP propio sobre `node:tls`; la factura electrónica
+  de ARCA (WSAA y WSFEv1, con la firma CMS armada con `node:crypto`); Tienda
+  Nube, Mercado Libre, Mercado Pago y WhatsApp; y el respaldo cifrado
+  (AES-256-GCM) a Backblaze B2 con la firma SigV4 propia. Criterio del
+  proyecto: minimizar dependencias y costo de infraestructura, no
+  funcionalidad.
 - Publicación: una VM gratuita de Oracle Cloud con Caddy (HTTPS) delante de
   Node, que se actualiza sola con lo que llega a `main` con el CI en verde
   (`deploy/`, guía en `docs/publicar.md`).
@@ -127,7 +135,7 @@ Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
 ```plaintext
 /Nexo
 ├── /backend   → servidor Express, esquema y acceso a datos SQLite
-│   ├── server.js       → rutas de la API (un solo archivo, ~14.800 líneas)
+│   ├── server.js       → rutas de la API (un solo archivo, ~21.000 líneas)
 │   ├── permisos.js     → tabla versionada de permisos por rol y endpoint
 │   ├── perfiles.js     → tipos de negocio y módulos que trae cada uno
 │   ├── planes.js       → planes de Nexo (precios y topes)
@@ -148,6 +156,21 @@ Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
 └── README.md  → este archivo
 ```
 
+## 📚 Documentación
+
+- **Manual de uso:** vive adentro de Nexo (Configuración › Ayuda › Manual de
+  uso, con buscador), y el asistente lo usa para contestar "¿cómo hago…?". Se
+  puede leer sin cuenta entrando a un
+  [negocio de ejemplo](https://nexosystem.duckdns.org/app#/probar).
+- **Reglas de negocio y arquitectura:** [`CLAUDE.md`](CLAUDE.md), con cada
+  decisión numerada (§1 a §39) y citada desde el código.
+- **Estado y decisiones, sesión a sesión:** [`handoff.md`](handoff.md), y el
+  relato completo de cada etapa en
+  [`docs/handoff-historico.md`](docs/handoff-historico.md).
+- **Cómo se publica:** [`docs/publicar.md`](docs/publicar.md).
+- **Investigaciones previas a cada etapa** (competencia, caja, celular, CRM,
+  login y legales): [`docs/`](docs/).
+
 ## 👨‍💻 Integrantes y Roles
 
 | Nombre | Rol | GitHub |
@@ -160,9 +183,10 @@ Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
 ## 📌 Estado del Proyecto
 
 🚧 En desarrollo activo y **publicado** en https://nexosystem.duckdns.org
-(para pruebas, sin indexar en buscadores hasta cerrar los textos legales). El
-MVP original (`CLAUDE.md §25`) está completo: es un sistema funcional de punta
-a punta, no un prototipo.
+(sin indexar en buscadores hasta cerrar los textos legales). El MVP original
+(`CLAUDE.md §25`) está completo: es un sistema funcional de punta a punta, no
+un prototipo. Lo cubren 319 tests automáticos (`npm test`) que corren en cada
+Pull Request junto con el lint.
 
 **Construido y funcionando:**
 - Productos y servicios con atributos y variantes, unidades fraccionables (kg,
@@ -190,13 +214,24 @@ a punta, no un prototipo.
   pública con los precios.
 - **PWA:** se instala en el celular, abre sin conexión con lo último que
   cargó y tiene un diseño propio para la pantalla chica.
-- Reportes de ventas, compras y stock, y un Resumen con el resultado del
-  período.
+- Reportes de ventas, compras y stock, y un **Resumen** en piezas que cada
+  persona ordena: resultado del período contra el anterior o el año pasado,
+  cuándo se vende, dónde entró la plata, quién vendió y la venta online por
+  canal.
+- **Producción:** recetas, producir con lo que salió de verdad, costo desde
+  los materiales, y el packaging que se descuenta al vender.
+- **Venta online:** Tienda Nube y Mercado Libre conectados (Nexo manda en el
+  stock y el precio; cada pedido entra como venta una sola vez), y Mercado
+  Pago con link de pago y la comisión de cada cobro.
+- **Probar sin registrarse:** cinco negocios de ejemplo, uno por visitante,
+  que se borran solos a los 3 días.
 - Auditoría de operaciones, incluido login/logout.
 - Asistente por lenguaje natural (Groq, con Gemini de respaldo) para
-  registrar ventas, compras y gastos por texto o por voz, siempre con
-  confirmación humana antes de ejecutar, con su propia página. Las preguntas
-  de cómo se usa Nexo las contesta con el manual, en el navegador y sin la IA.
+  registrar ventas, compras, gastos y devoluciones por texto, por voz o
+  **por WhatsApp**, siempre con confirmación humana antes de ejecutar. La IA
+  propone y nunca escribe en la base (`backend/interprete.js` ni siquiera la
+  importa). Las preguntas de cómo se usa Nexo las contesta con el manual, en
+  el navegador y sin la IA.
 - **Manual de uso** dentro de la app (Configuración › Ayuda), con buscador.
 - IVA discriminado por renglón, letra de comprobante automática, libro IVA, y
   factura electrónica con CAE de ARCA en el ambiente de homologación.
@@ -204,10 +239,10 @@ a punta, no un prototipo.
   negocios y cómo crecen, sin ver los datos de ningún negocio.
 
 **Todavía no construido**, para no prometer de más (roadmap real en
-`CLAUDE.md §38`): facturación electrónica en producción, la retención de
-Mercado Pago, WhatsApp, preguntas al asistente sobre los números del negocio,
-reportes de ventas por vendedor y comparativas entre períodos, integraciones
-con Mercado Libre y Tienda Nube, notificaciones push y entrar con Google.
+`CLAUDE.md §38`): facturación electrónica en producción (hoy, homologación de
+ARCA), la retención de Mercado Pago, preguntas al asistente sobre los números
+del negocio, publicar desde Nexo en Mercado Libre, notificaciones push y
+entrar con Google.
 
 ## 🗺️ Roadmap
 
@@ -218,20 +253,23 @@ autorización para empezarla (`CLAUDE.md §27`).
 | Etapa | Qué | Estado |
 |---|---|---|
 | A | Multi-empresa (`organizacion_id`, aislamiento, alta de negocios) | Hecha, con varios negocios por cuenta |
-| B | Modularizar `app.js` por dominio + PWA | PWA hecha; la modularización sigue en curso (`app.js` tiene ~7400 líneas, y 15 dominios ya están en `frontend/js/dominios/`) |
+| B | Modularizar `app.js` por dominio + PWA | PWA hecha; la modularización sigue en curso (28 dominios ya están en `frontend/js/dominios/`) |
 | C | IVA discriminado y categoría fiscal | Hecha (falta la retención de Mercado Pago) |
 | D | Punto de venta (POS) y turno de caja | Hecha |
 | E | Facturación electrónica ARCA (homologación → producción) | Homologación hecha; falta producción |
 | F | Perfiles de rubro y unidad de medida fraccionable | Hecha |
-| G | Integraciones: Mercado Libre, Tienda Nube | Pendiente |
-| H | Reportes avanzados y dashboard por rubro | Pendiente |
-| I | IA: voz y WhatsApp | En curso: voz y respuestas con el manual hechas; falta WhatsApp |
+| G | Integraciones: Mercado Libre, Tienda Nube, Mercado Pago | Hecha |
+| H | Reportes avanzados y dashboard por rubro | En curso: Resumen personalizable con preset por tipo de negocio y Venta online |
+| I | IA: voz y WhatsApp | Hecha; faltan las preguntas sobre los números |
+| J | Producción básica: recetas, producir, packaging | En curso: falta "¿cuántas puedo hacer?" |
 
 Respaldos: cada arranque del servidor respalda la base antes de abrirla (con
 rotación de 14; `NEXO_BACKUP_DIR` elige la carpeta), el servidor publicado lo
 hace además todos los días, y `cd backend && npm run backup` lo hace a mano.
-Pendientes de operación para producción real (`CLAUDE.md §35`): respaldo fuera
-del servidor, límites de request y paginación de los listados.
+Además, cada noche se sube una copia cifrada fuera del servidor (Backblaze
+B2), con la restauración probada, y GitHub Actions mira cada 10 minutos que el
+sitio responda. Pendientes de operación para producción real (`CLAUDE.md §35`):
+límites de request y paginación de los listados.
 
 El detalle sesión a sesión de qué se hizo y qué decisiones quedaron tomadas
 vive en [`handoff.md`](handoff.md), en la raíz del repo.

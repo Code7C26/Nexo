@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §139);
+    siguiente número (hoy el último es §141);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,31 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (5 de noviembre de 2026)
+## Estado actual (7 de noviembre de 2026)
+
+**Lo último (7 de noviembre, hist. §140): "Probar sin registrarse", hecho y
+commiteado en `solla`, sin publicar.** Desde la landing, el login o
+`/app#/probar` se elige uno de los cinco negocios de ejemplo y se entra como
+su dueño; uno por visitante, borrado a los 3 días, con reserva armada de
+antemano (`NEXO_EJEMPLOS_RESERVA`, 2 por tipo en production). Es el destino
+del QR del pitch. README puesto al día para el jurado.
+
+**8 de noviembre (hist. §141): el asistente con IA pasa a ser solo de Pro**
+(decisión del usuario): Gratis y Emprendedor ven el aviso y siguen con las
+respuestas del manual. Publicado junto con §140.
+
+**Pitch final (consigna del profesor, 7 de noviembre):** simulacro evaluado
+el **jueves 12 de noviembre**, presentación oficial el 20. 30 minutos:
+gancho y equipo con roles técnicos, problema, solución y **demo en vivo**
+(web online), I+D y validación (arquitectura, lenguajes, resultados de
+testing, un bloqueo grave y cómo se resolvió), venta (propuesta de valor,
+viabilidad, gestión ágil) y cierre con llamado a la acción (QR). El
+componente en inglés va integrado en algún paso. Entregables: producto
+online, identidad de marca activa (flyer, video tutorial, redes), y un QR o
+link al repositorio (código, README y manual: no se leen en el pitch). Ideas
+de stand: stickers con QR, tarjetas, remeras iguales, carpeta con resumen
+ejecutivo.
+
 
 **Lo último (5 de noviembre, hist. §139): Venta online también en el Resumen,
 publicado.** La pieza "Por canal" del Resumen pasa a "Venta online": dona y
@@ -1700,8 +1724,20 @@ servidor, y pasar el id y la clave al `.env` del servidor.
      falta la app de Meta (trámite del usuario) y probarlo de verdad.
   3. Si da: importar desde una planilla (punto 8c), sugerencias en el Resumen
      (CLAUDE.md §36), logo del negocio y descuentos en el punto de venta.
+- **Hasta el simulacro (jueves 12, agregado el 7 de noviembre):**
+  1. ~~"Probar sin registrarse"~~ **hecho** (hist. §140), falta publicarlo.
+  2. Publicar (PR a `main`) y probar `/app#/probar` en el sitio real desde el
+     celular; un rato antes del simulacro, subir `NEXO_EJEMPLOS_RESERVA` (por
+     ejemplo a 5) si se espera mucha gente escaneando a la vez.
+  3. El guion de la demo (qué se muestra y en qué orden, con un negocio de
+     ejemplo armado de antemano) y los datos para I+D: arquitectura, 319
+     tests en el CI, bloqueos reales resueltos (ver la lista en el guion).
+  4. QR al sitio (`/app#/probar`) y al repositorio, para el cierre, los
+     stickers y las tarjetas.
+  5. Riesgo de la demo: el cupo gratis de Groq (~100 frases por día para todo
+     Nexo). El Dev Tier (pago por uso) lo decide el usuario; si no, ensayar
+     sin gastar el cupo del día de la presentación.
 - **Del 16 al 19, solo presentación:** ninguna función nueva de producto.
-  - cuenta de demo y "Probar sin registrarse" con QR;
   - comprobar que las listas aguantan ese volumen (casi ningún `GET` pagina,
     CLAUDE.md §35);
   - videos, ensayo y video de respaldo;

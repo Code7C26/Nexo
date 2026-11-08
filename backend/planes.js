@@ -4,8 +4,12 @@
 // el alta la piden por GET /api/auth/planes: un precio se cambia solo acá.
 //
 // Todos los planes tienen todas las funciones: los separan los topes, nunca
-// un módulo apagado. Los topes son por negocio. `null` es sin tope. Qué cuenta en cada uno lo
-// decide usoDelPlan() en server.js:
+// un módulo apagado. La excepción es el asistente con IA (`asistente`: cargar
+// por texto, voz o WhatsApp), solo en Pro: decisión del usuario del 8 de
+// noviembre, porque la IA tiene un cupo que se paga y es lo que más vale; las
+// respuestas del manual, que no usan IA, son de todos. Los topes son por
+// negocio. `null` es sin tope. Qué cuenta en cada uno lo decide usoDelPlan()
+// en server.js:
 // - usuarios: los activos en el negocio;
 // - negocios: si se pueden sumar negocios desde este (solo Pro);
 // - productos: los activos, servicios incluidos;
@@ -35,7 +39,8 @@ export const PLANES = {
     negocios: 1,
     productos: 100,
     ventas_mes: 300,
-    marca: true
+    marca: true,
+    asistente: false
   },
   emprendedor: {
     nombre: 'Emprendedor',
@@ -52,19 +57,26 @@ export const PLANES = {
     negocios: 1,
     productos: null,
     ventas_mes: null,
-    marca: false
+    marca: false,
+    asistente: false
   },
   pro: {
     nombre: 'Pro',
     precio: 34900,
     descripcion: 'Para la pyme con equipo o con más de un local.',
-    incluye: ['Todo lo de Emprendedor', 'Usuarios sin tope', 'Varios negocios con la misma cuenta'],
+    incluye: [
+      'Todo lo de Emprendedor',
+      'Asistente con IA: cargá ventas, compras y gastos por texto, voz o WhatsApp',
+      'Usuarios sin tope',
+      'Varios negocios con la misma cuenta'
+    ],
     muy_pronto: ['Factura electrónica de ARCA', 'Mercado Libre y Tienda Nube'],
     usuarios: null,
     negocios: null,
     productos: null,
     ventas_mes: null,
-    marca: false
+    marca: false,
+    asistente: true
   }
 };
 export const PLAN_POR_DEFECTO = 'gratis';

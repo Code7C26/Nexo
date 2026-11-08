@@ -1967,6 +1967,16 @@ for (const [tabla, columna] of [
   }
 }
 
+// "Probar sin registrarse": un negocio de ejemplo (backend/negocios-de-ejemplo.js)
+// lleva su clave en `ejemplo`, y en `ejemplo_vence` cuándo se borra desde que
+// alguien lo tomó. Nulables: NULL en `ejemplo` es un negocio de verdad, y un
+// ejemplo sin vencimiento está en la reserva, esperando a quien lo pruebe.
+for (const columna of ['ejemplo TEXT', 'ejemplo_vence TEXT']) {
+  if (!db.prepare('PRAGMA table_info(organizaciones)').all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE organizaciones ADD COLUMN ${columna}`);
+  }
+}
+
 // El asistente registra devoluciones (hist. §119): asistente_mensajes.
 // operacion_tipo suma 'devolucion' a su CHECK, que SQLite no deja cambiar sin
 // reconstruir la tabla (CLAUDE.md §34). Mismo método que el rebuild de
