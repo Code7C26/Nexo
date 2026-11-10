@@ -21,8 +21,8 @@
 
 ## Estado actual (10 de noviembre de 2026)
 
-**10 de noviembre, hist. §151: la compra desde la foto de la factura, en
-`solla` sin publicar.** Nueva compra → "Cargar desde la factura" (foto, varias
+**10 de noviembre, hist. §151: la compra desde la foto de la factura,
+publicada (PR #68).** Nueva compra → "Cargar desde la factura" (foto, varias
 o PDF): la IA solo lee, Nexo busca cada renglón (lo recordado del proveedor,
 el código, el nombre parecido), pasa los packs a unidades con el IVA y llena
 el formulario para revisar. Tabla nueva `proveedor_articulos`. Probado con el
