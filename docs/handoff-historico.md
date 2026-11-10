@@ -12314,3 +12314,55 @@ ejemplo): **en local no hay Mercado Pago conectado y no se hizo un pago real**.
 que el botón no aparece en ellos. Se muestra desde el negocio del usuario que
 ya tiene la cuenta conectada ("Gonzalo José Solla"), con la caja abierta.
 Conviene probar un pago real de $100 antes del jueves.
+
+## §146. Notificaciones en el celular y la compu (10 de noviembre de 2026)
+
+**Pedido del usuario:** "notificaciones estaría bueno implementarlo (como app
+en el celu sirven muchísimo)". Nexo ya se instalaba como app (hist. §94).
+
+**Lo que se hizo (Web Push, sin dependencias ni servicio pago):**
+- `backend/webpush.js`: el par VAPID (P-256), el JWT ES256 por servicio de
+  push, el cifrado aes128gcm del RFC 8291 con `node:crypto`, y el envío. Solo
+  manda a los servicios de push conocidos (Google, Mozilla, Apple, Microsoft),
+  para que nadie use al servidor contra una dirección interna;
+  `NEXO_PUSH_HOSTS` suma otros (los tests).
+- **Tablas nuevas** (`CREATE TABLE IF NOT EXISTS`, aditivas):
+  - `suscripciones_push`: endpoint y claves de cada aparato, de una persona y
+    colgada de su sesión con `ON DELETE CASCADE`, así cerrar sesión (o que
+    venza) apaga el aparato;
+  - `ajustes_servidor`: el par VAPID, generado la primera vez y guardado en
+    la base. **No se puede cambiar** sin dejar mudos a todos los aparatos (va
+    con los respaldos).
+- **Rutas** (los dos roles): `GET /api/notificaciones` (la clave pública) y
+  `POST` `/api/notificaciones/suscripcion`, `/apagar` y `/probar`.
+- **`notificar(org, aviso, { roles })`:** sale con `setImmediate`, después de
+  lo que lo causó, y nunca frena nada. Avisa de:
+  - una venta que entra por Tienda Nube o Mercado Libre (al admin);
+  - un pago de Mercado Pago cobrado, con lo que queda después de la comisión
+    (al admin);
+  - un socio que espera en la entrada (a los dos roles; hist. §144);
+  - un producto que llega a su stock mínimo o se termina (al admin, desde
+    `registrarMovimientoStock`, una vez cada 12 horas por producto).
+  El título dice qué pasó y el cuerpo empieza por el negocio. Los avisos van
+  en castellano, como los mails y WhatsApp.
+- **El service worker** muestra el aviso y, al tocarlo, lleva la pestaña
+  abierta a esa pantalla con un mensaje (sin recargar), o abre Nexo.
+- **Configuración → Notificaciones** (`dominios/notificaciones.js`): prender
+  en este aparato, mandar una de prueba y apagar. Dice qué avisos le llegan
+  según el rol y los módulos, y qué hacer en un iPhone sin Nexo instalado o
+  con el permiso bloqueado. Al volver a entrar, el aparato se vuelve a anotar
+  solo si lo había prendido la misma persona (`localStorage`).
+
+**Cómo se verificó.** `backend/test/notificaciones.test.js` (5 tests) contra
+un servicio de push falso que hace de navegador: verifica la firma VAPID y
+**descifra** cada aviso con sus propias claves. Cubre la de prueba, el stock
+bajo una sola vez, la entrada a los dos roles, el logout que apaga, la
+dirección vencida (410) que se borra y las suscripciones truchas. 336 tests,
+lint y `verificar-migracion` (24 de 24). En el navegador, la página en el
+ancho del celular; el Chrome automatizado niega el permiso solo, así que
+**no se probó con un celular de verdad**.
+
+**Para probar en el celular** (después de publicar): en Android, abrir Nexo
+en Chrome → Configuración → Notificaciones → Prender → Mandar una de prueba.
+En el iPhone, primero "Agregar a inicio" desde Safari y abrirla desde el
+ícono.
