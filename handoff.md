@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §150);
+    siguiente número (hoy el último es §151);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,14 @@
   reescribe nada.
 
 ## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §151: la compra desde la foto de la factura, en
+`solla` sin publicar.** Nueva compra → "Cargar desde la factura" (foto, varias
+o PDF): la IA solo lee, Nexo busca cada renglón (lo recordado del proveedor,
+el código, el nombre parecido), pasa los packs a unidades con el IVA y llena
+el formulario para revisar. Tabla nueva `proveedor_articulos`. Probado con el
+stub; **falta probarlo con Groq real y facturas de verdad**. La clave de Groq
+del `.env` local contestó "Invalid API Key": ver si es la del servidor.
 
 **10 de noviembre: §143 a §150 publicados (PR #67), con las claves de Google
 en el servidor (cargadas por el usuario; `/api/auth/estado` dice `google: true`
