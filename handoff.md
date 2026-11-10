@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §142);
+    siguiente número (hoy el último es §143);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,18 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (8 de noviembre de 2026)
+## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §143: el costo de los servicios, en `solla` sin
+publicar.** Mano de obra (fija o por hora) y materiales en cada servicio; se
+congelan en la venta, miden el margen y van aparte en "adónde fue la plata".
+Clima Sur trae servicios con costo. Plan del usuario para lo que sigue, en
+este orden: el ingreso del gimnasio en dos pantallas (quien entra y la
+recepción), el QR de Mercado Pago en el mostrador, las notificaciones en el
+celular (Web Push) y la caja con todos los medios
+(`docs/investigacion-caja.md`). "Entrar con Google" espera el trámite del
+usuario (los pasos se le dieron el 10 de noviembre; la vuelta es
+`/api/auth/google/vuelta`). Después, el contenido (flyer, video, redes).
 
 **8 de noviembre, después de §141: guion del pitch y QR, en `solla` sin
 publicar.** `docs/guion-pitch.md` tiene el pitch en el orden de la consigna:
@@ -1516,32 +1527,16 @@ formato** (pedido del usuario): emoji por tipo (🛒 venta, 📦 compra, 💸 ga
 "❌ Cancelar" (`resumenParaWhatsApp`, `AYUDA_WHATSAPP` y `atenderWhatsApp` en
 `backend/server.js`; tests adaptados). Falta verlo en el celular.
 
-**El costo de los servicios (pedido del usuario el 5 de noviembre, sin
-arrancar).** En Clima Sur todo servicio vendido da 100 % de margen: el costo
-de un producto (`precio_costo`) sale solo de compras o de producción, y un
-servicio no se compra, así que queda en 0. Hoy la única vía es "lo que se usa
-al vender" (`componentes_venta`, que sirve para un servicio y se aplica al
-terminar un trabajo), pero vive en Producción y el material necesita Compras y
-Stock, que el tipo Servicios no trae. Lo que decidió el usuario:
-- **Los materiales del servicio son un concepto aparte** de lo que se usa al
-  vender: son lo que hace al servicio (el gas de una carga, los caños de una
-  instalación), no un extra. Se cargan en la ficha del servicio como "lo que
-  suele llevar"; cada trabajo los copia y se cambian ahí (se usó 1,5 kg y no
-  1). Al terminar el trabajo pasan a la venta con el costo congelado, salen
-  del stock y entran al margen.
-- **Mano de obra, a elección del usuario en cada servicio:** costo fijo
-  ($15.000 por instalación) o costo por hora (por la duración estimada, hist.
-  §78; en el trabajo se corrigen las horas reales). Se congela en la venta y
-  va en "adónde fue la plata" (hist. §131) como renglón propio con su %,
-  separado de los materiales.
-- **"Lo que se usa al vender" cambia de nombre** a "Packaging" o "Extras" (el
-  nombre, a elegir al arrancar), para que no se confunda con los materiales.
-- **A diseñar al arrancar:** las tablas (materiales del servicio y del
-  trabajo, y dónde se congela la mano de obra; explicar la migración antes,
-  CLAUDE.md §34), qué pasa con Compras y Stock apagados (prenderlos o
-  avisar), la venta directa de un servicio sin trabajo (punto de venta, alta
-  de venta), y cargarle materiales y mano de obra a Clima Sur en
-  `scripts/demo.mjs`.
+**El costo de los servicios: hecho el 10 de noviembre (hist. §143), sin
+publicar.** Cada servicio tiene mano de obra (fija o por hora) y materiales
+(los de `componentes_venta`, que se cargan desde su ficha con "Materiales"
+aunque Producción esté apagada). El trabajo los propone y se corrigen antes de
+terminarlo. En "adónde fue la plata" van como "Mano de obra" y "Materiales".
+Clima Sur ya los trae, con Compras y Stock prendidos. **Queda:** corregir las
+horas reales de un servicio por unidad con mano de obra por hora (hoy sale de
+la duración estimada; si se vende por hora, la cantidad ya son las horas), y
+que el punto de venta proponga los materiales de un servicio (ya lo hace el
+alta de venta).
 
 **Entrar con Google (pedido del usuario el 5 de noviembre, sin arrancar).**
 Gratis y sin dependencias (OAuth con `fetch` y el token verificado con

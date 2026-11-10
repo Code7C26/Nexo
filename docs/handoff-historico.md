@@ -12175,3 +12175,56 @@ recorrieron una por una.
 misma clave (`npm run i18n` dice cuáles); si el CI falla en `idioma.test.js`,
 es eso. Probar en inglés pide un perfil limpio del navegador: el service
 worker guarda la versión anterior.
+
+## §143. El costo de los servicios (10 de noviembre de 2026)
+
+**Pedido del usuario:** "por lo menos quiero que Clima Sur tenga varios
+servicios con costos". Un servicio no se compra, así que su costo era 0 y todo
+daba 100 % de margen. Las decisiones de fondo eran del 5 de noviembre (ver la
+entrada vieja en `handoff.md`): mano de obra fija o por hora, materiales
+aparte, y los dos en "adónde fue la plata".
+
+**Lo que se hizo:**
+- **Migración aditiva** (CLAUDE.md §34): `productos.mano_obra` (REAL, NULL =
+  sin mano de obra), `productos.mano_obra_por` ('servicio' u 'hora') y
+  `venta_items.costo_mano_obra` (REAL, 0 por defecto). Sin backfill: lo vendido
+  antes queda con el costo que tenía.
+- **`server.js`:** `normalizarManoObra`, `errorManoObra` y `manoObraUnitaria`
+  junto a la duración. Por hora es la tarifa por la duración estimada, o por
+  cada hora si el servicio se vende por hora. Un producto nunca la tiene.
+  `costoDelRenglon()` reemplaza los dos `buscarCostoActual` (alta y edición de
+  venta): congela el promedio ponderado más la mano de obra, y guarda la mano
+  de obra sola en `costo_mano_obra`. Todos los márgenes y el resultado la
+  cuentan sin cambios, porque ya está dentro de `costo_unitario_historico`.
+- **Materiales:** son los mismos `componentes_venta` (hist. §126), sin tabla
+  nueva. La diferencia es de nombre: en la ficha del servicio el botón es
+  "Materiales" y abre `#/produccion/lleva/<id>` aunque Producción esté apagada
+  (`paginaSinModulo` en `router.js`), con sus textos y la vuelta a la ficha.
+  `POST /api/trabajos/:id/terminar` acepta `consumos`, y la ficha del trabajo
+  los propone con `crearConsumos` (el mismo bloque del alta de venta) para
+  corregirlos antes de terminar.
+- **Margen del servicio** (`decorarProducto`): mano de obra más materiales al
+  costo de hoy (`costoMaterialesPorProducto`). La lista y la ficha muestran
+  ese costo. `mano_obra`, `costo_mano_obra` y `costo_materiales` están en
+  `CLAVES_SENSIBLES`.
+- **Adónde fue la plata:** "Mercadería" sin la mano de obra, "Mano de obra"
+  con su promedio, y lo usado se llama "Materiales" si lo llevan servicios,
+  "Packaging" si lo llevan productos, o los dos.
+- **Clima Sur** (`negocios-de-ejemplo.js`): prende Compras y Stock, compra gas,
+  cinta y limpiador a un proveedor, el kit de instalación pasa a producto con
+  stock, y cada servicio tiene duración, mano de obra y materiales. Ojo: los
+  materiales se crean con `tipo: 'producto'`, porque en Servicios todo nace
+  como servicio (el primer intento cortó con "es un servicio: no maneja
+  stock").
+
+**Cómo se verificó.** `backend/test/costo-servicios.test.js` (3 tests:
+validación, margen, trabajo con materiales corregidos, congelado y lo que no
+ve el empleado), 326 tests, lint y `verificar-migracion` (24 de 24). En el
+navegador, con "Probar sin registrarse" → Clima Sur: lista con costo y margen,
+ficha con mano de obra y materiales, la página de materiales sin Producción,
+el trabajo pendiente con sus materiales y la venta del trabajo terminado.
+
+**Lo que queda:** las horas reales de un servicio por unidad con mano de obra
+por hora; los materiales en el punto de venta; y las ventas viejas de los
+negocios de ejemplo ("Lo que ya tenías") cuentan la mano de obra, pero no los
+materiales, porque no mueven stock.
