@@ -1236,7 +1236,9 @@ Implementado hoy (Etapa F, §38):
   con las altas de siempre, y se gana sola (ver `handoff.md`).
 - **Trabajos (órdenes de trabajo):** módulo reusable, prendido en Servicios.
   Un presupuesto aceptado pasa a trabajo, con día, responsable y estado, y al
-  terminarlo pasa a una venta (ver `handoff.md`).
+  terminarlo pasa a una venta (ver `handoff.md`). Cada servicio tiene su
+  costo: mano de obra (fija o por hora) y materiales, que se corrigen al
+  terminar el trabajo (hist. §143).
 - **Abonos:** módulo reusable, prendido en Servicios. Un servicio que un
   cliente paga cada tantos meses; cada cuota es una venta, armada con el mismo
   mecanismo que las cuotas de socios.

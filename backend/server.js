@@ -7,6 +7,14 @@ import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCat
 import { interpretar, InterpreteError, transcribir, vozDisponible } from './interprete.js';
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
+import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
+import {
+  canjearCodigo as canjearCodigoGoogle,
+  googleConfigurado,
+  leerIdToken as leerIdTokenGoogle,
+  nuevoPedido as nuevoPedidoGoogle,
+  urlDeAutorizacion as urlDeAutorizacionGoogle
+} from './google.js';
 import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
 import { NEGOCIOS as NEGOCIOS_DE_EJEMPLO, clienteDeApi, llenarNegocio } from './negocios-de-ejemplo.js';
 import {
@@ -857,11 +865,13 @@ app.get('/api/auth/estado', (req, res) => {
   const registroAbierto = !registroCerrado();
   // ejemplos: el login ofrece "Probar sin registrarse".
   const ejemplos = ejemplosDisponibles();
+  // google: el login ofrece "Continuar con Google" (hist. §149).
+  const google = googleConfigurado();
   if (!sesion) {
-    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos });
+    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos, google });
   }
   renovarSesion(token);
-  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto, ejemplos });
+  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto, ejemplos, google });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -1147,7 +1157,7 @@ function comprobanteDeAlta(email, comprobante) {
   return (
     db
       .prepare(
-        `SELECT id FROM codigos_mail
+        `SELECT id, codigo_hash FROM codigos_mail
           WHERE comprobante_hash = ? AND proposito = 'registro' AND email = ?
             AND usado IS NULL AND vence > datetime('now')`
       )
@@ -1176,7 +1186,11 @@ app.post('/api/auth/registro', (req, res) => {
   // es su mail: la columna sigue NOT NULL UNIQUE sin reconstruir la tabla.
   const email = normalizarMail(req.body?.email_cuenta);
   const nombre = String(req.body?.nombre ?? '').trim();
-  const password = String(req.body?.password ?? '');
+  // Con Google (hist. §149) no se elige contraseña: la cuenta nace con una al
+  // azar que nadie conoce, y entra con Google (o la cambia con "¿Te olvidaste
+  // la contraseña?").
+  const desdeGoogle = !req.body?.password && comprobanteDeAlta(email, req.body?.comprobante_email)?.codigo_hash === MARCA_GOOGLE;
+  const password = desdeGoogle ? randomBytes(32).toString('base64url') : String(req.body?.password ?? '');
   if (!empresa || !email || !nombre || !password) {
     return res.status(400).json({ error: 'Negocio, mail, nombre y contraseña son obligatorios.' });
   }
@@ -1284,7 +1298,7 @@ app.post('/api/auth/registro', (req, res) => {
       entidad_id: usuarioId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Primer administrador creado: ${nombre} (${usuario}). ${textoAceptacion(aceptacion.edad)}`
+      detalle: `Primer administrador creado: ${nombre} (${usuario})${desdeGoogle ? ', con Google' : ''}. ${textoAceptacion(aceptacion.edad)}`
     });
   });
 
@@ -1306,6 +1320,99 @@ app.post('/api/auth/registro', (req, res) => {
     })
   });
 });
+
+
+/* ---------- Entrar con Google (hist. §149) ---------- */
+//
+// Quien tiene cuenta con ese mail entra directo (Google ya verificó que el
+// mail es suyo). Quien no tiene, sigue al alta guiada con el nombre y el mail
+// puestos y el mail ya confirmado: Nexo le da el mismo comprobante que el
+// código del mail (codigos_mail, marcado con MARCA_GOOGLE), y la cuenta nace
+// sin pedirle contraseña (la elige después con "¿Te olvidaste la
+// contraseña?" si alguna vez quiere entrar sin Google).
+
+const COOKIE_GOOGLE = 'nexo_google';
+const COOKIE_GOOGLE_ALTA = 'nexo_google_alta';
+const MARCA_GOOGLE = 'google';
+const GOOGLE_MINUTOS = 10;
+const vueltaDeGoogle = (req) => `${urlPublica(req)}/api/auth/google/vuelta`;
+const salirDeGoogle = (res, resultado) => res.redirect(`/app?google=${resultado}`);
+
+app.get('/api/auth/google', (req, res) => {
+  if (!googleConfigurado()) return salirDeGoogle(res, 'no-disponible');
+  if (registroExcedido(`google:${req.ip}`, 30)) return salirDeGoogle(res, 'demasiados');
+  const pedido = nuevoPedidoGoogle();
+  res.cookie(COOKIE_GOOGLE, `${pedido.state}.${pedido.verificador}`, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/api/auth/google',
+    maxAge: GOOGLE_MINUTOS * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+  });
+  res.redirect(urlDeAutorizacionGoogle(pedido, vueltaDeGoogle(req)));
+});
+
+app.get('/api/auth/google/vuelta', asincrono(async (req, res) => {
+  const guardado = leerCookie(req, COOKIE_GOOGLE) ?? '';
+  res.clearCookie(COOKIE_GOOGLE, { path: '/api/auth/google' });
+  const [state, verificador] = guardado.split('.');
+  if (req.query.error) return salirDeGoogle(res, 'cancelado');
+  if (!state || !verificador || typeof req.query.state !== 'string' || req.query.state !== state || typeof req.query.code !== 'string') {
+    return salirDeGoogle(res, 'error');
+  }
+  let persona;
+  try {
+    persona = leerIdTokenGoogle(await canjearCodigoGoogle(req.query.code, verificador, vueltaDeGoogle(req)));
+  } catch (err) {
+    console.error(`[google] ${err.message}`);
+    return salirDeGoogle(res, 'error');
+  }
+
+  // Con cuenta: entra al último negocio que usó, como en el login.
+  const fila = db
+    .prepare(
+      `SELECT usuarios.id, pertenencia.organizacion_id
+         FROM usuarios
+         LEFT JOIN usuario_organizaciones pertenencia
+           ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
+        WHERE LOWER(usuarios.email) = ?
+        ORDER BY pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
+        LIMIT 1`
+    )
+    .get(persona.email);
+  if (fila) {
+    ponerCookieSesion(res, crearSesion(fila.id, fila.organizacion_id));
+    db.prepare(
+      "UPDATE usuarios SET ultimo_acceso = datetime('now'), email_verificado = COALESCE(email_verificado, datetime('now')) WHERE id = ?"
+    ).run(fila.id);
+    if (fila.organizacion_id != null) marcarAcceso(fila.id, fila.organizacion_id);
+    registrarAuditoria({
+      accion: 'login',
+      entidad: 'usuario',
+      entidad_id: fila.id,
+      usuario_id: fila.id,
+      organizacion_id: fila.organizacion_id,
+      detalle: 'Inició sesión con Google'
+    });
+    return res.redirect('/app');
+  }
+
+  // Sin cuenta: al alta guiada, con el mail ya confirmado.
+  if (registroCerrado()) return salirDeGoogle(res, 'sin-cuenta');
+  const comprobante = randomBytes(32).toString('base64url');
+  db.prepare(
+    `INSERT INTO codigos_mail (proposito, email, codigo_hash, vence, confirmado, comprobante_hash)
+     VALUES ('registro', ?, ?, datetime('now', ?), datetime('now'), ?)`
+  ).run(persona.email, MARCA_GOOGLE, `+${COMPROBANTE_HORAS} hours`, hashToken(comprobante));
+  // La lee el alta (frontend/js/alta.js) y la borra: no es httpOnly.
+  res.cookie(COOKIE_GOOGLE_ALTA, Buffer.from(JSON.stringify({ ...persona, comprobante })).toString('base64url'), {
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 30 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+  });
+  res.redirect('/app#/crear-cuenta');
+}));
 
 // Los tipos de negocio y los módulos, para el alta guiada, que los muestra
 // antes de que exista una sesión. Es el mismo catálogo para todos y no tiene
@@ -2266,7 +2373,11 @@ const CLAVES_SENSIBLES = new Set([
   'mercaderia',
   'costos',
   'costo_por_venta',
-  'ganancia_despues'
+  'ganancia_despues',
+  // El costo de los servicios (hist. §143).
+  'mano_obra',
+  'costo_mano_obra',
+  'costo_materiales'
 ]);
 
 function podarSensibles(valor) {
@@ -4379,6 +4490,7 @@ const SELECT_PRODUCTO = `
          productos.categoria_id, categorias.nombre AS categoria,
          productos.margen_objetivo, productos.unidad, productos.tipo,
          productos.descripcion, productos.duracion_minutos, productos.alicuota_iva,
+         productos.mano_obra, productos.mano_obra_por,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
            WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count,
@@ -4439,13 +4551,19 @@ function estadoStock(stock, stockMinimo, stockMaximo) {
 // clave (CLAUDE.md §35) y no los conoce.
 // Si el negocio discrimina IVA, el margen se mide sobre el precio sin IVA
 // (hist. §114): el costo de lo comprado con factura A ya va sin IVA.
-function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}, discrimina = false) {
+// Un servicio no se compra: su costo es la mano de obra de cada uno más sus
+// materiales con el costo de hoy (hist. §143), y con eso se mide su margen.
+function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}, discrimina = false, costoMateriales = 0) {
   const valorizado = valorizadoProducto(p.precio_costo, p.stock, stock_variantes, valorizado_variantes);
   if (stock_variantes && p.stock > 0) p.precio_costo = valorizado / p.stock;
+  const servicio =
+    p.tipo === 'servicio' ? { costo_mano_obra: manoObraUnitaria(p), costo_materiales: redondear2(costoMateriales) } : null;
+  const costo = servicio ? p.precio_costo + servicio.costo_mano_obra + servicio.costo_materiales : p.precio_costo;
   const precio = discrimina ? p.precio_venta - ivaIncluido(p.precio_venta, p.alicuota_iva) : p.precio_venta;
-  const margen = precio > 0 ? ((precio - p.precio_costo) / precio) * 100 : null;
+  const margen = precio > 0 ? ((precio - costo) / precio) * 100 : null;
   return {
     ...p,
+    ...servicio,
     precios,
     valorizado,
     margen,
@@ -4465,8 +4583,29 @@ app.get('/api/productos', (req, res) => {
     .all(req.usuario.organizacion_id);
   const preciosPorProducto = obtenerPreciosPorProducto(req.usuario.organizacion_id);
   const discrimina = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id));
-  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id], discrimina)));
+  const materiales = costoMaterialesPorProducto(req.usuario.organizacion_id);
+  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id], discrimina, materiales.get(p.id))));
 });
+
+// Lo que cuestan hoy los materiales de vender uno de cada producto
+// (componentes_venta, hist. §126 y §143): el promedio ponderado de cada
+// material, o el de su variante.
+function costoMaterialesPorProducto(org) {
+  return new Map(
+    db
+      .prepare(
+        `SELECT componentes_venta.producto_id,
+                SUM(componentes_venta.cantidad * COALESCE(producto_variantes.precio_costo, productos.precio_costo)) AS costo
+           FROM componentes_venta
+           JOIN productos ON productos.id = componentes_venta.componente_id
+           LEFT JOIN producto_variantes ON producto_variantes.id = componentes_venta.componente_variante_id
+          WHERE componentes_venta.organizacion_id = ?
+          GROUP BY componentes_venta.producto_id`
+      )
+      .all(org)
+      .map((f) => [f.producto_id, f.costo ?? 0])
+  );
+}
 
 function normalizarPrecio(valor) {
   return valor === undefined || valor === null || valor === '' ? 0 : Number(valor);
@@ -4508,6 +4647,46 @@ function normalizarDescripcion(valor) {
 }
 function normalizarDuracion(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
+
+// La mano de obra de un servicio (hist. §143): un fijo por cada uno, o por
+// hora. Vacío es sin mano de obra; un producto nunca la tiene (lo suyo es el
+// costo de compra o de producción).
+const MANO_OBRA_POR = ['servicio', 'hora'];
+function normalizarManoObra({ tipo, mano_obra, mano_obra_por }) {
+  if (tipo !== 'servicio' || mano_obra === undefined || mano_obra === null || mano_obra === '') {
+    return { mano_obra: null, mano_obra_por: null };
+  }
+  return { mano_obra: Number(mano_obra), mano_obra_por: mano_obra_por ?? 'servicio' };
+}
+function errorManoObra(producto) {
+  const { mano_obra, mano_obra_por } = normalizarManoObra(producto);
+  if (mano_obra === null) return null;
+  if (!Number.isFinite(mano_obra) || mano_obra < 0) return 'La mano de obra tiene que ser un importe mayor o igual a 0.';
+  if (!MANO_OBRA_POR.includes(mano_obra_por)) return 'La mano de obra va por servicio o por hora.';
+  if (mano_obra_por === 'hora' && producto.unidad !== 'hora' && !normalizarDuracion(producto.duracion_minutos)) {
+    return 'Para contar la mano de obra por hora, cargá cuánto dura el servicio (o vendelo por hora).';
+  }
+  return null;
+}
+// Lo que cuesta la mano de obra de cada unidad vendida: el fijo, o la tarifa
+// por las horas que lleva (si se vende por hora, cada unidad ya es una hora).
+function manoObraUnitaria(producto) {
+  const { mano_obra, mano_obra_por } = normalizarManoObra(producto);
+  if (!(mano_obra > 0)) return 0;
+  if (mano_obra_por === 'servicio' || producto.unidad === 'hora') return mano_obra;
+  return redondear2((mano_obra * (producto.duracion_minutos ?? 0)) / 60);
+}
+// El costo que se congela en un renglón vendido (CLAUDE.md §8): el promedio
+// ponderado del producto o de su variante, más la mano de obra si es un
+// servicio. Devuelve también la mano de obra sola, para el desglose.
+function costoDelRenglon(productoId, varianteId) {
+  const producto = db
+    .prepare('SELECT precio_costo, tipo, unidad, duracion_minutos, mano_obra, mano_obra_por FROM productos WHERE id = ?')
+    .get(productoId);
+  const base = varianteId ? db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?').get(varianteId).precio_costo : producto.precio_costo;
+  const manoObra = manoObraUnitaria(producto);
+  return { costo: base + manoObra, mano_obra: manoObra };
 }
 
 // El código de barras se guarda sin espacios: en el envase suele venir
@@ -4575,13 +4754,11 @@ function codigoDeBarrasOcupado(codigo, organizacionId, { productoId = null, vari
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto(
-  {
+function validarProducto(producto, organizacionId) {
+  const {
     nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos, alicuota_iva,
     codigo_barras, plu
-  },
-  organizacionId
-) {
+  } = producto;
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
@@ -4606,6 +4783,8 @@ function validarProducto(
   if (alicuota_iva != null && !ALICUOTAS_IVA.includes(String(alicuota_iva))) {
     return 'La alícuota de IVA no es válida.';
   }
+  const errorMano = errorManoObra(producto);
+  if (errorMano) return errorMano;
   const venta = normalizarPrecio(precio_venta);
   if (Number.isNaN(venta) || venta < 0) {
     return 'El precio de venta debe ser un número mayor o igual a 0.';
@@ -4674,8 +4853,8 @@ function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) 
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
-                                descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu, mano_obra, mano_obra_por)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -4693,7 +4872,8 @@ function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) 
         normalizarDuracion(duracion_minutos),
         alicuota_iva == null ? '21' : String(alicuota_iva),
         codigoBarras,
-        pluNormalizado
+        pluNormalizado,
+        ...Object.values(normalizarManoObra(cuerpo))
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed') && String(err.message).includes('codigo_barras')) {
@@ -4762,7 +4942,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
     .prepare(
       `SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo,
-              descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu
+              descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu, mano_obra, mano_obra_por
          FROM productos WHERE id = ? AND organizacion_id = ?`
     )
     .get(productoId, req.usuario.organizacion_id);
@@ -4836,7 +5016,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     duracion_minutos: normalizarDuracion(fusionado.duracion_minutos),
     alicuota_iva: fusionado.alicuota_iva == null ? '21' : String(fusionado.alicuota_iva),
     codigo_barras: normalizarCodigoBarras(fusionado.codigo_barras),
-    plu: normalizarPlu(fusionado.plu)
+    plu: normalizarPlu(fusionado.plu),
+    ...normalizarManoObra({ ...fusionado, tipo: fusionado.tipo ?? 'producto' })
   };
   const ocupado =
     codigoDeBarrasOcupado(nuevo.codigo_barras, req.usuario.organizacion_id, { productoId }) ??
@@ -4882,7 +5063,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
     'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo',
-    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras', 'plu'
+    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras', 'plu', 'mano_obra', 'mano_obra_por'
   ]);
 
   withTransaction(() => {
@@ -4892,7 +5073,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     db.prepare(
       `UPDATE productos
           SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
-              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?, plu = ?
+              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?, plu = ?,
+              mano_obra = ?, mano_obra_por = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -4910,6 +5092,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.alicuota_iva,
       nuevo.codigo_barras,
       nuevo.plu,
+      nuevo.mano_obra,
+      nuevo.mano_obra_por,
       productoId
     );
     if (preciosPorLista) {
@@ -5784,6 +5968,8 @@ function registrarMovimientoStock({
   if (esServicio(producto_id)) return { changes: 0, lastInsertRowid: null };
   // Por lo mismo, de acá sale el aviso a las tiendas conectadas (§32).
   programarSincronizacion(organizacion_id);
+  // Y el aviso del stock que llegó al mínimo (hist. §146).
+  if (tipo === 'salida' || (tipo === 'ajuste' && cantidad < 0)) avisarStockBajo(organizacion_id, producto_id);
   return db
     .prepare(
       `INSERT INTO movimientos_stock
@@ -6705,13 +6891,16 @@ function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacio
   // los tuvieron: un servicio no tiene costo de mercadería y bajaría el promedio.
   const general = db
     .prepare(
-      `SELECT COUNT(*) AS n, SUM(t.total) AS total, SUM(t.costo) AS costo, SUM(t.iva) AS iva,
+      `SELECT COUNT(*) AS n, SUM(t.total) AS total, SUM(t.costo) AS costo, SUM(t.mano_obra) AS mano_obra, SUM(t.iva) AS iva,
               SUM(CASE WHEN t.costo > 0 THEN 1 ELSE 0 END) AS n_costo,
               SUM(CASE WHEN t.costo > 0 THEN t.total ELSE 0 END) AS total_costo,
+              SUM(CASE WHEN t.mano_obra > 0 THEN 1 ELSE 0 END) AS n_mano_obra,
+              SUM(CASE WHEN t.mano_obra > 0 THEN t.total ELSE 0 END) AS total_mano_obra,
               SUM(CASE WHEN t.iva > 0 THEN 1 ELSE 0 END) AS n_iva,
               SUM(CASE WHEN t.iva > 0 THEN t.total ELSE 0 END) AS total_iva
          FROM (SELECT SUM(venta_items.cantidad * venta_items.precio_unitario) AS total,
-                      SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo, SUM(venta_items.iva) AS iva
+                      SUM(venta_items.cantidad * (venta_items.costo_unitario_historico - venta_items.costo_mano_obra)) AS costo,
+                      SUM(venta_items.cantidad * venta_items.costo_mano_obra) AS mano_obra, SUM(venta_items.iva) AS iva
                  FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
                 WHERE ${filtro}
                 GROUP BY ventas.id) t`
@@ -6754,18 +6943,35 @@ function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacio
   });
 
   const filas = [];
-  const costoMercaderia = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
+  // La mano de obra de los servicios (hist. §143) va aparte de la mercadería.
+  const costoManoObra = items.reduce((acc, i) => acc + i.cantidad * i.costo_mano_obra, 0);
+  const costoMercaderia = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0) - costoManoObra;
   // Una venta de servicios no tiene mercadería: la fila en cero sería ruido.
-  if (costoMercaderia > 0) {
+  if (costoMercaderia > 0.005) {
     filas.push(
       fila('mercaderia', 'Mercadería', costoMercaderia, promedio({ n: general.n_costo, total: general.total_costo, costo: general.costo }, 'costo'))
     );
   }
+  if (costoManoObra > 0) {
+    filas.push(
+      fila(
+        'mano_obra',
+        'Mano de obra',
+        costoManoObra,
+        promedio({ n: general.n_mano_obra, total: general.total_mano_obra, mano_obra: general.mano_obra }, 'mano_obra')
+      )
+    );
+  }
+  // En un servicio, lo usado son sus materiales (el gas, los caños); en un
+  // producto, el packaging (la caja, la bolsa). Cuentan los renglones que
+  // llevan algo al venderse: el kit que se vende con la instalación no.
   const costoConsumos = consumos.reduce((acc, c) => acc + c.cantidad * c.costo_unitario_historico, 0);
   if (costoConsumos > 0) {
-    filas.push(
-      fila('consumos', 'Packaging (lo usado al vender)', costoConsumos, promedio(deConsumos, 'importe'), consumos.map((c) => c.nombre))
-    );
+    const llevan = componentesPorProducto(organizacionId);
+    const tipos = new Set(items.filter((i) => llevan.has(i.producto_id)).map((i) => i.tipo));
+    const nombre =
+      tipos.size === 2 ? 'Materiales y packaging' : tipos.has('servicio') ? 'Materiales' : 'Packaging (lo usado al vender)';
+    filas.push(fila('consumos', nombre, costoConsumos, promedio(deConsumos, 'importe'), consumos.map((c) => c.nombre)));
   }
   const categorias = new Map();
   for (const g of costosDeVender) {
@@ -6785,7 +6991,8 @@ function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacio
   const gastosTodos = [...porCategoria.values()].reduce((acc, c) => acc + (c.importe ?? 0), 0);
   const quedoPromedio =
     general.n >= VENTAS_MINIMAS_PROMEDIO && general.total > 0
-      ? (general.total - general.costo - (general.iva ?? 0) - (deConsumos.importe ?? 0) - gastosTodos) / general.total
+      ? (general.total - general.costo - (general.mano_obra ?? 0) - (general.iva ?? 0) - (deConsumos.importe ?? 0) - gastosTodos) /
+        general.total
       : null;
   const quedo = base - costos;
   return {
@@ -6954,6 +7161,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
+              venta_items.costo_mano_obra, productos.tipo,
               venta_items.alicuota_iva, venta_items.iva,
               venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista,
               COALESCE((
@@ -7259,15 +7467,12 @@ function crearVenta({
       canalVenta
     );
 
-  const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
-  // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
-  // de un item con variante es el promedio ponderado de ESA variante, no el
-  // del producto padre.
-  const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
+  // El costo congelado de un item con variante es el promedio ponderado de
+  // ESA variante, no el del producto padre (costoDelRenglon).
   const insertItem = db.prepare(
     `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
-                              oferta_id, precio_lista)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                              oferta_id, precio_lista, costo_mano_obra)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const condicionIva = condicionIvaNegocio(organizacion_id);
   // Las ofertas (hist. §133): la de cada renglón es la que ganaba el día de
@@ -7284,10 +7489,8 @@ function crearVenta({
     const varianteId = item.variante_id ? Number(item.variante_id) : null;
     // El costo se congela ACA, antes de tocar nada más del producto: es
     // la foto del momento de la venta, no se vuelve a recalcular después.
-    // La alícuota también (hist. §113).
-    const costoActual = varianteId
-      ? buscarCostoVariante.get(varianteId).precio_costo
-      : buscarCostoActual.get(item.producto_id).precio_costo;
+    // La alícuota también (hist. §113), y la mano de obra (hist. §143).
+    const costoActual = costoDelRenglon(item.producto_id, varianteId);
     const { alicuota_iva, iva } = ivaDelRenglon(
       { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
       condicionIva
@@ -7299,11 +7502,12 @@ function crearVenta({
       varianteId,
       item.cantidad,
       item.precio_unitario,
-      costoActual,
+      costoActual.costo,
       alicuota_iva,
       iva,
       conOferta?.oferta_id ?? null,
-      conOferta?.precio_lista ?? null
+      conOferta?.precio_lista ?? null,
+      costoActual.mano_obra
     );
     if (!carga_inicial) {
       registrarMovimientoStock({
@@ -7620,12 +7824,10 @@ app.put('/api/ventas/:id', (req, res) => {
 
     db.prepare('DELETE FROM venta_items WHERE venta_id = ?').run(ventaId);
 
-    const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
-    const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
     const insertItem = db.prepare(
       `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
-                                oferta_id, precio_lista)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                oferta_id, precio_lista, costo_mano_obra)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const condicionIva = condicionIvaNegocio(req.usuario.organizacion_id);
     // Las ofertas, como al crearla (hist. §133): las del día de la venta.
@@ -7641,9 +7843,7 @@ app.put('/api/ventas/:id', (req, res) => {
       const varianteId = item.variante_id ? Number(item.variante_id) : null;
       // Mismo criterio que crear una venta: el costo y la alícuota se
       // congelan con los del producto/variante en este momento, no los de antes.
-      const costoActual = varianteId
-        ? buscarCostoVariante.get(varianteId).precio_costo
-        : buscarCostoActual.get(item.producto_id).precio_costo;
+      const costoActual = costoDelRenglon(item.producto_id, varianteId);
       const { alicuota_iva, iva } = ivaDelRenglon(
         { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
         condicionIva
@@ -7655,11 +7855,12 @@ app.put('/api/ventas/:id', (req, res) => {
         varianteId,
         item.cantidad,
         item.precio_unitario,
-        costoActual,
+        costoActual.costo,
         alicuota_iva,
         iva,
         conOferta?.oferta_id ?? null,
-        conOferta?.precio_lista ?? null
+        conOferta?.precio_lista ?? null,
+        costoActual.mano_obra
       );
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -8900,6 +9101,9 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
   const errorStock = validarStockDisponible(items, deposito, organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
 
+  // Los materiales que se usaron de verdad (hist. §143): se corrigen al
+  // terminar (1,5 kg de gas y no 1). Sin mandarlos, los de siempre.
+  const consumos = req.body?.consumos;
   const ventaId = withTransaction(() => {
     const nuevaVentaId = crearVenta({
       cliente_id: trabajo.cliente_id,
@@ -8907,7 +9111,8 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
       fecha: null,
       deposito_id: deposito,
       lista_precio_id: trabajo.lista_precio_id,
-      organizacion_id: organizacionId
+      organizacion_id: organizacionId,
+      consumos
     });
     db.prepare("UPDATE trabajos SET estado = 'terminado', venta_id = ? WHERE id = ?").run(nuevaVentaId, trabajo.id);
     auditar(req, {
@@ -16254,7 +16459,7 @@ function resumenTurno(turno) {
     .get(turno.id);
   const cobrosPorCuenta = db
     .prepare(
-      `SELECT cuentas_tesoreria.nombre AS cuenta, SUM(cobros.importe) AS importe
+      `SELECT cobros.cuenta_tesoreria_id, cuentas_tesoreria.nombre AS cuenta, cuentas_tesoreria.tipo, SUM(cobros.importe) AS importe
          FROM cobros
          JOIN ventas ON ventas.id = cobros.venta_id
          JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
@@ -16277,7 +16482,18 @@ function resumenTurno(turno) {
       egresos: sumar((m) => m.tipo === 'egreso')
     },
     ventas: { cantidad: ventas.cantidad, total: redondear2(ventas.total) },
-    cobros_por_cuenta: cobrosPorCuenta
+    cobros_por_cuenta: cobrosPorCuenta,
+    // Las otras cuentas, controladas al cerrar (hist. §150).
+    arqueos: db
+      .prepare(
+        `SELECT turno_caja_arqueos.cuenta_tesoreria_id, cuentas_tesoreria.nombre AS cuenta,
+                turno_caja_arqueos.esperado, turno_caja_arqueos.declarado,
+                ROUND(turno_caja_arqueos.declarado - turno_caja_arqueos.esperado, 2) AS diferencia
+           FROM turno_caja_arqueos JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turno_caja_arqueos.cuenta_tesoreria_id
+          WHERE turno_caja_arqueos.turno_caja_id = ?
+          ORDER BY cuentas_tesoreria.nombre`
+      )
+      .all(turno.id)
   };
 }
 
@@ -16358,6 +16574,26 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
   if (!esImporteDeCaja(contado)) {
     return res.status(400).json({ error: 'Lo contado tiene que ser un número, 0 o más.' });
   }
+  // Las otras cuentas (hist. §150): de cada una con cobros en el turno, lo que
+  // dice el posnet o la app. Es opcional: la que no viene no se controla.
+  const otras = req.body?.otras ?? [];
+  if (!Array.isArray(otras)) return res.status(400).json({ error: 'Lo de las otras cuentas no es válido.' });
+  const conCobros = new Map(
+    resumenTurno(turno)
+      .cobros_por_cuenta.filter((c) => c.cuenta_tesoreria_id !== turno.cuenta_tesoreria_id)
+      .map((c) => [c.cuenta_tesoreria_id, c])
+  );
+  const vistas = new Set();
+  for (const otra of otras) {
+    const cuenta = conCobros.get(Number(otra?.cuenta_tesoreria_id));
+    if (!cuenta || vistas.has(cuenta.cuenta_tesoreria_id)) {
+      return res.status(400).json({ error: 'Solo se controlan, una vez cada una, las cuentas que tuvieron cobros en el turno.' });
+    }
+    if (!esImporteDeCaja(otra.declarado)) {
+      return res.status(400).json({ error: `Lo que dice ${cuenta.cuenta} tiene que ser un número, 0 o más.` });
+    }
+    vistas.add(cuenta.cuenta_tesoreria_id);
+  }
 
   withTransaction(() => {
     const esperado = redondear2(SQL_SALDO_CUENTA.get(turno.cuenta_tesoreria_id).saldo);
@@ -16373,13 +16609,25 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
       `Diferencia de arqueo al cerrar la caja (turno #${turno.id})`,
       organizacionId
     );
+    const anotar = db.prepare(
+      'INSERT INTO turno_caja_arqueos (turno_caja_id, cuenta_tesoreria_id, esperado, declarado) VALUES (?, ?, ?, ?)'
+    );
+    for (const otra of otras) {
+      const cuenta = conCobros.get(Number(otra.cuenta_tesoreria_id));
+      anotar.run(turno.id, cuenta.cuenta_tesoreria_id, cuenta.importe, redondear2(Number(otra.declarado)));
+    }
     auditar(req, {
       accion: 'cambiar_estado',
       entidad: 'cuenta_tesoreria',
       entidad_id: turno.cuenta_tesoreria_id,
       operacion_tipo: 'turno_caja',
       operacion_id: turno.id,
-      detalle: `Cerró la caja "${turno.cuenta}" (turno #${turno.id}): esperado $${esperado}, contado $${contado}`
+      detalle: `Cerró la caja "${turno.cuenta}" (turno #${turno.id}): esperado $${esperado}, contado $${contado}${otras
+        .map((o) => {
+          const cuenta = conCobros.get(Number(o.cuenta_tesoreria_id));
+          return `; ${cuenta.cuenta}: según Nexo $${cuenta.importe}, declarado $${Number(o.declarado)}`;
+        })
+        .join('')}`
     });
   });
   res.json(resumenTurno(turnoDeLaEmpresa(turno.id, organizacionId)));
@@ -16449,9 +16697,23 @@ app.get('/api/pos/catalogo', (req, res) => {
 // vuelto lo calcula la pantalla); si suman menos, el resto queda en la cuenta
 // corriente del cliente, así que hace falta un cliente de verdad: a
 // "Consumidor final" no se le fía.
+// El QR de Mercado Pago en el mostrador (hist. §145): con `qr_mercadopago`,
+// la venta nace sin cobros (también a "Consumidor final") y la pantalla
+// muestra el QR del link de pago de esa venta por el total. El cobro entra
+// solo, con el aviso de Mercado Pago, como el de cualquier link. Si el cliente
+// no paga, quien vende la cancela (POST .../cancelar-qr) y cobra de otra forma.
+// Las ventas que esperan su QR se recuerdan en memoria: solo esas se cancelan
+// desde el mostrador; después de reiniciar el servidor, las anula el admin.
+const ventasEsperandoQr = new Map();
+const VIDA_QR_MS = 60 * 60 * 1000;
+
 app.post('/api/pos/ventas', (req, res) => {
-  const { turno_caja_id, cliente_id, items, cobros = [], consumos } = req.body;
+  const { turno_caja_id, cliente_id, items, cobros = [], consumos, qr_mercadopago: conQr = false } = req.body;
   const organizacionId = req.usuario.organizacion_id;
+  if (conQr && !mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
+  if (conQr && Array.isArray(cobros) && cobros.length) {
+    return res.status(400).json({ error: 'Con el QR de Mercado Pago se cobra todo por el QR.' });
+  }
   const turno = turnoDeLaEmpresa(Number(turno_caja_id), organizacionId);
   if (!turno || turno.estado !== 'abierto') {
     return res.status(400).json({ error: 'Abrí la caja antes de vender.' });
@@ -16482,7 +16744,7 @@ app.post('/api/pos/ventas', (req, res) => {
     cliente_id &&
     db.prepare('SELECT nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(cliente_id), organizacionId)
       ?.nombre === CONSUMIDOR_FINAL;
-  if (cobrado < total && (!cliente_id || esConsumidorFinal)) {
+  if (cobrado < total && (!cliente_id || esConsumidorFinal) && !conQr) {
     return res.status(400).json({ error: 'Para dejar saldo en cuenta corriente, elegí un cliente.' });
   }
 
@@ -16523,8 +16785,45 @@ app.post('/api/pos/ventas', (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: mensajeDeError(err) });
   }
+  if (conQr) ventasEsperandoQr.set(ventaId, { organizacionId, creado: Date.now() });
   res.status(201).json({ id: ventaId, total, cobrado });
 });
+
+// El cliente no pagó el QR: la venta se anula (vuelve el stock) y el carrito
+// sigue en la pantalla para cobrarlo de otra forma. Si el pago ya entró, no.
+app.post('/api/pos/ventas/:id/cancelar-qr', asincrono(async (req, res) => {
+  const ventaId = Number(req.params.id);
+  const organizacionId = req.usuario.organizacion_id;
+  const esperando = ventasEsperandoQr.get(ventaId);
+  if (!esperando || esperando.organizacionId !== organizacionId || Date.now() - esperando.creado > VIDA_QR_MS) {
+    return res.status(404).json({ error: 'Esa venta ya no espera un QR: si hay que anularla, lo hace el administrador.' });
+  }
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, organizacionId);
+  const motivo = venta ? motivoParaNoAnular(venta) : 'Venta no encontrada.';
+  if (motivo) {
+    // Con cobros es que el pago entró justo: no se cancela, se cobró.
+    return res.status(409).json({ error: motivo });
+  }
+  // La orden del QR de la caja se cancela en Mercado Pago, así no se puede
+  // pagar después. Si falla (ya venció), se anula igual.
+  if (esperando.orden_id) {
+    const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+    if (integracion) await apiDeMercadoPago(integracion).cancelarOrden(esperando.orden_id, randomBytes(16).toString('hex')).catch(() => {});
+  }
+  withTransaction(() => {
+    revertirVentaAnulada(venta, organizacionId);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      detalle: `Venta #${ventaId} anulada desde el punto de venta: no se pagó el QR de Mercado Pago`
+    });
+  });
+  ventasEsperandoQr.delete(ventaId);
+  res.json({ id: ventaId, estado: 'anulada' });
+}));
 
 /* ---------- Socios, planes y cuotas (CLAUDE.md §29, hist. §74 y §75) ---------- */
 
@@ -17365,7 +17664,7 @@ app.get('/api/socios/ingresos', (req, res) => {
   const ingresos = db
     .prepare(
       `SELECT ingresos_socio.id, ingresos_socio.socio_id, ingresos_socio.fecha, ingresos_socio.al_dia,
-              ingresos_socio.deuda, socios.numero, clientes.nombre, usuarios.nombre AS usuario
+              ingresos_socio.deuda, ingresos_socio.por_pantalla, socios.numero, clientes.nombre, usuarios.nombre AS usuario
          FROM ingresos_socio
          JOIN socios ON socios.id = ingresos_socio.socio_id
          JOIN clientes ON clientes.id = socios.cliente_id
@@ -17374,7 +17673,216 @@ app.get('/api/socios/ingresos', (req, res) => {
         ORDER BY ingresos_socio.id DESC LIMIT 200`
     )
     .all(req.usuario.organizacion_id, inicioDelDia);
-  res.json(ingresos.map((i) => ({ ...i, al_dia: Boolean(i.al_dia) })));
+  res.json(ingresos.map((i) => ({ ...i, al_dia: Boolean(i.al_dia), por_pantalla: Boolean(i.por_pantalla) })));
+});
+
+/* ---------- Notificaciones (Web Push, hist. §146) ---------- */
+//
+// Cada persona prende las notificaciones en cada aparato (Configuración →
+// Notificaciones). Lo que pasa en un negocio le llega a quien corresponde:
+// las ventas online, los pagos y el stock al admin; quien espera en la
+// entrada, a los dos roles. notificar() no espera ni tira: el aviso sale
+// después de lo que lo causó y, si no sale, no frena nada.
+
+let clavesVapidGuardadas = null;
+function clavesVapid() {
+  if (clavesVapidGuardadas) return clavesVapidGuardadas;
+  const leer = () => db.prepare("SELECT valor FROM ajustes_servidor WHERE clave = 'vapid'").get();
+  if (!leer()) db.prepare("INSERT OR IGNORE INTO ajustes_servidor (clave, valor) VALUES ('vapid', ?)").run(JSON.stringify(clavesVapidNuevas()));
+  clavesVapidGuardadas = JSON.parse(leer().valor);
+  return clavesVapidGuardadas;
+}
+// Quién manda los avisos, para el servicio de push (Apple lo exige).
+const contactoPush = () => (process.env.NEXO_URL_PUBLICA || 'https://nexosystem.duckdns.org').replace(/\/+$/, '');
+const pesosAviso = (n) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+function mandarA(suscripciones, aviso) {
+  if (!suscripciones.length) return;
+  const opciones = { claves: clavesVapid(), contacto: contactoPush() };
+  for (const s of suscripciones) {
+    mandarAviso(s, aviso, opciones).then((resultado) => {
+      if (resultado === 'vencida') db.prepare('DELETE FROM suscripciones_push WHERE id = ?').run(s.id);
+    });
+  }
+}
+
+// Las suscripciones con sesión viva de quienes están activos en el negocio,
+// con alguno de esos roles.
+function suscripcionesDelNegocio(organizacionId, roles) {
+  return db
+    .prepare(
+      `SELECT suscripciones_push.id, suscripciones_push.endpoint, suscripciones_push.p256dh, suscripciones_push.auth
+         FROM suscripciones_push
+         JOIN sesiones ON sesiones.token = suscripciones_push.sesion_token AND sesiones.expira > datetime('now')
+         JOIN usuario_organizaciones
+           ON usuario_organizaciones.usuario_id = suscripciones_push.usuario_id
+          AND usuario_organizaciones.organizacion_id = ? AND usuario_organizaciones.activo = 1
+        WHERE usuario_organizaciones.rol IN (${roles.map(() => '?').join(', ')})`
+    )
+    .all(organizacionId, ...roles);
+}
+
+// `url` es adónde lleva el aviso al tocarlo; `etiqueta` junta los de lo mismo
+// (un segundo aviso del mismo producto reemplaza al primero).
+function notificar(organizacionId, { titulo, cuerpo, url = '/app', etiqueta = null, urgente = false }, { roles = ['admin'] } = {}) {
+  setImmediate(() => {
+    try {
+      const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId);
+      if (!negocio) return;
+      mandarA(suscripcionesDelNegocio(organizacionId, roles), { titulo, cuerpo: `${negocio.nombre} · ${cuerpo}`, url, etiqueta, urgente });
+    } catch (err) {
+      console.error('[notificaciones]', err);
+    }
+  });
+}
+
+// El stock que llegó al mínimo, después de una venta, un consumo o un ajuste.
+// Una vez cada 12 horas por producto: no un aviso por cada venta.
+const ultimoAvisoStock = new Map();
+function avisarStockBajo(organizacionId, productoId) {
+  setImmediate(() => {
+    const clave = `${organizacionId}:${productoId}`;
+    if (Date.now() - (ultimoAvisoStock.get(clave) ?? 0) < 12 * 3600 * 1000) return;
+    const p = db
+      .prepare(
+        `SELECT productos.nombre, productos.unidad, productos.stock_minimo, COALESCE(stock_actual.cantidad, 0) AS stock
+           FROM productos LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+          WHERE productos.id = ? AND productos.organizacion_id = ? AND productos.activo = 1`
+      )
+      .get(productoId, organizacionId);
+    if (!p || !(p.stock_minimo > 0) || p.stock > p.stock_minimo) return;
+    ultimoAvisoStock.set(clave, Date.now());
+    const unidad = p.unidad === 'unidad' ? '' : ` ${p.unidad}`;
+    notificar(organizacionId, {
+      titulo: p.stock <= 0 ? `Sin stock: ${p.nombre}` : `Stock bajo: ${p.nombre}`,
+      cuerpo: `${p.stock <= 0 ? 'Se terminó' : `Quedan ${redondear3(p.stock)}${unidad}`} (el mínimo es ${redondear3(p.stock_minimo)}${unidad}).`,
+      url: '/app#/stock',
+      etiqueta: `stock-${productoId}`
+    });
+  });
+}
+
+app.get('/api/notificaciones', (req, res) => {
+  res.json({ clave_publica: clavePublicaVapid(clavesVapid()) });
+});
+
+// El aparato se anota (o se vuelve a anotar al entrar: la misma dirección
+// pasa a la sesión y la persona de ahora).
+app.post('/api/notificaciones/suscripcion', (req, res) => {
+  const { endpoint, keys } = req.body ?? {};
+  const esClave = (v, largo) => typeof v === 'string' && /^[A-Za-z0-9_-]+$/.test(v) && Buffer.from(v, 'base64url').length === largo;
+  if (
+    typeof endpoint !== 'string' ||
+    endpoint.length > 1000 ||
+    !direccionDePushValida(endpoint) ||
+    !esClave(keys?.p256dh, 65) ||
+    !esClave(keys?.auth, 16)
+  ) {
+    return res.status(400).json({ error: 'Este navegador no dio una suscripción válida.' });
+  }
+  db.prepare(
+    `INSERT INTO suscripciones_push (endpoint, p256dh, auth, usuario_id, sesion_token) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth,
+       usuario_id = excluded.usuario_id, sesion_token = excluded.sesion_token`
+  ).run(endpoint, keys.p256dh, keys.auth, req.usuario.id, leerCookie(req, COOKIE_SESION));
+  res.status(201).json({ ok: true });
+});
+
+app.post('/api/notificaciones/apagar', (req, res) => {
+  db.prepare('DELETE FROM suscripciones_push WHERE endpoint = ? AND usuario_id = ?').run(String(req.body?.endpoint ?? ''), req.usuario.id);
+  res.status(204).end();
+});
+
+// Una de prueba, a los aparatos de quien la pide.
+app.post('/api/notificaciones/probar', (req, res) => {
+  const suscripciones = db
+    .prepare(
+      `SELECT suscripciones_push.id, endpoint, p256dh, auth FROM suscripciones_push
+         JOIN sesiones ON sesiones.token = suscripciones_push.sesion_token AND sesiones.expira > datetime('now')
+        WHERE suscripciones_push.usuario_id = ?`
+    )
+    .all(req.usuario.id);
+  if (!suscripciones.length) return res.status(409).json({ error: 'Prendé las notificaciones en este aparato primero.' });
+  mandarA(suscripciones, {
+    titulo: '¡Listo! Las notificaciones andan',
+    cuerpo: 'Así te va a avisar Nexo de las ventas online, los pagos y el stock bajo.',
+    url: '/app#/configuracion/notificaciones',
+    etiqueta: 'prueba'
+  });
+  res.json({ aparatos: suscripciones.length });
+});
+
+/* ---------- La pantalla de entrada (hist. §144) ---------- */
+//
+// Dos pantallas para el ingreso, en la misma compu y con la misma sesión
+// (pedido del usuario: una para la gente y otra para la recepción). En la de
+// la gente el socio tipea su DNI o su número: al día, entra solo; si debe, si
+// todavía no empezó o si está de baja, le dice que pase por recepción, sin
+// decir cuánto debe (la ve cualquiera que esté atrás). Las dos ventanas se
+// avisan entre ellas en el navegador (BroadcastChannel, dominios/entrada.js),
+// sin pasar por el servidor: acá solo se busca al socio y se anota el ingreso.
+
+// Pasar dos veces el mismo DNI en un rato es un solo ingreso.
+const ANTIRREBOTE_ENTRADA_MIN = 5;
+
+// El socio por lo que tipeó: su número o su DNI, solo los dígitos.
+function socioPorCodigo(org, codigo) {
+  const digitos = String(codigo ?? '').replace(/\D/g, '');
+  if (!digitos || digitos.length > 12) return null;
+  const fila = db
+    .prepare(
+      `SELECT socios.id FROM socios JOIN clientes ON clientes.id = socios.cliente_id
+        WHERE socios.organizacion_id = ?
+          AND (socios.numero = ? OR REPLACE(REPLACE(REPLACE(clientes.documento, '.', ''), '-', ''), ' ', '') = ?)
+        ORDER BY CASE WHEN socios.numero = ? THEN 1 ELSE 0 END
+        LIMIT 1`
+    )
+    .get(org, Number(digitos), digitos, Number(digitos));
+  return fila?.id ?? null;
+}
+
+const primerNombre = (nombre) => String(nombre).trim().split(/\s+/)[0];
+
+app.post('/api/socios/entrada', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const socioId = socioPorCodigo(org, req.body?.codigo);
+  if (!socioId) return res.status(404).json({ error: 'Revisá el número o pasá por recepción.' });
+  ponerCuotasAlDia(org, socioId);
+  const [socio] = sociosConSituacion(org, socioId);
+  delete socio.cuotas;
+  const nombre = primerNombre(socio.nombre);
+
+  if (socio.situacion !== 'al_dia') {
+    const motivo =
+      socio.situacion === 'debe'
+        ? 'Tenés una cuota pendiente.'
+        : socio.situacion === 'por_empezar'
+          ? `Tu plan empieza el ${fechaLegible(socio.empieza)}.`
+          : 'Tu plan no está activo.';
+    notificar(
+      org,
+      {
+        titulo: `${socio.nombre} espera en la entrada`,
+        cuerpo: socio.situacion === 'debe' ? `Debe ${pesosAviso(socio.deuda)}.` : motivo,
+        url: '/app#/ingreso',
+        etiqueta: `entrada-${socioId}`,
+        urgente: true
+      },
+      { roles: ['admin', 'empleado'] }
+    );
+    // El id es para la recepción (la otra ventana): la pantalla no lo muestra.
+    return res.json({ entra: false, socio_id: socioId, nombre, motivo });
+  }
+
+  const reciente = db
+    .prepare(`SELECT id, fecha FROM ingresos_socio WHERE socio_id = ? AND fecha >= datetime('now', ?) ORDER BY id DESC LIMIT 1`)
+    .get(socioId, `-${ANTIRREBOTE_ENTRADA_MIN} minutes`);
+  if (!reciente) {
+    db.prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda, por_pantalla) VALUES (?, ?, 1, 0, 1)').run(socioId, req.usuario.id);
+  }
+  res
+    .status(reciente ? 200 : 201)
+    .json({ entra: true, socio_id: socioId, nombre, al_dia_hasta: socio.al_dia_hasta, ya_estaba: Boolean(reciente) });
 });
 
 app.get('/api/socios/:id', (req, res) => {
@@ -19887,6 +20395,13 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           operacion_id: integracion.id,
           detalle: `Venta #${id} desde ${canal(integracion)} (pedido #${numero})`
         });
+        notificar(organizacionId, {
+          titulo: `Venta nueva por ${canal(integracion)}`,
+          cuerpo: `Pedido #${numero} por ${pesosAviso(total)}${cobrar ? '' : ', sin cobrar todavía'}.`,
+          url: '/app#/ventas',
+          etiqueta: `pedido-${integracion.id}-${numero}`,
+          urgente: true
+        });
         return id;
       });
     } catch (err) {
@@ -21140,6 +21655,12 @@ function procesarPagoMP(integracion, pago) {
         'ok',
         `Pago de $${d.importe} → cobro de la venta #${ventaId}.${descuentos.length ? ` Quedó como gasto de la venta: ${descuentos.join(' y ')}.` : ''}${retenido}`
       );
+      notificar(organizacionId, {
+        titulo: `Te pagaron ${pesosAviso(d.importe)} con Mercado Pago`,
+        cuerpo: `Venta #${ventaId}.${d.comision > 0 ? ` Te quedan ${pesosAviso(d.importe - d.comision - (d.financiacion || 0))} después de la comisión.` : ''}`,
+        url: '/app#/ventas',
+        etiqueta: `pago-${externoId}`
+      });
     }
     return { estado, nuevo: true };
   });
@@ -21200,6 +21721,9 @@ app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
   res.json({
     ...base,
     cuenta: { nombre: integracion.nombre_cuenta, id: integracion.cuenta_externa },
+    qr_caja: Boolean(integracion.qr_caja),
+    // El cartel del QR fijo de la caja (hist. §147).
+    qr_cartel: cartelDeLaCaja(integracion),
     conectada_en: integracion.conectada_en,
     ultima_sincronizacion: integracion.ultima_sincronizacion,
     cuenta_tesoreria_id: integracion.cuenta_tesoreria_id,
@@ -21267,6 +21791,13 @@ app.post('/api/ventas/:id/link-de-pago', asincrono(async (req, res) => {
   if (venta.estado === 'anulada') return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
   const saldo = redondear2(venta.saldo);
   if (!(saldo > 0)) return res.status(400).json({ error: 'Esta venta ya está cobrada.' });
+  return linkDePago(req, res, { integracion, venta, saldo });
+}));
+
+// El link de una venta ya validada: lo usan el link de "Registrar cobro" y el
+// QR del mostrador cuando no hay caja (o Mercado Pago no la deja usar).
+async function linkDePago(req, res, { integracion, venta, saldo }) {
+  const organizacionId = req.usuario.organizacion_id;
   let importe = saldo;
   if (req.body?.importe !== undefined && req.body.importe !== null && req.body.importe !== '') {
     importe = redondear2(Number(req.body.importe));
@@ -21300,7 +21831,168 @@ app.post('/api/ventas/:id/link-de-pago', asincrono(async (req, res) => {
   if (!link?.init_point) return res.status(502).json({ error: 'Mercado Pago no devolvió el link.' });
   anotarIntegracion(integracion, 'pago', 'ok', `Link de pago de $${importe} para la venta #${venta.id}.`);
   res.json({ url: link.init_point, importe });
+}
+
+/* ---------- El QR de la caja de Mercado Pago (hist. §147) ---------- */
+//
+// El QR "tradicional" del mostrador: Mercado Pago cobra mucho menos por él que
+// por el link (~0,8 % con dinero en cuenta, contra ~6 % del link). Pide una
+// sucursal y una caja en la cuenta del negocio, que el admin arma una vez en
+// Configuración → Mercado Pago, y cada cobro es una orden de la API de Orders
+// en modo híbrido por el importe de la venta: la cobran el QR de la pantalla y
+// el cartel fijo de la caja. Sin orden abierta, el cartel cobra lo que el
+// cliente escriba. Esa API no avisa por el aviso
+// de "Pagos": el mostrador pregunta por la orden mientras espera.
+//
+// Si Mercado Pago no deja crear la orden (la app no tiene permiso para esa
+// API, la caja ya no existe), el mostrador cae al QR del link, que sí anda.
+
+const cajaQr = (integracion) => (integracion?.qr_caja ? JSON.parse(integracion.qr_caja) : null);
+function cartelDeLaCaja(integracion) {
+  const caja = cajaQr(integracion);
+  return caja ? { pdf: caja.cartel_pdf ?? null, imagen: caja.cartel_imagen ?? null } : null;
+}
+const LARGOS_SUCURSAL = { calle: 120, numero: 10, ciudad: 80, provincia: 80 };
+
+app.post('/api/integraciones/mercadopago/caja', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadopago');
+  const datos = {};
+  for (const [campo, largo] of Object.entries(LARGOS_SUCURSAL)) {
+    const valor = typeof req.body?.[campo] === 'string' ? req.body[campo].trim() : '';
+    if (!valor || valor.length > largo) return res.status(400).json({ error: 'Completá la calle, el número, la ciudad y la provincia del local.' });
+    datos[campo] = valor;
+  }
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(req.usuario.organizacion_id).nombre;
+  // Los ids externos son de Nexo: solo letras y números, únicos por cuenta.
+  const marca = `NEXO${req.usuario.organizacion_id}`;
+  const mp = apiDeMercadoPago(integracion);
+  let sucursal;
+  let caja;
+  try {
+    sucursal = await mp.crearSucursal(integracion.cuenta_externa, {
+      name: negocio.slice(0, 60),
+      external_id: `${marca}S${Date.now().toString(36).toUpperCase()}`,
+      location: {
+        street_name: datos.calle,
+        street_number: datos.numero,
+        city_name: datos.ciudad,
+        state_name: datos.provincia,
+        reference: negocio.slice(0, 60)
+      }
+    });
+    caja = await mp.crearCaja({
+      name: 'Mostrador (Nexo)',
+      fixed_amount: false,
+      store_id: String(sucursal.id),
+      external_store_id: sucursal.external_id,
+      external_id: `${marca}C${Date.now().toString(36).toUpperCase()}`
+    });
+  } catch (err) {
+    if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+    anotarIntegracion(integracion, 'conexion', 'error', `No se pudo armar la caja del QR: ${err.message}`);
+    return siMercadoPagoFalla(res, err);
+  }
+  // El cartel con el QR fijo de la caja, para imprimir y pegar en el mostrador.
+  const guardada = {
+    sucursal_id: String(sucursal.id),
+    caja_id: String(caja.id),
+    caja_externa: caja.external_id,
+    cartel_pdf: caja.qr?.template_document ?? null,
+    cartel_imagen: caja.qr?.template_image ?? caja.qr?.image ?? null
+  };
+  db.prepare('UPDATE integraciones SET qr_caja = ? WHERE id = ?').run(JSON.stringify(guardada), integracion.id);
+  anotarIntegracion(integracion, 'conexion', 'ok', `Caja del QR armada en Mercado Pago (sucursal ${guardada.sucursal_id}, caja ${guardada.caja_id}).`);
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'organizacion',
+    entidad_id: req.usuario.organizacion_id,
+    detalle: 'Armó la caja de Mercado Pago para el QR del mostrador'
+  });
+  res.json({ qr_caja: true });
 }));
+
+// El QR para cobrar una venta en el mostrador: el de la caja si se puede, si
+// no el del link. Devuelve { tipo: 'caja', qr, importe } o { url, importe }
+// (el del link).
+app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  if (!mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
+  const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+  const venta = ventaParaCobrar(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  if (venta.estado === 'anulada') return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
+  const saldo = redondear2(venta.saldo);
+  if (!(saldo > 0)) return res.status(400).json({ error: 'Esta venta ya está cobrada.' });
+  const caja = cajaQr(integracion);
+  if (caja) {
+    const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId).nombre;
+    const importe = saldo.toFixed(2);
+    try {
+      const orden = await apiDeMercadoPago(integracion).crearOrden(
+        {
+          type: 'qr',
+          total_amount: importe,
+          external_reference: mercadoPago.referenciaDeVenta(venta.id),
+          description: `${negocio} · venta #${venta.id}`.slice(0, 150),
+          expiration_time: 'PT15M',
+          // Híbrido: el QR de la pantalla y el cartel impreso de la caja
+          // cobran los dos esta venta mientras la orden está abierta.
+          config: { qr: { external_pos_id: caja.caja_externa, mode: 'hybrid' } },
+          transactions: { payments: [{ amount: importe }] },
+          items: [{ title: `Venta #${venta.id}`, unit_price: importe, quantity: 1, unit_measure: 'unit' }]
+        },
+        randomBytes(16).toString('hex')
+      );
+      const qr = orden?.type_response?.qr_data;
+      if (qr) {
+        const esperando = ventasEsperandoQr.get(venta.id);
+        if (esperando) esperando.orden_id = orden.id;
+        ordenesQr.set(venta.id, orden.id);
+        anotarIntegracion(integracion, 'pago', 'ok', `QR de la caja por $${saldo} para la venta #${venta.id}.`);
+        return res.json({ tipo: 'caja', qr, importe: saldo });
+      }
+      anotarIntegracion(integracion, 'pago', 'error', `Mercado Pago creó la orden de la venta #${venta.id} sin el QR: va el del link.`);
+    } catch (err) {
+      if (err.status === 401) {
+        desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+        return siMercadoPagoFalla(res, err);
+      }
+      anotarIntegracion(integracion, 'pago', 'error', `El QR de la caja no se pudo usar (${err.message}): va el del link.`);
+    }
+  }
+  return linkDePago(req, res, { integracion, venta, saldo });
+}));
+
+// La orden del QR de la caja de cada venta, para preguntar si se pagó. En
+// memoria, como las ventas que esperan su QR: dura lo que dura la orden.
+const ordenesQr = new Map();
+
+// Los pagos de la orden de una venta, ya cobrados en Nexo si se pagó. La
+// orden trae el número del pago en transactions.payments[].reference.id, y
+// el pago se procesa como cualquier otro (comisión, cuotas, retenciones).
+async function pagosDeLaOrdenQr(integracion, ventaId) {
+  const ordenId = ordenesQr.get(ventaId);
+  if (!ordenId) return [];
+  let orden;
+  try {
+    orden = await apiDeMercadoPago(integracion).orden(ordenId);
+  } catch {
+    return [];
+  }
+  if (orden?.status !== 'processed') return [];
+  ordenesQr.delete(ventaId);
+  const resultados = [];
+  for (const pagoDeLaOrden of orden.transactions?.payments ?? []) {
+    const id = pagoDeLaOrden?.reference?.id;
+    if (!id) continue;
+    const pago = await apiDeMercadoPago(integracion).pago(id).catch(() => null);
+    // La referencia de la venta la pone Nexo en la orden; el pago puede no
+    // traerla, y sin ella no sabría de qué venta es.
+    if (pago) resultados.push(procesarPagoMP(integracionPorId(integracion.id), { ...pago, external_reference: mercadoPago.referenciaDeVenta(ventaId) }));
+  }
+  return resultados;
+}
+
 
 // "Ya me pagó": busca en Mercado Pago los pagos de los links de esta venta, por
 // si el aviso no llegó (o no hay dirección pública). Lo que encuentra pasa por
@@ -21323,9 +22015,11 @@ app.post('/api/ventas/:id/revisar-pagos', asincrono(async (req, res) => {
     if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
     return siMercadoPagoFalla(res, err);
   }
-  const resultados = (Array.isArray(encontrados?.results) ? encontrados.results : [])
-    .map((pago) => procesarPagoMP(integracionPorId(integracion.id), pago))
-    .filter((r) => r?.nuevo);
+  const resultados = [
+    ...(Array.isArray(encontrados?.results) ? encontrados.results : []).map((pago) => procesarPagoMP(integracionPorId(integracion.id), pago)),
+    // El QR de la caja (hist. §147) no avisa: se le pregunta a su orden.
+    ...(await pagosDeLaOrdenQr(integracion, venta.id))
+  ].filter((r) => r?.nuevo);
   res.json({
     cobrados: resultados.filter((r) => r.estado === 'cobrado').length,
     sin_asignar: resultados.filter((r) => r.estado === 'sin_asignar').length

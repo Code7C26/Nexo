@@ -1170,6 +1170,10 @@
             <tbody id="fichaTrabajoItems"></tbody>
           </table>
           </div>
+          <!-- Los materiales que se usan (hist. §143): los de siempre de cada
+               servicio, que se corrigen antes de terminar. Se oculta solo si
+               no lleva ninguno (core/al-vender.js). -->
+          <div id="fichaTrabajoMateriales" hidden></div>
         </section>
       </section>
 
@@ -1434,6 +1438,15 @@
            debe, se ve cuánto y se cobra ahí mismo o se lo deja pasar igual. -->
       <section class="view" data-view="ingreso" hidden>
         <div class="ingreso">
+          <!-- Lo que avisó la pantalla de entrada (hist. §144): quien espera
+               porque debe, no empezó o está de baja. Se actualiza solo. -->
+          <section class="panel entrada-avisos" id="entradaAvisosPanel" aria-labelledby="entradaAvisosTitulo" hidden>
+            <div class="panel-head">
+              <h2 id="entradaAvisosTitulo">Esperando en la entrada</h2>
+            </div>
+            <ul class="entrada-avisos-lista" id="entradaAvisos" aria-live="polite"></ul>
+          </section>
+
           <div class="ingreso-buscar">
             <label class="visualmente-oculto" for="ingresoBuscar">Buscar socio</label>
             <input type="search" id="ingresoBuscar" class="search" placeholder="Nombre, DNI o número de socio" autocomplete="off" enterkeyhint="go" role="combobox" aria-expanded="false" aria-controls="ingresoResultados" aria-autocomplete="list" />
@@ -1455,7 +1468,45 @@
             </div>
             <ul class="ingreso-lista" id="ingresosHoy"></ul>
           </section>
+
+          <section class="panel entrada-invitacion">
+            <span class="entrada-invitacion-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tablet"></use></svg></span>
+            <div class="entrada-invitacion-texto">
+              <p class="entrada-invitacion-titulo">Pantalla de entrada</p>
+              <p>Abre una segunda ventana para la gente, en el otro monitor de esta compu: cada socio tipea su DNI y entra solo. Si debe, te aparece acá arriba al instante.</p>
+            </div>
+            <button type="button" class="btn btn-secundario" id="btnAbrirEntrada">Abrir</button>
+          </section>
         </div>
+      </section>
+
+      <!-- Vista: Pantalla de entrada (dominios/entrada.js, hist. §144). Ocupa
+           toda la pantalla, por encima del menú: es la que ve el socio. -->
+      <section class="view entrada-pantalla" data-view="entrada" hidden>
+        <header class="entrada-cabeza">
+          <p class="entrada-negocio" id="entradaNegocio"></p>
+          <p class="entrada-hora mono" id="entradaHora"></p>
+        </header>
+        <div class="entrada-cuerpo" id="entradaCuerpo">
+          <h1 class="entrada-titulo">¡Hola! Ingresá tu DNI o tu número de socio</h1>
+          <output class="entrada-codigo mono" id="entradaCodigo" aria-live="polite"></output>
+          <div class="entrada-teclado" id="entradaTeclado">
+            <button type="button" data-tecla="1">1</button>
+            <button type="button" data-tecla="2">2</button>
+            <button type="button" data-tecla="3">3</button>
+            <button type="button" data-tecla="4">4</button>
+            <button type="button" data-tecla="5">5</button>
+            <button type="button" data-tecla="6">6</button>
+            <button type="button" data-tecla="7">7</button>
+            <button type="button" data-tecla="8">8</button>
+            <button type="button" data-tecla="9">9</button>
+            <button type="button" data-tecla="borrar" aria-label="Borrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#delete"></use></svg></button>
+            <button type="button" data-tecla="0">0</button>
+            <button type="button" data-tecla="entrar" class="entrada-tecla-entrar">Entrar</button>
+          </div>
+        </div>
+        <div class="entrada-resultado" id="entradaResultado" role="status" hidden></div>
+        <button type="button" class="entrada-salir" id="entradaSalir">Salir</button>
       </section>
 
       <!-- Vista: Socios (dominios/socios.js). #/socios es la lista y
@@ -2609,9 +2660,11 @@
             </form>
           </div>
           <div class="socio-alta produccion-pestana" data-pestana="lleva" hidden>
-            <a class="btn-link" href="#/produccion/al-vender"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Al vender</a>
+            <!-- Con un servicio es la página de sus materiales (hist. §143):
+                 prepararAlVender cambia los textos y adónde vuelve. -->
+            <a class="btn-link" id="alVenderVolver" href="#/produccion/al-vender"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Al vender</span></a>
             <form class="socio-alta-form" id="formAlVender" novalidate>
-              <div class="form config-tarjeta">
+              <div class="form config-tarjeta" id="alVenderQue">
                 <div class="config-tarjeta-cuerpo">
                   <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Qué vendés?</p>
                   <div class="socio-alta-grupo">
@@ -2625,8 +2678,8 @@
 
               <div class="form config-tarjeta">
                 <div class="config-tarjeta-cuerpo">
-                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿Qué se usa al venderlo?</p>
-                  <p class="opciones-nota">La caja de cada uno, o la bolsa una sola vez por venta aunque se lleven seis. Son productos como cualquier otro: se compran con las compras de siempre.</p>
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> <span id="alVenderPregunta">¿Qué se usa al venderlo?</span></p>
+                  <p class="opciones-nota" id="alVenderNota">La caja de cada uno, o la bolsa una sola vez por venta aunque se lleven seis. Son productos como cualquier otro: se compran con las compras de siempre.</p>
                   <div class="item-rows" data-materiales></div>
                   <button type="button" class="btn-link" data-accion="agregar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Agregar</button>
                 </div>
@@ -2890,6 +2943,9 @@
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnRecetaProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chef-hat"></use></svg> Receta</button>
               <button class="btn btn-secundario col-admin" id="btnAlVenderProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Al vender</button>
+              <!-- Los materiales de un servicio (hist. §143): la misma página
+                   de Al vender, aunque Producción esté apagada. -->
+              <button class="btn btn-secundario col-admin" id="btnMaterialesServicio" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Materiales</button>
               <button class="btn btn-secundario" id="btnVariantesProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Variantes</button>
               <button class="btn btn-primary" id="btnEditarProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
@@ -3937,6 +3993,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">WhatsApp</span><span class="config-item-desc" id="configWhatsAppResumen">Cargá ventas con un mensaje</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/notificaciones" data-seccion="notificaciones">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#bell"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Notificaciones</span><span class="config-item-desc">Avisos en el celular y la compu</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema, idioma e instalar como app</span></span>
@@ -4358,6 +4419,44 @@
                   <div class="config-tarjeta-pie">
                     <p>Vale para los próximos pagos.</p>
                     <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                  </div>
+                </form>
+
+                <!-- El QR de la caja para el mostrador (hist. §147): Mercado
+                     Pago cobra mucho menos que por el link. Se arma una vez. -->
+                <form class="form config-tarjeta" id="formMpCaja" novalidate>
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo">QR del mostrador</p>
+                    <p class="campo-ayuda" id="mpCajaEstado"></p>
+                    <!-- El cartel con el QR fijo de la caja: lo da Mercado Pago,
+                         se abre allá para imprimirlo (la CSP no deja mostrar sus
+                         imágenes acá). -->
+                    <div class="config-tarjeta-botones" id="mpCajaCartel" hidden>
+                      <a class="btn btn-secundario" id="mpCajaCartelPdf" target="_blank" rel="noopener">Descargar el cartel para imprimir</a>
+                      <a class="btn-link" id="mpCajaCartelImagen" target="_blank" rel="noopener">Ver el QR</a>
+                    </div>
+                    <div id="mpCajaCampos">
+                      <div class="form-fila">
+                        <label>Calle del local
+                          <input type="text" name="calle" maxlength="120" autocomplete="address-line1" />
+                        </label>
+                        <label>Número
+                          <input type="text" name="numero" maxlength="10" inputmode="numeric" />
+                        </label>
+                      </div>
+                      <div class="form-fila">
+                        <label>Ciudad
+                          <input type="text" name="ciudad" maxlength="80" autocomplete="address-level2" />
+                        </label>
+                        <label>Provincia
+                          <input type="text" name="provincia" maxlength="80" autocomplete="address-level1" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="config-tarjeta-pie" id="mpCajaPie">
+                    <p>Nexo crea la sucursal y la caja en tu cuenta de Mercado Pago.</p>
+                    <button type="submit" class="btn btn-primary">Armar la caja</button>
                   </div>
                 </form>
 
@@ -5119,6 +5218,36 @@
               </form>
             </section>
 
+            <!-- Notificaciones (Web Push, hist. §146): se prenden en cada
+                 aparato. dominios/notificaciones.js. -->
+            <section class="config-pagina" data-seccion="notificaciones" aria-labelledby="configNotificacionesTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configNotificacionesTitulo" tabindex="-1">Notificaciones</h2>
+                <p>Nexo te avisa en este aparato aunque no lo tengas abierto. Se prenden en cada celular o compu.</p>
+              </header>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="instalar">
+                    <span class="notif-icono" id="notifIcono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#bell"></use></svg></span>
+                    <div class="instalar-texto">
+                      <h3 id="notifTitulo">En este aparato</h3>
+                      <p id="notifEstado"></p>
+                    </div>
+                  </div>
+                  <p class="config-tarjeta-titulo">Te avisa cuando</p>
+                  <ul class="notif-lista" id="notifLista"></ul>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Cerrar sesión las apaga en este aparato.</p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" id="notifApagar" hidden>Apagar</button>
+                    <button type="button" class="btn btn-secundario" id="notifProbar" hidden>Mandar una de prueba</button>
+                    <button type="button" class="btn btn-primary" id="notifPrender" hidden>Prender las notificaciones</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <!-- Etiquetas de balanza (hist. §132): lo arma dominios/balanza.js. El
                  formato se deduce de una etiqueta real; si más de uno la
                  explica, pide otra. -->
@@ -5234,6 +5363,9 @@
         </label>
         <button type="button" class="btn-link sesion-olvido" id="irARecuperar">¿Te olvidaste la contraseña?</button>
         <button type="submit" class="btn btn-primary">Ingresar</button>
+        <!-- Entrar con Google (hist. §149): solo si el servidor lo tiene
+             configurado (sesion.js, estado.google). -->
+        <button type="button" class="btn btn-secundario btn-google" id="loginGoogle" hidden><svg class="ico ico-google" aria-hidden="true"><use href="/img/iconos.svg#google"></use></svg> Continuar con Google</button>
         <button type="button" class="btn btn-secundario sesion-probar" id="irAProbar" hidden>Probar sin registrarte</button>
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
       </form>
@@ -5483,6 +5615,10 @@
             <p>Con ella vas a entrar a Nexo. Vas a ser quien administra tu negocio, y después podés sumar a tu equipo.</p>
           </div>
           <p class="alta-plan" id="altaPlan" hidden></p>
+          <!-- Con Google (hist. §149): vuelve acá con el nombre y el mail
+               puestos y confirmados, y sin pedir contraseña (alta.js). -->
+          <button type="button" class="btn btn-secundario btn-google" id="altaGoogle" hidden><svg class="ico ico-google" aria-hidden="true"><use href="/img/iconos.svg#google"></use></svg> Crear la cuenta con Google</button>
+          <p class="alta-google-nota" id="altaGoogleNota" hidden></p>
           <label>Tu nombre
             <input type="text" id="altaNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
           </label>
@@ -5490,7 +5626,7 @@
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="altaEmailCuenta" autocomplete="email" maxlength="254" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" aria-describedby="altaEmailCuentaAyuda" /></span>
             <span class="campo-ayuda" id="altaEmailCuentaAyuda">Con él vas a ingresar. Te mandamos un código para confirmar que es tuyo.</span>
           </label>
-          <label>Contraseña
+          <label id="altaPasswordCampo">Contraseña
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
             <span class="campo-ayuda" id="altaPasswordAyuda">Al menos 8 caracteres.</span>
           </label>
@@ -6640,6 +6776,20 @@
         <label id="productoDuracionCampo" hidden>Duración estimada (minutos)
           <input type="number" name="duracion_minutos" step="1" min="1" max="10080" placeholder="Opcional" />
         </label>
+        <!-- Lo que le cuesta al negocio hacer el servicio, aparte de los
+             materiales (hist. §143): un fijo por cada uno o por hora. Con
+             eso y los materiales se mide el margen del servicio. -->
+        <div class="form-fila" id="productoManoObraCampos" hidden>
+          <label>Mano de obra
+            <input type="number" name="mano_obra" step="0.01" min="0" placeholder="Opcional: lo que te cuesta hacerlo" autocomplete="off" />
+          </label>
+          <label>Se cuenta
+            <select name="mano_obra_por">
+              <option value="servicio">Por servicio</option>
+              <option value="hora">Por hora</option>
+            </select>
+          </label>
+        </div>
         <div class="form-fila" id="productoStockCampos">
           <label>Stock mínimo
             <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />
@@ -7043,7 +7193,21 @@
           <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg>
           Dejar en cuenta corriente
         </button>
+        <!-- El QR de Mercado Pago por el total (hist. §145): solo con la
+             cuenta conectada. El cobro entra solo cuando el cliente paga. -->
+        <button type="button" class="btn btn-secundario btn-full pos-boton-qr" id="btnPosQr" hidden>
+          <svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg>
+          Cobrar con QR de Mercado Pago
+        </button>
       </form>
+      <div class="pos-qr" id="posQr" hidden>
+        <p class="pos-qr-titulo" id="posQrTitulo">Escaneá con la app de Mercado Pago o la cámara</p>
+        <strong class="pos-qr-importe mono" id="posQrImporte"></strong>
+        <img class="pos-qr-codigo" id="posQrCodigo" alt="QR para pagar con Mercado Pago" width="232" height="232" />
+        <p class="pos-qr-estado" id="posQrEstado" aria-live="polite"><span class="pos-qr-punto" aria-hidden="true"></span> Esperando el pago…</p>
+        <button type="button" class="btn btn-secundario btn-full" id="btnPosQrRevisar">Ya me pagó</button>
+        <button type="button" class="btn-link" id="btnPosQrCancelar">No pagó: cobrar de otra forma</button>
+      </div>
       <div class="pos-exito" id="posExito" hidden>
         <svg class="ico pos-exito-ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg>
         <p class="pos-exito-titulo" id="posExitoTitulo"></p>
@@ -7095,6 +7259,9 @@
           <input type="number" name="contado" id="posCierreContado" step="0.01" min="0" required inputmode="decimal" placeholder="0.00" />
         </label>
         <p class="pos-diferencia" id="posCierreDiferencia" aria-live="polite"></p>
+        <!-- Las otras cuentas con cobros en el turno (hist. §150): lo que dice
+             el posnet o la app, contra lo que dice Nexo. dominios/pos.js. -->
+        <div class="pos-cierre-otras" id="posCierreOtras" hidden></div>
         <label>Nota (opcional)
           <input type="text" name="nota" maxlength="200" placeholder="Motivo de la diferencia, si la hay" />
         </label>

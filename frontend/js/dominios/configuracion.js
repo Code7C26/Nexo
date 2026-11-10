@@ -454,6 +454,8 @@ const PAGINAS = {
   whatsapp: { admin: false, alEntrar: () => invocar("pintar:whatsapp") },
   // Avisar un problema: dominios/problema.js (handoff.md, "Orden", punto 2).
   problema: { admin: false, alEntrar: () => invocar("pintar:problema") },
+  // Notificaciones de cada aparato: dominios/notificaciones.js (hist. §146).
+  notificaciones: { admin: false, alEntrar: () => invocar("pintar:notificaciones") },
   apariencia: {
     admin: false,
     alEntrar: () => {

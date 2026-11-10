@@ -39,7 +39,7 @@ export const NEGOCIOS = {
   clima: {
     nombre: 'Clima Sur',
     rubro: 'servicios',
-    muestra: 'Presupuestos, trabajos con agenda y abonos mensuales',
+    muestra: 'Presupuestos, trabajos con agenda, abonos y el costo de cada servicio',
     datos: { direccion: 'Av. Sabattini 3420, Córdoba', telefono: '351 489-3355' },
     armar: armarClima
   },
@@ -478,9 +478,10 @@ async function armarGimnasio(n) {
     ['Lucía Correa', musculacion.opciones[0], 25, true], ['Ignacio Reyna', pase.opciones[0], 60, true], ['Pilar Quiroga', funcional.opciones[0], 5, true]
   ];
   let alDia = 0;
-  for (const [nombre, opcion, dias, paga] of socios) {
+  // Con DNI, para entrar por la pantalla de entrada (hist. §144).
+  for (const [i, [nombre, opcion, dias, paga]] of socios.entries()) {
     const socio = await n.api.post('/api/socios', {
-      cliente: { nombre, telefono: `351 6${n.r.entre(10, 99)}-${n.r.entre(1000, 9999)}` },
+      cliente: { nombre, documento: String(28100000 + i * 731517), telefono: `351 6${n.r.entre(10, 99)}-${n.r.entre(1000, 9999)}` },
       planes: [{ opcion_id: opcion.id }],
       fecha_alta: diasAtras(dias)
     });
@@ -492,7 +493,7 @@ async function armarGimnasio(n) {
   }
   // Una socia con el combo.
   const combo = await n.api.post('/api/socios', {
-    cliente: { nombre: 'Sofía Arce', telefono: '351 688-3021' },
+    cliente: { nombre: 'Sofía Arce', documento: '40123456', telefono: '351 688-3021' },
     planes: [{ opcion_id: musculacion.opciones[0].id }, { opcion_id: funcional.opciones[0].id }],
     fecha_alta: diasAtras(12)
   });
@@ -516,13 +517,62 @@ async function armarGimnasio(n) {
 /* ---------- Clima Sur: servicios con presupuestos, trabajos y abonos ---------- */
 
 async function armarClima(n) {
-  const servicio = (nombre, sku, precio_venta, categoria) => n.producto({ nombre, sku, precio_venta, tipo: 'servicio', categoria });
-  const instalacion = await servicio('Instalación de split hasta 3000 frigorías', 'SRV-INS', 120000, 'Instalación');
-  const instalacionGrande = await servicio('Instalación de split de 4500 a 6000 frigorías', 'SRV-INS6', 165000, 'Instalación');
-  const mantenimiento = await servicio('Mantenimiento preventivo', 'SRV-MAN', 35000, 'Mantenimiento');
-  const carga = await servicio('Carga de gas', 'SRV-GAS', 55000, 'Reparación');
-  const visita = await servicio('Visita técnica', 'SRV-VIS', 18000, 'Reparación');
-  const kit = await servicio('Kit de instalación (caños y soporte)', 'SRV-KIT', 48000, 'Instalación');
+  // Compra sus materiales y el kit que vende: suma Compras y Stock a lo que
+  // trae el tipo Servicios.
+  const { modulos } = await n.api.get('/api/negocio');
+  await n.api.put('/api/negocio', { modulos: [...new Set([...modulos, 'compras', 'stock'])] });
+
+  // Cada servicio con lo que le cuesta hacerlo (hist. §143): la mano de obra,
+  // fija o por hora, y los materiales que suele llevar.
+  const servicio = (nombre, sku, precio_venta, categoria, costo = {}) =>
+    n.producto({ nombre, sku, precio_venta, tipo: 'servicio', categoria, ...costo });
+  const instalacion = await servicio('Instalación de split hasta 3000 frigorías', 'SRV-INS', 120000, 'Instalación', {
+    duracion_minutos: 180,
+    mano_obra: 9000,
+    mano_obra_por: 'hora'
+  });
+  const instalacionGrande = await servicio('Instalación de split de 4500 a 6000 frigorías', 'SRV-INS6', 165000, 'Instalación', {
+    duracion_minutos: 240,
+    mano_obra: 9000,
+    mano_obra_por: 'hora'
+  });
+  const mantenimiento = await servicio('Mantenimiento preventivo', 'SRV-MAN', 35000, 'Mantenimiento', {
+    duracion_minutos: 90,
+    mano_obra: 12000
+  });
+  const carga = await servicio('Carga de gas', 'SRV-GAS', 55000, 'Reparación', { duracion_minutos: 60, mano_obra: 10000 });
+  const visita = await servicio('Visita técnica', 'SRV-VIS', 18000, 'Reparación', { duracion_minutos: 45, mano_obra: 8000 });
+  // Un negocio de servicios hace nacer todo como servicio: lo que se compra va
+  // como producto.
+  const material = (nombre, sku, unidad) =>
+    n.producto({ nombre, sku, unidad, tipo: 'producto', precio_venta: 0, categoria: 'Materiales', stock_minimo: 2 });
+  const gas = await material('Gas refrigerante R410A', 'MAT-GAS', 'kg');
+  const cinta = await material('Cinta, aislante y precintos', 'MAT-CIN', 'unidad');
+  const limpiador = await material('Limpiador de serpentina', 'MAT-LIM', 'unidad');
+  const kit = await n.producto({
+    nombre: 'Kit de instalación (caños y soporte)',
+    sku: 'KIT-INS',
+    tipo: 'producto',
+    precio_venta: 48000,
+    categoria: 'Instalación',
+    stock_minimo: 3
+  });
+  await n.proveedor({ nombre: 'Refrigeración del Centro', telefono: '351 422-9080', condicion_pago: 30 });
+  await n.comprar({
+    proveedor: 'Refrigeración del Centro',
+    fecha: diasAtras(20),
+    items: [[gas, 12, 14500], [cinta, 25, 2800], [limpiador, 15, 4200], [kit, 10, 27500]]
+  });
+  for (const [servicioId, materiales] of [
+    [instalacion.id, [[cinta, 1]]],
+    [instalacionGrande.id, [[cinta, 1], [gas, 0.5]]],
+    [mantenimiento.id, [[limpiador, 1]]],
+    [carga.id, [[gas, 1]]]
+  ]) {
+    await n.api.put(`/api/productos/${servicioId}/componentes-venta`, {
+      componentes: materiales.map(([producto, cantidad]) => ({ producto_id: producto.id, cantidad }))
+    });
+  }
 
   const clientes = [];
   for (const [nombre, telefono, direccion] of [
@@ -572,7 +622,7 @@ async function armarClima(n) {
     ['Herramientas', 40000, 'Repuestos y herramientas', 18],
     ['Servicios', 22000, 'Celular e internet', 10]
   ]);
-  return `${ventas} servicios de 6 semanas, 4 presupuestos, 3 trabajos (uno terminado y cobrado a medias) y 4 abonos`;
+  return `${ventas} servicios de 6 semanas con su mano de obra y materiales, 4 presupuestos, 3 trabajos (uno terminado y cobrado a medias) y 4 abonos`;
 }
 
 /* ---------- Carnicería Don Ramón: por kilo, con balanza y mostrador ---------- */

@@ -248,7 +248,14 @@ CREATE TABLE IF NOT EXISTS productos (
   -- El PLU: el código corto del producto en la balanza, que la etiqueta trae
   -- junto con el peso o el importe (hist. §132). Único por empresa; NULL = no
   -- se pesa en una balanza con etiquetas.
-  plu INTEGER
+  plu INTEGER,
+  -- La mano de obra de un servicio (hist. §143): lo que le cuesta al negocio
+  -- hacerlo, aparte de los materiales (componentes_venta). mano_obra_por es
+  -- 'servicio' (un fijo por cada uno) o 'hora' (por la duración estimada, o
+  -- por cada hora si se vende por hora). NULL las dos = sin mano de obra; un
+  -- producto nunca la tiene. Los valores los valida server.js, sin CHECK.
+  mano_obra REAL,
+  mano_obra_por TEXT
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -477,7 +484,11 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- crearVenta solo si precio_unitario es el de la oferta que valía ese día;
   -- NULL las dos = sin oferta.
   oferta_id INTEGER REFERENCES ofertas(id),
-  precio_lista REAL
+  precio_lista REAL,
+  -- Cuánto de costo_unitario_historico es mano de obra (hist. §143), para
+  -- separarla de la mercadería en "adónde fue la plata". Ya está sumada al
+  -- costo: los márgenes y el resultado la cuentan sin mirar esta columna.
+  costo_mano_obra REAL NOT NULL DEFAULT 0
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
@@ -1020,6 +1031,20 @@ CREATE TABLE IF NOT EXISTS turnos_caja (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_turnos_caja_abierto
   ON turnos_caja(cuenta_tesoreria_id) WHERE estado = 'abierto';
 
+-- El cierre en las otras cuentas (hist. §150): por cada cuenta que no es la
+-- caja y tuvo cobros en el turno (el banco del posnet, Mercado Pago), lo que
+-- decía Nexo y lo que decía el posnet o la app. La diferencia queda anotada y
+-- no mueve el saldo: casi siempre es un cobro cargado en la cuenta equivocada.
+-- Hija de turnos_caja.
+CREATE TABLE IF NOT EXISTS turno_caja_arqueos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  turno_caja_id INTEGER NOT NULL REFERENCES turnos_caja(id),
+  cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
+  esperado REAL NOT NULL,
+  declarado REAL NOT NULL,
+  UNIQUE (turno_caja_id, cuenta_tesoreria_id)
+);
+
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando
 -- movimientos, nunca es un campo editable a mano. importe con signo:
 -- positivo aumenta la deuda (venta), negativo la disminuye (cobro).
@@ -1429,6 +1454,30 @@ CREATE TABLE IF NOT EXISTS sesiones (
 );
 CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id);
 
+-- Las notificaciones de cada aparato (Web Push, hist. §146): la dirección del
+-- servicio de push que dio el navegador y sus dos claves. Es de una persona y
+-- cuelga de la sesión con que se prendió: al cerrar sesión (o vencer) se va,
+-- y el aparato no recibe avisos de una cuenta que ya no está ahí. Le llegan
+-- los avisos de todos los negocios donde la persona sigue activa.
+CREATE TABLE IF NOT EXISTS suscripciones_push (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  sesion_token TEXT NOT NULL REFERENCES sesiones(token) ON DELETE CASCADE,
+  creada TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_suscripciones_push_usuario ON suscripciones_push(usuario_id);
+
+-- Lo que la instalación genera una vez y guarda (hist. §146): hoy, el par de
+-- claves VAPID de las notificaciones, que no puede cambiar sin dejar mudos a
+-- todos los aparatos. No es de ningún negocio.
+CREATE TABLE IF NOT EXISTS ajustes_servidor (
+  clave TEXT PRIMARY KEY,
+  valor TEXT NOT NULL
+);
+
 -- Socios, planes, descuentos y cuotas (CLAUDE.md §29, hist. §74 y §75): un
 -- módulo que cualquier negocio puede prender y que el gimnasio trae prendido.
 -- No es un circuito de datos propio: el socio es un cliente, el plan es un
@@ -1555,7 +1604,10 @@ CREATE TABLE IF NOT EXISTS ingresos_socio (
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
   al_dia INTEGER NOT NULL CHECK (al_dia IN (0, 1)),
-  deuda REAL NOT NULL DEFAULT 0
+  deuda REAL NOT NULL DEFAULT 0,
+  -- 1 = lo anotó el mismo socio en la pantalla de entrada (hist. §144), con
+  -- la sesión del aparato; 0 = la recepción.
+  por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))
 );
 CREATE INDEX IF NOT EXISTS idx_ingresos_socio ON ingresos_socio(socio_id, fecha);
 
@@ -1750,6 +1802,10 @@ CREATE TABLE IF NOT EXISTS integraciones (
   conectada_por INTEGER REFERENCES usuarios(id),
   ultima_sincronizacion TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- La sucursal y la caja de Mercado Pago para el QR del mostrador (hist.
+  -- §147), como JSON { sucursal_id, caja_id, caja_externa }. NULL = sin caja:
+  -- el mostrador usa el QR del link de pago.
+  qr_caja TEXT,
   UNIQUE (organizacion_id, plataforma)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_integraciones_cuenta

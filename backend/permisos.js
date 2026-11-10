@@ -41,6 +41,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
   'POST /api/auth/registro': 'publico',
+  // Entrar con Google (hist. §149): la ida y la vuelta, sin sesión todavía.
+  'GET /api/auth/google': 'publico',
+  'GET /api/auth/google/vuelta': 'publico',
   // El código al mail del alta (hist. §108): todavía no hay cuenta.
   'POST /api/auth/registro/codigo': 'publico',
   'POST /api/auth/registro/verificar': 'publico',
@@ -184,6 +187,20 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/descuentos-socio/:id': 'admin',
   'GET /api/socios': 'ambos',
   'GET /api/socios/ingresos': 'ambos',
+  // La pantalla de entrada y los avisos que le deja a la recepción (hist. §144).
+  // El QR de Mercado Pago en el mostrador (hist. §145): cancelar el que no se
+  // pagó. Solo las ventas que esperan un QR, no cualquier venta.
+  'POST /api/pos/ventas/:id/cancelar-qr': 'ambos',
+  // El QR de la venta: el de la caja o el del link (hist. §147). Armar la
+  // caja en Mercado Pago es del admin.
+  'POST /api/ventas/:id/qr': 'ambos',
+  'POST /api/integraciones/mercadopago/caja': 'admin',
+  // Las notificaciones de cada aparato (hist. §146): de cada persona.
+  'GET /api/notificaciones': 'ambos',
+  'POST /api/notificaciones/suscripcion': 'ambos',
+  'POST /api/notificaciones/apagar': 'ambos',
+  'POST /api/notificaciones/probar': 'ambos',
+  'POST /api/socios/entrada': 'ambos',
   'GET /api/socios/:id': 'ambos',
   'POST /api/socios/cotizacion': 'ambos',
   'POST /api/socios': 'ambos',

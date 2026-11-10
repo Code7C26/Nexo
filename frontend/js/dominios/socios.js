@@ -7,6 +7,8 @@
  * Pantallas sobre las rutas de server.js, sección "Socios, planes y cuotas":
  * - Ingreso (#/ingreso): la recepción busca al que llega. Al día, el ingreso
  *   se anota solo; si debe, se ve cuánto y se cobra ahí o se lo deja pasar.
+ *   Arriba, los que esperan en la pantalla de entrada (dominios/entrada.js,
+ *   hist. §144), que es otra ventana de este navegador y avisa al instante.
  * - Socios (#/socios): la lista, y el alta como página aparte (#/socios/nuevo),
  *   con uno o varios planes y la duración de cada uno.
  * - La ficha de un socio: sus planes (duración, dejar, reactivar, sumar otro),
@@ -1089,7 +1091,7 @@ function pintarIngresosHoy() {
       <span class="ingreso-fila-hora mono">${esc(horaDe(i.fecha))}</span>
       <span class="ingreso-fila-texto">
         <button type="button" class="btn-link" data-socio="${i.socio_id}">${esc(i.nombre)}</button>
-        <span class="ingreso-fila-meta">N° ${esc(i.numero)} · lo atendió ${esc(i.usuario)}</span>
+        <span class="ingreso-fila-meta">N° ${esc(i.numero)} · ${i.por_pantalla ? "entró solo, en la pantalla" : `lo atendió ${esc(i.usuario)}`}</span>
       </span>
       ${i.al_dia ? badge("status-cobrado", "Al día").html : badge("status-vencido", `Debía ${money(i.deuda)}`).html}
     </li>`
@@ -1098,6 +1100,8 @@ function pintarIngresosHoy() {
 }
 
 async function registrarIngreso(socio, { tono, estado, detalle }) {
+  // Si esperaba en la pantalla de entrada, ya lo atendieron.
+  sacarAviso(socio.id);
   const ingreso = await api(`/api/socios/${socio.id}/ingresos`, {
     method: "POST",
     error: "No se pudo registrar el ingreso."
@@ -1148,9 +1152,120 @@ document.getElementById("ingresosHoy").addEventListener("click", (e) => {
   if (boton) abrirFicha(Number(boton.dataset.socio));
 });
 
+/* ---------- Lo que avisa la pantalla de entrada (hist. §144) ---------- */
+
+// La pantalla de la gente es otra ventana de este mismo navegador, con esta
+// misma sesión (dominios/entrada.js): avisa por un BroadcastChannel, al
+// instante y sin pasar por el servidor. Quien espera queda acá arriba hasta que
+// la recepción lo atiende o lo saca.
+let avisosEntrada = [];
+
+const QUE_PASA = {
+  debe: (s) => badge("status-vencido", `Debe ${money(s.deuda)}`).html,
+  por_empezar: (s) => badge("status-aviso", `Empieza el ${fechaAR(s.empieza)}`).html,
+  baja: () => badge("", "De baja").html
+};
+
+function pintarAvisosEntrada() {
+  document.getElementById("entradaAvisosPanel").hidden = avisosEntrada.length === 0;
+  document.getElementById("entradaAvisos").innerHTML = avisosEntrada
+    .map(
+      ({ socio, hora }) => `
+    <li class="entrada-aviso" data-socio="${socio.id}">
+      <span class="entrada-aviso-texto">
+        <span class="entrada-aviso-nombre">${esc(socio.nombre)}</span>
+        <span class="entrada-aviso-meta">N° ${esc(socio.numero)} · llegó a las ${esc(hora)}</span>
+      </span>
+      ${QUE_PASA[socio.situacion]?.(socio) ?? ""}
+      <span class="entrada-aviso-acciones">
+        <button type="button" class="btn btn-primary btn-chico" data-accion="atender">Atender</button>
+        <button type="button" class="btn-icon" data-accion="descartar" aria-label="Ya no espera" title="Ya no espera">${icono("x")}</button>
+      </span>
+    </li>`
+    )
+    .join("");
+}
+
+function sacarAviso(socioId) {
+  avisosEntrada = avisosEntrada.filter((a) => a.socio.id !== socioId);
+  pintarAvisosEntrada();
+}
+
+// Uno nuevo suena una vez: la recepción puede estar mirando otra cosa.
+function sonarAviso() {
+  try {
+    const audio = new AudioContext();
+    const nota = audio.createOscillator();
+    const volumen = audio.createGain();
+    nota.frequency.value = 880;
+    volumen.gain.setValueAtTime(0.12, audio.currentTime);
+    volumen.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.35);
+    nota.connect(volumen).connect(audio.destination);
+    nota.start();
+    nota.stop(audio.currentTime + 0.35);
+    nota.onended = () => audio.close();
+  } catch {
+    // Sin audio (el navegador no lo permite todavía): queda el aviso escrito.
+  }
+}
+
+async function llegoALaEntrada({ socio_id: socioId, entra }) {
+  if (entra) {
+    // Entró solo: a la lista de hoy, y si esperaba (pagó en otro lado), ya no.
+    sacarAviso(socioId);
+    await cargarIngresosHoy();
+    pintarIngresosHoy();
+    return;
+  }
+  // El socio como lo ve la recepción, con lo que debe hoy.
+  const socio = await api(`/api/socios/${socioId}`, { error: "No se pudo cargar al socio que espera en la entrada." });
+  avisosEntrada = [
+    { socio, hora: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false }) },
+    ...avisosEntrada.filter((a) => a.socio.id !== socioId)
+  ];
+  pintarAvisosEntrada();
+  sonarAviso();
+}
+
+// El canal es por negocio: cambiar de negocio recarga la página.
+if ("BroadcastChannel" in window) {
+  new BroadcastChannel(`nexo-entrada-${document.documentElement.dataset.organizacion}`).addEventListener("message", (e) => {
+    if (e.data?.socio_id) llegoALaEntrada(e.data);
+  });
+}
+
+document.getElementById("entradaAvisos").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-accion]");
+  if (!boton) return;
+  const socioId = Number(boton.closest("[data-socio]").dataset.socio);
+  const aviso = avisosEntrada.find((a) => a.socio.id === socioId);
+  sacarAviso(socioId);
+  // La misma tarjeta que si lo buscara: cobrarle o dejarlo pasar.
+  if (boton.dataset.accion === "atender" && aviso) await elegir(aviso.socio);
+});
+
+// La pantalla de la gente, en otra ventana. Con dos monitores y el permiso
+// del navegador (Chrome, Edge), se abre ya en el otro; si no, se arrastra.
+// Toda la pantalla se pide con el primer toque en ella.
+document.getElementById("btnAbrirEntrada").addEventListener("click", async () => {
+  let lugar = "popup,width=900,height=720";
+  try {
+    if ("getScreenDetails" in window) {
+      const { screens, currentScreen } = await window.getScreenDetails();
+      const otra = screens.find((pantalla) => pantalla !== currentScreen);
+      if (otra) lugar = `popup,left=${otra.availLeft},top=${otra.availTop},width=${otra.availWidth},height=${otra.availHeight}`;
+    }
+  } catch {
+    // Sin permiso para ver las pantallas: se abre al lado.
+  }
+  const ventana = window.open("/app#/entrada", "nexo-entrada", lugar);
+  if (!ventana) avisar("El navegador bloqueó la ventana: permití las ventanas emergentes para Nexo y probá de nuevo.", "atencion");
+});
+
 async function entrarAIngreso() {
   await refrescar([cargarSocios(), cargarCuentas(), cargarIngresosHoy()]);
   pintarIngresosHoy();
+  pintarAvisosEntrada();
   // Sin socios todavía, la búsqueda no tiene a quién encontrar: se dice.
   document.getElementById("ingresoInicioTexto").innerHTML =
     socios.length === 0

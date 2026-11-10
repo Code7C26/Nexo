@@ -5,7 +5,7 @@
  * propone; quien vende lo cambia en el momento (a veces ninguna bolsa, a veces
  * dos). Lo usan el alta de venta (app.js) y el punto de venta (pos.js).
  *
- * crearConsumos(contenedor) arma el bloque y devuelve:
+ * crearConsumos(contenedor, { titulo }) arma el bloque y devuelve:
  * - cargar(): trae lo configurado (GET /api/componentes-venta) y el stock, sin
  *   tocar lo que ya se cambió (una venta que falló se corrige y se reintenta);
  * - reiniciar(): empieza de cero, para una venta nueva;
@@ -41,7 +41,7 @@ export function propuestaDe(items, porProducto) {
   return new Map([...total].map(([clave, { c, cantidad: cuanto }]) => [clave, { ...c, cantidad: redondear3(cuanto) }]));
 }
 
-export function crearConsumos(contenedor) {
+export function crearConsumos(contenedor, { titulo = "Se usa al vender" } = {}) {
   let porProducto = null;
   // Lo configurado en algún producto, por clave: lo que se puede sumar a mano.
   let conocidos = new Map();
@@ -54,7 +54,7 @@ export function crearConsumos(contenedor) {
 
   contenedor.classList.add("consumos");
   contenedor.innerHTML = `
-    <p class="consumos-titulo">Se usa al vender</p>
+    <p class="consumos-titulo">${esc(titulo)}</p>
     <ul class="consumos-lista"></ul>
     <label class="consumos-agregar" hidden>
       <span class="visualmente-oculto">Usar otra cosa</span>

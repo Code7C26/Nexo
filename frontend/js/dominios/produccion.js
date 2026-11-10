@@ -25,8 +25,9 @@ import { badge, camposFicha, cantidad, celdaMovil, esAdmin, esc, fechaAR, html, 
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
-import { alEntrarEnVista, recargar, registrar } from "../core/registro.js";
+import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
+import { moduloActivo } from "../core/negocio.js";
 
 const PESTANAS = ["historial", "recetas", "al-vender", "producir", "receta", "lleva"];
 // Las páginas: sin las pestañas arriba, y con un id opcional.
@@ -613,11 +614,44 @@ const vendiblePorNombre = (nombre) => {
   return catalogo.find((p) => p.activo && p.nombre.trim().toLowerCase() === buscado) ?? null;
 };
 
+// Con un servicio, la página es la de sus materiales (hist. §143): el gas de
+// una carga, los caños de una instalación. Vuelve a su ficha y no a Al vender,
+// que sin Producción no existe.
+const NOTA_AL_VENDER = document.getElementById("alVenderNota").textContent;
+function textosAlVender(producto) {
+  const servicio = producto?.tipo === "servicio";
+  // El servicio ya está elegido y nombrado en el "volver": no se pregunta.
+  document.getElementById("alVenderQue").hidden = servicio;
+  if (servicio) {
+    document.getElementById("vistaTitulo").textContent = "Materiales";
+    document.title = "Materiales · Nexo";
+  }
+  document.getElementById("alVenderVolver").querySelector("span").textContent = servicio ? producto.nombre : "Al vender";
+  document.getElementById("alVenderPregunta").textContent = servicio ? "¿Qué materiales lleva?" : "¿Qué se usa al venderlo?";
+  document.getElementById("alVenderNota").textContent = !servicio
+    ? NOTA_AL_VENDER
+    : moduloActivo("stock")
+      ? "Lo que suele llevar cada uno. Al terminar un trabajo se corrige lo que se usó de verdad, y entra al costo con el precio de compra."
+      : "Lo que suele llevar cada uno. Para que se descuenten del stock y entren al costo, prendé Compras y Stock en Configuración → Funciones.";
+}
+async function volverDeAlVender() {
+  if (vendido?.tipo !== "servicio") return mostrarVista("produccion", { subruta: "al-vender" });
+  // La ficha muestra el costo de los materiales: se trae de nuevo.
+  await recargar("productos");
+  invocar("abrirFicha:producto", vendido.id);
+}
+document.getElementById("alVenderVolver").addEventListener("click", (e) => {
+  if (vendido?.tipo !== "servicio") return;
+  e.preventDefault();
+  volverDeAlVender();
+});
+
 async function prepararAlVender(productoId) {
   formAlVender.reset();
   vendido = null;
   await cargarCatalogo();
   const producto = productoId ? (catalogo.find((p) => p.id === productoId) ?? null) : null;
+  textosAlVender(producto);
   // El producto de algo ya cargado no cambia: sería otro.
   formAlVender.producto.disabled = Boolean(producto);
   if (producto) formAlVender.producto.value = producto.nombre;
@@ -647,7 +681,12 @@ async function resumirAlVender() {
     return;
   }
   const costo = await costoMateriales(materialesAlVender);
-  resumen.textContent = costo > 0 ? `Con los costos de hoy, suma ${money(costo)} a vender uno.` : "";
+  resumen.textContent =
+    costo <= 0
+      ? ""
+      : vendido.tipo === "servicio"
+        ? `Con los costos de hoy, suma ${money(costo)} a hacer uno.`
+        : `Con los costos de hoy, suma ${money(costo)} a vender uno.`;
 }
 
 formAlVender.producto.addEventListener("input", () => {
@@ -681,7 +720,7 @@ formAlVender.addEventListener("submit", async (e) => {
     items.length ? `Listo: al vender "${vendido.nombre}", Nexo lo propone y lo descuenta.` : `"${vendido.nombre}" ya no usa nada al venderse.`,
     "ok"
   );
-  mostrarVista("produccion", { subruta: "al-vender" });
+  volverDeAlVender();
 });
 
 botonNoUsar.addEventListener("click", async () => {
@@ -694,7 +733,7 @@ botonNoUsar.addEventListener("click", async () => {
   if (!seguro) return;
   await guardarAlVender([]);
   avisar(`"${vendido.nombre}" ya no usa nada al venderse.`, "ok");
-  mostrarVista("produccion", { subruta: "al-vender" });
+  volverDeAlVender();
 });
 
 /* ---------- Ficha de una producción ---------- */

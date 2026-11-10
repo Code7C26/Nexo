@@ -12175,3 +12175,360 @@ recorrieron una por una.
 misma clave (`npm run i18n` dice cuáles); si el CI falla en `idioma.test.js`,
 es eso. Probar en inglés pide un perfil limpio del navegador: el service
 worker guarda la versión anterior.
+
+## §143. El costo de los servicios (10 de noviembre de 2026)
+
+**Pedido del usuario:** "por lo menos quiero que Clima Sur tenga varios
+servicios con costos". Un servicio no se compra, así que su costo era 0 y todo
+daba 100 % de margen. Las decisiones de fondo eran del 5 de noviembre (ver la
+entrada vieja en `handoff.md`): mano de obra fija o por hora, materiales
+aparte, y los dos en "adónde fue la plata".
+
+**Lo que se hizo:**
+- **Migración aditiva** (CLAUDE.md §34): `productos.mano_obra` (REAL, NULL =
+  sin mano de obra), `productos.mano_obra_por` ('servicio' u 'hora') y
+  `venta_items.costo_mano_obra` (REAL, 0 por defecto). Sin backfill: lo vendido
+  antes queda con el costo que tenía.
+- **`server.js`:** `normalizarManoObra`, `errorManoObra` y `manoObraUnitaria`
+  junto a la duración. Por hora es la tarifa por la duración estimada, o por
+  cada hora si el servicio se vende por hora. Un producto nunca la tiene.
+  `costoDelRenglon()` reemplaza los dos `buscarCostoActual` (alta y edición de
+  venta): congela el promedio ponderado más la mano de obra, y guarda la mano
+  de obra sola en `costo_mano_obra`. Todos los márgenes y el resultado la
+  cuentan sin cambios, porque ya está dentro de `costo_unitario_historico`.
+- **Materiales:** son los mismos `componentes_venta` (hist. §126), sin tabla
+  nueva. La diferencia es de nombre: en la ficha del servicio el botón es
+  "Materiales" y abre `#/produccion/lleva/<id>` aunque Producción esté apagada
+  (`paginaSinModulo` en `router.js`), con sus textos y la vuelta a la ficha.
+  `POST /api/trabajos/:id/terminar` acepta `consumos`, y la ficha del trabajo
+  los propone con `crearConsumos` (el mismo bloque del alta de venta) para
+  corregirlos antes de terminar.
+- **Margen del servicio** (`decorarProducto`): mano de obra más materiales al
+  costo de hoy (`costoMaterialesPorProducto`). La lista y la ficha muestran
+  ese costo. `mano_obra`, `costo_mano_obra` y `costo_materiales` están en
+  `CLAVES_SENSIBLES`.
+- **Adónde fue la plata:** "Mercadería" sin la mano de obra, "Mano de obra"
+  con su promedio, y lo usado se llama "Materiales" si lo llevan servicios,
+  "Packaging" si lo llevan productos, o los dos.
+- **Clima Sur** (`negocios-de-ejemplo.js`): prende Compras y Stock, compra gas,
+  cinta y limpiador a un proveedor, el kit de instalación pasa a producto con
+  stock, y cada servicio tiene duración, mano de obra y materiales. Ojo: los
+  materiales se crean con `tipo: 'producto'`, porque en Servicios todo nace
+  como servicio (el primer intento cortó con "es un servicio: no maneja
+  stock").
+
+**Cómo se verificó.** `backend/test/costo-servicios.test.js` (3 tests:
+validación, margen, trabajo con materiales corregidos, congelado y lo que no
+ve el empleado), 326 tests, lint y `verificar-migracion` (24 de 24). En el
+navegador, con "Probar sin registrarse" → Clima Sur: lista con costo y margen,
+ficha con mano de obra y materiales, la página de materiales sin Producción,
+el trabajo pendiente con sus materiales y la venta del trabajo terminado.
+
+**Lo que queda:** las horas reales de un servicio por unidad con mano de obra
+por hora; los materiales en el punto de venta; y las ventas viejas de los
+negocios de ejemplo ("Lo que ya tenías") cuentan la mano de obra, pero no los
+materiales, porque no mueven stock.
+
+## §144. El ingreso del gimnasio en dos pantallas (10 de noviembre de 2026)
+
+**Pedido del usuario:** "mejorar el ingreso del gym para ponerlo en dos
+pantallas (ingresante y recepción)".
+
+**Lo que se hizo:**
+- **La pantalla de entrada** (`#/entrada`, `frontend/js/dominios/entrada.js`):
+  la que ve el socio en una tablet o una compu en la puerta, con la sesión del
+  negocio. Tapa todo, menú incluido (z-index 49, debajo de los modales para
+  que "Salir" pueda preguntar; el asistente y la hamburguesa se esconden con
+  `:has()`), en el negro de la marca. Teclado numérico grande y también uno
+  de verdad. Al día: "¡Hola, Ana!" y entra solo. Si debe, si no empezó o si
+  está de baja: "Ana, pasá por recepción", sin decir cuánto, porque la ve
+  cualquiera en la fila. Vuelve sola a pedir otro DNI a los 4,5 s.
+- **Backend** (`server.js`, "La pantalla de entrada"): `POST
+  /api/socios/entrada` busca por número de socio o por DNI (solo los dígitos),
+  anota el ingreso con `por_pantalla = 1` y no lo repite si el mismo socio
+  entró hace menos de 5 minutos. Si no está al día, deja un aviso para la
+  recepción. Los avisos viven **en memoria**, por negocio, 30 minutos: son de
+  quien está parado ahora, no un registro, y lo que queda es el ingreso.
+  `GET` los lista y `DELETE /api/socios/entrada/:socioId` los descarta.
+  Registrar el ingreso desde la recepción también saca el aviso.
+- **Migración aditiva:** `ingresos_socio.por_pantalla` (0 o 1, 0 por defecto).
+- **La recepción** (`#/ingreso`): arriba, "Esperando en la entrada", con
+  quién es, lo que debe y "Atender", que abre la tarjeta de siempre para
+  cobrar o dejar pasar. Se actualiza sola cada 5 segundos mientras está
+  abierta, y suena un aviso corto con cada uno nuevo. Abajo, "Pantalla de
+  entrada → Abrir", que la pone a pantalla completa. Los ingresos de hoy dicen
+  "entró solo, en la pantalla".
+- El gimnasio de ejemplo trae DNI en sus socios.
+
+**Cómo se verificó.** `backend/test/entrada.test.js` (4 tests: el aviso sin el
+importe, el aislamiento entre negocios, el antirrebote, el DNI inexistente y
+entrar solo), 330 tests y lint. En el navegador con "Probar sin registrarse" →
+Gimnasio Fuerza, la entrada en una pestaña y la recepción en otra: dos que
+deben aparecen esperando, uno al día aparece en la recepción a los pocos
+segundos sin recargar, y "Atender" → "Dejar pasar igual" saca el aviso. **No
+se miró en el ancho del celular** (la herramienta no cambió el tamaño de esa
+pestaña).
+
+**Decidido por mí, para revisar:** "Salir" de la pantalla de entrada solo
+pregunta; quien la toque entra a la app con la sesión del aparato. Conviene
+que la tablet use un usuario empleado (no ve costos). Para después: pedir la
+contraseña o un PIN para salir, y entrar con un QR del carnet (la cámara).
+
+## §145. El QR de Mercado Pago en el mostrador (10 de noviembre de 2026)
+
+**Pedido del usuario:** "lo del QR en el mostrador estaría bueno hacerlo, al
+igual que todas las cosas que puedan ser vistosas en la presentación".
+
+**Decisión técnica:** el QR es el del **link de pago** de la venta (Checkout
+Pro, hist. §130) por el total, no el "QR dinámico" de las tiendas físicas.
+Ese usa la API de Orders, y la app creada con esa API no deja vincular
+cuentas (hist. §130); la nuestra es de "API de Preferences" y ya cobró de
+verdad. Se escanea con la app de Mercado Pago o con la cámara, y el cobro
+entra solo con el aviso firmado de siempre, con la comisión como gasto de la
+venta. No pide dar de alta una sucursal ni una caja en Mercado Pago.
+
+**Lo que se hizo:**
+- `POST /api/pos/ventas` con `qr_mercadopago: true`: la venta nace sin
+  cobros, también a "Consumidor final", y todo va por el QR (con otros cobros,
+  400; sin Mercado Pago conectado, 409).
+- `POST /api/pos/ventas/:id/cancelar-qr` (los dos roles): si no pagó, la anula
+  y devuelve el stock. Solo las ventas que esperan su QR, recordadas en
+  memoria por una hora; con un cobro ya adentro, 409. Después de reiniciar el
+  servidor, la anula el admin como cualquier venta.
+- **El punto de venta** (`pos.js`): "Cobrar con QR de Mercado Pago" en el
+  cobro, solo con la cuenta conectada. Muestra el QR grande sobre blanco, el
+  importe y "Esperando el pago…". Mira la venta cada 3 segundos y cada 15 le
+  pregunta a Mercado Pago (por si el aviso no puede llegar, como en la
+  compu). Con el pago, "Venta #N cobrada con Mercado Pago". "No pagó: cobrar
+  de otra forma" la anula y vuelve al cobro con el carrito intacto. No se
+  puede cerrar el cobro mientras espera.
+
+**Cómo se verificó.** Un test nuevo en `mercadopago.test.js`, contra el
+Mercado Pago falso (consumidor final sin QR rechazado, QR con otros cobros
+rechazado, el aviso la cobra, ya cobrada no se cancela, la que no pagó se
+anula una sola vez, una venta común u otro negocio no), 331 tests y lint. En
+el navegador, solo el diseño en el celular (el botón y el panel con un QR de
+ejemplo): **en local no hay Mercado Pago conectado y no se hizo un pago real**.
+
+**Para la demo:** los negocios de ejemplo no tienen Mercado Pago conectado, así
+que el botón no aparece en ellos. Se muestra desde el negocio del usuario que
+ya tiene la cuenta conectada ("Gonzalo José Solla"), con la caja abierta.
+Conviene probar un pago real de $100 antes del jueves.
+
+## §146. Notificaciones en el celular y la compu (10 de noviembre de 2026)
+
+**Pedido del usuario:** "notificaciones estaría bueno implementarlo (como app
+en el celu sirven muchísimo)". Nexo ya se instalaba como app (hist. §94).
+
+**Lo que se hizo (Web Push, sin dependencias ni servicio pago):**
+- `backend/webpush.js`: el par VAPID (P-256), el JWT ES256 por servicio de
+  push, el cifrado aes128gcm del RFC 8291 con `node:crypto`, y el envío. Solo
+  manda a los servicios de push conocidos (Google, Mozilla, Apple, Microsoft),
+  para que nadie use al servidor contra una dirección interna;
+  `NEXO_PUSH_HOSTS` suma otros (los tests).
+- **Tablas nuevas** (`CREATE TABLE IF NOT EXISTS`, aditivas):
+  - `suscripciones_push`: endpoint y claves de cada aparato, de una persona y
+    colgada de su sesión con `ON DELETE CASCADE`, así cerrar sesión (o que
+    venza) apaga el aparato;
+  - `ajustes_servidor`: el par VAPID, generado la primera vez y guardado en
+    la base. **No se puede cambiar** sin dejar mudos a todos los aparatos (va
+    con los respaldos).
+- **Rutas** (los dos roles): `GET /api/notificaciones` (la clave pública) y
+  `POST` `/api/notificaciones/suscripcion`, `/apagar` y `/probar`.
+- **`notificar(org, aviso, { roles })`:** sale con `setImmediate`, después de
+  lo que lo causó, y nunca frena nada. Avisa de:
+  - una venta que entra por Tienda Nube o Mercado Libre (al admin);
+  - un pago de Mercado Pago cobrado, con lo que queda después de la comisión
+    (al admin);
+  - un socio que espera en la entrada (a los dos roles; hist. §144);
+  - un producto que llega a su stock mínimo o se termina (al admin, desde
+    `registrarMovimientoStock`, una vez cada 12 horas por producto).
+  El título dice qué pasó y el cuerpo empieza por el negocio. Los avisos van
+  en castellano, como los mails y WhatsApp.
+- **El service worker** muestra el aviso y, al tocarlo, lleva la pestaña
+  abierta a esa pantalla con un mensaje (sin recargar), o abre Nexo.
+- **Configuración → Notificaciones** (`dominios/notificaciones.js`): prender
+  en este aparato, mandar una de prueba y apagar. Dice qué avisos le llegan
+  según el rol y los módulos, y qué hacer en un iPhone sin Nexo instalado o
+  con el permiso bloqueado. Al volver a entrar, el aparato se vuelve a anotar
+  solo si lo había prendido la misma persona (`localStorage`).
+
+**Cómo se verificó.** `backend/test/notificaciones.test.js` (5 tests) contra
+un servicio de push falso que hace de navegador: verifica la firma VAPID y
+**descifra** cada aviso con sus propias claves. Cubre la de prueba, el stock
+bajo una sola vez, la entrada a los dos roles, el logout que apaga, la
+dirección vencida (410) que se borra y las suscripciones truchas. 336 tests,
+lint y `verificar-migracion` (24 de 24). En el navegador, la página en el
+ancho del celular; el Chrome automatizado niega el permiso solo, así que
+**no se probó con un celular de verdad**.
+
+**Para probar en el celular** (después de publicar): en Android, abrir Nexo
+en Chrome → Configuración → Notificaciones → Prender → Mandar una de prueba.
+En el iPhone, primero "Agregar a inicio" desde Safari y abrirla desde el
+ícono.
+
+## §147. El QR de la caja de Mercado Pago (10 de noviembre de 2026)
+
+**Pedido del usuario:** "el link de pago te cobra más comisión, no? no conviene
+usar el QR tradicional?". Sí: según calculadoras de terceros, el QR de una
+caja con dinero en cuenta ronda el 0,8 % + IVA, y el link o Checkout el 6,3 a
+6,6 % + IVA con la plata al instante.
+
+**Lo que se hizo, con la documentación vigente de Mercado Pago leída el 10 de
+noviembre** (crear sucursal, crear caja, crear orden QR, estados de la orden):
+- `mercadopago.js` suma `crearSucursal` (`POST /users/{id}/stores`),
+  `crearCaja` (`POST /pos`), `crearOrden` (`POST /v1/orders`, `type: "qr"`,
+  modo `dynamic`, con `X-Idempotency-Key`), `orden` (`GET /v1/orders/{id}`) y
+  `cancelarOrden` (`POST /v1/orders/{id}/cancel`).
+- **Migración aditiva:** `integraciones.qr_caja` (JSON con la sucursal, la
+  caja y su `external_id`).
+- `POST /api/integraciones/mercadopago/caja` (admin): con la calle, el número,
+  la ciudad y la provincia del local, crea la sucursal y la caja en la cuenta
+  del negocio. Se arma una vez, desde Configuración → Mercado Pago → "QR del
+  mostrador".
+- `POST /api/ventas/:id/qr` (los dos roles): con caja, una orden dinámica por
+  el saldo (vence en 15 minutos) y devuelve `type_response.qr_data`. **Sin
+  caja, o si Mercado Pago no deja crear la orden, cae al QR del link**
+  (`linkDePago`, que ahora comparte el link de "Registrar cobro") sin frenar
+  la venta, y lo anota en la actividad.
+- La API de Orders no avisa por el webhook de "Pagos" (la documentación dice
+  que esos tópicos no son compatibles), así que el mostrador pregunta: "Ya me
+  pagó" y el sondeo del punto de venta miran la orden, y si está `processed`
+  traen el pago (`transactions.payments[].reference.id`) y lo cobran con
+  `procesarPagoMP`, poniéndole la referencia de la venta.
+- Cancelar el QR del mostrador también cancela la orden en Mercado Pago.
+- El punto de venta dice "Escaneá con la app de Mercado Pago o tu billetera"
+  con el de la caja (la cámara no lo abre), y "o la cámara" con el del link.
+
+**Duda abierta:** la documentación no dice si una app de Checkout Pro
+("API de Preferences", la nuestra) puede crear órdenes QR. Si no puede, el
+mostrador sigue con el link y la actividad de Mercado Pago dice por qué.
+**Hay que probarlo con la cuenta real**: armar la caja y cobrar $100 con el QR
+desde la app de Mercado Pago de otra cuenta.
+
+**Cómo se verificó.** Un test más en `mercadopago.test.js` contra el falso
+(sin caja va el link; armar la caja es del admin y pide la dirección; la orden
+dinámica con la referencia y la clave de idempotencia; "Ya me pagó" antes y
+después de pagar; cancelar cancela la orden; si la API de Orders contesta 403,
+cae al link). 337 tests, lint y `verificar-migracion` (24 de 24). **No se vio
+en el navegador**: la tarjeta solo aparece con Mercado Pago conectado.
+
+## §148. El ingreso entre dos ventanas y el cartel del QR fijo (10 de noviembre de 2026)
+
+**Pedido del usuario, sobre §144:** "5 segundos es mucho tiempo y si se llega a
+ralentizar el servidor va a ser peor. Solo un usuario debe tener la opción de
+configurar dos pantallas, donde una sea para la gente y otra para la
+recepción". **Y sobre §147:** "también existen QR que no son por pago, que son
+permanentes del negocio y te hacen ingresar un monto".
+
+**El ingreso:**
+- Las dos pantallas son dos ventanas del mismo navegador, con la misma
+  sesión. "Pantalla de entrada → Abrir" abre la de la gente en una ventana
+  aparte y, si la compu tiene dos monitores y el navegador lo permite (Window
+  Management API: Chrome, Edge), ya en el otro. El primer toque en ella la pone
+  a pantalla completa, y "Salir" cierra esa ventana.
+- La entrada le avisa a la recepción por un `BroadcastChannel` por negocio
+  (`nexo-entrada-<id>`), al instante. Se fueron el sondeo de 5 segundos, los
+  avisos en memoria del servidor y `GET`/`DELETE /api/socios/entrada`. El
+  servidor solo busca al socio y anota el ingreso; ahora devuelve `socio_id`
+  (la pantalla no lo muestra), y la recepción trae al socio con lo que debe
+  (`GET /api/socios/:id`). El aviso al celular del §146 sigue.
+- Probado en el navegador con dos ventanas del gimnasio de ejemplo: el aviso
+  aparece en la recepción en el mismo momento.
+
+**El cartel del QR fijo:**
+- La caja que arma Nexo en Mercado Pago ya tiene su QR fijo. Al armarla se
+  guardan los enlaces del cartel (`qr.template_document`, el PDF, y la
+  imagen), y Configuración → Mercado Pago los ofrece para descargar e imprimir.
+  Se abren en Mercado Pago: la CSP no deja mostrar sus imágenes, y no se abrió
+  a un dominio que no se conoce.
+- La orden del punto de venta pasa a modo `hybrid`: con una venta en curso,
+  el cartel impreso cobra esa venta, igual que el QR de la pantalla. Sin
+  venta, el cliente escribe el monto.
+- **Falta:** lo que se cobra con el cartel sin una venta de Nexo llega a
+  Mercado Pago pero no a una venta. Eso son los "pagos sin asignar" del plan
+  de Mercado Pago (punto 4), para después.
+
+## §149. Entrar con Google (10 de noviembre de 2026)
+
+**Pedido del usuario** (5 de noviembre, con los trámites hechos el 10): entrar
+con Google. Siguió los pasos (proyecto "Nexo" en Google Auth Platform, en
+producción, sin logo, cliente web con las vueltas de producción y de
+localhost) y cargó `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en el `.env`.
+
+**Lo que se hizo, sin dependencias:**
+- `backend/google.js`: el flujo OpenID Connect con código y PKCE. La firma del
+  `id_token` no se verifica, porque llega directo del endpoint de tokens de
+  Google por HTTPS (lo permite la documentación de Google). Sí se controlan
+  `aud`, `iss`, el vencimiento y `email_verified`.
+- `GET /api/auth/google`: `state` y PKCE en una cookie `httpOnly` de
+  10 minutos (`nexo_google`, solo en `/api/auth/google`), con tope por IP.
+- `GET /api/auth/google/vuelta`:
+  - **con cuenta con ese mail:** entra al último negocio que usó, como el
+    login, y lo audita como "Inició sesión con Google";
+  - **sin cuenta:** se crea el mismo comprobante que da el código del mail
+    (`codigos_mail`, con `codigo_hash = 'google'` como marca) y se sigue al
+    alta guiada. Los datos van en una cookie que lee y borra `alta.js`
+    (`nexo_google_alta`, 30 minutos): nombre y mail puestos, mail fijo, sin el
+    paso del código ni la contraseña.
+  - Cualquier otra cosa vuelve a `/app?google=<motivo>`, y el login dice qué
+    pasó: cancelado, error, sin cuenta (registro cerrado) o no disponible.
+- `POST /api/auth/registro` acepta la cuenta **sin contraseña solo con un
+  comprobante de Google**. Nace con una al azar que nadie conoce, y con "¿Te
+  olvidaste la contraseña?" la puede elegir.
+- `/api/auth/estado` dice `google`, y el login y el paso 1 del alta muestran
+  "Continuar con Google" y "Crear la cuenta con Google", con el logo.
+- `.env.example` documenta las dos variables.
+
+**Cómo se verificó.** `backend/test/google.test.js` (4 tests) contra un Google
+falso: la ida con PKCE y la vuelta exacta, entrar con cuenta, el alta sin
+contraseña y el comprobante de un solo uso, y lo que se rechaza (`state`
+trucho, cancelar, mail sin verificar, otro cliente, otro emisor, vencido, sin
+la cookie). 341 tests y lint. En el navegador, con las claves reales del
+`.env`, la ida llega a la pantalla de Google, "Iniciá sesión · Ir a Nexo",
+así que el cliente y la vuelta de localhost son válidos. También se vieron el
+botón del login, el del alta y el paso 1 con los datos simulados de la vuelta.
+**No se completó un ingreso con una cuenta de Google real**: eso lo hace el
+usuario.
+
+**Para producción:** publicar, mandar `GOOGLE_CLIENT_ID` y
+`GOOGLE_CLIENT_SECRET` a `/etc/nexo/nexo.env` (comando de PowerShell que las
+lee del `.env`) y que `NEXO_URL_PUBLICA` sea `https://nexosystem.duckdns.org`,
+para que la vuelta coincida con la registrada.
+
+## §150. El cierre de la caja en todas las cuentas (10 de noviembre de 2026)
+
+**Pedido del usuario** (10 de noviembre): "averiguaste si el abrir y cerrar
+caja es solo en efectivo, porque me parece que se hace en todas las cuentas
+del negocio". La investigación del 28 de octubre (`docs/investigacion-caja.md`)
+dice que al abrir solo se cuenta el efectivo, y al cerrar se controlan todos los
+medios. Esta es la versión **por cuenta**, sin la tabla de medios de pago del
+diseño completo, que queda para después de la presentación.
+
+**Lo que se hizo:**
+- Una tabla nueva, `turno_caja_arqueos`, hija de `turnos_caja`, con la cuenta,
+  el esperado y el declarado (`CREATE TABLE IF NOT EXISTS`, aditiva).
+  `datos-negocio.js` la toma sola por su FK.
+- `POST /api/turnos-caja/:id/cerrar` acepta `otras: [{ cuenta_tesoreria_id,
+  declarado }]`: solo las cuentas con cobros del turno, que no sean la caja, y
+  una vez cada una. El esperado es lo cobrado en el turno en esa cuenta. La
+  diferencia **no mueve el saldo** (casi siempre es un cobro cargado en la
+  cuenta equivocada), y queda en la tabla, en el resumen del turno (`arqueos`)
+  y en la auditoría del cierre.
+- El cierre del punto de venta suma "Las otras cuentas": cada una con "según
+  Nexo" y lo que dice el cierre de lote del posnet o la app (vacío, no se
+  controla), con su diferencia en vivo. Si sobra en una lo que falta en otra
+  (o en la caja), dice "¿un cobro quedó cargado en la cuenta equivocada?". El
+  aviso del final suma las diferencias de las otras cuentas.
+- **De paso:** la descarga de los datos de un negocio dejaba salir
+  `suscripciones_push` (hist. §146), con el `sesion_token`. Se sacó de la
+  descarga, y la regla de columnas secretas atrapa ahora también `_token`.
+
+**Cómo se verificó.** `backend/test/caja-cuentas.test.js` (cobros en las tres
+cuentas, lo que no se puede declarar, la diferencia sin tocar el saldo),
+342 tests, lint y `verificar-migracion` (24 de 24). **No se vio en el
+navegador.**
+
+**Lo que queda del diseño completo:** los medios de pago como entidad (débito
+y crédito que entran a la misma cuenta del banco no se separan todavía), el
+arqueo ciego y las tarjetas que se acreditan después.

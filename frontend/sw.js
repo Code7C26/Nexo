@@ -113,6 +113,8 @@ const PRECACHE = [
   "/js/dominios/carga-inicial.js",
   "/js/dominios/problema.js",
   "/js/dominios/socios.js",
+  "/js/dominios/entrada.js",
+  "/js/dominios/notificaciones.js",
   "/js/dominios/tablero.js",
   "/js/dominios/mercado-libre.js",
   "/js/dominios/mercado-pago.js",
@@ -175,6 +177,47 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   event.respondWith(redPrimero(event, pedido, pedido, SHELL, null));
+});
+
+/* ---------- Notificaciones (Web Push, hist. §146) ---------- */
+
+// El aviso llega cifrado y el navegador lo entrega acá ya descifrado: un JSON
+// con { titulo, cuerpo, url, etiqueta, urgente } (notificar() en server.js).
+self.addEventListener("push", (event) => {
+  let aviso;
+  try {
+    aviso = event.data?.json() ?? {};
+  } catch {
+    aviso = { titulo: "Nexo", cuerpo: event.data?.text() ?? "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(aviso.titulo || "Nexo", {
+      body: aviso.cuerpo || "",
+      icon: "/img/app/icono-192.png",
+      badge: "/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png",
+      tag: aviso.etiqueta || undefined,
+      renotify: Boolean(aviso.etiqueta),
+      requireInteraction: Boolean(aviso.urgente),
+      data: { url: aviso.url || "/app" }
+    }),
+  );
+});
+
+// Tocar el aviso: la pestaña de Nexo que ya esté abierta va a esa pantalla
+// sin recargar (dominios/notificaciones.js escucha el mensaje); si no hay
+// ninguna, se abre.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destino = new URL(event.notification.data?.url || "/app", self.location.origin);
+  event.waitUntil(
+    (async () => {
+      const abiertas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const app = abiertas.find((c) => new URL(c.url).pathname.startsWith("/app"));
+      if (!app) return self.clients.openWindow(destino.href);
+      app.postMessage({ nexo: "ir", hash: destino.hash });
+      return app.focus();
+    })(),
+  );
 });
 
 // Pide a la red y guarda la copia. Si la red falla (o, con `espera`, tarda más
