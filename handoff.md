@@ -21,8 +21,12 @@
 
 ## Estado actual (10 de noviembre de 2026)
 
-**10 de noviembre, hist. §150: el cierre de la caja en todas las cuentas, en
-`solla` sin publicar.** Cada cuenta con cobros en el turno se controla contra
+**10 de noviembre: §143 a §150 publicados (PR #67), con las claves de Google
+en el servidor (cargadas por el usuario; `/api/auth/estado` dice `google: true`
+y la vuelta es la de producción).** Falta que el usuario pruebe en el sitio:
+entrar con Google, el QR de la caja con $100 y las notificaciones en su celular.
+
+**10 de noviembre, hist. §150: el cierre de la caja en todas las cuentas.** Cada cuenta con cobros en el turno se controla contra
 el posnet o la app, y la diferencia queda anotada sin mover el saldo. Los
 medios de pago como entidad quedan para después.
 
@@ -68,9 +72,8 @@ Clima Sur trae servicios con costo. Plan del usuario para lo que sigue:
 ~~el ingreso del gimnasio en dos pantallas~~ (§144), ~~el QR de Mercado Pago
 en el mostrador~~ (§145), ~~las notificaciones~~ (§146), ~~el QR tradicional~~ (§147,
 falta probarlo con $100), ~~la caja en todas las cuentas~~ (§150, por cuenta;
-los medios de pago como entidad, después). **Sigue:** publicar (pedirle el
-OK al usuario), las claves de Google al servidor, y lo que el usuario traiga de
-otros sistemas; después, el contenido. El usuario va a mostrar
+los medios de pago como entidad, después). **Sigue:** lo que el usuario traiga de otros
+sistemas; después, el contenido. El usuario va a mostrar
 cosas de otros sistemas para sumar. "Entrar con Google": hecho (§149). Después, el contenido (flyer, video, redes).
 
 **8 de noviembre, después de §141: guion del pitch y QR, en `solla` sin
