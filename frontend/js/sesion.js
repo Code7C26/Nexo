@@ -273,6 +273,9 @@
   function escribirDatosUsuario(usuario) {
     document.documentElement.setAttribute("data-rol", usuario.rol);
     document.documentElement.setAttribute("data-organizacion", usuario.organizacion_id);
+    // Las notificaciones se vuelven a anotar solo para quien las prendió en
+    // este aparato (dominios/notificaciones.js, hist. §146).
+    document.documentElement.setAttribute("data-usuario", usuario.id);
     // Quien administra Nexo ve el panel de la plataforma (hist. §111).
     document.documentElement.toggleAttribute("data-plataforma", !!usuario.plataforma);
     const nombreEl = document.querySelector("[data-usuario-nombre]");

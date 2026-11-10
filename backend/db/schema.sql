@@ -1440,6 +1440,30 @@ CREATE TABLE IF NOT EXISTS sesiones (
 );
 CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id);
 
+-- Las notificaciones de cada aparato (Web Push, hist. §146): la dirección del
+-- servicio de push que dio el navegador y sus dos claves. Es de una persona y
+-- cuelga de la sesión con que se prendió: al cerrar sesión (o vencer) se va,
+-- y el aparato no recibe avisos de una cuenta que ya no está ahí. Le llegan
+-- los avisos de todos los negocios donde la persona sigue activa.
+CREATE TABLE IF NOT EXISTS suscripciones_push (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  sesion_token TEXT NOT NULL REFERENCES sesiones(token) ON DELETE CASCADE,
+  creada TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_suscripciones_push_usuario ON suscripciones_push(usuario_id);
+
+-- Lo que la instalación genera una vez y guarda (hist. §146): hoy, el par de
+-- claves VAPID de las notificaciones, que no puede cambiar sin dejar mudos a
+-- todos los aparatos. No es de ningún negocio.
+CREATE TABLE IF NOT EXISTS ajustes_servidor (
+  clave TEXT PRIMARY KEY,
+  valor TEXT NOT NULL
+);
+
 -- Socios, planes, descuentos y cuotas (CLAUDE.md §29, hist. §74 y §75): un
 -- módulo que cualquier negocio puede prender y que el gimnasio trae prendido.
 -- No es un circuito de datos propio: el socio es un cliente, el plan es un

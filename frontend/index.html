@@ -3993,6 +3993,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">WhatsApp</span><span class="config-item-desc" id="configWhatsAppResumen">Cargá ventas con un mensaje</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/notificaciones" data-seccion="notificaciones">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#bell"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Notificaciones</span><span class="config-item-desc">Avisos en el celular y la compu</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/apariencia" data-seccion="apariencia">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#palette"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema, idioma e instalar como app</span></span>
@@ -5173,6 +5178,36 @@
                   </button>
                 </div>
               </form>
+            </section>
+
+            <!-- Notificaciones (Web Push, hist. §146): se prenden en cada
+                 aparato. dominios/notificaciones.js. -->
+            <section class="config-pagina" data-seccion="notificaciones" aria-labelledby="configNotificacionesTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configNotificacionesTitulo" tabindex="-1">Notificaciones</h2>
+                <p>Nexo te avisa en este aparato aunque no lo tengas abierto. Se prenden en cada celular o compu.</p>
+              </header>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="instalar">
+                    <span class="notif-icono" id="notifIcono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#bell"></use></svg></span>
+                    <div class="instalar-texto">
+                      <h3 id="notifTitulo">En este aparato</h3>
+                      <p id="notifEstado"></p>
+                    </div>
+                  </div>
+                  <p class="config-tarjeta-titulo">Te avisa cuando</p>
+                  <ul class="notif-lista" id="notifLista"></ul>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Cerrar sesión las apaga en este aparato.</p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" id="notifApagar" hidden>Apagar</button>
+                    <button type="button" class="btn btn-secundario" id="notifProbar" hidden>Mandar una de prueba</button>
+                    <button type="button" class="btn btn-primary" id="notifPrender" hidden>Prender las notificaciones</button>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <!-- Etiquetas de balanza (hist. §132): lo arma dominios/balanza.js. El

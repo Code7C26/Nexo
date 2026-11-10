@@ -7,6 +7,7 @@ import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCat
 import { interpretar, InterpreteError, transcribir, vozDisponible } from './interprete.js';
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
+import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
 import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
 import { NEGOCIOS as NEGOCIOS_DE_EJEMPLO, clienteDeApi, llenarNegocio } from './negocios-de-ejemplo.js';
 import {
@@ -5861,6 +5862,8 @@ function registrarMovimientoStock({
   if (esServicio(producto_id)) return { changes: 0, lastInsertRowid: null };
   // Por lo mismo, de acá sale el aviso a las tiendas conectadas (§32).
   programarSincronizacion(organizacion_id);
+  // Y el aviso del stock que llegó al mínimo (hist. §146).
+  if (tipo === 'salida' || (tipo === 'ajuste' && cantidad < 0)) avisarStockBajo(organizacion_id, producto_id);
   return db
     .prepare(
       `INSERT INTO movimientos_stock
@@ -17518,6 +17521,142 @@ app.get('/api/socios/ingresos', (req, res) => {
   res.json(ingresos.map((i) => ({ ...i, al_dia: Boolean(i.al_dia), por_pantalla: Boolean(i.por_pantalla) })));
 });
 
+/* ---------- Notificaciones (Web Push, hist. §146) ---------- */
+//
+// Cada persona prende las notificaciones en cada aparato (Configuración →
+// Notificaciones). Lo que pasa en un negocio le llega a quien corresponde:
+// las ventas online, los pagos y el stock al admin; quien espera en la
+// entrada, a los dos roles. notificar() no espera ni tira: el aviso sale
+// después de lo que lo causó y, si no sale, no frena nada.
+
+let clavesVapidGuardadas = null;
+function clavesVapid() {
+  if (clavesVapidGuardadas) return clavesVapidGuardadas;
+  const leer = () => db.prepare("SELECT valor FROM ajustes_servidor WHERE clave = 'vapid'").get();
+  if (!leer()) db.prepare("INSERT OR IGNORE INTO ajustes_servidor (clave, valor) VALUES ('vapid', ?)").run(JSON.stringify(clavesVapidNuevas()));
+  clavesVapidGuardadas = JSON.parse(leer().valor);
+  return clavesVapidGuardadas;
+}
+// Quién manda los avisos, para el servicio de push (Apple lo exige).
+const contactoPush = () => (process.env.NEXO_URL_PUBLICA || 'https://nexosystem.duckdns.org').replace(/\/+$/, '');
+const pesosAviso = (n) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+function mandarA(suscripciones, aviso) {
+  if (!suscripciones.length) return;
+  const opciones = { claves: clavesVapid(), contacto: contactoPush() };
+  for (const s of suscripciones) {
+    mandarAviso(s, aviso, opciones).then((resultado) => {
+      if (resultado === 'vencida') db.prepare('DELETE FROM suscripciones_push WHERE id = ?').run(s.id);
+    });
+  }
+}
+
+// Las suscripciones con sesión viva de quienes están activos en el negocio,
+// con alguno de esos roles.
+function suscripcionesDelNegocio(organizacionId, roles) {
+  return db
+    .prepare(
+      `SELECT suscripciones_push.id, suscripciones_push.endpoint, suscripciones_push.p256dh, suscripciones_push.auth
+         FROM suscripciones_push
+         JOIN sesiones ON sesiones.token = suscripciones_push.sesion_token AND sesiones.expira > datetime('now')
+         JOIN usuario_organizaciones
+           ON usuario_organizaciones.usuario_id = suscripciones_push.usuario_id
+          AND usuario_organizaciones.organizacion_id = ? AND usuario_organizaciones.activo = 1
+        WHERE usuario_organizaciones.rol IN (${roles.map(() => '?').join(', ')})`
+    )
+    .all(organizacionId, ...roles);
+}
+
+// `url` es adónde lleva el aviso al tocarlo; `etiqueta` junta los de lo mismo
+// (un segundo aviso del mismo producto reemplaza al primero).
+function notificar(organizacionId, { titulo, cuerpo, url = '/app', etiqueta = null, urgente = false }, { roles = ['admin'] } = {}) {
+  setImmediate(() => {
+    try {
+      const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId);
+      if (!negocio) return;
+      mandarA(suscripcionesDelNegocio(organizacionId, roles), { titulo, cuerpo: `${negocio.nombre} · ${cuerpo}`, url, etiqueta, urgente });
+    } catch (err) {
+      console.error('[notificaciones]', err);
+    }
+  });
+}
+
+// El stock que llegó al mínimo, después de una venta, un consumo o un ajuste.
+// Una vez cada 12 horas por producto: no un aviso por cada venta.
+const ultimoAvisoStock = new Map();
+function avisarStockBajo(organizacionId, productoId) {
+  setImmediate(() => {
+    const clave = `${organizacionId}:${productoId}`;
+    if (Date.now() - (ultimoAvisoStock.get(clave) ?? 0) < 12 * 3600 * 1000) return;
+    const p = db
+      .prepare(
+        `SELECT productos.nombre, productos.unidad, productos.stock_minimo, COALESCE(stock_actual.cantidad, 0) AS stock
+           FROM productos LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id
+          WHERE productos.id = ? AND productos.organizacion_id = ? AND productos.activo = 1`
+      )
+      .get(productoId, organizacionId);
+    if (!p || !(p.stock_minimo > 0) || p.stock > p.stock_minimo) return;
+    ultimoAvisoStock.set(clave, Date.now());
+    const unidad = p.unidad === 'unidad' ? '' : ` ${p.unidad}`;
+    notificar(organizacionId, {
+      titulo: p.stock <= 0 ? `Sin stock: ${p.nombre}` : `Stock bajo: ${p.nombre}`,
+      cuerpo: `${p.stock <= 0 ? 'Se terminó' : `Quedan ${redondear3(p.stock)}${unidad}`} (el mínimo es ${redondear3(p.stock_minimo)}${unidad}).`,
+      url: '/app#/stock',
+      etiqueta: `stock-${productoId}`
+    });
+  });
+}
+
+app.get('/api/notificaciones', (req, res) => {
+  res.json({ clave_publica: clavePublicaVapid(clavesVapid()) });
+});
+
+// El aparato se anota (o se vuelve a anotar al entrar: la misma dirección
+// pasa a la sesión y la persona de ahora).
+app.post('/api/notificaciones/suscripcion', (req, res) => {
+  const { endpoint, keys } = req.body ?? {};
+  const esClave = (v, largo) => typeof v === 'string' && /^[A-Za-z0-9_-]+$/.test(v) && Buffer.from(v, 'base64url').length === largo;
+  if (
+    typeof endpoint !== 'string' ||
+    endpoint.length > 1000 ||
+    !direccionDePushValida(endpoint) ||
+    !esClave(keys?.p256dh, 65) ||
+    !esClave(keys?.auth, 16)
+  ) {
+    return res.status(400).json({ error: 'Este navegador no dio una suscripción válida.' });
+  }
+  db.prepare(
+    `INSERT INTO suscripciones_push (endpoint, p256dh, auth, usuario_id, sesion_token) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth,
+       usuario_id = excluded.usuario_id, sesion_token = excluded.sesion_token`
+  ).run(endpoint, keys.p256dh, keys.auth, req.usuario.id, leerCookie(req, COOKIE_SESION));
+  res.status(201).json({ ok: true });
+});
+
+app.post('/api/notificaciones/apagar', (req, res) => {
+  db.prepare('DELETE FROM suscripciones_push WHERE endpoint = ? AND usuario_id = ?').run(String(req.body?.endpoint ?? ''), req.usuario.id);
+  res.status(204).end();
+});
+
+// Una de prueba, a los aparatos de quien la pide.
+app.post('/api/notificaciones/probar', (req, res) => {
+  const suscripciones = db
+    .prepare(
+      `SELECT suscripciones_push.id, endpoint, p256dh, auth FROM suscripciones_push
+         JOIN sesiones ON sesiones.token = suscripciones_push.sesion_token AND sesiones.expira > datetime('now')
+        WHERE suscripciones_push.usuario_id = ?`
+    )
+    .all(req.usuario.id);
+  if (!suscripciones.length) return res.status(409).json({ error: 'Prendé las notificaciones en este aparato primero.' });
+  mandarA(suscripciones, {
+    titulo: '¡Listo! Las notificaciones andan',
+    cuerpo: 'Así te va a avisar Nexo de las ventas online, los pagos y el stock bajo.',
+    url: '/app#/configuracion/notificaciones',
+    etiqueta: 'prueba'
+  });
+  res.json({ aparatos: suscripciones.length });
+});
+
 /* ---------- La pantalla de entrada (hist. §144) ---------- */
 //
 // Dos pantallas para el ingreso: en la entrada, el socio tipea su DNI o su
@@ -17596,6 +17735,17 @@ app.post('/api/socios/entrada', (req, res) => {
         : socio.situacion === 'por_empezar'
           ? `Tu plan empieza el ${fechaLegible(socio.empieza)}.`
           : 'Tu plan no está activo.';
+    notificar(
+      org,
+      {
+        titulo: `${socio.nombre} espera en la entrada`,
+        cuerpo: socio.situacion === 'debe' ? `Debe ${pesosAviso(socio.deuda)}.` : motivo,
+        url: '/app#/ingreso',
+        etiqueta: `entrada-${socioId}`,
+        urgente: true
+      },
+      { roles: ['admin', 'empleado'] }
+    );
     return res.json({ entra: false, nombre, motivo });
   }
 
@@ -20127,6 +20277,13 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           operacion_id: integracion.id,
           detalle: `Venta #${id} desde ${canal(integracion)} (pedido #${numero})`
         });
+        notificar(organizacionId, {
+          titulo: `Venta nueva por ${canal(integracion)}`,
+          cuerpo: `Pedido #${numero} por ${pesosAviso(total)}${cobrar ? '' : ', sin cobrar todavía'}.`,
+          url: '/app#/ventas',
+          etiqueta: `pedido-${integracion.id}-${numero}`,
+          urgente: true
+        });
         return id;
       });
     } catch (err) {
@@ -21380,6 +21537,12 @@ function procesarPagoMP(integracion, pago) {
         'ok',
         `Pago de $${d.importe} → cobro de la venta #${ventaId}.${descuentos.length ? ` Quedó como gasto de la venta: ${descuentos.join(' y ')}.` : ''}${retenido}`
       );
+      notificar(organizacionId, {
+        titulo: `Te pagaron ${pesosAviso(d.importe)} con Mercado Pago`,
+        cuerpo: `Venta #${ventaId}.${d.comision > 0 ? ` Te quedan ${pesosAviso(d.importe - d.comision - (d.financiacion || 0))} después de la comisión.` : ''}`,
+        url: '/app#/ventas',
+        etiqueta: `pago-${externoId}`
+      });
     }
     return { estado, nuevo: true };
   });

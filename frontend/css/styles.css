@@ -6389,6 +6389,32 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
   color: var(--ink);
 }
 
+/* Configuración → Notificaciones (hist. §146). */
+.notif-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  color: var(--ink-muted);
+  background: var(--surface-sunk);
+  border-radius: var(--r-md);
+  transition: color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+
+.notif-icono .ico { width: 28px; height: 28px; }
+.notif-icono.notif-icono-on { color: var(--accent); background: var(--accent-bg); }
+
+.notif-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding-left: var(--sp-5);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
 /* La pantalla de entrada (hist. §144): la ve el socio en la puerta. Tapa todo,
    menú incluido, va en el negro de la marca en los dos temas y se lee desde
    un par de metros. */

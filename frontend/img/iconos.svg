@@ -91,6 +91,7 @@
 <symbol id="wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" /><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" /></symbol>
 <symbol id="warehouse" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11" /><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8z" /><path d="M6 13h12" /><path d="M6 17h12" /></symbol>
 <symbol id="x" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></symbol>
+<symbol id="bell" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.268 21a2 2 0 003.464 0" /><path d="M3.262 15.326A1 1 0 004 17h16a1 1 0 00.74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 006 8c0 4.499-1.411 5.956-2.738 7.326" /></symbol>
 <symbol id="tablet" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="16" height="20" x="4" y="2" rx="2" ry="2" /><path d="M12 18h.01" /></symbol>
 <symbol id="delete" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 5a2 2 0 00-1.344.519l-6.328 5.74a1 1 0 000 1.481l6.328 5.741A2 2 0 0010 19h10a2 2 0 002-2V7a2 2 0 00-2-2z" /><path d="M12 9l6 6" /><path d="M18 9l-6 6" /></symbol>
 </svg>
