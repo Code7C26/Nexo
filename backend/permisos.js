@@ -233,6 +233,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/compras': 'admin',
   'GET /api/compras/:id': 'admin',
   'POST /api/compras': 'admin',
+  'POST /api/compras/leer-comprobante': 'admin',
   'PUT /api/compras/:id': 'admin',
   'POST /api/compras/:id/confirmar': 'admin',
   'POST /api/compras/:id/anular': 'admin',

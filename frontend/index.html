@@ -6263,6 +6263,15 @@
         <button class="modal-close" id="modalCompraClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
       <form id="formCompra" class="form">
+        <!-- La compra desde la factura del proveedor (hist. §151): una foto,
+             varias o el PDF. La lee dominios/factura-compra.js y llena este
+             mismo formulario, para revisarlo antes de guardar. -->
+        <div class="compra-factura" id="compraFactura">
+          <button type="button" class="btn btn-secundario compra-factura-btn" id="btnCompraFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#camera"></use></svg> <span id="btnCompraFacturaTexto">Cargar desde la factura</span></button>
+          <p class="form-note">Sacale una foto a la factura o el remito del proveedor, o subí el PDF. Nexo completa los productos, las cantidades y los costos, y vos revisás antes de guardar.</p>
+          <input type="file" id="compraFacturaArchivo" accept="image/*,application/pdf" multiple hidden />
+        </div>
+        <div class="compra-factura-resumen" id="compraFacturaResumen" role="status" hidden></div>
         <label>Proveedor
           <input type="text" name="proveedor" required placeholder="Nombre o razón social" />
         </label>

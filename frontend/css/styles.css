@@ -1893,6 +1893,71 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
   flex: 1.4;
 }
 
+/* La compra desde la factura del proveedor (hist. §151): el botón para
+   leerla arriba del formulario, lo que se leyó, y debajo de cada renglón de
+   qué línea de la factura salió. */
+.compra-factura {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-sunk);
+}
+.compra-factura[hidden],
+.compra-factura-resumen[hidden] { display: none; }
+.compra-factura .form-note { margin: 0; }
+.compra-factura-btn {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.compra-factura-btn[aria-busy="true"] { cursor: progress; opacity: 0.7; }
+.compra-factura-resumen {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.compra-factura-resumen p { margin: 0; }
+.compra-factura-titulo { font-size: var(--txt-sm); color: var(--ink); }
+.compra-factura-aviso {
+  font-size: var(--txt-sm);
+  color: var(--ink);
+  background: var(--accent-warn-bg);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+}
+
+.item-row.desde-factura { flex-wrap: wrap; }
+.item-origen {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-3);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.item-origen-texto { min-width: 0; overflow-wrap: anywhere; }
+.item-origen-texto b { font-weight: 600; color: var(--ink); }
+.form .item-origen-bulto {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.item-row .item-origen-bulto input { flex: 0 0 64px; width: 64px; padding: 4px 6px; }
+.item-origen-estado {
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+  font-weight: 600;
+}
+.item-origen-estado.es-ok { background: var(--accent-ok-bg); color: var(--accent-ok); }
+.item-origen-estado.es-revisar { background: var(--accent-warn-bg); color: var(--accent-warn); }
+.item-origen-estado.es-nuevo { background: var(--accent-bg); color: var(--accent); }
+
 /* Fila de devolución: producto de solo lectura + cantidad a devolver +
    check "vuelve al stock", en vez de los campos de alta de item-row. */
 .item-row-devolucion .devolucion-producto {

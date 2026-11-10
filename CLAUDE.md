@@ -421,6 +421,11 @@ comprobante del proveedor (la letra la propone su condición frente al IVA), y
 cada renglón su alícuota y su IVA. Solo la factura A a un negocio
 responsable inscripto discrimina: ese IVA es crédito fiscal y el costo real
 queda sin IVA; en cualquier otro caso el IVA es parte del costo.
+La compra se puede cargar desde la foto o el PDF de la factura del proveedor
+(hist. §151): la IA solo lee, Nexo busca cada renglón en el catálogo (lo
+recordado de ese proveedor, el código, el nombre parecido), pasa los packs a
+unidades y llena el formulario de siempre para revisar. Lo confirmado queda
+en `proveedor_articulos`, y la próxima factura de ese proveedor sale sola.
 
 ---
 

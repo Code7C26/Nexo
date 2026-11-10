@@ -37,6 +37,7 @@ import { icono } from "./core/iconos.js";
 import { barrasHorizontales, lineaChica, montarArea, pasoRedondo, pathBarra } from "./core/graficos.js";
 import { cargarTablero, comparacion, prepararTablero, rangoResumen } from "./dominios/tablero.js";
 import { crearConsumos } from "./core/al-vender.js";
+import { facturaDeFila, leerFactura, marcarCoincidencia, montarOrigen, pintarResumen } from "./dominios/factura-compra.js";
 import { CANALES_VENTA } from "./core/canales.js";
 import { mejorOferta } from "./core/ofertas.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
@@ -1731,6 +1732,8 @@ function agregarFilaItemCompra(contenedor, listaProductos) {
     const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
     productoIdInput.value = producto?.id ?? "";
     ajustarCantidadSegunUnidad(fila.querySelector(".item-cantidad"), producto);
+    // Un renglón que vino de la factura (hist. §151): ya lo eligió la persona.
+    marcarCoincidencia(fila, producto ? "elegido" : "nuevo");
     if (producto?.tiene_variantes) {
       const variantes = await variantesDeProducto(producto.id);
       varianteSelect.innerHTML =
@@ -1850,7 +1853,7 @@ function leerItemsCompra(contenedor) {
     const cantidad = Number(fila.querySelector(".item-cantidad").value);
     const precio_unitario = Number(fila.querySelector(".item-precio").value);
     if (producto && cantidad > 0 && precio_unitario >= 0) {
-      items.push({ producto, variante_id, cantidad, precio_unitario });
+      items.push({ producto, variante_id, cantidad, precio_unitario, factura: facturaDeFila(fila) });
     }
   });
   return items;
@@ -5793,6 +5796,13 @@ async function abrirModalCompra(compra = null) {
   }
   form.comprobante_numero.value = compra?.comprobante_numero ?? "";
 
+  // La factura leída (hist. §151) es solo para una compra nueva.
+  document.getElementById("compraFactura").hidden = Boolean(compra);
+  document.getElementById("compraFacturaResumen").hidden = true;
+  document.getElementById("btnCompraFacturaTexto").textContent = "Cargar desde la factura";
+  delete form.dataset.proveedorLeido;
+  delete form.dataset.proveedorDocumento;
+
   compraItemsEl.innerHTML = "";
   if (compra) {
     for (const item of compra.items) {
@@ -5822,6 +5832,84 @@ async function abrirModalCompra(compra = null) {
 }
 
 document.getElementById("btnNuevaCompra").addEventListener("click", () => abrirModalCompra());
+
+// La compra desde la factura del proveedor (hist. §151): lo leído llena este
+// mismo formulario, con cada renglón mostrando de dónde salió, y se guarda
+// como cualquier compra. Al guardar, el servidor recuerda cada renglón para
+// ese proveedor.
+async function aplicarFacturaACompra(lectura) {
+  const form = document.getElementById("formCompra");
+  if (lectura.proveedor) {
+    form.proveedor.value = lectura.proveedor.nombre;
+    form.dataset.proveedorLeido = lectura.proveedor.nombre;
+    if (lectura.proveedor.nuevo && lectura.proveedor.cuit) form.dataset.proveedorDocumento = lectura.proveedor.cuit;
+    // Propone el plazo y la letra de ese proveedor, como al tipearlo.
+    form.proveedor.dispatchEvent(new Event("change"));
+  }
+  if (lectura.fecha) form.fecha.value = lectura.fecha;
+  if (lectura.numero) form.comprobante_numero.value = lectura.numero;
+  if (lectura.letra && !document.getElementById("compraLetraWrap").hidden) {
+    form.comprobante_letra.value = lectura.letra;
+    compraLetraTocada = true;
+    sincronizarNotaLetraCompra();
+  }
+  compraCostoEnvioEl.value = lectura.costo_envio || "";
+
+  compraItemsEl.innerHTML = "";
+  for (const item of lectura.items) {
+    agregarFilaItemCompra(compraItemsEl, productos);
+    const fila = compraItemsEl.lastElementChild;
+    fila.querySelector(".item-producto").value = item.producto?.nombre ?? item.nombre_nuevo;
+    fila.querySelector(".item-producto-id").value = item.producto?.id ?? "";
+    fila.querySelector(".item-cantidad").value = item.cantidad;
+    fila.querySelector(".item-precio").value = item.precio_unitario;
+    const producto = item.producto && productos.find((p) => p.id === item.producto.id);
+    ajustarCantidadSegunUnidad(fila.querySelector(".item-cantidad"), producto);
+    if (producto?.tiene_variantes) {
+      const varianteSelect = fila.querySelector(".item-variante-id");
+      const variantes = await variantesDeProducto(producto.id);
+      varianteSelect.innerHTML =
+        '<option value="">Elegí una variante…</option>' +
+        variantes
+          .filter((v) => v.activo)
+          .map((v) => `<option value="${v.id}">${esc(v.combinacion)}${v.sku ? ` — ${esc(v.sku)}` : ""}</option>`)
+          .join("");
+      varianteSelect.value = item.producto.variante_id ?? "";
+      varianteSelect.hidden = false;
+    }
+    montarOrigen(fila, item, () => {
+      actualizarSubtotalFila(fila);
+      compraItemsEl.dispatchEvent(new Event("item-change"));
+    });
+    actualizarSubtotalFila(fila);
+  }
+  actualizarTotalCompra();
+  pintarResumen(document.getElementById("compraFacturaResumen"), lectura);
+}
+
+const compraFacturaArchivo = document.getElementById("compraFacturaArchivo");
+document.getElementById("btnCompraFactura").addEventListener("click", () => compraFacturaArchivo.click());
+compraFacturaArchivo.addEventListener("change", async () => {
+  const archivos = [...compraFacturaArchivo.files];
+  compraFacturaArchivo.value = "";
+  if (!archivos.length) return;
+  const boton = document.getElementById("btnCompraFactura");
+  const texto = document.getElementById("btnCompraFacturaTexto");
+  boton.disabled = true;
+  boton.setAttribute("aria-busy", "true");
+  texto.textContent = "Leyendo la factura…";
+  try {
+    const lectura = await leerFactura(archivos, avisar);
+    if (lectura) {
+      await aplicarFacturaACompra(lectura);
+      avisar("Factura leída: revisá los productos y guardá la compra.", "ok");
+    }
+  } finally {
+    boton.disabled = false;
+    boton.removeAttribute("aria-busy");
+    texto.textContent = "Cargar otra factura";
+  }
+});
 document.getElementById("btnAgregarItemCompra").addEventListener("click", () => {
   agregarFilaItemCompra(compraItemsEl, productos);
 });
@@ -5873,6 +5961,10 @@ document.getElementById("formCompra").addEventListener("submit", async (e) => {
     // la que tenía o la que corresponde al proveedor.
     ...(document.getElementById("compraLetraWrap").hidden ? {} : { comprobante_letra: form.comprobante_letra.value }),
     comprobante_numero: form.comprobante_numero.value,
+    // El CUIT leído de la factura, si el proveedor es nuevo y no se cambió.
+    ...(form.dataset.proveedorDocumento && form.proveedor.value === form.dataset.proveedorLeido
+      ? { proveedor_documento: form.dataset.proveedorDocumento }
+      : {}),
     ...datosCondicionPago(form)
   };
 

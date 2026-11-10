@@ -12532,3 +12532,60 @@ navegador.**
 **Lo que queda del diseño completo:** los medios de pago como entidad (débito
 y crédito que entran a la misma cuenta del banco no se separan todavía), el
 arqueo ciego y las tarjetas que se acreditan después.
+
+## §151. La compra desde la foto de la factura del proveedor (10 de noviembre de 2026)
+
+**Pedido del usuario** (10 de noviembre), de un video de otro sistema: mandar
+una foto de la factura del proveedor y que el sistema relacione cada renglón
+con los productos que ya existen, cargue el stock y los costos, y entienda que
+un pack de 12 Cocas son 12 Cocas, no un pack. También subir archivos.
+
+**Lo que se hizo:**
+- **Lectura** (`backend/interprete.js`, `leerComprobante`): el modelo de
+  visión de Groq (`meta-llama/llama-4-scout-17b-16e-instruct`,
+  `NEXO_GROQ_MODELO_VISION`), con Gemini de respaldo. Devuelve JSON: proveedor
+  (el emisor) y CUIT, letra, número, fecha, si los precios vienen sin IVA,
+  cada renglón (código, descripción, cantidad, unidades por bulto, precio,
+  bonificación, alícuota, si es flete), percepciones y total. **No recibe el
+  catálogo**: no sale nada del negocio, y cuesta unos 3.000 a 5.000 tokens por
+  factura, del cupo del modelo de visión (aparte del de las frases).
+- **Relación con los productos** (`backend/factura-proveedor.js`, sin base ni
+  IA): primero lo recordado de ese proveedor, después el código de barras o
+  el SKU exacto, después un nombre parecido (palabras en común, el tamaño pesa
+  la mitad, dos casi iguales no se eligen). Si no hay, producto nuevo con un
+  nombre limpio. Los packs: cantidad × unidades por bulto, y el costo de cada
+  unidad = total del renglón (con bonificación e IVA si venía sin) / unidades.
+  El flete va al costo de envío. Si lo cargado no da el total menos las
+  percepciones, se avisa.
+- **Endpoint** `POST /api/compras/leer-comprobante` (admin, plan con
+  asistente, 30 por hora por persona, cuenta en el tope de frases de los
+  negocios de ejemplo): de solo lectura, como `/asistente/interpretar`. Hasta
+  4 páginas en JSON con su propio límite de 12 MB (el parser global la
+  saltea).
+- **Tabla nueva `proveedor_articulos`** (aditiva): proveedor + clave (`cod:` o
+  `txt:` + descripción normalizada) → producto, variante y unidades por
+  bulto. La escribe `crearCompra` al guardar una compra con renglones de
+  factura (`items[].factura`), o sea con la persona confirmando. Un proveedor
+  nuevo nace con el CUIT leído (`proveedor_documento`).
+- **Pantalla:** "Cargar desde la factura" arriba de Nueva compra
+  (`frontend/js/dominios/factura-compra.js`). Foto (en el celular, la cámara),
+  varias o PDF: el PDF se pasa a imagen en el navegador con pdf.js 5.7.284
+  (build legacy, en `js/vendor/`, cargado solo al elegir un PDF). Llena el
+  formulario de siempre; cada renglón muestra cómo figuraba en la factura,
+  "Cada uno trae N u." para corregir el bulto y cómo se encontró ("Como la
+  última vez", "Por el código", "Parecido: revisalo", "Nuevo"). Sección nueva
+  en el manual (`compra-desde-factura`).
+
+**Cómo se verificó.** `backend/test/factura-proveedor.test.js` (13 casos con
+el stub: packs, IVA, código, parecido, lo recordado por CUIT, la diferencia,
+lo que no se lee, el tamaño, permisos, plan y aislamiento), 352 tests, lint,
+i18n y `verificar-migracion` (24 de 24). En el navegador, con el stub: el PDF
+pasa por pdf.js y llega al servidor; la factura llena el formulario, cambiar
+el bulto recalcula, guardar crea la compra y el proveedor con CUIT, y la
+segunda lectura sale entera "como la última vez". **No se probó contra Groq
+real**: la clave del `.env` local contestó "Invalid API Key" al listar los
+modelos, así que no se confirmó que el modelo de visión siga disponible ni
+cuánto lee bien una foto real.
+
+**Queda:** probarlo con facturas reales; guardar la imagen junto a la compra;
+la foto por WhatsApp.

@@ -493,6 +493,153 @@ export async function transcribir(audio, tipo, palabras = []) {
   }
 }
 
+// --- La factura del proveedor (hist. §151) -----------------------------
+//
+// Lee la foto de una factura o un remito y devuelve lo que dice, renglón por
+// renglón. SOLO lee: no recibe el catálogo ni sabe de productos de Nexo; cuál
+// es cuál lo decide factura-proveedor.js y lo confirma una persona. Va con el
+// modelo de visión de Groq (su cupo es aparte del de las frases) y Gemini de
+// respaldo, que también lee imágenes.
+
+const GROQ_MODELO_VISION = process.env.NEXO_GROQ_MODELO_VISION || 'meta-llama/llama-4-scout-17b-16e-instruct';
+// Una factura larga tarda más que una frase en salir entera.
+const ESPERA_LECTURA_MS = 60_000;
+
+const INSTRUCCIONES_FACTURA = `Sos el lector de comprobantes de compra de Nexo, un sistema de gestión para comercios argentinos. La imagen es una factura, un remito o una nota de pedido que un PROVEEDOR le dio al comercio. Pasá a JSON lo que dice, sin inventar nada.
+
+Respondé SOLO con un objeto JSON con esta forma:
+{
+  "es_comprobante": true,
+  "proveedor": { "nombre": "razón social de quien VENDE (el emisor, arriba del comprobante), no la del cliente", "cuit": "CUIT del emisor o null" },
+  "letra": "A" | "B" | "C" | null,
+  "numero": "punto de venta y número, ej. 0003-00012345, o null",
+  "fecha": "YYYY-MM-DD o null",
+  "precios_sin_iva": true si los precios de los renglones NO incluyen IVA (lo normal en una factura A, que discrimina el IVA abajo), false si ya lo incluyen,
+  "renglones": [
+    {
+      "codigo": "código del artículo tal cual figura (puede ser el código de barras), o null",
+      "descripcion": "descripción tal cual figura",
+      "cantidad": número de la columna cantidad,
+      "unidades_por_bulto": cuántas unidades trae CADA UNO de lo que cuenta la cantidad, o null,
+      "precio_unitario": precio de cada uno de lo que cuenta la cantidad, antes de la bonificación,
+      "bonificacion": porcentaje de descuento del renglón o null,
+      "importe": importe del renglón tal cual figura, o null,
+      "alicuota_iva": 21 | 10.5 | 27 | 0 | null,
+      "es_envio": true solo si el renglón es flete, envío o transporte
+    }
+  ],
+  "percepciones": suma de percepciones y otros impuestos que no son IVA (IIBB, percepción de IVA, impuestos internos), o null,
+  "total": total final del comprobante, o null
+}
+
+Reglas:
+- Los números van como números JSON: "1.234,56" es 1234.56.
+- unidades_por_bulto: si la cantidad cuenta packs, cajas, bultos, fardos o displays, y la descripción dice cuántas unidades trae cada uno ("X12", "PACK 6", "CJ X 24", "FARDO X 6", "6 U"), poné ese número. Si la cantidad ya cuenta unidades sueltas, o la descripción no lo dice, null. "X 500 GR" o "X 2.25 L" es el tamaño de cada unidad, no un bulto.
+- Un renglón por cada artículo. No incluyas como renglón los subtotales, el IVA, las percepciones, los totales ni las leyendas.
+- Si la imagen no es un comprobante de compra, devolvé {"es_comprobante": false, "renglones": []}.`;
+
+async function leerConGroq(imagenes) {
+  const contenido = [
+    { type: 'text', text: INSTRUCCIONES_FACTURA },
+    ...imagenes.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.tipo};base64,${img.datos}` } }))
+  ];
+  let res;
+  try {
+    res = await fetch(`${GROQ_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: GROQ_MODELO_VISION,
+        messages: [{ role: 'user', content: contenido }],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_completion_tokens: 6000
+      }),
+      signal: AbortSignal.timeout(ESPERA_LECTURA_MS)
+    });
+  } catch (err) {
+    throw new FalloProveedor(`Groq no respondió: ${err.message}`);
+  }
+  // Cualquier error de Groq deja probar con Gemini: también si el modelo de
+  // visión dejó de existir, que es lo más probable con el tiempo.
+  if (!res.ok) {
+    const cuerpo = await res.text().catch(() => '');
+    throw new FalloProveedor(`Groq ${res.status}: ${cuerpo.slice(0, 300)}`, { cupo: res.status === 429 });
+  }
+  const respuesta = await res.json();
+  return parsearJsonDelModelo(respuesta.choices?.[0]?.message?.content);
+}
+
+async function leerConGemini(imagenes) {
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  let response;
+  try {
+    response = await client.models.generateContent({
+      model: GEMINI_MODELO,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            ...imagenes.map((img) => ({ inlineData: { mimeType: img.tipo, data: img.datos } })),
+            { text: INSTRUCCIONES_FACTURA }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        httpOptions: { timeout: ESPERA_LECTURA_MS }
+      }
+    });
+  } catch (err) {
+    throw new FalloProveedor(`Gemini: ${err.message}`, { cupo: err.status === 429 });
+  }
+  return parsearJsonDelModelo(response.text);
+}
+
+function parsearJsonDelModelo(texto) {
+  const limpio = String(texto ?? '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+  try {
+    return JSON.parse(limpio);
+  } catch {
+    throw new FalloProveedor('La lectura no devolvió JSON.');
+  }
+}
+
+const LECTORES = { groq: leerConGroq, gemini: leerConGemini };
+
+// imagenes: [{ tipo: 'image/jpeg', datos: base64 }], las páginas de un mismo
+// comprobante. Devuelve el objeto crudo; factura-proveedor.js lo limpia.
+export async function leerComprobante(imagenes) {
+  // El stub "lee" la primera imagen como el JSON de la lectura: los tests
+  // mandan la factura ya escrita, como hace la voz con la frase.
+  if (process.env.NEXO_INTERPRETE === 'stub') {
+    try {
+      return JSON.parse(Buffer.from(imagenes[0].datos, 'base64').toString('utf8'));
+    } catch {
+      return { es_comprobante: false, renglones: [] };
+    }
+  }
+  const disponibles = proveedoresDisponibles();
+  if (!disponibles.length) {
+    throw new InterpreteError('Falta configurar la clave de la IA (GROQ_API_KEY): todavía no se pueden leer facturas.');
+  }
+  let ultimo;
+  for (const nombre of disponibles) {
+    try {
+      return await LECTORES[nombre](imagenes);
+    } catch (err) {
+      console.error(`[interprete] Falló la lectura con ${nombre}:`, err.message);
+      ultimo = err;
+      if (!(err instanceof FalloProveedor)) break;
+    }
+  }
+  if (ultimo instanceof FalloProveedor && ultimo.cupo) {
+    throw new InterpreteError('La lectura de facturas está con mucho uso en este momento. Probá de nuevo en un minuto.', 503);
+  }
+  throw new InterpreteError('No se pudo leer la factura. Probá de nuevo, o con una foto más nítida.', 502);
+}
+
 // --- Intérprete stub -------------------------------------------------
 //
 // Determinista y sin red: existe únicamente para poder probar el circuito
