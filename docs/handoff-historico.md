@@ -12366,3 +12366,49 @@ ancho del celular; el Chrome automatizado niega el permiso solo, así que
 en Chrome → Configuración → Notificaciones → Prender → Mandar una de prueba.
 En el iPhone, primero "Agregar a inicio" desde Safari y abrirla desde el
 ícono.
+
+## §147. El QR de la caja de Mercado Pago (10 de noviembre de 2026)
+
+**Pedido del usuario:** "el link de pago te cobra más comisión, no? no conviene
+usar el QR tradicional?". Sí: según calculadoras de terceros, el QR de una
+caja con dinero en cuenta ronda el 0,8 % + IVA, y el link o Checkout el 6,3 a
+6,6 % + IVA con la plata al instante.
+
+**Lo que se hizo, con la documentación vigente de Mercado Pago leída el 10 de
+noviembre** (crear sucursal, crear caja, crear orden QR, estados de la orden):
+- `mercadopago.js` suma `crearSucursal` (`POST /users/{id}/stores`),
+  `crearCaja` (`POST /pos`), `crearOrden` (`POST /v1/orders`, `type: "qr"`,
+  modo `dynamic`, con `X-Idempotency-Key`), `orden` (`GET /v1/orders/{id}`) y
+  `cancelarOrden` (`POST /v1/orders/{id}/cancel`).
+- **Migración aditiva:** `integraciones.qr_caja` (JSON con la sucursal, la
+  caja y su `external_id`).
+- `POST /api/integraciones/mercadopago/caja` (admin): con la calle, el número,
+  la ciudad y la provincia del local, crea la sucursal y la caja en la cuenta
+  del negocio. Se arma una vez, desde Configuración → Mercado Pago → "QR del
+  mostrador".
+- `POST /api/ventas/:id/qr` (los dos roles): con caja, una orden dinámica por
+  el saldo (vence en 15 minutos) y devuelve `type_response.qr_data`. **Sin
+  caja, o si Mercado Pago no deja crear la orden, cae al QR del link**
+  (`linkDePago`, que ahora comparte el link de "Registrar cobro") sin frenar
+  la venta, y lo anota en la actividad.
+- La API de Orders no avisa por el webhook de "Pagos" (la documentación dice
+  que esos tópicos no son compatibles), así que el mostrador pregunta: "Ya me
+  pagó" y el sondeo del punto de venta miran la orden, y si está `processed`
+  traen el pago (`transactions.payments[].reference.id`) y lo cobran con
+  `procesarPagoMP`, poniéndole la referencia de la venta.
+- Cancelar el QR del mostrador también cancela la orden en Mercado Pago.
+- El punto de venta dice "Escaneá con la app de Mercado Pago o tu billetera"
+  con el de la caja (la cámara no lo abre), y "o la cámara" con el del link.
+
+**Duda abierta:** la documentación no dice si una app de Checkout Pro
+("API de Preferences", la nuestra) puede crear órdenes QR. Si no puede, el
+mostrador sigue con el link y la actividad de Mercado Pago dice por qué.
+**Hay que probarlo con la cuenta real**: armar la caja y cobrar $100 con el QR
+desde la app de Mercado Pago de otra cuenta.
+
+**Cómo se verificó.** Un test más en `mercadopago.test.js` contra el falso
+(sin caja va el link; armar la caja es del admin y pide la dirección; la orden
+dinámica con la referencia y la clave de idempotencia; "Ya me pagó" antes y
+después de pagar; cancelar cancela la orden; si la API de Orders contesta 403,
+cae al link). 337 tests, lint y `verificar-migracion` (24 de 24). **No se vio
+en el navegador**: la tarjeta solo aparece con Mercado Pago conectado.

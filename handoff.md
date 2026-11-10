@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §146);
+    siguiente número (hoy el último es §147);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,13 @@
   reescribe nada.
 
 ## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §147: el QR de la caja de Mercado Pago, en `solla`
+sin publicar.** Configuración → Mercado Pago → "QR del mostrador" arma la
+sucursal y la caja; el punto de venta cobra con una orden QR dinámica
+(comisión ~0,8 % con dinero en cuenta) y cae al QR del link si Mercado Pago no
+la deja. Sin probar con la cuenta real: no se sabe si nuestra app tiene
+permiso para la API de Orders.
 
 **10 de noviembre, hist. §146: notificaciones en el celular y la compu, en
 `solla` sin publicar.** Web Push propio, sin dependencias: ventas online,
@@ -43,12 +50,9 @@ publicar.** Mano de obra (fija o por hora) y materiales en cada servicio; se
 congelan en la venta, miden el margen y van aparte en "adónde fue la plata".
 Clima Sur trae servicios con costo. Plan del usuario para lo que sigue:
 ~~el ingreso del gimnasio en dos pantallas~~ (§144), ~~el QR de Mercado Pago
-en el mostrador~~ (§145), ~~las notificaciones~~ (§146). **Sigue:** el QR
-tradicional de Mercado Pago (pedido del usuario el 10 de noviembre: cobra
-~0,8 % con dinero en cuenta, contra ~6,3 a 6,6 % del link): sucursal y caja
-en Mercado Pago y la orden con `POST /v1/orders` (`type: "qr"`), cayendo al
-QR del link si la app no tiene permiso; probarlo con $100. Después, la caja
-con todos los medios (`docs/investigacion-caja.md`). El usuario va a mostrar
+en el mostrador~~ (§145), ~~las notificaciones~~ (§146), ~~el QR tradicional~~ (§147,
+falta probarlo con $100). **Sigue:** la caja con todos los medios
+(`docs/investigacion-caja.md`). El usuario va a mostrar
 cosas de otros sistemas para sumar. "Entrar con Google" espera el trámite del
 usuario (los pasos se le dieron el 10 de noviembre; la vuelta es
 `/api/auth/google/vuelta`). Después, el contenido (flyer, video, redes).
