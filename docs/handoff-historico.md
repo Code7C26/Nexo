@@ -12228,3 +12228,48 @@ el trabajo pendiente con sus materiales y la venta del trabajo terminado.
 por hora; los materiales en el punto de venta; y las ventas viejas de los
 negocios de ejemplo ("Lo que ya tenías") cuentan la mano de obra, pero no los
 materiales, porque no mueven stock.
+
+## §144. El ingreso del gimnasio en dos pantallas (10 de noviembre de 2026)
+
+**Pedido del usuario:** "mejorar el ingreso del gym para ponerlo en dos
+pantallas (ingresante y recepción)".
+
+**Lo que se hizo:**
+- **La pantalla de entrada** (`#/entrada`, `frontend/js/dominios/entrada.js`):
+  la que ve el socio en una tablet o una compu en la puerta, con la sesión del
+  negocio. Tapa todo, menú incluido (z-index 49, debajo de los modales para
+  que "Salir" pueda preguntar; el asistente y la hamburguesa se esconden con
+  `:has()`), en el negro de la marca. Teclado numérico grande y también uno
+  de verdad. Al día: "¡Hola, Ana!" y entra solo. Si debe, si no empezó o si
+  está de baja: "Ana, pasá por recepción", sin decir cuánto, porque la ve
+  cualquiera en la fila. Vuelve sola a pedir otro DNI a los 4,5 s.
+- **Backend** (`server.js`, "La pantalla de entrada"): `POST
+  /api/socios/entrada` busca por número de socio o por DNI (solo los dígitos),
+  anota el ingreso con `por_pantalla = 1` y no lo repite si el mismo socio
+  entró hace menos de 5 minutos. Si no está al día, deja un aviso para la
+  recepción. Los avisos viven **en memoria**, por negocio, 30 minutos: son de
+  quien está parado ahora, no un registro, y lo que queda es el ingreso.
+  `GET` los lista y `DELETE /api/socios/entrada/:socioId` los descarta.
+  Registrar el ingreso desde la recepción también saca el aviso.
+- **Migración aditiva:** `ingresos_socio.por_pantalla` (0 o 1, 0 por defecto).
+- **La recepción** (`#/ingreso`): arriba, "Esperando en la entrada", con
+  quién es, lo que debe y "Atender", que abre la tarjeta de siempre para
+  cobrar o dejar pasar. Se actualiza sola cada 5 segundos mientras está
+  abierta, y suena un aviso corto con cada uno nuevo. Abajo, "Pantalla de
+  entrada → Abrir", que la pone a pantalla completa. Los ingresos de hoy dicen
+  "entró solo, en la pantalla".
+- El gimnasio de ejemplo trae DNI en sus socios.
+
+**Cómo se verificó.** `backend/test/entrada.test.js` (4 tests: el aviso sin el
+importe, el aislamiento entre negocios, el antirrebote, el DNI inexistente y
+entrar solo), 330 tests y lint. En el navegador con "Probar sin registrarse" →
+Gimnasio Fuerza, la entrada en una pestaña y la recepción en otra: dos que
+deben aparecen esperando, uno al día aparece en la recepción a los pocos
+segundos sin recargar, y "Atender" → "Dejar pasar igual" saca el aviso. **No
+se miró en el ancho del celular** (la herramienta no cambió el tamaño de esa
+pestaña).
+
+**Decidido por mí, para revisar:** "Salir" de la pantalla de entrada solo
+pregunta; quien la toque entra a la app con la sesión del aparato. Conviene
+que la tablet use un usuario empleado (no ve costos). Para después: pedir la
+contraseña o un PIN para salir, y entrar con un QR del carnet (la cámara).
