@@ -2266,7 +2266,11 @@ const CLAVES_SENSIBLES = new Set([
   'mercaderia',
   'costos',
   'costo_por_venta',
-  'ganancia_despues'
+  'ganancia_despues',
+  // El costo de los servicios (hist. §143).
+  'mano_obra',
+  'costo_mano_obra',
+  'costo_materiales'
 ]);
 
 function podarSensibles(valor) {
@@ -4379,6 +4383,7 @@ const SELECT_PRODUCTO = `
          productos.categoria_id, categorias.nombre AS categoria,
          productos.margen_objetivo, productos.unidad, productos.tipo,
          productos.descripcion, productos.duracion_minutos, productos.alicuota_iva,
+         productos.mano_obra, productos.mano_obra_por,
          COALESCE(stock_actual.cantidad, 0) AS stock,
          (SELECT COUNT(*) FROM producto_variantes
            WHERE producto_variantes.producto_id = productos.id AND producto_variantes.activo = 1) AS variantes_count,
@@ -4439,13 +4444,19 @@ function estadoStock(stock, stockMinimo, stockMaximo) {
 // clave (CLAUDE.md §35) y no los conoce.
 // Si el negocio discrimina IVA, el margen se mide sobre el precio sin IVA
 // (hist. §114): el costo de lo comprado con factura A ya va sin IVA.
-function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}, discrimina = false) {
+// Un servicio no se compra: su costo es la mano de obra de cada uno más sus
+// materiales con el costo de hoy (hist. §143), y con eso se mide su margen.
+function decorarProducto({ stock_variantes, valorizado_variantes, ...p }, precios = {}, discrimina = false, costoMateriales = 0) {
   const valorizado = valorizadoProducto(p.precio_costo, p.stock, stock_variantes, valorizado_variantes);
   if (stock_variantes && p.stock > 0) p.precio_costo = valorizado / p.stock;
+  const servicio =
+    p.tipo === 'servicio' ? { costo_mano_obra: manoObraUnitaria(p), costo_materiales: redondear2(costoMateriales) } : null;
+  const costo = servicio ? p.precio_costo + servicio.costo_mano_obra + servicio.costo_materiales : p.precio_costo;
   const precio = discrimina ? p.precio_venta - ivaIncluido(p.precio_venta, p.alicuota_iva) : p.precio_venta;
-  const margen = precio > 0 ? ((precio - p.precio_costo) / precio) * 100 : null;
+  const margen = precio > 0 ? ((precio - costo) / precio) * 100 : null;
   return {
     ...p,
+    ...servicio,
     precios,
     valorizado,
     margen,
@@ -4465,8 +4476,29 @@ app.get('/api/productos', (req, res) => {
     .all(req.usuario.organizacion_id);
   const preciosPorProducto = obtenerPreciosPorProducto(req.usuario.organizacion_id);
   const discrimina = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id));
-  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id], discrimina)));
+  const materiales = costoMaterialesPorProducto(req.usuario.organizacion_id);
+  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id], discrimina, materiales.get(p.id))));
 });
+
+// Lo que cuestan hoy los materiales de vender uno de cada producto
+// (componentes_venta, hist. §126 y §143): el promedio ponderado de cada
+// material, o el de su variante.
+function costoMaterialesPorProducto(org) {
+  return new Map(
+    db
+      .prepare(
+        `SELECT componentes_venta.producto_id,
+                SUM(componentes_venta.cantidad * COALESCE(producto_variantes.precio_costo, productos.precio_costo)) AS costo
+           FROM componentes_venta
+           JOIN productos ON productos.id = componentes_venta.componente_id
+           LEFT JOIN producto_variantes ON producto_variantes.id = componentes_venta.componente_variante_id
+          WHERE componentes_venta.organizacion_id = ?
+          GROUP BY componentes_venta.producto_id`
+      )
+      .all(org)
+      .map((f) => [f.producto_id, f.costo ?? 0])
+  );
+}
 
 function normalizarPrecio(valor) {
   return valor === undefined || valor === null || valor === '' ? 0 : Number(valor);
@@ -4508,6 +4540,46 @@ function normalizarDescripcion(valor) {
 }
 function normalizarDuracion(valor) {
   return valor === undefined || valor === null || valor === '' ? null : Number(valor);
+}
+
+// La mano de obra de un servicio (hist. §143): un fijo por cada uno, o por
+// hora. Vacío es sin mano de obra; un producto nunca la tiene (lo suyo es el
+// costo de compra o de producción).
+const MANO_OBRA_POR = ['servicio', 'hora'];
+function normalizarManoObra({ tipo, mano_obra, mano_obra_por }) {
+  if (tipo !== 'servicio' || mano_obra === undefined || mano_obra === null || mano_obra === '') {
+    return { mano_obra: null, mano_obra_por: null };
+  }
+  return { mano_obra: Number(mano_obra), mano_obra_por: mano_obra_por ?? 'servicio' };
+}
+function errorManoObra(producto) {
+  const { mano_obra, mano_obra_por } = normalizarManoObra(producto);
+  if (mano_obra === null) return null;
+  if (!Number.isFinite(mano_obra) || mano_obra < 0) return 'La mano de obra tiene que ser un importe mayor o igual a 0.';
+  if (!MANO_OBRA_POR.includes(mano_obra_por)) return 'La mano de obra va por servicio o por hora.';
+  if (mano_obra_por === 'hora' && producto.unidad !== 'hora' && !normalizarDuracion(producto.duracion_minutos)) {
+    return 'Para contar la mano de obra por hora, cargá cuánto dura el servicio (o vendelo por hora).';
+  }
+  return null;
+}
+// Lo que cuesta la mano de obra de cada unidad vendida: el fijo, o la tarifa
+// por las horas que lleva (si se vende por hora, cada unidad ya es una hora).
+function manoObraUnitaria(producto) {
+  const { mano_obra, mano_obra_por } = normalizarManoObra(producto);
+  if (!(mano_obra > 0)) return 0;
+  if (mano_obra_por === 'servicio' || producto.unidad === 'hora') return mano_obra;
+  return redondear2((mano_obra * (producto.duracion_minutos ?? 0)) / 60);
+}
+// El costo que se congela en un renglón vendido (CLAUDE.md §8): el promedio
+// ponderado del producto o de su variante, más la mano de obra si es un
+// servicio. Devuelve también la mano de obra sola, para el desglose.
+function costoDelRenglon(productoId, varianteId) {
+  const producto = db
+    .prepare('SELECT precio_costo, tipo, unidad, duracion_minutos, mano_obra, mano_obra_por FROM productos WHERE id = ?')
+    .get(productoId);
+  const base = varianteId ? db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?').get(varianteId).precio_costo : producto.precio_costo;
+  const manoObra = manoObraUnitaria(producto);
+  return { costo: base + manoObra, mano_obra: manoObra };
 }
 
 // El código de barras se guarda sin espacios: en el envase suele venir
@@ -4575,13 +4647,11 @@ function codigoDeBarrasOcupado(codigo, organizacionId, { productoId = null, vari
 // Validación compartida por POST y PATCH. Devuelve el mensaje de error o
 // null si está todo bien. Notar que precio_costo NO se lee del body en
 // ningún lado: el costo lo fija la compra al proveedor, no esta pantalla.
-function validarProducto(
-  {
+function validarProducto(producto, organizacionId) {
+  const {
     nombre, precio_venta, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo, descripcion, duracion_minutos, alicuota_iva,
     codigo_barras, plu
-  },
-  organizacionId
-) {
+  } = producto;
   if (!nombre || !nombre.trim()) {
     return 'El producto necesita un nombre.';
   }
@@ -4606,6 +4676,8 @@ function validarProducto(
   if (alicuota_iva != null && !ALICUOTAS_IVA.includes(String(alicuota_iva))) {
     return 'La alícuota de IVA no es válida.';
   }
+  const errorMano = errorManoObra(producto);
+  if (errorMano) return errorMano;
   const venta = normalizarPrecio(precio_venta);
   if (Number.isNaN(venta) || venta < 0) {
     return 'El precio de venta debe ser un número mayor o igual a 0.';
@@ -4674,8 +4746,8 @@ function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) 
     ({ lastInsertRowid } = db
       .prepare(
         `INSERT INTO productos (nombre, sku, precio_costo, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, organizacion_id, unidad, tipo,
-                                descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu)
-         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu, mano_obra, mano_obra_por)
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         nombre.trim(),
@@ -4693,7 +4765,8 @@ function insertarProducto(cuerpo, organizacionId, { contarEnPlan = true } = {}) 
         normalizarDuracion(duracion_minutos),
         alicuota_iva == null ? '21' : String(alicuota_iva),
         codigoBarras,
-        pluNormalizado
+        pluNormalizado,
+        ...Object.values(normalizarManoObra(cuerpo))
       ));
   } catch (err) {
     if (String(err.message).includes('UNIQUE constraint failed') && String(err.message).includes('codigo_barras')) {
@@ -4762,7 +4835,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   const producto = db
     .prepare(
       `SELECT id, nombre, sku, precio_venta, activo, stock_minimo, stock_maximo, categoria_id, margen_objetivo, unidad, tipo,
-              descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu
+              descripcion, duracion_minutos, alicuota_iva, codigo_barras, plu, mano_obra, mano_obra_por
          FROM productos WHERE id = ? AND organizacion_id = ?`
     )
     .get(productoId, req.usuario.organizacion_id);
@@ -4836,7 +4909,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     duracion_minutos: normalizarDuracion(fusionado.duracion_minutos),
     alicuota_iva: fusionado.alicuota_iva == null ? '21' : String(fusionado.alicuota_iva),
     codigo_barras: normalizarCodigoBarras(fusionado.codigo_barras),
-    plu: normalizarPlu(fusionado.plu)
+    plu: normalizarPlu(fusionado.plu),
+    ...normalizarManoObra({ ...fusionado, tipo: fusionado.tipo ?? 'producto' })
   };
   const ocupado =
     codigoDeBarrasOcupado(nuevo.codigo_barras, req.usuario.organizacion_id, { productoId }) ??
@@ -4882,7 +4956,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
   // ya audita su propio "crear/confirmar" en la Fase B.
   const diff = diffCampos(producto, nuevo, [
     'nombre', 'sku', 'precio_venta', 'activo', 'stock_minimo', 'stock_maximo', 'categoria_id', 'margen_objetivo', 'unidad', 'tipo',
-    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras', 'plu'
+    'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras', 'plu', 'mano_obra', 'mano_obra_por'
   ]);
 
   withTransaction(() => {
@@ -4892,7 +4966,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     db.prepare(
       `UPDATE productos
           SET nombre = ?, sku = ?, precio_venta = ?, activo = ?, stock_minimo = ?, stock_maximo = ?, categoria_id = ?, margen_objetivo = ?,
-              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?, plu = ?
+              unidad = ?, tipo = ?, descripcion = ?, duracion_minutos = ?, alicuota_iva = ?, codigo_barras = ?, plu = ?,
+              mano_obra = ?, mano_obra_por = ?
         WHERE id = ?`
     ).run(
       nuevo.nombre,
@@ -4910,6 +4985,8 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
       nuevo.alicuota_iva,
       nuevo.codigo_barras,
       nuevo.plu,
+      nuevo.mano_obra,
+      nuevo.mano_obra_por,
       productoId
     );
     if (preciosPorLista) {
@@ -6705,13 +6782,16 @@ function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacio
   // los tuvieron: un servicio no tiene costo de mercadería y bajaría el promedio.
   const general = db
     .prepare(
-      `SELECT COUNT(*) AS n, SUM(t.total) AS total, SUM(t.costo) AS costo, SUM(t.iva) AS iva,
+      `SELECT COUNT(*) AS n, SUM(t.total) AS total, SUM(t.costo) AS costo, SUM(t.mano_obra) AS mano_obra, SUM(t.iva) AS iva,
               SUM(CASE WHEN t.costo > 0 THEN 1 ELSE 0 END) AS n_costo,
               SUM(CASE WHEN t.costo > 0 THEN t.total ELSE 0 END) AS total_costo,
+              SUM(CASE WHEN t.mano_obra > 0 THEN 1 ELSE 0 END) AS n_mano_obra,
+              SUM(CASE WHEN t.mano_obra > 0 THEN t.total ELSE 0 END) AS total_mano_obra,
               SUM(CASE WHEN t.iva > 0 THEN 1 ELSE 0 END) AS n_iva,
               SUM(CASE WHEN t.iva > 0 THEN t.total ELSE 0 END) AS total_iva
          FROM (SELECT SUM(venta_items.cantidad * venta_items.precio_unitario) AS total,
-                      SUM(venta_items.cantidad * venta_items.costo_unitario_historico) AS costo, SUM(venta_items.iva) AS iva
+                      SUM(venta_items.cantidad * (venta_items.costo_unitario_historico - venta_items.costo_mano_obra)) AS costo,
+                      SUM(venta_items.cantidad * venta_items.costo_mano_obra) AS mano_obra, SUM(venta_items.iva) AS iva
                  FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
                 WHERE ${filtro}
                 GROUP BY ventas.id) t`
@@ -6754,18 +6834,35 @@ function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacio
   });
 
   const filas = [];
-  const costoMercaderia = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0);
+  // La mano de obra de los servicios (hist. §143) va aparte de la mercadería.
+  const costoManoObra = items.reduce((acc, i) => acc + i.cantidad * i.costo_mano_obra, 0);
+  const costoMercaderia = items.reduce((acc, i) => acc + i.cantidad * i.costo_unitario_historico, 0) - costoManoObra;
   // Una venta de servicios no tiene mercadería: la fila en cero sería ruido.
-  if (costoMercaderia > 0) {
+  if (costoMercaderia > 0.005) {
     filas.push(
       fila('mercaderia', 'Mercadería', costoMercaderia, promedio({ n: general.n_costo, total: general.total_costo, costo: general.costo }, 'costo'))
     );
   }
+  if (costoManoObra > 0) {
+    filas.push(
+      fila(
+        'mano_obra',
+        'Mano de obra',
+        costoManoObra,
+        promedio({ n: general.n_mano_obra, total: general.total_mano_obra, mano_obra: general.mano_obra }, 'mano_obra')
+      )
+    );
+  }
+  // En un servicio, lo usado son sus materiales (el gas, los caños); en un
+  // producto, el packaging (la caja, la bolsa). Cuentan los renglones que
+  // llevan algo al venderse: el kit que se vende con la instalación no.
   const costoConsumos = consumos.reduce((acc, c) => acc + c.cantidad * c.costo_unitario_historico, 0);
   if (costoConsumos > 0) {
-    filas.push(
-      fila('consumos', 'Packaging (lo usado al vender)', costoConsumos, promedio(deConsumos, 'importe'), consumos.map((c) => c.nombre))
-    );
+    const llevan = componentesPorProducto(organizacionId);
+    const tipos = new Set(items.filter((i) => llevan.has(i.producto_id)).map((i) => i.tipo));
+    const nombre =
+      tipos.size === 2 ? 'Materiales y packaging' : tipos.has('servicio') ? 'Materiales' : 'Packaging (lo usado al vender)';
+    filas.push(fila('consumos', nombre, costoConsumos, promedio(deConsumos, 'importe'), consumos.map((c) => c.nombre)));
   }
   const categorias = new Map();
   for (const g of costosDeVender) {
@@ -6785,7 +6882,8 @@ function desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacio
   const gastosTodos = [...porCategoria.values()].reduce((acc, c) => acc + (c.importe ?? 0), 0);
   const quedoPromedio =
     general.n >= VENTAS_MINIMAS_PROMEDIO && general.total > 0
-      ? (general.total - general.costo - (general.iva ?? 0) - (deConsumos.importe ?? 0) - gastosTodos) / general.total
+      ? (general.total - general.costo - (general.mano_obra ?? 0) - (general.iva ?? 0) - (deConsumos.importe ?? 0) - gastosTodos) /
+        general.total
       : null;
   const quedo = base - costos;
   return {
@@ -6954,6 +7052,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
+              venta_items.costo_mano_obra, productos.tipo,
               venta_items.alicuota_iva, venta_items.iva,
               venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista,
               COALESCE((
@@ -7259,15 +7358,12 @@ function crearVenta({
       canalVenta
     );
 
-  const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
-  // Espejo de buscarCostoActual, pero a nivel variante: el costo congelado
-  // de un item con variante es el promedio ponderado de ESA variante, no el
-  // del producto padre.
-  const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
+  // El costo congelado de un item con variante es el promedio ponderado de
+  // ESA variante, no el del producto padre (costoDelRenglon).
   const insertItem = db.prepare(
     `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
-                              oferta_id, precio_lista)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                              oferta_id, precio_lista, costo_mano_obra)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const condicionIva = condicionIvaNegocio(organizacion_id);
   // Las ofertas (hist. §133): la de cada renglón es la que ganaba el día de
@@ -7284,10 +7380,8 @@ function crearVenta({
     const varianteId = item.variante_id ? Number(item.variante_id) : null;
     // El costo se congela ACA, antes de tocar nada más del producto: es
     // la foto del momento de la venta, no se vuelve a recalcular después.
-    // La alícuota también (hist. §113).
-    const costoActual = varianteId
-      ? buscarCostoVariante.get(varianteId).precio_costo
-      : buscarCostoActual.get(item.producto_id).precio_costo;
+    // La alícuota también (hist. §113), y la mano de obra (hist. §143).
+    const costoActual = costoDelRenglon(item.producto_id, varianteId);
     const { alicuota_iva, iva } = ivaDelRenglon(
       { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
       condicionIva
@@ -7299,11 +7393,12 @@ function crearVenta({
       varianteId,
       item.cantidad,
       item.precio_unitario,
-      costoActual,
+      costoActual.costo,
       alicuota_iva,
       iva,
       conOferta?.oferta_id ?? null,
-      conOferta?.precio_lista ?? null
+      conOferta?.precio_lista ?? null,
+      costoActual.mano_obra
     );
     if (!carga_inicial) {
       registrarMovimientoStock({
@@ -7620,12 +7715,10 @@ app.put('/api/ventas/:id', (req, res) => {
 
     db.prepare('DELETE FROM venta_items WHERE venta_id = ?').run(ventaId);
 
-    const buscarCostoActual = db.prepare('SELECT precio_costo FROM productos WHERE id = ?');
-    const buscarCostoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
     const insertItem = db.prepare(
       `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
-                                oferta_id, precio_lista)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                oferta_id, precio_lista, costo_mano_obra)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const condicionIva = condicionIvaNegocio(req.usuario.organizacion_id);
     // Las ofertas, como al crearla (hist. §133): las del día de la venta.
@@ -7641,9 +7734,7 @@ app.put('/api/ventas/:id', (req, res) => {
       const varianteId = item.variante_id ? Number(item.variante_id) : null;
       // Mismo criterio que crear una venta: el costo y la alícuota se
       // congelan con los del producto/variante en este momento, no los de antes.
-      const costoActual = varianteId
-        ? buscarCostoVariante.get(varianteId).precio_costo
-        : buscarCostoActual.get(item.producto_id).precio_costo;
+      const costoActual = costoDelRenglon(item.producto_id, varianteId);
       const { alicuota_iva, iva } = ivaDelRenglon(
         { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
         condicionIva
@@ -7655,11 +7746,12 @@ app.put('/api/ventas/:id', (req, res) => {
         varianteId,
         item.cantidad,
         item.precio_unitario,
-        costoActual,
+        costoActual.costo,
         alicuota_iva,
         iva,
         conOferta?.oferta_id ?? null,
-        conOferta?.precio_lista ?? null
+        conOferta?.precio_lista ?? null,
+        costoActual.mano_obra
       );
       registrarMovimientoStock({
         producto_id: item.producto_id,
@@ -8900,6 +8992,9 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
   const errorStock = validarStockDisponible(items, deposito, organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
 
+  // Los materiales que se usaron de verdad (hist. §143): se corrigen al
+  // terminar (1,5 kg de gas y no 1). Sin mandarlos, los de siempre.
+  const consumos = req.body?.consumos;
   const ventaId = withTransaction(() => {
     const nuevaVentaId = crearVenta({
       cliente_id: trabajo.cliente_id,
@@ -8907,7 +9002,8 @@ app.post('/api/trabajos/:id/terminar', (req, res) => {
       fecha: null,
       deposito_id: deposito,
       lista_precio_id: trabajo.lista_precio_id,
-      organizacion_id: organizacionId
+      organizacion_id: organizacionId,
+      consumos
     });
     db.prepare("UPDATE trabajos SET estado = 'terminado', venta_id = ? WHERE id = ?").run(nuevaVentaId, trabajo.id);
     auditar(req, {

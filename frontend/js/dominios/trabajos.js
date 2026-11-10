@@ -27,6 +27,7 @@ import { icono } from "../core/iconos.js";
 import { moduloActivo } from "../core/negocio.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
+import { crearConsumos } from "../core/al-vender.js";
 
 // Pendiente en naranja (conviene mirarlo), en curso en azul, terminado en verde
 // y cancelado en gris.
@@ -189,6 +190,17 @@ function botonesFicha(t) {
   ].join("");
 }
 
+// Los materiales de los servicios del trabajo (hist. §143): Nexo propone los
+// de siempre y se corrige lo que se usó de verdad antes de terminarlo.
+const materiales = crearConsumos(document.getElementById("fichaTrabajoMateriales"), { titulo: "Materiales que se usan" });
+
+async function pintarMateriales(t) {
+  materiales.reiniciar();
+  if (!porHacer(t) || t.items.length === 0) return;
+  await materiales.cargar();
+  materiales.proponer(t.items);
+}
+
 function pintarFicha(t) {
   fichaTrabajo = t;
   const hoy = hoyISO();
@@ -224,6 +236,7 @@ function pintarFicha(t) {
 
 async function abrirFicha(id) {
   pintarFicha(await api(`/api/trabajos/${id}`, { error: "No se pudo cargar el trabajo." }));
+  await pintarMateriales(fichaTrabajo);
   mostrarVista("trabajo-detalle", { titulo: fichaTrabajo.titulo });
 }
 
@@ -262,6 +275,7 @@ async function terminar(boton) {
   try {
     ({ venta_id: ventaId } = await api(`/api/trabajos/${fichaTrabajo.id}/terminar`, {
       method: "POST",
+      body: { consumos: materiales.leer() },
       error: "No se pudo terminar el trabajo."
     }));
   } finally {

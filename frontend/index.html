@@ -1170,6 +1170,10 @@
             <tbody id="fichaTrabajoItems"></tbody>
           </table>
           </div>
+          <!-- Los materiales que se usan (hist. §143): los de siempre de cada
+               servicio, que se corrigen antes de terminar. Se oculta solo si
+               no lleva ninguno (core/al-vender.js). -->
+          <div id="fichaTrabajoMateriales" hidden></div>
         </section>
       </section>
 
@@ -2609,9 +2613,11 @@
             </form>
           </div>
           <div class="socio-alta produccion-pestana" data-pestana="lleva" hidden>
-            <a class="btn-link" href="#/produccion/al-vender"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Al vender</a>
+            <!-- Con un servicio es la página de sus materiales (hist. §143):
+                 prepararAlVender cambia los textos y adónde vuelve. -->
+            <a class="btn-link" id="alVenderVolver" href="#/produccion/al-vender"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Al vender</span></a>
             <form class="socio-alta-form" id="formAlVender" novalidate>
-              <div class="form config-tarjeta">
+              <div class="form config-tarjeta" id="alVenderQue">
                 <div class="config-tarjeta-cuerpo">
                   <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Qué vendés?</p>
                   <div class="socio-alta-grupo">
@@ -2625,8 +2631,8 @@
 
               <div class="form config-tarjeta">
                 <div class="config-tarjeta-cuerpo">
-                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿Qué se usa al venderlo?</p>
-                  <p class="opciones-nota">La caja de cada uno, o la bolsa una sola vez por venta aunque se lleven seis. Son productos como cualquier otro: se compran con las compras de siempre.</p>
+                  <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> <span id="alVenderPregunta">¿Qué se usa al venderlo?</span></p>
+                  <p class="opciones-nota" id="alVenderNota">La caja de cada uno, o la bolsa una sola vez por venta aunque se lleven seis. Son productos como cualquier otro: se compran con las compras de siempre.</p>
                   <div class="item-rows" data-materiales></div>
                   <button type="button" class="btn-link" data-accion="agregar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Agregar</button>
                 </div>
@@ -2890,6 +2896,9 @@
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnRecetaProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chef-hat"></use></svg> Receta</button>
               <button class="btn btn-secundario col-admin" id="btnAlVenderProducto" data-modulo="produccion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Al vender</button>
+              <!-- Los materiales de un servicio (hist. §143): la misma página
+                   de Al vender, aunque Producción esté apagada. -->
+              <button class="btn btn-secundario col-admin" id="btnMaterialesServicio" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> Materiales</button>
               <button class="btn btn-secundario" id="btnVariantesProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Variantes</button>
               <button class="btn btn-primary" id="btnEditarProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
@@ -6640,6 +6649,20 @@
         <label id="productoDuracionCampo" hidden>Duración estimada (minutos)
           <input type="number" name="duracion_minutos" step="1" min="1" max="10080" placeholder="Opcional" />
         </label>
+        <!-- Lo que le cuesta al negocio hacer el servicio, aparte de los
+             materiales (hist. §143): un fijo por cada uno o por hora. Con
+             eso y los materiales se mide el margen del servicio. -->
+        <div class="form-fila" id="productoManoObraCampos" hidden>
+          <label>Mano de obra
+            <input type="number" name="mano_obra" step="0.01" min="0" placeholder="Opcional: lo que te cuesta hacerlo" autocomplete="off" />
+          </label>
+          <label>Se cuenta
+            <select name="mano_obra_por">
+              <option value="servicio">Por servicio</option>
+              <option value="hora">Por hora</option>
+            </select>
+          </label>
+        </div>
         <div class="form-fila" id="productoStockCampos">
           <label>Stock mínimo
             <input type="number" name="stock_minimo" step="0.01" min="0" placeholder="0" />

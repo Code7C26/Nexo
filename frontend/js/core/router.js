@@ -129,6 +129,11 @@ const VISTAS_SOLO_ADMIN = new Set([
   "venta-online"
 ]);
 
+// Lo que lleva algo al venderse se carga en Producción, pero los materiales
+// de un servicio (hist. §143) también, aunque el módulo esté apagado: un
+// técnico no produce nada.
+const paginaSinModulo = (viewId, subruta) => viewId === "produccion" && /^lleva\/\d+$/.test(subruta ?? "");
+
 // `subruta` es lo que va después de la vista en el hash (#/configuracion/negocio):
 // la recibe el handler de alEntrarEnVista y queda en el deep-link.
 export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = null } = {}) {
@@ -138,7 +143,7 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
   if (VISTAS_SOLO_ADMIN.has(viewId) && !esAdmin()) {
     viewId = "ventas";
   }
-  if (MODULO_DE_VISTA[viewId] && !moduloActivo(MODULO_DE_VISTA[viewId])) {
+  if (MODULO_DE_VISTA[viewId] && !moduloActivo(MODULO_DE_VISTA[viewId]) && !paginaSinModulo(viewId, subruta)) {
     viewId = "ventas";
   }
   if (viewId === "plataforma" && !esPlataforma()) {

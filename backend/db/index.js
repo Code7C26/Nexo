@@ -2227,6 +2227,20 @@ ampliarCheck(
   "'pago'"
 );
 
+// El costo de los servicios (hist. §143, ver schema.sql): la mano de obra del
+// servicio y la parte de mano de obra congelada en cada renglón vendido.
+// Aditivas, sin backfill: NULL es sin mano de obra, y lo vendido antes queda
+// con 0 (su costo ya era el que era).
+for (const [tabla, columna] of [
+  ['productos', 'mano_obra REAL'],
+  ['productos', 'mano_obra_por TEXT'],
+  ['venta_items', 'costo_mano_obra REAL NOT NULL DEFAULT 0']
+]) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
+  }
+}
+
 function ampliarCheck(tabla, viejo, nuevo, marca, hijas = []) {
   const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tabla).sql;
   if (sql.includes(marca)) return;

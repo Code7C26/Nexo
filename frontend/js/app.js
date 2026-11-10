@@ -1991,7 +1991,7 @@ function renderProductos(lista) {
       )}
       <td data-label="SKU" class="col-sku">${esc(p.sku || "—")}</td>
       <td data-label="Categoría">${esc(p.categoria || "—")}</td>
-      <td data-label="Costo" class="align-right mono col-admin">${money(p.precio_costo)}</td>
+      <td data-label="Costo" class="align-right mono col-admin">${money(costoDeProducto(p))}</td>
       <td data-label="Valorizado" class="align-right mono col-admin" data-modulo="stock">${money(p.valorizado)}</td>
       <td data-label="Precio" class="align-right mono m-valor">${precioCelda}</td>
       <td data-label="Margen" class="align-right mono col-admin">${p.margen == null ? "—" : porcentaje(p.margen)}</td>
@@ -2104,6 +2104,29 @@ function origenMovimiento(m) {
   return "Ajuste manual";
 }
 
+// El costo de uno: el de compra o producción, o en un servicio, su mano de
+// obra y sus materiales (hist. §143).
+const costoDeProducto = (p) =>
+  p.tipo === "servicio" ? (p.costo_mano_obra ?? 0) + (p.costo_materiales ?? 0) : p.precio_costo;
+
+// Lo que le cuesta al negocio hacer un servicio (hist. §143): su mano de obra
+// y sus materiales, con el costo de hoy. Solo el admin lo ve.
+function camposCostoServicio(producto, materiales) {
+  const manoObra =
+    producto.mano_obra == null
+      ? null
+      : `${money(producto.mano_obra)} ${producto.mano_obra_por === "hora" ? "por hora" : "por servicio"}`;
+  const listaMateriales = materiales
+    .map((c) => `${cantidad(c.cantidad, c.unidad)} ${c.nombre}${c.por_venta ? " por trabajo" : ""}`)
+    .join(", ");
+  const costo = costoDeProducto(producto);
+  return [
+    ["Mano de obra", manoObra],
+    ["Materiales", listaMateriales || null],
+    ["Costo de hacerlo", costo > 0 ? money(costo) : null]
+  ];
+}
+
 async function abrirFichaProducto(id) {
   productoFichaId = id;
   const producto = productos.find((p) => p.id === id);
@@ -2121,6 +2144,13 @@ async function abrirFichaProducto(id) {
   document.getElementById("fichaProductoMovimientosPanel").hidden = esServicio;
   document.getElementById("btnVariantesProducto").hidden = esServicio;
   document.getElementById("btnRecetaProducto").hidden = esServicio;
+  // Lo que se usa al vender un servicio son sus materiales (hist. §143).
+  document.getElementById("btnAlVenderProducto").hidden = esServicio;
+  document.getElementById("btnMaterialesServicio").hidden = !esServicio;
+  const materiales =
+    esServicio && esAdmin()
+      ? (await api(`/api/productos/${id}/componentes-venta`, { error: "No se pudieron cargar los materiales." })).componentes
+      : [];
 
   const campos = [
     ...(esServicio ? [] : [["SKU", producto.sku]]),
@@ -2150,7 +2180,8 @@ async function abrirFichaProducto(id) {
     ...(esServicio
       ? [
           ["Tipo", "Servicio (sin stock)"],
-          ["Duración estimada", duracion(producto.duracion_minutos)]
+          ["Duración estimada", duracion(producto.duracion_minutos)],
+          ...(esAdmin() ? camposCostoServicio(producto, materiales) : [])
         ]
       : [
           ["Stock mínimo", cantidad(producto.stock_minimo, producto.unidad)],
@@ -2596,6 +2627,8 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   form.plu.value = producto?.plu ?? "";
   form.descripcion.value = producto?.descripcion ?? "";
   form.duracion_minutos.value = producto?.duracion_minutos ?? "";
+  form.mano_obra.value = producto?.mano_obra ?? "";
+  form.mano_obra_por.value = producto?.mano_obra_por ?? "servicio";
   form.categoria_id.value = producto?.categoria_id ?? "";
   form.precio_venta.value = producto?.precio_venta ?? "";
   form.margen_objetivo.value = producto?.margen_objetivo ?? "";
@@ -2634,6 +2667,7 @@ function mostrarCamposSegunTipo() {
   document.getElementById("productoPluCampo").hidden =
     (esServicio || conVariantes || !["kg", "g", "l", "ml"].includes(form.unidad.value)) && !form.plu.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
+  document.getElementById("productoManoObraCampos").hidden = !esServicio;
   document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
@@ -2671,6 +2705,9 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     descripcion: form.descripcion.value,
     // La duración es de un servicio: un producto no la manda.
     duracion_minutos: form.tipo.value === "servicio" && form.duracion_minutos.value !== "" ? Number(form.duracion_minutos.value) : null,
+    // La mano de obra también (hist. §143).
+    mano_obra: form.tipo.value === "servicio" && form.mano_obra.value !== "" ? Number(form.mano_obra.value) : null,
+    mano_obra_por: form.mano_obra_por.value,
     categoria_id: form.categoria_id.value || null,
     precio_venta: form.precio_venta.value,
     margen_objetivo: form.margen_objetivo.value === "" ? null : Number(form.margen_objetivo.value),
@@ -2889,6 +2926,7 @@ function renderVariantesTabla() {
 // La receta del producto (dominios/produccion.js), con el módulo prendido.
 document.getElementById("btnRecetaProducto").addEventListener("click", () => invocar("abrirReceta:producto", productoFichaId));
 document.getElementById("btnAlVenderProducto").addEventListener("click", () => invocar("abrirAlVender:producto", productoFichaId));
+document.getElementById("btnMaterialesServicio").addEventListener("click", () => invocar("abrirAlVender:producto", productoFichaId));
 
 document.getElementById("btnVariantesProducto").addEventListener("click", async () => {
   variantesProductoId = productoFichaId;
@@ -4636,7 +4674,7 @@ document.getElementById("formVenta").addEventListener("submit", async (e) => {
 // que quedó, y la lista con su importe, su porcentaje y el promedio del
 // negocio. El empleado no la recibe (el servidor la poda, como el costo).
 // Los colores van por clave: los gastos de la venta rotan entre tres.
-const COLOR_DESGLOSE = { mercaderia: "var(--ink-faint)", consumos: "var(--naranja)", iva: "var(--line-strong)" };
+const COLOR_DESGLOSE = { mercaderia: "var(--ink-faint)", mano_obra: "var(--serie-1)", consumos: "var(--naranja)", iva: "var(--line-strong)" };
 const COLORES_GASTO_DESGLOSE = ["var(--violeta)", "var(--info)", "var(--accent-warn)"];
 function pintarDesgloseVenta(desglose) {
   document.getElementById("fichaVentaCostosPanel").hidden = !desglose;
@@ -8412,6 +8450,7 @@ alEntrarEnVista("auditoria", cargarAuditoria);
 registrar("abrirFicha:cliente", abrirFichaCliente);
 registrar("abrirFicha:proveedor", abrirFichaProveedor);
 registrar("abrirFicha:venta", abrirFichaVenta);
+registrar("abrirFicha:producto", abrirFichaProducto);
 registrar("abrirFicha:presupuesto", abrirFichaPresupuesto);
 registrar("cargar:presupuestos", cargarPresupuestos);
 // Las altas que salen de una consulta (dominios/crm.js, hist. §90).

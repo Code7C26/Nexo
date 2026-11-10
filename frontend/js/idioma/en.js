@@ -4327,5 +4327,27 @@ export default {
   "Jue": "Thu",
   "Vie": "Fri",
   "Sáb": "Sat",
-  "Dom": "Sun"
+  "Dom": "Sun",
+
+  // El costo de los servicios (hist. §143)
+  "Materiales": "Materials",
+  "Mano de obra": "Labor",
+  "Opcional: lo que te cuesta hacerlo": "Optional: what it costs you to do it",
+  "Se cuenta": "Counted",
+  "Por servicio": "Per service",
+  "por hora": "per hour",
+  "por servicio": "per service",
+  "por trabajo": "per job",
+  "Costo de hacerlo": "Cost to do it",
+  "No se pudieron cargar los materiales.": "The materials could not be loaded.",
+  "¿Qué materiales lleva?": "What materials does it use?",
+  "Lo que suele llevar cada uno. Al terminar un trabajo se corrige lo que se usó de verdad, y entra al costo con el precio de compra.": "What each one usually takes. When a job is finished you correct what was actually used, and it goes into the cost at the purchase price.",
+  "Lo que suele llevar cada uno. Para que se descuenten del stock y entren al costo, prendé Compras y Stock en Configuración → Funciones.": "What each one usually takes. To deduct them from stock and count them in the cost, turn on Purchases and Stock in Settings → Features.",
+  "Materiales que se usan": "Materials used",
+  "La mano de obra tiene que ser un importe mayor o igual a 0.": "Labor has to be an amount greater than or equal to 0.",
+  "La mano de obra va por servicio o por hora.": "Labor is counted per service or per hour.",
+  "Para contar la mano de obra por hora, cargá cuánto dura el servicio (o vendelo por hora).": "To count labor per hour, enter how long the service takes (or sell it by the hour).",
+  "Materiales y packaging": "Materials and packaging",
+  "Materiales · Nexo": "Materials · Nexo",
+  "Con los costos de hoy, suma {0} a hacer uno.": "With today's costs, it adds {0} to doing one."
 };

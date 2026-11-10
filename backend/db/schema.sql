@@ -248,7 +248,14 @@ CREATE TABLE IF NOT EXISTS productos (
   -- El PLU: el código corto del producto en la balanza, que la etiqueta trae
   -- junto con el peso o el importe (hist. §132). Único por empresa; NULL = no
   -- se pesa en una balanza con etiquetas.
-  plu INTEGER
+  plu INTEGER,
+  -- La mano de obra de un servicio (hist. §143): lo que le cuesta al negocio
+  -- hacerlo, aparte de los materiales (componentes_venta). mano_obra_por es
+  -- 'servicio' (un fijo por cada uno) o 'hora' (por la duración estimada, o
+  -- por cada hora si se vende por hora). NULL las dos = sin mano de obra; un
+  -- producto nunca la tiene. Los valores los valida server.js, sin CHECK.
+  mano_obra REAL,
+  mano_obra_por TEXT
 );
 
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
@@ -477,7 +484,11 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- crearVenta solo si precio_unitario es el de la oferta que valía ese día;
   -- NULL las dos = sin oferta.
   oferta_id INTEGER REFERENCES ofertas(id),
-  precio_lista REAL
+  precio_lista REAL,
+  -- Cuánto de costo_unitario_historico es mano de obra (hist. §143), para
+  -- separarla de la mercadería en "adónde fue la plata". Ya está sumada al
+  -- costo: los márgenes y el resultado la cuentan sin mirar esta columna.
+  costo_mano_obra REAL NOT NULL DEFAULT 0
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
