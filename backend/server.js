@@ -8,6 +8,13 @@ import { interpretar, InterpreteError, transcribir, vozDisponible } from './inte
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
+import {
+  canjearCodigo as canjearCodigoGoogle,
+  googleConfigurado,
+  leerIdToken as leerIdTokenGoogle,
+  nuevoPedido as nuevoPedidoGoogle,
+  urlDeAutorizacion as urlDeAutorizacionGoogle
+} from './google.js';
 import { borrarDatosNegocio, exportarNegocio } from './db/datos-negocio.js';
 import { NEGOCIOS as NEGOCIOS_DE_EJEMPLO, clienteDeApi, llenarNegocio } from './negocios-de-ejemplo.js';
 import {
@@ -858,11 +865,13 @@ app.get('/api/auth/estado', (req, res) => {
   const registroAbierto = !registroCerrado();
   // ejemplos: el login ofrece "Probar sin registrarse".
   const ejemplos = ejemplosDisponibles();
+  // google: el login ofrece "Continuar con Google" (hist. §149).
+  const google = googleConfigurado();
   if (!sesion) {
-    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos });
+    return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos, google });
   }
   renovarSesion(token);
-  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto, ejemplos });
+  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto, ejemplos, google });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -1148,7 +1157,7 @@ function comprobanteDeAlta(email, comprobante) {
   return (
     db
       .prepare(
-        `SELECT id FROM codigos_mail
+        `SELECT id, codigo_hash FROM codigos_mail
           WHERE comprobante_hash = ? AND proposito = 'registro' AND email = ?
             AND usado IS NULL AND vence > datetime('now')`
       )
@@ -1177,7 +1186,11 @@ app.post('/api/auth/registro', (req, res) => {
   // es su mail: la columna sigue NOT NULL UNIQUE sin reconstruir la tabla.
   const email = normalizarMail(req.body?.email_cuenta);
   const nombre = String(req.body?.nombre ?? '').trim();
-  const password = String(req.body?.password ?? '');
+  // Con Google (hist. §149) no se elige contraseña: la cuenta nace con una al
+  // azar que nadie conoce, y entra con Google (o la cambia con "¿Te olvidaste
+  // la contraseña?").
+  const desdeGoogle = !req.body?.password && comprobanteDeAlta(email, req.body?.comprobante_email)?.codigo_hash === MARCA_GOOGLE;
+  const password = desdeGoogle ? randomBytes(32).toString('base64url') : String(req.body?.password ?? '');
   if (!empresa || !email || !nombre || !password) {
     return res.status(400).json({ error: 'Negocio, mail, nombre y contraseña son obligatorios.' });
   }
@@ -1285,7 +1298,7 @@ app.post('/api/auth/registro', (req, res) => {
       entidad_id: usuarioId,
       usuario_id: usuarioId,
       organizacion_id: orgId,
-      detalle: `Primer administrador creado: ${nombre} (${usuario}). ${textoAceptacion(aceptacion.edad)}`
+      detalle: `Primer administrador creado: ${nombre} (${usuario})${desdeGoogle ? ', con Google' : ''}. ${textoAceptacion(aceptacion.edad)}`
     });
   });
 
@@ -1307,6 +1320,99 @@ app.post('/api/auth/registro', (req, res) => {
     })
   });
 });
+
+
+/* ---------- Entrar con Google (hist. §149) ---------- */
+//
+// Quien tiene cuenta con ese mail entra directo (Google ya verificó que el
+// mail es suyo). Quien no tiene, sigue al alta guiada con el nombre y el mail
+// puestos y el mail ya confirmado: Nexo le da el mismo comprobante que el
+// código del mail (codigos_mail, marcado con MARCA_GOOGLE), y la cuenta nace
+// sin pedirle contraseña (la elige después con "¿Te olvidaste la
+// contraseña?" si alguna vez quiere entrar sin Google).
+
+const COOKIE_GOOGLE = 'nexo_google';
+const COOKIE_GOOGLE_ALTA = 'nexo_google_alta';
+const MARCA_GOOGLE = 'google';
+const GOOGLE_MINUTOS = 10;
+const vueltaDeGoogle = (req) => `${urlPublica(req)}/api/auth/google/vuelta`;
+const salirDeGoogle = (res, resultado) => res.redirect(`/app?google=${resultado}`);
+
+app.get('/api/auth/google', (req, res) => {
+  if (!googleConfigurado()) return salirDeGoogle(res, 'no-disponible');
+  if (registroExcedido(`google:${req.ip}`, 30)) return salirDeGoogle(res, 'demasiados');
+  const pedido = nuevoPedidoGoogle();
+  res.cookie(COOKIE_GOOGLE, `${pedido.state}.${pedido.verificador}`, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/api/auth/google',
+    maxAge: GOOGLE_MINUTOS * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+  });
+  res.redirect(urlDeAutorizacionGoogle(pedido, vueltaDeGoogle(req)));
+});
+
+app.get('/api/auth/google/vuelta', asincrono(async (req, res) => {
+  const guardado = leerCookie(req, COOKIE_GOOGLE) ?? '';
+  res.clearCookie(COOKIE_GOOGLE, { path: '/api/auth/google' });
+  const [state, verificador] = guardado.split('.');
+  if (req.query.error) return salirDeGoogle(res, 'cancelado');
+  if (!state || !verificador || typeof req.query.state !== 'string' || req.query.state !== state || typeof req.query.code !== 'string') {
+    return salirDeGoogle(res, 'error');
+  }
+  let persona;
+  try {
+    persona = leerIdTokenGoogle(await canjearCodigoGoogle(req.query.code, verificador, vueltaDeGoogle(req)));
+  } catch (err) {
+    console.error(`[google] ${err.message}`);
+    return salirDeGoogle(res, 'error');
+  }
+
+  // Con cuenta: entra al último negocio que usó, como en el login.
+  const fila = db
+    .prepare(
+      `SELECT usuarios.id, pertenencia.organizacion_id
+         FROM usuarios
+         LEFT JOIN usuario_organizaciones pertenencia
+           ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
+        WHERE LOWER(usuarios.email) = ?
+        ORDER BY pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
+        LIMIT 1`
+    )
+    .get(persona.email);
+  if (fila) {
+    ponerCookieSesion(res, crearSesion(fila.id, fila.organizacion_id));
+    db.prepare(
+      "UPDATE usuarios SET ultimo_acceso = datetime('now'), email_verificado = COALESCE(email_verificado, datetime('now')) WHERE id = ?"
+    ).run(fila.id);
+    if (fila.organizacion_id != null) marcarAcceso(fila.id, fila.organizacion_id);
+    registrarAuditoria({
+      accion: 'login',
+      entidad: 'usuario',
+      entidad_id: fila.id,
+      usuario_id: fila.id,
+      organizacion_id: fila.organizacion_id,
+      detalle: 'Inició sesión con Google'
+    });
+    return res.redirect('/app');
+  }
+
+  // Sin cuenta: al alta guiada, con el mail ya confirmado.
+  if (registroCerrado()) return salirDeGoogle(res, 'sin-cuenta');
+  const comprobante = randomBytes(32).toString('base64url');
+  db.prepare(
+    `INSERT INTO codigos_mail (proposito, email, codigo_hash, vence, confirmado, comprobante_hash)
+     VALUES ('registro', ?, ?, datetime('now', ?), datetime('now'), ?)`
+  ).run(persona.email, MARCA_GOOGLE, `+${COMPROBANTE_HORAS} hours`, hashToken(comprobante));
+  // La lee el alta (frontend/js/alta.js) y la borra: no es httpOnly.
+  res.cookie(COOKIE_GOOGLE_ALTA, Buffer.from(JSON.stringify({ ...persona, comprobante })).toString('base64url'), {
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 30 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+  });
+  res.redirect('/app#/crear-cuenta');
+}));
 
 // Los tipos de negocio y los módulos, para el alta guiada, que los muestra
 // antes de que exista una sesión. Es el mismo catálogo para todos y no tiene

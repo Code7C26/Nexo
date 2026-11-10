@@ -4240,8 +4240,8 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 /* "Probar sin registrarse": el botón del login y la lista de negocios de
    ejemplo, una tarjeta por negocio con su ícono, como las de los tipos del
    alta guiada. */
-.sesion-card .sesion-probar { min-height: 44px; font-size: var(--txt-md); }
-.sesion-card .sesion-probar[hidden] { display: none; }
+.sesion-card :is(.sesion-probar, .btn-google) { min-height: 44px; font-size: var(--txt-md); }
+.sesion-card :is(.sesion-probar, .btn-google)[hidden] { display: none; }
 .probar-lista {
   display: flex;
   flex-direction: column;
@@ -6388,6 +6388,12 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
   font-weight: 600;
   color: var(--ink);
 }
+
+/* Entrar con Google (hist. §149): el botón con su logo de colores, como pide
+   Google, sobre el secundario de Nexo. */
+.btn-google { gap: var(--sp-2); }
+.btn-google .ico-google { width: 18px; height: 18px; flex: none; }
+.alta-google-nota { margin: 0; font-size: var(--txt-sm); color: var(--ink-muted); }
 
 /* Configuración → Notificaciones (hist. §146). */
 .notif-icono {

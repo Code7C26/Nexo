@@ -5363,6 +5363,9 @@
         </label>
         <button type="button" class="btn-link sesion-olvido" id="irARecuperar">¿Te olvidaste la contraseña?</button>
         <button type="submit" class="btn btn-primary">Ingresar</button>
+        <!-- Entrar con Google (hist. §149): solo si el servidor lo tiene
+             configurado (sesion.js, estado.google). -->
+        <button type="button" class="btn btn-secundario btn-google" id="loginGoogle" hidden><svg class="ico ico-google" aria-hidden="true"><use href="/img/iconos.svg#google"></use></svg> Continuar con Google</button>
         <button type="button" class="btn btn-secundario sesion-probar" id="irAProbar" hidden>Probar sin registrarte</button>
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
       </form>
@@ -5612,6 +5615,10 @@
             <p>Con ella vas a entrar a Nexo. Vas a ser quien administra tu negocio, y después podés sumar a tu equipo.</p>
           </div>
           <p class="alta-plan" id="altaPlan" hidden></p>
+          <!-- Con Google (hist. §149): vuelve acá con el nombre y el mail
+               puestos y confirmados, y sin pedir contraseña (alta.js). -->
+          <button type="button" class="btn btn-secundario btn-google" id="altaGoogle" hidden><svg class="ico ico-google" aria-hidden="true"><use href="/img/iconos.svg#google"></use></svg> Crear la cuenta con Google</button>
+          <p class="alta-google-nota" id="altaGoogleNota" hidden></p>
           <label>Tu nombre
             <input type="text" id="altaNombre" autocomplete="name" maxlength="120" placeholder="Ej: Marta Gómez" />
           </label>
@@ -5619,7 +5626,7 @@
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg><input type="email" id="altaEmailCuenta" autocomplete="email" maxlength="254" autocapitalize="none" spellcheck="false" placeholder="tu@mail.com" aria-describedby="altaEmailCuentaAyuda" /></span>
             <span class="campo-ayuda" id="altaEmailCuentaAyuda">Con él vas a ingresar. Te mandamos un código para confirmar que es tuyo.</span>
           </label>
-          <label>Contraseña
+          <label id="altaPasswordCampo">Contraseña
             <span class="campo-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg><input type="password" id="altaPassword" autocomplete="new-password" maxlength="1000" aria-describedby="altaPasswordAyuda" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
             <span class="campo-ayuda" id="altaPasswordAyuda">Al menos 8 caracteres.</span>
           </label>

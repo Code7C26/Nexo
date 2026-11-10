@@ -41,6 +41,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/auth/estado': 'publico',
   'POST /api/auth/login': 'publico',
   'POST /api/auth/registro': 'publico',
+  // Entrar con Google (hist. §149): la ida y la vuelta, sin sesión todavía.
+  'GET /api/auth/google': 'publico',
+  'GET /api/auth/google/vuelta': 'publico',
   // El código al mail del alta (hist. §108): todavía no hay cuenta.
   'POST /api/auth/registro/codigo': 'publico',
   'POST /api/auth/registro/verificar': 'publico',

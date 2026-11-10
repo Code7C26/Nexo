@@ -1216,6 +1216,13 @@
         document.getElementById("sinNegocioCrear").hidden = true;
       }
       document.getElementById("irAProbar").hidden = !estado.ejemplos;
+      // Entrar con Google (hist. §149), si el servidor lo tiene configurado. La
+      // ida es una navegación: Google vuelve a /api/auth/google/vuelta.
+      for (const id of ["loginGoogle", "altaGoogle"]) {
+        document.getElementById(id).addEventListener("click", () => location.assign("/api/auth/google"));
+      }
+      document.getElementById("loginGoogle").hidden = !estado.google;
+      document.getElementById("altaGoogle").hidden = !estado.google || estado.registro_abierto === false;
       if (estado.requiere_bootstrap) {
         // Instalación nueva: no hay cuenta a la que volver, así que el alta
         // no ofrece "Ya tengo cuenta".
@@ -1257,6 +1264,21 @@
           const aviso = document.getElementById("loginAviso");
           aviso.textContent = avisoLogin;
           aviso.classList.remove("is-error");
+          aviso.hidden = false;
+        }
+        // Volvió de Google sin entrar (hist. §149).
+        const deGoogle = new URLSearchParams(location.search).get("google");
+        if (deGoogle) {
+          history.replaceState(null, "", location.pathname + location.hash);
+          const aviso = document.getElementById("loginAviso");
+          aviso.textContent =
+            {
+              cancelado: "Cancelaste el ingreso con Google.",
+              "sin-cuenta": "No hay una cuenta de Nexo con ese mail de Google. Pedile a tu negocio que te invite.",
+              "no-disponible": "Entrar con Google todavía no está disponible.",
+              demasiados: "Demasiados intentos. Probá de nuevo en un rato."
+            }[deGoogle] ?? "No se pudo entrar con Google. Probá de nuevo, o entrá con tu mail y tu contraseña.";
+          aviso.classList.toggle("is-error", deGoogle !== "cancelado");
           aviso.hidden = false;
         }
         // Tocó el enlace del mail desde un dispositivo sin sesión.

@@ -63,6 +63,8 @@ let aceptacion = null;
 // confirmó ({ email, valor }). Cambiar el mail en el paso 1 los deja sin uso.
 let codigoMandadoA = null;
 let comprobante = null;
+// Vino de Google (hist. §149): el mail ya está confirmado y no hay contraseña.
+let conGoogle = false;
 // Si en el paso 6 completó los datos de los comprobantes o eligió hacerlo
 // después.
 let conComprobantes = true;
@@ -356,7 +358,7 @@ const VALIDAR = {
     if (!EMAIL_VALIDO.test(email.value.trim())) {
       return errorEn(email, "Revisá el mail: tiene que ser como nombre@dominio.com.");
     }
-    if (password.value.length < 8) return errorEn(password, "La contraseña tiene que tener al menos 8 caracteres.");
+    if (!conGoogle && password.value.length < 8) return errorEn(password, "La contraseña tiene que tener al menos 8 caracteres.");
     aceptacion = leerAceptacion(formDelPaso(PASO.cuenta));
     return aceptacion !== null;
   },
@@ -455,7 +457,7 @@ async function crearCuenta() {
           nombre: valor("altaNombre"),
           email_cuenta: valor("altaEmailCuenta"),
           comprobante_email: comprobante?.valor,
-          password: campo("altaPassword").value,
+          ...(conGoogle ? {} : { password: campo("altaPassword").value }),
           empresa: valor("altaEmpresa"),
           ...(planQueVa() && { plan: planQueVa().clave }),
           ...aceptacion,
@@ -547,4 +549,31 @@ export function montarAlta({ alTerminar, alVolver, instalacionNueva = false, mod
   irAPaso(modo.primero, { historial: false });
   cargarCatalogo();
   mostrarPlan();
+  if (modo === MODOS.cuenta) tomarDatosDeGoogle();
+}
+
+// Lo que dejó la vuelta de Google (server.js, cookie nexo_google_alta): el
+// nombre, el mail y su comprobante. Se lee una vez y se borra.
+function tomarDatosDeGoogle() {
+  const fila = document.cookie.split("; ").find((c) => c.startsWith("nexo_google_alta="));
+  if (!fila) return;
+  document.cookie = "nexo_google_alta=; Max-Age=0; path=/";
+  let datos;
+  try {
+    datos = JSON.parse(atob(fila.slice("nexo_google_alta=".length).replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return;
+  }
+  if (!datos?.email || !datos?.comprobante) return;
+  conGoogle = true;
+  comprobante = { email: datos.email, valor: datos.comprobante };
+  campo("altaNombre").value = campo("altaNombre").value || datos.nombre || "";
+  campo("altaEmailCuenta").value = datos.email;
+  campo("altaEmailCuenta").readOnly = true;
+  campo("altaPasswordCampo").hidden = true;
+  campo("altaEmailCuentaAyuda").hidden = true;
+  campo("altaGoogle").hidden = true;
+  const nota = campo("altaGoogleNota");
+  nota.textContent = `Con Google: vas a entrar con ${datos.email}, sin contraseña.`;
+  nota.hidden = false;
 }

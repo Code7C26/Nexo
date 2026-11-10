@@ -4441,6 +4441,27 @@ export default {
   "Te quedan {0} después de la comisión.": "You keep {0} after the fee.",
   "WebPush: info ": null,
 
+  // Entrar con Google (hist. §149)
+  "Continuar con Google": "Continue with Google",
+  "Crear la cuenta con Google": "Create the account with Google",
+  "Con Google: vas a entrar con {0}, sin contraseña.": "With Google: you'll sign in with {0}, no password.",
+  "Cancelaste el ingreso con Google.": "You canceled signing in with Google.",
+  "No hay una cuenta de Nexo con ese mail de Google. Pedile a tu negocio que te invite.": "There's no Nexo account with that Google email. Ask your business to invite you.",
+  "Entrar con Google todavía no está disponible.": "Signing in with Google isn't available yet.",
+  "Demasiados intentos. Probá de nuevo en un rato.": "Too many attempts. Try again in a while.",
+  "No se pudo entrar con Google. Probá de nuevo, o entrá con tu mail y tu contraseña.": "Couldn't sign in with Google. Try again, or sign in with your email and password.",
+  "openid email profile": null,
+  "No se pudo hablar con Google.": "Couldn't reach Google.",
+  "Google no aceptó el código ({0}).": "Google didn't accept the code ({0}).",
+  "Google devolvió un id_token que no se entiende.": "Google returned an id_token that can't be read.",
+  "El id_token no es para Nexo.": "The id_token isn't for Nexo.",
+  "El id_token no lo dio Google.": "The id_token wasn't issued by Google.",
+  "El id_token venció.": "The id_token expired.",
+  "Google no tiene ese mail verificado.": "Google doesn't have that email verified.",
+  "Primer administrador creado: {0} ({1}){2}. {3}": "First administrator created: {0} ({1}){2}. {3}",
+  ", con Google": ", with Google",
+  "Inició sesión con Google": "Signed in with Google",
+
   // El QR de la caja de Mercado Pago (hist. §147)
   "QR del mostrador": "Counter QR",
   "Calle del local": "Store street",
