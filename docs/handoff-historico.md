@@ -12495,3 +12495,40 @@ usuario.
 `GOOGLE_CLIENT_SECRET` a `/etc/nexo/nexo.env` (comando de PowerShell que las
 lee del `.env`) y que `NEXO_URL_PUBLICA` sea `https://nexosystem.duckdns.org`,
 para que la vuelta coincida con la registrada.
+
+## §150. El cierre de la caja en todas las cuentas (10 de noviembre de 2026)
+
+**Pedido del usuario** (10 de noviembre): "averiguaste si el abrir y cerrar
+caja es solo en efectivo, porque me parece que se hace en todas las cuentas
+del negocio". La investigación del 28 de octubre (`docs/investigacion-caja.md`)
+dice que al abrir solo se cuenta el efectivo, y al cerrar se controlan todos los
+medios. Esta es la versión **por cuenta**, sin la tabla de medios de pago del
+diseño completo, que queda para después de la presentación.
+
+**Lo que se hizo:**
+- Una tabla nueva, `turno_caja_arqueos`, hija de `turnos_caja`, con la cuenta,
+  el esperado y el declarado (`CREATE TABLE IF NOT EXISTS`, aditiva).
+  `datos-negocio.js` la toma sola por su FK.
+- `POST /api/turnos-caja/:id/cerrar` acepta `otras: [{ cuenta_tesoreria_id,
+  declarado }]`: solo las cuentas con cobros del turno, que no sean la caja, y
+  una vez cada una. El esperado es lo cobrado en el turno en esa cuenta. La
+  diferencia **no mueve el saldo** (casi siempre es un cobro cargado en la
+  cuenta equivocada), y queda en la tabla, en el resumen del turno (`arqueos`)
+  y en la auditoría del cierre.
+- El cierre del punto de venta suma "Las otras cuentas": cada una con "según
+  Nexo" y lo que dice el cierre de lote del posnet o la app (vacío, no se
+  controla), con su diferencia en vivo. Si sobra en una lo que falta en otra
+  (o en la caja), dice "¿un cobro quedó cargado en la cuenta equivocada?". El
+  aviso del final suma las diferencias de las otras cuentas.
+- **De paso:** la descarga de los datos de un negocio dejaba salir
+  `suscripciones_push` (hist. §146), con el `sesion_token`. Se sacó de la
+  descarga, y la regla de columnas secretas atrapa ahora también `_token`.
+
+**Cómo se verificó.** `backend/test/caja-cuentas.test.js` (cobros en las tres
+cuentas, lo que no se puede declarar, la diferencia sin tocar el saldo),
+342 tests, lint y `verificar-migracion` (24 de 24). **No se vio en el
+navegador.**
+
+**Lo que queda del diseño completo:** los medios de pago como entidad (débito
+y crédito que entran a la misma cuenta del banco no se separan todavía), el
+arqueo ciego y las tarjetas que se acreditan después.

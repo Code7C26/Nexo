@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §149);
+    siguiente número (hoy el último es §150);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,11 @@
   reescribe nada.
 
 ## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §150: el cierre de la caja en todas las cuentas, en
+`solla` sin publicar.** Cada cuenta con cobros en el turno se controla contra
+el posnet o la app, y la diferencia queda anotada sin mover el saldo. Los
+medios de pago como entidad quedan para después.
 
 **10 de noviembre, hist. §149: entrar con Google, en `solla` sin publicar.**
 Con cuenta entra directo; sin cuenta sigue al alta con el mail confirmado y
@@ -62,8 +67,10 @@ congelan en la venta, miden el margen y van aparte en "adónde fue la plata".
 Clima Sur trae servicios con costo. Plan del usuario para lo que sigue:
 ~~el ingreso del gimnasio en dos pantallas~~ (§144), ~~el QR de Mercado Pago
 en el mostrador~~ (§145), ~~las notificaciones~~ (§146), ~~el QR tradicional~~ (§147,
-falta probarlo con $100). **Sigue:** la caja con todos los medios
-(`docs/investigacion-caja.md`). El usuario va a mostrar
+falta probarlo con $100), ~~la caja en todas las cuentas~~ (§150, por cuenta;
+los medios de pago como entidad, después). **Sigue:** publicar (pedirle el
+OK al usuario), las claves de Google al servidor, y lo que el usuario traiga de
+otros sistemas; después, el contenido. El usuario va a mostrar
 cosas de otros sistemas para sumar. "Entrar con Google": hecho (§149). Después, el contenido (flyer, video, redes).
 
 **8 de noviembre, después de §141: guion del pitch y QR, en `solla` sin
