@@ -4439,5 +4439,27 @@ export default {
   "Te pagaron {0} con Mercado Pago": "You were paid {0} with Mercado Pago",
   "Venta #{0}.{1}": "Sale #{0}.{1}",
   "Te quedan {0} después de la comisión.": "You keep {0} after the fee.",
-  "WebPush: info ": null
+  "WebPush: info ": null,
+
+  // El QR de la caja de Mercado Pago (hist. §147)
+  "QR del mostrador": "Counter QR",
+  "Calle del local": "Store street",
+  "Número": "Number",
+  "Ciudad": "City",
+  "Provincia": "Province",
+  "Nexo crea la sucursal y la caja en tu cuenta de Mercado Pago.": "Nexo creates the store and the checkout in your Mercado Pago account.",
+  "Armar la caja": "Set up the checkout",
+  "Listo: el punto de venta cobra con el QR de tu caja de Mercado Pago, que tiene una comisión mucho más baja que el link (con dinero en cuenta, cerca del 0,8 %).": "Done: the point of sale charges with your Mercado Pago checkout QR, which has a much lower fee than the link (around 0.8% with account money).",
+  "El punto de venta puede cobrar con el QR de una caja de Mercado Pago, con una comisión mucho más baja que la del link. Para eso, Nexo crea una sucursal y una caja en tu cuenta con la dirección del local. Hasta entonces, cobra con el QR del link.": "The point of sale can charge with a Mercado Pago checkout QR, with a much lower fee than the link. For that, Nexo creates a store and a checkout in your account with the store's address. Until then, it charges with the link's QR.",
+  "Completá la calle, el número, la ciudad y la provincia del local.": "Fill in the store's street, number, city and province.",
+  "Mercado Pago no dejó armar la caja.": "Mercado Pago didn't allow setting up the checkout.",
+  "Caja armada: el punto de venta ya cobra con su QR.": "Checkout set up: the point of sale now charges with its QR.",
+  "Escaneá con la app de Mercado Pago o tu billetera": "Scan with the Mercado Pago app or your wallet",
+  "Mostrador (Nexo)": "Counter (Nexo)",
+  "No se pudo armar la caja del QR: {0}": "The QR checkout could not be set up: {0}",
+  "Caja del QR armada en Mercado Pago (sucursal {0}, caja {1}).": "QR checkout set up in Mercado Pago (store {0}, checkout {1}).",
+  "Armó la caja de Mercado Pago para el QR del mostrador": "Set up the Mercado Pago checkout for the counter QR",
+  "QR de la caja por ${0} para la venta #{1}.": "Checkout QR for ${0} for sale #{1}.",
+  "Mercado Pago creó la orden de la venta #{0} sin el QR: va el del link.": "Mercado Pago created the order for sale #{0} without the QR: the link's one is used.",
+  "El QR de la caja no se pudo usar ({0}): va el del link.": "The checkout QR could not be used ({0}): the link's one is used."
 };

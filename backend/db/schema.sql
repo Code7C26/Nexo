@@ -1788,6 +1788,10 @@ CREATE TABLE IF NOT EXISTS integraciones (
   conectada_por INTEGER REFERENCES usuarios(id),
   ultima_sincronizacion TEXT,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- La sucursal y la caja de Mercado Pago para el QR del mostrador (hist.
+  -- §147), como JSON { sucursal_id, caja_id, caja_externa }. NULL = sin caja:
+  -- el mostrador usa el QR del link de pago.
+  qr_caja TEXT,
   UNIQUE (organizacion_id, plataforma)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_integraciones_cuenta

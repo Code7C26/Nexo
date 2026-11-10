@@ -138,8 +138,34 @@ async function cargar() {
     ? estado.pagos.map(filaDePago).join("")
     : `<li><p class="tn-vacio">Todavía no llegó ningún pago. Creá un link desde “Registrar cobro” en una venta.</p></li>`;
   pintarActividadCanal(document.getElementById("mpActividad"), estado.actividad);
+  pintarCaja();
   await pintarCuenta();
 }
+
+// El QR de la caja para el mostrador (hist. §147).
+const formCaja = document.getElementById("formMpCaja");
+function pintarCaja() {
+  document.getElementById("mpCajaEstado").textContent = estado.qr_caja
+    ? "Listo: el punto de venta cobra con el QR de tu caja de Mercado Pago, que tiene una comisión mucho más baja que el link (con dinero en cuenta, cerca del 0,8 %)."
+    : "El punto de venta puede cobrar con el QR de una caja de Mercado Pago, con una comisión mucho más baja que la del link. Para eso, Nexo crea una sucursal y una caja en tu cuenta con la dirección del local. Hasta entonces, cobra con el QR del link.";
+  document.getElementById("mpCajaCampos").hidden = estado.qr_caja;
+  document.getElementById("mpCajaPie").hidden = estado.qr_caja;
+}
+
+formCaja.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const boton = formCaja.querySelector('[type="submit"]');
+  const datos = Object.fromEntries(["calle", "numero", "ciudad", "provincia"].map((c) => [c, formCaja[c].value.trim()]));
+  if (Object.values(datos).some((v) => !v)) return avisar("Completá la calle, el número, la ciudad y la provincia del local.", "atencion");
+  boton.disabled = true;
+  try {
+    await api("/api/integraciones/mercadopago/caja", { method: "POST", body: datos, error: "Mercado Pago no dejó armar la caja." });
+    avisar("Caja armada: el punto de venta ya cobra con su QR.", "ok");
+    await cargar();
+  } finally {
+    boton.disabled = false;
+  }
+});
 
 document.getElementById("btnMpConectar").addEventListener("click", async (e) => {
   const boton = e.currentTarget;

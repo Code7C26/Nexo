@@ -188,6 +188,10 @@ export const RUTAS_PERMISOS = {
   // El QR de Mercado Pago en el mostrador (hist. §145): cancelar el que no se
   // pagó. Solo las ventas que esperan un QR, no cualquier venta.
   'POST /api/pos/ventas/:id/cancelar-qr': 'ambos',
+  // El QR de la venta: el de la caja o el del link (hist. §147). Armar la
+  // caja en Mercado Pago es del admin.
+  'POST /api/ventas/:id/qr': 'ambos',
+  'POST /api/integraciones/mercadopago/caja': 'admin',
   // Las notificaciones de cada aparato (hist. §146): de cada persona.
   'GET /api/notificaciones': 'ambos',
   'POST /api/notificaciones/suscripcion': 'ambos',

@@ -4422,6 +4422,37 @@
                   </div>
                 </form>
 
+                <!-- El QR de la caja para el mostrador (hist. §147): Mercado
+                     Pago cobra mucho menos que por el link. Se arma una vez. -->
+                <form class="form config-tarjeta" id="formMpCaja" novalidate>
+                  <div class="config-tarjeta-cuerpo">
+                    <p class="config-tarjeta-titulo">QR del mostrador</p>
+                    <p class="campo-ayuda" id="mpCajaEstado"></p>
+                    <div id="mpCajaCampos">
+                      <div class="form-fila">
+                        <label>Calle del local
+                          <input type="text" name="calle" maxlength="120" autocomplete="address-line1" />
+                        </label>
+                        <label>Número
+                          <input type="text" name="numero" maxlength="10" inputmode="numeric" />
+                        </label>
+                      </div>
+                      <div class="form-fila">
+                        <label>Ciudad
+                          <input type="text" name="ciudad" maxlength="80" autocomplete="address-level2" />
+                        </label>
+                        <label>Provincia
+                          <input type="text" name="provincia" maxlength="80" autocomplete="address-level1" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="config-tarjeta-pie" id="mpCajaPie">
+                    <p>Nexo crea la sucursal y la caja en tu cuenta de Mercado Pago.</p>
+                    <button type="submit" class="btn btn-primary">Armar la caja</button>
+                  </div>
+                </form>
+
                 <section class="panel" aria-labelledby="mpPagosTitulo">
                   <div class="panel-head">
                     <h2 id="mpPagosTitulo">Pagos que llegaron</h2>
@@ -7156,7 +7187,7 @@
         </button>
       </form>
       <div class="pos-qr" id="posQr" hidden>
-        <p class="pos-qr-titulo">Escaneá con la app de Mercado Pago o la cámara</p>
+        <p class="pos-qr-titulo" id="posQrTitulo">Escaneá con la app de Mercado Pago o la cámara</p>
         <strong class="pos-qr-importe mono" id="posQrImporte"></strong>
         <img class="pos-qr-codigo" id="posQrCodigo" alt="QR para pagar con Mercado Pago" width="232" height="232" />
         <p class="pos-qr-estado" id="posQrEstado" aria-live="polite"><span class="pos-qr-punto" aria-hidden="true"></span> Esperando el pago…</p>

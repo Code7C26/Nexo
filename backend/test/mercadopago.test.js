@@ -31,7 +31,11 @@ const falso = {
   emitidos: 0,
   desafios: new Map(),
   links: [],
-  pagos: new Map()
+  pagos: new Map(),
+  // El QR de la caja (hist. §147): las órdenes, y si la API de Orders
+  // contesta (false: como una app que no tiene permiso para usarla).
+  ordenes: new Map(),
+  ordenesPermitidas: true
 };
 
 function emitirToken() {
@@ -117,6 +121,41 @@ function atender(req, res) {
       falso.links.push({ datos, idempotencia: req.headers['x-idempotency-key'] });
       const id = `pref-${falso.links.length}`;
       return responder(201, { id, init_point: `https://mp.test/checkout?pref_id=${id}`, external_reference: datos.external_reference });
+    }
+    if (req.method === 'POST' && ruta === `/users/${CUENTA}/stores`) {
+      if (!datos?.name || !datos?.location?.street_name) return responder(400, { error: 'validation_error', message: 'Name must be defined' });
+      return responder(200, { id: 1234567, name: datos.name, external_id: datos.external_id });
+    }
+    if (req.method === 'POST' && ruta === '/pos') {
+      if (!/^[A-Za-z0-9]+$/.test(datos?.external_id ?? '')) return responder(400, { error: 'INVALID_EXTERNAL_ID' });
+      return responder(200, { id: 2711382, external_id: datos.external_id, store_id: datos.store_id, status: 'active' });
+    }
+    if (req.method === 'POST' && ruta === '/v1/orders') {
+      if (!falso.ordenesPermitidas) return responder(403, { error: 'forbidden', message: 'Application not allowed' });
+      if (!req.headers['x-idempotency-key']) return responder(400, { error: 'empty_required_header' });
+      const id = `ORD${falso.ordenes.size + 1}`;
+      const orden = {
+        id,
+        type: 'qr',
+        status: 'created',
+        external_reference: datos.external_reference,
+        total_amount: datos.total_amount,
+        config: datos.config,
+        transactions: { payments: [{ id: `PAY${id}`, amount: datos.total_amount, status: 'created' }] },
+        type_response: { qr_data: `00020101021243650016COM.MERCADOLIBRE${id}` }
+      };
+      falso.ordenes.set(id, orden);
+      return responder(201, orden);
+    }
+    if (req.method === 'GET' && ruta.startsWith('/v1/orders/')) {
+      const orden = falso.ordenes.get(ruta.split('/')[3]);
+      return orden ? responder(200, orden) : responder(404, { message: 'Order not found' });
+    }
+    if (req.method === 'POST' && /^\/v1\/orders\/[^/]+\/cancel$/.test(ruta)) {
+      const orden = falso.ordenes.get(ruta.split('/')[3]);
+      if (!orden || orden.status !== 'created') return responder(409, { message: 'cannot cancel' });
+      orden.status = 'canceled';
+      return responder(200, orden);
     }
     if (req.method === 'GET' && ruta === '/v1/payments/search') {
       const referencia = url.searchParams.get('external_reference');
@@ -449,6 +488,63 @@ test('el QR del mostrador (hist. §145): sin cobros a consumidor final, el pago 
   const otraQr = (await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [], qr_mercadopago: true })).json.id;
   assert.equal((await otro.post(`/api/pos/ventas/${otraQr}/cancelar-qr`)).status, 404);
   assert.equal((await empleado.post(`/api/pos/ventas/${otraQr}/cancelar-qr`)).status, 200);
+});
+
+test('el QR de la caja (hist. §147): se arma una vez, cobra con una orden y, si Mercado Pago no la deja, cae al link', async () => {
+  const turno = (await admin.get('/api/turnos-caja?estado=abierto')).json[0]?.id;
+  assert.ok(turno, 'hay un turno abierto del test anterior');
+  const items = [{ producto_id: remera, cantidad: 1, precio_unitario: 30000 }];
+  const ventaQr = async () => (await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [], qr_mercadopago: true })).json.id;
+
+  // Sin caja, el QR es el del link.
+  const sinCaja = await empleado.post(`/api/ventas/${await ventaQr()}/qr`);
+  assert.equal(sinCaja.status, 200, sinCaja.texto);
+  assert.match(sinCaja.json.url, /^https:\/\/mp\.test\/checkout/);
+
+  // Armar la caja es del admin, y pide la dirección del local.
+  const direccion = { calle: 'Rivera Indarte', numero: '182', ciudad: 'Córdoba', provincia: 'Córdoba' };
+  assert.equal((await empleado.post('/api/integraciones/mercadopago/caja', direccion)).status, 403);
+  assert.equal((await admin.post('/api/integraciones/mercadopago/caja', { ...direccion, numero: '' })).status, 400);
+  const armada = await admin.post('/api/integraciones/mercadopago/caja', direccion);
+  assert.equal(armada.status, 200, armada.texto);
+  assert.equal((await estadoDe(admin)).qr_caja, true);
+  assert.equal(enviados('POST', '/pos').at(-1).datos.store_id, '1234567');
+
+  // Con caja: una orden dinámica por el total, con la venta como referencia.
+  const venta = await ventaQr();
+  const qr = await empleado.post(`/api/ventas/${venta}/qr`);
+  assert.equal(qr.status, 200, qr.texto);
+  assert.equal(qr.json.tipo, 'caja');
+  assert.match(qr.json.qr, /^0002010102/);
+  const pedido = enviados('POST', '/v1/orders').at(-1);
+  assert.equal(pedido.datos.config.qr.mode, 'dynamic');
+  assert.equal(pedido.datos.total_amount, '30000.00');
+  assert.equal(pedido.datos.external_reference, `nexo-venta-${venta}`);
+  assert.ok(pedido.headers['x-idempotency-key']);
+
+  // Todavía sin pagar: "Ya me pagó" no cobra nada.
+  assert.deepEqual((await empleado.post(`/api/ventas/${venta}/revisar-pagos`)).json, { cobrados: 0, sin_asignar: 0 });
+  // Se paga: la orden pasa a processed y el pago, sin la referencia, se cobra
+  // igual en esa venta, con su comisión.
+  const orden = [...falso.ordenes.values()].at(-1);
+  orden.status = 'processed';
+  orden.transactions.payments[0].reference = { id: '9030' };
+  falso.pagos.set('9030', pagoDeEjemplo(9030, venta, { external_reference: null, installments: 1, payment_type_id: 'account_money' }));
+  assert.equal((await empleado.post(`/api/ventas/${venta}/revisar-pagos`)).json.cobrados, 1);
+  assert.equal((await cobrosDe(venta)).length, 1);
+
+  // La que no se pagó: cancelar anula la venta y cancela la orden.
+  const otraVenta = await ventaQr();
+  await empleado.post(`/api/ventas/${otraVenta}/qr`);
+  assert.equal((await empleado.post(`/api/pos/ventas/${otraVenta}/cancelar-qr`)).status, 200);
+  assert.equal([...falso.ordenes.values()].at(-1).status, 'canceled');
+
+  // Si Mercado Pago no deja usar la API de Orders, cae al link sin frenar.
+  falso.ordenesPermitidas = false;
+  const conLink = await empleado.post(`/api/ventas/${await ventaQr()}/qr`);
+  assert.equal(conLink.status, 200, conLink.texto);
+  assert.ok(conLink.json.url && !conLink.json.qr);
+  falso.ordenesPermitidas = true;
 });
 
 test('el token vencido se renueva de a uno, aunque lo pidan dos a la vez', async () => {

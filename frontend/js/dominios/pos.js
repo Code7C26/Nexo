@@ -923,7 +923,9 @@ btnPosQr.addEventListener("click", async () => {
   let link;
   try {
     venta = await enviando(btnPosQr, () => api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." }));
-    link = await api(`/api/ventas/${venta.id}/link-de-pago`, { method: "POST", error: "No se pudo crear el QR de Mercado Pago." }).catch(
+    // El de la caja (comisión más baja) o, si no hay o no se puede, el del
+    // link (hist. §147).
+    link = await api(`/api/ventas/${venta.id}/qr`, { method: "POST", error: "No se pudo crear el QR de Mercado Pago." }).catch(
       async (err) => {
         await fetch(`/api/pos/ventas/${venta.id}/cancelar-qr`, { method: "POST" }).catch(() => {});
         throw err;
@@ -937,13 +939,18 @@ btnPosQr.addEventListener("click", async () => {
   try {
     await cargarQr();
     const codigo = window.qrcode(0, "M");
-    codigo.addData(link.url);
+    codigo.addData(link.qr ?? link.url);
     codigo.make();
     imagen.src = codigo.createDataURL(6, 2);
   } catch {
     imagen.removeAttribute("src");
   }
   document.getElementById("posQrImporte").textContent = money(link.importe);
+  // El de la caja solo lo lee la app de Mercado Pago (o una billetera); el
+  // del link, también la cámara.
+  document.getElementById("posQrTitulo").textContent = link.qr
+    ? "Escaneá con la app de Mercado Pago o tu billetera"
+    : "Escaneá con la app de Mercado Pago o la cámara";
   document.getElementById("formPosCobro").hidden = true;
   posQr.hidden = false;
   esperandoQr = { id: venta.id, cliente: cobro.cliente, ahorro: ahorroCarrito(), vueltas: 0 };

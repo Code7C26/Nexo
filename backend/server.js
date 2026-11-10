@@ -16642,7 +16642,7 @@ app.post('/api/pos/ventas', (req, res) => {
 
 // El cliente no pagó el QR: la venta se anula (vuelve el stock) y el carrito
 // sigue en la pantalla para cobrarlo de otra forma. Si el pago ya entró, no.
-app.post('/api/pos/ventas/:id/cancelar-qr', (req, res) => {
+app.post('/api/pos/ventas/:id/cancelar-qr', asincrono(async (req, res) => {
   const ventaId = Number(req.params.id);
   const organizacionId = req.usuario.organizacion_id;
   const esperando = ventasEsperandoQr.get(ventaId);
@@ -16657,6 +16657,12 @@ app.post('/api/pos/ventas/:id/cancelar-qr', (req, res) => {
     // Con cobros es que el pago entró justo: no se cancela, se cobró.
     return res.status(409).json({ error: motivo });
   }
+  // La orden del QR de la caja se cancela en Mercado Pago, así no se puede
+  // pagar después. Si falla (ya venció), se anula igual.
+  if (esperando.orden_id) {
+    const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+    if (integracion) await apiDeMercadoPago(integracion).cancelarOrden(esperando.orden_id, randomBytes(16).toString('hex')).catch(() => {});
+  }
   withTransaction(() => {
     revertirVentaAnulada(venta, organizacionId);
     auditar(req, {
@@ -16668,7 +16674,7 @@ app.post('/api/pos/ventas/:id/cancelar-qr', (req, res) => {
   });
   ventasEsperandoQr.delete(ventaId);
   res.json({ id: ventaId, estado: 'anulada' });
-});
+}));
 
 /* ---------- Socios, planes y cuotas (CLAUDE.md §29, hist. §74 y §75) ---------- */
 
@@ -21603,6 +21609,7 @@ app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
   res.json({
     ...base,
     cuenta: { nombre: integracion.nombre_cuenta, id: integracion.cuenta_externa },
+    qr_caja: Boolean(integracion.qr_caja),
     conectada_en: integracion.conectada_en,
     ultima_sincronizacion: integracion.ultima_sincronizacion,
     cuenta_tesoreria_id: integracion.cuenta_tesoreria_id,
@@ -21670,6 +21677,13 @@ app.post('/api/ventas/:id/link-de-pago', asincrono(async (req, res) => {
   if (venta.estado === 'anulada') return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
   const saldo = redondear2(venta.saldo);
   if (!(saldo > 0)) return res.status(400).json({ error: 'Esta venta ya está cobrada.' });
+  return linkDePago(req, res, { integracion, venta, saldo });
+}));
+
+// El link de una venta ya validada: lo usan el link de "Registrar cobro" y el
+// QR del mostrador cuando no hay caja (o Mercado Pago no la deja usar).
+async function linkDePago(req, res, { integracion, venta, saldo }) {
+  const organizacionId = req.usuario.organizacion_id;
   let importe = saldo;
   if (req.body?.importe !== undefined && req.body.importe !== null && req.body.importe !== '') {
     importe = redondear2(Number(req.body.importe));
@@ -21703,7 +21717,153 @@ app.post('/api/ventas/:id/link-de-pago', asincrono(async (req, res) => {
   if (!link?.init_point) return res.status(502).json({ error: 'Mercado Pago no devolvió el link.' });
   anotarIntegracion(integracion, 'pago', 'ok', `Link de pago de $${importe} para la venta #${venta.id}.`);
   res.json({ url: link.init_point, importe });
+}
+
+/* ---------- El QR de la caja de Mercado Pago (hist. §147) ---------- */
+//
+// El QR "tradicional" del mostrador: Mercado Pago cobra mucho menos por él que
+// por el link (~0,8 % con dinero en cuenta, contra ~6 % del link). Pide una
+// sucursal y una caja en la cuenta del negocio, que el admin arma una vez en
+// Configuración → Mercado Pago, y cada cobro es una orden de la API de Orders
+// en modo dinámico por el importe de la venta. Esa API no avisa por el aviso
+// de "Pagos": el mostrador pregunta por la orden mientras espera.
+//
+// Si Mercado Pago no deja crear la orden (la app no tiene permiso para esa
+// API, la caja ya no existe), el mostrador cae al QR del link, que sí anda.
+
+const cajaQr = (integracion) => (integracion?.qr_caja ? JSON.parse(integracion.qr_caja) : null);
+const LARGOS_SUCURSAL = { calle: 120, numero: 10, ciudad: 80, provincia: 80 };
+
+app.post('/api/integraciones/mercadopago/caja', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req, 'mercadopago');
+  const datos = {};
+  for (const [campo, largo] of Object.entries(LARGOS_SUCURSAL)) {
+    const valor = typeof req.body?.[campo] === 'string' ? req.body[campo].trim() : '';
+    if (!valor || valor.length > largo) return res.status(400).json({ error: 'Completá la calle, el número, la ciudad y la provincia del local.' });
+    datos[campo] = valor;
+  }
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(req.usuario.organizacion_id).nombre;
+  // Los ids externos son de Nexo: solo letras y números, únicos por cuenta.
+  const marca = `NEXO${req.usuario.organizacion_id}`;
+  const mp = apiDeMercadoPago(integracion);
+  let sucursal;
+  let caja;
+  try {
+    sucursal = await mp.crearSucursal(integracion.cuenta_externa, {
+      name: negocio.slice(0, 60),
+      external_id: `${marca}S${Date.now().toString(36).toUpperCase()}`,
+      location: {
+        street_name: datos.calle,
+        street_number: datos.numero,
+        city_name: datos.ciudad,
+        state_name: datos.provincia,
+        reference: negocio.slice(0, 60)
+      }
+    });
+    caja = await mp.crearCaja({
+      name: 'Mostrador (Nexo)',
+      fixed_amount: false,
+      store_id: String(sucursal.id),
+      external_store_id: sucursal.external_id,
+      external_id: `${marca}C${Date.now().toString(36).toUpperCase()}`
+    });
+  } catch (err) {
+    if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+    anotarIntegracion(integracion, 'conexion', 'error', `No se pudo armar la caja del QR: ${err.message}`);
+    return siMercadoPagoFalla(res, err);
+  }
+  const guardada = { sucursal_id: String(sucursal.id), caja_id: String(caja.id), caja_externa: caja.external_id };
+  db.prepare('UPDATE integraciones SET qr_caja = ? WHERE id = ?').run(JSON.stringify(guardada), integracion.id);
+  anotarIntegracion(integracion, 'conexion', 'ok', `Caja del QR armada en Mercado Pago (sucursal ${guardada.sucursal_id}, caja ${guardada.caja_id}).`);
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'organizacion',
+    entidad_id: req.usuario.organizacion_id,
+    detalle: 'Armó la caja de Mercado Pago para el QR del mostrador'
+  });
+  res.json({ qr_caja: true });
 }));
+
+// El QR para cobrar una venta en el mostrador: el de la caja si se puede, si
+// no el del link. Devuelve { tipo: 'caja', qr, importe } o { url, importe }
+// (el del link).
+app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  if (!mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
+  const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+  const venta = ventaParaCobrar(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  if (venta.estado === 'anulada') return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
+  const saldo = redondear2(venta.saldo);
+  if (!(saldo > 0)) return res.status(400).json({ error: 'Esta venta ya está cobrada.' });
+  const caja = cajaQr(integracion);
+  if (caja) {
+    const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId).nombre;
+    const importe = saldo.toFixed(2);
+    try {
+      const orden = await apiDeMercadoPago(integracion).crearOrden(
+        {
+          type: 'qr',
+          total_amount: importe,
+          external_reference: mercadoPago.referenciaDeVenta(venta.id),
+          description: `${negocio} · venta #${venta.id}`.slice(0, 150),
+          expiration_time: 'PT15M',
+          config: { qr: { external_pos_id: caja.caja_externa, mode: 'dynamic' } },
+          transactions: { payments: [{ amount: importe }] },
+          items: [{ title: `Venta #${venta.id}`, unit_price: importe, quantity: 1, unit_measure: 'unit' }]
+        },
+        randomBytes(16).toString('hex')
+      );
+      const qr = orden?.type_response?.qr_data;
+      if (qr) {
+        const esperando = ventasEsperandoQr.get(venta.id);
+        if (esperando) esperando.orden_id = orden.id;
+        ordenesQr.set(venta.id, orden.id);
+        anotarIntegracion(integracion, 'pago', 'ok', `QR de la caja por $${saldo} para la venta #${venta.id}.`);
+        return res.json({ tipo: 'caja', qr, importe: saldo });
+      }
+      anotarIntegracion(integracion, 'pago', 'error', `Mercado Pago creó la orden de la venta #${venta.id} sin el QR: va el del link.`);
+    } catch (err) {
+      if (err.status === 401) {
+        desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
+        return siMercadoPagoFalla(res, err);
+      }
+      anotarIntegracion(integracion, 'pago', 'error', `El QR de la caja no se pudo usar (${err.message}): va el del link.`);
+    }
+  }
+  return linkDePago(req, res, { integracion, venta, saldo });
+}));
+
+// La orden del QR de la caja de cada venta, para preguntar si se pagó. En
+// memoria, como las ventas que esperan su QR: dura lo que dura la orden.
+const ordenesQr = new Map();
+
+// Los pagos de la orden de una venta, ya cobrados en Nexo si se pagó. La
+// orden trae el número del pago en transactions.payments[].reference.id, y
+// el pago se procesa como cualquier otro (comisión, cuotas, retenciones).
+async function pagosDeLaOrdenQr(integracion, ventaId) {
+  const ordenId = ordenesQr.get(ventaId);
+  if (!ordenId) return [];
+  let orden;
+  try {
+    orden = await apiDeMercadoPago(integracion).orden(ordenId);
+  } catch {
+    return [];
+  }
+  if (orden?.status !== 'processed') return [];
+  ordenesQr.delete(ventaId);
+  const resultados = [];
+  for (const pagoDeLaOrden of orden.transactions?.payments ?? []) {
+    const id = pagoDeLaOrden?.reference?.id;
+    if (!id) continue;
+    const pago = await apiDeMercadoPago(integracion).pago(id).catch(() => null);
+    // La referencia de la venta la pone Nexo en la orden; el pago puede no
+    // traerla, y sin ella no sabría de qué venta es.
+    if (pago) resultados.push(procesarPagoMP(integracionPorId(integracion.id), { ...pago, external_reference: mercadoPago.referenciaDeVenta(ventaId) }));
+  }
+  return resultados;
+}
+
 
 // "Ya me pagó": busca en Mercado Pago los pagos de los links de esta venta, por
 // si el aviso no llegó (o no hay dirección pública). Lo que encuentra pasa por
@@ -21726,9 +21886,11 @@ app.post('/api/ventas/:id/revisar-pagos', asincrono(async (req, res) => {
     if (err.status === 401) desconectarIntegracion(integracion, 'Mercado Pago ya no le da permiso a Nexo: volvé a conectar tu cuenta.');
     return siMercadoPagoFalla(res, err);
   }
-  const resultados = (Array.isArray(encontrados?.results) ? encontrados.results : [])
-    .map((pago) => procesarPagoMP(integracionPorId(integracion.id), pago))
-    .filter((r) => r?.nuevo);
+  const resultados = [
+    ...(Array.isArray(encontrados?.results) ? encontrados.results : []).map((pago) => procesarPagoMP(integracionPorId(integracion.id), pago)),
+    // El QR de la caja (hist. §147) no avisa: se le pregunta a su orden.
+    ...(await pagosDeLaOrdenQr(integracion, venta.id))
+  ].filter((r) => r?.nuevo);
   res.json({
     cobrados: resultados.filter((r) => r.estado === 'cobrado').length,
     sin_asignar: resultados.filter((r) => r.estado === 'sin_asignar').length

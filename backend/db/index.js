@@ -2236,7 +2236,9 @@ for (const [tabla, columna] of [
   ['productos', 'mano_obra_por TEXT'],
   ['venta_items', 'costo_mano_obra REAL NOT NULL DEFAULT 0'],
   // El ingreso que anotó el socio en la pantalla de entrada (hist. §144).
-  ['ingresos_socio', 'por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))']
+  ['ingresos_socio', 'por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))'],
+  // La caja de Mercado Pago del QR del mostrador (hist. §147).
+  ['integraciones', 'qr_caja TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
