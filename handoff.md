@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §148);
+    siguiente número (hoy el último es §149);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,11 @@
   reescribe nada.
 
 ## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §149: entrar con Google, en `solla` sin publicar.**
+Con cuenta entra directo; sin cuenta sigue al alta con el mail confirmado y
+sin contraseña. Probado hasta la pantalla de Google con las claves reales.
+Falta mandar las claves al servidor después de publicar.
 
 **10 de noviembre, hist. §148: el ingreso entre dos ventanas y el cartel del
 QR fijo, en `solla` sin publicar.** La entrada y la recepción son dos ventanas
@@ -59,9 +64,7 @@ Clima Sur trae servicios con costo. Plan del usuario para lo que sigue:
 en el mostrador~~ (§145), ~~las notificaciones~~ (§146), ~~el QR tradicional~~ (§147,
 falta probarlo con $100). **Sigue:** la caja con todos los medios
 (`docs/investigacion-caja.md`). El usuario va a mostrar
-cosas de otros sistemas para sumar. "Entrar con Google" espera el trámite del
-usuario (los pasos se le dieron el 10 de noviembre; la vuelta es
-`/api/auth/google/vuelta`). Después, el contenido (flyer, video, redes).
+cosas de otros sistemas para sumar. "Entrar con Google": hecho (§149). Después, el contenido (flyer, video, redes).
 
 **8 de noviembre, después de §141: guion del pitch y QR, en `solla` sin
 publicar.** `docs/guion-pitch.md` tiene el pitch en el orden de la consigna:

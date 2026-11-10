@@ -12448,3 +12448,50 @@ permanentes del negocio y te hacen ingresar un monto".
 - **Falta:** lo que se cobra con el cartel sin una venta de Nexo llega a
   Mercado Pago pero no a una venta. Eso son los "pagos sin asignar" del plan
   de Mercado Pago (punto 4), para después.
+
+## §149. Entrar con Google (10 de noviembre de 2026)
+
+**Pedido del usuario** (5 de noviembre, con los trámites hechos el 10): entrar
+con Google. Siguió los pasos (proyecto "Nexo" en Google Auth Platform, en
+producción, sin logo, cliente web con las vueltas de producción y de
+localhost) y cargó `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` en el `.env`.
+
+**Lo que se hizo, sin dependencias:**
+- `backend/google.js`: el flujo OpenID Connect con código y PKCE. La firma del
+  `id_token` no se verifica, porque llega directo del endpoint de tokens de
+  Google por HTTPS (lo permite la documentación de Google). Sí se controlan
+  `aud`, `iss`, el vencimiento y `email_verified`.
+- `GET /api/auth/google`: `state` y PKCE en una cookie `httpOnly` de
+  10 minutos (`nexo_google`, solo en `/api/auth/google`), con tope por IP.
+- `GET /api/auth/google/vuelta`:
+  - **con cuenta con ese mail:** entra al último negocio que usó, como el
+    login, y lo audita como "Inició sesión con Google";
+  - **sin cuenta:** se crea el mismo comprobante que da el código del mail
+    (`codigos_mail`, con `codigo_hash = 'google'` como marca) y se sigue al
+    alta guiada. Los datos van en una cookie que lee y borra `alta.js`
+    (`nexo_google_alta`, 30 minutos): nombre y mail puestos, mail fijo, sin el
+    paso del código ni la contraseña.
+  - Cualquier otra cosa vuelve a `/app?google=<motivo>`, y el login dice qué
+    pasó: cancelado, error, sin cuenta (registro cerrado) o no disponible.
+- `POST /api/auth/registro` acepta la cuenta **sin contraseña solo con un
+  comprobante de Google**. Nace con una al azar que nadie conoce, y con "¿Te
+  olvidaste la contraseña?" la puede elegir.
+- `/api/auth/estado` dice `google`, y el login y el paso 1 del alta muestran
+  "Continuar con Google" y "Crear la cuenta con Google", con el logo.
+- `.env.example` documenta las dos variables.
+
+**Cómo se verificó.** `backend/test/google.test.js` (4 tests) contra un Google
+falso: la ida con PKCE y la vuelta exacta, entrar con cuenta, el alta sin
+contraseña y el comprobante de un solo uso, y lo que se rechaza (`state`
+trucho, cancelar, mail sin verificar, otro cliente, otro emisor, vencido, sin
+la cookie). 341 tests y lint. En el navegador, con las claves reales del
+`.env`, la ida llega a la pantalla de Google, "Iniciá sesión · Ir a Nexo",
+así que el cliente y la vuelta de localhost son válidos. También se vieron el
+botón del login, el del alta y el paso 1 con los datos simulados de la vuelta.
+**No se completó un ingreso con una cuenta de Google real**: eso lo hace el
+usuario.
+
+**Para producción:** publicar, mandar `GOOGLE_CLIENT_ID` y
+`GOOGLE_CLIENT_SECRET` a `/etc/nexo/nexo.env` (comando de PowerShell que las
+lee del `.env`) y que `NEXO_URL_PUBLICA` sea `https://nexosystem.duckdns.org`,
+para que la vuelta coincida con la registrada.
