@@ -1037,8 +1037,77 @@ document.getElementById("btnPosCerrarCaja").addEventListener("click", async () =
     `<div class="pos-cierre-esperado"><span>Tendría que haber en la caja</span><strong class="mono">${money(turno.esperado)}</strong></div>`;
   document.getElementById("formPosCierre").reset();
   renderDiferenciaCierre();
+  pintarOtrasCuentas();
   modalPosCierre.hidden = false;
 });
+
+/* --- El cierre en las otras cuentas (hist. §150) --- */
+
+// El efectivo se cuenta; lo cobrado con débito, crédito, transferencia o
+// Mercado Pago se controla contra el cierre de lote del posnet o la app. La
+// diferencia queda anotada y no mueve el saldo.
+const otrasCuentasDelTurno = () => turno.cobros_por_cuenta.filter((c) => c.cuenta_tesoreria_id !== turno.cuenta_tesoreria_id);
+
+function pintarOtrasCuentas() {
+  const otras = otrasCuentasDelTurno();
+  const contenedor = document.getElementById("posCierreOtras");
+  contenedor.hidden = otras.length === 0;
+  contenedor.innerHTML = otras.length
+    ? `<p class="pos-cierre-subtitulo">Las otras cuentas</p>
+       <p class="form-note">Lo que dice el cierre de lote del posnet o la app de cada una. Si no lo tenés a mano, dejalo vacío.</p>
+       ${otras
+         .map(
+           (c) => `
+       <div class="pos-cierre-otra" data-cuenta="${c.cuenta_tesoreria_id}">
+         <label>${esc(c.cuenta)} <span class="pos-cierre-segun">según Nexo ${money(c.importe)}</span>
+           <input type="number" class="pos-cierre-declarado" step="0.01" min="0" inputmode="decimal" placeholder="${esc(String(c.importe))}" />
+         </label>
+         <p class="pos-diferencia" aria-live="polite"></p>
+       </div>`
+         )
+         .join("")}
+       <p class="form-note pos-cierre-cruce" id="posCierreCruce" hidden></p>`
+    : "";
+}
+
+// Lo cargado en cada otra cuenta, con su diferencia.
+function leerOtrasCuentas() {
+  return otrasCuentasDelTurno()
+    .map((c) => {
+      const input = document.querySelector(`#posCierreOtras [data-cuenta="${c.cuenta_tesoreria_id}"] .pos-cierre-declarado`);
+      if (!input || input.value === "") return null;
+      const declarado = Number(input.value);
+      return { ...c, declarado, diferencia: redondear(declarado - c.importe) };
+    })
+    .filter(Boolean);
+}
+
+document.getElementById("posCierreOtras").addEventListener("input", () => {
+  const cargadas = leerOtrasCuentas();
+  for (const fila of document.querySelectorAll("#posCierreOtras .pos-cierre-otra")) {
+    const dato = cargadas.find((c) => c.cuenta_tesoreria_id === Number(fila.dataset.cuenta));
+    const el = fila.querySelector(".pos-diferencia");
+    el.textContent = dato ? textoDiferencia(dato.diferencia) : "";
+    el.className = `pos-diferencia ${dato ? claseDiferencia(dato.diferencia) : ""}`;
+  }
+  // Lo que sobra en una y falta en otra (o en la caja) suele ser un cobro
+  // cargado en la cuenta equivocada.
+  const efectivo = document.getElementById("posCierreContado").value;
+  const todas = [
+    ...cargadas,
+    ...(efectivo === "" ? [] : [{ cuenta: "la caja", diferencia: redondear(Number(efectivo) - turno.esperado) }])
+  ].filter((c) => Math.abs(c.diferencia) >= CENTAVO);
+  const sobra = todas.find((c) => c.diferencia > 0 && todas.some((o) => Math.abs(o.diferencia + c.diferencia) < CENTAVO));
+  const falta = sobra && todas.find((o) => Math.abs(o.diferencia + sobra.diferencia) < CENTAVO);
+  const cruce = document.getElementById("posCierreCruce");
+  cruce.hidden = !sobra;
+  if (sobra) {
+    cruce.textContent = `Sobran ${money(sobra.diferencia)} en ${sobra.cuenta} y faltan en ${falta.cuenta}: ¿un cobro quedó cargado en la cuenta equivocada?`;
+  }
+});
+document.getElementById("posCierreContado").addEventListener("input", () =>
+  document.getElementById("posCierreOtras").dispatchEvent(new Event("input"))
+);
 
 function renderDiferenciaCierre() {
   const el = document.getElementById("posCierreDiferencia");
@@ -1074,15 +1143,21 @@ document.getElementById("formPosCierre").addEventListener("submit", async (e) =>
   const cerrado = await enviando(document.getElementById("formPosCierreSubmit"), () =>
     api(`/api/turnos-caja/${turno.id}/cerrar`, {
       method: "POST",
-      body: { contado, ...(nota ? { nota } : {}) },
+      body: {
+        contado,
+        otras: leerOtrasCuentas().map((c) => ({ cuenta_tesoreria_id: c.cuenta_tesoreria_id, declarado: c.declarado })),
+        ...(nota ? { nota } : {})
+      },
       error: "No se pudo cerrar la caja."
     })
   );
   carrito = [];
   guardarCarrito();
   modalPosCierre.hidden = true;
-  const sinDiferencia = Math.abs(cerrado.diferencia_cierre) < CENTAVO;
-  avisar(`Caja cerrada. ${textoDiferencia(cerrado.diferencia_cierre)}.`, sinDiferencia ? "ok" : "atencion");
+  const conDiferencia = cerrado.arqueos.filter((a) => Math.abs(a.diferencia) >= CENTAVO);
+  const sinDiferencia = Math.abs(cerrado.diferencia_cierre) < CENTAVO && conDiferencia.length === 0;
+  const otras = conDiferencia.map((a) => ` ${a.cuenta}: ${textoDiferencia(a.diferencia).toLowerCase()}.`).join("");
+  avisar(`Caja cerrada. ${textoDiferencia(cerrado.diferencia_cierre)}.${otras}`, sinDiferencia ? "ok" : "atencion");
   refrescar([recargar("caja")]);
   await refrescar([cargarTodo()]);
 });

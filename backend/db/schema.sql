@@ -1031,6 +1031,20 @@ CREATE TABLE IF NOT EXISTS turnos_caja (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_turnos_caja_abierto
   ON turnos_caja(cuenta_tesoreria_id) WHERE estado = 'abierto';
 
+-- El cierre en las otras cuentas (hist. §150): por cada cuenta que no es la
+-- caja y tuvo cobros en el turno (el banco del posnet, Mercado Pago), lo que
+-- decía Nexo y lo que decía el posnet o la app. La diferencia queda anotada y
+-- no mueve el saldo: casi siempre es un cobro cargado en la cuenta equivocada.
+-- Hija de turnos_caja.
+CREATE TABLE IF NOT EXISTS turno_caja_arqueos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  turno_caja_id INTEGER NOT NULL REFERENCES turnos_caja(id),
+  cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
+  esperado REAL NOT NULL,
+  declarado REAL NOT NULL,
+  UNIQUE (turno_caja_id, cuenta_tesoreria_id)
+);
+
 -- Cuenta corriente de cliente: el saldo se reconstruye sumando
 -- movimientos, nunca es un campo editable a mano. importe con signo:
 -- positivo aumenta la deuda (venta), negativo la disminuye (cobro).

@@ -7259,6 +7259,9 @@
           <input type="number" name="contado" id="posCierreContado" step="0.01" min="0" required inputmode="decimal" placeholder="0.00" />
         </label>
         <p class="pos-diferencia" id="posCierreDiferencia" aria-live="polite"></p>
+        <!-- Las otras cuentas con cobros en el turno (hist. §150): lo que dice
+             el posnet o la app, contra lo que dice Nexo. dominios/pos.js. -->
+        <div class="pos-cierre-otras" id="posCierreOtras" hidden></div>
         <label>Nota (opcional)
           <input type="text" name="nota" maxlength="200" placeholder="Motivo de la diferencia, si la hay" />
         </label>

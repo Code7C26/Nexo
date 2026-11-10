@@ -13,10 +13,11 @@ import db, { withTransaction } from './index.js';
 // La cuenta (identidad, mail, contraseña) es de la persona, que puede estar en
 // otros negocios. organizaciones es el negocio en sí: su fila queda vacía.
 const DE_LA_CUENTA = new Set(['organizaciones', 'usuarios', 'tokens_cuenta', 'codigos_mail']);
-// Lo que no sale en la descarga: las sesiones abiertas, y cualquier columna
-// con un secreto (el hash de una invitación).
-const SIN_DESCARGA = new Set(['sesiones']);
-const COLUMNA_SECRETA = /(^token$|_hash$|_salt$)/;
+// Lo que no sale en la descarga: las sesiones abiertas y los aparatos con
+// notificaciones (cuelgan de una sesión, hist. §146), y cualquier columna con
+// un secreto (el hash de una invitación, el token de una sesión).
+const SIN_DESCARGA = new Set(['sesiones', 'suscripciones_push']);
+const COLUMNA_SECRETA = /(^token$|_token$|_hash$|_salt$)/;
 
 // Cada tabla del negocio con su condición para "es de este negocio" (con el
 // id del negocio en el lugar de ?ORG?) y cuántos saltos de FK hay hasta una

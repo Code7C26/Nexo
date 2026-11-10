@@ -16459,7 +16459,7 @@ function resumenTurno(turno) {
     .get(turno.id);
   const cobrosPorCuenta = db
     .prepare(
-      `SELECT cuentas_tesoreria.nombre AS cuenta, SUM(cobros.importe) AS importe
+      `SELECT cobros.cuenta_tesoreria_id, cuentas_tesoreria.nombre AS cuenta, cuentas_tesoreria.tipo, SUM(cobros.importe) AS importe
          FROM cobros
          JOIN ventas ON ventas.id = cobros.venta_id
          JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
@@ -16482,7 +16482,18 @@ function resumenTurno(turno) {
       egresos: sumar((m) => m.tipo === 'egreso')
     },
     ventas: { cantidad: ventas.cantidad, total: redondear2(ventas.total) },
-    cobros_por_cuenta: cobrosPorCuenta
+    cobros_por_cuenta: cobrosPorCuenta,
+    // Las otras cuentas, controladas al cerrar (hist. §150).
+    arqueos: db
+      .prepare(
+        `SELECT turno_caja_arqueos.cuenta_tesoreria_id, cuentas_tesoreria.nombre AS cuenta,
+                turno_caja_arqueos.esperado, turno_caja_arqueos.declarado,
+                ROUND(turno_caja_arqueos.declarado - turno_caja_arqueos.esperado, 2) AS diferencia
+           FROM turno_caja_arqueos JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turno_caja_arqueos.cuenta_tesoreria_id
+          WHERE turno_caja_arqueos.turno_caja_id = ?
+          ORDER BY cuentas_tesoreria.nombre`
+      )
+      .all(turno.id)
   };
 }
 
@@ -16563,6 +16574,26 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
   if (!esImporteDeCaja(contado)) {
     return res.status(400).json({ error: 'Lo contado tiene que ser un número, 0 o más.' });
   }
+  // Las otras cuentas (hist. §150): de cada una con cobros en el turno, lo que
+  // dice el posnet o la app. Es opcional: la que no viene no se controla.
+  const otras = req.body?.otras ?? [];
+  if (!Array.isArray(otras)) return res.status(400).json({ error: 'Lo de las otras cuentas no es válido.' });
+  const conCobros = new Map(
+    resumenTurno(turno)
+      .cobros_por_cuenta.filter((c) => c.cuenta_tesoreria_id !== turno.cuenta_tesoreria_id)
+      .map((c) => [c.cuenta_tesoreria_id, c])
+  );
+  const vistas = new Set();
+  for (const otra of otras) {
+    const cuenta = conCobros.get(Number(otra?.cuenta_tesoreria_id));
+    if (!cuenta || vistas.has(cuenta.cuenta_tesoreria_id)) {
+      return res.status(400).json({ error: 'Solo se controlan, una vez cada una, las cuentas que tuvieron cobros en el turno.' });
+    }
+    if (!esImporteDeCaja(otra.declarado)) {
+      return res.status(400).json({ error: `Lo que dice ${cuenta.cuenta} tiene que ser un número, 0 o más.` });
+    }
+    vistas.add(cuenta.cuenta_tesoreria_id);
+  }
 
   withTransaction(() => {
     const esperado = redondear2(SQL_SALDO_CUENTA.get(turno.cuenta_tesoreria_id).saldo);
@@ -16578,13 +16609,25 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
       `Diferencia de arqueo al cerrar la caja (turno #${turno.id})`,
       organizacionId
     );
+    const anotar = db.prepare(
+      'INSERT INTO turno_caja_arqueos (turno_caja_id, cuenta_tesoreria_id, esperado, declarado) VALUES (?, ?, ?, ?)'
+    );
+    for (const otra of otras) {
+      const cuenta = conCobros.get(Number(otra.cuenta_tesoreria_id));
+      anotar.run(turno.id, cuenta.cuenta_tesoreria_id, cuenta.importe, redondear2(Number(otra.declarado)));
+    }
     auditar(req, {
       accion: 'cambiar_estado',
       entidad: 'cuenta_tesoreria',
       entidad_id: turno.cuenta_tesoreria_id,
       operacion_tipo: 'turno_caja',
       operacion_id: turno.id,
-      detalle: `Cerró la caja "${turno.cuenta}" (turno #${turno.id}): esperado $${esperado}, contado $${contado}`
+      detalle: `Cerró la caja "${turno.cuenta}" (turno #${turno.id}): esperado $${esperado}, contado $${contado}${otras
+        .map((o) => {
+          const cuenta = conCobros.get(Number(o.cuenta_tesoreria_id));
+          return `; ${cuenta.cuenta}: según Nexo $${cuenta.importe}, declarado $${Number(o.declarado)}`;
+        })
+        .join('')}`
     });
   });
   res.json(resumenTurno(turnoDeLaEmpresa(turno.id, organizacionId)));

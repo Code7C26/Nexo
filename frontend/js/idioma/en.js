@@ -4462,6 +4462,19 @@ export default {
   ", con Google": ", with Google",
   "Inició sesión con Google": "Signed in with Google",
 
+  // El cierre en todas las cuentas (hist. §150)
+  "Las otras cuentas": "The other accounts",
+  "Lo que dice el cierre de lote del posnet o la app de cada una. Si no lo tenés a mano, dejalo vacío.": "What each card terminal batch close or app says. If you don't have it at hand, leave it empty.",
+  "según Nexo {0}": "per Nexo {0}",
+  "la caja": "the cash drawer",
+  "Sobran {0} en {1} y faltan en {2}: ¿un cobro quedó cargado en la cuenta equivocada?": "{0} over in {1} and short in {2}: was a payment recorded in the wrong account?",
+  "Caja cerrada. {0}.{1}": "Register closed. {0}.{1}",
+  "Lo de las otras cuentas no es válido.": "The other accounts' data isn't valid.",
+  "Solo se controlan, una vez cada una, las cuentas que tuvieron cobros en el turno.": "Only accounts with payments in the shift are checked, once each.",
+  "Lo que dice {0} tiene que ser un número, 0 o más.": "What {0} says has to be a number, 0 or more.",
+  "Cerró la caja \"{0}\" (turno #{1}): esperado ${2}, contado ${3}{4}": "Closed the register \"{0}\" (shift #{1}): expected ${2}, counted ${3}{4}",
+  "; {0}: según Nexo ${1}, declarado ${2}": "; {0}: per Nexo ${1}, declared ${2}",
+
   // El QR de la caja de Mercado Pago (hist. §147)
   "QR del mostrador": "Counter QR",
   "Calle del local": "Store street",
