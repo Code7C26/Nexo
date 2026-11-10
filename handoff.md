@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §147);
+    siguiente número (hoy el último es §148);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,12 @@
   reescribe nada.
 
 ## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §148: el ingreso entre dos ventanas y el cartel del
+QR fijo, en `solla` sin publicar.** La entrada y la recepción son dos ventanas
+de la misma compu y se avisan al instante (BroadcastChannel, sin el
+servidor). La caja de Mercado Pago ofrece su cartel para imprimir, y la orden
+va en modo híbrido.
 
 **10 de noviembre, hist. §147: el QR de la caja de Mercado Pago, en `solla`
 sin publicar.** Configuración → Mercado Pago → "QR del mostrador" arma la

@@ -12412,3 +12412,39 @@ dinámica con la referencia y la clave de idempotencia; "Ya me pagó" antes y
 después de pagar; cancelar cancela la orden; si la API de Orders contesta 403,
 cae al link). 337 tests, lint y `verificar-migracion` (24 de 24). **No se vio
 en el navegador**: la tarjeta solo aparece con Mercado Pago conectado.
+
+## §148. El ingreso entre dos ventanas y el cartel del QR fijo (10 de noviembre de 2026)
+
+**Pedido del usuario, sobre §144:** "5 segundos es mucho tiempo y si se llega a
+ralentizar el servidor va a ser peor. Solo un usuario debe tener la opción de
+configurar dos pantallas, donde una sea para la gente y otra para la
+recepción". **Y sobre §147:** "también existen QR que no son por pago, que son
+permanentes del negocio y te hacen ingresar un monto".
+
+**El ingreso:**
+- Las dos pantallas son dos ventanas del mismo navegador, con la misma
+  sesión. "Pantalla de entrada → Abrir" abre la de la gente en una ventana
+  aparte y, si la compu tiene dos monitores y el navegador lo permite (Window
+  Management API: Chrome, Edge), ya en el otro. El primer toque en ella la pone
+  a pantalla completa, y "Salir" cierra esa ventana.
+- La entrada le avisa a la recepción por un `BroadcastChannel` por negocio
+  (`nexo-entrada-<id>`), al instante. Se fueron el sondeo de 5 segundos, los
+  avisos en memoria del servidor y `GET`/`DELETE /api/socios/entrada`. El
+  servidor solo busca al socio y anota el ingreso; ahora devuelve `socio_id`
+  (la pantalla no lo muestra), y la recepción trae al socio con lo que debe
+  (`GET /api/socios/:id`). El aviso al celular del §146 sigue.
+- Probado en el navegador con dos ventanas del gimnasio de ejemplo: el aviso
+  aparece en la recepción en el mismo momento.
+
+**El cartel del QR fijo:**
+- La caja que arma Nexo en Mercado Pago ya tiene su QR fijo. Al armarla se
+  guardan los enlaces del cartel (`qr.template_document`, el PDF, y la
+  imagen), y Configuración → Mercado Pago los ofrece para descargar e imprimir.
+  Se abren en Mercado Pago: la CSP no deja mostrar sus imágenes, y no se abrió
+  a un dominio que no se conoce.
+- La orden del punto de venta pasa a modo `hybrid`: con una venta en curso,
+  el cartel impreso cobra esa venta, igual que el QR de la pantalla. Sin
+  venta, el cliente escribe el monto.
+- **Falta:** lo que se cobra con el cartel sin una venta de Nexo llega a
+  Mercado Pago pero no a una venta. Eso son los "pagos sin asignar" del plan
+  de Mercado Pago (punto 4), para después.
