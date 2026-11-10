@@ -28,6 +28,7 @@ const MODULO_DE_VISTA = {
   produccion: "produccion",
   "produccion-detalle": "produccion",
   ingreso: "socios",
+  entrada: "socios",
   socios: "socios",
   "socio-detalle": "socios",
   "planes-socio": "socios",
@@ -67,6 +68,8 @@ const VISTAS_CONSTRUIDAS = {
   devoluciones: { titulo: "Devoluciones", dominio: "Embudo de venta" },
   facturas: { titulo: "Facturas", dominio: "Embudo de venta" },
   ingreso: { titulo: "Ingreso", dominio: "Socios" },
+  // La que ve el socio en la puerta (hist. §144): ocupa toda la pantalla.
+  entrada: { titulo: "Pantalla de entrada", dominio: "Socios", nav: "ingreso" },
   socios: { titulo: "Socios", dominio: "Socios" },
   "planes-socio": { titulo: "Planes", dominio: "Socios" },
   compras: { titulo: "Compras", dominio: "Embudo de compra" },

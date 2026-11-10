@@ -4349,5 +4349,32 @@ export default {
   "Para contar la mano de obra por hora, cargá cuánto dura el servicio (o vendelo por hora).": "To count labor per hour, enter how long the service takes (or sell it by the hour).",
   "Materiales y packaging": "Materials and packaging",
   "Materiales · Nexo": "Materials · Nexo",
-  "Con los costos de hoy, suma {0} a hacer uno.": "With today's costs, it adds {0} to doing one."
+  "Con los costos de hoy, suma {0} a hacer uno.": "With today's costs, it adds {0} to doing one.",
+
+  // La pantalla de entrada del gimnasio (hist. §144)
+  "Esperando en la entrada": "Waiting at the entrance",
+  "Pantalla de entrada": "Entrance screen",
+  "Para una tablet o una compu en la puerta: cada socio tipea su DNI y entra solo. Si debe, te aparece acá arriba.": "For a tablet or computer at the door: each member types their ID number and checks in on their own. If they owe, they show up here at the top.",
+  "Abrir": "Open",
+  "¡Hola! Ingresá tu DNI o tu número de socio": "Hi! Enter your ID or member number",
+  "Salir": "Exit",
+  "No te encontramos": "We couldn't find you",
+  "Pasá por recepción.": "Please stop by the front desk.",
+  "¡Hola, {0}!": "Hi, {0}!",
+  "Estás al día hasta el {0}. ¡Buen entrenamiento!": "You're paid up until {0}. Have a great workout!",
+  "¡Buen entrenamiento!": "Have a great workout!",
+  "{0}, pasá por recepción": "{0}, please stop by the front desk",
+  "Sin conexión": "No connection",
+  "¿Salir de la pantalla de entrada? Los socios ya no van a poder anotarse solos.": "Exit the entrance screen? Members won't be able to check in on their own.",
+  "entró solo, en la pantalla": "checked in on the screen",
+  "lo atendió {0}": "checked in by {0}",
+  "recién": "just now",
+  "hace {0} min": "{0} min ago",
+  "Ya no espera": "No longer waiting",
+  "Atender": "Attend",
+  "No se pudo sacar el aviso.": "The notice could not be removed.",
+  "Revisá el número o pasá por recepción.": "Check the number or stop by the front desk.",
+  "Tenés una cuota pendiente.": "You have a pending payment.",
+  "Tu plan empieza el {0}.": "Your plan starts on {0}.",
+  "Tu plan no está activo.": "Your plan is not active."
 };

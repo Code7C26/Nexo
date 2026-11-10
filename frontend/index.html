@@ -1438,6 +1438,15 @@
            debe, se ve cuánto y se cobra ahí mismo o se lo deja pasar igual. -->
       <section class="view" data-view="ingreso" hidden>
         <div class="ingreso">
+          <!-- Lo que avisó la pantalla de entrada (hist. §144): quien espera
+               porque debe, no empezó o está de baja. Se actualiza solo. -->
+          <section class="panel entrada-avisos" id="entradaAvisosPanel" aria-labelledby="entradaAvisosTitulo" hidden>
+            <div class="panel-head">
+              <h2 id="entradaAvisosTitulo">Esperando en la entrada</h2>
+            </div>
+            <ul class="entrada-avisos-lista" id="entradaAvisos" aria-live="polite"></ul>
+          </section>
+
           <div class="ingreso-buscar">
             <label class="visualmente-oculto" for="ingresoBuscar">Buscar socio</label>
             <input type="search" id="ingresoBuscar" class="search" placeholder="Nombre, DNI o número de socio" autocomplete="off" enterkeyhint="go" role="combobox" aria-expanded="false" aria-controls="ingresoResultados" aria-autocomplete="list" />
@@ -1459,7 +1468,45 @@
             </div>
             <ul class="ingreso-lista" id="ingresosHoy"></ul>
           </section>
+
+          <section class="panel entrada-invitacion">
+            <span class="entrada-invitacion-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tablet"></use></svg></span>
+            <div class="entrada-invitacion-texto">
+              <p class="entrada-invitacion-titulo">Pantalla de entrada</p>
+              <p>Para una tablet o una compu en la puerta: cada socio tipea su DNI y entra solo. Si debe, te aparece acá arriba.</p>
+            </div>
+            <button type="button" class="btn btn-secundario" id="btnAbrirEntrada">Abrir</button>
+          </section>
         </div>
+      </section>
+
+      <!-- Vista: Pantalla de entrada (dominios/entrada.js, hist. §144). Ocupa
+           toda la pantalla, por encima del menú: es la que ve el socio. -->
+      <section class="view entrada-pantalla" data-view="entrada" hidden>
+        <header class="entrada-cabeza">
+          <p class="entrada-negocio" id="entradaNegocio"></p>
+          <p class="entrada-hora mono" id="entradaHora"></p>
+        </header>
+        <div class="entrada-cuerpo" id="entradaCuerpo">
+          <h1 class="entrada-titulo">¡Hola! Ingresá tu DNI o tu número de socio</h1>
+          <output class="entrada-codigo mono" id="entradaCodigo" aria-live="polite"></output>
+          <div class="entrada-teclado" id="entradaTeclado">
+            <button type="button" data-tecla="1">1</button>
+            <button type="button" data-tecla="2">2</button>
+            <button type="button" data-tecla="3">3</button>
+            <button type="button" data-tecla="4">4</button>
+            <button type="button" data-tecla="5">5</button>
+            <button type="button" data-tecla="6">6</button>
+            <button type="button" data-tecla="7">7</button>
+            <button type="button" data-tecla="8">8</button>
+            <button type="button" data-tecla="9">9</button>
+            <button type="button" data-tecla="borrar" aria-label="Borrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#delete"></use></svg></button>
+            <button type="button" data-tecla="0">0</button>
+            <button type="button" data-tecla="entrar" class="entrada-tecla-entrar">Entrar</button>
+          </div>
+        </div>
+        <div class="entrada-resultado" id="entradaResultado" role="status" hidden></div>
+        <button type="button" class="entrada-salir" id="entradaSalir">Salir</button>
       </section>
 
       <!-- Vista: Socios (dominios/socios.js). #/socios es la lista y

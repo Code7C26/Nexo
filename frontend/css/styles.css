@@ -6259,6 +6259,241 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
 
 .ingreso-tarjeta-acciones .btn { min-height: 44px; }
 
+/* La recepción: quién espera en la pantalla de entrada (hist. §144) y la
+   invitación a abrirla. */
+.entrada-avisos { border-color: color-mix(in srgb, var(--naranja) 45%, var(--line)); }
+.entrada-avisos[hidden] { display: none; }
+
+.entrada-avisos-lista {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entrada-aviso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+
+.entrada-aviso:first-child { border-top: none; padding-top: 0; }
+
+.entrada-aviso-texto {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 140px;
+}
+
+.entrada-aviso-nombre { font-weight: 600; }
+.entrada-aviso-meta { font-size: var(--txt-sm); color: var(--ink-muted); }
+
+.entrada-aviso-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.entrada-invitacion {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.entrada-invitacion-icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: var(--r-md);
+}
+
+.entrada-invitacion-texto { flex: 1; min-width: 0; }
+
+.entrada-invitacion-texto p {
+  margin: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.entrada-invitacion-texto .entrada-invitacion-titulo {
+  font-size: var(--txt-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* La pantalla de entrada (hist. §144): la ve el socio en la puerta. Tapa todo,
+   menú incluido, va en el negro de la marca en los dos temas y se lee desde
+   un par de metros. */
+/* Debajo de los modales (50), para que "Salir" pueda preguntar, y sin el
+   asistente ni la hamburguesa, que flotan más arriba. */
+.main > .view.entrada-pantalla {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(16px, 4vw, 48px);
+  overflow-y: auto;
+  color: var(--sidebar-ink);
+  background: var(--frame);
+}
+
+.main > .view.entrada-pantalla[hidden] { display: none; }
+
+:root:has(.entrada-pantalla:not([hidden])) :is(.asistente-launcher, .asistente-panel, .nav-toggle) { display: none; }
+
+.entrada-cabeza {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  font-size: var(--txt-lg);
+  color: var(--sidebar-ink-2);
+}
+
+.entrada-cabeza p { margin: 0; }
+
+.entrada-negocio {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--sidebar-ink);
+}
+
+.entrada-cuerpo,
+.entrada-resultado {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-5);
+  padding: var(--sp-5) 0;
+  text-align: center;
+}
+
+.entrada-cuerpo[hidden],
+.entrada-resultado[hidden] { display: none; }
+
+.entrada-titulo {
+  max-width: 20ch;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(26px, 4.5vw, 44px);
+  line-height: 1.15;
+  color: var(--sidebar-ink);
+}
+
+.entrada-codigo {
+  min-width: min(100%, 360px);
+  padding: 8px 24px;
+  font-size: clamp(36px, 7vw, 64px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  color: var(--sidebar-ink);
+  border-bottom: 2px solid var(--accent-on-dark);
+}
+
+.entrada-codigo-vacio { color: var(--sidebar-ink-3); }
+
+.entrada-teclado {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: min(100%, 380px);
+}
+
+.entrada-teclado button {
+  display: grid;
+  place-items: center;
+  min-height: clamp(60px, 10vh, 84px);
+  font: inherit;
+  font-size: clamp(24px, 4vw, 32px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--sidebar-ink);
+  background: var(--sidebar-hover);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+}
+
+.entrada-teclado button:active {
+  background: rgba(255, 255, 255, 0.16);
+  transform: scale(0.97);
+}
+
+.entrada-teclado .ico { width: 30px; height: 30px; }
+
+.entrada-teclado .entrada-tecla-entrar {
+  font-size: clamp(18px, 3vw, 22px);
+  color: #0A0A0A;
+  background: var(--accent-on-dark);
+  border-color: transparent;
+}
+
+/* Colores fijos: el fondo es negro en los dos temas. */
+.entrada-resultado-ok    { --tono: #4ADE80; }
+.entrada-resultado-aviso { --tono: #FB923C; }
+.entrada-resultado-error { --tono: #F87171; }
+
+.entrada-resultado { animation: aparecer-arriba var(--dur-2) var(--ease-out); }
+
+.entrada-resultado-icono {
+  display: grid;
+  place-items: center;
+  width: clamp(96px, 16vw, 132px);
+  height: clamp(96px, 16vw, 132px);
+  color: #0A0A0A;
+  background: var(--tono);
+  border-radius: var(--r-full);
+}
+
+.entrada-resultado-icono .ico { width: 55%; height: 55%; }
+
+.entrada-resultado-titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 6vw, 60px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--sidebar-ink);
+}
+
+.entrada-resultado-texto {
+  max-width: 32ch;
+  margin: 0;
+  font-size: clamp(18px, 2.6vw, 26px);
+  color: var(--sidebar-ink-2);
+}
+
+.entrada-salir {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: var(--txt-sm);
+  color: var(--sidebar-ink-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
 .ingreso-tarjeta-acciones .btn-link {
   align-self: center;
   margin-left: auto;

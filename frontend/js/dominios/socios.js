@@ -7,6 +7,8 @@
  * Pantallas sobre las rutas de server.js, sección "Socios, planes y cuotas":
  * - Ingreso (#/ingreso): la recepción busca al que llega. Al día, el ingreso
  *   se anota solo; si debe, se ve cuánto y se cobra ahí o se lo deja pasar.
+ *   Arriba, los que esperan en la pantalla de entrada (dominios/entrada.js,
+ *   hist. §144), y la página se actualiza sola mientras está abierta.
  * - Socios (#/socios): la lista, y el alta como página aparte (#/socios/nuevo),
  *   con uno o varios planes y la duración de cada uno.
  * - La ficha de un socio: sus planes (duración, dejar, reactivar, sumar otro),
@@ -1089,7 +1091,7 @@ function pintarIngresosHoy() {
       <span class="ingreso-fila-hora mono">${esc(horaDe(i.fecha))}</span>
       <span class="ingreso-fila-texto">
         <button type="button" class="btn-link" data-socio="${i.socio_id}">${esc(i.nombre)}</button>
-        <span class="ingreso-fila-meta">N° ${esc(i.numero)} · lo atendió ${esc(i.usuario)}</span>
+        <span class="ingreso-fila-meta">N° ${esc(i.numero)} · ${i.por_pantalla ? "entró solo, en la pantalla" : `lo atendió ${esc(i.usuario)}`}</span>
       </span>
       ${i.al_dia ? badge("status-cobrado", "Al día").html : badge("status-vencido", `Debía ${money(i.deuda)}`).html}
     </li>`
@@ -1148,9 +1150,105 @@ document.getElementById("ingresosHoy").addEventListener("click", (e) => {
   if (boton) abrirFicha(Number(boton.dataset.socio));
 });
 
+/* ---------- Los avisos de la pantalla de entrada (hist. §144) ---------- */
+
+// Mientras la recepción está abierta, cada tantos segundos trae quién entró y
+// quién espera en la entrada: la pantalla de la puerta puede ser otro aparato.
+const SEGUNDOS_ACTUALIZAR = 5;
+let avisosEntrada = [];
+let actualizador = null;
+const recepcionVisible = () => !document.querySelector('[data-view="ingreso"]').hidden;
+
+const QUE_PASA = {
+  debe: (a) => badge("status-vencido", `Debe ${money(a.deuda)}`).html,
+  por_empezar: (a) => badge("status-aviso", `Empieza el ${fechaAR(a.empieza)}`).html,
+  baja: () => badge("", "De baja").html
+};
+const haceCuanto = (segundos) => (segundos < 60 ? "recién" : `hace ${Math.round(segundos / 60)} min`);
+
+function pintarAvisosEntrada() {
+  document.getElementById("entradaAvisosPanel").hidden = avisosEntrada.length === 0;
+  document.getElementById("entradaAvisos").innerHTML = avisosEntrada
+    .map(
+      (a) => `
+    <li class="entrada-aviso" data-socio="${a.socio_id}">
+      <span class="entrada-aviso-texto">
+        <span class="entrada-aviso-nombre">${esc(a.nombre)}</span>
+        <span class="entrada-aviso-meta">N° ${esc(a.numero)} · ${esc(haceCuanto(a.hace_segundos))}</span>
+      </span>
+      ${QUE_PASA[a.situacion]?.(a) ?? ""}
+      <span class="entrada-aviso-acciones">
+        <button type="button" class="btn btn-primary btn-chico" data-accion="atender">Atender</button>
+        <button type="button" class="btn-icon" data-accion="descartar" aria-label="Ya no espera" title="Ya no espera">${icono("x")}</button>
+      </span>
+    </li>`
+    )
+    .join("");
+}
+
+// Un aviso nuevo suena una vez: la recepción puede estar mirando otra cosa.
+function sonarAviso() {
+  try {
+    const audio = new AudioContext();
+    const nota = audio.createOscillator();
+    const volumen = audio.createGain();
+    nota.frequency.value = 880;
+    volumen.gain.setValueAtTime(0.12, audio.currentTime);
+    volumen.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.35);
+    nota.connect(volumen).connect(audio.destination);
+    nota.start();
+    nota.stop(audio.currentTime + 0.35);
+    nota.onended = () => audio.close();
+  } catch {
+    // Sin audio (el navegador no lo permite todavía): queda el aviso escrito.
+  }
+}
+
+async function actualizarRecepcion({ sonar = true } = {}) {
+  if (!recepcionVisible()) {
+    clearInterval(actualizador);
+    actualizador = null;
+    return;
+  }
+  const antes = new Set(avisosEntrada.map((a) => a.socio_id));
+  let avisos;
+  try {
+    [avisos] = await Promise.all([fetch("/api/socios/entrada").then((r) => (r.ok ? r.json() : avisosEntrada)), cargarIngresosHoy()]);
+  } catch {
+    return;
+  }
+  avisosEntrada = avisos;
+  pintarAvisosEntrada();
+  pintarIngresosHoy();
+  if (sonar && avisos.some((a) => !antes.has(a.socio_id))) sonarAviso();
+}
+
+document.getElementById("entradaAvisos").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-accion]");
+  if (!boton) return;
+  const socioId = Number(boton.closest("[data-socio]").dataset.socio);
+  if (boton.dataset.accion === "descartar") {
+    await api(`/api/socios/entrada/${socioId}`, { method: "DELETE", error: "No se pudo sacar el aviso." });
+  } else {
+    // La misma tarjeta que si lo buscara: cobrarle o dejarlo pasar.
+    const socio = socios.find((s) => s.id === socioId);
+    if (socio) await elegir(socio);
+  }
+  await actualizarRecepcion({ sonar: false });
+});
+
+document.getElementById("btnAbrirEntrada").addEventListener("click", () => {
+  // La tablet de la puerta, a pantalla completa (lo permite este click).
+  document.documentElement.requestFullscreen?.().catch(() => {});
+  mostrarVista("entrada");
+});
+
 async function entrarAIngreso() {
   await refrescar([cargarSocios(), cargarCuentas(), cargarIngresosHoy()]);
   pintarIngresosHoy();
+  clearInterval(actualizador);
+  actualizador = setInterval(actualizarRecepcion, SEGUNDOS_ACTUALIZAR * 1000);
+  actualizarRecepcion({ sonar: false });
   // Sin socios todavía, la búsqueda no tiene a quién encontrar: se dice.
   document.getElementById("ingresoInicioTexto").innerHTML =
     socios.length === 0

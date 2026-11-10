@@ -478,9 +478,10 @@ async function armarGimnasio(n) {
     ['Lucía Correa', musculacion.opciones[0], 25, true], ['Ignacio Reyna', pase.opciones[0], 60, true], ['Pilar Quiroga', funcional.opciones[0], 5, true]
   ];
   let alDia = 0;
-  for (const [nombre, opcion, dias, paga] of socios) {
+  // Con DNI, para entrar por la pantalla de entrada (hist. §144).
+  for (const [i, [nombre, opcion, dias, paga]] of socios.entries()) {
     const socio = await n.api.post('/api/socios', {
-      cliente: { nombre, telefono: `351 6${n.r.entre(10, 99)}-${n.r.entre(1000, 9999)}` },
+      cliente: { nombre, documento: String(28100000 + i * 731517), telefono: `351 6${n.r.entre(10, 99)}-${n.r.entre(1000, 9999)}` },
       planes: [{ opcion_id: opcion.id }],
       fecha_alta: diasAtras(dias)
     });
@@ -492,7 +493,7 @@ async function armarGimnasio(n) {
   }
   // Una socia con el combo.
   const combo = await n.api.post('/api/socios', {
-    cliente: { nombre: 'Sofía Arce', telefono: '351 688-3021' },
+    cliente: { nombre: 'Sofía Arce', documento: '40123456', telefono: '351 688-3021' },
     planes: [{ opcion_id: musculacion.opciones[0].id }, { opcion_id: funcional.opciones[0].id }],
     fecha_alta: diasAtras(12)
   });

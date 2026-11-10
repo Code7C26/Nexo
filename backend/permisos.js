@@ -184,6 +184,10 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/descuentos-socio/:id': 'admin',
   'GET /api/socios': 'ambos',
   'GET /api/socios/ingresos': 'ambos',
+  // La pantalla de entrada y los avisos que le deja a la recepción (hist. §144).
+  'GET /api/socios/entrada': 'ambos',
+  'POST /api/socios/entrada': 'ambos',
+  'DELETE /api/socios/entrada/:socioId': 'ambos',
   'GET /api/socios/:id': 'ambos',
   'POST /api/socios/cotizacion': 'ambos',
   'POST /api/socios': 'ambos',

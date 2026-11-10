@@ -17461,7 +17461,7 @@ app.get('/api/socios/ingresos', (req, res) => {
   const ingresos = db
     .prepare(
       `SELECT ingresos_socio.id, ingresos_socio.socio_id, ingresos_socio.fecha, ingresos_socio.al_dia,
-              ingresos_socio.deuda, socios.numero, clientes.nombre, usuarios.nombre AS usuario
+              ingresos_socio.deuda, ingresos_socio.por_pantalla, socios.numero, clientes.nombre, usuarios.nombre AS usuario
          FROM ingresos_socio
          JOIN socios ON socios.id = ingresos_socio.socio_id
          JOIN clientes ON clientes.id = socios.cliente_id
@@ -17470,7 +17470,104 @@ app.get('/api/socios/ingresos', (req, res) => {
         ORDER BY ingresos_socio.id DESC LIMIT 200`
     )
     .all(req.usuario.organizacion_id, inicioDelDia);
-  res.json(ingresos.map((i) => ({ ...i, al_dia: Boolean(i.al_dia) })));
+  res.json(ingresos.map((i) => ({ ...i, al_dia: Boolean(i.al_dia), por_pantalla: Boolean(i.por_pantalla) })));
+});
+
+/* ---------- La pantalla de entrada (hist. §144) ---------- */
+//
+// Dos pantallas para el ingreso: en la entrada, el socio tipea su DNI o su
+// número en una tablet o una compu con la sesión del negocio; en la recepción,
+// la de siempre (#/ingreso). Al día, entra solo. Si debe, si todavía no empezó
+// o si está de baja, la entrada le dice que pase por recepción y le deja a la
+// recepción un aviso con quién es y qué pasa, para cobrarle o dejarlo pasar.
+// La entrada nunca muestra cuánto debe: la ve cualquiera que esté atrás.
+//
+// Los avisos viven en memoria, por negocio, y duran 30 minutos: son de quien
+// está parado en la entrada ahora, no un registro. Lo que queda es el ingreso
+// (ingresos_socio), cuando entra.
+
+const avisosEntrada = new Map();
+const VIDA_AVISO_ENTRADA_MS = 30 * 60 * 1000;
+// Pasar dos veces el mismo DNI en un rato es un solo ingreso.
+const ANTIRREBOTE_ENTRADA_MIN = 5;
+
+function avisosDeEntrada(org) {
+  const vivos = (avisosEntrada.get(org) ?? []).filter((a) => Date.now() - a.creado < VIDA_AVISO_ENTRADA_MS);
+  avisosEntrada.set(org, vivos);
+  return vivos;
+}
+function sacarAvisoEntrada(org, socioId) {
+  avisosEntrada.set(
+    org,
+    avisosDeEntrada(org).filter((a) => a.socio_id !== socioId)
+  );
+}
+
+// El socio por lo que tipeó: su número o su DNI, solo los dígitos.
+function socioPorCodigo(org, codigo) {
+  const digitos = String(codigo ?? '').replace(/\D/g, '');
+  if (!digitos || digitos.length > 12) return null;
+  const fila = db
+    .prepare(
+      `SELECT socios.id FROM socios JOIN clientes ON clientes.id = socios.cliente_id
+        WHERE socios.organizacion_id = ?
+          AND (socios.numero = ? OR REPLACE(REPLACE(REPLACE(clientes.documento, '.', ''), '-', ''), ' ', '') = ?)
+        ORDER BY CASE WHEN socios.numero = ? THEN 1 ELSE 0 END
+        LIMIT 1`
+    )
+    .get(org, Number(digitos), digitos, Number(digitos));
+  return fila?.id ?? null;
+}
+
+const primerNombre = (nombre) => String(nombre).trim().split(/\s+/)[0];
+
+app.get('/api/socios/entrada', (req, res) => {
+  res.json(avisosDeEntrada(req.usuario.organizacion_id).map(({ creado, ...a }) => ({ ...a, hace_segundos: Math.round((Date.now() - creado) / 1000) })));
+});
+
+app.post('/api/socios/entrada', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const socioId = socioPorCodigo(org, req.body?.codigo);
+  if (!socioId) return res.status(404).json({ error: 'Revisá el número o pasá por recepción.' });
+  ponerCuotasAlDia(org, socioId);
+  const [socio] = sociosConSituacion(org, socioId);
+  delete socio.cuotas;
+  const nombre = primerNombre(socio.nombre);
+
+  if (socio.situacion !== 'al_dia') {
+    sacarAvisoEntrada(org, socioId);
+    avisosDeEntrada(org).push({
+      socio_id: socioId,
+      nombre: socio.nombre,
+      numero: socio.numero,
+      situacion: socio.situacion,
+      deuda: socio.deuda,
+      empieza: socio.empieza ?? null,
+      creado: Date.now()
+    });
+    const motivo =
+      socio.situacion === 'debe'
+        ? 'Tenés una cuota pendiente.'
+        : socio.situacion === 'por_empezar'
+          ? `Tu plan empieza el ${fechaLegible(socio.empieza)}.`
+          : 'Tu plan no está activo.';
+    return res.json({ entra: false, nombre, motivo });
+  }
+
+  sacarAvisoEntrada(org, socioId);
+  const reciente = db
+    .prepare(`SELECT id, fecha FROM ingresos_socio WHERE socio_id = ? AND fecha >= datetime('now', ?) ORDER BY id DESC LIMIT 1`)
+    .get(socioId, `-${ANTIRREBOTE_ENTRADA_MIN} minutes`);
+  if (!reciente) {
+    db.prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda, por_pantalla) VALUES (?, ?, 1, 0, 1)').run(socioId, req.usuario.id);
+  }
+  res.status(reciente ? 200 : 201).json({ entra: true, nombre, al_dia_hasta: socio.al_dia_hasta, ya_estaba: Boolean(reciente) });
+});
+
+// La recepción lo resolvió de otra forma (o no vino): se saca el aviso.
+app.delete('/api/socios/entrada/:socioId', (req, res) => {
+  sacarAvisoEntrada(req.usuario.organizacion_id, Number(req.params.socioId));
+  res.status(204).end();
 });
 
 app.get('/api/socios/:id', (req, res) => {
@@ -17843,6 +17940,8 @@ app.post('/api/socios/:id/ingresos', (req, res) => {
   const { lastInsertRowid } = db
     .prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda) VALUES (?, ?, ?, ?)')
     .run(socio.id, req.usuario.id, situacion.deuda > 0 ? 0 : 1, situacion.deuda);
+  // Si esperaba en la entrada, ya lo atendieron.
+  sacarAvisoEntrada(organizacionId, socio.id);
   const ingreso = db.prepare('SELECT id, fecha FROM ingresos_socio WHERE id = ?').get(lastInsertRowid);
   res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion });
 });

@@ -1566,7 +1566,10 @@ CREATE TABLE IF NOT EXISTS ingresos_socio (
   fecha TEXT NOT NULL DEFAULT (datetime('now')),
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
   al_dia INTEGER NOT NULL CHECK (al_dia IN (0, 1)),
-  deuda REAL NOT NULL DEFAULT 0
+  deuda REAL NOT NULL DEFAULT 0,
+  -- 1 = lo anotó el mismo socio en la pantalla de entrada (hist. §144), con
+  -- la sesión del aparato; 0 = la recepción.
+  por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))
 );
 CREATE INDEX IF NOT EXISTS idx_ingresos_socio ON ingresos_socio(socio_id, fecha);
 
