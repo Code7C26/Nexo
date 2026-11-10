@@ -12273,3 +12273,44 @@ pestaña).
 pregunta; quien la toque entra a la app con la sesión del aparato. Conviene
 que la tablet use un usuario empleado (no ve costos). Para después: pedir la
 contraseña o un PIN para salir, y entrar con un QR del carnet (la cámara).
+
+## §145. El QR de Mercado Pago en el mostrador (10 de noviembre de 2026)
+
+**Pedido del usuario:** "lo del QR en el mostrador estaría bueno hacerlo, al
+igual que todas las cosas que puedan ser vistosas en la presentación".
+
+**Decisión técnica:** el QR es el del **link de pago** de la venta (Checkout
+Pro, hist. §130) por el total, no el "QR dinámico" de las tiendas físicas.
+Ese usa la API de Orders, y la app creada con esa API no deja vincular
+cuentas (hist. §130); la nuestra es de "API de Preferences" y ya cobró de
+verdad. Se escanea con la app de Mercado Pago o con la cámara, y el cobro
+entra solo con el aviso firmado de siempre, con la comisión como gasto de la
+venta. No pide dar de alta una sucursal ni una caja en Mercado Pago.
+
+**Lo que se hizo:**
+- `POST /api/pos/ventas` con `qr_mercadopago: true`: la venta nace sin
+  cobros, también a "Consumidor final", y todo va por el QR (con otros cobros,
+  400; sin Mercado Pago conectado, 409).
+- `POST /api/pos/ventas/:id/cancelar-qr` (los dos roles): si no pagó, la anula
+  y devuelve el stock. Solo las ventas que esperan su QR, recordadas en
+  memoria por una hora; con un cobro ya adentro, 409. Después de reiniciar el
+  servidor, la anula el admin como cualquier venta.
+- **El punto de venta** (`pos.js`): "Cobrar con QR de Mercado Pago" en el
+  cobro, solo con la cuenta conectada. Muestra el QR grande sobre blanco, el
+  importe y "Esperando el pago…". Mira la venta cada 3 segundos y cada 15 le
+  pregunta a Mercado Pago (por si el aviso no puede llegar, como en la
+  compu). Con el pago, "Venta #N cobrada con Mercado Pago". "No pagó: cobrar
+  de otra forma" la anula y vuelve al cobro con el carrito intacto. No se
+  puede cerrar el cobro mientras espera.
+
+**Cómo se verificó.** Un test nuevo en `mercadopago.test.js`, contra el
+Mercado Pago falso (consumidor final sin QR rechazado, QR con otros cobros
+rechazado, el aviso la cobra, ya cobrada no se cancela, la que no pagó se
+anula una sola vez, una venta común u otro negocio no), 331 tests y lint. En
+el navegador, solo el diseño en el celular (el botón y el panel con un QR de
+ejemplo): **en local no hay Mercado Pago conectado y no se hizo un pago real**.
+
+**Para la demo:** los negocios de ejemplo no tienen Mercado Pago conectado, así
+que el botón no aparece en ellos. Se muestra desde el negocio del usuario que
+ya tiene la cuenta conectada ("Gonzalo José Solla"), con la caja abierta.
+Conviene probar un pago real de $100 antes del jueves.

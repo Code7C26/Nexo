@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §144);
+    siguiente número (hoy el último es §145);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,12 @@
   reescribe nada.
 
 ## Estado actual (10 de noviembre de 2026)
+
+**10 de noviembre, hist. §145: el QR de Mercado Pago en el mostrador, en
+`solla` sin publicar.** El QR del link de pago de la venta por el total; el
+cobro entra solo y la pantalla cierra la venta, o se cancela y se cobra de
+otra forma. Sin pago real todavía: probarlo con $100 antes del jueves, desde
+el negocio que tiene Mercado Pago conectado (los de ejemplo no lo tienen).
 
 **10 de noviembre, hist. §144: el ingreso del gimnasio en dos pantallas, en
 `solla` sin publicar.** `#/entrada` para el socio en la puerta (DNI o número;
@@ -31,7 +37,7 @@ falta un PIN.
 publicar.** Mano de obra (fija o por hora) y materiales en cada servicio; se
 congelan en la venta, miden el margen y van aparte en "adónde fue la plata".
 Clima Sur trae servicios con costo. Plan del usuario para lo que sigue, en
-este orden: ~~el ingreso del gimnasio en dos pantallas~~ (hecho, §144), el QR de Mercado Pago en el mostrador, las notificaciones en el
+este orden: ~~el ingreso del gimnasio en dos pantallas~~ (hecho, §144), ~~el QR de Mercado Pago en el mostrador~~ (hecho, §145), las notificaciones en el
 celular (Web Push) y la caja con todos los medios
 (`docs/investigacion-caja.md`). "Entrar con Google" espera el trámite del
 usuario (los pasos se le dieron el 10 de noviembre; la vuelta es
