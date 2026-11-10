@@ -323,6 +323,23 @@ export const SECCIONES_EN = {
       "When it's received, Nexo updates each product's cost with the average of what you had and what came in."
     ]
   },
+  "compra-desde-factura": {
+    titulo: "Recording a purchase from a photo of the invoice",
+    pantalla: "Purchases",
+    preguntas: ["how do i record a purchase with a photo", "can i upload the supplier's invoice", "how do i record a purchase from the pdf", "how do i enter a pack of 12", "how do i scan an invoice"],
+    palabras: ["photo", "invoice", "delivery note", "pdf", "scan", "upload", "camera", "pack", "box", "case", "supplier"],
+    bloques: [
+      { pasos: [
+        "Go to **Purchases**, tap **New purchase** and then **Load from the invoice**.",
+        "Take a photo of the invoice or delivery note (on the phone the camera opens), or choose the PDF the supplier sent you. If it has several pages, choose them together.",
+        "Nexo fills in the supplier, the number, the date and each product with its quantity and cost. Under each line you see how it appeared on the invoice.",
+        "Check the ones marked **Similar** or **New**: choose the product from your catalog or leave it to be created.",
+        "Tap **Save draft** and continue as with any purchase."
+      ] },
+      "Packs come in as units: 2 packs of 12 sodas are 24 sodas, each with its cost. If a pack has a different amount, fix it in **Each one has**.",
+      { nota: "What you confirm is remembered for that supplier: their next invoice comes out on its own. If what was loaded doesn't match the invoice total, Nexo warns you." }
+    ]
+  },
   "pagar-proveedor": {
     titulo: "Paying a supplier",
     pantalla: "Purchases",

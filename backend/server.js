@@ -4,7 +4,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
-import { interpretar, InterpreteError, transcribir, vozDisponible } from './interprete.js';
+import { interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
+import {
+  alicuotaNumerica,
+  buscarEnCatalogo,
+  claveDeRenglon,
+  diferenciaConElTotal,
+  enUnidades,
+  nombreSugerido,
+  normalizarLectura,
+  totalDelRenglon
+} from './factura-proveedor.js';
 import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
@@ -132,8 +142,12 @@ app.use((req, res, next) => {
 
 // Los webhooks de las integraciones (CLAUDE.md §32) se firman sobre el cuerpo
 // tal cual llegó: se guarda solo para esas rutas, antes de parsearlo.
+// La foto de la factura de un proveedor (hist. §151) es la única que viaja
+// grande: va con su propio límite en su ruta, y acá se saltea.
+const RUTA_LEER_COMPROBANTE = '/api/compras/leer-comprobante';
 app.use(
   express.json({
+    type: (req) => req.path !== RUTA_LEER_COMPROBANTE && Boolean(req.is('application/json')),
     verify: (req, res, buf) => {
       if (req.url.startsWith('/api/integraciones/')) req.cuerpoCrudo = Buffer.from(buf);
     }
@@ -2094,7 +2108,7 @@ const ESCRIBIR_SOLO_CON_CUENTA = [
   /^\/factura-electronica(\/|$)/,
   /^\/whatsapp(\/|$)/
 ];
-const RUTAS_DE_LA_IA = new Set(['/asistente/interpretar', '/asistente/transcribir']);
+const RUTAS_DE_LA_IA = new Set(['/asistente/interpretar', '/asistente/transcribir', '/compras/leer-comprobante']);
 
 function rechazoEnEjemplo(req) {
   if (req.method !== 'GET' && ESCRIBIR_SOLO_CON_CUENTA.some((ruta) => ruta.test(req.path))) {
@@ -9856,6 +9870,7 @@ function crearCompra({
   fecha_vencimiento,
   comprobante_letra,
   comprobante_numero,
+  proveedor_documento,
   organizacion_id
 }) {
   // organizacion_id es obligatorio (CLAUDE.md §28): proveedor y productos
@@ -9864,9 +9879,11 @@ function crearCompra({
     .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
     .get(proveedor, organizacion_id);
   if (!proveedorRow) {
+    // El CUIT llega cuando la compra sale de la foto de la factura (hist. §151).
+    const documento = String(proveedor_documento ?? '').replace(/\D/g, '');
     const { lastInsertRowid } = db
-      .prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)')
-      .run(proveedor, organizacion_id);
+      .prepare('INSERT INTO proveedores (nombre, documento, organizacion_id) VALUES (?, ?, ?)')
+      .run(proveedor, documento.length === 11 ? documento : null, organizacion_id);
     proveedorRow = { id: lastInsertRowid };
   }
 
@@ -9928,9 +9945,19 @@ function crearCompra({
       producto: String(i.producto).trim(),
       variante_id: i.variante_id ? Number(i.variante_id) : null,
       cantidad: Number(i.cantidad),
-      precio_unitario: Number(i.precio_unitario)
+      precio_unitario: Number(i.precio_unitario),
+      factura: renglonDeFactura(i.factura)
     })),
     costoEnvio
+  );
+  // Lo que el proveedor llama así es este producto (hist. §151): se anota al
+  // guardar la compra hecha desde su factura, con la persona confirmando.
+  const recordarArticulo = db.prepare(
+    `INSERT INTO proveedor_articulos (organizacion_id, proveedor_id, clave, descripcion, producto_id, variante_id, unidades_por_bulto)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (proveedor_id, clave) DO UPDATE SET
+       descripcion = excluded.descripcion, producto_id = excluded.producto_id, variante_id = excluded.variante_id,
+       unidades_por_bulto = excluded.unidades_por_bulto, actualizado = datetime('now')`
   );
 
   for (const item of itemsProrrateados) {
@@ -9960,9 +9987,33 @@ function crearCompra({
       renglon.alicuota_iva,
       renglon.iva
     );
+    if (item.factura) {
+      recordarArticulo.run(
+        organizacion_id,
+        proveedorRow.id,
+        item.factura.clave,
+        item.factura.descripcion,
+        productoRow.id,
+        item.variante_id,
+        item.factura.unidades_por_bulto
+      );
+    }
   }
 
   return nuevaCompraId;
+}
+
+// El renglón de la factura de donde salió un ítem de compra, como lo manda la
+// app (hist. §151). Lo que no tiene forma se ignora: la compra se guarda igual,
+// sin recordar nada.
+function renglonDeFactura(factura) {
+  if (!factura || typeof factura !== 'object') return null;
+  const clave = String(factura.clave ?? '').trim();
+  const descripcion = String(factura.descripcion ?? '').trim();
+  const unidades = Number(factura.unidades_por_bulto ?? 1);
+  if (!/^(cod|txt):./.test(clave) || clave.length > 200 || !descripcion) return null;
+  if (!(unidades > 0 && unidades <= 10000)) return null;
+  return { clave, descripcion: descripcion.slice(0, 200), unidades_por_bulto: unidades };
 }
 
 app.post('/api/compras', soloAdmin, (req, res) => {
@@ -9975,7 +10026,8 @@ app.post('/api/compras', soloAdmin, (req, res) => {
     condicion_pago,
     fecha_vencimiento,
     comprobante_letra,
-    comprobante_numero
+    comprobante_numero,
+    proveedor_documento
   } = req.body;
 
   if (!proveedor || !String(proveedor).trim()) {
@@ -10015,6 +10067,7 @@ app.post('/api/compras', soloAdmin, (req, res) => {
         fecha_vencimiento,
         comprobante_letra,
         comprobante_numero,
+        proveedor_documento,
         organizacion_id: req.usuario.organizacion_id
       });
       auditar(req, {
@@ -10033,6 +10086,173 @@ app.post('/api/compras', soloAdmin, (req, res) => {
 
   res.status(201).json({ id: compraId, estado: 'borrador' });
 });
+
+// La compra desde la foto de la factura del proveedor (hist. §151). De solo
+// lectura, como /api/asistente/interpretar: la IA lee la imagen (interprete.js),
+// factura-proveedor.js busca cada renglón en el catálogo y pasa los packs a
+// unidades, y la app llena el formulario de compra de siempre para que la
+// persona lo revise y lo guarde. Nada se escribe acá (CLAUDE.md §21).
+const LECTURAS_MAX = 30;
+const lecturasPorUsuario = new Map();
+const TIPOS_DE_IMAGEN = ['image/jpeg', 'image/png', 'image/webp'];
+const PAGINAS_MAX = 4;
+const IMAGENES_MAX_CARACTERES = 10 * 1024 * 1024;
+
+// Lo que se puede comprar, como lo busca la factura: una entrada por producto,
+// o por variante activa en los que tienen (sin ella no se puede comprar).
+function catalogoParaFactura(organizacionId) {
+  const productos = db
+    .prepare(
+      `SELECT id, nombre, sku, codigo_barras, alicuota_iva FROM productos
+        WHERE organizacion_id = ? AND activo = 1 AND tipo != 'servicio'`
+    )
+    .all(organizacionId);
+  const variantes = db
+    .prepare(
+      `SELECT producto_variantes.id, producto_variantes.producto_id, producto_variantes.sku, producto_variantes.codigo_barras
+         FROM producto_variantes
+         JOIN productos ON productos.id = producto_variantes.producto_id
+        WHERE productos.organizacion_id = ? AND producto_variantes.activo = 1`
+    )
+    .all(organizacionId);
+  const porProducto = Map.groupBy(variantes, (v) => v.producto_id);
+  return productos.flatMap((p) => {
+    const suyas = porProducto.get(p.id);
+    if (!suyas) {
+      return [{ producto_id: p.id, variante_id: null, nombre: p.nombre, producto: p.nombre, sku: p.sku, codigo_barras: p.codigo_barras, alicuota_iva: p.alicuota_iva }];
+    }
+    return suyas.map((v) => {
+      // "Talle: M / Color: Negro" → "M Negro": en la factura no figura el atributo.
+      const valores = combinacionVariante(v.id).replace(/[^/:]+:\s*/g, '').replace(/\s*\/\s*/g, ' ');
+      return { producto_id: p.id, variante_id: v.id, nombre: `${p.nombre} ${valores}`, producto: p.nombre, sku: v.sku, codigo_barras: v.codigo_barras, alicuota_iva: p.alicuota_iva };
+    });
+  });
+}
+
+// El proveedor de la factura: por CUIT primero, después por nombre. Si la
+// lectura confundió al emisor con el negocio (su propio CUIT), no hay proveedor.
+function proveedorDeFactura(lectura, organizacionId) {
+  const { nombre, cuit } = lectura.proveedor;
+  const propio = String(db.prepare('SELECT documento FROM organizaciones WHERE id = ?').get(organizacionId)?.documento ?? '').replace(/\D/g, '');
+  if (cuit && cuit === propio) return null;
+  if (cuit) {
+    const porCuit = db
+      .prepare('SELECT id, nombre, documento FROM proveedores WHERE organizacion_id = ? AND documento IS NOT NULL')
+      .all(organizacionId)
+      .find((p) => p.documento.replace(/\D/g, '') === cuit);
+    if (porCuit) return { id: porCuit.id, nombre: porCuit.nombre, cuit, nuevo: false };
+  }
+  if (!nombre) return null;
+  const porNombre = buscarPorNombre('proveedores', nombre, organizacionId);
+  if (porNombre.estado === 'resuelto') return { id: porNombre.id, nombre: porNombre.nombre_resuelto, cuit, nuevo: false };
+  return { id: null, nombre, cuit, nuevo: true };
+}
+
+function validarImagenes(imagenes) {
+  if (!Array.isArray(imagenes) || !imagenes.length) return 'No llegó ninguna imagen de la factura.';
+  if (imagenes.length > PAGINAS_MAX) return `Subí hasta ${PAGINAS_MAX} páginas por factura.`;
+  let total = 0;
+  for (const img of imagenes) {
+    if (!TIPOS_DE_IMAGEN.includes(img?.tipo)) return 'La factura tiene que ser una foto (JPG, PNG o WebP) o un PDF.';
+    if (typeof img.datos !== 'string' || !img.datos || !/^[A-Za-z0-9+/]+={0,2}$/.test(img.datos)) {
+      return 'Una de las imágenes llegó dañada. Probá de nuevo.';
+    }
+    total += img.datos.length;
+  }
+  return total > IMAGENES_MAX_CARACTERES ? 'La factura pesa demasiado. Probá con menos páginas o una foto más chica.' : null;
+}
+
+app.post('/api/compras/leer-comprobante', soloAdmin, soloConAsistente, express.json({ limit: '12mb' }), asincrono(async (req, res) => {
+  const imagenes = req.body?.imagenes;
+  const error = validarImagenes(imagenes);
+  if (error) return res.status(400).json({ error });
+
+  // El cupo de la IA es de toda la instalación: nadie lo puede gastar solo.
+  const ahora = Date.now();
+  const registro = lecturasPorUsuario.get(req.usuario.id);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    lecturasPorUsuario.set(req.usuario.id, { cuenta: 1, desde: ahora });
+  } else if (++registro.cuenta > LECTURAS_MAX) {
+    return res.status(429).json({ error: 'Leíste muchas facturas en la última hora. Mientras tanto, cargá la compra a mano.' });
+  }
+
+  let cruda;
+  try {
+    cruda = await leerComprobante(imagenes.map(({ tipo, datos }) => ({ tipo, datos })));
+  } catch (err) {
+    if (err instanceof InterpreteError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+  const lectura = normalizarLectura(cruda);
+  if (!lectura.es_comprobante || !lectura.renglones.length) {
+    return res.status(422).json({
+      error: 'No encontré productos en esa imagen. Probá con una foto derecha, con buena luz y la factura entera.'
+    });
+  }
+
+  const orgId = req.usuario.organizacion_id;
+  const proveedor = proveedorDeFactura(lectura, orgId);
+  const catalogo = catalogoParaFactura(orgId);
+  const recordados = new Map(
+    proveedor?.id
+      ? db
+          .prepare('SELECT clave, producto_id, variante_id, unidades_por_bulto FROM proveedor_articulos WHERE proveedor_id = ? AND organizacion_id = ?')
+          .all(proveedor.id, orgId)
+          .map((r) => [r.clave, r])
+      : []
+  );
+
+  let costoEnvio = 0;
+  const items = [];
+  for (const renglon of lectura.renglones) {
+    if (renglon.es_envio) {
+      costoEnvio += totalDelRenglon(renglon, { preciosSinIva: lectura.precios_sin_iva, alicuota: renglon.alicuota_iva ?? 21 });
+      continue;
+    }
+    const clave = claveDeRenglon(renglon);
+    const recordado = recordados.get(clave);
+    // Lo recordado vale mientras el producto (o la variante) siga a la venta.
+    const entradaRecordada =
+      recordado && catalogo.find((e) => e.producto_id === recordado.producto_id && e.variante_id === recordado.variante_id);
+    const encontrado = entradaRecordada
+      ? { entrada: entradaRecordada, coincidencia: 'recordado' }
+      : buscarEnCatalogo(renglon, catalogo);
+    const unidadesPorBulto = entradaRecordada ? recordado.unidades_por_bulto : (renglon.unidades_por_bulto ?? 1);
+    const alicuota = renglon.alicuota_iva ?? alicuotaNumerica(encontrado?.entrada.alicuota_iva);
+    const total = totalDelRenglon(renglon, { preciosSinIva: lectura.precios_sin_iva, alicuota });
+    const { cantidad, precio_unitario } = enUnidades(renglon, unidadesPorBulto, total);
+    items.push({
+      descripcion: renglon.descripcion,
+      codigo: renglon.codigo,
+      clave,
+      cantidad_factura: renglon.cantidad,
+      unidades_por_bulto: unidadesPorBulto,
+      total,
+      cantidad,
+      precio_unitario,
+      coincidencia: encontrado?.coincidencia ?? 'nuevo',
+      producto: encontrado
+        ? { id: encontrado.entrada.producto_id, nombre: encontrado.entrada.producto, variante_id: encontrado.entrada.variante_id }
+        : null,
+      nombre_nuevo: encontrado ? null : nombreSugerido(renglon.descripcion)
+    });
+  }
+
+  costoEnvio = Math.round(costoEnvio * 100) / 100;
+  const suma = items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0) + costoEnvio;
+  res.json({
+    proveedor,
+    letra: lectura.letra,
+    numero: lectura.numero,
+    fecha: lectura.fecha,
+    precios_sin_iva: lectura.precios_sin_iva,
+    total: lectura.total,
+    percepciones: lectura.percepciones,
+    costo_envio: costoEnvio,
+    diferencia: diferenciaConElTotal(lectura, suma, items.length),
+    items
+  });
+}));
 
 // Editar una compra existente, en cualquier estado (incluso ya recibida).
 // Se resuelve como revertir los efectos actuales (deuda si se había

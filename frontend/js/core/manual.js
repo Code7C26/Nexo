@@ -413,7 +413,29 @@ const SECCIONES_ES = [
       ] },
       "Al recibirla, Nexo actualiza el costo de cada producto con el promedio entre lo que tenías y lo que entró."
     ],
-    ver: ["pagar-proveedor", "stock", "proveedores"]
+    ver: ["compra-desde-factura", "pagar-proveedor", "stock", "proveedores"]
+  },
+  {
+    id: "compra-desde-factura",
+    grupo: "Comprar y stock",
+    titulo: "Cargar una compra con la foto de la factura",
+    pantalla: ["#/compras", "Compras"],
+    modulo: "compras",
+    admin: true,
+    preguntas: ["cómo cargo una compra con una foto", "puedo subir la factura del proveedor", "cómo cargo una compra desde el pdf", "cómo cargo un pack de 12", "cómo escaneo una factura"],
+    palabras: ["foto", "factura", "remito", "pdf", "escanear", "subir", "camara", "pack", "caja", "bulto", "fardo", "proveedor"],
+    bloques: [
+      { pasos: [
+        "Entrá a **Compras**, tocá **Nueva compra** y después **Cargar desde la factura**.",
+        "Sacale una foto a la factura o el remito (en el celular se abre la cámara), o elegí el PDF que te mandó el proveedor. Si son varias hojas, elegilas juntas.",
+        "Nexo completa el proveedor, el número, la fecha y cada producto con su cantidad y su costo. Abajo de cada renglón ves cómo figuraba en la factura.",
+        "Revisá los que dicen **Parecido** o **Nuevo**: elegí el producto de tu catálogo o dejalo para que se cree.",
+        "Tocá **Guardar borrador** y seguí como con cualquier compra."
+      ] },
+      "Los packs entran en unidades: 2 packs de 12 gaseosas son 24 gaseosas, cada una con su costo. Si un bulto trae otra cantidad, corregila en **Cada uno trae**.",
+      { nota: "Lo que confirmás queda recordado para ese proveedor: la próxima factura suya sale sola. Si lo cargado no da el total de la factura, Nexo te avisa." }
+    ],
+    ver: ["registrar-compra", "proveedores"]
   },
   {
     id: "pagar-proveedor",

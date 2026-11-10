@@ -643,6 +643,26 @@ CREATE TABLE IF NOT EXISTS compra_items (
   iva REAL NOT NULL DEFAULT 0
 );
 
+-- Lo que un proveedor llama de una forma en su factura es tal producto de
+-- Nexo, y cada bulto trae tantas unidades (hist. §151): "COCA COLA 2.25 X8"
+-- es "Coca-Cola 2,25 L", de a 8. Lo anota la compra cargada desde la foto de
+-- la factura al guardarse, o sea con la persona confirmando, nunca la
+-- lectura sola; la próxima factura de ese proveedor lo encuentra sin
+-- adivinar (el mapeo explícito de §32). `clave` es el código del proveedor
+-- ("cod:…") o, sin código, la descripción normalizada ("txt:…").
+CREATE TABLE IF NOT EXISTS proveedor_articulos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
+  clave TEXT NOT NULL,
+  descripcion TEXT NOT NULL,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  unidades_por_bulto REAL NOT NULL DEFAULT 1 CHECK (unidades_por_bulto > 0),
+  actualizado TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (proveedor_id, clave)
+);
+
 -- Espejo de devoluciones/devolucion_items, del lado de compras: revierte
 -- parte (o todo) de una compra ya recibida, devolviéndole mercadería al
 -- proveedor. A diferencia de la devolución de venta, acá no existe un
