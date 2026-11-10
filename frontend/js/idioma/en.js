@@ -4376,5 +4376,22 @@ export default {
   "Revisá el número o pasá por recepción.": "Check the number or stop by the front desk.",
   "Tenés una cuota pendiente.": "You have a pending payment.",
   "Tu plan empieza el {0}.": "Your plan starts on {0}.",
-  "Tu plan no está activo.": "Your plan is not active."
+  "Tu plan no está activo.": "Your plan is not active.",
+
+  // El QR de Mercado Pago en el mostrador (hist. §145)
+  "Cobrar con QR de Mercado Pago": "Charge with a Mercado Pago QR",
+  "Escaneá con la app de Mercado Pago o la cámara": "Scan with the Mercado Pago app or the camera",
+  "QR para pagar con Mercado Pago": "QR to pay with Mercado Pago",
+  "Esperando el pago…": "Waiting for the payment…",
+  "Ya me pagó": "They already paid",
+  "No pagó: cobrar de otra forma": "Didn't pay: charge another way",
+  "Está esperando el pago del QR. Si no pagó, tocá «No pagó: cobrar de otra forma».": "It is waiting for the QR payment. If they didn't pay, tap \"Didn't pay: charge another way\".",
+  "No se pudo crear el QR de Mercado Pago.": "The Mercado Pago QR could not be created.",
+  "Venta #{0} cobrada con Mercado Pago": "Sale #{0} paid with Mercado Pago",
+  "Todavía no llegó el pago. Si en el celular del cliente dice aprobado, esperá unos segundos.": "The payment hasn't arrived yet. If the customer's phone says approved, wait a few seconds.",
+  "Venta #{0} anulada: cobrala con otro medio.": "Sale #{0} voided: charge it with another method.",
+  "No se pudo anular la venta del QR: avisale al administrador.": "The QR sale could not be voided: let the administrator know.",
+  "Con el QR de Mercado Pago se cobra todo por el QR.": "With the Mercado Pago QR, the whole amount is charged through the QR.",
+  "Esa venta ya no espera un QR: si hay que anularla, lo hace el administrador.": "That sale is no longer waiting for a QR: if it has to be voided, the administrator does it.",
+  "Venta #{0} anulada desde el punto de venta: no se pagó el QR de Mercado Pago": "Sale #{0} voided from the point of sale: the Mercado Pago QR was not paid"
 };

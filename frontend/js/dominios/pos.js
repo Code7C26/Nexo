@@ -14,6 +14,7 @@ import { crearConsumos } from "../core/al-vender.js";
 import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
 import { mejorOferta, proximaPromocion } from "../core/ofertas.js";
 import { negocio } from "../core/negocio.js";
+import { cargarQr } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
@@ -680,6 +681,8 @@ function abrirCobro() {
     .join("");
   renderFilasCobro();
   actualizarCobro();
+  btnPosQr.hidden = !negocio.mercado_pago?.conectado;
+  posQr.hidden = true;
   modalPosCobro.hidden = false;
   // Seleccionado: tipear "20000" es "paga con 20.000".
   requestAnimationFrame(() => enfocarImporte(0));
@@ -846,6 +849,12 @@ async function registrarVenta({ cobros, vuelto, falta }) {
     });
 
   mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito() });
+  ventaHecha();
+}
+
+// Lo que sigue a una venta registrada: el carrito vacío y el resto de Nexo al
+// día.
+function ventaHecha() {
   carrito = [];
   guardarCarrito();
   posCliente.value = "";
@@ -872,6 +881,11 @@ function mostrarExito({ id, vuelto, falta, cliente, ahorro }) {
 }
 
 function cerrarCobro() {
+  // Con un QR esperando, la venta ya existe: se cancela o se cobra.
+  if (esperandoQr) {
+    avisar("Está esperando el pago del QR. Si no pagó, tocá «No pagó: cobrar de otra forma».", "atencion");
+    return;
+  }
   modalPosCobro.hidden = true;
   enfocarBusqueda();
 }
@@ -882,6 +896,104 @@ modalPosCobro.addEventListener("click", (e) => {
   if (e.target === modalPosCobro) cerrarCobro();
 });
 document.getElementById("btnPosCobrar").addEventListener("click", abrirCobro);
+
+/* ---------- El QR de Mercado Pago (hist. §145) ---------- */
+
+// La venta nace sin cobros y se muestra el QR del link de pago por el total.
+// La pantalla espera: el cobro entra solo con el aviso de Mercado Pago, y cada
+// tanto se le pregunta, por si el aviso no puede llegar (en la compu, sin
+// dirección pública). Si no paga, se anula y se cobra de otra forma.
+const btnPosQr = document.getElementById("btnPosQr");
+const posQr = document.getElementById("posQr");
+const SEGUNDOS_SONDEO_QR = 3;
+const SONDEOS_POR_PREGUNTA = 5;
+// { id, cliente, ahorro, vueltas, sondeo }
+let esperandoQr = null;
+
+btnPosQr.addEventListener("click", async () => {
+  const body = {
+    turno_caja_id: turno.id,
+    ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
+    items: itemsDelCarrito(),
+    consumos: consumosPos.leer(),
+    cobros: [],
+    qr_mercadopago: true
+  };
+  let venta;
+  let link;
+  try {
+    venta = await enviando(btnPosQr, () => api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." }));
+    link = await api(`/api/ventas/${venta.id}/link-de-pago`, { method: "POST", error: "No se pudo crear el QR de Mercado Pago." }).catch(
+      async (err) => {
+        await fetch(`/api/pos/ventas/${venta.id}/cancelar-qr`, { method: "POST" }).catch(() => {});
+        throw err;
+      }
+    );
+  } catch {
+    refrescar([cargarTodo()]);
+    return;
+  }
+  const imagen = document.getElementById("posQrCodigo");
+  try {
+    await cargarQr();
+    const codigo = window.qrcode(0, "M");
+    codigo.addData(link.url);
+    codigo.make();
+    imagen.src = codigo.createDataURL(6, 2);
+  } catch {
+    imagen.removeAttribute("src");
+  }
+  document.getElementById("posQrImporte").textContent = money(link.importe);
+  document.getElementById("formPosCobro").hidden = true;
+  posQr.hidden = false;
+  esperandoQr = { id: venta.id, cliente: cobro.cliente, ahorro: ahorroCarrito(), vueltas: 0 };
+  esperandoQr.sondeo = setInterval(() => revisarQr(), SEGUNDOS_SONDEO_QR * 1000);
+});
+
+// Sin api(): mientras espera no tiene que llenar la pantalla de avisos.
+async function revisarQr({ preguntar = false } = {}) {
+  const actual = esperandoQr;
+  if (!actual) return false;
+  actual.vueltas += 1;
+  if (preguntar || actual.vueltas % SONDEOS_POR_PREGUNTA === 0) {
+    await fetch(`/api/ventas/${actual.id}/revisar-pagos`, { method: "POST" }).catch(() => {});
+  }
+  const venta = await fetch(`/api/ventas/${actual.id}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (!venta || esperandoQr !== actual || venta.cobrado < venta.neto - CENTAVO) return false;
+  terminarQr();
+  mostrarExito({ id: actual.id, vuelto: 0, falta: 0, cliente: actual.cliente, ahorro: actual.ahorro });
+  document.getElementById("posExitoTitulo").textContent = `Venta #${actual.id} cobrada con Mercado Pago`;
+  ventaHecha();
+  return true;
+}
+
+function terminarQr() {
+  clearInterval(esperandoQr?.sondeo);
+  esperandoQr = null;
+  posQr.hidden = true;
+}
+
+document.getElementById("btnPosQrRevisar").addEventListener("click", async (e) => {
+  const pago = await enviando(e.currentTarget, () => revisarQr({ preguntar: true }));
+  if (!pago) avisar("Todavía no llegó el pago. Si en el celular del cliente dice aprobado, esperá unos segundos.", "atencion");
+});
+
+document.getElementById("btnPosQrCancelar").addEventListener("click", async (e) => {
+  if (!esperandoQr) return;
+  const { id } = esperandoQr;
+  const res = await enviando(e.currentTarget, () => fetch(`/api/pos/ventas/${id}/cancelar-qr`, { method: "POST" }));
+  if (res.status === 409) {
+    // El pago entró justo: no se cancela, se cobró.
+    await revisarQr({ preguntar: true });
+    return;
+  }
+  terminarQr();
+  document.getElementById("formPosCobro").hidden = false;
+  avisar(res.ok ? `Venta #${id} anulada: cobrala con otro medio.` : "No se pudo anular la venta del QR: avisale al administrador.", res.ok ? "ok" : "error");
+  refrescar([cargarTodo()]);
+});
 document.getElementById("btnPosBarraCobrar").addEventListener("click", abrirCobro);
 
 /* ---------- Cierre de caja ---------- */

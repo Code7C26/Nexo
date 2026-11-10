@@ -418,6 +418,39 @@ test('"Ya me pagó": busca los pagos de la venta aunque no haya llegado el aviso
   assert.equal((await cobrosDe(venta)).length, 1);
 });
 
+test('el QR del mostrador (hist. §145): sin cobros a consumidor final, el pago la cobra, y la que no se pagó la cancela quien vende', async () => {
+  const caja = (await admin.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'efectivo');
+  const saldo = (await admin.get('/api/tesoreria')).json.cuentas.find((c) => c.id === caja.id).saldo;
+  const turno = (await empleado.post('/api/turnos-caja', { cuenta_tesoreria_id: caja.id, contado: saldo })).json.id;
+  const items = [{ producto_id: remera, cantidad: 1, precio_unitario: 30000 }];
+  // Sin QR, a "Consumidor final" no se le deja saldo; con QR, todo va por el QR.
+  assert.equal((await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [] })).status, 400);
+  const mezclado = { turno_caja_id: turno, items, cobros: [{ cuenta_tesoreria_id: caja.id, importe: 1000 }], qr_mercadopago: true };
+  assert.equal((await empleado.post('/api/pos/ventas', mezclado)).status, 400);
+
+  const conQr = await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [], qr_mercadopago: true });
+  assert.equal(conQr.status, 201, conQr.texto);
+  const link = await empleado.post(`/api/ventas/${conQr.json.id}/link-de-pago`);
+  assert.equal(link.json.importe, 30000);
+  falso.pagos.set('9020', pagoDeEjemplo(9020, conQr.json.id));
+  assert.equal(await aviso(9020), 200);
+  assert.ok(await hasta(async () => (await cobrosDe(conQr.json.id)).length === 1), 'el pago del QR la cobra');
+  // Ya cobrada: no se cancela.
+  assert.equal((await empleado.post(`/api/pos/ventas/${conQr.json.id}/cancelar-qr`)).status, 409);
+
+  // La que no se pagó se anula, y una sola vez.
+  const sinPagar = (await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [], qr_mercadopago: true })).json.id;
+  const cancelada = await empleado.post(`/api/pos/ventas/${sinPagar}/cancelar-qr`);
+  assert.equal(cancelada.status, 200, cancelada.texto);
+  assert.equal((await admin.get(`/api/ventas/${sinPagar}`)).json.estado, 'anulada');
+  assert.equal((await empleado.post(`/api/pos/ventas/${sinPagar}/cancelar-qr`)).status, 404);
+  // Una venta que no espera un QR no se anula por acá, ni la de otro negocio.
+  assert.equal((await empleado.post(`/api/pos/ventas/${await nuevaVenta(admin, 5000)}/cancelar-qr`)).status, 404);
+  const otraQr = (await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [], qr_mercadopago: true })).json.id;
+  assert.equal((await otro.post(`/api/pos/ventas/${otraQr}/cancelar-qr`)).status, 404);
+  assert.equal((await empleado.post(`/api/pos/ventas/${otraQr}/cancelar-qr`)).status, 200);
+});
+
 test('el token vencido se renueva de a uno, aunque lo pidan dos a la vez', async () => {
   // El próximo token que dé el falso dura 600 segundos: Nexo lo toma por
   // vencido y lo renueva en cada uso. Se fuerza con un permiso nuevo.

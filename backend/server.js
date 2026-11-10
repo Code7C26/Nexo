@@ -16545,9 +16545,23 @@ app.get('/api/pos/catalogo', (req, res) => {
 // vuelto lo calcula la pantalla); si suman menos, el resto queda en la cuenta
 // corriente del cliente, así que hace falta un cliente de verdad: a
 // "Consumidor final" no se le fía.
+// El QR de Mercado Pago en el mostrador (hist. §145): con `qr_mercadopago`,
+// la venta nace sin cobros (también a "Consumidor final") y la pantalla
+// muestra el QR del link de pago de esa venta por el total. El cobro entra
+// solo, con el aviso de Mercado Pago, como el de cualquier link. Si el cliente
+// no paga, quien vende la cancela (POST .../cancelar-qr) y cobra de otra forma.
+// Las ventas que esperan su QR se recuerdan en memoria: solo esas se cancelan
+// desde el mostrador; después de reiniciar el servidor, las anula el admin.
+const ventasEsperandoQr = new Map();
+const VIDA_QR_MS = 60 * 60 * 1000;
+
 app.post('/api/pos/ventas', (req, res) => {
-  const { turno_caja_id, cliente_id, items, cobros = [], consumos } = req.body;
+  const { turno_caja_id, cliente_id, items, cobros = [], consumos, qr_mercadopago: conQr = false } = req.body;
   const organizacionId = req.usuario.organizacion_id;
+  if (conQr && !mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
+  if (conQr && Array.isArray(cobros) && cobros.length) {
+    return res.status(400).json({ error: 'Con el QR de Mercado Pago se cobra todo por el QR.' });
+  }
   const turno = turnoDeLaEmpresa(Number(turno_caja_id), organizacionId);
   if (!turno || turno.estado !== 'abierto') {
     return res.status(400).json({ error: 'Abrí la caja antes de vender.' });
@@ -16578,7 +16592,7 @@ app.post('/api/pos/ventas', (req, res) => {
     cliente_id &&
     db.prepare('SELECT nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(cliente_id), organizacionId)
       ?.nombre === CONSUMIDOR_FINAL;
-  if (cobrado < total && (!cliente_id || esConsumidorFinal)) {
+  if (cobrado < total && (!cliente_id || esConsumidorFinal) && !conQr) {
     return res.status(400).json({ error: 'Para dejar saldo en cuenta corriente, elegí un cliente.' });
   }
 
@@ -16619,7 +16633,38 @@ app.post('/api/pos/ventas', (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: mensajeDeError(err) });
   }
+  if (conQr) ventasEsperandoQr.set(ventaId, { organizacionId, creado: Date.now() });
   res.status(201).json({ id: ventaId, total, cobrado });
+});
+
+// El cliente no pagó el QR: la venta se anula (vuelve el stock) y el carrito
+// sigue en la pantalla para cobrarlo de otra forma. Si el pago ya entró, no.
+app.post('/api/pos/ventas/:id/cancelar-qr', (req, res) => {
+  const ventaId = Number(req.params.id);
+  const organizacionId = req.usuario.organizacion_id;
+  const esperando = ventasEsperandoQr.get(ventaId);
+  if (!esperando || esperando.organizacionId !== organizacionId || Date.now() - esperando.creado > VIDA_QR_MS) {
+    return res.status(404).json({ error: 'Esa venta ya no espera un QR: si hay que anularla, lo hace el administrador.' });
+  }
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(ventaId, organizacionId);
+  const motivo = venta ? motivoParaNoAnular(venta) : 'Venta no encontrada.';
+  if (motivo) {
+    // Con cobros es que el pago entró justo: no se cancela, se cobró.
+    return res.status(409).json({ error: motivo });
+  }
+  withTransaction(() => {
+    revertirVentaAnulada(venta, organizacionId);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      detalle: `Venta #${ventaId} anulada desde el punto de venta: no se pagó el QR de Mercado Pago`
+    });
+  });
+  ventasEsperandoQr.delete(ventaId);
+  res.json({ id: ventaId, estado: 'anulada' });
 });
 
 /* ---------- Socios, planes y cuotas (CLAUDE.md §29, hist. §74 y §75) ---------- */

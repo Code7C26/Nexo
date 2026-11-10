@@ -185,6 +185,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/socios': 'ambos',
   'GET /api/socios/ingresos': 'ambos',
   // La pantalla de entrada y los avisos que le deja a la recepción (hist. §144).
+  // El QR de Mercado Pago en el mostrador (hist. §145): cancelar el que no se
+  // pagó. Solo las ventas que esperan un QR, no cualquier venta.
+  'POST /api/pos/ventas/:id/cancelar-qr': 'ambos',
   'GET /api/socios/entrada': 'ambos',
   'POST /api/socios/entrada': 'ambos',
   'DELETE /api/socios/entrada/:socioId': 'ambos',

@@ -7113,7 +7113,21 @@
           <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#notebook-tabs"></use></svg>
           Dejar en cuenta corriente
         </button>
+        <!-- El QR de Mercado Pago por el total (hist. §145): solo con la
+             cuenta conectada. El cobro entra solo cuando el cliente paga. -->
+        <button type="button" class="btn btn-secundario btn-full pos-boton-qr" id="btnPosQr" hidden>
+          <svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg>
+          Cobrar con QR de Mercado Pago
+        </button>
       </form>
+      <div class="pos-qr" id="posQr" hidden>
+        <p class="pos-qr-titulo">Escaneá con la app de Mercado Pago o la cámara</p>
+        <strong class="pos-qr-importe mono" id="posQrImporte"></strong>
+        <img class="pos-qr-codigo" id="posQrCodigo" alt="QR para pagar con Mercado Pago" width="232" height="232" />
+        <p class="pos-qr-estado" id="posQrEstado" aria-live="polite"><span class="pos-qr-punto" aria-hidden="true"></span> Esperando el pago…</p>
+        <button type="button" class="btn btn-secundario btn-full" id="btnPosQrRevisar">Ya me pagó</button>
+        <button type="button" class="btn-link" id="btnPosQrCancelar">No pagó: cobrar de otra forma</button>
+      </div>
       <div class="pos-exito" id="posExito" hidden>
         <svg class="ico pos-exito-ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg>
         <p class="pos-exito-titulo" id="posExitoTitulo"></p>

@@ -3375,6 +3375,64 @@ html[data-asistente-pagina] .asistente-launcher { display: none; }
   text-align: center;
 }
 
+/* El QR de Mercado Pago en el mostrador (hist. §145): blanco detrás del
+   código en los dos temas, que si no la cámara no lo lee. */
+.pos-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+}
+
+.pos-qr[hidden] { display: none; }
+
+.pos-qr-titulo {
+  margin: 0;
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+
+.pos-qr-importe { font-size: var(--txt-3xl); font-weight: 700; }
+
+.pos-qr-codigo {
+  width: min(232px, 70vw);
+  height: auto;
+  aspect-ratio: 1;
+  padding: 10px;
+  background: #FFFFFF;
+  border-radius: var(--r-md);
+  image-rendering: pixelated;
+}
+
+.pos-qr-estado {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.pos-qr-punto {
+  width: 8px;
+  height: 8px;
+  background: var(--info);
+  border-radius: var(--r-full);
+  animation: pos-qr-late 1.2s ease-in-out infinite;
+}
+
+@keyframes pos-qr-late {
+  50% { opacity: 0.25; transform: scale(0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-qr-punto { animation: none; }
+}
+
+.pos-boton-qr .ico-marca { width: 22px; height: 16px; }
+.pos-qr .btn-link { align-self: center; }
+
 .pos-exito .ico.pos-exito-ico {
   width: 48px;
   height: 48px;
