@@ -1473,7 +1473,7 @@
             <span class="entrada-invitacion-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tablet"></use></svg></span>
             <div class="entrada-invitacion-texto">
               <p class="entrada-invitacion-titulo">Pantalla de entrada</p>
-              <p>Para una tablet o una compu en la puerta: cada socio tipea su DNI y entra solo. Si debe, te aparece acá arriba.</p>
+              <p>Abre una segunda ventana para la gente, en el otro monitor de esta compu: cada socio tipea su DNI y entra solo. Si debe, te aparece acá arriba al instante.</p>
             </div>
             <button type="button" class="btn btn-secundario" id="btnAbrirEntrada">Abrir</button>
           </section>
@@ -4428,6 +4428,13 @@
                   <div class="config-tarjeta-cuerpo">
                     <p class="config-tarjeta-titulo">QR del mostrador</p>
                     <p class="campo-ayuda" id="mpCajaEstado"></p>
+                    <!-- El cartel con el QR fijo de la caja: lo da Mercado Pago,
+                         se abre allá para imprimirlo (la CSP no deja mostrar sus
+                         imágenes acá). -->
+                    <div class="config-tarjeta-botones" id="mpCajaCartel" hidden>
+                      <a class="btn btn-secundario" id="mpCajaCartelPdf" target="_blank" rel="noopener">Descargar el cartel para imprimir</a>
+                      <a class="btn-link" id="mpCajaCartelImagen" target="_blank" rel="noopener">Ver el QR</a>
+                    </div>
                     <div id="mpCajaCampos">
                       <div class="form-fila">
                         <label>Calle del local

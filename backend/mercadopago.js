@@ -249,7 +249,7 @@ export function clienteMercadoPago({ token }) {
     pago: (id) => pedir('GET', `/v1/payments/${encodeURIComponent(id)}`),
     buscarPagos: (filtros) => pedir('GET', `/v1/payments/search?${new URLSearchParams(filtros)}`),
     // El QR de la caja (hist. §147): la sucursal y la caja se crean una vez, y
-    // cada cobro es una orden de la API de Orders en modo dinámico, que trae
+    // cada cobro es una orden de la API de Orders en modo híbrido, que trae
     // en type_response.qr_data el texto del QR por ese importe.
     crearSucursal: (usuario, sucursal) => pedir('POST', `/users/${encodeURIComponent(usuario)}/stores`, sucursal),
     crearCaja: (caja) => pedir('POST', '/pos', caja),

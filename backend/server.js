@@ -17665,33 +17665,16 @@ app.post('/api/notificaciones/probar', (req, res) => {
 
 /* ---------- La pantalla de entrada (hist. §144) ---------- */
 //
-// Dos pantallas para el ingreso: en la entrada, el socio tipea su DNI o su
-// número en una tablet o una compu con la sesión del negocio; en la recepción,
-// la de siempre (#/ingreso). Al día, entra solo. Si debe, si todavía no empezó
-// o si está de baja, la entrada le dice que pase por recepción y le deja a la
-// recepción un aviso con quién es y qué pasa, para cobrarle o dejarlo pasar.
-// La entrada nunca muestra cuánto debe: la ve cualquiera que esté atrás.
-//
-// Los avisos viven en memoria, por negocio, y duran 30 minutos: son de quien
-// está parado en la entrada ahora, no un registro. Lo que queda es el ingreso
-// (ingresos_socio), cuando entra.
+// Dos pantallas para el ingreso, en la misma compu y con la misma sesión
+// (pedido del usuario: una para la gente y otra para la recepción). En la de
+// la gente el socio tipea su DNI o su número: al día, entra solo; si debe, si
+// todavía no empezó o si está de baja, le dice que pase por recepción, sin
+// decir cuánto debe (la ve cualquiera que esté atrás). Las dos ventanas se
+// avisan entre ellas en el navegador (BroadcastChannel, dominios/entrada.js),
+// sin pasar por el servidor: acá solo se busca al socio y se anota el ingreso.
 
-const avisosEntrada = new Map();
-const VIDA_AVISO_ENTRADA_MS = 30 * 60 * 1000;
 // Pasar dos veces el mismo DNI en un rato es un solo ingreso.
 const ANTIRREBOTE_ENTRADA_MIN = 5;
-
-function avisosDeEntrada(org) {
-  const vivos = (avisosEntrada.get(org) ?? []).filter((a) => Date.now() - a.creado < VIDA_AVISO_ENTRADA_MS);
-  avisosEntrada.set(org, vivos);
-  return vivos;
-}
-function sacarAvisoEntrada(org, socioId) {
-  avisosEntrada.set(
-    org,
-    avisosDeEntrada(org).filter((a) => a.socio_id !== socioId)
-  );
-}
 
 // El socio por lo que tipeó: su número o su DNI, solo los dígitos.
 function socioPorCodigo(org, codigo) {
@@ -17711,10 +17694,6 @@ function socioPorCodigo(org, codigo) {
 
 const primerNombre = (nombre) => String(nombre).trim().split(/\s+/)[0];
 
-app.get('/api/socios/entrada', (req, res) => {
-  res.json(avisosDeEntrada(req.usuario.organizacion_id).map(({ creado, ...a }) => ({ ...a, hace_segundos: Math.round((Date.now() - creado) / 1000) })));
-});
-
 app.post('/api/socios/entrada', (req, res) => {
   const org = req.usuario.organizacion_id;
   const socioId = socioPorCodigo(org, req.body?.codigo);
@@ -17725,16 +17704,6 @@ app.post('/api/socios/entrada', (req, res) => {
   const nombre = primerNombre(socio.nombre);
 
   if (socio.situacion !== 'al_dia') {
-    sacarAvisoEntrada(org, socioId);
-    avisosDeEntrada(org).push({
-      socio_id: socioId,
-      nombre: socio.nombre,
-      numero: socio.numero,
-      situacion: socio.situacion,
-      deuda: socio.deuda,
-      empieza: socio.empieza ?? null,
-      creado: Date.now()
-    });
     const motivo =
       socio.situacion === 'debe'
         ? 'Tenés una cuota pendiente.'
@@ -17752,23 +17721,19 @@ app.post('/api/socios/entrada', (req, res) => {
       },
       { roles: ['admin', 'empleado'] }
     );
-    return res.json({ entra: false, nombre, motivo });
+    // El id es para la recepción (la otra ventana): la pantalla no lo muestra.
+    return res.json({ entra: false, socio_id: socioId, nombre, motivo });
   }
 
-  sacarAvisoEntrada(org, socioId);
   const reciente = db
     .prepare(`SELECT id, fecha FROM ingresos_socio WHERE socio_id = ? AND fecha >= datetime('now', ?) ORDER BY id DESC LIMIT 1`)
     .get(socioId, `-${ANTIRREBOTE_ENTRADA_MIN} minutes`);
   if (!reciente) {
     db.prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda, por_pantalla) VALUES (?, ?, 1, 0, 1)').run(socioId, req.usuario.id);
   }
-  res.status(reciente ? 200 : 201).json({ entra: true, nombre, al_dia_hasta: socio.al_dia_hasta, ya_estaba: Boolean(reciente) });
-});
-
-// La recepción lo resolvió de otra forma (o no vino): se saca el aviso.
-app.delete('/api/socios/entrada/:socioId', (req, res) => {
-  sacarAvisoEntrada(req.usuario.organizacion_id, Number(req.params.socioId));
-  res.status(204).end();
+  res
+    .status(reciente ? 200 : 201)
+    .json({ entra: true, socio_id: socioId, nombre, al_dia_hasta: socio.al_dia_hasta, ya_estaba: Boolean(reciente) });
 });
 
 app.get('/api/socios/:id', (req, res) => {
@@ -18141,8 +18106,6 @@ app.post('/api/socios/:id/ingresos', (req, res) => {
   const { lastInsertRowid } = db
     .prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda) VALUES (?, ?, ?, ?)')
     .run(socio.id, req.usuario.id, situacion.deuda > 0 ? 0 : 1, situacion.deuda);
-  // Si esperaba en la entrada, ya lo atendieron.
-  sacarAvisoEntrada(organizacionId, socio.id);
   const ingreso = db.prepare('SELECT id, fecha FROM ingresos_socio WHERE id = ?').get(lastInsertRowid);
   res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion });
 });
@@ -21610,6 +21573,8 @@ app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
     ...base,
     cuenta: { nombre: integracion.nombre_cuenta, id: integracion.cuenta_externa },
     qr_caja: Boolean(integracion.qr_caja),
+    // El cartel del QR fijo de la caja (hist. §147).
+    qr_cartel: cartelDeLaCaja(integracion),
     conectada_en: integracion.conectada_en,
     ultima_sincronizacion: integracion.ultima_sincronizacion,
     cuenta_tesoreria_id: integracion.cuenta_tesoreria_id,
@@ -21725,13 +21690,19 @@ async function linkDePago(req, res, { integracion, venta, saldo }) {
 // por el link (~0,8 % con dinero en cuenta, contra ~6 % del link). Pide una
 // sucursal y una caja en la cuenta del negocio, que el admin arma una vez en
 // Configuración → Mercado Pago, y cada cobro es una orden de la API de Orders
-// en modo dinámico por el importe de la venta. Esa API no avisa por el aviso
+// en modo híbrido por el importe de la venta: la cobran el QR de la pantalla y
+// el cartel fijo de la caja. Sin orden abierta, el cartel cobra lo que el
+// cliente escriba. Esa API no avisa por el aviso
 // de "Pagos": el mostrador pregunta por la orden mientras espera.
 //
 // Si Mercado Pago no deja crear la orden (la app no tiene permiso para esa
 // API, la caja ya no existe), el mostrador cae al QR del link, que sí anda.
 
 const cajaQr = (integracion) => (integracion?.qr_caja ? JSON.parse(integracion.qr_caja) : null);
+function cartelDeLaCaja(integracion) {
+  const caja = cajaQr(integracion);
+  return caja ? { pdf: caja.cartel_pdf ?? null, imagen: caja.cartel_imagen ?? null } : null;
+}
 const LARGOS_SUCURSAL = { calle: 120, numero: 10, ciudad: 80, provincia: 80 };
 
 app.post('/api/integraciones/mercadopago/caja', soloAdmin, asincrono(async (req, res) => {
@@ -21772,7 +21743,14 @@ app.post('/api/integraciones/mercadopago/caja', soloAdmin, asincrono(async (req,
     anotarIntegracion(integracion, 'conexion', 'error', `No se pudo armar la caja del QR: ${err.message}`);
     return siMercadoPagoFalla(res, err);
   }
-  const guardada = { sucursal_id: String(sucursal.id), caja_id: String(caja.id), caja_externa: caja.external_id };
+  // El cartel con el QR fijo de la caja, para imprimir y pegar en el mostrador.
+  const guardada = {
+    sucursal_id: String(sucursal.id),
+    caja_id: String(caja.id),
+    caja_externa: caja.external_id,
+    cartel_pdf: caja.qr?.template_document ?? null,
+    cartel_imagen: caja.qr?.template_image ?? caja.qr?.image ?? null
+  };
   db.prepare('UPDATE integraciones SET qr_caja = ? WHERE id = ?').run(JSON.stringify(guardada), integracion.id);
   anotarIntegracion(integracion, 'conexion', 'ok', `Caja del QR armada en Mercado Pago (sucursal ${guardada.sucursal_id}, caja ${guardada.caja_id}).`);
   auditar(req, {
@@ -21808,7 +21786,9 @@ app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
           external_reference: mercadoPago.referenciaDeVenta(venta.id),
           description: `${negocio} · venta #${venta.id}`.slice(0, 150),
           expiration_time: 'PT15M',
-          config: { qr: { external_pos_id: caja.caja_externa, mode: 'dynamic' } },
+          // Híbrido: el QR de la pantalla y el cartel impreso de la caja
+          // cobran los dos esta venta mientras la orden está abierta.
+          config: { qr: { external_pos_id: caja.caja_externa, mode: 'hybrid' } },
           transactions: { payments: [{ amount: importe }] },
           items: [{ title: `Venta #${venta.id}`, unit_price: importe, quantity: 1, unit_measure: 'unit' }]
         },

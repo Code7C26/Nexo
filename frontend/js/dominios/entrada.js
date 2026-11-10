@@ -6,6 +6,9 @@
  * o si está de baja, le pide que pase por recepción, y la recepción
  * (#/ingreso, dominios/socios.js) recibe el aviso.
  *
+ * Es otra ventana del mismo navegador y la misma sesión que la recepción: la
+ * abre "Pantalla de entrada → Abrir" (en el otro monitor, si hay), y le avisa
+ * a la recepción por un BroadcastChannel, al instante y sin el servidor.
  * Ocupa toda la pantalla, por encima del menú (CSS .entrada-pantalla), y
  * nunca muestra cuánto debe nadie: la ve cualquiera que esté en la fila.
  * Sirve con el teclado de la pantalla o con uno de verdad.
@@ -25,6 +28,9 @@ const cuerpo = document.getElementById("entradaCuerpo");
 const MAX_DIGITOS = 12;
 // Lo que se ve el saludo antes de volver a pedir un DNI.
 const MS_RESULTADO = 4500;
+
+// A la recepción: quién llegó y si entró. El canal es por negocio.
+const recepcion = "BroadcastChannel" in window ? new BroadcastChannel(`nexo-entrada-${document.documentElement.dataset.organizacion}`) : null;
 
 let tipeado = "";
 let enviando = false;
@@ -76,6 +82,7 @@ async function entrar() {
       body: JSON.stringify({ codigo: tipeado })
     });
     const r = await res.json().catch(() => ({}));
+    if (r.socio_id) recepcion?.postMessage({ socio_id: r.socio_id, entra: Boolean(r.entra) });
     if (!res.ok) mostrar("error", "No te encontramos", res.status === 404 ? r.error : "Pasá por recepción.");
     else if (r.entra) {
       mostrar("ok", `¡Hola, ${r.nombre}!`, r.al_dia_hasta ? `Estás al día hasta el ${fechaAR(r.al_dia_hasta)}. ¡Buen entrenamiento!` : "¡Buen entrenamiento!");
@@ -96,6 +103,8 @@ function tecla(valor) {
 }
 
 document.getElementById("entradaTeclado").addEventListener("click", (e) => {
+  // A pantalla completa con el primer toque: el navegador lo pide así.
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
   const boton = e.target.closest("[data-tecla]");
   if (boton) tecla(boton.dataset.tecla);
 });
@@ -118,7 +127,7 @@ function pintarHora() {
     return;
   }
   pintarNegocio();
-  document.getElementById("entradaHora").textContent = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("entradaHora").textContent = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 document.getElementById("entradaSalir").addEventListener("click", async () => {
@@ -128,7 +137,9 @@ document.getElementById("entradaSalir").addEventListener("click", async () => {
   });
   if (!seguro) return;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  mostrarVista("ingreso");
+  // Abierta desde la recepción, es su ventana: se cierra. Si no, va a Ingreso.
+  if (window.opener) window.close();
+  else mostrarVista("ingreso");
 });
 
 alEntrarEnVista("entrada", () => {

@@ -1,6 +1,7 @@
 // La pantalla de entrada del gimnasio (hist. §144): el socio tipea su DNI o
 // su número. Al día entra solo; si debe, la entrada le pide que pase por
-// recepción (sin decir cuánto) y la recepción recibe el aviso. Va aparte
+// recepción (sin decir cuánto). El aviso a la recepción va entre las dos
+// ventanas del navegador (BroadcastChannel): acá, el socio_id. Va aparte
 // porque cada archivo levanta su servidor, y el alta de empresas tiene un tope
 // de intentos por IP.
 import test, { before, after } from 'node:test';
@@ -35,30 +36,21 @@ after(async () => {
   await servidor?.cerrar();
 });
 
-test('si debe, la entrada lo manda a recepción sin decir cuánto, y la recepción recibe el aviso', async () => {
+test('si debe, la entrada lo manda a recepción sin decir cuánto, y no lo anota', async () => {
   const r = await puerta.post('/api/socios/entrada', { codigo: '30444555' });
   assert.equal(r.status, 200, r.texto);
-  assert.deepEqual(r.json, { entra: false, nombre: 'Ana', motivo: 'Tenés una cuota pendiente.' });
+  assert.deepEqual(r.json, { entra: false, socio_id: socio.id, nombre: 'Ana', motivo: 'Tenés una cuota pendiente.' });
+  assert.ok(!r.texto.includes('30000'), 'sin el importe');
+  // Con el número de socio, lo mismo.
+  assert.equal((await puerta.post('/api/socios/entrada', { codigo: String(socio.numero) })).json.socio_id, socio.id);
   assert.equal((await admin.get('/api/socios/ingresos')).json.length, 0);
-
-  const avisos = (await admin.get('/api/socios/entrada')).json;
-  assert.equal(avisos.length, 1);
-  assert.equal(avisos[0].socio_id, socio.id);
-  assert.equal(avisos[0].situacion, 'debe');
-  assert.equal(avisos[0].deuda, 30000);
-  // Pasar otra vez (con el número de socio) no duplica el aviso.
-  await puerta.post('/api/socios/entrada', { codigo: String(socio.numero) });
-  assert.equal((await admin.get('/api/socios/entrada')).json.length, 1);
-  // Otro negocio no lo ve.
-  assert.deepEqual((await otroNegocio.get('/api/socios/entrada')).json, []);
 });
 
-test('la recepción le cobra y lo deja pasar: el aviso se va, y pasar el DNI de nuevo no suma otro ingreso', async () => {
+test('la recepción le cobra y lo deja pasar, y pasar el DNI de nuevo no suma otro ingreso', async () => {
   const cobro = await admin.post(`/api/socios/${socio.id}/cobros`, { cuenta_tesoreria_id: efectivo.id });
   assert.equal(cobro.status, 201, cobro.texto);
   const pasa = await admin.post(`/api/socios/${socio.id}/ingresos`, {});
   assert.equal(pasa.status, 201, pasa.texto);
-  assert.deepEqual((await admin.get('/api/socios/entrada')).json, []);
 
   const otraVez = await puerta.post('/api/socios/entrada', { codigo: '30444555' });
   assert.equal(otraVez.status, 200, otraVez.texto);
@@ -77,22 +69,20 @@ test('un DNI que no está, o de otro negocio, no entra', async () => {
   assert.equal((await otroNegocio.post('/api/socios/entrada', { codigo: '30444555' })).status, 404);
 });
 
-test('al día, entra solo por la pantalla, y el aviso descartado se va', async () => {
+test('al día, entra solo por la pantalla', async () => {
   const plan = (await admin.get('/api/planes-socio')).json[0];
   const alta = await admin.post('/api/socios', {
     cliente: { nombre: 'Bruno Díaz', documento: '28111222' },
     planes: [{ opcion_id: plan.opciones[0].id }]
   });
   const bruno = alta.json;
-  await puerta.post('/api/socios/entrada', { codigo: '28111222' });
-  assert.equal((await admin.get('/api/socios/entrada')).json.length, 1);
-  assert.equal((await admin.del(`/api/socios/entrada/${bruno.id}`)).status, 204);
-  assert.deepEqual((await admin.get('/api/socios/entrada')).json, []);
+  assert.equal((await puerta.post('/api/socios/entrada', { codigo: '28111222' })).json.entra, false);
 
   await admin.post(`/api/socios/${bruno.id}/cobros`, { cuenta_tesoreria_id: efectivo.id });
   const entra = await puerta.post('/api/socios/entrada', { codigo: '28111222' });
   assert.equal(entra.status, 201, entra.texto);
   assert.equal(entra.json.nombre, 'Bruno');
+  assert.equal(entra.json.socio_id, bruno.id);
   assert.ok(entra.json.al_dia_hasta);
   const delDia = (await admin.get('/api/socios/ingresos')).json.find((i) => i.socio_id === bruno.id);
   assert.equal(delDia.por_pantalla, true);

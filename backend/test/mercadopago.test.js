@@ -128,7 +128,13 @@ function atender(req, res) {
     }
     if (req.method === 'POST' && ruta === '/pos') {
       if (!/^[A-Za-z0-9]+$/.test(datos?.external_id ?? '')) return responder(400, { error: 'INVALID_EXTERNAL_ID' });
-      return responder(200, { id: 2711382, external_id: datos.external_id, store_id: datos.store_id, status: 'active' });
+      return responder(200, {
+        id: 2711382,
+        external_id: datos.external_id,
+        store_id: datos.store_id,
+        status: 'active',
+        qr: { image: 'https://mp.test/qr/2711382.png', template_document: 'https://mp.test/qr/2711382.pdf', template_image: 'https://mp.test/qr/2711382-cartel.png' }
+      });
     }
     if (req.method === 'POST' && ruta === '/v1/orders') {
       if (!falso.ordenesPermitidas) return responder(403, { error: 'forbidden', message: 'Application not allowed' });
@@ -490,7 +496,7 @@ test('el QR del mostrador (hist. §145): sin cobros a consumidor final, el pago 
   assert.equal((await empleado.post(`/api/pos/ventas/${otraQr}/cancelar-qr`)).status, 200);
 });
 
-test('el QR de la caja (hist. §147): se arma una vez, cobra con una orden y, si Mercado Pago no la deja, cae al link', async () => {
+test('el QR de la caja (hist. §147): se arma una vez con su cartel, cobra con una orden y, si Mercado Pago no la deja, cae al link', async () => {
   const turno = (await admin.get('/api/turnos-caja?estado=abierto')).json[0]?.id;
   assert.ok(turno, 'hay un turno abierto del test anterior');
   const items = [{ producto_id: remera, cantidad: 1, precio_unitario: 30000 }];
@@ -507,7 +513,10 @@ test('el QR de la caja (hist. §147): se arma una vez, cobra con una orden y, si
   assert.equal((await admin.post('/api/integraciones/mercadopago/caja', { ...direccion, numero: '' })).status, 400);
   const armada = await admin.post('/api/integraciones/mercadopago/caja', direccion);
   assert.equal(armada.status, 200, armada.texto);
-  assert.equal((await estadoDe(admin)).qr_caja, true);
+  const conCaja = await estadoDe(admin);
+  assert.equal(conCaja.qr_caja, true);
+  // El cartel del QR fijo, para imprimir.
+  assert.deepEqual(conCaja.qr_cartel, { pdf: 'https://mp.test/qr/2711382.pdf', imagen: 'https://mp.test/qr/2711382-cartel.png' });
   assert.equal(enviados('POST', '/pos').at(-1).datos.store_id, '1234567');
 
   // Con caja: una orden dinámica por el total, con la venta como referencia.
@@ -517,7 +526,8 @@ test('el QR de la caja (hist. §147): se arma una vez, cobra con una orden y, si
   assert.equal(qr.json.tipo, 'caja');
   assert.match(qr.json.qr, /^0002010102/);
   const pedido = enviados('POST', '/v1/orders').at(-1);
-  assert.equal(pedido.datos.config.qr.mode, 'dynamic');
+  // Híbrido: lo cobran el QR de la pantalla y el cartel impreso de la caja.
+  assert.equal(pedido.datos.config.qr.mode, 'hybrid');
   assert.equal(pedido.datos.total_amount, '30000.00');
   assert.equal(pedido.datos.external_reference, `nexo-venta-${venta}`);
   assert.ok(pedido.headers['x-idempotency-key']);
