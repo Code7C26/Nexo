@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §153);
+    siguiente número (hoy el último es §154);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,13 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (10 de noviembre de 2026)
+## Estado actual (11 de noviembre de 2026)
+
+**11 de noviembre, hist. §154: la lectura de facturas anda de nuevo.** Groq
+dio de baja Llama 4 Scout (404); ahora lee `qwen/qwen3.8-27b`, probado con
+Groq real en una factura A y una B torcida. El importe del renglón corrige la
+bonificación que el modelo invente. **Cupo:** una o dos facturas por minuto
+para toda la instalación; en la demo, no leer dos seguidas.
 
 **10 de noviembre, hist. §153: Tienda Nube, Mercado Libre, Mercado Pago y la
 factura electrónica, desde Emprendedor, publicado (PR #70).** Decisión del
@@ -52,8 +58,7 @@ publicada (PR #68).** Nueva compra → "Cargar desde la factura" (foto, varias
 o PDF): la IA solo lee, Nexo busca cada renglón (lo recordado del proveedor,
 el código, el nombre parecido), pasa los packs a unidades con el IVA y llena
 el formulario para revisar. Tabla nueva `proveedor_articulos`. Probado con el
-stub; **falta probarlo con Groq real y facturas de verdad**. La clave de Groq
-del `.env` local contestó "Invalid API Key": ver si es la del servidor.
+stub; con Groq real se probó en §154 (falta una factura de papel de verdad).
 
 **10 de noviembre: §143 a §150 publicados (PR #67), con las claves de Google
 en el servidor (cargadas por el usuario; `/api/auth/estado` dice `google: true`

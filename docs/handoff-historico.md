@@ -12674,3 +12674,34 @@ que tengan algo conectado quedan en pausa. No se pudo leer la base del
 servidor para saber cuáles; se pasan de plan con `npm run plan -- --negocio
 <id> --plan emprendedor` en el servidor. Los negocios de ejemplo son Pro.
 Mercado Pago recupera solo los pagos de los últimos 3 días al volver.
+
+## §154. La lectura de facturas, con el modelo de visión que Groq tiene hoy (11 de noviembre de 2026)
+
+**El problema.** "Cargar desde la factura" (§151) no leía nada: Groq dio de
+baja `meta-llama/llama-4-scout-17b-16e-instruct` y contestaba 404
+`model_not_found`. Sin clave de Gemini no había respaldo, y la persona veía "No
+se pudo leer la factura". La clave del `.env` anda (el "Invalid API Key" de
+§151 no se repitió).
+
+**Qué se hizo.**
+- `interprete.js`: el modelo de visión pasa a `qwen/qwen3.8-27b`, el único de
+  Groq que hoy acepta imágenes (`GET /openai/v1/models`, campo
+  `input_modalities`, no gasta cupo). `leerConGroq` va por `llamarGroq` con
+  su propio tiempo de espera (`esperaMs`), así espera y reintenta una vez
+  cuando Groq pide unos segundos por el cupo por minuto; cualquier otro error
+  sigue pasando a Gemini.
+- `factura-proveedor.js`: `bonificacionSegunImporte`. El importe impreso del
+  renglón manda: Qwen inventó una vez un 25 % en una columna vacía. Si el
+  importe es cantidad × precio, no hay bonificación; si es menor, la
+  bonificación sale de ahí; si es mayor (viene con IVA), queda la leída.
+- `.env.example`: el modelo nuevo.
+
+**Cómo se verificó.** Dos facturas armadas (A con bonificación, packs, flete y
+percepción; B con IVA incluido, torcida y borrosa) leídas con Groq real: las
+dos completas, en 2 a 3 segundos. Test nuevo de la bonificación; 356 tests y
+lint.
+
+**Ojo: el cupo.** El plan gratis de Qwen en Groq da 7000 tokens de entrada
+por minuto para toda la instalación, y una foto usa de 2700 a 4300: una o dos
+facturas por minuto. En la demo, no leer dos seguidas. Si hace falta más, el
+Dev Tier de Groq o una clave de Gemini de respaldo (decisión de plata).
