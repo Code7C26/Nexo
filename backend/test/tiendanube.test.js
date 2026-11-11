@@ -6,6 +6,9 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHmac } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { crearCliente, crearEmpleado, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
 
@@ -147,7 +150,7 @@ after(async () => {
 test('sin conectar: la integración se ofrece, y el empleado no la ve', async () => {
   const estado = await admin.get('/api/integraciones/tiendanube');
   assert.equal(estado.status, 200);
-  assert.deepEqual(estado.json, { disponible: true, conectada: false });
+  assert.deepEqual(estado.json, { disponible: true, conectada: false, plan_lo_incluye: true });
   const empleado = await crearEmpleado(servidor, admin, { usuario: 'vendedora' });
   assert.equal((await empleado.get('/api/integraciones/tiendanube')).status, 403);
   assert.equal((await empleado.post('/api/integraciones/tiendanube/conectar')).status, 403);
@@ -460,11 +463,43 @@ test('los avisos de privacidad piden firma, y borrar un cliente borra sus pedido
   assert.match(actividad[0].detalle, /se borraron 1 pedido/);
 });
 
+// Desde el plan Emprendedor (decisión del usuario del 10 de noviembre): en
+// Gratis lo conectado queda en pausa, y al volver a un plan pago la pasada
+// trae lo que se perdió. El plan se cambia con el script del dueño de Nexo.
+function cambiarPlan(cliente, plan) {
+  return cliente.get('/api/negocio').then(({ json }) => {
+    const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const r = spawnSync(process.execPath, ['scripts/plan.mjs', '--negocio', String(json.id), '--plan', plan], {
+      cwd: raiz,
+      env: { ...process.env, NEXO_DB_PATH: path.join(servidor.dir, 'nexo.db') },
+      encoding: 'utf8'
+    });
+    assert.equal(r.status, 0, r.stderr);
+  });
+}
+
+test('en Gratis queda en pausa: el pedido no entra, y al volver a un plan pago la pasada lo trae', async () => {
+  const antes = (await estadoDe(admin)).pedidos_importados;
+  await cambiarPlan(admin, 'gratis');
+  assert.equal((await estadoDe(admin)).plan_lo_incluye, false);
+  falso.pedidos.set('9', pedidoDeLaTienda(9));
+  assert.equal(await webhook({ store_id: Number(TIENDA), event: 'order/paid', id: 9 }), 200);
+  await esperar(300);
+  assert.equal((await estadoDe(admin)).pedidos_importados, antes);
+  const sincronizar = await admin.post('/api/integraciones/tiendanube/sincronizar');
+  assert.equal(sincronizar.status, 403);
+  assert.equal(sincronizar.json.codigo, 'limite_plan');
+
+  await cambiarPlan(admin, 'emprendedor');
+  assert.ok((await admin.post('/api/integraciones/tiendanube/sincronizar')).status < 300);
+  assert.ok(await hasta(async () => (await estadoDe(admin)).pedidos_importados === antes + 1));
+});
+
 test('desinstalar la app desde Tienda Nube desconecta, y el otro negocio nunca vio nada', async () => {
   assert.equal(await webhook({ store_id: Number(TIENDA), event: 'app/uninstalled', id: Number(TIENDA) }), 200);
   assert.ok(await hasta(async () => (await estadoDe(admin)).conectada === false));
   assert.equal((await admin.post('/api/integraciones/tiendanube/sincronizar')).status, 400);
-  assert.deepEqual(await estadoDe(otro), { disponible: true, conectada: false });
+  assert.deepEqual(await estadoDe(otro), { disponible: true, conectada: false, plan_lo_incluye: true });
 
   // Ahora que quedó libre, el otro negocio la instala desde Tienda Nube (sin
   // state): no se conecta sola, pide confirmarla viendo el nombre.

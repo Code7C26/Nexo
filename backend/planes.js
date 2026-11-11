@@ -3,11 +3,17 @@
 // migración de db/index.js y scripts/plan.mjs lean la misma lista. La landing y
 // el alta la piden por GET /api/auth/planes: un precio se cambia solo acá.
 //
-// Todos los planes tienen todas las funciones: los separan los topes, nunca
-// un módulo apagado. La excepción es el asistente con IA (`asistente`: cargar
-// por texto, voz o WhatsApp), solo en Pro: decisión del usuario del 8 de
-// noviembre, porque la IA tiene un cupo que se paga y es lo que más vale; las
-// respuestas del manual, que no usan IA, son de todos. Los topes son por
+// Los planes se separan por los topes, y por dos grupos de funciones:
+// - `asistente` (cargar por texto, voz o WhatsApp, y la compra desde la foto
+//   de la factura), solo en Pro: decisión del usuario del 8 de noviembre,
+//   porque la IA tiene un cupo que se paga y es lo que más vale; las
+//   respuestas del manual, que no usan IA, son de todos;
+// - `integraciones` (Tienda Nube, Mercado Libre, Mercado Pago y la factura
+//   electrónica de ARCA), desde Emprendedor: decisión del usuario del 10 de
+//   noviembre. Los comprobantes internos son de todos. Un negocio que baja a
+//   Gratis no pierde lo conectado: queda en pausa hasta que vuelva a un plan
+//   que lo incluya (planPermite en server.js).
+// Los topes son por
 // negocio. `null` es sin tope. Qué cuenta en cada uno lo decide usoDelPlan()
 // en server.js:
 // - usuarios: los activos en el negocio;
@@ -29,8 +35,7 @@ export const PLANES = {
     descripcion: 'Para empezar: anotá lo que vendés y mirá cuánto ganás.',
     incluye: [
       'Punto de venta, stock, caja, cuentas corrientes y CRM',
-      'Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)',
-      'Tienda Nube y Mercado Libre conectados',
+      'Comprobantes en PDF, con la marca de Nexo',
       'Hasta 100 productos o servicios',
       'Hasta 300 ventas por mes',
       'Un usuario',
@@ -42,7 +47,8 @@ export const PLANES = {
     productos: 100,
     ventas_mes: 300,
     marca: true,
-    asistente: false
+    asistente: false,
+    integraciones: false
   },
   emprendedor: {
     nombre: 'Emprendedor',
@@ -52,6 +58,8 @@ export const PLANES = {
       'Todo lo de Gratis',
       'Productos y ventas sin tope',
       'Hasta 3 usuarios, cada uno con su rol',
+      'Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)',
+      'Tienda Nube, Mercado Libre y Mercado Pago conectados',
       'Comprobantes sin la marca de Nexo'
     ],
     muy_pronto: [],
@@ -60,7 +68,8 @@ export const PLANES = {
     productos: null,
     ventas_mes: null,
     marca: false,
-    asistente: false
+    asistente: false,
+    integraciones: true
   },
   pro: {
     nombre: 'Pro',
@@ -81,7 +90,8 @@ export const PLANES = {
     productos: null,
     ventas_mes: null,
     marca: false,
-    asistente: true
+    asistente: true,
+    integraciones: true
   }
 };
 export const PLAN_POR_DEFECTO = 'gratis';

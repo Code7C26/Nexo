@@ -117,6 +117,8 @@ function pintar() {
 
 async function cargar() {
   config = await api("/api/factura-electronica", { error: "No se pudo cargar la factura electrónica." });
+  // Desde el plan Emprendedor: sin él, el aviso; activa, queda en pausa.
+  document.getElementById("feSinPlan").hidden = config.plan_lo_incluye !== false;
   mostrarError("");
   pintar();
 }

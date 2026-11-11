@@ -131,7 +131,10 @@ async function cargar() {
   document.getElementById("configMercadoPagoResumen").textContent = estado.conectada
     ? `Conectada a ${estado.cuenta.nombre}`
     : "Cobrá con un link y que entre solo";
-  pasos.hidden = !estado.disponible || estado.conectada;
+  // Desde el plan Emprendedor, como Tienda Nube.
+  const sinPlan = estado.plan_lo_incluye === false;
+  document.getElementById("mpSinPlan").hidden = !sinPlan;
+  pasos.hidden = !estado.disponible || estado.conectada || sinPlan;
   conectadaEl.hidden = !estado.conectada;
   if (!estado.conectada) return;
   listaPagos.innerHTML = estado.pagos.length

@@ -207,3 +207,30 @@ test('el asistente con IA es del plan Pro: Gratis y Emprendedor lo tienen frenad
   assert.equal((await admin.get('/api/asistente/capacidades')).json.ia, true);
   assert.ok(!esTope(await admin.post('/api/asistente/interpretar', frase)));
 });
+
+test('Tienda Nube, Mercado Libre, Mercado Pago y ARCA son desde Emprendedor; ver y desconectar se puede siempre', async () => {
+  const admin = await registrarEmpresa(servidor, { empresa: 'Kiosco Gratis', usuario: 'kioscogratis', plan: 'gratis' });
+  const negocio = (await admin.get('/api/negocio')).json;
+  assert.equal(negocio.plan.integraciones, false);
+  assert.equal(negocio.mercado_pago.conectado, false);
+
+  for (const canal of ['tiendanube', 'mercadolibre', 'mercadopago']) {
+    const ver = await admin.get(`/api/integraciones/${canal}`);
+    assert.equal(ver.status, 200, ver.texto);
+    assert.equal(ver.json.plan_lo_incluye, false);
+    const conectar = await admin.post(`/api/integraciones/${canal}/conectar`);
+    assert.equal(conectar.status, 403, `${canal}: ${conectar.texto}`);
+    assert.equal(conectar.json.codigo, 'limite_plan');
+    assert.notEqual((await admin.post(`/api/integraciones/${canal}/desconectar`)).json?.codigo, 'limite_plan');
+  }
+  assert.equal((await admin.get('/api/factura-electronica')).json.plan_lo_incluye, false);
+  const fe = await admin.put('/api/factura-electronica', { punto_venta: 4 });
+  assert.equal(fe.status, 403);
+  assert.equal(fe.json.codigo, 'limite_plan');
+
+  // Emprendedor ya los trae.
+  scriptPlan('--negocio', String(negocio.id), '--plan', 'emprendedor');
+  assert.equal((await admin.get('/api/integraciones/tiendanube')).json.plan_lo_incluye, true);
+  assert.notEqual((await admin.post('/api/integraciones/tiendanube/conectar')).json?.codigo, 'limite_plan');
+  assert.equal((await admin.put('/api/factura-electronica', { punto_venta: 4 })).status, 200);
+});

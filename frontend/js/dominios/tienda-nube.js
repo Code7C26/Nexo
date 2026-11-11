@@ -172,7 +172,11 @@ async function cargar() {
     : "Tu tienda online, conectada a Nexo";
   if (clavePendiente && estado.disponible && !estado.conectada) await pintarConfirmacion();
   else confirmarEl.hidden = true;
-  pasos.hidden = !estado.disponible || estado.conectada || !confirmarEl.hidden;
+  // Desde el plan Emprendedor (backend/planes.js): sin él, el aviso en lugar
+  // de los pasos, y lo conectado queda en pausa.
+  const sinPlan = estado.plan_lo_incluye === false;
+  document.getElementById("tnSinPlan").hidden = !sinPlan;
+  pasos.hidden = !estado.disponible || estado.conectada || !confirmarEl.hidden || sinPlan;
   conectadaEl.hidden = !estado.conectada;
   if (!estado.conectada) return;
   pintarPedidos();

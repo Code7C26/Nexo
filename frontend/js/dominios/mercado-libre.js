@@ -204,7 +204,10 @@ async function cargar() {
   document.getElementById("configMercadoLibreResumen").textContent = estado.conectada
     ? `Conectada a ${estado.tienda.nombre}`
     : "Tus publicaciones, conectadas a Nexo";
-  pasos.hidden = !estado.disponible || estado.conectada;
+  // Desde el plan Emprendedor, como Tienda Nube.
+  const sinPlan = estado.plan_lo_incluye === false;
+  document.getElementById("mlSinPlan").hidden = !sinPlan;
+  pasos.hidden = !estado.disponible || estado.conectada || sinPlan;
   conectadaEl.hidden = !estado.conectada;
   if (!estado.conectada) return;
   pintarPedidosCanal(document.getElementById("mlPedidos"), estado.pedidos, {
