@@ -7,7 +7,7 @@
        pública (canónico, Open Graph) y los datos estructurados con los
        precios de planes.js. Sin script inline: la CSP no lo deja. -->
   <title>Nexo — Ventas, stock, caja y clientes de tu negocio, en un solo lugar</title>
-  <meta name="description" content="Sistema de gestión para comercios, emprendimientos y pymes: punto de venta, stock, compras con costo real, cuentas corrientes, caja y CRM. Gratis para empezar, sin tarjeta." />
+  <meta name="description" content="Sistema de gestión para comercios, emprendimientos y pymes: punto de venta, stock, compras con costo real, cuentas corrientes, caja, CRM y venta online con Tienda Nube y Mercado Libre. Gratis para empezar, sin tarjeta." />
   <link rel="canonical" href="%URL%/" />
   <meta name="theme-color" content="#000000" />
   <meta name="color-scheme" content="dark" />
@@ -40,7 +40,7 @@
     <div class="barra-interior">
       <a class="marca" href="/" aria-label="Nexo, inicio">
         <img src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" width="28" height="28" />
-        <span>Nexo</span>
+        <svg class="marca-letras" viewBox="0 0 668 106" aria-hidden="true"><use href="/img/marca.svg#nexo"></use></svg>
       </a>
       <nav class="barra-nav" id="barraNav" aria-label="Secciones">
         <a href="#funciones">Funciones</a>
@@ -116,14 +116,15 @@
             <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg>Vender</p>
             <h3>Cobrá rápido en el mostrador.</h3>
             <p>
-              Buscás por nombre o pasás el lector de códigos, y cobrás en efectivo, con transferencia o
-              Mercado Pago, o con varios medios a la vez. Al cerrar la caja, Nexo te dice cuánto tendría
-              que haber y anota la diferencia.
+              Buscás por nombre, pasás el lector de códigos o leés la etiqueta de la balanza, y las ofertas
+              se aplican solas. Cobrás en efectivo, con transferencia o Mercado Pago, o con varios medios a
+              la vez. Al cerrar la caja, Nexo controla cada cuenta y anota la diferencia.
             </p>
             <ul class="chips">
               <li>Lector de códigos</li>
+              <li>Etiquetas de la balanza</li>
+              <li>Ofertas y promociones</li>
               <li>Cobro con varios medios</li>
-              <li>Vuelto</li>
               <li>Arqueo de caja</li>
             </ul>
           </div>
@@ -135,23 +136,100 @@
 
         <article class="bloque">
           <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#percent"></use></svg>Ganancia</p>
+            <h3>Cada venta te dice cuánto te quedó.</h3>
+            <p>
+              La mercadería, la comisión de Mercado Pago, el envío, el packaging y el IVA, cada uno con su
+              porcentaje. Lo que queda es tuyo, y lo comparás contra el promedio de tu negocio. Con el costo
+              de ese día: si mañana sube, la ganancia de hoy no cambia.
+            </p>
+            <ul class="chips">
+              <li>Costo del momento</li>
+              <li>Comisiones y envíos</li>
+              <li>IVA aparte</li>
+              <li>Contra tu promedio</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual mock" aria-label="Ejemplo de adónde fue la plata de una venta de 45.000 pesos">
+            <p class="mock-titulo"><span>Venta #1284</span><strong>$ 45.000</strong></p>
+            <div class="desglose-barra" aria-hidden="true">
+              <span class="d-mercaderia"></span><span class="d-comision"></span><span class="d-envio"></span><span class="d-packaging"></span><span class="d-quedo"></span>
+            </div>
+            <dl class="mock-filas">
+              <div><dt><i class="punto-serie d-mercaderia"></i>Mercadería</dt><dd>$ 20.250 <span>45 %</span></dd></div>
+              <div><dt><i class="punto-serie d-comision"></i>Comisión de Mercado Pago</dt><dd>$ 2.880 <span>6,4 %</span></dd></div>
+              <div><dt><i class="punto-serie d-envio"></i>Envío</dt><dd>$ 3.500 <span>7,8 %</span></dd></div>
+              <div><dt><i class="punto-serie d-packaging"></i>Packaging</dt><dd>$ 450 <span>1 %</span></dd></div>
+              <div class="fila-quedo"><dt><i class="punto-serie d-quedo"></i>Te quedó</dt><dd>$ 17.920 <span>39,8 %</span></dd></div>
+            </dl>
+            <p class="mock-pie"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trending-up"></use></svg>3,6 puntos más que tu promedio</p>
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
             <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#boxes"></use></svg>Stock y costos</p>
             <h3>Sabés lo que tenés y cuánto te costó de verdad.</h3>
             <p>
               Talles, colores y venta por kilo. Cuando cargás una compra, el envío se reparte entre los
-              productos y el costo se promedia con lo que ya tenías. Si un producto queda por debajo del
-              margen que querés, te avisa.
+              productos y el costo se promedia con lo que ya tenías. Si fabricás lo que vendés, la receta te
+              dice cuánto te cuesta cada uno. Y si un producto queda por debajo del margen que querés, te
+              avisa.
             </p>
             <ul class="chips">
               <li>Talles y colores</li>
               <li>Venta por kilo</li>
               <li>Costo con el envío</li>
+              <li>Recetas y producción</li>
               <li>Varios depósitos</li>
             </ul>
           </div>
           <figure class="bloque-visual marco-compu">
             <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
             <img src="/img/landing/productos.webp" width="2560" height="1760" loading="lazy" alt="La lista de productos con costo, precio, margen contra el objetivo y stock de cada uno." />
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#globe"></use></svg>Venta online</p>
+            <h3>Tu tienda online y tu local, con el mismo stock.</h3>
+            <p>
+              Conectás Tienda Nube y Mercado Libre: los pedidos entran solos como ventas y el stock baja en
+              todos lados. El precio y el stock los manejás desde Nexo. Anotás también lo que vendés por
+              Instagram o WhatsApp, y ves cuánto te deja cada canal después de comisiones y envíos.
+            </p>
+            <ul class="chips">
+              <li>Tienda Nube</li>
+              <li>Mercado Libre</li>
+              <li>Instagram y WhatsApp</li>
+              <li>Ganancia por canal</li>
+            </ul>
+          </div>
+          <figure class="bloque-visual mock" aria-label="Ejemplo de las ventas del mes por canal y lo que dejó cada uno">
+            <p class="mock-titulo"><span>Ventas del mes, por canal</span><span>Te quedó</span></p>
+            <ul class="canales">
+              <li>
+                <span class="canal-nombre"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg>El local</span>
+                <span class="canal-barra c-1" aria-hidden="true"></span>
+                <span class="canal-cifras">$ 1.240.000 <strong>38 %</strong></span>
+              </li>
+              <li>
+                <span class="canal-nombre"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 37.5 27"><use href="/img/tiendanube.svg#nube"></use></svg>Tienda Nube</span>
+                <span class="canal-barra c-2" aria-hidden="true"></span>
+                <span class="canal-cifras">$ 680.000 <strong>31 %</strong></span>
+              </li>
+              <li>
+                <span class="canal-nombre"><svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadolibre.svg#emblema"></use></svg>Mercado Libre</span>
+                <span class="canal-barra c-3" aria-hidden="true"></span>
+                <span class="canal-cifras">$ 410.000 <strong>22 %</strong></span>
+              </li>
+              <li>
+                <span class="canal-nombre"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/instagram.svg#emblema"></use></svg>Instagram</span>
+                <span class="canal-barra c-4" aria-hidden="true"></span>
+                <span class="canal-cifras">$ 295.000 <strong>35 %</strong></span>
+              </li>
+            </ul>
           </figure>
         </article>
 
@@ -174,6 +252,41 @@
           <figure class="bloque-visual marco-compu">
             <div class="marco-barra" aria-hidden="true"><span></span><span></span><span></span></div>
             <img src="/img/landing/crm.webp" width="2560" height="1760" loading="lazy" alt="El CRM de Nexo: las consultas en columnas por etapa, con lo que vale cada una y el próximo paso." />
+          </figure>
+        </article>
+
+        <article class="bloque">
+          <div class="bloque-texto">
+            <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg>Facturación</p>
+            <h3>Factura electrónica, con el CAE de ARCA.</h3>
+            <p>
+              Nexo elige la letra con tu condición frente al IVA y la del cliente, discrimina el IVA en la
+              factura A y le pide el CAE a ARCA. Sale con el formato de siempre y el código QR, y el libro IVA
+              de ventas y compras se arma solo.
+            </p>
+            <ul class="chips">
+              <li>Factura A, B y C</li>
+              <li>CAE y QR</li>
+              <li>Notas de crédito</li>
+              <li>Libro IVA</li>
+            </ul>
+            <p class="bloque-nota">
+              Por ahora emite facturas de prueba, con CAE de ARCA pero sin validez fiscal: estamos
+              terminando la habilitación.
+            </p>
+          </div>
+          <figure class="bloque-visual mock" aria-label="Ejemplo de una factura B autorizada por ARCA">
+            <div class="factura-cabeza">
+              <span class="factura-letra" aria-hidden="true">B</span>
+              <p><strong>Factura</strong><span>Punto de venta 0003 · N.º 00000124</span></p>
+            </div>
+            <dl class="mock-filas">
+              <div><dt>Cliente</dt><dd>Consumidor final</dd></div>
+              <div><dt>2 × Remera básica</dt><dd>$ 25.330</dd></div>
+              <div><dt>1 × Gorra trucker</dt><dd>$ 12.900</dd></div>
+              <div class="fila-total"><dt>Total</dt><dd>$ 38.230</dd></div>
+            </dl>
+            <p class="mock-pie mock-pie-ok"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg>Autorizada por ARCA · CAE 75461234567890</p>
           </figure>
         </article>
 
@@ -202,15 +315,16 @@
         <article class="bloque">
           <div class="bloque-texto">
             <p class="etiqueta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#sparkles"></use></svg>Asistente</p>
-            <h3>Contale qué pasó, como a una persona.</h3>
+            <h3>Contale qué pasó, o mandale la factura.</h3>
             <p>
-              Le escribís lo que vendiste, lo que compraste o lo que pagaste, y Nexo arma la operación. Te
-              muestra cómo lo entendió y no carga nada hasta que confirmás.
+              Le escribís o le dictás lo que vendiste, lo que compraste o lo que pagaste, y Nexo arma la
+              operación. Con la foto o el PDF de la factura del proveedor, carga la compra renglón por
+              renglón. Te muestra cómo lo entendió y no carga nada hasta que confirmás. Viene con el plan Pro.
             </p>
             <ul class="chips">
-              <li>Ventas</li>
-              <li>Compras</li>
-              <li>Gastos</li>
+              <li>Por texto o por voz</li>
+              <li>Foto de la factura</li>
+              <li>Ventas, compras y gastos</li>
               <li>Vos confirmás</li>
             </ul>
           </div>
@@ -239,11 +353,13 @@
             <h3>En la compu y en el celular, la misma cuenta.</h3>
             <p>
               Se instala desde el navegador como una app, sin pasar por ninguna tienda. Las secciones que más
-              usás van abajo, a mano, y si te quedás sin señal ves lo último que cargaste.
+              usás van abajo, a mano, y si te quedás sin señal ves lo último que cargaste. Te avisa cuando
+              entra una venta online o un producto llega a su stock mínimo.
             </p>
             <ul class="chips">
               <li>Se instala como una app</li>
               <li>Android y iPhone</li>
+              <li>Avisos en el celular</li>
               <li>Sin conexión, lo último cargado</li>
             </ul>
           </div>
@@ -258,14 +374,18 @@
       <div class="contenedor">
         <h3 class="tambien-titulo">Y además</h3>
         <ul class="tambien">
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layout-dashboard"></use></svg>Un Resumen que armás a tu gusto</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg>Arrancás con tu stock y tus cuentas de hoy</li>
           <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg>Devoluciones con nota de crédito</li>
           <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-cog"></use></svg>Usuarios con roles: el empleado no ve tus costos</li>
           <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg>Registro de cada cambio: quién y cuándo</li>
           <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg>Compras y proveedores</li>
           <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg>Listas de precios: minorista, mayorista</li>
-          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg>Socios y cuotas para gimnasios</li>
-          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#clipboard-list"></use></svg>Trabajos y abonos para servicios</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg>Socios, cuotas e ingreso con DNI para gimnasios</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#clipboard-list"></use></svg>Trabajos, abonos y el costo de cada servicio</li>
           <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-down"></use></svg>Comprobantes en PDF y listas en CSV</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#google"></use></svg>Entrás con tu cuenta de Google</li>
+          <li><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#globe"></use></svg>En castellano o en inglés</li>
         </ul>
       </div>
     </section>
@@ -298,8 +418,9 @@
         <p class="etiqueta">Planes</p>
         <h2>Empezá gratis.<br /><span class="acento">Pagá cuando crezcas.</span></h2>
         <p class="bajada">
-          Todos los planes tienen todas las funciones: cambia cuánto entra. Los planes pagos los probás
-          <span data-dias-prueba>14</span> días sin tarjeta.
+          Todas las funciones están en todos los planes, menos el asistente con IA, que es de Pro: lo que
+          cambia es cuánto entra. Los planes pagos los probás <span data-dias-prueba>14</span> días sin
+          tarjeta.
         </p>
       </div>
       <div class="contenedor">
@@ -337,7 +458,11 @@
         </details>
         <details>
           <summary>¿Hace factura electrónica de ARCA?</summary>
-          <p>Todavía no: está en camino. Hoy Nexo arma comprobantes internos (factura, nota de crédito y nota de débito) para imprimir o mandar en PDF, sin CAE.</p>
+          <p>Sí. Nexo elige la letra según tu condición frente al IVA y la del cliente, le pide el CAE a ARCA y la factura sale con el código QR. Estamos terminando la habilitación: por ahora funciona con el ambiente de prueba de ARCA, así que esos comprobantes todavía no tienen validez fiscal. Mientras tanto, también arma comprobantes internos para imprimir o mandar en PDF.</p>
+        </details>
+        <details>
+          <summary>¿Se conecta con mi tienda online?</summary>
+          <p>Sí, con Tienda Nube y Mercado Libre. Los pedidos entran solos como ventas y el stock se actualiza en todos lados. El precio y el stock los manejás desde Nexo, y la tienda se pone al día sola.</p>
         </details>
         <details>
           <summary>¿Mis empleados ven lo que gano?</summary>
@@ -412,9 +537,9 @@
 
   <footer class="pie">
     <div class="contenedor pie-interior">
-      <a class="marca" href="/">
+      <a class="marca" href="/" aria-label="Nexo, inicio">
         <img src="/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="" width="22" height="22" />
-        <span>Nexo</span>
+        <svg class="marca-letras" viewBox="0 0 668 106" aria-hidden="true"><use href="/img/marca.svg#nexo"></use></svg>
       </a>
       <nav class="pie-nav" aria-label="Pie">
         <a href="#planes">Planes</a>

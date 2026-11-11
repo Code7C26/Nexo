@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- El "NΞXO" del logo (assets/logo/03-wordmark), redibujado en vector a
+       partir de sus medidas: no se pixela y toma el color del texto
+       (currentColor). Se usa con <svg viewBox="0 0 668 106"><use href="/img/marca.svg#nexo"/></svg>. -->
+  <symbol id="nexo" viewBox="0 0 668 106">
+    <g fill="currentColor">
+      <rect x="0" y="3" width="13" height="100" />
+      <rect x="97" y="3" width="13" height="100" />
+      <polygon points="0,3 20,3 110,103 90,103" />
+      <rect x="195" y="3" width="103" height="13" />
+      <rect x="195" y="47" width="103" height="13" />
+      <rect x="195" y="90" width="103" height="13" />
+      <polygon points="374,3 394,3 488,103 468,103" />
+      <polygon points="468,3 488,3 394,103 374,103" />
+    </g>
+    <ellipse cx="611.5" cy="52.5" rx="48.5" ry="45.5" fill="none" stroke="currentColor" stroke-width="14" />
+  </symbol>
+</svg>

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §151);
+    siguiente número (hoy el último es §152);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,25 @@
 
 ## Estado actual (10 de noviembre de 2026)
 
-**10 de noviembre, hist. §151: la compra desde la foto de la factura, en
-`solla` sin publicar.** Nueva compra → "Cargar desde la factura" (foto, varias
+**10 de noviembre, hist. §152: la landing y los planes al día, en `solla` sin
+publicar.** Bloques nuevos de ganancia por venta, venta online y facturación;
+ARCA y las tiendas salen de "Muy pronto" (ARCA con la aclaración de que está
+en prueba, porque la producción falta) y WhatsApp entra ahí. El "NΞXO" del
+logo, en vector (`frontend/img/marca.svg`), en la barra de la landing.
+
+**Videos y diapositivas para el pitch (10 de noviembre).** Guiones en
+`docs/guiones-videos.md`: el 1 y el 2 aprobados, el 3 con solo el tipo de
+negocio, el 4 grabado en el sitio con `santinosolla22+tutorial@gmail.com`.
+Cómo se hacen: grabar la app de los ejemplos (skill `ui-demo`), armar con
+Remotion (gratis hasta 3 personas) y la voz con `edge-tts` (es-AR Tomás o
+Elena, a elegir; instalado en la compu). Higgsfield queda afuera (pago, y no
+muestra el sistema). Las diapositivas, en HTML con `frontend-slides`.
+**Sigue mañana:** el usuario pasa videos de ejemplo (frames + Whisper local
+para verlos), se eligen la voz y la bajada del logo, y se arranca el video 1
+(antes, armar en Lola una venta con comisión y envío).
+
+**10 de noviembre, hist. §151: la compra desde la foto de la factura,
+publicada (PR #68).** Nueva compra → "Cargar desde la factura" (foto, varias
 o PDF): la IA solo lee, Nexo busca cada renglón (lo recordado del proveedor,
 el código, el nombre parecido), pasa los packs a unidades con el IVA y llena
 el formulario para revisar. Tabla nueva `proveedor_articulos`. Probado con el

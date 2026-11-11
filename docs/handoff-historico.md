@@ -12589,3 +12589,48 @@ cuánto lee bien una foto real.
 
 **Queda:** probarlo con facturas reales; guardar la imagen junto a la compra;
 la foto por WhatsApp.
+
+## §152. La landing y los planes al día, y el logo en vector (10 de noviembre de 2026)
+
+**Pedido del usuario:** "que cambies la landing con las cosas que agregamos, lo
+mismo con los planes (dice ARCA proximamente, eso ya se hizo)", y qué hacer con
+los logos con letras, que nunca se usaron.
+
+**Qué se hizo.**
+- **Planes** (`backend/planes.js` y su inglés en `idioma/en.js`): Pro ya no
+  tiene "Muy pronto: ARCA · Mercado Libre y Tienda Nube". Gratis dice "Factura
+  electrónica de ARCA (en etapa de prueba)" y "Tienda Nube y Mercado Libre
+  conectados", porque hoy están para todos los planes. Pro suma "Compras
+  cargadas desde la foto de la factura" (la ruta es `soloConAsistente`), y
+  WhatsApp pasa de la línea del asistente a "Muy pronto": espera la app de Meta.
+- **ARCA, con la aclaración:** la homologación está hecha y la producción no
+  (CUIT de Nexo, a decidir con un contador). Un cliente que se registra hoy no
+  emite facturas con validez fiscal, así que la landing lo dice en el bloque y
+  en la pregunta frecuente, y el plan lleva "(en etapa de prueba)". Al pasar a
+  producción se sacan esas tres aclaraciones.
+- **Landing** (`frontend/landing.html`, `css/landing.css`): tres bloques
+  nuevos con su ejemplo armado en HTML (como el del asistente, sin captura):
+  "Ganancia" (adónde fue la plata de una venta, §131), "Venta online" (Tienda
+  Nube, Mercado Libre, Instagram y la ganancia por canal) y "Facturación"
+  (letra, IVA, CAE y QR, libro IVA). Puestos al día: Vender (balanza, ofertas,
+  cierre por cuenta), Stock (recetas), Asistente (voz, foto de la factura,
+  "viene con el plan Pro"), Celular (avisos), "Y además" (12: Resumen a gusto,
+  carga inicial, ingreso con DNI, costo de servicios, Google, inglés), la
+  bajada de Planes (el asistente es la única función de Pro), la pregunta de
+  ARCA y una nueva de tiendas online. La meta descripción suma la venta online.
+- **Logo:** `frontend/img/marca.svg` es el "NΞXO" redibujado en vector a
+  partir de las medidas del PNG (comparado píxel por píxel: solo difiere el
+  borde suavizado). Va en la barra y el pie de la landing en lugar de "Nexo"
+  escrito en Satoshi. La app sigue con el texto hasta que el usuario lo vea.
+  `assets/logo/03-wordmark` trae también la bajada (el recorte está mal); el
+  vector no la lleva.
+
+**Cómo se verificó.** Lint, i18n (0 sin traducir), 352 tests. En Chrome, en
+compu (1366) y celular (390): sin desborde horizontal; se corrigieron dos
+reglas pisadas por especificidad (la letra de la factura y la nota de ARCA) y
+la alineación del logo de Mercado Libre.
+
+**Queda:** las capturas de la landing son del 27 de octubre (la barra de la
+app dice "Nexo" escrito); el logo con letras en la app, si el usuario lo
+aprueba; la bajada "para pymes" del logo, a decidir; los logos en vector que
+faltan (ícono y logo completo) para los videos y las diapositivas.

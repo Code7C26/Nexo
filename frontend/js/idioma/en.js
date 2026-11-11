@@ -143,7 +143,9 @@ export default {
   // backend/planes.js
   "Gratis": "Free",
   "Para empezar: anotá lo que vendés y mirá cuánto ganás.": "To get started: record what you sell and see how much you make.",
-  "Todas las funciones: ventas, caja, stock, CRM y punto de venta": "Every feature: sales, cash, stock, CRM and point of sale",
+  "Punto de venta, stock, caja, cuentas corrientes y CRM": "Point of sale, stock, cash, customer accounts and CRM",
+  "Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)": "Electronic invoicing with an ARCA CAE (test invoices for now)",
+  "Tienda Nube y Mercado Libre conectados": "Tienda Nube and Mercado Libre connected",
   "Hasta 100 productos o servicios": "Up to 100 products or services",
   "Hasta 300 ventas por mes": "Up to 300 sales per month",
   "Un usuario": "One user",
@@ -157,11 +159,11 @@ export default {
   "Pro": null,
   "Para la pyme con equipo o con más de un local.": "For the small business with a team or more than one store.",
   "Todo lo de Emprendedor": "Everything in Entrepreneur",
-  "Asistente con IA: cargá ventas, compras y gastos por texto, voz o WhatsApp": "AI assistant: record sales, purchases and expenses by text, voice or WhatsApp",
+  "Asistente con IA: cargá ventas, compras y gastos por texto o voz": "AI assistant: record sales, purchases and expenses by text or voice",
+  "Compras cargadas desde la foto de la factura del proveedor": "Purchases loaded from a photo of the supplier's invoice",
   "Usuarios sin tope": "Unlimited users",
   "Varios negocios con la misma cuenta": "Several businesses with the same account",
-  "Factura electrónica de ARCA": "ARCA electronic invoicing",
-  "Mercado Libre y Tienda Nube": "Mercado Libre and Tienda Nube",
+  "El asistente por WhatsApp": "The assistant on WhatsApp",
 
   // backend/server.js
   "trust proxy": null,

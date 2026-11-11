@@ -28,7 +28,9 @@ export const PLANES = {
     precio: 0,
     descripcion: 'Para empezar: anotá lo que vendés y mirá cuánto ganás.',
     incluye: [
-      'Todas las funciones: ventas, caja, stock, CRM y punto de venta',
+      'Punto de venta, stock, caja, cuentas corrientes y CRM',
+      'Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)',
+      'Tienda Nube y Mercado Libre conectados',
       'Hasta 100 productos o servicios',
       'Hasta 300 ventas por mes',
       'Un usuario',
@@ -66,11 +68,14 @@ export const PLANES = {
     descripcion: 'Para la pyme con equipo o con más de un local.',
     incluye: [
       'Todo lo de Emprendedor',
-      'Asistente con IA: cargá ventas, compras y gastos por texto, voz o WhatsApp',
+      'Asistente con IA: cargá ventas, compras y gastos por texto o voz',
+      'Compras cargadas desde la foto de la factura del proveedor',
       'Usuarios sin tope',
       'Varios negocios con la misma cuenta'
     ],
-    muy_pronto: ['Factura electrónica de ARCA', 'Mercado Libre y Tienda Nube'],
+    // WhatsApp está hecho pero espera la app de Meta (handoff): hasta que un
+    // negocio lo pueda vincular de verdad, va como "muy pronto".
+    muy_pronto: ['El asistente por WhatsApp'],
     usuarios: null,
     negocios: null,
     productos: null,
