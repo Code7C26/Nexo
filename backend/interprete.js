@@ -304,13 +304,13 @@ const mensajeUsuario = (texto) => `Hoy es ${fechaDeHoy()}. Interpretá esta oper
 // se espera acá y se reintenta una vez, así no le llega un error a nadie.
 const ESPERA_CUPO_MAX_MS = 8_000;
 
-async function llamarGroq(ruta, init, { reintentoPorCupo = true } = {}) {
+async function llamarGroq(ruta, init, { reintentoPorCupo = true, esperaMs = ESPERA_MS } = {}) {
   let res;
   try {
     res = await fetch(`${GROQ_URL}${ruta}`, {
       ...init,
       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, ...init.headers },
-      signal: AbortSignal.timeout(ESPERA_MS)
+      signal: AbortSignal.timeout(esperaMs)
     });
   } catch (err) {
     throw new FalloProveedor(`Groq no respondió: ${err.message}`);
@@ -322,7 +322,7 @@ async function llamarGroq(ruta, init, { reintentoPorCupo = true } = {}) {
   const espera = Number(res.headers.get('retry-after')) * 1000;
   if (res.status === 429 && reintentoPorCupo && espera > 0 && espera <= ESPERA_CUPO_MAX_MS) {
     await new Promise((r) => setTimeout(r, espera));
-    return llamarGroq(ruta, init, { reintentoPorCupo: false });
+    return llamarGroq(ruta, init, { reintentoPorCupo: false, esperaMs });
   }
   if (res.status === 429 || res.status >= 500) {
     throw new FalloProveedor(`Groq ${res.status}: ${cuerpo.slice(0, 300)}`, { cupo: res.status === 429 });
@@ -501,7 +501,10 @@ export async function transcribir(audio, tipo, palabras = []) {
 // modelo de visión de Groq (su cupo es aparte del de las frases) y Gemini de
 // respaldo, que también lee imágenes.
 
-const GROQ_MODELO_VISION = process.env.NEXO_GROQ_MODELO_VISION || 'meta-llama/llama-4-scout-17b-16e-instruct';
+// Groq dio de baja Llama 4 Scout en noviembre de 2026 (404 model_not_found);
+// Qwen es el que hoy lee imágenes. GET /openai/v1/models dice cuáles aceptan
+// `image` en `input_modalities`, sin gastar cupo.
+const GROQ_MODELO_VISION = process.env.NEXO_GROQ_MODELO_VISION || 'qwen/qwen3.8-27b';
 // Una factura larga tarda más que una frase en salir entera.
 const ESPERA_LECTURA_MS = 60_000;
 
@@ -543,30 +546,30 @@ async function leerConGroq(imagenes) {
     { type: 'text', text: INSTRUCCIONES_FACTURA },
     ...imagenes.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.tipo};base64,${img.datos}` } }))
   ];
-  let res;
+  // Por llamarGroq, para esperar lo que pide Groq cuando se pasa del cupo por
+  // minuto: el de Qwen es de 7000 tokens de entrada y una foto usa unos 3000.
+  let respuesta;
   try {
-    res = await fetch(`${GROQ_URL}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: GROQ_MODELO_VISION,
-        messages: [{ role: 'user', content: contenido }],
-        response_format: { type: 'json_object' },
-        temperature: 0,
-        max_completion_tokens: 6000
-      }),
-      signal: AbortSignal.timeout(ESPERA_LECTURA_MS)
-    });
+    respuesta = await llamarGroq(
+      '/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: GROQ_MODELO_VISION,
+          messages: [{ role: 'user', content: contenido }],
+          response_format: { type: 'json_object' },
+          temperature: 0,
+          max_completion_tokens: 6000
+        })
+      },
+      { esperaMs: ESPERA_LECTURA_MS }
+    );
   } catch (err) {
-    throw new FalloProveedor(`Groq no respondió: ${err.message}`);
+    // Cualquier error de Groq deja probar con Gemini: también si el modelo de
+    // visión dejó de existir, como pasó con Llama 4 Scout.
+    throw err instanceof FalloProveedor ? err : new FalloProveedor(err.message);
   }
-  // Cualquier error de Groq deja probar con Gemini: también si el modelo de
-  // visión dejó de existir, que es lo más probable con el tiempo.
-  if (!res.ok) {
-    const cuerpo = await res.text().catch(() => '');
-    throw new FalloProveedor(`Groq ${res.status}: ${cuerpo.slice(0, 300)}`, { cupo: res.status === 429 });
-  }
-  const respuesta = await res.json();
   return parsearJsonDelModelo(respuesta.choices?.[0]?.message?.content);
 }
 
