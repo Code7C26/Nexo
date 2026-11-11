@@ -83,6 +83,21 @@ const ITEM_SCHEMA = {
   additionalProperties: false
 };
 
+// En una venta el precio puede no decirse ("vendí dos gorras a Camila"): el
+// producto ya tiene el suyo, y server.js pone el de lista. Con el precio
+// obligatorio, el modelo prefería no proponer nada antes que inventarlo.
+const ITEM_VENTA_SCHEMA = {
+  ...ITEM_SCHEMA,
+  properties: {
+    ...ITEM_SCHEMA.properties,
+    precio_unitario: {
+      type: ['number', 'null'],
+      description:
+        'Precio POR UNIDAD, solo si el texto lo dice. Si da un total para varias unidades, dividir por la cantidad. Si no dice el precio, null: Nexo usa el de lista del producto.'
+    }
+  }
+};
+
 const HERRAMIENTAS = [
   {
     name: 'registrar_venta',
@@ -95,7 +110,7 @@ const HERRAMIENTAS = [
           type: 'string',
           description: 'Nombre del cliente. Si no existe todavía en Nexo, se crea uno nuevo.'
         },
-        items: { type: 'array', items: ITEM_SCHEMA },
+        items: { type: 'array', items: ITEM_VENTA_SCHEMA },
         cobro: {
           type: ['object', 'null'],
           description:
@@ -262,6 +277,7 @@ Tu única función es traducir una frase en lenguaje natural a UNA llamada a una
 Reglas:
 - Usá siempre NOMBRES, nunca inventes IDs — eso lo resuelve Nexo después.
 - Si el texto da un precio total para varias unidades, calculá el precio unitario dividiendo por la cantidad.
+- En una venta, si el texto no dice el precio, precio_unitario va en null y la venta se propone igual: Nexo usa el precio de lista del producto. Nunca dejes de proponer una venta porque falta el precio.
 - Si no se menciona explícitamente que se cobró o se pagó, dejá el cobro en null (queda a crédito).
 - El cobro lleva solo dos campos: "cuenta" (dónde entró la plata: efectivo, cash, MP, transferencia a un banco...) e "importe" (null si se cobró todo).
 - "a X", "X cada uno" o "X el kilo" es el precio por unidad; "por X" o "X en total" es el total de todas las unidades. Ejemplo: "vendí 4 gorras a 9 mil" es cantidad 4 y precio_unitario 9000; "vendí 4 gorras por 36 mil" también.
@@ -656,7 +672,8 @@ function parsearItems(partes) {
   const crudos = partes.item ? [partes.item] : partes.items ? partes.items.split('|') : [];
   return crudos.map((raw) => {
     const [producto, cantidad, precio_unitario] = raw.split(',').map((s) => s.trim());
-    return { producto, cantidad: Number(cantidad), precio_unitario: Number(precio_unitario) };
+    // Sin precio, null: como el modelo cuando la frase no lo dice.
+    return { producto, cantidad: Number(cantidad), precio_unitario: precio_unitario ? Number(precio_unitario) : null };
   });
 }
 

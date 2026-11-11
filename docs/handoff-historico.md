@@ -12705,3 +12705,19 @@ lint.
 por minuto para toda la instalación, y una foto usa de 2700 a 4300: una o dos
 facturas por minuto. En la demo, no leer dos seguidas. Si hace falta más, el
 Dev Tier de Groq o una clave de Gemini de respaldo (decisión de plata).
+
+## §155. El asistente propone la venta aunque la frase no diga el precio (11 de noviembre de 2026)
+
+**El problema.** "Vendí dos gorras a Camila Herrera, me pagó por transferencia"
+(la frase de la demo y del video 2) volvía "No entendí qué querés cargar": el
+esquema de `registrar_venta` exigía `precio_unitario`, y el modelo prefería no
+proponer nada antes que inventarlo. Se encontró sacando capturas para las
+diapositivas del pitch, en el sitio.
+
+**Qué se hizo.** `interprete.js`: el renglón de la venta (`ITEM_VENTA_SCHEMA`)
+admite `precio_unitario` null, con una regla en el prompt ("nunca dejes de
+proponer una venta porque falta el precio"); la compra sigue exigiendo el
+costo. `server.js`, `resolverPropuesta`: sin precio, el de lista del producto
+(`precioDeLista`, el mismo del mostrador), que la persona ve y puede cambiar
+antes de confirmar. El stub devuelve null cuando no hay precio. Test nuevo en
+`asistente-devolucion.test.js`; 357 tests y lint.

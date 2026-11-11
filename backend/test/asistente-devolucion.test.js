@@ -140,3 +140,17 @@ test('el alta de siempre responde igual que antes de pasar a registrarDevolucion
   assert.equal(vacia.status, 400);
   assert.equal(vacia.json.error, 'La devolución necesita al menos un item.');
 });
+
+test('una venta sin precio en la frase toma el de lista del producto', async () => {
+  // "Vendí dos gorras a Juan": con el precio obligatorio, la IA no proponía nada.
+  const r = await interpretar('venta: cliente=Juan; item=Gorra,2; cobro_cuenta=Efectivo');
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.tipo, 'venta');
+  assert.deepEqual(r.json.problemas, []);
+  assert.equal(r.json.propuesta.items[0].precio_unitario, 9000);
+
+  const hecha = await admin.post('/api/asistente/ejecutar', { mensaje_id: r.json.mensaje_id, tipo: 'venta', propuesta: r.json.propuesta });
+  assert.equal(hecha.status, 201, hecha.texto);
+  const venta = (await admin.get(`/api/ventas/${hecha.json.venta_id ?? hecha.json.id}`)).json;
+  assert.equal(venta.total, 18000);
+});

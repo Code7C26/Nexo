@@ -14237,8 +14237,11 @@ function resolverPropuesta(tipo, datos, organizacionId) {
         problemas.push(`"${producto.nombre_resuelto}" tiene variantes: elegí la variante exacta a mano.`);
       }
       if (!(Number(item.cantidad) > 0)) problemas.push(`La cantidad de "${item.producto ?? '?'}" tiene que ser mayor a 0.`);
-      if (!(Number(item.precio_unitario) >= 0)) problemas.push(`El precio de "${item.producto ?? '?'}" no puede ser negativo.`);
-      return { producto, cantidad: item.cantidad, precio_unitario: item.precio_unitario };
+      // Sin precio en la frase, el de lista del producto, como en el mostrador.
+      const sinPrecio = item.precio_unitario === null || item.precio_unitario === undefined || item.precio_unitario === '';
+      const precio = sinPrecio && producto.estado === 'resuelto' ? precioDeLista(producto.id, null, null) : item.precio_unitario;
+      if (!(Number(precio) >= 0)) problemas.push(`El precio de "${item.producto ?? '?'}" no puede ser negativo.`);
+      return { producto, cantidad: item.cantidad, precio_unitario: precio };
     });
     if (items.length === 0) problemas.push('La venta necesita al menos un producto.');
 
