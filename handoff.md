@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §155);
+    siguiente número (hoy el último es §156);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,28 @@
   reescribe nada.
 
 ## Estado actual (11 de noviembre de 2026)
+
+**11 de noviembre, hist. §156: las diapositivas del pitch, hechas.** La
+fuente es `docs/presentacion/` (index.html y capturas reales del sitio) y
+`npm run presentacion` arma `docs/presentacion-pitch.html` (ignorado por git,
+1,3 MB, anda sin internet). 29 diapositivas, el producto primero. El usuario:
+"por ahora está muy bien"; **las va a retocar con su compañero** (los cambios
+se piden por número de diapositiva). **Falta de ellos:** los roles técnicos
+(3) y decidir si "los roles en el medio" era el lugar en la diapositiva o que
+el equipo corta gancho → problema. **Sigue en otra sesión: los videos**
+(párrafo "Videos y diapositivas", más abajo). Para la demo: dos teles si se
+consiguen (una con la 19 y el QR, otra con Nexo), y la entrada del gimnasio
+en un celular con DNI de la copia del visitante (en la que se usó: Sofía Arce
+40123456 al día, Tomás Villalba 31026068 debe); probar antes la recepción en
+otro aparato (el aviso al instante es entre ventanas de la misma compu).
+
+**11 de noviembre, hist. §155: el asistente propone la venta aunque la frase
+no diga el precio, publicado (PR #72).** "Vendí dos gorras a Camila Herrera"
+(la frase de la demo y del video 2) volvía "No entendí": usa el precio de
+lista. **Falta probarlo en el sitio** con esa frase.
+
+**WhatsApp con un número real (11 de noviembre):** un amigo del usuario pone
+un chip; los pasos están en "Trámites del usuario" → Meta, "Número real".
 
 **11 de noviembre, hist. §154: la lectura de facturas anda de nuevo.** Groq
 dio de baja Llama 4 Scout (404); ahora lee `qwen/qwen3.8-27b`, probado con
@@ -48,10 +70,12 @@ negocio, el 4 grabado en el sitio con `santinosolla22+tutorial@gmail.com`.
 Cómo se hacen: grabar la app de los ejemplos (skill `ui-demo`), armar con
 Remotion (gratis hasta 3 personas) y la voz con `edge-tts` (es-AR Tomás o
 Elena, a elegir; instalado en la compu). Higgsfield queda afuera (pago, y no
-muestra el sistema). Las diapositivas, en HTML con `frontend-slides`.
-**Sigue mañana:** el usuario pasa videos de ejemplo (frames + Whisper local
-para verlos), se eligen la voz y la bajada del logo, y se arranca el video 1
-(antes, armar en Lola una venta con comisión y envío).
+muestra el sistema). Las diapositivas ya están (hist. §156). La bajada del
+logo quedó "Sistema de gestión para emprendimientos y pymes" (pedido del
+usuario, en la portada). **Sigue en la próxima sesión:** el usuario pasa
+videos de ejemplo (frames + Whisper local para verlos), se elige la voz y se
+arranca el video 1 (antes, armar en Lola una venta con comisión y envío). La
+frase del video 2 ya anda sin precio (§155).
 
 **10 de noviembre, hist. §151: la compra desde la foto de la factura,
 publicada (PR #68).** Nueva compra → "Cargar desde la factura" (foto, varias
@@ -2517,6 +2541,17 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     (hist. §135, `destinatario()`). El registro anota el aviso mal firmado y
     el que va a otro número (el botón Probar del panel usa uno inventado).
   - El número de prueba es gratis y llega a 5 teléfonos: alcanza para la demo.
+  - **Número real (pasos que le pasé el 11 de noviembre):** el chip de un
+    amigo, sin WhatsApp (si tenía, borrar la cuenta desde la app) y con la
+    línea activa siempre. En WhatsApp Manager → Números de teléfono →
+    Agregar, en la misma cuenta del número de prueba (así sirven la app, el
+    webhook y el token): nombre "Nexo", +54 9 sin el 15, código por SMS.
+    Activarlo con `POST <phone number id>/register` y
+    `{"messaging_product":"whatsapp","pin":"<6 números>"}` desde el
+    Explorador de la API Graph. Foto: `assets/logo/06-perfil/`. En el
+    servidor solo cambian `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_NUMERO`
+    (dígitos, 549…). Volver a vincular el teléfono y probar. Si Meta pide un
+    medio de pago, el usuario decide.
 
 **Después de la presentación:**
 - **Ofertas en presupuestos** (charlado con el usuario el 4 de noviembre, "lo

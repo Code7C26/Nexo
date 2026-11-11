@@ -12721,3 +12721,45 @@ costo. `server.js`, `resolverPropuesta`: sin precio, el de lista del producto
 (`precioDeLista`, el mismo del mostrador), que la persona ve y puede cambiar
 antes de confirmar. El stub devuelve null cuando no hay precio. Test nuevo en
 `asistente-devolucion.test.js`; 357 tests y lint.
+
+## §156. Las diapositivas del pitch (11 de noviembre de 2026)
+
+**Pedido del usuario:** un ida y vuelta ("yo te voy diciendo qué me gusta y lo
+vas cambiando"), con el producto primero: "lo más importante es el producto y
+cómo se usa, mostrarlo en vivo, mostrar las funciones más vistosas".
+
+**Cómo está armado.** `docs/presentacion/index.html` es la fuente: apunta a
+las fuentes de `frontend/fonts`, al logo de `assets/logo`, a los QR de
+`docs/qr`, a los íconos y logos de `frontend/img` (`<use href="…svg#id">`) y a
+las capturas de `docs/presentacion/capturas/`. `scripts/presentacion.mjs`
+(`npm run presentacion`) mete todo adentro (data: y un sprite; los símbolos
+se renombran con su archivo porque mercadolibre.svg y mercadopago.svg tienen
+los dos un "logo") y escribe `docs/presentacion-pitch.html`, que está en
+`.gitignore`. Se maneja con flechas, Av/Re Pág (punteros), rueda o dedo; F
+pantalla completa; `#8` salta a la 8.
+
+**Lo que pidió en la primera vuelta** (y quedó): el logo completo con la
+bajada "Sistema de gestión para emprendimientos y pymes"; el problema desde
+dolores de cualquiera (gancho "¿Alguna vez prestaste plata y no te acordaste a
+quién?", la plata y el tiempo que se pierden, la noche del dueño), el lío
+animado (cuaderno, Excel con errores, WhatsApp, papelito, ticket,
+calculadora); "Nexo crece con tu negocio" (escalera Gratis → Emprendedor →
+Pro); diez rubros con los íconos de la landing; capturas reales antes de la
+demo (Resumen, mostrador con el celular, asistente, WhatsApp armado en HTML
+con "En prueba", foto de factura → compra, factura con CAE armada en HTML,
+venta online con logos, ingreso del gimnasio y recetas); lo técnico contado
+para cualquiera ("Por qué confiar", un esquema simple, el problema de ARCA en
+palabras simples). Las cifras de viabilidad salen de los PDFs entregados.
+
+**Las capturas** se sacaron del sitio entrando por `/app#/probar` en contextos
+aislados de Chrome (Lola, Gimnasio Fuerza, Mafaldas), sacando el aviso de
+"negocio de ejemplo" del DOM antes de cada una. La factura del proveedor es
+un HTML armado en el scratchpad y pasado a imagen con Edge sin ventana.
+
+**Lo que se encontró en el camino:** el asistente no proponía ventas sin
+precio (arreglado en §155); la lectura de "MEDIAS PACK X3" como 10 packs de 3
+cuando en el catálogo el pack ya es un producto (queda "Parecido: revisalo";
+no mostrarlo de cerca en la demo).
+
+**Cómo se verificó.** En Chrome a 1280 × 720, 1920 y celular: ninguna
+diapositiva desborda, ninguna imagen rota, ningún ícono sin símbolo. Lint.
