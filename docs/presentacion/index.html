@@ -190,13 +190,6 @@ img { display: block; max-width: 100%; }
 .gancho .remate { margin-top: var(--content-gap); font-family: var(--titulos); font-weight: 700; font-size: var(--h2-size); }
 .gancho .remate em { font-style: normal; color: var(--acento); }
 
-/* ===== 3. Equipo ===== */
-.equipo { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(1rem, 4vw, 4rem); align-items: center; }
-.personas li { display: flex; flex-direction: column; gap: 0.3em; padding: clamp(0.8rem, 2vw, 1.6rem) 0; border-top: 1px solid var(--borde); }
-.personas li:last-child { border-bottom: 1px solid var(--borde); }
-.personas .nombre { font-family: var(--titulos); font-weight: 700; font-size: var(--title-size); letter-spacing: -0.02em; line-height: 1; }
-.personas .rol { color: var(--acento); font-size: var(--body-size); }
-
 /* ===== 4. El lío: cuaderno, planilla, mensajes ===== */
 .lio { position: absolute; inset: 0; overflow: hidden; }
 .lio > * { position: absolute; opacity: 0; transform: translate(var(--dx, 0), var(--dy, 40px)) rotate(calc(var(--r, 0deg) * 3)) scale(0.9); transition: opacity 0.7s ease, transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1); transition-delay: calc(var(--d, 0) * 140ms); }
@@ -434,7 +427,7 @@ img { display: block; max-width: 100%; }
 
 /* ===== Celular y tablet vertical ===== */
 @media (max-width: 820px) {
-  .par, .par.parejo, .demo, .mercado, .dos-col, .equilibrio, .equipo, .flujo, .mosaico { grid-template-columns: 1fr; }
+  .par, .par.parejo, .demo, .mercado, .dos-col, .equilibrio, .flujo, .mosaico { grid-template-columns: 1fr; }
   .flecha-grande, .flecha, .ocultar-chico, .mosaico .derecha { display: none !important; }
   .perdidas, .precios, .planes, .escalera, .confianza, .arq { grid-template-columns: 1fr; }
   .escalera { height: auto; }
@@ -498,45 +491,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 2. Gancho: dolores de cualquiera -->
-<section class="slide" aria-label="Gancho">
-  <div class="slide-content gancho">
-    <h1 aria-label="¿Alguna vez prestaste plata y no te acordaste a quién?">
-      <span class="palabra" style="--d:0">¿Alguna</span>
-      <span class="palabra" style="--d:1">vez</span>
-      <span class="palabra" style="--d:2">prestaste</span>
-      <span class="palabra" style="--d:3">plata</span>
-      <span class="palabra" style="--d:4">y</span>
-      <span class="palabra" style="--d:5">no</span>
-      <span class="palabra" style="--d:6">te</span>
-      <span class="palabra" style="--d:7">acordaste</span>
-      <span class="palabra" style="--d:8">a</span>
-      <span class="palabra" style="--d:9">quién?</span>
-    </h1>
-    <div class="preguntas">
-      <span class="reveal" style="--d:11">¿Pagaste algo dos veces?</span>
-      <span class="reveal" style="--d:12">¿Perdiste un ticket?</span>
-      <span class="reveal" style="--d:13">¿Se te pasó un vencimiento?</span>
-    </div>
-    <p class="remate reveal" style="--d:15">En un negocio, eso pasa <em>todos los días</em>.</p>
-  </div>
-</section>
-
-<!-- 3. Equipo -->
-<section class="slide" aria-label="Equipo">
-  <div class="slide-content equipo">
-    <div>
-      <p class="parte reveal">Equipo</p>
-      <h2 class="reveal" style="--d:1">Quiénes lo hacemos</h2>
-    </div>
-    <ul class="personas">
-      <li class="reveal" style="--d:2"><span class="nombre">Santino Solla</span><span class="rol">Rol técnico a completar</span></li>
-      <li class="reveal" style="--d:3"><span class="nombre">Joaquín Tosi</span><span class="rol">Rol técnico a completar</span></li>
-    </ul>
-  </div>
-</section>
-
-<!-- 4. El lío -->
+<!-- 2. El lío -->
 <section class="slide" aria-label="Así se lleva hoy un negocio">
   <div class="lio" aria-hidden="true">
     <div class="cuaderno" style="left:4%; top:8%; --r:-6deg; --dx:-60px; --d:0">
@@ -578,7 +533,31 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 5. La plata que se pierde -->
+<!-- 3. Gancho: dolores de cualquiera -->
+<section class="slide" aria-label="Gancho">
+  <div class="slide-content gancho">
+    <h1 aria-label="¿Alguna vez prestaste plata y no te acordaste a quién?">
+      <span class="palabra" style="--d:0">¿Alguna</span>
+      <span class="palabra" style="--d:1">vez</span>
+      <span class="palabra" style="--d:2">prestaste</span>
+      <span class="palabra" style="--d:3">plata</span>
+      <span class="palabra" style="--d:4">y</span>
+      <span class="palabra" style="--d:5">no</span>
+      <span class="palabra" style="--d:6">te</span>
+      <span class="palabra" style="--d:7">acordaste</span>
+      <span class="palabra" style="--d:8">a</span>
+      <span class="palabra" style="--d:9">quién?</span>
+    </h1>
+    <div class="preguntas">
+      <span class="reveal" style="--d:11">¿Pagaste algo dos veces?</span>
+      <span class="reveal" style="--d:12">¿Perdiste un ticket?</span>
+      <span class="reveal" style="--d:13">¿Se te pasó un vencimiento?</span>
+    </div>
+    <p class="remate reveal" style="--d:15">En un negocio, eso pasa <em>todos los días</em>.</p>
+  </div>
+</section>
+
+<!-- 4. La plata que se pierde -->
 <section class="slide" aria-label="La plata que se pierde">
   <div class="slide-content apilado">
     <div>
@@ -594,7 +573,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 6. El tiempo que se pierde -->
+<!-- 5. El tiempo que se pierde -->
 <section class="slide" aria-label="El tiempo que se pierde">
   <div class="slide-content par parejo">
     <div>
@@ -612,7 +591,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 7. Lo que existe -->
+<!-- 6. Lo que existe -->
 <section class="slide" aria-label="Los sistemas que existen">
   <div class="slide-content apilado">
     <div>
@@ -628,7 +607,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 8. Nexo crece con tu negocio -->
+<!-- 7. Nexo crece con tu negocio -->
 <section class="slide" aria-label="Nexo crece con tu negocio">
   <div class="slide-content apilado">
     <div>
@@ -655,7 +634,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 9. Rubros -->
+<!-- 8. Rubros -->
 <section class="slide" aria-label="Para cada rubro">
   <div class="slide-content apilado">
     <div>
@@ -678,7 +657,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 10. Todo en un lugar -->
+<!-- 9. Todo en un lugar -->
 <section class="slide" aria-label="Todo tu negocio en un lugar">
   <div class="slide-content par">
     <div>
@@ -690,7 +669,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 11. Vender -->
+<!-- 10. Vender -->
 <section class="slide" aria-label="Vender">
   <div class="slide-content par">
     <div>
@@ -706,7 +685,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 12. Adónde fue la plata -->
+<!-- 11. Adónde fue la plata -->
 <section class="slide" aria-label="Adónde fue la plata">
   <div class="slide-content par parejo">
     <div>
@@ -728,7 +707,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 13. Asistente -->
+<!-- 12. Asistente -->
 <section class="slide" aria-label="El asistente">
   <div class="slide-content par">
     <div>
@@ -741,7 +720,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 14. WhatsApp -->
+<!-- 13. WhatsApp -->
 <section class="slide" aria-label="WhatsApp">
   <div class="slide-content par parejo">
     <div>
@@ -765,7 +744,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 15. Compra desde la foto -->
+<!-- 14. Compra desde la foto -->
 <section class="slide" aria-label="La compra desde la foto de la factura">
   <div class="slide-content apilado">
     <div>
@@ -780,7 +759,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 16. Factura electrónica -->
+<!-- 15. Factura electrónica -->
 <section class="slide" aria-label="Factura electrónica">
   <div class="slide-content par parejo">
     <div>
@@ -806,7 +785,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 17. Integraciones -->
+<!-- 16. Integraciones -->
 <section class="slide" aria-label="Integraciones">
   <div class="slide-content par">
     <div>
@@ -825,7 +804,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 18. Hecho para tu rubro -->
+<!-- 17. Hecho para tu rubro -->
 <section class="slide" aria-label="Hecho para tu rubro">
   <div class="slide-content apilado">
     <div>
@@ -842,7 +821,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 19. Demo en vivo -->
+<!-- 18. Demo en vivo -->
 <section class="slide" aria-label="Demo en vivo">
   <div class="slide-content demo">
     <div class="apilado">
@@ -866,7 +845,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 20. Por qué confiar -->
+<!-- 19. Por qué confiar -->
 <section class="slide" aria-label="Por qué confiar">
   <div class="slide-content apilado">
     <div>
@@ -884,7 +863,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 21. Cómo está hecho -->
+<!-- 20. Cómo está hecho -->
 <section class="slide" aria-label="Cómo está hecho">
   <div class="slide-content apilado">
     <div>
@@ -902,7 +881,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 22. Un problema difícil -->
+<!-- 21. Un problema difícil -->
 <section class="slide" aria-label="Un problema difícil y cómo se resolvió">
   <div class="slide-content apilado">
     <div>
@@ -916,7 +895,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 23. Propuesta de valor -->
+<!-- 22. Propuesta de valor -->
 <section class="slide" aria-label="Propuesta de valor">
   <div class="slide-content">
     <p class="parte reveal">Propuesta de valor</p>
@@ -924,7 +903,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 24. Planes -->
+<!-- 23. Planes -->
 <section class="slide" aria-label="Planes">
   <div class="slide-content apilado">
     <div>
@@ -940,7 +919,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 25. Mercado -->
+<!-- 24. Mercado -->
 <section class="slide" aria-label="Mercado">
   <div class="slide-content mercado">
     <div>
@@ -956,7 +935,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 26. Punto de equilibrio -->
+<!-- 25. Punto de equilibrio -->
 <section class="slide" aria-label="Punto de equilibrio">
   <div class="slide-content apilado">
     <div>
@@ -971,7 +950,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 27. Gestión ágil -->
+<!-- 26. Gestión ágil -->
 <section class="slide" aria-label="Gestión ágil">
   <div class="slide-content apilado">
     <div>
@@ -987,7 +966,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 28. En inglés -->
+<!-- 27. En inglés -->
 <section class="slide" aria-label="Nexo in English">
   <div class="slide-content apilado">
     <div>
@@ -1004,7 +983,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 29. Cierre -->
+<!-- 28. Cierre -->
 <section class="slide" aria-label="Cierre">
   <div class="slide-content cierre">
     <div>

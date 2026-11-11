@@ -12763,3 +12763,48 @@ no mostrarlo de cerca en la demo).
 
 **Cómo se verificó.** En Chrome a 1280 × 720, 1920 y celular: ninguna
 diapositiva desborda, ninguna imagen rota, ningún ícono sin símbolo. Lint.
+
+## §157. Carruseles de Instagram, la presentación reordenada y la guía para presentar (11 de noviembre de 2026)
+
+**Carruseles fijados.** El usuario pidió tres carruseles de introducción para
+fijar en el perfil, que juntos "formen algo" en la grilla. Eligió "el logo con
+la frase": las tres portadas son una sola imagen de 3240 × 1440 cortada en
+tres (ícono · NΞ · XO, con la bajada "Sistema de gestión para / emprendimientos
+y pymes"), y abajo "Ordená. / Vendé. / Crecé." con la pregunta de cada uno. El
+formato es 3:4 (1080 × 1440), la medida de la grilla del perfil. Contenido: el
+1 es el problema y Nexo (5 láminas), el 2 las funciones (7) y el 3 rubros,
+planes, negocios de ejemplo y QR (5). Afuera a propósito: WhatsApp y la factura
+electrónica, que todavía no andan de verdad para un cliente. La compra desde la
+factura se dibujó en limpio con los datos de la captura, porque esta mostraba
+"Parecido: revisalo" en rojo.
+
+Cómo se arma: `redes/carruseles/carruseles.html` y `armar.mjs` (Playwright con
+el Chrome de la compu, `channel: 'chrome'`: el Chromium que pide Playwright
+1.65 no estaba bajado). La página se sirve por HTTP desde la raíz
+(`redes/servidor.mjs`), porque desde file:// Chrome no carga los íconos del
+sprite. El ícono del logo solo existía en PNG: se trazó a tres polígonos con
+OpenCV (`#icono`). Para recortar "NΞ" y "XO" del símbolo `#nexo` con el
+viewBox, el `<use>` necesita `width="668" height="106"`; sin eso el símbolo
+entero entra en cada mitad. Las PNG van en el repo (el usuario las baja del
+celular con el enlace raw de GitHub, porque la vista de archivos de GitHub en
+el celular no ofrece descargar).
+
+**La presentación, 29 → 28.** Pedido del usuario: abrir con el lío (era la 4),
+seguir con el gancho de la plata (era la 2) y sacar la del equipo (la 3): los
+roles los cuentan ellos. Se movieron los bloques enteros con un script y se
+renumeraron los comentarios; se sacó el CSS del equipo. La demo es la 18.
+
+**La guía para presentar.** `docs/Guía para presentar — Nexo.pdf`, 19
+páginas: tapa, cómo usarla, el mapa de 30 minutos en siete partes, antes de
+empezar y plan B, un bloque por diapositiva (miniatura, la idea, qué decir, lo
+técnico simple, si preguntan, tiempo y un espacio para "Presenta"), preguntas
+difíciles y glosario. `redes/pitch/armar-guia.mjs` saca las miniaturas de
+`docs/presentacion/index.html` (sin transiciones y con todas las diapositivas
+visibles), las pone en `guia.html` y lo imprime con `page.pdf`. Corta si la
+cantidad de diapositivas no coincide con los bloques. Los números se tomaron
+ese día: 357 tests (todos en verde), 302 rutas, 78 tablas, 408 commits.
+
+**Cómo se verificó.** Cada lámina de los carruseles vista en una hoja de
+revisión, y las tres portadas lado a lado como en el perfil. El PDF pasado a
+imágenes con pdf.js en Chrome: ninguna página se desborda (la 2 se pasaba y se
+achicó). Las diapositivas 2 a 4 vistas en Chrome con el orden nuevo.

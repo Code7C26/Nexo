@@ -3,41 +3,18 @@
 // carruseles/salida/carrusel-N/. Las portadas salen de .panorama, cortada en
 // tres para que fijadas una al lado de la otra formen el logo.
 //
-// La página se sirve por HTTP desde la raíz del repo, y no se abre como
-// archivo: Chrome no carga los íconos de un sprite externo (<use href=
-// "iconos.svg#...">) desde file://.
-import { createServer } from 'node:http';
-import { mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { dirname, extname, join, resolve, sep } from 'node:path';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { servirRepo } from '../servidor.mjs';
 
-const aca = dirname(fileURLToPath(import.meta.url));
-const raiz = resolve(aca, '../..');
-const salida = join(aca, 'salida');
+const salida = join(dirname(fileURLToPath(import.meta.url)), 'salida');
 const ANCHO = 1080;
 const ALTO = 1440;
 
-const TIPOS = {
-  '.html': 'text/html; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.woff2': 'font/woff2'
-};
-
-const servidor = createServer((req, res) => {
-  const ruta = resolve(raiz, '.' + decodeURIComponent(new URL(req.url, 'http://x').pathname));
-  if (!ruta.startsWith(raiz + sep)) return res.writeHead(403).end();
-  try {
-    const cuerpo = readFileSync(ruta);
-    res.writeHead(200, { 'Content-Type': TIPOS[extname(ruta)] ?? 'application/octet-stream' }).end(cuerpo);
-  } catch {
-    res.writeHead(404).end();
-  }
-});
-await new Promise((listo) => servidor.listen(0, '127.0.0.1', listo));
-const url = `http://127.0.0.1:${servidor.address().port}/redes/carruseles/carruseles.html`;
+const servidor = await servirRepo();
+const url = `${servidor.base}/redes/carruseles/carruseles.html`;
 
 // El Chrome de la compu: así no hace falta bajar el Chromium de Playwright.
 const navegador = await chromium.launch({ channel: 'chrome' });
@@ -86,5 +63,5 @@ try {
   console.log(`${portadas.length + laminas.length} imágenes en ${salida}`);
 } finally {
   await navegador.close();
-  servidor.close();
+  servidor.cerrar();
 }

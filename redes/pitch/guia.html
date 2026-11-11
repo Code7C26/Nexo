@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Guía para presentar — Nexo</title>
+<!--
+  La guía de los que presentan el pitch: qué decir en cada diapositiva de
+  docs/presentacion/, con lo técnico explicado simple y qué contestar si
+  preguntan. Las diapositivas tienen poco texto a propósito; lo que hay que
+  saber está acá.
+
+  `npm run guia` (en redes/) pone la miniatura de cada diapositiva en los
+  <img data-diapositiva> y la imprime en docs/Guía para presentar — Nexo.pdf.
+  Si se agrega o se saca una diapositiva, se renumeran los bloques de abajo.
+-->
+<style>
+@font-face { font-family: "Inter"; src: url("../../frontend/fonts/inter.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Satoshi"; src: url("../../frontend/fonts/satoshi-500.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Satoshi"; src: url("../../frontend/fonts/satoshi-700.woff2") format("woff2"); font-weight: 700; }
+
+@page { size: A4; margin: 14mm 14mm 16mm; }
+:root {
+  --texto: #111;
+  --texto-2: #444;
+  --texto-3: #777;
+  --borde: #e2e2e2;
+  --suave: #f5f6f8;
+  --acento: #2563eb;
+  --acento-suave: #eaf1ff;
+  --ojo: #b45309;
+  --ojo-suave: #fff6e6;
+  --titulos: "Satoshi", "Inter", sans-serif;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font-family: "Inter", sans-serif; font-size: 9.6pt; line-height: 1.45; color: var(--texto); }
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding-left: 1.15em; }
+li + li { margin-top: 0.22em; }
+b, strong { font-weight: 650; }
+.salto { break-before: page; }
+
+/* ===== Tapa ===== */
+.tapa { height: 267mm; background: #000; color: #f5f5f5; margin: -14mm -14mm 0; padding: 26mm 22mm; display: flex; flex-direction: column; }
+.tapa svg.marca { width: 70mm; height: auto; color: #f5f5f5; }
+.tapa h1 { margin-top: 34mm; font-family: var(--titulos); font-size: 38pt; line-height: 1.02; letter-spacing: -0.02em; }
+.tapa h1 span { color: #60a5fa; }
+.tapa .bajada { margin-top: 7mm; font-size: 13pt; color: #b4b4b4; max-width: 125mm; line-height: 1.4; }
+.tapa .fechas { margin-top: auto; display: flex; gap: 6mm; }
+.tapa .fechas div { border: 1px solid rgba(255,255,255,.2); border-radius: 4mm; padding: 4mm 5mm; }
+.tapa .fechas b { display: block; font-family: var(--titulos); font-size: 15pt; }
+.tapa .fechas span { color: #9a9a9a; font-size: 9pt; }
+.tapa .pie-tapa { margin-top: 8mm; color: #7a7a7a; font-size: 9pt; }
+
+/* ===== Páginas de texto ===== */
+.seccion h1 { font-family: var(--titulos); font-size: 22pt; letter-spacing: -0.015em; margin-bottom: 2mm; }
+.seccion .intro { color: var(--texto-2); font-size: 10.5pt; margin-bottom: 4mm; max-width: 165mm; }
+.seccion h2 { font-family: var(--titulos); font-size: 13pt; margin: 5mm 0 2.5mm; }
+table { width: 100%; border-collapse: collapse; font-size: 9.2pt; }
+th, td { text-align: left; padding: 1.6mm 2.5mm; border-bottom: 1px solid var(--borde); vertical-align: top; }
+th { font-size: 8pt; text-transform: uppercase; letter-spacing: .06em; color: var(--texto-3); font-weight: 600; }
+td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+tr.total td { font-weight: 650; border-bottom: 0; }
+.caja { background: var(--suave); border-radius: 3mm; padding: 3.5mm 4.5mm; font-size: 8.9pt; }
+.caja > b { display: block; margin-bottom: 1.5mm; }
+.dos { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+.como-usar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-bottom: 4mm; }
+.como-usar div { border: 1px solid var(--borde); border-radius: 3mm; padding: 3mm; font-size: 8.8pt; color: var(--texto-2); }
+.como-usar b { display: block; color: var(--texto); font-size: 9.6pt; margin-bottom: 1mm; }
+
+/* ===== Cada diapositiva ===== */
+.diapo { break-inside: avoid; border-top: 2px solid var(--texto); padding-top: 3.5mm; margin-bottom: 7mm; }
+.diapo header { display: flex; align-items: baseline; gap: 3mm; margin-bottom: 3mm; }
+.diapo .num { font-family: var(--titulos); font-weight: 700; font-size: 20pt; color: var(--acento); min-width: 9mm; }
+.diapo h2 { font-family: var(--titulos); font-size: 14pt; letter-spacing: -0.01em; flex: 1; }
+.diapo .tiempo { font-size: 8.5pt; color: var(--texto-3); white-space: nowrap; }
+.diapo .quien { font-size: 8.5pt; color: var(--texto-3); white-space: nowrap; border-bottom: 1px solid var(--texto-3); padding: 0 14mm 0 0; }
+.diapo .cuerpo { display: grid; grid-template-columns: 74mm 1fr; gap: 5mm; align-items: start; }
+.diapo img { width: 74mm; aspect-ratio: 16 / 9; border-radius: 2mm; border: 1px solid var(--borde); display: block; background: #000; object-fit: cover; }
+.idea { background: var(--acento-suave); border-radius: 2mm; padding: 2.2mm 3mm; font-weight: 600; margin-bottom: 2.5mm; }
+.diapo h3, .subtitulo { font-size: 8pt; text-transform: uppercase; letter-spacing: .07em; color: var(--texto-3); margin: 2.5mm 0 1.2mm; }
+.subtitulo { margin: 4mm 0 2mm; }
+.decir li::marker { color: var(--acento); }
+.extras { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 3mm; }
+.extras.una { grid-template-columns: 1fr; }
+.extras > div { background: var(--suave); border-radius: 2mm; padding: 2.8mm 3.4mm; font-size: 9pt; }
+.extras > div.ojo { background: var(--ojo-suave); }
+.extras h3 { margin-top: 0; }
+.extras .ojo h3 { color: var(--ojo); }
+.preg dt { font-weight: 650; margin-top: 1.6mm; }
+.preg dt:first-child { margin-top: 0; }
+.preg dd { color: var(--texto-2); }
+.cita { font-style: italic; }
+.ingles { font-family: var(--titulos); font-size: 11pt; line-height: 1.5; background: var(--suave); border-left: 3px solid var(--acento); padding: 3mm 4mm; border-radius: 0 2mm 2mm 0; }
+
+/* Glosario */
+.glosario { column-count: 2; column-gap: 7mm; }
+.glosario div { break-inside: avoid; margin-bottom: 2.6mm; }
+.glosario b { display: block; }
+.glosario span { color: var(--texto-2); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="nexo" viewBox="0 0 668 106">
+    <g fill="currentColor">
+      <rect x="0" y="3" width="13" height="100" /><rect x="97" y="3" width="13" height="100" />
+      <polygon points="0,3 20,3 110,103 90,103" />
+      <rect x="195" y="3" width="103" height="13" /><rect x="195" y="47" width="103" height="13" /><rect x="195" y="90" width="103" height="13" />
+      <polygon points="374,3 394,3 488,103 468,103" /><polygon points="468,3 488,3 394,103 374,103" />
+    </g>
+    <ellipse cx="611.5" cy="52.5" rx="48.5" ry="45.5" fill="none" stroke="currentColor" stroke-width="14" />
+  </symbol>
+</svg>
+
+<!-- ============ Tapa ============ -->
+<section class="tapa">
+  <svg class="marca" viewBox="0 0 668 106"><use href="#nexo"/></svg>
+  <h1>Guía para<br><span>presentar</span> el pitch</h1>
+  <p class="bajada">Las diapositivas tienen poco texto a propósito. Lo que hay que decir, lo técnico explicado simple y qué contestar si preguntan está acá, diapositiva por diapositiva.</p>
+  <div class="fechas">
+    <div><b>Jueves 12 de noviembre</b><span>Simulacro evaluado</span></div>
+    <div><b>Viernes 20 de noviembre</b><span>Presentación oficial</span></div>
+    <div><b>30 minutos</b><span>28 diapositivas y la demo en vivo</span></div>
+  </div>
+  <p class="pie-tapa">Para Santino Solla y Joaquín Tosi · Nexo, sistema de gestión para emprendimientos y pymes</p>
+</section>
+
+<!-- ============ Cómo usar y mapa ============ -->
+<section class="seccion salto">
+  <h1>Cómo usar esta guía</h1>
+  <p class="intro">No es para leer en voz alta: es para saber de qué hablar y no quedarse en blanco. Cada diapositiva tiene cuatro cosas.</p>
+  <div class="como-usar">
+    <div><b>La idea</b>Lo único que el jurado tiene que llevarse de esa diapositiva. Si se olvidan todo, digan eso.</div>
+    <div><b>Qué decir</b>Los puntos para contar, en orden. Con sus palabras.</div>
+    <div><b>Lo técnico, simple</b>Cómo funciona por dentro, para entenderlo y poder explicarlo.</div>
+    <div><b>Si preguntan</b>Las preguntas más probables y qué contestar.</div>
+  </div>
+  <p class="intro">Arriba a la derecha de cada una hay un espacio para anotar quién la presenta, y el tiempo que se le puede dar.</p>
+
+  <h2>El mapa: 30 minutos en siete partes</h2>
+  <table>
+    <tr><th>Parte</th><th>Diapositivas</th><th>Para qué</th><th>Tiempo</th></tr>
+    <tr><td><b>1. Apertura y problema</b></td><td class="num">1 a 6</td><td>Que el jurado se reconozca en el problema: el desorden, la plata y el tiempo que se pierden, y que lo que existe no les sirve.</td><td class="num">≈ 5 min</td></tr>
+    <tr><td><b>2. La idea</b></td><td class="num">7 a 9</td><td>Nexo en grande: crece con el negocio, sirve para cada rubro y junta todo en un lugar.</td><td class="num">≈ 2,5 min</td></tr>
+    <tr><td><b>3. El producto</b></td><td class="num">10 a 17</td><td>Una función por diapositiva. Rápido: la demo muestra varias de verdad.</td><td class="num">≈ 5,5 min</td></tr>
+    <tr><td><b>4. Demo en vivo</b></td><td class="num">18</td><td>Lo más importante del pitch. Si falta tiempo, se recorta todo lo demás antes que esto.</td><td class="num">≈ 7 min</td></tr>
+    <tr><td><b>5. Cómo está hecho (I+D)</b></td><td class="num">19 a 21</td><td>Por qué se puede confiar, la arquitectura y un problema difícil resuelto. Lo pide la consigna.</td><td class="num">≈ 4 min</td></tr>
+    <tr><td><b>6. Venta</b></td><td class="num">22 a 26</td><td>Propuesta de valor, planes, mercado, punto de equilibrio y gestión ágil.</td><td class="num">≈ 4 min</td></tr>
+    <tr><td><b>7. Inglés y cierre</b></td><td class="num">27 y 28</td><td>El minuto en inglés que pide la consigna, la frase final y los QR.</td><td class="num">≈ 1,5 min</td></tr>
+    <tr class="total"><td>Total</td><td></td><td>Queda un minuto de margen para imprevistos.</td><td class="num">≈ 29 min</td></tr>
+  </table>
+
+  <h2>Antes de empezar</h2>
+  <div class="dos">
+    <div class="caja">
+      <b>La compu y los aparatos</b>
+      <ul>
+        <li>Las diapositivas: <b>docs/presentacion-pitch.html</b>. Anda sin internet. Flechas o el puntero para avanzar, F para pantalla completa, y #18 al final de la dirección salta a la 18.</li>
+        <li>Si hay dos teles: una con las diapositivas y otra con Nexo. Si hay una sola, para la demo se cambia de ventana con Alt+Tab.</li>
+        <li>Lola Indumentaria <b>ya abierta</b> desde /app#/probar antes de subir. No esperar cargas en vivo.</li>
+        <li>Para el ingreso del gimnasio: un celular con la entrada y la compu con la recepción. Buscar antes dos socios en la copia que usen, uno al día y uno que deba, y anotar sus DNI.</li>
+        <li>El video de respaldo de la demo, abierto en otra pestaña.</li>
+      </ul>
+    </div>
+    <div class="caja">
+      <b>Si algo falla (plan B)</b>
+      <ul>
+        <li><b>No hay internet:</b> los datos del celular como hotspot. Si tampoco, el video de respaldo.</li>
+        <li><b>El asistente no contesta:</b> la IA gratis tiene un cupo de unas 100 frases por día para todo Nexo. No ensayarlo ese día. Si falla, decirlo tranquilos ("usamos un proveedor gratis que no guarda los datos, y tiene cupo") y seguir. No reintentar en vivo.</li>
+        <li><b>La compra desde la foto:</b> como mucho una o dos facturas por minuto. Nunca leer dos seguidas.</li>
+        <li><b>El sitio no responde:</b> Nexo corre en la compu con <b>npm start</b>, con un negocio de ejemplo cargado antes.</li>
+        <li>Si algo se traba, no lo arreglen en vivo: "esto lo vemos después" y a la diapositiva siguiente.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Parte 1: apertura y problema ============ -->
+<section class="salto">
+
+<article class="diapo">
+  <header><span class="num">1</span><h2>Portada</h2><span class="tiempo">30 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="1" alt="">
+    <div>
+      <p class="idea">Quiénes somos y qué es Nexo, en una frase.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>"Hola, somos Santino y Joaquín, y hacemos <b>Nexo</b>: un sistema de gestión para emprendimientos y pymes."</li>
+        <li>Acá va lo de los roles: cada uno dice en una frase qué hizo. La consigna pide "equipo con roles técnicos", así que no se lo salteen aunque no tenga diapositiva.</li>
+        <li>No lean la bajada del logo: pasen rápido al problema, que es lo que engancha.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">2</span><h2>El negocio desordenado</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="2" alt="">
+    <div>
+      <p class="idea">Así se lleva hoy la mayoría de los negocios chicos: en el cuaderno, la planilla y el celular.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Recorran la imagen como si fuera un escritorio real: el cuaderno con el fiado tachado y "Marta ¿pagó?", la planilla con errores (#¡VALOR!), la clienta que pregunta por un talle a las 22:47, el proveedor que "mandó la factura por mail", el ticket, el papelito de "hacer factura".</li>
+        <li>"Todo eso es el negocio. Y lo que no está anotado en ningún lado está en la cabeza del dueño."</li>
+        <li>Pregunten al público: <span class="cita">"¿Quién conoce un negocio así?"</span> Que levanten la mano: arranca la charla con todos adentro.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿De dónde sale esto? ¿Hay datos?</dt><dd>Es lo que vimos en negocios que conocemos (familiares, amigos, comercios de la zona). Si tienen un caso real, cuéntenlo: un ejemplo propio vale más que una estadística.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">3</span><h2>"¿Alguna vez prestaste plata y no te acordaste a quién?"</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="3" alt="">
+    <div>
+      <p class="idea">Los dolores que cualquiera tuvo alguna vez, en un negocio pasan todos los días.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Hagan la pregunta en voz alta, mirando al jurado, y <b>esperen un segundo</b> antes de seguir.</li>
+        <li>Sigan con las tres de abajo: ¿pagaste algo dos veces?, ¿perdiste un ticket?, ¿se te pasó un vencimiento?</li>
+        <li>"A una persona le pasa de vez en cuando. En un negocio pasa todos los días, y cada vez cuesta plata."</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">4</span><h2>La plata que se pierde</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="4" alt="">
+    <div>
+      <p class="idea">El desorden no es solo incómodo: se pierde plata sin darse cuenta.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>El fiado:</b> "después te pago", y nadie se acuerda cuánto ni cuándo.</li>
+        <li><b>El stock:</b> se termina lo que más se vende (ventas perdidas) y se acumula lo que no sale (plata parada).</li>
+        <li><b>Los costos que no se ven:</b> la comisión de Mercado Pago, el envío, las cuotas. Se vende más y queda menos. (Esto lo retoman en la 11 con números.)</li>
+        <li><b>Los precios viejos:</b> con la inflación, vender al precio del mes pasado es perder.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">5</span><h2>El tiempo que se pierde</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="5" alt="">
+    <div>
+      <p class="idea">El negocio sigue después de cerrar: el dueño trabaja de noche en tareas que no venden nada.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Lean la noche como una historia: a las 20 cuenta la caja (que no cierra), a las 20:40 pasa el cuaderno a la planilla, a las 21:30 carga a mano las ventas de Mercado Libre, a las 22:15 hace facturas en la página de ARCA, a las 23 contesta "¿tenés stock?".</li>
+        <li>"Son las 23:40 y todavía no terminó. Y nada de eso vendió una sola cosa."</li>
+        <li>Adelanten: cada una de esas tareas Nexo la hace sola o en un toque. Lo van a ver.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">6</span><h2>Los sistemas que existen</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="6" alt="">
+    <div>
+      <p class="idea">Hay sistemas, pero son caros y complejos para el que recién arranca.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Los más conocidos en Argentina son Dux Software y Contagram. El plan de entrada cuesta $ 43.560 y $ 71.269 por mes (precios de sus páginas, con IVA).</li>
+        <li>Están pensados para el que ya tiene contador y una compu en el mostrador, no para el emprendedor que vende desde el celular.</li>
+        <li>Nexo arranca en $ 0, y $ 19.900 por mes cuando el negocio crece.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Qué tienen ellos que Nexo no?</dt><dd>Años en el mercado, soporte con gente y la factura electrónica ya en producción. Díganlo sin problema: es honesto y muestra que conocen la competencia.</dd><dt>¿Y qué tiene Nexo que ellos no?</dt><dd>Empezar gratis, usarse cómodo desde el celular, adaptarse al rubro, cargar hablando y ver cuánto quedó de cada venta.</dd></dl></div>
+    <div><h3>Dato</h3><p>Los precios y el análisis de la competencia están en docs/competencia.txt. Si el jurado pregunta por otro sistema que no conocen, digan que lo van a mirar: no improvisen comparaciones.</p></div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Parte 2: la idea ============ -->
+<section class="salto">
+
+<article class="diapo">
+  <header><span class="num">7</span><h2>Nexo crece con tu negocio</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="7" alt="">
+    <div>
+      <p class="idea">Empezás ordenado y gratis; pagás cuando el negocio crece.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>Empezás (Gratis):</b> vender en el mostrador o el celular, el stock, la caja y quién te debe.</li>
+        <li><b>Crecés (Emprendedor):</b> sumás gente (hasta 3), la factura electrónica y la tienda online.</li>
+        <li><b>Escalás (Pro):</b> varios locales, el asistente con IA y las compras desde la foto.</li>
+        <li>"No pagás por lo que todavía no usás." Los números de cada plan van en la 23.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">8</span><h2>Un solo sistema, para cada rubro</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="8" alt="">
+    <div>
+      <p class="idea">Al crear la cuenta elegís tu tipo de negocio, y Nexo arranca con lo que te sirve.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Ejemplos: la carnicería vende por kilo con la balanza, el gimnasio cobra cuotas y controla el ingreso, el de servicios trabaja con presupuestos y agenda, el emprendedor que fabrica sabe cuánto le cuesta cada cosa.</li>
+        <li>Barbería y restaurante dicen "Muy pronto": necesitan turnos y mesas, que todavía no están.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3><p>No son ocho programas: es <b>uno solo</b> con configuraciones. El tipo de negocio decide con qué unidad nace un producto (kilo, unidad), qué módulos aparecen prendidos y cómo se llaman las cosas. Por eso una mejora llega a todos los rubros a la vez, y sumar un rubro nuevo es configurar, no programar otro sistema.</p></div>
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Y si mi negocio no está en la lista?</dt><dd>"Comercio general" sirve para casi todo lo que vende productos, y los módulos se prenden o apagan a mano desde Configuración → Funciones.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">9</span><h2>Todo tu negocio, en un solo lugar</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="9" alt="">
+    <div>
+      <p class="idea">Todo está conectado: lo que pasa en un lado se actualiza solo en los demás.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Es el Resumen: lo primero que ve el dueño a la mañana. Cuánto vendió, cuánto ganó, qué mirar hoy, cuándo se vende más.</li>
+        <li>El ejemplo que más se entiende: <b>una venta hace sola diez cosas</b>. Descuenta el stock, guarda el costo de ese momento, calcula la ganancia, registra el cobro, mueve la caja, actualiza lo que debe el cliente, arma el comprobante y deja anotado quién lo hizo.</li>
+        <li>Con el cuaderno y la planilla, cada una de esas cosas es una tarea aparte (y un error posible).</li>
+      </ul>
+    </div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Parte 3: el producto ============ -->
+<section class="salto">
+
+<article class="diapo">
+  <header><span class="num">10</span><h2>Vender: en el mostrador o desde el celular</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="10" alt="">
+    <div>
+      <p class="idea">Una pantalla rápida para vender parado frente al cliente.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Buscás el producto o pasás el lector de códigos (o la cámara del celular). Las ofertas se aplican solas.</li>
+        <li>Cobrás en efectivo (con vuelto), con Mercado Pago o mitad y mitad. El stock baja solo.</li>
+        <li>La caja se abre y se cierra con arqueo: Nexo te dice cuánto debería haber y cuánto falta o sobra.</li>
+        <li>Si la demo muestra la venta, acá basta con una frase y pasar.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3><p>"Se instala como app" es una <b>PWA</b>: la misma página web, que el celular instala con su ícono y abre en pantalla completa. No hace falta una app en la tienda (que cuesta plata y se mantiene aparte).</p></div>
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Anda sin internet?</dt><dd>Abre y muestra lo último que cargó, pero para vender necesita conexión. Vender sin internet está en el plan, no hecho.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">11</span><h2>Cuánto te quedó de verdad</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="11" alt="">
+    <div>
+      <p class="idea">El diferencial: en cada venta ves adónde fue la plata y cuánto te quedó.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Lean el ejemplo como una historia: "Vendiste $ 45.000. Parece mucho. Pero el 45 % fue la mercadería, 6,4 % la comisión de Mercado Pago, 7,8 % el envío, 1 % el packaging. <b>Te quedaron $ 17.920</b>, menos del 40 %."</li>
+        <li>"Casi ningún comercio sabe esto en el momento de vender." Cada costo se ve por separado y contra el promedio del negocio, para saber si esa venta fue buena o mala.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3><p>Al vender, Nexo <b>congela el costo de ese momento</b> en la venta. Si mañana el proveedor sube los precios, la ganancia de las ventas viejas no cambia: queda lo que fue de verdad. El costo de cada producto es el <b>costo promedio ponderado</b>: si compraste 10 a $ 100 y después 10 a $ 120, el costo es $ 110. Y el envío de una compra se reparte entre los productos según su valor.</p></div>
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Y el IVA?</dt><dd>Para un responsable inscripto, el IVA aparece como un tramo más y la ganancia se calcula sin IVA, porque no es plata del negocio sino del fisco.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">12</span><h2>El asistente: contale qué pasó</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="12" alt="">
+    <div>
+      <p class="idea">Escribís o decís lo que pasó, y Nexo arma la venta, la compra o el gasto. Vos confirmás.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>"Vendí dos gorras a Camila Herrera, me pagó por transferencia." Nexo entiende el cliente, el producto, la cantidad y el medio de pago, y muestra la venta armada.</li>
+        <li><b>La IA propone y la persona confirma.</b> Nunca guarda nada sola. Esta frase es la más importante para un jurado que desconfía de la IA.</li>
+        <li>Está en el plan Pro.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3><p>Usa un <b>modelo de lenguaje</b> (una IA como ChatGPT): gpt-oss-20b, a través de <b>Groq</b>, un servicio que lo corre muy rápido y gratis con un cupo. La voz se pasa a texto con <b>Whisper</b>. Si Groq se queda sin cupo, responde Gemini (Google) de respaldo. La IA solo devuelve "esto parece una venta con estos datos"; la parte de Nexo que habla con la IA <b>ni siquiera tiene acceso a la base de datos</b>. Guardar lo hace el mismo código que usa una persona desde la pantalla, con sus controles.</p></div>
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Y la privacidad? ¿La IA se queda con los datos?</dt><dd>Se eligió Groq porque no guarda lo que se le manda (retención cero). El plan gratis de Gemini sí puede usarlo, por eso quedó solo de respaldo. El audio no se guarda.</dd><dt>¿Y si entiende mal?</dt><dd>Por eso confirmás: ves qué entendió antes de guardar, y lo cancelás o lo corregís.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">13</span><h2>WhatsApp: un audio y listo</h2><span class="tiempo">30 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="13" alt="">
+    <div>
+      <p class="idea">Lo mismo que el asistente, sin abrir la app: un mensaje o un audio por WhatsApp.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Le mandás a Nexo un audio, te contesta cómo lo entendió y confirmás con un botón.</li>
+        <li>Sean honestos con la etiqueta "En prueba": está hecho y probado, pero falta que Meta (la empresa de WhatsApp) apruebe la app y el número real.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Lo técnico, simple</h3><p>Usa la API oficial de WhatsApp (Cloud API de Meta). Cada persona vincula su teléfono mandando un código al número de Nexo, y así Nexo sabe de qué negocio es cada mensaje. El texto o el audio siguen exactamente el mismo camino que en la web.</p></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">14</span><h2>La compra desde la foto de la factura</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="14" alt="">
+    <div>
+      <p class="idea">Le sacás una foto a la factura del proveedor, y la compra se carga sola para revisar.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Foto (o PDF) de la factura → Nexo encuentra cada producto en tu catálogo, pasa los packs a unidades (10 packs de 3 medias = 30 medias) y calcula el IVA.</li>
+        <li>Vos revisás y confirmás. Lo que confirmaste se recuerda: la próxima factura de ese proveedor sale sola.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Lo técnico, simple</h3><p>Una IA que "ve" imágenes (Qwen, a través de Groq) solo <b>lee</b> la factura y devuelve los renglones como texto. Buscar cada renglón en el catálogo lo hace Nexo, no la IA: primero por lo que ya aprendió de ese proveedor, después por el código y al final por el nombre parecido. Igual que con el asistente, la IA no guarda nada.</p></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">15</span><h2>La factura electrónica con ARCA</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="15" alt="">
+    <div>
+      <p class="idea">La factura sale con el CAE de ARCA desde Nexo, sin entrar a la página de ARCA.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Nexo elige la letra sola (A, B o C, según la condición frente al IVA del negocio y del cliente), discrimina el IVA, pide el CAE y la imprime con el QR. El libro IVA se arma solo.</li>
+        <li>Díganlo como es: <b>está probado contra el ambiente de prueba de ARCA</b> (homologación). Para facturar de verdad falta la habilitación de producción.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3><p><b>ARCA</b> es la ex AFIP. El <b>CAE</b> (Código de Autorización Electrónico) es el número que ARCA le da a cada factura para que sea válida. Nexo habla con dos servicios web de ARCA: <b>WSAA</b>, para identificarse con un certificado digital, y <b>WSFEv1</b>, para pedir el CAE de cada factura. <b>Homologación</b> es el ambiente de práctica que ARCA da para probar sin validez fiscal.</p></div>
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Por qué no está en producción?</dt><dd>Hace falta que Nexo tenga su propio CUIT y certificado de producción, y que cada negocio le delegue la facturación desde ARCA. Es un trámite, y lo queremos hacer con un contador. Lo técnico está hecho y probado.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">16</span><h2>Venta online: un solo stock</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="16" alt="">
+    <div>
+      <p class="idea">Vendés en el local, en Tienda Nube y en Mercado Libre, con un solo stock.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Los pedidos de la tienda online entran solos como ventas, y el stock se actualiza en todos lados. Se acabó vender algo que ya no hay.</li>
+        <li>Ves cuánto te deja cada canal después de comisiones y envíos, y cuánto rinde lo que gastás en publicidad.</li>
+        <li>Con Mercado Pago: el link de pago y el QR de la caja, y el pago entra solo como cobro.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3><p>Nexo se conecta con la API de cada plataforma. La sincronización es <b>idempotente</b>: si el mismo pedido llega dos veces, entra una sola vez. Y la regla está decidida de antemano: Nexo manda en el stock y el precio.</p></div>
+    <div class="ojo"><h3>Ojo</h3><p>Tienda Nube está probada de punta a punta. Mercado Libre está hecho, pero falta probarlo con una cuenta real de vendedor. Si preguntan, díganlo así.</p></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">17</span><h2>Lo que tu rubro necesita</h2><span class="tiempo">30 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="17" alt="">
+    <div>
+      <p class="idea">Funciones propias de cada rubro, dentro del mismo sistema.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>Gimnasio:</b> el socio pone su DNI y entra solo. La recepción ve al instante si debe la cuota.</li>
+        <li><b>Quien fabrica</b> (comida, mafaldas): con la receta, Nexo sabe cuánto le cuesta cada cosa que hace, y descuenta los materiales al producir.</li>
+        <li>"Esto lo mostramos en vivo ahora." Y pasan a la demo.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Parte 4: demo ============ -->
+<section class="salto">
+<article class="diapo">
+  <header><span class="num">18</span><h2>Demo en vivo</h2><span class="tiempo">≈ 7 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="18" alt="">
+    <div>
+      <p class="idea">Lo más importante del pitch: que vean que funciona de verdad.</p>
+      <h3>Cómo se reparten</h3>
+      <ul class="decir">
+        <li><b>Uno maneja la compu y el otro cuenta.</b> El que maneja no habla, así no se traba; el que cuenta mira al jurado, no a la pantalla.</li>
+        <li>Inviten al jurado a escanear el QR de la diapositiva y entrar ellos también.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="subtitulo">El recorrido, en orden</p>
+  <table>
+    <tr><th>#</th><th>Qué se muestra</th><th>Qué se dice</th><th>Min</th></tr>
+    <tr><td class="num">1</td><td>Entrar sin registrarse: /app#/probar desde el celular, elegir un negocio.</td><td>"Esto es lo que pueden hacer ustedes ahora con el QR: entrar como dueños de un negocio, sin registrarse."</td><td class="num">0,5</td></tr>
+    <tr><td class="num">2</td><td>El Resumen de Lola Indumentaria.</td><td>"Lo primero que ve el dueño a la mañana: cuánto vendió, cuánto ganó y qué mirar hoy."</td><td class="num">1</td></tr>
+    <tr><td class="num">3</td><td>Punto de venta: una remera talle M (la oferta del 15 % entra sola) y medias (precio por cantidad). Cobro mixto: efectivo con vuelto y Mercado Pago.</td><td>"Así se vende frente al cliente. Las ofertas solas, el stock baja solo."</td><td class="num">1,5</td></tr>
+    <tr><td class="num">4</td><td>La ficha de esa venta: adónde fue la plata.</td><td>"Esto es lo que casi nadie sabe: cuánto le quedó de esta venta."</td><td class="num">1</td></tr>
+    <tr><td class="num">5</td><td>El asistente: escribir o dictar "Vendí dos gorras a Camila Herrera, me pagó por transferencia", ver la propuesta y confirmar.</td><td>"La IA propone, la persona confirma."</td><td class="num">1,5</td></tr>
+    <tr><td class="num">6</td><td>El ingreso del gimnasio: un socio al día (verde) y uno que debe (aviso en la recepción).</td><td>"El mismo sistema, configurado para otro rubro."</td><td class="num">1</td></tr>
+    <tr><td class="num">7</td><td>Si sobra tiempo: Mafaldas, la receta y el costo de producir.</td><td>"Y el que fabrica sabe cuánto le cuesta lo que hace."</td><td class="num">0,5</td></tr>
+  </table>
+  <div class="extras" style="margin-top:4mm">
+    <div><h3>Si el tiempo aprieta</h3><p>Se saltea el 7 y después el 6. Nunca el 3, el 4 ni el 5: son el corazón del pitch.</p></div>
+    <div class="ojo"><h3>Ojo con el asistente</h3><p>No lo usen para ensayar ese día (gasta el cupo). Si no contesta, no reintenten: "usamos un proveedor gratis, que no guarda datos y tiene cupo", y sigan.</p></div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Parte 5: I+D ============ -->
+<section class="salto">
+
+<article class="diapo">
+  <header><span class="num">19</span><h2>Por qué confiar</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="19" alt="">
+    <div>
+      <p class="idea">Pensado para que el negocio no pierda nada: ni datos, ni plata, ni control.</p>
+      <h3>Qué decir</h3>
+      <p>Elijan dos o tres tarjetas y cuéntenlas con un ejemplo. No hace falta leer las seis. Abajo está qué hay detrás de cada una.</p>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Cada tarjeta, por dentro</h3>
+      <ul>
+        <li><b>Tus datos, a salvo:</b> muchos negocios usan la misma instalación, pero cada dato lleva a qué negocio pertenece, y el negocio sale siempre de la sesión de quien entró, nunca de algo que mande el navegador. Además, todos los días a las 3:30 sale una copia de la base, comprimida y cifrada, a otro proveedor (Backblaze), y se probó restaurarla.</li>
+        <li><b>Sin instalar nada:</b> es una página web; en el celular se instala como app (PWA).</li>
+        <li><b>La IA no toca nada sola:</b> lo de la 12.</li>
+      </ul>
+    </div>
+    <div><h3>&nbsp;</h3>
+      <ul>
+        <li><b>Tu equipo, con permisos:</b> dos roles, dueño y empleado. El servidor le saca al empleado los costos, márgenes y ganancias antes de mandárselos: no es que la pantalla los esconda, es que nunca le llegan. Y todo queda anotado: quién hizo qué y cuándo, incluso quién entró y salió.</li>
+        <li><b>Probado antes de cada cambio:</b> 357 pruebas automáticas, todas en verde, que corren solas antes de publicar cualquier cosa (ver la 20).</li>
+        <li><b>Barato de verdad:</b> el servidor está en la capa gratuita de Oracle Cloud, y Nexo usa solo dos librerías externas. Por eso puede tener un plan gratis.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">20</span><h2>Cómo está hecho</h2><span class="tiempo">1,5 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="20" alt="">
+    <div>
+      <p class="idea">Simple por dentro, para que sea barato y no se caiga.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Tres partes: lo que ve el usuario (la página), el servidor que hace las operaciones, y la base de datos donde queda todo.</li>
+        <li>"Hace cada operación completa o no la hace": si una venta falla a mitad de camino, se deshace entera. Nunca queda el stock descontado sin la venta.</li>
+        <li>Se conecta con ARCA, Mercado Pago, Mercado Libre, Tienda Nube, WhatsApp y la IA.</li>
+        <li>Solo dos librerías externas: todas esas conexiones las hicimos nosotros, con lo que trae el lenguaje.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Lo técnico, simple</h3>
+      <ul>
+        <li><b>La página (frontend):</b> HTML, CSS y JavaScript, sin framework.</li>
+        <li><b>El servidor (backend):</b> Node.js con Express. Ofrece 302 "rutas": cada una es una operación que la página le puede pedir (crear una venta, listar productos…). A eso se le llama <b>API</b>.</li>
+        <li><b>La base de datos:</b> SQLite, con 78 tablas (productos, ventas, cobros, stock…). El código está preparado para pasar a Postgres cuando haya muchos negocios escribiendo a la vez.</li>
+        <li><b>"Completa o no la hace"</b> se llama <b>transacción</b>: todos los pasos de una operación se guardan juntos, o ninguno.</li>
+      </ul>
+    </div>
+    <div><h3>Los números del proyecto</h3>
+      <ul>
+        <li>408 versiones guardadas (commits) desde el 7 de mayo de 2026. La diapositiva dice 403: es el número del día que se hizo.</li>
+        <li>Unas 75.000 líneas: 30.000 del servidor, 34.000 de JavaScript de la página y 11.000 de estilos.</li>
+        <li>Las dos librerías: <b>express</b> (el servidor web) y <b>@google/genai</b> (Gemini). ARCA, Mercado Pago, Mercado Libre, Tienda Nube, WhatsApp, los mails y los respaldos están hechos sin librerías.</li>
+        <li>357 pruebas automáticas. Cada cambio pasa por un <b>Pull Request</b> y GitHub corre las pruebas solo (<b>CI</b>): si algo falla, no se publica.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">21</span><h2>Un problema difícil: facturar con ARCA sin perder nada</h2><span class="tiempo">1,5 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="21" alt="">
+    <div>
+      <p class="idea">La consigna pide un bloqueo grave y cómo se resolvió. Este es el mejor.</p>
+      <h3>Qué decir: el problema</h3>
+      <ul class="decir">
+        <li>Para facturar, ARCA da un <b>permiso de acceso que dura 12 horas</b>, y mientras tanto no da otro. Si Nexo lo perdía (por ejemplo, al reiniciar el servidor), el negocio <b>se quedaba medio día sin poder facturar</b>.</li>
+        <li>Y si ARCA se caía justo a mitad de una factura, al reintentar podía salir <b>dos veces</b>.</li>
+      </ul>
+      <h3>Qué decir: cómo lo resolvimos</h3>
+      <ul class="decir">
+        <li>Nexo guarda el permiso en la base de datos y lo reusa: sobrevive a los reinicios.</li>
+        <li>Antes de reintentar, Nexo le pregunta a ARCA si la factura ya había salido. Recién si no salió, la pide de nuevo. Nunca se duplica.</li>
+        <li>Lo probamos contra ARCA de verdad: factura A con 21 % y 10,5 %, factura B y nota de crédito, todas con CAE.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras">
+    <div><h3>Más detalle, si preguntan</h3><p>Para pedir ese permiso hay que <b>firmar el pedido con un certificado digital</b> (un formato llamado CMS). Lo normal es usar una librería externa; la hicimos con lo que trae Node (node:crypto), la verificamos con openssl, y ARCA la aceptó a la primera.</p></div>
+    <div><h3>Otro bloqueo, de respaldo (más corto)</h3><p>"Hoy" era mañana: desde las 21 h de Argentina, toda venta quedaba con la fecha del día siguiente, porque el servidor usaba la hora de Londres (UTC). Lo encontramos probando a las 21. La fecha pasó a calcularse en la zona horaria del negocio, con una prueba que simula un servidor en otro país.</p></div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Parte 6: venta ============ -->
+<section class="salto">
+
+<article class="diapo">
+  <header><span class="num">22</span><h2>Propuesta de valor</h2><span class="tiempo">20 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="22" alt="">
+    <div>
+      <p class="idea">Dejá de perder plata y tiempo. Nexo ordena tu negocio desde el primer día, y crece con vos.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>Esta se dice despacio y entera, mirando al jurado. Es la frase que resume todo: el problema (plata y tiempo), la solución (ordena) y el modelo (crece con vos).</li>
+        <li>Después, un segundo de silencio, y a los planes.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">23</span><h2>Modelo de negocio: una suscripción por mes</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="23" alt="">
+    <div>
+      <p class="idea">Gratis para empezar; Emprendedor ($ 19.900) y Pro ($ 34.900) por mes.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>Gratis:</b> punto de venta, stock, caja y clientes, hasta 100 productos y 300 ventas por mes, un usuario.</li>
+        <li><b>Emprendedor ($ 19.900):</b> sin topes, hasta 3 usuarios, factura electrónica y tiendas online. Es el del día a día.</li>
+        <li><b>Pro ($ 34.900):</b> el asistente con IA, las compras desde la foto, usuarios y negocios sin tope.</li>
+        <li>Los planes pagos se prueban 14 días sin tarjeta. Y comparen: el plan de entrada de Dux cuesta $ 43.560.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Cómo ganan plata si hay un plan gratis?</dt><dd>Es el modelo <b>freemium</b>: el gratis cuesta muy poco mantenerlo (el servidor es casi gratis) y atrae a muchos; los negocios que crecen necesitan más usuarios, factura electrónica y tienda online, y pasan a pagar.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">24</span><h2>El mercado, en negocios</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="24" alt="">
+    <div>
+      <p class="idea">Empezamos por Alta Gracia, donde podemos ir a mostrarlo en persona.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>TAM</b> (todo el mercado posible): 476.750 empresas privadas con empleados en Argentina.</li>
+        <li><b>SAM</b> (el que podemos atender hoy): los 2.770 comercios de Alta Gracia, donde podemos ir a mostrarlo cara a cara.</li>
+        <li><b>SOM</b> (lo que esperamos ganar): el 3 % el primer año, unos 83 clientes.</li>
+        <li>Después, Córdoba capital, a 36 km, tiene 22 veces más locales.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Por qué el 3 %?</dt><dd>Es una meta conservadora para el primer año, vendiendo en persona en una ciudad chica. Los números salen del documento de Dimensionamiento de Mercado que entregaron (en docs/): si preguntan la fuente, está ahí.</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">25</span><h2>Punto de equilibrio</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="25" alt="">
+    <div>
+      <p class="idea">Con 5 clientes se pagan los gastos; con 84, también los sueldos de los dos.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>Punto de equilibrio</b> = cuántos clientes hacen falta para no perder plata.</li>
+        <li>Con <b>5 clientes</b> se pagan el servidor, el dominio y el contador.</li>
+        <li>Con <b>84</b> se pagan también los sueldos base de los dos. Los costos fijos son $ 1.515.040 por mes, y el 95 % son sueldos.</li>
+        <li>El dato fuerte: <b>84 es casi el SOM (83)</b>. Con el 3 % de Alta Gracia, el primer año ya casi se paga solo. Y como no todos van a estar en el plan más barato (con un promedio de $ 29.900 por cliente), alcanzan 56.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Si preguntan</h3><dl class="preg"><dt>¿Qué es "cada cliente del plan Emprendedor deja $ 18.058"?</dt><dd>Es lo que queda de los $ 19.900 del abono después de los costos variables (los que crecen con cada cliente). Eso es lo que aporta cada cliente a pagar los costos fijos. El detalle está en el Análisis Financiero entregado (en docs/).</dd></dl></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">26</span><h2>Gestión ágil: cómo trabajamos</h2><span class="tiempo">45 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="26" alt="">
+    <div>
+      <p class="idea">Avanzamos en etapas chicas, probando cada una antes de publicarla.</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li><b>Etapas chicas:</b> un plan escrito por etapas (el roadmap). Cada etapa se termina, se prueba y se publica antes de la siguiente.</li>
+        <li><b>Cada cambio se revisa:</b> cada uno trabaja en su rama y lo lleva a la versión publicada con un Pull Request, que corre las pruebas solo.</li>
+        <li><b>Una bitácora:</b> al cerrar cada etapa se anota qué se hizo y qué sigue, para retomar sin perder contexto.</li>
+        <li><b>Prioridades según el uso:</b> por ejemplo, los negocios de ejemplo, para que cualquiera pruebe Nexo sin crear una cuenta.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Lo técnico, simple</h3><p><b>Rama:</b> una copia del proyecto donde cada uno trabaja sin pisar al otro (solla y Tosi). <b>Pull Request:</b> el pedido de sumar esos cambios a la versión principal (main). <b>CI</b> (integración continua): GitHub corre todas las pruebas en cada Pull Request, y si algo falla no se puede publicar. Lo que llega a main se publica solo en el servidor en unos cinco minutos.</p></div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Parte 7: inglés y cierre ============ -->
+<section class="salto">
+
+<article class="diapo">
+  <header><span class="num">27</span><h2>In English</h2><span class="tiempo">1 min</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="27" alt="">
+    <div>
+      <p class="idea">El minuto en inglés que pide la consigna. Los cinco puntos de la diapositiva son el guion.</p>
+      <h3>Qué decir (para leer o aprender)</h3>
+      <p class="ingles">Nexo is an all-in-one management system for small businesses in Argentina. It connects stock, sales, cash and invoicing in one place, and it adapts to each type of business, from a clothing store to a butcher's shop. Owners can record a sale just by talking to it. And every sale shows how much money was really made. You can start for free, and try it right now with the QR code, without signing up.</p>
+    </div>
+  </div>
+  <div class="extras una">
+    <div><h3>Tip</h3><p>Lo dice el que esté más cómodo con el inglés, despacio. Si se traba, no importa: sigan con el punto siguiente de la diapositiva.</p></div>
+  </div>
+</article>
+
+<article class="diapo">
+  <header><span class="num">28</span><h2>Cierre</h2><span class="tiempo">30 s</span><span class="quien">Presenta:</span></header>
+  <div class="cuerpo">
+    <img data-diapositiva="28" alt="">
+    <div>
+      <p class="idea">La frase final vuelve al principio: "La próxima vez que vendan algo, van a saber cuánto ganaron."</p>
+      <h3>Qué decir</h3>
+      <ul class="decir">
+        <li>La frase, despacio. Después: "Escaneen el QR y entren ahora, sin registrarse". El otro QR lleva al código en GitHub, con el README y el manual.</li>
+        <li>"Gracias. ¿Preguntas?" Y dejen esta diapositiva puesta mientras contestan: así siguen escaneando.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+</section>
+
+<!-- ============ Preguntas difíciles y glosario ============ -->
+<section class="seccion salto">
+  <h1>Preguntas difíciles</h1>
+  <p class="intro">Las que más pueden aparecer en la ronda de preguntas, con una respuesta corta. Contesten con sus palabras.</p>
+  <div class="dos">
+    <div>
+      <dl class="preg">
+        <dt>¿Lo usa alguien de verdad?</dt><dd>Contesten lo que sea cierto ese día: si hay conocidos probándolo, díganlo. Y que cualquiera lo puede probar ya con los negocios de ejemplo.</dd>
+        <dt>¿Qué pasa si se cae internet?</dt><dd>La app abre y muestra lo último que cargó, pero para vender necesita conexión. Vender sin conexión está en el plan.</dd>
+        <dt>¿Qué pasa si se rompe el servidor?</dt><dd>Hay una copia cifrada de la base todos los días en otro proveedor, y se probó restaurarla. Además, si una actualización falla al arrancar, el servidor vuelve solo a la versión anterior.</dd>
+        <dt>¿Es seguro?</dt><dd>Las contraseñas se guardan con un método fuerte (scrypt), nunca como texto. Cada negocio está aislado de los demás. El empleado no ve costos. Todo queda auditado. El sitio va por HTTPS.</dd>
+        <dt>¿Cuánto cuesta mantenerlo?</dt><dd>Hoy casi nada: el servidor en la capa gratis de Oracle Cloud, la IA en planes gratis y un dominio gratis. Por eso el punto de equilibrio sin sueldos es de 5 clientes.</dd>
+      </dl>
+    </div>
+    <div>
+      <dl class="preg">
+        <dt>¿Usaron IA para programarlo?</dt><dd>Contesten la verdad y cómo la usaron. Que la IA ayude a escribir código no quita que las decisiones (qué hace Nexo, para quién, cómo se cobra, qué se prueba) son de ustedes. Muestren que entienden cómo funciona: para eso está esta guía.</dd>
+        <dt>¿Por qué no usar Excel?</dt><dd>Excel no descuenta stock cuando vendés, no sabe cuánto te quedó de cada venta, no factura ni se conecta con la tienda online, y se rompe con una fórmula mal copiada (la diapositiva 2).</dd>
+        <dt>¿Por qué alguien dejaría Dux o Contagram?</dt><dd>El que ya los usa y le sirven, probablemente no. Nexo apunta al que todavía no usa ninguno porque son caros o complicados: el emprendedor y el comercio chico.</dd>
+        <dt>¿Qué sigue?</dt><dd>La factura electrónica en producción, WhatsApp con el número real y vender sin conexión. Después, turnos para barberías y mesas para restaurantes.</dd>
+        <dt>¿Lo hicieron solo ustedes dos?</dt><dd>Sí: diseño, código, pruebas, documentos y marketing.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h1 style="margin-top:9mm">Glosario técnico, explicado simple</h1>
+  <p class="intro">Palabras que pueden aparecer y conviene poder explicar en una frase.</p>
+  <div class="glosario">
+    <div><b>API</b><span>La lista de operaciones que el servidor sabe hacer y que la página le pide (por ejemplo, "crear venta").</span></div>
+    <div><b>Frontend y backend</b><span>Frontend: lo que se ve en el navegador. Backend: el servidor que hace las operaciones y guarda los datos.</span></div>
+    <div><b>Base de datos (SQLite)</b><span>Donde queda guardado todo, en tablas. SQLite es una base liviana y gratis; se puede pasar a Postgres cuando crezca.</span></div>
+    <div><b>Transacción</b><span>Varios cambios que se guardan juntos o ninguno. Evita que una venta quede a medias.</span></div>
+    <div><b>Multi-empresa (multi-tenant)</b><span>Muchos negocios en la misma instalación, cada uno viendo solo sus datos.</span></div>
+    <div><b>PWA</b><span>Una página web que el celular instala como app, sin pasar por la tienda de aplicaciones.</span></div>
+    <div><b>Commit</b><span>Una versión guardada del código, con la descripción de qué cambió.</span></div>
+    <div><b>Rama y Pull Request</b><span>La rama es la copia donde trabaja cada uno; el Pull Request es el pedido de sumarla a la versión principal.</span></div>
+    <div><b>CI (integración continua)</b><span>GitHub corre todas las pruebas automáticas en cada Pull Request; si alguna falla, no se publica.</span></div>
+    <div><b>Pruebas automáticas (tests)</b><span>Programas que usan Nexo como un usuario y controlan que el resultado sea el correcto.</span></div>
+    <div><b>Modelo de lenguaje (LLM)</b><span>Una IA que entiende y escribe texto, como ChatGPT. Nexo usa gpt-oss-20b para entender las frases.</span></div>
+    <div><b>Groq, Whisper, Gemini</b><span>Groq corre los modelos de IA rápido y sin guardar datos. Whisper pasa la voz a texto. Gemini (Google) es el respaldo.</span></div>
+    <div><b>ARCA, CAE, homologación</b><span>ARCA es la ex AFIP. El CAE es el número que hace válida una factura. Homologación es el ambiente de práctica de ARCA.</span></div>
+    <div><b>Idempotente</b><span>Que hacer lo mismo dos veces da el mismo resultado que hacerlo una: un pedido repetido entra una sola vez.</span></div>
+    <div><b>Costo promedio ponderado</b><span>El costo de un producto, promediando lo que pagaste en cada compra según cuántas unidades compraste.</span></div>
+    <div><b>Respaldo cifrado</b><span>Una copia de la base guardada en otro lado, que sin la clave no se puede leer.</span></div>
+    <div><b>Freemium</b><span>Un plan gratis para empezar y planes pagos con más funciones.</span></div>
+    <div><b>TAM, SAM, SOM</b><span>Todo el mercado posible, el que podés atender hoy y el que esperás ganar.</span></div>
+  </div>
+</section>
+
+</body>
+</html>

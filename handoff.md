@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §156);
+    siguiente número (hoy el último es §157);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,19 +21,34 @@
 
 ## Estado actual (11 de noviembre de 2026)
 
+**11 de noviembre, hist. §157: carruseles de Instagram, la presentación
+reordenada y la guía para presentar.**
+- **Carruseles fijados** (`redes/carruseles/`, `npm run carruseles` en
+  `redes/`): tres de introducción (¿Qué es Nexo?, ¿Qué hace?, ¿Cómo empiezo?);
+  las portadas juntas forman el logo con la bajada y "Ordená. Vendé. Crecé.".
+  Las 17 PNG están en el repo para bajarlas del celular (por el enlace raw de
+  GitHub). Se suben en orden 3, 2, 1 y se fijan igual.
+- **Presentación: 28 diapositivas.** Abre el lío (2), sigue "¿Alguna vez
+  prestaste plata…?" (3) y la plata que se pierde (4). La del equipo salió:
+  los roles los cuentan ellos de palabra. La demo pasó a ser la **18**.
+- **La guía:** `docs/Guía para presentar — Nexo.pdf` (`npm run guia` en
+  `redes/`, fuente `redes/pitch/guia.html`). Por diapositiva: la idea, qué
+  decir, lo técnico simple y qué contestar. Si cambia una diapositiva, se
+  cambia su bloque y se rearma (el script avisa si no coinciden los números).
+- `redes/` es un proyecto npm aparte (Playwright, Remotion), con el Chrome de
+  la compu: no baja Chromium.
+
 **11 de noviembre, hist. §156: las diapositivas del pitch, hechas.** La
 fuente es `docs/presentacion/` (index.html y capturas reales del sitio) y
 `npm run presentacion` arma `docs/presentacion-pitch.html` (ignorado por git,
-1,3 MB, anda sin internet). 29 diapositivas, el producto primero. El usuario:
-"por ahora está muy bien"; **las va a retocar con su compañero** (los cambios
-se piden por número de diapositiva). **Falta de ellos:** los roles técnicos
-(3) y decidir si "los roles en el medio" era el lugar en la diapositiva o que
-el equipo corta gancho → problema. **Sigue en otra sesión: los videos**
-(párrafo "Videos y diapositivas", más abajo). Para la demo: dos teles si se
-consiguen (una con la 19 y el QR, otra con Nexo), y la entrada del gimnasio
-en un celular con DNI de la copia del visitante (en la que se usó: Sofía Arce
-40123456 al día, Tomás Villalba 31026068 debe); probar antes la recepción en
-otro aparato (el aviso al instante es entre ventanas de la misma compu).
+1,3 MB, anda sin internet). El producto primero. **Las van a retocar con su
+compañero** (los cambios se piden por número de diapositiva). **Sigue: los
+videos** (párrafo "Videos y diapositivas", más abajo). Para la demo: dos teles
+si se consiguen (una con la 18 y el QR, otra con Nexo), y la entrada del
+gimnasio en un celular con DNI de la copia del visitante (en la que se usó:
+Sofía Arce 40123456 al día, Tomás Villalba 31026068 debe); probar antes la
+recepción en otro aparato (el aviso al instante es entre ventanas de la misma
+compu).
 
 **11 de noviembre, hist. §155: el asistente propone la venta aunque la frase
 no diga el precio, publicado (PR #72).** "Vendí dos gorras a Camila Herrera"
@@ -72,10 +87,11 @@ Remotion (gratis hasta 3 personas) y la voz con `edge-tts` (es-AR Tomás o
 Elena, a elegir; instalado en la compu). Higgsfield queda afuera (pago, y no
 muestra el sistema). Las diapositivas ya están (hist. §156). La bajada del
 logo quedó "Sistema de gestión para emprendimientos y pymes" (pedido del
-usuario, en la portada). **Sigue en la próxima sesión:** el usuario pasa
-videos de ejemplo (frames + Whisper local para verlos), se elige la voz y se
-arranca el video 1 (antes, armar en Lola una venta con comisión y envío). La
-frase del video 2 ya anda sin precio (§155).
+usuario, en la portada). **Sigue:** el usuario elige la voz (dos muestras del
+guion del video 1 hechas con `edge-tts`, Tomás y Elena, el 11 de noviembre) y
+pasa videos de ejemplo si tiene; se arranca el video 1 en `redes/videos/`
+(Remotion y Playwright ya instalados en `redes/`; antes, armar en Lola una
+venta con comisión y envío). La frase del video 2 ya anda sin precio (§155).
 
 **10 de noviembre, hist. §151: la compra desde la foto de la factura,
 publicada (PR #68).** Nueva compra → "Cargar desde la factura" (foto, varias
