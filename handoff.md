@@ -22,10 +22,13 @@
 ## Estado actual (10 de noviembre de 2026)
 
 **10 de noviembre, hist. §153: Tienda Nube, Mercado Libre, Mercado Pago y la
-factura electrónica, desde Emprendedor, en `solla` sin publicar.** Decisión
-del usuario. En Gratis lo conectado queda en pausa (no se borra nada); los
-comprobantes internos siguen en Gratis. Antes de publicar: ver qué negocios
-reales en Gratis tienen algo conectado (quedan en pausa).
+factura electrónica, desde Emprendedor, publicado (PR #70).** Decisión del
+usuario. En Gratis lo conectado queda en pausa (no se borra nada); los
+comprobantes internos siguen en Gratis. **Falta:** ver qué negocios reales en
+Gratis tenían algo conectado (quedaron en pausa; no se pudo leer la base del
+servidor) y pasar los del usuario a un plan pago con `npm run plan -- --negocio
+<id> --plan emprendedor` en el servidor. No se comprobó en el sitio después
+del deploy (el usuario cortó la verificación).
 
 **10 de noviembre, hist. §152: la landing y los planes al día, publicados
 (PR #69).** Bloques nuevos de ganancia por venta, venta online y facturación;
