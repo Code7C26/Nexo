@@ -144,7 +144,7 @@ export default {
   "Gratis": "Free",
   "Para empezar: anotá lo que vendés y mirá cuánto ganás.": "To get started: record what you sell and see how much you make.",
   "Punto de venta, stock, caja, cuentas corrientes y CRM": "Point of sale, stock, cash, customer accounts and CRM",
-  "Factura electrónica de ARCA (en etapa de prueba)": "ARCA electronic invoicing (in testing)",
+  "Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)": "Electronic invoicing with an ARCA CAE (test invoices for now)",
   "Tienda Nube y Mercado Libre conectados": "Tienda Nube and Mercado Libre connected",
   "Hasta 100 productos o servicios": "Up to 100 products or services",
   "Hasta 300 ventas por mes": "Up to 300 sales per month",

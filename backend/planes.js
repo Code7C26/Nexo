@@ -29,7 +29,7 @@ export const PLANES = {
     descripcion: 'Para empezar: anotá lo que vendés y mirá cuánto ganás.',
     incluye: [
       'Punto de venta, stock, caja, cuentas corrientes y CRM',
-      'Factura electrónica de ARCA (en etapa de prueba)',
+      'Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)',
       'Tienda Nube y Mercado Libre conectados',
       'Hasta 100 productos o servicios',
       'Hasta 300 ventas por mes',
