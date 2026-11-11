@@ -194,6 +194,10 @@ figure { margin: 0; }
   font-size: 19px;
   letter-spacing: -0.02em;
 }
+/* El "NΞXO" del logo, en vector (img/marca.svg): el alto manda y el ancho
+   sigue su proporción (668 × 106). */
+.marca-letras { display: block; width: 88px; height: 14px; }
+.pie .marca-letras { width: 69px; height: 11px; }
 
 .barra-acciones { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .barra-acciones .btn { min-height: 36px; padding: 0 12px; font-size: 14px; }
@@ -520,6 +524,104 @@ figure { margin: 0; }
 
 @media (min-width: 900px) {
   .chat { padding: 32px; }
+}
+
+/* Los ejemplos armados en HTML (adónde fue la plata, los canales, la factura):
+   el mismo marco que el del asistente. Sin estilos inline (la CSP no los deja):
+   cada tramo y cada barra tiene su clase. */
+.mock {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio);
+  background:
+    radial-gradient(ellipse 70% 60% at 100% 0%, rgba(37, 99, 235, 0.16), transparent 70%),
+    var(--superficie);
+}
+.mock-titulo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--texto-3); font-size: 14px; }
+.mock-titulo strong { color: var(--texto); font-family: var(--titulos); font-size: 22px; letter-spacing: -0.02em; }
+.mock-filas { margin: 0; display: grid; gap: 1px; border-radius: 10px; overflow: hidden; border: 1px solid var(--borde); background: var(--borde); }
+.mock-filas div { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 9px 12px; background: var(--tarjeta-alta); font-size: 14px; }
+.mock-filas dt { display: flex; align-items: center; gap: 9px; color: var(--texto-2); }
+.mock-filas dd { margin: 0; font-weight: 600; text-align: right; white-space: nowrap; }
+.mock-filas dd span { display: inline-block; min-width: 46px; color: var(--texto-3); font-weight: 500; }
+.mock-filas .fila-quedo dt,
+.mock-filas .fila-total dt { color: var(--texto); font-weight: 600; }
+.mock-filas .fila-quedo dd { color: var(--ok); }
+.mock-filas .fila-quedo dd span { color: var(--ok); }
+.mock-pie { display: flex; align-items: center; gap: 8px; color: var(--texto-2); font-size: 14px; }
+.mock-pie .ico { color: var(--acento); }
+.mock-pie-ok .ico { color: var(--ok); }
+
+/* Adónde fue la plata: una barra con un tramo por costo, en la proporción del
+   ejemplo (45 %, 6,4 %, 7,8 %, 1 % y 39,8 %). */
+.desglose-barra { display: flex; gap: 3px; height: 14px; }
+.desglose-barra span { border-radius: 4px; }
+.desglose-barra .d-mercaderia { flex: 450; }
+.desglose-barra .d-comision { flex: 64; }
+.desglose-barra .d-envio { flex: 78; }
+.desglose-barra .d-packaging { flex: 10; min-width: 4px; }
+.desglose-barra .d-quedo { flex: 398; }
+.punto-serie { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.d-mercaderia { background: #8a8a8a; }
+.d-comision { background: var(--acento-fuerte); }
+.d-envio { background: var(--acento); }
+.d-packaging { background: rgba(96, 165, 250, 0.45); }
+.d-quedo { background: var(--ok); }
+
+/* Los canales: nombre y cifras arriba, la barra abajo; en la compu, en una
+   sola línea. El ancho de cada barra es su venta contra la del local. */
+.canales { display: grid; gap: 14px; }
+.canales li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "nombre cifras" "barra barra";
+  gap: 8px 12px;
+  align-items: center;
+}
+.canal-nombre { grid-area: nombre; display: flex; align-items: center; gap: 9px; font-size: 14.5px; }
+.canal-nombre .ico { width: 22px; color: var(--texto-2); }
+.canal-cifras { grid-area: cifras; color: var(--texto-2); font-size: 14px; white-space: nowrap; }
+.canal-cifras strong { display: inline-block; min-width: 42px; margin-left: 8px; color: var(--ok); text-align: right; }
+.canal-barra { grid-area: barra; height: 8px; border-radius: 4px; background: var(--acento); }
+.canal-barra.c-1 { width: 100%; }
+.canal-barra.c-2 { width: 55%; }
+.canal-barra.c-3 { width: 33%; }
+.canal-barra.c-4 { width: 24%; }
+.ico-marca { fill: currentColor; stroke: none; }
+.ico-marca-color { width: 22px; height: 16px; }
+
+@media (min-width: 900px) {
+  .mock { padding: 32px; }
+  .canales li { grid-template-columns: 150px 1fr auto; grid-template-areas: "nombre barra cifras"; }
+}
+
+/* La factura: la letra en su cuadro, como en las de ARCA. */
+.factura-cabeza { display: flex; align-items: center; gap: 14px; }
+.factura-letra {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1.5px solid var(--borde-fuerte);
+  border-radius: 8px;
+  font-family: var(--titulos);
+  font-size: 26px;
+  font-weight: 700;
+}
+.factura-cabeza p { display: flex; flex-direction: column; gap: 2px; }
+.factura-cabeza strong { font-family: var(--titulos); font-size: 20px; letter-spacing: -0.02em; }
+.factura-cabeza p span { color: var(--texto-3); font-size: 13.5px; }
+
+/* Una aclaración debajo de los chips (la factura electrónica en prueba). */
+.bloque-texto > p.bloque-nota {
+  margin-top: 18px;
+  padding: 10px 14px;
+  border-left: 2px solid var(--acento);
+  color: var(--texto-3);
+  font-size: 14px;
 }
 
 /* "Y además" */
