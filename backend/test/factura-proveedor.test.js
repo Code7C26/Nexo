@@ -217,6 +217,21 @@ test('lo leído se limpia: números argentinos, letras y fechas raras, renglones
   );
 });
 
+test('el importe del renglón corrige la bonificación que la lectura inventa o pierde', () => {
+  const bonif = (renglon) => normalizarLectura({ renglones: [{ descripcion: 'X', ...renglon }] }).renglones[0].bonificacion;
+  // Inventada: el importe es cantidad × precio, no hay bonificación.
+  assert.equal(bonif({ cantidad: 1, precio_unitario: 8000, bonificacion: 25, importe: 8000 }), null);
+  // Leída y coincide con el importe: queda la leída.
+  assert.equal(bonif({ cantidad: 2, precio_unitario: 9600, bonificacion: 10, importe: 17280 }), 10);
+  // Perdida: sale del importe.
+  assert.equal(bonif({ cantidad: 4, precio_unitario: 1000, bonificacion: null, importe: 3800 }), 5);
+  // Leída mal: gana el importe.
+  assert.equal(bonif({ cantidad: 4, precio_unitario: 1000, bonificacion: 50, importe: 3800 }), 5);
+  // Importe con IVA (mayor que el bruto) o sin importe: no controla, queda la leída.
+  assert.equal(bonif({ cantidad: 1, precio_unitario: 1000, bonificacion: 10, importe: 1089 }), 10);
+  assert.equal(bonif({ cantidad: 1, precio_unitario: 1000, bonificacion: 10 }), 10);
+});
+
 test('el costo por unidad: bonificación, IVA y bulto', () => {
   const renglon = { cantidad: 2, precio_unitario: 1200, bonificacion: 25 };
   assert.equal(totalDelRenglon(renglon, { preciosSinIva: false, alicuota: 21 }), 1800);

@@ -36,6 +36,19 @@ function fechaValida(valor) {
   return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s ? null : s;
 }
 
+// El importe impreso del renglón manda sobre la bonificación leída: el modelo
+// a veces la inventa (25 % donde la columna está vacía) o la pierde, y el
+// importe es lo más fácil de leer bien. Si el importe es mayor que cantidad ×
+// precio (viene con IVA, por ejemplo), no sirve para controlar y queda lo leído.
+function bonificacionSegunImporte({ cantidad, precio, bonificacion, importe }) {
+  const bruto = cantidad * precio;
+  if (!(importe > 0) || !(bruto > 0) || importe > bruto * 1.005) return bonificacion;
+  const deducida = redondear((1 - importe / bruto) * 100);
+  if (deducida < 0.5) return null;
+  // La leída gana si coincide: conserva sus decimales tal cual figuran.
+  return bonificacion !== null && Math.abs(bonificacion - deducida) < 0.5 ? bonificacion : deducida;
+}
+
 // Lo que devolvió la lectura, con la forma que espera el resto: los números
 // como números, lo que no tiene sentido como null, y fuera los renglones que no
 // son productos (sin descripción, sin cantidad o sin precio).
@@ -49,7 +62,13 @@ export function normalizarLectura(cruda) {
     const importe = numero(x?.importe);
     let precio = numero(x?.precio_unitario);
     if (precio === null && importe !== null && cantidad > 0) precio = importe / cantidad;
-    const bonificacion = numero(x?.bonificacion);
+    const leida = numero(x?.bonificacion);
+    const bonificacion = bonificacionSegunImporte({
+      cantidad,
+      precio,
+      bonificacion: leida > 0 && leida < 100 ? leida : null,
+      importe
+    });
     const bulto = numero(x?.unidades_por_bulto);
     const alicuota = numero(x?.alicuota_iva);
     return {
@@ -57,7 +76,7 @@ export function normalizarLectura(cruda) {
       descripcion: texto(x?.descripcion, 200),
       cantidad,
       precio_unitario: precio,
-      bonificacion: bonificacion > 0 && bonificacion < 100 ? bonificacion : null,
+      bonificacion,
       unidades_por_bulto: bulto > 1 && bulto <= 10000 ? bulto : null,
       alicuota_iva: ALICUOTAS.includes(alicuota) ? alicuota : null,
       es_envio: x?.es_envio === true
