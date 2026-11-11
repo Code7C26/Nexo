@@ -722,6 +722,10 @@ function autenticar(req, res, next) {
     const rechazo = rechazoEnEjemplo(req);
     if (rechazo) return res.status(rechazo.status).json(rechazo.cuerpo);
   }
+  if (sesion.organizacion_id != null) {
+    const rechazo = rechazoPorPlan(req);
+    if (rechazo) return res.status(403).json(rechazo);
+  }
   next();
 }
 const RUTAS_EN_BAJA = new Set(['/negocio/baja/cancelar', '/negocio/exportar']);
@@ -3233,6 +3237,7 @@ app.post('/api/facturas', asincrono(async (req, res) => {
   if (alicuota_iva != null && alicuota_iva !== '' && !ALICUOTAS_IVA.includes(String(alicuota_iva))) {
     return res.status(400).json({ error: 'La alícuota de IVA no es válida.' });
   }
+  if (arcaEnPausa(req.usuario.organizacion_id)) return res.status(403).json({ error: ARCA_EN_PAUSA, codigo: 'limite_plan' });
 
   const facturaId = withTransaction(() => {
     const clienteRow = resolverCliente(cliente, null, req.usuario.organizacion_id);
@@ -3610,6 +3615,9 @@ const resultadoEmision = (factura) => ({
 // cliente, o cuando ARCA vuelve).
 app.post('/api/facturas/:id/autorizar', asincrono(async (req, res) => {
   const facturaId = Number(req.params.id);
+  if (!planPermite(req.usuario.organizacion_id, 'integraciones')) {
+    return res.status(403).json({ error: ARCA_EN_PAUSA, codigo: 'limite_plan' });
+  }
   const factura = db
     .prepare(
       `SELECT facturas.id, facturas.arca_estado, facturas.letra,
@@ -3675,6 +3683,7 @@ app.get('/api/factura-electronica', soloAdmin, (req, res) => {
     punto_venta: negocio.arca_punto_venta,
     verificado: negocio.arca_verificado,
     activa: facturaElectronicaActiva(negocio),
+    plan_lo_incluye: planPermite(negocio.id, 'integraciones'),
     puntos_internos: puntosInternos
   });
 });
@@ -8091,6 +8100,9 @@ app.post('/api/ventas/:id/facturar', asincrono(async (req, res) => {
   // ARCA al autorizar (ver autorizarFactura).
   const negocio = negocioParaArca(req.usuario.organizacion_id);
   const electronica = facturaElectronicaActiva(negocio);
+  if (electronica && !planPermite(negocio.id, 'integraciones')) {
+    return res.status(403).json({ error: ARCA_EN_PAUSA, codigo: 'limite_plan' });
+  }
   if (electronica) {
     const error = errorParaArca(letraFinal, datosFactura.receptor_documento);
     if (error) return res.status(400).json({ error });
@@ -9537,6 +9549,9 @@ app.post('/api/devoluciones/:id/nota-credito', asincrono(async (req, res) => {
   // asociadoParaArca).
   const negocio = negocioParaArca(req.usuario.organizacion_id);
   const electronica = facturaElectronicaActiva(negocio);
+  if (electronica && !planPermite(negocio.id, 'integraciones')) {
+    return res.status(403).json({ error: ARCA_EN_PAUSA, codigo: 'limite_plan' });
+  }
   if (electronica) {
     const error = errorParaArca(letraFinal, datosFactura.receptor_documento);
     if (error) return res.status(400).json({ error });
@@ -14455,8 +14470,7 @@ async function proponerDesdeTexto(texto, organizacionId) {
 // El asistente con IA es del plan Pro (backend/planes.js). Las preguntas de
 // uso las contesta el manual en el navegador, sin pasar por acá.
 function negocioConAsistente(organizacionId) {
-  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
-  return !!PLANES[planEfectivo(fila, fechaDeHoy())].asistente;
+  return planPermite(organizacionId, 'asistente');
 }
 const ASISTENTE_SOLO_PRO = 'Cargar ventas, compras y gastos con el asistente es del plan Pro. Igual te puedo contestar cómo se usa Nexo.';
 function soloConAsistente(req, res, next) {
@@ -15840,6 +15854,39 @@ function usoDelPlan(organizacionId, hoy = fechaDeHoy()) {
 
 // El plan del negocio como lo ve la página "Tu plan": el que rige hoy, el
 // guardado (distinto si la prueba venció), hasta cuándo y cuánto usa.
+// Si el plan que rige hoy trae una función (`asistente`, `integraciones`; ver
+// planes.js). Un negocio que bajó de plan conserva lo que tenía: solo deja de
+// andar mientras tanto.
+function planPermite(organizacionId, funcion) {
+  const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
+  return Boolean(fila && PLANES[planEfectivo(fila, fechaDeHoy())][funcion]);
+}
+
+// Tienda Nube, Mercado Libre, Mercado Pago y la factura electrónica son desde
+// Emprendedor (decisión del usuario del 10 de noviembre). Desde autenticar se
+// frena todo lo que conecta, configura o sincroniza; ver la página y
+// desconectar o apagar se puede siempre. En Gratis, lo ya conectado queda en
+// pausa: los avisos y la pasada periódica no hacen nada (integracionEnPausa).
+const RUTAS_DESDE_EMPRENDEDOR = [/^\/integraciones\/(tiendanube|mercadolibre|mercadopago)(\/|$)/, /^\/factura-electronica(\/|$)/];
+const SE_PUEDE_SIN_PLAN = /\/desconectar$/;
+const INTEGRACIONES_DESDE_EMPRENDEDOR =
+  'Tienda Nube, Mercado Libre, Mercado Pago y la factura electrónica de ARCA son desde el plan Emprendedor.';
+function rechazoPorPlan(req) {
+  if (req.method === 'GET' || req.method === 'DELETE' || SE_PUEDE_SIN_PLAN.test(req.path)) return null;
+  if (!RUTAS_DESDE_EMPRENDEDOR.some((ruta) => ruta.test(req.path))) return null;
+  if (planPermite(req.usuario.organizacion_id, 'integraciones')) return null;
+  return { error: INTEGRACIONES_DESDE_EMPRENDEDOR, codigo: 'limite_plan' };
+}
+const integracionEnPausa = (integracion) => !planPermite(integracion.organizacion_id, 'integraciones');
+
+// La factura electrónica prendida en un plan que no la trae: no se emite nada
+// con CAE hasta pasar de plan o apagarla (y seguir con comprobantes internos).
+const ARCA_EN_PAUSA =
+  'La factura electrónica está en pausa: es desde el plan Emprendedor. Pasá de plan, o apagala en Configuración → Factura electrónica para seguir con comprobantes internos.';
+function arcaEnPausa(organizacionId) {
+  return facturaElectronicaActiva(negocioParaArca(organizacionId)) && !planPermite(organizacionId, 'integraciones');
+}
+
 function planDelNegocio(organizacionId) {
   const hoy = fechaDeHoy();
   const fila = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(organizacionId);
@@ -15852,6 +15899,7 @@ function planDelNegocio(organizacionId) {
     nombre: plan.nombre,
     precio: plan.precio,
     marca: plan.marca,
+    integraciones: plan.integraciones,
     vence: vigente ? fila.plan_vence : null,
     // diffDias es inclusivo: el último día de la prueba quedan 0 días más.
     dias_restantes: vigente && fila.plan_vence ? diffDias(hoy, fila.plan_vence) : null,
@@ -16075,6 +16123,7 @@ app.get('/api/negocio', (req, res) => {
     balanza: balanzaFormato ? JSON.parse(balanzaFormato) : null,
     factura_electronica: {
       activa: facturaElectronicaActiva(negocio),
+      en_pausa: arcaEnPausa(req.usuario.organizacion_id),
       punto_venta: arcaPuntoVenta,
       verificado: arcaVerificado,
       ambiente: ambienteArca()
@@ -20671,6 +20720,9 @@ async function leerPedidoDelCanal(integracion, externoId) {
 }
 
 async function traerPedido(integracion, externoId) {
+  // En pausa no entra: al volver a un plan que la incluye, la pasada trae lo
+  // que cambió desde la última sincronización.
+  if (integracionEnPausa(integracion)) return null;
   try {
     return procesarPedido(integracion, await leerPedidoDelCanal(integracion, externoId));
   } catch (err) {
@@ -20716,7 +20768,7 @@ async function sincronizarIntegracion(integracionId, { pedidos = true } = {}) {
   sincronizando.add(integracionId);
   try {
     const integracion = integracionPorId(integracionId);
-    if (integracion?.estado !== 'conectada') return;
+    if (integracion?.estado !== 'conectada' || integracionEnPausa(integracion)) return;
     const inicio = new Date().toISOString();
     const mercadoLibreSi = integracion.plataforma === 'mercadolibre';
     try {
@@ -20866,7 +20918,11 @@ function verCanal(req, res) {
   const organizacionId = req.usuario.organizacion_id;
   const plataforma = plataformaDe(req);
   const integracion = integracionDelNegocio(organizacionId, plataforma);
-  const base = { disponible: canalConfigurado(plataforma), conectada: integracion?.estado === 'conectada' };
+  const base = {
+    disponible: canalConfigurado(plataforma),
+    conectada: integracion?.estado === 'conectada',
+    plan_lo_incluye: planPermite(organizacionId, 'integraciones')
+  };
   if (!integracion) return res.json(base);
   const contar = (sql) => db.prepare(sql).get(integracion.id).n;
   res.json({
@@ -21317,7 +21373,7 @@ async function atenderAvisoMercadoLibre(aviso) {
   const integracion = db
     .prepare("SELECT * FROM integraciones WHERE plataforma = 'mercadolibre' AND cuenta_externa = ? AND estado = 'conectada'")
     .get(String(aviso.user_id ?? ''));
-  if (!integracion) return;
+  if (!integracion || integracionEnPausa(integracion)) return;
   const recurso = String(aviso.resource ?? '');
   if (aviso.topic === 'orders_v2') {
     const id = recurso.match(/^\/orders\/(\d+)$/)?.[1];
@@ -21688,8 +21744,12 @@ function vueltaMercadoPago(req) {
   return process.env.MERCADOPAGO_REDIRECT_URI || `${urlPublica(req)}/api/integraciones/mercadopago/callback`;
 }
 
+// Conectado y en un plan que lo incluye: en pausa, el punto de venta y la
+// venta no ofrecen el link ni el QR.
 const mercadoPagoConectado = (organizacionId) =>
-  mercadoPago.mercadoPagoConfigurado() && integracionDelNegocio(organizacionId, 'mercadopago')?.estado === 'conectada';
+  mercadoPago.mercadoPagoConfigurado() &&
+  integracionDelNegocio(organizacionId, 'mercadopago')?.estado === 'conectada' &&
+  planPermite(organizacionId, 'integraciones');
 
 // El token se renueva de a uno por vez, como el de Mercado Libre: el refresh
 // token cambia en cada renovación.
@@ -21891,7 +21951,7 @@ async function atenderAvisoMercadoPago(cuenta, pagoId) {
   const integracion = db
     .prepare("SELECT * FROM integraciones WHERE plataforma = 'mercadopago' AND cuenta_externa = ? AND estado = 'conectada'")
     .get(cuenta);
-  if (!integracion) return;
+  if (!integracion || integracionEnPausa(integracion)) return;
   let pago;
   try {
     pago = await apiDeMercadoPago(integracion).pago(pagoId);
@@ -21936,7 +21996,11 @@ const SIN_MERCADO_PAGO = 'Para cobrar con un link, el administrador tiene que co
 
 app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
   const integracion = integracionDelNegocio(req.usuario.organizacion_id, 'mercadopago');
-  const base = { disponible: mercadoPago.mercadoPagoConfigurado(), conectada: integracion?.estado === 'conectada' };
+  const base = {
+    disponible: mercadoPago.mercadoPagoConfigurado(),
+    conectada: integracion?.estado === 'conectada',
+    plan_lo_incluye: planPermite(req.usuario.organizacion_id, 'integraciones')
+  };
   if (!integracion) return res.json(base);
   res.json({
     ...base,

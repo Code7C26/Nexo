@@ -1414,9 +1414,12 @@ function mostrarLetraSiSeElige(form) {
   form.querySelector("[data-punto-venta]").hidden = Boolean(electronica);
   const aviso = form.querySelector("[data-arca]");
   aviso.hidden = !electronica;
-  aviso.textContent = electronica
-    ? `Sale como comprobante electrónico: al guardarlo, Nexo le pide el CAE a ARCA (punto de venta ${negocio.factura_electronica.punto_venta}).`
-    : "";
+  // En pausa (el plan no la trae): no se emite hasta pasar de plan o apagarla.
+  aviso.textContent = !electronica
+    ? ""
+    : negocio.factura_electronica.en_pausa
+      ? "La factura electrónica está en pausa: es desde el plan Emprendedor. Pasá de plan, o apagala en Configuración → Factura electrónica para seguir con comprobantes internos."
+      : `Sale como comprobante electrónico: al guardarlo, Nexo le pide el CAE a ARCA (punto de venta ${negocio.factura_electronica.punto_venta}).`;
 }
 
 document.getElementById("btnNuevaFactura").addEventListener("click", () => {

@@ -185,7 +185,7 @@ after(async () => {
 test('sin conectar: la integración se ofrece, y el empleado no la ve', async () => {
   const estado = await admin.get('/api/integraciones/mercadolibre');
   assert.equal(estado.status, 200);
-  assert.deepEqual(estado.json, { disponible: true, conectada: false });
+  assert.deepEqual(estado.json, { disponible: true, conectada: false, plan_lo_incluye: true });
   // Tienda Nube no está configurada en este servidor: no se ofrece.
   assert.equal((await admin.get('/api/integraciones/tiendanube')).json.disponible, false);
   const empleado = await crearEmpleado(servidor, admin, { usuario: 'vendedora' });

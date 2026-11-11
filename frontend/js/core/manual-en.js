@@ -249,7 +249,8 @@ export const SECCIONES_EN = {
         "Enter your CUIT, your VAT status and the point of sale, and tap **Verify with ARCA**.",
         "Done: when you make an invoice, Nexo requests the CAE from ARCA. If ARCA doesn't respond, it stays pending and is retried with **Request the CAE from ARCA**."
       ] },
-      { nota: "Today it works in ARCA's test environment: receipts say \"Comprobante de prueba – sin validez fiscal\" (test receipt, no tax validity)." }
+      { nota: "Today it works in ARCA's test environment: receipts say \"Comprobante de prueba – sin validez fiscal\" (test receipt, no tax validity)." },
+      { nota: "It starts with the Entrepreneur plan. If your business moves to Free, it's paused: turn it off to keep issuing internal receipts, or go back to a paid plan." }
     ]
   },
   iva: {

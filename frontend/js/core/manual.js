@@ -318,7 +318,8 @@ const SECCIONES_ES = [
         "Cargá tu CUIT, tu condición frente al IVA y el punto de venta, y tocá **Verificar con ARCA**.",
         "Listo: al hacer una factura, Nexo le pide el CAE a ARCA. Si ARCA no responde, queda pendiente y se reintenta con **Pedir el CAE a ARCA**."
       ] },
-      { nota: "Hoy funciona en el ambiente de prueba de ARCA: los comprobantes dicen \"Comprobante de prueba – sin validez fiscal\"." }
+      { nota: "Hoy funciona en el ambiente de prueba de ARCA: los comprobantes dicen \"Comprobante de prueba – sin validez fiscal\"." },
+      { nota: "Es desde el plan Emprendedor. Si tu negocio pasa a Gratis, queda en pausa: apagala para seguir con comprobantes internos, o volvé a un plan pago." }
     ],
     ver: ["facturar", "iva"]
   },

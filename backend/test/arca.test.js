@@ -5,10 +5,11 @@
 // provocan escribiendo el archivo de NEXO_ARCA_FALLA.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
 import { documentoReceptor, firmarCms, importesDelComprobante, revisarCertificado, TIPOS_CBTE } from '../arca.js';
@@ -291,4 +292,43 @@ test('el punto de venta no puede tener comprobantes internos, y sin la delegaci�
   assert.equal(sin.status, 400);
   assert.match(sin.json.error, /delegación/);
   assert.equal((await n.admin.get('/api/factura-electronica')).json.activa, false);
+});
+
+// Desde el plan Emprendedor (decisión del usuario del 10 de noviembre). El
+// plan se cambia con el script del dueño de Nexo, como en planes.test.js.
+function cambiarPlan(negocioId, plan) {
+  const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const r = spawnSync(process.execPath, ['scripts/plan.mjs', '--negocio', String(negocioId), '--plan', plan], {
+    cwd: raiz,
+    env: { ...process.env, NEXO_DB_PATH: path.join(servidor.dir, 'nexo.db') },
+    encoding: 'utf8'
+  });
+  assert.equal(r.status, 0, r.stderr);
+}
+
+test('en Gratis, la factura electrónica queda en pausa: no se emite con CAE hasta pasar de plan o apagarla', async () => {
+  const n = await negocioInscripto('Pausa SA', '30-71000008-1');
+  await activar(n, 8);
+  const id = (await n.admin.get('/api/negocio')).json.id;
+  cambiarPlan(id, 'gratis');
+
+  const negocio = (await n.admin.get('/api/negocio')).json;
+  assert.equal(negocio.factura_electronica.en_pausa, true);
+  assert.equal((await n.admin.get('/api/factura-electronica')).json.plan_lo_incluye, false);
+  const enPausa = await facturar(n, await vender(n, n.final));
+  assert.equal(enPausa.status, 403);
+  assert.equal(enPausa.json.codigo, 'limite_plan');
+  assert.match(enPausa.json.error, /pausa/);
+  const verificar = await n.admin.post('/api/factura-electronica/verificar');
+  assert.equal(verificar.status, 403);
+
+  // Apagarla se puede: sigue con comprobantes internos.
+  assert.ok((await n.admin.del('/api/factura-electronica')).status < 300);
+  const interna = await facturar(n, await vender(n, n.final));
+  assert.ok(interna.status < 300, interna.texto);
+  assert.equal(interna.json.arca_estado, null);
+
+  // En Emprendedor vuelve a estar incluida.
+  cambiarPlan(id, 'emprendedor');
+  assert.equal((await n.admin.get('/api/factura-electronica')).json.plan_lo_incluye, true);
 });

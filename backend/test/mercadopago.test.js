@@ -253,7 +253,7 @@ after(async () => {
 });
 
 test('sin conectar: se ofrece al admin, el empleado no lo ve, y no hay link', async () => {
-  assert.deepEqual(await estadoDe(admin), { disponible: true, conectada: false });
+  assert.deepEqual(await estadoDe(admin), { disponible: true, conectada: false, plan_lo_incluye: true });
   assert.equal((await empleado.get('/api/integraciones/mercadopago')).status, 403);
   assert.equal((await empleado.post('/api/integraciones/mercadopago/conectar')).status, 403);
   assert.equal((await admin.get('/api/negocio')).json.mercado_pago.conectado, false);

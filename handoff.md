@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §152);
+    siguiente número (hoy el último es §153);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,14 @@
 
 ## Estado actual (10 de noviembre de 2026)
 
-**10 de noviembre, hist. §152: la landing y los planes al día, en `solla` sin
-publicar.** Bloques nuevos de ganancia por venta, venta online y facturación;
+**10 de noviembre, hist. §153: Tienda Nube, Mercado Libre, Mercado Pago y la
+factura electrónica, desde Emprendedor, en `solla` sin publicar.** Decisión
+del usuario. En Gratis lo conectado queda en pausa (no se borra nada); los
+comprobantes internos siguen en Gratis. Antes de publicar: ver qué negocios
+reales en Gratis tienen algo conectado (quedan en pausa).
+
+**10 de noviembre, hist. §152: la landing y los planes al día, publicados
+(PR #69).** Bloques nuevos de ganancia por venta, venta online y facturación;
 ARCA y las tiendas salen de "Muy pronto" (ARCA con la aclaración de que está
 en prueba, porque la producción falta) y WhatsApp entra ahí. El "NΞXO" del
 logo, en vector (`frontend/img/marca.svg`), en la barra de la landing.

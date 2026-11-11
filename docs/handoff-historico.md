@@ -12634,3 +12634,43 @@ la alineación del logo de Mercado Libre.
 app dice "Nexo" escrito); el logo con letras en la app, si el usuario lo
 aprueba; la bajada "para pymes" del logo, a decidir; los logos en vector que
 faltan (ícono y logo completo) para los videos y las diapositivas.
+
+## §153. Tienda Nube, Mercado Libre, Mercado Pago y ARCA, desde Emprendedor (10 de noviembre de 2026)
+
+**Decisión del usuario:** "tiendanube, mercadolibre, mercadopago y las facturas
+creo que es mejor que estén a partir del segundo plan". Preguntado: "las
+facturas" es solo la electrónica de ARCA (los comprobantes internos siguen en
+Gratis), y un negocio que baja a Gratis con algo conectado queda **en pausa**,
+sin borrar nada.
+
+**Qué se hizo.**
+- `planes.js`: `integraciones` (false en Gratis, true en Emprendedor y Pro).
+  Gratis dice "Comprobantes en PDF, con la marca de Nexo"; Emprendedor suma la
+  factura electrónica y "Tienda Nube, Mercado Libre y Mercado Pago conectados".
+- `server.js`: `planPermite(org, funcion)` (el asistente pasa a usarla).
+  `rechazoPorPlan`, desde `autenticar`, frena con 403 `limite_plan` todo lo que
+  no sea GET, DELETE o `/desconectar` en `/integraciones/{tiendanube,
+  mercadolibre,mercadopago}` y `/factura-electronica`. La pausa: no corren
+  `sincronizarIntegracion`, `traerPedido` (avisos de pedidos de Tienda Nube y
+  Mercado Libre), los avisos de publicaciones de Mercado Libre ni los de pagos
+  de Mercado Pago; `mercadoPagoConectado` también mira el plan, así que el link,
+  el QR y "Ya me pagó" no se ofrecen. Con la factura electrónica activa, emitir
+  (factura suelta, de una venta, nota de crédito) y "Pedir el CAE" dan 403 con
+  `ARCA_EN_PAUSA`; apagarla deja seguir con comprobantes internos.
+- Los GET de las cuatro páginas suman `plan_lo_incluye`, `/api/negocio` suma
+  `factura_electronica.en_pausa` y `plan.integraciones`. Cada página de
+  Configuración muestra un aviso (`.aviso-plan`, como el del plan) y esconde
+  los pasos para conectar; el formulario de factura avisa la pausa.
+- Landing (bajada de Planes, venta online, facturación y dos preguntas) y la
+  nota del manual (castellano e inglés).
+
+**Cómo se verificó.** 355 tests (nuevos: los bloqueos en Gratis en
+`planes.test.js`, la pausa de ARCA en `arca.test.js` y la de un pedido de
+Tienda Nube que la pasada trae al volver a un plan pago en
+`tiendanube.test.js`), lint e i18n. Sin ver en el navegador.
+
+**Ojo al publicar:** los negocios reales en Gratis (o con la prueba vencida)
+que tengan algo conectado quedan en pausa. No se pudo leer la base del
+servidor para saber cuáles; se pasan de plan con `npm run plan -- --negocio
+<id> --plan emprendedor` en el servidor. Los negocios de ejemplo son Pro.
+Mercado Pago recupera solo los pagos de los últimos 3 días al volver.
