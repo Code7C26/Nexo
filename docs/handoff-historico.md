@@ -12913,3 +12913,43 @@ usuario: apagarlo.
   equipo").
 - Guiones pendientes: video 5 (el alta en siete pasos y "Lo que ya tenías",
   para una diapositiva) y video 6 (apertura corta).
+
+## §161. El servidor, preparado para mucha gente (12 de noviembre de 2026)
+
+Pedido del usuario: "el servidor tiene que responder bien y rápido" si la
+gente del pitch empieza a crear cuentas y a usarlo.
+
+**Medición** (contra una base temporal con el arnés de las pruebas: armar los
+cinco ejemplos, 20 personas pidiendo Lola a la vez y 20 usando Nexo 15 s):
+- La máquina es la E2.1.Micro de Oracle (AMD, 1/8 de núcleo con ráfagas,
+  1 GB). En cálculo puro, 1,8 veces más lenta que la compu del usuario; bajo
+  carga sostenida, mucho más. Adentro del servidor Nexo contesta en 1,5 ms;
+  desde Córdoba cada ida y vuelta a San Pablo son ~170 ms.
+- **Topes por IP:** 5 cuentas, 10 códigos y 10 ejemplos por IP por hora. En un
+  wifi compartido (aula, feria) todos tienen la misma IP: la mitad de 20
+  visitantes recibía 429.
+- **Disco:** sin `journal_mode`, SQLite usaba DELETE + FULL: 500 transacciones
+  en el servidor tardaban 3.000 ms (WAL + FULL 1.081 ms, WAL + NORMAL 13 ms).
+- **Índices:** 147 columnas con REFERENCES sin índice. Con 25 negocios en la
+  base, GET /api/ventas pasaba de 40 a 350 ms (subconsultas por venta_id sobre
+  tablas de todos los negocios); con 20 personas a la vez, 1,6 s de mediana.
+
+**Cambios:**
+- `db/index.js`: `journal_mode = WAL`, `synchronous = NORMAL`, `busy_timeout =
+  5000`; y `indexarRelaciones()` al final (después de las migraciones), que
+  crea `idx_<tabla>_<columna>` para cada FK sin índice que la tenga primera.
+  El respaldo usa VACUUM INTO (copia bien en WAL); `regresion-head` copia una
+  base que ya es una copia.
+- `server.js`: `CUENTAS_POR_IP_POR_HORA = 60` (el alta usaba el tope genérico
+  de 5), códigos 60, verificaciones 200, invitaciones 60, ejemplos 60, Google
+  120. Siguen el tope por mail, el código y el campo trampa.
+- Reserva de ejemplos en producción: 2 → 4 por tipo.
+
+**Después:** 20 personas a la vez, mediana 20 ms y p95 40 ms, 0 errores; las
+20 Lolas entraron sin 429 (en cola: 65 s en la compu). 358 tests, lint y
+`verificar-migracion` (24 de 24, md5 de la real igual).
+
+**Para un evento:** subir la reserva en el servidor (el usuario corre el
+comando; se arma en segundo plano y vale solo el día que se armó):
+`ssh -i <clave> ubuntu@<ip> 'sudo sed -i /^NEXO_EJEMPLOS_RESERVA=/d /etc/nexo/nexo.env; echo NEXO_EJEMPLOS_RESERVA=8 | sudo tee -a /etc/nexo/nexo.env >/dev/null; sudo systemctl restart nexo'`
+y volverla a 4 (o borrar la línea) después.
