@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Instala Nexo en un Ubuntu 24.04 limpio: la VM de Oracle Cloud (hist. §103,
-# guía en docs/publicar.md). En el servidor:
+# guía en docs/proyecto/publicar.md). En el servidor:
 #
 #   sudo bash instalar.sh [base.db]
 #

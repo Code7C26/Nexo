@@ -1,4 +1,4 @@
-// Términos, privacidad y edad (etapa 8b, Fase 3; docs/investigacion-login-legal.md,
+// Términos, privacidad y edad (etapa 8b, Fase 3; docs/investigaciones/investigacion-login-legal.md,
 // secciones 2.1 a 2.5).
 //
 // TERMINOS_VERSION es la fecha de los términos y la privacidad vigentes. Cada

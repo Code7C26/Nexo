@@ -35,7 +35,7 @@ validando planillas; 46 % administra con hojas de cálculo). Es la diapositiva
 - El comercio chico lleva el negocio en el cuaderno, en una planilla y en el
   celular. El stock no coincide, no sabe qué producto le deja plata y no sabe
   cuánto le debe cada cliente.
-- Los sistemas que existen (Dux, Contagram, ver `docs/competencia.txt`) están
+- Los sistemas que existen (Dux, Contagram, ver `docs/investigaciones/competencia.txt`) están
   pensados para quien ya tiene un contador y una computadora en el mostrador.
   Son caros para empezar y difíciles de usar desde el celular.
 - Cada rubro tiene su particularidad: la carnicería vende por kilo con
@@ -194,7 +194,7 @@ servicios en plan gratis), y eso baja el punto de equilibrio.
   ahora como dueños de uno de estos negocios."
 - **QR 2 → `https://github.com/Code7C26/Nexo`** (código, README y manual: no
   se leen en el pitch).
-- Los dos QR están en `docs/qr/` (`probar-nexo.svg` y `repositorio-nexo.svg`),
+- Los dos QR están en `docs/pitch/fuentes/qr/` (`probar-nexo.svg` y `repositorio-nexo.svg`),
   en SVG: se agrandan sin perder calidad para la diapositiva, los stickers y
   las tarjetas. Están comprobados: se leen y llevan a esas dos direcciones.
 - Frase final, que vuelve al gancho: "La próxima vez que vendan algo, van a

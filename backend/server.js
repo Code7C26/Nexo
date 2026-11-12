@@ -265,12 +265,9 @@ app.get('/sitemap.xml', (req, res) => {
     .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entradas}\n</urlset>\n`);
 });
 
+// Los íconos del logo que usa la app viven en frontend/img/logo (hist. §162);
+// el kit completo de la marca está en docs/logos y no se sirve.
 app.use(express.static(FRONTEND, { index: false }));
-// assets/ vive al mismo nivel que backend/ y frontend/ (así lo define
-// CLAUDE.md), no adentro de frontend/. Sin este mount el logo y el
-// favicon no serían alcanzables por HTTP. Es una ruta estática de solo
-// lectura, no toca lógica ni datos.
-app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 
 /* ---------- Usuarios, sesión y roles ---------- */
 
@@ -474,7 +471,7 @@ function renovarSesion(token) {
 
 /* ---------- Mail de la cuenta (hist. §102) ---------- */
 
-// Se entra con el mail (docs/investigacion-login-legal.md, sección 5). Se
+// Se entra con el mail (docs/investigaciones/investigacion-login-legal.md, sección 5). Se
 // guarda en minúsculas: nadie distingue "Ana@" de "ana@" al tipear.
 const normalizarMail = (valor) => (typeof valor === 'string' ? valor.trim().toLowerCase() : '');
 
@@ -1453,7 +1450,7 @@ app.get('/api/auth/planes', (req, res) => {
 /* ---------- Invitaciones a un negocio (hist. §104) ---------- */
 //
 // Cada persona tiene su cuenta (decisión del usuario del 27 de octubre,
-// docs/investigacion-login-legal.md §5): el admin no crea empleados con
+// docs/investigaciones/investigacion-login-legal.md §5): el admin no crea empleados con
 // usuario y contraseña, invita a un mail con un rol. Quien tiene cuenta con
 // ese mail confirmado ve la solicitud en Nexo; quien no tiene, crea la cuenta
 // desde el enlace del mail. A los dos les llega el mismo enlace, y al admin se
@@ -1642,7 +1639,7 @@ app.post('/api/auth/invitacion/cuenta', (req, res) => {
 
 /* ---------- Recuperar la contraseña (hist. §105) ---------- */
 
-// "¿Te olvidaste la contraseña?" del login (docs/investigacion-login-legal.md,
+// "¿Te olvidaste la contraseña?" del login (docs/investigaciones/investigacion-login-legal.md,
 // Fase 2). Manda un enlace de un solo uso que vence a los 30 minutos, y
 // responde siempre lo mismo: así no sirve para averiguar qué mails tienen
 // cuenta en Nexo. Los topes se cuentan antes de buscar la cuenta, por el
@@ -1766,7 +1763,7 @@ app.post('/api/auth/restablecer', (req, res) => {
   res.json({ email: enlace.email });
 });
 
-// Aviso de seguridad (docs/investigacion-login-legal.md, sección 3): si la
+// Aviso de seguridad (docs/investigaciones/investigacion-login-legal.md, sección 3): si la
 // cambió otro, el dueño se entera y la recupera con su mail.
 function avisarCambioDePassword({ nombre, email }) {
   if (!email) return;
@@ -1873,7 +1870,7 @@ app.post('/api/publico/consulta', (req, res) => {
 // los cubre a todos, y cualquier ruta nueva que se agregue en el futuro
 // nace protegida por default sin tener que acordarse de nada.
 //
-// Lo estático (index.html, css/, js/, /assets) queda deliberadamente
+// Lo estático (index.html, css/, js/, img/) queda deliberadamente
 // público — no contiene datos del negocio, y protegerlo obligaría a
 // servir la pantalla de login por una vía separada del resto de la app.
 // Todos los datos reales están detrás de /api.
@@ -16436,7 +16433,7 @@ app.post('/api/negocios/:id/entrar', (req, res) => {
 //
 // Ley 25.326: acceso (art. 14) y supresión (art. 16), y el "botón de baja"
 // (Res. 316/2018): darse de baja desde la app, sin escribirle a nadie.
-// docs/investigacion-login-legal.md, sección 5.
+// docs/investigaciones/investigacion-login-legal.md, sección 5.
 
 // Un nombre de archivo sin acentos ni signos: "Almacén Don José" →
 // "almacen-don-jose".
@@ -18831,7 +18828,7 @@ app.patch('/api/abonos/:id', soloAdmin, (req, res) => {
 
 /* ---------- Consultas (CRM) ---------- */
 // Consultas y clientes potenciales (CLAUDE.md §29, hist. §89; el diseño está
-// en docs/investigacion-crm-servicios.md §2). Es un módulo que puede prender
+// en docs/investigaciones/investigacion-crm-servicios.md §2). Es un módulo que puede prender
 // cualquier negocio: el tipo solo decide con qué etapas nace el embudo (datos
 // de perfiles.js). No es un circuito propio:
 // - una consulta pasa a cliente, presupuesto, venta o socio con las altas de

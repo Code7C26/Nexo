@@ -1,14 +1,15 @@
 // Arma las diapositivas del pitch en un solo archivo (npm run presentacion).
 //
-// La fuente es docs/presentacion/index.html, que apunta a sus archivos por
-// ruta: las fuentes de frontend/fonts, las capturas, los QR de docs/qr y los
-// íconos y logos de frontend/img. Acá todo eso entra al HTML (data: y un
-// sprite adentro), así docs/pitch/Presentación — Nexo.html se abre con doble clic,
-// sin internet, desde cualquier compu o un pendrive: es el plan B del pitch.
+// La fuente es docs/pitch/fuentes/index.html, que apunta a sus archivos por
+// ruta: las fuentes de frontend/fonts, sus capturas/ y qr/, el logo de
+// docs/logos y los íconos de frontend/img. Acá todo eso entra al HTML (data: y
+// un sprite adentro), así docs/pitch/Presentación — Nexo.html se abre con doble
+// clic, sin internet, desde cualquier compu o un pendrive: es el plan B del
+// pitch.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, resolve } from 'node:path';
 
-const ORIGEN = 'docs/presentacion/index.html';
+const ORIGEN = 'docs/pitch/fuentes/index.html';
 const DESTINO = 'docs/pitch/Presentación — Nexo.html';
 const carpeta = dirname(resolve(ORIGEN));
 
@@ -44,7 +45,7 @@ html = html.replace(/href="([^"#]+\.svg)#([\w-]+)"/g, (_, ruta, id) => {
 html = html.replace('<!--SIMBOLOS-->', [...simbolos.values()].join('\n'));
 
 // El resto de lo que apunta a un archivo: imágenes y fuentes.
-html = html.replace(/\bsrc="((?:\.\.\/|capturas\/)[^"]+)"/g, (_, ruta) => `src="${dataUri(ruta)}"`);
+html = html.replace(/\bsrc="((?:\.\.\/|capturas\/|qr\/)[^"]+)"/g, (_, ruta) => `src="${dataUri(ruta)}"`);
 html = html.replace(/url\("(\.\.\/[^"]+)"\)/g, (_, ruta) => `url("${dataUri(ruta)}")`);
 
 writeFileSync(DESTINO, html);

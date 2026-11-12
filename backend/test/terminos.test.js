@@ -1,4 +1,4 @@
-// Términos, privacidad y edad (etapa 8b, Fase 3; docs/investigacion-login-legal.md,
+// Términos, privacidad y edad (etapa 8b, Fase 3; docs/investigaciones/investigacion-login-legal.md,
 // 2.3 a 2.5): el alta de una cuenta exige la casilla y la edad, de 13 a 17
 // años solo en Gratis, una cuenta sin los términos vigentes no opera hasta
 // aceptarlos, y las páginas públicas salen con los datos del titular.

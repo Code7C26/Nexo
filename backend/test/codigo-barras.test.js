@@ -1,5 +1,5 @@
 // Código de barras del producto y de la variante, aparte del SKU (CLAUDE.md
-// §4; docs/investigacion-praxia.md §4): se guarda sin espacios, es único por
+// §4; docs/investigaciones/investigacion-praxia.md §4): se guarda sin espacios, es único por
 // empresa entre productos y variantes, queda en la auditoría y llega al
 // catálogo del punto de venta, que lo busca antes que el SKU. Va aparte
 // porque cada archivo levanta su servidor, y el alta de empresas tiene un

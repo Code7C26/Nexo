@@ -8,7 +8,7 @@
 // Nunca pisa un archivo: el destino tiene que no existir. Después de bajarlo
 // controla que SQLite lo lea entero (integrity_check), y recién ahí avisa que
 // sirve. Ponerlo en lugar de la base es un paso a mano, con el servidor
-// parado (docs/publicar.md, "Respaldos").
+// parado (docs/proyecto/publicar.md, "Respaldos").
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 

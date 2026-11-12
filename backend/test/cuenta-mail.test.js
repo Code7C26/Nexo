@@ -1,4 +1,4 @@
-// El mail de la cuenta (hist. §102, docs/investigacion-login-legal.md sección
+// El mail de la cuenta (hist. §102, docs/investigaciones/investigacion-login-legal.md sección
 // 5): se crea con el mail ya confirmado por el código (hist. §108; el código
 // en sí se prueba en codigo-mail.test.js), se entra con él, una cuenta de
 // antes sin confirmar usa el enlace de un solo uso, y una de antes de §102 lo

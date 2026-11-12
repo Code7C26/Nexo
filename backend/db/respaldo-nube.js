@@ -15,7 +15,7 @@
 // acepta B2) se arma con node:crypto, y los pedidos van con fetch.
 //
 // La nube no se rota desde acá: la regla de ciclo de vida del bucket oculta y
-// borra los archivos viejos (docs/publicar.md, "Respaldos"). Así este código
+// borra los archivos viejos (docs/proyecto/publicar.md, "Respaldos"). Así este código
 // nunca borra nada de la nube.
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
 import { gunzipSync, gzipSync } from 'node:zlib';

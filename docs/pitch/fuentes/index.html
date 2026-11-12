@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nexo — Pitch</title>
 <!--
-  Fuente de las diapositivas del pitch (docs/guion-pitch.md). No se abre
+  Fuente de las diapositivas del pitch (docs/pitch/fuentes/guion-pitch.md). No se abre
   directo: `npm run presentacion` arma docs/pitch/Presentación — Nexo.html con las
   fuentes, las capturas, los QR, los íconos y los logos adentro, para que ande
   sin internet.
@@ -21,9 +21,9 @@
   texto. Las cifras de viabilidad son las de los PDFs entregados.
 -->
 <style>
-@font-face { font-family: "Inter"; src: url("../../frontend/fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
-@font-face { font-family: "Satoshi"; src: url("../../frontend/fonts/satoshi-500.woff2") format("woff2"); font-weight: 500; font-display: block; }
-@font-face { font-family: "Satoshi"; src: url("../../frontend/fonts/satoshi-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+@font-face { font-family: "Inter"; src: url("../../../frontend/fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Satoshi"; src: url("../../../frontend/fonts/satoshi-500.woff2") format("woff2"); font-weight: 500; font-display: block; }
+@font-face { font-family: "Satoshi"; src: url("../../../frontend/fonts/satoshi-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
 
 /* ===== Base: cada diapositiva entra en la pantalla ===== */
 /* clip y no hidden: hidden en el body lo vuelve lo que se desplaza, y el
@@ -538,7 +538,7 @@ img { display: block; max-width: 100%; }
 <section class="slide" aria-label="Nexo">
   <div class="slide-content portada">
     <div class="lockup">
-      <img class="simbolo reveal" src="../../assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
+      <img class="simbolo reveal" src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
       <div class="letras">
         <svg class="palabra reveal" style="--d:1" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg>
         <p class="tagline reveal" style="--d:2">Sistema de gestión para emprendimientos y pymes</p>
@@ -639,11 +639,11 @@ img { display: block; max-width: 100%; }
       <p class="reloj reveal" style="--d:2">×5<small>La misma venta, a mano, en cinco lugares. Y cada vez que se copia, se puede equivocar.</small></p>
     </div>
     <ol class="noche veces">
-      <li class="reveal" style="--d:3"><span class="hora"><svg class="ico"><use href="../../frontend/img/iconos.svg#notebook-tabs"/></svg></span>En el cuaderno, en el momento de vender</li>
-      <li class="reveal" style="--d:4"><span class="hora"><svg class="ico"><use href="../../frontend/img/iconos.svg#boxes"/></svg></span>En la planilla de stock, restando a mano</li>
-      <li class="reveal" style="--d:5"><span class="hora"><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg></span>En la libreta del fiado, si no pagó</li>
-      <li class="reveal" style="--d:6"><span class="hora"><svg class="ico"><use href="../../frontend/img/iconos.svg#receipt-text"/></svg></span>En la página de ARCA, para hacer la factura</li>
-      <li class="reveal ultimo" style="--d:7"><span class="hora"><svg class="ico"><use href="../../frontend/img/iconos.svg#wallet"/></svg></span>En la caja, a la noche, contando si da</li>
+      <li class="reveal" style="--d:3"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#notebook-tabs"/></svg></span>En el cuaderno, en el momento de vender</li>
+      <li class="reveal" style="--d:4"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#boxes"/></svg></span>En la planilla de stock, restando a mano</li>
+      <li class="reveal" style="--d:5"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg></span>En la libreta del fiado, si no pagó</li>
+      <li class="reveal" style="--d:6"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg></span>En la página de ARCA, para hacer la factura</li>
+      <li class="reveal ultimo" style="--d:7"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg></span>En la caja, a la noche, contando si da</li>
     </ol>
   </div>
 </section>
@@ -656,10 +656,10 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Y la plata que se pierde sin que nadie se dé cuenta</h2>
     </div>
     <div class="perdidas">
-      <div class="tarjeta perdida reveal" style="--d:2"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg></span><h3>El fiado que nadie anotó</h3><p class="ocultable">"Después te pago." Y nadie se acuerda cuánto ni cuándo.</p></div>
-      <div class="tarjeta perdida reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#package-minus"/></svg></span><h3>El stock que falta o sobra</h3><p class="ocultable">Se termina lo que más se vende, y se queda lo que nadie compra.</p></div>
-      <div class="tarjeta perdida reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#percent"/></svg></span><h3>Los costos que no se ven</h3><p class="ocultable">Comisión, envío, cuotas: se vende más y queda menos.</p></div>
-      <div class="tarjeta perdida reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#trending-down"/></svg></span><h3>Los precios que quedan viejos</h3><p class="ocultable">Con la inflación, vender al precio del mes pasado es perder.</p></div>
+      <div class="tarjeta perdida reveal" style="--d:2"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg></span><h3>El fiado que nadie anotó</h3><p class="ocultable">"Después te pago." Y nadie se acuerda cuánto ni cuándo.</p></div>
+      <div class="tarjeta perdida reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#package-minus"/></svg></span><h3>El stock que falta o sobra</h3><p class="ocultable">Se termina lo que más se vende, y se queda lo que nadie compra.</p></div>
+      <div class="tarjeta perdida reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#percent"/></svg></span><h3>Los costos que no se ven</h3><p class="ocultable">Comisión, envío, cuotas: se vende más y queda menos.</p></div>
+      <div class="tarjeta perdida reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#trending-down"/></svg></span><h3>Los precios que quedan viejos</h3><p class="ocultable">Con la inflación, vender al precio del mes pasado es perder.</p></div>
     </div>
   </div>
 </section>
@@ -695,17 +695,17 @@ img { display: block; max-width: 100%; }
       </svg>
       <div class="tarjeta escalon reveal" style="--d:2">
         <span class="paso">Para empezar</span><h3>Vender y saber cuánto se gana</h3>
-        <ul><li><svg class="ico"><use href="../../frontend/img/iconos.svg#store"/></svg>Mostrador y celular</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#boxes"/></svg>Stock y caja</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#users"/></svg>Quién debe y cuánto</li></ul>
+        <ul><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg>Mostrador y celular</li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#boxes"/></svg>Stock y caja</li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#users"/></svg>Quién debe y cuánto</li></ul>
         <span class="plan">Gratis</span>
       </div>
       <div class="tarjeta escalon reveal" style="--d:3">
         <span class="paso">Para crecer</span><h3>Equipo, factura y venta online</h3>
-        <ul><li><svg class="ico"><use href="../../frontend/img/iconos.svg#user-plus"/></svg>Hasta 3 personas</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#receipt-text"/></svg>Factura electrónica</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#globe"/></svg>Tienda Nube y Mercado Libre</li></ul>
+        <ul><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#user-plus"/></svg>Hasta 3 personas</li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg>Factura electrónica</li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg>Tienda Nube y Mercado Libre</li></ul>
         <span class="plan">Emprendedor</span>
       </div>
       <div class="tarjeta escalon reveal" style="--d:4">
         <span class="paso">Para escalar</span><h3>Varios locales y una IA que ayuda</h3>
-        <ul><li><svg class="ico"><use href="../../frontend/img/iconos.svg#sparkles"/></svg>Asistente por texto y voz</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#building-2"/></svg>Varios negocios</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#camera"/></svg>Compras desde la foto</li></ul>
+        <ul><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg>Asistente por texto y voz</li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#building-2"/></svg>Varios negocios</li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#camera"/></svg>Compras desde la foto</li></ul>
         <span class="plan">Pro</span>
       </div>
     </div>
@@ -721,16 +721,16 @@ img { display: block; max-width: 100%; }
       <p class="bajada reveal" style="--d:2">Cada negocio elige su rubro, y Nexo arranca con lo que le sirve.</p>
     </div>
     <div class="rubros">
-      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#sprout"/></svg></span><b>Emprendimiento</b><span>Lo que fabrica y cuánto le cuesta</span></div>
-      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#globe"/></svg></span><b>Tienda online</b><span>Un stock para todos los canales</span></div>
-      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#store"/></svg></span><b>Comercio</b><span>Ropa, ferretería, librería</span></div>
-      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#beef"/></svg></span><b>Carnicería</b><span>Por kilo, con la balanza</span></div>
-      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#carrot"/></svg></span><b>Verdulería</b><span>Por kilo, rápido</span></div>
-      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#cup-soda"/></svg></span><b>Kiosco y almacén</b><span>Con el lector de códigos</span></div>
-      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#briefcase"/></svg></span><b>Servicios</b><span>Presupuestos, trabajos y abonos</span></div>
-      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#dumbbell"/></svg></span><b>Gimnasio</b><span>Socios, cuotas e ingreso</span></div>
-      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#scissors"/></svg></span><b>Barbería</b><span>Muy pronto</span></div>
-      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#utensils"/></svg></span><b>Restaurante</b><span>Muy pronto</span></div>
+      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg></span><b>Emprendimiento</b><span>Lo que fabrica y cuánto le cuesta</span></div>
+      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg></span><b>Tienda online</b><span>Un stock para todos los canales</span></div>
+      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg></span><b>Comercio</b><span>Ropa, ferretería, librería</span></div>
+      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#beef"/></svg></span><b>Carnicería</b><span>Por kilo, con la balanza</span></div>
+      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#carrot"/></svg></span><b>Verdulería</b><span>Por kilo, rápido</span></div>
+      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#cup-soda"/></svg></span><b>Kiosco y almacén</b><span>Con el lector de códigos</span></div>
+      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#briefcase"/></svg></span><b>Servicios</b><span>Presupuestos, trabajos y abonos</span></div>
+      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#dumbbell"/></svg></span><b>Gimnasio</b><span>Socios, cuotas e ingreso</span></div>
+      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#scissors"/></svg></span><b>Barbería</b><span>Muy pronto</span></div>
+      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#utensils"/></svg></span><b>Restaurante</b><span>Muy pronto</span></div>
     </div>
   </div>
 </section>
@@ -751,7 +751,7 @@ img { display: block; max-width: 100%; }
       </ol>
     </div>
     <div class="qr-caja reveal" style="--d:4">
-      <div class="qr"><img src="../qr/probar-nexo.svg" alt="QR a nexosystem.duckdns.org/app#/probar"></div>
+      <div class="qr"><img src="qr/probar-nexo.svg" alt="QR a nexosystem.duckdns.org/app#/probar"></div>
       <p>Entren como dueños de un negocio de ejemplo</p>
       <p class="direccion">nexosystem.duckdns.org/app#/probar</p>
     </div>
@@ -766,14 +766,14 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Todo el negocio, en un solo lugar</h2>
       <p class="bajada reveal" style="--d:2">Ventas, stock, caja, clientes y facturas, conectados.</p>
       <ul class="funciones reveal" style="--d:3">
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#chart-column"/></svg>Ventas, ganancia, gastos y resultado del mes</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#history"/></svg>Contra el mes anterior y el mismo mes del año pasado</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#calendar-clock"/></svg>Qué días y a qué hora se vende más</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#wallet"/></svg>Dónde entró la plata: efectivo, banco, Mercado Pago</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#users"/></svg>Quién vendió y cuánto</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#trending-up"/></svg>Lo más vendido</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#triangle-alert"/></svg>Lo que hay que mirar hoy: stock bajo, cobros vencidos</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#layout-dashboard"/></svg>Cada persona elige qué ver y en qué orden</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg>Ventas, ganancia, gastos y resultado del mes</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#history"/></svg>Contra el mes anterior y el mismo mes del año pasado</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#calendar-clock"/></svg>Qué días y a qué hora se vende más</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg>Dónde entró la plata: efectivo, banco, Mercado Pago</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#users"/></svg>Quién vendió y cuánto</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#trending-up"/></svg>Lo más vendido</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#triangle-alert"/></svg>Lo que hay que mirar hoy: stock bajo, cobros vencidos</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layout-dashboard"/></svg>Cada persona elige qué ver y en qué orden</li>
       </ul>
     </div>
     <figure class="compu alto reveal" style="--d:2"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/resumen.webp" alt="El Resumen de Lola Indumentaria: ventas, ganancia, gastos y resultado del mes."></figure>
@@ -788,19 +788,19 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">En el mostrador o desde el celular</h2>
       <p class="bajada reveal" style="--d:2">Se busca el producto o se pasa el lector, y se cobra. El stock baja solo.</p>
       <ul class="funciones dos reveal" style="--d:3">
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#scan-barcode"/></svg>Lector o la cámara del celular</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#beef"/></svg>Etiquetas de la balanza</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#tag"/></svg>Ofertas y promos, solas</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#banknote"/></svg>Cobro mixto, con vuelto</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#phone"/></svg>QR de Mercado Pago</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg>Fiado a la cuenta del cliente</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#wallet"/></svg>Apertura y cierre de caja</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#user-cog"/></svg>El empleado no ve costos</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#scan-barcode"/></svg>Lector o la cámara del celular</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#beef"/></svg>Etiquetas de la balanza</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#tag"/></svg>Ofertas y promos, solas</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#banknote"/></svg>Cobro mixto, con vuelto</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg>QR de Mercado Pago</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg>Fiado a la cuenta del cliente</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg>Apertura y cierre de caja</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#user-cog"/></svg>El empleado no ve costos</li>
       </ul>
     </div>
     <div class="con-celular reveal" style="--d:2">
       <figure class="compu"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/pos.webp" alt="El punto de venta: una remera con la oferta de 15 % y medias con precio por cantidad."></figure>
-      <div class="celu ocultar-chico"><img src="../../frontend/img/landing/celular-pos.webp" alt=""></div>
+      <div class="celu ocultar-chico"><img src="../../../frontend/img/landing/celular-pos.webp" alt=""></div>
     </div>
   </div>
 </section>
@@ -834,7 +834,7 @@ img { display: block; max-width: 100%; }
       <p class="parte reveal">El asistente</p>
       <h2 class="reveal" style="--d:1">Cargar una venta escribiendo o hablando</h2>
       <p class="bajada reveal" style="--d:2">Se escribe o se dice en voz alta, y Nexo arma la venta, la compra o el gasto. No guarda nada hasta que una persona confirma.</p>
-      <div class="chips reveal" style="--d:3"><span class="chip"><svg class="ico"><use href="../../frontend/img/iconos.svg#sparkles"/></svg>Texto o voz</span><span class="chip"><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg>Siempre se confirma</span></div>
+      <div class="chips reveal" style="--d:3"><span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg>Texto o voz</span><span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg>Siempre se confirma</span></div>
     </div>
     <figure class="compu reveal" style="--d:2"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/asistente.webp" alt="El asistente entendió una venta de dos gorras a Camila Herrera, cobrada por transferencia, y espera la confirmación."></figure>
   </div>
@@ -849,7 +849,7 @@ img { display: block; max-width: 100%; }
       <p class="bajada reveal" style="--d:2">Se le manda a Nexo un mensaje o una nota de voz, contesta cómo lo entendió y se confirma con un botón.</p>
     </div>
     <div class="telefono reveal" style="--d:2" aria-label="Ejemplo de una venta cargada por WhatsApp">
-      <div class="cabecera"><span class="avatar"><img src="../../assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""></span><div>Nexo<small>en línea</small></div></div>
+      <div class="cabecera"><span class="avatar"><img src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""></span><div>Nexo<small>en línea</small></div></div>
       <div class="chat">
         <div class="burbuja yo"><div class="audio"><span>▶</span><span class="onda"></span><span>0:06</span></div><small>18:32 ✓✓</small></div>
         <div class="burbuja ellos propuesta-wa">
@@ -900,7 +900,7 @@ img { display: block; max-width: 100%; }
         <tr><td>1 × Gorra trucker</td><td>$ 12.900</td></tr>
       </table>
       <p class="total"><span>Total</span><span>$ 38.230</span></p>
-      <div class="cae"><img class="qr-mini" src="../qr/probar-nexo.svg" alt=""><div><b>Autorizada por ARCA</b><br>CAE 75461234567890 · vence 21/11/2026</div></div>
+      <div class="cae"><img class="qr-mini" src="qr/probar-nexo.svg" alt=""><div><b>Autorizada por ARCA</b><br>CAE 75461234567890 · vence 21/11/2026</div></div>
     </div>
   </div>
 </section>
@@ -913,10 +913,10 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Vender en todos lados, con un solo stock</h2>
       <p class="bajada reveal" style="--d:2">Los pedidos de la tienda online entran solos, el stock se actualiza en todos lados y se ve cuánto deja cada canal.</p>
       <div class="logos reveal" style="--d:3">
-        <span class="logo-caja"><svg viewBox="0 0 160 40" role="img" aria-label="Tienda Nube"><use href="../../frontend/img/tiendanube.svg#logo"/></svg></span>
-        <span class="logo-caja"><svg viewBox="0 0 330 104" role="img" aria-label="Mercado Libre"><use href="../../frontend/img/mercadolibre.svg#logo"/></svg></span>
-        <span class="logo-caja"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../frontend/img/whatsapp.svg#emblema"/></svg>WhatsApp</span>
-        <span class="logo-caja instagram"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../frontend/img/instagram.svg#emblema"/></svg>Instagram</span>
+        <span class="logo-caja"><svg viewBox="0 0 160 40" role="img" aria-label="Tienda Nube"><use href="../../../frontend/img/tiendanube.svg#logo"/></svg></span>
+        <span class="logo-caja"><svg viewBox="0 0 330 104" role="img" aria-label="Mercado Libre"><use href="../../../frontend/img/mercadolibre.svg#logo"/></svg></span>
+        <span class="logo-caja"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../../frontend/img/whatsapp.svg#emblema"/></svg>WhatsApp</span>
+        <span class="logo-caja instagram"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../../frontend/img/instagram.svg#emblema"/></svg>Instagram</span>
       </div>
     </div>
     <figure class="compu reveal" style="--d:2"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/venta-online.webp" alt="Venta online: ventas por canal, Instagram, WhatsApp y Tienda Nube, y cuánto quedó."></figure>
@@ -931,16 +931,16 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Cobrar con Mercado Pago, sin cargar nada a mano</h2>
       <p class="bajada reveal" style="--d:2">Cada negocio conecta su cuenta y cobra lo que vende en el mostrador, por WhatsApp o en Instagram.</p>
       <ul class="funciones reveal" style="--d:3">
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#scan-barcode"/></svg>QR en el mostrador: el cliente paga y la venta se cierra sola</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#send"/></svg>Link de pago para mandar por WhatsApp</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg>El pago entra solo como cobro de la venta</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#percent"/></svg>La comisión y las cuotas, como gastos de esa venta</li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-alert"/></svg>Lo que no coincide queda para revisar</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#scan-barcode"/></svg>QR en el mostrador: el cliente paga y la venta se cierra sola</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#send"/></svg>Link de pago para mandar por WhatsApp</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg>El pago entra solo como cobro de la venta</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#percent"/></svg>La comisión y las cuotas, como gastos de esa venta</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-alert"/></svg>Lo que no coincide queda para revisar</li>
       </ul>
     </div>
     <figure class="mock reveal" style="--d:2" aria-label="Ejemplo: un cobro de 12.900 pesos con el QR de Mercado Pago">
       <p class="mock-titulo"><span>Cobrar con Mercado Pago</span><strong>$ 12.900</strong></p>
-      <div class="qr-mp"><svg viewBox="0 0 150 39"><use href="../../frontend/img/mercadopago.svg#logo"/></svg><img src="../qr/probar-nexo.svg" alt=""></div>
+      <div class="qr-mp"><svg viewBox="0 0 150 39"><use href="../../../frontend/img/mercadopago.svg#logo"/></svg><img src="qr/probar-nexo.svg" alt=""></div>
       <p class="estado-pago"><span class="esperando">Esperando el pago…</span><span class="pagado">✓ Pagado: la venta #1291 se cerró sola</span></p>
       <dl class="filas">
         <div><dt>Cobrado</dt><dd>$ 12.900</dd></div>
@@ -975,16 +975,16 @@ img { display: block; max-width: 100%; }
     <div class="ademas">
       <figure class="compu reveal" style="--d:2"><img src="capturas/recetas.webp" alt="Las recetas de las mafaldas y el costo de cada una."><figcaption><b>Producción</b>El costo de cada producto sale de su receta, y el packaging se suma al costo de la venta.</figcaption></figure>
       <ul class="chicas reveal" style="--d:3">
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#file-text"/></svg><b>Presupuestos</b><span>se convierten en venta</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg><b>Cuentas corrientes</b><span>saldos y vencimientos</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#tag"/></svg><b>Listas de precios y ofertas</b><span>minorista, mayorista y promociones</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#warehouse"/></svg><b>Varios depósitos</b><span>stock por depósito y transferencias</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#undo-2"/></svg><b>Devoluciones</b><span>con nota de crédito y reingreso de stock</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#funnel"/></svg><b>CRM</b><span>consultas y seguimiento de clientes</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#clipboard-list"/></svg><b>Trabajos y abonos</b><span>órdenes de trabajo y cobros periódicos</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#bell"/></svg><b>Avisos en el celular</b><span>ventas online, pagos y stock bajo</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#building-2"/></svg><b>Varios negocios</b><span>en una misma cuenta</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#history"/></svg><b>Auditoría</b><span>cada cambio, con usuario y fecha</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#file-text"/></svg><b>Presupuestos</b><span>se convierten en venta</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg><b>Cuentas corrientes</b><span>saldos y vencimientos</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#tag"/></svg><b>Listas de precios y ofertas</b><span>minorista, mayorista y promociones</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#warehouse"/></svg><b>Varios depósitos</b><span>stock por depósito y transferencias</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#undo-2"/></svg><b>Devoluciones</b><span>con nota de crédito y reingreso de stock</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#funnel"/></svg><b>CRM</b><span>consultas y seguimiento de clientes</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#clipboard-list"/></svg><b>Trabajos y abonos</b><span>órdenes de trabajo y cobros periódicos</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#bell"/></svg><b>Avisos en el celular</b><span>ventas online, pagos y stock bajo</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#building-2"/></svg><b>Varios negocios</b><span>en una misma cuenta</span></li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#history"/></svg><b>Auditoría</b><span>cada cambio, con usuario y fecha</span></li>
       </ul>
     </div>
   </div>
@@ -998,12 +998,12 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Por qué confiar en Nexo</h2>
     </div>
     <div class="confianza">
-      <div class="tarjeta reveal" style="--d:2"><svg class="ico"><use href="../../frontend/img/iconos.svg#lock"/></svg><h3>Datos seguros</h3><p class="ocultable">Cada negocio separado de los demás, y una copia cifrada todos los días.</p></div>
-      <div class="tarjeta reveal" style="--d:3"><svg class="ico"><use href="../../frontend/img/iconos.svg#phone"/></svg><h3>Sin instalación</h3><p class="ocultable">Se entra desde el navegador, y en el celular se instala como una app.</p></div>
-      <div class="tarjeta reveal" style="--d:4"><svg class="ico"><use href="../../frontend/img/iconos.svg#sparkles"/></svg><h3>IA con confirmación</h3><p class="ocultable">Propone, y una persona confirma. Y no guarda lo que se le cuenta.</p></div>
-      <div class="tarjeta reveal" style="--d:5"><svg class="ico"><use href="../../frontend/img/iconos.svg#user-cog"/></svg><h3>Permisos de equipo</h3><p class="ocultable">El empleado vende, pero no ve los costos. Y queda anotado quién hizo qué.</p></div>
-      <div class="tarjeta reveal" style="--d:6"><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg><h3>Pruebas automáticas</h3><p class="ocultable">357 pruebas automáticas corren antes de publicar cualquier cosa.</p></div>
-      <div class="tarjeta reveal" style="--d:7"><svg class="ico"><use href="../../frontend/img/iconos.svg#wallet"/></svg><h3>Costo bajo</h3><p class="ocultable">Sin licencias ni servidores caros: por eso puede arrancar gratis.</p></div>
+      <div class="tarjeta reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><h3>Datos seguros</h3><p class="ocultable">Cada negocio separado de los demás, y una copia cifrada todos los días.</p></div>
+      <div class="tarjeta reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg><h3>Sin instalación</h3><p class="ocultable">Se entra desde el navegador, y en el celular se instala como una app.</p></div>
+      <div class="tarjeta reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><h3>IA con confirmación</h3><p class="ocultable">Propone, y una persona confirma. Y no guarda lo que se le cuenta.</p></div>
+      <div class="tarjeta reveal" style="--d:5"><svg class="ico"><use href="../../../frontend/img/iconos.svg#user-cog"/></svg><h3>Permisos de equipo</h3><p class="ocultable">El empleado vende, pero no ve los costos. Y queda anotado quién hizo qué.</p></div>
+      <div class="tarjeta reveal" style="--d:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg><h3>Pruebas automáticas</h3><p class="ocultable">357 pruebas automáticas corren antes de publicar cualquier cosa.</p></div>
+      <div class="tarjeta reveal" style="--d:7"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg><h3>Costo bajo</h3><p class="ocultable">Sin licencias ni servidores caros: por eso puede arrancar gratis.</p></div>
     </div>
   </div>
 </section>
@@ -1016,11 +1016,11 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Simple por dentro: barato y confiable</h2>
     </div>
     <div class="arq">
-      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../frontend/img/iconos.svg#phone"/></svg><b>El celular o la compu</b><span>La página de Nexo, que se instala como app</span></div>
+      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg><b>El celular o la compu</b><span>La página de Nexo, que se instala como app</span></div>
       <div class="flecha reveal" style="--d:3" aria-hidden="true">→</div>
-      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../frontend/img/iconos.svg#layers"/></svg><b>Nexo, en la nube</b><span>Hace cada operación completa o no la hace</span></div>
+      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#layers"/></svg><b>Nexo, en la nube</b><span>Hace cada operación completa o no la hace</span></div>
       <div class="flecha reveal" style="--d:4" aria-hidden="true">→</div>
-      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../frontend/img/iconos.svg#warehouse"/></svg><b>Los datos</b><span>Separados por negocio y respaldados</span></div>
+      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#warehouse"/></svg><b>Los datos</b><span>Separados por negocio y respaldados</span></div>
     </div>
     <p class="debajo reveal" style="--d:5">Se conecta con ARCA, Mercado Pago, Mercado Libre, Tienda Nube, WhatsApp y la IA. Hecho en JavaScript (Node.js) y SQL, con solo dos librerías externas: más de 400 versiones desde mayo.</p>
   </div>
@@ -1034,11 +1034,11 @@ img { display: block; max-width: 100%; }
       <h2 class="reveal" style="--d:1">Nexo factura ante ARCA en nombre del negocio</h2>
     </div>
     <div class="arq">
-      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../frontend/img/iconos.svg#store"/></svg><b>El negocio</b><span>Le da permiso a Nexo una sola vez, desde la página de ARCA. Nunca da su clave fiscal.</span></div>
+      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg><b>El negocio</b><span>Le da permiso a Nexo una sola vez, desde la página de ARCA. Nunca da su clave fiscal.</span></div>
       <div class="flecha reveal" style="--d:3" aria-hidden="true">→</div>
-      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../frontend/img/iconos.svg#lock"/></svg><b>Nexo</b><span>Hace de intermediario: se identifica ante ARCA con su certificado digital, que funciona como una firma, y manda cada factura.</span></div>
+      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><b>Nexo</b><span>Hace de intermediario: se identifica ante ARCA con su certificado digital, que funciona como una firma, y manda cada factura.</span></div>
       <div class="flecha reveal" style="--d:4" aria-hidden="true">→</div>
-      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../frontend/img/iconos.svg#receipt-text"/></svg><b>ARCA</b><span>Revisa la factura y devuelve el CAE: el número que la autoriza.</span></div>
+      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg><b>ARCA</b><span>Revisa la factura y devuelve el CAE: el número que la autoriza.</span></div>
     </div>
     <div class="dos-col cae-comp">
       <div class="tarjeta reveal" style="--d:5"><span class="estado bien">Hecho · Homologación</span><h3>La factura de prueba</h3><p>El ambiente de práctica de ARCA: funciona igual que el real y da un CAE, pero de prueba. Así probamos la factura A, la B y la nota de crédito.</p><p class="sello prueba">Comprobante de prueba – sin validez fiscal</p></div>
@@ -1136,11 +1136,11 @@ img { display: block; max-width: 100%; }
       <div class="reveal" style="--d:4">
         <p class="subtitulo-ia">Las skills que usamos</p>
         <ul class="chicas una">
-          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#palette"/></svg><b>frontend-design</b><span>el diseño de las pantallas</span></li>
-          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#layout-dashboard"/></svg><b>ui-ux-pro-max</b><span>la experiencia de uso y la accesibilidad</span></li>
-          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#chart-column"/></svg><b>dataviz</b><span>los gráficos del Resumen</span></li>
-          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#camera"/></svg><b>ui-demo</b><span>grabar la app para los videos</span></li>
-          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#layers"/></svg><b>codebase-memory</b><span>un mapa del código, para no perderse</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#palette"/></svg><b>frontend-design</b><span>el diseño de las pantallas</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layout-dashboard"/></svg><b>ui-ux-pro-max</b><span>la experiencia de uso y la accesibilidad</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg><b>dataviz</b><span>los gráficos del Resumen</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#camera"/></svg><b>ui-demo</b><span>grabar la app para los videos</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layers"/></svg><b>codebase-memory</b><span>un mapa del código, para no perderse</span></li>
         </ul>
       </div>
     </div>
@@ -1152,13 +1152,13 @@ img { display: block; max-width: 100%; }
   <div class="slide-content cierre">
     <div>
       <div class="lockup reveal">
-        <img class="simbolo" src="../../assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
+        <img class="simbolo" src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
         <svg class="palabra" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg>
       </div>
       <p class="frase reveal" style="--d:2">La próxima vez que vendan algo, van a saber cuánto ganaron.</p>
     </div>
-    <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="../qr/probar-nexo.svg" alt="QR para probar Nexo"></div><p>Para probarlo ahora, sin registrarse</p></div>
-    <div class="qr-caja reveal" style="--d:4"><div class="qr"><img src="../qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><p>Código, README y manual</p></div>
+    <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="qr/probar-nexo.svg" alt="QR para probar Nexo"></div><p>Para probarlo ahora, sin registrarse</p></div>
+    <div class="qr-caja reveal" style="--d:4"><div class="qr"><img src="qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><p>Código, README y manual</p></div>
   </div>
 </section>
 

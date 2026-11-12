@@ -12953,3 +12953,33 @@ cinco ejemplos, 20 personas pidiendo Lola a la vez y 20 usando Nexo 15 s):
 comando; se arma en segundo plano y vale solo el día que se armó):
 `ssh -i <clave> ubuntu@<ip> 'sudo sed -i /^NEXO_EJEMPLOS_RESERVA=/d /etc/nexo/nexo.env; echo NEXO_EJEMPLOS_RESERVA=8 | sudo tee -a /etc/nexo/nexo.env >/dev/null; sudo systemctl restart nexo'`
 y volverla a 4 (o borrar la línea) después.
+
+## §162. El repo, ordenado (12 de noviembre de 2026)
+
+Pedido del usuario: sin archivos sueltos en `docs/`, `diseno/` afuera,
+`assets/` adentro de `docs/` como logos, consignas y documentación comercial
+adentro de `docs/`, los trabajos del Classroom juntos y del pitch "solo lo
+necesario".
+
+- **`docs/`:** `proyecto/` (handoff-historico, publicar, plan-para-vender y el
+  manual HTML viejo), `investigaciones/` (las cinco investigacion-*.md y
+  competencia.txt), `pitch/` (presentación armada, guía, factura de ejemplo,
+  QR en PNG, LEEME) con `pitch/fuentes/` (index.html, capturas/,
+  factura-textil-norte.html, qr/ en SVG, guion-pitch.md, guiones-videos.md),
+  `logos/` (el kit de `assets/logo` y `logo-original.png`, el de `diseno/`) y
+  `classroom/` (los siete trabajos y el Business Model Canvas; `consignas/`
+  ignorada en `.gitignore`).
+- **La app:** los tres íconos que usaba de `/assets/logo/01-icono/` pasan a
+  `frontend/img/logo/` (`/img/logo/...`); sale el mount de `/assets` en
+  server.js; `frontend-modulos.test.js` y `landing.test.js` dejan el caso
+  especial; el service worker pasa a v3 para que los instalados descarten la
+  caché vieja.
+- **Rutas:** un script cambió las rutas en 37 archivos (código, comentarios,
+  tests, deploy, CLAUDE.md, README, handoff); a mano, el armado de la guía
+  (`join('docs', 'pitch', 'fuentes', 'qr')`), la regex de
+  `scripts/presentacion.mjs` (también incrusta `qr/`) y los árboles de
+  carpetas de CLAUDE.md y del README. Esta bitácora no se reescribió: sus
+  rutas viejas son historia.
+- Todo con `git mv` (se conserva la historia). 358 tests y lint en verde; la
+  presentación y la guía se rearmaron desde las rutas nuevas, sin rutas sin
+  incrustar.

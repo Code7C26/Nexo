@@ -17,7 +17,7 @@
 //   (`soloPlataforma` como argumento, hist. §111). No depende del rol en
 //   ningún negocio: lee datos de todos.
 //
-// Decisiones de negocio detrás de esta tabla (ver docs/handoff-historico.md,
+// Decisiones de negocio detrás de esta tabla (ver docs/proyecto/handoff-historico.md,
 // §27 y §28): anular/restaurar, tesorería, alta/edición de
 // productos y categorías, ajuste de stock, todo el circuito de compras
 // (pagos incluidos) y sus devoluciones a proveedor, y las 5 vistas de

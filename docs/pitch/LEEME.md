@@ -12,7 +12,7 @@
 
 Nada de esta carpeta se edita a mano: se rearma desde las fuentes.
 
-- La presentación sale de `docs/presentacion/index.html`: `npm run presentacion` (en la raíz).
-- La guía, la factura y los QR salen de `redes/pitch/guia.html`, `docs/presentacion/factura-textil-norte.html` y `docs/qr/`: `npm run guia` (en `redes/`, después de `npm install`).
+- La presentación sale de `docs/pitch/fuentes/index.html`: `npm run presentacion` (en la raíz).
+- La guía, la factura y los QR salen de `redes/pitch/guia.html`, `docs/pitch/fuentes/factura-textil-norte.html` y `docs/pitch/fuentes/qr/`: `npm run guia` (en `redes/`, después de `npm install`).
 
 Si cambia una diapositiva, se corren los dos y se suben los archivos nuevos.
