@@ -59,6 +59,11 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
 
+**Para cuando se venda en serio: `docs/plan-para-vender.md`.** Qué hay y qué
+falta en servidor, base, dominio y mail, servicios externos, cobro de los
+planes, lo legal y el soporte, con quién hace cada cosa y en qué orden (el
+primer paso, sin gastar: Pay As You Go en Oracle y la Ampere A1).
+
 **12 de noviembre, hist. §161: el servidor, preparado para mucha gente.**
 Medido con 20 personas a la vez contra una base temporal
 (`medir-carga`/`medir-rutas`, en el historial):
