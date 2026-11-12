@@ -66,14 +66,13 @@ estudio de Remotion. Está clonado en `C:\Users\HP ULTRA 5\motion-architect`, co
 `ffmpeg` y `yt-dlp` (winget) y `python3` andando, y los dos videos de Studree
 como referencia en `studio/public/references/`. Estilo, referencias y cómo van
 en la presentación (arrancan solos y al terminar caen en la diapositiva):
-`docs/pitch/fuentes/guiones-videos.md`, al principio. **Falta que el usuario
-corra, una vez, en PowerShell:**
-```
-cd "$HOME\motion-architect\studio"; npm install; npx tsc --noEmit
-claude plugin marketplace add "$HOME\motion-architect"; claude plugin install motion-architect@motion-architect
-```
-y reiniciar Claude Code. (El permiso automático no deja que Claude ejecute
-código de terceros.) Los mp4 terminados van a `docs/pitch/media/`.
+`docs/pitch/fuentes/guiones-videos.md`, al principio. **Instalado del todo** (12 de
+noviembre): el estudio (Remotion 4.0.533, TypeScript compila) y el plugin en
+Claude Code (`motion-architect@motion-architect`, para el usuario). En
+PowerShell, `npm`, `npx` y `claude` van como `npm.cmd`, `npx.cmd` y
+`claude.cmd`: la política de ejecución bloquea los `.ps1`. La sesión de
+videos se abre en `C:\Users\HP ULTRA 5\motion-architect`. Los mp4 terminados
+van a `docs/pitch/media/`.
 
 **12 de noviembre, hist. §162: el repo, ordenado.** `docs/` va siempre en
 carpetas: `proyecto/` (este histórico, publicar, plan para vender),

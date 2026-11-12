@@ -20,8 +20,10 @@ se aprueba** → animación → revisión cuadro por cuadro → preview → mp4 
 - **Ya hecho:** el clon; `ffmpeg` y `yt-dlp` instalados con winget (en el PATH
   de usuario); `python3` funciona (copia de `python.exe` en la carpeta de Python
   3.13, porque el `python3` de Windows abría la Microsoft Store).
-- **Falta (lo corre el usuario, una vez):** el `npm install` del estudio y
-  registrar el plugin en Claude Code. Comandos en `handoff.md`.
+- **Instalado del todo** (12 de noviembre): el estudio (Remotion 4.0.533) y el
+  plugin en Claude Code. En PowerShell, `npm`, `npx` y `claude` van como
+  `npm.cmd`, `npx.cmd` y `claude.cmd` (la política de ejecución bloquea los
+  `.ps1`). La sesión de videos se abre en esa carpeta.
 - **Remotion** es gratis para equipos de hasta 3 personas.
 
 **Las referencias de estilo** ya están en
