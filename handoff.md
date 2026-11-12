@@ -59,6 +59,17 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
 
+**Decisiones del 12 de noviembre para la presentación oficial:**
+- **La diapositiva de roles del equipo va sí o sí** (la pide la consigna);
+  falta definir qué hizo cada uno.
+- **El inglés va sí o sí:** un video resumen con Nexo en inglés
+  (Configuración → Apariencia → Idioma) y la voz de Santino en inglés, con su
+  diapositiva. Base del texto: `docs/guion-pitch.md`, "Componente en inglés".
+- **Facturas reales con el CUIT del padre: no para el pitch.** Técnicamente
+  se puede (`NEXO_ARCA_AMBIENTE=produccion` y su certificado de producción),
+  pero cada factura sería real ante ARCA para él; queda para hacerlo con un
+  contador, como dice §33.
+
 **12 de noviembre, hist. §160: la IA apagada en los negocios de ejemplo, y
 el QR del público en la 10.**
 - **En los ejemplos (`/probar`) no hay IA:** el servidor rechaza el asistente,
