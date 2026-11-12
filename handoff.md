@@ -46,6 +46,10 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
 - `docs/presentacion-pitch.html` (la armada) ahora está en el repo, para
   abrirla con doble clic: **si cambia `docs/presentacion/`, rearmarla con
   `npm run presentacion` y commitearla** (PR #73 y #74, en `main`).
+- **Factura de compra de ejemplo para la demo** (`docs/demo/factura-textil-norte`,
+  `.pdf` y `.jpg`, fuente `.html`): factura A de Textil Norte a Lola, con los
+  SKU de Lola como códigos (cada renglón se encuentra solo) y un jogger en
+  pack x 6 (pasa a 12 unidades). Total $ 750.684. Una sola lectura: cupo.
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
 reordenada y la guía para presentar.**

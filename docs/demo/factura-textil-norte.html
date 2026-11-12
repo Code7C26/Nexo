@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Factura A — Textil Norte</title>
+<!--
+  Factura de compra de ejemplo para la demo de "Cargar desde la factura"
+  (Nueva compra, hist. §151) en Lola Indumentaria. Los códigos son los SKU de
+  Lola (backend/negocios-de-ejemplo.js), así cada renglón se encuentra solo, y
+  el jogger va en pack x 6 para mostrar el paso a unidades. Datos inventados.
+  El PDF y la imagen de al lado salen de acá, impresos con Playwright.
+-->
+<style>
+@page { size: A4; margin: 10mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #111; background: #fff; }
+.hoja { width: 190mm; margin: 0 auto; border: 1px solid #111; }
+.original { text-align: center; font-weight: bold; letter-spacing: 0.3em; padding: 2mm; border-bottom: 1px solid #111; font-size: 11pt; }
+.cabeza { display: grid; grid-template-columns: 1fr 22mm 1fr; border-bottom: 1px solid #111; }
+.cabeza > div { padding: 4mm 5mm; }
+.emisor h1 { margin: 0 0 3mm; font-size: 16pt; }
+.emisor p, .datos p { margin: 0.8mm 0; }
+.letra { border-left: 1px solid #111; border-right: 1px solid #111; display: flex; flex-direction: column; align-items: center; padding: 0 !important; }
+.letra b { display: block; width: 100%; text-align: center; font-size: 30pt; border-bottom: 1px solid #111; padding: 1mm 0; }
+.letra span { font-size: 7.5pt; padding-top: 1mm; }
+.datos h2 { margin: 0 0 2mm; font-size: 16pt; }
+.receptor { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 6mm; padding: 3mm 5mm; border-bottom: 1px solid #111; }
+.receptor p { margin: 0; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #d9d9d9; font-size: 8pt; text-align: left; padding: 1.6mm 1.5mm; border-bottom: 1px solid #111; }
+td { padding: 1.8mm 1.5mm; border-bottom: 1px solid #ccc; vertical-align: top; }
+td.n, th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td:first-child { white-space: nowrap; }
+.renglones { min-height: 95mm; border-bottom: 1px solid #111; }
+.totales { display: grid; grid-template-columns: 1fr 70mm; border-bottom: 1px solid #111; }
+.totales .obs { padding: 3mm 5mm; font-size: 8.5pt; }
+.totales dl { margin: 0; padding: 3mm 5mm; }
+.totales dl div { display: flex; justify-content: space-between; padding: 0.8mm 0; }
+.totales dt { font-weight: bold; }
+.totales dd { margin: 0; font-variant-numeric: tabular-nums; }
+.totales .total { font-size: 12pt; border-top: 1px solid #111; margin-top: 1mm; padding-top: 1.5mm; }
+.pie { display: grid; grid-template-columns: 28mm 1fr auto; gap: 5mm; align-items: center; padding: 4mm 5mm; }
+.qr { width: 26mm; height: 26mm; display: grid; grid-template-columns: repeat(13, 1fr); }
+.qr i { background: #111; }
+.qr i.b { background: #fff; }
+.pie p { margin: 0.8mm 0; }
+.ejemplo { text-align: center; font-size: 7pt; color: #888; padding: 1.5mm; }
+</style>
+</head>
+<body>
+<div class="hoja">
+  <div class="original">ORIGINAL</div>
+  <div class="cabeza">
+    <div class="emisor">
+      <h1>TEXTIL NORTE S.R.L.</h1>
+      <p><b>Razón social:</b> Textil Norte S.R.L.</p>
+      <p><b>Domicilio comercial:</b> Av. Juan B. Justo 4520 - Córdoba</p>
+      <p><b>Teléfono:</b> 351 422-1180</p>
+      <p><b>Condición frente al IVA:</b> IVA Responsable Inscripto</p>
+    </div>
+    <div class="letra"><b>A</b><span>COD. 01</span></div>
+    <div class="datos">
+      <h2>FACTURA</h2>
+      <p><b>Punto de venta:</b> 00004 &nbsp; <b>Comp. nro:</b> 00012873</p>
+      <p><b>Fecha de emisión:</b> 12/11/2026</p>
+      <p><b>CUIT:</b> 30-71589234-6</p>
+      <p><b>Ingresos brutos:</b> 280-415592-1</p>
+      <p><b>Inicio de actividades:</b> 03/2014</p>
+    </div>
+  </div>
+  <div class="receptor">
+    <p><b>CUIT:</b> 27-38123456-4</p>
+    <p><b>Apellido y nombre / Razón social:</b> Lola Indumentaria</p>
+    <p><b>Condición frente al IVA:</b> IVA Responsable Inscripto</p>
+    <p><b>Domicilio:</b> Belgrano 315 - Alta Gracia, Córdoba</p>
+    <p><b>Condición de venta:</b> Cuenta corriente 30 días</p>
+    <p><b>Remito:</b> 0004-00009310</p>
+  </div>
+  <div class="renglones">
+    <table>
+      <tr><th>Código</th><th>Producto / Servicio</th><th class="n">Cantidad</th><th>U. medida</th><th class="n">Precio unit.</th><th class="n">% Bonif</th><th class="n">Subtotal</th><th class="n">Alícuota IVA</th></tr>
+      <tr><td>REM-BAS-S</td><td>Remera básica algodón peinado - Talle S</td><td class="n">10,00</td><td>unidades</td><td class="n">6.200,00</td><td class="n">0,00</td><td class="n">62.000,00</td><td class="n">21%</td></tr>
+      <tr><td>REM-BAS-M</td><td>Remera básica algodón peinado - Talle M</td><td class="n">15,00</td><td>unidades</td><td class="n">6.200,00</td><td class="n">0,00</td><td class="n">93.000,00</td><td class="n">21%</td></tr>
+      <tr><td>REM-BAS-L</td><td>Remera básica algodón peinado - Talle L</td><td class="n">10,00</td><td>unidades</td><td class="n">6.200,00</td><td class="n">0,00</td><td class="n">62.000,00</td><td class="n">21%</td></tr>
+      <tr><td>BUZ-CAN-M</td><td>Buzo canguro frisa - Talle M</td><td class="n">8,00</td><td>unidades</td><td class="n">17.500,00</td><td class="n">0,00</td><td class="n">140.000,00</td><td class="n">21%</td></tr>
+      <tr><td>BUZ-CAN-L</td><td>Buzo canguro frisa - Talle L</td><td class="n">6,00</td><td>unidades</td><td class="n">17.500,00</td><td class="n">0,00</td><td class="n">105.000,00</td><td class="n">21%</td></tr>
+      <tr><td>JOG-FRI</td><td>Jogger frisa pack x 6</td><td class="n">2,00</td><td>packs</td><td class="n">79.200,00</td><td class="n">0,00</td><td class="n">158.400,00</td><td class="n">21%</td></tr>
+    </table>
+  </div>
+  <div class="totales">
+    <div class="obs"><b>Observaciones:</b> Temporada primavera-verano. Envío a cargo del comprador.</div>
+    <dl>
+      <div><dt>Importe neto gravado: $</dt><dd>620.400,00</dd></div>
+      <div><dt>IVA 27%: $</dt><dd>0,00</dd></div>
+      <div><dt>IVA 21%: $</dt><dd>130.284,00</dd></div>
+      <div><dt>IVA 10,5%: $</dt><dd>0,00</dd></div>
+      <div><dt>Importe otros tributos: $</dt><dd>0,00</dd></div>
+      <div class="total"><dt>Importe total: $</dt><dd>750.684,00</dd></div>
+    </dl>
+  </div>
+  <div class="pie">
+    <div class="qr" aria-hidden="true"></div>
+    <div>
+      <p><b>Comprobante autorizado</b></p>
+      <p>Esta factura contribuye al financiamiento de los servicios públicos.</p>
+    </div>
+    <div>
+      <p><b>CAE N°:</b> 76458213904127</p>
+      <p><b>Fecha de vto. de CAE:</b> 22/11/2026</p>
+    </div>
+  </div>
+  <div class="ejemplo">Documento de ejemplo para la demo de Nexo. Datos inventados, sin validez fiscal.</div>
+</div>
+<script>
+// Un QR de adorno (no lleva a ningún lado): 13 × 13, con los tres cuadrados de las esquinas.
+const qr = document.querySelector('.qr');
+const esquina = (f, c) => [[0, 0], [0, 8], [8, 0]].some(([y, x]) => f >= y && f < y + 5 && c >= x && c < x + 5);
+const bordeEsquina = (f, c) => [[0, 0], [0, 8], [8, 0]].some(([y, x]) => f >= y && f < y + 5 && c >= x && c < x + 5 && (f === y || f === y + 4 || c === x || c === x + 4 || (f === y + 2 && c === x + 2)));
+let semilla = 7;
+for (let f = 0; f < 13; f++) {
+  for (let c = 0; c < 13; c++) {
+    semilla = (semilla * 9301 + 49297) % 233280;
+    const negro = esquina(f, c) ? bordeEsquina(f, c) : semilla / 233280 > 0.5;
+    const celda = document.createElement('i');
+    if (!negro) celda.className = 'b';
+    qr.append(celda);
+  }
+}
+</script>
+</body>
+</html>
