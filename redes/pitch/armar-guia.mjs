@@ -13,8 +13,13 @@ import { servirRepo } from '../servidor.mjs';
 const servidor = await servirRepo();
 const carpeta = join(servidor.raiz, 'docs', 'pitch');
 const destino = join(carpeta, 'Guía para presentar — Nexo.pdf');
-// Los QR de docs/qr, en PNG grande para imprimir o poner en una diapositiva.
-const QR = { 'probar-nexo': 'Probar Nexo', 'repositorio-nexo': 'Repositorio en GitHub', 'instagram-nexo': 'Instagram @nexosystem.app' };
+// Los QR de docs/qr, cada uno en una imagen de 1920 × 1080 para mostrar en
+// pantalla completa, con abajo a dónde lleva. [archivo, título, dirección].
+const QR = [
+  ['probar-nexo', 'Probar Nexo', 'Entrar a un negocio de ejemplo, sin registrarse', 'nexosystem.duckdns.org/app#/probar'],
+  ['repositorio-nexo', 'Repositorio en GitHub', 'El código, el README y el manual', 'github.com/Code7C26/Nexo'],
+  ['instagram-nexo', 'Instagram @nexosystem.app', 'Las novedades de Nexo', 'instagram.com/nexosystem.app']
+];
 
 // El Chrome de la compu: así no hace falta bajar el Chromium de Playwright.
 const navegador = await chromium.launch({ channel: 'chrome' });
@@ -67,13 +72,28 @@ try {
   await factura.pdf({ path: join(carpeta, 'Factura de compra de ejemplo.pdf'), preferCSSPageSize: true, printBackground: true });
   await factura.locator('.hoja').screenshot({ path: join(carpeta, 'Factura de compra de ejemplo.jpg'), type: 'jpeg', quality: 88 });
 
-  const qr = await navegador.newPage({ viewport: { width: 1000, height: 1000 } });
-  for (const [archivo, nombre] of Object.entries(QR)) {
+  // Desde una página del servidor, así las fuentes de frontend/fonts cargan.
+  const qr = await navegador.newPage({ viewport: { width: 1920, height: 1080 } });
+  await qr.goto(`${servidor.base}/redes/pitch/guia.html`);
+  for (const [archivo, nombre, bajada, direccion] of QR) {
     const svg = readFileSync(join(servidor.raiz, 'docs', 'qr', `${archivo}.svg`), 'utf8');
-    await qr.setContent(`<body style="margin:0">${svg.replace('<svg ', '<svg width="1000" height="1000" ')}</body>`);
-    await qr.locator('svg').screenshot({ path: join(carpeta, 'QR', `${nombre}.png`) });
+    await qr.setContent(`<style>
+      @font-face { font-family: Inter; src: url("/frontend/fonts/inter.woff2"); font-weight: 100 900; }
+      @font-face { font-family: Satoshi; src: url("/frontend/fonts/satoshi-700.woff2"); font-weight: 700; }
+      body { margin: 0; width: 1920px; height: 1080px; background: #000; color: #f5f5f5; font-family: Inter, sans-serif;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 44px; }
+      .caja { background: #fff; border-radius: 36px; padding: 28px; }
+      .caja svg { display: block; width: 600px; height: 600px; }
+      h1 { margin: 0; font: 700 76px/1 Satoshi, Inter, sans-serif; letter-spacing: -0.02em; }
+      p { margin: 0; text-align: center; }
+      .bajada { font-size: 36px; color: #b4b4b4; margin-top: -22px; }
+      .direccion { font-size: 40px; font-weight: 600; color: #60a5fa; }
+    </style>
+    <div class="caja">${svg}</div><h1>${nombre}</h1><p class="bajada">${bajada}</p><p class="direccion">${direccion}</p>`);
+    await qr.evaluate(() => document.fonts.ready);
+    await qr.screenshot({ path: join(carpeta, 'QR', `${nombre}.png`) });
   }
-  console.log(`Factura de ejemplo y ${Object.keys(QR).length} QR → ${carpeta}`);
+  console.log(`Factura de ejemplo y ${QR.length} QR → ${carpeta}`);
 } finally {
   await navegador.close();
   servidor.cerrar();
