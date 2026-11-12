@@ -24,8 +24,9 @@ se aprueba** → animación → revisión cuadro por cuadro → preview → mp4 
   plugin en Claude Code. En PowerShell, `npm`, `npx` y `claude` van como
   `npm.cmd`, `npx.cmd` y `claude.cmd` (la política de ejecución bloquea los
   `.ps1`). La sesión de videos se abre **en Nexo**, para tener su contexto, y
-  al empezar se corre `/add-dir C:\Users\HP ULTRA 5\motion-architect` para que
-  escriba en el estudio sin pedir permiso. La skill encuentra el estudio en
+  ya puede escribir en el estudio: `C:\Users\HP ULTRA 5\motion-architect` está
+  en `additionalDirectories` de `.claude/settings.local.json` (local, no se
+  sube; la extensión de VS Code no tiene `/add-dir`). La skill encuentra el estudio en
   `~/motion-architect/studio` (Nexo no tiene una carpeta `studio/`).
 - **Remotion** es gratis para equipos de hasta 3 personas.
 
