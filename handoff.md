@@ -23,12 +23,13 @@
 
 **12 de noviembre, hist. §158: la presentación corregida (30 diapositivas) y
 la guía rearmada (22 páginas).** Pedido del usuario después de verla:
-- **Abre con un dato, no presentándose:** "2 meses por año pierde la mitad de
-  las pymes argentinas solo en revisar planillas" (SAP, 555 pymes, El
-  Cronista, enero de 2016; es viejo y la guía lo dice: no se encontró uno más
-  nuevo con fuente seria). El logo y los nombres pasan a la **7**.
-- El tiempo (**4**, ahora "cada venta se anota cinco veces") va antes que la
-  plata (5). La 8 tiene una línea que sube detrás de las cajas.
+- **El logo sigue siendo la 1** (un saludo de una línea, los roles en la 29) y
+  la **2** es el dato "2 meses por año pierde la mitad de las pymes argentinas
+  solo en revisar planillas" (SAP, 555 pymes, El
+  Cronista, enero de 2016), **sin la fuente en pantalla**: por ser de 2016,
+  se dice solo si preguntan (pedido del usuario). No hay "Por eso hicimos".
+- El tiempo (**5**, ahora "cada venta se anota cinco veces") va antes que la
+  plata (6). La 8 tiene una línea que sube detrás de las cajas.
 - **Sin "vos":** los textos hablan del negocio ("se cobra", "el dueño"); al
   jurado, en plural. El "Te quedó" del ejemplo es la etiqueta real de la app.
 - Resumen (10) y mostrador (11) con la lista de lo que se puede hacer ahí.

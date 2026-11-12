@@ -12858,3 +12858,9 @@ que la oficial es a principios de diciembre, y el guion también.
 
 **Cómo se verificó.** Capturas a 1600×900 de las diapositivas cambiadas
 (1, 4, 7, 8, 10, 11, 17 a 21 y 24) y la página 3 del PDF en el visor de Chrome.
+
+**Después, el mismo día.** El usuario no quiso la fuente en pantalla (al ser
+de 2016, "le va a parecer cualquier cosa") ni el dato como primera: el logo
+volvió a ser la 1, sin "Por eso hicimos", y el dato es la 2. De la 8 en
+adelante no cambió la numeración. Los roles del equipo se dicen en la 29
+("Cómo trabajamos"); la fuente queda en la guía, para contestar si preguntan.

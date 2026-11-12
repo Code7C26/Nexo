@@ -190,7 +190,6 @@ img { display: block; max-width: 100%; }
 .slide.visible .anio .perdido { background: rgba(248, 113, 113, 0.14); border-color: var(--mal); color: var(--mal); text-decoration: line-through; text-decoration-thickness: 2px; }
 .slide.visible .anio .perdido:nth-last-child(2) { transition-delay: 1.1s; }
 .slide.visible .anio .perdido:last-child { transition-delay: 1.5s; }
-.fuente { color: var(--texto-3); font-size: var(--small-size); }
 
 /* ===== 3. Gancho ===== */
 .gancho h1 { font-size: var(--gigante); max-width: 15ch; }
@@ -529,7 +528,21 @@ img { display: block; max-width: 100%; }
 
 <main>
 
-<!-- 1. El dato que abre (la presentación del equipo va en la 7, con el logo) -->
+<!-- 1. Portada -->
+<section class="slide" aria-label="Nexo">
+  <div class="slide-content portada">
+    <div class="lockup">
+      <img class="simbolo reveal" src="../../assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
+      <div class="letras">
+        <svg class="palabra reveal" style="--d:1" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg>
+        <p class="tagline reveal" style="--d:2">Sistema de gestión para emprendimientos y pymes</p>
+      </div>
+    </div>
+    <p class="equipo-linea reveal" style="--d:4">Santino Solla · Joaquín Tosi</p>
+  </div>
+</section>
+
+<!-- 2. El dato que abre -->
 <section class="slide" aria-label="Dos meses por año">
   <div class="slide-content apilado dato">
     <div class="par parejo">
@@ -542,11 +555,10 @@ img { display: block; max-width: 100%; }
         <span>Ene</span><span>Feb</span><span>Mar</span><span>Abr</span><span>May</span><span>Jun</span><span>Jul</span><span>Ago</span><span>Sep</span><span>Oct</span><span class="perdido">Nov</span><span class="perdido">Dic</span>
       </div>
     </div>
-    <p class="fuente reveal" style="--d:4">Encuesta de SAP a 555 pymes argentinas, publicada por El Cronista (enero de 2016): 51 % pierde al menos dos meses al año validando planillas; 46 % administra con hojas de cálculo.</p>
   </div>
 </section>
 
-<!-- 2. El lío -->
+<!-- 3. El lío -->
 <section class="slide" aria-label="Así se lleva hoy un negocio">
   <div class="lio" aria-hidden="true">
     <div class="cuaderno" style="left:4%; top:8%; --r:-6deg; --dx:-60px; --d:0">
@@ -588,7 +600,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 3. Gancho: dolores de cualquiera -->
+<!-- 4. Gancho: dolores de cualquiera -->
 <section class="slide" aria-label="Gancho">
   <div class="slide-content gancho">
     <h1 aria-label="¿Alguna vez prestaste plata y no te acordaste a quién?">
@@ -612,7 +624,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 4. El tiempo que se pierde -->
+<!-- 5. El tiempo que se pierde -->
 <section class="slide" aria-label="El tiempo que se pierde">
   <div class="slide-content par parejo">
     <div>
@@ -630,7 +642,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 5. La plata que se pierde -->
+<!-- 6. La plata que se pierde -->
 <section class="slide" aria-label="La plata que se pierde">
   <div class="slide-content apilado">
     <div>
@@ -646,7 +658,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 6. Lo que existe -->
+<!-- 7. Lo que existe -->
 <section class="slide" aria-label="Los sistemas que existen">
   <div class="slide-content apilado">
     <div>
@@ -659,21 +671,6 @@ img { display: block; max-width: 100%; }
       <div class="tarjeta reveal" style="--d:4"><h3>Contagram</h3><p class="precio-grande">$ 71.269 <small>por mes</small></p><p class="nota">Plan inicial, precio normal, con IVA</p></div>
       <div class="tarjeta nexo reveal" style="--d:5"><h3>Nexo</h3><p class="precio-grande">$ 0 <small>para empezar</small></p><p class="nota">Y $ 19.900 por mes cuando el negocio crece</p></div>
     </div>
-  </div>
-</section>
-
-<!-- 7. Nexo: el logo y el equipo, después del problema -->
-<section class="slide" aria-label="Nexo">
-  <div class="slide-content portada">
-    <p class="parte reveal">Por eso hicimos</p>
-    <div class="lockup">
-      <img class="simbolo reveal" src="../../assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
-      <div class="letras">
-        <svg class="palabra reveal" style="--d:1" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg>
-        <p class="tagline reveal" style="--d:2">Sistema de gestión para emprendimientos y pymes</p>
-      </div>
-    </div>
-    <p class="equipo-linea reveal" style="--d:4">Santino Solla · Joaquín Tosi</p>
   </div>
 </section>
 

@@ -24,7 +24,7 @@ recorta es I+D, no la demo.
 pierde dos meses por año solo revisando planillas" (encuesta de SAP a 555
 pymes, El Cronista, enero de 2016: 51 % pierde al menos dos meses al año
 validando planillas; 46 % administra con hojas de cálculo). Es la diapositiva
-1; la presentación del equipo va en la 7, con el logo, después del problema.
+2, sin la fuente en pantalla (es de 2016: se dice solo si preguntan). La 1 es el logo, con un saludo de una línea; los roles, en la 29.
 
 **Equipo, con roles técnicos (completar entre los dos antes del jueves):**
 - Santino Solla: ___
