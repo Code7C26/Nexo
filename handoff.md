@@ -43,6 +43,9 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   en la guía ("Antes de empezar"): hacer la demo desde la Lola de la cuenta
   de Santino y pasarle las conexiones el día antes. **Lo decide el usuario;
   falta probar el QR con $100.**
+- `docs/presentacion-pitch.html` (la armada) ahora está en el repo, para
+  abrirla con doble clic: **si cambia `docs/presentacion/`, rearmarla con
+  `npm run presentacion` y commitearla** (PR #73 y #74, en `main`).
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
 reordenada y la guía para presentar.**
