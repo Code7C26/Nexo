@@ -279,7 +279,7 @@ export default {
   "Firma inválida.": "Invalid signature.",
   "Token de verificación inválido.": "Invalid verification token.",
   "En el negocio de ejemplo esto no se puede: necesita una cuenta de verdad. Creá la tuya gratis para usarlo.": "This can't be done in the sample business: it needs a real account. Create yours for free to use it.",
-  "En el negocio de ejemplo el asistente contesta hasta {0} frases. Creá tu cuenta gratis para seguir usándolo.": "In the sample business the assistant answers up to {0} messages. Create your free account to keep using it.",
+  "En el negocio de ejemplo el asistente está apagado. Creá tu cuenta gratis para usarlo.": "The assistant is turned off in the sample business. Create your free account to use it.",
   "Negocio de ejemplo \"{0}\" creado para probar Nexo": "Sample business \"{0}\" created to try Nexo",
   "En esta instalación no se puede probar sin una cuenta.": "On this installation you can't try Nexo without an account.",
   "Elegí uno de los negocios de ejemplo.": "Choose one of the sample businesses.",

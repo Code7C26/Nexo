@@ -12889,3 +12889,27 @@ un QR al Instagram.
 - **QR de Instagram:** `docs/qr/instagram-nexo.svg`, hecho con la misma
   `qrcode-generator` vendorizada que los otros, y los tres leídos con jsQR
   (instalado aparte, fuera del repo): devuelven sus direcciones exactas.
+
+## §160. La IA apagada en los negocios de ejemplo y el QR del público en la 10 (12 de noviembre de 2026)
+
+El usuario quiso que el público escanee el QR temprano (después de la 9) y
+explore mientras se cuentan las funciones, y preguntó qué tan seguro era que
+le hablen al asistente desde los ejemplos. No lo es: cada ejemplo tenía 15
+frases y el cupo gratis de Groq es de ~100 por día para toda la instalación;
+una sala lo gastaba en minutos y la demo de ellos fallaba. Decisión del
+usuario: apagarlo.
+
+- `rechazoEnEjemplo` (server.js): las rutas de la IA (`/asistente/interpretar`,
+  `/asistente/transcribir`, `/compras/leer-comprobante`) dan 403
+  `solo_con_cuenta` en un negocio de ejemplo; sale el contador
+  `frasesDeEjemplos`. Prueba nueva en `ejemplos.test.js`. El mensaje nuevo,
+  traducido en `en.js`.
+- `styles.css`: con `html[data-ejemplo]` (lo pone sesion.js) se esconden el
+  botón flotante, el ítem "Asistente" del menú y "Cargar desde la factura".
+- Presentación: la del QR pasa a la 10, sin "Hablarle al asistente"; las
+  funciones quedan 11 a 21. En la guía, la demo en vivo es una sección sin
+  diapositiva después de la 21 y el mapa pasa a ocho partes. Confianza (22)
+  con títulos cortos (pedido del usuario: "Datos seguros", "Permisos de
+  equipo").
+- Guiones pendientes: video 5 (el alta en siete pasos y "Lo que ya tenías",
+  para una diapositiva) y video 6 (apertura corta).
