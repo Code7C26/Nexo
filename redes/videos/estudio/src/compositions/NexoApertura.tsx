@@ -33,6 +33,7 @@ import {
 } from "../components/nexo/pantallas";
 import { ACENTO_SUAVE, Activo, C, Cambio, entra, Icon, item, sale, TituloFoco, VENTANA, VENTANA_CELULAR, VentanaNexo } from "../components/nexo/ui";
 import { useScale } from "../lib/useScale";
+import VOZ from "./voz/nexo-apertura.json";
 
 // Escenas: [inicio, duración] en cuadros (30 fps).
 const E = {
@@ -55,11 +56,26 @@ export const NEXO_APERTURA_DURATION = E.logo[0] + E.logo[1];
 
 // La música elegida por el usuario es la movida; otra se elige al renderizar:
 // --props='{"musica":"music/nexo-apertura.wav"}' (la tranquila).
-const MUSICA = (getInputProps() as { musica?: string }).musica ?? "music/nexo-apertura-movida.wav";
+const PROPS = getInputProps() as { musica?: string; voz?: boolean };
+const MUSICA = PROPS.musica ?? "music/nexo-apertura-movida.wav";
 
-// En vertical (el reel) la app va sin menú y escalada, debajo del título; arriba
-// queda libre el 14 % y abajo el 20 % que tapa Instagram.
-const CELULAR = { x: 16, y: 592, escala: 1.08, titulo: [272, 580] as const };
+// En vertical (el reel) la app va sin menú, debajo del título, y abajo queda
+// la franja del subtítulo; arriba queda libre el 14 % y abajo el 20 % que tapa
+// Instagram.
+const CELULAR = { x: 55, y: 578, escala: 1, titulo: [272, 566] as const, subtitulo: 1496 };
+
+// La voz (Tomás, de edge-tts: scripts/voz-nexo.py) va en el reel; en la
+// versión horizontal se prende con --props='{"voz":true}'. Cada frase arranca
+// con su escena, o apenas termina la anterior.
+const FRASES = (() => {
+  let libre = 0;
+  return VOZ.map((v) => {
+    const escena = E[v.escena as keyof typeof E];
+    const desde = Math.max(escena[0] + 6, libre + 4);
+    libre = desde + v.cuadros;
+    return { ...v, desde };
+  });
+})();
 
 // ---------------------------------------------------------------- Fondo
 
@@ -330,13 +346,64 @@ const TIC = "sfx/interface/click_005.ogg";
 const LISTO = "sfx/interface/bong_001.ogg";
 const HOJA = "sfx/casino/card-slide-1.ogg";
 
+/** ¿Lleva voz? El reel siempre; la versión horizontal, si se pide. */
+const useConVoz = () => useScale().isVertical || PROPS.voz === true;
+
+/** La música baja a la mitad mientras habla Tomás. */
+const volumenMusica = (f: number, conVoz: boolean) => {
+  if (!conVoz) return 0.32;
+  const habla = FRASES.reduce((m, v) => Math.max(m, interpolate(f, [v.desde - 6, v.desde, v.desde + v.cuadros, v.desde + v.cuadros + 8], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })), 0);
+  return 0.32 - 0.16 * habla;
+};
+
+/** El subtítulo de cada frase, abajo (en el reel, en la franja libre). */
+const Subtitulos: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { isVertical } = useScale();
+  const v = FRASES.find((f) => frame >= f.desde - 2 && frame < f.desde + f.cuadros + 10);
+  if (!useConVoz() || !v) return null;
+  const p = Math.min(progress(frame, v.desde - 2, 6), 1 - progress(frame, v.desde + v.cuadros + 4, 6, ease.in));
+  return (
+    <AbsoluteFill style={{ alignItems: "center" }}>
+      <div
+        style={{
+          position: "absolute",
+          top: isVertical ? CELULAR.subtitulo : 990,
+          transform: `translateY(-50%) translateY(${(1 - p) * 8}px)`,
+          maxWidth: isVertical ? 960 : 1400,
+          padding: "10px 22px",
+          borderRadius: 12,
+          background: "rgba(0,0,0,0.72)",
+          fontFamily: brand.fontBody,
+          fontWeight: 600,
+          fontSize: isVertical ? 36 : 32,
+          lineHeight: 1.3,
+          textAlign: "center",
+          color: C.text,
+          opacity: p,
+        }}
+      >
+        {v.texto}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const Sonido: React.FC = () => {
   const a = E.asistente[0];
+  const conVoz = useConVoz();
   const teclas: number[] = [];
   for (let f = ESCRIBE[0]; f < ESCRIBE[1]; f += 2) teclas.push(f);
   return (
     <>
-      <Audio src={staticFile(MUSICA)} volume={0.32} />
+      <Audio src={staticFile(MUSICA)} volume={(f) => volumenMusica(f, conVoz)} />
+      {conVoz
+        ? FRASES.map((v) => (
+            <Sequence key={v.archivo} from={v.desde} layout="none">
+              <Audio src={staticFile(v.archivo)} volume={1} />
+            </Sequence>
+          ))
+        : null}
       <Sfx en={E.resumen[0]} src="sfx/impact/impactSoft_medium_001.ogg" vol={0.35} />
       <Sfx en={E.resumen[0] + RESUMEN_30_DIAS} src={CLICK} vol={0.6} />
       <Sfx en={E.resumen[0] + RESUMEN_30_DIAS + 28} src="sfx/interface/select_008.ogg" vol={0.18} />
@@ -461,6 +528,7 @@ export const NexoApertura: React.FC = () => {
       <Titulo escena={E.logo}>
         <Logo />
       </Titulo>
+      <Subtitulos />
       <Sonido />
     </AbsoluteFill>
   );

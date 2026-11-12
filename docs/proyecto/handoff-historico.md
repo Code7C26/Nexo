@@ -13089,3 +13089,22 @@ Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
 - **Falta la voz:** los videos de Instagram la llevan (decisión del usuario
   del 12 de noviembre). Se le propuso el texto; falta que lo apruebe y elija la
   voz.
+
+## §166. La voz de Tomás en el reel (12 de noviembre de 2026)
+
+- Pedido del usuario: voz en el reel, la de Tomás (edge-tts
+  es-AR-TomasNeural), "que no quede extremadamente argentinizado" y que
+  pronuncie bien (el ejemplo: "QR" dicho muy separado).
+- `scripts/voz-nexo.py` del estudio: genera cada frase por separado (a +6 %),
+  le saca el silencio de adelante y de atrás que deja edge-tts (sin eso las
+  frases duraban ~1 s más y la del logo se pasaba del final) y escribe un
+  índice con la duración de cada una que lee la composición. El guion
+  (`voz/nexo-apertura.json`) separa el "texto" del subtítulo de lo "dicho":
+  "Arca" en vez de "ARCA", comas para que respire.
+- En la composición, cada frase arranca con su escena o apenas termina la
+  anterior; subtítulos abajo (en el reel, en una franja libre: la ventana pasó
+  a tamaño 1:1 para dejarla), y la música baja a la mitad mientras habla. La
+  voz queda ~13 dB por encima de la música.
+- Va solo en el reel; la versión horizontal la toma con `--props='{"voz":true}'`
+  si el usuario la quiere también en la presentación.
+- No se escuchó acá: la pronunciación la revisa el usuario.

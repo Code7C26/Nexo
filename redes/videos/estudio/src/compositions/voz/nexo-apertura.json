@@ -1,0 +1,68 @@
+[
+  {
+    "escena": "gancho",
+    "texto": "Todo tu negocio, en un solo lugar.",
+    "archivo": "voz/nexo-apertura/00-gancho.mp3",
+    "cuadros": 56
+  },
+  {
+    "escena": "resumen",
+    "texto": "Mirá cómo te fue en el mes, de un vistazo.",
+    "archivo": "voz/nexo-apertura/01-resumen.mp3",
+    "cuadros": 69
+  },
+  {
+    "escena": "mostrador",
+    "texto": "Vendé en el mostrador: las ofertas se aplican solas.",
+    "archivo": "voz/nexo-apertura/02-mostrador.mp3",
+    "cuadros": 80
+  },
+  {
+    "escena": "venta",
+    "texto": "Sabé cuánto te deja cada venta.",
+    "archivo": "voz/nexo-apertura/03-venta.mp3",
+    "cuadros": 46
+  },
+  {
+    "escena": "factura",
+    "texto": "Facturá con ARCA en un clic.",
+    "archivo": "voz/nexo-apertura/04-factura.mp3",
+    "cuadros": 50
+  },
+  {
+    "escena": "compra",
+    "texto": "Cargá tus compras con una foto de la factura.",
+    "archivo": "voz/nexo-apertura/05-compra.mp3",
+    "cuadros": 62
+  },
+  {
+    "escena": "online",
+    "texto": "Conectá Tienda Nube y Mercado Libre.",
+    "archivo": "voz/nexo-apertura/06-online.mp3",
+    "cuadros": 53
+  },
+  {
+    "escena": "cobro",
+    "texto": "Cobrá con Mercado Pago.",
+    "archivo": "voz/nexo-apertura/07-cobro.mp3",
+    "cuadros": 36
+  },
+  {
+    "escena": "asistente",
+    "texto": "O decíselo a Nexo, y él te arma la venta.",
+    "archivo": "voz/nexo-apertura/08-asistente.mp3",
+    "cuadros": 70
+  },
+  {
+    "escena": "funciones",
+    "texto": "Stock, caja, clientes y mucho más, para cualquier rubro.",
+    "archivo": "voz/nexo-apertura/09-funciones.mp3",
+    "cuadros": 134
+  },
+  {
+    "escena": "logo",
+    "texto": "Nexo. Probalo gratis, link en la bio.",
+    "archivo": "voz/nexo-apertura/10-logo.mp3",
+    "cuadros": 91
+  }
+]

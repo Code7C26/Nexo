@@ -10,6 +10,7 @@ carpeta se pierde, o la quiere usar otra compu, con esto se rearma.
 | `src/components/nexo/` | Lo mismo: `ui.tsx` (la ventana de Nexo con su menú real, el cursor, el título palabra por palabra), `pantallas.tsx` (cada pantalla de la app redibujada) y los íconos y logos de la app |
 | `src/compositions/NexoApertura.tsx` | Lo mismo, y registrarlo en `src/compositions/index.ts` |
 | `scripts/musica-nexo.py` | Lo mismo: la música de fondo, generada (sin derechos de nadie); `--estilo movida` para la variante con bajo y palmas |
+| `scripts/voz-nexo.py`, `voz/` y `src/compositions/voz/` | Lo mismo: la voz (Tomás, de edge-tts) frase por frase. `voz/<video>.json` es el guion (el "texto" del subtítulo y lo "dicho" para que pronuncie bien) y el script deja los mp3 en `public/voz/` y el índice con la duración de cada frase |
 | `scripts/iconos-nexo.py` | Lo mismo: copia los íconos y los logos de `frontend/img` a `src/components/nexo/` |
 | `storyboards/` | Lo mismo: el guion aprobado de cada video |
 

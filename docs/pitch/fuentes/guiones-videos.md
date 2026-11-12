@@ -218,8 +218,18 @@ video quedó perfecto"). Detalle: `redes/videos/estudio/storyboards/nexo-apertur
 escenas: la app va sin el menú lateral (como en el celular) y ocupa el ancho,
 el título arriba, las grillas en dos columnas, y el cierre con "Probalo gratis
 · link en la bio". Respeta las zonas que tapa Instagram (14 % de arriba, 20 %
-de abajo). **No tiene voz todavía**, aunque los videos de Instagram la llevan
-(decisión del usuario): falta que apruebe el texto y elija la voz.
+de abajo). **Con la voz de Tomás** (elegida por el usuario, edge-tts
+es-AR-TomasNeural, +6 % de velocidad) y subtítulos abajo; la música baja a la
+mitad mientras habla. Texto aprobado: "Todo tu negocio, en un solo lugar. /
+Mirá cómo te fue en el mes, de un vistazo. / Vendé en el mostrador: las ofertas
+se aplican solas. / Sabé cuánto te deja cada venta. / Facturá con ARCA en un
+clic. / Cargá tus compras con una foto de la factura. / Conectá Tienda Nube y
+Mercado Libre. / Cobrá con Mercado Pago. / O decíselo a Nexo, y él te arma la
+venta. / Stock, caja, clientes y mucho más, para cualquier rubro. / Nexo.
+Probalo gratis, link en la bio." Para que pronuncie bien, a la voz se le pasa
+"Arca" y no "ARCA" (lo deletrearía), y las siglas se escriben como se dicen
+(lo mismo cuando aparezca "QR"). Si al usuario le gusta, la voz también puede
+ir en la versión de la presentación (`--props='{"voz":true}'`).
 
 Versión 1: **`docs/pitch/media/nexo-apertura.mp4`**: 29,5 s, 1920 × 1080, 3,8 MB. Abre la
 presentación: arranca solo en la diapositiva 1, a pantalla completa, y al
