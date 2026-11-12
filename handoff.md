@@ -75,8 +75,8 @@ el QR del público en la 10.**
 - **Para después** (`docs/guiones-videos.md`, "Pendientes para el pitch"):
   video 5, una diapositiva con el alta desde cero y "Lo que ya tenías"; video
   6, una apertura corta con la app funcionando.
-- **Pendiente de definir con el usuario:** "agregar QR a la landing" (cuál y
-  dónde).
+- **QR a la landing** (`docs/qr/landing-nexo.svg`, "Conocer Nexo" en
+  `docs/pitch/QR`), comprobado con un lector.
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
 reordenada y la guía para presentar.**
