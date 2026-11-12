@@ -18,6 +18,7 @@ const destino = join(carpeta, 'Guía para presentar — Nexo.pdf');
 const QR = [
   ['probar-nexo', 'Probar Nexo', 'Entrar a un negocio de ejemplo, sin registrarse', 'nexosystem.duckdns.org/app#/probar'],
   ['repositorio-nexo', 'Repositorio en GitHub', 'El código, el README y el manual', 'github.com/Code7C26/Nexo'],
+  ['landing-nexo', 'Conocer Nexo', 'Qué es, los planes y cómo empezar', 'nexosystem.duckdns.org'],
   ['instagram-nexo', 'Instagram @nexosystem.app', 'Las novedades de Nexo', 'instagram.com/nexosystem.app']
 ];
 
