@@ -59,6 +59,22 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
 
+**Videos animados: la herramienta, lista (12 de noviembre).** Es
+**Motion Architect** (Hainrixz/motion-architect, MIT): la que usó Studree para
+su spot y su anuncio en inglés, un plugin de Claude Code (`/motion`) sobre un
+estudio de Remotion. Está clonado en `C:\Users\HP ULTRA 5\motion-architect`, con
+`ffmpeg` y `yt-dlp` (winget) y `python3` andando, y los dos videos de Studree
+como referencia en `studio/public/references/`. Estilo, referencias y cómo van
+en la presentación (arrancan solos y al terminar caen en la diapositiva):
+`docs/pitch/fuentes/guiones-videos.md`, al principio. **Falta que el usuario
+corra, una vez, en PowerShell:**
+```
+cd "$HOME\motion-architect\studio"; npm install; npx tsc --noEmit
+claude plugin marketplace add "$HOME\motion-architect"; claude plugin install motion-architect@motion-architect
+```
+y reiniciar Claude Code. (El permiso automático no deja que Claude ejecute
+código de terceros.) Los mp4 terminados van a `docs/pitch/media/`.
+
 **12 de noviembre, hist. §162: el repo, ordenado.** `docs/` va siempre en
 carpetas: `proyecto/` (este histórico, publicar, plan para vender),
 `investigaciones/`, `pitch/` (lo que se lleva) con `pitch/fuentes/` (de donde

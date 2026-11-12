@@ -3,6 +3,54 @@
 Borrador para revisar antes de grabar. Primero se aprueban los guiones, después
 se graban las pantallas y se arman las animaciones.
 
+## Herramienta, referencias y cómo se ven en la presentación (12 de noviembre)
+
+**La herramienta: Motion Architect** (github.com/Hainrixz/motion-architect, MIT,
+de Enrique Rocha; si se redistribuye hay que conservar su crédito). Es la que
+usó el grupo de Studree (Code7C26/Studree) para su spot y su anuncio en inglés:
+un plugin de Claude Code con la skill `motion-architect`, los comandos `/motion`
+y `/motion-render` y un subagente que analiza videos de referencia, sobre un
+estudio de Remotion. Su flujo: intake → referencias → marca → **storyboard que
+se aprueba** → animación → revisión cuadro por cuadro → preview → mp4 en 16:9,
+9:16, 1:1 o 4:5.
+
+- **Dónde está:** `C:\Users\HP ULTRA 5\motion-architect` (`~/motion-architect`,
+  donde la skill busca el estudio). Fuera del repo de Nexo: los videos se arman
+  ahí y los mp4 terminados se copian a `docs/pitch/media/`.
+- **Ya hecho:** el clon; `ffmpeg` y `yt-dlp` instalados con winget (en el PATH
+  de usuario); `python3` funciona (copia de `python.exe` en la carpeta de Python
+  3.13, porque el `python3` de Windows abría la Microsoft Store).
+- **Falta (lo corre el usuario, una vez):** el `npm install` del estudio y
+  registrar el plugin en Claude Code. Comandos en `handoff.md`.
+- **Remotion** es gratis para equipos de hasta 3 personas.
+
+**Las referencias de estilo** ya están en
+`~/motion-architect/studio/public/references/`: `studree-spot.mp4` (43 s, sin
+voz) y `studree-anuncio-en.mp4` (40 s, con las voces del equipo en inglés), los
+dos en 1920 × 1080 a 30 fps, con sus pósters. Se analizan con el subagente
+`reference-analyst` para tomar el ritmo, los cortes, las transiciones y el tipo
+de movimiento; el contenido y la marca son de Nexo.
+
+**Cómo se ven en la presentación** (lo que el usuario quiere, tomado de
+Studree y mejorado):
+- El video está en la diapositiva como una tarjeta con su póster.
+- **Arranca solo al llegar a esa diapositiva** (en Studree se arrancaba con
+  Espacio) y la tarjeta se agranda a toda la pantalla: en Studree, `left`,
+  `top`, `width`, `height` y `border-radius` con una transición de 0,6 s
+  ease-in-out, una barra de progreso fina abajo, y lo de alrededor (contador,
+  QR, progreso) se esconde mientras suena.
+- **Al terminar, cae en la diapositiva con una transición:** la tarjeta vuelve
+  a su lugar (o el video se funde en el contenido de la diapositiva) y entra el
+  texto. Espacio pausa, Esc lo cierra, y avanzar de diapositiva lo corta.
+- Los mp4 van en `docs/pitch/media/` y la presentación armada los tiene que
+  seguir abriendo con doble clic: o se incrustan, o viajan junto a ella en la
+  carpeta del pitch (a decidir al armarlo: un mp4 de 5 a 8 MB incrustado en
+  base64 hace pesado el HTML).
+
+**El video en inglés** va como el de Studree: Nexo en inglés (Configuración →
+Apariencia → Idioma) y la voz del usuario grabada en inglés, no una voz
+sintética.
+
 ## Reglas para los cuatro videos
 
 - **Formato:** horizontal 1920 × 1080 para el pitch y YouTube; los videos 1 a 3
