@@ -1,5 +1,5 @@
 // Invitaciones a un negocio y cuentas sin negocio (hist. §104,
-// docs/investigacion-login-legal.md §5): el admin invita a un mail con un rol,
+// docs/investigaciones/investigacion-login-legal.md §5): el admin invita a un mail con un rol,
 // y la persona crea su cuenta desde el enlace o, si ya tiene, acepta desde
 // Nexo con su mail confirmado. Los mails no salen: el arnés corre con
 // NEXO_MAIL=stub y los lee de la carpeta del servidor.

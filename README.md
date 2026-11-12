@@ -78,7 +78,7 @@ hasta negocios con varios puntos de venta.
   funcionalidad.
 - Publicación: una VM gratuita de Oracle Cloud con Caddy (HTTPS) delante de
   Node, que se actualiza sola con lo que llega a `main` con el CI en verde
-  (`deploy/`, guía en `docs/publicar.md`).
+  (`deploy/`, guía en `docs/proyecto/publicar.md`).
 
 ---
 
@@ -149,9 +149,13 @@ Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
 │                verificar-migracion y regresión contra HEAD
 ├── /.github   → CI (GitHub Actions: lint + tests en cada PR)
 ├── /deploy    → servicio, Caddy y actualización automática del servidor
-├── /docs      → documentación técnica y análisis del proyecto
-├── /diseno    → mockups y diseño visual
-├── /assets    → imágenes, íconos y recursos estáticos
+├── /redes     → piezas de redes y del pitch (carruseles, guía, videos)
+├── /docs      → documentación, en carpetas:
+│   ├── proyecto/        → bitácora histórica, cómo se publica, qué falta para vender
+│   ├── investigaciones/ → lo investigado antes de cada etapa
+│   ├── pitch/           → la presentación, la guía, la factura de ejemplo y los QR
+│   ├── logos/           → el kit de la marca
+│   └── classroom/       → los trabajos entregados en el colegio
 ├── handoff.md → estado y decisiones vigentes del proyecto, sesión a sesión
 └── README.md  → este archivo
 ```
@@ -166,10 +170,10 @@ Los dos corren en GitHub Actions en cada PR (`.github/workflows/ci.yml`).
   decisión numerada (§1 a §39) y citada desde el código.
 - **Estado y decisiones, sesión a sesión:** [`handoff.md`](handoff.md), y el
   relato completo de cada etapa en
-  [`docs/handoff-historico.md`](docs/handoff-historico.md).
-- **Cómo se publica:** [`docs/publicar.md`](docs/publicar.md).
+  [`docs/proyecto/handoff-historico.md`](docs/proyecto/handoff-historico.md).
+- **Cómo se publica:** [`docs/proyecto/publicar.md`](docs/proyecto/publicar.md).
 - **Investigaciones previas a cada etapa** (competencia, caja, celular, CRM,
-  login y legales): [`docs/`](docs/).
+  login y legales): [`docs/investigaciones/`](docs/investigaciones/).
 
 ## 👨‍💻 Integrantes y Roles
 

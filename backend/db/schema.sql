@@ -275,7 +275,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_precios_unico
 -- Variantes de producto (ej. Talle/Color): un producto define sus propios
 -- atributos (no hay catálogo global de "Talle" compartido entre productos
 -- distintos) y una variante es una combinación concreta de valores de esos
--- atributos. Ver docs/handoff-historico.md, §30, para el razonamiento
+-- atributos. Ver docs/proyecto/handoff-historico.md, §30, para el razonamiento
 -- completo detrás de este esquema.
 CREATE TABLE IF NOT EXISTS producto_atributos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1428,7 +1428,7 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
 
 -- Invitaciones a trabajar en un negocio (hist. §104,
--- docs/investigacion-login-legal.md §5): el admin ya no crea empleados con
+-- docs/investigaciones/investigacion-login-legal.md §5): el admin ya no crea empleados con
 -- usuario y contraseña, invita a un mail con un rol. Aceptar suma la fila de
 -- usuario_organizaciones. La ve en Nexo la cuenta que confirmó ese mail; el
 -- enlace del mail (token_hash, SHA-256 como tokens_cuenta) sirve además para

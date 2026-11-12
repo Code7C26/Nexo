@@ -1,7 +1,7 @@
 /**
  * core/aceptacion.js
  * La casilla de los términos y la pregunta de edad (etapa 8b, Fase 3;
- * docs/investigacion-login-legal.md, 2.5). El mismo bloque va en el alta de
+ * docs/investigaciones/investigacion-login-legal.md, 2.5). El mismo bloque va en el alta de
  * cuenta (alta.js), en la cuenta que nace de una invitación y en la página que
  * acepta los términos vigentes (sesion.js, que lo carga con import()).
  *

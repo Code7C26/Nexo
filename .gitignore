@@ -11,7 +11,7 @@ nexo-app.zip
 .claude/
 backend/*.log
 # Consignas del Classroom: material de trabajo, el repo es público.
-/consignas/
+/docs/classroom/consignas/
 # Satoshi (ITF Free Font License) no se puede redistribuir: la baja
 # scripts/fuentes.mjs en cada instalación.
 frontend/fonts/satoshi-*.woff2

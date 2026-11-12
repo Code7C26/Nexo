@@ -1,4 +1,4 @@
-// Mail de Nexo (docs/investigacion-login-legal.md, sección 4): verificar la
+// Mail de Nexo (docs/investigaciones/investigacion-login-legal.md, sección 4): verificar la
 // cuenta, recuperar la contraseña y avisos de seguridad.
 //
 // SMTP propio sobre node:tls en vez de una librería: son unos pocos comandos

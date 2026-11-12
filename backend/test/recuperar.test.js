@@ -1,4 +1,4 @@
-// Recuperar la contraseña por mail (hist. §105, docs/investigacion-login-legal.md
+// Recuperar la contraseña por mail (hist. §105, docs/investigaciones/investigacion-login-legal.md
 // Fase 2): un enlace de un solo uso que vence a los 30 minutos, pedirlo
 // responde lo mismo exista o no la cuenta, y usarlo cierra todas las sesiones,
 // confirma el mail y avisa. Los mails no salen: el arnés corre con

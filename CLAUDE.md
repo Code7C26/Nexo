@@ -7,7 +7,7 @@ escuela, desarrollado por dos integrantes (Santino Solla y Joaquin Tosi), pero
 esa procedencia no recorta el objetivo: se construye con el estándar de un
 producto real, pensado para que un comercio lo use en serio y para competir
 con los sistemas de gestión que ya existen en el mercado argentino (referencias
-de competencia: Dux Software, Contagram — ver `docs/competencia.txt` y §37).
+de competencia: Dux Software, Contagram — ver `docs/investigaciones/competencia.txt` y §37).
 "Es un proyecto de escuela" dejó de ser, por decisión del equipo, una razón
 válida para recortar alcance o proponer una versión mínima de algo: la única
 restricción real es de costo (evitar dependencias pagas o infraestructura
@@ -94,9 +94,15 @@ no aplica.
 /scripts    → herramientas que se corren desde la raíz: lint, backup, seed,
               verificar-migracion y regresión contra HEAD
 /.github    → CI: GitHub Actions corre lint y tests en cada PR
-/docs       → documentación técnica y análisis del proyecto
-/diseno     → mockups y diseño visual
-/assets     → imágenes, íconos y recursos estáticos
+/deploy     → servicio, Caddy y actualización automática del servidor
+/redes      → piezas de redes y del pitch (carruseles, guía, videos): un
+              proyecto npm aparte, fuera del CI
+/docs       → documentación, siempre en carpetas (ningún archivo suelto):
+              proyecto/ (bitácora histórica, publicar, plan para vender),
+              investigaciones/, pitch/ (lo que se lleva a la presentación;
+              pitch/fuentes/ es de donde sale), logos/ (el kit de la marca)
+              y classroom/ (los trabajos entregados; consignas/ no se
+              versiona). Los íconos que usa la app viven en frontend/img/logo
 handoff.md  → bitácora de sesión, vive en la raíz del repo (no en /docs)
 ```
 
@@ -1164,7 +1170,7 @@ una instancia por negocio.
   días y después se borra. El captcha no se hizo: pediría un servicio
   externo.
 - Detalle de cada paso y decisiones tomadas: `handoff.md` y
-  `docs/handoff-historico.md` (§37–§51, §77).
+  `docs/proyecto/handoff-historico.md` (§37–§51, §77).
 
 Diseño que se siguió (y que rige para toda tabla o consulta nueva):
 
@@ -1340,7 +1346,7 @@ Implementado hoy (hist. §94):
 - CSP sin scripts inline.
 - Faltan las notificaciones (Web Push).
 - El diseño propio del celular es la etapa 7b de `handoff.md`
-  (`docs/investigacion-celular.md`).
+  (`docs/investigaciones/investigacion-celular.md`).
 
 **Regla de diseño: mobile-first en toda pantalla nueva.** El sistema ya tiene
 responsive real (drawer de navegación, tema claro/oscuro, layouts que se
@@ -1587,7 +1593,7 @@ Implementado hoy (hist. §117, §118):
 Para que las decisiones de alcance se midan contra algo concreto y no contra
 una intuición: la vara es la funcionalidad estándar de los sistemas de
 gestión para PyMEs que ya se usan en Argentina (referencias anotadas por el
-equipo: Dux Software, Contagram — `docs/competencia.txt`).
+equipo: Dux Software, Contagram — `docs/investigaciones/competencia.txt`).
 
 Capacidades típicas de esos sistemas que Nexo todavía no tiene, y que por eso
 están en el roadmap (§38): facturación electrónica con CAE real,

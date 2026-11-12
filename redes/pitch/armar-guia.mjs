@@ -2,7 +2,7 @@
 // los que presentan, la factura de compra de ejemplo y los QR en PNG. La
 // presentación en sí la arma `npm run presentacion` en la raíz.
 //
-// La guía: saca una miniatura de cada diapositiva de docs/presentacion/
+// La guía: saca una miniatura de cada diapositiva de docs/pitch/fuentes/
 // index.html, las pone en los <img data-diapositiva> de pitch/guia.html y la
 // imprime en PDF.
 import { readFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { servirRepo } from '../servidor.mjs';
 const servidor = await servirRepo();
 const carpeta = join(servidor.raiz, 'docs', 'pitch');
 const destino = join(carpeta, 'Guía para presentar — Nexo.pdf');
-// Los QR de docs/qr, cada uno en una imagen de 1920 × 1080 para mostrar en
+// Los QR de docs/pitch/fuentes/qr, cada uno en una imagen de 1920 × 1080 para mostrar en
 // pantalla completa, con abajo a dónde lleva. [archivo, título, dirección].
 const QR = [
   ['probar-nexo', 'Probar Nexo', 'Entrar a un negocio de ejemplo, sin registrarse', 'nexosystem.duckdns.org/app#/probar'],
@@ -28,7 +28,7 @@ try {
   // Las miniaturas: cada diapositiva como se ve al terminar de entrar, sin
   // la barra de progreso ni el contador (el número va en la guía).
   const diapos = await navegador.newPage({ viewport: { width: 1600, height: 900 } });
-  await diapos.goto(`${servidor.base}/docs/presentacion/index.html`, { waitUntil: 'networkidle' });
+  await diapos.goto(`${servidor.base}/docs/pitch/fuentes/index.html`, { waitUntil: 'networkidle' });
   await diapos.evaluate(() => document.fonts.ready);
   await diapos.addStyleTag({
     content: '*, *::before, *::after { transition: none !important; animation: none !important; } html { scroll-behavior: auto !important; } .progreso, .pie { display: none !important; }'
@@ -69,7 +69,7 @@ try {
 
   // La factura de compra de ejemplo, para la demo de "Cargar desde la factura".
   const factura = await navegador.newPage({ viewport: { width: 820, height: 1100 }, deviceScaleFactor: 2 });
-  await factura.goto(`${servidor.base}/docs/presentacion/factura-textil-norte.html`, { waitUntil: 'networkidle' });
+  await factura.goto(`${servidor.base}/docs/pitch/fuentes/factura-textil-norte.html`, { waitUntil: 'networkidle' });
   await factura.pdf({ path: join(carpeta, 'Factura de compra de ejemplo.pdf'), preferCSSPageSize: true, printBackground: true });
   await factura.locator('.hoja').screenshot({ path: join(carpeta, 'Factura de compra de ejemplo.jpg'), type: 'jpeg', quality: 88 });
 
@@ -77,7 +77,7 @@ try {
   const qr = await navegador.newPage({ viewport: { width: 1920, height: 1080 } });
   await qr.goto(`${servidor.base}/redes/pitch/guia.html`);
   for (const [archivo, nombre, bajada, direccion] of QR) {
-    const svg = readFileSync(join(servidor.raiz, 'docs', 'qr', `${archivo}.svg`), 'utf8');
+    const svg = readFileSync(join(servidor.raiz, 'docs', 'pitch', 'fuentes', 'qr', `${archivo}.svg`), 'utf8');
     await qr.setContent(`<style>
       @font-face { font-family: Inter; src: url("/frontend/fonts/inter.woff2"); font-weight: 100 900; }
       @font-face { font-family: Satoshi; src: url("/frontend/fonts/satoshi-700.woff2"); font-weight: 700; }

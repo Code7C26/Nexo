@@ -52,7 +52,7 @@ esto está planificado todavía: es una lista de ideas para elegir con el equipo
    antes de cobrar, y va como renglón en el ticket. **Nexo: no existe.**
    Depende de tener el medio de pago como entidad aparte de la cuenta de
    tesorería, que es el punto 8d de `handoff.md`
-   (`docs/investigacion-caja.md`).
+   (`docs/investigaciones/investigacion-caja.md`).
 4. **Todo desde la pantalla del punto de venta.** Al de Nexo le faltan:
    - **cobrar a cuenta:** el cliente paga su deuda sin llevarse nada, con
      cualquier medio menos cuenta corriente, y sale un papel con el saldo

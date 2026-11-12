@@ -20,7 +20,7 @@ dos cosas.
 - Todas las funciones de §1 a §36 de CLAUDE.md, publicadas en
   https://nexosystem.duckdns.org.
 - **Servidor** con HTTPS (Caddy). Se actualiza solo desde `main` con el CI en
-  verde y vuelve a la versión anterior si el arranque falla (`docs/publicar.md`).
+  verde y vuelve a la versión anterior si el arranque falla (`docs/proyecto/publicar.md`).
 - **Respaldos:** uno en cada arranque y otro diario a las 3:30. El diario sube
   cifrado a Backblaze B2, y restaurarlo ya se probó.
 - **Rendimiento** (hist. §161): SQLite en WAL, un índice en cada relación y
@@ -53,7 +53,7 @@ la frena mucho más.
   1. Crear la instancia (Ubuntu 24.04, forma VM.Standard.A1.Flex, por ejemplo
      2 núcleos y 12 GB). Si dice "out of capacity" en San Pablo, se reintenta
      otro día u otro horario.
-  2. Seguir "Instalar desde cero" de `docs/publicar.md`: el instalador usa los
+  2. Seguir "Instalar desde cero" de `docs/proyecto/publicar.md`: el instalador usa los
      repositorios de NodeSource y de Caddy, que tienen versión ARM (a
      confirmar al hacerlo). Nexo no tiene dependencias nativas, así que corre
      igual en ARM.
@@ -68,7 +68,7 @@ la frena mucho más.
   servidor (`journalctl -u nexo`). Un resumen diario por mail de los errores
   del día, sin servicios pagos.
 - [ ] **(U) Practicar el plan de emergencia una vez:** restaurar el respaldo de
-  Backblaze en una VM de prueba siguiendo `docs/publicar.md`, y anotar cuánto
+  Backblaze en una VM de prueba siguiendo `docs/proyecto/publicar.md`, y anotar cuánto
   tardó.
 
 ## 2. Base de datos
@@ -130,7 +130,7 @@ Es lo que más falta para vender.
 
 ## 6. Legal
 
-Investigado en `docs/investigacion-login-legal.md`.
+Investigado en `docs/investigaciones/investigacion-login-legal.md`.
 
 - [ ] **(U) Cargar los datos del titular** en `/etc/nexo/nexo.env`:
   `NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL` y `NEXO_TITULAR_DOMICILIO`. Ya se
@@ -150,7 +150,7 @@ Investigado en `docs/investigacion-login-legal.md`.
 - [ ] **(U) Un canal de soporte con horario,** el WhatsApp o el mail de Nexo.
   "Avisar un problema" ya existe en la app.
 - [ ] **(U+C) Qué hacer si algo se rompe:** quién mira el aviso de caída, cómo
-  se vuelve a una versión anterior (`docs/publicar.md`) y cómo se les avisa a
+  se vuelve a una versión anterior (`docs/proyecto/publicar.md`) y cómo se les avisa a
   los clientes.
 - [ ] **(C) La reserva de negocios de ejemplo** en producción es de 4 por
   tipo. Para un evento se sube con `NEXO_EJEMPLOS_RESERVA` (el comando está en

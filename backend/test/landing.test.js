@@ -123,7 +123,7 @@ for (const pagina of ['landing.html', 'privacidad.html', 'terminos.html']) {
       .map((m) => m[1])
       .filter((ref) => !rutasDelServidor.has(ref));
     const faltan = locales.filter((ref) => {
-      const archivo = ref.startsWith('/assets/') ? path.join(RAIZ, ref) : path.join(FRONTEND, ref);
+      const archivo = path.join(FRONTEND, ref);
       try {
         return !statSync(archivo).isFile();
       } catch {

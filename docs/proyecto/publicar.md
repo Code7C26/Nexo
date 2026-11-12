@@ -1,7 +1,7 @@
 # Publicar Nexo
 
 Cómo está publicado Nexo, cómo se actualiza y qué hacer si algo falla
-(etapa 8, Fase 4; hist. §103 en `docs/handoff-historico.md`).
+(etapa 8, Fase 4; hist. §103 en `docs/proyecto/handoff-historico.md`).
 
 ## Dónde está
 

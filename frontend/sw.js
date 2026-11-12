@@ -33,7 +33,7 @@
 // una zona para este archivo, así que se declaran acá.
 /* global self, caches, fetch, URL, Headers, Request, Response, setTimeout, clearTimeout */
 
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = `nexo-shell-${VERSION}`;
 const DATOS = `nexo-datos-${VERSION}`;
 
@@ -55,8 +55,8 @@ const PRECACHE = [
   "/img/instagram.svg",
   "/img/app/icono-192.png",
   "/img/app/apple-touch-icon.png",
-  "/assets/logo/01-icono/nexo-icono_negro_fondo-transparente.png",
-  "/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png",
+  "/img/logo/nexo-icono_negro_fondo-transparente.png",
+  "/img/logo/nexo-icono_blanco_fondo-transparente.png",
   "/js/arranque.js",
   "/js/traductor.js",
   "/js/idioma/en.js",
@@ -195,7 +195,7 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(aviso.titulo || "Nexo", {
       body: aviso.cuerpo || "",
       icon: "/img/app/icono-192.png",
-      badge: "/assets/logo/01-icono/nexo-icono_blanco_fondo-transparente.png",
+      badge: "/img/logo/nexo-icono_blanco_fondo-transparente.png",
       tag: aviso.etiqueta || undefined,
       renotify: Boolean(aviso.etiqueta),
       requireInteraction: Boolean(aviso.urgente),

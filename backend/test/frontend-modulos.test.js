@@ -149,12 +149,7 @@ test('sw.js guarda todo frontend/js y lo que carga index.html, y lo que lista ex
 
   // Lo de OPCIONALES puede faltar (Satoshi no se versiona); lo de PRECACHE no:
   // un solo archivo inexistente hace fallar la instalación entera.
-  const enDisco = (url) =>
-    url === '/app'
-      ? path.join(RAIZ_FRONT, 'index.html')
-      : url.startsWith('/assets/')
-        ? path.join(RAIZ_FRONT, '..', url)
-        : path.join(RAIZ_FRONT, url);
+  const enDisco = (url) => (url === '/app' ? path.join(RAIZ_FRONT, 'index.html') : path.join(RAIZ_FRONT, url));
   const inexistentes = precache.filter((u) => {
     try {
       return !statSync(enDisco(u)).isFile();

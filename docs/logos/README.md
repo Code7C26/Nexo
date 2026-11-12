@@ -1,6 +1,6 @@
 # Logo Nexo — variantes
 
-Generado a partir de `logo.png` (raíz del repo). Cada composición tiene 4 versiones
+Generado a partir de `logo-original.png` (en esta carpeta). Cada composición tiene 4 versiones
 de color, todas con el mismo trazo, solo cambia tinta y fondo:
 
 - `negro_fondo-transparente` — tinta negra, fondo transparente (para poner sobre cualquier color claro)

@@ -1,6 +1,6 @@
 /**
  * core/barra-inferior.js
- * La barra de abajo del celular (hist. §95, docs/investigacion-celular.md):
+ * La barra de abajo del celular (hist. §95, docs/investigaciones/investigacion-celular.md):
  * cuatro secciones de uso diario y "Más", que abre el menú completo (el
  * cajón de siempre, con el selector de negocio y todas las secciones).
  *

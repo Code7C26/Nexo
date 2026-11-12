@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg">
-  <!-- El "NΞXO" del logo (assets/logo/03-wordmark), redibujado en vector a
+  <!-- El "NΞXO" del logo (docs/logos/03-wordmark), redibujado en vector a
        partir de sus medidas: no se pixela y toma el color del texto
        (currentColor). Se usa con <svg viewBox="0 0 668 106"><use href="/img/marca.svg#nexo"/></svg>. -->
   <symbol id="nexo" viewBox="0 0 668 106">

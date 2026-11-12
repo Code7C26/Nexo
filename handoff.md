@@ -3,15 +3,15 @@
 > Punto de entrada para retomar el proyecto en una sesión nueva. Se mantiene
 > **corto y vivo**: estado actual, decisiones vigentes y qué sigue. El relato
 > detallado de cada etapa (qué se tocó, cómo se verificó, qué falló) vive en
-> [`docs/handoff-historico.md`](docs/handoff-historico.md), citado acá como
+> [`docs/proyecto/handoff-historico.md`](docs/proyecto/handoff-historico.md), citado acá como
 > "hist. §N". Las reglas de negocio y la arquitectura están en `CLAUDE.md`, y
 > este archivo no las repite.
 
 ## Cómo mantener este archivo
 
 - Al cerrar una etapa, se hacen tres cosas:
-  - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §161);
+  - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
+    siguiente número (hoy el último es §162);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -46,7 +46,7 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
 - **Todo el pitch en una carpeta: `docs/pitch/`** (con un LEEME): la
   presentación armada (`Presentación — Nexo.html`, doble clic), la guía en PDF,
   la factura de compra de ejemplo (PDF y JPG; fuente
-  `docs/presentacion/factura-textil-norte.html`: factura A de Textil Norte a
+  `docs/pitch/fuentes/factura-textil-norte.html`: factura A de Textil Norte a
   Lola con los SKU de Lola como códigos y un jogger en pack x 6; una sola
   lectura por vez, por el cupo) y los QR en PNG (probar, repositorio e
   Instagram `@nexosystem.app`, nuevo, comprobados con un lector). **Si cambia
@@ -59,7 +59,19 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
 
-**Para cuando se venda en serio: `docs/plan-para-vender.md`.** Qué hay y qué
+**12 de noviembre, hist. §162: el repo, ordenado.** `docs/` va siempre en
+carpetas: `proyecto/` (este histórico, publicar, plan para vender),
+`investigaciones/`, `pitch/` (lo que se lleva) con `pitch/fuentes/` (de donde
+sale: diapositivas, capturas, factura, QR en SVG y guiones), `logos/` (el kit de
+la marca, ex `assets/logo`, más el original de `diseno/`) y `classroom/` (los
+trabajos y el Business Model Canvas; `consignas/` sigue fuera de git). Los
+íconos de la app pasan a `frontend/img/logo/` (el servidor ya no sirve
+`/assets`; service worker v3). Salen de la raíz `assets/`, `diseno/`,
+`consignas/` y `documentacion comercial/`. **Pendiente:** el usuario decide si
+se borra `docs/proyecto/manual-usuario.html` (de agosto, del compañero,
+superado por el manual de la app).
+
+**Para cuando se venda en serio: `docs/proyecto/plan-para-vender.md`.** Qué hay y qué
 falta en servidor, base, dominio y mail, servicios externos, cobro de los
 planes, lo legal y el soporte, con quién hace cada cosa y en qué orden (el
 primer paso, sin gastar: Pay As You Go en Oracle y la Ampere A1).
@@ -87,9 +99,9 @@ Medido con 20 personas a la vez contra una base temporal
   falta definir qué hizo cada uno.
 - **El inglés va sí o sí:** un video resumen con Nexo en inglés
   (Configuración → Apariencia → Idioma) y la voz de Santino en inglés, con su
-  diapositiva. Base del texto: `docs/guion-pitch.md`, "Componente en inglés".
+  diapositiva. Base del texto: `docs/pitch/fuentes/guion-pitch.md`, "Componente en inglés".
 - **Los videos 5 (el alta desde cero) y 6 (apertura) también son
-  obligatorios** (`docs/guiones-videos.md`). Los videos animados (pitch e
+  obligatorios** (`docs/pitch/fuentes/guiones-videos.md`). Los videos animados (pitch e
   Instagram) se hacen en otra sesión.
 - **Facturas reales con el CUIT del padre: no para el pitch.** Técnicamente
   se puede (`NEXO_ARCA_AMBIENTE=produccion` y su certificado de producción),
@@ -109,10 +121,10 @@ el QR del público en la 10.**
   las funciones (11 a 21). La demo en vivo queda sin diapositiva, después de
   la 21 (Alt+Tab). Confianza (22) con títulos cortos: Datos seguros, Permisos
   de equipo, etc.
-- **Para después** (`docs/guiones-videos.md`, "Pendientes para el pitch"):
+- **Para después** (`docs/pitch/fuentes/guiones-videos.md`, "Pendientes para el pitch"):
   video 5, una diapositiva con el alta desde cero y "Lo que ya tenías"; video
   6, una apertura corta con la app funcionando.
-- **QR a la landing** (`docs/qr/landing-nexo.svg`, "Conocer Nexo" en
+- **QR a la landing** (`docs/pitch/fuentes/qr/landing-nexo.svg`, "Conocer Nexo" en
   `docs/pitch/QR`), comprobado con un lector.
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
@@ -126,7 +138,7 @@ reordenada y la guía para presentar.**
   prestaste plata…?" (3) y la plata que se pierde (4). La del equipo salió:
   los roles los cuentan ellos de palabra. La demo pasó a ser la **18**. La de
   inglés también salió: **el equipo hace aparte un video en inglés** del
-  proyecto (base del texto en `docs/guion-pitch.md`, "Componente en inglés").
+  proyecto (base del texto en `docs/pitch/fuentes/guion-pitch.md`, "Componente en inglés").
 - **La guía:** `docs/pitch/Guía para presentar — Nexo.pdf` (`npm run guia` en
   `redes/`, fuente `redes/pitch/guia.html`). Por diapositiva: la idea, qué
   decir, lo técnico simple y qué contestar. Si cambia una diapositiva, se
@@ -135,7 +147,7 @@ reordenada y la guía para presentar.**
   la compu: no baja Chromium.
 
 **11 de noviembre, hist. §156: las diapositivas del pitch, hechas.** La
-fuente es `docs/presentacion/` (index.html y capturas reales del sitio) y
+fuente es `docs/pitch/fuentes/` (index.html y capturas reales del sitio) y
 `npm run presentacion` arma `docs/pitch/Presentación — Nexo.html` (ahora en el repo,
 1,3 MB, anda sin internet). El producto primero. **Las van a retocar con su
 compañero** (los cambios se piden por número de diapositiva). **Sigue: los
@@ -176,7 +188,7 @@ en prueba, porque la producción falta) y WhatsApp entra ahí. El "NΞXO" del
 logo, en vector (`frontend/img/marca.svg`), en la barra de la landing.
 
 **Videos y diapositivas para el pitch (10 de noviembre).** Guiones en
-`docs/guiones-videos.md`: el 1 y el 2 aprobados, el 3 con solo el tipo de
+`docs/pitch/fuentes/guiones-videos.md`: el 1 y el 2 aprobados, el 3 con solo el tipo de
 negocio, el 4 grabado en el sitio con `santinosolla22+tutorial@gmail.com`.
 Cómo se hacen: grabar la app de los ejemplos (skill `ui-demo`), armar con
 Remotion (gratis hasta 3 personas) y la voz con `edge-tts` (es-AR Tomás o
@@ -252,11 +264,11 @@ sistemas; después, el contenido. El usuario va a mostrar
 cosas de otros sistemas para sumar. "Entrar con Google": hecho (§149). Después, el contenido (flyer, video, redes).
 
 **8 de noviembre, después de §141: guion del pitch y QR, en `solla` sin
-publicar.** `docs/guion-pitch.md` tiene el pitch en el orden de la consigna:
+publicar.** `docs/pitch/fuentes/guion-pitch.md` tiene el pitch en el orden de la consigna:
 la demo paso a paso con Lola Indumentaria, el plan B, los números del
 proyecto, los resultados de testing, el bloqueo para contar (ARCA) y el texto
 en inglés. Los roles técnicos del equipo los completan ellos. Los QR al
-sitio y al repositorio están en `docs/qr/`, comprobados con un lector.
+sitio y al repositorio están en `docs/pitch/fuentes/qr/`, comprobados con un lector.
 También se arregló "Servicios · Servicio" en Clima Sur: los servicios van en
 Instalación, Mantenimiento y Reparación, y la lista dice "Servicio" solo si
 el catálogo mezcla productos y servicios. Los ejemplos que ya estaban en la
@@ -271,7 +283,7 @@ i18n`; `idioma.test.js` lo exige en el CI). Los comprobantes, los mails y
 WhatsApp siguen en castellano.
 
 **8 de noviembre: documento final del proyecto, borrador completo.**
-`docs/Documento Final del Proyecto — Nexo.docx` (APA, 24 páginas), con la
+`docs/classroom/Documento Final del Proyecto — Nexo.docx` (APA, 24 páginas), con la
 estructura de la guía (ahora en `consignas/`), capturas reales, los FODA y QR.
 Falta lo que solo sabe el equipo, resaltado en amarillo como [COMPLETAR]:
 membrete, curso, docente, fecha, roles, reflexiones, feedback del pitch y
@@ -655,7 +667,7 @@ sigue", punto 5.
    (hist. §110). Falta que el usuario pruebe §108 y §109 en el sitio.
 
 **Nexo está publicado: https://nexosystem.duckdns.org** (hist. §103, guía
-en `docs/publicar.md`). Sigue con `noindex` (`deploy/Caddyfile`, comprobado en
+en `docs/proyecto/publicar.md`). Sigue con `noindex` (`deploy/Caddyfile`, comprobado en
 vivo el 1 de noviembre): se saca cuando arranque la publicidad.
 - **Servidor:** Oracle Cloud, cuenta "Nexoapp", Brazil East.
   - VM.Standard.E2.1.Micro con 1 GB de memoria y 2 GB de swap, Ubuntu 24.04;
@@ -670,7 +682,7 @@ vivo el 1 de noviembre): se saca cuando arranque la publicidad.
 - **Respaldos:** en cada arranque y todos los días a las 3:30, en
   `/var/lib/nexo/respaldos`. El diario además sube la copia cifrada a
   Backblaze B2 (bucket `nexo-respaldos-solla`, EU Central;
-  `backend/db/respaldo-nube.js`, guía en `docs/publicar.md`).
+  `backend/db/respaldo-nube.js`, guía en `docs/proyecto/publicar.md`).
 - **La base del servidor es la real desde el 27 de octubre:** la copió
   `VACUUM INTO`. La de la compu quedó como copia vieja, y lo que se cargue
   ahí no sube.
@@ -712,7 +724,7 @@ vivo el 1 de noviembre): se saca cuando arranque la publicidad.
 **Nuevo: etapa 8b, login, mail, términos y edad** (8b en "Qué sigue").
 Pedida por el usuario el 27 de octubre, después de ver la landing ("quedó
 perfecta") y antes de seguir con cosas grandes. La investigación está hecha:
-`docs/investigacion-login-legal.md`, con el plan en cuatro fases. El
+`docs/investigaciones/investigacion-login-legal.md`, con el plan en cuatro fases. El
 hallazgo más grave: ninguna cuenta tiene mail, así que un admin que se olvida
 la contraseña pierde su negocio.
 - **Decidido el 27 de octubre:** el titular legal es Santino (19 años; sus
@@ -764,7 +776,7 @@ la contraseña pierde su negocio.
     desde una planilla). Las decisiones del usuario y el diseño están en "Qué
     sigue", 8c.
   - **Investigado, para más adelante:** el cierre de caja con todos los
-    medios de pago, no solo el efectivo (8d, `docs/investigacion-caja.md`).
+    medios de pago, no solo el efectivo (8d, `docs/investigaciones/investigacion-caja.md`).
 - **Gemini:** recomendado el plan pago con una sola clave de Nexo y un tope de
   frases por plan (sección 2.6). Falta que el usuario lo confirme, con los
   topes.
@@ -789,7 +801,7 @@ en cuatro fases (§98 a §100 y la publicación). El plan está en el punto 8.
   Oracle Cloud y DuckDNS, contacto al CRM): ver hist. §98.
 - **PWA y celular de verdad: hechos** (hist. §94 a §97), commiteados en
   `solla`, sin pushear. El diseño y la investigación están en
-  `docs/investigacion-celular.md`.
+  `docs/investigaciones/investigacion-celular.md`.
   - **PWA:** se instala, y sin conexión abre con lo último que cargó. Suma la
     CSP.
   - **Navegación:** barra de abajo con las secciones del negocio y "Más".
@@ -1643,7 +1655,7 @@ abrir un frasco ya se puede como producción (receta "Perfume (ml)" = 1 frasco,
 rinde 100). **Sigue:** "¿cuántas puedo hacer?" (la tercera sesión de la
 estimación), o volver al orden de abajo.
 
-**Ideas de Praxia (3 de noviembre, `docs/investigacion-praxia.md`).** Praxia es
+**Ideas de Praxia (3 de noviembre, `docs/investigaciones/investigacion-praxia.md`).** Praxia es
 el sistema de un compañero con carnicería. Lo que a Nexo le falta, verificado
 en el código y ordenado por prioridad: etiquetas de balanza, ofertas con
 vigencia y por cantidad, recargo por medio de pago (depende del 8d), y cobrar a
@@ -1703,7 +1715,7 @@ a 6):
      gasto o cobro de Nexo que la explique, cobros de Nexo en la cuenta Mercado
      Pago que no aparecen allá, y pagos devueltos o en disputa.
    - Los avisos van a "Para revisar" (la idea de Praxia, punto 7 de
-     `docs/investigacion-praxia.md`), con un botón para asignarlo a una venta,
+     `docs/investigaciones/investigacion-praxia.md`), con un botón para asignarlo a una venta,
      registrarlo como gasto o marcarlo como visto. Nunca se registra nada solo.
    - Confirmar en la documentación qué movimientos de salida da la API (los
      cobros entrantes salen de la búsqueda de pagos; los egresos quizás pidan
@@ -1970,9 +1982,9 @@ servidor, y pasar el id y la clave al `.env` del servidor.
      noviembre (desde la herramienta, con la vista de celular). Un rato antes del simulacro, subir `NEXO_EJEMPLOS_RESERVA` (por
      ejemplo a 5) si se espera mucha gente escaneando a la vez.
   3. ~~El guion de la demo y los datos para I+D~~ **hecho** el 8 de
-     noviembre: `docs/guion-pitch.md`. Falta que el equipo complete sus roles,
+     noviembre: `docs/pitch/fuentes/guion-pitch.md`. Falta que el equipo complete sus roles,
      lo ensaye y grabe el video de respaldo.
-  4. ~~QR al sitio y al repositorio~~ **hechos**: `docs/qr/`.
+  4. ~~QR al sitio y al repositorio~~ **hechos**: `docs/pitch/fuentes/qr/`.
   5. Riesgo de la demo: el cupo gratis de Groq (~100 frases por día para todo
      Nexo). El Dev Tier (pago por uso) lo decide el usuario; si no, ensayar
      sin gastar el cupo del día de la presentación.
@@ -2157,7 +2169,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 6a. **Servicios con funciones propias** (1–2 sesiones). Pedido del usuario del
    20 de octubre: "que en vez de productos se puedan agregar servicios" y que
    el tipo Servicios tenga más funciones. Diseño e investigación en
-   `docs/investigacion-crm-servicios.md` §3:
+   `docs/investigaciones/investigacion-crm-servicios.md` §3:
    - ~~catálogo de servicios, con el nombre de la sección según el preset~~
      **hecho** (hist. §78);
    - ~~formulario propio (precio fijo o por hora, duración, unidad `hora`)~~
@@ -2176,7 +2188,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 6b. ~~CRM adaptado a cada tipo de negocio~~ **hecho** (hist. §89 y §90).
    Pedido del usuario del 20 de octubre, **que llegue a la presentación**:
    consultas, clientes y clientes potenciales. Diseño en
-   `docs/investigacion-crm-servicios.md` §2:
+   `docs/investigaciones/investigacion-crm-servicios.md` §2:
    - módulo `crm` con etapas por preset;
    - oportunidades y actividades;
    - pasar a cliente, presupuesto, socio o venta sin volver a cargar;
@@ -2190,7 +2202,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 7. ~~B2: PWA~~ **hecha** (hist. §94). Para después: notificaciones con Web
    Push.
 7b. ~~**Celular de verdad**~~ **hecho** (hist. §94 a §97; pedido del usuario
-   del 25 de octubre, muy importante). **Investigación hecha** (`docs/investigacion-celular.md`), y
+   del 25 de octubre, muy importante). **Investigación hecha** (`docs/investigaciones/investigacion-celular.md`), y
    de ahí salen las fases que siguen, un commit y un § cada una:
    - ~~**Fase 2, base:**~~ **hecha** (hist. §95):
      - barra inferior con Resumen, las tres primeras funciones prendidas de
@@ -2246,7 +2258,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      8b por pedido del usuario:
      - carpeta `deploy/` con `Caddyfile`, `nexo.service`, `instalar.sh`,
        `actualizar.sh` y DuckDNS;
-     - la guía `docs/publicar.md`;
+     - la guía `docs/proyecto/publicar.md`;
      - HSTS en producción.
      - Los trámites del usuario son la cuenta de Oracle Cloud (pide tarjeta
        solo para verificar) y la de DuckDNS.
@@ -2276,7 +2288,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
      la marca "Hecho con Nexo".
 8b. **Login, mail, términos y edad** (pedido del usuario del 27 de octubre,
    antes de la Fase 4 de publicación: sin esto la landing no se abre al
-   público). Investigación y plan en `docs/investigacion-login-legal.md`:
+   público). Investigación y plan en `docs/investigaciones/investigacion-login-legal.md`:
    - ~~`backend/mail.js`~~ hecho (hist. §101).
    - ~~Fase 1: mail en la cuenta, verificado, y login con mail~~ hecha (hist.
      §102).
@@ -2372,7 +2384,7 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
        pantalla.
    - Solo para el admin, y queda en la auditoría.
 8d. **Caja con todos los medios de pago** (pedido del usuario del 28 de
-   octubre, sin fecha). Investigación y diseño en `docs/investigacion-caja.md`.
+   octubre, sin fecha). Investigación y diseño en `docs/investigaciones/investigacion-caja.md`.
    - Al abrir, solo el efectivo, como hoy (así hacen Fudo y Loyverse). Al
      cerrar, cada medio con lo que dice Nexo, lo declarado (el efectivo
      contado; el débito y el crédito, según el cierre de lote del posnet) y
@@ -2660,7 +2672,7 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     webhook y el token): nombre "Nexo", +54 9 sin el 15, código por SMS.
     Activarlo con `POST <phone number id>/register` y
     `{"messaging_product":"whatsapp","pin":"<6 números>"}` desde el
-    Explorador de la API Graph. Foto: `assets/logo/06-perfil/`. En el
+    Explorador de la API Graph. Foto: `docs/logos/06-perfil/`. En el
     servidor solo cambian `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_NUMERO`
     (dígitos, 549…). Volver a vincular el teléfono y probar. Si Meta pide un
     medio de pago, el usuario decide.
