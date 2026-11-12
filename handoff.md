@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §157);
+    siguiente número (hoy el último es §158);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,29 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (11 de noviembre de 2026)
+## Estado actual (12 de noviembre de 2026)
+
+**12 de noviembre, hist. §158: la presentación corregida (30 diapositivas) y
+la guía rearmada (22 páginas).** Pedido del usuario después de verla:
+- **Abre con un dato, no presentándose:** "2 meses por año pierde la mitad de
+  las pymes argentinas solo en revisar planillas" (SAP, 555 pymes, El
+  Cronista, enero de 2016; es viejo y la guía lo dice: no se encontró uno más
+  nuevo con fuente seria). El logo y los nombres pasan a la **7**.
+- El tiempo (**4**, ahora "cada venta se anota cinco veces") va antes que la
+  plata (5). La 8 tiene una línea que sube detrás de las cajas.
+- **Sin "vos":** los textos hablan del negocio ("se cobra", "el dueño"); al
+  jurado, en plural. El "Te quedó" del ejemplo es la etiqueta real de la app.
+- Resumen (10) y mostrador (11) con la lista de lo que se puede hacer ahí.
+- Venta online (17) solo con canales y logos visibles; **Mercado Pago aparte
+  (18)**; gimnasio solo (19, puerta y recepción); **"Y además" (20)** con
+  producción y diez funciones chicas; demo en la **21**, sin "en vivo".
+- ARCA (24): el permiso (delegación → permiso de 12 h guardado → CAE), y la
+  factura de prueba (homologación) contra la real (producción).
+- **Demo con Mercado Pago, QR, WhatsApp y tiendas:** hoy están solo en
+  "Gonzalo José Solla", y cada cuenta se conecta a un negocio a la vez. Plan
+  en la guía ("Antes de empezar"): hacer la demo desde la Lola de la cuenta
+  de Santino y pasarle las conexiones el día antes. **Lo decide el usuario;
+  falta probar el QR con $100.**
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
 reordenada y la guía para presentar.**

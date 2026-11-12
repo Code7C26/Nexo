@@ -12812,3 +12812,49 @@ achicó). Las diapositivas 2 a 4 vistas en Chrome con el orden nuevo.
 **Después, el mismo día:** la diapositiva en inglés también salió (el equipo
 va a hacer aparte un video en inglés del proyecto). Quedan 27 diapositivas, el
 cierre es la 27, y la guía se rearmó sin ese bloque.
+
+## §158. La presentación corregida y la guía rearmada (12 de noviembre de 2026)
+
+Pedido del usuario después de ver la presentación (y un agregado a mitad de
+camino: no arrancar presentándose, sino con un dato que llame la atención).
+
+**El dato de apertura.** Se buscó una estadística con fuente sobre cómo se
+gestionan las pymes argentinas. La que mejor encaja es la encuesta de SAP a
+555 pymes, publicada por El Cronista el 14 de enero de 2016: 51 % pierde al
+menos dos meses al año validando planillas, 46 % administra con hojas de
+cálculo (12 % ERP, 5 % CRM; las respuestas suman más de 100 %). Es vieja: la
+diapositiva lleva la fuente con el año y la guía dice cómo contestarlo. Se
+descartaron los cierres de empresas (SRT/CEPA: cifras políticas y que no
+hablan de gestión) y la supervivencia de emprendimientos (fuentes que no
+coinciden: del 7 % al 80 %). La diapositiva 1 es "2 meses por año" con un
+calendario donde noviembre y diciembre se tachan; el logo con los nombres pasó
+a la 7 ("Por eso hicimos").
+
+**El resto, por diapositiva (30 en total).** 4 y 5 invertidas (el tiempo
+primero, contado como "cada venta se anota cinco veces" en vez de la noche del
+dueño). 8: una línea SVG que se dibuja detrás de las cajas (las alturas de la
+escalera pasaron a `nth-of-type`, porque el SVG es el primer hijo). Textos sin
+"vos" en toda la presentación. 10 y 11 con listas de funciones (verificadas
+contra el código: lector y cámara, balanza, ofertas, cobro mixto con vuelto,
+QR de Mercado Pago, fiado, caja; el empleado sin costos). 17 sin Mercado Pago
+y con los logos en oscuro (llevan `currentColor`, y la página tiene texto
+blanco: salían blancos sobre blanco). 18 nueva: Mercado Pago como forma de
+cobro, con un ejemplo de cobro por QR que pasa de "esperando" a "pagado". 19:
+el gimnasio solo, puerta y recepción lado a lado. 20 nueva: producción con su
+captura y diez funciones chicas. 21: la demo, sin "en vivo". 24: ARCA
+explicada (delegación, permiso de 12 h guardado, CAE; homologación contra
+producción, con el sello de "sin validez fiscal").
+
+**La demo y las conexiones.** Mercado Pago, WhatsApp, Tienda Nube y Mercado
+Libre están conectados solo en "Gonzalo José Solla", y el esquema no deja la
+misma cuenta en dos negocios (`idx_integraciones_cuenta`,
+`idx_whatsapp_vinculos_telefono` y `_usuario`). La guía propone hacer la demo
+desde la Lola de la cuenta de Santino (la del script de ejemplos) y pasarle
+las conexiones el día antes; lo decide el usuario. Falta probar el QR con $100.
+
+**La guía.** 22 páginas; "Antes de empezar" pasó a su propia página (con
+`break-inside: avoid` en los recuadros dejaba el título solo). La tapa ya dice
+que la oficial es a principios de diciembre, y el guion también.
+
+**Cómo se verificó.** Capturas a 1600×900 de las diapositivas cambiadas
+(1, 4, 7, 8, 10, 11, 17 a 21 y 24) y la página 3 del PDF en el visor de Chrome.

@@ -1,7 +1,8 @@
 # Guion del pitch — Nexo
 
 Para el simulacro del **jueves 12 de noviembre de 2026** y la presentación
-oficial del **20**. Son 30 minutos, en el orden de la consigna del profesor. Los
+oficial, **a principios de diciembre** (el 20 de noviembre, capaz, la feria
+de ciencias). Son 30 minutos, en el orden de la consigna del profesor. Los
 tiempos son orientativos: la demo es lo que más pesa y lo primero que se
 recorta es I+D, no la demo.
 
@@ -19,10 +20,11 @@ recorta es I+D, no la demo.
 
 ## 1. Gancho y equipo (3 min)
 
-**Gancho (una pregunta al jurado):** "¿Cuánto ganaron con la última venta? No
-cuánto cobraron: cuánto les quedó después de la mercadería, la comisión de
-Mercado Pago, el envío y el IVA." Casi ningún comercio chico lo sabe al momento.
-Nexo te lo dice en cada venta.
+**Gancho (un dato, sin presentarse antes):** "La mitad de las pymes argentinas
+pierde dos meses por año solo revisando planillas" (encuesta de SAP a 555
+pymes, El Cronista, enero de 2016: 51 % pierde al menos dos meses al año
+validando planillas; 46 % administra con hojas de cálculo). Es la diapositiva
+1; la presentación del equipo va en la 7, con el logo, después del problema.
 
 **Equipo, con roles técnicos (completar entre los dos antes del jueves):**
 - Santino Solla: ___
