@@ -12864,3 +12864,28 @@ de 2016, "le va a parecer cualquier cosa") ni el dato como primera: el logo
 volvió a ser la 1, sin "Por eso hicimos", y el dato es la 2. De la 8 en
 adelante no cambió la numeración. Los roles del equipo se dicen en la 29
 ("Cómo trabajamos"); la fuente queda en la guía, para contestar si preguntan.
+
+## §159. La carpeta del pitch, la diapositiva de la IA y ARCA simple (12 de noviembre de 2026)
+
+Pedido del usuario: una diapositiva sobre el uso de la IA y las skills al
+mostrar cómo trabajan; una carpeta con todo lo de la presentación; ARCA
+explicado simple (certificado, Nexo como intermediario), sin las 12 horas; y
+un QR al Instagram.
+
+- **Diapositiva 30, "Cómo usamos la IA para construir Nexo"** (el cierre pasa
+  a la 31): Claude Code; las decisiones son del equipo; CLAUDE.md, handoff.md y
+  las pruebas como control; las skills que de verdad se usaron según el
+  historial: frontend-design, ui-ux-pro-max, dataviz, ui-demo y el MCP
+  codebase-memory. Su bloque en la guía explica cada una y qué contestar.
+- **ARCA (24):** negocio (delega, sin clave fiscal) → Nexo (se identifica con
+  su certificado y manda cada factura) → ARCA (devuelve el CAE). El bloqueo
+  "difícil" de la consigna pasó a ser el de la fecha en UTC, en la guía y en
+  el guion.
+- **`docs/pitch/`:** presentación armada, guía, factura de ejemplo y QR en
+  PNG, con un LEEME. `scripts/presentacion.mjs` escribe ahí, y
+  `redes/pitch/armar-guia.mjs` (npm run guia) ahora también imprime la factura
+  (fuente movida a `docs/presentacion/`) y pasa los QR de `docs/qr/` a PNG.
+  Los archivos se movieron con `git mv`; `docs/demo/` desapareció.
+- **QR de Instagram:** `docs/qr/instagram-nexo.svg`, hecho con la misma
+  `qrcode-generator` vendorizada que los otros, y los tres leídos con jsQR
+  (instalado aparte, fuera del repo): devuelven sus direcciones exactas.
