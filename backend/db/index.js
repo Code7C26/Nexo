@@ -35,6 +35,18 @@ if (process.env.NEXO_BACKUP !== 'off') {
 
 const db = new DatabaseSync(dbPath);
 
+// Cómo escribe SQLite (hist. §161). Con el modo de fábrica (journal DELETE y
+// synchronous FULL) cada transacción esperaba varias escrituras forzadas al
+// disco: unos 6 ms en el servidor, con node:sqlite bloqueando a todos mientras
+// tanto. WAL con synchronous NORMAL es la configuración estándar de SQLite para
+// una aplicación web: la base nunca se corrompe, y lo único que puede perderse
+// ante un corte de la máquina (no de Nexo) son las últimas transacciones de esos
+// segundos. El respaldo usa VACUUM INTO, que copia bien en este modo. El
+// busy_timeout es para los scripts que la abren mientras el servidor escribe.
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA synchronous = NORMAL');
+db.exec('PRAGMA busy_timeout = 5000');
+
 const schemaSql = readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 // Se mira antes de que schema.sql cree las tablas nuevas: la migración de
 // módulos de hist. §89 (más abajo) corre una sola vez, en el arranque que trae
@@ -2348,5 +2360,31 @@ export function resembrarEtapasCrm(organizacionId) {
 for (const { id } of db.prepare('SELECT id FROM organizaciones ORDER BY id').all()) {
   sembrarCatalogosBase(id);
 }
+
+// Un índice por cada columna de relación (FOREIGN KEY) que no tenga uno, con
+// esa columna primero (hist. §161). SQLite no los crea solo, y sin ellos cada
+// consulta por organizacion_id o por venta_id recorre la tabla entera, la de
+// todos los negocios (la lista de ventas pasaba de 40 a 350 ms con 25 negocios
+// en la base), y cada borrado revisa las tablas hijas fila por fila. Va al
+// final, con todas las migraciones hechas, y mira el esquema real: una tabla
+// o columna nueva con REFERENCES se indexa sola. Solo agrega índices.
+function indexarRelaciones() {
+  const tablas = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
+  for (const { name: tabla } of tablas) {
+    const indexadas = new Set(
+      db
+        .prepare(`PRAGMA index_list("${tabla}")`)
+        .all()
+        .map((indice) => db.prepare(`PRAGMA index_info("${indice.name}")`).all().find((c) => c.seqno === 0)?.name)
+    );
+    const clave = db.prepare(`PRAGMA table_info("${tabla}")`).all().filter((c) => c.pk > 0);
+    for (const { from: columna } of db.prepare(`PRAGMA foreign_key_list("${tabla}")`).all()) {
+      if (indexadas.has(columna) || (clave.length === 1 && clave[0].name === columna)) continue;
+      db.exec(`CREATE INDEX IF NOT EXISTS "idx_${tabla}_${columna}" ON "${tabla}" ("${columna}")`);
+      indexadas.add(columna);
+    }
+  }
+}
+indexarRelaciones();
 
 export default db;

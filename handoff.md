@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §160);
+    siguiente número (hoy el último es §161);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -58,6 +58,38 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   cierre es la 31. ARCA (24) quedó simple: Nexo intermedia con su
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
+
+**12 de noviembre, hist. §161: el servidor, preparado para mucha gente.**
+Medido con 20 personas a la vez contra una base temporal
+(`medir-carga`/`medir-rutas`, en el historial):
+- **SQLite en WAL + `synchronous = NORMAL`** (`db/index.js`): cada
+  transacción costaba ~6 ms de disco en el servidor; ahora una fracción.
+- **Un índice por cada columna de relación** (147 no tenían): la lista de
+  ventas con 25 negocios en la base pasó de 350 a 14 ms; con 20 personas a la
+  vez, de 1,6 s a 20 ms de mediana. Se crean solos al arrancar.
+- **Topes por IP para un wifi compartido:** 60 cuentas, 60 códigos, 200
+  verificaciones, 60 ejemplos y 120 entradas con Google por hora (antes 5
+  cuentas por IP: en un aula, la sexta persona no podía registrarse).
+- **Reserva de ejemplos: 4 por tipo** en producción. Armar uno sigue
+  siendo de a uno (~3 s en la compu, más en el servidor). Para un evento,
+  subir `NEXO_EJEMPLOS_RESERVA` (comando en el historial, §161).
+- **Sigue:** la máquina de Oracle es la E2.1.Micro (1/8 de núcleo y 1 GB):
+  para crecer, pasar a la Ampere A1 de la capa gratis (hasta 4 núcleos y
+  24 GB, sin costo). Y paginar las listas largas (§35), empezando por ventas.
+
+**Decisiones del 12 de noviembre para la presentación oficial:**
+- **La diapositiva de roles del equipo va sí o sí** (la pide la consigna);
+  falta definir qué hizo cada uno.
+- **El inglés va sí o sí:** un video resumen con Nexo en inglés
+  (Configuración → Apariencia → Idioma) y la voz de Santino en inglés, con su
+  diapositiva. Base del texto: `docs/guion-pitch.md`, "Componente en inglés".
+- **Los videos 5 (el alta desde cero) y 6 (apertura) también son
+  obligatorios** (`docs/guiones-videos.md`). Los videos animados (pitch e
+  Instagram) se hacen en otra sesión.
+- **Facturas reales con el CUIT del padre: no para el pitch.** Técnicamente
+  se puede (`NEXO_ARCA_AMBIENTE=produccion` y su certificado de producción),
+  pero cada factura sería real ante ARCA para él; queda para hacerlo con un
+  contador, como dice §33.
 
 **12 de noviembre, hist. §160: la IA apagada en los negocios de ejemplo, y
 el QR del público en la 10.**

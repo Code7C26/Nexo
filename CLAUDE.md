@@ -1490,6 +1490,12 @@ reescritura del sistema:
   SQLite no permite alterar directamente. No introducir un framework de
   migraciones nuevo sin discutirlo primero: el patrón actual es simple y ya
   probado en 12 migraciones reales.
+- **Rendimiento (hist. §161):** la base corre en modo WAL con
+  `synchronous = NORMAL` (la configuración estándar de SQLite para una
+  aplicación web), y `db/index.js` crea al arrancar un índice para cada
+  columna con `REFERENCES` que no tenga uno. Toda columna de relación nueva
+  queda indexada sola; una consulta que filtra por otra columna que crece con
+  los negocios necesita su índice explícito.
 
 ---
 

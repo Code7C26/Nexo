@@ -552,9 +552,9 @@ const CODIGO_INTENTOS = 5;
 // Lo que tiene quien acertó el código del alta para terminar los pasos que
 // siguen y crear la cuenta.
 const COMPROBANTE_HORAS = 2;
-const CODIGOS_POR_IP_POR_HORA = 10;
+const CODIGOS_POR_IP_POR_HORA = 60;
 const CODIGOS_POR_MAIL_POR_HORA = 5;
-const VERIFICACIONES_POR_IP_POR_HORA = 30;
+const VERIFICACIONES_POR_IP_POR_HORA = 200;
 
 // Un código nuevo reemplaza al anterior del mismo mail (o cuenta) y propósito
 // que no se confirmó: vale el último que llegó. Uno ya confirmado no se
@@ -997,6 +997,11 @@ app.post('/api/auth/login', (req, res) => {
 // empresas vacías.
 const REGISTROS_MAX = 5;
 const REGISTROS_VENTANA_MS = 60 * 60 * 1000;
+// Los topes por IP piensan en un wifi compartido (hist. §161): en un aula, una
+// feria o un local, decenas de personas salen a internet con la misma IP. El
+// abuso lo frenan además los topes por mail, el código que hay que confirmar y
+// el campo trampa del alta.
+const CUENTAS_POR_IP_POR_HORA = 60;
 const intentosRegistro = new Map();
 // Las invitaciones de un negocio por hora (hist. §104): un equipo entero se
 // suma de una, pero la cuenta de mail de Nexo no sirve para mandar a granel.
@@ -1193,7 +1198,7 @@ function comprobanteDeAlta(email, comprobante) {
 // la etapa 8b (handoff.md).
 app.post('/api/auth/registro', (req, res) => {
   if (registroCerrado()) return res.status(403).json(REGISTRO_CERRADO);
-  if (registroExcedido(req.ip)) {
+  if (registroExcedido(req.ip, CUENTAS_POR_IP_POR_HORA)) {
     return res.status(429).json({ error: 'Demasiados intentos de registro. Probá de nuevo más tarde.' });
   }
 
@@ -1358,7 +1363,7 @@ const salirDeGoogle = (res, resultado) => res.redirect(`/app?google=${resultado}
 
 app.get('/api/auth/google', (req, res) => {
   if (!googleConfigurado()) return salirDeGoogle(res, 'no-disponible');
-  if (registroExcedido(`google:${req.ip}`, 30)) return salirDeGoogle(res, 'demasiados');
+  if (registroExcedido(`google:${req.ip}`, 120)) return salirDeGoogle(res, 'demasiados');
   const pedido = nuevoPedidoGoogle();
   res.cookie(COOKIE_GOOGLE, `${pedido.state}.${pedido.verificador}`, {
     httpOnly: true,
@@ -1565,7 +1570,7 @@ app.post('/api/auth/invitacion', (req, res) => {
 // suma junto sale por el wifi del local. Cuenta solo los intentos con un
 // enlace vigente y datos válidos, los que llegan al scrypt: sin enlace no se
 // crea nada, y probar enlaces al azar no tiene chance (32 bytes).
-const CUENTAS_POR_INVITACION_POR_HORA = 20;
+const CUENTAS_POR_INVITACION_POR_HORA = 60;
 
 app.post('/api/auth/invitacion/cuenta', (req, res) => {
   const inv = invitacionPorToken(req.body?.token);
@@ -2072,7 +2077,9 @@ app.post('/api/integraciones/whatsapp/webhook', (req, res) => {
 // algunos listos: la reserva, EJEMPLOS_EN_RESERVA de cada tipo, armados de a
 // uno y en segundo plano. Uno de la reserva que no se armó hoy se descarta: sus
 // "ventas de hoy" serían de ayer. Con la reserva de ese tipo vacía, se arma en
-// el momento y quien lo pidió espera.
+// el momento y quien lo pidió espera. Son 4 por tipo (hist. §161): una sala que
+// escanea el QR del pitch entra casi entera sin esperar; para un evento grande
+// se sube con NEXO_EJEMPLOS_RESERVA.
 //
 // La cuenta del ejemplo no es de nadie: un mail .invalid (RFC 2606, nunca se
 // entrega), una contraseña al azar que nadie conoce y sin términos aceptados,
@@ -2081,9 +2088,9 @@ app.post('/api/integraciones/whatsapp/webhook', (req, res) => {
 const EJEMPLO_DIAS = 3;
 const EJEMPLOS_EN_RESERVA = Math.max(
   0,
-  Number(process.env.NEXO_EJEMPLOS_RESERVA ?? (process.env.NODE_ENV === 'production' ? 2 : 0)) || 0
+  Number(process.env.NEXO_EJEMPLOS_RESERVA ?? (process.env.NODE_ENV === 'production' ? 4 : 0)) || 0
 );
-const EJEMPLOS_POR_IP = 10;
+const EJEMPLOS_POR_IP = 60;
 // Mientras se arma, `ejemplo` dice esto y no la clave: no se puede tomar, y al
 // arrancar el servidor uno así quedó a medias y se borra.
 const EJEMPLO_ARMANDO = 'armando';

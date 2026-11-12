@@ -115,7 +115,9 @@ saltar entre partes en YouTube.
 
 ## Pendientes para el pitch (pedidos el 12 de noviembre)
 
-Dos videos más, para hacer después de la presentación del 12. No están
+Dos videos más, **obligatorios para la presentación oficial** (decisión del
+usuario del 12 de noviembre). Se hacen en una sesión aparte, con los videos
+animados para la presentación y para Instagram. No están
 grabados.
 
 ### Video 5 — "Un negocio desde cero" (para una diapositiva del pitch)
