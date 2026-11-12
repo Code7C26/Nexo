@@ -6,7 +6,7 @@
 <title>Nexo — Pitch</title>
 <!--
   Fuente de las diapositivas del pitch (docs/guion-pitch.md). No se abre
-  directo: `npm run presentacion` arma docs/presentacion-pitch.html con las
+  directo: `npm run presentacion` arma docs/pitch/Presentación — Nexo.html con las
   fuentes, las capturas, los QR, los íconos y los logos adentro, para que ande
   sin internet.
 
@@ -400,6 +400,11 @@ img { display: block; max-width: 100%; }
 .chicas .ico { grid-row: span 2; color: var(--acento); font-size: 1.4em; margin-top: 0.1em; }
 .chicas b { font-weight: 600; }
 .chicas span { color: var(--texto-2); }
+.chicas.una { grid-template-columns: minmax(0, 1fr); }
+
+/* Cómo usamos la IA: cómo trabajamos con ella y las skills */
+.ia { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(1rem, 3vw, 3rem); align-items: start; }
+.subtitulo-ia { font-size: var(--small-size); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texto-3); margin-bottom: 0.7em; }
 
 /* Demo en vivo */
 .demo { display: grid; grid-template-columns: 1.3fr 1fr; gap: clamp(1rem, 4vw, 4rem); align-items: center; }
@@ -477,7 +482,7 @@ img { display: block; max-width: 100%; }
 
 /* ===== Celular y tablet vertical ===== */
 @media (max-width: 820px) {
-  .par, .par.parejo, .demo, .mercado, .dos-col, .equilibrio, .flujo, .pantallas, .ademas, .funciones.dos { grid-template-columns: 1fr; }
+  .par, .par.parejo, .demo, .mercado, .dos-col, .equilibrio, .flujo, .pantallas, .ademas, .funciones.dos, .ia { grid-template-columns: 1fr; }
   .flecha-grande, .flecha, .ocultar-chico, .crecimiento, .anio { display: none !important; }
   .pantallas .compu img, .ademas .compu img { max-height: 24vh; }
   .chicas li:nth-child(n + 5), .funciones li:nth-child(n + 5) { display: none; }
@@ -1022,19 +1027,19 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 24. ARCA por dentro: el permiso, la homologación y el CAE -->
-<section class="slide" aria-label="Facturar con ARCA por dentro">
+<!-- 24. ARCA: Nexo factura en nombre del negocio, con su certificado -->
+<section class="slide" aria-label="Facturar con ARCA">
   <div class="slide-content apilado">
     <div>
-      <p class="parte reveal">Un desafío técnico</p>
-      <h2 class="reveal" style="--d:1">Facturar con ARCA: el permiso, la prueba y el CAE</h2>
+      <p class="parte reveal">Factura electrónica</p>
+      <h2 class="reveal" style="--d:1">Nexo factura ante ARCA en nombre del negocio</h2>
     </div>
     <div class="arq">
-      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../frontend/img/iconos.svg#store"/></svg><b>El negocio</b><span>Autoriza a Nexo una sola vez, desde la página de ARCA. Nunca da su clave fiscal.</span></div>
+      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../frontend/img/iconos.svg#store"/></svg><b>El negocio</b><span>Le da permiso a Nexo una sola vez, desde la página de ARCA. Nunca da su clave fiscal.</span></div>
       <div class="flecha reveal" style="--d:3" aria-hidden="true">→</div>
-      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../frontend/img/iconos.svg#lock"/></svg><b>Nexo</b><span>Pide el permiso firmado con su certificado. Dura 12 horas y ARCA no da otro: Nexo lo guarda y lo reusa.</span></div>
+      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../frontend/img/iconos.svg#lock"/></svg><b>Nexo</b><span>Hace de intermediario: se identifica ante ARCA con su certificado digital, que funciona como una firma, y manda cada factura.</span></div>
       <div class="flecha reveal" style="--d:4" aria-hidden="true">→</div>
-      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../frontend/img/iconos.svg#receipt-text"/></svg><b>ARCA</b><span>Revisa la factura y devuelve el CAE: el número que la autoriza. Si no contesta, Nexo pregunta antes de reintentar.</span></div>
+      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../frontend/img/iconos.svg#receipt-text"/></svg><b>ARCA</b><span>Revisa la factura y devuelve el CAE: el número que la autoriza.</span></div>
     </div>
     <div class="dos-col cae-comp">
       <div class="tarjeta reveal" style="--d:5"><span class="estado bien">Hecho · Homologación</span><h3>La factura de prueba</h3><p>El ambiente de práctica de ARCA: funciona igual que el real y da un CAE, pero de prueba. Así probamos la factura A, la B y la nota de crédito.</p><p class="sello prueba">Comprobante de prueba – sin validez fiscal</p></div>
@@ -1114,7 +1119,36 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 30. Cierre -->
+<!-- 30. Cómo usamos la IA para construir Nexo -->
+<section class="slide" aria-label="Cómo usamos la IA">
+  <div class="slide-content apilado">
+    <div>
+      <p class="parte reveal">Gestión ágil</p>
+      <h2 class="reveal" style="--d:1">Cómo usamos la IA para construir Nexo</h2>
+      <p class="bajada reveal" style="--d:2">Programamos con Claude Code, un asistente de programación con IA que trabaja dentro del proyecto.</p>
+    </div>
+    <div class="ia">
+      <ul class="lista-check reveal" style="--d:3">
+        <li><div><b>Las decisiones son nuestras:</b> <span>qué hace Nexo, para quién, cuánto cuesta y qué va primero.</span></div></li>
+        <li><div><b>Reglas escritas:</b> <span>un documento con las reglas del negocio que la IA tiene que respetar.</span></div></li>
+        <li><div><b>Una bitácora:</b> <span>cada sesión deja anotado qué se hizo y qué sigue.</span></div></li>
+        <li><div><b>Nada se publica sin pruebas:</b> <span>cada cambio pasa por las pruebas automáticas y por nuestra revisión.</span></div></li>
+      </ul>
+      <div class="reveal" style="--d:4">
+        <p class="subtitulo-ia">Las skills que usamos</p>
+        <ul class="chicas una">
+          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#palette"/></svg><b>frontend-design</b><span>el diseño de las pantallas</span></li>
+          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#layout-dashboard"/></svg><b>ui-ux-pro-max</b><span>la experiencia de uso y la accesibilidad</span></li>
+          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#chart-column"/></svg><b>dataviz</b><span>los gráficos del Resumen</span></li>
+          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#camera"/></svg><b>ui-demo</b><span>grabar la app para los videos</span></li>
+          <li><svg class="ico"><use href="../../frontend/img/iconos.svg#layers"/></svg><b>codebase-memory</b><span>un mapa del código, para no perderse</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 31. Cierre -->
 <section class="slide" aria-label="Cierre">
   <div class="slide-content cierre">
     <div>

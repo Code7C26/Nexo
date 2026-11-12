@@ -137,22 +137,16 @@ Navegador (PWA instalable)  ──HTTPS──▶  Servidor Node.js + Express  �
 
 ### Un bloqueo grave y cómo se resolvió (elegir uno)
 
-**Recomendado: la factura electrónica con ARCA.**
-- *Bloqueo:* ARCA exige firmar cada pedido de acceso con un certificado
-  (CMS), y la librería que se usa para eso (`node-forge`) era una dependencia
-  más. Además, ARCA da **un solo permiso cada 12 horas**: si el servidor lo
-  perdía al reiniciarse, el negocio quedaba sin poder facturar medio día.
-- *Solución:* la firma se armó a mano con `node:crypto`, se verificó con
-  `openssl`, y ARCA la aceptó a la primera. El permiso se guarda en la base,
-  así que sobrevive a los reinicios. Si ARCA no contesta, el reintento
-  consulta primero el número que se había intentado, antes de pedir otro, y
-  la factura nunca sale duplicada.
+**Recomendado: "hoy" era mañana.** Desde las 21 h de la Argentina, toda
+venta, cobro y gasto quedaba con la fecha del día siguiente, porque el
+servidor usaba la hora UTC. Se encontró probando a las 21 h. La fecha pasó a
+calcularse en la zona horaria del negocio, con un test que simula un servidor
+en otra zona.
 
-**De respaldo, más corto:** "hoy" era mañana. Desde las 21 h de la
-Argentina, toda venta, cobro y gasto quedaba con la fecha del día siguiente,
-porque el servidor usaba la hora UTC. Se encontró probando a las 21 h. La
-fecha pasó a calcularse en la zona horaria del negocio, con un test que
-simula un servidor en otra zona.
+**De respaldo: la firma para ARCA.** Para facturar, Nexo se identifica ante
+ARCA con su certificado digital, y lo normal es usar una librería externa
+(`node-forge`) para firmar. Se armó a mano con `node:crypto`, se verificó con
+`openssl`, y ARCA la aceptó a la primera.
 
 **Otro posible:** la IA. El plan gratuito de Gemini puede usar lo que se le
 manda, y la frase trae el nombre del cliente. Se cambió a Groq, con retención

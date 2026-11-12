@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §158);
+    siguiente número (hoy el último es §159);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -43,13 +43,21 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   en la guía ("Antes de empezar"): hacer la demo desde la Lola de la cuenta
   de Santino y pasarle las conexiones el día antes. **Lo decide el usuario;
   falta probar el QR con $100.**
-- `docs/presentacion-pitch.html` (la armada) ahora está en el repo, para
-  abrirla con doble clic: **si cambia `docs/presentacion/`, rearmarla con
-  `npm run presentacion` y commitearla** (PR #73 y #74, en `main`).
-- **Factura de compra de ejemplo para la demo** (`docs/demo/factura-textil-norte`,
-  `.pdf` y `.jpg`, fuente `.html`): factura A de Textil Norte a Lola, con los
-  SKU de Lola como códigos (cada renglón se encuentra solo) y un jogger en
-  pack x 6 (pasa a 12 unidades). Total $ 750.684. Una sola lectura: cupo.
+- **Todo el pitch en una carpeta: `docs/pitch/`** (con un LEEME): la
+  presentación armada (`Presentación — Nexo.html`, doble clic), la guía en PDF,
+  la factura de compra de ejemplo (PDF y JPG; fuente
+  `docs/presentacion/factura-textil-norte.html`: factura A de Textil Norte a
+  Lola con los SKU de Lola como códigos y un jogger en pack x 6; una sola
+  lectura por vez, por el cupo) y los QR en PNG (probar, repositorio e
+  Instagram `@nexosystem.app`, nuevo, comprobados con un lector). **Si cambia
+  una diapositiva: `npm run presentacion` (raíz) y `npm run guia` (en
+  `redes/`, rearma guía, factura y QR), y commitear la carpeta.**
+- **31 diapositivas:** la 30 es nueva, "Cómo usamos la IA para construir
+  Nexo" (Claude Code, las reglas, la bitácora, las pruebas y las skills
+  frontend-design, ui-ux-pro-max, dataviz, ui-demo y codebase-memory); el
+  cierre es la 31. ARCA (24) quedó simple: Nexo intermedia con su
+  certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
+  el de la fecha ("hoy" era mañana).
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
 reordenada y la guía para presentar.**
@@ -63,7 +71,7 @@ reordenada y la guía para presentar.**
   los roles los cuentan ellos de palabra. La demo pasó a ser la **18**. La de
   inglés también salió: **el equipo hace aparte un video en inglés** del
   proyecto (base del texto en `docs/guion-pitch.md`, "Componente en inglés").
-- **La guía:** `docs/Guía para presentar — Nexo.pdf` (`npm run guia` en
+- **La guía:** `docs/pitch/Guía para presentar — Nexo.pdf` (`npm run guia` en
   `redes/`, fuente `redes/pitch/guia.html`). Por diapositiva: la idea, qué
   decir, lo técnico simple y qué contestar. Si cambia una diapositiva, se
   cambia su bloque y se rearma (el script avisa si no coinciden los números).
@@ -72,7 +80,7 @@ reordenada y la guía para presentar.**
 
 **11 de noviembre, hist. §156: las diapositivas del pitch, hechas.** La
 fuente es `docs/presentacion/` (index.html y capturas reales del sitio) y
-`npm run presentacion` arma `docs/presentacion-pitch.html` (ignorado por git,
+`npm run presentacion` arma `docs/pitch/Presentación — Nexo.html` (ahora en el repo,
 1,3 MB, anda sin internet). El producto primero. **Las van a retocar con su
 compañero** (los cambios se piden por número de diapositiva). **Sigue: los
 videos** (párrafo "Videos y diapositivas", más abajo). Para la demo: dos teles
