@@ -28,9 +28,11 @@ reordenada y la guía para presentar.**
   las portadas juntas forman el logo con la bajada y "Ordená. Vendé. Crecé.".
   Las 17 PNG están en el repo para bajarlas del celular (por el enlace raw de
   GitHub). Se suben en orden 3, 2, 1 y se fijan igual.
-- **Presentación: 28 diapositivas.** Abre el lío (2), sigue "¿Alguna vez
+- **Presentación: 27 diapositivas.** Abre el lío (2), sigue "¿Alguna vez
   prestaste plata…?" (3) y la plata que se pierde (4). La del equipo salió:
-  los roles los cuentan ellos de palabra. La demo pasó a ser la **18**.
+  los roles los cuentan ellos de palabra. La demo pasó a ser la **18**. La de
+  inglés también salió: **el equipo hace aparte un video en inglés** del
+  proyecto (base del texto en `docs/guion-pitch.md`, "Componente en inglés").
 - **La guía:** `docs/Guía para presentar — Nexo.pdf` (`npm run guia` en
   `redes/`, fuente `redes/pitch/guia.html`). Por diapositiva: la idea, qué
   decir, lo técnico simple y qué contestar. Si cambia una diapositiva, se

@@ -206,8 +206,9 @@ servicios en plan gratis), y eso baja el punto de equilibrio.
 
 ## Componente en inglés
 
-Va integrado en un paso, no al final. La propuesta es el cierre de la parte 5
-(venta), en un minuto:
+**No va en la presentación** (decisión del usuario del 11 de noviembre): el
+equipo hace aparte un video en inglés que explica el proyecto, y la
+diapositiva en inglés se sacó. Este texto queda como base para ese video:
 
 > Nexo is an all-in-one management system for small businesses in Argentina.
 > It connects stock, sales, cash and invoicing in one place, adapts to each
