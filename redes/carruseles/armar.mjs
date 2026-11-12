@@ -1,0 +1,67 @@
+// Saca las imágenes de los carruseles fijados de Instagram (npm run carruseles,
+// en redes/): una PNG de 1080 × 1440 por lámina de carruseles.html, en
+// carruseles/salida/carrusel-N/. Las portadas salen de .panorama, cortada en
+// tres para que fijadas una al lado de la otra formen el logo.
+//
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import { servirRepo } from '../servidor.mjs';
+
+const salida = join(dirname(fileURLToPath(import.meta.url)), 'salida');
+const ANCHO = 1080;
+const ALTO = 1440;
+
+const servidor = await servirRepo();
+const url = `${servidor.base}/redes/carruseles/carruseles.html`;
+
+// El Chrome de la compu: así no hace falta bajar el Chromium de Playwright.
+const navegador = await chromium.launch({ channel: 'chrome' });
+try {
+  const pagina = await navegador.newPage({ viewport: { width: 3400, height: 1600 } });
+  const faltan = [];
+  pagina.on('response', (r) => r.status() >= 400 && faltan.push(r.url()));
+  await pagina.goto(url, { waitUntil: 'networkidle' });
+  await pagina.evaluate(() => document.fonts.ready);
+  if (faltan.length) throw new Error(`No cargó: ${faltan.join(', ')}`);
+
+  // Se borran las imágenes viejas y no la carpeta: abierta en el Explorador
+  // de Windows, no se deja borrar.
+  mkdirSync(salida, { recursive: true });
+  for (const archivo of readdirSync(salida, { recursive: true })) {
+    if (archivo.endsWith('.png')) rmSync(join(salida, archivo));
+  }
+  const guardar = async (archivo, clip) => {
+    const destino = join(salida, archivo);
+    mkdirSync(dirname(destino), { recursive: true });
+    await pagina.screenshot({ path: destino, clip, fullPage: true });
+  };
+
+  // Con fullPage, el recorte va en coordenadas de la página entera, no de lo
+  // que se ve.
+  const enLaPagina = (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + window.scrollX, y: r.y + window.scrollY, width: r.width, height: r.height };
+  };
+
+  // Las portadas: la panorámica cortada en tres.
+  const panorama = pagina.locator('.panorama');
+  const caja = await panorama.evaluate(enLaPagina);
+  const portadas = (await panorama.getAttribute('data-portadas')).split(' ');
+  for (const [i, archivo] of portadas.entries()) {
+    await guardar(archivo, { x: caja.x + i * ANCHO, y: caja.y, width: ANCHO, height: ALTO });
+  }
+
+  // El resto, una lámina por imagen.
+  const laminas = await pagina.locator('.lamina').all();
+  for (const lamina of laminas) {
+    const { x, y, width, height } = await lamina.evaluate(enLaPagina);
+    if (width !== ANCHO || height !== ALTO) throw new Error(`Una lámina mide ${width} × ${height}`);
+    await guardar(await lamina.getAttribute('data-archivo'), { x, y, width, height });
+  }
+  console.log(`${portadas.length + laminas.length} imágenes en ${salida}`);
+} finally {
+  await navegador.close();
+  servidor.cerrar();
+}

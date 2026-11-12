@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Nexo — Carruseles fijados</title>
+<!--
+  Los tres carruseles fijados del Instagram de Nexo: una introducción en tres
+  partes (¿Qué es Nexo?, ¿Qué hace?, ¿Cómo empiezo?). `npm run carruseles`
+  (en redes/) saca una imagen de 1080 × 1440 por lámina en
+  carruseles/salida/. 3:4 es la medida de la grilla del perfil, así que
+  Instagram no recorta nada.
+
+  Las tres portadas son una sola imagen (.panorama, 3240 de ancho) cortada
+  en tres: fijadas una al lado de la otra, se lee el logo completo con la
+  bajada, y abajo "Ordená. Vendé. Crecé.".
+
+  Lo que no anda de verdad no se muestra: WhatsApp espera la app de Meta y
+  la factura electrónica emite solo de prueba.
+-->
+<style>
+@font-face { font-family: "Inter"; src: url("../../frontend/fonts/inter.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Satoshi"; src: url("../../frontend/fonts/satoshi-500.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Satoshi"; src: url("../../frontend/fonts/satoshi-700.woff2") format("woff2"); font-weight: 700; }
+
+:root {
+  --fondo: #000;
+  --tarjeta: #0f0f0f;
+  --tarjeta-alta: #161616;
+  --borde: rgba(255, 255, 255, 0.1);
+  --borde-fuerte: rgba(255, 255, 255, 0.2);
+  --texto: #f5f5f5;
+  --texto-2: #b4b4b4;
+  --texto-3: #7a7a7a;
+  --acento: #60a5fa;
+  --acento-fuerte: #2563eb;
+  --acento-suave: rgba(96, 165, 250, 0.12);
+  --ok: #4ade80;
+  --mal: #f87171;
+  --titulos: "Satoshi", "Inter", sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: #222; color: var(--texto); font-family: "Inter", sans-serif; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; align-items: flex-start; gap: 40px; padding: 40px; }
+h1, h2, h3, p, figure, dl, dd { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+img { display: block; }
+.ico { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ===== Lámina: 1080 × 1440 ===== */
+.lamina, .panorama { position: relative; overflow: hidden; background: var(--fondo); flex: none; }
+.lamina { width: 1080px; height: 1440px; padding: 190px 96px 120px; display: flex; flex-direction: column; gap: 56px; }
+.lamina::before, .panorama::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--borde) 1px, transparent 1px), linear-gradient(90deg, var(--borde) 1px, transparent 1px);
+  background-size: 108px 108px;
+  mask-image: radial-gradient(ellipse 80% 55% at 85% 0%, #000 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 55% at 85% 0%, #000 0%, transparent 70%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.lamina > * { position: relative; }
+.cabeza { position: absolute !important; top: 76px; left: 96px; right: 96px; display: flex; justify-content: space-between; align-items: center; color: var(--texto-3); font-size: 28px; font-variant-numeric: tabular-nums; }
+.cabeza svg { width: 150px; height: 24px; color: var(--texto); }
+.cabeza .sigue { display: inline-flex; align-items: center; gap: 12px; }
+.cabeza .sigue .ico { color: var(--acento); width: 30px; height: 30px; }
+
+.parte { font-size: 28px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--acento); margin-bottom: 24px; }
+h2 { font-family: var(--titulos); font-weight: 700; font-size: 84px; line-height: 1.04; letter-spacing: -0.03em; }
+h2 em { font-style: normal; color: var(--acento); }
+h3 { font-family: var(--titulos); font-weight: 700; font-size: 42px; line-height: 1.15; letter-spacing: -0.015em; }
+.bajada { color: var(--texto-2); font-size: 38px; line-height: 1.4; margin-top: 28px; }
+.nota { color: var(--texto-3); font-size: 28px; }
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 28px; padding: 36px 40px; }
+
+/* La captura en una ventana de navegador */
+.compu { border: 2px solid var(--borde-fuerte); border-radius: 26px; background: #0b0b0b; overflow: hidden; box-shadow: 0 40px 100px -30px rgba(96, 165, 250, 0.3); }
+.compu-barra { display: flex; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--borde); }
+.compu-barra span { width: 14px; height: 14px; border-radius: 50%; background: #333; }
+.compu img { width: 100%; height: auto; }
+
+/* El celular que asoma desde abajo */
+.celu { position: absolute !important; left: 50%; transform: translateX(-50%); width: 580px; border: 16px solid #1c1c1c; border-bottom: 0; border-radius: 76px 76px 0 0; overflow: hidden; background: #000; box-shadow: 0 -20px 120px -20px rgba(96, 165, 250, 0.35); }
+.celu img { width: 100%; height: auto; }
+
+/* ===== Portadas: una imagen de 3240 cortada en tres ===== */
+.panorama { width: 3240px; height: 1440px; }
+.panorama::before { mask-image: radial-gradient(ellipse 60% 70% at 50% 0%, #000 0%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse 60% 70% at 50% 0%, #000 0%, transparent 75%); }
+.panorama > * { position: absolute; }
+.icono-grande { left: 230px; top: 129px; width: 620px; height: 502px; color: var(--texto); }
+.letras { top: 237px; height: 286px; color: var(--texto); }
+.letras.ne { left: 1218px; width: 805px; }
+.letras.xo { left: 2304px; width: 794px; }
+.bajada-logo { top: 584px; font-family: var(--titulos); font-weight: 500; font-size: 33px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--texto-2); white-space: nowrap; }
+.bajada-logo.ne { left: 1222px; }
+.bajada-logo.xo { left: 2308px; }
+.raya { top: 712px; left: 96px; right: 96px; height: 2px; background: linear-gradient(90deg, transparent, var(--borde-fuerte) 8%, var(--borde-fuerte) 92%, transparent); }
+.portada { top: 770px; width: 888px; height: 590px; display: flex; flex-direction: column; }
+.portada .palabra { font-family: var(--titulos); font-weight: 700; font-size: 200px; line-height: 1; letter-spacing: -0.045em; }
+.portada .palabra span { color: var(--acento); }
+.portada .numero { margin-top: 56px; font-size: 28px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--acento); }
+.portada .pregunta { margin-top: 14px; font-family: var(--titulos); font-weight: 700; font-size: 66px; letter-spacing: -0.02em; line-height: 1.05; }
+.portada .desliza { margin-top: auto; display: inline-flex; align-items: center; gap: 14px; color: var(--texto-3); font-size: 30px; }
+.portada .desliza .ico { color: var(--acento); width: 34px; height: 34px; }
+
+/* ===== 1-2. El desorden ===== */
+.lio { flex: 1; position: relative; margin: 0 -40px; }
+.lio > * { position: absolute; transform: rotate(var(--r, 0deg)); }
+.cuaderno { width: 470px; padding: 26px 26px 26px 66px; background: #f1ece1 repeating-linear-gradient(#f1ece1 0 calc(1.9em - 2px), #b9cde3 calc(1.9em - 2px) 1.9em); color: #273a5a; font-family: var(--titulos); font-style: italic; font-size: 30px; line-height: 1.9em; border-radius: 6px; box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6); }
+.cuaderno::before { content: ""; position: absolute; left: 44px; top: 0; bottom: 0; width: 3px; background: #e38a8a; }
+.cuaderno p { white-space: nowrap; }
+.tachado { text-decoration: line-through; text-decoration-color: #c0392b; text-decoration-thickness: 3px; }
+.duda { color: #c0392b; font-weight: 700; }
+.planilla { width: 520px; background: #fff; color: #222; font-size: 25px; border-radius: 6px; overflow: hidden; box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6); }
+.planilla .barra-xls { background: #1f6e43; color: #fff; padding: 10px 16px; font-weight: 600; }
+.planilla table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.planilla th, .planilla td { border: 1px solid #d4d4d4; padding: 6px 12px; text-align: left; }
+.planilla th { background: #f0f0f0; color: #555; font-weight: 500; }
+.planilla .error { color: #c0392b; font-weight: 700; }
+.planilla .rojo { background: #fde2e2; }
+.burbuja { max-width: 470px; padding: 16px 22px; border-radius: 22px; font-size: 29px; line-height: 1.35; box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6); }
+.burbuja small { display: block; color: rgba(255, 255, 255, 0.55); font-size: 0.72em; text-align: right; margin-top: 4px; }
+.burbuja.ellos { background: #202c33; color: #e9edef; border-top-left-radius: 4px; }
+.burbuja.yo { background: #005c4b; color: #e9edef; border-top-right-radius: 4px; }
+.burbuja .quien { display: block; color: #53bdeb; font-weight: 600; font-size: 0.8em; margin-bottom: 2px; }
+.ticket { width: 260px; background: #fafafa; color: #333; font-family: ui-monospace, Consolas, monospace; font-size: 22px; padding: 22px 22px 40px; box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6); clip-path: polygon(0 0, 100% 0, 100% 100%, 92% 96%, 84% 100%, 76% 96%, 68% 100%, 60% 96%, 52% 100%, 44% 96%, 36% 100%, 28% 96%, 20% 100%, 12% 96%, 4% 100%, 0 96%); }
+.ticket p { display: flex; justify-content: space-between; }
+.papelito { width: 250px; height: 250px; padding: 24px; background: #f9b4c6; color: #5b2333; font-family: var(--titulos); font-weight: 700; font-style: italic; font-size: 32px; line-height: 1.25; box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6); }
+
+/* ===== 1-3. La plata que se pierde ===== */
+.perdidas { display: flex; flex-direction: column; gap: 22px; }
+.perdida { display: grid; grid-template-columns: 96px 1fr; gap: 6px 30px; align-items: start; padding: 30px 36px; }
+.perdida .ico-caja { grid-row: span 2; width: 96px; height: 96px; border-radius: 22px; display: grid; place-items: center; background: rgba(248, 113, 113, 0.1); color: var(--mal); font-size: 46px; }
+.perdida p { color: var(--texto-2); font-size: 31px; line-height: 1.38; }
+
+/* ===== 1-5 y 3-5. Cierre ===== */
+.lista-si { display: flex; flex-direction: column; gap: 30px; }
+.lista-si li { display: flex; gap: 26px; align-items: flex-start; font-size: 38px; line-height: 1.3; }
+.lista-si .ico { width: 54px; height: 54px; padding: 10px; border-radius: 50%; background: var(--acento-suave); color: var(--acento); margin-top: -4px; }
+.lista-si small { display: block; color: var(--texto-3); font-size: 29px; margin-top: 6px; }
+.siguen { margin-top: auto; display: flex; flex-direction: column; gap: 16px; }
+.siguen p { color: var(--texto-3); font-size: 28px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; }
+.siguen div { display: flex; gap: 16px; }
+.siguen span { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 26px 30px; border: 1px solid var(--borde-fuerte); border-radius: 22px; font-family: var(--titulos); font-weight: 700; font-size: 38px; }
+.siguen span small { font-family: "Inter", sans-serif; font-weight: 500; color: var(--acento); font-size: 26px; }
+
+/* ===== 2-3. Adónde fue la plata ===== */
+.mock { padding: 44px 48px; }
+.mock-titulo { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 34px; color: var(--texto-2); font-size: 32px; }
+.mock-titulo strong { font-family: var(--titulos); font-size: 74px; color: var(--texto); letter-spacing: -0.02em; }
+.desglose-barra { display: flex; gap: 5px; height: 40px; margin-bottom: 30px; }
+.desglose-barra span { border-radius: 8px; }
+.desglose-barra .d-mercaderia { flex: 450; }
+.desglose-barra .d-comision { flex: 64; }
+.desglose-barra .d-envio { flex: 78; }
+.desglose-barra .d-packaging { flex: 10; min-width: 8px; }
+.desglose-barra .d-quedo { flex: 398; }
+.d-mercaderia { background: #8a8a8a; }
+.d-comision { background: var(--acento-fuerte); }
+.d-envio { background: var(--acento); }
+.d-packaging { background: rgba(96, 165, 250, 0.45); }
+.d-quedo { background: var(--ok); }
+.filas div { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-top: 1px solid var(--borde); font-size: 32px; }
+.filas dt { display: flex; align-items: center; gap: 18px; color: var(--texto-2); }
+.filas dd { font-variant-numeric: tabular-nums; }
+.filas dd span { color: var(--texto-3); margin-left: 18px; display: inline-block; min-width: 4.4ch; text-align: right; }
+.filas .punto { width: 22px; height: 22px; border-radius: 6px; flex: none; }
+.filas .fila-quedo { font-size: 40px; }
+.filas .fila-quedo dt, .filas .fila-quedo dd { color: var(--texto); font-weight: 700; }
+.filas .fila-quedo dd { color: var(--ok); }
+
+/* ===== 2-4. La factura → la compra ===== */
+.lamina.apretada { gap: 36px; }
+.foto-factura { width: 560px; align-self: center; transform: rotate(-2.5deg); background: #fff; padding: 14px; border-radius: 8px; box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7); }
+.foto-factura img { width: 100%; }
+.flecha-abajo { align-self: center; display: flex; align-items: center; gap: 18px; color: var(--acento); font-size: 30px; font-weight: 600; margin: -14px 0; }
+.flecha-abajo .ico { width: 54px; height: 54px; }
+.renglones { padding: 14px 40px 30px; }
+.renglon { display: flex; align-items: center; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--borde); }
+.renglon > .ico { width: 44px; height: 44px; color: var(--ok); }
+.renglon div { flex: 1; min-width: 0; }
+.renglon b { display: block; font-family: var(--titulos); font-size: 36px; }
+.renglon span { display: block; color: var(--texto-3); font-size: 22px; letter-spacing: 0.02em; margin-top: 4px; }
+.renglon p { text-align: right; font-size: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.renglon p small { display: block; color: var(--texto-3); font-size: 24px; font-weight: 500; }
+.total-compra { display: flex; justify-content: space-between; align-items: baseline; padding-top: 24px; color: var(--texto-2); font-size: 28px; }
+.total-compra strong { font-family: var(--titulos); color: var(--texto); font-size: 42px; }
+
+/* ===== 2-5. El asistente ===== */
+.chat { display: flex; flex-direction: column; gap: 24px; margin-top: -16px; }
+.dicho { align-self: flex-end; max-width: 760px; display: flex; gap: 20px; align-items: flex-start; background: var(--acento-fuerte); color: #fff; font-size: 36px; line-height: 1.35; padding: 28px 34px; border-radius: 34px 34px 8px 34px; }
+.dicho .ico { width: 44px; height: 44px; margin-top: 2px; flex: none; }
+.propuesta { padding: 32px 44px; border-color: rgba(96, 165, 250, 0.35); }
+.propuesta .que { display: flex; align-items: center; gap: 16px; color: var(--acento); font-size: 30px; font-weight: 600; margin-bottom: 12px; }
+.propuesta dl div { display: flex; justify-content: space-between; padding: 14px 0; border-top: 1px solid var(--borde); font-size: 34px; }
+.propuesta dt { color: var(--texto-3); }
+.propuesta dd { font-weight: 600; }
+.botones { display: flex; gap: 18px; margin-top: 26px; }
+.botones span { flex: 1; text-align: center; padding: 22px; border-radius: 18px; font-size: 32px; font-weight: 600; border: 1px solid var(--borde-fuerte); color: var(--texto-2); }
+.botones .si { background: var(--texto); color: #000; border-color: transparent; }
+.aclara { display: flex; align-items: center; gap: 16px; color: var(--texto-2); font-size: 30px; }
+.aclara .ico { color: var(--ok); width: 40px; height: 40px; }
+
+/* ===== 2-6. Venta online ===== */
+.logos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+/* Las palabras de los logos toman el color del texto (currentColor). */
+.logo-caja { height: 120px; display: grid; place-items: center; background: #f5f5f5; color: #111; border-radius: 22px; padding: 22px 18px; }
+.logo-caja svg { width: 100%; height: 100%; }
+.logo-caja.chico svg { width: 64px; height: 64px; }
+
+/* ===== 2-7. Y además ===== */
+.ademas { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.ademas li { display: flex; flex-direction: column; gap: 16px; padding: 32px; }
+.ademas .ico { width: 52px; height: 52px; color: var(--acento); }
+.ademas b { font-family: var(--titulos); font-size: 38px; letter-spacing: -0.01em; }
+.ademas span { color: var(--texto-2); font-size: 28px; line-height: 1.35; }
+
+/* ===== 3-2. Rubros ===== */
+.rubros { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.rubro { display: flex; gap: 22px; align-items: center; padding: 26px 28px; }
+.rubro .ico-caja { width: 80px; height: 80px; flex: none; border-radius: 20px; display: grid; place-items: center; background: var(--acento-suave); color: var(--acento); font-size: 40px; }
+.rubro b { display: block; font-family: var(--titulos); font-size: 34px; }
+.rubro span { display: block; color: var(--texto-3); font-size: 25px; margin-top: 4px; line-height: 1.3; }
+
+/* ===== 3-3. Planes ===== */
+.planes { display: flex; flex-direction: column; gap: 20px; }
+.plan { padding: 34px 40px; }
+.plan .fila { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
+.plan .nombre { font-family: var(--titulos); font-weight: 700; font-size: 48px; }
+.plan .precio { font-family: var(--titulos); font-weight: 700; font-size: 52px; }
+.plan .precio small { font-family: "Inter", sans-serif; font-weight: 500; font-size: 26px; color: var(--texto-3); margin-left: 6px; }
+.plan ul { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.plan li { display: flex; align-items: center; gap: 12px; color: var(--texto-2); font-size: 29px; }
+.plan li .ico { color: var(--acento); }
+.plan.gratis { border-color: rgba(96, 165, 250, 0.45); background: linear-gradient(180deg, rgba(37, 99, 235, 0.16), var(--tarjeta) 70%); }
+.plan.gratis .precio { color: var(--acento); }
+
+/* ===== 3-4. Negocios de ejemplo ===== */
+.ejemplos { display: flex; flex-direction: column; gap: 16px; }
+.ejemplo { display: flex; gap: 28px; align-items: center; padding: 26px 32px; }
+.ejemplo .ico-caja { width: 84px; height: 84px; flex: none; border-radius: 20px; display: grid; place-items: center; background: var(--tarjeta-alta); border: 1px solid var(--borde); color: var(--texto); font-size: 42px; }
+.ejemplo b { display: block; font-family: var(--titulos); font-size: 38px; }
+.ejemplo span { display: block; color: var(--texto-3); font-size: 27px; margin-top: 4px; line-height: 1.3; }
+
+/* ===== 3-5. Empezá hoy ===== */
+.cierre { align-items: center; text-align: center; }
+.cierre h2 { font-size: 112px; }
+.qr { width: 440px; height: 440px; padding: 30px; background: #fff; border-radius: 36px; box-shadow: 0 40px 120px -20px rgba(96, 165, 250, 0.45); }
+.qr img { width: 100%; height: 100%; }
+.direccion { font-family: var(--titulos); font-weight: 700; font-size: 46px; letter-spacing: -0.01em; }
+.cierre .bio { display: inline-flex; align-items: center; gap: 14px; color: var(--texto-2); font-size: 34px; }
+.cierre .bio .ico { color: var(--acento); }
+.cierre .marca-final { margin-top: auto; width: 140px; height: 113px; color: var(--texto-3); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- El "NΞXO" (frontend/img/marca.svg) y el ícono, en vector: el ícono
+       sale de assets/logo/01-icono, trazado a sus tres polígonos. -->
+  <symbol id="nexo" viewBox="0 0 668 106">
+    <g fill="currentColor">
+      <rect x="0" y="3" width="13" height="100" />
+      <rect x="97" y="3" width="13" height="100" />
+      <polygon points="0,3 20,3 110,103 90,103" />
+      <rect x="195" y="3" width="103" height="13" />
+      <rect x="195" y="47" width="103" height="13" />
+      <rect x="195" y="90" width="103" height="13" />
+      <polygon points="374,3 394,3 488,103 468,103" />
+      <polygon points="468,3 488,3 394,103 374,103" />
+    </g>
+    <ellipse cx="611.5" cy="52.5" rx="48.5" ry="45.5" fill="none" stroke="currentColor" stroke-width="14" />
+  </symbol>
+  <symbol id="icono" viewBox="0 0 299 242">
+    <g fill="currentColor">
+      <polygon points="170,176 234,241 298,241 202,140" />
+      <polygon points="295,0 234,0 171,76 169,81 201,114" />
+      <polygon points="0,0 121,133 54,209 53,84 0,29 0,241 91,241 189,127 69,0" />
+    </g>
+  </symbol>
+</svg>
+
+<!-- ============ Las tres portadas ============ -->
+<section class="panorama" data-portadas="carrusel-1/01.png carrusel-2/01.png carrusel-3/01.png">
+  <svg class="icono-grande" viewBox="0 0 299 242" role="img" aria-label="Nexo"><use href="#icono"/></svg>
+  <!-- Con width y height, el símbolo se dibuja a su medida y el viewBox de
+       cada mitad recorta "NΞ" y "XO"; sin eso, entraría entero en cada una. -->
+  <svg class="letras ne" viewBox="0 0 298 106"><use href="#nexo" width="668" height="106"/></svg>
+  <svg class="letras xo" viewBox="374 0 294 106"><use href="#nexo" width="668" height="106"/></svg>
+  <p class="bajada-logo ne">Sistema de gestión para</p>
+  <p class="bajada-logo xo">emprendimientos y pymes</p>
+  <div class="raya"></div>
+
+  <div class="portada" style="left:96px">
+    <p class="palabra">Ordená<span>.</span></p>
+    <p class="numero">1 de 3</p>
+    <p class="pregunta">¿Qué es Nexo?</p>
+    <p class="desliza">Deslizá <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></p>
+  </div>
+  <div class="portada" style="left:1176px">
+    <p class="palabra">Vendé<span>.</span></p>
+    <p class="numero">2 de 3</p>
+    <p class="pregunta">¿Qué hace?</p>
+    <p class="desliza">Deslizá <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></p>
+  </div>
+  <div class="portada" style="left:2256px">
+    <p class="palabra">Crecé<span>.</span></p>
+    <p class="numero">3 de 3</p>
+    <p class="pregunta">¿Cómo empiezo?</p>
+    <p class="desliza">Deslizá <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></p>
+  </div>
+</section>
+
+<!-- ============ Carrusel 1: ¿Qué es Nexo? ============ -->
+<section class="lamina" data-archivo="carrusel-1/02.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">2 / 5 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Hoy</p>
+    <h2>Tu negocio vive en el cuaderno, la planilla y el celular.</h2>
+    <p class="bajada">Y en tu cabeza.</p>
+  </div>
+  <div class="lio" aria-hidden="true">
+    <div class="cuaderno" style="left:10px; top:20px; --r:-5deg">
+      <p>Juan → fiado $8.500</p>
+      <p class="tachado">Marta pagó $12.000</p>
+      <p>Marta ¿pagó? <span class="duda">??</span></p>
+      <p>Remeras M: quedan 3</p>
+      <p>Caja: $96.800 <span class="duda">(no da)</span></p>
+    </div>
+    <div class="planilla" style="right:0; top:170px; --r:4deg">
+      <div class="barra-xls">ventas_FINAL_v3 (2).xlsx</div>
+      <table>
+        <tr><th>Fecha</th><th>Producto</th><th>Precio</th><th>Stock</th></tr>
+        <tr><td>03/11</td><td>Remera M</td><td>14.900</td><td>12</td></tr>
+        <tr class="rojo"><td>05/11</td><td>Gorra</td><td class="error">#¡VALOR!</td><td>?</td></tr>
+        <tr><td>07/11</td><td>Jean 40</td><td>42.900</td><td class="error">-2</td></tr>
+        <tr class="rojo"><td colspan="2">TOTAL</td><td class="error">#¡REF!</td><td></td></tr>
+      </table>
+    </div>
+    <div class="burbuja ellos" style="right:20px; top:0; --r:3deg"><span class="quien">Clienta</span>¿Te queda el talle M? 🙏<small>22:47</small></div>
+    <div class="burbuja yo" style="left:20px; top:410px; max-width:400px; --r:-3deg">Ya te transferí, ¿cuánto te debía?<small>23:10 ✓✓</small></div>
+    <div class="ticket" style="left:460px; top:450px; --r:-8deg">
+      <p><span>Remera M</span><span>14.900</span></p>
+      <p><span>Medias x3</span><span>6.900</span></p>
+      <p><span>TOTAL</span><span>21.800</span></p>
+    </div>
+    <div class="papelito" style="right:30px; top:460px; width:220px; height:220px; font-size:29px; --r:6deg">¡Pagarle al proveedor el viernes!</div>
+  </div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-1/03.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">3 / 5 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">El problema</p>
+    <h2>Así se pierde plata sin que te des cuenta</h2>
+  </div>
+  <div class="perdidas">
+    <div class="tarjeta perdida"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg></span><h3>El fiado que nadie anotó</h3><p>"Después te pago." Y nadie se acuerda cuánto ni cuándo.</p></div>
+    <div class="tarjeta perdida"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#package-minus"/></svg></span><h3>El stock que falta o sobra</h3><p>Se termina lo que más se vende y se queda lo que nadie compra.</p></div>
+    <div class="tarjeta perdida"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#percent"/></svg></span><h3>Los costos que no se ven</h3><p>Comisión, envío, cuotas: vendés más y te queda menos.</p></div>
+    <div class="tarjeta perdida"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#trending-down"/></svg></span><h3>Los precios que quedan viejos</h3><p>Con la inflación, vender al precio del mes pasado es perder.</p></div>
+  </div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-1/04.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">4 / 5 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Nexo</p>
+    <h2>Todo tu negocio, <em>en un solo lugar</em></h2>
+    <p class="bajada">Ventas, stock, caja, clientes y compras, conectados. Abrís Nexo y sabés cómo venís.</p>
+  </div>
+  <div class="celu" style="top:760px"><img src="../../frontend/img/landing/celular-resumen.webp" alt=""></div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-1/05.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">5 / 5</span></div>
+  <div>
+    <p class="parte">Para quién</p>
+    <h2>Hecho para el que arranca, y para el que ya creció</h2>
+  </div>
+  <ul class="lista-si">
+    <li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg><div>Empezás gratis<small>Sin tarjeta y sin vencimiento</small></div></li>
+    <li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg><div>En el celular y en la compu<small>Sin instalar nada</small></div></li>
+    <li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg><div>Para cualquier negocio<small>Desde el que vende medialunas hasta la pyme con empleados</small></div></li>
+  </ul>
+  <div class="siguen">
+    <p>Seguí con los otros fijados</p>
+    <div><span><small>2 de 3</small>¿Qué hace?</span><span><small>3 de 3</small>¿Cómo empiezo?</span></div>
+  </div>
+</section>
+
+<!-- ============ Carrusel 2: ¿Qué hace? ============ -->
+<section class="lamina" data-archivo="carrusel-2/02.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">2 / 7 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Vender</p>
+    <h2>En el mostrador o desde el celular</h2>
+    <p class="bajada">Cobrás en efectivo, con Mercado Pago o mitad y mitad. Las ofertas se aplican solas y el stock baja solo.</p>
+  </div>
+  <div class="celu" style="top:800px"><img src="../../frontend/img/landing/celular-pos.webp" alt=""></div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-2/03.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">3 / 7 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">En cada venta</p>
+    <h2>Cuánto te quedó <em>de verdad</em></h2>
+    <p class="bajada">Cada costo por separado, con su porcentaje.</p>
+  </div>
+  <figure class="tarjeta mock">
+    <p class="mock-titulo"><span>Venta #1284</span><strong>$ 45.000</strong></p>
+    <div class="desglose-barra"><span class="d-mercaderia"></span><span class="d-comision"></span><span class="d-envio"></span><span class="d-packaging"></span><span class="d-quedo"></span></div>
+    <dl class="filas">
+      <div><dt><i class="punto d-mercaderia"></i>Mercadería</dt><dd>$ 20.250 <span>45 %</span></dd></div>
+      <div><dt><i class="punto d-comision"></i>Comisión de Mercado Pago</dt><dd>$ 2.880 <span>6,4 %</span></dd></div>
+      <div><dt><i class="punto d-envio"></i>Envío</dt><dd>$ 3.500 <span>7,8 %</span></dd></div>
+      <div><dt><i class="punto d-packaging"></i>Packaging</dt><dd>$ 450 <span>1 %</span></dd></div>
+      <div class="fila-quedo"><dt><i class="punto d-quedo"></i>Te quedó</dt><dd>$ 17.920 <span>39,8 %</span></dd></div>
+    </dl>
+  </figure>
+</section>
+
+<section class="lamina apretada" data-archivo="carrusel-2/04.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">4 / 7 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Compras</p>
+    <h2>Le sacás una foto a la factura y la compra <em>se carga sola</em></h2>
+  </div>
+  <figure class="foto-factura"><img src="../../docs/presentacion/capturas/factura-proveedor.png" alt=""></figure>
+  <p class="flecha-abajo"><svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-down"/></svg>Nexo encuentra cada producto</p>
+  <!-- Los renglones de capturas/compra-factura-renglones.webp, dibujados
+       limpios: la captura tiene el aviso "Parecido: revisalo" en rojo. -->
+  <div class="tarjeta renglones">
+    <div class="renglon"><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg><div><b>Remera básica · M</b><span>REMERA BASICA ALGODON TALLE M</span></div><p>12 u.<small>$ 6.751,80</small></p></div>
+    <div class="renglon"><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg><div><b>Gorra trucker</b><span>GORRA TRUCKER NEGRA</span></div><p>6 u.<small>$ 6.534,00</small></p></div>
+    <div class="renglon"><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg><div><b>Medias x3</b><span>10 × MEDIAS PACK X3 SURTIDAS</span></div><p>30 u.<small>$ 1.169,67</small></p></div>
+    <p class="total-compra"><span>Total, con envío e IVA</span><strong>$ 161.365,70</strong></p>
+  </div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-2/05.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">5 / 7 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">El asistente</p>
+    <h2>Contale qué pasó, <em>como a una persona</em></h2>
+    <p class="bajada">Lo escribís o lo decís en voz alta, y Nexo arma la venta.</p>
+  </div>
+  <div class="chat">
+    <p class="dicho"><svg class="ico"><use href="../../frontend/img/iconos.svg#message-circle"/></svg>Vendí dos gorras a Camila Herrera, me pagó por transferencia.</p>
+    <div class="tarjeta propuesta">
+      <p class="que"><svg class="ico"><use href="../../frontend/img/iconos.svg#sparkles"/></svg>Así lo entendí: una venta</p>
+      <dl>
+        <div><dt>Cliente</dt><dd>Camila Herrera</dd></div>
+        <div><dt>Producto</dt><dd>2 × Gorra trucker</dd></div>
+        <div><dt>Cobro</dt><dd>Transferencia</dd></div>
+        <div><dt>Total</dt><dd>$ 25.800</dd></div>
+      </dl>
+      <div class="botones"><span class="si">Confirmar</span><span>Cancelar</span></div>
+    </div>
+    <p class="aclara"><svg class="ico"><use href="../../frontend/img/iconos.svg#circle-check"/></svg>No guarda nada hasta que confirmás.</p>
+  </div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-2/06.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">6 / 7 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Venta online</p>
+    <h2>Vendé en todos lados, <em>con un solo stock</em></h2>
+    <p class="bajada">Las ventas de tu tienda entran solas y ves cuánto te deja cada canal.</p>
+  </div>
+  <div class="logos">
+    <span class="logo-caja"><svg viewBox="0 0 160 40"><use href="../../frontend/img/tiendanube.svg#logo"/></svg></span>
+    <span class="logo-caja"><svg viewBox="0 0 330 104"><use href="../../frontend/img/mercadolibre.svg#logo"/></svg></span>
+    <span class="logo-caja"><svg viewBox="0 0 150 39"><use href="../../frontend/img/mercadopago.svg#logo"/></svg></span>
+    <span class="logo-caja chico"><svg viewBox="0 0 24 24"><use href="../../frontend/img/instagram.svg#emblema"/></svg></span>
+  </div>
+  <figure class="compu"><div class="compu-barra"><span></span><span></span><span></span></div><img src="../../docs/presentacion/capturas/venta-online.webp" alt=""></figure>
+</section>
+
+<section class="lamina" data-archivo="carrusel-2/07.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">7 / 7</span></div>
+  <div>
+    <p class="parte">Y además</p>
+    <h2>Todo lo que tu negocio usa <em>cada día</em></h2>
+  </div>
+  <ul class="ademas">
+    <li class="tarjeta"><svg class="ico"><use href="../../frontend/img/iconos.svg#wallet"/></svg><b>Caja</b><span>Abrís, cerrás y ves si da</span></li>
+    <li class="tarjeta"><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg><b>Fiado</b><span>Quién te debe y desde cuándo</span></li>
+    <li class="tarjeta"><svg class="ico"><use href="../../frontend/img/iconos.svg#file-text"/></svg><b>Presupuestos</b><span>Que pasan a venta con un toque</span></li>
+    <li class="tarjeta"><svg class="ico"><use href="../../frontend/img/iconos.svg#users"/></svg><b>Clientes</b><span>Consultas, seguimiento y los que dejaron de comprar</span></li>
+    <li class="tarjeta"><svg class="ico"><use href="../../frontend/img/iconos.svg#chart-column"/></svg><b>Reportes</b><span>Qué se vende, cuándo y cuánto ganás</span></li>
+    <li class="tarjeta"><svg class="ico"><use href="../../frontend/img/iconos.svg#chef-hat"/></svg><b>Producción</b><span>Recetas y el costo de lo que hacés</span></li>
+  </ul>
+</section>
+
+<!-- ============ Carrusel 3: ¿Cómo empiezo? ============ -->
+<section class="lamina" data-archivo="carrusel-3/02.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">2 / 5 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Tu tipo de negocio</p>
+    <h2>Un solo sistema, <em>para cada rubro</em></h2>
+    <p class="bajada">Elegís el tuyo y Nexo arranca con lo que te sirve.</p>
+  </div>
+  <div class="rubros">
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#sprout"/></svg></span><div><b>Emprendimiento</b><span>Lo que hacés y cuánto te cuesta</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#globe"/></svg></span><div><b>Tienda online</b><span>Un stock para todos los canales</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#store"/></svg></span><div><b>Comercio</b><span>Ropa, ferretería, librería</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#beef"/></svg></span><div><b>Carnicería</b><span>Por kilo, con la balanza</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#carrot"/></svg></span><div><b>Verdulería</b><span>Por kilo, rápido</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#cup-soda"/></svg></span><div><b>Kiosco</b><span>Con el lector de códigos</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#briefcase"/></svg></span><div><b>Servicios</b><span>Presupuestos y trabajos</span></div></div>
+    <div class="tarjeta rubro"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#dumbbell"/></svg></span><div><b>Gimnasio</b><span>Socios, cuotas e ingreso</span></div></div>
+  </div>
+</section>
+
+<section class="lamina" data-archivo="carrusel-3/03.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">3 / 5 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Planes</p>
+    <h2>Empezá gratis. <em>Pagá cuando crezcas.</em></h2>
+  </div>
+  <div class="planes">
+    <div class="tarjeta plan gratis">
+      <p class="fila"><span class="nombre">Gratis</span><span class="precio">$ 0</span></p>
+      <ul><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Punto de venta</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Stock y caja</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Cuentas y clientes</li></ul>
+    </div>
+    <div class="tarjeta plan">
+      <p class="fila"><span class="nombre">Emprendedor</span><span class="precio">$ 19.900<small>/ mes</small></span></p>
+      <ul><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Hasta 3 personas</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Sin topes</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Tienda Nube y Mercado Libre</li></ul>
+    </div>
+    <div class="tarjeta plan">
+      <p class="fila"><span class="nombre">Pro</span><span class="precio">$ 34.900<small>/ mes</small></span></p>
+      <ul><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Asistente con IA</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Compras desde la foto</li><li><svg class="ico"><use href="../../frontend/img/iconos.svg#check"/></svg>Varios locales</li></ul>
+    </div>
+  </div>
+  <p class="nota">Los planes pagos los probás 14 días sin tarjeta.</p>
+</section>
+
+<section class="lamina" data-archivo="carrusel-3/04.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">4 / 5 <svg class="ico"><use href="../../frontend/img/iconos.svg#chevron-right"/></svg></span></div>
+  <div>
+    <p class="parte">Sin registrarte</p>
+    <h2>Probalo con un <em>negocio de ejemplo</em></h2>
+    <p class="bajada">Entrás y tocás todo. Sin mail y sin tarjeta.</p>
+  </div>
+  <div class="ejemplos">
+    <div class="tarjeta ejemplo"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#shopping-bag"/></svg></span><div><b>Lola Indumentaria</b><span>Ropa con talles, ofertas y ventas por Instagram</span></div></div>
+    <div class="tarjeta ejemplo"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#chef-hat"/></svg></span><div><b>Mafaldas de Sofi</b><span>Recetas, producción y el costo de cada una</span></div></div>
+    <div class="tarjeta ejemplo"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#dumbbell"/></svg></span><div><b>Gimnasio Fuerza</b><span>Socios, planes y cuotas del mes</span></div></div>
+    <div class="tarjeta ejemplo"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#briefcase"/></svg></span><div><b>Clima Sur</b><span>Presupuestos, trabajos con agenda y abonos</span></div></div>
+    <div class="tarjeta ejemplo"><span class="ico-caja"><svg class="ico"><use href="../../frontend/img/iconos.svg#beef"/></svg></span><div><b>Carnicería Don Ramón</b><span>Venta por kilo y etiquetas de la balanza</span></div></div>
+  </div>
+</section>
+
+<section class="lamina cierre" data-archivo="carrusel-3/05.png">
+  <div class="cabeza"><svg viewBox="0 0 668 106"><use href="#nexo"/></svg><span class="sigue">5 / 5</span></div>
+  <h2>Empezá hoy, <em>gratis</em></h2>
+  <figure class="qr"><img src="../../docs/qr/probar-nexo.svg" alt=""></figure>
+  <p class="direccion">nexosystem.duckdns.org</p>
+  <p class="bio"><svg class="ico"><use href="../../frontend/img/iconos.svg#arrow-up-right"/></svg>O tocá el link de la bio</p>
+  <svg class="marca-final" viewBox="0 0 299 242"><use href="#icono"/></svg>
+</section>
+
+</body>
+</html>

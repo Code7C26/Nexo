@@ -1,7 +1,8 @@
 # Guion del pitch — Nexo
 
 Para el simulacro del **jueves 12 de noviembre de 2026** y la presentación
-oficial del **20**. Son 30 minutos, en el orden de la consigna del profesor. Los
+oficial, **a principios de diciembre** (el 20 de noviembre, capaz, la feria
+de ciencias). Son 30 minutos, en el orden de la consigna del profesor. Los
 tiempos son orientativos: la demo es lo que más pesa y lo primero que se
 recorta es I+D, no la demo.
 
@@ -19,10 +20,11 @@ recorta es I+D, no la demo.
 
 ## 1. Gancho y equipo (3 min)
 
-**Gancho (una pregunta al jurado):** "¿Cuánto ganaron con la última venta? No
-cuánto cobraron: cuánto les quedó después de la mercadería, la comisión de
-Mercado Pago, el envío y el IVA." Casi ningún comercio chico lo sabe al momento.
-Nexo te lo dice en cada venta.
+**Gancho (un dato, sin presentarse antes):** "La mitad de las pymes argentinas
+pierde dos meses por año solo revisando planillas" (encuesta de SAP a 555
+pymes, El Cronista, enero de 2016: 51 % pierde al menos dos meses al año
+validando planillas; 46 % administra con hojas de cálculo). Es la diapositiva
+2, sin la fuente en pantalla (es de 2016: se dice solo si preguntan). La 1 es el logo, con un saludo de una línea; los roles, en la 29.
 
 **Equipo, con roles técnicos (completar entre los dos antes del jueves):**
 - Santino Solla: ___
@@ -206,8 +208,9 @@ servicios en plan gratis), y eso baja el punto de equilibrio.
 
 ## Componente en inglés
 
-Va integrado en un paso, no al final. La propuesta es el cierre de la parte 5
-(venta), en un minuto:
+**No va en la presentación** (decisión del usuario del 11 de noviembre): el
+equipo hace aparte un video en inglés que explica el proyecto, y la
+diapositiva en inglés se sacó. Este texto queda como base para ese video:
 
 > Nexo is an all-in-one management system for small businesses in Argentina.
 > It connects stock, sales, cash and invoicing in one place, adapts to each

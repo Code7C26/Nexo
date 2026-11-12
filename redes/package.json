@@ -1,0 +1,18 @@
+{
+  "name": "nexo-redes",
+  "private": true,
+  "type": "module",
+  "description": "Las piezas de redes y del pitch: los carruseles de Instagram (carruseles/) y los videos (videos/, guiones en docs/guiones-videos.md). Playwright saca las imágenes y graba la app, Remotion arma los videos y edge-tts pone la voz. No es parte de la app ni de su CI.",
+  "scripts": {
+    "carruseles": "node carruseles/armar.mjs",
+    "guia": "node pitch/armar-guia.mjs",
+    "estudio": "remotion studio videos/src/index.jsx"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.542",
+    "playwright": "1.65.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.542"
+  }
+}

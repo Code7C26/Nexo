@@ -12721,3 +12721,146 @@ costo. `server.js`, `resolverPropuesta`: sin precio, el de lista del producto
 (`precioDeLista`, el mismo del mostrador), que la persona ve y puede cambiar
 antes de confirmar. El stub devuelve null cuando no hay precio. Test nuevo en
 `asistente-devolucion.test.js`; 357 tests y lint.
+
+## §156. Las diapositivas del pitch (11 de noviembre de 2026)
+
+**Pedido del usuario:** un ida y vuelta ("yo te voy diciendo qué me gusta y lo
+vas cambiando"), con el producto primero: "lo más importante es el producto y
+cómo se usa, mostrarlo en vivo, mostrar las funciones más vistosas".
+
+**Cómo está armado.** `docs/presentacion/index.html` es la fuente: apunta a
+las fuentes de `frontend/fonts`, al logo de `assets/logo`, a los QR de
+`docs/qr`, a los íconos y logos de `frontend/img` (`<use href="…svg#id">`) y a
+las capturas de `docs/presentacion/capturas/`. `scripts/presentacion.mjs`
+(`npm run presentacion`) mete todo adentro (data: y un sprite; los símbolos
+se renombran con su archivo porque mercadolibre.svg y mercadopago.svg tienen
+los dos un "logo") y escribe `docs/presentacion-pitch.html`, que está en
+`.gitignore`. Se maneja con flechas, Av/Re Pág (punteros), rueda o dedo; F
+pantalla completa; `#8` salta a la 8.
+
+**Lo que pidió en la primera vuelta** (y quedó): el logo completo con la
+bajada "Sistema de gestión para emprendimientos y pymes"; el problema desde
+dolores de cualquiera (gancho "¿Alguna vez prestaste plata y no te acordaste a
+quién?", la plata y el tiempo que se pierden, la noche del dueño), el lío
+animado (cuaderno, Excel con errores, WhatsApp, papelito, ticket,
+calculadora); "Nexo crece con tu negocio" (escalera Gratis → Emprendedor →
+Pro); diez rubros con los íconos de la landing; capturas reales antes de la
+demo (Resumen, mostrador con el celular, asistente, WhatsApp armado en HTML
+con "En prueba", foto de factura → compra, factura con CAE armada en HTML,
+venta online con logos, ingreso del gimnasio y recetas); lo técnico contado
+para cualquiera ("Por qué confiar", un esquema simple, el problema de ARCA en
+palabras simples). Las cifras de viabilidad salen de los PDFs entregados.
+
+**Las capturas** se sacaron del sitio entrando por `/app#/probar` en contextos
+aislados de Chrome (Lola, Gimnasio Fuerza, Mafaldas), sacando el aviso de
+"negocio de ejemplo" del DOM antes de cada una. La factura del proveedor es
+un HTML armado en el scratchpad y pasado a imagen con Edge sin ventana.
+
+**Lo que se encontró en el camino:** el asistente no proponía ventas sin
+precio (arreglado en §155); la lectura de "MEDIAS PACK X3" como 10 packs de 3
+cuando en el catálogo el pack ya es un producto (queda "Parecido: revisalo";
+no mostrarlo de cerca en la demo).
+
+**Cómo se verificó.** En Chrome a 1280 × 720, 1920 y celular: ninguna
+diapositiva desborda, ninguna imagen rota, ningún ícono sin símbolo. Lint.
+
+## §157. Carruseles de Instagram, la presentación reordenada y la guía para presentar (11 de noviembre de 2026)
+
+**Carruseles fijados.** El usuario pidió tres carruseles de introducción para
+fijar en el perfil, que juntos "formen algo" en la grilla. Eligió "el logo con
+la frase": las tres portadas son una sola imagen de 3240 × 1440 cortada en
+tres (ícono · NΞ · XO, con la bajada "Sistema de gestión para / emprendimientos
+y pymes"), y abajo "Ordená. / Vendé. / Crecé." con la pregunta de cada uno. El
+formato es 3:4 (1080 × 1440), la medida de la grilla del perfil. Contenido: el
+1 es el problema y Nexo (5 láminas), el 2 las funciones (7) y el 3 rubros,
+planes, negocios de ejemplo y QR (5). Afuera a propósito: WhatsApp y la factura
+electrónica, que todavía no andan de verdad para un cliente. La compra desde la
+factura se dibujó en limpio con los datos de la captura, porque esta mostraba
+"Parecido: revisalo" en rojo.
+
+Cómo se arma: `redes/carruseles/carruseles.html` y `armar.mjs` (Playwright con
+el Chrome de la compu, `channel: 'chrome'`: el Chromium que pide Playwright
+1.65 no estaba bajado). La página se sirve por HTTP desde la raíz
+(`redes/servidor.mjs`), porque desde file:// Chrome no carga los íconos del
+sprite. El ícono del logo solo existía en PNG: se trazó a tres polígonos con
+OpenCV (`#icono`). Para recortar "NΞ" y "XO" del símbolo `#nexo` con el
+viewBox, el `<use>` necesita `width="668" height="106"`; sin eso el símbolo
+entero entra en cada mitad. Las PNG van en el repo (el usuario las baja del
+celular con el enlace raw de GitHub, porque la vista de archivos de GitHub en
+el celular no ofrece descargar).
+
+**La presentación, 29 → 28.** Pedido del usuario: abrir con el lío (era la 4),
+seguir con el gancho de la plata (era la 2) y sacar la del equipo (la 3): los
+roles los cuentan ellos. Se movieron los bloques enteros con un script y se
+renumeraron los comentarios; se sacó el CSS del equipo. La demo es la 18.
+
+**La guía para presentar.** `docs/Guía para presentar — Nexo.pdf`, 19
+páginas: tapa, cómo usarla, el mapa de 30 minutos en siete partes, antes de
+empezar y plan B, un bloque por diapositiva (miniatura, la idea, qué decir, lo
+técnico simple, si preguntan, tiempo y un espacio para "Presenta"), preguntas
+difíciles y glosario. `redes/pitch/armar-guia.mjs` saca las miniaturas de
+`docs/presentacion/index.html` (sin transiciones y con todas las diapositivas
+visibles), las pone en `guia.html` y lo imprime con `page.pdf`. Corta si la
+cantidad de diapositivas no coincide con los bloques. Los números se tomaron
+ese día: 357 tests (todos en verde), 302 rutas, 78 tablas, 408 commits.
+
+**Cómo se verificó.** Cada lámina de los carruseles vista en una hoja de
+revisión, y las tres portadas lado a lado como en el perfil. El PDF pasado a
+imágenes con pdf.js en Chrome: ninguna página se desborda (la 2 se pasaba y se
+achicó). Las diapositivas 2 a 4 vistas en Chrome con el orden nuevo.
+
+**Después, el mismo día:** la diapositiva en inglés también salió (el equipo
+va a hacer aparte un video en inglés del proyecto). Quedan 27 diapositivas, el
+cierre es la 27, y la guía se rearmó sin ese bloque.
+
+## §158. La presentación corregida y la guía rearmada (12 de noviembre de 2026)
+
+Pedido del usuario después de ver la presentación (y un agregado a mitad de
+camino: no arrancar presentándose, sino con un dato que llame la atención).
+
+**El dato de apertura.** Se buscó una estadística con fuente sobre cómo se
+gestionan las pymes argentinas. La que mejor encaja es la encuesta de SAP a
+555 pymes, publicada por El Cronista el 14 de enero de 2016: 51 % pierde al
+menos dos meses al año validando planillas, 46 % administra con hojas de
+cálculo (12 % ERP, 5 % CRM; las respuestas suman más de 100 %). Es vieja: la
+diapositiva lleva la fuente con el año y la guía dice cómo contestarlo. Se
+descartaron los cierres de empresas (SRT/CEPA: cifras políticas y que no
+hablan de gestión) y la supervivencia de emprendimientos (fuentes que no
+coinciden: del 7 % al 80 %). La diapositiva 1 es "2 meses por año" con un
+calendario donde noviembre y diciembre se tachan; el logo con los nombres pasó
+a la 7 ("Por eso hicimos").
+
+**El resto, por diapositiva (30 en total).** 4 y 5 invertidas (el tiempo
+primero, contado como "cada venta se anota cinco veces" en vez de la noche del
+dueño). 8: una línea SVG que se dibuja detrás de las cajas (las alturas de la
+escalera pasaron a `nth-of-type`, porque el SVG es el primer hijo). Textos sin
+"vos" en toda la presentación. 10 y 11 con listas de funciones (verificadas
+contra el código: lector y cámara, balanza, ofertas, cobro mixto con vuelto,
+QR de Mercado Pago, fiado, caja; el empleado sin costos). 17 sin Mercado Pago
+y con los logos en oscuro (llevan `currentColor`, y la página tiene texto
+blanco: salían blancos sobre blanco). 18 nueva: Mercado Pago como forma de
+cobro, con un ejemplo de cobro por QR que pasa de "esperando" a "pagado". 19:
+el gimnasio solo, puerta y recepción lado a lado. 20 nueva: producción con su
+captura y diez funciones chicas. 21: la demo, sin "en vivo". 24: ARCA
+explicada (delegación, permiso de 12 h guardado, CAE; homologación contra
+producción, con el sello de "sin validez fiscal").
+
+**La demo y las conexiones.** Mercado Pago, WhatsApp, Tienda Nube y Mercado
+Libre están conectados solo en "Gonzalo José Solla", y el esquema no deja la
+misma cuenta en dos negocios (`idx_integraciones_cuenta`,
+`idx_whatsapp_vinculos_telefono` y `_usuario`). La guía propone hacer la demo
+desde la Lola de la cuenta de Santino (la del script de ejemplos) y pasarle
+las conexiones el día antes; lo decide el usuario. Falta probar el QR con $100.
+
+**La guía.** 22 páginas; "Antes de empezar" pasó a su propia página (con
+`break-inside: avoid` en los recuadros dejaba el título solo). La tapa ya dice
+que la oficial es a principios de diciembre, y el guion también.
+
+**Cómo se verificó.** Capturas a 1600×900 de las diapositivas cambiadas
+(1, 4, 7, 8, 10, 11, 17 a 21 y 24) y la página 3 del PDF en el visor de Chrome.
+
+**Después, el mismo día.** El usuario no quiso la fuente en pantalla (al ser
+de 2016, "le va a parecer cualquier cosa") ni el dato como primera: el logo
+volvió a ser la 1, sin "Por eso hicimos", y el dato es la 2. De la 8 en
+adelante no cambió la numeración. Los roles del equipo se dicen en la 29
+("Cómo trabajamos"); la fuente queda en la guía, para contestar si preguntan.

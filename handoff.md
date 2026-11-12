@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §155);
+    siguiente número (hoy el último es §158);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,69 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (11 de noviembre de 2026)
+## Estado actual (12 de noviembre de 2026)
+
+**12 de noviembre, hist. §158: la presentación corregida (30 diapositivas) y
+la guía rearmada (22 páginas).** Pedido del usuario después de verla:
+- **El logo sigue siendo la 1** (un saludo de una línea, los roles en la 29) y
+  la **2** es el dato "2 meses por año pierde la mitad de las pymes argentinas
+  solo en revisar planillas" (SAP, 555 pymes, El
+  Cronista, enero de 2016), **sin la fuente en pantalla**: por ser de 2016,
+  se dice solo si preguntan (pedido del usuario). No hay "Por eso hicimos".
+- El tiempo (**5**, ahora "cada venta se anota cinco veces") va antes que la
+  plata (6). La 8 tiene una línea que sube detrás de las cajas.
+- **Sin "vos":** los textos hablan del negocio ("se cobra", "el dueño"); al
+  jurado, en plural. El "Te quedó" del ejemplo es la etiqueta real de la app.
+- Resumen (10) y mostrador (11) con la lista de lo que se puede hacer ahí.
+- Venta online (17) solo con canales y logos visibles; **Mercado Pago aparte
+  (18)**; gimnasio solo (19, puerta y recepción); **"Y además" (20)** con
+  producción y diez funciones chicas; demo en la **21**, sin "en vivo".
+- ARCA (24): el permiso (delegación → permiso de 12 h guardado → CAE), y la
+  factura de prueba (homologación) contra la real (producción).
+- **Demo con Mercado Pago, QR, WhatsApp y tiendas:** hoy están solo en
+  "Gonzalo José Solla", y cada cuenta se conecta a un negocio a la vez. Plan
+  en la guía ("Antes de empezar"): hacer la demo desde la Lola de la cuenta
+  de Santino y pasarle las conexiones el día antes. **Lo decide el usuario;
+  falta probar el QR con $100.**
+
+**11 de noviembre, hist. §157: carruseles de Instagram, la presentación
+reordenada y la guía para presentar.**
+- **Carruseles fijados** (`redes/carruseles/`, `npm run carruseles` en
+  `redes/`): tres de introducción (¿Qué es Nexo?, ¿Qué hace?, ¿Cómo empiezo?);
+  las portadas juntas forman el logo con la bajada y "Ordená. Vendé. Crecé.".
+  Las 17 PNG están en el repo para bajarlas del celular (por el enlace raw de
+  GitHub). Se suben en orden 3, 2, 1 y se fijan igual.
+- **Presentación: 27 diapositivas.** Abre el lío (2), sigue "¿Alguna vez
+  prestaste plata…?" (3) y la plata que se pierde (4). La del equipo salió:
+  los roles los cuentan ellos de palabra. La demo pasó a ser la **18**. La de
+  inglés también salió: **el equipo hace aparte un video en inglés** del
+  proyecto (base del texto en `docs/guion-pitch.md`, "Componente en inglés").
+- **La guía:** `docs/Guía para presentar — Nexo.pdf` (`npm run guia` en
+  `redes/`, fuente `redes/pitch/guia.html`). Por diapositiva: la idea, qué
+  decir, lo técnico simple y qué contestar. Si cambia una diapositiva, se
+  cambia su bloque y se rearma (el script avisa si no coinciden los números).
+- `redes/` es un proyecto npm aparte (Playwright, Remotion), con el Chrome de
+  la compu: no baja Chromium.
+
+**11 de noviembre, hist. §156: las diapositivas del pitch, hechas.** La
+fuente es `docs/presentacion/` (index.html y capturas reales del sitio) y
+`npm run presentacion` arma `docs/presentacion-pitch.html` (ignorado por git,
+1,3 MB, anda sin internet). El producto primero. **Las van a retocar con su
+compañero** (los cambios se piden por número de diapositiva). **Sigue: los
+videos** (párrafo "Videos y diapositivas", más abajo). Para la demo: dos teles
+si se consiguen (una con la 18 y el QR, otra con Nexo), y la entrada del
+gimnasio en un celular con DNI de la copia del visitante (en la que se usó:
+Sofía Arce 40123456 al día, Tomás Villalba 31026068 debe); probar antes la
+recepción en otro aparato (el aviso al instante es entre ventanas de la misma
+compu).
+
+**11 de noviembre, hist. §155: el asistente propone la venta aunque la frase
+no diga el precio, publicado (PR #72).** "Vendí dos gorras a Camila Herrera"
+(la frase de la demo y del video 2) volvía "No entendí": usa el precio de
+lista. **Falta probarlo en el sitio** con esa frase.
+
+**WhatsApp con un número real (11 de noviembre):** un amigo del usuario pone
+un chip; los pasos están en "Trámites del usuario" → Meta, "Número real".
 
 **11 de noviembre, hist. §154: la lectura de facturas anda de nuevo.** Groq
 dio de baja Llama 4 Scout (404); ahora lee `qwen/qwen3.8-27b`, probado con
@@ -48,10 +110,13 @@ negocio, el 4 grabado en el sitio con `santinosolla22+tutorial@gmail.com`.
 Cómo se hacen: grabar la app de los ejemplos (skill `ui-demo`), armar con
 Remotion (gratis hasta 3 personas) y la voz con `edge-tts` (es-AR Tomás o
 Elena, a elegir; instalado en la compu). Higgsfield queda afuera (pago, y no
-muestra el sistema). Las diapositivas, en HTML con `frontend-slides`.
-**Sigue mañana:** el usuario pasa videos de ejemplo (frames + Whisper local
-para verlos), se eligen la voz y la bajada del logo, y se arranca el video 1
-(antes, armar en Lola una venta con comisión y envío).
+muestra el sistema). Las diapositivas ya están (hist. §156). La bajada del
+logo quedó "Sistema de gestión para emprendimientos y pymes" (pedido del
+usuario, en la portada). **Sigue:** el usuario elige la voz (dos muestras del
+guion del video 1 hechas con `edge-tts`, Tomás y Elena, el 11 de noviembre) y
+pasa videos de ejemplo si tiene; se arranca el video 1 en `redes/videos/`
+(Remotion y Playwright ya instalados en `redes/`; antes, armar en Lola una
+venta con comisión y envío). La frase del video 2 ya anda sin precio (§155).
 
 **10 de noviembre, hist. §151: la compra desde la foto de la factura,
 publicada (PR #68).** Nueva compra → "Cargar desde la factura" (foto, varias
@@ -2517,6 +2582,17 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     (hist. §135, `destinatario()`). El registro anota el aviso mal firmado y
     el que va a otro número (el botón Probar del panel usa uno inventado).
   - El número de prueba es gratis y llega a 5 teléfonos: alcanza para la demo.
+  - **Número real (pasos que le pasé el 11 de noviembre):** el chip de un
+    amigo, sin WhatsApp (si tenía, borrar la cuenta desde la app) y con la
+    línea activa siempre. En WhatsApp Manager → Números de teléfono →
+    Agregar, en la misma cuenta del número de prueba (así sirven la app, el
+    webhook y el token): nombre "Nexo", +54 9 sin el 15, código por SMS.
+    Activarlo con `POST <phone number id>/register` y
+    `{"messaging_product":"whatsapp","pin":"<6 números>"}` desde el
+    Explorador de la API Graph. Foto: `assets/logo/06-perfil/`. En el
+    servidor solo cambian `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_NUMERO`
+    (dígitos, 549…). Volver a vincular el teléfono y probar. Si Meta pide un
+    medio de pago, el usuario decide.
 
 **Después de la presentación:**
 - **Ofertas en presupuestos** (charlado con el usuario el 4 de noviembre, "lo
