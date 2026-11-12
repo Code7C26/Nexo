@@ -12808,3 +12808,7 @@ ese día: 357 tests (todos en verde), 302 rutas, 78 tablas, 408 commits.
 revisión, y las tres portadas lado a lado como en el perfil. El PDF pasado a
 imágenes con pdf.js en Chrome: ninguna página se desborda (la 2 se pasaba y se
 achicó). Las diapositivas 2 a 4 vistas en Chrome con el orden nuevo.
+
+**Después, el mismo día:** la diapositiva en inglés también salió (el equipo
+va a hacer aparte un video en inglés del proyecto). Quedan 27 diapositivas, el
+cierre es la 27, y la guía se rearmó sin ese bloque.
