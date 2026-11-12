@@ -396,7 +396,7 @@ img { display: block; max-width: 100%; }
 .ademas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: clamp(0.8rem, 2.4vw, 2.2rem); align-items: start; }
 .ademas .compu img { max-height: min(46vh, 500px); }
 .chicas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(0.4rem, 0.9vw, 0.7rem); }
-.chicas li { display: grid; grid-template-columns: auto 1fr; gap: 0.1em 0.7em; align-items: start; padding: 0.55em 0.75em; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; font-size: var(--small-size); line-height: 1.3; }
+.chicas li { display: grid; grid-template-columns: auto 1fr; gap: 0.1em 0.7em; align-items: start; align-content: start; padding: 0.55em 0.75em; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; font-size: var(--small-size); line-height: 1.3; }
 .chicas .ico { grid-row: span 2; color: var(--acento); font-size: 1.4em; margin-top: 0.1em; }
 .chicas b { font-weight: 600; }
 .chicas span { color: var(--texto-2); }
@@ -942,21 +942,21 @@ img { display: block; max-width: 100%; }
   <div class="slide-content apilado">
     <div>
       <p class="parte reveal">Y además</p>
-      <h2 class="reveal" style="--d:1">Lo que no se luce en una foto, pero se usa todos los días</h2>
+      <h2 class="reveal" style="--d:1">Más funciones de Nexo</h2>
     </div>
     <div class="ademas">
-      <figure class="compu reveal" style="--d:2"><img src="capturas/recetas.webp" alt="Las recetas de las mafaldas y el costo de cada una."><figcaption><b>Producción</b>La receta dice qué lleva cada producto y cuánto cuesta hacerlo. La bolsa y la caja entran al costo de la venta.</figcaption></figure>
+      <figure class="compu reveal" style="--d:2"><img src="capturas/recetas.webp" alt="Las recetas de las mafaldas y el costo de cada una."><figcaption><b>Producción</b>El costo de cada producto sale de su receta, y el packaging se suma al costo de la venta.</figcaption></figure>
       <ul class="chicas reveal" style="--d:3">
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#file-text"/></svg><b>Presupuestos</b><span>que pasan a venta con un clic</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg><b>Cuentas corrientes</b><span>quién debe, desde cuándo y qué vence</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#tag"/></svg><b>Listas de precios y ofertas</b><span>minorista, mayorista y con fechas</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#warehouse"/></svg><b>Varios depósitos</b><span>y pases de mercadería entre ellos</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#undo-2"/></svg><b>Devoluciones</b><span>con su nota de crédito y el stock de vuelta</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#funnel"/></svg><b>CRM</b><span>consultas, seguimiento y clientes que dejaron de comprar</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#clipboard-list"/></svg><b>Trabajos y abonos</b><span>para los negocios de servicios</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#file-text"/></svg><b>Presupuestos</b><span>se convierten en venta</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#hand-coins"/></svg><b>Cuentas corrientes</b><span>saldos y vencimientos</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#tag"/></svg><b>Listas de precios y ofertas</b><span>minorista, mayorista y promociones</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#warehouse"/></svg><b>Varios depósitos</b><span>stock por depósito y transferencias</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#undo-2"/></svg><b>Devoluciones</b><span>con nota de crédito y reingreso de stock</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#funnel"/></svg><b>CRM</b><span>consultas y seguimiento de clientes</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#clipboard-list"/></svg><b>Trabajos y abonos</b><span>órdenes de trabajo y cobros periódicos</span></li>
         <li><svg class="ico"><use href="../../frontend/img/iconos.svg#bell"/></svg><b>Avisos en el celular</b><span>ventas online, pagos y stock bajo</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#building-2"/></svg><b>Varios negocios</b><span>en una sola cuenta</span></li>
-        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#history"/></svg><b>Auditoría</b><span>quién hizo qué, y cuándo</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#building-2"/></svg><b>Varios negocios</b><span>en una misma cuenta</span></li>
+        <li><svg class="ico"><use href="../../frontend/img/iconos.svg#history"/></svg><b>Auditoría</b><span>cada cambio, con usuario y fecha</span></li>
       </ul>
     </div>
   </div>
