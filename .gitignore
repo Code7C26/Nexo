@@ -16,6 +16,3 @@ backend/*.log
 # scripts/fuentes.mjs en cada instalación.
 frontend/fonts/satoshi-*.woff2
 
-# Las diapositivas del pitch armadas (npm run presentacion): un archivo de
-# varios MB con todo adentro, que se rearma desde docs/presentacion/.
-docs/presentacion-pitch.html
