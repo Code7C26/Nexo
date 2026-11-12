@@ -71,8 +71,11 @@ noviembre): el estudio (Remotion 4.0.533, TypeScript compila) y el plugin en
 Claude Code (`motion-architect@motion-architect`, para el usuario). En
 PowerShell, `npm`, `npx` y `claude` van como `npm.cmd`, `npx.cmd` y
 `claude.cmd`: la política de ejecución bloquea los `.ps1`. La sesión de
-videos se abre en `C:\Users\HP ULTRA 5\motion-architect`. Los mp4 terminados
-van a `docs/pitch/media/`.
+videos se abre **en Nexo** (con su contexto) y, al empezar, `/add-dir
+C:\Users\HP ULTRA 5\motion-architect` para que pueda escribir en el estudio sin
+pedir permiso: la skill encuentra el estudio en `~/motion-architect/studio`
+porque Nexo no tiene una carpeta `studio/`. Los mp4 terminados van a
+`docs/pitch/media/`.
 
 **12 de noviembre, hist. §162: el repo, ordenado.** `docs/` va siempre en
 carpetas: `proyecto/` (este histórico, publicar, plan para vender),

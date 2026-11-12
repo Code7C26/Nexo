@@ -23,7 +23,10 @@ se aprueba** → animación → revisión cuadro por cuadro → preview → mp4 
 - **Instalado del todo** (12 de noviembre): el estudio (Remotion 4.0.533) y el
   plugin en Claude Code. En PowerShell, `npm`, `npx` y `claude` van como
   `npm.cmd`, `npx.cmd` y `claude.cmd` (la política de ejecución bloquea los
-  `.ps1`). La sesión de videos se abre en esa carpeta.
+  `.ps1`). La sesión de videos se abre **en Nexo**, para tener su contexto, y
+  al empezar se corre `/add-dir C:\Users\HP ULTRA 5\motion-architect` para que
+  escriba en el estudio sin pedir permiso. La skill encuentra el estudio en
+  `~/motion-architect/studio` (Nexo no tiene una carpeta `studio/`).
 - **Remotion** es gratis para equipos de hasta 3 personas.
 
 **Las referencias de estilo** ya están en
