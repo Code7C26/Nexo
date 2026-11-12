@@ -210,8 +210,16 @@ app (los 21 ítems de un comercio en sus grupos), el Resumen con el clic en
 gráficos (dona de cobros, mapa de calor, lo más vendido); y escenas nuevas y
 cortas: la factura con su PDF, la compra desde la foto, Tienda Nube y Mercado
 Libre, y el cobro con el QR de Mercado Pago. Lo principal (Resumen y
-asistente) sigue yendo de a poco. Hay una variante con música más movida para
-comparar (la decide el usuario). Detalle: `redes/videos/estudio/storyboards/nexo-apertura.md`.
+asistente) sigue yendo de a poco. **El usuario eligió la música movida** ("el
+video quedó perfecto"). Detalle: `redes/videos/estudio/storyboards/nexo-apertura.md`.
+
+**El reel** (pedido del usuario): `redes/videos/nexo-apertura-reel.mp4`, 1080 ×
+1920, 41 s, con su portada (`nexo-apertura-reel-portada.jpg`). Las mismas
+escenas: la app va sin el menú lateral (como en el celular) y ocupa el ancho,
+el título arriba, las grillas en dos columnas, y el cierre con "Probalo gratis
+· link en la bio". Respeta las zonas que tapa Instagram (14 % de arriba, 20 %
+de abajo). **No tiene voz todavía**, aunque los videos de Instagram la llevan
+(decisión del usuario): falta que apruebe el texto y elija la voz.
 
 Versión 1: **`docs/pitch/media/nexo-apertura.mp4`**: 29,5 s, 1920 × 1080, 3,8 MB. Abre la
 presentación: arranca solo en la diapositiva 1, a pantalla completa, y al

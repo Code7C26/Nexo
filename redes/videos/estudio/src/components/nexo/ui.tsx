@@ -255,16 +255,21 @@ const indiceActivo = (frame: number, activo: Activo) => {
   return i;
 };
 
+/** Las medidas de la ventana en el celular: sin el menú (como la app en el
+    teléfono), del ancho justo de las pantallas, en (0, 0) para escalarla afuera. */
+export const VENTANA_CELULAR = { ...VENTANA, x: 0, y: 0, w: 970, menu: 0 };
+
 /** La ventana con el menú de Nexo; el contenido va en `children`. */
-export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Activo; boton?: number; children: React.ReactNode }> = ({
-  negocio,
-  rubro,
-  activo,
-  boton = 1,
-  children,
-}) => {
+export const VentanaNexo: React.FC<{
+  negocio: string;
+  rubro: string;
+  activo: Activo;
+  boton?: number;
+  medidas?: typeof VENTANA;
+  children: React.ReactNode;
+}> = ({ negocio, rubro, activo, boton = 1, medidas = VENTANA, children }) => {
   const frame = useCurrentFrame();
-  const V = VENTANA;
+  const V = medidas;
   const yA = yActivo(frame, activo);
   const iA = indiceActivo(frame, activo);
   return (
@@ -289,7 +294,7 @@ export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Act
           <span key={k} style={{ width: 11, height: 11, borderRadius: 99, background: "rgba(255,255,255,0.18)" }} />
         ))}
       </div>
-      <div style={{ position: "absolute", left: 0, top: V.barra, width: V.menu, bottom: 0, padding: "14px 12px", overflow: "hidden" }}>
+      <div style={{ display: V.menu ? undefined : "none", position: "absolute", left: 0, top: V.barra, width: V.menu, bottom: 0, padding: "14px 12px", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 6px 12px" }}>
           <Img src={staticFile("brand/nexo-icono.png")} style={{ width: 24, height: "auto" }} />
           <span style={{ flex: 1, fontFamily: brand.fontDisplay, fontWeight: 700, fontSize: 22, letterSpacing: "-0.02em" }}>Nexo</span>
@@ -338,7 +343,7 @@ export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Act
       <div
         style={{
           position: "absolute",
-          left: V.menu,
+          left: V.menu || 10,
           top: V.barra + 10,
           right: 10,
           bottom: 10,

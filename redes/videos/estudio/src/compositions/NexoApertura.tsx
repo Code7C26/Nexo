@@ -31,7 +31,8 @@ import {
   TOQUE_REMERA,
   Venta,
 } from "../components/nexo/pantallas";
-import { ACENTO_SUAVE, Activo, C, Cambio, entra, Icon, item, sale, TituloFoco, VentanaNexo } from "../components/nexo/ui";
+import { ACENTO_SUAVE, Activo, C, Cambio, entra, Icon, item, sale, TituloFoco, VENTANA, VENTANA_CELULAR, VentanaNexo } from "../components/nexo/ui";
+import { useScale } from "../lib/useScale";
 
 // Escenas: [inicio, duración] en cuadros (30 fps).
 const E = {
@@ -52,21 +53,29 @@ type Escena = readonly [number, number];
 
 export const NEXO_APERTURA_DURATION = E.logo[0] + E.logo[1];
 
-// La música se elige al renderizar: --props='{"musica":"music/otra.wav"}'.
-const MUSICA = (getInputProps() as { musica?: string }).musica ?? "music/nexo-apertura.wav";
+// La música elegida por el usuario es la movida; otra se elige al renderizar:
+// --props='{"musica":"music/nexo-apertura.wav"}' (la tranquila).
+const MUSICA = (getInputProps() as { musica?: string }).musica ?? "music/nexo-apertura-movida.wav";
+
+// En vertical (el reel) la app va sin menú y escalada, debajo del título; arriba
+// queda libre el 14 % y abajo el 20 % que tapa Instagram.
+const CELULAR = { x: 16, y: 592, escala: 1.08, titulo: [272, 580] as const };
 
 // ---------------------------------------------------------------- Fondo
 
 const Fondo: React.FC = () => {
   const frame = useCurrentFrame();
+  const { isVertical } = useScale();
   const [vi] = E.resumen;
   const [vf] = E.funciones;
-  const x = interpolate(frame, [vi - 5, vi + 35, vf - 15, vf + 25, E.logo[0], E.logo[0] + 30], [50, 70, 70, 50, 50, 38], {
-    easing: ease.inOut,
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const y = interpolate(frame, [0, NEXO_APERTURA_DURATION], [42, 48]);
+  const x = isVertical
+    ? 50
+    : interpolate(frame, [vi - 5, vi + 35, vf - 15, vf + 25, E.logo[0], E.logo[0] + 30], [50, 70, 70, 50, 50, 38], {
+        easing: ease.inOut,
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      });
+  const y = isVertical ? 55 : interpolate(frame, [0, NEXO_APERTURA_DURATION], [42, 48]);
   const fuerza = interpolate(frame, [0, 20, E.logo[0], E.logo[0] + 30], [0.05, 0.13, 0.13, 0.2], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ background: C.background }}>
@@ -78,11 +87,32 @@ const Fondo: React.FC = () => {
 
 // ---------------------------------------------------------------- Títulos
 
-const TituloIzquierda: React.FC<{ lineas: string[]; resaltar: string[]; dur: number }> = ({ lineas, resaltar, dur }) => (
-  <AbsoluteFill style={{ justifyContent: "center", paddingLeft: 96, width: 620 }}>
-    <TituloFoco lineas={lineas} resaltar={resaltar} desde={6} cada={4} saleEn={dur - 8} tam={66} />
-  </AbsoluteFill>
-);
+const TituloIzquierda: React.FC<{ lineas: string[]; resaltar: string[]; dur: number }> = ({ lineas, resaltar, dur }) => {
+  const { isVertical } = useScale();
+  if (isVertical) {
+    const [arriba, abajo] = CELULAR.titulo;
+    return (
+      <div style={{ position: "absolute", left: 64, right: 64, top: arriba, height: abajo - arriba, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <TituloFoco lineas={lineas} resaltar={resaltar} desde={6} cada={4} saleEn={dur - 8} tam={76} />
+      </div>
+    );
+  }
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", paddingLeft: 96, width: 620 }}>
+      <TituloFoco lineas={lineas} resaltar={resaltar} desde={6} cada={4} saleEn={dur - 8} tam={66} />
+    </AbsoluteFill>
+  );
+};
+
+/** Título centrado de las escenas sin ventana (en el reel, partido en dos líneas). */
+const TituloCentro: React.FC<{ horizontal: string[]; vertical: string[]; resaltar: string[]; dur: number }> = ({ horizontal, vertical, resaltar, dur }) => {
+  const { isVertical } = useScale();
+  return (
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: isVertical ? 300 : 170 }}>
+      <TituloFoco lineas={isVertical ? vertical : horizontal} resaltar={resaltar} desde={4} cada={4} saleEn={dur - 8} tam={isVertical ? 76 : 64} alinear="center" />
+    </AbsoluteFill>
+  );
+};
 
 const TITULOS: [Escena, string[], string[]][] = [
   [E.resumen, ["El mes,", "de un vistazo."], ["vistazo"]],
@@ -127,9 +157,12 @@ const RUBROS: Item[] = [
 
 const Grilla: React.FC<{ items: Item[]; dur: number; top: number; alto: number; cada: number; vertical?: boolean }> = ({ items, dur, top, alto, cada, vertical }) => {
   const frame = useCurrentFrame();
-  const ancho = 380;
-  const gap = 20;
-  const x0 = (1920 - (4 * ancho + 3 * gap)) / 2;
+  const { width, isVertical } = useScale();
+  // En el reel, dos columnas más anchas.
+  const columnas = isVertical ? 2 : 4;
+  const ancho = isVertical ? 466 : 380;
+  const gap = isVertical ? 16 : 20;
+  const x0 = (width - (columnas * ancho + (columnas - 1) * gap)) / 2;
   return (
     <AbsoluteFill style={{ ...sale(frame, dur - 8, 8, 0, -10), fontFamily: brand.fontBody, color: C.text }}>
       {items.map((it, k) => (
@@ -137,8 +170,8 @@ const Grilla: React.FC<{ items: Item[]; dur: number; top: number; alto: number; 
           key={it.titulo}
           style={{
             position: "absolute",
-            left: x0 + (k % 4) * (ancho + gap),
-            top: top + Math.floor(k / 4) * (alto + gap),
+            left: x0 + (k % columnas) * (ancho + gap),
+            top: top + Math.floor(k / columnas) * (alto + gap),
             width: ancho,
             height: alto,
             borderRadius: 16,
@@ -199,53 +232,85 @@ const LETRAS = [
 
 const Logo: React.FC = () => {
   const frame = useCurrentFrame();
+  const { isVertical } = useScale();
   const pIcono = progress(frame, 2, 18);
   const pBajada = progress(frame, 34, 18);
+  const icono = (estilo: React.CSSProperties) => (
+    <Img
+      src={staticFile("brand/nexo-icono.png")}
+      style={{
+        height: "auto",
+        opacity: pIcono,
+        transform: `scale(${0.96 + 0.04 * pIcono})`,
+        filter: pIcono < 1 ? `blur(${(1 - pIcono) * 10}px)` : undefined,
+        ...estilo,
+      }}
+    />
+  );
+  const palabra = (ancho: number) => (
+    <svg viewBox="0 0 668 106" width={ancho} height={(ancho * 106) / 668} style={{ display: "block", color: C.text, overflow: "visible" }}>
+      <g fill="currentColor">
+        {LETRAS.map((l, k) => {
+          const p = progress(frame, 12 + k * 4, 14);
+          return (
+            <g key={k} style={{ opacity: p, transform: `translateY(${(1 - p) * 14}px)`, filter: p < 1 ? `blur(${(1 - p) * 6}px)` : undefined }}>
+              {l}
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+  const bajada = (tam: number, estilo?: React.CSSProperties) => (
+    <div
+      style={{
+        lineHeight: 1.45,
+        fontFamily: brand.fontDisplay,
+        fontWeight: 500,
+        fontSize: tam,
+        textTransform: "uppercase",
+        letterSpacing: `${0.18 + (1 - pBajada) * 0.12}em`,
+        color: C.text2,
+        opacity: pBajada,
+        ...estilo,
+      }}
+    >
+      Sistema de gestión para emprendimientos y pymes
+    </div>
+  );
+  if (isVertical) {
+    return (
+      <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", paddingBottom: 120 }}>
+        {icono({ width: 250 })}
+        <div style={{ height: 70 }} />
+        {palabra(700)}
+        {bajada(25, { marginTop: 30, width: 660, textAlign: "center" })}
+        <div
+          style={{
+            marginTop: 64,
+            padding: "16px 34px",
+            borderRadius: 99,
+            background: C.accent,
+            color: "#04101f",
+            fontFamily: brand.fontDisplay,
+            fontWeight: 700,
+            fontSize: 34,
+            ...entra(progress(frame, 50, 16), 0, 14),
+          }}
+        >
+          Probalo gratis · link en la bio
+        </div>
+      </AbsoluteFill>
+    );
+  }
   // Mismo lugar y tamaño que el logo de la diapositiva 1 a 1920 × 1080: el
   // video se funde en ella sin que el logo salte.
   return (
     <AbsoluteFill>
-      <Img
-        src={staticFile("brand/nexo-icono.png")}
-        style={{
-          position: "absolute",
-          left: 282,
-          top: 376,
-          width: 230,
-          height: "auto",
-          opacity: pIcono,
-          transform: `scale(${0.96 + 0.04 * pIcono})`,
-          filter: pIcono < 1 ? `blur(${(1 - pIcono) * 10}px)` : undefined,
-        }}
-      />
+      {icono({ position: "absolute", left: 282, top: 376, width: 230 })}
       <div style={{ position: "absolute", left: 568, top: 395 }}>
-        <svg viewBox="0 0 668 106" width={680} height={(680 * 106) / 668} style={{ display: "block", color: C.text, overflow: "visible" }}>
-          <g fill="currentColor">
-            {LETRAS.map((l, k) => {
-              const p = progress(frame, 12 + k * 4, 14);
-              return (
-                <g key={k} style={{ opacity: p, transform: `translateY(${(1 - p) * 14}px)`, filter: p < 1 ? `blur(${(1 - p) * 6}px)` : undefined }}>
-                  {l}
-                </g>
-              );
-            })}
-          </g>
-        </svg>
-        <div
-          style={{
-            marginTop: 22,
-            lineHeight: 1.45,
-            fontFamily: brand.fontDisplay,
-            fontWeight: 500,
-            fontSize: 19.2,
-            textTransform: "uppercase",
-            letterSpacing: `${0.18 + (1 - pBajada) * 0.12}em`,
-            color: C.text2,
-            opacity: pBajada,
-          }}
-        >
-          Sistema de gestión para emprendimientos y pymes
-        </div>
+        {palabra(680)}
+        {bajada(19.2, { marginTop: 22 })}
       </div>
     </AbsoluteFill>
   );
@@ -339,21 +404,28 @@ const sinBoton = (frame: number, [desde, dur]: Escena) =>
 
 const Ventana: React.FC = () => {
   const frame = useCurrentFrame();
+  const { isVertical } = useScale();
   const inicio = E.resumen[0];
   const fin = E.funciones[0];
   if (frame < inicio || frame > fin) return null;
   const boton = 1 - Math.max(sinBoton(frame, E.cobro), sinBoton(frame, E.asistente), sinBoton(frame, E.factura));
-  return (
-    <AbsoluteFill style={{ ...entra(progress(frame, inicio, 20), 70, 0), ...sale(frame, fin - 10, 10, 30, 0) }}>
-      <VentanaNexo negocio="Indumentaria" rubro="Comercio general" activo={ACTIVO} boton={boton}>
-        {PANTALLAS.map(([[desde, dur], el]) => (
-          <Sequence key={desde} from={desde} durationInFrames={dur}>
-            <Cambio dur={dur}>{el}</Cambio>
-          </Sequence>
-        ))}
-      </VentanaNexo>
-    </AbsoluteFill>
+  const ventana = (
+    <VentanaNexo negocio="Indumentaria" rubro="Comercio general" activo={ACTIVO} boton={boton} medidas={isVertical ? VENTANA_CELULAR : VENTANA}>
+      {PANTALLAS.map(([[desde, dur], el]) => (
+        <Sequence key={desde} from={desde} durationInFrames={dur}>
+          <Cambio dur={dur}>{el}</Cambio>
+        </Sequence>
+      ))}
+    </VentanaNexo>
   );
+  if (isVertical) {
+    return (
+      <AbsoluteFill style={{ ...entra(progress(frame, inicio, 20), 0, 60), ...sale(frame, fin - 10, 10, 0, 30) }}>
+        <div style={{ position: "absolute", left: CELULAR.x, top: CELULAR.y, transform: `scale(${CELULAR.escala})`, transformOrigin: "0 0" }}>{ventana}</div>
+      </AbsoluteFill>
+    );
+  }
+  return <AbsoluteFill style={{ ...entra(progress(frame, inicio, 20), 70, 0), ...sale(frame, fin - 10, 10, 30, 0) }}>{ventana}</AbsoluteFill>;
 };
 
 const Titulo: React.FC<{ escena: Escena; children: React.ReactNode }> = ({ escena, children }) => (
@@ -362,35 +434,34 @@ const Titulo: React.FC<{ escena: Escena; children: React.ReactNode }> = ({ escen
   </Sequence>
 );
 
-export const NexoApertura: React.FC = () => (
-  <AbsoluteFill style={{ fontFamily: brand.fontBody }}>
-    <Fondo />
-    <Titulo escena={E.gancho}>
-      <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-        <TituloFoco lineas={["Todo el negocio,", "en un solo lugar."]} resaltar={["lugar"]} desde={4} cada={4} saleEn={E.gancho[1] - 8} tam={104} alinear="center" />
-      </AbsoluteFill>
-    </Titulo>
-    <Ventana />
-    {TITULOS.map(([escena, lineas, resaltar]) => (
-      <Titulo key={escena[0]} escena={escena}>
-        <TituloIzquierda lineas={lineas} resaltar={resaltar} dur={escena[1]} />
+export const NexoApertura: React.FC = () => {
+  const { isVertical } = useScale();
+  return (
+    <AbsoluteFill style={{ fontFamily: brand.fontBody }}>
+      <Fondo />
+      <Titulo escena={E.gancho}>
+        <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", paddingBottom: isVertical ? 120 : 0 }}>
+          <TituloFoco lineas={["Todo el negocio,", "en un solo lugar."]} resaltar={["lugar"]} desde={4} cada={4} saleEn={E.gancho[1] - 8} tam={isVertical ? 96 : 104} alinear="center" />
+        </AbsoluteFill>
       </Titulo>
-    ))}
-    <Titulo escena={E.funciones}>
-      <AbsoluteFill style={{ alignItems: "center", paddingTop: 170 }}>
-        <TituloFoco lineas={["Y todo lo demás, conectado."]} resaltar={["conectado"]} desde={4} cada={4} saleEn={E.funciones[1] - 8} tam={64} alinear="center" />
-      </AbsoluteFill>
-      <Grilla items={FUNCIONES} dur={E.funciones[1]} top={330} alto={118} cada={2} />
-    </Titulo>
-    <Titulo escena={E.rubros}>
-      <AbsoluteFill style={{ alignItems: "center", paddingTop: 170 }}>
-        <TituloFoco lineas={["Y lo que cada rubro necesita."]} resaltar={["rubro"]} desde={4} cada={4} saleEn={E.rubros[1] - 8} tam={64} alinear="center" />
-      </AbsoluteFill>
-      <Grilla items={RUBROS} dur={E.rubros[1]} top={320} alto={210} cada={3} vertical />
-    </Titulo>
-    <Titulo escena={E.logo}>
-      <Logo />
-    </Titulo>
-    <Sonido />
-  </AbsoluteFill>
-);
+      <Ventana />
+      {TITULOS.map(([escena, lineas, resaltar]) => (
+        <Titulo key={escena[0]} escena={escena}>
+          <TituloIzquierda lineas={lineas} resaltar={resaltar} dur={escena[1]} />
+        </Titulo>
+      ))}
+      <Titulo escena={E.funciones}>
+        <TituloCentro horizontal={["Y todo lo demás, conectado."]} vertical={["Y todo lo demás,", "conectado."]} resaltar={["conectado"]} dur={E.funciones[1]} />
+        <Grilla items={FUNCIONES} dur={E.funciones[1]} top={isVertical ? 520 : 330} alto={isVertical ? 128 : 118} cada={2} />
+      </Titulo>
+      <Titulo escena={E.rubros}>
+        <TituloCentro horizontal={["Y lo que cada rubro necesita."]} vertical={["Y lo que cada", "rubro necesita."]} resaltar={["rubro"]} dur={E.rubros[1]} />
+        <Grilla items={RUBROS} dur={E.rubros[1]} top={isVertical ? 520 : 320} alto={isVertical ? 214 : 210} cada={3} vertical />
+      </Titulo>
+      <Titulo escena={E.logo}>
+        <Logo />
+      </Titulo>
+      <Sonido />
+    </AbsoluteFill>
+  );
+};

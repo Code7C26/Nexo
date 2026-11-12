@@ -13074,3 +13074,18 @@ Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
   `--props='{"musica":...}'`. En la presentación va la tranquila.
 - 41 s, 7,4 MB. Presentación y guía rearmadas; la prueba en Chrome sigue
   pasando (arranca, se funde, la 1 con los nombres, → a la 2).
+
+## §165. La música movida y el reel de la apertura (12 de noviembre de 2026)
+
+- El usuario eligió la música movida ("después de eso el video quedó
+  PERFECTO"): ahora es la de partida de la composición, y el video de la
+  presentación se rearmó con ella.
+- **El reel** (`redes/videos/nexo-apertura-reel.mp4`, 1080 × 1920, 41 s, 7,3
+  MB, con `nexo-apertura-reel-portada.jpg`): la misma composición en el formato
+  `vertical`. La ventana va sin el menú lateral (`VENTANA_CELULAR`, como la app
+  en el teléfono) y escalada a 1,08 debajo del título; las grillas en dos
+  columnas; el logo en columna con "Probalo gratis · link en la bio". Respeta
+  el 14 % de arriba y el 20 % de abajo que tapa Instagram.
+- **Falta la voz:** los videos de Instagram la llevan (decisión del usuario
+  del 12 de noviembre). Se le propuso el texto; falta que lo apruebe y elija la
+  voz.
