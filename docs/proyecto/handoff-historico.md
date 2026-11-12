@@ -13037,3 +13037,40 @@ Remotion en `C:\Users\HP ULTRA 5\motion-architect\studio`, fuera del repo).
 - Lo que no anduvo: el `--check` del motor de visión no veía `ffmpeg` en el
   Bash de Git (el PATH de winget es de usuario): se exporta a mano en cada
   comando.
+
+## §164. La apertura, versión 2: un pantallazo completo (12 de noviembre de 2026)
+
+Pedido del usuario después de ver la versión 1: le gustó el estilo y la
+música ("buscar otras opciones, pero está bien"); el menú lateral tenía pocas
+funciones y en otro orden que la app; quería un pantallazo completo de Nexo,
+vistoso, rápido y corto, con lo principal de a poco; y más gráficos en el
+Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
+
+- **El menú, el de la app:** los 21 ítems de un comercio en sus grupos
+  (`frontend/index.html` con los módulos de `backend/perfiles.js`), el botón
+  para plegarlo y el botón azul del asistente abajo a la derecha (se esconde
+  donde taparía algo). Los íconos y los logos (Tienda Nube, Mercado Libre,
+  Mercado Pago) salen de `frontend/img` con `scripts/iconos-nexo.py` del
+  estudio. Los trazos del logo de Tienda Nube no traen color: toman
+  `currentColor`, como en la app.
+- **El Resumen (6,3 s):** arranca en "7 días", el mouse toca "30 días", las
+  cifras cuentan, el gráfico se dibuja con sus fechas (13/10 a 11/11) y el
+  mouse lo recorre con la línea guía, los dos puntos y un cartel con el día,
+  las ventas y la ganancia. Después la página baja a "Cuándo se vende" (mapa
+  de calor por día y hora) y "Lo más vendido"; "Dónde entró la plata" es una
+  dona.
+- **Escenas nuevas, de 3 a 3,7 s:** la factura B autorizada por ARCA, el clic
+  en PDF y la factura impresa con el formato de ARCA (CAE, QR y la leyenda de
+  prueba, como en homologación); la compra desde la foto (la factura de
+  Textil Norte se escanea y los renglones aparecen encontrados por código, el
+  pack de joggers en unidades y el IVA como crédito fiscal); Venta online
+  (cifras, las dos tiendas conectadas, la dona por canal y dos pedidos que
+  entran solos con su sonido); el cobro con Mercado Pago (el QR, "Esperando
+  el pago" y "Pago aprobado"). Funciones y rubros más rápidos.
+- **Las pantallas en su archivo:** `src/components/nexo/pantallas.tsx`; la
+  composición queda con la línea de tiempo, los títulos y el sonido.
+- **Dos músicas para elegir:** la tranquila y `--estilo movida` (bajo en
+  corcheas, palmas y hi-hat). La composición la toma de
+  `--props='{"musica":...}'`. En la presentación va la tranquila.
+- 41 s, 7,4 MB. Presentación y guía rearmadas; la prueba en Chrome sigue
+  pasando (arranca, se funde, la 1 con los nombres, → a la 2).

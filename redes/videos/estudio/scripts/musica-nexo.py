@@ -104,6 +104,37 @@ def pulso(t, desde, hasta):
     return out
 
 
+def bajo_y_palmas(t, desde, hasta):
+    """Para --estilo movida: un bajo en corcheas, palmas en 2 y 4, y un hi-hat en semicorcheas."""
+    out = np.zeros((len(t), 2))
+    rng = np.random.default_rng(11)
+    paso = BEAT / 4
+    k = 0
+    tt = desde
+    while tt < hasta:
+        i0 = int(tt * SR)
+        if k % 2 == 0:
+            acorde = ACORDES[int(tt // DUR_ACORDE) % len(ACORDES)]
+            f = nota(min(acorde) - 12 + (12 if k % 8 == 6 else 0))
+            seg = np.arange(min(int(0.22 * SR), len(t) - i0)) / SR
+            v = (np.sin(2 * np.pi * f * seg) + 0.35 * np.sin(2 * np.pi * 2 * f * seg)) * np.exp(-seg * 7) * 0.11
+            v *= np.clip(seg / 0.006, 0, 1)
+            out[i0:i0 + len(seg)] += v[:, None]
+        if k % 16 in (4, 12):
+            seg = np.arange(min(int(0.18 * SR), len(t) - i0)) / SR
+            ruido = np.diff(np.concatenate([[0], rng.standard_normal(len(seg))]))
+            v = ruido * np.exp(-seg * 22) * 0.05
+            out[i0:i0 + len(seg), 0] += v * 0.9
+            out[i0:i0 + len(seg), 1] += v * 1.1
+        seg = np.arange(min(int(0.04 * SR), len(t) - i0)) / SR
+        ruido = np.diff(np.concatenate([[0], np.diff(np.concatenate([[0], rng.standard_normal(len(seg))]))]))
+        acento = 0.012 if k % 2 else 0.006
+        out[i0:i0 + len(seg), 1 if k % 2 else 0] += ruido * np.exp(-seg * 90) * acento
+        k += 1
+        tt += paso
+    return out
+
+
 def suavizar(x, corte):
     """Pasa bajos de un polo, vectorizado por bloques cortos."""
     a = np.exp(-2 * np.pi * corte / SR)
@@ -128,6 +159,7 @@ def main():
     ap.add_argument("segundos", type=float)
     ap.add_argument("--pulso-desde", type=float, default=0)
     ap.add_argument("--final-en", type=float, default=None)
+    ap.add_argument("--estilo", choices=["tranquila", "movida"], default="tranquila")
     a = ap.parse_args()
 
     dur = a.segundos
@@ -137,6 +169,8 @@ def main():
     mezcla = pad(t, dur)
     mezcla += arpegio(t, a.pulso_desde, final)
     mezcla += pulso(t, a.pulso_desde, final)
+    if a.estilo == "movida":
+        mezcla += bajo_y_palmas(t, a.pulso_desde, final)
     # En el final, un acorde grave que sostiene.
     if final < dur:
         cola = np.clip((t - final) / 0.05, 0, 1) * np.exp(-np.clip(t - final, 0, None) * 0.9)

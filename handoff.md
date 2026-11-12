@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §163);
+    siguiente número (hoy el último es §164);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -58,6 +58,14 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   cierre es la 31. ARCA (24) quedó simple: Nexo intermedia con su
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
+
+**12 de noviembre, hist. §164: la apertura, versión 2 (41 s).** Pedido del
+usuario después de verla: el menú igual al de la app, más gráficos en el
+Resumen (el clic en "30 días" y el mouse recorriendo el gráfico con la fecha),
+y un pantallazo completo y rápido: la factura con su PDF, la compra desde la
+foto, Tienda Nube y Mercado Libre, y el cobro con el QR de Mercado Pago.
+**Falta que el usuario elija la música:** la tranquila (la del video en la
+presentación) o la movida (`out/nexo-apertura-movida.mp4` del estudio).
 
 **12 de noviembre, hist. §163: el video 6 (la apertura), hecho y en la
 presentación.** `docs/pitch/media/nexo-apertura.mp4` (29,5 s): arranca solo

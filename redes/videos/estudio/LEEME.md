@@ -7,9 +7,10 @@ carpeta se pierde, o la quiere usar otra compu, con esto se rearma.
 | Archivo | Va en el estudio en |
 |---|---|
 | `brand.json`, `src/brand/brand.ts` | Lo mismo (la marca de Nexo: negro, azul, Satoshi e Inter) |
-| `src/components/nexo/` | Lo mismo: la ventana de Nexo, el cursor, el título palabra por palabra y los íconos de la app |
+| `src/components/nexo/` | Lo mismo: `ui.tsx` (la ventana de Nexo con su menú real, el cursor, el título palabra por palabra), `pantallas.tsx` (cada pantalla de la app redibujada) y los íconos y logos de la app |
 | `src/compositions/NexoApertura.tsx` | Lo mismo, y registrarlo en `src/compositions/index.ts` |
-| `scripts/musica-nexo.py` | Lo mismo: la música de fondo, generada (sin derechos de nadie) |
+| `scripts/musica-nexo.py` | Lo mismo: la música de fondo, generada (sin derechos de nadie); `--estilo movida` para la variante con bajo y palmas |
+| `scripts/iconos-nexo.py` | Lo mismo: copia los íconos y los logos de `frontend/img` a `src/components/nexo/` |
 | `storyboards/` | Lo mismo: el guion aprobado de cada video |
 
 Además, en el estudio: las fuentes de `frontend/fonts/` en `public/fonts/`, el

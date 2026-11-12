@@ -5,6 +5,7 @@ import { AbsoluteFill, Img, interpolate, interpolateColors, staticFile, useCurre
 import { brand } from "../../brand/brand";
 import { ease, progress } from "../../lib/motion";
 import { ICONS } from "./icons";
+import { LOGOS } from "./logos";
 
 export const C = brand.colors;
 export const ACENTO_SUAVE = "rgba(96, 165, 250, 0.14)";
@@ -196,22 +197,39 @@ export const Cambio: React.FC<{ dur: number; children: React.ReactNode }> = ({ d
 
 // ---- La ventana de Nexo ----
 
-export const VENTANA = { x: 660, y: 130, w: 1180, h: 820, barra: 36, menu: 220 };
+export const VENTANA = { x: 660, y: 105, w: 1180, h: 870, barra: 36, menu: 224 };
 
-const ITEMS: { icono: string; texto: string; grupo?: string }[] = [
+// El menú de un comercio, igual que en la app (frontend/index.html, con los
+// módulos de su tipo de negocio: backend/perfiles.js).
+export const ITEMS: { icono: string; texto: string; grupo?: string }[] = [
   { icono: "layout-dashboard", texto: "Resumen" },
   { icono: "sparkles", texto: "Asistente" },
+  { icono: "package", texto: "Productos", grupo: "Maestros" },
+  { icono: "users", texto: "CRM" },
+  { icono: "truck", texto: "Proveedores" },
   { icono: "store", texto: "Punto de venta", grupo: "Ventas" },
+  { icono: "file-text", texto: "Presupuestos" },
   { icono: "shopping-cart", texto: "Ventas" },
   { icono: "globe", texto: "Venta online" },
-  { icono: "package", texto: "Productos", grupo: "Stock" },
-  { icono: "boxes", texto: "Stock" },
-  { icono: "shopping-bag", texto: "Compras" },
-  { icono: "users", texto: "CRM" },
+  { icono: "undo-2", texto: "Devoluciones" },
+  { icono: "receipt-text", texto: "Facturas" },
+  { icono: "shopping-bag", texto: "Compras", grupo: "Compras" },
+  { icono: "package-minus", texto: "Dev. a proveedor" },
+  { icono: "boxes", texto: "Stock", grupo: "Stock" },
+  { icono: "chart-column", texto: "Reportes de stock" },
+  { icono: "wallet", texto: "Caja", grupo: "Finanzas" },
+  { icono: "notebook-tabs", texto: "Cuentas corrientes" },
+  { icono: "hand-coins", texto: "Gastos" },
+  { icono: "trash-2", texto: "Papelera", grupo: "Administración" },
+  { icono: "history", texto: "Auditoría" },
+  { icono: "settings", texto: "Configuración" },
 ];
 
-const ALTO_ITEM = 42;
-const ALTO_GRUPO = 34;
+/** Índice de un ítem del menú por su texto. */
+export const item = (texto: string) => ITEMS.findIndex((it) => it.texto === texto);
+
+const ALTO_ITEM = 29;
+const ALTO_GRUPO = 25;
 const yItem = (i: number) => {
   let y = 0;
   for (let k = 0; k < i; k++) y += ALTO_ITEM;
@@ -238,10 +256,11 @@ const indiceActivo = (frame: number, activo: Activo) => {
 };
 
 /** La ventana con el menú de Nexo; el contenido va en `children`. */
-export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Activo; children: React.ReactNode }> = ({
+export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Activo; boton?: number; children: React.ReactNode }> = ({
   negocio,
   rubro,
   activo,
+  boton = 1,
   children,
 }) => {
   const frame = useCurrentFrame();
@@ -270,27 +289,30 @@ export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Act
           <span key={k} style={{ width: 11, height: 11, borderRadius: 99, background: "rgba(255,255,255,0.18)" }} />
         ))}
       </div>
-      <div style={{ position: "absolute", left: 0, top: V.barra, width: V.menu, bottom: 0, padding: "20px 14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 6px 18px" }}>
-          <Img src={staticFile("brand/nexo-icono.png")} style={{ width: 26, height: "auto" }} />
-          <span style={{ fontFamily: brand.fontDisplay, fontWeight: 700, fontSize: 24, letterSpacing: "-0.02em" }}>Nexo</span>
+      <div style={{ position: "absolute", left: 0, top: V.barra, width: V.menu, bottom: 0, padding: "14px 12px", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 6px 12px" }}>
+          <Img src={staticFile("brand/nexo-icono.png")} style={{ width: 24, height: "auto" }} />
+          <span style={{ flex: 1, fontFamily: brand.fontDisplay, fontWeight: 700, fontSize: 22, letterSpacing: "-0.02em" }}>Nexo</span>
+          <span style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, display: "grid", placeItems: "center" }}>
+            <Icon name="chevron-left" size={14} color={C.text2} />
+          </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 9, border: `1px solid ${C.border}`, borderRadius: 12, marginBottom: 14 }}>
-          <span style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${C.borderStrong}`, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 15 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: 8, border: `1px solid ${C.border}`, borderRadius: 11, marginBottom: 8 }}>
+          <span style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.borderStrong}`, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 14 }}>
             {negocio[0]}
           </span>
           <div style={{ flex: 1, lineHeight: 1.25 }}>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{negocio}</div>
-            <div style={{ fontSize: 12.5, color: C.text2 }}>{rubro}</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{negocio}</div>
+            <div style={{ fontSize: 12, color: C.text2 }}>{rubro}</div>
           </div>
-          <Icon name="chevrons-up-down" size={15} color={C.muted} />
+          <Icon name="chevrons-up-down" size={14} color={C.muted} />
         </div>
         <div style={{ position: "relative" }}>
-          <div style={{ position: "absolute", left: 0, right: 0, top: yA, height: ALTO_ITEM - 4, borderRadius: 10, background: ACENTO_SUAVE }} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: yA + 1, height: ALTO_ITEM - 2, borderRadius: 9, background: ACENTO_SUAVE }} />
           {ITEMS.map((it, i) => (
             <React.Fragment key={it.texto}>
               {it.grupo ? (
-                <div style={{ height: ALTO_GRUPO, display: "flex", alignItems: "flex-end", paddingBottom: 8, paddingLeft: 10, fontSize: 12.5, color: C.muted }}>{it.grupo}</div>
+                <div style={{ height: ALTO_GRUPO, display: "flex", alignItems: "flex-end", paddingBottom: 5, paddingLeft: 10, fontSize: 11.5, color: C.muted }}>{it.grupo}</div>
               ) : null}
               <div
                 style={{
@@ -298,20 +320,20 @@ export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Act
                   height: ALTO_ITEM,
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
+                  gap: 11,
                   paddingLeft: 10,
-                  marginTop: -2,
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: i === iA ? 600 : 400,
                   color: i === iA ? C.text : C.text2,
                 }}
               >
-                <Icon name={it.icono} size={18} color={i === iA ? C.accent : C.text2} />
+                <Icon name={it.icono} size={16} color={i === iA ? C.accent : C.text2} />
                 {it.texto}
               </div>
             </React.Fragment>
           ))}
         </div>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 60, background: "linear-gradient(transparent, #000)" }} />
       </div>
       <div
         style={{
@@ -327,8 +349,36 @@ export const VentanaNexo: React.FC<{ negocio: string; rubro: string; activo: Act
         }}
       >
         {children}
+        <span
+          style={{
+            position: "absolute",
+            right: 22,
+            bottom: 22,
+            width: 54,
+            height: 54,
+            borderRadius: 99,
+            background: C.accent,
+            display: "grid",
+            placeItems: "center",
+            boxShadow: "0 10px 30px rgba(96,165,250,0.35)",
+            zIndex: 5,
+            opacity: boton,
+            transform: `scale(${0.9 + 0.1 * boton})`,
+          }}
+        >
+          <Icon name="sparkles" size={22} color="#04101f" />
+        </span>
       </div>
     </div>
+  );
+};
+
+/** Un logo de la app (Tienda Nube, Mercado Libre, Mercado Pago). */
+export const Logo: React.FC<{ nombre: string; alto: number; color?: string; style?: React.CSSProperties }> = ({ nombre, alto, color = C.text, style }) => {
+  const l = LOGOS[nombre];
+  const [, , w, h] = l.viewBox.split(" ").map(Number);
+  return (
+    <svg viewBox={l.viewBox} width={(alto * w) / h} height={alto} fill="currentColor" style={{ color, flexShrink: 0, ...style }} dangerouslySetInnerHTML={{ __html: l.svg }} />
   );
 };
 

@@ -203,7 +203,17 @@ como los demás.
 
 ### Video 6 — Apertura (hecho, 12 de noviembre)
 
-**`docs/pitch/media/nexo-apertura.mp4`**: 29,5 s, 1920 × 1080, 3,8 MB. Abre la
+**Versión 2 (12 de noviembre, a pedido del usuario después de verla): 41 s,
+7,4 MB.** Un pantallazo completo, vistoso y rápido: el menú igual al de la
+app (los 21 ítems de un comercio en sus grupos), el Resumen con el clic en
+"30 días", el mouse recorriendo el gráfico con la fecha y los montos, y más
+gráficos (dona de cobros, mapa de calor, lo más vendido); y escenas nuevas y
+cortas: la factura con su PDF, la compra desde la foto, Tienda Nube y Mercado
+Libre, y el cobro con el QR de Mercado Pago. Lo principal (Resumen y
+asistente) sigue yendo de a poco. Hay una variante con música más movida para
+comparar (la decide el usuario). Detalle: `redes/videos/estudio/storyboards/nexo-apertura.md`.
+
+Versión 1: **`docs/pitch/media/nexo-apertura.mp4`**: 29,5 s, 1920 × 1080, 3,8 MB. Abre la
 presentación: arranca solo en la diapositiva 1, a pantalla completa, y al
 terminar se funde en ella (el logo del último cuadro está en el mismo lugar y
 tamaño que el de la diapositiva).
