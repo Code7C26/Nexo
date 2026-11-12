@@ -109,6 +109,17 @@ test('lo que pide una cuenta de verdad se rechaza', async () => {
   assert.equal((await visitante.get('/api/negocio')).status, 200);
 });
 
+test('la IA está apagada en los ejemplos: ni el asistente ni la factura del proveedor', async () => {
+  for (const [ruta, cuerpo] of [
+    ['/api/asistente/interpretar', { texto: 'Vendí dos gorras a Camila Herrera' }],
+    ['/api/compras/leer-comprobante', {}]
+  ]) {
+    const r = await visitante.post(ruta, cuerpo);
+    assert.equal(r.status, 403, `${ruta}: ${r.texto}`);
+    assert.equal(r.json.codigo, 'solo_con_cuenta', ruta);
+  }
+});
+
 test('el panel de la plataforma no cuenta los negocios de ejemplo', async () => {
   const resumen = (await duenio.get('/api/plataforma/resumen')).json;
   assert.equal(resumen.negocios.total, 1);

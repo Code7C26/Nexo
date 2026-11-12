@@ -2,7 +2,7 @@
 
 | Archivo | Para qué |
 |---|---|
-| `Presentación — Nexo.html` | Las diapositivas. Se abren con doble clic, sin internet. Flechas o el puntero para avanzar, **F** para pantalla completa, `#21` al final de la dirección salta a la demo. |
+| `Presentación — Nexo.html` | Las diapositivas. Se abren con doble clic, sin internet. Flechas o el puntero para avanzar, **F** para pantalla completa, `#10` al final de la dirección salta a la del QR. |
 | `Guía para presentar — Nexo.pdf` | Qué decir en cada diapositiva, lo técnico explicado simple y qué contestar si preguntan. |
 | `Factura de compra de ejemplo.pdf` y `.jpg` | Para la demo de Compras → Nueva compra → "Cargar desde la factura", en Lola Indumentaria. Una sola lectura por vez: la IA tiene cupo. |
 | `QR/Probar Nexo.png` | Lleva a nexosystem.duckdns.org/app#/probar: entrar a un negocio de ejemplo sin registrarse. |

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/handoff-historico.md` con el
-    siguiente número (hoy el último es §159);
+    siguiente número (hoy el último es §160);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -58,6 +58,25 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   cierre es la 31. ARCA (24) quedó simple: Nexo intermedia con su
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
+
+**12 de noviembre, hist. §160: la IA apagada en los negocios de ejemplo, y
+el QR del público en la 10.**
+- **En los ejemplos (`/probar`) no hay IA:** el servidor rechaza el asistente,
+  el audio y la lectura de facturas (403 `solo_con_cuenta`, prueba en
+  `ejemplos.test.js`) y la pantalla los esconde (`html[data-ejemplo]`). Antes
+  eran 15 frases por ejemplo: una sala escaneando el QR gastaba el cupo de
+  Groq (~100 por día para todo Nexo). La IA se muestra desde la cuenta de
+  Santino.
+- **Presentación:** la del QR pasó a la **10** ("Pruébenlo mientras les
+  contamos", sin el asistente) para que el público explore mientras se cuentan
+  las funciones (11 a 21). La demo en vivo queda sin diapositiva, después de
+  la 21 (Alt+Tab). Confianza (22) con títulos cortos: Datos seguros, Permisos
+  de equipo, etc.
+- **Para después** (`docs/guiones-videos.md`, "Pendientes para el pitch"):
+  video 5, una diapositiva con el alta desde cero y "Lo que ya tenías"; video
+  6, una apertura corta con la app funcionando.
+- **Pendiente de definir con el usuario:** "agregar QR a la landing" (cuál y
+  dónde).
 
 **11 de noviembre, hist. §157: carruseles de Instagram, la presentación
 reordenada y la guía para presentar.**

@@ -2719,6 +2719,11 @@ input.precio-sin-configurar::placeholder {
    flotante (posición, sombra, animación) y ocupa el alto de la pantalla. */
 
 html[data-asistente-pagina] .asistente-launcher { display: none; }
+/* En un negocio de ejemplo la IA está apagada (el servidor la rechaza): no se
+   ofrece el asistente ni leer la factura del proveedor. */
+html[data-ejemplo] .asistente-launcher,
+html[data-ejemplo] .nav-item[data-view="asistente"],
+html[data-ejemplo] #btnCompraFactura { display: none; }
 
 .asistente-pagina {
   display: grid;

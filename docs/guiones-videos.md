@@ -112,3 +112,46 @@ Se graba en el sitio real, desde el navegador (decidido el 10 de noviembre):
 
 Cada capítulo lleva su título animado arriba a la izquierda, para poder
 saltar entre partes en YouTube.
+
+## Pendientes para el pitch (pedidos el 12 de noviembre)
+
+Dos videos más, para hacer después de la presentación del 12. No están
+grabados.
+
+### Video 5 — "Un negocio desde cero" (para una diapositiva del pitch)
+
+**Para qué:** una diapositiva con el video corriendo solo (sin sonido, o con
+subtítulos) mientras se cuenta cómo se arranca. Va cerca de "Nexo crece con el
+negocio" (8) o de la del QR (10); se decide al armarla. **Duración:** 40 a
+60 s, en loop.
+
+Qué tiene que mostrar, en el orden del alta guiada (`frontend/js/alta.js`,
+siete pasos a pantalla completa):
+1. **La cuenta:** nombre, mail y contraseña (o "Entrar con Google").
+2. **El código de 6 números** que llega al mail (la espera se corta).
+3. **El negocio:** cómo se llama.
+4. **El tipo de negocio** (comercio, carnicería, gimnasio…): Nexo arranca con
+   lo que ese rubro necesita.
+5. **Las secciones** que trae prendidas (punto de venta, presupuestos, stock…),
+   que se pueden cambiar.
+6. **Los datos de los comprobantes** (o "más tarde").
+7. **"¿Tu negocio ya venía funcionando?"**: si dice que sí, entra directo a
+   **"Lo que ya tenías"** (Configuración), que carga sin inventar compras ni
+   ventas: el stock de hoy de cada depósito con lo que costó, lo que le deben y
+   lo que debe, la plata de cada cuenta y, si quiere, las ventas recientes
+   (`frontend/js/dominios/carga-inicial.js`).
+
+Se graba igual que el video 4 (alias de Gmail `+tutorial`, en el sitio real, y
+el negocio se da de baja al terminar). Con la skill `ui-demo` y Remotion,
+como los demás.
+
+### Video 6 — Apertura (corto)
+
+**Para qué:** abrir el pitch, o la landing, con la app funcionando. **Duración:**
+15 a 25 s, sin voz, con música o en silencio.
+
+Un montaje rápido de pantallas reales de Lola Indumentaria, de 2 a 3 s cada
+una: el Resumen, una venta en el mostrador con la oferta que entra sola, la
+ficha de "cuánto deja cada venta", el asistente armando una venta, la entrada
+del gimnasio y el logo al final. Sale de las mismas grabaciones de los videos
+1 a 5.

@@ -2089,10 +2089,6 @@ const EJEMPLOS_POR_IP = 10;
 const EJEMPLO_ARMANDO = 'armando';
 const DOMINIO_CUENTA_EJEMPLO = 'nexo.invalid';
 const SIN_CUENTAS_DE_EJEMPLO = `(email IS NULL OR email NOT LIKE '%@${DOMINIO_CUENTA_EJEMPLO}')`;
-// Las frases que cada negocio de ejemplo le puede mandar al asistente: el cupo
-// de la IA es uno solo para toda la instalación (handoff, "Cupo de Groq").
-const EJEMPLO_FRASES_IA = 15;
-const frasesDeEjemplos = new Map();
 
 function ejemplosDisponibles() {
   return process.env.NEXO_EJEMPLOS !== 'off' && !registroCerrado();
@@ -2124,18 +2120,17 @@ function rechazoEnEjemplo(req) {
       }
     };
   }
+  // La IA, apagada en los ejemplos: el cupo es uno solo para toda la
+  // instalación (handoff, "Cupo de Groq"), y una sala que escanea el QR del
+  // pitch lo gastaría en minutos. La pantalla tampoco la ofrece (data-ejemplo).
   if (RUTAS_DE_LA_IA.has(req.path)) {
-    const usadas = (frasesDeEjemplos.get(req.usuario.organizacion_id) ?? 0) + 1;
-    frasesDeEjemplos.set(req.usuario.organizacion_id, usadas);
-    if (usadas > EJEMPLO_FRASES_IA) {
-      return {
-        status: 429,
-        cuerpo: {
-          error: `En el negocio de ejemplo el asistente contesta hasta ${EJEMPLO_FRASES_IA} frases. Creá tu cuenta gratis para seguir usándolo.`,
-          codigo: 'solo_con_cuenta'
-        }
-      };
-    }
+    return {
+      status: 403,
+      cuerpo: {
+        error: 'En el negocio de ejemplo el asistente está apagado. Creá tu cuenta gratis para usarlo.',
+        codigo: 'solo_con_cuenta'
+      }
+    };
   }
   return null;
 }
@@ -2265,7 +2260,6 @@ function borrarEjemplosViejos({ alArrancar = false } = {}) {
         db.prepare(`DELETE FROM usuarios WHERE organizacion_id = ? AND email LIKE '%@${DOMINIO_CUENTA_EJEMPLO}'`).run(id);
         db.prepare('DELETE FROM organizaciones WHERE id = ?').run(id);
       });
-      frasesDeEjemplos.delete(id);
     } catch (err) {
       console.error(`[ejemplos] no se pudo borrar el negocio de ejemplo #${id}: ${err.message}`);
     }
