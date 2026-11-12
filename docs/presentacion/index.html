@@ -379,11 +379,12 @@ img { display: block; max-width: 100%; }
 .factura .cae b { color: #15803d; }
 
 /* Integraciones */
-.logos { display: flex; flex-wrap: wrap; gap: clamp(0.4rem, 1vw, 0.8rem); margin-top: var(--content-gap); }
-/* Los logos llevan currentColor: sobre la caja blanca, en oscuro. */
-.logo-caja { display: flex; align-items: center; justify-content: center; height: clamp(44px, 5.4vw, 72px); padding: 0 clamp(0.8rem, 1.6vw, 1.4rem); background: #fff; color: #111; border-radius: 12px; }
-.logo-caja svg { height: 58%; width: auto; }
-.logo-caja.instagram { color: #d62976; }
+.logos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(0.4rem, 1vw, 0.8rem); margin-top: var(--content-gap); max-width: 30rem; }
+/* Cajas iguales y oscuras, como las tarjetas. Los logos llevan currentColor (el texto); WhatsApp e Instagram van con su nombre al lado del emblema. */
+.logo-caja { display: flex; align-items: center; justify-content: center; gap: 0.5em; height: clamp(48px, 5.6vw, 76px); padding: 0 clamp(0.6rem, 1.2vw, 1rem); background: var(--tarjeta); border: 1px solid var(--borde-fuerte); border-radius: 12px; color: var(--texto); font-family: var(--titulos); font-weight: 700; font-size: clamp(0.95rem, 1.5vw, 1.35rem); letter-spacing: -0.01em; }
+.logo-caja svg { height: 50%; width: auto; fill: currentColor; }
+.logo-caja .emblema { height: 52%; }
+.logo-caja.instagram .emblema { color: #e1306c; }
 
 /* Capturas con su epígrafe */
 .compu figcaption { padding: 0.55em 0.9em; font-size: var(--small-size); color: var(--texto-2); border-top: 1px solid var(--borde); }
@@ -876,7 +877,7 @@ img { display: block; max-width: 100%; }
   </div>
 </section>
 
-<!-- 17. Venta online: los canales (Mercado Pago, que es cómo se cobra, va en la 18) -->
+<!-- 17. Venta online: los canales -->
 <section class="slide" aria-label="Venta online">
   <div class="slide-content par">
     <div>
@@ -886,21 +887,21 @@ img { display: block; max-width: 100%; }
       <div class="logos reveal" style="--d:3">
         <span class="logo-caja"><svg viewBox="0 0 160 40" role="img" aria-label="Tienda Nube"><use href="../../frontend/img/tiendanube.svg#logo"/></svg></span>
         <span class="logo-caja"><svg viewBox="0 0 330 104" role="img" aria-label="Mercado Libre"><use href="../../frontend/img/mercadolibre.svg#logo"/></svg></span>
-        <span class="logo-caja"><svg viewBox="0 0 24 24" role="img" aria-label="WhatsApp"><use href="../../frontend/img/whatsapp.svg#emblema"/></svg></span>
-        <span class="logo-caja instagram"><svg viewBox="0 0 24 24" role="img" aria-label="Instagram"><use href="../../frontend/img/instagram.svg#emblema"/></svg></span>
+        <span class="logo-caja"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../frontend/img/whatsapp.svg#emblema"/></svg>WhatsApp</span>
+        <span class="logo-caja instagram"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../frontend/img/instagram.svg#emblema"/></svg>Instagram</span>
       </div>
     </div>
     <figure class="compu reveal" style="--d:2"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/venta-online.webp" alt="Venta online: ventas por canal, Instagram, WhatsApp y Tienda Nube, y cuánto quedó."></figure>
   </div>
 </section>
 
-<!-- 18. Mercado Pago: cómo se cobra, aparte de los canales -->
+<!-- 18. Mercado Pago: cobrar -->
 <section class="slide" aria-label="Mercado Pago">
   <div class="slide-content par parejo">
     <div>
       <p class="parte reveal">Cobrar</p>
-      <h2 class="reveal" style="--d:1">Mercado Pago no es un canal: es cómo se cobra</h2>
-      <p class="bajada reveal" style="--d:2">Se conecta aparte, y sirve para cobrar lo que se vende en cualquier lado: en el mostrador, por WhatsApp o en Instagram.</p>
+      <h2 class="reveal" style="--d:1">Cobrar con Mercado Pago, sin cargar nada a mano</h2>
+      <p class="bajada reveal" style="--d:2">Cada negocio conecta su cuenta y cobra lo que vende en el mostrador, por WhatsApp o en Instagram.</p>
       <ul class="funciones reveal" style="--d:3">
         <li><svg class="ico"><use href="../../frontend/img/iconos.svg#scan-barcode"/></svg>QR en el mostrador: el cliente paga y la venta se cierra sola</li>
         <li><svg class="ico"><use href="../../frontend/img/iconos.svg#send"/></svg>Link de pago para mandar por WhatsApp</li>
