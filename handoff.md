@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §162);
+    siguiente número (hoy el último es §163);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -58,6 +58,20 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   cierre es la 31. ARCA (24) quedó simple: Nexo intermedia con su
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
+
+**12 de noviembre, hist. §163: el video 6 (la apertura), hecho y en la
+presentación.** `docs/pitch/media/nexo-apertura.mp4` (29,5 s): arranca solo
+en la diapositiva 1 y se funde en ella (el logo termina en el mismo lugar).
+Decisiones del usuario: **todo genérico** ("Indumentaria", "Juan Pérez"),
+**sin el gimnasio** (en su lugar, las funciones y los rubros), **sin voz en
+la presentación** pero con clics y música bajita, y **con voz en los de
+Instagram**. La música es propia (generada), la app va redibujada como en
+Studree, y los mp4 viajan al lado del HTML (`docs/pitch/media/`; el LEEME lo
+avisa). Las fuentes del estudio, copiadas en `redes/videos/estudio/`.
+**Sigue, en el orden del usuario:** el video 5 (un negocio desde cero), el
+de inglés (Nexo en inglés y la voz del usuario, que graba él) y del 1 al 4;
+mostrar el guion por escenas antes de armar cada uno. En el Bash de Git hay
+que exportar el PATH de ffmpeg de winget (ver §163).
 
 **Videos animados: la herramienta, lista (12 de noviembre).** Es
 **Motion Architect** (Hainrixz/motion-architect, MIT): la que usó Studree para

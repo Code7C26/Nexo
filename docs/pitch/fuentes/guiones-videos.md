@@ -201,13 +201,30 @@ Se graba igual que el video 4 (alias de Gmail `+tutorial`, en el sitio real, y
 el negocio se da de baja al terminar). Con la skill `ui-demo` y Remotion,
 como los demás.
 
-### Video 6 — Apertura (corto)
+### Video 6 — Apertura (hecho, 12 de noviembre)
 
-**Para qué:** abrir el pitch, o la landing, con la app funcionando. **Duración:**
-15 a 25 s, sin voz, con música o en silencio.
+**`docs/pitch/media/nexo-apertura.mp4`**: 29,5 s, 1920 × 1080, 3,8 MB. Abre la
+presentación: arranca solo en la diapositiva 1, a pantalla completa, y al
+terminar se funde en ella (el logo del último cuadro está en el mismo lugar y
+tamaño que el de la diapositiva).
 
-Un montaje rápido de pantallas reales de Lola Indumentaria, de 2 a 3 s cada
-una: el Resumen, una venta en el mostrador con la oferta que entra sola, la
-ficha de "cuánto deja cada venta", el asistente armando una venta, la entrada
-del gimnasio y el logo al final. Sale de las mismas grabaciones de los videos
-1 a 5.
+Decisiones del usuario al aprobarlo:
+- **Genérico:** el negocio se llama "Indumentaria" y el cliente "Juan Pérez";
+  nunca el nombre de los negocios de ejemplo ni el de sus clientes.
+- **Sin la entrada del gimnasio:** mostraba un rubro y no los demás. En su
+  lugar, un pantallazo de doce funciones y otro de los ocho rubros, cada uno
+  con lo suyo.
+- **Sin voz** en la presentación (se puede sumar después), con los sonidos de
+  cada toque y una música bajita. **Los videos para Instagram sí llevan voz.**
+
+Escenas: "Todo el negocio, en un solo lugar" → Resumen → punto de venta con la
+oferta que entra sola → cuánto deja cada venta → el asistente arma y confirma
+una venta → "Y todo lo demás, conectado" → "Y lo que cada rubro necesita" →
+el logo. La app no está grabada: está redibujada en el video, igual a la real,
+como hizo Studree. El detalle cuadro por cuadro y cómo se rearma:
+`redes/videos/estudio/storyboards/nexo-apertura.md` (las fuentes del estudio
+están copiadas en `redes/videos/estudio/`).
+
+**La música** es propia: `scripts/musica-nexo.py` del estudio la genera (un
+colchón de acordes, un arpegio y un pulso suave a 120 bpm). No hay que buscar
+licencias.

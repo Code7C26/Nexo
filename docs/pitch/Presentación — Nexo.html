@@ -173,6 +173,20 @@ img { display: block; max-width: 100%; }
 .pie .marca-chica { width: clamp(52px, 5vw, 76px); height: auto; }
 .contador { font-variant-numeric: tabular-nums; }
 
+/* ===== Videos (docs/pitch/media) =====
+   El de la apertura no se ve en la diapositiva: ocupa toda la pantalla al
+   llegar y se funde en ella al terminar. Los demás van en una .video-tarjeta
+   que se agranda y vuelve a su lugar. */
+.video-pitch[data-modo="apertura"] { display: none; }
+.video-tarjeta { margin: 0; border: 1px solid var(--borde-fuerte); border-radius: var(--radio); overflow: hidden; background: #000; }
+.video-tarjeta video { display: block; width: 100%; height: auto; }
+.video-capa { position: fixed; z-index: 20; overflow: hidden; background: #000; transition: left 0.6s cubic-bezier(0.77, 0, 0.175, 1), top 0.6s cubic-bezier(0.77, 0, 0.175, 1), width 0.6s cubic-bezier(0.77, 0, 0.175, 1), height 0.6s cubic-bezier(0.77, 0, 0.175, 1), border-radius 0.6s cubic-bezier(0.77, 0, 0.175, 1), opacity 0.9s ease; }
+.video-capa video { display: block !important; width: 100%; height: 100%; object-fit: contain; }
+.video-capa.fundiendo { opacity: 0; pointer-events: none; }
+.video-progreso { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--acento); }
+.video-aviso { position: absolute; inset: auto 0 12%; text-align: center; color: var(--texto-3); font-size: var(--small-size); }
+body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 0.3s ease; }
+
 /* ===== 1. Portada: el logo completo ===== */
 .lockup { display: flex; align-items: center; gap: clamp(1rem, 3.5vw, 3.5rem); }
 .lockup .simbolo { width: clamp(80px, 15vw, 230px); height: auto; }
@@ -596,6 +610,7 @@ img { display: block; max-width: 100%; }
     </div>
     <p class="equipo-linea reveal" style="--d:4">Santino Solla · Joaquín Tosi</p>
   </div>
+  <video class="video-pitch" data-modo="apertura" src="media/nexo-apertura.mp4" preload="auto" playsinline></video>
 </section>
 
 <!-- 2. El dato que abre -->
@@ -1215,12 +1230,125 @@ img { display: block; max-width: 100%; }
 </main>
 
 <script>
+/* Videos: al llegar a una diapositiva con video, arranca solo. El de la
+   apertura (data-modo="apertura") ocupa toda la pantalla y, al terminar, se
+   funde en la diapositiva, que recién ahí muestra su contenido; los demás
+   salen de su .video-tarjeta, se agrandan y vuelven a ella. Espacio pausa,
+   Esc o → lo cierran, ← lo corta y vuelve. Si el navegador no deja arrancar
+   con sonido (al abrir el archivo, antes de tocar nada), espera una tecla. */
+class VideoDiapositiva {
+  constructor() {
+    this.activo = null;
+    this.pendiente = false;
+  }
+
+  /* Devuelve true si la diapositiva tiene video y lo arrancó; `alTerminar`
+     muestra la diapositiva (en la apertura, recién cuando el video termina). */
+  arrancar(slide, alTerminar) {
+    const video = slide.querySelector('video.video-pitch');
+    // Playwright (la guía en PDF) saca las fotos sin videos.
+    if (!video || navigator.webdriver) return false;
+    this.cortar();
+    const apertura = video.dataset.modo === 'apertura';
+    const origen = apertura ? null : video.closest('.video-tarjeta');
+    const capa = document.createElement('div');
+    capa.className = 'video-capa';
+    const barra = document.createElement('i');
+    barra.className = 'video-progreso';
+    this.ubicar(capa, origen);
+    this.activo = { slide, video, capa, origen, apertura, lugar: video.parentNode, siguiente: video.nextSibling, alTerminar: apertura ? alTerminar : null };
+    capa.append(video, barra);
+    document.body.append(capa);
+    document.body.classList.add('con-video');
+    if (!apertura) alTerminar();
+    requestAnimationFrame(() => requestAnimationFrame(() => this.ubicar(capa, null)));
+    video.currentTime = 0;
+    video.ontimeupdate = () => { barra.style.width = `${(video.currentTime / video.duration) * 100}%`; };
+    video.onended = () => this.cerrar();
+    capa.onclick = () => { if (this.pendiente) this.seguir(); };
+    video.play().catch(() => {
+      this.pendiente = true;
+      const aviso = document.createElement('p');
+      aviso.className = 'video-aviso';
+      aviso.textContent = 'Presionar cualquier tecla para empezar';
+      capa.append(aviso);
+    });
+    return true;
+  }
+
+  ubicar(capa, origen) {
+    const r = origen ? origen.getBoundingClientRect() : { left: 0, top: 0, width: innerWidth, height: innerHeight };
+    Object.assign(capa.style, {
+      left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
+      borderRadius: origen ? getComputedStyle(origen).borderRadius : '0'
+    });
+  }
+
+  seguir() {
+    this.pendiente = false;
+    this.activo?.capa.querySelector('.video-aviso')?.remove();
+    this.activo?.video.play();
+  }
+
+  devolver(a) {
+    a.lugar.insertBefore(a.video, a.siguiente);
+    a.capa.remove();
+  }
+
+  /* Termina con su transición: la apertura se funde, la tarjeta vuelve. */
+  cerrar() {
+    const a = this.activo;
+    if (!a) return;
+    this.activo = null;
+    this.pendiente = false;
+    a.video.pause();
+    document.body.classList.remove('con-video');
+    a.alTerminar?.();
+    if (a.apertura) a.capa.classList.add('fundiendo');
+    else this.ubicar(a.capa, a.origen);
+    setTimeout(() => this.devolver(a), a.apertura ? 900 : 650);
+  }
+
+  /* Cambio de diapositiva: se corta sin transición. */
+  cortar() {
+    const a = this.activo;
+    if (!a) return;
+    this.activo = null;
+    this.pendiente = false;
+    a.video.pause();
+    document.body.classList.remove('con-video');
+    a.alTerminar?.();
+    this.devolver(a);
+  }
+
+  /* true si la tecla era para el video. */
+  tecla(e) {
+    if (!this.activo) return false;
+    if (this.pendiente) {
+      this.seguir();
+      if (e.key === 'f' || e.key === 'F') return false;
+    } else if (e.key === ' ') {
+      if (this.activo.video.paused) this.activo.video.play();
+      else this.activo.video.pause();
+    } else if (['Escape', 'ArrowRight', 'ArrowDown', 'PageDown', 'Enter'].includes(e.key)) {
+      this.cerrar();
+    } else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) {
+      this.cortar();
+      return false;
+    } else return false;
+    e.preventDefault();
+    return true;
+  }
+}
+
 /* Navegación: teclado (también los punteros de presentación), rueda y dedo
    (con el scroll-snap del navegador), la barra de progreso y el contador. */
 class Presentacion {
   constructor() {
     this.slides = [...document.querySelectorAll('.slide')];
     this.actual = 0;
+    this.empezo = false;
+    this.video = new VideoDiapositiva();
     this.barra = document.querySelector('.progreso span');
     this.contador = document.querySelector('.contador');
     this.sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1247,8 +1375,12 @@ class Presentacion {
   }
 
   mostrar(slide) {
-    slide.classList.add('visible');
-    this.marcar(this.slides.indexOf(slide));
+    const i = this.slides.indexOf(slide);
+    const llega = i !== this.actual || !this.empezo;
+    this.empezo = true;
+    if (this.video.activo && this.video.activo.slide !== slide) this.video.cortar();
+    this.marcar(i);
+    if (!(llega && this.video.arrancar(slide, () => slide.classList.add('visible')))) slide.classList.add('visible');
   }
 
   desdeLaDireccion() {
@@ -1273,6 +1405,7 @@ class Presentacion {
 
   tecla(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (this.video.tecla(e)) return;
     const siguiente = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'];
     const anterior = ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'];
     if (siguiente.includes(e.key)) this.ir(this.actual + 1);

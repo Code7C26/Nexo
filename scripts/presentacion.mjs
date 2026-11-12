@@ -5,7 +5,7 @@
 // docs/logos y los íconos de frontend/img. Acá todo eso entra al HTML (data: y
 // un sprite adentro), así docs/pitch/Presentación — Nexo.html se abre con doble
 // clic, sin internet, desde cualquier compu o un pendrive: es el plan B del
-// pitch.
+// pitch. Los videos son la excepción: van en docs/pitch/media, al lado.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, resolve } from 'node:path';
 
@@ -43,6 +43,11 @@ html = html.replace(/href="([^"#]+\.svg)#([\w-]+)"/g, (_, ruta, id) => {
   return `href="#${nuevo}"`;
 });
 html = html.replace('<!--SIMBOLOS-->', [...simbolos.values()].join('\n'));
+
+// Los videos no entran (pesan varios MB cada uno): viajan al lado, en
+// docs/pitch/media, y la presentación armada los busca ahí. Sus pósters sí.
+html = html.replace(/\bsrc="\.\.\/media\/([^"]+\.mp4)"/g, 'src="media/$1"');
+html = html.replace(/\bposter="(\.\.\/media\/[^"]+)"/g, (_, ruta) => `poster="${dataUri(ruta)}"`);
 
 // El resto de lo que apunta a un archivo: imágenes y fuentes.
 html = html.replace(/\bsrc="((?:\.\.\/|capturas\/|qr\/)[^"]+)"/g, (_, ruta) => `src="${dataUri(ruta)}"`);

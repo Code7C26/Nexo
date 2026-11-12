@@ -12983,3 +12983,57 @@ necesario".
 - Todo con `git mv` (se conserva la historia). 358 tests y lint en verde; la
   presentación y la guía se rearmaron desde las rutas nuevas, sin rutas sin
   incrustar.
+
+## §163. El video 6, la apertura del pitch (12 de noviembre de 2026)
+
+Primera sesión de videos animados, con Motion Architect (el estudio de
+Remotion en `C:\Users\HP ULTRA 5\motion-architect\studio`, fuera del repo).
+
+- **Las referencias de Studree, analizadas** (hojas de contacto a 2 y a 15
+  cuadros por segundo): fondo oscuro con un brillo del color de la marca que
+  deriva; títulos palabra por palabra, cada palabra desenfocada y gris que se
+  enfoca a blanco, la última en el acento; la app redibujada en el video (no
+  grabada) a la derecha y el título a la izquierda; sin cortes secos; ~3–4 s
+  por idea y el logo quieto al final.
+- **La marca de Nexo en el estudio:** `brand.json` (negro, #60A5FA, los grises
+  de la app), Satoshi e Inter cargadas desde `public/fonts` con
+  `@remotion/fonts` (Satoshi no está en Google Fonts), el ícono en
+  `public/brand/`, y los íconos de Lucide de la app generados desde
+  `frontend/img/iconos.svg`.
+- **El guion, con los cambios del usuario:** genérico (el negocio
+  "Indumentaria", el cliente "Juan Pérez"); sin la entrada del gimnasio
+  (mostraba un rubro y no los demás): en su lugar, doce funciones y los ocho
+  rubros con lo suyo; sin voz en la presentación, con los sonidos de cada
+  toque y una música bajita. **Los videos de Instagram sí llevan voz.**
+- **El video** (`NexoApertura.tsx`, 885 cuadros, 29,5 s): gancho → Resumen
+  (las cifras cuentan) → punto de venta (toca la remera, entra la oferta, el
+  total sube) → cuánto deja cada venta (la barra tramo por tramo) → el
+  asistente (se escribe, se envía, propone y se confirma) → funciones →
+  rubros → logo. Una sola ventana de Nexo cambia de pantalla, con el
+  resaltado del menú que se desliza.
+- **Música propia** (`scripts/musica-nexo.py` del estudio, numpy): acordes,
+  arpegio y pulso a 120 bpm (un pulso cada 15 cuadros), que se corta en el
+  logo y deja un acorde. Sin licencias que revisar. Mezcla: −27 dB de
+  promedio, los clics por arriba.
+- **En la presentación** (`docs/pitch/fuentes/index.html`): clase
+  `VideoDiapositiva`. El de la apertura (`data-modo="apertura"`) ocupa toda la
+  pantalla al llegar a la 1 y, al terminar, se funde; la diapositiva recién
+  ahí muestra su contenido. El último cuadro del video tiene el logo en el
+  mismo lugar y tamaño que la diapositiva a 1920 × 1080 (medido con
+  Playwright: ícono en 282,376 de 230 px; palabra en 568,395), así no salta.
+  Para los videos que vienen queda el modo tarjeta (`.video-tarjeta`: se
+  agranda y vuelve). Espacio pausa, Esc o → lo cierran, ← lo corta. Si Chrome
+  no deja arrancar con sonido, espera una tecla. Con `navigator.webdriver`
+  (la guía) no hay videos.
+- **El mp4 no entra al HTML:** `scripts/presentacion.mjs` cambia
+  `../media/x.mp4` por `media/x.mp4` y deja el video al lado
+  (`docs/pitch/media/`); los pósters sí entran. El LEEME del pitch avisa que
+  la carpeta viaja entera.
+- **Comprobado** en Chrome (Playwright, con autoplay): arranca, la 1 espera,
+  se funde, la 1 queda con los nombres y → pasa a la 2. Presentación y guía
+  rearmadas; lint en verde.
+- **Respaldo de las fuentes del estudio** en `redes/videos/estudio/` (con su
+  LEEME), porque el estudio no está en ningún repo nuestro.
+- Lo que no anduvo: el `--check` del motor de visión no veía `ffmpeg` en el
+  Bash de Git (el PATH de winget es de usuario): se exporta a mano en cada
+  comando.
