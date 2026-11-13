@@ -88,6 +88,20 @@ de inglés (Nexo en inglés y la voz del usuario, que graba él) y del 1 al 4;
 mostrar el guion por escenas antes de armar cada uno. En el Bash de Git hay
 que exportar el PATH de ffmpeg de winget (ver §163).
 
+**Para el sábado 14 (el simulacro del grupo es seguramente el lunes 16):**
+la diapositiva 2 con datos nuevos y en tres pasos dentro de la misma
+diapositiva (pedido del usuario): "25 horas por semana dedica una pyme a
+cargar y cruzar datos a mano" → al tocar, el número cuenta hasta "1.300
+horas al año" → "más de 160 jornadas de trabajo"; recién el toque siguiente
+pasa a la 3. Fuente chica: Intuit QuickBooks, Business Solutions Survey 2024
+(630 empresas de EE. UU. de 10 a 99 empleados); horas y jornadas, cálculo
+propio. Opcional: "3 de cada 10 empresas argentinas todavía planifica con
+papel o Excel" (Universidad Austral, 2025; mide solo la cadena de
+suministro). **Antes, abrir las fuentes y confirmar las cifras** (vinieron
+de otra IA). Hace falta: pasos dentro de una diapositiva en la presentación,
+la guía de esa diapositiva y `npm run presentacion` y `npm run guia`. Nunca
+decir que Nexo ahorra esas horas. También: video en inglés, roles y ensayo.
+
 **Videos animados: la herramienta, lista (12 de noviembre).** Es
 **Motion Architect** (Hainrixz/motion-architect, MIT): la que usó Studree para
 su spot y su anuncio en inglés, un plugin de Claude Code (`/motion`) sobre un
