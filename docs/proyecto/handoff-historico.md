@@ -13130,3 +13130,10 @@ Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
 - **Decisión del usuario:** una voz genérica de las de los videos de Instagram
   (CapCut o ElevenLabs), que genera él. El reel sigue commiteado con Tomás
   hasta reemplazarla.
+- **Cierre del 12 de noviembre:** se probaron Elena, Jorge y Dalia de corrido
+  (`scripts/voz-cortar.py`: todo el guion de una vez y cortado por el instante
+  de cada palabra) en reels completos (`Desktop\Voces Nexo\reel-*.mp4`); al
+  usuario le siguen sonando algo robóticas. **Subió el reel sin voz** (el de
+  §165, que volvió a `redes/videos/nexo-apertura-reel.mp4`). En el estudio
+  quedó la voz de Elena en el índice y el logo de la apertura en 120 cuadros
+  (40 s más un tercio): al retomar la voz, partir de ahí.

@@ -66,7 +66,7 @@ y un pantallazo completo y rápido: la factura con su PDF, la compra desde la
 foto, Tienda Nube y Mercado Libre, y el cobro con el QR de Mercado Pago.
 Eligió la **música movida** ("quedó perfecto"), y ya está en la presentación.
 **El reel** (hist. §165, §166): `redes/videos/nexo-apertura-reel.mp4` (1080 ×
-1920, con portada), hoy **con la voz de Tomás** y subtítulos. **Al usuario
+1920, con portada), **sin voz** (el que subió a Instagram el 12 de noviembre). **Al usuario
 Tomás le suena robótico** (hist. §167): se probaron clones de su voz y la de
 Joaquín (VoxCPM2) y tampoco lo convencieron (el acento cambia). **Decidió usar
 una voz genérica de las de Instagram** (CapCut o ElevenLabs): la genera él con
