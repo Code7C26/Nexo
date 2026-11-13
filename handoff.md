@@ -2706,3 +2706,26 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
 - **Migrar a Postgres.**
 - **Registro público:** poder apagarlo (Fase 4 de 8b). El mail ya se
   verifica con el código (hist. §108).
+
+## Tienda Nube: traer el catálogo que la tienda ya tenía (2026-11-13)
+- Antes la conexión solo publicaba de Nexo a la tienda; no leía nada. Ahora `POST /api/integraciones/tiendanube/importar` (`importarCatalogoDeTiendaNube` en `backend/server.js`, `productos(pagina)` en `backend/tiendanube.js`) crea productos, variantes, precio y stock, y los vincula. Un SKU que ya existe en Nexo se vincula, no se duplica. El stock entra como `stock_inicial` en el depósito de la integración. Botón "Traer lo que ya tengo en la tienda" en Configuración → Tienda Nube.
+- **Requiere el permiso `read_products` en la app de Tienda Nube (panel de Partners), y que cada tienda ya conectada desconecte y vuelva a conectar.** Sin eso, la ruta contesta que falta permiso.
+- Una variante sin control de stock en la tienda queda en 0 en Nexo, y la tienda sigue sin límite hasta que se cargue stock.
+- Sin probar contra Tienda Nube real, solo sintaxis y lint. Sin tests nuevos.
+- Falta: categorías, imágenes, ventas anteriores, y lo mismo para Mercado Libre.
+
+## PENDIENTE: el plan pasa de la cuenta al negocio (pedido del usuario, 2026-11-13)
+Hoy el plan vive en `organizaciones.plan` / `plan_vence` ([schema.sql:1282](backend/db/schema.sql#L1282)) y se cambia por negocio (`PUT /api/plataforma/negocios/:id/plan`, `backend/server.js` ~19930). Quien paga es la cuenta, y una cuenta tiene uno o varios negocios, así que el plan tiene que ser de la cuenta. Un negocio nuevo hoy copia el plan del negocio desde donde se lo crea (~16347).
+Diseño propuesto, a confirmar con el usuario antes de tocar el esquema:
+1. `usuarios` gana `plan` y `plan_vence`. El negocio rige con el plan de su titular.
+2. `organizaciones` gana `titular_usuario_id` (quien lo creó). Hoy no existe el "dueño": `usuario_organizaciones.rol` es solo admin/empleado.
+3. Un helper único reemplaza las 3 lecturas del plan del negocio: `planPermite`, `planDelNegocio`, `exigirLugarEnPlan` (~15862, 15893, 15922). Los topes (productos, ventas del mes, usuarios) siguen por negocio; falta que el usuario lo confirme.
+4. Sitios que escriben el plan y hay que migrar: `server.js` ~1289, ~2155, ~16393, ~19944, y `npm run plan`.
+5. Panel de plataforma: cambiar el plan sobre la cuenta, con la lista de sus negocios.
+6. Configuración → Mi cuenta: lista "Tus negocios" con Titular / Administrador / Empleado. `GET /api/negocios` ya devuelve el rol; falta marcar al titular.
+Migración aditiva e idempotente: titular = primer admin de cada negocio; plan de la cuenta = el más alto de sus negocios como titular (quien tenga dos negocios con planes distintos queda con el mejor en los dos). Las columnas viejas de `organizaciones` no se borran.
+
+### Importador de Tienda Nube: lo que quedó sin cerrar (2026-11-13)
+- Sin commit ni push de mi parte. El servidor se actualiza solo desde `main`, así que el botón "Traer lo que ya tengo en la tienda" no le aparece a Nort hasta que esto llegue a `main` por PR con el CI en verde.
+- Se agregó la ruta a `backend/permisos.js` (`POST /api/integraciones/tiendanube/importar`: 'admin') y las traducciones al inglés en `frontend/js/idioma/en.js`. Quedó sin confirmar que `npm test` pase: la última corrida fallaba solo por traducciones, y faltaba volver a correrla después de agregar las últimas. Si vuelve a fallar, `npm run i18n` lista lo que falta.
+- Falta además: probar el importador contra una tienda real, y Mercado Libre.
