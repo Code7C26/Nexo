@@ -20890,6 +20890,179 @@ async function publicarProducto(integracion, producto) {
   });
 }
 
+/* --- Traer el catálogo que la tienda ya tenía --- */
+
+// Una tienda que se conecta casi nunca está vacía: sus productos, variantes y
+// stock entran a Nexo y quedan vinculados (§32). Un producto cuyo SKU ya está
+// en Nexo no se duplica, se vincula. El stock entra como "stock inicial"
+// (movimiento trazable) en el depósito de la integración; una variante sin
+// control de stock en la tienda queda en 0, y la tienda sigue sin límite hasta
+// que se cargue stock acá (ultimo_stock = lo importado, así no se pisa).
+const importandoCatalogo = new Set();
+
+const textoDeTienda = (valor) => {
+  if (typeof valor === 'string') return valor.trim();
+  if (valor && typeof valor === 'object') return String(valor.es ?? Object.values(valor).find((t) => typeof t === 'string') ?? '').trim();
+  return '';
+};
+
+async function leerCatalogoDeTiendaNube(integracion) {
+  const api = apiDeLaTienda(integracion);
+  const productos = [];
+  for (let pagina = 1; pagina <= 50; pagina++) {
+    let lote;
+    try {
+      lote = await api.productos(pagina);
+    } catch (err) {
+      if (err instanceof TiendaNubeError && err.status === 404) break; // pasada la última página
+      if (err instanceof TiendaNubeError && (err.status === 401 || err.status === 403)) {
+        throw new ErrorValidacion('Nexo no tiene permiso para leer los productos de la tienda: desconectá y volvé a conectar Tienda Nube para darlo.');
+      }
+      throw err;
+    }
+    if (!Array.isArray(lote) || !lote.length) break;
+    productos.push(...lote);
+    if (lote.length < 200) break;
+  }
+  return productos;
+}
+
+function importarProductoDeTiendaNube(req, integracion, externo) {
+  const org = integracion.organizacion_id;
+  const depositoId = depositoDeLaIntegracion(integracion);
+  const variantes = Array.isArray(externo.variants) ? externo.variants : [];
+  if (!variantes.length) return { estado: 'omitido' };
+  if (variantes.some((v) => db.prepare('SELECT 1 FROM integracion_vinculos WHERE integracion_id = ? AND externo_variante_id = ?').get(integracion.id, String(v.id)))) {
+    return { estado: 'omitido' };
+  }
+  const nombre = textoDeTienda(externo.name) || `Producto ${externo.id}`;
+  const atributos = (Array.isArray(externo.attributes) ? externo.attributes : []).map(textoDeTienda);
+  const conVariantes = atributos.length > 0 && variantes.some((v) => Array.isArray(v.values) && v.values.length);
+  if (conVariantes && atributos.length > 3) throw new ErrorValidacion('Tiene más de 3 atributos.');
+
+  const skuDe = (v) => (String(v.sku ?? '').trim() || null);
+  const barrasLibre = (v) => {
+    const codigo = String(v.barcode ?? '').trim();
+    return codigo && !errorCodigoDeBarras(codigo) && !codigoDeBarrasOcupado(normalizarCodigoBarras(codigo), org) ? codigo : null;
+  };
+  const productoPorSku = db.prepare('SELECT id FROM productos WHERE organizacion_id = ? AND sku = ?');
+  const variantePorSku = db.prepare('SELECT id, producto_id FROM producto_variantes WHERE organizacion_id = ? AND sku = ?');
+  const stockDe = (v) => (v.stock === null || v.stock === undefined || v.stock === '' ? 0 : Math.max(0, Math.floor(Number(v.stock) || 0)));
+  const descripcion = textoDeTienda(externo.description).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) || null;
+  const ahora = new Date().toISOString();
+  const vincular = db.prepare(
+    `INSERT INTO integracion_vinculos
+       (integracion_id, producto_id, variante_id, externo_producto_id, externo_variante_id, ultimo_stock, ultimo_precio, creado_en, organizacion_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const entrarStock = (productoId, varianteId, cantidad) => {
+    if (!cantidad) return;
+    registrarMovimientoStock({
+      producto_id: productoId,
+      variante_id: varianteId,
+      deposito_id: depositoId,
+      tipo: 'ajuste',
+      cantidad,
+      origen: 'stock_inicial',
+      nota: 'Importado de Tienda Nube',
+      organizacion_id: org
+    });
+  };
+
+  // Un solo renglón: se vincula con lo que ya haya en Nexo (mismo SKU) o se crea.
+  if (!conVariantes) {
+    const v = variantes[0];
+    const sku = skuDe(v);
+    const precio = Number(v.price) || 0;
+    const existente = sku ? productoPorSku.get(org, sku) : null;
+    if (existente) {
+      withTransaction(() => vincular.run(integracion.id, existente.id, null, String(externo.id), String(v.id), null, null, ahora, org));
+      return { estado: 'vinculado' };
+    }
+    const cuerpo = { nombre, sku, precio_venta: precio, descripcion, codigo_barras: barrasLibre(v), tipo: 'producto' };
+    const error = validarProducto(cuerpo, org);
+    if (error) throw new ErrorValidacion(error);
+    withTransaction(() => {
+      const id = insertarProducto(cuerpo, org);
+      const stock = stockDe(v);
+      entrarStock(id, null, stock);
+      vincular.run(integracion.id, id, null, String(externo.id), String(v.id), stock, redondear2(precio), ahora, org);
+    });
+    return { estado: 'creado', sinControl: v.stock === null || v.stock === undefined };
+  }
+
+  // Con variantes: se crean los atributos, sus valores y cada combinación.
+  if (variantes.some((v) => skuDe(v) && (variantePorSku.get(org, skuDe(v)) || productoPorSku.get(org, skuDe(v))))) {
+    throw new ErrorValidacion('Alguno de sus SKU ya existe en Nexo: vinculalo a mano para no duplicarlo.');
+  }
+  const cuerpo = { nombre, sku: null, precio_venta: Number(variantes[0].price) || 0, descripcion, tipo: 'producto' };
+  const error = validarProducto(cuerpo, org);
+  if (error) throw new ErrorValidacion(error);
+  withTransaction(() => {
+    const id = insertarProducto(cuerpo, org);
+    const atributoIds = atributos.map((a, i) =>
+      Number(db.prepare('INSERT INTO producto_atributos (producto_id, nombre, orden) VALUES (?, ?, ?)').run(id, a || `Atributo ${i + 1}`, i).lastInsertRowid)
+    );
+    const valorIds = atributoIds.map(() => new Map());
+    for (const v of variantes) {
+      const valores = (Array.isArray(v.values) ? v.values : []).map(textoDeTienda);
+      const precio = Number(v.price) || 0;
+      const varianteId = Number(
+        db
+          .prepare('INSERT INTO producto_variantes (producto_id, sku, precio_venta, activo, organizacion_id, codigo_barras) VALUES (?, ?, ?, 1, ?, ?)')
+          .run(id, skuDe(v), precio, org, barrasLibre(v)).lastInsertRowid
+      );
+      atributoIds.forEach((atributoId, i) => {
+        const valor = valores[i] || '-';
+        const mapa = valorIds[i];
+        if (!mapa.has(valor.toLowerCase())) {
+          mapa.set(
+            valor.toLowerCase(),
+            Number(db.prepare('INSERT INTO producto_atributo_valores (atributo_id, valor, orden) VALUES (?, ?, ?)').run(atributoId, valor, mapa.size).lastInsertRowid)
+          );
+        }
+        db.prepare('INSERT INTO producto_variante_valores (variante_id, atributo_id, valor_id) VALUES (?, ?, ?)').run(varianteId, atributoId, mapa.get(valor.toLowerCase()));
+      });
+      const stock = stockDe(v);
+      entrarStock(id, varianteId, stock);
+      vincular.run(integracion.id, id, varianteId, String(externo.id), String(v.id), stock, redondear2(precio), ahora, org);
+    }
+  });
+  return { estado: 'creado', sinControl: variantes.some((v) => v.stock === null || v.stock === undefined) };
+}
+
+async function importarCatalogoDeTiendaNube(req, integracion) {
+  const externos = await leerCatalogoDeTiendaNube(integracion);
+  const resumen = { encontrados: externos.length, creados: 0, vinculados: 0, omitidos: 0, sin_control_de_stock: 0, errores: [] };
+  for (const externo of externos) {
+    try {
+      const r = importarProductoDeTiendaNube(req, integracion, externo);
+      if (r.estado === 'creado') resumen.creados++;
+      else if (r.estado === 'vinculado') resumen.vinculados++;
+      else resumen.omitidos++;
+      if (r.sinControl) resumen.sin_control_de_stock++;
+    } catch (err) {
+      if (!(err instanceof ErrorValidacion)) throw err;
+      resumen.errores.push({ producto: textoDeTienda(externo.name) || String(externo.id), error: err.message });
+    }
+  }
+  anotarIntegracion(
+    integracion,
+    'importacion',
+    resumen.errores.length ? 'error' : 'ok',
+    `Catálogo traído de la tienda: ${resumen.creados} creados, ${resumen.vinculados} vinculados a productos que ya tenías, ${resumen.omitidos} ya estaban, ${resumen.errores.length} con error.`
+  );
+  auditar(req, {
+    accion: 'crear',
+    entidad: 'organizacion',
+    entidad_id: integracion.organizacion_id,
+    operacion_tipo: 'integracion',
+    operacion_id: integracion.id,
+    detalle: `Importó el catálogo de Tienda Nube: ${resumen.creados} creados, ${resumen.vinculados} vinculados`
+  });
+  return resumen;
+}
+
 /* --- Rutas --- */
 
 function integracionConectadaDe(req, plataforma = 'tiendanube') {
@@ -21063,6 +21236,23 @@ app.get('/api/integraciones/tiendanube/productos', soloAdmin, (req, res) => {
       .map((p) => ({ ...p, publicado: Boolean(p.publicado) }))
   );
 });
+
+// Trae a Nexo lo que la tienda ya tenía cargado (productos, variantes, stock).
+// Se puede repetir: lo ya vinculado no se vuelve a crear.
+app.post('/api/integraciones/tiendanube/importar', soloAdmin, asincrono(async (req, res) => {
+  const integracion = integracionConectadaDe(req);
+  if (importandoCatalogo.has(integracion.id)) return res.status(409).json({ error: 'Ya se está trayendo el catálogo. Esperá a que termine.' });
+  importandoCatalogo.add(integracion.id);
+  try {
+    res.json(await importarCatalogoDeTiendaNube(req, integracion));
+  } catch (err) {
+    if (err instanceof ErrorValidacion) return res.status(400).json({ error: err.message });
+    if (err instanceof TiendaNubeError) return res.status(502).json({ error: err.message });
+    throw err;
+  } finally {
+    importandoCatalogo.delete(integracion.id);
+  }
+}));
 
 // Publica los productos elegidos, de a uno: si uno falla, los demás siguen.
 // Hasta 50 por pedido, para no esperar minutos una respuesta.

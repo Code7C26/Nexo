@@ -202,6 +202,9 @@ export function clienteTiendaNube({ tiendaId, token }) {
   return {
     tienda: () => pedir('GET', '/store'),
     crearProducto: (producto) => pedir('POST', '/products', producto),
+    // Una página (hasta 200) del catálogo que la tienda ya tenía. Pide el
+    // permiso read_products.
+    productos: (pagina) => pedir('GET', `/products?per_page=200&page=${Number(pagina) || 1}`),
     // Hasta 50 variantes por pedido (límite de Tienda Nube).
     actualizarStockYPrecio: (lote) => pedir('PATCH', '/products/stock-price', lote),
     pedido: (id) => pedir('GET', `/orders/${encodeURIComponent(id)}`),
