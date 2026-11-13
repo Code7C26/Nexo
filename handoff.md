@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §166);
+    siguiente número (hoy el último es §167);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -66,10 +66,13 @@ y un pantallazo completo y rápido: la factura con su PDF, la compra desde la
 foto, Tienda Nube y Mercado Libre, y el cobro con el QR de Mercado Pago.
 Eligió la **música movida** ("quedó perfecto"), y ya está en la presentación.
 **El reel** (hist. §165, §166): `redes/videos/nexo-apertura-reel.mp4` (1080 ×
-1920, con portada), **con la voz de Tomás** y subtítulos. Falta que el usuario
-lo escuche: si le gusta, la voz va también en la presentación
-(`--props='{"voz":true}'`); si pronuncia algo mal, se corrige en lo "dicho" de
-`voz/nexo-apertura.json`.
+1920, con portada), hoy **con la voz de Tomás** y subtítulos. **Al usuario
+Tomás le suena robótico** (hist. §167): se probaron clones de su voz y la de
+Joaquín (VoxCPM2) y tampoco lo convencieron (el acento cambia). **Decidió usar
+una voz genérica de las de Instagram** (CapCut o ElevenLabs): la genera él con
+el texto del reel y deja el audio en `Desktop\Voces Nexo`; acá se corta en sus
+pausas, se reemplaza la voz y los subtítulos siguen igual. Se retoma desde el
+sábado 14 (el usuario guarda el cupón de límite para antes de la feria).
 
 **12 de noviembre, hist. §163: el video 6 (la apertura), hecho y en la
 presentación.** `docs/pitch/media/nexo-apertura.mp4` (29,5 s): arranca solo

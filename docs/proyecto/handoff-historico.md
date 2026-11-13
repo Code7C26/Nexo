@@ -13108,3 +13108,25 @@ Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
 - Va solo en el reel; la versión horizontal la toma con `--props='{"voz":true}'`
   si el usuario la quiere también en la presentación.
 - No se escuchó acá: la pronunciación la revisa el usuario.
+
+## §167. Buscando una voz que no suene robótica (12 de noviembre de 2026)
+
+- A Tomás (edge-tts) el usuario lo escuchó robótico. Una causa es nuestra: cada
+  frase se generaba por separado; de corrido suena más natural.
+- **Clon de voz:** el usuario instaló VoiceStudio (voicestudio.sh, AGPL); su
+  asistente no bajaba OmniVoice (el registro decía que faltaba aceptar la
+  licencia, no comercial) pero sí dejó instalado **VoxCPM2** (Apache 2.0) en
+  `%APPDATA%\OmniVoice\engines\voxcpm2\voxcpm2\.venv`. En el estudio:
+  `scripts/voz-clon.py` (genera con ese Python) y `scripts/voz-probar.py` (una
+  página Gradio en 127.0.0.1:7860), con el acceso directo
+  `Desktop\Voces Nexo\Probar la voz.bat`. El modelo (4,4 GB) quedó en el caché
+  de Hugging Face. **En la compu, sin placa de video, tarda ~44 s por segundo
+  de audio** (bfloat16 en CPU; float32 pediría ~9 GB de RAM libres).
+- **La demo oficial** (Space `OpenBMB/VoxCPM-Demo`, con `gradio_client` desde
+  ese mismo Python, endpoint `/generate`) generó el reel entero en segundos con
+  la voz de Santino y la de Joaquín (`Desktop\Voces Nexo\Pruebas\*-reel-demo.wav`;
+  su transcripción automática devolvió basura, se le pasa el texto leído). Al
+  usuario le resultó gracioso pero el acento cambia mucho: no va.
+- **Decisión del usuario:** una voz genérica de las de los videos de Instagram
+  (CapCut o ElevenLabs), que genera él. El reel sigue commiteado con Tomás
+  hasta reemplazarla.
