@@ -1312,7 +1312,11 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- {"prefijo":"20","plu_digitos":5,"valor":"peso","decimales":3}. Se lee
   -- en JS (frontend/js/core/balanza.js), sin funciones JSON del motor. NULL =
   -- sin balanza.
-  balanza_formato TEXT
+  balanza_formato TEXT,
+  -- La cuenta que creó el negocio y a la que pertenece su plan (hist. §168):
+  -- los negocios de un mismo propietario comparten plan. NULL = sin propietario
+  -- (un negocio de ejemplo), que es su propia cuenta.
+  propietario_id INTEGER REFERENCES usuarios(id)
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
