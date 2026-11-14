@@ -249,6 +249,34 @@ btnPublicar.addEventListener("click", async () => {
   }
 });
 
+document.getElementById("btnTnImportar").addEventListener("click", async (e) => {
+  const boton = e.currentTarget;
+  const ok = await confirmar({
+    titulo: "Traer lo que ya tenés en la tienda",
+    cuerpo:
+      "Nexo lee los productos, variantes, precios y stock de tu Tienda Nube y los crea acá. Si un SKU ya existe en Nexo, lo vincula sin duplicarlo. El stock entra como stock inicial. Se puede repetir sin duplicar.",
+    aceptar: "Traer"
+  });
+  if (!ok) return;
+  boton.disabled = true;
+  boton.textContent = "Trayendo…";
+  try {
+    const r = await api("/api/integraciones/tiendanube/importar", {
+      method: "POST",
+      error: "No se pudo traer el catálogo de la tienda."
+    });
+    avisar(`Listo: ${r.creados} creados, ${r.vinculados} vinculados, ${r.omitidos} ya estaban.`, "ok");
+    if (r.sin_control_de_stock) {
+      avisar(`${r.sin_control_de_stock} no controlan stock en la tienda: quedaron en 0 en Nexo y la tienda sigue sin límite hasta que cargues su stock.`, "atencion");
+    }
+    if (r.errores.length) avisar(`No entró “${r.errores[0].producto}”: ${r.errores[0].error}`, "error");
+  } finally {
+    boton.disabled = false;
+    boton.textContent = "Traer lo que ya tengo en la tienda";
+    await cargar();
+  }
+});
+
 btnSincronizar.addEventListener("click", async () => {
   btnSincronizar.disabled = true;
   try {

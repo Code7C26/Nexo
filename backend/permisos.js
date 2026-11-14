@@ -352,6 +352,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/integraciones/tiendanube/historial': 'admin',
   'GET /api/integraciones/tiendanube/productos': 'admin',
   'POST /api/integraciones/tiendanube/publicar': 'admin',
+  'POST /api/integraciones/tiendanube/importar': 'admin',
   'POST /api/integraciones/tiendanube/pedidos/:id/reintentar': 'admin',
   'POST /api/integraciones/tiendanube/pedidos/:id/revisado': 'admin',
   // Mercado Libre (etapa G): la vuelta del permiso y los avisos llegan sin la
