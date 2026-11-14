@@ -17600,7 +17600,20 @@ app.post('/api/pos/ventas', (req, res) => {
       if (medio.tipo === 'credito' && medio.planes.length && !plan) {
         return res.status(400).json({ error: `Elegí en cuántas cuotas se paga con ${medio.nombre}.` });
       }
-      resueltos.push({ cobro, medio, plan, cuentaId: medio.cuenta_tesoreria_id ?? turno.cuenta_tesoreria_id });
+      let cuentaId = medio.cuenta_tesoreria_id ?? turno.cuenta_tesoreria_id;
+      // Una transferencia cae en la cuenta que se elige al cobrar (el banco,
+      // Mercado Pago…), cualquiera menos la caja (hist. §172). Sin elegir, en
+      // la del medio.
+      if (medio.tipo === 'transferencia' && cobro.cuenta_tesoreria_id != null) {
+        const destino = db
+          .prepare('SELECT id, tipo FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+          .get(Number(cobro.cuenta_tesoreria_id), organizacionId);
+        if (!destino || destino.tipo === 'efectivo') {
+          return res.status(400).json({ error: 'La cuenta donde cae la transferencia no es válida.' });
+        }
+        cuentaId = destino.id;
+      }
+      resueltos.push({ cobro, medio, plan, cuentaId });
       continue;
     }
     if (!buscarCuenta.get(Number(cobro.cuenta_tesoreria_id), organizacionId)) {
@@ -23057,6 +23070,18 @@ app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
     cobrados: db
       .prepare("SELECT COUNT(*) AS n FROM integracion_pagos WHERE integracion_id = ? AND estado = 'cobrado'")
       .get(integracion.id).n,
+    // Lo que Mercado Pago cobró de verdad por cada forma de pago y plan de
+    // cuotas, sumado de los pagos cobrados: no hay tabla de tarifas que leer de
+    // antemano, pero cada pago trae su comisión y el costo de las cuotas.
+    costos: db
+      .prepare(
+        `SELECT medio, COALESCE(cuotas, 1) AS cuotas, COUNT(*) AS pagos, SUM(importe) AS importe,
+                SUM(comision) AS comision, SUM(financiacion) AS financiacion
+           FROM integracion_pagos WHERE integracion_id = ? AND estado = 'cobrado' AND importe > 0
+          GROUP BY medio, COALESCE(cuotas, 1)
+          ORDER BY medio, COALESCE(cuotas, 1)`
+      )
+      .all(integracion.id),
     // Primero los que piden atención y nadie marcó como vistos.
     pagos: db
       .prepare(
@@ -23070,6 +23095,68 @@ app.get('/api/integraciones/mercadopago', soloAdmin, (req, res) => {
       .prepare('SELECT fecha, tipo, resultado, detalle FROM integracion_log WHERE integracion_id = ? ORDER BY id DESC LIMIT 30')
       .all(integracion.id)
   });
+});
+
+// Lo que cuesta ofrecer cada plan de cuotas (hist. §172): la tabla que el
+// negocio corrigió con lo que dice su cuenta o, si no tocó nada, la de
+// referencia, marcada como sin confirmar. Se ve aunque Mercado Pago no esté
+// conectado: sirve para decidir antes de conectar.
+function tarifasDeMercadoPago(organizacionId) {
+  const propias = db
+    .prepare('SELECT cuotas, costo_pct, actualizado_en FROM mercadopago_tarifas WHERE organizacion_id = ? ORDER BY cuotas')
+    .all(organizacionId);
+  const { vigente_desde, iva_pct, filas } = mercadoPago.TARIFAS_REFERENCIA;
+  if (!propias.length) return { origen: 'referencia', vigente_desde, iva_pct, actualizado_en: null, filas };
+  return {
+    origen: 'propias',
+    vigente_desde: null,
+    iva_pct,
+    actualizado_en: propias[0].actualizado_en,
+    filas: propias.map(({ cuotas, costo_pct }) => ({ cuotas, costo_pct }))
+  };
+}
+
+app.get('/api/integraciones/mercadopago/tarifas', soloAdmin, (req, res) => {
+  res.json(tarifasDeMercadoPago(req.usuario.organizacion_id));
+});
+
+app.put('/api/integraciones/mercadopago/tarifas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { filas, error } = mercadoPago.validarTarifas(req.body?.filas);
+  if (error) return res.status(400).json({ error });
+  const antes = tarifasDeMercadoPago(org);
+  withTransaction(() => {
+    db.prepare('DELETE FROM mercadopago_tarifas WHERE organizacion_id = ?').run(org);
+    const insertar = db.prepare('INSERT INTO mercadopago_tarifas (organizacion_id, cuotas, costo_pct, actualizado_en) VALUES (?, ?, ?, ?)');
+    const ahora = new Date().toISOString();
+    for (const fila of filas) insertar.run(org, fila.cuotas, fila.costo_pct, ahora);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'mercadopago_tarifas',
+      valor_anterior: `${antes.origen === 'propias' ? 'Del negocio' : 'Referencia'}: ${antes.filas.map((f) => `${f.cuotas} cuotas ${f.costo_pct} %`).join(', ')}`,
+      valor_nuevo: `Del negocio: ${filas.map((f) => `${f.cuotas} cuotas ${f.costo_pct} %`).join(', ')}`,
+      detalle: 'Tarifas de cuotas de Mercado Pago actualizadas'
+    });
+  });
+  res.json(tarifasDeMercadoPago(org));
+});
+
+// Volver a la tabla de referencia: borra lo que había corregido el negocio.
+app.delete('/api/integraciones/mercadopago/tarifas', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  withTransaction(() => {
+    db.prepare('DELETE FROM mercadopago_tarifas WHERE organizacion_id = ?').run(org);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'mercadopago_tarifas',
+      detalle: 'Tarifas de cuotas de Mercado Pago: se volvió a la tabla de referencia'
+    });
+  });
+  res.json(tarifasDeMercadoPago(org));
 });
 
 app.post('/api/integraciones/mercadopago/conectar', soloAdmin, (req, res) => {

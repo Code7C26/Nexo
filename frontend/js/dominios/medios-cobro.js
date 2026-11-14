@@ -99,6 +99,7 @@ function ajustarSegunTipo() {
   const tipo = form.tipo.value;
   document.getElementById("medioCobroCuentaCampo").hidden = tipo === "efectivo";
   document.getElementById("medioCobroEfectivoAyuda").hidden = tipo !== "efectivo";
+  document.getElementById("medioCobroTransferenciaAyuda").hidden = tipo !== "transferencia";
   document.getElementById("medioCobroPlanesCampo").hidden = tipo !== "credito";
 }
 form.tipo.addEventListener("change", () => {

@@ -46,15 +46,16 @@ const vender = (cobros, cantidad = 1) =>
     consumos: []
   });
 
-test('un negocio nuevo nace con efectivo, débito, crédito, transferencia y Mercado Pago', () => {
+// Mercado Pago no es una forma de cobrar sino adónde cae la plata (hist. §172):
+// no hay un medio con su nombre, se cobra con Transferencia o con el QR.
+test('un negocio nuevo nace con efectivo, débito, crédito y transferencia, sin un medio "Mercado Pago"', () => {
   assert.deepEqual(
     medios.map((m) => [m.nombre, m.tipo]),
     [
       ['Efectivo', 'efectivo'],
       ['Débito', 'debito'],
       ['Crédito', 'credito'],
-      ['Transferencia', 'transferencia'],
-      ['Mercado Pago', 'billetera']
+      ['Transferencia', 'transferencia']
     ]
   );
   // El efectivo va a la caja del turno (sin cuenta); lo demás, a una que no es caja.
@@ -104,6 +105,30 @@ test('el punto de venta cobra por medio: la cuenta sale del medio y el vuelto de
   assert.deepEqual(lista.cuentas_cobro.sort(), [efectivo.id, banco.id].sort());
   assert.deepEqual(lista.medios_cobro.sort(), [porNombre('Efectivo').id, porNombre('Débito').id].sort());
   assert.equal(lista.estado_cobro, 'cobrado');
+});
+
+test('la transferencia cae en la cuenta que se elige: el banco o Mercado Pago, nunca la caja ni la de otro negocio', async () => {
+  const cuentas = (await admin.get('/api/cuentas-tesoreria')).json;
+  const mercadopago = cuentas.find((c) => c.tipo === 'mercadopago');
+  const transferencia = porNombre('Transferencia').id;
+  // Sin elegir, cae en la cuenta del medio (el banco).
+  const aBanco = await vender([{ medio_cobro_id: transferencia, importe: 1000 }]);
+  assert.equal(aBanco.status, 201, aBanco.texto);
+  assert.deepEqual((await admin.get('/api/ventas')).json.find((v) => v.id === aBanco.json.id).cuentas_cobro, [banco.id]);
+  // Eligiendo Mercado Pago, el cobro entra ahí.
+  const aMp = await vender([{ medio_cobro_id: transferencia, cuenta_tesoreria_id: mercadopago.id, importe: 1000 }]);
+  assert.equal(aMp.status, 201, aMp.texto);
+  assert.deepEqual((await admin.get('/api/ventas')).json.find((v) => v.id === aMp.json.id).cuentas_cobro, [mercadopago.id]);
+  // La caja no es destino de una transferencia, ni una cuenta que no existe o es de otro negocio.
+  const cuentaAjena = (await otro.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'banco');
+  for (const cuenta_tesoreria_id of [efectivo.id, 999999, cuentaAjena.id]) {
+    const venta = await vender([{ medio_cobro_id: transferencia, cuenta_tesoreria_id, importe: 1000 }]);
+    assert.equal(venta.status, 400, `cuenta ${cuenta_tesoreria_id}`);
+  }
+  // Solo la transferencia elige: en un débito la cuenta que se mande se ignora.
+  const debito = await vender([{ medio_cobro_id: porNombre('Débito').id, cuenta_tesoreria_id: mercadopago.id, importe: 1000 }]);
+  assert.equal(debito.status, 201, debito.texto);
+  assert.deepEqual((await admin.get('/api/ventas')).json.find((v) => v.id === debito.json.id).cuentas_cobro, [banco.id]);
 });
 
 test('un crédito pide el plan, guarda las cuotas y la comisión y el costo salen como gastos de la venta', async () => {

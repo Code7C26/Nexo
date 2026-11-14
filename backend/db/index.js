@@ -2343,17 +2343,21 @@ const MEDIOS_DE_CUENTA = {
     { nombre: 'Crédito', tipo: 'credito', cuotas: [1, 3, 6] },
     { nombre: 'Transferencia', tipo: 'transferencia' }
   ],
-  mercadopago: [{ nombre: 'Mercado Pago', tipo: 'billetera' }],
+  // Mercado Pago no es una forma de cobrar sino adónde cae la plata: se cobra
+  // con Transferencia (que elige la cuenta) o con el QR (hist. §172).
+  mercadopago: [{ nombre: 'Transferencia', tipo: 'transferencia' }],
   otro: [{ tipo: 'otro' }]
 };
 
-// Efectivo es uno solo por negocio (va a la caja del turno, sin cuenta). Si el
+// Efectivo y Transferencia son uno solo por negocio: el efectivo va a la caja
+// del turno, sin cuenta, y la transferencia elige la cuenta al cobrar. Si el
 // nombre ya está tomado se le suma el de la cuenta, y si aun así choca se
 // saltea. Dentro de una transacción o en el arranque.
 export function crearMediosDeCuenta(cuenta, organizacionId) {
   for (const base of MEDIOS_DE_CUENTA[cuenta.tipo] ?? MEDIOS_DE_CUENTA.otro) {
     const esEfectivo = base.tipo === 'efectivo';
-    if (esEfectivo && db.prepare("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = 'efectivo'").get(organizacionId)) continue;
+    const esUnico = esEfectivo || base.tipo === 'transferencia';
+    if (esUnico && db.prepare('SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = ?').get(organizacionId, base.tipo)) continue;
     const libre = (nombre) => !db.prepare('SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND nombre = ?').get(organizacionId, nombre);
     const propio = base.nombre ?? cuenta.nombre;
     const nombre = [propio, `${propio} ${cuenta.nombre}`].find(libre);
@@ -2442,6 +2446,41 @@ export function resembrarEtapasCrm(organizacionId) {
 }
 for (const { id } of db.prepare('SELECT id FROM organizaciones ORDER BY id').all()) {
   sembrarCatalogosBase(id);
+}
+
+// El medio "Mercado Pago" que nacía de la cuenta de ese nombre (hist. §171) no
+// era una forma de cobrar sino adónde cae la plata. Una vez, a cada negocio:
+// si no tiene Transferencia, ese medio pasa a serlo; si ya la tiene, se borra,
+// salvo que ya haya cobrado algo o el negocio lo haya tocado (comisión, días o
+// planes), que entonces queda como está y se pausa o borra desde Configuración.
+if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+  db.exec('BEGIN');
+  try {
+    const sueltos = db
+      .prepare(
+        `SELECT m.id, m.organizacion_id, m.nombre FROM medios_cobro m
+           JOIN cuentas_tesoreria c ON c.id = m.cuenta_tesoreria_id
+          WHERE m.tipo = 'billetera' AND c.tipo = 'mercadopago' AND m.nombre = c.nombre
+            AND m.comision_pct = 0 AND m.dias_acreditacion = 0
+            AND NOT EXISTS (SELECT 1 FROM medio_cobro_planes p WHERE p.medio_cobro_id = m.id)`
+      )
+      .all();
+    for (const medio of sueltos) {
+      const tieneTransferencia = db
+        .prepare("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = 'transferencia'")
+        .get(medio.organizacion_id);
+      if (!tieneTransferencia) {
+        db.prepare("UPDATE medios_cobro SET nombre = 'Transferencia', tipo = 'transferencia' WHERE id = ?").run(medio.id);
+      } else if (!db.prepare('SELECT 1 FROM cobros WHERE medio_cobro_id = ?').get(medio.id)) {
+        db.prepare('DELETE FROM medios_cobro WHERE id = ?').run(medio.id);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA user_version = 1');
 }
 
 // A cada cobro de antes se le deduce su medio (hist. §171): el efectivo, el de
