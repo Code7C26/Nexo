@@ -1305,7 +1305,17 @@ con Enter o la cámara donde el navegador tiene `BarcodeDetector`. Cobra con
 uno o varios medios, con vuelto (solo en efectivo), y deja saldo en cuenta
 corriente solo si hay un cliente real ("Consumidor final" no fía). Lee
 también las etiquetas de la balanza (Configuración → Balanza deduce su
-formato; el precio es el de hoy, nunca el de la etiqueta; hist. §132). Queda
+formato; el precio es el de hoy, nunca el de la etiqueta; hist. §132).
+**Medios de cobro** (hist. §171): el mostrador no ofrece las cuentas de
+tesorería sino los medios que el negocio configura en Configuración → Medios de
+cobro (Efectivo, Débito, Crédito, Transferencia, Mercado Pago, o los suyos).
+Cada medio dice a qué cuenta entra la plata (el efectivo, siempre la caja del
+turno), su comisión, en cuántos días se acredita y, en el crédito, sus planes de
+cuotas con lo que le cuesta al negocio ofrecerlos. La comisión y ese costo se
+anotan solos como gastos de la venta. Cada cobro guarda su medio y sus cuotas, y
+Ventas filtra por medio y por cuenta. Falta: recargo por cuotas al cliente (el
+"precio tarjeta" hoy se hace con una lista de precios) y acreditación diferida
+(la plata entra a la cuenta en el momento). Queda
 para después: descuentos y precio editable en el mostrador, alta rápida de
 cliente y venta sin conexión.
 

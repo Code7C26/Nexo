@@ -13202,3 +13202,260 @@ muestra el plan y de qué cuenta es. Una cuenta que no creó negocios (un
 empleado) no tiene plan propio.
 
 **Suite:** 371 tests, lint y `npm run i18n` en 0.
+
+## §169 — Videos para el simulacro: el 5 hecho (v1, a corregir) y el de inglés a medias (14 de noviembre de 2026)
+
+Pedido del usuario: el lunes 16 (simulacro) tiene que parecerse lo más posible
+a la presentación oficial de diciembre, así que **el video 5 ("un negocio
+desde cero") y el video en inglés tienen que estar**, y si hay algo del
+producto para mejorar, se aprovecha ahora. Cortó la sesión antes de terminar
+el de inglés para pasar a otra tarea.
+
+**Cómo se graba (vale para los dos videos).** La app **real**, no redibujada:
+un Nexo local en una base temporal con `NEXO_MAIL=stub` (el código de 6
+números sale de la carpeta de mails), Playwright graba con `recordVideo` y
+Remotion le pone zoom y títulos.
+- Trampa 1: Playwright **no escala por `deviceScaleFactor`** en `recordVideo`
+  (la app sale en una esquina del cuadro). Se resuelve con viewport 1920 ×
+  1080 y `document.documentElement.style.zoom = '1.25'`; el cursor y los aros de
+  clic llevan `zoom: 0.8` para quedar donde está el mouse.
+- Trampa 2: `recordVideo` pide el ffmpeg propio de Playwright (`npx playwright
+  install ffmpeg`, 1,6 MB). El webm sale sin duración y a 25 fps: se pasa a
+  mp4 de 30 cuadros con el ffmpeg de winget antes de usarlo en Remotion.
+- Trampa 3: radios y casillas del alta están ocultos por el estilo: se hace
+  clic en su `label`; en la casilla de términos, en el borde izquierdo (el
+  centro cae sobre un enlace y abre otra pestaña). Con los 6 números del
+  código la app confirma sola.
+- Trampa 4: el Resumen es `#/dashboard`, no `#/resumen` (esa ruta no existe y
+  deja la pantalla anterior).
+- Selectores: `tbody:visible`, `section:visible .opcion-tarjeta`: hay vistas
+  ocultas con las mismas clases.
+- Un render de Remotion lanzado en segundo plano con `( ... &)` muere al
+  terminar el comando: se lanza el comando de render directo con
+  `run_in_background`.
+
+**Archivos nuevos:**
+- `redes/videos/grabar/negocio-desde-cero.mjs` (graba el alta y "Lo que ya
+  tenías"; deja `escenas.json` con el segundo de cada escena),
+  `preparar-demo.mjs` (cuenta Pro de Lola en un Nexo local; se niega a correr
+  contra el real), `ingles.mjs` (grabador del video en inglés, sin terminar) y
+  `_explorar.mjs` (prueba suelta, se puede borrar).
+- `redes/videos/estudio/src/compositions/NexoNegocioDesdeCero.tsx` (+
+  `negocio-desde-cero.json`, las escenas de la última grabación). En el estudio
+  vivo (`~/motion-architect/studio`) además: `public/clips/negocio-desde-cero.mp4`
+  y `public/music/nexo-desde-cero.wav`, que no están en el repo.
+- Storyboards: `storyboards/nexo-negocio-desde-cero.md` y `nexo-ingles.md`.
+- `NexoApertura.tsx`: se exportó `Logo` (y el repo tiene `logo: [1120, 110]`
+  contra `[1120, 120]` del estudio vivo: el del estudio es el que renderizó el
+  video 6).
+- Salida: `docs/pitch/media/nexo-negocio-desde-cero.mp4` (62 s, 8,6 MB) y su
+  `.jpg`. **Es la versión 1 y no sirve tal cual: ver las correcciones.**
+
+**Correcciones del usuario al video 5 (a hacer en la próxima sesión).** El
+video va **dentro de una diapositiva**, corriendo de fondo mientras el equipo
+habla ("se puede hacer un login, entrar con una cuenta…"):
+1. **Sin intro ni outro.** Sale "Tu negocio, listo en minutos." (3 s) y sale el
+   logo final (3,5 s). Arranca directo mostrando el alta y termina en la última
+   pantalla útil.
+2. **Lo más rápido posible.** Menos pausas, tipeo más veloz, más velocidad en
+   cada tramo. Objetivo orientativo: 35 a 40 s (hoy dura 62 s: unos 55 s de
+   pantalla y 6 de intro y outro).
+3. **Nada de frases explicativas.** Las que tiene ("Los comprobantes, cuando
+   quieras.", "Y Nexo te guía en los primeros pasos.") **no le gustan**, en
+   especial las **con coma en el medio**. Va lo mínimo: etiquetas cortas de
+   2 o 3 palabras sin comas ("Tu cuenta", "Tu mail", "Tu negocio", "El tipo", "Lo
+   que ya tenías"), o directamente sin texto si el usuario lo prefiere:
+   **confirmarlo con él antes de renderizar.** La idea es mostrar las funciones
+   que están buenas (elegir el tipo de negocio, las secciones, cargar lo que ya
+   tenía), no explicarlas: eso lo cuenta el equipo hablando.
+4. **Sin música.** La música movida queda **solo para el video 6** (la
+   apertura). "Es parte de la presentación: no nos vamos a quedar callados
+   mientras anda el video." Hay que sacar el `<Audio>` y no usar
+   `nexo-desde-cero.wav`.
+5. Se mantiene: la app real, el zoom que sigue lo que se hace y el cursor.
+   Pendiente además: **ponerlo en una diapositiva** (hoy no está en ninguna;
+   la presentación es `docs/pitch/fuentes/index.html`, el video de la 1 es
+   `data-modo="apertura"`; agregar una diapositiva renumera la guía, el guion
+   y los QR de `npm run presentacion` / `npm run guia`). Dónde va lo decide el
+   usuario (cerca de "Nexo crece con el negocio" o después de la del QR).
+6. Ajuste técnico de la v2: `TRAMOS` en `NexoNegocioDesdeCero.tsx` (qué tramo
+   de la grabación, a qué velocidad y con qué foco); `INTRO` y `OUTRO` pasan a
+   0 y el `<Audio>` se saca. Rearmar: grabar de nuevo con una base limpia
+   (la cuenta de Lola ya existe), convertir a mp4, copiar `escenas.json` y
+   `npx remotion render src/index.ts NexoNegocioDesdeCero-landscape out/x.mp4
+   --crf=18`.
+
+**Video en inglés (sin terminar).** La voz es del usuario (la graba él,
+con el audio entero). `ingles.mjs` graba la app en inglés sobre el negocio de
+ejemplo; llegó hasta la escena de la ficha de venta y se cortó. Lo que ya se
+sabe:
+- El asistente **anda en inglés con la IA real**: "I sold two trucker caps to
+  Camila Herrera" → propone la venta de $25.800 con la Gorra trucker y Camila
+  encontrada, para "Confirm and record".
+- **El `.env` local tiene `GROQ_API_KEY=` con un espacio adelante**: con esa
+  clave Groq contesta 401. En un servidor local de prueba hay que pasarla sin
+  espacio (`| tr -d ' \r"'`). Corregir el `.env`.
+- Selectores que fallaron y su arreglo: `text=Where the money went` agarra un
+  título oculto de otra vista (usar `h2:visible, h3:visible` con regex
+  anclada; ya aplicado) y `.opcion-tarjeta` también (usar `section:visible
+  .opcion-tarjeta`; este arreglo no llegó a aplicarse). Chrome se lanza con
+  `--lang=en-US` para que los campos de fecha salgan en inglés.
+- El storyboard (`nexo-ingles.md`) tiene el texto en 7 frases. Aplican al
+  de inglés las mismas ideas del usuario, **a confirmar con él**: sin música
+  (la voz es el audio), frases sin comas intermedias, ritmo rápido, y si
+  también va dentro de una diapositiva o aparte (el 11 de noviembre dijo que era un
+  video aparte). Las facturas no muestran CAE (ARCA en el servidor local es
+  stub): no decir "invoices are issued with ARCA" sobre esa pantalla.
+- Falta decidir cómo se mezcla la grabación del usuario: ffmpeg alinea el
+  audio al video y Remotion pone subtítulos en inglés.
+
+**Mejoras de producto hechas en el camino** (sin commitear, tests en verde:
+`idioma.test.js` 3/3, `ejemplos.test.js` 9/9, lint sin problemas):
+- **Ejemplos con saldo negativo.** En "Lola Indumentaria" el banco quedaba en
+  −$2.692.600 y la caja total en −$2.453.500 (las compras se pagan del banco con
+  $900.000 de saldo inicial). `backend/negocios-de-ejemplo.js`:
+  `cubrirCuentasEnRojo` suma, al terminar el historial, un "Aporte inicial al
+  empezar con Nexo" por lo que falte más $300.000. Vale para los cinco ejemplos
+  y para "Probar sin registrarse"; los ya armados en el servidor y en la
+  cuenta del usuario no cambian (hay que rearmar el de Lola para verlo).
+- **Traducciones al inglés** (`frontend/js/idioma/en.js`): "Tienda Nube" salía
+  "Store Nube" (el patrón `"Tienda {0}"` lo agarraba: una entrada `null` no
+  cuenta como excepción, hay que mapearla a sí misma); "Te falta uno." y "Te
+  faltan N." de Primeros pasos, que se armaban con un texto dentro de otro
+  (ahora `formatear`); "vendido" del centro de la dona, "disp." del punto de
+  venta, "De antes de Nexo", "encontrado", "Fecha (vacío = hoy)", "vendidos" y
+  "{0} de {1}" de la ficha de venta y de compra (`app.js`).
+- **Quedan sin traducir** en inglés lo que sale de los datos o de la base:
+  "Talle" (atributo de la variante), los nombres de los productos de ejemplo,
+  "Saldo al empezar con Nexo" del ejemplo ya armado y "Confirmar talles"
+  (consulta de ejemplo).
+
+**Siguiente sesión (pedido del usuario): mejoras de funciones del producto.**
+Una contadora, madre de un amigo, estuvo usando el sistema y hay cosas que
+fallan o que cambiaría. **Falta que el usuario pase su lista** (anotarla acá
+apenas llegue y trabajarla por prioridad). Antes de tocar un módulo contable,
+releer CLAUDE.md §16 y §33 (IVA, letra de comprobante, libro IVA, factura A/B/C,
+nota de crédito, ARCA en homologación).
+
+**Pendiente de esta sesión, sin commit:** `backend/negocios-de-ejemplo.js`,
+`frontend/js/app.js`, `frontend/js/dominios/primeros-pasos.js`,
+`frontend/js/idioma/en.js`, `redes/videos/...` y `docs/pitch/media/nexo-negocio-desde-cero.*`.
+Los servidores temporales de grabación (puertos 3111 y 3112, base en `%TEMP%`)
+se apagan con Stop-Process sobre el proceso del puerto.
+
+## §170 — 14 de noviembre de 2026: filtros arreglados y propuesta de medios de cobro
+
+**Pedido:** una contadora (madre de un amigo del usuario) probó Nexo. Dos cosas:
+el cobro del punto de venta y los filtros.
+
+**Filtros (hecho).**
+- Síntoma: en Ventas, "Fecha es hoy" no filtraba nada.
+- Causa: en `crearFiltros`, `abrirSelectorCampo` agregaba el filtro y repintaba,
+  pero no llamaba a `onCambio`. Un filtro de fecha nace en "es hoy", que no pide
+  valor y por eso ya está completo, así que filtraba en el chip y no en la lista.
+  Afectaba a todas las pantallas que usan el motor.
+- Arreglo: `onCambio(filtros)` después de agregar. Además, `cumpleFiltro` compara
+  texto sin acentos (el comentario lo prometía y no lo hacía) y un select acepta
+  filas con varios valores (`Array.isArray(bruto)`).
+- Filtro nuevo en Ventas, "Cobrado en": `GET /api/ventas` devuelve
+  `cuentas_cobro` (ids de las cuentas de sus cobros, `GROUP_CONCAT(DISTINCT ...)`)
+  y las opciones salen de `cuentasTesoreria`. Traducción en `idioma/en.js`.
+- Verificación: base sembrada en el scratchpad, servidor en otro puerto y
+  `playwright-core` contra Chrome. Con ventas de hoy, de ayer, de hace 10 y de hace
+  45 días: el `filtros.js` de `HEAD` deja 9 filas con "es hoy"; el nuevo deja 6.
+  "Últimos 30 días" deja 8 y "Cobrado en" cuadra con la API por cuenta, incluida
+  una venta cobrada en dos. `npm run lint` y `npm test` (371) en verde.
+- No se hizo una auditoría pantalla por pantalla de cada filtro: se revisó que los
+  campos derivados (`respalda_venta`, `estado_efectivo`, `reintegrada_txt`) existan.
+
+**Medios de cobro (propuesta, sin código).**
+- Hoy: `cuentasDeCobro()` en `dominios/pos.js` ofrece la caja del turno y cada cuenta
+  de tesorería que no es efectivo. Un cobro (`cobros`) guarda solo
+  `cuenta_tesoreria_id`: el medio de pago y la cuenta donde cae la plata son lo mismo.
+- Propuesta: separar "cómo paga el cliente" de "dónde entra la plata".
+  - `medios_cobro` por empresa: nombre, tipo (efectivo, débito, crédito,
+    transferencia, billetera, otro), cuenta de tesorería de destino, comisión %,
+    días de acreditación, activo, orden.
+  - `medio_cobro_planes` (para crédito): cuotas, recargo % al cliente, costo %
+    para el negocio, activo.
+  - `cobros.medio_cobro_id` y `cobros.cuotas`, nullable, con backfill: cada cobro
+    viejo toma un medio creado a partir de su cuenta.
+  - La comisión y el costo de cuotas salen como gastos de la venta, con el
+    mecanismo de hist. §129 y §130.
+  - Configuración → Medios de cobro. El POS ofrece los medios activos, no las cuentas.
+- A confirmar: recargo por cuotas (afecta precio y factura), acreditación diferida
+  (saldo "a acreditar" o ingreso inmediato), tratamiento fiscal con la contadora.
+
+## §171 — 14 de noviembre de 2026: medios de cobro configurables
+
+**Pedido:** lo que dejó planteado §170. El usuario aprobó la propuesta ("terminemos
+de hacer esto bien y después publicamos todo junto") y no contestó las tres dudas,
+así que se decidió lo técnico y se anotó lo que hay que confirmar.
+
+**Modelo.**
+- `medios_cobro` (por negocio): nombre único, tipo (efectivo, débito, crédito,
+  transferencia, billetera, otro), cuenta de tesorería de destino (NULL solo en
+  efectivo: va a la caja del turno, que decide el turno), comisión %, días de
+  acreditación, activo y orden.
+- `medio_cobro_planes` (hija): cuotas (1 a 60) y costo % de ofrecerlas. Solo en el
+  crédito.
+- `cobros.medio_cobro_id` y `cobros.cuotas`, nulos. El cobro recuerda las cuotas,
+  no el plan: cambiar o borrar un plan no toca lo cobrado.
+- Reglas: un solo medio en efectivo por negocio; un medio que no es efectivo no
+  puede ir a una cuenta efectivo (el arqueo de la caja se mezclaría); una cuenta
+  con medios no pasa a efectivo; uno con cobros no se borra, se pausa.
+
+**Migración** (`backend/db/index.js`, aditiva).
+- `ALTER TABLE cobros` de las dos columnas, y `crearMediosDeCuenta` (exportada)
+  siembra los medios de cada negocio que no tiene ninguno: caja → Efectivo; banco →
+  Débito, Crédito (1, 3 y 6 cuotas, sin costo) y Transferencia; Mercado Pago →
+  billetera; otra cuenta → medio con su nombre. Una cuenta nueva (`POST
+  /api/cuentas-tesoreria`) recibe los suyos. Ninguna forma de cobrar de antes se pierde.
+- Solo en el arranque que suma la columna, a cada cobro viejo se le deduce el medio
+  si hay uno solo que vaya a su cuenta; si hay varios (el banco) queda sin medio.
+- Verificado: `npm run verificar-migracion` 24/24 con el md5 de la base real igual, y
+  una base sembrada antes del cambio (ventas cobradas en efectivo → medio Efectivo;
+  una cobrada también en el banco → sin medio).
+
+**Backend** (`server.js`, sección "Medios de cobro").
+- `GET /api/medios-cobro` (`?activos=1` para el mostrador), `POST`, `PUT /:id`
+  (completo, o `{activo}` para pausar) y `DELETE /:id`. Lectura para los dos roles,
+  escritura admin (`permisos.js`). `comision_pct` y `costo_pct` se podan al empleado
+  (`CLAVES_SENSIBLES`).
+- `POST /api/pos/ventas` acepta `{ medio_cobro_id, cuotas?, importe }`: la cuenta sale
+  del medio y un crédito con planes exige uno válido. Sigue aceptando
+  `cuenta_tesoreria_id` suelto. `registrarCobro` guarda medio y cuotas, o deduce el
+  medio de la cuenta (`medioDeLaCuenta`).
+- `registrarCostosDelMedio`: la comisión y el costo de las cuotas son gastos de la
+  venta en la cuenta donde entró el cobro, con `registrarCostoDeVender` (hist. §129),
+  con su porcentaje en la descripción y anulados con la venta.
+- `GET /api/ventas` suma `medios_cobro` y `cuentas_cobro` (ids).
+- Auditoría: entidad `organizacion` con `operacion_tipo: 'medio_cobro'`, como las
+  ofertas (el CHECK de `auditoria.entidad` no se tocó: cambiarlo exige rehacer la
+  tabla). `valor_anterior` y `valor_nuevo` tienen que ser texto JSON: pasar un objeto
+  daba un 500.
+
+**Frontend.**
+- Configuración → Medios de cobro (`dominios/medios-cobro.js`, página de admin del
+  módulo POS): tabla y formulario con planes. La tabla no es `lista-movil` (en el
+  celular solo mostraba el nombre): usa la común, como Etapas.
+- `dominios/pos.js`: botones y filas por medio, selector de cuotas en el crédito y
+  "Se acredita en N días". El efectivo es el medio efectivo; el vuelto sale de ahí.
+- Ventas: filtros "Medio de cobro" y "Cobrado en".
+- Ícono `credit-card` en el sprite; traducciones en `idioma/en.js`.
+
+**Tests.** `backend/test/medios-cobro.test.js` (8): lo que nace con el negocio,
+validación, cobro por medio, crédito con plan (comisión 2 % y costo 10 % como gastos),
+empleado sin costos y sin edición, pausa y borrado, aislamiento entre negocios, y
+cuenta nueva. Total 379 en verde. Con navegador (`playwright-core`): editar el
+crédito, cobrar en 3 cuotas (venta con $70 de comisión y $350 de costo de cuotas),
+filtro de Ventas por medio y vista de celular.
+
+**Decidido sin confirmar, para revisar con el usuario o la contadora.**
+- Sin recargo por cuotas al cliente: afecta precio y factura. Hoy el "precio
+  tarjeta" se arma con una lista de precios.
+- Acreditación sin diferir: la plata entra a la cuenta al cobrar y los días son un
+  dato que se muestra. Un saldo "a acreditar" sería una etapa aparte.
+- Mercado Pago es un medio más (billetera). Su QR y sus cobros automáticos siguen
+  por la integración de hist. §130/§145, que no se tocó y deduce el medio de la cuenta.
+- Los cobros cargados desde la ficha de una venta siguen eligiendo cuenta, no medio.

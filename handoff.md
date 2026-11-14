@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §168);
+    siguiente número (hoy el último es §171);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,62 @@
   reescribe nada.
 
 ## Estado actual (14 de noviembre de 2026)
+
+**14 de noviembre, hist. §170: primera lista de la contadora (sin commitear en
+`solla`).**
+- **Filtros arreglados** (`frontend/js/core/filtros.js`): al agregar un filtro
+  que nace completo (Fecha arranca en "es hoy", sin valor), el chip aparecía
+  pero la lista no se refiltraba hasta tocar otra cosa; `abrirSelectorCampo` no
+  llamaba a `onCambio`. Lo comparten todas las pantallas. De paso: el texto
+  ahora ignora acentos (decía hacerlo y no lo hacía) y un select acepta filas con
+  varios valores. Probado en el navegador contra el motor de `HEAD`: 9 filas
+  antes, 6 después ("hoy").
+- **Ventas, filtro "Cobrado en"** (cuenta de tesorería): `GET /api/ventas` suma
+  `cuentas_cobro` (lista de ids). Pasará a ser "medio de cobro" cuando exista
+  el punto siguiente.
+- **Medios de cobro configurables, hecho (hist. §171, sin commitear).** El POS ya
+  no ofrece las cuentas sino los medios de Configuración → Medios de cobro
+  (`medios_cobro` + `medio_cobro_planes`, `cobros.medio_cobro_id` y `cuotas`).
+  Un negocio nuevo nace con Efectivo, Débito, Crédito (1, 3 y 6 cuotas),
+  Transferencia y Mercado Pago; uno existente recibe los suyos desde sus
+  cuentas al arrancar, y a sus cobros viejos se les deduce el medio cuando hay
+  uno solo (con varios, quedan sin medio). Comisión y costo de cuotas salen como
+  gastos de la venta. Filtros "Medio de cobro" y "Cobrado en" en Ventas.
+  **Decidido por mí, a confirmar con el usuario o la contadora:** sin recargo por
+  cuotas al cliente (el "precio tarjeta" es una lista de precios) y la plata
+  entra a la cuenta en el momento (los días de acreditación solo se muestran).
+  Probado: 379 tests, `verificar-migracion` 24/24 y navegador (escritorio y
+  celular). Tiene que publicarse junto con lo de §170, como pidió el usuario.
+- Quedó en la lista del usuario más por llegar: anotarla acá apenas la pase.
+
+**14 de noviembre, hist. §169: videos para el simulacro del lunes 16 y lo que
+sigue. Todo sin commitear en `solla`.** Relato completo, trampas de la grabación
+y archivos en el histórico.
+- **Video 5 ("un negocio desde cero"): v1 hecha y a corregir.**
+  `docs/pitch/media/nexo-negocio-desde-cero.mp4` (62 s) graba la app real en un
+  Nexo local (alta, tipo, secciones, "Lo que ya tenías"). **El usuario pidió
+  cambios, para la próxima sesión:** va dentro de una diapositiva y corre de
+  fondo mientras el equipo habla, así que (1) **sin intro ni outro** (ni el
+  título ni el logo), directo al alta; (2) **lo más rápido posible** (~35 a
+  40 s); (3) **sin frases explicativas**, y menos que menos con comas en el
+  medio: etiquetas de 2 o 3 palabras o nada de texto (confirmarlo con él);
+  (4) **sin música**: la música movida es solo del video 6 (la apertura).
+  Además hay que ponerlo en una diapositiva (decide el usuario dónde).
+- **Video en inglés: sin terminar.** La voz la graba el usuario. El grabador
+  (`redes/videos/grabar/ingles.mjs`) llegó hasta la ficha de venta; falta un
+  selector y armar el video en Remotion. Aplican las mismas ideas (sin música,
+  sin comas, rápido): confirmar con el usuario si va en una diapositiva o
+  aparte. El asistente anda en inglés con la IA real. **Ojo: el `.env` local tiene un
+  espacio antes de `GROQ_API_KEY`: Groq lo rechaza (401).**
+- **Mejoras de producto hechas** (tests en verde): los ejemplos ya no dejan una
+  cuenta con saldo negativo (el banco de Lola quedaba en −$2,7 M; hay que
+  rearmar el ejemplo en la cuenta del usuario y en el servidor para verlo) y
+  varios textos sin traducir al inglés ("Store Nube", "Te falta uno", "disp.",
+  "vendido", etc.).
+- **Próxima sesión (pedido del usuario): mejoras de funciones del producto.**
+  Una contadora, madre de un amigo, usó el sistema y hay cosas que fallan o que
+  cambiaría. **Falta que el usuario pase su lista**; anotarla acá apenas
+  llegue. Releer CLAUDE.md §16 y §33 antes de tocar lo contable.
 
 **14 de noviembre, hist. §168: lo que había que cerrar antes del lunes,
 publicado (PR #82 y #83, en `main` y en el servidor).**
