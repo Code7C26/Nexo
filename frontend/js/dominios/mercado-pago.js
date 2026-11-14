@@ -116,6 +116,122 @@ function filaDePago(p) {
     </li>`;
 }
 
+// Cuánto se llevó Mercado Pago por cada forma de pago y plan de cuotas, contra
+// lo cobrado. Sin pagos todavía no hay nada que mostrar.
+function pintarCostos() {
+  const filas = estado.costos ?? [];
+  document.getElementById("mpCostosPanel").hidden = !filas.length;
+  const porcentaje = (parte, total) => (total > 0 ? `${((parte / total) * 100).toFixed(2).replace(".", ",")} %` : "—");
+  document.getElementById("mpCostosBody").innerHTML = filas
+    .map((f) => {
+      const nombre = MEDIOS[f.medio] ?? f.medio ?? "Otro";
+      const plan = f.cuotas > 1 ? `${f.cuotas} cuotas` : f.medio === "credit_card" ? "1 pago" : "";
+      return `
+    <tr>
+      <td data-label="Cómo pagaron" class="m-titulo">${esc(nombre)}${plan ? `<span class="celda-meta">${plan}</span>` : ""}</td>
+      <td data-label="Pagos" class="align-right mono">${esc(f.pagos)}</td>
+      <td data-label="Comisión" class="align-right mono">${porcentaje(f.comision, f.importe)}</td>
+      <td data-label="Cuotas sin interés" class="align-right mono">${f.financiacion > 0 ? porcentaje(f.financiacion, f.importe) : "—"}</td>
+      <td data-label="Te cuesta" class="align-right mono">${porcentaje(f.comision + f.financiacion, f.importe)}</td>
+    </tr>`;
+    })
+    .join("");
+}
+
+/* ---------- ¿Te conviene ofrecer cuotas? (hist. §172) ---------- */
+
+// Mercado Pago no da sus tarifas por API: Nexo trae una tabla de referencia y
+// el negocio la corrige con lo que dice su cuenta. Acá se ve, para cada plan,
+// cuánto cuesta ofrecerlo y cuánto habría que cobrar para que quede lo mismo.
+const montoTarifas = document.getElementById("mpTarifasMonto");
+const comisionTarifas = document.getElementById("mpTarifasComision");
+const cuerpoTarifas = document.getElementById("mpTarifasBody");
+const btnRestaurarTarifas = document.getElementById("btnMpTarifasRestaurar");
+let tarifas = null;
+
+const pctTexto = (n) => `${(Math.round(n * 100) / 100).toString().replace(".", ",")} %`;
+
+// Un renglón: el costo de las cuotas lleva el IVA, y la comisión se suma.
+function calcularPlan(costoPct) {
+  const monto = Number(montoTarifas.value) || 0;
+  const total = (Number(comisionTarifas.value) || 0) + costoPct * (1 + tarifas.iva_pct / 100);
+  const costo = Math.round(monto * total) / 100;
+  return { total, costo, queda: monto - costo, cobrar: total < 100 ? monto / (1 - total / 100) : null };
+}
+
+function celdasPlan(costoPct) {
+  const { total, costo, queda, cobrar } = calcularPlan(costoPct);
+  return `
+      <td data-label="Te cuesta" class="align-right mono">${money(costo)}<span class="celda-meta">${pctTexto(total)}</span></td>
+      <td data-label="Te queda" class="align-right mono">${money(queda)}</td>
+      <td data-label="Para que te quede lo mismo, cobrá" class="align-right mono">${cobrar == null ? "—" : money(cobrar)}</td>`;
+}
+
+function pintarTarifas() {
+  cuerpoTarifas.innerHTML = [
+    `<tr data-cuotas="1">
+      <td data-label="Plan" class="m-titulo">1 pago<span class="celda-meta">Sin costo de cuotas</span></td>
+      <td data-label="Costo de las cuotas (% sin IVA)" class="align-right mono">—</td>${celdasPlan(0)}
+    </tr>`,
+    ...tarifas.filas.map((f) => {
+      const costo = Number(f.costo_pct);
+      return `<tr data-cuotas="${esc(f.cuotas)}">
+      <td data-label="Plan" class="m-titulo">${esc(f.cuotas)} cuotas sin interés</td>
+      <td data-label="Costo de las cuotas (% sin IVA)" class="align-right"><input type="number" class="tarifa-costo" min="0" max="100" step="0.01" inputmode="decimal" value="${esc(costo)}" aria-label="Costo de ${esc(f.cuotas)} cuotas" /></td>${celdasPlan(costo)}
+    </tr>`;
+    })
+  ].join("");
+  btnRestaurarTarifas.hidden = tarifas.origen !== "propias";
+  document.getElementById("mpTarifasOrigen").textContent =
+    tarifas.origen === "propias"
+      ? `Son tus tarifas, actualizadas el ${fechaAR(tarifas.actualizado_en.slice(0, 10))}. El costo de las cuotas es el que publica Mercado Pago, sin IVA: acá se le suma el ${tarifas.iva_pct} %.`
+      : `Cifras de referencia de la ayuda de Mercado Pago, vigentes desde el ${fechaAR(tarifas.vigente_desde)} y sin IVA. Todavía sin confirmar: Mercado Pago las cambia seguido y no las da por API, así que revisalas en tu cuenta (Costos y cuotas) y corregí las que no coincidan.`;
+}
+
+// Recalcula sin volver a dibujar, para no sacarle el foco al que está tipeando.
+function recalcularTarifas() {
+  for (const fila of cuerpoTarifas.querySelectorAll("tr")) {
+    const costo = Number(fila.querySelector(".tarifa-costo")?.value) || 0;
+    const celdas = fila.querySelectorAll("td");
+    const nuevas = document.createElement("tr");
+    nuevas.innerHTML = celdasPlan(costo);
+    celdas[2].replaceWith(nuevas.children[0]);
+    celdas[3].replaceWith(nuevas.children[0]);
+    celdas[4].replaceWith(nuevas.children[0]);
+  }
+}
+
+async function cargarTarifas() {
+  tarifas = await api("/api/integraciones/mercadopago/tarifas", { error: "No se pudieron cargar las tarifas de Mercado Pago." });
+  // La comisión de partida es el promedio de lo que ya cobró Mercado Pago.
+  const cobrado = (estado.costos ?? []).reduce((suma, f) => suma + f.importe, 0);
+  const comision = (estado.costos ?? []).reduce((suma, f) => suma + f.comision, 0);
+  if (!comisionTarifas.value && cobrado > 0) comisionTarifas.value = (Math.round((comision / cobrado) * 10000) / 100).toString();
+  pintarTarifas();
+  document.getElementById("mpTarifasPanel").hidden = false;
+}
+
+montoTarifas.addEventListener("input", recalcularTarifas);
+comisionTarifas.addEventListener("input", recalcularTarifas);
+cuerpoTarifas.addEventListener("input", (e) => {
+  if (e.target.closest(".tarifa-costo")) recalcularTarifas();
+});
+
+document.getElementById("btnMpTarifasGuardar").addEventListener("click", async () => {
+  const filas = [...cuerpoTarifas.querySelectorAll("tr[data-cuotas]")]
+    .filter((fila) => fila.querySelector(".tarifa-costo"))
+    .map((fila) => ({ cuotas: fila.dataset.cuotas, costo_pct: fila.querySelector(".tarifa-costo").value }));
+  tarifas = await api("/api/integraciones/mercadopago/tarifas", { method: "PUT", body: { filas }, error: "No se pudieron guardar las tarifas." });
+  avisar("Tarifas guardadas.", "ok");
+  pintarTarifas();
+});
+
+btnRestaurarTarifas.addEventListener("click", async () => {
+  tarifas = await api("/api/integraciones/mercadopago/tarifas", { method: "DELETE", error: "No se pudo volver a la tabla de referencia." });
+  avisar("Volviste a la tabla de referencia.", "ok");
+  pintarTarifas();
+});
+
 async function pintarCuenta() {
   const cuentas = await api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." });
   selectCuenta.innerHTML = [
@@ -136,12 +252,14 @@ async function cargar() {
   document.getElementById("mpSinPlan").hidden = !sinPlan;
   pasos.hidden = !estado.disponible || estado.conectada || sinPlan;
   conectadaEl.hidden = !estado.conectada;
+  await cargarTarifas();
   if (!estado.conectada) return;
   listaPagos.innerHTML = estado.pagos.length
     ? estado.pagos.map(filaDePago).join("")
     : `<li><p class="tn-vacio">Todavía no llegó ningún pago. Creá un link desde “Registrar cobro” en una venta.</p></li>`;
   pintarActividadCanal(document.getElementById("mpActividad"), estado.actividad);
   pintarCaja();
+  pintarCostos();
   await pintarCuenta();
 }
 

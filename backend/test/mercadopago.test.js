@@ -252,6 +252,36 @@ after(async () => {
   servidorFalso?.close();
 });
 
+test('las tarifas de las cuotas (hist. §172): referencia sin confirmar, las corrige el negocio y son de cada uno', async () => {
+  const ruta = '/api/integraciones/mercadopago/tarifas';
+  // Solo el admin, y se ven aunque Mercado Pago no esté conectado.
+  assert.equal((await empleado.get(ruta)).status, 403);
+  assert.equal((await empleado.put(ruta, { filas: [{ cuotas: 3, costo_pct: 5 }] })).status, 403);
+  const referencia = (await admin.get(ruta)).json;
+  assert.equal(referencia.origen, 'referencia');
+  assert.equal(referencia.iva_pct, 21);
+  assert.deepEqual(referencia.filas.find((f) => f.cuotas === 3), { cuotas: 3, costo_pct: 10.49 });
+
+  // Lo inválido no se guarda: cuotas repetidas, fuera de rango, costo negativo o vacío.
+  for (const filas of [[], [{ cuotas: 3, costo_pct: 5 }, { cuotas: 3, costo_pct: 6 }], [{ cuotas: 1, costo_pct: 5 }], [{ cuotas: 3, costo_pct: -1 }], [{ cuotas: 3, costo_pct: 101 }]]) {
+    assert.equal((await admin.put(ruta, { filas })).status, 400);
+  }
+  assert.equal((await admin.get(ruta)).json.origen, 'referencia');
+
+  // El negocio corrige con lo que dice su cuenta: queda ordenado y como suyo.
+  const propias = await admin.put(ruta, { filas: [{ cuotas: 6, costo_pct: '17,5' }, { cuotas: 3, costo_pct: 9 }] });
+  assert.equal(propias.status, 200);
+  assert.equal(propias.json.origen, 'propias');
+  assert.deepEqual(propias.json.filas, [{ cuotas: 3, costo_pct: 9 }, { cuotas: 6, costo_pct: 17.5 }]);
+  // Otro negocio sigue viendo la de referencia.
+  assert.equal((await otro.get(ruta)).json.origen, 'referencia');
+
+  // Volver a la de referencia borra lo corregido.
+  const vuelta = await admin.del(ruta);
+  assert.equal(vuelta.json.origen, 'referencia');
+  assert.equal(vuelta.json.filas.length, referencia.filas.length);
+});
+
 test('sin conectar: se ofrece al admin, el empleado no lo ve, y no hay link', async () => {
   assert.deepEqual(await estadoDe(admin), { disponible: true, conectada: false, plan_lo_incluye: true });
   assert.equal((await empleado.get('/api/integraciones/mercadopago')).status, 403);
@@ -348,6 +378,13 @@ test('el pago aprobado entra una sola vez: cobro, comisión y cuotas como gastos
   assert.equal(cobros[0].importe, 30000);
   assert.equal(cobros[0].cuenta, 'Mercado Pago');
   assert.equal(cobros[0].nota, 'Mercado Pago, pago 9001 (tarjeta de crédito en 3 cuotas)');
+
+  // La página de Mercado Pago muestra lo que cobró de verdad por cada plan de
+  // cuotas, sumado de los pagos (no hay tarifas que leer de antemano).
+  const { costos: costosDeCuotas } = await estadoDe(admin);
+  assert.deepEqual(costosDeCuotas, [
+    { medio: 'credit_card', cuotas: 3, pagos: 1, importe: 30000, comision: 1500, financiacion: 2000 }
+  ]);
 
   const venta = (await admin.get(`/api/ventas/${ventaA}`)).json;
   assert.equal(venta.estado_cobro, 'cobrado');

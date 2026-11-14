@@ -667,6 +667,15 @@ function cuotasIniciales(medio) {
   return (medio.planes.find((p) => p.cuotas === 1) ?? medio.planes[0]).cuotas;
 }
 
+// Una transferencia cae en la cuenta que se elige al cobrar (el banco, Mercado
+// Pago…): cualquiera menos la caja. Arranca en la del medio (hist. §172).
+const cuentasDeTransferencia = () => cuentas.filter((c) => c.tipo !== "efectivo");
+function cuentaInicial(medio) {
+  if (medio?.tipo !== "transferencia") return null;
+  const posibles = cuentasDeTransferencia();
+  return (posibles.find((c) => c.id === medio.cuenta_tesoreria_id) ?? posibles[0])?.id ?? null;
+}
+
 function resolverCliente() {
   const nombre = posCliente.value.trim();
   if (!nombre || nombre.toLowerCase() === CONSUMIDOR_FINAL.toLowerCase()) return { cliente: null };
@@ -689,7 +698,7 @@ function abrirCobro() {
   const total = totalCarrito();
   // Arranca en efectivo: es lo que más se usa, y un toque lo cambia.
   const inicial = medioEfectivo() ?? medios[0];
-  cobro = { total, cliente, filas: [{ medio_id: inicial.id, cuotas: cuotasIniciales(inicial), importe: total }] };
+  cobro = { total, cliente, filas: [{ medio_id: inicial.id, cuotas: cuotasIniciales(inicial), cuenta_id: cuentaInicial(inicial), importe: total }] };
 
   document.getElementById("formPosCobro").hidden = false;
   document.getElementById("posExito").hidden = true;
@@ -727,6 +736,14 @@ function renderFilasCobro() {
               .map((p) => `<option value="${esc(p.cuotas)}" ${p.cuotas === f.cuotas ? "selected" : ""}>${esc(textoCuotas(p.cuotas))}</option>`)
               .join("")}</select>`
           : "";
+      // La transferencia pregunta en qué cuenta cayó, si hay más de una.
+      const destinos = medio?.tipo === "transferencia" ? cuentasDeTransferencia() : [];
+      const cuenta =
+        destinos.length > 1
+          ? `<select class="pos-cobro-cuenta" aria-label="Cuenta donde cae">${destinos
+              .map((c) => `<option value="${c.id}" ${c.id === f.cuenta_id ? "selected" : ""}>${esc(c.nombre)}</option>`)
+              .join("")}</select>`
+          : "";
       const dias = medio?.dias_acreditacion ?? 0;
       const textoAcredita = dias === 1 ? "Se acredita en 1 día" : `Se acredita en ${dias} días`;
       const acredita = dias > 0 ? `<span class="pos-cobro-acredita">${esc(textoAcredita)}</span>` : "";
@@ -736,7 +753,7 @@ function renderFilasCobro() {
             <select class="pos-cobro-medio-select" aria-label="Medio de pago">
               ${medios.map((m) => `<option value="${m.id}" ${m.id === f.medio_id ? "selected" : ""}>${esc(m.nombre)}</option>`).join("")}
             </select>
-            ${cuotas}${acredita}
+            ${cuotas}${cuenta}${acredita}
           </div>
           <input type="number" class="pos-cobro-importe" value="${f.importe ? Number(f.importe) : ""}" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Importe" />
           ${cobro.filas.length > 1 ? `<button type="button" class="btn-icon pos-cobro-quitar" aria-label="Quitar este medio">${icono("x")}</button>` : ""}
@@ -792,10 +809,13 @@ document.getElementById("posCobros").addEventListener("change", (e) => {
   if (e.target.classList.contains("pos-cobro-medio-select")) {
     datos.medio_id = Number(e.target.value);
     datos.cuotas = cuotasIniciales(medioPorId(datos.medio_id));
-    // Cambia lo que muestra la fila (cuotas, acreditación): se dibuja de nuevo.
+    datos.cuenta_id = cuentaInicial(medioPorId(datos.medio_id));
+    // Cambia lo que muestra la fila (cuotas, cuenta, acreditación): se dibuja de nuevo.
     renderFilasCobro();
   } else if (e.target.classList.contains("pos-cobro-cuotas")) {
     datos.cuotas = Number(e.target.value);
+  } else if (e.target.classList.contains("pos-cobro-cuenta")) {
+    datos.cuenta_id = Number(e.target.value);
   } else {
     return;
   }
@@ -823,11 +843,12 @@ document.getElementById("posMedios").addEventListener("click", (e) => {
     return;
   }
   const cuotas = cuotasIniciales(medioPorId(medioId));
+  const cuenta_id = cuentaInicial(medioPorId(medioId));
   const { falta } = calcularCobro();
   if (falta < CENTAVO && cobro.filas.length === 1) {
-    cobro.filas[0] = { medio_id: medioId, cuotas, importe: cobro.total };
+    cobro.filas[0] = { medio_id: medioId, cuotas, cuenta_id, importe: cobro.total };
   } else {
-    cobro.filas.push({ medio_id: medioId, cuotas, importe: falta });
+    cobro.filas.push({ medio_id: medioId, cuotas, cuenta_id, importe: falta });
   }
   renderFilasCobro();
   actualizarCobro();
@@ -842,8 +863,13 @@ function cobrosParaEnviar(vuelto) {
   const porMedio = new Map();
   for (const f of cobro.filas) {
     if (!(f.importe > 0)) continue;
-    const clave = `${f.medio_id}:${f.cuotas ?? ""}`;
-    porMedio.set(clave, { medio_id: f.medio_id, cuotas: f.cuotas, importe: redondear((porMedio.get(clave)?.importe ?? 0) + f.importe) });
+    const clave = `${f.medio_id}:${f.cuotas ?? ""}:${f.cuenta_id ?? ""}`;
+    porMedio.set(clave, {
+      medio_id: f.medio_id,
+      cuotas: f.cuotas,
+      cuenta_id: f.cuenta_id,
+      importe: redondear((porMedio.get(clave)?.importe ?? 0) + f.importe)
+    });
   }
   if (vuelto > 0) {
     const enEfectivo = [...porMedio.values()].find((c) => c.medio_id === efectivoId);
@@ -851,7 +877,12 @@ function cobrosParaEnviar(vuelto) {
   }
   return [...porMedio.values()]
     .filter((c) => c.importe >= CENTAVO)
-    .map(({ medio_id, cuotas, importe }) => ({ medio_cobro_id: medio_id, ...(cuotas ? { cuotas } : {}), importe }));
+    .map(({ medio_id, cuotas, cuenta_id, importe }) => ({
+      medio_cobro_id: medio_id,
+      ...(cuotas ? { cuotas } : {}),
+      ...(cuenta_id ? { cuenta_tesoreria_id: cuenta_id } : {}),
+      importe
+    }));
 }
 
 const btnPosACuenta = document.getElementById("btnPosACuenta");

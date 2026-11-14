@@ -314,6 +314,45 @@ export function desgloseDelPago(pago) {
   };
 }
 
+// Lo que cuesta ofrecer cuotas sin interés (hist. §172). Mercado Pago no da
+// esas tarifas por API ni se pueden leer de su web desde acá: son las de su
+// ayuda como las citan notas de prensa, vigentes desde el 10/2/2026 y + IVA.
+// Se muestran "sin confirmar" hasta que el negocio las corrija con lo que dice
+// su cuenta (tabla mercadopago_tarifas). Cuando Mercado Pago las cambie, se
+// actualiza esta lista y la fecha.
+export const TARIFAS_REFERENCIA = {
+  vigente_desde: '2026-02-10',
+  iva_pct: 21,
+  filas: [
+    { cuotas: 2, costo_pct: 7.79 },
+    { cuotas: 3, costo_pct: 10.49 },
+    { cuotas: 6, costo_pct: 18.69 },
+    { cuotas: 9, costo_pct: 26.49 },
+    { cuotas: 12, costo_pct: 32.29 },
+    { cuotas: 18, costo_pct: 41.59 }
+  ]
+};
+
+// Las tarifas que manda el negocio: cuotas enteras de 2 a 60, sin repetir, y un
+// porcentaje de 0 a 100. Devuelve { filas } o { error }.
+export function validarTarifas(filas) {
+  if (!Array.isArray(filas) || !filas.length || filas.length > 20) {
+    return { error: 'Cargá al menos un plan de cuotas.' };
+  }
+  const vistas = new Set();
+  const limpias = [];
+  for (const fila of filas) {
+    const cuotas = Number(fila?.cuotas);
+    const costo = Number(String(fila?.costo_pct ?? '').replace(',', '.'));
+    if (!Number.isInteger(cuotas) || cuotas < 2 || cuotas > 60) return { error: 'Las cuotas van de 2 a 60.' };
+    if (!Number.isFinite(costo) || costo < 0 || costo > 100) return { error: `El costo de ${cuotas} cuotas tiene que estar entre 0 y 100 %.` };
+    if (vistas.has(cuotas)) return { error: `Hay dos filas de ${cuotas} cuotas.` };
+    vistas.add(cuotas);
+    limpias.push({ cuotas, costo_pct: redondear(costo) });
+  }
+  return { filas: limpias.sort((a, b) => a.cuotas - b.cuotas) };
+}
+
 // Cómo se llama cada medio, para mostrarlo.
 export const NOMBRE_MEDIO = {
   credit_card: 'tarjeta de crédito',

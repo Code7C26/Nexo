@@ -1308,7 +1308,10 @@ también las etiquetas de la balanza (Configuración → Balanza deduce su
 formato; el precio es el de hoy, nunca el de la etiqueta; hist. §132).
 **Medios de cobro** (hist. §171): el mostrador no ofrece las cuentas de
 tesorería sino los medios que el negocio configura en Configuración → Medios de
-cobro (Efectivo, Débito, Crédito, Transferencia, Mercado Pago, o los suyos).
+cobro (Efectivo, Débito, Crédito, Transferencia, o los suyos). Mercado Pago no
+es un medio: es adónde cae la plata. La Transferencia elige la cuenta al cobrar
+(el banco, Mercado Pago…) y el QR de Mercado Pago es un botón aparte, con la
+cuenta conectada (hist. §172).
 Cada medio dice a qué cuenta entra la plata (el efectivo, siempre la caja del
 turno), su comisión, en cuántos días se acredita y, en el crédito, sus planes de
 cuotas con lo que le cuesta al negocio ofrecerlos. La comisión y ese costo se

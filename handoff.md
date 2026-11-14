@@ -21,6 +21,64 @@
 
 ## Estado actual (14 de noviembre de 2026)
 
+**14 de noviembre, después de §171: Medios de cobro pasa a "Cobros" y las
+cuotas de Mercado Pago salen de Mercado Pago (sin commitear en `solla`).**
+- **Pedido del usuario:** las cuotas de Mercado Pago no se cargan a mano, que
+  salgan de la conexión; y "Medios de cobro" va en el grupo **Cobros** de
+  Configuración, arriba de Mercado Pago.
+- **Menú:** el ítem Medios de cobro salió del grupo de Comprobantes y quedó
+  primero en Cobros (`frontend/index.html`). Misma sección, mismo permiso
+  (`data-modulo="pos"`).
+- **Qué se pudo y qué no con Mercado Pago (hist. §172):** la API no publica
+  una tabla de tarifas por cuota que Nexo pueda leer de antemano, y sus páginas
+  de costos dan 403 a una lectura automática (se buscó). Lo que sí da, en cada
+  pago real, es la comisión y el costo de las cuotas sin interés, y eso Nexo ya
+  lo anota solo como gasto de la venta (§130). Dos cosas se hicieron:
+  - **Lo que ya cobró:** `GET /api/integraciones/mercadopago` devuelve `costos`
+    (por medio y cuotas: pagos, importe, comisión, financiación, de
+    `integracion_pagos` cobrados) y la página muestra "Lo que te cobra Mercado
+    Pago" (`pintarCostos`).
+  - **Lo que cuesta de antemano ("¿Te conviene ofrecer cuotas?"):** tabla
+    `mercadopago_tarifas` (nueva, aditiva) y rutas admin
+    `GET/PUT/DELETE /api/integraciones/mercadopago/tarifas`. Sin filas, se
+    muestra `TARIFAS_REFERENCIA` (`backend/mercadopago.js`: 2 cuotas 7,79 %,
+    3 10,49 %, 6 18,69 %, 9 26,49 %, 12 32,29 %, 18 41,59 %, + IVA, desde el
+    10/2/2026), **sin confirmar**, porque salen de notas de prensa que citan la
+    ayuda de Mercado Pago, no de la fuente. El negocio las corrige y se guardan
+    como suyas. La página tiene un simulador: monto + comisión por cobrar
+    (parte del promedio de sus pagos reales) → cuánto cuesta, cuánto queda y
+    cuánto cobrar para que quede lo mismo. **Cuando Mercado Pago cambie las
+    tarifas, actualizar la tabla y la fecha.** Elegido por el usuario
+    ("precargadas y editables").
+- **Medios de cobro y Mercado Pago (hist. §172, pedido del usuario):**
+  "Mercado Pago" no es una forma de cobrar sino adónde cae la plata.
+  - Un negocio nuevo ya no nace con el medio "Mercado Pago"; la cuenta de ese
+    tipo genera la Transferencia si no hay (`MEDIOS_DE_CUENTA` en
+    `db/index.js`; efectivo y transferencia son únicos por negocio).
+  - **La Transferencia elige la cuenta al cobrar:** en el mostrador
+    (`pos.js`, `cuentaInicial`) aparece "Cuenta donde cae" con las cuentas que
+    no son caja, y `POST /api/pos/ventas` acepta `cuenta_tesoreria_id` en el
+    cobro de un medio de tipo transferencia (valida que sea de la empresa y no
+    efectivo; en otros medios se ignora). El QR sigue como botón aparte con
+    Mercado Pago conectado; el link de pago, desde "Registrar cobro".
+  - **Migración, una vez** (`PRAGMA user_version = 1` en `db/index.js`): el
+    medio "Mercado Pago" billetera creado solo y sin tocar (sin comisión, días
+    ni planes) pasa a ser la Transferencia si el negocio no tenía, o se borra si
+    la tenía y no tiene cobros. Uno tocado queda como está.
+- **Menú y textos:** Medios de cobro va primero en el grupo Cobros de
+  Configuración; la billetera se ejemplifica con MODO y Cuenta DNI; el aviso de
+  "Planes de cuotas" aclara lo de Mercado Pago. CLAUDE.md §30 actualizado.
+- **Tests:** `mercadopago.test.js` (costos y tarifas), `medios-cobro.test.js`
+  (sin medio Mercado Pago, transferencia a la cuenta elegida) y
+  `medios-cobro-migracion.test.js` (nuevo). Lint y 382 tests en verde.
+- **Falta / decisión abierta:** no se miró nada en el navegador (el selector
+  de cuenta del mostrador y el panel de tarifas). La comisión base por cobro de
+  Mercado Pago (según medio y días de acreditación) no está cargada: solo la
+  escribe el negocio o sale del promedio de sus pagos. Las cuotas que se ven
+  en el simulador no limitan lo que ofrece el link: eso se decide en la cuenta
+  de Mercado Pago (se podría fijar `payment_methods.installments` en la
+  preferencia del link, a decidir con el usuario).
+
 **14 de noviembre, hist. §170: primera lista de la contadora (sin commitear en
 `solla`).**
 - **Filtros arreglados** (`frontend/js/core/filtros.js`): al agregar un filtro

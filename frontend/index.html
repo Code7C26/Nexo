@@ -3899,11 +3899,6 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Balanza</span><span class="config-item-desc" id="configBalanzaResumen">Que el mostrador lea sus etiquetas</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
-              <a class="config-item" href="#/configuracion/medios-cobro" data-seccion="medios-cobro" data-modulo="pos">
-                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#credit-card"></use></svg></span>
-                <span class="config-item-texto"><span class="config-item-nombre">Medios de cobro</span><span class="config-item-desc">Cómo te pagan y a qué cuenta entra</span></span>
-                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
-              </a>
               <a class="config-item" href="#/configuracion/comprobantes" data-seccion="comprobantes">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
@@ -3940,6 +3935,11 @@
                  Lleva su emblema, como los canales. -->
             <div class="config-grupo col-admin">
               <p class="config-grupo-titulo">Cobros</p>
+              <a class="config-item" href="#/configuracion/medios-cobro" data-seccion="medios-cobro" data-modulo="pos">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#credit-card"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Medios de cobro</span><span class="config-item-desc">Cómo te pagan y a qué cuenta entra</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/mercado-pago" data-seccion="mercado-pago">
                 <span class="config-item-icono"><svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Mercado Pago</span><span class="config-item-desc" id="configMercadoPagoResumen">Cobrá con un link y que entre solo</span></span>
@@ -4444,6 +4444,40 @@
                 </li>
               </ol>
 
+              <!-- Lo que cuesta cada plan de cuotas, para decidir si ofrecerlo
+                   (hist. §172). Se ve conectada o no. -->
+              <section class="panel" aria-labelledby="mpTarifasTitulo" id="mpTarifasPanel" hidden>
+                <div class="panel-head"><h2 id="mpTarifasTitulo">¿Te conviene ofrecer cuotas?</h2></div>
+                <p class="tn-ayuda" id="mpTarifasOrigen"></p>
+                <div class="form-fila">
+                  <label>Si la venta es de ($)
+                    <input type="number" id="mpTarifasMonto" min="1" step="1" inputmode="decimal" value="10000" />
+                  </label>
+                  <label>Comisión por cobrar (%)
+                    <input type="number" id="mpTarifasComision" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0" />
+                  </label>
+                </div>
+                <p class="campo-ayuda">Además de las cuotas, Mercado Pago cobra una comisión por cada cobro que depende de cómo te pagan y de cuándo querés la plata. Cargá la de tu cuenta: si ya cobraste con Mercado Pago, empieza con el promedio de tus pagos.</p>
+                <div class="tabla-scroll">
+                  <table class="ledger-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Plan</th>
+                        <th scope="col" class="align-right">Costo de las cuotas (% sin IVA)</th>
+                        <th scope="col" class="align-right">Te cuesta</th>
+                        <th scope="col" class="align-right">Te queda</th>
+                        <th scope="col" class="align-right">Para que te quede lo mismo, cobrá</th>
+                      </tr>
+                    </thead>
+                    <tbody id="mpTarifasBody"></tbody>
+                  </table>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnMpTarifasRestaurar" hidden>Volver a la tabla de referencia</button>
+                  <button type="button" class="btn btn-primary" id="btnMpTarifasGuardar">Guardar mis tarifas</button>
+                </div>
+              </section>
+
               <div class="tn-conectada" id="mpConectada" hidden>
                 <form class="form config-tarjeta" id="formMpAjustes" novalidate>
                   <div class="config-tarjeta-cuerpo">
@@ -4496,6 +4530,27 @@
                     <button type="submit" class="btn btn-primary">Armar la caja</button>
                   </div>
                 </form>
+
+                <!-- Lo que Mercado Pago cobró de verdad por cada plan de cuotas,
+                     sacado de los pagos que llegaron: no hay que cargarlo a mano. -->
+                <section class="panel" aria-labelledby="mpCostosTitulo" id="mpCostosPanel" hidden>
+                  <div class="panel-head"><h2 id="mpCostosTitulo">Lo que te cobra Mercado Pago</h2></div>
+                  <p class="tn-ayuda">Sale de tus pagos reales: la comisión y el costo de las cuotas sin interés que Mercado Pago descontó en cada uno, contra lo que se cobró. Sirve para saber cuánto te cuesta ofrecer cada plan. Esto ya se anota solo en cada venta cobrada con Mercado Pago: no hace falta cargarlo en Medios de cobro.</p>
+                  <div class="tabla-scroll">
+                    <table class="ledger-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Cómo pagaron</th>
+                          <th scope="col" class="align-right">Pagos</th>
+                          <th scope="col" class="align-right">Comisión</th>
+                          <th scope="col" class="align-right">Cuotas sin interés</th>
+                          <th scope="col" class="align-right">Te cuesta</th>
+                        </tr>
+                      </thead>
+                      <tbody id="mpCostosBody"></tbody>
+                    </table>
+                  </div>
+                </section>
 
                 <section class="panel" aria-labelledby="mpPagosTitulo">
                   <div class="panel-head">
@@ -4825,7 +4880,7 @@
                         <option value="debito">Débito</option>
                         <option value="credito">Crédito</option>
                         <option value="transferencia">Transferencia</option>
-                        <option value="billetera">Billetera (Mercado Pago, MODO…)</option>
+                        <option value="billetera">Billetera (MODO, Cuenta DNI…)</option>
                         <option value="efectivo">Efectivo</option>
                         <option value="otro">Otro</option>
                       </select>
@@ -4835,6 +4890,7 @@
                     <select name="cuenta_tesoreria_id"></select>
                   </label>
                   <p class="campo-ayuda" id="medioCobroEfectivoAyuda" hidden>El efectivo entra siempre en la caja del turno, así el arqueo de la caja cierra.</p>
+                  <p class="campo-ayuda" id="medioCobroTransferenciaAyuda" hidden>En el mostrador, al cobrar con transferencia se elige en qué cuenta cayó (el banco, Mercado Pago…). Esta es la que aparece de partida.</p>
                   <div class="form-fila">
                     <label>Comisión (%)
                       <input type="number" name="comision_pct" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0" />
@@ -4846,7 +4902,7 @@
                   <p class="campo-ayuda">La comisión es lo que se queda quien procesa el pago: se anota sola como un gasto de cada venta. Los días son los que tarda la plata en llegar a la cuenta.</p>
                   <div id="medioCobroPlanesCampo" hidden>
                     <p class="config-tarjeta-titulo">Planes de cuotas</p>
-                    <p class="campo-ayuda">En cuántas cuotas ofrecés este medio. Si las cuotas son sin interés para el cliente, cargá cuánto te cuesta a vos ofrecerlas: se anota como un gasto de la venta.</p>
+                    <p class="campo-ayuda">En cuántas cuotas ofrecés este medio. Si las cuotas son sin interés para el cliente, cargá cuánto te cuesta a vos ofrecerlas: se anota como un gasto de la venta. Para lo que cobrás con Mercado Pago no hace falta: con la cuenta conectada, Nexo anota el costo real de cada pago, y en Mercado Pago ves cuánto te cobró por cada plan.</p>
                     <div id="medioCobroPlanes" class="medio-planes"></div>
                     <button type="button" class="btn btn-secundario btn-chico" id="btnMedioPlan">Sumar un plan</button>
                   </div>

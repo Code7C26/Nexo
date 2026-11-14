@@ -1985,3 +1985,18 @@ CREATE TABLE IF NOT EXISTS integracion_pagos (
   UNIQUE (integracion_id, externo_id)
 );
 CREATE INDEX IF NOT EXISTS idx_integracion_pagos_venta ON integracion_pagos(venta_id);
+
+-- Lo que cuesta ofrecer cada plan de cuotas sin interés con Mercado Pago, para
+-- que el negocio vea de antemano si le conviene (hist. §172). Mercado Pago no
+-- da esas tarifas por API: Nexo trae una tabla de referencia (TARIFAS_REFERENCIA
+-- en mercadopago.js) y el negocio la corrige con lo que dice su cuenta. Sin
+-- filas, se muestra la de referencia como "sin confirmar"; con filas, son las
+-- del negocio. costo_pct es sin IVA, como las publica Mercado Pago.
+CREATE TABLE IF NOT EXISTS mercadopago_tarifas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  cuotas INTEGER NOT NULL CHECK (cuotas >= 2 AND cuotas <= 60),
+  costo_pct REAL NOT NULL CHECK (costo_pct >= 0 AND costo_pct <= 100),
+  actualizado_en TEXT NOT NULL,
+  UNIQUE (organizacion_id, cuotas)
+);
