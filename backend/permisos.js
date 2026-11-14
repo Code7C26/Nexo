@@ -333,7 +333,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/plataforma/resumen': 'plataforma',
   'GET /api/plataforma/cuentas': 'plataforma',
   'GET /api/plataforma/negocios': 'plataforma',
-  'PUT /api/plataforma/negocios/:id/plan': 'plataforma',
+  'PUT /api/plataforma/cuentas/:id/plan': 'plataforma',
   // Tienda Nube (etapa G, CLAUDE.md §32). Lo que llega desde Tienda Nube es
   // público: la vuelta del permiso (controla la sesión y el `state` adentro) y
   // los webhooks (firmados con el secreto de la app). Conectar, publicar y

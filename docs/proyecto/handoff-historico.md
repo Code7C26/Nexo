@@ -13195,4 +13195,10 @@ styles.css; `tablaCargando` ahora dibuja una barra por columna; `listaCargando`
 `[data-cargando]` convierte cada texto y cifra de una zona en su barra (el
 Resumen, la primera vez y al cambiar de período).
 
+**Corrección del mismo día (pedido del usuario):** en Plataforma el plan se cambia
+desde la **cuenta** (pestaña Cuentas, `PUT /api/plataforma/cuentas/:id/plan`), no
+desde el negocio: la ruta por negocio se eliminó y la pestaña Negocios solo
+muestra el plan y de qué cuenta es. Una cuenta que no creó negocios (un
+empleado) no tiene plan propio.
+
 **Suite:** 371 tests, lint y `npm run i18n` en 0.

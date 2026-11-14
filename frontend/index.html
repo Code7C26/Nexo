@@ -3818,6 +3818,7 @@
                 <tr>
                   <th scope="col">Cuenta</th>
                   <th scope="col">Negocios</th>
+                  <th scope="col">Plan</th>
                   <th scope="col">Creada</th>
                   <th scope="col">Último uso</th>
                   <th scope="col">Mail</th>
@@ -6091,7 +6092,8 @@
     </div>
   </div>
   <!-- Cerrar como perdida: el motivo, con los más comunes a un toque. -->
-  <!-- El plan de un negocio, desde la plataforma (solo NEXO_ADMIN_PLATAFORMA). -->
+  <!-- El plan de una cuenta, desde la plataforma (solo NEXO_ADMIN_PLATAFORMA):
+       es de la cuenta y vale para todos sus negocios (hist. §168). -->
   <div class="modal" id="modalPlanNegocio" role="dialog" aria-modal="true" aria-labelledby="modalPlanNegocioTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
@@ -6105,7 +6107,7 @@
         <label>Hasta
           <input type="date" name="hasta" />
         </label>
-        <p class="form-note">Vacío, no vence. Cuando vence, el negocio pasa a Gratis sin perder nada. Queda en su auditoría.</p>
+        <p class="form-note"><span id="modalPlanNegocioCubre"></span> Vacío, no vence. Cuando vence, pasan a Gratis sin perder nada. Queda en la auditoría de cada negocio.</p>
         <button type="submit" class="btn btn-primary btn-full">Guardar plan</button>
       </form>
     </div>

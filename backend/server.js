@@ -20211,6 +20211,8 @@ app.get('/api/plataforma/cuentas', soloPlataforma, (req, res) => {
         ),
         edad: c.edad,
         baja: c.baja,
+        // El plan es de la cuenta (hist. §168): se cambia desde acá.
+        plan: planDeCuenta(c.id),
         negocios: suyos.map((p) => ({ id: p.id, nombre: p.nombre, rol: p.rol, activo: !!p.activo }))
       };
     })
@@ -20258,15 +20260,22 @@ app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
   );
 });
 
-// Cambiar el plan de un negocio (pedido del usuario del 3 de noviembre: dar
-// Pro a quien prueba Nexo mientras el plan no se cobra). Lo mismo que
-// `npm run plan`, solo para NEXO_ADMIN_PLATAFORMA: ningún negocio se cambia
-// el plan a sí mismo, y el cambio queda en la auditoría de ese negocio.
-app.put('/api/plataforma/negocios/:id/plan', soloPlataforma, (req, res) => {
-  const negocio = db
-    .prepare('SELECT id, nombre, plan, plan_vence FROM organizaciones WHERE id = ? AND baja_hecha IS NULL AND ejemplo IS NULL')
-    .get(Number(req.params.id));
-  if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado.' });
+// Cambiar el plan de una CUENTA (pedido del usuario del 3 de noviembre: dar
+// Pro a quien prueba Nexo mientras el plan no se cobra; y del 14, hist. §168:
+// el plan es de la cuenta, no del negocio). Lo mismo que `npm run plan`, solo
+// para NEXO_ADMIN_PLATAFORMA: nadie se cambia el plan a sí mismo, y el cambio
+// queda en la auditoría de cada negocio de la cuenta. Una cuenta que no creó
+// ningún negocio (un empleado) no tiene plan propio: rige el del negocio donde
+// trabaja, que es de otra cuenta.
+app.put('/api/plataforma/cuentas/:id/plan', soloPlataforma, (req, res) => {
+  const propios = db
+    .prepare(
+      `SELECT id, plan, plan_vence FROM organizaciones
+        WHERE propietario_id = ? AND baja_hecha IS NULL AND ejemplo IS NULL ORDER BY id`
+    )
+    .all(Number(req.params.id));
+  if (!propios.length) return res.status(404).json({ error: 'Esa cuenta no tiene negocios propios: su plan es el del negocio donde trabaja.' });
+  const negocio = propios[0];
   const plan = req.body?.plan;
   if (typeof plan !== 'string' || !esPlan(plan)) return res.status(400).json({ error: 'El plan no es válido.' });
   let hasta = null;
@@ -20295,6 +20304,25 @@ app.put('/api/plataforma/negocios/:id/plan', soloPlataforma, (req, res) => {
   });
   res.json({ ok: true, negocios: tocados.length });
 });
+
+// Cada cuenta con el plan que paga y cuántos negocios cubre (null si no creó
+// ninguno: trabaja en los de otros).
+function planDeCuenta(usuarioId) {
+  const propios = db
+    .prepare('SELECT plan, plan_vence FROM organizaciones WHERE propietario_id = ? AND baja_hecha IS NULL AND ejemplo IS NULL ORDER BY id')
+    .all(usuarioId);
+  if (!propios.length) return null;
+  const hoy = fechaDeHoy();
+  const [{ plan, plan_vence }] = propios;
+  const vigente = planEfectivo({ plan, plan_vence }, hoy);
+  return {
+    clave: plan,
+    vigente,
+    nombre: PLANES[vigente].nombre,
+    vence: plan_vence,
+    negocios: propios.length
+  };
+}
 
 /* ---------- Integraciones: Tienda Nube (etapa G, CLAUDE.md §32) ---------- */
 

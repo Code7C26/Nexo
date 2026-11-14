@@ -197,6 +197,14 @@ export default {
   "🛍️ {0}¿Qué variante de *{1}* es? {2}{3} Respondé con el número, o escribí *cancelar*.": null,
 
   // Mis negocios y el plan de la cuenta (hist. §168)
+  "Vacío, no vence. Cuando vence, pasan a Gratis sin perder nada. Queda en la auditoría de cada negocio.": "Empty means it doesn't expire. When it expires, they go back to Free without losing anything. It is recorded in each business's audit log.",
+  "Negocios que cubre: {0}": "Businesses covered: {0}",
+  "Plan de la cuenta de {0}": "Plan of {0}'s account",
+  "Vale para sus {0} negocios.": "It covers its {0} businesses.",
+  "Vale para su negocio.": "It covers its business.",
+  "La cuenta de {0} pasó a {1}: vale para sus {2} negocios.": "{0}'s account moved to {1}: it covers its {2} businesses.",
+  "La cuenta de {0} pasó a {1}.": "{0}'s account moved to {1}.",
+  "Esa cuenta no tiene negocios propios: su plan es el del negocio donde trabaja.": "That account has no businesses of its own: its plan is the one of the business where it works.",
   "Mis negocios": "My businesses",
   "Los negocios donde trabajás y qué sos en cada uno. El plan es de la cuenta: vale para todos los negocios que creaste vos. En uno donde te invitaron rige el plan de quien lo creó.": "The businesses where you work and what you are in each one. The plan belongs to the account: it covers all the businesses you created. In one where you were invited, the plan of whoever created it applies.",
   "Lo creaste vos": "You created it",

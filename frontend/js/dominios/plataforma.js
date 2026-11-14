@@ -111,6 +111,18 @@ function negociosDeCuenta(c) {
     .join("")}</div>`;
 }
 
+// El plan de la cuenta (hist. §168): el que paga y cuántos negocios cubre.
+// Quien no creó ningún negocio (un empleado) no tiene plan propio.
+function planDeCuenta(c) {
+  if (!c.plan) return '<span class="celda-meta">Sin negocios propios</span>';
+  const { plan: p } = c;
+  const nombre = `<span class="celda-principal">${esc(p.nombre)}</span>`;
+  const cubre = `<span class="celda-meta">Negocios que cubre: ${numero(p.negocios)}</span>`;
+  const vence = p.clave !== p.vigente ? `<span class="celda-meta">Venció el ${esc(fechaAR(p.vence))}</span>` : p.vence ? `<span class="celda-meta">Hasta el ${esc(fechaAR(p.vence))}</span>` : "";
+  const cambiar = c.baja ? "" : `<button type="button" class="btn-link" data-plan-cuenta="${c.id}">Cambiar</button>`;
+  return `${nombre}${vence}${cubre}${cambiar}`;
+}
+
 function pintarCuentas() {
   const texto = document.getElementById("platCuentasBuscar").value.trim().toLocaleLowerCase("es");
   const lista = texto
@@ -120,7 +132,7 @@ function pintarCuentas() {
     : cuentas;
   const body = document.getElementById("platCuentasBody");
   if (!lista.length) {
-    body.innerHTML = filaVacia(5, texto ? "Ninguna cuenta coincide con la búsqueda." : "Todavía no hay cuentas.");
+    body.innerHTML = filaVacia(6, texto ? "Ninguna cuenta coincide con la búsqueda." : "Todavía no hay cuentas.");
     return;
   }
   body.innerHTML = lista
@@ -133,6 +145,7 @@ function pintarCuentas() {
         </td>
         ${celdaMovil(c.email ?? "Sin mail", c.negocios.map((n) => n.nombre).join(", ") || "Sin negocio", haceCuanto(c.ultimo_uso))}
         <td data-label="Negocios">${negociosDeCuenta(c)}</td>
+        <td data-label="Plan">${planDeCuenta(c)}</td>
         <td data-label="Creada">${esc(diaLocal(c.fecha_alta))}</td>
         <td data-label="Último uso" title="${esc(c.ultimo_uso ? fechaHoraAR(c.ultimo_uso) : "")}">${esc(haceCuanto(c.ultimo_uso))}</td>
         <td data-label="Mail" class="m-estado">${estadoDeCuenta(c)}</td>
@@ -142,22 +155,21 @@ function pintarCuentas() {
 }
 
 async function cargarCuentas() {
-  tablaCargando("platCuentasBody", 5);
+  tablaCargando("platCuentasBody", 6);
   cuentas = await api("/api/plataforma/cuentas", { error: "No se pudieron cargar las cuentas." });
   pintarCuentas();
 }
 
 /* ---------- Negocios ---------- */
 
-// El plan que rige, y por qué si no es el guardado (venció la prueba).
+// El plan que rige, y por qué si no es el guardado (venció la prueba). Es de la
+// cuenta (hist. §168): acá solo se ve, y se cambia desde la pestaña Cuentas.
 function planDeNegocio(n) {
   const nombre = `<span class="celda-principal">${esc(n.plan_nombre)}</span>`;
-  const cambiar = n.se_borra ? "" : `<button type="button" class="btn-link" data-plan-negocio="${n.id}">Cambiar</button>`;
-  // El plan es de la cuenta (hist. §168): el cambio alcanza a todos sus negocios.
-  const cuenta = n.negocios_de_la_cuenta > 1 ? `<span class="celda-meta">Vale para los ${numero(n.negocios_de_la_cuenta)} negocios de la cuenta</span>` : "";
-  if (n.plan !== n.plan_vigente) return `${nombre}<span class="celda-meta">Venció el ${esc(fechaAR(n.plan_vence))}</span>${cuenta}${cambiar}`;
-  if (n.plan_vence) return `${nombre}<span class="celda-meta">Hasta el ${esc(fechaAR(n.plan_vence))}</span>${cuenta}${cambiar}`;
-  return `${nombre}${cuenta}${cambiar}`;
+  const deQuien = n.propietario ? `<span class="celda-meta">Plan de la cuenta de ${esc(n.propietario)}</span>` : "";
+  if (n.plan !== n.plan_vigente) return `${nombre}<span class="celda-meta">Venció el ${esc(fechaAR(n.plan_vence))}</span>${deQuien}`;
+  if (n.plan_vence) return `${nombre}<span class="celda-meta">Hasta el ${esc(fechaAR(n.plan_vence))}</span>${deQuien}`;
+  return `${nombre}${deQuien}`;
 }
 
 function estadoDeNegocio(n) {
@@ -214,26 +226,25 @@ const formPlan = document.getElementById("formPlanNegocio");
 let cambiandoPlan = null;
 let planes = null;
 
-async function abrirPlan(negocio) {
+async function abrirPlan(cuenta) {
   // Los planes, del mismo catálogo que la landing: una vez por sesión.
   planes ??= (await api("/api/auth/planes", { error: "No se pudieron cargar los planes." })).planes;
-  cambiandoPlan = negocio;
+  cambiandoPlan = cuenta;
   formPlan.plan.innerHTML = planes.map((p) => `<option value="${esc(p.clave)}">${esc(p.nombre)}</option>`).join("");
   // Lo guardado, aunque haya vencido: se ve qué tenía y hasta cuándo.
-  formPlan.plan.value = negocio.plan;
-  formPlan.hasta.value = negocio.plan_vence ?? "";
-  document.getElementById("modalPlanNegocioTitulo").textContent =
-    negocio.negocios_de_la_cuenta > 1
-      ? `Plan de la cuenta de ${negocio.propietario ?? negocio.nombre} (${negocio.negocios_de_la_cuenta} negocios)`
-      : `Plan de ${negocio.nombre}`;
+  formPlan.plan.value = cuenta.plan.clave;
+  formPlan.hasta.value = cuenta.plan.vence ?? "";
+  document.getElementById("modalPlanNegocioTitulo").textContent = `Plan de la cuenta de ${cuenta.nombre}`;
+  document.getElementById("modalPlanNegocioCubre").textContent =
+    cuenta.plan.negocios > 1 ? `Vale para sus ${cuenta.plan.negocios} negocios.` : "Vale para su negocio.";
   modalPlan.hidden = false;
 }
 
-document.getElementById("platNegociosBody").addEventListener("click", (e) => {
-  const boton = e.target.closest("[data-plan-negocio]");
+document.getElementById("platCuentasBody").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-plan-cuenta]");
   if (!boton) return;
-  const negocio = negocios.find((n) => n.id === Number(boton.dataset.planNegocio));
-  if (negocio) abrirPlan(negocio);
+  const cuenta = cuentas.find((c) => c.id === Number(boton.dataset.planCuenta));
+  if (cuenta?.plan) abrirPlan(cuenta);
 });
 document.getElementById("modalPlanNegocioClose").addEventListener("click", () => {
   modalPlan.hidden = true;
@@ -247,7 +258,7 @@ formPlan.addEventListener("submit", async (e) => {
   boton.disabled = true;
   let tocados;
   try {
-    ({ negocios: tocados } = await api(`/api/plataforma/negocios/${cambiandoPlan.id}/plan`, {
+    ({ negocios: tocados } = await api(`/api/plataforma/cuentas/${cambiandoPlan.id}/plan`, {
       method: "PUT",
       body: { plan: formPlan.plan.value, hasta: formPlan.hasta.value || null },
       error: "No se pudo cambiar el plan."
@@ -258,10 +269,10 @@ formPlan.addEventListener("submit", async (e) => {
   modalPlan.hidden = true;
   const nombre = planes.find((p) => p.clave === formPlan.plan.value)?.nombre ?? formPlan.plan.value;
   avisar(
-    tocados > 1 ? `La cuenta pasó a ${nombre}: vale para sus ${tocados} negocios.` : `${cambiandoPlan.nombre} pasó a ${nombre}.`,
+    tocados > 1 ? `La cuenta de ${cambiandoPlan.nombre} pasó a ${nombre}: vale para sus ${tocados} negocios.` : `La cuenta de ${cambiandoPlan.nombre} pasó a ${nombre}.`,
     "ok"
   );
-  await cargarNegocios();
+  await cargarCuentas();
 });
 
 /* ---------- Pestañas ---------- */
