@@ -82,12 +82,13 @@ import "./dominios/negocios.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
 import "./dominios/balanza.js";
+import "./dominios/medios-cobro.js";
 import "./dominios/ofertas.js";
 import "./dominios/venta-online.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
-import { LOCALE } from "./core/idioma.js";
+import { LOCALE, formatear } from "./core/idioma.js";
 
 let facturas = [];
 
@@ -4349,6 +4350,11 @@ const filtrosVentas = crearFiltros(
         { valor: "cobrado", texto: "Cobrado" }
       ]
     },
+    // Cómo pagó (débito, crédito, efectivo…) y en qué cuenta entró la plata.
+    // Las opciones son los medios de cobro y las cuentas de tesorería, y se
+    // llenan al cargar (ver cargarVentas y opcionesCuentasVentas).
+    { clave: "medios_cobro", etiqueta: "Medio de cobro", tipo: "select", opciones: [] },
+    { clave: "cuentas_cobro", etiqueta: "Cobrado en", tipo: "select", opciones: [] },
     { clave: "total", etiqueta: "Total", tipo: "numero" },
     { clave: "costo_total", etiqueta: "Costo", tipo: "numero" },
     { clave: "margen", etiqueta: "Ganancia", tipo: "numero" },
@@ -4357,12 +4363,25 @@ const filtrosVentas = crearFiltros(
   filtrarVentas
 );
 
+function opcionesCuentasVentas() {
+  filtrosVentas.setOpciones(
+    "cuentas_cobro",
+    cuentasTesoreria.map((c) => ({ valor: c.id, texto: c.nombre }))
+  );
+}
+
 // `ventas` guarda todo lo que devuelve la API (incluidas las anuladas)
 // porque la papelera se arma sobre ese mismo array; la tabla de Ventas
 // filtra al renderizar.
 async function cargarVentas() {
   tablaCargando("ventasBody", selVentas.colspan(8));
-  ventas = await api("/api/ventas");
+  const [lista, mediosCobro] = await Promise.all([api("/api/ventas"), api("/api/medios-cobro")]);
+  ventas = lista;
+  filtrosVentas.setOpciones(
+    "medios_cobro",
+    mediosCobro.map((m) => ({ valor: m.id, texto: m.nombre }))
+  );
+  opcionesCuentasVentas();
   filtrarVentas();
   renderPapelera();
 }
@@ -4758,7 +4777,7 @@ async function abrirFichaVenta(id) {
     ["Cliente", venta.cliente],
     ["Fecha", fechaAR(venta.fecha)],
     ...(venta.canal ? [["Por dónde", CANALES_VENTA[venta.canal] ?? venta.canal]] : []),
-    ["Cobrado", `${money(venta.cobrado)} de ${money(venta.neto)}`],
+    ["Cobrado", formatear("{0} de {1}", money(venta.cobrado), money(venta.neto))],
     // Lo que bajaron las ofertas (hist. §133), si alguna se aplicó.
     ...(ahorroConOfertas >= 0.005 ? [["Ahorró con ofertas", html(`<span class="oferta-ahorro">${esc(money(ahorroConOfertas))}</span>`)]] : []),
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
@@ -6021,7 +6040,7 @@ async function abrirFichaCompra(id) {
         .join(" ") || null
     ],
     ...(compra.iva > 0 ? [["IVA (crédito fiscal)", money(compra.iva)]] : []),
-    ["Pagado", `${money(compra.pagado)} de ${money(compra.neto)}`],
+    ["Pagado", formatear("{0} de {1}", money(compra.pagado), money(compra.neto))],
     ["Estado de pago", badge(ESTADO_PAGO_CLASE[compra.estado_pago], ESTADO_PAGO_LABEL[compra.estado_pago] ?? compra.estado_pago)]
   ];
   document.getElementById("fichaCompraDatos").innerHTML = camposFicha(campos);

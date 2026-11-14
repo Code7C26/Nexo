@@ -127,6 +127,12 @@ export function rangoDeFiltroFecha(filtro) {
 }
 
 const estaVacio = (v) => v === null || v === undefined || String(v).trim() === "";
+// "camion" encuentra "Camión": sin acentos ni mayúsculas.
+const plano = (v) =>
+  String(v ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
 // El corte del celular (styles.css): ahí el popover es una hoja desde abajo.
 const celular = window.matchMedia("(max-width: 860px)");
 
@@ -172,12 +178,17 @@ function cumpleFiltro(fila, filtro, campo) {
   // Los select comparan el valor crudo (suelen ser ids); los textos
   // comparan sin distinguir mayúsculas ni acentos de más.
   if (campo.tipo === "select") {
-    if (operador === "es") return String(bruto) === String(valor);
-    if (operador === "no_es") return String(bruto) !== String(valor);
+    // Una fila puede tener varios valores (una venta cobrada en dos cuentas):
+    // "es" pide que alguno coincida, "no es" que ninguno lo haga.
+    const tiene = Array.isArray(bruto)
+      ? bruto.some((b) => String(b) === String(valor))
+      : String(bruto) === String(valor);
+    if (operador === "es") return tiene;
+    if (operador === "no_es") return !tiene;
     return true;
   }
-  const texto = String(bruto ?? "").toLowerCase();
-  const busca = String(valor).toLowerCase();
+  const texto = plano(bruto);
+  const busca = plano(valor);
   switch (operador) {
     case "contiene": return texto.includes(busca);
     case "no_contiene": return !texto.includes(busca);
@@ -297,6 +308,10 @@ export function crearFiltros(contenedorId, campos, onCambio) {
         // Se abre enseguida para poder completar el valor sin otro click.
         const chip = contenedor.querySelectorAll(".filtro-chip")[filtros.length - 1];
         abrirEditorFiltro(filtros.length - 1, chip);
+        // Una fecha nace en "es hoy", que no pide valor: ya filtra. Sin avisar
+        // acá, el chip decía "hoy" y la lista seguía mostrando todo hasta que
+        // se tocara otra cosa.
+        onCambio(filtros);
       });
     });
   }

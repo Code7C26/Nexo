@@ -3899,6 +3899,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Balanza</span><span class="config-item-desc" id="configBalanzaResumen">Que el mostrador lea sus etiquetas</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/medios-cobro" data-seccion="medios-cobro" data-modulo="pos">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#credit-card"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Medios de cobro</span><span class="config-item-desc">Cómo te pagan y a qué cuenta entra</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/comprobantes" data-seccion="comprobantes">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Comprobantes y datos fiscales</span><span class="config-item-desc">CUIT, condición fiscal y pie</span></span>
@@ -4780,6 +4785,75 @@
                 <div class="config-tarjeta-pie">
                   <p>Para renombrar una etapa, tocá el lápiz de su fila. Las flechas cambian el orden.</p>
                   <button type="submit" class="btn btn-primary" id="formEtapaConsultaSubmit">Agregar etapa</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Medios de cobro (hist. §171): lo arma dominios/medios-cobro.js. El
+                 punto de venta ofrece estos, no las cuentas de tesorería. -->
+            <section class="config-pagina col-admin" data-seccion="medios-cobro" aria-labelledby="configMediosCobroTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configMediosCobroTitulo" tabindex="-1">Medios de cobro</h2>
+                <p>Cómo te pagan tus clientes en el mostrador y a qué cuenta entra la plata de cada forma de pago. El punto de venta ofrece estos medios, no tus cuentas.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Medio</th>
+                      <th scope="col">Entra en</th>
+                      <th scope="col" class="align-right">Comisión</th>
+                      <th scope="col" class="align-right">Se acredita</th>
+                      <th scope="col"><span class="visualmente-oculto">Acciones</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="mediosCobroBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formMedioCobro" class="form config-tarjeta" novalidate>
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo" id="medioCobroFormTitulo">Sumar un medio de cobro</p>
+                  <div class="form-fila">
+                    <label>Nombre
+                      <input type="text" name="nombre" required maxlength="40" autocomplete="off" placeholder="Débito, Visa, Naranja, Cuenta DNI…" />
+                    </label>
+                    <label>Tipo
+                      <select name="tipo">
+                        <option value="debito">Débito</option>
+                        <option value="credito">Crédito</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="billetera">Billetera (Mercado Pago, MODO…)</option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label id="medioCobroCuentaCampo">Entra en la cuenta
+                    <select name="cuenta_tesoreria_id"></select>
+                  </label>
+                  <p class="campo-ayuda" id="medioCobroEfectivoAyuda" hidden>El efectivo entra siempre en la caja del turno, así el arqueo de la caja cierra.</p>
+                  <div class="form-fila">
+                    <label>Comisión (%)
+                      <input type="number" name="comision_pct" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0" />
+                    </label>
+                    <label>Se acredita en (días)
+                      <input type="number" name="dias_acreditacion" min="0" max="365" step="1" inputmode="numeric" placeholder="0" />
+                    </label>
+                  </div>
+                  <p class="campo-ayuda">La comisión es lo que se queda quien procesa el pago: se anota sola como un gasto de cada venta. Los días son los que tarda la plata en llegar a la cuenta.</p>
+                  <div id="medioCobroPlanesCampo" hidden>
+                    <p class="config-tarjeta-titulo">Planes de cuotas</p>
+                    <p class="campo-ayuda">En cuántas cuotas ofrecés este medio. Si las cuotas son sin interés para el cliente, cargá cuánto te cuesta a vos ofrecerlas: se anota como un gasto de la venta.</p>
+                    <div id="medioCobroPlanes" class="medio-planes"></div>
+                    <button type="button" class="btn btn-secundario btn-chico" id="btnMedioPlan">Sumar un plan</button>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnMedioCobroCancelar" hidden>Cancelar</button>
+                  <button type="submit" class="btn btn-primary" id="formMedioCobroSubmit">Agregar medio</button>
                 </div>
               </form>
             </section>

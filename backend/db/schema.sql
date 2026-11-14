@@ -914,13 +914,56 @@ CREATE TABLE IF NOT EXISTS cuentas_tesoreria (
   UNIQUE (organizacion_id, nombre)
 );
 
+-- Medios de cobro (hist. §171): cómo paga el cliente, aparte de dónde cae la
+-- plata. El punto de venta ofrece estos, no las cuentas de tesorería: "Débito",
+-- "Crédito en cuotas", "Transferencia" y "Mercado Pago" pueden ir a la misma
+-- cuenta o a distintas, y cada negocio arma los suyos.
+-- tipo: efectivo, debito, credito, transferencia, billetera u otro.
+-- cuenta_tesoreria_id: dónde ingresa. NULL solo en efectivo, que va a la caja
+-- del turno (un cobro en efectivo a otra cuenta no entraría en el arqueo); los
+-- demás llevan una cuenta que no sea efectivo.
+-- comision_pct: lo que se queda quien procesa el pago (el posnet, la
+-- billetera). Se anota como un gasto de la venta, en esa cuenta (hist. §129).
+-- dias_acreditacion: en cuántos días llega la plata a la cuenta. Hoy es un
+-- dato que se muestra: el cobro entra a la cuenta en el momento.
+-- activo: el punto de venta ofrece solo los activos. Uno con cobros no se borra.
+CREATE TABLE IF NOT EXISTS medios_cobro (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'debito', 'credito', 'transferencia', 'billetera', 'otro')),
+  cuenta_tesoreria_id INTEGER REFERENCES cuentas_tesoreria(id),
+  comision_pct REAL NOT NULL DEFAULT 0 CHECK (comision_pct >= 0 AND comision_pct <= 100),
+  dias_acreditacion INTEGER NOT NULL DEFAULT 0 CHECK (dias_acreditacion >= 0),
+  activo INTEGER NOT NULL DEFAULT 1,
+  orden INTEGER NOT NULL DEFAULT 0,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
+);
+
+-- Los planes de un medio de crédito: en cuántas cuotas se ofrece y cuánto le
+-- cuesta al negocio ofrecerlas sin interés (costo_pct, un gasto de la venta
+-- aparte de la comisión, como las cuotas de Mercado Pago, hist. §130). Hija de
+-- medios_cobro. El cobro guarda las cuotas elegidas, no el plan: cambiar o
+-- borrar un plan no toca lo ya cobrado.
+CREATE TABLE IF NOT EXISTS medio_cobro_planes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medio_cobro_id INTEGER NOT NULL REFERENCES medios_cobro(id),
+  cuotas INTEGER NOT NULL CHECK (cuotas >= 1 AND cuotas <= 60),
+  costo_pct REAL NOT NULL DEFAULT 0 CHECK (costo_pct >= 0 AND costo_pct <= 100),
+  UNIQUE (medio_cobro_id, cuotas)
+);
+
+-- medio_cobro_id y cuotas: con qué medio se cobró (NULL en un cobro cargado a
+-- mano desde una venta, que elige la cuenta, o que no se pudo deducir).
 CREATE TABLE IF NOT EXISTS cobros (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   venta_id INTEGER NOT NULL REFERENCES ventas(id),
   fecha TEXT NOT NULL DEFAULT (date('now')),
   importe REAL NOT NULL CHECK (importe > 0),
   cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
-  nota TEXT
+  nota TEXT,
+  medio_cobro_id INTEGER REFERENCES medios_cobro(id),
+  cuotas INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS pagos (

@@ -95,7 +95,25 @@ export async function armarNegocio(api, clave, { semilla = 1000 } = {}) {
 export async function llenarNegocio(api, clave, { semilla = 1000 } = {}) {
   const { datos, armar } = NEGOCIOS[clave];
   await api.put('/api/negocio', datos);
-  return armar(await contexto(api, semilla));
+  const resultado = await armar(await contexto(api, semilla));
+  await cubrirCuentasEnRojo(api);
+  return resultado;
+}
+
+// Las compras de la historia se pagan del banco o la caja: si dejan una cuenta
+// en rojo, el dueño había puesto más plata al empezar. Se suma esa diferencia
+// (y un colchón) como aporte inicial, para que ninguna cuenta del ejemplo
+// muestre un saldo negativo.
+async function cubrirCuentasEnRojo(api) {
+  const { cuentas } = await api.get('/api/tesoreria');
+  for (const cuenta of cuentas.filter((c) => c.saldo < 0)) {
+    await api.post('/api/tesoreria/movimientos', {
+      cuenta_tesoreria_id: cuenta.id,
+      tipo: 'ingreso',
+      importe: Math.ceil((-cuenta.saldo + 300000) / 10000) * 10000,
+      concepto: 'Aporte inicial al empezar con Nexo'
+    });
+  }
 }
 
 /* ---------- Ayudas ---------- */

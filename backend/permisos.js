@@ -251,6 +251,13 @@ export const RUTAS_PERMISOS = {
   'GET /api/cuentas-tesoreria': 'ambos',
   'POST /api/cuentas-tesoreria': 'admin',
   'PATCH /api/cuentas-tesoreria/:id': 'admin',
+  // Los medios de cobro (hist. §171): el punto de venta los ofrece a los dos
+  // roles (sin comisiones ni costos, que se podan al empleado); armarlos es del
+  // admin.
+  'GET /api/medios-cobro': 'ambos',
+  'POST /api/medios-cobro': 'admin',
+  'PUT /api/medios-cobro/:id': 'admin',
+  'DELETE /api/medios-cobro/:id': 'admin',
   'GET /api/tesoreria': 'ambos',
   'GET /api/tesoreria/movimientos': 'ambos',
   'POST /api/tesoreria/movimientos': 'admin',
