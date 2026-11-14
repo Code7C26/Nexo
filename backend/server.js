@@ -3,7 +3,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
+import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase, crearMediosDeCuenta } from './db/index.js';
 import { interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
 import { ayudaSeguraDelManual, respuestaDeAyuda as respuestaDeAyudaWhatsApp } from './ayuda-whatsapp.js';
 import {
@@ -2436,7 +2436,11 @@ const CLAVES_SENSIBLES = new Set([
   // El costo de los servicios (hist. §143).
   'mano_obra',
   'costo_mano_obra',
-  'costo_materiales'
+  'costo_materiales',
+  // Lo que cuesta cobrar con cada medio (hist. §171): la comisión de quien
+  // procesa el pago y el costo de ofrecer cuotas.
+  'comision_pct',
+  'costo_pct'
 ]);
 
 function podarSensibles(valor) {
@@ -7166,6 +7170,10 @@ app.get('/api/ventas', (req, res) => {
                      FROM venta_consumos WHERE venta_consumos.venta_id = ventas.id) AS margen,
               (SELECT COALESCE(SUM(importe), 0)
                  FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado,
+              (SELECT GROUP_CONCAT(DISTINCT cuenta_tesoreria_id)
+                 FROM cobros WHERE cobros.venta_id = ventas.id) AS cuentas_cobro,
+              (SELECT GROUP_CONCAT(DISTINCT medio_cobro_id)
+                 FROM cobros WHERE cobros.venta_id = ventas.id AND medio_cobro_id IS NOT NULL) AS medios_cobro,
               ${SUBQUERY_DEVUELTO_VENTA} AS devuelto,
               (SELECT GROUP_CONCAT(
                         (CASE WHEN venta_items.cantidad = CAST(venta_items.cantidad AS INTEGER)
@@ -7189,6 +7197,10 @@ app.get('/api/ventas', (req, res) => {
         ...v,
         // El saldo anterior (handoff 8c) no es venta de mercadería: ni costo ni margen.
         costo_total: v.total - (v.saldo_inicial ?? 0) - v.iva - v.margen,
+        // Las cuentas donde entró la plata, para filtrar "cobrado en".
+        cuentas_cobro: v.cuentas_cobro ? v.cuentas_cobro.split(',').map(Number) : [],
+        // Con qué medios de cobro se pagó (hist. §171), para filtrar.
+        medios_cobro: v.medios_cobro ? v.medios_cobro.split(',').map(Number) : [],
         carga_inicial: Boolean(v.carga_inicial),
         facturada: Boolean(v.facturada),
         tiene_devolucion: Boolean(v.tiene_devolucion),
@@ -8064,10 +8076,15 @@ function ventaParaCobrar(ventaId, organizacionId) {
 // cuenta corriente del cliente). Sin validación propia — el llamador ya
 // tiene que haber verificado importe/saldo pendiente/existencia de la
 // cuenta. Asume que se la llama DENTRO de una transacción.
-function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId) {
+// medio: { id, cuotas } cuando el cobro sale de un medio de cobro (hist. §171).
+// Sin él se deduce el medio de la cuenta, si hay uno solo que vaya a ella.
+function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId, medio = null) {
+  const medioId = medio?.id ?? medioDeLaCuenta(cuentaTesoreriaId, organizacionId);
   const { lastInsertRowid: nuevoCobroId } = db
-    .prepare(`INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, fecha) VALUES (?, ?, ?, ?, ${HOY_SQL})`)
-    .run(ventaId, importe, cuentaTesoreriaId, nota ?? null);
+    .prepare(
+      `INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, medio_cobro_id, cuotas, fecha) VALUES (?, ?, ?, ?, ?, ?, ${HOY_SQL})`
+    )
+    .run(ventaId, importe, cuentaTesoreriaId, nota ?? null, medioId, medio?.cuotas ?? null);
 
   db.prepare(
     `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen, organizacion_id, fecha) VALUES (?, 'ingreso', ?, ?, 'cobro', ?, ${HOY_SQL})`
@@ -11717,6 +11734,9 @@ app.post('/api/cuentas-tesoreria', soloAdmin, (req, res) => {
       entidad_id: id,
       detalle: `Cuenta "${String(nombre).trim()}" (${tipo}) creada con saldo inicial $${saldoInicial}`
     });
+    // Para que se pueda cobrar en la cuenta nueva desde el punto de venta
+    // (hist. §171): el negocio después los renombra o los saca.
+    crearMediosDeCuenta({ id, nombre: String(nombre).trim(), tipo }, req.usuario.organizacion_id);
     return id;
   });
   res.status(201).json({ id: lastInsertRowid });
@@ -11748,6 +11768,10 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
   if (yaExiste) {
     return res.status(400).json({ error: 'Ya existe otra cuenta con ese nombre.' });
   }
+  // Un medio de cobro que no es efectivo no puede ir a una caja (hist. §171).
+  if (tipo === 'efectivo' && db.prepare('SELECT 1 FROM medios_cobro WHERE cuenta_tesoreria_id = ?').get(cuentaId)) {
+    return res.status(400).json({ error: 'Esta cuenta recibe cobros de un medio de cobro (Configuración → Medios de cobro): pasalo a otra cuenta antes de convertirla en caja.' });
+  }
 
   const nuevo = { nombre: String(nombre).trim(), tipo, saldo_inicial: saldoInicial };
   // saldo_inicial es el campo más sensible acá: tocarlo mueve el saldo de
@@ -11775,6 +11799,238 @@ app.patch('/api/cuentas-tesoreria/:id', soloAdmin, (req, res) => {
   });
   res.json({ id: cuentaId });
 });
+
+/* ---------- Medios de cobro (hist. §171) ---------- */
+
+// Cómo paga el cliente, aparte de en qué cuenta cae la plata. Ver schema.sql.
+const TIPOS_MEDIO_COBRO = ['efectivo', 'debito', 'credito', 'transferencia', 'billetera', 'otro'];
+
+// El medio de un cobro que se cargó eligiendo una cuenta: el efectivo para una
+// caja, y para el resto el único medio activo que va a esa cuenta. Si hay
+// varios (el banco con débito, crédito y transferencia) no se adivina.
+function medioDeLaCuenta(cuentaId, organizacionId) {
+  const medios = db
+    .prepare(
+      `SELECT m.id FROM medios_cobro m, cuentas_tesoreria c
+        WHERE c.id = ? AND m.organizacion_id = ? AND c.organizacion_id = m.organizacion_id AND m.activo = 1
+          AND ((c.tipo = 'efectivo' AND m.tipo = 'efectivo') OR m.cuenta_tesoreria_id = c.id)`
+    )
+    .all(cuentaId, organizacionId);
+  return medios.length === 1 ? medios[0].id : null;
+}
+
+function mediosDeCobro(organizacionId, { soloActivos = false } = {}) {
+  const medios = db
+    .prepare(
+      `SELECT medios_cobro.id, medios_cobro.nombre, medios_cobro.tipo, medios_cobro.cuenta_tesoreria_id,
+              cuentas_tesoreria.nombre AS cuenta, medios_cobro.comision_pct, medios_cobro.dias_acreditacion,
+              medios_cobro.activo, medios_cobro.orden,
+              (SELECT COUNT(*) FROM cobros WHERE cobros.medio_cobro_id = medios_cobro.id) AS cobros
+         FROM medios_cobro
+         LEFT JOIN cuentas_tesoreria ON cuentas_tesoreria.id = medios_cobro.cuenta_tesoreria_id
+        WHERE medios_cobro.organizacion_id = ? ${soloActivos ? 'AND medios_cobro.activo = 1' : ''}
+        ORDER BY medios_cobro.orden, medios_cobro.id`
+    )
+    .all(organizacionId);
+  const planes = db
+    .prepare(
+      `SELECT id, medio_cobro_id, cuotas, costo_pct FROM medio_cobro_planes
+        WHERE medio_cobro_id IN (SELECT id FROM medios_cobro WHERE organizacion_id = ?)
+        ORDER BY cuotas`
+    )
+    .all(organizacionId);
+  return medios.map((m) => ({
+    ...m,
+    activo: Boolean(m.activo),
+    planes: planes.filter((p) => p.medio_cobro_id === m.id).map(({ id, cuotas, costo_pct }) => ({ id, cuotas, costo_pct }))
+  }));
+}
+
+// Los datos de un medio, ya validados, o { error }.
+function validarMedioCobro(body, organizacionId, medioId = null) {
+  const nombre = String(body.nombre ?? '').trim();
+  if (!nombre || nombre.length > 40) return { error: 'El medio de cobro necesita un nombre de hasta 40 letras.' };
+  if (!TIPOS_MEDIO_COBRO.includes(body.tipo)) return { error: 'El tipo de medio de cobro no es válido.' };
+  const tipo = body.tipo;
+
+  let cuentaId = null;
+  if (tipo !== 'efectivo') {
+    const cuenta = db
+      .prepare('SELECT id, tipo FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+      .get(Number(body.cuenta_tesoreria_id), organizacionId);
+    if (!cuenta) return { error: 'Elegí la cuenta donde entra la plata de este medio.' };
+    if (cuenta.tipo === 'efectivo') {
+      return { error: 'El efectivo va solo en el medio "Efectivo", a la caja del turno. Elegí una cuenta de banco, billetera u otra.' };
+    }
+    cuentaId = cuenta.id;
+  } else if (db.prepare("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = 'efectivo' AND id <> ?").get(organizacionId, medioId ?? 0)) {
+    return { error: 'Ya hay un medio en efectivo: el punto de venta cobra siempre en la caja del turno.' };
+  }
+  if (db.prepare('SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND nombre = ? AND id <> ?').get(organizacionId, nombre, medioId ?? 0)) {
+    return { error: 'Ya hay un medio de cobro con ese nombre.' };
+  }
+
+  const comision = body.comision_pct === undefined || body.comision_pct === '' ? 0 : Number(body.comision_pct);
+  if (!Number.isFinite(comision) || comision < 0 || comision > 100) return { error: 'La comisión tiene que estar entre 0 y 100 %.' };
+  const dias = body.dias_acreditacion === undefined || body.dias_acreditacion === '' ? 0 : Number(body.dias_acreditacion);
+  if (!Number.isInteger(dias) || dias < 0 || dias > 365) return { error: 'Los días de acreditación tienen que ser un número entero de 0 a 365.' };
+
+  const planes = [];
+  if (tipo === 'credito' && Array.isArray(body.planes)) {
+    for (const plan of body.planes) {
+      const cuotas = Number(plan?.cuotas);
+      const costo = plan?.costo_pct === undefined || plan.costo_pct === '' ? 0 : Number(plan.costo_pct);
+      if (!Number.isInteger(cuotas) || cuotas < 1 || cuotas > 60) return { error: 'Las cuotas de un plan tienen que ser un número entero de 1 a 60.' };
+      if (!Number.isFinite(costo) || costo < 0 || costo > 100) return { error: 'El costo de un plan tiene que estar entre 0 y 100 %.' };
+      if (planes.some((p) => p.cuotas === cuotas)) return { error: `El plan de ${cuotas} cuotas está repetido.` };
+      planes.push({ cuotas, costo_pct: costo });
+    }
+  }
+  return {
+    datos: { nombre, tipo, cuenta_tesoreria_id: cuentaId, comision_pct: comision, dias_acreditacion: dias, planes: planes.sort((a, b) => a.cuotas - b.cuotas) }
+  };
+}
+
+const resumenMedioCobro = (m) =>
+  JSON.stringify({
+    nombre: m.nombre,
+    tipo: m.tipo,
+    cuenta_tesoreria_id: m.cuenta_tesoreria_id,
+    comision_pct: m.comision_pct,
+    dias_acreditacion: m.dias_acreditacion,
+    planes: m.planes.map((p) => `${p.cuotas} (${p.costo_pct} %)`).join(', ') || null
+  });
+
+function guardarPlanesDelMedio(medioId, planes) {
+  db.prepare('DELETE FROM medio_cobro_planes WHERE medio_cobro_id = ?').run(medioId);
+  const insertar = db.prepare('INSERT INTO medio_cobro_planes (medio_cobro_id, cuotas, costo_pct) VALUES (?, ?, ?)');
+  for (const plan of planes) insertar.run(medioId, plan.cuotas, plan.costo_pct);
+}
+
+// ?activos=1: los que el punto de venta ofrece. Sin eso, todos (Configuración).
+app.get('/api/medios-cobro', (req, res) => {
+  res.json(mediosDeCobro(req.usuario.organizacion_id, { soloActivos: req.query.activos === '1' }));
+});
+
+app.post('/api/medios-cobro', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { datos, error } = validarMedioCobro(req.body, org);
+  if (error) return res.status(400).json({ error });
+  const id = withTransaction(() => {
+    const { orden } = db.prepare('SELECT COALESCE(MAX(orden), 0) + 1 AS orden FROM medios_cobro WHERE organizacion_id = ?').get(org);
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO medios_cobro (nombre, tipo, cuenta_tesoreria_id, comision_pct, dias_acreditacion, orden, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(datos.nombre, datos.tipo, datos.cuenta_tesoreria_id, datos.comision_pct, datos.dias_acreditacion, orden, org);
+    guardarPlanesDelMedio(lastInsertRowid, datos.planes);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'medio_cobro',
+      operacion_id: Number(lastInsertRowid),
+      valor_nuevo: resumenMedioCobro({ ...datos, planes: datos.planes }),
+      detalle: `Medio de cobro "${datos.nombre}" creado`
+    });
+    return Number(lastInsertRowid);
+  });
+  res.status(201).json({ id });
+});
+
+app.put('/api/medios-cobro/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const antes = mediosDeCobro(org).find((m) => m.id === Number(req.params.id));
+  if (!antes) return res.status(404).json({ error: 'Medio de cobro no encontrado.' });
+  // Pausarlo o activarlo: solo { activo }.
+  if (Object.keys(req.body).length === 1 && typeof req.body.activo === 'boolean') {
+    withTransaction(() => {
+      db.prepare('UPDATE medios_cobro SET activo = ? WHERE id = ?').run(req.body.activo ? 1 : 0, antes.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: org,
+        operacion_tipo: 'medio_cobro',
+        operacion_id: antes.id,
+        detalle: req.body.activo ? `Medio de cobro "${antes.nombre}" activado` : `Medio de cobro "${antes.nombre}" pausado`
+      });
+    });
+    return res.json({ id: antes.id });
+  }
+  const { datos, error } = validarMedioCobro(req.body, org, antes.id);
+  if (error) return res.status(400).json({ error });
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE medios_cobro SET nombre = ?, tipo = ?, cuenta_tesoreria_id = ?, comision_pct = ?, dias_acreditacion = ? WHERE id = ?`
+    ).run(datos.nombre, datos.tipo, datos.cuenta_tesoreria_id, datos.comision_pct, datos.dias_acreditacion, antes.id);
+    guardarPlanesDelMedio(antes.id, datos.planes);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'medio_cobro',
+      operacion_id: antes.id,
+      valor_anterior: resumenMedioCobro(antes),
+      valor_nuevo: resumenMedioCobro(datos),
+      detalle: `Medio de cobro "${datos.nombre}" editado`
+    });
+  });
+  res.json({ id: antes.id });
+});
+
+// Uno que ya cobró algo no se borra (cada cobro lo recuerda): se pausa.
+app.delete('/api/medios-cobro/:id', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const medio = mediosDeCobro(org).find((m) => m.id === Number(req.params.id));
+  if (!medio) return res.status(404).json({ error: 'Medio de cobro no encontrado.' });
+  if (medio.cobros > 0) {
+    return res.status(409).json({ error: 'Este medio ya tiene cobros: no se puede borrar, pero lo podés pausar y deja de ofrecerse.' });
+  }
+  withTransaction(() => {
+    db.prepare('DELETE FROM medio_cobro_planes WHERE medio_cobro_id = ?').run(medio.id);
+    db.prepare('DELETE FROM medios_cobro WHERE id = ?').run(medio.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'medio_cobro',
+      operacion_id: medio.id,
+      valor_anterior: resumenMedioCobro(medio),
+      detalle: `Medio de cobro "${medio.nombre}" borrado`
+    });
+  });
+  res.json({ id: medio.id });
+});
+
+// Lo que cuesta cobrar con un medio: su comisión y, en un plan de cuotas, el
+// costo de ofrecerlas. Cada uno es un gasto de la venta en la cuenta donde
+// entró el cobro (hist. §129), que se anula con la venta. Dentro de una
+// transacción.
+function registrarCostosDelMedio({ ventaId, medio, plan, importe, cuentaId, organizacionId }) {
+  const comision = redondear2((importe * medio.comision_pct) / 100);
+  if (comision > 0) {
+    registrarCostoDeVender({
+      ventaId,
+      tipo: 'comision',
+      importe: comision,
+      cuentaId,
+      descripcion: `Comisión de ${medio.nombre} (${porcentajeDe(comision, importe)} del cobro), venta #${ventaId}`,
+      organizacionId
+    });
+  }
+  const costoCuotas = plan ? redondear2((importe * plan.costo_pct) / 100) : 0;
+  if (costoCuotas > 0) {
+    registrarCostoDeVender({
+      ventaId,
+      tipo: 'cuotas',
+      importe: costoCuotas,
+      cuentaId,
+      descripcion: `Cuotas sin interés: ${plan.cuotas} con ${medio.nombre} (${porcentajeDe(costoCuotas, importe)} del cobro), venta #${ventaId}`,
+      organizacionId
+    });
+  }
+}
 
 /* ---------- Tesorería (caja) ---------- */
 
@@ -17327,13 +17583,30 @@ app.post('/api/pos/ventas', (req, res) => {
 
   if (!Array.isArray(cobros)) return res.status(400).json({ error: 'Los cobros no son válidos.' });
   const buscarCuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?');
+  // Cada cobro llega con su medio de cobro (hist. §171), que dice la cuenta
+  // donde entra la plata (el efectivo, la caja del turno) y, en el crédito, el
+  // plan de cuotas. Sin medio, con la cuenta suelta como antes.
+  const medios = cobros.some((c) => c?.medio_cobro_id != null) ? mediosDeCobro(organizacionId, { soloActivos: true }) : [];
+  const resueltos = [];
   for (const cobro of cobros) {
     if (!esNumeroValido(cobro?.importe) || !(cobro.importe > 0)) {
       return res.status(400).json({ error: 'Cada cobro tiene que tener un importe mayor a 0.' });
     }
+    if (cobro.medio_cobro_id != null) {
+      const medio = medios.find((m) => m.id === Number(cobro.medio_cobro_id));
+      if (!medio) return res.status(400).json({ error: 'Un medio de cobro no existe o está pausado.' });
+      // Un crédito con planes cobra con uno de ellos; sin planes, en un pago.
+      const plan = medio.tipo === 'credito' && medio.planes.length ? medio.planes.find((p) => p.cuotas === Number(cobro.cuotas)) : null;
+      if (medio.tipo === 'credito' && medio.planes.length && !plan) {
+        return res.status(400).json({ error: `Elegí en cuántas cuotas se paga con ${medio.nombre}.` });
+      }
+      resueltos.push({ cobro, medio, plan, cuentaId: medio.cuenta_tesoreria_id ?? turno.cuenta_tesoreria_id });
+      continue;
+    }
     if (!buscarCuenta.get(Number(cobro.cuenta_tesoreria_id), organizacionId)) {
       return res.status(400).json({ error: 'La cuenta de tesorería de un cobro no existe.' });
     }
+    resueltos.push({ cobro, medio: null, plan: null, cuentaId: Number(cobro.cuenta_tesoreria_id) });
   }
   const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
   const cobrado = redondear2(cobros.reduce((acc, c) => acc + c.importe, 0));
@@ -17370,16 +17643,27 @@ app.post('/api/pos/ventas', (req, res) => {
         operacion_id: turno.id,
         detalle: `Venta #${id} desde el punto de venta (turno #${turno.id})`
       });
-      for (const cobro of cobros) {
-        const cobroId = registrarCobro(id, clienteId, cobro.importe, Number(cobro.cuenta_tesoreria_id), 'Punto de venta', organizacionId);
+      for (const { cobro, medio, plan, cuentaId } of resueltos) {
+        const cobroId = registrarCobro(
+          id,
+          clienteId,
+          cobro.importe,
+          cuentaId,
+          'Punto de venta',
+          organizacionId,
+          medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null
+        );
         auditar(req, {
           accion: 'crear',
           entidad: 'cobro',
           entidad_id: cobroId,
           operacion_tipo: 'venta',
           operacion_id: id,
-          detalle: `Cobro #${cobroId} de $${cobro.importe} sobre la venta #${id}`
+          detalle: medio
+            ? `Cobro #${cobroId} de $${cobro.importe} con ${medio.nombre} sobre la venta #${id}`
+            : `Cobro #${cobroId} de $${cobro.importe} sobre la venta #${id}`
         });
+        if (medio) registrarCostosDelMedio({ ventaId: id, medio, plan, importe: cobro.importe, cuentaId, organizacionId });
       }
       return id;
     });

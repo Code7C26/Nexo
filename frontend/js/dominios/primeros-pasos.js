@@ -11,6 +11,7 @@
 
 import { esAdmin, esc } from "../core/formato.js";
 import { api } from "../core/api.js";
+import { formatear, t } from "../core/idioma.js";
 import { icono } from "../core/iconos.js";
 import { moduloActivo, negocio, termino } from "../core/negocio.js";
 import { alEntrarEnVista, invocar, recargar } from "../core/registro.js";
@@ -144,7 +145,7 @@ function pintar(lista) {
         <p class="primeros-pasos-sub">${
           hechos === 0
             ? "Cargá esto y Nexo queda listo para trabajar."
-            : `Llevás ${hechos} de ${total}. ${faltan === 1 ? "Te falta uno." : `Te faltan ${faltan}.`}`
+            : formatear("Llevás {0} de {1}. {2}", hechos, total, faltan === 1 ? t("Te falta uno.") : formatear("Te faltan {0}.", faltan))
         }</p>
       </div>
       <button type="button" class="btn-link" data-ocultar>Ocultar la guía</button>

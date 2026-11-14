@@ -2117,6 +2117,21 @@ if (!columnasVentaItems.some((col) => col.name === 'precio_lista')) {
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_venta_items_oferta ON venta_items(oferta_id) WHERE oferta_id IS NOT NULL');
 
+// Medios de cobro (hist. §171, ver schema.sql): las tablas nuevas las crea
+// schema.sql; acá, con qué medio y en cuántas cuotas se hizo cada cobro.
+// Aditivas y nulas. `cobrosSinMedio` es true solo en el arranque que suma la
+// columna: después de sembrar los medios, a cada cobro de antes se le deduce
+// el suyo (más abajo), una vez.
+let cobrosSinMedio = false;
+const columnasCobros = db.prepare('PRAGMA table_info(cobros)').all();
+if (!columnasCobros.some((col) => col.name === 'medio_cobro_id')) {
+  db.exec('ALTER TABLE cobros ADD COLUMN medio_cobro_id INTEGER REFERENCES medios_cobro(id)');
+  cobrosSinMedio = true;
+}
+if (!columnasCobros.some((col) => col.name === 'cuotas')) {
+  db.exec('ALTER TABLE cobros ADD COLUMN cuotas INTEGER');
+}
+
 // Por dónde entró cada venta, y el módulo "Venta online" (hist. §128, ver
 // schema.sql). Aditiva y nula. Solo en el arranque que suma la columna, así
 // es re-ejecutable y un admin que apaga el módulo no lo vuelve a ver prendido:
@@ -2315,6 +2330,46 @@ function ampliarCheck(tabla, viejo, nuevo, marca, hijas = []) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Los medios de cobro que nacen con una cuenta de tesorería (hist. §171): la
+// caja ofrece "Efectivo", el banco "Débito", "Crédito" (en 1, 3 y 6 cuotas, sin
+// costo hasta que el negocio lo cargue) y "Transferencia", Mercado Pago es una
+// billetera, y cualquier otra cuenta se ofrece con su nombre. Nadie pierde una
+// forma de cobrar que tenía: cada cuenta que no es efectivo queda con al menos
+// un medio. Son un punto de partida: el negocio los cambia en Configuración.
+const MEDIOS_DE_CUENTA = {
+  efectivo: [{ nombre: 'Efectivo', tipo: 'efectivo' }],
+  banco: [
+    { nombre: 'Débito', tipo: 'debito' },
+    { nombre: 'Crédito', tipo: 'credito', cuotas: [1, 3, 6] },
+    { nombre: 'Transferencia', tipo: 'transferencia' }
+  ],
+  mercadopago: [{ nombre: 'Mercado Pago', tipo: 'billetera' }],
+  otro: [{ tipo: 'otro' }]
+};
+
+// Efectivo es uno solo por negocio (va a la caja del turno, sin cuenta). Si el
+// nombre ya está tomado se le suma el de la cuenta, y si aun así choca se
+// saltea. Dentro de una transacción o en el arranque.
+export function crearMediosDeCuenta(cuenta, organizacionId) {
+  for (const base of MEDIOS_DE_CUENTA[cuenta.tipo] ?? MEDIOS_DE_CUENTA.otro) {
+    const esEfectivo = base.tipo === 'efectivo';
+    if (esEfectivo && db.prepare("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = 'efectivo'").get(organizacionId)) continue;
+    const libre = (nombre) => !db.prepare('SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND nombre = ?').get(organizacionId, nombre);
+    const propio = base.nombre ?? cuenta.nombre;
+    const nombre = [propio, `${propio} ${cuenta.nombre}`].find(libre);
+    if (!nombre) continue;
+    const { orden } = db.prepare('SELECT COALESCE(MAX(orden), 0) + 1 AS orden FROM medios_cobro WHERE organizacion_id = ?').get(organizacionId);
+    const { lastInsertRowid } = db
+      .prepare(
+        'INSERT INTO medios_cobro (nombre, tipo, cuenta_tesoreria_id, orden, organizacion_id) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(nombre, base.tipo, esEfectivo ? null : cuenta.id, orden, organizacionId);
+    for (const cuotas of base.cuotas ?? []) {
+      db.prepare('INSERT INTO medio_cobro_planes (medio_cobro_id, cuotas) VALUES (?, ?)').run(lastInsertRowid, cuotas);
+    }
+  }
+}
+
 // Catálogos base de cada organización: el depósito y la lista de precios
 // predeterminados, y las cuentas Efectivo/Banco/Mercado Pago. No son datos de
 // ejemplo (los seeds de clientes/facturas/productos/proveedores de ejemplo
@@ -2344,6 +2399,15 @@ export function sembrarCatalogosBase(organizacionId) {
     insertCuenta.run('Efectivo', 'efectivo', organizacionId);
     insertCuenta.run('Banco', 'banco', organizacionId);
     insertCuenta.run('Mercado Pago', 'mercadopago', organizacionId);
+  }
+  // Los medios de cobro, a partir de las cuentas que tiene (hist. §171). Solo
+  // si todavía no tiene ninguno: uno que el negocio borró no vuelve.
+  if (contar('medios_cobro') === 0) {
+    for (const cuenta of db
+      .prepare('SELECT id, nombre, tipo FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY id')
+      .all(organizacionId)) {
+      crearMediosDeCuenta(cuenta, organizacionId);
+    }
   }
   if (contar('listas_precios') === 0) {
     const { lastInsertRowid: listaPredeterminadaId } = db
@@ -2378,6 +2442,20 @@ export function resembrarEtapasCrm(organizacionId) {
 }
 for (const { id } of db.prepare('SELECT id FROM organizaciones ORDER BY id').all()) {
   sembrarCatalogosBase(id);
+}
+
+// A cada cobro de antes se le deduce su medio (hist. §171): el efectivo, el de
+// la cuenta si es el único que va a ella. Donde hay varios (el banco con
+// débito, crédito y transferencia) no se adivina: queda sin medio. Una vez.
+if (cobrosSinMedio) {
+  const candidatos = `SELECT m.id FROM medios_cobro m
+       JOIN cuentas_tesoreria c ON c.id = cobros.cuenta_tesoreria_id
+      WHERE m.organizacion_id = c.organizacion_id AND m.activo = 1
+        AND ((c.tipo = 'efectivo' AND m.tipo = 'efectivo') OR m.cuenta_tesoreria_id = c.id)`;
+  db.exec(
+    `UPDATE cobros SET medio_cobro_id = (SELECT MIN(id) FROM (${candidatos}))
+      WHERE medio_cobro_id IS NULL AND (SELECT COUNT(*) FROM (${candidatos})) = 1`
+  );
 }
 
 // Un índice por cada columna de relación (FOREIGN KEY) que no tenga uno, con

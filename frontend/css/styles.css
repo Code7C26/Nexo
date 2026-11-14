@@ -3477,6 +3477,30 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 .form .pos-cobro-fila select,
 .form .pos-cobro-fila input { min-height: 48px; }
 
+/* El medio de cobro con sus cuotas y lo que tarda en acreditarse (hist. §171). */
+.pos-cobro-medio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.pos-cobro-acredita {
+  font-size: var(--txt-2xs);
+  color: var(--ink-muted);
+}
+
+/* Los planes de cuotas de un medio, en Configuración → Medios de cobro. */
+.medio-planes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.medio-plan {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
 .form .pos-cobro-fila .pos-cobro-importe {
   -moz-appearance: textfield;
   appearance: textfield;
