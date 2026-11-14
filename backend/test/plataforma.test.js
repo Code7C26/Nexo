@@ -88,8 +88,10 @@ test('las cuentas traen sus negocios y nunca la contraseña', async () => {
     'id',
     'negocios',
     'nombre',
+    'plan',
     'ultimo_uso'
   ]);
+  assert.deepEqual([admin.plan.nombre, admin.plan.negocios], ['Pro', 1]);
   assert.doesNotMatch(r.texto, /password|salt/);
 });
 
@@ -146,9 +148,10 @@ test('un negocio en baja sale con la fecha en que se borra', async () => {
   }
 });
 
-test('la plataforma cambia el plan de un negocio, y queda en su auditoría', async () => {
+test('la plataforma cambia el plan de la cuenta, y queda en la auditoría de su negocio', async () => {
   const id = (await duenio.get('/api/plataforma/negocios')).json.find((n) => n.nombre === 'Almacén Uno').id;
-  const ruta = `/api/plataforma/negocios/${id}/plan`;
+  const cuentaId = (await duenio.get('/api/plataforma/cuentas')).json.find((c) => c.email === 'uno-admin1@nexo.test').id;
+  const ruta = `/api/plataforma/cuentas/${cuentaId}/plan`;
   try {
     const r = await duenio.put(ruta, { plan: 'gratis', hasta: '2099-12-31' });
     assert.equal(r.status, 200, r.texto);
@@ -166,16 +169,19 @@ test('la plataforma cambia el plan de un negocio, y queda en su auditoría', asy
     assert.equal((await duenio.put(ruta, { plan: 'oro' })).status, 400);
     assert.equal((await duenio.put(ruta, { plan: 'pro', hasta: '2020-01-01' })).status, 400);
     assert.equal((await duenio.put(ruta, { plan: 'pro', hasta: '2099-02-30' })).status, 400);
-    assert.equal((await duenio.put('/api/plataforma/negocios/999999/plan', { plan: 'pro' })).status, 404);
+    assert.equal((await duenio.put('/api/plataforma/cuentas/999999/plan', { plan: 'pro' })).status, 404);
+    // El cambio se ve en la cuenta, y la ruta por negocio ya no existe.
+    assert.equal((await duenio.get('/api/plataforma/cuentas')).json.find((c) => c.id === cuentaId).plan.clave, 'gratis');
+    assert.equal((await duenio.put(`/api/plataforma/negocios/${id}/plan`, { plan: 'pro' })).status, 404);
   } finally {
     assert.equal((await duenio.put(ruta, { plan: 'pro', hasta: null })).status, 200);
   }
 });
 
-test('un negocio no se cambia el plan a sí mismo', async () => {
-  const id = (await duenio.get('/api/plataforma/negocios')).json.find((n) => n.nombre === 'Almacén Uno').id;
+test('una cuenta no se cambia el plan a sí misma', async () => {
+  const id = (await duenio.get('/api/plataforma/cuentas')).json.find((c) => c.email === 'uno-admin1@nexo.test').id;
   for (const cliente of [uno.admin, uno.empleado]) {
-    const r = await cliente.put(`/api/plataforma/negocios/${id}/plan`, { plan: 'pro' });
+    const r = await cliente.put(`/api/plataforma/cuentas/${id}/plan`, { plan: 'pro' });
     assert.equal(r.status, 404);
   }
 });

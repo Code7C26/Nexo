@@ -24,7 +24,7 @@
 **14 de noviembre, hist. §168 (sin commitear, en `solla`): lo que había que cerrar
 antes del lunes.** Asistente con variantes (web y WhatsApp, con el manual por
 WhatsApp), historial de ventas de Tienda Nube y Mercado Libre, plan por cuenta
-con "Mis negocios" en Mi cuenta y mejoras en Plataforma, y esqueletos de carga.
+con "Mis negocios" en Mi cuenta y, en Plataforma, el plan que se cambia desde la cuenta (no por negocio), y esqueletos de carga.
 371 tests en verde. **Falta:** que el usuario lo vea y lo pruebe en el sitio
 (el historial con la Tienda Nube de su amigo y con Mercado Libre reales; cargar
 antes los costos), commitear y publicar, y las tareas de abajo.
