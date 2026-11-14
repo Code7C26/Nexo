@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase } from './db/index.js';
 import { interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
+import { ayudaSeguraDelManual, respuestaDeAyuda as respuestaDeAyudaWhatsApp } from './ayuda-whatsapp.js';
 import {
   alicuotaNumerica,
   buscarEnCatalogo,
@@ -1082,6 +1083,48 @@ function sumarAlNegocio(usuarioId, organizacionId, rol) {
   );
 }
 
+// Quien crea un negocio es su propietario: la cuenta a la que pertenece el plan
+// (hist. §168). Un empleado o un admin invitado trabaja ahí, pero el plan no es
+// suyo.
+function sumarComoPropietario(usuarioId, organizacionId) {
+  sumarAlNegocio(usuarioId, organizacionId, 'admin');
+  db.prepare('UPDATE organizaciones SET propietario_id = ? WHERE id = ?').run(usuarioId, organizacionId);
+}
+
+// El plan de la cuenta de una persona: el de los negocios que creó (son iguales
+// entre sí, ver aplicarPlanALaCuenta). Sin ninguno, Gratis.
+function planDeLaCuentaDe(usuarioId) {
+  return (
+    db
+      .prepare(
+        `SELECT plan, plan_vence FROM organizaciones
+          WHERE propietario_id = ? AND baja_hecha IS NULL AND ejemplo IS NULL ORDER BY id LIMIT 1`
+      )
+      .get(usuarioId) ?? { plan: PLAN_POR_DEFECTO, plan_vence: null }
+  );
+}
+
+// Cambia el plan de la cuenta: el de este negocio y el de todos los que
+// comparten su propietario (hist. §168). Devuelve los negocios tocados. Dentro
+// de una transacción.
+function aplicarPlanALaCuenta(organizacionId, plan, hasta) {
+  const ids = negociosDeLaCuenta(organizacionId);
+  const poner = db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?');
+  for (const id of ids) poner.run(plan, hasta, id);
+  return ids;
+}
+
+// Los negocios que comparten el plan de este: los de su misma cuenta. Uno sin
+// propietario (un ejemplo) es su propia cuenta.
+function negociosDeLaCuenta(organizacionId) {
+  const fila = db.prepare('SELECT propietario_id FROM organizaciones WHERE id = ?').get(organizacionId);
+  if (!fila?.propietario_id) return [organizacionId];
+  return db
+    .prepare('SELECT id FROM organizaciones WHERE propietario_id = ? AND baja_hecha IS NULL AND ejemplo IS NULL ORDER BY id')
+    .all(fila.propietario_id)
+    .map((n) => n.id);
+}
+
 // Lo que queda en la auditoría de una aceptación de los términos (etapa 8b,
 // Fase 3): la versión y, si la declaró en ese momento, la edad. Junto con
 // usuarios.terminos_aceptados es la prueba del consentimiento (Ley 25.326,
@@ -1300,7 +1343,7 @@ app.post('/api/auth/registro', (req, res) => {
       )
       .run(orgId, usuario, nombre, hash, salt, email, TERMINOS_VERSION, aceptacion.edad);
     usuarioId = Number(info.lastInsertRowid);
-    sumarAlNegocio(usuarioId, orgId, 'admin');
+    sumarComoPropietario(usuarioId, orgId);
     marcarAcceso(usuarioId, orgId);
     registrarAuditoria({
       accion: 'crear',
@@ -14206,6 +14249,121 @@ function tieneVariantesActivas(productoId) {
   return db.prepare('SELECT COUNT(*) AS n FROM producto_variantes WHERE producto_id = ? AND activo = 1').get(productoId).n > 0;
 }
 
+// Las variantes en el asistente (hist. §168). "Vendí un buzo talle L" trae el
+// talle dentro de la frase: la IA lo separa en `variante`, y acá se busca entre
+// las variantes activas del producto. Lo que no se resuelve (no lo dijo, no
+// existe, hay dos que coinciden) vuelve con todas las opciones, para elegir en
+// la tarjeta de la web o por número en WhatsApp: nunca queda un callejón sin
+// salida.
+const tokensDe = (texto) =>
+  String(texto ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+// Palabras que acompañan al valor pero no lo son ("talle L", "color negro").
+const PALABRAS_SIN_VALOR = new Set(['talle', 'talla', 'color', 'colores', 'medida', 'tamano', 'numero', 'nro', 'de', 'del', 'en', 'el', 'la', 'los', 'las', 'un', 'una', 'y', 'con']);
+
+function variantesDelProducto(productoId) {
+  const valoresDe = db.prepare(
+    `SELECT producto_atributo_valores.valor AS valor
+       FROM producto_variante_valores
+       JOIN producto_atributo_valores ON producto_atributo_valores.id = producto_variante_valores.valor_id
+      WHERE producto_variante_valores.variante_id = ?`
+  );
+  return db
+    .prepare(`${SELECT_VARIANTE} WHERE producto_variantes.producto_id = ? AND producto_variantes.activo = 1 ORDER BY producto_variantes.id`)
+    .all(productoId)
+    .map((v) => ({
+      id: v.id,
+      nombre: combinacionVariante(v.id),
+      stock: v.stock,
+      valores: valoresDe.all(v.id).map((f) => f.valor)
+    }));
+}
+
+// El valor que dijo la frase ("L", "negro L") contra el de cada variante:
+// todas sus palabras tienen que estar en la misma variante. "negros" encuentra
+// "negro"; "L" no encuentra "XL".
+const coincideConValor = (pedido, delValor) =>
+  delValor.some((d) => d === pedido || (pedido.length >= 3 && d.startsWith(pedido)) || (d.length >= 3 && pedido.startsWith(d) && pedido.length - d.length <= 1));
+
+function resolverVariante(productoId, texto, nombreProducto = '', varianteId = null) {
+  const todas = variantesDelProducto(productoId);
+  const opciones = todas.map(({ id, nombre, stock }) => ({ id, nombre, stock }));
+  const resuelta = (v, valor) => ({ estado: 'resuelto', valor, id: v.id, nombre_resuelto: v.nombre, candidatos: opciones });
+  // Un id que ya se eligió (la respuesta en WhatsApp): tiene que ser del producto.
+  const elegida = varianteId ? todas.find((v) => v.id === Number(varianteId)) : null;
+  if (elegida) return resuelta(elegida, elegida.nombre);
+
+  const delProducto = new Set(tokensDe(nombreProducto));
+  const pedidos = tokensDe(texto).filter((t) => !PALABRAS_SIN_VALOR.has(t) && !delProducto.has(t));
+  if (!pedidos.length) {
+    // Con una sola variante activa no hay nada que elegir.
+    if (todas.length === 1) return resuelta(todas[0], null);
+    return { estado: 'no_dado', valor: null, id: null, nombre_resuelto: null, candidatos: opciones };
+  }
+  const coinciden = todas.filter((v) => {
+    const delValor = v.valores.flatMap(tokensDe);
+    return pedidos.every((p) => coincideConValor(p, delValor));
+  });
+  const valor = String(texto).trim();
+  if (coinciden.length === 1) return resuelta(coinciden[0], valor);
+  if (coinciden.length > 1) {
+    return { estado: 'ambiguo', valor, id: null, nombre_resuelto: null, candidatos: coinciden.map(({ id, nombre, stock }) => ({ id, nombre, stock })) };
+  }
+  return { estado: 'no_encontrado', valor, id: null, nombre_resuelto: null, candidatos: opciones };
+}
+
+// "Buzo canguro negro L" cuando el catálogo tiene "Buzo canguro": el producto
+// más largo cuyo nombre entero está dentro de la frase. Es lo que queda cuando
+// la IA no separó el talle del nombre. Con dos del mismo largo, ninguno.
+function productoEnTexto(texto, organizacionId) {
+  const dicho = ` ${tokensDe(texto).join(' ')} `;
+  const encontrados = db
+    .prepare('SELECT id, nombre FROM productos WHERE activo = 1 AND organizacion_id = ?')
+    .all(organizacionId)
+    .map((p) => ({ ...p, clave: tokensDe(p.nombre).join(' ') }))
+    .filter((p) => p.clave && dicho.includes(` ${p.clave} `));
+  if (!encontrados.length) return null;
+  const mayor = Math.max(...encontrados.map((p) => p.clave.length));
+  const mejores = encontrados.filter((p) => p.clave.length === mayor);
+  return mejores.length === 1 ? mejores[0] : null;
+}
+
+// Un renglón de la frase contra el catálogo: el producto y, si tiene variantes,
+// cuál. `soloSiVariante` es para las compras, donde un nombre que no existe es
+// un producto nuevo: ahí el producto "de adentro" solo vale si la frase también
+// dice cuál de sus variantes es.
+function resolverRenglon(item, organizacionId, { soloSiVariante = false } = {}) {
+  let producto = buscarPorNombre('productos', item.producto, organizacionId);
+  if (producto.estado === 'no_encontrado') {
+    const dentro = productoEnTexto(item.producto, organizacionId);
+    if (dentro && tieneVariantesActivas(dentro.id)) {
+      const variante = resolverVariante(dentro.id, [item.variante, item.producto].filter(Boolean).join(' '), dentro.nombre, item.variante_id);
+      if (variante.estado === 'resuelto' || !soloSiVariante) {
+        return { producto: { estado: 'resuelto', valor: item.producto, id: dentro.id, nombre_resuelto: dentro.nombre, candidatos: [] }, variante };
+      }
+    } else if (dentro && !soloSiVariante) {
+      producto = { estado: 'resuelto', valor: item.producto, id: dentro.id, nombre_resuelto: dentro.nombre, candidatos: [] };
+    }
+  }
+  const variante =
+    producto.estado === 'resuelto' && tieneVariantesActivas(producto.id)
+      ? resolverVariante(producto.id, item.variante, producto.nombre_resuelto, item.variante_id)
+      : null;
+  return { producto, variante };
+}
+
+// Qué falta decir de una variante sin resolver, con las opciones a la vista.
+function problemaDeVariante(nombreProducto, variante) {
+  const lista = variante.candidatos.slice(0, 6).map((c) => c.nombre).join(', ') + (variante.candidatos.length > 6 ? '…' : '');
+  if (variante.estado === 'ambiguo') return `Hay más de una variante de "${nombreProducto}" que coincide con "${variante.valor}": elegí una (${lista}).`;
+  if (variante.estado === 'no_encontrado') return `"${nombreProducto}" no tiene la variante "${variante.valor}": elegí una (${lista}).`;
+  return `Falta elegir la variante de "${nombreProducto}" (${lista}).`;
+}
+
 // Convierte la propuesta cruda del intérprete (solo nombres, ver
 // interprete.js) en una propuesta resuelta contra la base real: cada
 // referencia queda marcada resuelta/ambigua/no encontrada/no dada, y se
@@ -14222,7 +14380,7 @@ function resolverPropuesta(tipo, datos, organizacionId) {
     if (cliente.estado === 'ambiguo') problemas.push(`Hay más de un cliente que coincide con "${cliente.valor}".`);
 
     const items = (Array.isArray(datos.items) ? datos.items : []).map((item) => {
-      const producto = buscarPorNombre('productos', item.producto, organizacionId);
+      const { producto, variante } = resolverRenglon(item, organizacionId);
       if (producto.estado === 'no_dado' || producto.estado === 'no_encontrado') {
         problemas.push(
           `El producto "${item.producto ?? '(sin nombre)'}" no existe en el catálogo. Cargalo primero o corregí el nombre.`
@@ -14231,15 +14389,15 @@ function resolverPropuesta(tipo, datos, organizacionId) {
       if (producto.estado === 'ambiguo') {
         problemas.push(`Hay más de un producto que coincide con "${item.producto}".`);
       }
-      if (producto.estado === 'resuelto' && tieneVariantesActivas(producto.id)) {
-        problemas.push(`"${producto.nombre_resuelto}" tiene variantes: elegí la variante exacta a mano.`);
-      }
+      if (variante && variante.estado !== 'resuelto') problemas.push(problemaDeVariante(producto.nombre_resuelto, variante));
       if (!(Number(item.cantidad) > 0)) problemas.push(`La cantidad de "${item.producto ?? '?'}" tiene que ser mayor a 0.`);
-      // Sin precio en la frase, el de lista del producto, como en el mostrador.
+      // Sin precio en la frase, el de lista del producto (o de la variante),
+      // como en el mostrador. `precio_sugerido` deja saber que no lo dijo la
+      // persona, para recalcularlo si después elige la variante.
       const sinPrecio = item.precio_unitario === null || item.precio_unitario === undefined || item.precio_unitario === '';
-      const precio = sinPrecio && producto.estado === 'resuelto' ? precioDeLista(producto.id, null, null) : item.precio_unitario;
+      const precio = sinPrecio && producto.estado === 'resuelto' ? precioDeLista(producto.id, variante?.id ?? null, null) : item.precio_unitario;
       if (!(Number(precio) >= 0)) problemas.push(`El precio de "${item.producto ?? '?'}" no puede ser negativo.`);
-      return { producto, cantidad: item.cantidad, precio_unitario: precio };
+      return { producto, variante, cantidad: item.cantidad, precio_unitario: precio, precio_sugerido: sinPrecio };
     });
     if (items.length === 0) problemas.push('La venta necesita al menos un producto.');
 
@@ -14261,19 +14419,17 @@ function resolverPropuesta(tipo, datos, organizacionId) {
     if (proveedor.estado === 'ambiguo') problemas.push(`Hay más de un proveedor que coincide con "${proveedor.valor}".`);
 
     const items = (Array.isArray(datos.items) ? datos.items : []).map((item) => {
-      const producto = buscarPorNombre('productos', item.producto, organizacionId);
+      const { producto, variante } = resolverRenglon(item, organizacionId, { soloSiVariante: true });
       // Acá "no encontrado" no bloquea: la compra da de alta el producto
       // nuevo por nombre, es lo que le fija el costo inicial (CLAUDE.md §6).
       if (producto.estado === 'ambiguo') {
         problemas.push(`Hay más de un producto que coincide con "${item.producto}".`);
       }
-      if (producto.estado === 'resuelto' && tieneVariantesActivas(producto.id)) {
-        problemas.push(`"${producto.nombre_resuelto}" tiene variantes: elegí la variante exacta a mano.`);
-      }
+      if (variante && variante.estado !== 'resuelto') problemas.push(problemaDeVariante(producto.nombre_resuelto, variante));
       if (!item.producto || !String(item.producto).trim()) problemas.push('Todos los items necesitan un producto.');
       if (!(Number(item.cantidad) > 0)) problemas.push(`La cantidad de "${item.producto ?? '?'}" tiene que ser mayor a 0.`);
       if (!(Number(item.precio_unitario) >= 0)) problemas.push(`El costo de "${item.producto ?? '?'}" no puede ser negativo.`);
-      return { producto, cantidad: item.cantidad, precio_unitario: item.precio_unitario };
+      return { producto, variante, cantidad: item.cantidad, precio_unitario: item.precio_unitario };
     });
     if (items.length === 0) problemas.push('La compra necesita al menos un item.');
 
@@ -14421,13 +14577,38 @@ const palabrasDe = (texto) =>
     .filter((p) => p.length >= 3)
     .map((p) => p.slice(0, 4));
 
+// Los talles y colores de un producto, para que la IA separe "buzo talle L"
+// en producto y variante: "Talle: S, M, L · Color: negro, gris".
+function variantesParaIA(productoId) {
+  const filas = db
+    .prepare(
+      `SELECT producto_atributos.nombre AS atributo, producto_atributo_valores.valor AS valor
+         FROM producto_variante_valores
+         JOIN producto_variantes ON producto_variantes.id = producto_variante_valores.variante_id AND producto_variantes.activo = 1
+         JOIN producto_atributos ON producto_atributos.id = producto_variante_valores.atributo_id
+         JOIN producto_atributo_valores ON producto_atributo_valores.id = producto_variante_valores.valor_id
+        WHERE producto_variantes.producto_id = ?
+        ORDER BY producto_atributos.orden, producto_atributo_valores.id`
+    )
+    .all(productoId);
+  const porAtributo = new Map();
+  for (const { atributo, valor } of filas) {
+    if (!porAtributo.has(atributo)) porAtributo.set(atributo, new Set());
+    porAtributo.get(atributo).add(valor);
+  }
+  return [...porAtributo].map(([atributo, valores]) => `${atributo}: ${[...valores].slice(0, 12).join(', ')}`).join(' · ').slice(0, 240);
+}
+
 function contextoParaInterprete(organizacionId, texto) {
   let productos = db
-    .prepare('SELECT nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
+    .prepare('SELECT id, nombre FROM productos WHERE activo = 1 AND organizacion_id = ? ORDER BY nombre')
     .all(organizacionId);
   if (texto !== undefined) {
     const deLaFrase = new Set(palabrasDe(texto));
     productos = productos.filter((p) => palabrasDe(p.nombre).some((w) => deLaFrase.has(w))).slice(0, PRODUCTOS_PARA_IA);
+    productos = productos.map((p) => ({ nombre: p.nombre, variantes: variantesParaIA(p.id) || null }));
+  } else {
+    productos = productos.map((p) => ({ nombre: p.nombre }));
   }
   return {
     cuentas: db
@@ -14451,12 +14632,15 @@ async function proponerDesdeTexto(texto, organizacionId) {
 
   const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, organizacionId);
 
+  // Lo que dijo la IA queda aparte (`_datos`, nunca sale hacia la web): si falta
+  // una variante y la persona la elige por WhatsApp, la propuesta se vuelve a
+  // resolver desde ahí (completarVarianteWhatsApp).
   const { lastInsertRowid: mensajeId } = db
     .prepare(
       `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
        VALUES (?, ?, 'interpretado', ?, ?)`
     )
-    .run(texto, JSON.stringify(propuesta), resultado.tipo, organizacionId);
+    .run(texto, JSON.stringify({ ...propuesta, _datos: resultado.datos }), resultado.tipo, organizacionId);
 
   return {
     mensaje_id: Number(mensajeId),
@@ -14608,8 +14792,11 @@ function ejecutarPropuesta(req, res) {
       ) {
         return res.status(400).json({ error: 'Cantidad y precio de cada item tienen que ser válidos.' });
       }
+      // La variante solo viaja como id: validarStockDisponible (abajo) exige
+      // que sea del producto, esté activa y alcance el stock.
       items.push({
         producto_id: Number(item.producto.id),
+        variante_id: Number(item.variante?.id) || null,
         cantidad: Number(item.cantidad),
         precio_unitario: Number(item.precio_unitario)
       });
@@ -14721,7 +14908,13 @@ function ejecutarPropuesta(req, res) {
       if (!(Number(item.cantidad) > 0) || !(Number(item.precio_unitario) >= 0)) {
         return res.status(400).json({ error: 'Cantidad y costo de cada item tienen que ser válidos.' });
       }
-      items.push({ producto: productoNombre, cantidad: Number(item.cantidad), precio_unitario: Number(item.precio_unitario) });
+      // crearCompra valida que la variante sea de ese producto y esté activa.
+      items.push({
+        producto: productoNombre,
+        variante_id: Number(item.variante?.id) || null,
+        cantidad: Number(item.cantidad),
+        precio_unitario: Number(item.precio_unitario)
+      });
     }
     const costoEnvio = normalizarPrecio(propuesta.costo_envio);
     if (Number.isNaN(costoEnvio) || costoEnvio < 0) {
@@ -14879,7 +15072,9 @@ const WHATSAPP_POR_HORA = 30;
 const CODIGO_EN_MENSAJE = /^\s*(?:nexo\s*)?(\d{6})\s*$/i;
 const AYUDA_WHATSAPP =
   '👋 Contame lo que vendiste, compraste o gastaste, escrito o en un audio 🎙️\n\n' +
-  'Por ejemplo:\n_"Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago"_\n\n' +
+  'Por ejemplo:\n_"Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago"_\n' +
+  '_"Vendí un buzo talle L a Camila"_\n_"Pagué 25 mil de luz en efectivo"_\n\n' +
+  'También podés preguntarme cómo se hace algo en Nexo: _"¿cómo anulo una venta?"_\n\n' +
   'Antes de registrar nada te pido que lo confirmes ✅';
 const hashCodigoWhatsApp = (codigo) => createHash('sha256').update(`whatsapp:${codigo}`).digest('hex');
 const pesosWhatsApp = (n) =>
@@ -14978,8 +15173,12 @@ app.delete('/api/whatsapp/vinculo', (req, res) => {
 // de WhatsApp (*negrita*) y un emoji por tipo de operación, para que se lea
 // de un vistazo en el celular.
 function resumenParaWhatsApp(tipo, p) {
+  // La variante elegida va entre paréntesis; la que falta, avisada.
+  const variante = (i) => (i.variante?.estado === 'resuelto' ? ` (${i.variante.nombre_resuelto})` : i.variante ? ' (¿qué variante?)' : '');
   const renglones = (items, palabra) =>
-    items.map((i) => `• ${i.cantidad} × ${nombreEnPropuesta(i.producto, '?')}, ${palabra} ${pesosWhatsApp(i.precio_unitario)}`).join('\n');
+    items
+      .map((i) => `• ${i.cantidad} × ${nombreEnPropuesta(i.producto, '?')}${variante(i)}, ${palabra} ${pesosWhatsApp(i.precio_unitario)}`)
+      .join('\n');
   const fecha = p.fecha ? `\n📅 ${p.fecha.split('-').reverse().join('/')}` : '';
   if (tipo === 'venta') {
     const total = p.items.reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0);
@@ -15093,6 +15292,115 @@ async function responderBotonWhatsApp(mensaje, vinculo, usuario, responder) {
   return responder(`❌ No lo pude registrar: ${cuerpo?.error ?? 'error desconocido'}`);
 }
 
+/* --- La variante que falta (hist. §168) --- */
+//
+// "Vendí un buzo a Camila" y el buzo tiene talles: en la web la tarjeta deja
+// elegir, y acá se pregunta con la lista numerada. La propuesta queda sin
+// confirmar (no se descarta) y el próximo mensaje de esa persona, dentro de un
+// rato, es la respuesta: un número, o el talle o color dicho con palabras. Si
+// en cambio manda otra operación completa, la pregunta se deja y sigue la nueva.
+const MINUTOS_DE_ESPERA_VARIANTE = 15;
+const OPCIONES_DE_VARIANTE = 20;
+const NUMERO_EN_PALABRAS = { uno: 1, una: 1, primera: 1, primero: 1, dos: 2, segunda: 2, segundo: 2, tres: 3, tercera: 3, tercero: 3, cuatro: 4, cuarta: 4, cuarto: 4, cinco: 5, quinta: 5, quinto: 5, seis: 6, sexta: 6, siete: 7, ocho: 8, nueve: 9, diez: 10 };
+const CANCELAR_RESPUESTA = new Set(['cancelar', 'cancela', 'cancelo', 'no', 'nada', 'dejalo', 'deja', 'olvidate', 'olvidalo']);
+
+// Los renglones con producto resuelto cuya variante falta elegir.
+const renglonesSinVariante = (propuesta) =>
+  (propuesta.items ?? []).map((item, indice) => ({ item, indice })).filter(({ item }) => item.producto?.estado === 'resuelto' && item.variante && item.variante.estado !== 'resuelto');
+
+function preguntaDeVariante(propuesta) {
+  const [{ item }] = renglonesSinVariante(propuesta);
+  const { variante, producto } = item;
+  const opciones = variante.candidatos.slice(0, OPCIONES_DE_VARIANTE);
+  const lineas = opciones.map((c, n) => `${n + 1}. ${c.nombre} — ${c.stock > 0 ? `${c.stock} en stock` : 'sin stock'}`);
+  const mas = variante.candidatos.length > opciones.length ? '\n…' : '';
+  const aclaracion =
+    variante.estado === 'ambiguo'
+      ? `Hay más de una que coincide con "${variante.valor}".\n`
+      : variante.estado === 'no_encontrado'
+        ? `No encontré "${variante.valor}".\n`
+        : '';
+  return `🛍️ ${aclaracion}¿Qué variante de *${producto.nombre_resuelto}* es?\n\n${lineas.join('\n')}${mas}\n\nRespondé con el número, o escribí *cancelar*.`;
+}
+
+// La última propuesta de este teléfono, si espera una variante y es reciente.
+function propuestaEsperandoVariante(vinculo, organizacionId) {
+  const fila = db
+    .prepare(
+      `SELECT asistente_mensajes.id, asistente_mensajes.estado, asistente_mensajes.operacion_tipo, asistente_mensajes.propuesta_json,
+              whatsapp_mensajes.recibido_en > datetime('now', ?) AS reciente
+         FROM whatsapp_mensajes JOIN asistente_mensajes ON asistente_mensajes.id = whatsapp_mensajes.asistente_mensaje_id
+        WHERE whatsapp_mensajes.vinculo_id = ? AND asistente_mensajes.organizacion_id = ?
+        ORDER BY whatsapp_mensajes.id DESC LIMIT 1`
+    )
+    .get(`-${MINUTOS_DE_ESPERA_VARIANTE} minutes`, vinculo.id, organizacionId);
+  if (!fila || fila.estado !== 'interpretado' || !fila.reciente) return null;
+  let propuesta;
+  try {
+    propuesta = JSON.parse(fila.propuesta_json);
+  } catch {
+    return null;
+  }
+  return propuesta._datos && renglonesSinVariante(propuesta).length ? { id: fila.id, tipo: fila.operacion_tipo, propuesta } : null;
+}
+
+// Lo que se le manda a la persona cuando la propuesta está lista (o no).
+async function entregarPropuestaWhatsApp(para, tipo, mensajeId, propuesta, responder) {
+  const resumen = resumenParaWhatsApp(tipo, propuesta);
+  const descartar = () => db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(mensajeId);
+
+  if (tipo === 'devolucion') {
+    descartar();
+    return responder(`${resumen}\n\n📱 Las devoluciones se cargan en la app, para elegir de qué venta: en Nexo, desde el asistente o desde la venta.`);
+  }
+  if (!propuesta.ejecutable) {
+    // Si lo único que falta son variantes, se pregunta en vez de empezar de cero.
+    const faltan = renglonesSinVariante(propuesta).length;
+    if (faltan && propuesta.problemas.length === faltan) return responder(`${resumen}\n\n${preguntaDeVariante(propuesta)}`);
+    descartar();
+    return responder(`${resumen}\n\n⚠️ *Para registrarlo me falta:*\n• ${propuesta.problemas.join('\n• ')}\n\nMandámelo de nuevo con eso, o cargalo en la app.`);
+  }
+  return whatsapp.mandarBotones(para, `${resumen}\n\n*¿Lo registro?*`, [
+    { id: `si:${mensajeId}`, titulo: '✅ Confirmar' },
+    { id: `no:${mensajeId}`, titulo: '❌ Cancelar' }
+  ]);
+}
+
+// La respuesta a "¿qué variante?". Devuelve true si la atendió, false si era
+// otra cosa (una operación nueva) y hay que seguir con ella.
+async function responderVarianteWhatsApp(texto, esperando, usuario, para, responder) {
+  const palabras = tokensDe(texto);
+  const descartar = () => db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(esperando.id);
+  if (palabras.length <= 2 && palabras.some((p) => CANCELAR_RESPUESTA.has(p))) {
+    descartar();
+    await responder('🚫 Cancelado: no registré nada.');
+    return true;
+  }
+
+  const { _datos: datos, ...propuestaVieja } = esperando.propuesta;
+  const [{ item, indice }] = renglonesSinVariante(propuestaVieja);
+  const opciones = item.variante.candidatos.slice(0, OPCIONES_DE_VARIANTE);
+  const numero = palabras.length <= 3 ? palabras.map((p) => (/^\d+$/.test(p) ? Number(p) : NUMERO_EN_PALABRAS[p])).find(Number.isInteger) : undefined;
+
+  const nuevosDatos = structuredClone(datos);
+  if (numero >= 1 && numero <= opciones.length) {
+    nuevosDatos.items[indice].variante_id = opciones[numero - 1].id;
+  } else if (palabras.length <= 4) {
+    // "negro", "talle L", "la azul": se busca entre las variantes (y si hay más
+    // de una, la lista se achica a las que coinciden).
+    nuevosDatos.items[indice].variante = texto.trim();
+  } else {
+    // Una frase entera: es otra operación; la propuesta de antes se deja.
+    descartar();
+    return false;
+  }
+
+  const propuesta = resolverPropuesta(esperando.tipo, nuevosDatos, usuario.organizacion_id);
+  db.prepare('UPDATE asistente_mensajes SET propuesta_json = ? WHERE id = ?').run(JSON.stringify({ ...propuesta, _datos: nuevosDatos }), esperando.id);
+  await entregarPropuestaWhatsApp(para, esperando.tipo, esperando.id, propuesta, responder);
+  return true;
+}
+
 async function atenderWhatsApp(mensaje) {
   // Cada mensaje una sola vez: Meta reintenta los avisos.
   const { changes, lastInsertRowid } = db
@@ -15140,24 +15448,22 @@ async function atenderWhatsApp(mensaje) {
     }
     if (!texto?.trim()) return responder(AYUDA_WHATSAPP);
 
-    const resultado = await proponerDesdeTexto(texto, usuario.organizacion_id);
-    if (!resultado.tipo) return responder(`${resultado.mensaje ? `${resultado.mensaje}\n\n` : ''}${AYUDA_WHATSAPP}`);
-    db.prepare('UPDATE whatsapp_mensajes SET asistente_mensaje_id = ? WHERE id = ?').run(resultado.mensaje_id, filaId);
-    const resumen = resumenParaWhatsApp(resultado.tipo, resultado.propuesta);
-    const descartar = () => db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(resultado.mensaje_id);
+    // Si le preguntó qué variante, lo que llega es la respuesta (hist. §168).
+    const esperando = propuestaEsperandoVariante(vinculo, usuario.organizacion_id);
+    if (esperando && (await responderVarianteWhatsApp(texto, esperando, usuario, mensaje.de, responder))) return;
 
-    if (resultado.tipo === 'devolucion') {
-      descartar();
-      return responder(`${resumen}\n\n📱 Las devoluciones se cargan en la app, para elegir de qué venta: en Nexo, desde el asistente o desde la venta.`);
+    // Una duda de uso, un saludo o "llevame a…" se contestan con el manual, sin
+    // gastar la IA: lo mismo que hace la web.
+    const delManual = respuestaDeAyudaWhatsApp(texto, AYUDA_WHATSAPP);
+    if (delManual) return responder(delManual);
+
+    const resultado = await proponerDesdeTexto(texto, usuario.organizacion_id);
+    if (!resultado.tipo) {
+      // La IA no vio una operación: si el manual tiene algo seguro, va eso.
+      return responder(ayudaSeguraDelManual(texto) ?? `${resultado.mensaje ? `${resultado.mensaje}\n\n` : ''}${AYUDA_WHATSAPP}`);
     }
-    if (!resultado.ejecutable) {
-      descartar();
-      return responder(`${resumen}\n\n⚠️ *Para registrarlo me falta:*\n• ${resultado.problemas.join('\n• ')}\n\nMandámelo de nuevo con eso, o cargalo en la app.`);
-    }
-    return whatsapp.mandarBotones(mensaje.de, `${resumen}\n\n*¿Lo registro?*`, [
-      { id: `si:${resultado.mensaje_id}`, titulo: '✅ Confirmar' },
-      { id: `no:${resultado.mensaje_id}`, titulo: '❌ Cancelar' }
-    ]);
+    db.prepare('UPDATE whatsapp_mensajes SET asistente_mensaje_id = ? WHERE id = ?').run(resultado.mensaje_id, filaId);
+    return entregarPropuestaWhatsApp(mensaje.de, resultado.tipo, resultado.mensaje_id, resultado.propuesta, responder);
   } catch (err) {
     if (err instanceof InterpreteError) return responder(`❌ ${err.message}`);
     if (err instanceof whatsapp.WhatsAppError) throw err;
@@ -16317,10 +16623,19 @@ function entrarANegocio(req, token, organizacionId, detalleEntrada) {
 // Los negocios en los que trabaja el usuario de la sesión, para el selector de
 // arriba del menú. Solo los activos: uno donde lo dieron de baja ya no es
 // suyo. Para los dos roles: un empleado de dos negocios también cambia.
+// El plan que rige, para mostrarlo: con su vencimiento solo si es el guardado
+// (uno vencido rige como Gratis y ya no vence).
+function planParaMostrar({ plan, plan_vence }) {
+  const clave = planEfectivo({ plan, plan_vence }, fechaDeHoy());
+  return { clave, nombre: PLANES[clave].nombre, vence: clave === plan ? plan_vence : null };
+}
+
 app.get('/api/negocios', (req, res) => {
   const filas = db
     .prepare(
-      `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, organizaciones.baja_pedida, pertenencia.rol
+      `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, organizaciones.baja_pedida, pertenencia.rol,
+              organizaciones.plan, organizaciones.plan_vence, organizaciones.propietario_id,
+              (SELECT nombre FROM usuarios WHERE usuarios.id = organizaciones.propietario_id) AS propietario
          FROM usuario_organizaciones pertenencia
          JOIN organizaciones ON organizaciones.id = pertenencia.organizacion_id
         WHERE pertenencia.usuario_id = ? AND pertenencia.activo = 1 AND organizaciones.baja_hecha IS NULL
@@ -16337,6 +16652,11 @@ app.get('/api/negocios', (req, res) => {
         tipo: PERFILES_RUBRO[rubro].nombre,
         rol: fila.rol,
         actual: fila.id === req.usuario.organizacion_id,
+        // El plan es de la cuenta que creó el negocio (hist. §168): lo mismo
+        // para todos los suyos. De quién es, si no es de quien mira.
+        es_propio: fila.propietario_id === req.usuario.id,
+        propietario: fila.propietario_id === req.usuario.id ? null : (fila.propietario ?? null),
+        plan: planParaMostrar(fila),
         // El día en que se borra, si se está dando de baja (hist. §109).
         se_borra: fila.baja_pedida ? fechaDeBorrado(fila.baja_pedida) : null
       };
@@ -16380,10 +16700,21 @@ app.post('/api/negocios', (req, res) => {
     }
     plan = { plan: clave, plan_vence: PLANES[clave].precio > 0 ? sumarDias(fechaDeHoy(), DIAS_PRUEBA) : null };
   } else {
-    // Sumar negocios es de Pro (hist. §98), y el nuevo nace con el plan de
-    // este y su mismo vencimiento: se pagan juntos.
-    exigirLugarEnPlan(req.usuario.organizacion_id, 'negocios');
-    plan = db.prepare('SELECT plan, plan_vence FROM organizaciones WHERE id = ?').get(req.usuario.organizacion_id);
+    // Sumar negocios es de Pro (hist. §98), y el plan es de la cuenta (hist.
+    // §168): cuenta el de los negocios que creó esta persona, no el del negocio
+    // donde está parada (puede ser un admin invitado a uno ajeno). El nuevo
+    // nace con ese plan y su mismo vencimiento: se pagan juntos.
+    plan = planDeLaCuentaDe(req.usuario.id);
+    const rige = planEfectivo(plan, fechaDeHoy());
+    // El tope cuenta los negocios que ya creó: quien no tiene ninguno propio
+    // (un admin invitado) puede armar el primero, con el plan Gratis.
+    const propios = db
+      .prepare('SELECT COUNT(*) AS n FROM organizaciones WHERE propietario_id = ? AND baja_hecha IS NULL AND ejemplo IS NULL')
+      .get(req.usuario.id).n;
+    if (PLANES[rige].negocios !== null && propios >= PLANES[rige].negocios) {
+      const siguiente = planQuePermite('negocios', PLANES[rige].negocios);
+      throw new ErrorPlan(`El plan ${PLANES[rige].nombre} es de un solo negocio. Con el plan ${PLANES[siguiente].nombre} sumás los que quieras.`);
+    }
   }
 
   const token = leerCookie(req, COOKIE_SESION);
@@ -16391,7 +16722,7 @@ app.post('/api/negocios', (req, res) => {
     const orgId = insertarNegocio(datos);
     db.prepare('UPDATE organizaciones SET ya_funcionaba = ? WHERE id = ?').run(yaFuncionaba(req.body), orgId);
     db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan.plan, plan.plan_vence, orgId);
-    sumarAlNegocio(req.usuario.id, orgId, 'admin');
+    sumarComoPropietario(req.usuario.id, orgId);
     registrarAuditoria({
       accion: 'crear',
       entidad: 'organizacion',
@@ -19891,7 +20222,11 @@ app.get('/api/plataforma/negocios', soloPlataforma, (req, res) => {
   const negocios = db
     .prepare(
       `SELECT negocio.id, negocio.nombre, negocio.rubro, negocio.plan, negocio.plan_vence, negocio.fecha_alta,
-              negocio.baja_pedida,
+              negocio.baja_pedida, negocio.propietario_id,
+              (SELECT nombre FROM usuarios WHERE usuarios.id = negocio.propietario_id) AS propietario,
+              (SELECT email FROM usuarios WHERE usuarios.id = negocio.propietario_id) AS propietario_email,
+              (SELECT COUNT(*) FROM organizaciones otro
+                WHERE otro.propietario_id = negocio.propietario_id AND otro.baja_hecha IS NULL AND otro.ejemplo IS NULL) AS negocios_de_la_cuenta,
               (SELECT COUNT(*) FROM productos WHERE productos.organizacion_id = negocio.id AND productos.activo = 1) AS productos,
               (SELECT COUNT(*) FROM ventas WHERE ventas.organizacion_id = negocio.id AND ventas.estado = 'activa') AS ventas,
               (SELECT COUNT(*) FROM ventas
@@ -19940,20 +20275,25 @@ app.put('/api/plataforma/negocios/:id/plan', soloPlataforma, (req, res) => {
     if (!hasta || sumarDias(hasta, 0) !== hasta) return res.status(400).json({ error: 'La fecha no es válida.' });
     if (hasta < fechaDeHoy()) return res.status(400).json({ error: 'La fecha ya pasó: el plan vencería en el momento.' });
   }
-  withTransaction(() => {
-    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(plan, hasta, negocio.id);
-    registrarAuditoria({
-      accion: 'editar',
-      entidad: 'organizacion',
-      entidad_id: negocio.id,
-      usuario_id: req.usuario.id,
-      organizacion_id: negocio.id,
-      valor_anterior: JSON.stringify({ plan: negocio.plan, plan_vence: negocio.plan_vence }),
-      valor_nuevo: JSON.stringify({ plan, plan_vence: hasta }),
-      detalle: `Plan cambiado a ${PLANES[plan].nombre}${hasta ? ` hasta el ${hasta}` : ' sin vencimiento'} desde la plataforma`
-    });
+  // El plan es de la cuenta (hist. §168): el cambio vale para todos los negocios
+  // de su propietario, y queda en la auditoría de cada uno.
+  const tocados = withTransaction(() => {
+    const ids = aplicarPlanALaCuenta(negocio.id, plan, hasta);
+    for (const id of ids) {
+      registrarAuditoria({
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: id,
+        usuario_id: req.usuario.id,
+        organizacion_id: id,
+        valor_anterior: JSON.stringify({ plan: negocio.plan, plan_vence: negocio.plan_vence }),
+        valor_nuevo: JSON.stringify({ plan, plan_vence: hasta }),
+        detalle: `Plan cambiado a ${PLANES[plan].nombre}${hasta ? ` hasta el ${hasta}` : ' sin vencimiento'} desde la plataforma${ids.length > 1 ? ` (vale para los ${ids.length} negocios de la cuenta)` : ''}`
+      });
+    }
+    return ids;
   });
-  res.json({ ok: true });
+  res.json({ ok: true, negocios: tocados.length });
 });
 
 /* ---------- Integraciones: Tienda Nube (etapa G, CLAUDE.md §32) ---------- */
@@ -20482,7 +20822,9 @@ function saldoDeLaVenta(ventaId) {
 //   pero sus unidades se reservan en el stock que se publica.
 // - Cancelado: si ya era venta sin cobros, se anula sola; si tiene cobros o
 //   factura, queda marcado para que el negocio haga la devolución.
-function procesarPedido(integracion, pedido) {
+// `historial` es la pasada que trae lo vendido antes de conectar (hist. §168):
+// solo cuentan los pedidos pagados, y entran como ventas de antes de Nexo.
+function procesarPedido(integracion, pedido, { historial = false } = {}) {
   const fila = db
     .prepare('SELECT * FROM integracion_pedidos WHERE integracion_id = ? AND externo_id = ?')
     .get(integracion.id, String(pedido.id));
@@ -20495,8 +20837,10 @@ function procesarPedido(integracion, pedido) {
     return 'importado';
   }
   if (fila?.estado === 'cancelado') return 'cancelado';
-  // Los pedidos de antes de conectar no se traen: ya se vendieron sin Nexo.
+  // Los pedidos de antes de conectar no se traen solos: ya se vendieron sin
+  // Nexo. Solo el historial, que pide el negocio, los trae (y solo si se pagaron).
   const creado = new Date(pedido.created_at ?? 0).getTime();
+  if (historial) return pagado ? importarPedido(integracion, pedido, fila, { cobrar: true }) : null;
   if (!fila && !(creado >= new Date(integracion.pedidos_desde).getTime())) return null;
   if (pagado || esPagoManual(pedido)) return importarPedido(integracion, pedido, fila, { cobrar: pagado });
   if (fila?.estado !== 'esperando_pago') {
@@ -20512,7 +20856,7 @@ function cancelarPedido(integracion, pedido, fila) {
   const numero = pedido.number ?? pedido.id;
   const organizacionId = integracion.organizacion_id;
   const venta = fila.venta_id
-    ? db.prepare('SELECT id, cliente_id, deposito_id, estado FROM ventas WHERE id = ? AND organizacion_id = ?').get(fila.venta_id, organizacionId)
+    ? db.prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ? AND organizacion_id = ?').get(fila.venta_id, organizacionId)
     : null;
   // Sin cobros, factura ni devolución, la venta se anula sola: no hay plata de
   // por medio. Con algo de eso, la decide el negocio.
@@ -20582,6 +20926,11 @@ function productoDeEnvio(organizacionId) {
 function importarPedido(integracion, pedido, fila, { cobrar }) {
   const organizacionId = integracion.organizacion_id;
   const numero = pedido.number ?? pedido.id;
+  // Un pedido de antes de conectar (hist. §168) es una venta de antes de Nexo,
+  // como las de "Lo que ya tenías": no mueve stock ni caja (ya pasó, y el stock
+  // que se cargó es el de hoy), no cuenta para el tope del plan, no avisa a
+  // nadie y no llena la actividad con una línea por pedido.
+  const historico = new Date(pedido.created_at ?? 0).getTime() < new Date(integracion.pedidos_desde).getTime();
   const lineas = Array.isArray(pedido.products) ? pedido.products : [];
   // El descuento del pedido (cupón, medio de pago) se reparte entre los
   // renglones según su valor, como el envío de una compra (CLAUDE.md §7).
@@ -20610,7 +20959,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
     });
   }
   const depositoId = depositoDeLaIntegracion(integracion);
-  error ??= validarItemsVenta(items) ?? validarStockDisponible(items, depositoId, organizacionId);
+  error ??= validarItemsVenta(items) ?? (historico ? null : validarStockDisponible(items, depositoId, organizacionId));
 
   let ventaId = null;
   // Lo que se registró además de la mercadería (hist. §129), para la actividad.
@@ -20618,7 +20967,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
   if (!error) {
     try {
       ventaId = withTransaction(() => {
-        exigirLugarEnPlan(organizacionId, 'ventas_mes');
+        if (!historico) exigirLugarEnPlan(organizacionId, 'ventas_mes');
         const clienteId = clienteDelPedido(integracion, pedido);
         // El envío que pagó el cliente es parte de lo que cobró la tienda: va
         // como un renglón más, así el total y el cobro son los de verdad.
@@ -20632,11 +20981,29 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           lista_precio_id: integracion.lista_precio_id,
           deposito_id: integracion.deposito_id,
           canal: integracion.plataforma,
+          carga_inicial: historico,
           organizacion_id: organizacionId
         });
         const total = redondear2(itemsVenta.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
         const cuenta = cobrar ? cuentaDeCobro(integracion) : null;
-        if (cuenta && total > 0) registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en ${canal(integracion)} (pedido #${numero})`, organizacionId);
+        if (historico) {
+          // Cobrada antes de Nexo: queda el cobro en la venta (no debe nada) pero
+          // sin movimiento de caja, como "Lo que ya tenías". La cuenta es solo la
+          // etiqueta de dónde se cobró; sin una elegida, la primera del negocio.
+          const cuentaAnterior =
+            cuenta ?? db.prepare('SELECT id FROM cuentas_tesoreria WHERE organizacion_id = ? ORDER BY id LIMIT 1').get(organizacionId);
+          if (cobrar && total > 0 && cuentaAnterior) {
+            const cobroId = db
+              .prepare('INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, fecha) VALUES (?, ?, ?, ?, ?)')
+              .run(id, total, cuentaAnterior.id, `Cobrado en ${canal(integracion)} antes de conectar (pedido #${numero})`, fechaDelPedido(pedido))
+              .lastInsertRowid;
+            db.prepare(
+              `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, cobro_id, fecha) VALUES (?, 'cobro', ?, ?, ?, ${HOY_SQL})`
+            ).run(clienteId, -total, id, cobroId);
+          }
+        } else if (cuenta && total > 0) {
+          registrarCobro(id, clienteId, total, cuenta.id, `Cobrado en ${canal(integracion)} (pedido #${numero})`, organizacionId);
+        }
         // Los costos de vender: la comisión del canal (Mercado Libre la manda
         // en cada venta) y el envío que paga el negocio, como gastos de la
         // venta en la cuenta del canal. Sin cuenta elegida no hay de dónde
@@ -20646,12 +21013,16 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
         const envioPropio = redondear2(Math.max(0, Number(pedido.shipping_cost_owner) || 0));
         if (cuentaCanal) {
           const comun = { ventaId: id, cuentaId: cuentaCanal.id, fecha: fechaDelPedido(pedido), organizacionId };
+          const costos = [];
           if (comision > 0) {
-            registrarCostoDeVender({ ...comun, tipo: 'comision', importe: comision, descripcion: `Comisión de ${canal(integracion)} (${porcentajeDe(comision, total - envio)} de la venta), venta #${id} (pedido #${numero})` });
+            costos.push(registrarCostoDeVender({ ...comun, tipo: 'comision', importe: comision, descripcion: `Comisión de ${canal(integracion)} (${porcentajeDe(comision, total - envio)} de la venta), venta #${id} (pedido #${numero})` }));
           }
           if (envioPropio > 0) {
-            registrarCostoDeVender({ ...comun, tipo: 'envio', importe: envioPropio, descripcion: `Envío de la venta #${id} (pedido #${numero})` });
+            costos.push(registrarCostoDeVender({ ...comun, tipo: 'envio', importe: envioPropio, descripcion: `Envío de la venta #${id} (pedido #${numero})` }));
           }
+          // Lo de antes de conectar cuenta para la ganancia de la venta, pero la
+          // plata ya se movió entonces: no vuelve a salir de la caja de hoy.
+          if (historico) for (const gastoId of costos) db.prepare('DELETE FROM movimientos_tesoreria WHERE gasto_id = ?').run(gastoId);
         }
         extras = { envio, comision, envioPropio, conCuenta: Boolean(cuentaCanal) };
         guardarPedido(integracion, pedido, { estado: 'importado', venta_id: id });
@@ -20665,13 +21036,15 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
           operacion_id: integracion.id,
           detalle: `Venta #${id} desde ${canal(integracion)} (pedido #${numero})`
         });
-        notificar(organizacionId, {
-          titulo: `Venta nueva por ${canal(integracion)}`,
-          cuerpo: `Pedido #${numero} por ${pesosAviso(total)}${cobrar ? '' : ', sin cobrar todavía'}.`,
-          url: '/app#/ventas',
-          etiqueta: `pedido-${integracion.id}-${numero}`,
-          urgente: true
-        });
+        if (!historico) {
+          notificar(organizacionId, {
+            titulo: `Venta nueva por ${canal(integracion)}`,
+            cuerpo: `Pedido #${numero} por ${pesosAviso(total)}${cobrar ? '' : ', sin cobrar todavía'}.`,
+            url: '/app#/ventas',
+            etiqueta: `pedido-${integracion.id}-${numero}`,
+            urgente: true
+          });
+        }
         return id;
       });
     } catch (err) {
@@ -20681,6 +21054,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
       } else error = err.message;
     }
   }
+  if (ventaId && historico) return 'importado';
   if (ventaId) {
     const { envio, comision, envioPropio, conCuenta } = extras;
     // El nombre del medio de pago, si Tienda Nube da uno legible ("Transferencia
@@ -20709,7 +21083,7 @@ function importarPedido(integracion, pedido, fila, { cobrar }) {
   }
   // Pendiente: se anota una vez por motivo, no en cada reintento.
   guardarPedido(integracion, pedido, { estado: 'pendiente', error });
-  if (fila?.error !== error) anotarIntegracion(integracion, 'pedido', 'error', `Pedido #${numero} sin pasar a venta: ${error}`);
+  if (fila?.error !== error && !historico) anotarIntegracion(integracion, 'pedido', 'error', `Pedido #${numero} sin pasar a venta: ${error}`);
   return 'pendiente';
 }
 
@@ -20759,6 +21133,122 @@ async function traerPedidosRecientes(integracion) {
     if (pedidos.length < 50) break;
   }
   return procesados;
+}
+
+/* --- El historial de ventas (hist. §168) --- */
+//
+// Lo vendido por el canal antes de conectarlo a Nexo, para que el Resumen, los
+// reportes y la ganancia por canal arranquen con el pasado de la tienda y no
+// desde cero. Lo pide el negocio (elige desde cuándo) y corre en segundo plano:
+// una tienda grande son miles de pedidos. Entran solo los pagados, como ventas
+// de antes de Nexo (importarPedido, `historico`): sin stock, sin caja y sin
+// avisos. Es idempotente: cada pedido entra una sola vez, y volver a correrlo
+// retoma los que quedaron sin pasar (un producto que faltaba vincular).
+// El costo de cada venta es el que tiene el producto al traerla: conviene
+// cargar los costos antes.
+const historiales = new Map();
+const HISTORIAL_MAX_DIAS = 1095;
+const HISTORIAL_PAGINAS = 200;
+
+function procesarHistorico(integracion, pedido, estado) {
+  // Lo de después de conectar lo trae la pasada de siempre, con su stock y su
+  // caja: acá, solo el pasado, aunque el canal devuelva de más.
+  if (new Date(pedido.created_at ?? 0).getTime() >= new Date(integracion.pedidos_desde).getTime()) return;
+  estado.revisados++;
+  const fila = db
+    .prepare('SELECT estado FROM integracion_pedidos WHERE integracion_id = ? AND externo_id = ?')
+    .get(integracion.id, String(pedido.id));
+  if (fila && fila.estado !== 'pendiente') {
+    estado.ya_estaban++;
+    return;
+  }
+  const resultado = procesarPedido(integracionPorId(integracion.id), pedido, { historial: true });
+  if (resultado === 'importado') estado.importados++;
+  else if (resultado === 'pendiente') estado.sin_pasar++;
+  else estado.omitidos++;
+}
+
+async function traerHistorialTiendaNube(integracion, desde, hasta, estado) {
+  const api = apiDeLaTienda(integracion);
+  for (let pagina = 1; pagina <= HISTORIAL_PAGINAS; pagina++) {
+    let pedidos;
+    try {
+      pedidos = await api.pedidos({ created_at_min: desde, created_at_max: hasta, per_page: '50', page: String(pagina) });
+    } catch (err) {
+      if (err.status === 404) break; // Tienda Nube responde 404 a una página vacía.
+      throw err;
+    }
+    if (!Array.isArray(pedidos) || !pedidos.length) break;
+    for (const pedido of pedidos) procesarHistorico(integracion, pedido, estado);
+    if (pedidos.length < 50) break;
+  }
+}
+
+async function traerHistorialMercadoLibre(integracion, desde, hasta, estado) {
+  const api = apiDeMercadoLibre(integracion);
+  const conZona = (iso) => iso.replace('Z', '-00:00');
+  // La búsqueda de Mercado Libre llega hasta el offset 10.000.
+  for (let offset = 0; offset < 10_000; offset += 50) {
+    const respuesta = await api.ventas({
+      seller: integracion.cuenta_externa,
+      'order.date_created.from': conZona(desde),
+      'order.date_created.to': conZona(hasta),
+      sort: 'date_asc',
+      limit: '50',
+      offset: String(offset)
+    });
+    const ventas = Array.isArray(respuesta?.results) ? respuesta.results : [];
+    for (const venta of ventas) procesarHistorico(integracion, pedidoDeMercadoLibre(venta), estado);
+    if (ventas.length < 50) break;
+  }
+}
+
+async function importarHistorial(integracionId, desdeFecha) {
+  const integracion = integracionPorId(integracionId);
+  const hasta = new Date(integracion.pedidos_desde).toISOString();
+  const estado = {
+    estado: 'corriendo',
+    desde: desdeFecha,
+    hasta: hasta.slice(0, 10),
+    revisados: 0,
+    importados: 0,
+    ya_estaban: 0,
+    sin_pasar: 0,
+    omitidos: 0,
+    pendientes: [],
+    error: null,
+    empezo: new Date().toISOString(),
+    termino: null
+  };
+  historiales.set(integracionId, estado);
+  try {
+    const desde = new Date(`${desdeFecha}T00:00:00.000Z`).toISOString();
+    if (integracion.plataforma === 'mercadolibre') await traerHistorialMercadoLibre(integracion, desde, hasta, estado);
+    else await traerHistorialTiendaNube(integracion, desde, hasta, estado);
+    // Qué impidió pasar a venta a los que quedaron, para decir qué vincular.
+    estado.pendientes = db
+      .prepare(
+        `SELECT error, COUNT(*) AS pedidos FROM integracion_pedidos
+          WHERE integracion_id = ? AND estado = 'pendiente' AND error IS NOT NULL
+          GROUP BY error ORDER BY pedidos DESC LIMIT 5`
+      )
+      .all(integracionId);
+    estado.estado = 'listo';
+    anotarIntegracion(
+      integracion,
+      'pedido',
+      'ok',
+      `Ventas anteriores de ${canal(integracion)} (desde el ${estado.desde}): ${estado.importados} pasaron a ventas` +
+        `${estado.sin_pasar ? `, ${estado.sin_pasar} quedaron sin pasar por productos sin vincular` : ''}.`
+    );
+  } catch (err) {
+    estado.estado = 'error';
+    estado.error = err instanceof ErrorBulk || err instanceof ErrorValidacion || err.status ? err.message : 'No se pudieron traer las ventas. Probá de nuevo.';
+    if (!err.status) console.error(`[${integracion.plataforma}] historial:`, err);
+    anotarIntegracion(integracion, 'pedido', 'error', `No se pudieron traer las ventas anteriores de ${canal(integracion)} (${estado.error}).`);
+  } finally {
+    estado.termino = new Date().toISOString();
+  }
 }
 
 /* --- La pasada --- */
@@ -21110,6 +21600,14 @@ function verCanal(req, res) {
     productos_publicados: contar('SELECT COUNT(DISTINCT producto_id) AS n FROM integracion_vinculos WHERE integracion_id = ?'),
     publicaciones_vinculadas: contar('SELECT COUNT(DISTINCT externo_producto_id) AS n FROM integracion_vinculos WHERE integracion_id = ?'),
     pedidos_importados: contar("SELECT COUNT(*) AS n FROM integracion_pedidos WHERE integracion_id = ? AND estado = 'importado'"),
+    // Las de antes de conectar (hist. §168), y la pasada que las trae si está en marcha o terminó.
+    ventas_anteriores: contar(
+      `SELECT COUNT(*) AS n FROM integracion_pedidos
+         JOIN ventas ON ventas.id = integracion_pedidos.venta_id
+        WHERE integracion_pedidos.integracion_id = ? AND integracion_pedidos.estado = 'importado' AND ventas.carga_inicial = 1`
+    ),
+    historial: historiales.get(integracion.id) ?? null,
+    conectada_desde: integracion.pedidos_desde,
     pedidos: db
       .prepare(
         `SELECT id, externo_id, numero, estado, venta_id, error, actualizado_en
@@ -21215,6 +21713,48 @@ const sincronizarCanal = asincrono(async (req, res) => {
 });
 app.post('/api/integraciones/tiendanube/sincronizar', soloAdmin, sincronizarCanal);
 app.post('/api/integraciones/mercadolibre/sincronizar', soloAdmin, sincronizarCanal);
+
+// Traer las ventas de antes de conectar (hist. §168): arranca en segundo plano
+// y se mira el avance con el GET.
+function iniciarHistorial(req, res) {
+  const integracion = integracionConectadaDe(req, plataformaDe(req));
+  if (integracionEnPausa(integracion)) {
+    return res.status(403).json({ error: `Tu plan no incluye ${canal(integracion)}: pasá a Emprendedor para traer las ventas.`, codigo: 'limite_plan' });
+  }
+  if (historiales.get(integracion.id)?.estado === 'corriendo') {
+    return res.status(409).json({ error: 'Ya se están trayendo las ventas anteriores. Esperá a que termine.' });
+  }
+  const desde = String(req.body?.desde ?? '');
+  const hoy = fechaDeHoy();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || Number.isNaN(Date.parse(desde))) {
+    return res.status(400).json({ error: 'Elegí desde qué fecha traer las ventas.' });
+  }
+  if (desde > hoy) return res.status(400).json({ error: 'La fecha no puede ser futura.' });
+  if (desde < sumarDias(hoy, -HISTORIAL_MAX_DIAS)) {
+    return res.status(400).json({ error: 'Se pueden traer hasta tres años para atrás.' });
+  }
+  withTransaction(() =>
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: req.usuario.organizacion_id,
+      operacion_tipo: 'integracion',
+      operacion_id: integracion.id,
+      detalle: `Pidió traer las ventas de ${canal(integracion)} desde el ${desde}`
+    })
+  );
+  importarHistorial(integracion.id, desde);
+  res.status(202).json(historiales.get(integracion.id));
+}
+app.post('/api/integraciones/tiendanube/historial', soloAdmin, iniciarHistorial);
+app.post('/api/integraciones/mercadolibre/historial', soloAdmin, iniciarHistorial);
+
+function verHistorial(req, res) {
+  const integracion = integracionConectadaDe(req, plataformaDe(req));
+  res.json(historiales.get(integracion.id) ?? null);
+}
+app.get('/api/integraciones/tiendanube/historial', soloAdmin, verHistorial);
+app.get('/api/integraciones/mercadolibre/historial', soloAdmin, verHistorial);
 
 // Los productos que se pueden publicar, con cuáles ya están en la tienda.
 // Los planes de socios no: se cobran desde Socios.

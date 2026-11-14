@@ -153,9 +153,11 @@ async function cargarCuentas() {
 function planDeNegocio(n) {
   const nombre = `<span class="celda-principal">${esc(n.plan_nombre)}</span>`;
   const cambiar = n.se_borra ? "" : `<button type="button" class="btn-link" data-plan-negocio="${n.id}">Cambiar</button>`;
-  if (n.plan !== n.plan_vigente) return `${nombre}<span class="celda-meta">Venció el ${esc(fechaAR(n.plan_vence))}</span>${cambiar}`;
-  if (n.plan_vence) return `${nombre}<span class="celda-meta">Hasta el ${esc(fechaAR(n.plan_vence))}</span>${cambiar}`;
-  return `${nombre}${cambiar}`;
+  // El plan es de la cuenta (hist. §168): el cambio alcanza a todos sus negocios.
+  const cuenta = n.negocios_de_la_cuenta > 1 ? `<span class="celda-meta">Vale para los ${numero(n.negocios_de_la_cuenta)} negocios de la cuenta</span>` : "";
+  if (n.plan !== n.plan_vigente) return `${nombre}<span class="celda-meta">Venció el ${esc(fechaAR(n.plan_vence))}</span>${cuenta}${cambiar}`;
+  if (n.plan_vence) return `${nombre}<span class="celda-meta">Hasta el ${esc(fechaAR(n.plan_vence))}</span>${cuenta}${cambiar}`;
+  return `${nombre}${cuenta}${cambiar}`;
 }
 
 function estadoDeNegocio(n) {
@@ -167,7 +169,7 @@ function estadoDeNegocio(n) {
 function pintarNegocios() {
   const texto = document.getElementById("platNegociosBuscar").value.trim().toLocaleLowerCase("es");
   const lista = texto
-    ? negocios.filter((n) => [n.nombre, n.tipo].some((v) => (v ?? "").toLocaleLowerCase("es").includes(texto)))
+    ? negocios.filter((n) => [n.nombre, n.tipo, n.propietario, n.propietario_email].some((v) => (v ?? "").toLocaleLowerCase("es").includes(texto)))
     : negocios;
   const body = document.getElementById("platNegociosBody");
   if (!lista.length) {
@@ -181,6 +183,7 @@ function pintarNegocios() {
         <td data-label="Negocio" class="m-titulo">
           <span class="celda-principal">${esc(n.nombre)}</span>
           <span class="celda-meta">${esc(n.tipo)}</span>
+          ${n.propietario ? `<span class="celda-meta" title="${esc(n.propietario_email ?? "")}">Cuenta de ${esc(n.propietario)}</span>` : ""}
         </td>
         ${celdaMovil(n.plan_nombre, `${numero(n.ventas_30_dias)} ventas en 30 días`, haceCuanto(n.ultimo_uso))}
         <td data-label="Plan">${planDeNegocio(n)}</td>
@@ -219,7 +222,10 @@ async function abrirPlan(negocio) {
   // Lo guardado, aunque haya vencido: se ve qué tenía y hasta cuándo.
   formPlan.plan.value = negocio.plan;
   formPlan.hasta.value = negocio.plan_vence ?? "";
-  document.getElementById("modalPlanNegocioTitulo").textContent = `Plan de ${negocio.nombre}`;
+  document.getElementById("modalPlanNegocioTitulo").textContent =
+    negocio.negocios_de_la_cuenta > 1
+      ? `Plan de la cuenta de ${negocio.propietario ?? negocio.nombre} (${negocio.negocios_de_la_cuenta} negocios)`
+      : `Plan de ${negocio.nombre}`;
   modalPlan.hidden = false;
 }
 
@@ -239,18 +245,22 @@ formPlan.addEventListener("submit", async (e) => {
   e.preventDefault();
   const boton = formPlan.querySelector('[type="submit"]');
   boton.disabled = true;
+  let tocados;
   try {
-    await api(`/api/plataforma/negocios/${cambiandoPlan.id}/plan`, {
+    ({ negocios: tocados } = await api(`/api/plataforma/negocios/${cambiandoPlan.id}/plan`, {
       method: "PUT",
       body: { plan: formPlan.plan.value, hasta: formPlan.hasta.value || null },
       error: "No se pudo cambiar el plan."
-    });
+    }));
   } finally {
     boton.disabled = false;
   }
   modalPlan.hidden = true;
   const nombre = planes.find((p) => p.clave === formPlan.plan.value)?.nombre ?? formPlan.plan.value;
-  avisar(`${cambiandoPlan.nombre} pasó a ${nombre}.`, "ok");
+  avisar(
+    tocados > 1 ? `La cuenta pasó a ${nombre}: vale para sus ${tocados} negocios.` : `${cambiandoPlan.nombre} pasó a ${nombre}.`,
+    "ok"
+  );
   await cargarNegocios();
 });
 

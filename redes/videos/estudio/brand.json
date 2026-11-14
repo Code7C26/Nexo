@@ -1,0 +1,24 @@
+{
+  "name": "Nexo",
+  "tagline": "Sistema de gestión para emprendimientos y pymes",
+  "colors": {
+    "background": "#000000",
+    "surface": "#0F0F0F",
+    "surfaceHigh": "#161616",
+    "text": "#F5F5F5",
+    "text2": "#B4B4B4",
+    "muted": "#7A7A7A",
+    "accent": "#60A5FA",
+    "accent2": "#2563EB",
+    "ok": "#4ADE80",
+    "bad": "#F87171",
+    "border": "rgba(255, 255, 255, 0.1)",
+    "borderStrong": "rgba(255, 255, 255, 0.2)"
+  },
+  "fonts": {
+    "display": "Satoshi",
+    "body": "Inter"
+  },
+  "radius": 18,
+  "style": "Negro de marca, un solo acento azul, Satoshi en títulos e Inter en el resto. Los verdes y rojos son los de la app (estados), nunca un segundo acento."
+}

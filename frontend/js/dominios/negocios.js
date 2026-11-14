@@ -66,7 +66,49 @@ const recargarEnInicio = () => location.replace(location.pathname);
 async function cargarNegocios() {
   negocios = await api("/api/negocios", { error: "No se pudieron cargar tus negocios." });
   pintarActual();
+  pintarNegociosDeLaCuenta();
 }
+
+/* ---------- Mi cuenta → Mis negocios (hist. §168) ---------- */
+
+// Cada negocio donde trabaja la persona, con qué es en él (administrador o
+// empleado) y el plan. El plan es de la cuenta que creó el negocio: lo mismo
+// para todos los suyos, y quien trabaja en uno ajeno ve el de su dueño.
+const listaCuentaNegocios = document.getElementById("cuentaNegociosLista");
+const ROL_EN_NEGOCIO = { admin: "Administrador", empleado: "Empleado" };
+
+function pintarNegociosDeLaCuenta() {
+  if (!listaCuentaNegocios) return;
+  listaCuentaNegocios.innerHTML = negocios
+    .map((n) => {
+      const duenio = n.es_propio ? "Lo creaste vos" : n.propietario ? `De ${esc(n.propietario)}` : "";
+      const vence = n.plan.vence ? `, hasta el ${esc(n.plan.vence.split("-").reverse().join("/"))}` : "";
+      return `
+      <li class="cuenta-negocio${n.actual ? " is-actual" : ""}">
+        <span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>
+        <div class="cuenta-negocio-texto">
+          <p class="cuenta-negocio-nombre"><strong>${esc(n.nombre)}</strong> <span class="status ${n.rol === "admin" ? "status-cobrado" : "status-pendiente"}">${ROL_EN_NEGOCIO[n.rol] ?? esc(n.rol)}</span></p>
+          <p class="cuenta-negocio-detalle">${esc(n.tipo)}${duenio ? ` · ${duenio}` : ""} · Plan ${esc(n.plan.nombre)}${vence}</p>
+        </div>
+        ${n.actual ? `<span class="cuenta-negocio-aca">Estás acá</span>` : `<button type="button" class="btn btn-secundario btn-chico" data-entrar-negocio="${n.id}" data-nombre="${esc(n.nombre)}">Entrar</button>`}
+      </li>`;
+    })
+    .join("");
+}
+
+listaCuentaNegocios?.addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-entrar-negocio]");
+  if (!boton) return;
+  boton.disabled = true;
+  try {
+    await api(`/api/negocios/${boton.dataset.entrarNegocio}/entrar`, { method: "POST", error: "No se pudo cambiar de negocio." });
+  } catch (err) {
+    boton.disabled = false;
+    throw err;
+  }
+  avisarDespuesDeRecargar(`Estás en «${boton.dataset.nombre}».`);
+  recargarEnInicio();
+});
 
 function pintarActual() {
   const actual = negocios.find((n) => n.actual);

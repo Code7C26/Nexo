@@ -153,3 +153,68 @@ export function pintarActividadCanal(lista, actividad) {
         .join("")
     : `<li><p class="tn-vacio">Sin actividad todavía.</p></li>`;
 }
+
+/* ---------- Las ventas de antes de conectar (hist. §168) ---------- */
+
+// Cuánto para atrás se puede traer, y cómo se le dice a quien lo elige.
+const PERIODOS_HISTORIAL = [
+  [90, "Los últimos 3 meses"],
+  [180, "Los últimos 6 meses"],
+  [365, "El último año"],
+  [730, "Los últimos 2 años"]
+];
+const haceDias = (dias) => new Date(Date.now() - dias * 86_400_000).toLocaleDateString("sv-SE");
+
+let seguimiento = null;
+
+// El bloque "Ventas anteriores": elegir hasta cuándo, traerlas, y ver cómo va.
+// `estado` es lo que devuelve GET /api/integraciones/<plataforma>: trae la
+// pasada en marcha o la última (`historial`) y cuántas ya hay (`ventas_anteriores`).
+export function pintarHistorialCanal(contenedor, estado, { plataforma, canal, recargar }) {
+  clearTimeout(seguimiento);
+  const h = estado.historial;
+  const corriendo = h?.estado === "corriendo";
+  let resultado = "";
+  if (corriendo) {
+    resultado = `<p class="historial-estado"><span class="historial-giro" aria-hidden="true"></span> Trayendo las ventas de ${esc(canal)}… Revisadas: ${esc(h.revisados)} · Pasaron a ventas: ${esc(h.importados)}</p>`;
+  } else if (h?.estado === "error") {
+    resultado = `<p class="historial-estado historial-error">${icono("circle-alert")} ${esc(h.error)}</p>`;
+  } else if (h?.estado === "listo") {
+    const pendientes = h.pendientes?.length
+      ? `<ul class="historial-pendientes">${h.pendientes.map((p) => `<li>${esc(p.error)} <span class="mono">(ventas: ${esc(p.pedidos)})</span></li>`).join("")}</ul>
+         <p class="tn-ayuda">Esas ventas quedan en la lista de pedidos: vinculá esos productos y volvé a tocar “Traer ventas anteriores”, o usá “Reintentar” en cada una.</p>`
+      : "";
+    resultado = `<p class="historial-estado historial-listo">${icono("circle-check")} Listo. Pasaron a ventas: ${esc(h.importados)} (desde el ${esc(h.desde)}).${h.sin_pasar ? ` Sin pasar: ${esc(h.sin_pasar)}.` : ""}</p>${pendientes}`;
+  } else if (estado.ventas_anteriores > 0) {
+    resultado = `<p class="historial-estado">${icono("circle-check")} Ventas anteriores ya traídas de ${esc(canal)}: ${esc(estado.ventas_anteriores)}.</p>`;
+  }
+  contenedor.innerHTML = `
+    <p class="tn-ayuda">Traé lo que ya vendiste por ${esc(canal)} antes de conectarlo, así el Resumen y la ganancia por canal arrancan con tu historia y no desde cero. Entran las ventas pagadas como ventas de antes de Nexo: no tocan el stock ni la caja de hoy. <strong>Cargá antes el costo de tus productos</strong>: cada venta guarda el costo que tiene el producto al traerla.</p>
+    <div class="historial-acciones">
+      <label class="historial-periodo">
+        <span>Traer</span>
+        <select class="historial-desde" ${corriendo ? "disabled" : ""}>
+          ${PERIODOS_HISTORIAL.map(([dias, texto], i) => `<option value="${dias}"${i === 2 ? " selected" : ""}>${texto}</option>`).join("")}
+        </select>
+      </label>
+      <button type="button" class="btn btn-primary historial-traer" ${corriendo ? "disabled" : ""}>Traer ventas anteriores</button>
+    </div>
+    ${resultado}`;
+
+  contenedor.querySelector(".historial-traer").addEventListener("click", async (e) => {
+    e.currentTarget.disabled = true;
+    const dias = Number(contenedor.querySelector(".historial-desde").value);
+    try {
+      await api(`/api/integraciones/${plataforma}/historial`, {
+        method: "POST",
+        body: { desde: haceDias(dias) },
+        error: "No se pudieron traer las ventas."
+      });
+    } finally {
+      await recargar();
+    }
+  });
+  // Mientras corre, se mira el avance cada tanto; al terminar, se recarga todo
+  // (los pedidos, la actividad) una vez.
+  if (corriendo) seguimiento = setTimeout(recargar, 2500);
+}

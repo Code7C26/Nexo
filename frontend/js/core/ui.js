@@ -294,12 +294,64 @@ document.addEventListener("click", (e) => {
   if (btn) document.getElementById(btn.dataset.abrir)?.click();
 });
 
+/* ---------- Esqueletos de carga (skeleton screens) ---------- */
+//
+// Mientras llegan los datos, en vez de una pantalla vacía que aparece de golpe,
+// se dibujan barras grises con un brillo que las recorre, con la forma de lo
+// que va a venir: una barra por columna en una tabla, un círculo y dos líneas
+// en una lista, y en una zona entera (el Resumen), cada texto y cifra pasa a
+// ser su propia barra. El estilo vive en styles.css ("Esqueletos de carga").
+
+// Anchos que se repiten de fila en fila para que no parezca una grilla de
+// plantilla: la primera columna es la más larga (el nombre), el resto varía.
+const ANCHOS_ESQUELETO = [72, 48, 60, 38, 54, 44, 66];
+const anchoDeEsqueleto = (fila, columna) => (columna === 0 ? 78 : ANCHOS_ESQUELETO[(fila * 3 + columna) % ANCHOS_ESQUELETO.length]);
+
 // Filas skeleton mientras el fetch de un cargar*() todavía está en
-// curso — se llama al principio de esas funciones, antes del await.
-export function tablaCargando(bodyId, colspan, filas = 3) {
+// curso — se llama al principio de esas funciones, antes del await. Una barra
+// por columna (`colspan` es la cantidad de columnas, o la de la tabla con la
+// casilla de selección), así la tabla ya tiene la forma de lo que va a mostrar.
+export function tablaCargando(bodyId, colspan, filas = 5) {
   const body = document.getElementById(bodyId);
   if (!body) return;
-  body.innerHTML = Array.from({ length: filas })
-    .map(() => `<tr class="fila-cargando"><td colspan="${colspan}"><div class="skeleton-linea"></div></td></tr>`)
-    .join("");
+  body.innerHTML = Array.from({ length: filas }, (_, fila) => {
+    const celdas = Array.from(
+      { length: Math.max(1, colspan) },
+      (_, columna) => `<td><div class="sk sk-linea" style="width:${anchoDeEsqueleto(fila, columna)}%"></div></td>`
+    ).join("");
+    return `<tr class="fila-cargando" aria-hidden="true">${celdas}</tr>`;
+  }).join("");
+}
+
+// Una lista (<ul>) mientras llega: un círculo y dos líneas por fila, la forma
+// de un pedido, un producto o una publicación.
+export function listaCargando(listaOId, filas = 3) {
+  const lista = typeof listaOId === "string" ? document.getElementById(listaOId) : listaOId;
+  if (!lista) return;
+  lista.innerHTML = Array.from(
+    { length: filas },
+    (_, fila) => `
+    <li class="sk-fila" aria-hidden="true">
+      <span class="sk sk-circulo"></span>
+      <span class="sk-fila-texto">
+        <span class="sk sk-linea" style="width:${anchoDeEsqueleto(fila, 0)}%"></span>
+        <span class="sk sk-linea sk-linea-chica" style="width:${anchoDeEsqueleto(fila, 3)}%"></span>
+      </span>
+    </li>`
+  ).join("");
+}
+
+// Marca una zona entera como cargando mientras dure `promesa`: sus textos y
+// cifras se ven como barras con brillo (CSS, [data-cargando]) y al terminar
+// —bien o mal— vuelve todo a la normalidad.
+export async function conEsqueleto(zona, promesa) {
+  if (!zona) return promesa;
+  zona.setAttribute("data-cargando", "");
+  zona.setAttribute("aria-busy", "true");
+  try {
+    return await promesa;
+  } finally {
+    zona.removeAttribute("data-cargando");
+    zona.removeAttribute("aria-busy");
+  }
 }

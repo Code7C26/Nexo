@@ -72,6 +72,12 @@ const ITEM_SCHEMA = {
       type: 'string',
       description: 'Nombre del producto tal como aparece en el catálogo (aunque sea parcial).'
     },
+    // No es `required`: Groq valida el esquema y el modelo omite lo que sería null.
+    variante: {
+      type: ['string', 'null'],
+      description:
+        'Talle, color u otra característica del producto que dijo la frase ("L", "negro", "negro XL"), sin el nombre del producto. Si el producto del catálogo trae variantes entre paréntesis, es una de esas. Si la frase no la dice, null.'
+    },
     cantidad: { type: 'number' },
     precio_unitario: {
       type: 'number',
@@ -267,7 +273,7 @@ function construirSystemPrompt(contexto) {
   // forma innecesaria — alcanza para que el modelo matchee nombres.
   // server.js ya manda solo los que se parecen a la frase (hist. §120).
   const productos = contexto.productos.length
-    ? contexto.productos.slice(0, 300).map((p) => `- ${p.nombre}`).join('\n')
+    ? contexto.productos.slice(0, 300).map((p) => `- ${p.nombre}${p.variantes ? ` (variantes — ${p.variantes})` : ''}`).join('\n')
     : '(ninguno se parece a lo que dijo)';
 
   return `Sos el intérprete de operaciones por texto de Nexo, un sistema de gestión para pymes.
@@ -282,6 +288,7 @@ Reglas:
 - El cobro lleva solo dos campos: "cuenta" (dónde entró la plata: efectivo, cash, MP, transferencia a un banco...) e "importe" (null si se cobró todo).
 - "a X", "X cada uno" o "X el kilo" es el precio por unidad; "por X" o "X en total" es el total de todas las unidades. Ejemplo: "vendí 4 gorras a 9 mil" es cantidad 4 y precio_unitario 9000; "vendí 4 gorras por 36 mil" también.
 - En "cuenta" va el nombre exacto de una de las cuentas listadas (nunca su tipo).
+- Talle, color o cualquier característica ("un buzo talle L", "dos remeras negras M", "buzo canguro gris") va en "variante", y "producto" lleva solo el nombre del catálogo, sin el talle ni el color. Si la frase no dice la variante, null: Nexo se la pregunta a la persona. No inventes una.
 - Si el texto dice "ayer", "anteayer" o un día de la semana, calculá la fecha YYYY-MM-DD a partir de la de hoy.
 - Todo pago del negocio que no sea mercadería para revender es un gasto (servicios como luz, internet o teléfono, impuestos como ingresos brutos, arreglos, sueldos...): elegí la categoría de gasto existente que más se parezca. Si ninguna se parece, llamá igual a registrar_gasto con una palabra corta como categoría: la persona la elige antes de confirmar. Nunca dejes de proponer un gasto porque no encontrás la categoría o la cuenta.
 - No calcules IVA ni retenciones: los precios que dice el texto son finales, y Nexo discrimina el IVA solo.
@@ -671,9 +678,14 @@ export async function leerComprobante(imagenes) {
 function parsearItems(partes) {
   const crudos = partes.item ? [partes.item] : partes.items ? partes.items.split('|') : [];
   return crudos.map((raw) => {
-    const [producto, cantidad, precio_unitario] = raw.split(',').map((s) => s.trim());
-    // Sin precio, null: como el modelo cuando la frase no lo dice.
-    return { producto, cantidad: Number(cantidad), precio_unitario: precio_unitario ? Number(precio_unitario) : null };
+    const [producto, cantidad, precio_unitario, variante] = raw.split(',').map((s) => s.trim());
+    // Sin precio ni variante, null: como el modelo cuando la frase no lo dice.
+    return {
+      producto,
+      cantidad: Number(cantidad),
+      precio_unitario: precio_unitario ? Number(precio_unitario) : null,
+      variante: variante || null
+    };
   });
 }
 

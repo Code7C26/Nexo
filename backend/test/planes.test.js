@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { ACEPTA, crearCliente, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
+import { ACEPTA, crearCliente, crearEmpleado, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
 import { fechaDeHoy } from '../fecha.js';
 
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -145,6 +145,40 @@ test('la prueba de Pro dura 14 días, deja sumar negocios y al vencer cae a Grat
   const auditoria = (await admin.get('/api/auditoria')).json;
   const filas = Array.isArray(auditoria) ? auditoria : auditoria.filas ?? auditoria.items ?? [];
   assert.ok(filas.some((f) => /Plan cambiado a Pro/.test(f.detalle ?? '')), 'el cambio de plan queda en la auditoría');
+});
+
+test('el plan es de la cuenta: vale para todos sus negocios, y quien trabaja en uno ajeno no lo hereda (hist. §168)', async () => {
+  const admin = await registrarEmpresa(servidor, { empresa: 'Cuenta Pro', usuario: 'cuentapro', plan: 'pro' });
+  const principal = (await admin.get('/api/negocio')).json;
+  const segundo = await admin.post('/api/negocios', { nombre: 'Cuenta Pro Sucursal', rubro: 'comercio' });
+  assert.equal(segundo.status, 201, segundo.texto);
+
+  // Mis negocios: los dos son suyos, con el mismo plan.
+  const lista = (await admin.get('/api/negocios')).json;
+  assert.equal(lista.length, 2);
+  for (const n of lista) {
+    assert.equal(n.rol, 'admin');
+    assert.equal(n.es_propio, true);
+    assert.equal(n.propietario, null);
+    assert.equal(n.plan.clave, 'pro');
+  }
+
+  // Cambiar el plan de uno cambia el de la cuenta entera.
+  scriptPlan('--negocio', String(principal.id), '--plan', 'emprendedor');
+  assert.deepEqual((await admin.get('/api/negocios')).json.map((n) => n.plan.clave), ['emprendedor', 'emprendedor']);
+
+  // Quien trabaja en el negocio ajeno ve el plan de su dueño, no es propietario
+  // y no puede sumar negocios con él.
+  const empleado = await crearEmpleado(servidor, admin, { usuario: 'vendedorpro' });
+  const suyos = (await empleado.get('/api/negocios')).json;
+  assert.equal(suyos.length, 1);
+  assert.equal(suyos[0].rol, 'empleado');
+  assert.equal(suyos[0].es_propio, false);
+  assert.equal(typeof suyos[0].propietario, 'string');
+  assert.equal(suyos[0].plan.clave, 'emprendedor');
+  scriptPlan('--negocio', String(principal.id), '--plan', 'pro');
+  assert.equal((await empleado.get('/api/negocios')).json[0].plan.clave, 'pro');
+  assert.equal((await empleado.post('/api/negocios', { nombre: 'Del empleado', rubro: 'comercio' })).status, 403);
 });
 
 test('el contacto de la landing cae en el CRM del negocio de ventas, y en ningún otro (hist. §99)', async () => {

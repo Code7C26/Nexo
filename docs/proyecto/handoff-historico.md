@@ -12983,3 +12983,216 @@ necesario".
 - Todo con `git mv` (se conserva la historia). 358 tests y lint en verde; la
   presentación y la guía se rearmaron desde las rutas nuevas, sin rutas sin
   incrustar.
+
+## §163. El video 6, la apertura del pitch (12 de noviembre de 2026)
+
+Primera sesión de videos animados, con Motion Architect (el estudio de
+Remotion en `C:\Users\HP ULTRA 5\motion-architect\studio`, fuera del repo).
+
+- **Las referencias de Studree, analizadas** (hojas de contacto a 2 y a 15
+  cuadros por segundo): fondo oscuro con un brillo del color de la marca que
+  deriva; títulos palabra por palabra, cada palabra desenfocada y gris que se
+  enfoca a blanco, la última en el acento; la app redibujada en el video (no
+  grabada) a la derecha y el título a la izquierda; sin cortes secos; ~3–4 s
+  por idea y el logo quieto al final.
+- **La marca de Nexo en el estudio:** `brand.json` (negro, #60A5FA, los grises
+  de la app), Satoshi e Inter cargadas desde `public/fonts` con
+  `@remotion/fonts` (Satoshi no está en Google Fonts), el ícono en
+  `public/brand/`, y los íconos de Lucide de la app generados desde
+  `frontend/img/iconos.svg`.
+- **El guion, con los cambios del usuario:** genérico (el negocio
+  "Indumentaria", el cliente "Juan Pérez"); sin la entrada del gimnasio
+  (mostraba un rubro y no los demás): en su lugar, doce funciones y los ocho
+  rubros con lo suyo; sin voz en la presentación, con los sonidos de cada
+  toque y una música bajita. **Los videos de Instagram sí llevan voz.**
+- **El video** (`NexoApertura.tsx`, 885 cuadros, 29,5 s): gancho → Resumen
+  (las cifras cuentan) → punto de venta (toca la remera, entra la oferta, el
+  total sube) → cuánto deja cada venta (la barra tramo por tramo) → el
+  asistente (se escribe, se envía, propone y se confirma) → funciones →
+  rubros → logo. Una sola ventana de Nexo cambia de pantalla, con el
+  resaltado del menú que se desliza.
+- **Música propia** (`scripts/musica-nexo.py` del estudio, numpy): acordes,
+  arpegio y pulso a 120 bpm (un pulso cada 15 cuadros), que se corta en el
+  logo y deja un acorde. Sin licencias que revisar. Mezcla: −27 dB de
+  promedio, los clics por arriba.
+- **En la presentación** (`docs/pitch/fuentes/index.html`): clase
+  `VideoDiapositiva`. El de la apertura (`data-modo="apertura"`) ocupa toda la
+  pantalla al llegar a la 1 y, al terminar, se funde; la diapositiva recién
+  ahí muestra su contenido. El último cuadro del video tiene el logo en el
+  mismo lugar y tamaño que la diapositiva a 1920 × 1080 (medido con
+  Playwright: ícono en 282,376 de 230 px; palabra en 568,395), así no salta.
+  Para los videos que vienen queda el modo tarjeta (`.video-tarjeta`: se
+  agranda y vuelve). Espacio pausa, Esc o → lo cierran, ← lo corta. Si Chrome
+  no deja arrancar con sonido, espera una tecla. Con `navigator.webdriver`
+  (la guía) no hay videos.
+- **El mp4 no entra al HTML:** `scripts/presentacion.mjs` cambia
+  `../media/x.mp4` por `media/x.mp4` y deja el video al lado
+  (`docs/pitch/media/`); los pósters sí entran. El LEEME del pitch avisa que
+  la carpeta viaja entera.
+- **Comprobado** en Chrome (Playwright, con autoplay): arranca, la 1 espera,
+  se funde, la 1 queda con los nombres y → pasa a la 2. Presentación y guía
+  rearmadas; lint en verde.
+- **Respaldo de las fuentes del estudio** en `redes/videos/estudio/` (con su
+  LEEME), porque el estudio no está en ningún repo nuestro.
+- Lo que no anduvo: el `--check` del motor de visión no veía `ffmpeg` en el
+  Bash de Git (el PATH de winget es de usuario): se exporta a mano en cada
+  comando.
+
+## §164. La apertura, versión 2: un pantallazo completo (12 de noviembre de 2026)
+
+Pedido del usuario después de ver la versión 1: le gustó el estilo y la
+música ("buscar otras opciones, pero está bien"); el menú lateral tenía pocas
+funciones y en otro orden que la app; quería un pantallazo completo de Nexo,
+vistoso, rápido y corto, con lo principal de a poco; y más gráficos en el
+Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
+
+- **El menú, el de la app:** los 21 ítems de un comercio en sus grupos
+  (`frontend/index.html` con los módulos de `backend/perfiles.js`), el botón
+  para plegarlo y el botón azul del asistente abajo a la derecha (se esconde
+  donde taparía algo). Los íconos y los logos (Tienda Nube, Mercado Libre,
+  Mercado Pago) salen de `frontend/img` con `scripts/iconos-nexo.py` del
+  estudio. Los trazos del logo de Tienda Nube no traen color: toman
+  `currentColor`, como en la app.
+- **El Resumen (6,3 s):** arranca en "7 días", el mouse toca "30 días", las
+  cifras cuentan, el gráfico se dibuja con sus fechas (13/10 a 11/11) y el
+  mouse lo recorre con la línea guía, los dos puntos y un cartel con el día,
+  las ventas y la ganancia. Después la página baja a "Cuándo se vende" (mapa
+  de calor por día y hora) y "Lo más vendido"; "Dónde entró la plata" es una
+  dona.
+- **Escenas nuevas, de 3 a 3,7 s:** la factura B autorizada por ARCA, el clic
+  en PDF y la factura impresa con el formato de ARCA (CAE, QR y la leyenda de
+  prueba, como en homologación); la compra desde la foto (la factura de
+  Textil Norte se escanea y los renglones aparecen encontrados por código, el
+  pack de joggers en unidades y el IVA como crédito fiscal); Venta online
+  (cifras, las dos tiendas conectadas, la dona por canal y dos pedidos que
+  entran solos con su sonido); el cobro con Mercado Pago (el QR, "Esperando
+  el pago" y "Pago aprobado"). Funciones y rubros más rápidos.
+- **Las pantallas en su archivo:** `src/components/nexo/pantallas.tsx`; la
+  composición queda con la línea de tiempo, los títulos y el sonido.
+- **Dos músicas para elegir:** la tranquila y `--estilo movida` (bajo en
+  corcheas, palmas y hi-hat). La composición la toma de
+  `--props='{"musica":...}'`. En la presentación va la tranquila.
+- 41 s, 7,4 MB. Presentación y guía rearmadas; la prueba en Chrome sigue
+  pasando (arranca, se funde, la 1 con los nombres, → a la 2).
+
+## §165. La música movida y el reel de la apertura (12 de noviembre de 2026)
+
+- El usuario eligió la música movida ("después de eso el video quedó
+  PERFECTO"): ahora es la de partida de la composición, y el video de la
+  presentación se rearmó con ella.
+- **El reel** (`redes/videos/nexo-apertura-reel.mp4`, 1080 × 1920, 41 s, 7,3
+  MB, con `nexo-apertura-reel-portada.jpg`): la misma composición en el formato
+  `vertical`. La ventana va sin el menú lateral (`VENTANA_CELULAR`, como la app
+  en el teléfono) y escalada a 1,08 debajo del título; las grillas en dos
+  columnas; el logo en columna con "Probalo gratis · link en la bio". Respeta
+  el 14 % de arriba y el 20 % de abajo que tapa Instagram.
+- **Falta la voz:** los videos de Instagram la llevan (decisión del usuario
+  del 12 de noviembre). Se le propuso el texto; falta que lo apruebe y elija la
+  voz.
+
+## §166. La voz de Tomás en el reel (12 de noviembre de 2026)
+
+- Pedido del usuario: voz en el reel, la de Tomás (edge-tts
+  es-AR-TomasNeural), "que no quede extremadamente argentinizado" y que
+  pronuncie bien (el ejemplo: "QR" dicho muy separado).
+- `scripts/voz-nexo.py` del estudio: genera cada frase por separado (a +6 %),
+  le saca el silencio de adelante y de atrás que deja edge-tts (sin eso las
+  frases duraban ~1 s más y la del logo se pasaba del final) y escribe un
+  índice con la duración de cada una que lee la composición. El guion
+  (`voz/nexo-apertura.json`) separa el "texto" del subtítulo de lo "dicho":
+  "Arca" en vez de "ARCA", comas para que respire.
+- En la composición, cada frase arranca con su escena o apenas termina la
+  anterior; subtítulos abajo (en el reel, en una franja libre: la ventana pasó
+  a tamaño 1:1 para dejarla), y la música baja a la mitad mientras habla. La
+  voz queda ~13 dB por encima de la música.
+- Va solo en el reel; la versión horizontal la toma con `--props='{"voz":true}'`
+  si el usuario la quiere también en la presentación.
+- No se escuchó acá: la pronunciación la revisa el usuario.
+
+## §167. Buscando una voz que no suene robótica (12 de noviembre de 2026)
+
+- A Tomás (edge-tts) el usuario lo escuchó robótico. Una causa es nuestra: cada
+  frase se generaba por separado; de corrido suena más natural.
+- **Clon de voz:** el usuario instaló VoiceStudio (voicestudio.sh, AGPL); su
+  asistente no bajaba OmniVoice (el registro decía que faltaba aceptar la
+  licencia, no comercial) pero sí dejó instalado **VoxCPM2** (Apache 2.0) en
+  `%APPDATA%\OmniVoice\engines\voxcpm2\voxcpm2\.venv`. En el estudio:
+  `scripts/voz-clon.py` (genera con ese Python) y `scripts/voz-probar.py` (una
+  página Gradio en 127.0.0.1:7860), con el acceso directo
+  `Desktop\Voces Nexo\Probar la voz.bat`. El modelo (4,4 GB) quedó en el caché
+  de Hugging Face. **En la compu, sin placa de video, tarda ~44 s por segundo
+  de audio** (bfloat16 en CPU; float32 pediría ~9 GB de RAM libres).
+- **La demo oficial** (Space `OpenBMB/VoxCPM-Demo`, con `gradio_client` desde
+  ese mismo Python, endpoint `/generate`) generó el reel entero en segundos con
+  la voz de Santino y la de Joaquín (`Desktop\Voces Nexo\Pruebas\*-reel-demo.wav`;
+  su transcripción automática devolvió basura, se le pasa el texto leído). Al
+  usuario le resultó gracioso pero el acento cambia mucho: no va.
+- **Decisión del usuario:** una voz genérica de las de los videos de Instagram
+  (CapCut o ElevenLabs), que genera él. El reel sigue commiteado con Tomás
+  hasta reemplazarla.
+- **Cierre del 12 de noviembre:** se probaron Elena, Jorge y Dalia de corrido
+  (`scripts/voz-cortar.py`: todo el guion de una vez y cortado por el instante
+  de cada palabra) en reels completos (`Desktop\Voces Nexo\reel-*.mp4`); al
+  usuario le siguen sonando algo robóticas. **Subió el reel sin voz** (el de
+  §165, que volvió a `redes/videos/nexo-apertura-reel.mp4`). En el estudio
+  quedó la voz de Elena en el índice y el logo de la apertura en 120 cuadros
+  (40 s más un tercio): al retomar la voz, partir de ahí.
+
+## §168 — Antes de la presentación: asistente con variantes, historial de ventas, plan por cuenta y esqueletos (14 de noviembre de 2026)
+
+Pedido del usuario: dejar el producto lo mejor posible antes del lunes.
+
+**1. El asistente no detectaba las variantes (web y WhatsApp).** Dos causas:
+la tarjeta cargaba el producto sin disparar el evento `input`, así que el
+selector de variantes nunca aparecía; y al confirmar se descartaba el
+`variante_id` (y el servidor tampoco lo leía). Ahora:
+- La IA separa `variante` del nombre (`interprete.js`, y el prompt muestra los
+  talles y colores de cada producto). `resolverVariante` / `resolverRenglon` /
+  `productoEnTexto` (server.js) la buscan entre las variantes activas; si no se
+  resuelve vuelve con todas las opciones (`no_dado`, `ambiguo`, `no_encontrado`).
+- Web: `asistentePonerRenglon` (app.js) pasa por el mismo camino que tipear, y
+  el selector pendiente se marca (`.campo-falta`). Venta y compra mandan
+  `variante: {id}`; el servidor valida pertenencia y stock por variante.
+- WhatsApp: si solo falta la variante, pregunta con una lista numerada y
+  contesta con "3", "talle 38", "la segunda"; cancelar descarta. La propuesta
+  guarda lo que dijo la IA en `_datos` para volver a resolverla.
+- **El manual por WhatsApp** (`backend/ayuda-whatsapp.js`, usa
+  core/manual.js y core/buscar-ayuda.js como la web): dudas de uso, charla y
+  "llevame a…" se contestan sin IA, y lo que la IA no toma como operación cae
+  al manual si tiene algo seguro.
+- Tests: `asistente-variantes.test.js` (8) y 2 nuevos en `whatsapp.test.js`.
+  Verificado además en un navegador real (venta "buzo L" → selector con las 4
+  variantes y aviso → elegir → "Venta #1 registrada").
+
+**2. Historial de ventas de Tienda Nube y Mercado Libre.** Hasta ahora solo
+entraban los pedidos posteriores a la conexión. `POST/GET
+/api/integraciones/{tiendanube,mercadolibre}/historial` (admin): el negocio
+elige desde cuándo (hasta 3 años) y corre en segundo plano. Entran solo los
+pedidos pagados, como ventas de antes de Nexo (`carga_inicial`): sin stock, sin
+caja, sin notificaciones, con su fecha, su cobro (sin movimiento de tesorería)
+y su comisión/envío para la ganancia por canal (se borra el movimiento de
+caja del gasto). Idempotente; los de productos sin vincular quedan pendientes
+(la pantalla lista qué vincular) y se reintentan. Bug que destapó el test:
+`cancelarPedido` no leía `carga_inicial` de la venta. UI: bloque "Ventas
+anteriores" (`pintarHistorialCanal` en core/canales.js). **Conviene cargar los
+costos antes de traerlas**: cada venta guarda el costo de ese momento. Tests en
+tiendanube.test.js y mercadolibre.test.js. Falta probarlo con la cuenta real.
+
+**3. Plan por cuenta.** Columna `organizaciones.propietario_id` (migración
+aditiva con relleno: el primer admin de cada negocio). El plan sigue en las
+columnas del negocio, pero todos los de un propietario se mantienen iguales
+(`aplicarPlanALaCuenta`: plataforma y `npm run plan`). "Agregar negocio" cuenta
+el plan y los negocios que creó la persona, no los del negocio donde está
+parada (un admin invitado puede armar su primero, en Gratis). **Mi cuenta →
+Mis negocios** lista cada negocio con rol, dueño y plan. Plataforma muestra
+la cuenta dueña y "vale para N negocios". **Ojo:** al migrar no se igualan
+cuentas que ya tuvieran planes distintos en sus negocios; se igualan al primer
+cambio de plan.
+
+**4. Esqueletos de carga** (skeleton screens, con efecto shimmer): `.sk` en
+styles.css; `tablaCargando` ahora dibuja una barra por columna; `listaCargando`
+(círculo y dos líneas) en Tienda Nube y Mercado Libre; `conEsqueleto` + CSS
+`[data-cargando]` convierte cada texto y cifra de una zona en su barra (el
+Resumen, la primera vez y al cambiar de período).
+
+**Suite:** 371 tests, lint y `npm run i18n` en 0.

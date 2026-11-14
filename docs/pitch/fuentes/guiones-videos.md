@@ -3,6 +3,60 @@
 Borrador para revisar antes de grabar. Primero se aprueban los guiones, después
 se graban las pantallas y se arman las animaciones.
 
+## Herramienta, referencias y cómo se ven en la presentación (12 de noviembre)
+
+**La herramienta: Motion Architect** (github.com/Hainrixz/motion-architect, MIT,
+de Enrique Rocha; si se redistribuye hay que conservar su crédito). Es la que
+usó el grupo de Studree (Code7C26/Studree) para su spot y su anuncio en inglés:
+un plugin de Claude Code con la skill `motion-architect`, los comandos `/motion`
+y `/motion-render` y un subagente que analiza videos de referencia, sobre un
+estudio de Remotion. Su flujo: intake → referencias → marca → **storyboard que
+se aprueba** → animación → revisión cuadro por cuadro → preview → mp4 en 16:9,
+9:16, 1:1 o 4:5.
+
+- **Dónde está:** `C:\Users\HP ULTRA 5\motion-architect` (`~/motion-architect`,
+  donde la skill busca el estudio). Fuera del repo de Nexo: los videos se arman
+  ahí y los mp4 terminados se copian a `docs/pitch/media/`.
+- **Ya hecho:** el clon; `ffmpeg` y `yt-dlp` instalados con winget (en el PATH
+  de usuario); `python3` funciona (copia de `python.exe` en la carpeta de Python
+  3.13, porque el `python3` de Windows abría la Microsoft Store).
+- **Instalado del todo** (12 de noviembre): el estudio (Remotion 4.0.533) y el
+  plugin en Claude Code. En PowerShell, `npm`, `npx` y `claude` van como
+  `npm.cmd`, `npx.cmd` y `claude.cmd` (la política de ejecución bloquea los
+  `.ps1`). La sesión de videos se abre **en Nexo**, para tener su contexto, y
+  ya puede escribir en el estudio: `C:\Users\HP ULTRA 5\motion-architect` está
+  en `additionalDirectories` de `.claude/settings.local.json` (local, no se
+  sube; la extensión de VS Code no tiene `/add-dir`). La skill encuentra el estudio en
+  `~/motion-architect/studio` (Nexo no tiene una carpeta `studio/`).
+- **Remotion** es gratis para equipos de hasta 3 personas.
+
+**Las referencias de estilo** ya están en
+`~/motion-architect/studio/public/references/`: `studree-spot.mp4` (43 s, sin
+voz) y `studree-anuncio-en.mp4` (40 s, con las voces del equipo en inglés), los
+dos en 1920 × 1080 a 30 fps, con sus pósters. Se analizan con el subagente
+`reference-analyst` para tomar el ritmo, los cortes, las transiciones y el tipo
+de movimiento; el contenido y la marca son de Nexo.
+
+**Cómo se ven en la presentación** (lo que el usuario quiere, tomado de
+Studree y mejorado):
+- El video está en la diapositiva como una tarjeta con su póster.
+- **Arranca solo al llegar a esa diapositiva** (en Studree se arrancaba con
+  Espacio) y la tarjeta se agranda a toda la pantalla: en Studree, `left`,
+  `top`, `width`, `height` y `border-radius` con una transición de 0,6 s
+  ease-in-out, una barra de progreso fina abajo, y lo de alrededor (contador,
+  QR, progreso) se esconde mientras suena.
+- **Al terminar, cae en la diapositiva con una transición:** la tarjeta vuelve
+  a su lugar (o el video se funde en el contenido de la diapositiva) y entra el
+  texto. Espacio pausa, Esc lo cierra, y avanzar de diapositiva lo corta.
+- Los mp4 van en `docs/pitch/media/` y la presentación armada los tiene que
+  seguir abriendo con doble clic: o se incrustan, o viajan junto a ella en la
+  carpeta del pitch (a decidir al armarlo: un mp4 de 5 a 8 MB incrustado en
+  base64 hace pesado el HTML).
+
+**El video en inglés** va como el de Studree: Nexo en inglés (Configuración →
+Apariencia → Idioma) y la voz del usuario grabada en inglés, no una voz
+sintética.
+
 ## Reglas para los cuatro videos
 
 - **Formato:** horizontal 1920 × 1080 para el pitch y YouTube; los videos 1 a 3
@@ -147,13 +201,58 @@ Se graba igual que el video 4 (alias de Gmail `+tutorial`, en el sitio real, y
 el negocio se da de baja al terminar). Con la skill `ui-demo` y Remotion,
 como los demás.
 
-### Video 6 — Apertura (corto)
+### Video 6 — Apertura (hecho, 12 de noviembre)
 
-**Para qué:** abrir el pitch, o la landing, con la app funcionando. **Duración:**
-15 a 25 s, sin voz, con música o en silencio.
+**Versión 2 (12 de noviembre, a pedido del usuario después de verla): 41 s,
+7,4 MB.** Un pantallazo completo, vistoso y rápido: el menú igual al de la
+app (los 21 ítems de un comercio en sus grupos), el Resumen con el clic en
+"30 días", el mouse recorriendo el gráfico con la fecha y los montos, y más
+gráficos (dona de cobros, mapa de calor, lo más vendido); y escenas nuevas y
+cortas: la factura con su PDF, la compra desde la foto, Tienda Nube y Mercado
+Libre, y el cobro con el QR de Mercado Pago. Lo principal (Resumen y
+asistente) sigue yendo de a poco. **El usuario eligió la música movida** ("el
+video quedó perfecto"). Detalle: `redes/videos/estudio/storyboards/nexo-apertura.md`.
 
-Un montaje rápido de pantallas reales de Lola Indumentaria, de 2 a 3 s cada
-una: el Resumen, una venta en el mostrador con la oferta que entra sola, la
-ficha de "cuánto deja cada venta", el asistente armando una venta, la entrada
-del gimnasio y el logo al final. Sale de las mismas grabaciones de los videos
-1 a 5.
+**El reel** (pedido del usuario): `redes/videos/nexo-apertura-reel.mp4`, 1080 ×
+1920, 41 s, con su portada (`nexo-apertura-reel-portada.jpg`). Las mismas
+escenas: la app va sin el menú lateral (como en el celular) y ocupa el ancho,
+el título arriba, las grillas en dos columnas, y el cierre con "Probalo gratis
+· link en la bio". Respeta las zonas que tapa Instagram (14 % de arriba, 20 %
+de abajo). **Con la voz de Tomás** (elegida por el usuario, edge-tts
+es-AR-TomasNeural, +6 % de velocidad) y subtítulos abajo; la música baja a la
+mitad mientras habla. Texto aprobado: "Todo tu negocio, en un solo lugar. /
+Mirá cómo te fue en el mes, de un vistazo. / Vendé en el mostrador: las ofertas
+se aplican solas. / Sabé cuánto te deja cada venta. / Facturá con ARCA en un
+clic. / Cargá tus compras con una foto de la factura. / Conectá Tienda Nube y
+Mercado Libre. / Cobrá con Mercado Pago. / O decíselo a Nexo, y él te arma la
+venta. / Stock, caja, clientes y mucho más, para cualquier rubro. / Nexo.
+Probalo gratis, link en la bio." Para que pronuncie bien, a la voz se le pasa
+"Arca" y no "ARCA" (lo deletrearía), y las siglas se escriben como se dicen
+(lo mismo cuando aparezca "QR"). Si al usuario le gusta, la voz también puede
+ir en la versión de la presentación (`--props='{"voz":true}'`).
+
+Versión 1: **`docs/pitch/media/nexo-apertura.mp4`**: 29,5 s, 1920 × 1080, 3,8 MB. Abre la
+presentación: arranca solo en la diapositiva 1, a pantalla completa, y al
+terminar se funde en ella (el logo del último cuadro está en el mismo lugar y
+tamaño que el de la diapositiva).
+
+Decisiones del usuario al aprobarlo:
+- **Genérico:** el negocio se llama "Indumentaria" y el cliente "Juan Pérez";
+  nunca el nombre de los negocios de ejemplo ni el de sus clientes.
+- **Sin la entrada del gimnasio:** mostraba un rubro y no los demás. En su
+  lugar, un pantallazo de doce funciones y otro de los ocho rubros, cada uno
+  con lo suyo.
+- **Sin voz** en la presentación (se puede sumar después), con los sonidos de
+  cada toque y una música bajita. **Los videos para Instagram sí llevan voz.**
+
+Escenas: "Todo el negocio, en un solo lugar" → Resumen → punto de venta con la
+oferta que entra sola → cuánto deja cada venta → el asistente arma y confirma
+una venta → "Y todo lo demás, conectado" → "Y lo que cada rubro necesita" →
+el logo. La app no está grabada: está redibujada en el video, igual a la real,
+como hizo Studree. El detalle cuadro por cuadro y cómo se rearma:
+`redes/videos/estudio/storyboards/nexo-apertura.md` (las fuentes del estudio
+están copiadas en `redes/videos/estudio/`).
+
+**La música** es propia: `scripts/musica-nexo.py` del estudio la genera (un
+colchón de acordes, un arpegio y un pulso suave a 120 bpm). No hay que buscar
+licencias.

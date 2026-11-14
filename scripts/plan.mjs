@@ -70,25 +70,37 @@ if (values.ver) {
   }
   const anterior = { plan: fila.plan, plan_vence: fila.plan_vence };
   const nuevo = { plan: values.plan, plan_vence: hasta };
+  // El plan es de la cuenta (hist. §168): vale para todos los negocios que creó
+  // su propietario. Uno sin propietario es su propia cuenta.
+  const propietario = db.prepare('SELECT propietario_id FROM organizaciones WHERE id = ?').get(fila.id)?.propietario_id;
+  const ids = propietario
+    ? db
+        .prepare('SELECT id FROM organizaciones WHERE propietario_id = ? AND baja_hecha IS NULL AND ejemplo IS NULL ORDER BY id')
+        .all(propietario)
+        .map((n) => n.id)
+    : [fila.id];
+  if (!ids.includes(fila.id)) ids.push(fila.id);
   db.exec('BEGIN');
   try {
-    db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(nuevo.plan, nuevo.plan_vence, fila.id);
-    db.prepare(
-      `INSERT INTO auditoria (actor, accion, entidad, entidad_id, valor_anterior, valor_nuevo, detalle, organizacion_id)
-       VALUES ('sistema', 'editar', 'organizacion', ?, ?, ?, ?, ?)`
-    ).run(
-      fila.id,
-      JSON.stringify(anterior),
-      JSON.stringify(nuevo),
-      `Plan cambiado a ${PLANES[nuevo.plan].nombre}${hasta ? ` hasta el ${hasta}` : ' sin vencimiento'}`,
-      fila.id
-    );
+    for (const id of ids) {
+      db.prepare('UPDATE organizaciones SET plan = ?, plan_vence = ? WHERE id = ?').run(nuevo.plan, nuevo.plan_vence, id);
+      db.prepare(
+        `INSERT INTO auditoria (actor, accion, entidad, entidad_id, valor_anterior, valor_nuevo, detalle, organizacion_id)
+         VALUES ('sistema', 'editar', 'organizacion', ?, ?, ?, ?, ?)`
+      ).run(
+        id,
+        JSON.stringify(anterior),
+        JSON.stringify(nuevo),
+        `Plan cambiado a ${PLANES[nuevo.plan].nombre}${hasta ? ` hasta el ${hasta}` : ' sin vencimiento'}${ids.length > 1 ? ` (vale para los ${ids.length} negocios de la cuenta)` : ''}`,
+        id
+      );
+    }
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
   }
-  console.log(describir(buscar.get(fila.id)));
+  for (const id of ids) console.log(describir(buscar.get(id)));
 } else {
   for (const fila of db.prepare('SELECT id, nombre, plan, plan_vence FROM organizaciones ORDER BY id').all()) {
     console.log(describir(fila));

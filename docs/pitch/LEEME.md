@@ -3,6 +3,7 @@
 | Archivo | Para qué |
 |---|---|
 | `Presentación — Nexo.html` | Las diapositivas. Se abren con doble clic, sin internet. Flechas o el puntero para avanzar, **F** para pantalla completa, `#10` al final de la dirección salta a la del QR. |
+| `media/` | Los videos de la presentación. **Tienen que viajar junto al HTML** (la misma carpeta `docs/pitch` entera en el pendrive): la presentación los busca ahí. El de la apertura arranca solo en la diapositiva 1; si Chrome no lo deja arrancar con sonido, aparece "Presionar cualquier tecla para empezar". Mientras suena: Espacio pausa, Esc o → lo cierran. |
 | `Guía para presentar — Nexo.pdf` | Qué decir en cada diapositiva, lo técnico explicado simple y qué contestar si preguntan. |
 | `Factura de compra de ejemplo.pdf` y `.jpg` | Para la demo de Compras → Nueva compra → "Cargar desde la factura", en Lola Indumentaria. Una sola lectura por vez: la IA tiene cupo. |
 | `QR/Conocer Nexo.png` | Lleva a la página de Nexo (nexosystem.duckdns.org): qué es, los planes y cómo empezar. |

@@ -1,0 +1,13 @@
+[
+  { "escena": "gancho", "texto": "Todo tu negocio, en un solo lugar." },
+  { "escena": "resumen", "texto": "Mirá cómo te fue en el mes, de un vistazo." },
+  { "escena": "mostrador", "texto": "Vendé en el mostrador: las ofertas se aplican solas." },
+  { "escena": "venta", "texto": "Sabé cuánto te deja cada venta." },
+  { "escena": "factura", "texto": "Facturá con ARCA en un clic.", "dicho": "Facturá con Arca, en un clic." },
+  { "escena": "compra", "texto": "Cargá tus compras con una foto de la factura." },
+  { "escena": "online", "texto": "Conectá Tienda Nube y Mercado Libre." },
+  { "escena": "cobro", "texto": "Cobrá con Mercado Pago." },
+  { "escena": "asistente", "texto": "O decíselo a Nexo, y él te arma la venta." },
+  { "escena": "funciones", "texto": "Stock, caja, clientes y mucho más, para cualquier rubro.", "dicho": "Stock, caja, clientes, y mucho más. Para cualquier rubro." },
+  { "escena": "logo", "texto": "Nexo. Probalo gratis, link en la bio.", "dicho": "Nexo. Probalo gratis: link en la bio." }
+]

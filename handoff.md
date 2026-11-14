@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §162);
+    siguiente número (hoy el último es §168);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,17 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (12 de noviembre de 2026)
+## Estado actual (14 de noviembre de 2026)
+
+**14 de noviembre, hist. §168 (sin commitear, en `solla`): lo que había que cerrar
+antes del lunes.** Asistente con variantes (web y WhatsApp, con el manual por
+WhatsApp), historial de ventas de Tienda Nube y Mercado Libre, plan por cuenta
+con "Mis negocios" en Mi cuenta y mejoras en Plataforma, y esqueletos de carga.
+371 tests en verde. **Falta:** que el usuario lo vea y lo pruebe en el sitio
+(el historial con la Tienda Nube de su amigo y con Mercado Libre reales; cargar
+antes los costos), commitear y publicar, y las tareas de abajo.
+
+(Lo de abajo es del 12 de noviembre.)
 
 **12 de noviembre, hist. §158: la presentación corregida (30 diapositivas) y
 la guía rearmada (22 páginas).** Pedido del usuario después de verla:
@@ -58,6 +68,68 @@ la guía rearmada (22 páginas).** Pedido del usuario después de verla:
   cierre es la 31. ARCA (24) quedó simple: Nexo intermedia con su
   certificado, sin lo de las 12 horas; el bloqueo para la consigna pasó a ser
   el de la fecha ("hoy" era mañana).
+
+**12 de noviembre, hist. §164: la apertura, versión 2 (41 s).** Pedido del
+usuario después de verla: el menú igual al de la app, más gráficos en el
+Resumen (el clic en "30 días" y el mouse recorriendo el gráfico con la fecha),
+y un pantallazo completo y rápido: la factura con su PDF, la compra desde la
+foto, Tienda Nube y Mercado Libre, y el cobro con el QR de Mercado Pago.
+Eligió la **música movida** ("quedó perfecto"), y ya está en la presentación.
+**El reel** (hist. §165, §166): `redes/videos/nexo-apertura-reel.mp4` (1080 ×
+1920, con portada), **sin voz** (el que subió a Instagram el 12 de noviembre). **Al usuario
+Tomás le suena robótico** (hist. §167): se probaron clones de su voz y la de
+Joaquín (VoxCPM2) y tampoco lo convencieron (el acento cambia). **Decidió usar
+una voz genérica de las de Instagram** (CapCut o ElevenLabs): la genera él con
+el texto del reel y deja el audio en `Desktop\Voces Nexo`; acá se corta en sus
+pausas, se reemplaza la voz y los subtítulos siguen igual. Se retoma desde el
+sábado 14 (el usuario guarda el cupón de límite para antes de la feria).
+
+**12 de noviembre, hist. §163: el video 6 (la apertura), hecho y en la
+presentación.** `docs/pitch/media/nexo-apertura.mp4` (29,5 s): arranca solo
+en la diapositiva 1 y se funde en ella (el logo termina en el mismo lugar).
+Decisiones del usuario: **todo genérico** ("Indumentaria", "Juan Pérez"),
+**sin el gimnasio** (en su lugar, las funciones y los rubros), **sin voz en
+la presentación** pero con clics y música bajita, y **con voz en los de
+Instagram**. La música es propia (generada), la app va redibujada como en
+Studree, y los mp4 viajan al lado del HTML (`docs/pitch/media/`; el LEEME lo
+avisa). Las fuentes del estudio, copiadas en `redes/videos/estudio/`.
+**Sigue, en el orden del usuario:** el video 5 (un negocio desde cero), el
+de inglés (Nexo en inglés y la voz del usuario, que graba él) y del 1 al 4;
+mostrar el guion por escenas antes de armar cada uno. En el Bash de Git hay
+que exportar el PATH de ffmpeg de winget (ver §163).
+
+**Para el sábado 14 (el simulacro del grupo es seguramente el lunes 16):**
+la diapositiva 2 con datos nuevos y en tres pasos dentro de la misma
+diapositiva (pedido del usuario): "25 horas por semana dedica una pyme a
+cargar y cruzar datos a mano" → al tocar, el número cuenta hasta "1.300
+horas al año" → "más de 160 jornadas de trabajo"; recién el toque siguiente
+pasa a la 3. Fuente chica: Intuit QuickBooks, Business Solutions Survey 2024
+(630 empresas de EE. UU. de 10 a 99 empleados); horas y jornadas, cálculo
+propio. Opcional: "3 de cada 10 empresas argentinas todavía planifica con
+papel o Excel" (Universidad Austral, 2025; mide solo la cadena de
+suministro). **Antes, abrir las fuentes y confirmar las cifras** (vinieron
+de otra IA). Hace falta: pasos dentro de una diapositiva en la presentación,
+la guía de esa diapositiva y `npm run presentacion` y `npm run guia`. Nunca
+decir que Nexo ahorra esas horas. También: video en inglés, roles y ensayo.
+
+**Videos animados: la herramienta, lista (12 de noviembre).** Es
+**Motion Architect** (Hainrixz/motion-architect, MIT): la que usó Studree para
+su spot y su anuncio en inglés, un plugin de Claude Code (`/motion`) sobre un
+estudio de Remotion. Está clonado en `C:\Users\HP ULTRA 5\motion-architect`, con
+`ffmpeg` y `yt-dlp` (winget) y `python3` andando, y los dos videos de Studree
+como referencia en `studio/public/references/`. Estilo, referencias y cómo van
+en la presentación (arrancan solos y al terminar caen en la diapositiva):
+`docs/pitch/fuentes/guiones-videos.md`, al principio. **Instalado del todo** (12 de
+noviembre): el estudio (Remotion 4.0.533, TypeScript compila) y el plugin en
+Claude Code (`motion-architect@motion-architect`, para el usuario). En
+PowerShell, `npm`, `npx` y `claude` van como `npm.cmd`, `npx.cmd` y
+`claude.cmd`: la política de ejecución bloquea los `.ps1`. La sesión de
+videos se abre **en Nexo** (con su contexto), y ya puede escribir en el
+estudio: `C:\Users\HP ULTRA 5\motion-architect` está en `additionalDirectories`
+de `.claude/settings.local.json` (local, no se sube; en la extensión de VS Code
+no existe `/add-dir`). La skill encuentra el estudio en `~/motion-architect/studio`
+porque Nexo no tiene una carpeta `studio/`. Los mp4 terminados van a
+`docs/pitch/media/`.
 
 **12 de noviembre, hist. §162: el repo, ordenado.** `docs/` va siempre en
 carpetas: `proyecto/` (este histórico, publicar, plan para vender),

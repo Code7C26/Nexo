@@ -28,7 +28,7 @@ import {
   numero,
   UNIDADES
 } from "./core/formato.js";
-import { avisar, confirmar, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
+import { avisar, confirmar, conEsqueleto, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
 import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
@@ -559,9 +559,18 @@ function renderUltimosMovimientos(rango = {}) {
 // mitades (resultado + qué se vende) comparten el mismo filtro de fecha, así
 // que se cargan juntas para que ningún call site deje una mitad desactualizada.
 // Antes, cómo armó la persona su Resumen: de ahí sale el período.
+// El esqueleto de carga (hist. §168) se ve la primera vez y cuando cambia el
+// período, que es cuando lo que hay en pantalla deja de valer; un refresco
+// después de cargar una venta no hace parpadear las cifras.
+let ultimoRangoResumen = null;
 async function cargarPanelResumen() {
   await prepararTablero();
-  await refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras(), cargarReporteIva(), cargarTablero(rangoActualResumen())]);
+  const rango = rangoActualResumen();
+  const clave = JSON.stringify(rango);
+  const cambio = clave !== ultimoRangoResumen;
+  ultimoRangoResumen = clave;
+  const carga = refrescar([cargarResumen(), cargarReporteVentas(), cargarReporteCompras(), cargarReporteIva(), cargarTablero(rango)]);
+  await (cambio ? conEsqueleto(document.querySelector('.view[data-view="dashboard"]'), carga) : carga);
 }
 
 /* ---------- Reportes: qué se vende y a quién ---------- */
@@ -7291,6 +7300,47 @@ function asistenteNotaCandidatos(candidatos) {
     : "";
 }
 
+// Llena una fila de la tarjeta con lo que propuso el asistente (hist. §168).
+// El producto pasa por el mismo camino que si se tipeara (el evento "input"):
+// así aparece el selector de variantes con su stock, y recién después se pone
+// lo que vino en la frase. Antes se asignaba el valor sin disparar nada y el
+// selector nunca aparecía: "tiene variantes" sin forma de elegir una.
+async function asistentePonerRenglon(fila, item) {
+  const productoInput = fila.querySelector(".item-producto");
+  productoInput.value = item.producto.nombre_resuelto || item.producto.valor || "";
+  productoInput.dispatchEvent(new Event("input"));
+  const producto = productos.find((p) => p.id === item.producto.id);
+  if (producto?.tiene_variantes) {
+    await variantesDeProducto(producto.id);
+    const select = fila.querySelector(".item-variante-id");
+    if (item.variante?.id && [...select.options].some((o) => o.value === String(item.variante.id))) {
+      select.value = String(item.variante.id);
+      // El change fija el tope de stock de ESA variante (y sugiere su precio,
+      // que el de la frase pisa abajo).
+      select.dispatchEvent(new Event("change"));
+    } else {
+      select.classList.add("campo-falta");
+      select.addEventListener("change", () => select.classList.remove("campo-falta"), { once: true });
+    }
+  }
+  fila.querySelector(".item-cantidad").value = item.cantidad ?? "";
+  // Si el precio salió de la lista de precios y todavía no hay variante, se
+  // deja el que sugirió la fila: al elegir la variante se recalcula.
+  const sinVarianteElegida = item.precio_sugerido && producto?.tiene_variantes && !item.variante?.id;
+  if (!sinVarianteElegida) fila.querySelector(".item-precio").value = item.precio_unitario ?? "";
+  actualizarSubtotalFila(fila);
+  fila.parentElement.dispatchEvent(new Event("item-change"));
+}
+
+// El primer renglón cuyo producto tiene variantes y todavía no se eligió una.
+function asistenteRenglonSinVariante(itemsEl) {
+  for (const fila of itemsEl.querySelectorAll(".item-row")) {
+    const select = fila.querySelector(".item-variante-id");
+    if (!select.hidden && !select.value) return fila.querySelector(".item-producto").value.trim();
+  }
+  return null;
+}
+
 /* --- Apertura/cierre del panel --- */
 
 const asistenteLauncher = document.getElementById("asistenteLauncher");
@@ -7734,11 +7784,7 @@ function activarAsistenteVenta(raiz, propuesta, mensajeId, turnoEl) {
   for (const item of propuesta.items) {
     agregarFilaItemVenta(itemsEl, productos, true);
     const fila = itemsEl.lastElementChild;
-    fila.querySelector(".item-producto").value = item.producto.nombre_resuelto || item.producto.valor || "";
-    fila.querySelector(".item-producto-id").value = item.producto.id ?? "";
-    fila.querySelector(".item-cantidad").value = item.cantidad ?? "";
-    fila.querySelector(".item-precio").value = item.precio_unitario ?? "";
-    actualizarSubtotalFila(fila);
+    asistentePonerRenglon(fila, item);
     if (item.producto.estado === "ambiguo") {
       fila.insertAdjacentHTML("afterend", asistenteNotaCandidatos(item.producto.candidatos));
     }
@@ -7767,6 +7813,11 @@ function activarAsistenteVenta(raiz, propuesta, mensajeId, turnoEl) {
       avisar("Falta elegir, para cada item, un producto que exista en el catálogo.", "atencion");
       return;
     }
+    const sinVariante = asistenteRenglonSinVariante(itemsEl);
+    if (sinVariante) {
+      avisar(`Elegí la variante de "${sinVariante}" (talle, color…).`, "atencion");
+      return;
+    }
     const clienteTexto = clienteInput.value.trim();
     if (!clienteIdManual && !clienteTexto) {
       avisar("Falta el cliente.", "atencion");
@@ -7784,6 +7835,7 @@ function activarAsistenteVenta(raiz, propuesta, mensajeId, turnoEl) {
         },
         items: items.map((it) => ({
           producto: { id: it.producto_id },
+          variante: it.variante_id ? { id: it.variante_id } : null,
           cantidad: it.cantidad,
           precio_unitario: it.precio_unitario
         })),
@@ -7866,11 +7918,7 @@ function activarAsistenteCompra(raiz, propuesta, mensajeId, turnoEl) {
   for (const item of propuesta.items) {
     agregarFilaItemCompra(itemsEl, productos);
     const fila = itemsEl.lastElementChild;
-    fila.querySelector(".item-producto").value = item.producto.nombre_resuelto || item.producto.valor || "";
-    fila.querySelector(".item-producto-id").value = item.producto.id ?? "";
-    fila.querySelector(".item-cantidad").value = item.cantidad ?? "";
-    fila.querySelector(".item-precio").value = item.precio_unitario ?? "";
-    actualizarSubtotalFila(fila);
+    asistentePonerRenglon(fila, item);
     if (item.producto.estado === "ambiguo") {
       fila.insertAdjacentHTML("afterend", asistenteNotaCandidatos(item.producto.candidatos));
     }
@@ -7888,6 +7936,11 @@ function activarAsistenteCompra(raiz, propuesta, mensajeId, turnoEl) {
       avisar("Falta al menos un producto con cantidad y costo válidos.", "atencion");
       return;
     }
+    const sinVariante = asistenteRenglonSinVariante(itemsEl);
+    if (sinVariante) {
+      avisar(`Elegí la variante de "${sinVariante}" (talle, color…).`, "atencion");
+      return;
+    }
     const proveedorTexto = proveedorInput.value.trim();
     if (!proveedorTexto) {
       avisar("Falta el proveedor.", "atencion");
@@ -7901,6 +7954,7 @@ function activarAsistenteCompra(raiz, propuesta, mensajeId, turnoEl) {
         proveedor: { valor: proveedorTexto, nombre_resuelto: proveedorTexto },
         items: items.map((it) => ({
           producto: { valor: it.producto, nombre_resuelto: it.producto },
+          variante: it.variante_id ? { id: it.variante_id } : null,
           cantidad: it.cantidad,
           precio_unitario: it.precio_unitario
         })),

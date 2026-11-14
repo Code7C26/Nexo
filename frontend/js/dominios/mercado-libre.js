@@ -12,7 +12,7 @@
  * ?mercadolibre=.
  */
 
-import { avisar, confirmar } from "../core/ui.js";
+import { avisar, confirmar, listaCargando } from "../core/ui.js";
 import { api } from "../core/api.js";
 import { registrar } from "../core/registro.js";
 import { esc, fechaHoraAR, money } from "../core/formato.js";
@@ -22,6 +22,7 @@ import {
   escucharPedidosCanal,
   pintarActividadCanal,
   pintarAjustesCanal,
+  pintarHistorialCanal,
   pintarPedidosCanal
 } from "../core/canales.js";
 
@@ -199,6 +200,8 @@ function filtrar() {
 
 async function cargar() {
   leerVuelta();
+  // La primera vez, esqueletos en las listas hasta que llega el estado.
+  if (!estado) for (const id of ["mlPublicaciones", "mlPedidos", "mlActividad"]) listaCargando(id);
   estado = await api("/api/integraciones/mercadolibre", { error: "No se pudo cargar Mercado Libre." });
   pintarEstado();
   document.getElementById("configMercadoLibreResumen").textContent = estado.conectada
@@ -210,6 +213,7 @@ async function cargar() {
   pasos.hidden = !estado.disponible || estado.conectada || sinPlan;
   conectadaEl.hidden = !estado.conectada;
   if (!estado.conectada) return;
+  pintarHistorialCanal(document.getElementById("mlHistorial"), estado, { plataforma: "mercadolibre", canal: "Mercado Libre", recargar: cargar });
   pintarPedidosCanal(document.getElementById("mlPedidos"), estado.pedidos, {
     vacio: "Todavía no llegó ninguna venta de Mercado Libre.",
     titulo: "Venta",

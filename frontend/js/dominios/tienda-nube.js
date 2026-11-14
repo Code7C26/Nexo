@@ -9,7 +9,7 @@
  * ?clave= si la app se instaló desde Tienda Nube y hay que confirmarla).
  */
 
-import { avisar, confirmar } from "../core/ui.js";
+import { avisar, confirmar, listaCargando } from "../core/ui.js";
 import { api } from "../core/api.js";
 import { registrar } from "../core/registro.js";
 import { esc, fechaHoraAR } from "../core/formato.js";
@@ -19,6 +19,7 @@ import {
   escucharPedidosCanal,
   pintarActividadCanal,
   pintarAjustesCanal,
+  pintarHistorialCanal,
   pintarPedidosCanal
 } from "../core/canales.js";
 
@@ -165,6 +166,8 @@ async function pintarConfirmacion() {
 
 async function cargar() {
   leerVuelta();
+  // La primera vez, esqueletos en las listas hasta que llega el estado.
+  if (!estado) for (const id of ["tnProductos", "tnPedidos", "tnActividad"]) listaCargando(id);
   estado = await api("/api/integraciones/tiendanube", { error: "No se pudo cargar Tienda Nube." });
   pintarEstado();
   document.getElementById("configTiendaNubeResumen").textContent = estado.conectada
@@ -179,6 +182,7 @@ async function cargar() {
   pasos.hidden = !estado.disponible || estado.conectada || !confirmarEl.hidden || sinPlan;
   conectadaEl.hidden = !estado.conectada;
   if (!estado.conectada) return;
+  pintarHistorialCanal(document.getElementById("tnHistorial"), estado, { plataforma: "tiendanube", canal: "Tienda Nube", recargar: cargar });
   pintarPedidos();
   pintarActividad();
   await Promise.all([pintarAjustes(), pintarProductos()]);
