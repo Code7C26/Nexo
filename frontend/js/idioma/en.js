@@ -226,7 +226,6 @@ export default {
   "Traé lo que ya vendiste por {0} antes de conectarlo, así el Resumen y la ganancia por canal arrancan con tu historia y no desde cero. Entran las ventas pagadas como ventas de antes de Nexo: no tocan el stock ni la caja de hoy.": "Bring in what you already sold through {0} before connecting it, so the Summary and the profit per channel start with your history instead of from zero. Paid sales come in as sales from before Nexo: they don't touch today's stock or cash.",
   "Cargá antes el costo de tus productos": "Load your products' cost first",
   ": cada venta guarda el costo que tiene el producto al traerla.": ": each sale keeps the cost the product has when it is fetched.",
-  "Traer": "Fetch",
   "Traer ventas anteriores": "Fetch previous sales",
   "No se pudieron traer las ventas.": "The sales could not be fetched.",
   "{0}T00:00:00.000Z": null,
