@@ -13137,3 +13137,62 @@ Resumen, como el de 30 días con el mouse recorriéndolo y mostrando las fechas.
   §165, que volvió a `redes/videos/nexo-apertura-reel.mp4`). En el estudio
   quedó la voz de Elena en el índice y el logo de la apertura en 120 cuadros
   (40 s más un tercio): al retomar la voz, partir de ahí.
+
+## §168 — Antes de la presentación: asistente con variantes, historial de ventas, plan por cuenta y esqueletos (14 de noviembre de 2026)
+
+Pedido del usuario: dejar el producto lo mejor posible antes del lunes.
+
+**1. El asistente no detectaba las variantes (web y WhatsApp).** Dos causas:
+la tarjeta cargaba el producto sin disparar el evento `input`, así que el
+selector de variantes nunca aparecía; y al confirmar se descartaba el
+`variante_id` (y el servidor tampoco lo leía). Ahora:
+- La IA separa `variante` del nombre (`interprete.js`, y el prompt muestra los
+  talles y colores de cada producto). `resolverVariante` / `resolverRenglon` /
+  `productoEnTexto` (server.js) la buscan entre las variantes activas; si no se
+  resuelve vuelve con todas las opciones (`no_dado`, `ambiguo`, `no_encontrado`).
+- Web: `asistentePonerRenglon` (app.js) pasa por el mismo camino que tipear, y
+  el selector pendiente se marca (`.campo-falta`). Venta y compra mandan
+  `variante: {id}`; el servidor valida pertenencia y stock por variante.
+- WhatsApp: si solo falta la variante, pregunta con una lista numerada y
+  contesta con "3", "talle 38", "la segunda"; cancelar descarta. La propuesta
+  guarda lo que dijo la IA en `_datos` para volver a resolverla.
+- **El manual por WhatsApp** (`backend/ayuda-whatsapp.js`, usa
+  core/manual.js y core/buscar-ayuda.js como la web): dudas de uso, charla y
+  "llevame a…" se contestan sin IA, y lo que la IA no toma como operación cae
+  al manual si tiene algo seguro.
+- Tests: `asistente-variantes.test.js` (8) y 2 nuevos en `whatsapp.test.js`.
+  Verificado además en un navegador real (venta "buzo L" → selector con las 4
+  variantes y aviso → elegir → "Venta #1 registrada").
+
+**2. Historial de ventas de Tienda Nube y Mercado Libre.** Hasta ahora solo
+entraban los pedidos posteriores a la conexión. `POST/GET
+/api/integraciones/{tiendanube,mercadolibre}/historial` (admin): el negocio
+elige desde cuándo (hasta 3 años) y corre en segundo plano. Entran solo los
+pedidos pagados, como ventas de antes de Nexo (`carga_inicial`): sin stock, sin
+caja, sin notificaciones, con su fecha, su cobro (sin movimiento de tesorería)
+y su comisión/envío para la ganancia por canal (se borra el movimiento de
+caja del gasto). Idempotente; los de productos sin vincular quedan pendientes
+(la pantalla lista qué vincular) y se reintentan. Bug que destapó el test:
+`cancelarPedido` no leía `carga_inicial` de la venta. UI: bloque "Ventas
+anteriores" (`pintarHistorialCanal` en core/canales.js). **Conviene cargar los
+costos antes de traerlas**: cada venta guarda el costo de ese momento. Tests en
+tiendanube.test.js y mercadolibre.test.js. Falta probarlo con la cuenta real.
+
+**3. Plan por cuenta.** Columna `organizaciones.propietario_id` (migración
+aditiva con relleno: el primer admin de cada negocio). El plan sigue en las
+columnas del negocio, pero todos los de un propietario se mantienen iguales
+(`aplicarPlanALaCuenta`: plataforma y `npm run plan`). "Agregar negocio" cuenta
+el plan y los negocios que creó la persona, no los del negocio donde está
+parada (un admin invitado puede armar su primero, en Gratis). **Mi cuenta →
+Mis negocios** lista cada negocio con rol, dueño y plan. Plataforma muestra
+la cuenta dueña y "vale para N negocios". **Ojo:** al migrar no se igualan
+cuentas que ya tuvieran planes distintos en sus negocios; se igualan al primer
+cambio de plan.
+
+**4. Esqueletos de carga** (skeleton screens, con efecto shimmer): `.sk` en
+styles.css; `tablaCargando` ahora dibuja una barra por columna; `listaCargando`
+(círculo y dos líneas) en Tienda Nube y Mercado Libre; `conEsqueleto` + CSS
+`[data-cargando]` convierte cada texto y cifra de una zona en su barra (el
+Resumen, la primera vez y al cambiar de período).
+
+**Suite:** 371 tests, lint y `npm run i18n` en 0.

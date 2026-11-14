@@ -4295,6 +4295,11 @@
                   <ul class="tn-productos" id="tnProductos"></ul>
                 </section>
 
+                <section class="panel" aria-labelledby="tnHistorialTitulo">
+                  <div class="panel-head"><h2 id="tnHistorialTitulo">Ventas anteriores</h2></div>
+                  <div class="historial-canal" id="tnHistorial"></div>
+                </section>
+
                 <section class="panel" aria-labelledby="tnPedidosTitulo">
                   <div class="panel-head">
                     <h2 id="tnPedidosTitulo">Pedidos de la tienda</h2>
@@ -4375,6 +4380,11 @@
                   <p class="tn-ayuda">Elegí qué producto de Nexo es cada publicación. Si tienen el mismo SKU, ya viene elegido. Al vincular, la publicación toma el precio y el stock de Nexo; si el stock que vale es el de Mercado Libre, marcá “Traer su stock”.</p>
                   <input type="search" class="search ml-buscar" id="mlBuscar" placeholder="Buscar por título, SKU o número" aria-label="Buscar publicaciones" hidden />
                   <ul class="ml-publicaciones" id="mlPublicaciones"></ul>
+                </section>
+
+                <section class="panel" aria-labelledby="mlHistorialTitulo">
+                  <div class="panel-head"><h2 id="mlHistorialTitulo">Ventas anteriores</h2></div>
+                  <div class="historial-canal" id="mlHistorial"></div>
                 </section>
 
                 <section class="panel" aria-labelledby="mlPedidosTitulo">
@@ -5065,6 +5075,16 @@
                   <button type="submit" class="btn btn-primary" id="perfilMailEnviar">Cambiar mi mail</button>
                 </div>
               </form>
+              <!-- Los negocios donde trabaja la persona y qué es en cada uno (hist.
+                   §168): el plan es de la cuenta, no del negocio. Lo pinta
+                   dominios/negocios.js. -->
+              <section class="config-tarjeta" aria-labelledby="cuentaNegociosTitulo">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo" id="cuentaNegociosTitulo">Mis negocios</p>
+                  <p class="config-tarjeta-texto">Los negocios donde trabajás y qué sos en cada uno. El plan es de la cuenta: vale para todos los negocios que creaste vos. En uno donde te invitaron rige el plan de quien lo creó.</p>
+                  <ul class="cuenta-negocios" id="cuentaNegociosLista"></ul>
+                </div>
+              </section>
               <form class="form config-tarjeta" id="formCambioPassword">
                 <div class="config-tarjeta-cuerpo">
                   <div class="perfil-identidad">

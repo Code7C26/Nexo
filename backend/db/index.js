@@ -1989,6 +1989,25 @@ for (const columna of ['ejemplo TEXT', 'ejemplo_vence TEXT']) {
   }
 }
 
+// El plan es de la cuenta, no del negocio (hist. §168): `propietario_id` es la
+// cuenta que creó el negocio y la que lo paga. Todos los negocios de un mismo
+// propietario comparten plan y vencimiento (server.js, aplicarPlanALaCuenta);
+// las columnas `plan` y `plan_vence` de cada negocio siguen siendo las que se
+// leen, y se mantienen iguales entre los de una cuenta. Nulable: un negocio sin
+// propietario (los de ejemplo) cuenta como su propia cuenta. El relleno toma al
+// primer admin que tuvo cada negocio, y se puede volver a correr.
+if (!db.prepare('PRAGMA table_info(organizaciones)').all().some((col) => col.name === 'propietario_id')) {
+  db.exec('ALTER TABLE organizaciones ADD COLUMN propietario_id INTEGER REFERENCES usuarios(id)');
+}
+db.exec(`
+  UPDATE organizaciones
+     SET propietario_id = (
+       SELECT usuario_id FROM usuario_organizaciones pertenencia
+        WHERE pertenencia.organizacion_id = organizaciones.id AND pertenencia.rol = 'admin'
+        ORDER BY pertenencia.fecha_alta, pertenencia.usuario_id LIMIT 1)
+   WHERE propietario_id IS NULL AND ejemplo IS NULL
+`);
+
 // El asistente registra devoluciones (hist. §119): asistente_mensajes.
 // operacion_tipo suma 'devolucion' a su CHECK, que SQLite no deja cambiar sin
 // reconstruir la tabla (CLAUDE.md §34). Mismo método que el rebuild de

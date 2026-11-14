@@ -256,6 +256,73 @@ test('el empleado opera con su rol, y nadie confirma una propuesta ajena', async
   assert.equal((await otro.get('/api/whatsapp')).json.vinculo, null);
 });
 
+test('un producto con talles: si falta cuál, pregunta con la lista, y se contesta con el número', async () => {
+  // Zapatillas con tres talles, con stock cargado por una compra del asistente.
+  const zapatilla = (await admin.post('/api/productos', { nombre: 'Zapatilla', precio_venta: 50000 })).json.id;
+  const talle = (await admin.post(`/api/productos/${zapatilla}/atributos`, { nombre: 'Talle' })).json.id;
+  for (const numero of ['38', '39', '40']) {
+    const valor = (await admin.post(`/api/productos/${zapatilla}/atributos/${talle}/valores`, { valor: numero })).json.id;
+    await admin.post(`/api/productos/${zapatilla}/variantes`, { valores: [{ atributo_id: talle, valor_id: valor }] });
+    const compra = await admin.post('/api/asistente/interpretar', { texto: `compra: proveedor=Calzados SA; item=Zapatilla,4,20000,${numero}` });
+    await admin.post('/api/asistente/ejecutar', { mensaje_id: compra.json.mensaje_id, tipo: 'compra', propuesta: compra.json.propuesta });
+  }
+
+  // Dicho el talle, propone directo.
+  const [directa] = await conversar(TELEFONO_ADMIN, texto('venta: cliente=Lucía; item=Zapatilla,1,50000,39'));
+  assert.equal(directa.tipo, 'interactive');
+  assert.match(directa.texto, /1 × Zapatilla \(Talle: 39\)/);
+  await conversar(TELEFONO_ADMIN, boton(directa.botones[1].id));
+
+  // Sin el talle: pregunta, con el stock de cada uno, y no propone todavía.
+  const [pregunta] = await conversar(TELEFONO_ADMIN, texto('venta: cliente=Lucía; item=Zapatilla,1,50000'));
+  assert.equal(pregunta.tipo, 'text');
+  assert.match(pregunta.texto, /¿Qué variante de \*Zapatilla\* es\?/);
+  assert.match(pregunta.texto, /1\. Talle: 38 — 4 en stock\n2\. Talle: 39 — 4 en stock\n3\. Talle: 40 — 4 en stock/);
+
+  // Responde "3": propone con el talle 40 y registra al confirmar.
+  const [propuesta] = await conversar(TELEFONO_ADMIN, texto('3'));
+  assert.equal(propuesta.tipo, 'interactive');
+  assert.match(propuesta.texto, /1 × Zapatilla \(Talle: 40\)/);
+  const [listo] = await conversar(TELEFONO_ADMIN, boton(propuesta.botones[0].id));
+  assert.match(listo.texto, /Listo: registré la venta/);
+  const variantes = (await admin.get(`/api/productos/${zapatilla}/variantes`)).json;
+  assert.equal(variantes.find((v) => v.combinacion === 'Talle: 40').stock, 3);
+  assert.equal(variantes.find((v) => v.combinacion === 'Talle: 38').stock, 4);
+
+  // También se puede contestar con el talle en palabras, y cancelar la pregunta.
+  await conversar(TELEFONO_ADMIN, texto('venta: cliente=Lucía; item=Zapatilla,1,50000'));
+  const [conPalabras] = await conversar(TELEFONO_ADMIN, texto('talle 38'));
+  assert.match(conPalabras.texto, /Zapatilla \(Talle: 38\)/);
+  await conversar(TELEFONO_ADMIN, boton(conPalabras.botones[1].id));
+
+  await conversar(TELEFONO_ADMIN, texto('venta: cliente=Lucía; item=Zapatilla,1,50000'));
+  const [cancelada] = await conversar(TELEFONO_ADMIN, texto('cancelar'));
+  assert.match(cancelada.texto, /no registré nada/);
+
+  // Un talle que no existe: lo dice y vuelve a preguntar.
+  await conversar(TELEFONO_ADMIN, texto('venta: cliente=Lucía; item=Zapatilla,1,50000'));
+  const [noExiste] = await conversar(TELEFONO_ADMIN, texto('44'));
+  assert.match(noExiste.texto, /No encontré "44"/);
+  await conversar(TELEFONO_ADMIN, texto('cancelar'));
+});
+
+test('una duda de uso, o algo que no es una operación, se contesta con el manual', async () => {
+  const [como] = await conversar(TELEFONO_ADMIN, texto('¿cómo anulo una venta?'));
+  assert.equal(como.tipo, 'text');
+  assert.match(como.texto, /^📖 \*/);
+  assert.match(como.texto, /[Aa]nul/);
+
+  const [saludo] = await conversar(TELEFONO_ADMIN, texto('hola'));
+  assert.match(saludo.texto, /¡Hola!/);
+  assert.match(saludo.texto, /cómo anulo una venta/);
+
+  const [gracias] = await conversar(TELEFONO_ADMIN, texto('gracias'));
+  assert.match(gracias.texto, /De nada/);
+
+  const [fuera] = await conversar(TELEFONO_ADMIN, texto('¿cuál es la capital de Francia?'));
+  assert.match(fuera.texto, /Eso no lo sé/);
+});
+
 test('desvincular: el número deja de operar', async () => {
   assert.equal((await admin.del('/api/whatsapp/vinculo')).status, 204);
   assert.equal((await admin.get('/api/whatsapp')).json.vinculo, null);

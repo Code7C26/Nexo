@@ -1274,24 +1274,63 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
   white-space: normal;
 }
 
-/* Filas skeleton mientras un cargar*() todavía no resolvió el fetch — ver
-   tablaCargando() en app.js. Sin esto la tabla arrancaba vacía y aparecía
-   de golpe, sobre todo en vistas que hacen 3–4 fetch en paralelo. */
-.fila-cargando td {
-  padding: var(--sp-3);
-}
-
-.skeleton-linea {
-  height: 14px;
+/* ---------- Esqueletos de carga (skeleton screens) ----------
+   Mientras un cargar*() todavía no resolvió el fetch, en vez de una pantalla
+   vacía que aparece de golpe se dibujan barras con un brillo que las recorre
+   (efecto "shimmer"), con la forma de lo que va a venir. Se arman con
+   tablaCargando(), listaCargando() y conEsqueleto() (core/ui.js). */
+.sk {
+  display: block;
   border-radius: var(--r-sm);
   background: linear-gradient(90deg, var(--surface-sunk) 25%, var(--line) 50%, var(--surface-sunk) 75%);
   background-size: 200% 100%;
   animation: skeleton-brillo 1.4s ease-in-out infinite;
 }
+.sk-linea { height: 14px; }
+.sk-linea-chica { height: 10px; }
+.sk-circulo { flex: none; width: 36px; height: 36px; border-radius: 50%; }
+
+/* Una fila de lista: un círculo y dos líneas. */
+.sk-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 0;
+  list-style: none;
+}
+.sk-fila-texto { display: grid; flex: 1; gap: 8px; min-width: 0; }
+
+.fila-cargando td { padding: var(--sp-3); }
+
+/* Una zona entera cargando ([data-cargando], conEsqueleto): cada texto y cifra
+   se vuelve una barra del tamaño que ya tiene (una tira de texto es una tira,
+   una cifra grande es un bloque). Las hojas de texto son los elementos sin
+   hijos; los botones y los controles del período quedan como están. */
+[data-cargando] :is(p, span, strong, small, em, h1, h2, h3, h4, td, th, li, a, dt, dd, label):not(:has(*)):not(button *, .resumen-barra *) {
+  color: transparent !important;
+  text-shadow: none;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--surface-sunk) 25%, var(--line) 50%, var(--surface-sunk) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-brillo 1.4s ease-in-out infinite;
+  pointer-events: none;
+  user-select: none;
+}
+[data-cargando] .ledger-value { display: inline-block; min-width: 9ch; }
+[data-cargando] .ledger-delta { display: inline-block; min-width: 12ch; }
+[data-cargando] .ledger-icono svg { opacity: 0; }
 
 @keyframes skeleton-brillo {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* Sin movimiento, las barras quedan quietas: se ve que es un esqueleto igual. */
+@media (prefers-reduced-motion: reduce) {
+  .sk,
+  [data-cargando] :is(p, span, strong, small, em, h1, h2, h3, h4, td, th, li, a, dt, dd, label) {
+    animation: none;
+  }
 }
 
 /* ---------- Delta de comparación contra el período anterior (Resumen) ---------- */
@@ -1871,6 +1910,86 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
   font-family: inherit;
   color: var(--ink);
   background: var(--surface);
+}
+
+/* Mi cuenta → Mis negocios (hist. §168). */
+.cuenta-negocios {
+  list-style: none;
+  margin: var(--sp-3, 12px) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2, 8px);
+}
+.cuenta-negocio {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 12px);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+}
+.cuenta-negocio.is-actual { border-color: var(--line-strong); background: var(--surface-2, var(--surface)); }
+.cuenta-negocio-texto { flex: 1; min-width: 0; }
+.cuenta-negocio-nombre { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+.cuenta-negocio-detalle { margin: 2px 0 0; font-size: var(--txt-sm); color: var(--ink-soft, var(--ink)); }
+.cuenta-negocio-aca { font-size: var(--txt-sm); color: var(--ink-soft, var(--ink)); white-space: nowrap; }
+
+/* Ventas anteriores de un canal (Configuración → Tienda Nube / Mercado Libre, hist. §168). */
+.historial-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3, 12px);
+  margin-top: var(--sp-3, 12px);
+}
+.historial-periodo {
+  display: grid;
+  gap: 4px;
+  font-size: var(--txt-sm);
+  color: var(--ink-soft, var(--ink));
+}
+.historial-periodo select {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 9px 10px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+.historial-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: var(--sp-3, 12px);
+  font-size: var(--txt-sm);
+}
+.historial-error { color: var(--accent-danger); }
+.historial-pendientes {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: var(--txt-sm);
+  color: var(--ink-soft, var(--ink));
+}
+.historial-giro {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: historial-giro 0.8s linear infinite;
+}
+@keyframes historial-giro {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .historial-giro { animation-duration: 3s; }
+}
+
+/* Falta elegir algo en este renglón (la variante que el asistente no pudo resolver). */
+.item-row select.campo-falta {
+  border-color: var(--accent-warn);
+  background: var(--accent-warn-bg);
 }
 
 .item-row input {

@@ -430,6 +430,44 @@ test('Nexo manda: si cambian el precio en Mercado Libre, se vuelve a poner el de
   assert.equal(enviados('PUT', '/items/MLA1').length, despues);
 });
 
+// El historial (hist. §168): las ventas de antes de conectar entran como ventas
+// de antes de Nexo, con su comisión para la ganancia, sin mover stock ni caja.
+test('el historial trae las ventas pagadas de antes de conectar, con su comisión, sin tocar el stock ni la caja', async () => {
+  const hace = (dias) => new Date(Date.now() - dias * 86_400_000).toISOString();
+  falso.ventas.set('8001', ventaDeMercadoLibre(8001, { date_created: hace(60), date_closed: hace(60) }));
+  falso.ventas.set('8002', ventaDeMercadoLibre(8002, { date_created: hace(50), date_closed: hace(50), status: 'cancelled' }));
+  falso.ventas.set('8003', ventaDeMercadoLibre(8003, { date_created: hace(45), date_closed: null, status: 'payment_required' }));
+
+  const stock = async () => (await admin.get('/api/stock')).json.find((s) => s.producto_id === remera).stock_total;
+  const caja = async () => (await admin.get('/api/tesoreria')).json.cuentas.map((c) => [c.id, c.saldo]);
+  const stockAntes = await stock();
+  const cajaAntes = await caja();
+
+  const r = await admin.post('/api/integraciones/mercadolibre/historial', { desde: hace(90).slice(0, 10) });
+  assert.equal(r.status, 202, r.texto);
+  assert.ok(await hasta(async () => (await estadoDe(admin)).historial?.estado === 'listo', 80));
+  const { historial, ventas_anteriores } = await estadoDe(admin);
+  assert.equal(historial.importados, 1);
+  assert.equal(historial.omitidos, 2, 'ni la cancelada ni la sin pagar');
+  assert.equal(ventas_anteriores, 1);
+
+  const pedido = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '8001');
+  const venta = (await admin.get(`/api/ventas/${pedido.venta_id}`)).json;
+  assert.equal(venta.carga_inicial, true);
+  assert.equal(venta.fecha, hace(60).slice(0, 10));
+  assert.equal(venta.canal, 'mercadolibre');
+  assert.equal(venta.total, 36000);
+  // La comisión cuenta para la ganancia, y no sale de la caja de hoy.
+  assert.deepEqual(venta.costos_de_vender.map((c) => [c.categoria, c.importe]), [['Comisiones de venta', 4000]]);
+  assert.equal(await stock(), stockAntes);
+  assert.deepEqual(await caja(), cajaAntes);
+
+  // Otra pasada no duplica nada.
+  await admin.post('/api/integraciones/mercadolibre/historial', { desde: hace(90).slice(0, 10) });
+  assert.ok(await hasta(async () => (await estadoDe(admin)).historial?.estado === 'listo' && (await estadoDe(admin)).historial.ya_estaban === 1, 80));
+  assert.equal((await estadoDe(admin)).ventas_anteriores, 1);
+});
+
 test('el token vencido se renueva una sola vez aunque lo pidan dos a la par', async () => {
   // Se vuelve a conectar con un token que nace vencido (y los que da al
   // renovar, también): Nexo renueva antes de cada uso.
@@ -461,6 +499,6 @@ test('si Mercado Libre ya no da permiso, queda desconectada; desvincular y desco
   assert.equal((await admin.get('/api/integraciones/mercadolibre/publicaciones')).status, 409);
   await admin.post('/api/integraciones/mercadolibre/sincronizar');
   assert.equal((await estadoDe(admin)).conectada, false);
-  // Las ventas que ya llegaron quedan.
-  assert.equal((await estadoDe(admin)).pedidos_importados, 2);
+  // Las ventas que ya llegaron quedan (dos de ahora y la del historial).
+  assert.equal((await estadoDe(admin)).pedidos_importados, 3);
 });

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §167);
+    siguiente número (hoy el último es §168);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,17 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (12 de noviembre de 2026)
+## Estado actual (14 de noviembre de 2026)
+
+**14 de noviembre, hist. §168 (sin commitear, en `solla`): lo que había que cerrar
+antes del lunes.** Asistente con variantes (web y WhatsApp, con el manual por
+WhatsApp), historial de ventas de Tienda Nube y Mercado Libre, plan por cuenta
+con "Mis negocios" en Mi cuenta y mejoras en Plataforma, y esqueletos de carga.
+371 tests en verde. **Falta:** que el usuario lo vea y lo pruebe en el sitio
+(el historial con la Tienda Nube de su amigo y con Mercado Libre reales; cargar
+antes los costos), commitear y publicar, y las tareas de abajo.
+
+(Lo de abajo es del 12 de noviembre.)
 
 **12 de noviembre, hist. §158: la presentación corregida (30 diapositivas) y
 la guía rearmada (22 páginas).** Pedido del usuario después de verla:

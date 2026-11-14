@@ -463,6 +463,72 @@ test('los avisos de privacidad piden firma, y borrar un cliente borra sus pedido
   assert.match(actividad[0].detalle, /se borraron 1 pedido/);
 });
 
+// El historial (hist. §168): lo vendido antes de conectar entra como ventas de
+// antes de Nexo, solo lo pagado, sin tocar el stock ni la caja.
+const haceDias = (dias) => new Date(Date.now() - dias * 86_400_000).toISOString();
+const saldosDeCaja = async () => (await admin.get('/api/tesoreria')).json.cuentas.map((c) => [c.id, c.saldo]);
+const historialDe = async () => (await estadoDe(admin)).historial;
+async function traerHistorial(desde) {
+  const r = await admin.post('/api/integraciones/tiendanube/historial', { desde });
+  assert.equal(r.status, 202, r.texto);
+  assert.ok(await hasta(async () => (await historialDe())?.estado !== 'corriendo', 80));
+  return historialDe();
+}
+
+test('el historial trae lo pagado de antes de conectar, sin mover el stock ni la caja, y una sola vez', async () => {
+  const viejo = (id, cambios) => pedidoDeLaTienda(id, { created_at: haceDias(40), paid_at: haceDias(40), ...cambios });
+  falso.pedidos.set('20', viejo(20));
+  falso.pedidos.set('21', viejo(21, { products: [{ product_id: 1, variant_id: 88888, name: 'Un producto viejo', price: '700', quantity: 1 }] }));
+  falso.pedidos.set('22', viejo(22, { payment_status: 'pending', gateway: 'mercadopago' }));
+  falso.pedidos.set('23', viejo(23, { status: 'cancelled' }));
+
+  // Sin la fecha, o fuera de lo que se puede, no arranca.
+  assert.equal((await admin.post('/api/integraciones/tiendanube/historial', {})).status, 400);
+  assert.equal((await admin.post('/api/integraciones/tiendanube/historial', { desde: '2999-01-01' })).status, 400);
+  assert.equal((await admin.post('/api/integraciones/tiendanube/historial', { desde: '2001-01-01' })).status, 400);
+
+  const stockAntes = await stockEnNexo();
+  const cajaAntes = await saldosDeCaja();
+  const ventasAntes = (await admin.get('/api/ventas')).json.length;
+
+  const desde = haceDias(90).slice(0, 10);
+  const corrida = await traerHistorial(desde);
+  assert.equal(corrida.estado, 'listo', corrida.error);
+  assert.equal(corrida.importados, 1);
+  assert.equal(corrida.sin_pasar, 1, 'el de un producto sin vincular queda pendiente');
+  assert.equal(corrida.omitidos, 2, 'ni el sin pagar ni el cancelado pasan');
+  assert.match(corrida.pendientes[0].error, /Un producto viejo/);
+
+  const estado = await estadoDe(admin);
+  assert.equal(estado.ventas_anteriores, 1);
+  const pedido = estado.pedidos.find((p) => p.externo_id === '20');
+  assert.equal(pedido.estado, 'importado');
+  const venta = (await admin.get(`/api/ventas/${pedido.venta_id}`)).json;
+  assert.equal(venta.carga_inicial, true);
+  assert.equal(venta.fecha, haceDias(40).slice(0, 10), 'con la fecha en que se vendió');
+  assert.equal(venta.canal, 'tiendanube');
+  assert.equal(venta.total, 30000);
+  const cobros = (await admin.get(`/api/ventas/${pedido.venta_id}/cobros`)).json;
+  assert.equal(cobros.reduce((a, c) => a + c.importe, 0), 30000, 'queda cobrada: no le debe nada al cliente');
+
+  // Lo de antes no mueve el stock de hoy ni la caja.
+  assert.equal(await stockEnNexo(), stockAntes);
+  assert.deepEqual(await saldosDeCaja(), cajaAntes);
+  assert.equal((await admin.get('/api/ventas')).json.length, ventasAntes + 1);
+
+  // Otra pasada: lo que ya entró no se duplica, y lo pendiente se reintenta.
+  const otra = await traerHistorial(desde);
+  assert.equal(otra.importados, 0);
+  assert.equal(otra.ya_estaban, 1);
+  assert.equal((await admin.get('/api/ventas')).json.length, ventasAntes + 1);
+
+  // Un pedido de antes anulado después en la tienda anula esa venta sin tocar el stock.
+  falso.pedidos.set('20', viejo(20, { status: 'cancelled' }));
+  await webhook({ store_id: Number(TIENDA), event: 'order/cancelled', id: 20 });
+  assert.ok(await hasta(async () => (await admin.get(`/api/ventas/${pedido.venta_id}`)).json.estado === 'anulada'));
+  assert.equal(await stockEnNexo(), stockAntes);
+});
+
 // Desde el plan Emprendedor (decisión del usuario del 10 de noviembre): en
 // Gratis lo conectado queda en pausa, y al volver a un plan pago la pasada
 // trae lo que se perdió. El plan se cambia con el script del dueño de Nexo.
