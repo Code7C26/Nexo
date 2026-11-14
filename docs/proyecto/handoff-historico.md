@@ -13459,3 +13459,61 @@ filtro de Ventas por medio y vista de celular.
 - Mercado Pago es un medio más (billetera). Su QR y sus cobros automáticos siguen
   por la integración de hist. §130/§145, que no se tocó y deduce el medio de la cuenta.
 - Los cobros cargados desde la ficha de una venta siguen eligiendo cuenta, no medio.
+
+## §172 — 14 de noviembre de 2026: tarifas de cuotas de Mercado Pago y transferencia con cuenta elegida
+
+**Pedido del usuario (tres mensajes).** (1) Las cuotas de Mercado Pago no se cargan a
+mano en Medios de cobro: que salgan de la conexión, y que Medios de cobro esté en el
+grupo Cobros de Configuración, arriba de Mercado Pago. (2) No alcanza con ver lo que
+ya cobró: que se vea de antemano cuánto cuesta cada cuota, para decidir si ofrecerla.
+(3) En el mostrador, "Mercado Pago" no es una forma de cobrar: es una transferencia
+(que puede caer en el banco o en Mercado Pago), o el QR, o el link.
+
+**Qué se averiguó.** Mercado Pago no da sus tarifas por API: solo el desglose de cada
+pago (`fee_details`) y el reporte de dinero liberado. Sus páginas de costos y de
+ayuda responden 403 a una lectura automática. Las cifras de las cuotas sin interés
+(2 cuotas 7,79 %, 3 10,49 %, 6 18,69 %, 9 26,49 %, 12 32,29 %, 18 41,59 %, + IVA,
+desde el 10/2/2026; antes, desde el 31/10/2025, eran otras) salen de notas de prensa
+que citan la ayuda, no de la fuente. La comisión por cobrar depende del medio y de
+cuándo se acredita; no se cargó ninguna cifra.
+
+**Decidido con el usuario** ("precargadas y editables"): la tabla de referencia sale
+marcada "sin confirmar" y cada negocio la corrige con lo que dice su cuenta.
+
+**Backend.**
+- `GET /api/integraciones/mercadopago` suma `costos`: por forma de pago y cuotas, los
+  pagos cobrados con su importe, comisión y financiación (de `integracion_pagos`).
+- Tabla nueva `mercadopago_tarifas (organizacion_id, cuotas, costo_pct, actualizado_en)`,
+  aditiva. `GET/PUT/DELETE /api/integraciones/mercadopago/tarifas` (solo admin): sin
+  filas se devuelve `TARIFAS_REFERENCIA` (`backend/mercadopago.js`); el `PUT` valida con
+  `validarTarifas` y audita; el `DELETE` vuelve a la referencia.
+- `POST /api/pos/ventas`: el cobro de un medio de tipo transferencia acepta
+  `cuenta_tesoreria_id` (de la empresa y que no sea efectivo); en otros medios se ignora.
+- `MEDIOS_DE_CUENTA`: la cuenta de Mercado Pago ya no crea un medio "Mercado Pago" sino
+  la Transferencia si no hay; efectivo y transferencia son únicos por negocio.
+- **Migración, una vez** (`PRAGMA user_version = 1`, en `db/index.js`): el medio "Mercado
+  Pago" billetera creado solo y sin tocar pasa a ser la Transferencia si el negocio no
+  tenía, o se borra si la tenía y no tiene cobros. Uno con comisión, días, planes o
+  cobros queda como está. Los cobros automáticos de Mercado Pago no dependían de ese
+  medio (solo el mostrador guarda `medio_cobro_id`).
+
+**Frontend.**
+- Menú: Medios de cobro pasa al grupo Cobros, primero.
+- Mercado Pago: panel "Lo que te cobra Mercado Pago" (de los pagos reales) y panel
+  "¿Te conviene ofrecer cuotas?" con la tabla editable y un simulador (monto, comisión
+  por cobrar —parte del promedio de sus pagos—, cuánto cuesta, cuánto queda y cuánto
+  cobrar para que quede lo mismo; el IVA de 21 % se suma al costo de las cuotas).
+- Mostrador (`pos.js`): la Transferencia pregunta "Cuenta donde cae" si hay más de una
+  cuenta que no sea la caja. El QR sigue como botón aparte con Mercado Pago conectado.
+- Medios de cobro: la billetera se ejemplifica con MODO y Cuenta DNI, y Transferencia
+  explica que la cuenta se elige al cobrar. Traducciones en `idioma/en.js`.
+
+**Tests.** `mercadopago.test.js` (costos y tarifas), `medios-cobro.test.js` (sin medio
+Mercado Pago; transferencia a la cuenta elegida, y rechazo de la caja, una inexistente
+y una de otro negocio) y `medios-cobro-migracion.test.js` (nuevo, reabre una base ya
+armada). 382 en verde. Lo que costó: auditoría con objetos daba un 500 (ver §171:
+tiene que ser texto), y el chequeo de `esc()` no deja pasar `esc(c.id)` en un `value`.
+
+**Sin mirar en el navegador:** el selector de cuenta del mostrador y el panel de
+tarifas. **A decidir:** fijar un máximo de cuotas en el link de pago
+(`payment_methods.installments` en la preferencia), y la comisión base por cobro.
