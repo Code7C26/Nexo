@@ -21,13 +21,30 @@
 
 ## Estado actual (14 de noviembre de 2026)
 
-**14 de noviembre, hist. §168 (sin commitear, en `solla`): lo que había que cerrar
-antes del lunes.** Asistente con variantes (web y WhatsApp, con el manual por
-WhatsApp), historial de ventas de Tienda Nube y Mercado Libre, plan por cuenta
-con "Mis negocios" en Mi cuenta y, en Plataforma, el plan que se cambia desde la cuenta (no por negocio), y esqueletos de carga.
-371 tests en verde. **Falta:** que el usuario lo vea y lo pruebe en el sitio
-(el historial con la Tienda Nube de su amigo y con Mercado Libre reales; cargar
-antes los costos), commitear y publicar, y las tareas de abajo.
+**14 de noviembre, hist. §168: lo que había que cerrar antes del lunes,
+publicado (PR #82 y #83, en `main` y en el servidor).**
+- **Asistente con variantes** (web y WhatsApp, con pregunta numerada) y el
+  **manual de uso por WhatsApp** (`backend/ayuda-whatsapp.js`).
+- **Historial de ventas de Tienda Nube y Mercado Libre**: "Ventas anteriores" en
+  cada canal, como ventas de antes de Nexo (sin stock ni caja).
+- **El plan es de la cuenta, no del negocio** (decisión del usuario, hist. §168):
+  `organizaciones.propietario_id`; Mi cuenta → Mis negocios (rol y plan); en
+  Plataforma el plan se cambia desde **Cuentas** (`PUT /api/plataforma/cuentas/:id/plan`),
+  Negocios solo lo muestra.
+- **Esqueletos de carga** (skeleton screens) en tablas, listas y Resumen.
+- 371 tests, lint, i18n y `verificar-migracion` en verde.
+
+**Falta (lo decide o lo prueba el usuario):**
+1. Probar en el sitio el historial con la Tienda Nube de su amigo y con
+   Mercado Libre reales (conviene cargar antes el costo de los productos: cada
+   venta guarda el costo de cuando se trae).
+2. Ensayar con el asistente "vendí un buzo talle L" (web y WhatsApp) antes del
+   simulacro del lunes 16.
+3. Mirar en producción Mi cuenta → Mis negocios (confirma que la migración
+   corrió). Las cuentas que ya tuvieran planes distintos en sus negocios se
+   igualan recién al primer cambio de plan.
+4. Lo de más abajo: ensayo del simulacro, videos, voz del reel, fechas de la
+   guía y el guion (dicen 20 de noviembre; la oficial es a principios de diciembre).
 
 (Lo de abajo es del 12 de noviembre.)
 
