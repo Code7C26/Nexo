@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §178);
+    siguiente número (hoy el último es §179);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,16 @@
   reescribe nada.
 
 ## Estado actual (15 de noviembre de 2026)
+
+**15 de noviembre, hist. §179: corregir una propuesta por WhatsApp
+(commiteado en `solla`, sin publicar).** Tercer botón "✏️ Corregir"
+(Confirmar y Cancelar siguen primero): el próximo texto o audio es la
+corrección. También corrige sin el botón un mensaje que empieza como
+corrección ("cambiá…", "no, era…", "en realidad…"). `corregir()` en
+interprete.js le pasa a la IA la operación ya entendida (JSON) y la
+corrección; vuelve completa. La variante elegida por número se conserva. La
+propuesta vieja se descarta. Probado con Groq real: "el cliente es…", "me pagó
+por transferencia al banco", "eran 3".
 
 **15 de noviembre, hist. §178: varias unidades de variantes distintas por
 WhatsApp (commiteado en `solla`, sin publicar).** "Vendí dos buzos" sin talle

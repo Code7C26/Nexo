@@ -320,6 +320,15 @@ function propuestaDeLlamada(nombre, args, textoLibre) {
 // El día del negocio (fecha.js): en UTC, después de las 21 h "hoy" era mañana.
 const mensajeUsuario = (texto) => `Hoy es ${fechaDeHoy()}. Interpretá esta operación: "${texto}"`;
 
+// Corregir una propuesta (hist. §179): la operación que ya se entendió, en
+// JSON, y lo que la persona dice que está mal. Vuelve por la misma herramienta,
+// completa: lo que la corrección no nombra queda igual.
+const mensajeCorreccion = (tipo, datos, correccion) =>
+  `Hoy es ${fechaDeHoy()}. Esta es la operación que propusiste (${tipo}), en JSON:\n${JSON.stringify(datos)}\n\n` +
+  `La persona la corrige así: "${correccion}"\n\n` +
+  'Llamá a la herramienta con la operación completa corregida: cambiá solo lo que dice la corrección y dejá todo lo demás igual. ' +
+  'Si la corrección dice que era otro tipo de operación, usá la herramienta de ese tipo.';
+
 // --- Groq ------------------------------------------------------------
 
 // El plan gratis de Groq da 8000 tokens por minuto para toda la instalación
@@ -355,14 +364,14 @@ async function llamarGroq(ruta, init, { reintentoPorCupo = true, esperaMs = ESPE
   throw error;
 }
 
-async function interpretarConGroq(texto, contexto) {
+async function interpretarConGroq(texto, contexto, pedidoUsuario = mensajeUsuario(texto)) {
   const pedido = {
     model: GROQ_MODELO,
     // El prompt de sistema va primero y no cambia entre frases de un mismo
     // negocio: Groq lo cachea, y lo cacheado no cuenta para su límite.
     messages: [
       { role: 'system', content: construirSystemPrompt(contexto) },
-      { role: 'user', content: mensajeUsuario(texto) }
+      { role: 'user', content: pedidoUsuario }
     ],
     tools: HERRAMIENTAS.map(({ name, description, parametersJsonSchema }) => ({
       type: 'function',
@@ -409,14 +418,14 @@ async function interpretarConGroq(texto, contexto) {
 
 // --- Gemini ----------------------------------------------------------
 
-async function interpretarConGemini(texto, contexto) {
+async function interpretarConGemini(texto, contexto, pedidoUsuario = mensajeUsuario(texto)) {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
   let response;
   try {
     response = await client.models.generateContent({
       model: GEMINI_MODELO,
-      contents: mensajeUsuario(texto),
+      contents: pedidoUsuario,
       config: {
         systemInstruction: construirSystemPrompt(contexto),
         tools: [{ functionDeclarations: HERRAMIENTAS }],
@@ -450,7 +459,7 @@ function proveedoresDisponibles() {
   return nombres.filter((nombre) => process.env[PROVEEDORES[nombre].clave]);
 }
 
-async function interpretarConProveedor(texto, contexto) {
+async function interpretarConProveedor(texto, contexto, pedidoUsuario) {
   const disponibles = proveedoresDisponibles();
   if (!disponibles.length) {
     throw new InterpreteError(
@@ -460,7 +469,7 @@ async function interpretarConProveedor(texto, contexto) {
   let ultimo;
   for (const nombre of disponibles) {
     try {
-      return await PROVEEDORES[nombre].interpretar(texto, contexto);
+      return await PROVEEDORES[nombre].interpretar(texto, contexto, pedidoUsuario);
     } catch (err) {
       // El mensaje del proveedor puede traer detalles internos (cuota,
       // proyecto, claves parciales): al log del servidor, no al cliente.
@@ -761,4 +770,27 @@ export async function interpretar(texto, contexto) {
     return interpretarStub(texto);
   }
   return interpretarConProveedor(texto, contexto);
+}
+
+// La misma operación con la corrección de la persona (hist. §179): "el cliente
+// es Juana", "pagó con transferencia", "eran 3". Devuelve lo mismo que
+// interpretar. El stub toma la corrección como "campo=valor; …" sobre los
+// datos (cobro_cuenta cambia la cuenta del cobro).
+export async function corregir(tipo, datos, correccion, contexto) {
+  if (!correccion || !String(correccion).trim()) {
+    return { tipo: null, mensaje: 'La corrección está vacía.' };
+  }
+  if (process.env.NEXO_INTERPRETE === 'stub') {
+    const corregidos = structuredClone(datos);
+    for (const par of String(correccion).split(';')) {
+      const idx = par.indexOf('=');
+      if (idx < 0) continue;
+      const campo = par.slice(0, idx).trim();
+      const valor = par.slice(idx + 1).trim();
+      if (campo === 'cobro_cuenta') corregidos.cobro = { ...(corregidos.cobro ?? { importe: null }), cuenta: valor };
+      else corregidos[campo] = valor;
+    }
+    return { tipo, datos: corregidos };
+  }
+  return interpretarConProveedor(correccion, contexto, mensajeCorreccion(tipo, datos, correccion));
 }

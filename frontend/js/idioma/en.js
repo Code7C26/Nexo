@@ -201,6 +201,10 @@ export default {
   "La opción {0} no está en la lista.": null,
   "Me dijiste 1 y son {0}.": null,
   "Me dijiste {0} y son {1}.": null,
+  "✏️ ¿Qué cambio? Mandame un texto o un audio con lo que está mal, por ejemplo: *el cliente es Juana Pérez*, *pagó con transferencia* o *eran 3*.": null,
+  "🤔 No entendí la corrección. Decime qué cambio, por ejemplo: *el cliente es Juana Pérez* o *pagó con transferencia*.": null,
+  "{0} (corrección: {1})": null,
+  "✏️ Corregir": null,
 
   // Mis negocios y el plan de la cuenta (hist. §168)
   "Vacío, no vence. Cuando vence, pasan a Gratis sin perder nada. Queda en la auditoría de cada negocio.": "Empty means it doesn't expire. When it expires, they go back to Free without losing anything. It is recorded in each business's audit log.",

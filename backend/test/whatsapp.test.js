@@ -240,7 +240,8 @@ test('una nota de voz: se transcribe, se muestra qué entendió y propone igual'
   const [entendi, propuesta] = await conversar(TELEFONO_ADMIN, { type: 'audio', audio: { id: 'audio-1', mime_type: 'audio/ogg' } }, 2);
   assert.match(entendi.texto, /Entendí: _"venta: cliente=Luis/);
   assert.match(propuesta.texto, /Venta a Luis/);
-  assert.equal(propuesta.botones.length, 2);
+  // Confirmar, Cancelar y Corregir (hist. §179).
+  assert.equal(propuesta.botones.length, 3);
 });
 
 test('el empleado opera con su rol, y nadie confirma una propuesta ajena', async () => {
@@ -333,6 +334,37 @@ test('varias unidades de talles distintos: "1 y 2" o "2 del 1 y 1 del 3" (hist. 
   assert.match(repartida.texto, /2 × Zapatilla \(Talle: 38\)/);
   assert.match(repartida.texto, /1 × Zapatilla \(Talle: 40\)/);
   await conversar(TELEFONO_EMPLEADO, boton(repartida.botones[1].id));
+});
+
+// El stub toma la corrección como "campo=valor" (interprete.js, corregir).
+test('corregir una propuesta: con el botón o con un mensaje que empieza como corrección (hist. §179)', async () => {
+  const [propuesta] = await conversar(TELEFONO_EMPLEADO, texto('venta: cliente=Lucía; item=Zapatilla,1,50000,39'));
+  assert.equal(propuesta.botones.length, 3);
+  assert.match(propuesta.botones[2].title, /Corregir/);
+
+  // El botón: pregunta qué cambia, y el mensaje que sigue es la corrección.
+  const [pregunta] = await conversar(TELEFONO_EMPLEADO, boton(propuesta.botones[2].id));
+  assert.match(pregunta.texto, /¿Qué cambio\?/);
+  const [corregida] = await conversar(TELEFONO_EMPLEADO, texto('cliente=Martina'));
+  assert.equal(corregida.tipo, 'interactive');
+  assert.match(corregida.texto, /Venta a Martina/);
+  assert.match(corregida.texto, /1 × Zapatilla \(Talle: 39\)/);
+
+  // La de antes ya no se confirma; la corregida sí.
+  const [vieja] = await conversar(TELEFONO_EMPLEADO, boton(propuesta.botones[0].id));
+  assert.match(vieja.texto, /ya se confirmó o se canceló/);
+
+  // Sin el botón: un mensaje que empieza como corrección corrige la última, y
+  // la variante elegida por número se conserva.
+  const [sinTalle] = await conversar(TELEFONO_EMPLEADO, texto('venta: cliente=Lucía; item=Zapatilla,1,50000'));
+  assert.match(sinTalle.texto, /¿Qué variante de \*Zapatilla\* es\?/);
+  const [conTalle] = await conversar(TELEFONO_EMPLEADO, texto('3'));
+  assert.match(conTalle.texto, /Venta a Lucía/);
+  const [otraVez] = await conversar(TELEFONO_EMPLEADO, texto('corrección; cliente=Sofía'));
+  assert.match(otraVez.texto, /Venta a Sofía/);
+  assert.match(otraVez.texto, /1 × Zapatilla \(Talle: 40\)/);
+  const [listo] = await conversar(TELEFONO_EMPLEADO, boton(otraVez.botones[0].id));
+  assert.match(listo.texto, /Listo: registré la venta/);
 });
 
 test('una duda de uso, o algo que no es una operación, se contesta con el manual', async () => {

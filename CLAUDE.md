@@ -1603,7 +1603,9 @@ Implementado hoy (hist. §117, §118):
   sale del vínculo.
   Un texto o una nota de voz sigue el mismo camino que en la web
   (`proponerDesdeTexto` → botones Confirmar/Cancelar → `ejecutarPropuesta`
-  con la persona y su rol). Las devoluciones se terminan en la app. Hecho
+  con la persona y su rol). Las devoluciones se terminan en la app. Lo
+  que la IA entendió mal se corrige con "Corregir" sin empezar de nuevo, y
+  varias unidades pueden ser de variantes distintas (hist. §178, §179). Hecho
   contra un WhatsApp falso: falta la app de Meta (trámite del usuario).
 - Falta: las consultas sobre los datos.
 
