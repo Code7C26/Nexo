@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §174);
+    siguiente número (hoy el último es §175);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,28 @@
   reescribe nada.
 
 ## Estado actual (15 de noviembre de 2026)
+
+**15 de noviembre, hist. §175: lo que planteó una contadora probando la demo
+(commiteado en `solla`, sin publicar).**
+- **Listas propias en vez de la del navegador** (`frontend/js/core/combo.js`,
+  lo importa app.js): todo `<input list>` de la app usa una lista con la cara
+  de Nexo; el `<datalist>` sigue siendo la fuente. Con
+  `data-combo-nuevo="proveedor nuevo"` avisa que lo escrito se crea al guardar.
+  El usuario no quiere listas nativas: toda lista nueva va por acá.
+- **Proveedor de la compra:** ahora se elige de la lista
+  (`proveedoresSugeridos`, la llena `cargarProveedores`). El backend busca
+  proveedores y clientes por nombre sin mayúsculas, tildes ni espacios de más
+  (`idPorNombre` en server.js), y el alta o la edición de un proveedor con un
+  nombre que ya está da 409. **El repetido de la demo** no sale del código de
+  la demo: venía de cargar una compra con el nombre tipeado distinto (antes se
+  comparaba exacto). Los repetidos que ya existan en bases reales no se tocan.
+- **Descuento a mano en el mostrador:** "Hacer un descuento" en el ticket, por
+  % o $ sobre toda la venta. Lo reparte `frontend/js/core/descuento.js` (el
+  mismo en pantalla y en `POST /api/pos/ventas`, que recibe `descuento: { tipo,
+  valor }`); columna nueva `venta_items.descuento` (aditiva, DEFAULT 0). Lo
+  pueden hacer los dos roles y queda en la auditoría. A decidir con el usuario:
+  si el empleado puede hacer descuentos o solo el admin, y si hace falta un
+  tope.
 
 **14 de noviembre, hist. §173: el bloque del problema de la presentación,
 rehecho (commiteado en `solla`, sin publicar).** Pedido del usuario. La 3 con una persona

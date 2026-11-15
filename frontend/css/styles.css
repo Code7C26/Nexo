@@ -10241,3 +10241,130 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .rc-cifras { text-align: right; }
 .rc-cifras strong { font-size: var(--txt-sm); font-variant-numeric: tabular-nums; }
 .rc-nombre small, .rc-cifras small { font-size: var(--txt-2xs); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- Listas para elegir mientras se escribe (core/combo.js, hist. §175) ---------- */
+
+/* Reemplaza a la lista del navegador de <datalist>: fija a la ventana (la
+   ubica combo.js debajo o arriba del campo), por encima de los modales. */
+.combo-lista {
+  position: fixed;
+  z-index: 200;
+  max-height: 320px;
+  margin: 0;
+  padding: var(--sp-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  animation: aparecer-arriba var(--dur-1) var(--ease-out);
+}
+.combo-lista[hidden] { display: none; }
+
+.combo-opcion {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 40px;
+  justify-content: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.combo-opcion[aria-selected="true"] { background: var(--accent-bg); }
+.combo-opcion-valor {
+  font-size: var(--txt-sm);
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.combo-opcion-detalle { font-size: var(--txt-xs); color: var(--ink-muted); }
+
+.combo-mas {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+
+/* Lo escrito no está en la lista: se crea al guardar. */
+.combo-nuevo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.combo-lista > .combo-nuevo:first-child { margin-top: 0; border-top: none; }
+.combo-nuevo .ico { flex: none; width: 15px; height: 15px; color: var(--accent); }
+.combo-nuevo strong { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+
+/* ---------- Descuento a mano del mostrador (hist. §175) ---------- */
+
+.pos-descuento[hidden],
+.pos-descuento-editor[hidden],
+.pos-descuento-error[hidden] { display: none; }
+.pos-descuento .btn-link[hidden] { display: none; }
+
+.pos-descuento-editor {
+  display: grid;
+  gap: 6px;
+  padding: var(--sp-3);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.pos-descuento-cabeza {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pos-descuento-titulo {
+  flex: 1 1 auto;
+  font-size: var(--txt-xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.pos-descuento-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pos-descuento-fila .segmentos { flex: none; }
+.pos-descuento-fila .segmento { min-width: 36px; font-size: var(--txt-sm); }
+.pos-descuento-fila input {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  font-size: var(--txt-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.pos-descuento-fila input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.pos-descuento-monto {
+  flex: none;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--accent-ok);
+  white-space: nowrap;
+}
+.pos-descuento-monto:empty { display: none; }
+.pos-descuento-error {
+  margin: 0;
+  font-size: var(--txt-xs);
+  color: var(--accent-danger);
+}

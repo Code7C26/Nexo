@@ -1318,9 +1318,13 @@ cuotas con lo que le cuesta al negocio ofrecerlos. La comisión y ese costo se
 anotan solos como gastos de la venta. Cada cobro guarda su medio y sus cuotas, y
 Ventas filtra por medio y por cuenta. Falta: recargo por cuotas al cliente (el
 "precio tarjeta" hoy se hace con una lista de precios) y acreditación diferida
-(la plata entra a la cuenta en el momento). Queda
-para después: descuentos y precio editable en el mostrador, alta rápida de
-cliente y venta sin conexión.
+(la plata entra a la cuenta en el momento).
+**Descuento a mano** (hist. §175): un porcentaje o un monto sobre toda la
+venta, sin armar una oferta. Se reparte entre los renglones según su valor
+(`frontend/js/core/descuento.js`, el mismo para la pantalla y el servidor) y
+queda en el precio de cada uno; `venta_items.descuento` guarda cuánto se bajó
+por unidad, y la auditoría lo anota. Queda para después: precio editable por
+renglón en el mostrador, alta rápida de cliente y venta sin conexión.
 
 ---
 

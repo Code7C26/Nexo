@@ -488,7 +488,12 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- Cuánto de costo_unitario_historico es mano de obra (hist. §143), para
   -- separarla de la mercadería en "adónde fue la plata". Ya está sumada al
   -- costo: los márgenes y el resultado la cuentan sin mirar esta columna.
-  costo_mano_obra REAL NOT NULL DEFAULT 0
+  costo_mano_obra REAL NOT NULL DEFAULT 0,
+  -- El descuento a mano del mostrador (hist. §175): cuánto se le bajó a cada
+  -- unidad, ya restado de precio_unitario (el precio de antes es la suma de
+  -- los dos). Se reparte entre los renglones según su valor, así el total, el
+  -- IVA y el margen ya lo cuentan sin mirar esta columna. 0 = sin descuento.
+  descuento REAL NOT NULL DEFAULT 0
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no

@@ -1412,6 +1412,27 @@
               <datalist id="posClientes"></datalist>
               <ul class="pos-renglones" id="posRenglones"></ul>
               <div id="posConsumos" hidden></div>
+              <!-- El descuento a mano (hist. §175): un porcentaje o un monto
+                   sobre toda la venta, sin armar una oferta. Lo reparte entre
+                   los renglones core/descuento.js. -->
+              <div class="pos-descuento" id="posDescuento" hidden>
+                <button type="button" class="btn-link" id="btnPosDescuento"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#percent"></use></svg> Hacer un descuento</button>
+                <div class="pos-descuento-editor" id="posDescuentoEditor" hidden>
+                  <div class="pos-descuento-cabeza">
+                    <span class="pos-descuento-titulo" id="posDescuentoTitulo">Descuento</span>
+                    <span class="pos-descuento-monto mono" id="posDescuentoMonto"></span>
+                    <button type="button" class="btn-icon" id="btnPosDescuentoQuitar" aria-label="Quitar el descuento"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+                  </div>
+                  <div class="pos-descuento-fila">
+                    <div class="segmentos" role="group" aria-labelledby="posDescuentoTitulo">
+                      <button type="button" class="segmento" data-tipo="porcentaje" aria-pressed="true" aria-label="En porcentaje">%</button>
+                      <button type="button" class="segmento" data-tipo="monto" aria-pressed="false" aria-label="En pesos">$</button>
+                    </div>
+                    <input type="number" id="posDescuentoValor" min="0" step="any" inputmode="decimal" placeholder="10" aria-labelledby="posDescuentoTitulo" />
+                  </div>
+                  <p class="pos-descuento-error" id="posDescuentoError" role="alert" hidden></p>
+                </div>
+              </div>
               <div class="pos-total">
                 <span>Total</span>
                 <span class="pos-total-valor mono" id="posTotal">$0,00</span>
@@ -6152,7 +6173,7 @@
       </div>
       <form id="formPresupuesto" class="form">
         <label>Cliente
-          <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
+          <input type="text" name="cliente" list="clientesSugeridos" data-combo-nuevo="cliente nuevo" required placeholder="Buscar o crear cliente…" />
         </label>
         <!-- Opciones en runtime (poblarSelectListasPrecios). Al elegir un
              cliente con lista propia se propone sola (CLAUDE.md §18); se
@@ -6295,7 +6316,7 @@
       </div>
       <form id="formTrabajo" class="form">
         <label id="trabajoClienteCampo">Cliente
-          <input type="text" name="cliente" list="clientesSugeridos" placeholder="Buscar o crear cliente…" />
+          <input type="text" name="cliente" list="clientesSugeridos" data-combo-nuevo="cliente nuevo" placeholder="Buscar o crear cliente…" />
         </label>
         <label>Qué hay que hacer
           <input type="text" name="titulo" maxlength="120" />
@@ -6335,7 +6356,7 @@
       </div>
       <form id="formAbono" class="form">
         <label id="abonoClienteCampo">Cliente
-          <input type="text" name="cliente" list="clientesSugeridos" placeholder="Buscar o crear cliente…" />
+          <input type="text" name="cliente" list="clientesSugeridos" data-combo-nuevo="cliente nuevo" placeholder="Buscar o crear cliente…" />
         </label>
         <label id="abonoServicioCampo">Servicio
           <select name="producto_id"></select>
@@ -6375,7 +6396,7 @@
       </div>
       <form id="formVenta" class="form">
         <label>Cliente
-          <input type="text" name="cliente" list="clientesSugeridos" required placeholder="Buscar o crear cliente…" />
+          <input type="text" name="cliente" list="clientesSugeridos" data-combo-nuevo="cliente nuevo" required placeholder="Buscar o crear cliente…" />
           <datalist id="clientesSugeridos"></datalist>
         </label>
         <!-- Opciones en runtime (poblarSelectListasPrecios). Al elegir un
@@ -6445,9 +6466,12 @@
           <input type="file" id="compraFacturaArchivo" accept="image/*,application/pdf" multiple hidden />
         </div>
         <div class="compra-factura-resumen" id="compraFacturaResumen" role="status" hidden></div>
+        <!-- Se elige de los proveedores cargados, o se escribe uno nuevo que
+             se crea al guardar (hist. §175). La lista es core/combo.js. -->
         <label>Proveedor
-          <input type="text" name="proveedor" required placeholder="Nombre o razón social" />
+          <input type="text" name="proveedor" list="proveedoresSugeridos" data-combo-nuevo="proveedor nuevo" required placeholder="Elegí uno o escribí uno nuevo" />
         </label>
+        <datalist id="proveedoresSugeridos"></datalist>
         <!-- Opciones en runtime (poblarSelectDepositos), arranca en el
              depósito predeterminado (CLAUDE.md §19). A ese depósito entra
              la mercadería cuando la compra se marca recibida. -->

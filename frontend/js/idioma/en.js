@@ -4767,5 +4767,22 @@ export default {
   "Una de las imágenes llegó dañada. Probá de nuevo.": "One of the images arrived damaged. Try again.",
   "La factura pesa demasiado. Probá con menos páginas o una foto más chica.": "The invoice is too large. Try fewer pages or a smaller photo.",
   "Leíste muchas facturas en la última hora. Mientras tanto, cargá la compra a mano.": "You read many invoices in the last hour. Meanwhile, enter the purchase by hand.",
-  "No encontré productos en esa imagen. Probá con una foto derecha, con buena luz y la factura entera.": "No products were found in that image. Try a straight photo, with good light and the whole invoice."
+  "No encontré productos en esa imagen. Probá con una foto derecha, con buena luz y la factura entera.": "No products were found in that image. Try a straight photo, with good light and the whole invoice.",
+  "Hacer un descuento": "Give a discount",
+  "En porcentaje": "As a percentage",
+  "En pesos": "In pesos",
+  "Quitar el descuento": "Remove the discount",
+  "Elegí uno o escribí uno nuevo": "Choose one or type a new one",
+  "Seguí escribiendo para ver las otras {0}": "Keep typing to see the other {0}",
+  "proveedor nuevo": "new supplier",
+  "cliente nuevo": "new customer",
+  "El descuento tiene que ser un porcentaje o un monto.": "The discount has to be a percentage or an amount.",
+  "El descuento tiene que ser mayor a 0.": "The discount has to be greater than 0.",
+  "No hay nada a qué hacerle descuento.": "There is nothing to discount.",
+  "El descuento no puede pasar del 100 %.": "The discount can't be more than 100%.",
+  "El descuento no puede pasar del total de la venta.": "The discount can't be more than the total of the sale.",
+  "Le hiciste {0} de descuento.": "You gave a {0} discount.",
+  "Ya tenés un proveedor con ese nombre.": "You already have a supplier with that name.",
+  "Ya tenés otro proveedor con ese nombre.": "You already have another supplier with that name.",
+  "Venta #{0} desde el punto de venta (turno #{1}), con ${2} de descuento ({3})": "Sale #{0} from the point of sale (shift #{1}), with a ${2} discount ({3})"
 };

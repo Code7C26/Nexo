@@ -13701,3 +13701,61 @@ Son 33 y el QR es la 12 (`#12`, también en el LEEME). Al final de la 11, en la
 guía, la frase del usuario para pasar al QR ("no les vamos a hacer hacer todo
 ese proceso… armamos una demo con varios tipos de negocio"): la dice él, no va
 en pantalla. El video en inglés sigue esperando que el usuario lo retome.
+
+## §175. Lo que planteó una contadora: proveedor de una lista y descuento en el mostrador (15 de noviembre de 2026)
+
+**Pedido.** La madre de un amigo, contadora, probó la demo de indumentaria y
+planteó dos cosas: (1) al cargar una compra, el proveedor tendría que salir de
+una lista de los que ya existen, y si no está, escribirse; en la demo había dos
+proveedores con el mismo nombre. (2) Hacer un descuento en el punto de venta
+por % o por monto sin armar una oferta ("le vendo a mi hermano"). Mientras
+trabajaba, el usuario agregó: no le gustan las listas nativas del navegador
+(mandó la del cliente del mostrador): tienen que ser de la propia app.
+
+**Por qué había repetidos.** La compra (`crearCompra`, `PUT /api/compras/:id`)
+y `resolverProveedor` buscaban el nombre exacto: "textil norte " creaba otro
+proveedor. El código de la demo (`negocios-de-ejemplo.js`) crea cada uno una
+sola vez; el repetido salió de una compra cargada a mano. Ahora `idPorNombre`
+(server.js, junto a `resolverCliente`) busca primero exacto y después sin
+mayúsculas, tildes ni espacios de más (en JS: SQLite no saca tildes), y lo usan
+la compra, su edición, `resolverProveedor` y `resolverCliente`. El alta y la
+edición de un proveedor rechazan (409) un nombre que ya está. No hay índice
+único: las bases reales pueden tener repetidos y no se fusionan solos.
+
+**Listas (`frontend/js/core/combo.js`).** Un componente para toda la app: toma
+cada `<input list>` (también los que se agregan después, con un
+MutationObserver), le saca el `list` (así el navegador no muestra la suya) y
+abre una lista propia, fija a la ventana (no la recorta un modal), debajo o
+arriba del campo. Filtra sin tildes por palabras, muestra hasta 50, se abre al
+escribir, al tocar o con ↓ (no al recibir el foco solo), Enter elige sin mandar
+el formulario y Escape cierra sin cerrar el modal (escucha en captura). Elegir
+dispara `input` y `change`, así lo de siempre (el plazo habitual del proveedor,
+el precio del producto) sigue andando. `data-combo-nuevo` agrega la fila "+
+<lo escrito> · proveedor nuevo" (también en los campos de cliente que lo
+crean). Va en el PRECACHE de `sw.js`.
+
+**Descuento.** `frontend/js/core/descuento.js` (puro, lo importan pos.js y
+server.js): `aplicarDescuento(renglones, { tipo, valor })` reparte el monto
+según el valor de cada renglón (como el envío de una compra) y redondea al
+centavo; lo que sobra del redondeo lo absorbe un renglón de una unidad, o el
+de más valor (con cantidades decimales puede quedar a un centavo). Valida: %
+hasta 100, monto hasta el total, mayor a 0. El mostrador manda los precios sin
+el descuento y el descuento aparte; el servidor lo vuelve a repartir y
+`crearVenta` guarda el precio ya bajado y `venta_items.descuento` (por unidad;
+migración aditiva en `db/index.js`, DEFAULT 0). La oferta del renglón se sigue
+reconociendo con el precio de antes del descuento. La auditoría dice "con $X
+de descuento (10%)". Pantalla: "Hacer un descuento" en el ticket, %/$ y el
+número, el monto en verde y el total al día; se guarda con el carrito (F5) y
+se va con la venta. La ficha de la venta muestra "Descuento".
+
+**Verificado.** `backend/test/descuento-y-proveedores.test.js` (el reparto, la
+venta con y sin oferta, la auditoría y los proveedores por nombre); lint, i18n
+y la suite completa. En el navegador, con una base aparte: la lista del
+proveedor (filtrar, ↓ + Enter, el plazo de 30 días de Textil Norte), la del
+cliente del mostrador, y una venta con $5.000 de descuento cobrada de punta a
+punta (renglones 33.195,18 + 11.604,82 = 44.800) y vista en su ficha; en el
+celular entra sin scroll horizontal.
+
+**Queda.** Decidir si el empleado puede hacer descuentos o solo el admin, y si
+hace falta un tope. Precio editable por renglón en el mostrador.
+
