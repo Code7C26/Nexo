@@ -7688,8 +7688,14 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     body: { mensaje_id: mensajeId, tipo, propuesta },
     error: "No se pudo registrar la operación."
   });
-  const etiqueta = { venta: "Venta", compra: "Compra", gasto: "Gasto", devolucion: "Devolución" }[tipo];
-  turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">${icono("circle-check")} ${etiqueta} #${id} registrada.</p>`;
+  // Una frase entera por tipo: así el traductor la encuentra completa.
+  const registrada = {
+    venta: `Venta #${id} registrada.`,
+    compra: `Compra #${id} registrada.`,
+    gasto: `Gasto #${id} registrado.`,
+    devolucion: `Devolución #${id} registrada.`
+  }[tipo];
+  turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">${icono("circle-check")} ${registrada}</p>`;
   asistenteScrollAlFinal();
 
   // Toda la cascada real la hizo el backend; acá solo hace falta refrescar
