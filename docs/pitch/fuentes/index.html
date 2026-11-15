@@ -213,14 +213,29 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .slide[data-paso="2"] .anio-nota { opacity: 1; transform: none; }
 .dato .fuente-dato { margin-top: var(--content-gap); }
 
-/* ===== 3. Gancho ===== */
-.gancho h1 { font-size: var(--gigante); max-width: 15ch; }
+/* ===== 4. Gancho: la pregunta sola, con la personita que intenta acordarse;
+   el segundo toque (data-paso="1") suma el remate y las deudas alrededor. ===== */
+.gancho { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(1rem, 3vw, 3rem); align-items: center; }
+.gancho h1 { font-size: clamp(2rem, 6.2vw, 5.6rem); max-width: 16ch; }
 .gancho .palabra { display: inline-block; opacity: 0; transform: translateY(0.35em); transition: opacity 0.5s ease, transform 0.5s ease; transition-delay: calc(var(--d) * 120ms); }
 .slide.visible .gancho .palabra { opacity: 1; transform: none; }
-.gancho .preguntas { margin-top: var(--content-gap); display: flex; flex-wrap: wrap; gap: 0.6em; }
-.gancho .preguntas span { font-size: var(--h3-size); color: var(--texto-2); border: 1px solid var(--borde-fuerte); border-radius: 999px; padding: 0.3em 0.9em; }
-.gancho .remate { margin-top: var(--content-gap); font-family: var(--titulos); font-weight: 700; font-size: var(--h2-size); }
+.gancho .remate { margin-top: calc(var(--content-gap) * 1.4); font-family: var(--titulos); font-weight: 700; font-size: var(--h2-size); opacity: 0; transform: translateY(14px); transition: opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s; }
+.slide[data-paso="1"] .gancho .remate { opacity: 1; transform: none; }
 .gancho .remate em { font-style: normal; color: var(--acento); }
+.pensando { width: 100%; height: min(80vh, 760px); opacity: 0; transition: opacity 0.8s ease 1.2s; }
+.slide.visible .pensando { opacity: 1; }
+.pensando * { transform-box: fill-box; }
+.pensando .rascar { transform-box: view-box; transform-origin: 338px 262px; animation: rascar 0.5s ease-in-out infinite alternate; }
+@keyframes rascar { from { rotate: -4deg; } to { rotate: 5deg; } }
+.pensando .cabeza { transform-origin: 50% 90%; animation: dudar 3s ease-in-out infinite; }
+@keyframes dudar { 0%, 100% { rotate: -3deg; } 50% { rotate: 3deg; } }
+.pensando .nombre { opacity: 0; animation: nombre 6s infinite; animation-delay: var(--t); }
+@keyframes nombre { 0% { opacity: 0; } 6%, 30% { opacity: 1; } 36%, 100% { opacity: 0; } }
+.pensando .nube { transform-origin: 50% 100%; animation: latir 3s ease-in-out infinite; }
+@keyframes latir { 50% { scale: 1.03; } }
+.pensando .deuda { opacity: 0; scale: 0.5; transform-origin: center; transition: opacity 0.4s ease, scale 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); transition-delay: calc(0.5s + var(--i) * 140ms); }
+.slide[data-paso="1"] .pensando .deuda { opacity: 1; scale: 1; }
+.pensando text { font-family: "Satoshi", "Inter", sans-serif; font-weight: 700; }
 
 /* ===== 4. El lío: cuaderno, planilla, mensajes ===== */
 .lio { position: absolute; inset: 0; overflow: hidden; }
@@ -244,7 +259,8 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .cuaderno .tachado { text-decoration: line-through; text-decoration-color: #c0392b; text-decoration-thickness: 2px; }
 .cuaderno .duda { color: #c0392b; font-weight: 700; }
 .planilla { width: clamp(220px, 30vw, 460px); background: #fff; color: #222; font-size: clamp(0.6rem, 0.9vw, 0.85rem); border-radius: 4px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55); }
-.planilla .barra-xls { background: #1f6e43; color: #fff; padding: 0.4em 0.8em; font-weight: 600; }
+.planilla .barra-xls { display: flex; align-items: center; gap: 0.5em; background: #1f6e43; color: #fff; padding: 0.4em 0.8em; font-weight: 600; }
+.planilla .barra-xls svg { width: 1.5em; height: 1.5em; flex: none; }
 .planilla table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 .planilla th, .planilla td { border: 1px solid #d4d4d4; padding: 0.25em 0.5em; text-align: left; }
 .planilla th { background: #f0f0f0; color: #555; font-weight: 500; }
@@ -258,30 +274,251 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .papelito { width: clamp(120px, 13vw, 200px); aspect-ratio: 1; padding: 0.8em; background: #f9b4c6; color: #5b2333; font-family: "Satoshi", sans-serif; font-weight: 700; font-style: italic; font-size: clamp(0.8rem, 1.2vw, 1.1rem); box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5); }
 .ticket { width: clamp(110px, 11vw, 170px); background: #fafafa; color: #333; font-family: ui-monospace, monospace; font-size: clamp(0.55rem, 0.8vw, 0.75rem); padding: 0.8em 0.8em 1.4em; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5); clip-path: polygon(0 0, 100% 0, 100% 100%, 92% 96%, 84% 100%, 76% 96%, 68% 100%, 60% 96%, 52% 100%, 44% 96%, 36% 100%, 28% 96%, 20% 100%, 12% 96%, 4% 100%, 0 96%); }
 .ticket p { display: flex; justify-content: space-between; }
-.calculadora { width: clamp(120px, 12vw, 180px); background: #2a2a2a; border-radius: 12px; padding: 0.8em; box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55); }
-.calculadora .pantalla { background: #b8c4a8; color: #1d2416; font-family: ui-monospace, monospace; text-align: right; padding: 0.3em 0.5em; border-radius: 4px; font-size: clamp(0.8rem, 1.3vw, 1.2rem); }
-.calculadora .teclas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 0.6em; }
-.calculadora .teclas i { aspect-ratio: 1.3; border-radius: 4px; background: #444; }
+.calculadora { width: clamp(100px, 8.6vw, 140px); background: #2a2a2a; border-radius: 12px; padding: 0.8em; box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55); }
+.calculadora .pantalla { background: #b8c4a8; color: #1d2416; font-family: ui-monospace, monospace; text-align: right; padding: 0.3em 0.5em; border-radius: 4px; font-size: clamp(0.6rem, 0.9vw, 0.85rem); }
+.calculadora .teclas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 0.6em; }
+.calculadora .teclas i { display: grid; place-items: center; aspect-ratio: 1.2; border-radius: 4px; background: #444; color: #eee; font-style: normal; font-family: ui-monospace, monospace; font-weight: 700; font-size: clamp(0.5rem, 0.72vw, 0.72rem); line-height: 1; }
 .calculadora .teclas i:nth-child(4n) { background: #c0612b; }
 .lio-titulo { position: relative; z-index: 2; max-width: 36rem; padding: clamp(0.8rem, 2vw, 1.6rem); background: rgba(0, 0, 0, 0.82); border: 1px solid var(--borde); border-radius: var(--radio); backdrop-filter: blur(6px); align-self: flex-start; margin-top: auto; }
 
-/* ===== 5 y 6. La plata y el tiempo ===== */
-.perdidas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(0.5rem, 1.4vw, 1.1rem); }
-.perdida { display: grid; grid-template-columns: auto 1fr; gap: 0.3em 1em; align-items: start; }
-.perdida .ico-caja { grid-row: span 2; width: clamp(38px, 3.6vw, 56px); aspect-ratio: 1; border-radius: 12px; display: grid; place-items: center; background: rgba(248, 113, 113, 0.1); color: var(--mal); font-size: clamp(1.1rem, 1.7vw, 1.6rem); }
-.perdida h3 { margin: 0; }
-.perdida p { color: var(--texto-2); }
-.noche { position: relative; display: flex; flex-direction: column; gap: clamp(0.35rem, 1vh, 0.8rem); padding-left: clamp(1.2rem, 2vw, 2rem); }
-.noche::before { content: ""; position: absolute; left: 0.35rem; top: 0.6em; bottom: 0.6em; width: 2px; background: linear-gradient(var(--acento), rgba(96, 165, 250, 0.1)); }
-.noche li { position: relative; display: grid; grid-template-columns: 5.5ch 1fr; gap: 1em; align-items: baseline; padding: 0.45em 0.9em; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; }
-.noche li::before { content: ""; position: absolute; left: calc(-1 * clamp(1.2rem, 2vw, 2rem) + 0.08rem); top: 50%; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--acento); transform: translateY(-50%); }
-.noche .hora { font-family: var(--titulos); font-weight: 700; color: var(--acento); font-variant-numeric: tabular-nums; }
-.noche .ultimo .hora { color: var(--mal); }
-.noche.veces li { grid-template-columns: auto 1fr; align-items: center; padding: 0.6em 1em; }
-.noche.veces .hora { display: grid; place-items: center; font-size: 1.15em; }
-.noche.veces .ultimo { border-color: rgba(248, 113, 113, 0.45); }
-.reloj { font-family: var(--titulos); font-weight: 700; font-size: var(--gigante); line-height: 1; letter-spacing: -0.03em; margin-top: var(--content-gap); }
-.reloj small { display: block; font-size: 0.24em; letter-spacing: 0; color: var(--texto-2); font-weight: 500; margin-top: 0.5em; line-height: 1.3; }
+/* La persona tapada de papeles: ocupa el costado derecho, y las piezas del
+   lío (.lio) flotan por encima. Se mueve sola: el cuerpo se balancea, vuelan
+   hojas, el celular vibra, la planilla tira error y las ideas aparecen de a
+   una. Sin animación (la guía en PDF) queda quieta con las ideas a la vista. */
+.lio-persona { position: absolute; right: 1%; bottom: 0; height: 94%; width: auto; max-width: 54%; opacity: 0; transition: opacity 0.9s ease 0.2s; }
+.slide.visible .lio-persona { opacity: 1; }
+.lio-persona * { transform-box: fill-box; }
+.lio-persona .cuerpo { transform-origin: 50% 100%; animation: balanceo 3.2s ease-in-out infinite; }
+@keyframes balanceo { 0%, 100% { rotate: -1.6deg; } 50% { rotate: 1.6deg; } }
+.lio-persona .ojos { transform-origin: center; animation: parpadeo 4s infinite; }
+@keyframes parpadeo { 0%, 94%, 100% { scale: 1 1; } 97% { scale: 1 0.1; } }
+.lio-persona .gota { animation: gota 2.4s ease-in infinite; }
+@keyframes gota { 0% { opacity: 0; translate: 0 -6px; } 20% { opacity: 1; } 80% { opacity: 1; translate: 0 26px; } 100% { opacity: 0; translate: 0 30px; } }
+.lio-persona .celu-vibra { transform-origin: center; animation: vibrar 2.6s infinite; }
+@keyframes vibrar { 0%, 70%, 100% { rotate: 0deg; } 73% { rotate: -5deg; } 76% { rotate: 5deg; } 79% { rotate: -5deg; } 82% { rotate: 5deg; } 85% { rotate: 0deg; } }
+.lio-persona .error-xls { animation: titila 1.4s steps(1) infinite; }
+@keyframes titila { 50% { opacity: 0.25; } }
+.lio-persona .hoja-vuela { transform-origin: center; opacity: 0; animation: volar 3.6s cubic-bezier(0.25, 0.6, 0.4, 1) infinite; animation-delay: var(--t); }
+@keyframes volar { 0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.6); } 12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1); } }
+.lio-persona .idea { transform-origin: 50% 100%; animation: idea 9.6s ease-out infinite both; animation-delay: var(--t); }
+@keyframes idea { 0% { opacity: 0; scale: 0.4; } 4% { opacity: 1; scale: 1.06; } 6% { scale: 1; } 30% { opacity: 1; scale: 1; } 35%, 100% { opacity: 0; scale: 0.9; } }
+.lio-persona text { font-family: "Inter", sans-serif; }
+
+/* Un texto que cambia con el toque (data-paso="1"): .antes se va, .despues
+   entra en el mismo lugar. */
+.cambia-texto, .semana-titulo, .ganancia-cifra .que { display: grid; }
+.cambia-texto > *, .semana-titulo > *, .ganancia-cifra .que > * { grid-area: 1 / 1; transition: opacity 0.5s ease, transform 0.5s ease; }
+.despues { opacity: 0; transform: translateY(8px); }
+.slide[data-paso="1"] .antes { opacity: 0; transform: translateY(-8px); }
+.slide[data-paso="1"] .despues { opacity: 1; transform: none; transition-delay: 0.3s; }
+
+/* ===== 5. El tiempo: el reloj apurado y la personita =====
+   Antes: el reloj rojo tiembla, las agujas vuelan y larga problemas; la
+   personita teclea. El toque (data-paso="1") lo vuelve verde y lento, la
+   personita se va a tomar un mate y aparece lo que se gana con ese tiempo. */
+.tiempo h2 { max-width: 18ch; }
+.reloj-escena { width: 100%; height: min(80vh, 740px); }
+.reloj-escena * { transform-box: fill-box; }
+.reloj-escena text { font-family: "Satoshi", "Inter", sans-serif; font-weight: 700; font-size: 18px; }
+.reloj-escena .aro { stroke: var(--mal); transition: stroke 0.8s ease; }
+.reloj-escena .marcas { stroke: var(--mal); transition: stroke 0.8s ease; }
+.reloj-escena .campana { fill: var(--mal); transition: opacity 0.6s ease; }
+.reloj-escena .eje { fill: var(--mal); transition: fill 0.8s ease; }
+.reloj-cuerpo { transform-origin: 50% 60%; animation: sonar 0.18s ease-in-out infinite alternate; }
+@keyframes sonar { from { rotate: -2.5deg; } to { rotate: 2.5deg; } }
+.agujas { transition: opacity 0.6s ease; }
+.agujas path { transform-box: view-box; transform-origin: 300px 197px; animation: girar linear infinite; }
+.agujas.rapidas path { stroke: var(--mal); }
+.agujas.rapidas .min-ag { animation-duration: 1.1s; }
+.agujas.rapidas .hora-ag { animation-duration: 8s; }
+.agujas.lentas { opacity: 0; }
+.agujas.lentas path { stroke: var(--texto); }
+.agujas.lentas .min-ag { animation-duration: 24s; }
+.agujas.lentas .hora-ag { animation-duration: 288s; }
+@keyframes girar { to { rotate: 360deg; } }
+.malo rect { fill: #2a1212; stroke: var(--mal); stroke-width: 2; }
+.malo text { fill: #fecaca; }
+.malo { opacity: 0; animation: largar 4s cubic-bezier(0.2, 0.8, 0.3, 1) infinite; animation-delay: calc(var(--i) * 0.8s); }
+@keyframes largar { 0% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.2); } 12% { opacity: 1; } 35% { transform: none; } 80% { opacity: 1; transform: translateY(-6px); } 100% { opacity: 0; transform: translateY(-14px); } }
+.bueno rect { fill: #0f2a1a; stroke: var(--ok); stroke-width: 2; }
+.bueno text { fill: #bbf7d0; }
+.bueno { opacity: 0; transform: scale(0.6); transform-origin: center; transition: opacity 0.4s ease, transform 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.estresado .tecla-izq { animation: teclear 0.16s ease-in-out infinite alternate; }
+.estresado .tecla-der { animation: teclear 0.16s ease-in-out 0.08s infinite alternate; }
+@keyframes teclear { to { translate: 0 -7px; } }
+.estresado .gota { animation: gota 1.6s ease-in infinite; }
+.estresado .numero { fill: var(--mal); font-size: 20px; opacity: 0; animation: subir 2.8s ease-out infinite; animation-delay: var(--t); }
+@keyframes subir { 0% { opacity: 0; transform: translate(0, 40px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--x), -40px); } }
+.estresado, .tranquilo { transition: opacity 0.6s ease, transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+.tranquilo { opacity: 0; transform: translateX(-160px); }
+.tranquilo .vapor { animation: vapor 2.4s ease-in-out infinite; }
+@keyframes vapor { 0%, 100% { opacity: 0.2; translate: 0 4px; } 50% { opacity: 0.9; translate: 0 -4px; } }
+.slide[data-paso="1"] .reloj-cuerpo { animation: none; }
+.slide[data-paso="1"] .reloj-escena .aro, .slide[data-paso="1"] .reloj-escena .marcas { stroke: var(--ok); }
+.slide[data-paso="1"] .reloj-escena .eje { fill: var(--ok); }
+.slide[data-paso="1"] .reloj-escena .campana { opacity: 0; }
+.slide[data-paso="1"] .agujas.rapidas { opacity: 0; }
+.slide[data-paso="1"] .agujas.lentas { opacity: 1; }
+.slide[data-paso="1"] .malo { animation: none; opacity: 0; }
+.slide[data-paso="1"] .bueno { opacity: 1; transform: none; transition-delay: calc(0.9s + var(--i) * 0.25s); }
+.slide[data-paso="1"] .estresado { opacity: 0; transform: translateX(-40px); }
+.slide[data-paso="1"] .tranquilo { opacity: 1; transform: none; transition-delay: 0.3s; }
+
+/* ===== 6. La plata: la ganancia que se come de a un costo ===== */
+.ganancia-cifra { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.4em 1.5em; margin-bottom: var(--element-gap); }
+.ganancia-cifra .que { color: var(--texto-2); font-size: var(--h3-size); }
+.ganancia-cifra .montos { display: flex; align-items: baseline; font-family: var(--titulos); font-weight: 700; letter-spacing: -0.03em; font-size: var(--title-size); }
+.ganancia-cifra .creia { color: var(--ok); transition: color 0.5s ease 2.4s, font-size 0.5s ease 2.4s; }
+.ganancia-cifra .quedo { color: var(--ok); max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; transition: opacity 0.6s ease 2.6s, max-width 0.6s ease 2.4s, margin 0.6s ease 2.4s; }
+.slide[data-paso="1"] .ganancia-cifra .creia { color: var(--texto-3); text-decoration: line-through; text-decoration-thickness: 3px; font-size: 0.55em; }
+.slide[data-paso="1"] .ganancia-cifra .quedo { opacity: 1; max-width: 6em; margin-left: 0.4em; }
+.barra-ganancia { display: flex; gap: 0; height: clamp(4.2rem, 13vh, 7.5rem); border-radius: 8px; overflow: hidden; transition: gap 0.4s ease 0.2s; }
+.slide[data-paso="1"] .barra-ganancia { gap: 3px; }
+.barra-ganancia span { position: relative; background: var(--ok); }
+.barra-ganancia .muerde { display: flex; flex-direction: column; justify-content: flex-end; padding: 0.5em 0.6em; font-size: var(--small-size); line-height: 1.25; color: transparent; transition: background 0.5s ease, color 0.4s ease; transition-delay: calc(0.3s + var(--i) * 0.55s); }
+.barra-ganancia .muerde b { display: block; font-family: var(--titulos); font-size: 1.5em; letter-spacing: -0.01em; }
+.slide[data-paso="1"] .barra-ganancia .muerde { background: repeating-linear-gradient(135deg, rgba(248, 113, 113, 0.22) 0 10px, rgba(248, 113, 113, 0.1) 10px 20px); box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.55); color: var(--texto); }
+.slide[data-paso="1"] .barra-ganancia .muerde b { color: var(--mal); }
+.plata .pie-plata { opacity: 0; transition: opacity 0.6s ease 3s; }
+.slide[data-paso="1"] .plata .pie-plata { opacity: 1; }
+
+/* El dueño de la 6: festeja la barra entera y, con el toque, cambia de cara
+   al ritmo de cada costo (0,3 s, 0,85 s, 1,4 s y 1,95 s: los de la barra). Sin
+   animación (la guía) queda en la cara del final. */
+.mirando { position: absolute; right: 7%; bottom: 0; height: 30vh; width: auto; opacity: 0; transition: opacity 0.6s ease 0.8s; }
+.slide.visible .mirando { opacity: 1; }
+.mirando * { transform-box: fill-box; }
+.mirando .signos text { font-family: "Satoshi", sans-serif; font-weight: 700; font-size: 30px; fill: var(--ok); animation: festejo 1.6s ease-in-out infinite alternate; animation-delay: var(--t, 0s); transition: opacity 0.3s ease; }
+@keyframes festejo { from { translate: 0 6px; opacity: 0.5; } to { translate: 0 -8px; opacity: 1; } }
+.mirando .cabeza-6 { transform-origin: 50% 100%; animation: saltito 0.5s ease-in-out infinite alternate; transition: transform 0.6s ease 1.95s; }
+@keyframes saltito { to { translate: 0 -4px; } }
+.mirando .brazos-arriba { transform-origin: 50% 100%; animation: saltito 0.5s ease-in-out infinite alternate; }
+.mirando .cara-seria, .mirando .cara-preocupada, .mirando .cara-triste, .mirando .brazos-abajo { opacity: 0; }
+.slide[data-paso="1"] .mirando .signos text { opacity: 0; animation: none; }
+.slide[data-paso="1"] .mirando .cabeza-6 { animation: none; transform: translateY(5px) rotate(-6deg); }
+.slide[data-paso="1"] .mirando .cara-feliz, .slide[data-paso="1"] .mirando .brazos-arriba { opacity: 0; animation: cara-1 2.6s both; }
+.slide[data-paso="1"] .mirando .cara-seria { animation: cara-2 2.6s both; }
+.slide[data-paso="1"] .mirando .cara-preocupada { animation: cara-3 2.6s both; }
+.slide[data-paso="1"] .mirando .cara-triste { opacity: 1; animation: cara-4 2.6s both; }
+.slide[data-paso="1"] .mirando .brazos-abajo { opacity: 1; animation: brazos-abajo 2.6s both; }
+@keyframes cara-1 { 0%, 10% { opacity: 1; } 12%, 100% { opacity: 0; } }
+@keyframes cara-2 { 0%, 10% { opacity: 0; } 12%, 31% { opacity: 1; } 33%, 100% { opacity: 0; } }
+@keyframes cara-3 { 0%, 31% { opacity: 0; } 33%, 73% { opacity: 1; } 75%, 100% { opacity: 0; } }
+@keyframes cara-4 { 0%, 73% { opacity: 0; } 75%, 100% { opacity: 1; } }
+@keyframes brazos-abajo { 0%, 10% { opacity: 0; } 12%, 100% { opacity: 1; } }
+.slide[data-paso="1"] .mirando .lagrima { animation: gota 1.8s ease-in 2.6s infinite; }
+
+/* ===== 8. Todo se junta en Nexo =====
+   Tres estados (data-paso), con transiciones: así las flechas van y vuelven.
+   0: las partes sueltas por la pantalla (--x, --y, --r: de dónde salen,
+   respecto de su lugar). 1 (el de base): en la grilla, conectadas, con el logo
+   arriba. 2: cada parte viaja como tarjeta a su ítem del menú de Nexo (lo
+   mueve acomodarEnNexo, más abajo) y ahí se vuelve ítem; Mercado Pago y
+   Reportes (.funde) caen en Configuración y en el Resumen. Al lado, un
+   Resumen genérico que se dibuja. */
+.junta { align-items: center; gap: calc(var(--content-gap) * 1.2); }
+.sistema { position: relative; z-index: 1; padding: clamp(2.2rem, 4.5vw, 4rem) clamp(1rem, 2vw, 1.8rem) clamp(1rem, 2vw, 1.8rem); border-radius: calc(var(--radio) * 1.5); }
+.sistema::before { content: ""; position: absolute; inset: 0; border: 1px solid var(--acento); border-radius: inherit; background: linear-gradient(180deg, var(--acento-suave), rgba(96, 165, 250, 0.02) 70%); box-shadow: 0 40px 120px -40px rgba(96, 165, 250, 0.45); transition: opacity 0.7s ease 1s, transform 0.7s ease 1s; }
+.modulos { --hueco: clamp(0.5rem, 1.4vw, 1.2rem); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--hueco); width: min(78vw, 1150px); }
+.modulo { position: relative; z-index: 3; display: flex; align-items: center; gap: 0.6em; padding: 0.75em 1em; background: var(--tarjeta-alta); border: 1px solid var(--borde-fuerte); border-radius: 12px; font-weight: 600; font-size: var(--body-size); white-space: nowrap; transition: transform 1.2s cubic-bezier(0.7, 0, 0.2, 1), opacity 0.4s ease, background 0.5s ease, border-color 0.5s ease, color 0.5s ease; transition-delay: calc(var(--i) * 35ms), 0s, 0s, 0.9s, 0s; }
+.modulo .ico { color: var(--acento); font-size: 1.25em; transition: color 0.5s ease calc(1.4s + var(--i) * 30ms); }
+/* Las conexiones: hacia la derecha (menos la última columna) y hacia abajo (menos la última fila). */
+.modulo::after, .modulo::before { content: ""; position: absolute; background: var(--acento); z-index: -1; transition: scale 0.4s ease-out; }
+.modulo:not(:nth-child(4n))::after { left: 100%; top: 50%; width: var(--hueco); height: 2px; margin-top: -1px; transform-origin: left; transition-delay: calc(1.4s + var(--i) * 30ms); }
+.modulo:nth-child(-n + 12)::before { top: 100%; left: 50%; height: var(--hueco); width: 2px; margin-left: -1px; transform-origin: top; transition-delay: calc(1.55s + var(--i) * 30ms); }
+.sistema-logo { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: center; transform: translateY(-50%); z-index: 2; }
+.sistema-logo .lockup { gap: clamp(0.6rem, 1.4vw, 1.2rem); padding: 0.5em 1.4em; background: var(--fondo); border: 1px solid var(--acento); border-radius: 999px; box-shadow: 0 0 60px rgba(96, 165, 250, 0.35); transition: transform 0.9s cubic-bezier(0.2, 0.9, 0.25, 1.15) 1.7s, opacity 0.4s ease 1.7s; }
+.sistema-logo .simbolo { width: clamp(30px, 3.4vw, 54px); }
+.sistema-logo .palabra { width: clamp(110px, 13vw, 210px); color: var(--texto); }
+.junta-frase { position: relative; z-index: 1; font-family: var(--titulos); font-weight: 700; font-size: var(--h2-size); letter-spacing: -0.02em; text-align: center; transition: opacity 0.7s ease 2.4s, transform 0.7s ease 2.4s; }
+.slide:not(.visible) .modulo, .slide:not(.visible) .sistema::before, .slide:not(.visible) .sistema-logo .lockup, .slide:not(.visible) .junta-frase { opacity: 0; }
+
+.slide[data-paso="0"] .modulo { transform: translate(var(--x), var(--y)) rotate(var(--r)); border-color: rgba(248, 113, 113, 0.5); transition-delay: 0s; }
+.slide[data-paso="0"] .modulo .ico { color: var(--texto-3); transition-delay: 0s; }
+.slide[data-paso="0"] .modulo::after, .slide[data-paso="0"] .modulo::before, .slide[data-paso="2"] .modulo::after, .slide[data-paso="2"] .modulo::before { scale: 0; transition-delay: 0s; }
+.slide[data-paso="0"] .sistema::before { opacity: 0; transform: scale(0.97); transition-delay: 0s; }
+.slide[data-paso="0"] .sistema-logo .lockup { opacity: 0; transform: translateY(-55vh) scale(1.5); transition-delay: 0s; }
+.slide[data-paso="0"] .junta-frase { opacity: 0; transform: translateY(10px); transition-delay: 0s; }
+
+/* Paso 2: viajan como tarjetas y, al llegar, se vuelven ítems del menú. */
+.slide[data-paso="2"] .modulo { color: #B5B5B5; font-weight: 500; gap: 0.71em; transform-origin: left center; transition: transform 1.1s cubic-bezier(0.65, 0, 0.25, 1), opacity 0.35s ease, background 0.35s ease, border-color 0.35s ease, color 0.35s ease; transition-delay: calc(0.3s + var(--i) * 40ms), calc(1.4s + var(--i) * 40ms), calc(1.3s + var(--i) * 40ms), calc(1.3s + var(--i) * 40ms), calc(1.3s + var(--i) * 40ms); background: transparent; border-color: transparent; }
+.slide[data-paso="2"] .modulo.funde { opacity: 0; }
+.slide[data-paso="2"] .modulo .ico { color: #7A7A7A; transition-delay: calc(1.3s + var(--i) * 40ms); }
+.slide[data-paso="2"] .sistema::before { opacity: 0; transition-delay: 0s; }
+.slide[data-paso="2"] .sistema-logo .lockup { opacity: 0; transform: translateY(-20px); transition-delay: 0s; }
+.slide[data-paso="2"] .junta-frase { opacity: 0; transition-delay: 0s; }
+
+/* La interfaz de Nexo: el menú con las medidas del de la app (styles.css,
+   en em de 14 px: ítems de 34 px, grupos de 12 px, el selector de 48 px) y la
+   hoja del contenido dentro del marco negro. */
+.app { position: absolute; inset: 0; margin: auto; width: min(92vw, 1440px); height: min(90vh, 820px); display: grid; grid-template-columns: 17.7em 1fr; background: #000; border: 1px solid var(--borde-fuerte); border-radius: var(--radio); overflow: hidden; box-shadow: 0 40px 120px -40px rgba(96, 165, 250, 0.35); opacity: 0; transition: opacity 0.4s ease; font-size: min(0.68vw, 1.2vh); }
+.slide[data-paso="2"] .app { opacity: 1; }
+.app-menu { display: flex; flex-direction: column; gap: 0.14em; padding: 1.43em 0.86em 1.14em; color: #EDEDED; }
+.app-marca { display: flex; align-items: center; gap: 0.57em; padding: 0 0.57em; font-family: var(--titulos); font-weight: 700; font-size: 1.57em; letter-spacing: -0.02em; }
+.app-marca img { width: 1.36em; height: 1.36em; object-fit: contain; }
+.app-marca .plegar { display: grid; place-items: center; width: 1.27em; height: 1.27em; margin-left: auto; border-radius: 0.27em; background: rgba(255, 255, 255, 0.06); color: #7A7A7A; font-size: 1em; }
+.app-marca .plegar .ico { font-size: 0.6em; }
+.app-negocio { display: flex; align-items: center; gap: 0.71em; min-height: 3.43em; margin: 0.57em 0 1.43em; padding: 0.43em 0.57em; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.57em; }
+.app-negocio .inicial { flex: none; display: grid; place-items: center; width: 2.14em; height: 2.14em; border-radius: 0.43em; background: rgba(255, 255, 255, 0.1); font-family: var(--titulos); font-weight: 700; font-size: 1.07em; }
+.app-negocio .textos { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
+.app-negocio b { font-weight: 600; }
+.app-negocio small { color: #B5B5B5; font-size: 0.857em; }
+.app-negocio > .ico { flex: none; width: 1.14em; height: 1.14em; color: #7A7A7A; }
+.app-item { display: flex; align-items: center; gap: 0.71em; min-height: 2.43em; padding: 0 0.86em; border-radius: 0.57em; color: #B5B5B5; font-weight: 500; white-space: nowrap; }
+.app-item .ico { width: 1.29em; height: 1.29em; color: #7A7A7A; }
+.app-item.activo { background: rgba(96, 165, 250, 0.14); color: #fff; }
+.app-item.activo .ico { color: var(--acento); }
+.app-grupo { margin: 1.14em 0.86em 0.29em; font-size: 0.857em; font-weight: 600; color: #7A7A7A; }
+.app-main { position: relative; overflow: hidden; margin: 0.86em 0.86em 0.86em 0; padding: 2em 2.4em; background: #0A0A0A; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1em; font-size: 1.15em; }
+
+/* El Resumen genérico: aparece cuando las partes llegan al menú, y se dibuja. */
+.rg { display: flex; flex-direction: column; gap: 1.1em; height: 100%; transition: opacity 0.5s ease 1.9s, transform 0.5s ease 1.9s; }
+.slide:not([data-paso="2"]) .rg { opacity: 0; transform: translateY(12px); transition-delay: 0s; }
+.rg-cabeza { display: flex; justify-content: space-between; align-items: baseline; }
+.rg-cabeza b { font-family: var(--titulos); font-size: 2em; letter-spacing: -0.02em; }
+.rg-cabeza span { color: var(--texto-3); }
+.rg-periodos { display: flex; gap: 0.3em; align-self: flex-start; padding: 0.3em; border: 1px solid var(--borde); border-radius: 9px; color: var(--texto-2); }
+.rg-periodos span { padding: 0.35em 0.8em; border-radius: 6px; }
+.rg-periodos .on { background: #1a1a1a; color: var(--texto); font-weight: 600; }
+.rg-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9em; }
+.rg-kpi, .rg-card { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; padding: 1em 1.1em; }
+.rg-kpi { display: flex; flex-direction: column; gap: 0.35em; }
+.rg-t { display: flex; align-items: center; gap: 0.5em; color: var(--texto-2); }
+.rg-t .ico { color: var(--acento); }
+.rg-v { font-family: var(--titulos); font-weight: 700; font-size: 1.9em; letter-spacing: -0.02em; }
+.rg-v.verde { color: var(--ok); }
+.rg-d { font-weight: 600; font-size: 0.92em; }
+.rg-d.sube { color: var(--ok); }
+.rg-d.baja { color: var(--acento); }
+.rg-d small { color: var(--texto-3); font-weight: 400; }
+.rg-chispa { width: 100%; height: 3em; margin-top: 0.3em; }
+.rg-chispa path { fill: none; stroke: var(--acento); stroke-width: 1.2; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 0; transition: stroke-dashoffset 1.2s ease calc(2.2s + var(--k) * 0.12s); }
+.slide:not([data-paso="2"]) .rg-chispa path { stroke-dashoffset: 1; transition-delay: 0s; }
+.rg-fila { flex: 1; display: grid; grid-template-columns: 1.7fr 1fr; gap: 0.9em; min-height: 0; }
+.rg-card { display: flex; flex-direction: column; gap: 0.8em; min-height: 0; }
+.rg-t2 { display: flex; justify-content: space-between; align-items: center; font-family: var(--titulos); font-weight: 700; font-size: 1.2em; }
+.rg-t2 span { display: flex; align-items: center; gap: 0.5em; font-family: "Inter", sans-serif; font-weight: 500; font-size: 0.7em; color: var(--texto-2); }
+.rg-t2 i { width: 0.8em; height: 0.8em; border-radius: 2px; }
+.rg-t2 i.azul { background: var(--acento-fuerte); }
+.rg-t2 i.verde { background: var(--ok); margin-left: 0.6em; }
+.rg-grafico { flex: 1; width: 100%; min-height: 0; }
+.rg-guias { stroke: var(--borde); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rg-barra { fill: var(--acento-fuerte); transform-box: fill-box; transform-origin: bottom; transition: scale 0.6s cubic-bezier(0.3, 1.3, 0.5, 1) calc(2.2s + var(--b) * 45ms); }
+.slide:not([data-paso="2"]) .rg-barra { scale: 1 0; transition-delay: 0s; }
+.rg-linea { fill: none; stroke: var(--ok); stroke-width: 1.4; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 0; transition: stroke-dashoffset 1.4s ease 2.7s; }
+.slide:not([data-paso="2"]) .rg-linea { stroke-dashoffset: 1; transition-delay: 0s; }
+.rg-dona { flex: 1; display: flex; align-items: center; gap: 1.2em; min-height: 0; }
+.rg-dona svg { height: 100%; max-height: 11em; aspect-ratio: 1; flex: none; rotate: 0deg; transition: rotate 1.2s cubic-bezier(0.2, 0.8, 0.3, 1) 2.2s, opacity 0.6s ease 2.2s; }
+.slide:not([data-paso="2"]) .rg-dona svg { rotate: -120deg; opacity: 0; transition-delay: 0s; }
+.rg-dona text { font-family: var(--titulos); font-weight: 700; font-size: 5px; fill: var(--texto); }
+.rg-dona text.chico { font-family: "Inter", sans-serif; font-weight: 500; font-size: 3px; fill: var(--texto-3); }
+.rg-dona ul { display: flex; flex-direction: column; gap: 0.5em; flex: 1; }
+.rg-dona li { display: flex; align-items: center; gap: 0.5em; color: var(--texto-2); }
+.rg-dona li i { width: 0.75em; height: 0.75em; border-radius: 3px; flex: none; }
+.rg-dona li b { margin-left: auto; color: var(--texto); }
+
+/* Al volver a una diapositiva con pasos, arranca de cero sin transición. */
+.reinicio, .reinicio *, .reinicio *::before, .reinicio *::after { transition: none !important; }
 
 /* ===== 7 y 8. Competencia y crecer ===== */
 .precios { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.5rem, 1.4vw, 1.1rem); }
@@ -473,7 +710,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .lista-check b { font-weight: 600; }
 .lista-check span { color: var(--texto-2); }
 
-.propuesta { max-width: 22ch; }
+.propuesta { max-width: 30ch; }
 .propuesta span { color: var(--texto-3); }
 
 .planes { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.5rem, 1.4vw, 1.1rem); }
@@ -496,6 +733,19 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .equilibrio .valor { font-family: var(--titulos); font-weight: 700; font-size: var(--gigante); line-height: 1; letter-spacing: -0.03em; color: var(--texto); margin-bottom: 0.25em; }
 .equilibrio .valor small { font-size: 0.35em; color: var(--texto-2); letter-spacing: 0; font-weight: 500; }
 
+.ia-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.ia-marca { flex: none; display: flex; align-items: center; gap: 0.6em; padding: 0.5em 1em 0.5em 0.6em; border: 1px solid rgba(217, 119, 87, 0.45); border-radius: 999px; background: rgba(217, 119, 87, 0.08); font-family: var(--titulos); font-weight: 700; font-size: var(--h3-size); }
+.claude-logo { width: 2em; height: 2em; }
+.subtitulo-ia.otra { margin-top: var(--element-gap); }
+
+/* Para cerrar: cada problema del principio, con lo que hace Nexo */
+.repaso { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(0.5rem, 1.4vw, 1.1rem); }
+.repaso .tarjeta { display: flex; flex-direction: column; gap: 0.8em; }
+.antes-era { display: flex; align-items: center; gap: 0.5em; color: #fca5a5 !important; font-size: var(--small-size); text-decoration: line-through; text-decoration-color: rgba(248, 113, 113, 0.6); }
+.antes-era .ico { color: var(--mal); flex: none; }
+.ahora-es { color: var(--texto) !important; font-family: var(--titulos); font-weight: 700; font-size: var(--h3-size); line-height: 1.2; }
+.ya-funciona .chips { margin-top: 0; }
+.cierre .gracias { margin-top: var(--element-gap); color: var(--acento); font-family: var(--titulos); font-weight: 700; font-size: var(--h3-size); }
 .cierre { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: clamp(1rem, 3vw, 3rem); align-items: center; }
 .cierre .qr { width: min(20vw, 36vh, 280px); }
 .cierre .frase { font-family: var(--titulos); font-weight: 700; font-size: var(--h2-size); letter-spacing: -0.02em; line-height: 1.15; margin-top: var(--content-gap); }
@@ -521,6 +771,17 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   .lio > :nth-child(n + 4) { display: none; }
   .plan li:nth-child(n + 2), .escalon li:nth-child(n + 2), .ocultable { display: none; }
   .telefono .chat { min-height: 0; }
+  .lio-persona { max-width: 90%; height: 52%; opacity: 0.9; }
+  .gancho { grid-template-columns: 1fr; }
+  .pensando { height: 34vh; }
+  .reloj-escena { height: 40vh; }
+  .repaso { grid-template-columns: 1fr; }
+  .ia-cabecera { flex-wrap: wrap; }
+  .mirando { height: 18vh; }
+  .barra-ganancia .muerde { font-size: 0.55rem; padding: 0.3em; }
+  .modulos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modulo { font-size: var(--small-size); padding: 0.5em 0.7em; }
+  .modulo:nth-child(n)::after, .modulo:nth-child(n)::before { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -592,8 +853,97 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 
 <!-- 3. El lío -->
 <section class="slide" aria-label="Así se lleva hoy un negocio">
+  <svg class="lio-persona" viewBox="0 0 600 600" aria-hidden="true">
+    <!-- Las ideas: aparecen de a una, cada 2,4 s -->
+    <g class="idea" style="--t:0s"><circle cx="232" cy="186" r="7" fill="#e5e5e5"/><circle cx="250" cy="208" r="4" fill="#e5e5e5"/><rect x="14" y="120" width="210" height="50" rx="25" fill="#f5f5f5"/><text x="119" y="152" font-size="20" font-weight="600" fill="#111" text-anchor="middle">¿Marta me pagó?</text></g>
+    <g class="idea" style="--t:2.4s"><circle cx="372" cy="186" r="7" fill="#e5e5e5"/><circle cx="352" cy="208" r="4" fill="#e5e5e5"/><rect x="376" y="120" width="214" height="50" rx="25" fill="#f5f5f5"/><text x="483" y="152" font-size="20" font-weight="600" fill="#111" text-anchor="middle">¿Quedan talles M?</text></g>
+    <g class="idea" style="--t:4.8s"><circle cx="300" cy="150" r="8" fill="#60a5fa"/><circle cx="300" cy="190" r="5" fill="#60a5fa"/><rect x="170" y="36" width="260" height="56" rx="28" fill="#60a5fa"/><text x="300" y="72" font-size="21" font-weight="700" fill="#06213f" text-anchor="middle">💡 ¿Y si vendo online?</text></g>
+    <g class="idea" style="--t:7.2s"><circle cx="214" cy="252" r="6" fill="#e5e5e5"/><rect x="0" y="196" width="196" height="50" rx="25" fill="#f9b4c6"/><text x="98" y="228" font-size="20" font-weight="700" fill="#5b2333" text-anchor="middle">¡La factura!</text></g>
+
+    <!-- La persona, con las manos en la cabeza -->
+    <g class="cuerpo">
+      <path d="M200,476 C200,404 222,372 262,362 L338,362 C378,372 400,404 400,476 Z" fill="#2b4a7a"/>
+      <path d="M262,362 L338,362 C330,380 316,392 300,392 C284,392 270,380 262,362 Z" fill="#23406c"/>
+      <rect x="286" y="330" width="28" height="40" rx="8" fill="#b9845f"/>
+      <path d="M284,362 L300,388 L316,362 Z" fill="#b9845f"/>
+      <ellipse cx="300" cy="288" rx="52" ry="60" fill="#d39d77"/>
+      <ellipse cx="249" cy="294" rx="8" ry="13" fill="#c48d67"/>
+      <ellipse cx="351" cy="294" rx="8" ry="13" fill="#c48d67"/>
+      <path d="M246,282 C238,222 276,214 302,216 C334,214 364,232 354,284 C350,262 336,246 312,244 L318,232 L300,244 L292,230 L284,246 C266,250 252,262 246,282 Z" fill="#1b1b1b"/>
+      <path d="M268,268 L291,260 M309,260 L332,268" stroke="#1b1b1b" stroke-width="4.5" stroke-linecap="round"/>
+      <g class="ojos"><circle cx="281" cy="284" r="5" fill="#1b1b1b"/><circle cx="319" cy="284" r="5" fill="#1b1b1b"/></g>
+      <path d="M282,318 q6,-6 12,0 t12,0" fill="none" stroke="#5a2d1c" stroke-width="3.5" stroke-linecap="round"/>
+      <path class="gota" d="M352,250 q7,10 0,14 q-7,-4 0,-14 Z" fill="#9cc9ff"/>
+      <path d="M236,384 L182,302" stroke="#2b4a7a" stroke-width="38" stroke-linecap="round"/>
+      <path d="M364,384 L418,302" stroke="#2b4a7a" stroke-width="38" stroke-linecap="round"/>
+      <path d="M182,302 L246,262" stroke="#d39d77" stroke-width="27" stroke-linecap="round"/>
+      <path d="M418,302 L354,262" stroke="#d39d77" stroke-width="27" stroke-linecap="round"/>
+      <circle cx="250" cy="258" r="18" fill="#d39d77"/>
+      <circle cx="350" cy="258" r="18" fill="#d39d77"/>
+    </g>
+
+    <!-- Hojas que vuelan de la pila -->
+    <g class="hoja-vuela" style="--x:-280px; --y:-250px; --r:-50deg; --t:0s"><rect x="272" y="410" width="38" height="48" rx="2" fill="#ece7dc"/><path d="M279,422 h24 M279,431 h24 M279,440 h16" stroke="#9aa9bd" stroke-width="2"/></g>
+    <g class="hoja-vuela" style="--x:250px; --y:-300px; --r:40deg; --t:0.6s"><rect x="272" y="410" width="38" height="48" rx="2" fill="#fff"/><path d="M279,422 h24 M279,431 h24 M279,440 h16" stroke="#9aa9bd" stroke-width="2"/></g>
+    <g class="hoja-vuela" style="--x:-140px; --y:-400px; --r:-25deg; --t:1.2s"><rect x="272" y="410" width="38" height="48" rx="2" fill="#f9b4c6"/></g>
+    <g class="hoja-vuela" style="--x:290px; --y:-150px; --r:70deg; --t:1.8s"><rect x="272" y="410" width="38" height="48" rx="2" fill="#ece7dc"/><path d="M279,422 h24 M279,431 h24 M279,440 h16" stroke="#9aa9bd" stroke-width="2"/></g>
+    <g class="hoja-vuela" style="--x:-320px; --y:-90px; --r:-80deg; --t:2.4s"><rect x="272" y="410" width="38" height="48" rx="2" fill="#fff"/><path d="M279,422 h24 M279,431 h24" stroke="#c0392b" stroke-width="2"/></g>
+    <g class="hoja-vuela" style="--x:130px; --y:-420px; --r:30deg; --t:3s"><rect x="272" y="410" width="38" height="48" rx="2" fill="#ece7dc"/><path d="M279,422 h24 M279,431 h24 M279,440 h16" stroke="#9aa9bd" stroke-width="2"/></g>
+
+    <!-- El escritorio -->
+    <rect x="20" y="460" width="560" height="22" rx="4" fill="#2a2a2a"/>
+    <rect x="36" y="482" width="528" height="130" fill="#121212" stroke="#262626" stroke-width="2"/>
+
+    <!-- La compu, con una planilla de Excel que tira error -->
+    <rect x="14" y="316" width="196" height="132" rx="8" fill="#0e0e0e" stroke="#444" stroke-width="5"/>
+    <rect x="22" y="324" width="180" height="116" fill="#fff"/>
+    <rect x="22" y="324" width="180" height="13" fill="#1f6e43"/>
+    <g transform="translate(25 325.5) scale(0.416667)"><rect x="6" y="2" width="17" height="20" rx="2" fill="#21a366"/><path d="M6,8 h17 M6,14 h17 M14.5,2 v20" stroke="#107c41" stroke-width="1.2"/><rect x="1" y="6" width="12" height="12" rx="1.6" fill="#107c41"/><path d="M4,9 L10,15 M10,9 L4,15" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></g>
+    <text x="39" y="333.6" font-size="6.6" font-weight="700" fill="#fff">Caja noviembre.xlsx</text>
+    <text x="196" y="333.6" font-size="6.6" fill="#cfe8da" text-anchor="end">— ▢ ✕</text>
+    <rect x="22" y="337" width="180" height="9" fill="#fff" stroke="#d4d4d4" stroke-width="0.6"/>
+    <text x="26" y="343.6" font-size="5.6" fill="#777"><tspan font-style="italic" font-weight="700">fx</tspan>  =B4−C4</text>
+    <rect x="22" y="346" width="180" height="8" fill="#f0f0f0"/><rect x="22" y="346" width="8" height="82" fill="#f0f0f0"/>
+    <g font-size="5.5" fill="#666" text-anchor="middle"><text x="46" y="352">A</text><text x="85" y="352">B</text><text x="131" y="352">C</text><text x="178" y="352">D</text></g>
+    <rect x="30" y="354" width="172" height="14.8" fill="#e8f3ec"/>
+    <g stroke="#d4d4d4" stroke-width="0.6" fill="none"><path d="M22,354.0 H202"/><path d="M22,368.8 H202"/><path d="M22,383.6 H202"/><path d="M22,398.4 H202"/><path d="M22,413.2 H202"/><path d="M22,428.0 H202"/><path d="M30,346 V428"/><path d="M62,346 V428"/><path d="M108,346 V428"/><path d="M154,346 V428"/></g>
+    <g font-size="7" fill="#222"><text x="25" y="364.4" fill="#777" font-size="5.5">1</text><text x="33" y="364.4" font-weight="700">Día</text><text x="65" y="364.4" font-weight="700">Entró</text><text x="111" y="364.4" font-weight="700">Salió</text><text x="157" y="364.4" font-weight="700">Saldo</text><text x="25" y="379.2" fill="#777" font-size="5.5">2</text><text x="33" y="379.2">01/11</text><text x="105" y="379.2" text-anchor="end">45.200</text><text x="151" y="379.2" text-anchor="end">12.000</text><text x="199" y="379.2" text-anchor="end">33.200</text><text x="25" y="394.0" fill="#777" font-size="5.5">3</text><text x="33" y="394.0">02/11</text><text x="105" y="394.0" text-anchor="end">38.900</text><text x="151" y="394.0" text-anchor="end">41.500</text><text x="199" y="394.0" text-anchor="end" fill="#c0392b">−2.600</text><text x="25" y="408.8" fill="#777" font-size="5.5">4</text><text x="33" y="408.8">03/11</text><text x="105" y="408.8" text-anchor="end">??</text><text x="151" y="408.8" text-anchor="end">8.300</text><text x="25" y="423.6" fill="#777" font-size="5.5">5</text><text x="33" y="423.6" font-weight="700">TOTAL</text><text x="105" y="423.6" text-anchor="end" font-weight="700">84.100</text><text x="151" y="423.6" text-anchor="end" font-weight="700">61.800</text></g>
+    <g class="error-xls"><rect x="154.5" y="398.6" width="47.5" height="14.4" fill="#fde2e2"/><text x="199" y="409" font-size="7" font-weight="700" fill="#c0392b" text-anchor="end">#¡VALOR!</text></g>
+    <g class="error-xls" style="animation-delay:0.7s"><rect x="154.5" y="413.4" width="47.5" height="14.4" fill="#fde2e2"/><text x="199" y="423.8" font-size="7" font-weight="700" fill="#c0392b" text-anchor="end">#¡REF!</text></g>
+    <rect x="152.5" y="397.4" width="50" height="16.6" fill="none" stroke="#1f6e43" stroke-width="1.6"/>
+    <rect x="22" y="428" width="180" height="12" fill="#f3f3f3"/>
+    <rect x="32" y="428" width="40" height="12" fill="#fff"/><rect x="32" y="438.6" width="40" height="1.4" fill="#1f6e43"/>
+    <g font-size="5.6"><text x="52" y="436" text-anchor="middle" fill="#1f6e43" font-weight="700">Caja nov</text><text x="88" y="436" text-anchor="middle" fill="#777">Ventas</text><text x="118" y="436" text-anchor="middle" fill="#777">Hoja3</text></g>
+    <polygon points="0,448 224,448 238,462 -14,462" fill="#3a3a3a"/>
+
+    <!-- Las pilas de papeles y el cuaderno -->
+    <rect x="236" y="452" width="108" height="8" fill="#d9d3c5"/>
+    <rect x="240" y="444" width="104" height="8" fill="#ece7dc"/>
+    <rect x="234" y="436" width="106" height="8" fill="#d9d3c5"/>
+    <rect x="242" y="428" width="100" height="8" fill="#fff"/>
+    <rect x="238" y="420" width="104" height="8" fill="#e2ddd0"/>
+    <rect x="236" y="410" width="108" height="10" rx="2" fill="#c9a86a"/>
+    <g transform="rotate(-4 390 448)"><rect x="350" y="436" width="84" height="24" rx="2" fill="#f1ece1"/><rect x="358" y="436" width="3" height="24" fill="#e38a8a"/><path d="M366,444 h58 M366,452 h44" stroke="#9aa9bd" stroke-width="2"/></g>
+
+    <!-- El celular, que no para de sonar -->
+    <g class="celu-vibra">
+      <rect x="436" y="332" width="100" height="130" rx="14" fill="#111" stroke="#444" stroke-width="4"/>
+      <rect x="442" y="340" width="88" height="114" rx="4" fill="#0b141a"/>
+      <rect x="442" y="340" width="88" height="15" rx="4" fill="#202c33"/>
+      <text x="447" y="350.4" font-size="7" font-weight="700" fill="#e9edef">WhatsApp</text>
+      <g font-size="6.3" fill="#e9edef">
+        <rect x="446" y="359" width="68" height="14" rx="4" fill="#202c33"/><text x="450" y="368.6">¿Hay talle M? 🙏</text>
+        <rect x="468" y="377" width="58" height="14" rx="4" fill="#005c4b"/><text x="472" y="386.6">Ya te transferí</text>
+        <rect x="446" y="395" width="70" height="14" rx="4" fill="#202c33"/><text x="450" y="404.6">¿Cuánto te debo?</text>
+        <rect x="446" y="413" width="78" height="14" rx="4" fill="#202c33"/><text x="450" y="422.6">Mandame la factura</text>
+        <rect x="446" y="431" width="56" height="14" rx="4" fill="#202c33"/><text x="450" y="440.6">¿Abren hoy?</text>
+      </g>
+      <circle cx="532" cy="336" r="14" fill="#ef4444"/>
+      <text x="532" y="341" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">9+</text>
+    </g>
+  </svg>
   <div class="lio" aria-hidden="true">
-    <div class="cuaderno" style="left:4%; top:8%; --r:-6deg; --dx:-60px; --d:0">
+    <div class="cuaderno" style="left:2%; top:5%; width:clamp(180px, 22vw, 340px); --r:-6deg; --dx:-60px; --d:0">
       <p>Juan → fiado $8.500</p>
       <p class="tachado">Marta pagó $12.000</p>
       <p>Marta ¿pagó? <span class="duda">??</span></p>
@@ -601,8 +951,8 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       <p class="tachado">comprar bolsas</p>
       <p>Caja: $96.800 <span class="duda">(no da)</span></p>
     </div>
-    <div class="planilla" style="right:5%; top:6%; --r:4deg; --dx:60px; --d:1">
-      <div class="barra-xls">ventas_FINAL_v3 (2).xlsx</div>
+    <div class="planilla" style="left:25%; top:7%; width:clamp(200px, 23vw, 360px); --r:3deg; --dy:-60px; --d:1">
+      <div class="barra-xls"><svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(0 0) scale(1)"><rect x="6" y="2" width="17" height="20" rx="2" fill="#21a366"/><path d="M6,8 h17 M6,14 h17 M14.5,2 v20" stroke="#107c41" stroke-width="1.2"/><rect x="1" y="6" width="12" height="12" rx="1.6" fill="#107c41"/><path d="M4,9 L10,15 M10,9 L4,15" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></g></svg>ventas_FINAL_v3 (2).xlsx</div>
       <table>
         <tr><th>Fecha</th><th>Producto</th><th>Precio</th><th>Stock</th></tr>
         <tr><td>03/11</td><td>Remera M</td><td>14.900</td><td>12</td></tr>
@@ -612,16 +962,16 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
         <tr class="rojo"><td colspan="2">TOTAL</td><td class="error">#¡REF!</td><td></td></tr>
       </table>
     </div>
-    <div class="burbuja ellos" style="left:38%; top:12%; --r:-2deg; --dy:-40px; --d:2"><span class="quien">Clienta</span>¿Te queda el talle M? 🙏<small>22:47</small></div>
-    <div class="burbuja ellos" style="right:36%; top:34%; --r:3deg; --dx:40px; --d:3"><span class="quien">Proveedor</span>Te mandé la factura por mail, fijate<small>23:02</small></div>
-    <div class="burbuja yo" style="left:33%; top:40%; --r:-3deg; --dy:40px; --d:4">Ya te transferí, ¿cuánto te debía?<small>23:10 ✓✓</small></div>
-    <div class="papelito" style="right:6%; bottom:14%; --r:8deg; --dy:60px; --d:5">¡Hacer factura a Boutique Arenas!</div>
-    <div class="ticket" style="left:54%; bottom:10%; --r:-9deg; --dy:60px; --d:6">
+    <div class="burbuja ellos" style="left:3%; top:36%; --r:-2deg; --dx:-40px; --d:2"><span class="quien">Clienta</span>¿Te queda el talle M? 🙏<small>22:47</small></div>
+    <div class="burbuja ellos" style="left:17%; top:44%; --r:3deg; --dx:40px; --d:3"><span class="quien">Proveedor</span>Te mandé la factura por mail, fijate<small>23:02</small></div>
+    <div class="burbuja yo" style="left:31%; top:34%; --r:-3deg; --dy:40px; --d:4">Ya te transferí, ¿cuánto te debía?<small>23:10 ✓✓</small></div>
+    <div class="papelito" style="right:10%; bottom:3%; width:clamp(90px, 8vw, 130px); font-size:clamp(0.62rem, 0.85vw, 0.82rem); --r:6deg; --dy:60px; --d:5">¡Hacer factura a Boutique Arenas!</div>
+    <div class="ticket" style="left:63%; bottom:3%; --r:-6deg; --dy:60px; --d:6">
       <p><span>Remera M</span><span>14.900</span></p>
       <p><span>Medias x3</span><span>6.900</span></p>
       <p><span>TOTAL</span><span>21.800</span></p>
     </div>
-    <div class="calculadora" style="right:24%; bottom:24%; --r:6deg; --dx:40px; --d:7"><div class="pantalla">38.230,0</div><div class="teclas"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div class="calculadora" style="left:51%; bottom:2%; --r:5deg; --dy:60px; --d:7"><div class="pantalla">38.230,0</div><div class="teclas"><i>7</i><i>8</i><i>9</i><i>÷</i><i>4</i><i>5</i><i>6</i><i>×</i><i>1</i><i>2</i><i>3</i><i>−</i><i>0</i><i>,</i><i>=</i><i>+</i></div></div>
   </div>
   <div class="slide-content">
     <div class="lio-titulo reveal" style="--d:8">
@@ -633,8 +983,9 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 </section>
 
 <!-- 4. Gancho: dolores de cualquiera -->
-<section class="slide" aria-label="Gancho">
+<section class="slide" aria-label="Gancho" data-pasos="1">
   <div class="slide-content gancho">
+    <div>
     <h1 aria-label="¿Alguna vez prestaste plata y no te acordaste a quién?">
       <span class="palabra" style="--d:0">¿Alguna</span>
       <span class="palabra" style="--d:1">vez</span>
@@ -647,47 +998,175 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       <span class="palabra" style="--d:8">a</span>
       <span class="palabra" style="--d:9">quién?</span>
     </h1>
-    <div class="preguntas">
-      <span class="reveal" style="--d:11">¿Pagaste algo dos veces?</span>
-      <span class="reveal" style="--d:12">¿Perdiste un ticket?</span>
-      <span class="reveal" style="--d:13">¿Se te pasó un vencimiento?</span>
+    <p class="remate">En un negocio, eso pasa <em>todos los días</em>.</p>
     </div>
-    <p class="remate reveal" style="--d:15">En un negocio, eso pasa <em>todos los días</em>.</p>
+    <svg class="pensando" viewBox="0 0 440 580" aria-hidden="true">
+      <!-- Lo que intenta recordar: un nombre por vez -->
+      <g class="nube">
+        <circle cx="70" cy="112" r="44" fill="#f5f5f5"/><circle cx="124" cy="78" r="56" fill="#f5f5f5"/><circle cx="190" cy="92" r="48" fill="#f5f5f5"/><circle cx="226" cy="132" r="36" fill="#f5f5f5"/><circle cx="160" cy="146" r="46" fill="#f5f5f5"/><circle cx="92" cy="146" r="40" fill="#f5f5f5"/>
+        <text x="146" y="104" font-size="26" fill="#c0392b" text-anchor="middle">$ ?</text>
+        <text class="nombre" style="--t:0s" x="146" y="142" font-size="30" fill="#111" text-anchor="middle">¿Juan?</text>
+        <text class="nombre" style="--t:2s" x="146" y="142" font-size="30" fill="#111" text-anchor="middle">¿Marta?</text>
+        <text class="nombre" style="--t:4s" x="146" y="142" font-size="30" fill="#111" text-anchor="middle">¿O era Pedro?</text>
+      </g>
+      <circle cx="222" cy="196" r="11" fill="#f5f5f5"/><circle cx="238" cy="220" r="6" fill="#f5f5f5"/>
+
+      <!-- Segundo toque: todas las deudas de un negocio, a la vez -->
+      <g class="deuda" style="--i:0"><rect x="300" y="40" width="136" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="368" y="66" font-size="17" fill="#f5f5f5" text-anchor="middle">Juan $ 8.500</text></g>
+      <g class="deuda" style="--i:1"><rect x="0" y="210" width="146" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="73" y="236" font-size="17" fill="#f5f5f5" text-anchor="middle">Marta ¿pagó?</text></g>
+      <g class="deuda" style="--i:2"><rect x="318" y="118" width="122" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="379" y="144" font-size="17" fill="#f5f5f5" text-anchor="middle">Lucía $ 3.200</text></g>
+      <g class="deuda" style="--i:3"><rect x="4" y="300" width="150" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="79" y="326" font-size="17" fill="#f5f5f5" text-anchor="middle">Proveedor ¿$?</text></g>
+      <g class="deuda" style="--i:4"><rect x="314" y="300" width="126" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="377" y="326" font-size="17" fill="#f5f5f5" text-anchor="middle">Pedro, fiado</text></g>
+      <g class="deuda" style="--i:5"><rect x="288" y="392" width="152" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="364" y="418" font-size="17" fill="#f5f5f5" text-anchor="middle">Seña ¿de quién?</text></g>
+      <g class="deuda" style="--i:6"><rect x="0" y="392" width="140" height="40" rx="20" fill="#161616" stroke="#f87171" stroke-width="2"/><text x="70" y="418" font-size="17" fill="#f5f5f5" text-anchor="middle">Don Carlos $ ?</text></g>
+
+      <!-- La personita: una mano se rasca la cabeza, la otra en el mentón -->
+      <path d="M216,560 L212,470" stroke="#1f2937" stroke-width="34" stroke-linecap="round"/>
+      <path d="M264,560 L270,470" stroke="#1f2937" stroke-width="34" stroke-linecap="round"/>
+      <ellipse cx="208" cy="566" rx="24" ry="10" fill="#0a0a0a"/><ellipse cx="274" cy="566" rx="24" ry="10" fill="#0a0a0a"/>
+      <path d="M184,470 C184,384 196,338 216,326 L264,326 C284,338 296,384 296,470 Z" fill="#2b4a7a"/>
+      <rect x="228" y="292" width="24" height="40" rx="8" fill="#b9845f"/>
+      <g class="cabeza">
+        <ellipse cx="240" cy="250" rx="46" ry="52" fill="#d39d77"/>
+        <ellipse cx="195" cy="256" rx="7" ry="11" fill="#c48d67"/>
+        <path d="M194,250 C186,196 222,190 244,192 C272,190 296,208 286,250 C282,230 270,218 246,216 C224,216 204,228 194,250 Z" fill="#1b1b1b"/>
+        <path d="M216,230 L234,224 M250,221 L268,226" stroke="#1b1b1b" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="227" cy="243" r="4.5" fill="#1b1b1b"/><circle cx="257" cy="243" r="4.5" fill="#1b1b1b"/>
+        <ellipse cx="246" cy="279" rx="6" ry="4" fill="#5a2d1c"/>
+      </g>
+      <path d="M200,340 L176,410" stroke="#2b4a7a" stroke-width="30" stroke-linecap="round"/>
+      <path d="M176,410 L224,312" stroke="#d39d77" stroke-width="22" stroke-linecap="round"/>
+      <circle cx="226" cy="306" r="14" fill="#d39d77"/>
+      <path d="M282,338 L338,262" stroke="#2b4a7a" stroke-width="30" stroke-linecap="round"/>
+      <g class="rascar">
+        <path d="M338,262 L288,212" stroke="#d39d77" stroke-width="22" stroke-linecap="round"/>
+        <circle cx="284" cy="208" r="15" fill="#d39d77"/>
+      </g>
+    </svg>
   </div>
 </section>
 
-<!-- 5. El tiempo que se pierde -->
-<section class="slide" aria-label="El tiempo que se pierde">
-  <div class="slide-content par parejo">
+<!-- 5. El tiempo que se pierde. Un reloj rojo, apurado, que larga problemas, y
+     abajo la personita pasando números. El toque calma el reloj (verde y lento)
+     y la personita se levanta a tomar un mate: lo que se gana con ese tiempo. -->
+<section class="slide" aria-label="El tiempo que se pierde" data-pasos="1">
+  <div class="slide-content par parejo tiempo">
     <div>
       <p class="parte reveal">El problema</p>
-      <h2 class="reveal" style="--d:1">El tiempo: cada venta se anota cinco veces</h2>
-      <p class="reloj reveal" style="--d:2">×5<small>La misma venta, a mano, en cinco lugares. Y cada vez que se copia, se puede equivocar.</small></p>
+      <h2 class="reveal" style="--d:1">Cada hora copiando datos es una hora menos para el negocio</h2>
+      <div class="cambia-texto reveal" style="--d:2">
+        <p class="bajada antes">25 horas por semana anotando, copiando planillas y contando la caja.</p>
+        <p class="bajada despues">Podrían ir a lo que el negocio de verdad necesita. O, simplemente, a descansar.</p>
+      </div>
     </div>
-    <ol class="noche veces">
-      <li class="reveal" style="--d:3"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#notebook-tabs"/></svg></span>En el cuaderno, en el momento de vender</li>
-      <li class="reveal" style="--d:4"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#boxes"/></svg></span>En la planilla de stock, restando a mano</li>
-      <li class="reveal" style="--d:5"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg></span>En la libreta del fiado, si no pagó</li>
-      <li class="reveal" style="--d:6"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg></span>En la página de ARCA, para hacer la factura</li>
-      <li class="reveal ultimo" style="--d:7"><span class="hora"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg></span>En la caja, a la noche, contando si da</li>
-    </ol>
+    <svg class="reloj-escena reveal" style="--d:2" viewBox="0 0 600 640" aria-hidden="true">
+      <!-- Lo que larga el reloj: problemas (antes) y lo que se gana (después) -->
+      <g class="malo" style="--i:0; --dx:206px; --dy:126px"><rect x="4" y="52" width="180" height="38" rx="19"/><text x="94" y="77" text-anchor="middle">La caja no cierra</text></g><g class="malo" style="--i:1; --dx:-215px; --dy:108px"><rect x="440" y="70" width="150" height="38" rx="19"/><text x="515" y="95" text-anchor="middle">Stock en −2</text></g><g class="malo" style="--i:2; --dx:224px; --dy:-84px"><rect x="14" y="262" width="124" height="38" rx="19"/><text x="76" y="287" text-anchor="middle">#¡REF!</text></g><g class="malo" style="--i:3; --dx:-210px; --dy:-90px"><rect x="424" y="268" width="172" height="38" rx="19"/><text x="510" y="293" text-anchor="middle">Factura atrasada</text></g><g class="malo" style="--i:4; --dx:0px; --dy:174px"><rect x="190" y="4" width="220" height="38" rx="19"/><text x="300" y="29" text-anchor="middle">Otra noche sin dormir</text></g>
+      <g class="bueno" style="--i:0; --dx:0px; --dy:0px"><rect x="4" y="60" width="150" height="38" rx="19"/><text x="79" y="85" text-anchor="middle">Más ventas</text></g><g class="bueno" style="--i:1; --dx:0px; --dy:0px"><rect x="420" y="66" width="176" height="38" rx="19"/><text x="508" y="91" text-anchor="middle">Clientes atendidos</text></g><g class="bueno" style="--i:2; --dx:0px; --dy:0px"><rect x="4" y="336" width="196" height="38" rx="19"/><text x="102" y="361" text-anchor="middle">Tiempo para producir</text></g><g class="bueno" style="--i:3; --dx:0px; --dy:0px"><rect x="440" y="262" width="140" height="38" rx="19"/><text x="510" y="287" text-anchor="middle">Tarde libre</text></g>
+
+      <!-- El reloj -->
+      <g class="reloj-cuerpo">
+        <path class="campana" d="M214,100 a34,34 0 0 1 52,-30 Z M386,100 a34,34 0 0 0 -52,-30 Z"/>
+        <circle class="aro" cx="300" cy="197" r="118" fill="#0f0f0f" stroke-width="14"/>
+        <g class="marcas" stroke-width="5" stroke-linecap="round"><path d="M300.0,93.0 L300.0,107.0"/><path d="M352.0,106.9 L348.0,113.9"/><path d="M390.1,145.0 L383.1,149.0"/><path d="M404.0,197.0 L390.0,197.0"/><path d="M390.1,249.0 L383.1,245.0"/><path d="M352.0,287.1 L348.0,280.1"/><path d="M300.0,301.0 L300.0,287.0"/><path d="M248.0,287.1 L252.0,280.1"/><path d="M209.9,249.0 L216.9,245.0"/><path d="M196.0,197.0 L210.0,197.0"/><path d="M209.9,145.0 L216.9,149.0"/><path d="M248.0,106.9 L252.0,113.9"/></g>
+        <g class="agujas rapidas" stroke-linecap="round"><path class="hora-ag" d="M300,197 L300,141" stroke-width="9"/><path class="min-ag" d="M300,197 L300,109" stroke-width="6"/></g>
+        <g class="agujas lentas" stroke-linecap="round"><path class="hora-ag" d="M300,197 L300,141" stroke-width="9"/><path class="min-ag" d="M300,197 L300,109" stroke-width="6"/></g>
+        <circle class="eje" cx="300" cy="197" r="9"/>
+      </g>
+
+      <!-- El escritorio -->
+      <rect x="120" y="560" width="300" height="14" rx="3" fill="#2a2a2a"/>
+      <rect x="136" y="574" width="10" height="66" fill="#1f1f1f"/><rect x="394" y="574" width="10" height="66" fill="#1f1f1f"/>
+      <rect x="300" y="486" width="112" height="74" rx="6" fill="#0e0e0e" stroke="#444" stroke-width="4"/>
+      <path d="M310,500 h92 M310,514 h92 M310,528 h92 M310,542 h92 M340,494 v58 M372,494 v58" stroke="#2e2e2e" stroke-width="2"/>
+      <polygon points="292,560 420,560 428,566 284,566" fill="#3a3a3a"/>
+
+      <!-- Antes: pasando datos, a las apuradas -->
+      <g class="estresado">
+        <rect x="132" y="534" width="70" height="8" fill="#d9d3c5"/><rect x="136" y="526" width="64" height="8" fill="#ece7dc"/><rect x="130" y="518" width="70" height="8" fill="#fff"/><rect x="134" y="510" width="66" height="8" fill="#e2ddd0"/><rect x="132" y="502" width="70" height="8" fill="#ece7dc"/>
+        <path d="M196,566 C196,500 212,476 236,470 L284,470 C308,476 324,500 324,566 Z" fill="#2b4a7a"/>
+        <rect x="246" y="446" width="28" height="30" rx="8" fill="#b9845f"/>
+        <ellipse cx="260" cy="414" rx="38" ry="43" fill="#d39d77"/>
+        <path d="M222,408 C216,364 244,358 262,360 C286,358 306,374 298,410 C292,392 282,384 266,382 L270,372 L258,382 L252,370 L246,384 C234,388 226,396 222,408 Z" fill="#1b1b1b"/>
+        <path d="M240,400 L256,394 M266,394 L282,400" stroke="#1b1b1b" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="250" cy="414" r="4" fill="#1b1b1b"/><circle cx="272" cy="414" r="4" fill="#1b1b1b"/>
+        <path d="M250,438 q5,-5 10,0 t10,0" fill="none" stroke="#5a2d1c" stroke-width="3" stroke-linecap="round"/>
+        <path class="gota" d="M298,392 q6,9 0,12 q-6,-3 0,-12 Z" fill="#9cc9ff"/>
+        <path d="M214,494 L226,546" stroke="#2b4a7a" stroke-width="24" stroke-linecap="round"/>
+        <path d="M306,494 L294,546" stroke="#2b4a7a" stroke-width="24" stroke-linecap="round"/>
+        <circle class="tecla-izq" cx="230" cy="552" r="11" fill="#d39d77"/><circle class="tecla-der" cx="292" cy="552" r="11" fill="#d39d77"/>
+        <text class="numero" style="--t:0s; --x:-70px" x="160" y="470">1.300</text>
+        <text class="numero" style="--t:0.7s; --x:60px" x="330" y="452">$ ?</text>
+        <text class="numero" style="--t:1.4s; --x:-40px" x="130" y="424">#¡VALOR!</text>
+        <text class="numero" style="--t:2.1s; --x:50px" x="340" y="404">38.230</text>
+      </g>
+
+      <!-- Después: se levanta a tomar un mate, tranquilo -->
+      <g class="tranquilo">
+        <path d="M478,546 L474,628" stroke="#1f2937" stroke-width="26" stroke-linecap="round"/>
+        <path d="M506,546 L510,628" stroke="#1f2937" stroke-width="26" stroke-linecap="round"/>
+        <ellipse cx="470" cy="632" rx="20" ry="8" fill="#0a0a0a"/><ellipse cx="514" cy="632" rx="20" ry="8" fill="#0a0a0a"/>
+        <path d="M454,552 C454,488 464,458 480,450 L512,450 C528,458 538,488 538,552 Z" fill="#2b4a7a"/>
+        <rect x="483" y="424" width="26" height="32" rx="8" fill="#b9845f"/>
+        <ellipse cx="496" cy="392" rx="36" ry="40" fill="#d39d77"/>
+        <path d="M460,386 C454,344 482,338 500,340 C522,338 540,354 532,388 C528,372 516,362 500,362 C480,362 466,372 460,386 Z" fill="#1b1b1b"/>
+        <path d="M478,392 q6,-6 12,0 M502,392 q6,-6 12,0" fill="none" stroke="#1b1b1b" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M482,410 q14,12 28,0" fill="none" stroke="#5a2d1c" stroke-width="3.5" stroke-linecap="round"/>
+        <circle cx="472" cy="404" r="5" fill="#e98b7a" opacity="0.5"/><circle cx="520" cy="404" r="5" fill="#e98b7a" opacity="0.5"/>
+        <path d="M464,470 L448,520" stroke="#2b4a7a" stroke-width="20" stroke-linecap="round"/><circle cx="446" cy="526" r="10" fill="#d39d77"/>
+        <path d="M530,470 L546,510 L520,490" fill="none" stroke="#2b4a7a" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+        <g><path d="M502,468 L520,442" stroke="#c0c0c0" stroke-width="4" stroke-linecap="round"/><ellipse cx="510" cy="484" rx="15" ry="18" fill="#8b5a2b"/><ellipse cx="510" cy="470" rx="12" ry="4" fill="#5b3a1a"/></g>
+        <circle cx="520" cy="490" r="10" fill="#d39d77"/>
+        <path class="vapor" d="M500,458 q-6,-10 0,-20 q6,-10 0,-20" fill="none" stroke="#9aa9bd" stroke-width="3" stroke-linecap="round"/>
+      </g>
+    </svg>
   </div>
 </section>
 
-<!-- 6. La plata que se pierde -->
-<section class="slide" aria-label="La plata que se pierde">
-  <div class="slide-content apilado">
+<!-- 6. La plata que se pierde: lo que el dueño cree que ganó con una venta y
+     lo que de verdad le quedó. El toque muerde la ganancia de a un costo. -->
+<section class="slide" aria-label="La plata que se pierde" data-pasos="1">
+  <div class="slide-content apilado plata">
     <div>
       <p class="parte reveal">El problema</p>
-      <h2 class="reveal" style="--d:1">Y la plata que se pierde sin que nadie se dé cuenta</h2>
+      <h2 class="reveal" style="--d:1">Se vende un montón, y la plata no aparece</h2>
+      <p class="bajada reveal" style="--d:2">Una remera de $ 20.000 que costó $ 10.000.</p>
     </div>
-    <div class="perdidas">
-      <div class="tarjeta perdida reveal" style="--d:2"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg></span><h3>El fiado que nadie anotó</h3><p class="ocultable">"Después te pago." Y nadie se acuerda cuánto ni cuándo.</p></div>
-      <div class="tarjeta perdida reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#package-minus"/></svg></span><h3>El stock que falta o sobra</h3><p class="ocultable">Se termina lo que más se vende, y se queda lo que nadie compra.</p></div>
-      <div class="tarjeta perdida reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#percent"/></svg></span><h3>Los costos que no se ven</h3><p class="ocultable">Comisión, envío, cuotas: se vende más y queda menos.</p></div>
-      <div class="tarjeta perdida reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#trending-down"/></svg></span><h3>Los precios que quedan viejos</h3><p class="ocultable">Con la inflación, vender al precio del mes pasado es perder.</p></div>
+    <div class="ganancia reveal" style="--d:3">
+      <p class="ganancia-cifra">
+        <span class="que"><span class="antes">Lo que el dueño cree que ganó</span><span class="despues">Lo que de verdad le quedó</span></span>
+        <span class="montos"><span class="creia">$ 10.000</span><span class="quedo">$ 3.700</span></span>
+      </p>
+      <div class="barra-ganancia">
+        <span class="queda" style="flex:37"></span>
+        <span class="muerde" style="flex:15; --i:0"><b>− $ 1.500</b>Comisión de Mercado Pago</span>
+        <span class="muerde" style="flex:20; --i:1"><b>− $ 2.000</b>El envío gratis</span>
+        <span class="muerde" style="flex:18; --i:2"><b>− $ 1.800</b>Las cuotas sin interés</span>
+        <span class="muerde" style="flex:10; --i:3"><b>− $ 1.000</b>Reponerla cuesta más</span>
+      </div>
     </div>
+    <p class="nota pie-plata">Un ejemplo. Y sin contar el fiado que nadie anotó, ni lo que queda en el estante sin venderse.</p>
   </div>
+  <!-- El dueño mirando la barra: festeja, y con cada costo se va poniendo triste -->
+  <svg class="mirando" viewBox="0 0 220 320" aria-hidden="true">
+    <g class="signos"><text x="30" y="56">$</text><text x="176" y="40" style="--t:0.4s">$</text><text x="14" y="140" style="--t:0.8s">$</text><text x="192" y="128" style="--t:1.2s">$</text></g>
+    <path d="M98,236 L94,306" stroke="#1f2937" stroke-width="22" stroke-linecap="round"/>
+    <path d="M122,236 L126,306" stroke="#1f2937" stroke-width="22" stroke-linecap="round"/>
+    <ellipse cx="90" cy="310" rx="18" ry="7" fill="#0a0a0a"/><ellipse cx="130" cy="310" rx="18" ry="7" fill="#0a0a0a"/>
+    <g class="brazos-arriba"><path d="M84,162 L62,120 L56,84" fill="none" stroke="#2b4a7a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/><path d="M136,162 L158,120 L164,84" fill="none" stroke="#2b4a7a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/><circle cx="56" cy="78" r="10" fill="#d39d77"/><circle cx="164" cy="78" r="10" fill="#d39d77"/></g>
+    <g class="brazos-abajo"><path d="M84,162 L72,202 L78,232" fill="none" stroke="#2b4a7a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/><path d="M136,162 L148,202 L142,232" fill="none" stroke="#2b4a7a" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/><circle cx="78" cy="238" r="10" fill="#d39d77"/><circle cx="142" cy="238" r="10" fill="#d39d77"/></g>
+    <path d="M76,240 C76,182 86,154 100,148 L120,148 C134,154 144,182 144,240 Z" fill="#2b4a7a"/>
+    <rect x="98" y="122" width="24" height="30" rx="8" fill="#b9845f"/>
+    <g class="cabeza-6">
+      <ellipse cx="110" cy="94" rx="34" ry="38" fill="#d39d77"/>
+      <ellipse cx="144" cy="98" rx="6" ry="10" fill="#c48d67"/>
+      <path d="M76,90 C70,50 98,46 114,48 C136,46 152,62 144,92 C140,76 128,68 112,68 C94,68 82,76 76,90 Z" fill="#1b1b1b"/>
+      <g class="cara-feliz"><path d="M90,88 q6,-7 12,0 M112,88 q6,-7 12,0" fill="none" stroke="#1b1b1b" stroke-width="3.5" stroke-linecap="round"/><path d="M94,104 q14,20 28,0 Z" fill="#5a2d1c"/><circle cx="86" cy="102" r="5" fill="#e98b7a" opacity="0.55"/><circle cx="130" cy="102" r="5" fill="#e98b7a" opacity="0.55"/></g>
+      <g class="cara-seria"><circle cx="96" cy="86" r="4" fill="#1b1b1b"/><circle cx="118" cy="86" r="4" fill="#1b1b1b"/><path d="M100,110 h16" stroke="#5a2d1c" stroke-width="3.5" stroke-linecap="round"/></g>
+      <g class="cara-preocupada"><path d="M86,78 L100,72 M114,72 L128,78" stroke="#1b1b1b" stroke-width="3.5" stroke-linecap="round"/><circle cx="96" cy="87" r="4" fill="#1b1b1b"/><circle cx="118" cy="87" r="4" fill="#1b1b1b"/><path d="M98,112 q5,-5 10,0 t10,0" fill="none" stroke="#5a2d1c" stroke-width="3.5" stroke-linecap="round"/><path d="M140,72 q6,9 0,12 q-6,-3 0,-12 Z" fill="#9cc9ff"/></g>
+      <g class="cara-triste"><path d="M86,80 L100,74 M114,74 L128,80" stroke="#1b1b1b" stroke-width="3.5" stroke-linecap="round"/><circle cx="96" cy="89" r="4" fill="#1b1b1b"/><circle cx="118" cy="89" r="4" fill="#1b1b1b"/><path d="M96,116 q12,-11 24,0" fill="none" stroke="#5a2d1c" stroke-width="3.5" stroke-linecap="round"/><path class="lagrima" d="M120,96 q6,9 0,12 q-6,-3 0,-12 Z" fill="#9cc9ff"/></g>
+    </g>
+  </svg>
 </section>
 
 <!-- 7. Lo que existe -->
@@ -702,6 +1181,57 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       <div class="tarjeta reveal" style="--d:3"><h3>Dux Software</h3><p class="precio-grande">$ 43.560 <small>por mes</small></p><p class="nota">Plan base, con IVA</p></div>
       <div class="tarjeta reveal" style="--d:4"><h3>Contagram</h3><p class="precio-grande">$ 71.269 <small>por mes</small></p><p class="nota">Plan inicial, precio normal, con IVA</p></div>
       <div class="tarjeta nexo reveal" style="--d:5"><h3>Nexo</h3><p class="precio-grande">$ 0 <small>para empezar</small></p><p class="nota">Y $ 19.900 por mes cuando el negocio crece</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. Todo se junta en Nexo, en tres pasos (data-paso): 0, las partes del
+     negocio sueltas; 1, se acomodan, se conectan y el logo se posa arriba; 2,
+     cada una vuela a su lugar en el menú de Nexo y aparece el Resumen real.
+     Avanza sola (data-auto: a los 0,9 s y a los 7 s de llegar) y también con
+     las flechas, para adelante y para atrás; al volver a la diapositiva
+     arranca de nuevo. Sin animación (la guía) sale en el último paso. -->
+<section class="slide" aria-label="Todo junto, en Nexo" data-pasos="2" data-auto="900,4300">
+  <div class="slide-content junta">
+    <div class="sistema">
+      <div class="sistema-logo"><div class="lockup"><img class="simbolo" src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""><svg class="palabra" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg></div></div>
+      <div class="modulos">
+        <div class="modulo" data-i="0" style="--x:59.0vw; --y:-20.4vh; --r:-19deg; --i:0"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg>Punto de venta</div>
+        <div class="modulo" data-i="1" style="--x:16.7vw; --y:39.4vh; --r:-7deg; --i:1"><svg class="ico"><use href="../../../frontend/img/iconos.svg#shopping-cart"/></svg>Ventas</div>
+        <div class="modulo" data-i="2" style="--x:26.1vw; --y:-1.0vh; --r:-7deg; --i:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#users"/></svg>Clientes</div>
+        <div class="modulo" data-i="3" style="--x:-39.7vw; --y:22.0vh; --r:10deg; --i:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#notebook-tabs"/></svg>Cuentas corrientes</div>
+        <div class="modulo" data-i="4" style="--x:20.1vw; --y:32.6vh; --r:-9deg; --i:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#boxes"/></svg>Stock</div>
+        <div class="modulo" data-i="5" style="--x:40.7vw; --y:16.8vh; --r:9deg; --i:5"><svg class="ico"><use href="../../../frontend/img/iconos.svg#shopping-bag"/></svg>Compras</div>
+        <div class="modulo" data-i="6" style="--x:-44.6vw; --y:-3.1vh; --r:-12deg; --i:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#truck"/></svg>Proveedores</div>
+        <div class="modulo funde" data-i="7" style="--x:-39.2vw; --y:-8.8vh; --r:20deg; --i:7"><svg class="ico"><use href="../../../frontend/img/iconos.svg#chef-hat"/></svg>Producción</div>
+        <div class="modulo" data-i="8" style="--x:-8.1vw; --y:22.5vh; --r:13deg; --i:8"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg>Caja</div>
+        <div class="modulo" data-i="9" style="--x:-20.5vw; --y:2.4vh; --r:-8deg; --i:9"><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg>Gastos</div>
+        <div class="modulo funde" data-i="10" style="--x:-18.8vw; --y:-31.9vh; --r:20deg; --i:10"><svg class="ico"><use href="../../../frontend/img/iconos.svg#credit-card"/></svg>Mercado Pago</div>
+        <div class="modulo" data-i="11" style="--x:-60.0vw; --y:-32.6vh; --r:-22deg; --i:11"><svg class="ico"><use href="../../../frontend/img/iconos.svg#file-text"/></svg>Presupuestos</div>
+        <div class="modulo" data-i="12" style="--x:56.0vw; --y:12.5vh; --r:-21deg; --i:12"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg>Facturas</div>
+        <div class="modulo" data-i="13" style="--x:17.6vw; --y:-20.6vh; --r:-16deg; --i:13"><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg>Venta online</div>
+        <div class="modulo funde" data-i="14" style="--x:1.4vw; --y:-42.5vh; --r:20deg; --i:14"><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg>Reportes</div>
+        <div class="modulo" data-i="15" style="--x:-15.3vw; --y:-3.4vh; --r:21deg; --i:15"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg>Asistente con IA</div>
+      </div>
+    </div>
+    <p class="junta-frase">Todo el negocio, en un solo sistema.</p>
+    <div class="app" aria-hidden="true">
+      <aside class="app-menu">
+        <div class="app-marca"><img src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">Nexo<span class="plegar"><svg class="ico"><use href="../../../frontend/img/iconos.svg#panel-left-close"/></svg></span></div>
+        <div class="app-negocio"><span class="inicial">M</span><span class="textos"><b>Mi negocio</b><small>Comercio general</small></span><svg class="ico"><use href="../../../frontend/img/iconos.svg#chevrons-up-down"/></svg></div>
+        <div class="app-item activo" data-lugar="14"><svg class="ico"><use href="../../../frontend/img/iconos.svg#layout-dashboard"/></svg>Resumen</div><div class="app-item app-lugar" data-lugar="15"></div><p class="app-grupo">Maestros</p><div class="app-item"><svg class="ico"><use href="../../../frontend/img/iconos.svg#package"/></svg>Productos</div><div class="app-item app-lugar" data-lugar="2"></div><div class="app-item app-lugar" data-lugar="6"></div><p class="app-grupo">Ventas</p><div class="app-item app-lugar" data-lugar="0"></div><div class="app-item app-lugar" data-lugar="11"></div><div class="app-item app-lugar" data-lugar="1"></div><div class="app-item app-lugar" data-lugar="13"></div><div class="app-item"><svg class="ico"><use href="../../../frontend/img/iconos.svg#undo-2"/></svg>Devoluciones</div><div class="app-item app-lugar" data-lugar="12"></div><p class="app-grupo">Compras</p><div class="app-item app-lugar" data-lugar="5"></div><div class="app-item"><svg class="ico"><use href="../../../frontend/img/iconos.svg#package-minus"/></svg>Dev. a proveedor</div><p class="app-grupo">Stock</p><div class="app-item app-lugar" data-lugar="4"></div><div class="app-item"><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg>Reportes de stock</div><p class="app-grupo">Finanzas</p><div class="app-item app-lugar" data-lugar="8"></div><div class="app-item app-lugar" data-lugar="3"></div><div class="app-item app-lugar" data-lugar="9"></div><p class="app-grupo">Administración</p><div class="app-item" data-lugar="10 7"><svg class="ico"><use href="../../../frontend/img/iconos.svg#settings"/></svg>Configuración</div>
+      </aside>
+      <div class="app-main">
+        <div class="rg">
+          <div class="rg-cabeza"><b>Resumen</b><span>Últimos 30 días</span></div>
+          <div class="rg-periodos"><span>Hoy</span><span>7 días</span><span class="on">30 días</span><span>Este mes</span><span>Este año</span></div>
+          <div class="rg-kpis"><div class="rg-kpi" style="--k:0"><p class="rg-t"><svg class="ico"><use href="../../../frontend/img/iconos.svg#shopping-cart"/></svg>Ventas</p><p class="rg-v">$ 3.480.000</p><p class="rg-d sube">↗ 18,2 % <small>vs. mes anterior</small></p><svg class="rg-chispa" viewBox="0 0 100 30" preserveAspectRatio="none"><path pathLength="1" d="M0.0,18.4 L8.3,17.6 L16.7,15.3 L25.0,15.0 L33.3,14.9 L41.7,9.8 L50.0,4.2 L58.3,6.1 L66.7,3.0 L75.0,3.0 L83.3,6.3 L91.7,4.8 L100.0,6.6"/></svg></div><div class="rg-kpi" style="--k:1"><p class="rg-t"><svg class="ico"><use href="../../../frontend/img/iconos.svg#trending-up"/></svg>Ganancia bruta</p><p class="rg-v">$ 1.620.000</p><p class="rg-d sube">↗ 15,4 % <small>vs. mes anterior</small></p><svg class="rg-chispa" viewBox="0 0 100 30" preserveAspectRatio="none"><path pathLength="1" d="M0.0,20.8 L8.3,21.0 L16.7,16.9 L25.0,17.1 L33.3,19.4 L41.7,18.6 L50.0,19.8 L58.3,20.3 L66.7,15.4 L75.0,16.7 L83.3,16.6 L91.7,13.8 L100.0,8.6"/></svg></div><div class="rg-kpi" style="--k:2"><p class="rg-t"><svg class="ico"><use href="../../../frontend/img/iconos.svg#hand-coins"/></svg>Gastos</p><p class="rg-v">$ 410.000</p><p class="rg-d baja">↘ 3,1 % <small>vs. mes anterior</small></p><svg class="rg-chispa" viewBox="0 0 100 30" preserveAspectRatio="none"><path pathLength="1" d="M0.0,25.1 L8.3,24.6 L16.7,26.4 L25.0,27.0 L33.3,27.0 L41.7,27.0 L50.0,25.9 L58.3,27.0 L66.7,26.3 L75.0,27.0 L83.3,27.0 L91.7,23.2 L100.0,19.7"/></svg></div><div class="rg-kpi" style="--k:3"><p class="rg-t"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg>Resultado</p><p class="rg-v verde">$ 1.210.000</p><p class="rg-d sube">↗ 22,7 % <small>vs. mes anterior</small></p><svg class="rg-chispa" viewBox="0 0 100 30" preserveAspectRatio="none"><path pathLength="1" d="M0.0,18.2 L8.3,21.0 L16.7,19.2 L25.0,19.0 L33.3,15.9 L41.7,14.7 L50.0,12.4 L58.3,9.7 L66.7,9.2 L75.0,8.6 L83.3,11.0 L91.7,11.3 L100.0,13.9"/></svg></div></div>
+          <div class="rg-fila">
+            <div class="rg-card"><p class="rg-t2">Ventas y ganancia<span><i class="azul"></i>Ventas <i class="verde"></i>Ganancia</span></p><svg class="rg-grafico" viewBox="0 0 300 124" preserveAspectRatio="none"><path class="rg-guias" d="M0,30 H300 M0,60 H300 M0,90 H300 M0,120 H300"/><rect class="rg-barra" style="--b:0" x="6" y="78" width="13" height="42" rx="2"/><rect class="rg-barra" style="--b:1" x="27" y="65" width="13" height="55" rx="2"/><rect class="rg-barra" style="--b:2" x="48" y="72" width="13" height="48" rx="2"/><rect class="rg-barra" style="--b:3" x="69" y="59" width="13" height="61" rx="2"/><rect class="rg-barra" style="--b:4" x="90" y="62" width="13" height="58" rx="2"/><rect class="rg-barra" style="--b:5" x="111" y="50" width="13" height="70" rx="2"/><rect class="rg-barra" style="--b:6" x="132" y="68" width="13" height="52" rx="2"/><rect class="rg-barra" style="--b:7" x="153" y="54" width="13" height="66" rx="2"/><rect class="rg-barra" style="--b:8" x="174" y="46" width="13" height="74" rx="2"/><rect class="rg-barra" style="--b:9" x="195" y="51" width="13" height="69" rx="2"/><rect class="rg-barra" style="--b:10" x="216" y="40" width="13" height="80" rx="2"/><rect class="rg-barra" style="--b:11" x="237" y="43" width="13" height="77" rx="2"/><rect class="rg-barra" style="--b:12" x="258" y="32" width="13" height="88" rx="2"/><rect class="rg-barra" style="--b:13" x="279" y="26" width="13" height="94" rx="2"/><path class="rg-linea" pathLength="1" d="M12.5,99.8 L33.5,93.6 L54.5,97.0 L75.5,90.7 L96.5,92.2 L117.5,86.4 L138.5,95.0 L159.5,88.3 L180.5,84.5 L201.5,86.9 L222.5,81.6 L243.5,83.0 L264.5,77.8 L285.5,74.9"/></svg></div>
+            <div class="rg-card"><p class="rg-t2">Dónde entró la plata</p><div class="rg-dona"><svg viewBox="0 0 42 42"><circle cx="21" cy="21" r="15.915" fill="none" stroke="#60a5fa" stroke-width="6" stroke-dasharray="37.2 62.8" stroke-dashoffset="25"/><circle cx="21" cy="21" r="15.915" fill="none" stroke="#2563eb" stroke-width="6" stroke-dasharray="26.2 73.8" stroke-dashoffset="-13"/><circle cx="21" cy="21" r="15.915" fill="none" stroke="#4ade80" stroke-width="6" stroke-dasharray="20.2 79.8" stroke-dashoffset="-40"/><circle cx="21" cy="21" r="15.915" fill="none" stroke="#a5c8f5" stroke-width="6" stroke-dasharray="13.2 86.8" stroke-dashoffset="-61"/><text x="21" y="21" text-anchor="middle">$ 3,48 M</text><text x="21" y="26" text-anchor="middle" class="chico">cobrado</text></svg><ul><li><i style="background:#60a5fa"></i>Efectivo<b>38 %</b></li><li><i style="background:#2563eb"></i>Transferencia<b>27 %</b></li><li><i style="background:#4ade80"></i>Débito<b>21 %</b></li><li><i style="background:#a5c8f5"></i>Crédito<b>14 %</b></li></ul></div></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -1073,20 +1603,13 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 25. Propuesta de valor -->
-<section class="slide" aria-label="Propuesta de valor">
-  <div class="slide-content">
-    <p class="parte reveal">Propuesta de valor</p>
-    <h1 class="propuesta reveal" style="--d:1">Nexo ordena el negocio desde el primer día, <span>y crece con él.</span></h1>
-  </div>
-</section>
-
-<!-- 26. Planes -->
-<section class="slide" aria-label="Planes">
+<!-- 26. Propuesta de valor y modelo de negocio: la frase, arriba de los planes -->
+<section class="slide" aria-label="Propuesta de valor y planes">
   <div class="slide-content apilado">
     <div>
-      <p class="parte reveal">Modelo de negocio</p>
-      <h2 class="reveal" style="--d:1">Una suscripción por mes</h2>
+      <p class="parte reveal">Propuesta de valor y modelo de negocio</p>
+      <h2 class="propuesta reveal" style="--d:1">Nexo ordena el negocio desde el primer día, <span>y crece con él.</span></h2>
+      <p class="bajada reveal" style="--d:2">Una suscripción por mes: se empieza gratis y se paga cuando el negocio crece.</p>
     </div>
     <div class="planes">
       <div class="tarjeta plan reveal" style="--d:2"><h3>Gratis</h3><p class="precio-grande">$ 0</p><ul><li>Punto de venta, stock, caja y CRM</li><li>Hasta 100 productos y 300 ventas por mes</li><li>Un usuario</li></ul></div>
@@ -1144,13 +1667,16 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 30. Cómo usamos la IA para construir Nexo -->
+<!-- 30. Cómo usamos la IA para construir Nexo: Claude Code y las skills -->
 <section class="slide" aria-label="Cómo usamos la IA">
   <div class="slide-content apilado">
     <div>
       <p class="parte reveal">Gestión ágil</p>
-      <h2 class="reveal" style="--d:1">Cómo usamos la IA para construir Nexo</h2>
-      <p class="bajada reveal" style="--d:2">Programamos con Claude Code, un asistente de programación con IA que trabaja dentro del proyecto.</p>
+      <div class="ia-cabecera reveal" style="--d:1">
+        <h2>Cómo usamos la IA para construir Nexo</h2>
+        <div class="ia-marca"><svg class="claude-logo" viewBox="0 0 100 100" aria-hidden="true"><path d="M58.9,51.3 L93.6,56.1 M57.1,55.5 L76.8,70.9 M53.4,58.3 L67.2,92.7 M48.7,58.9 L44.9,86.6 M44.5,57.1 L24.1,83.1 M41.7,53.4 L19.4,62.4 M41.1,48.7 L5.4,43.7 M42.9,44.5 L21.6,27.8 M46.6,41.7 L33.9,10.1 M51.3,41.1 L54.7,16.3 M55.5,42.9 L78.3,13.8 M58.3,46.6 L85.2,35.8" stroke="#d97757" stroke-width="8.5" stroke-linecap="round"/></svg><span>Claude Code</span></div>
+      </div>
+      <p class="bajada reveal" style="--d:2">Programamos con Claude Code, de Anthropic: una IA que programa dentro del proyecto.</p>
     </div>
     <div class="ia">
       <ul class="lista-check reveal" style="--d:3">
@@ -1161,19 +1687,40 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       </ul>
       <div class="reveal" style="--d:4">
         <p class="subtitulo-ia">Las skills que usamos</p>
-        <ul class="chicas una">
-          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#palette"/></svg><b>frontend-design</b><span>el diseño de las pantallas</span></li>
-          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layout-dashboard"/></svg><b>ui-ux-pro-max</b><span>la experiencia de uso y la accesibilidad</span></li>
-          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg><b>dataviz</b><span>los gráficos del Resumen</span></li>
-          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#camera"/></svg><b>ui-demo</b><span>grabar la app para los videos</span></li>
-          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layers"/></svg><b>codebase-memory</b><span>un mapa del código, para no perderse</span></li>
-        </ul>
+        <ul class="chicas"><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#palette"/></svg><b>frontend-design</b><span>el diseño de las pantallas</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layout-dashboard"/></svg><b>ui-ux-pro-max</b><span>experiencia de uso y accesibilidad</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg><b>dataviz</b><span>los gráficos del Resumen</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#camera"/></svg><b>ui-demo</b><span>grabar la app para los videos</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><b>motion-architect</b><span>los videos animados del pitch</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#file-text"/></svg><b>remotion</b><span>armar esos videos con código</span></li></ul>
+        <p class="subtitulo-ia otra">Agentes y conexiones</p>
+        <ul class="chicas"><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#search"/></svg><b>code-reviewer</b><span>revisa cada cambio</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><b>security-reviewer</b><span>busca agujeros de seguridad</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layers"/></svg><b>codebase-memory</b><span>un mapa del código</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#eye"/></svg><b>Chrome DevTools</b><span>probar en el navegador</span></li></ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 31. Cierre -->
+<!-- 31. Para cerrar: vuelve a los tres problemas del principio, cada uno con lo
+     que hace Nexo, y lo que ya funciona. Después, la del final. -->
+<section class="slide" aria-label="Para cerrar">
+  <div class="slide-content apilado">
+    <div>
+      <p class="parte reveal">Para cerrar</p>
+      <h2 class="reveal" style="--d:1">Lo que vinimos a resolver</h2>
+    </div>
+    <div class="repaso">
+      <div class="tarjeta reveal" style="--d:2"><p class="antes-era"><svg class="ico"><use href="../../../frontend/img/iconos.svg#x"/></svg>25 horas por semana pasando datos</p><p class="ahora-es">Cada venta se carga una vez, y lo demás se actualiza solo.</p></div>
+      <div class="tarjeta reveal" style="--d:4"><p class="antes-era"><svg class="ico"><use href="../../../frontend/img/iconos.svg#x"/></svg>La plata que no aparece</p><p class="ahora-es">Cuánto deja cada venta, con cada costo a la vista.</p></div>
+      <div class="tarjeta reveal" style="--d:6"><p class="antes-era"><svg class="ico"><use href="../../../frontend/img/iconos.svg#x"/></svg>Sistemas caros y difíciles para empezar</p><p class="ahora-es">Gratis para arrancar, y crece con el negocio.</p></div>
+    </div>
+    <div class="ya-funciona reveal" style="--d:8">
+      <p class="subtitulo-ia">Y ya funciona</p>
+      <div class="chips">
+        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg>En internet, para probar sin registrarse</span>
+        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg>8 tipos de negocio</span>
+        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg>382 pruebas automáticas</span>
+        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg>Factura electrónica con ARCA, en prueba</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 32. Cierre -->
 <section class="slide" aria-label="Cierre">
   <div class="slide-content cierre">
     <div>
@@ -1182,6 +1729,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
         <svg class="palabra" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg>
       </div>
       <p class="frase reveal" style="--d:2">La próxima vez que vendan algo, van a saber cuánto ganaron.</p>
+      <p class="gracias reveal" style="--d:3">¡Gracias! ¿Preguntas?</p>
     </div>
     <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="qr/probar-nexo.svg" alt="QR para probar Nexo"></div><p>Para probarlo ahora, sin registrarse</p></div>
     <div class="qr-caja reveal" style="--d:4"><div class="qr"><img src="qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><p>Código, README y manual</p></div>
@@ -1302,6 +1850,34 @@ class VideoDiapositiva {
   }
 }
 
+/* La 8, en el último paso: cada parte del negocio viaja a su ítem del menú
+   de Nexo (el que tiene su número en data-lugar), con la letra del menú y el
+   ícono alineado con los de los otros ítems; fuera de ese paso, vuelve. Corre
+   una sola vez por paso: medir de nuevo en el medio del viaje lo cortaría. */
+function acomodarEnNexo(slide, forzar = false) {
+  const paso = slide.dataset.paso;
+  if (!forzar && slide.dataset.acomodado === paso) return;
+  slide.dataset.acomodado = paso;
+  for (const modulo of slide.querySelectorAll('.modulo')) {
+    if (paso !== '2') {
+      modulo.style.transform = '';
+      continue;
+    }
+    // Su caja sin transformar sale de offsetLeft/Top, sin apagar las
+    // transiciones: apagarlas un instante hacía saltar el fondo y el borde.
+    const lugar = slide.querySelector(`[data-lugar~="${modulo.dataset.i}"]`);
+    const base = modulo.offsetParent.getBoundingClientRect();
+    const desde = { left: base.left + modulo.offsetLeft, top: base.top + modulo.offsetTop, height: modulo.offsetHeight };
+    const hasta = lugar.getBoundingClientRect();
+    const estiloModulo = getComputedStyle(modulo);
+    const estiloLugar = getComputedStyle(lugar);
+    const escala = parseFloat(estiloLugar.fontSize) / parseFloat(estiloModulo.fontSize);
+    const x = hasta.left + parseFloat(estiloLugar.paddingLeft) - parseFloat(estiloModulo.paddingLeft) * escala - desde.left;
+    const y = hasta.top + hasta.height / 2 - (desde.top + desde.height / 2);
+    modulo.style.transform = `translate(${x}px, ${y}px) scale(${escala})`;
+  }
+}
+
 /* Navegación: teclado (también los punteros de presentación), rueda y dedo
    (con el scroll-snap del navegador), la barra de progreso y el contador. */
 class Presentacion {
@@ -1326,6 +1902,15 @@ class Presentacion {
     }, { threshold: 0.55 });
     this.slides.forEach((s) => observador.observe(s));
 
+    // Los pasos que avanzan solos (data-auto) y la 8, que también se acomoda
+    // si alguien cambia el paso de afuera (la guía) o el tamaño de la ventana.
+    this.auto = [];
+    document.querySelectorAll('.junta').forEach((junta) => {
+      const slide = junta.closest('.slide');
+      new MutationObserver(() => acomodarEnNexo(slide)).observe(slide, { attributes: true, attributeFilter: ['data-paso'] });
+      addEventListener('resize', () => acomodarEnNexo(slide, true));
+    });
+
     document.addEventListener('keydown', (e) => this.tecla(e));
     // Escribir #8 en la dirección salta a la 8, también sin recargar.
     addEventListener('hashchange', () => this.desdeLaDireccion());
@@ -1340,7 +1925,14 @@ class Presentacion {
     const llega = i !== this.actual || !this.empezo;
     this.empezo = true;
     if (this.video.activo && this.video.activo.slide !== slide) this.video.cortar();
-    if (llega && slide.dataset.pasos) this.irPaso(slide, 0);
+    // Al llegar, las de pasos arrancan de cero, sin transición hacia atrás.
+    if (llega && slide.dataset.pasos) {
+      slide.classList.add('reinicio');
+      this.irPaso(slide, 0);
+      void slide.offsetWidth;
+      requestAnimationFrame(() => slide.classList.remove('reinicio'));
+    }
+    if (llega) this.programar(slide);
     this.marcar(i);
     if (!(llega && this.video.arrancar(slide, () => slide.classList.add('visible')))) slide.classList.add('visible');
   }
@@ -1365,10 +1957,24 @@ class Presentacion {
     this.slides[destino].scrollIntoView({ behavior: this.sinMovimiento ? 'instant' : 'smooth' });
   }
 
+  /* data-auto: a cuántos ms de llegar avanza sola cada paso. Se corta al
+     salir de la diapositiva o al tocar una flecha (desde ahí, a mano). */
+  programar(slide) {
+    this.auto.forEach(clearTimeout);
+    this.auto = [];
+    if (!slide?.dataset.auto) return;
+    slide.dataset.auto.split(',').forEach((ms, n) => {
+      this.auto.push(setTimeout(() => {
+        if (this.slides[this.actual] === slide && Number(slide.dataset.paso) === n) this.irPaso(slide, n + 1);
+      }, Number(ms)));
+    });
+  }
+
   /* Una diapositiva con data-pasos avanza por pasos antes de pasar a la otra
      (la 2: el número cambia y cuenta hasta el nuevo valor). */
   irPaso(slide, n) {
     slide.dataset.paso = n;
+    if (slide.querySelector('.junta')) acomodarEnNexo(slide);
     const cifra = slide.querySelector('[data-cifras]');
     if (!cifra) return;
     const pasos = JSON.parse(cifra.dataset.cifras);
@@ -1400,6 +2006,7 @@ class Presentacion {
     const anterior = ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'];
     const slide = this.slides[this.actual];
     const paso = Number(slide.dataset.paso || 0);
+    if (siguiente.includes(e.key) || anterior.includes(e.key)) this.programar(null);
     if (siguiente.includes(e.key) && paso < Number(slide.dataset.pasos || 0)) {
       this.irPaso(slide, paso + 1);
       e.preventDefault();
