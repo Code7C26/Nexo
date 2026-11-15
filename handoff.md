@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §176);
+    siguiente número (hoy el último es §177);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,20 @@
 
 ## Estado actual (15 de noviembre de 2026)
 
+**15 de noviembre, hist. §177: unir clientes repetidos (publicado con §176).**
+`POST /api/clientes/:id/unir` (solo admin), como el de proveedores: ventas,
+facturas, presupuestos, cuenta corriente, trabajos, abonos, socio y CRM pasan
+al que queda (`TABLAS_DEL_CLIENTE` en server.js). No se unen dos socios (el
+socio es UNIQUE por cliente) ni se borra "Consumidor final". La pantalla es la
+misma para los dos (`UNIR` en app.js, `#modalUnir`): aviso arriba de la lista
+de Clientes del CRM y "Unir" en la barra de selección. Repetidos = mismo
+nombre normalizado, salvo CUIT/DNI distintos (dos "Juan Pérez" de verdad).
+Además: la lista de variantes que marca el asistente ya se lee (el fondo
+translúcido del select teñía la lista abierta; `select option` con colores
+fijos).
+
 **15 de noviembre, hist. §176: unir proveedores repetidos y "Registrar cobro"
-con los medios de cobro (commiteado en `solla`, sin publicar).**
+con los medios de cobro (publicado).**
 - **Unir proveedores:** `POST /api/proveedores/:id/unir` (solo admin) pasa al
   de `:id` las compras (con sus pagos y devoluciones), los gastos, la cuenta
   corriente y lo aprendido de sus facturas, completa el contacto que le falta

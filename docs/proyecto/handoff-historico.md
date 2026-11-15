@@ -13815,3 +13815,40 @@ rechazada, crédito con plan y sus costos, medio ajeno). Suite completa 388/388,
 e i18n. En el navegador con una base aparte: el aviso y la unión de "Accesorios
 mayorista" (queda uno con la compra y el teléfono), "Unir" solo con dos tildados, y
 un cobro por Transferencia a Mercado Pago desde Ventas.
+
+## §177 — 15 de noviembre de 2026: unir clientes repetidos y la lista de variantes que no se leía
+
+**Pedido del usuario.** "no se ve un chori" (captura: la lista de variantes de una venta
+propuesta por el asistente, rosa con letras claras) y "hace los clientes repetidos y
+publicar TODO".
+
+**La lista de variantes.** El asistente marca con `.campo-falta` el select de la
+variante que no pudo resolver; la regla le ponía `background: var(--accent-warn-bg)`
+(translúcido) y el navegador pinta la lista abierta con el fondo del select. Ahora la
+marca es el borde más un anillo (`box-shadow`), y `select option` tiene siempre
+`--surface` y `--ink`, para que ningún select vuelva a teñir su lista.
+
+**Unir clientes.**
+- `POST /api/clientes/:id/unir { ids }` (solo admin): en una transacción pasa
+  `cliente_id` al que queda en `TABLAS_DEL_CLIENTE` (ventas, facturas, presupuestos,
+  movimientos_cc_clientes, trabajos, abonos, crm_oportunidades, crm_actividades,
+  socios), completa los campos vacíos de `CAMPOS_CONTACTO_CLIENTE` y borra los otros.
+  Cobros y devoluciones cuelgan de la venta. Las facturas conservan la foto del
+  cliente de cuando se emitieron. Dos socios no se unen (400: `socios.cliente_id` es
+  UNIQUE) y "Consumidor final" nunca es el que se borra (400: el mostrador lo busca por
+  nombre). Auditoría: `editar` del que queda, "Ventas que pasaron: N".
+- Pantalla: lo de proveedores (§176) pasó a ser uno solo para los dos: `UNIR` en
+  app.js con los textos de cada uno, `mostrarRepetidos(tipo)`, `abrirUnir(tipo, ids)`
+  y `#modalUnir` (antes `#modalUnirProveedores`). Aviso arriba de la lista de Clientes
+  del CRM (`#clientesRepetidos`) y "Unir" en su barra de selección. Repetidos = mismo
+  nombre sin mayúsculas, tildes ni espacios, salvo que tengan CUIT/DNI distintos (dos
+  personas con el mismo nombre). Propone "Consumidor final" si está en el grupo, y si
+  no el que tiene contacto, el de más compras y el más viejo.
+- No se agregó el 409 por nombre repetido al alta de clientes (sí está en proveedores):
+  dos clientes pueden llamarse igual.
+
+**Verificado.** Test nuevo en `descuento-y-proveedores.test.js` (venta a cuenta
+corriente y presupuesto que pasan, deuda, contacto, "Consumidor final" protegido);
+suite completa, lint e i18n. En el navegador: el aviso de "Camila Herrera" repetida,
+el modal "Unir clientes" (propone la que tiene teléfono) y queda una con sus 15
+compras; "Unir proveedores" sigue abriendo desde la selección.

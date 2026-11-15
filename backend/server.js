@@ -2942,6 +2942,80 @@ app.patch('/api/clientes/:id', (req, res) => {
   res.json({ id: clienteId });
 });
 
+// Unir clientes repetidos (hist. §177), como los proveedores (§176): lo de los
+// otros pasa al de :id (ventas, y con ellas cobros y devoluciones; facturas,
+// presupuestos, cuenta corriente, trabajos, abonos, su ficha de socio y el
+// CRM), el contacto que le falta se completa con el de ellos y los otros se
+// borran. Las facturas ya emitidas guardan su foto del cliente: no cambian.
+// Un cliente es socio una sola vez (socios.cliente_id es UNIQUE): si dos son
+// socios no se unen solos.
+const CAMPOS_CONTACTO_CLIENTE = ['email', 'telefono', 'direccion', 'documento', 'notas', 'lista_precio_id', 'condicion_pago', 'condicion_iva'];
+const TABLAS_DEL_CLIENTE = ['ventas', 'facturas', 'presupuestos', 'movimientos_cc_clientes', 'trabajos', 'abonos', 'crm_oportunidades', 'crm_actividades', 'socios'];
+
+app.post('/api/clientes/:id/unir', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const quedaId = Number(req.params.id);
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number))].filter((id) => id !== quedaId);
+  const queda = db.prepare('SELECT * FROM clientes WHERE id = ? AND organizacion_id = ?').get(quedaId, organizacionId);
+  if (!queda) {
+    return res.status(404).json({ error: 'Cliente no encontrado.' });
+  }
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'Elegí al menos otro cliente para unir.' });
+  }
+  const otros = ids.map((id) => db.prepare('SELECT * FROM clientes WHERE id = ? AND organizacion_id = ?').get(id, organizacionId));
+  if (otros.some((c) => !c)) {
+    return res.status(404).json({ error: 'Uno de los clientes ya no existe.' });
+  }
+  // El mostrador lo busca por nombre: si hay que unirlo, es el que queda.
+  if (otros.some((c) => c.nombre === CONSUMIDOR_FINAL)) {
+    return res.status(400).json({ error: `"${CONSUMIDOR_FINAL}" no se borra: elegilo como el que queda.` });
+  }
+  const socios = db
+    .prepare(`SELECT COUNT(*) AS n FROM socios WHERE cliente_id IN (${[quedaId, ...ids].map(() => '?').join(', ')})`)
+    .get(quedaId, ...ids).n;
+  if (socios > 1) {
+    return res.status(400).json({ error: 'Más de uno es socio: pasá los planes a uno y dale de baja al otro antes de unirlos.' });
+  }
+
+  const completado = { ...queda };
+  for (const otro of otros) {
+    for (const campo of CAMPOS_CONTACTO_CLIENTE) {
+      if (!completado[campo] && otro[campo]) completado[campo] = otro[campo];
+    }
+  }
+  const cambios = diffCampos(queda, completado, CAMPOS_CONTACTO_CLIENTE);
+
+  const movidas = withTransaction(() => {
+    let ventas = 0;
+    for (const otro of otros) {
+      for (const tabla of TABLAS_DEL_CLIENTE) {
+        const { changes } = db.prepare(`UPDATE ${tabla} SET cliente_id = ? WHERE cliente_id = ?`).run(quedaId, otro.id);
+        if (tabla === 'ventas') ventas += Number(changes);
+      }
+      db.prepare('DELETE FROM clientes WHERE id = ?').run(otro.id);
+    }
+    if (cambios) {
+      db.prepare(
+        `UPDATE clientes
+            SET email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, lista_precio_id = ?, condicion_pago = ?,
+                condicion_iva = ?
+          WHERE id = ?`
+      ).run(...CAMPOS_CONTACTO_CLIENTE.map((campo) => completado[campo]), quedaId);
+    }
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'cliente',
+      entidad_id: quedaId,
+      valor_anterior: cambios?.anterior ?? null,
+      valor_nuevo: cambios?.nuevo ?? null,
+      detalle: `Cliente "${queda.nombre}" unido con ${otros.map((c) => `"${c.nombre}" (#${c.id})`).join(', ')}. Ventas que pasaron: ${ventas}`
+    });
+    return ventas;
+  });
+  res.json({ id: quedaId, ventas: movidas });
+});
+
 // El correlativo es por (organización, punto de venta, tipo, letra): cada
 // combinación tiene su propia serie, como en la realidad — cada organización
 // es un negocio con su propio CUIT (CLAUDE.md §28/§33), así que no comparte

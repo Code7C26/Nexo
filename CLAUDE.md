@@ -585,6 +585,8 @@ Implementado hoy: ficha de cliente con condición de pago habitual y cuenta
 corriente con saldo reconstruido desde los movimientos (§12). La condición
 frente al IVA (vacía = consumidor final) decide, con la del negocio, la letra
 del comprobante (hist. §113). El proveedor tiene la suya (hist. §114).
+Clientes y proveedores repetidos se unen en uno (el admin elige cuál queda y
+todo lo del otro pasa a ese; hist. §176, §177).
 
 ---
 

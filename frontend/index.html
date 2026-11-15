@@ -3170,6 +3170,13 @@
             <h2>Clientes</h2>
             <button class="btn btn-primary btn-nuevo" id="btnNuevoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo cliente</button>
           </div>
+          <!-- Los cargados dos veces, con el botón para unirlos (hist. §177).
+               Solo el admin: unir mueve la cuenta corriente. -->
+          <div class="aviso-plan" id="clientesRepetidos" role="status" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#copy"></use></svg>
+            <p id="clientesRepetidosTexto"></p>
+            <button type="button" class="btn btn-secundario" id="clientesRepetidosBoton">Unirlos</button>
+          </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="clientesSearch" />
           <div class="filtros" id="filtrosClientes"></div>
           <div class="tabla-scroll">
@@ -3309,7 +3316,7 @@
           <div class="aviso-plan" id="proveedoresRepetidos" role="status" hidden>
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#copy"></use></svg>
             <p id="proveedoresRepetidosTexto"></p>
-            <button type="button" class="btn btn-secundario" id="btnUnirRepetidos">Unirlos</button>
+            <button type="button" class="btn btn-secundario" id="proveedoresRepetidosBoton">Unirlos</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="proveedoresSearch" />
           <div class="filtros" id="filtrosProveedores"></div>
@@ -6736,20 +6743,21 @@
     </div>
   </div>
 
-  <!-- Unir proveedores repetidos (hist. §176): se elige cuál queda; lo de los
-       otros pasa a ese y los otros se borran. -->
-  <div class="modal" id="modalUnirProveedores" role="dialog" aria-modal="true" aria-labelledby="modalUnirProveedoresTitulo" hidden>
+  <!-- Unir proveedores o clientes repetidos (hist. §176, §177): se elige cuál
+       queda; lo de los otros pasa a ese y los otros se borran. El título y los
+       textos los pone app.js (UNIR). -->
+  <div class="modal" id="modalUnir" role="dialog" aria-modal="true" aria-labelledby="modalUnirTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">
-        <h3 id="modalUnirProveedoresTitulo">Unir proveedores</h3>
-        <button class="modal-close" id="modalUnirProveedoresClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+        <h3 id="modalUnirTitulo">Unir proveedores</h3>
+        <button class="modal-close" id="modalUnirClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </div>
-      <form id="formUnirProveedores" class="form">
+      <form id="formUnir" class="form">
         <fieldset class="opciones">
           <legend>¿Cuál queda?</legend>
-          <div class="opciones-tarjetas" id="unirProveedoresOpciones"></div>
+          <div class="opciones-tarjetas" id="unirOpciones"></div>
         </fieldset>
-        <p class="opciones-nota" id="unirProveedoresNota"></p>
+        <p class="opciones-nota" id="unirNota"></p>
         <button type="submit" class="btn btn-primary btn-full">Unir</button>
       </form>
     </div>

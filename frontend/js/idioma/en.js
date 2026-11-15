@@ -4809,5 +4809,17 @@ export default {
   "Se acredita en 1 día.": "Credited in 1 day.",
   "Se acredita en {0} días.": "Credited in {0} days.",
   "Elegí en qué caja entra el efectivo.": "Choose which cash register the cash goes to.",
-  "Elegí a qué cuenta entra lo cobrado con {0}.": "Choose which account the payment with {0} goes to."
+  "Elegí a qué cuenta entra lo cobrado con {0}.": "Choose which account the payment with {0} goes to.",
+  "Unir clientes": "Merge customers",
+  "\"{0}\" está cargado {1} veces. Unilo para ver todas sus ventas juntas.": "\"{0}\" is entered {1} times. Merge it to see all its sales together.",
+  "Tenés {0} clientes cargados más de una vez, como \"{1}\". Unilos para ver todas sus ventas juntas.": "You have {0} customers entered more than once, like \"{1}\". Merge them to see all their sales together.",
+  "Las ventas, los cobros, los presupuestos, la cuenta corriente y las consultas del otro pasan a \"{0}\", y el otro se borra. Si a \"{1}\" le falta el teléfono, el mail o el DNI, se completa con los del otro.": "The other one's sales, payments, quotes, account and leads move to \"{0}\", and the other one is deleted. If \"{1}\" is missing the phone, email or ID, it's filled in from the other one.",
+  "Las ventas, los cobros, los presupuestos, la cuenta corriente y las consultas de los otros {0} pasan a \"{1}\", y los otros se borran. Si a \"{2}\" le falta el teléfono, el mail o el DNI, se completa con los de ellos.": "The sales, payments, quotes, accounts and leads of the other {0} move to \"{1}\", and the others are deleted. If \"{2}\" is missing the phone, email or ID, it's filled in from theirs.",
+  "No se pudieron unir los clientes.": "The customers couldn't be merged.",
+  "Listo: \"{0}\" quedó uno solo, con todas sus ventas.": "Done: \"{0}\" is now a single customer, with all its sales.",
+  "Elegí al menos otro cliente para unir.": "Pick at least one other customer to merge.",
+  "Uno de los clientes ya no existe.": "One of the customers no longer exists.",
+  "\"{0}\" no se borra: elegilo como el que queda.": "\"{0}\" can't be deleted: pick it as the one that stays.",
+  "Más de uno es socio: pasá los planes a uno y dale de baja al otro antes de unirlos.": "More than one is a member: move the plans to one and cancel the other before merging them.",
+  "Cliente \"{0}\" unido con {1}. Ventas que pasaron: {2}": "Customer \"{0}\" merged with {1}. Sales moved: {2}"
 };

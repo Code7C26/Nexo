@@ -6662,6 +6662,7 @@ async function cargarClientes() {
   tablaCargando("clientesBody", selClientes.colspan(5));
   clientes = await api("/api/clientes");
   filtrarClientes();
+  mostrarRepetidos("cliente");
   poblarDatalistClientes();
 }
 
@@ -6692,6 +6693,11 @@ const COLUMNAS_CSV_CLIENTES = [
 ];
 
 montarBarraSeleccion(selClientes, [
+  {
+    etiqueta: "Unir",
+    visible: (cantidad) => cantidad >= 2 && esAdmin(),
+    onClick: (ids) => abrirUnir("cliente", ids)
+  },
   {
     etiqueta: "Exportar CSV",
     onClick: (ids) => {
@@ -6892,66 +6898,119 @@ async function cargarProveedores() {
   tablaCargando("proveedoresBody", selProveedores.colspan(6));
   fijarProveedores(await api("/api/proveedores"));
   filtrarProveedores();
-  mostrarProveedoresRepetidos();
+  mostrarRepetidos("proveedor");
   // Los de la compra (hist. §175): se elige uno, o se escribe uno nuevo.
   document.getElementById("proveedoresSugeridos").innerHTML = proveedores
     .map((p) => `<option value="${esc(p.nombre)}"></option>`)
     .join("");
 }
 
-// Los que quedaron cargados dos veces antes de §175 (hist. §176): el mismo
-// nombre sin contar mayúsculas, tildes ni espacios, como los busca la compra.
-const claveProveedor = (nombre) =>
-  String(nombre ?? "")
+/* ---------- Unir repetidos (hist. §176, §177) ---------- */
+
+// Los proveedores y los clientes que quedaron cargados dos veces (antes de
+// §175 una compra o una venta con el nombre tipeado distinto creaba otro). Un
+// mismo aviso arriba de cada lista y un mismo modal para elegir cuál queda.
+// Repetidos son los del mismo nombre sin contar mayúsculas, tildes ni
+// espacios, como los busca el servidor, salvo que tengan CUIT o DNI distintos:
+// entonces son dos de verdad (dos "Juan Pérez").
+const claveDeNombre = (texto) =>
+  String(texto ?? "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
 
-function mostrarProveedoresRepetidos() {
-  const grupos = new Map();
-  for (const p of proveedores) {
-    const clave = claveProveedor(p.nombre);
-    grupos.set(clave, [...(grupos.get(clave) ?? []), p]);
+const UNIR = {
+  proveedor: {
+    titulo: "Unir proveedores",
+    lista: () => proveedores,
+    aviso: "proveedores",
+    url: (id) => `/api/proveedores/${id}/unir`,
+    resumen: (p) => `${numero(p.cantidad_compras)} compra${p.cantidad_compras === 1 ? "" : "s"} por ${money(p.total_comprado)}`,
+    unaVez: (nombre, veces) => `"${nombre}" está cargado ${veces} veces. Unilo para ver todas sus compras juntas.`,
+    varios: (cuantos, nombre) =>
+      `Tenés ${cuantos} proveedores cargados más de una vez, como "${nombre}". Unilos para ver todas sus compras juntas.`,
+    explicarUno: (nombre) =>
+      `Las compras, los pagos, los gastos y la cuenta corriente del otro pasan a "${nombre}", y el otro se borra. Si a "${nombre}" le falta el teléfono, el mail o el CUIT, se completa con los del otro.`,
+    explicarVarios: (otros, nombre) =>
+      `Las compras, los pagos, los gastos y la cuenta corriente de los otros ${otros} pasan a "${nombre}", y los otros se borran. Si a "${nombre}" le falta el teléfono, el mail o el CUIT, se completa con los de ellos.`,
+    error: "No se pudieron unir los proveedores.",
+    listo: (nombre) => `Listo: "${nombre}" quedó uno solo, con todas sus compras.`,
+    despues: async () => {
+      selProveedores.limpiar();
+      await refrescar([cargarProveedores()]);
+    }
+  },
+  cliente: {
+    titulo: "Unir clientes",
+    lista: () => clientes,
+    aviso: "clientes",
+    url: (id) => `/api/clientes/${id}/unir`,
+    resumen: (c) => `${numero(c.cantidad_compras)} compra${c.cantidad_compras === 1 ? "" : "s"} por ${money(c.total_gastado)}`,
+    unaVez: (nombre, veces) => `"${nombre}" está cargado ${veces} veces. Unilo para ver todas sus ventas juntas.`,
+    varios: (cuantos, nombre) =>
+      `Tenés ${cuantos} clientes cargados más de una vez, como "${nombre}". Unilos para ver todas sus ventas juntas.`,
+    explicarUno: (nombre) =>
+      `Las ventas, los cobros, los presupuestos, la cuenta corriente y las consultas del otro pasan a "${nombre}", y el otro se borra. Si a "${nombre}" le falta el teléfono, el mail o el DNI, se completa con los del otro.`,
+    explicarVarios: (otros, nombre) =>
+      `Las ventas, los cobros, los presupuestos, la cuenta corriente y las consultas de los otros ${otros} pasan a "${nombre}", y los otros se borran. Si a "${nombre}" le falta el teléfono, el mail o el DNI, se completa con los de ellos.`,
+    error: "No se pudieron unir los clientes.",
+    listo: (nombre) => `Listo: "${nombre}" quedó uno solo, con todas sus ventas.`,
+    despues: async () => {
+      selClientes.limpiar();
+      await refrescar([cargarClientes(), cargarVentas(), recargar("cuentasCorrientes")]);
+    }
   }
-  const repetidos = esAdmin() ? [...grupos.values()].filter((g) => g.length > 1) : [];
-  const aviso = document.getElementById("proveedoresRepetidos");
+};
+
+function mostrarRepetidos(tipo) {
+  const config = UNIR[tipo];
+  const grupos = new Map();
+  for (const x of config.lista()) {
+    const clave = claveDeNombre(x.nombre);
+    grupos.set(clave, [...(grupos.get(clave) ?? []), x]);
+  }
+  const documentos = (g) => new Set(g.map((x) => claveDeNombre(x.documento).replace(/\W/g, "")).filter(Boolean));
+  const repetidos = esAdmin() ? [...grupos.values()].filter((g) => g.length > 1 && documentos(g).size <= 1) : [];
+  const aviso = document.getElementById(`${config.aviso}Repetidos`);
   aviso.hidden = repetidos.length === 0;
   if (repetidos.length === 0) return;
   // De a un grupo: al unirlo, el aviso pasa al siguiente.
   const [grupo] = repetidos;
-  document.getElementById("proveedoresRepetidosTexto").textContent =
-    repetidos.length === 1
-      ? `"${grupo[0].nombre}" está cargado ${grupo.length} veces. Unilo para ver todas sus compras juntas.`
-      : `Tenés ${repetidos.length} proveedores cargados más de una vez, como "${grupo[0].nombre}". Unilos para ver todas sus compras juntas.`;
-  document.getElementById("btnUnirRepetidos").onclick = () => abrirUnirProveedores(grupo.map((p) => p.id));
+  document.getElementById(`${config.aviso}RepetidosTexto`).textContent =
+    repetidos.length === 1 ? config.unaVez(grupo[0].nombre, grupo.length) : config.varios(repetidos.length, grupo[0].nombre);
+  document.getElementById(`${config.aviso}RepetidosBoton`).onclick = () => abrirUnir(tipo, grupo.map((x) => x.id));
 }
 
-const modalUnirProveedores = document.getElementById("modalUnirProveedores");
-let proveedoresAUnir = [];
+const modalUnir = document.getElementById("modalUnir");
+let unir = { tipo: null, elegidos: [] };
 
-function abrirUnirProveedores(ids) {
-  proveedoresAUnir = ids.map((id) => proveedores.find((p) => p.id === id)).filter(Boolean);
-  if (proveedoresAUnir.length < 2) return;
-  const contactoDe = (p) => [p.telefono, p.email].filter(Boolean).join(" · ");
-  // Propone el que tiene contacto (el cargado a propósito, no el que nació de
-  // una compra tipeada), después el de más compras y después el más viejo.
-  const propuesto = [...proveedoresAUnir].sort(
+function abrirUnir(tipo, ids) {
+  const config = UNIR[tipo];
+  const elegidos = ids.map((id) => config.lista().find((x) => x.id === id)).filter(Boolean);
+  if (elegidos.length < 2) return;
+  unir = { tipo, elegidos };
+  const contactoDe = (x) => [x.telefono, x.email].filter(Boolean).join(" · ");
+  // Propone "Consumidor final" si está (el mostrador lo busca por nombre), y
+  // si no el que tiene contacto (el cargado a propósito, no el que nació de
+  // una operación tipeada), después el de más compras y después el más viejo.
+  const propuesto = [...elegidos].sort(
     (a, b) =>
-      Boolean(contactoDe(b)) - Boolean(contactoDe(a)) || b.cantidad_compras - a.cantidad_compras || a.id - b.id
+      (b.nombre === "Consumidor final") - (a.nombre === "Consumidor final") ||
+      Boolean(contactoDe(b)) - Boolean(contactoDe(a)) ||
+      b.cantidad_compras - a.cantidad_compras ||
+      a.id - b.id
   )[0];
-  document.getElementById("unirProveedoresOpciones").innerHTML = proveedoresAUnir
-    .map((p) => {
-      const detalle = [
-        `${numero(p.cantidad_compras)} compra${p.cantidad_compras === 1 ? "" : "s"} por ${money(p.total_comprado)}`,
-        contactoDe(p) || "sin contacto"
-      ].join(" · ");
+  document.getElementById("modalUnirTitulo").textContent = config.titulo;
+  document.getElementById("unirOpciones").innerHTML = elegidos
+    .map((x) => {
+      const detalle = [config.resumen(x), contactoDe(x) || "sin contacto"].join(" · ");
       return `
         <label class="opcion-tarjeta">
-          <input type="radio" name="queda" value="${p.id}" ${p.id === propuesto.id ? "checked" : ""} />
+          <input type="radio" name="queda" value="${x.id}" ${x.id === propuesto.id ? "checked" : ""} />
           <span class="opcion-tarjeta-texto">
-            <span class="opcion-tarjeta-nombre">${esc(p.nombre)}</span>
+            <span class="opcion-tarjeta-nombre">${esc(x.nombre)}</span>
             <span class="opcion-tarjeta-desc">${esc(detalle)}</span>
           </span>
           <span class="opcion-tarjeta-check">${icono("check")}</span>
@@ -6959,39 +7018,38 @@ function abrirUnirProveedores(ids) {
     })
     .join("");
   explicarUnion();
-  modalUnirProveedores.hidden = false;
+  modalUnir.hidden = false;
 }
 
 function explicarUnion() {
-  const queda = proveedoresAUnir.find((p) => p.id === Number(document.getElementById("formUnirProveedores").queda.value));
-  const otros = proveedoresAUnir.length - 1;
-  document.getElementById("unirProveedoresNota").textContent =
-    otros === 1
-      ? `Las compras, los pagos, los gastos y la cuenta corriente del otro pasan a "${queda.nombre}", y el otro se borra. Si a "${queda.nombre}" le falta el teléfono, el mail o el CUIT, se completa con los del otro.`
-      : `Las compras, los pagos, los gastos y la cuenta corriente de los otros ${otros} pasan a "${queda.nombre}", y los otros se borran. Si a "${queda.nombre}" le falta el teléfono, el mail o el CUIT, se completa con los de ellos.`;
+  const config = UNIR[unir.tipo];
+  const queda = unir.elegidos.find((x) => x.id === Number(document.getElementById("formUnir").queda.value));
+  const otros = unir.elegidos.length - 1;
+  document.getElementById("unirNota").textContent =
+    otros === 1 ? config.explicarUno(queda.nombre) : config.explicarVarios(otros, queda.nombre);
 }
 
-document.getElementById("unirProveedoresOpciones").addEventListener("change", explicarUnion);
-document.getElementById("modalUnirProveedoresClose").addEventListener("click", () => {
-  modalUnirProveedores.hidden = true;
+document.getElementById("unirOpciones").addEventListener("change", explicarUnion);
+document.getElementById("modalUnirClose").addEventListener("click", () => {
+  modalUnir.hidden = true;
 });
-modalUnirProveedores.addEventListener("click", (e) => {
-  if (e.target === modalUnirProveedores) modalUnirProveedores.hidden = true;
+modalUnir.addEventListener("click", (e) => {
+  if (e.target === modalUnir) modalUnir.hidden = true;
 });
 
-document.getElementById("formUnirProveedores").addEventListener("submit", async (e) => {
+document.getElementById("formUnir").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const config = UNIR[unir.tipo];
   const quedaId = Number(e.target.queda.value);
-  const queda = proveedoresAUnir.find((p) => p.id === quedaId);
-  await api(`/api/proveedores/${quedaId}/unir`, {
+  const queda = unir.elegidos.find((x) => x.id === quedaId);
+  await api(config.url(quedaId), {
     method: "POST",
-    body: { ids: proveedoresAUnir.filter((p) => p.id !== quedaId).map((p) => p.id) },
-    error: "No se pudieron unir los proveedores."
+    body: { ids: unir.elegidos.filter((x) => x.id !== quedaId).map((x) => x.id) },
+    error: config.error
   });
-  modalUnirProveedores.hidden = true;
-  selProveedores.limpiar();
-  await refrescar([cargarProveedores()]);
-  avisar(`Listo: "${queda.nombre}" quedó uno solo, con todas sus compras.`, "ok");
+  modalUnir.hidden = true;
+  await config.despues();
+  avisar(config.listo(queda.nombre), "ok");
 });
 
 function filtrarProveedores() {
@@ -7024,7 +7082,7 @@ montarBarraSeleccion(selProveedores, [
   {
     etiqueta: "Unir",
     visible: (cantidad) => cantidad >= 2 && esAdmin(),
-    onClick: (ids) => abrirUnirProveedores(ids)
+    onClick: (ids) => abrirUnir("proveedor", ids)
   },
   {
     etiqueta: "Exportar CSV",

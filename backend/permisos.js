@@ -66,6 +66,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/clientes/:id': 'ambos',
   'POST /api/clientes': 'ambos',
   'PATCH /api/clientes/:id': 'ambos',
+  // Mueve ventas y cuenta corriente y borra al otro (hist. §177).
+  'POST /api/clientes/:id/unir': 'admin',
   'GET /api/facturas': 'ambos',
   'GET /api/facturas/:id': 'ambos',
   'POST /api/facturas': 'ambos',
