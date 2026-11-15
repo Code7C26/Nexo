@@ -82,6 +82,7 @@ import * as whatsapp from './whatsapp.js';
 // Las reglas de las ofertas (hist. §133) son las mismas que usa la pantalla:
 // se importa el módulo del frontend, que es puro, en vez de copiarlo.
 import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
+import { aplicarDescuento } from '../frontend/js/core/descuento.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -5882,6 +5883,10 @@ app.post('/api/proveedores', (req, res) => {
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El proveedor necesita un nombre.' });
   }
+  // Dos proveedores con el mismo nombre no se distinguen al comprar.
+  if (idPorNombre('proveedores', String(nombre).trim(), req.usuario.organizacion_id)) {
+    return res.status(409).json({ error: 'Ya tenés un proveedor con ese nombre.' });
+  }
   const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
   if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
     return res.status(400).json({ error: 'La condición de pago seleccionada no es válida.' });
@@ -5933,6 +5938,9 @@ app.patch('/api/proveedores/:id', (req, res) => {
   }
   if (!nombre || !String(nombre).trim()) {
     return res.status(400).json({ error: 'El proveedor necesita un nombre.' });
+  }
+  if (idPorNombre('proveedores', String(nombre).trim(), req.usuario.organizacion_id, { menosId: proveedorId })) {
+    return res.status(409).json({ error: 'Ya tenés otro proveedor con ese nombre.' });
   }
   const condicionPagoHabitual = normalizarCondicionPagoHabitual(condicion_pago);
   if (!condicionPagoHabitualValida(condicionPagoHabitual)) {
@@ -7239,7 +7247,7 @@ app.get('/api/ventas/:id', (req, res) => {
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
               venta_items.costo_mano_obra, productos.tipo,
               venta_items.alicuota_iva, venta_items.iva,
-              venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista,
+              venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista, venta_items.descuento,
               COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
                   FROM devolucion_items JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
@@ -7547,8 +7555,8 @@ function crearVenta({
   // ESA variante, no el del producto padre (costoDelRenglon).
   const insertItem = db.prepare(
     `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
-                              oferta_id, precio_lista, costo_mano_obra)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                              oferta_id, precio_lista, costo_mano_obra, descuento)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const condicionIva = condicionIvaNegocio(organizacion_id);
   // Las ofertas (hist. §133): la de cada renglón es la que ganaba el día de
@@ -7571,7 +7579,12 @@ function crearVenta({
       { ...item, alicuota: alicuotaDelProducto(item.producto_id) },
       condicionIva
     );
-    const conOferta = ofertas.length ? ofertaDelRenglon(ofertas, item, varianteId, listaDeLaVenta, fechaVenta) : null;
+    // El descuento a mano del mostrador (hist. §175) ya viene restado del
+    // precio: la oferta se reconoce con el precio de antes.
+    const descuento = Number(item.descuento) || 0;
+    const conOferta = ofertas.length
+      ? ofertaDelRenglon(ofertas, { ...item, precio_unitario: Number(item.precio_unitario) + descuento }, varianteId, listaDeLaVenta, fechaVenta)
+      : null;
     insertItem.run(
       nuevaVentaId,
       item.producto_id,
@@ -7583,7 +7596,8 @@ function crearVenta({
       iva,
       conOferta?.oferta_id ?? null,
       conOferta?.precio_lista ?? null,
-      costoActual.mano_obra
+      costoActual.mano_obra,
+      descuento
     );
     if (!carga_inicial) {
       registrarMovimientoStock({
@@ -8588,6 +8602,33 @@ function guardarItemsPresupuesto(presupuestoId, items, organizacionId) {
   }
 }
 
+// Un cliente o proveedor por su nombre, sin que importen mayúsculas, tildes ni
+// espacios de más: "textil norte " es Textil Norte. Antes la compra buscaba el
+// nombre tal cual y un nombre tipeado distinto creaba otro proveedor igual.
+// Primero el nombre exacto (si ya hay repetidos, gana ese), después el resto.
+// `tabla` es siempre un nombre fijo del código, nunca del usuario.
+function claveDeNombre(texto) {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function idPorNombre(tabla, nombre, organizacionId, { menosId = null } = {}) {
+  const exacto = db
+    .prepare(`SELECT id FROM ${tabla} WHERE nombre = ? AND organizacion_id = ? AND (? IS NULL OR id <> ?)`)
+    .get(nombre, organizacionId, menosId, menosId);
+  if (exacto) return exacto;
+  const clave = claveDeNombre(nombre);
+  return (
+    db
+      .prepare(`SELECT id, nombre FROM ${tabla} WHERE organizacion_id = ? AND (? IS NULL OR id <> ?) ORDER BY id`)
+      .all(organizacionId, menosId, menosId)
+      .find((fila) => claveDeNombre(fila.nombre) === clave) ?? null
+  );
+}
+
 // Resuelve el cliente igual que la venta: si el frontend ya sabe cuál es
 // se usa su id (evita duplicados por diferencias de tipeo), si no se busca
 // por nombre y se crea si no existe.
@@ -8607,7 +8648,7 @@ function resolverCliente(cliente, cliente_id, organizacionId) {
   }
   const nombre = typeof cliente === 'string' ? cliente.trim() : '';
   if (!nombre) throw new ErrorValidacion('Indicá el cliente.');
-  const clienteRow = db.prepare('SELECT id FROM clientes WHERE nombre = ? AND organizacion_id = ?').get(nombre, organizacionId);
+  const clienteRow = idPorNombre('clientes', nombre, organizacionId);
   if (clienteRow) return clienteRow;
   const { lastInsertRowid } = db
     .prepare('INSERT INTO clientes (nombre, organizacion_id) VALUES (?, ?)')
@@ -9948,15 +9989,14 @@ function crearCompra({
 }) {
   // organizacion_id es obligatorio (CLAUDE.md §28): proveedor y productos
   // resueltos/creados acá quedan siempre en la organización de quien compra.
-  let proveedorRow = db
-    .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
-    .get(proveedor, organizacion_id);
+  const nombreProveedor = String(proveedor ?? '').trim();
+  let proveedorRow = idPorNombre('proveedores', nombreProveedor, organizacion_id);
   if (!proveedorRow) {
     // El CUIT llega cuando la compra sale de la foto de la factura (hist. §151).
     const documento = String(proveedor_documento ?? '').replace(/\D/g, '');
     const { lastInsertRowid } = db
       .prepare('INSERT INTO proveedores (nombre, documento, organizacion_id) VALUES (?, ?, ?)')
-      .run(proveedor, documento.length === 11 ? documento : null, organizacion_id);
+      .run(nombreProveedor, documento.length === 11 ? documento : null, organizacion_id);
     proveedorRow = { id: lastInsertRowid };
   }
 
@@ -10493,13 +10533,11 @@ app.put('/api/compras/:id', soloAdmin, (req, res) => {
     }
 
     // 2) Reemplazar proveedor, fecha, envío e items.
-    let proveedorRow = db
-      .prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?')
-      .get(proveedor, req.usuario.organizacion_id);
+    let proveedorRow = idPorNombre('proveedores', String(proveedor ?? '').trim(), req.usuario.organizacion_id);
     if (!proveedorRow) {
       const { lastInsertRowid } = db
         .prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)')
-        .run(proveedor, req.usuario.organizacion_id);
+        .run(String(proveedor ?? '').trim(), req.usuario.organizacion_id);
       proveedorRow = { id: lastInsertRowid };
     }
     // Sin la letra en el pedido queda la que tenía, salvo que cambie el
@@ -17565,7 +17603,8 @@ const ventasEsperandoQr = new Map();
 const VIDA_QR_MS = 60 * 60 * 1000;
 
 app.post('/api/pos/ventas', (req, res) => {
-  const { turno_caja_id, cliente_id, items, cobros = [], consumos, qr_mercadopago: conQr = false } = req.body;
+  const { turno_caja_id, cliente_id, cobros = [], consumos, descuento = null, qr_mercadopago: conQr = false } = req.body;
+  let { items } = req.body;
   const organizacionId = req.usuario.organizacion_id;
   if (conQr && !mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
   if (conQr && Array.isArray(cobros) && cobros.length) {
@@ -17577,6 +17616,18 @@ app.post('/api/pos/ventas', (req, res) => {
   }
   const errorItems = validarItemsVenta(items);
   if (errorItems) return res.status(400).json({ error: errorItems });
+  // El descuento a mano (hist. §175): los precios llegan sin él, y acá se
+  // reparte entre los renglones con las mismas reglas que muestra la pantalla.
+  let montoDescuento = 0;
+  if (descuento !== null) {
+    const conDescuento = aplicarDescuento(
+      items.map((i) => ({ cantidad: Number(i.cantidad), precio: Number(i.precio_unitario) })),
+      descuento
+    );
+    if (conDescuento.error) return res.status(400).json({ error: conDescuento.error });
+    items = items.map((i, k) => ({ ...i, precio_unitario: conDescuento.renglones[k].precio, descuento: conDescuento.renglones[k].descuento }));
+    montoDescuento = conDescuento.monto;
+  }
   exigirLugarEnPlan(organizacionId, 'ventas_mes');
   const errorStock = validarStockDisponible(items, depositoPredeterminadoId(organizacionId), organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
@@ -17654,7 +17705,9 @@ app.post('/api/pos/ventas', (req, res) => {
         entidad_id: id,
         operacion_tipo: 'turno_caja',
         operacion_id: turno.id,
-        detalle: `Venta #${id} desde el punto de venta (turno #${turno.id})`
+        detalle: montoDescuento
+          ? `Venta #${id} desde el punto de venta (turno #${turno.id}), con $${montoDescuento} de descuento (${descuento.tipo === 'porcentaje' ? `${Number(descuento.valor)}%` : `$${Number(descuento.valor)}`})`
+          : `Venta #${id} desde el punto de venta (turno #${turno.id})`
       });
       for (const { cobro, medio, plan, cuentaId } of resueltos) {
         const cobroId = registrarCobro(
@@ -23723,7 +23776,7 @@ function resolverProveedor(nombre, proveedorId, organizacionId) {
   }
   const texto = typeof nombre === 'string' ? nombre.trim() : '';
   if (!texto) throw new ErrorValidacion('Indicá el proveedor.');
-  const fila = db.prepare('SELECT id FROM proveedores WHERE nombre = ? AND organizacion_id = ?').get(texto, organizacionId);
+  const fila = idPorNombre('proveedores', texto, organizacionId);
   if (fila) return fila;
   return { id: db.prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)').run(texto, organizacionId).lastInsertRowid };
 }

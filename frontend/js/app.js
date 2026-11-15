@@ -88,6 +88,7 @@ import "./dominios/venta-online.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
+import "./core/combo.js";
 import { LOCALE, formatear } from "./core/idioma.js";
 
 let facturas = [];
@@ -4770,9 +4771,12 @@ async function abrirFichaVenta(id) {
   document.getElementById("btnDevolverVenta").hidden =
     venta.estado === "anulada" || venta.items.every((i) => i.disponible_devolucion <= 0);
 
+  // El descuento a mano del mostrador (hist. §175) ya está restado del precio:
+  // lo de la oferta es lo que bajó antes de él.
+  const descuentoAMano = venta.items.reduce((acc, i) => acc + i.cantidad * (i.descuento ?? 0), 0);
   const ahorroConOfertas = venta.items
     .filter((i) => i.oferta_id)
-    .reduce((acc, i) => acc + i.cantidad * (i.precio_lista - i.precio_unitario), 0);
+    .reduce((acc, i) => acc + i.cantidad * (i.precio_lista - i.precio_unitario - (i.descuento ?? 0)), 0);
   const campos = [
     ["Cliente", venta.cliente],
     ["Fecha", fechaAR(venta.fecha)],
@@ -4780,6 +4784,7 @@ async function abrirFichaVenta(id) {
     ["Cobrado", formatear("{0} de {1}", money(venta.cobrado), money(venta.neto))],
     // Lo que bajaron las ofertas (hist. §133), si alguna se aplicó.
     ...(ahorroConOfertas >= 0.005 ? [["Ahorró con ofertas", html(`<span class="oferta-ahorro">${esc(money(ahorroConOfertas))}</span>`)]] : []),
+    ...(descuentoAMano >= 0.005 ? [["Descuento", html(`<span class="oferta-ahorro">${esc(money(descuentoAMano))}</span>`)]] : []),
     ["Estado de cobro", badge(ESTADO_COBRO_CLASE[venta.estado_cobro], ESTADO_COBRO_LABEL[venta.estado_cobro] ?? venta.estado_cobro)],
     ["Facturada", venta.facturada ? "Sí" : "No"]
   ];
@@ -6796,6 +6801,10 @@ async function cargarProveedores() {
   tablaCargando("proveedoresBody", selProveedores.colspan(6));
   fijarProveedores(await api("/api/proveedores"));
   filtrarProveedores();
+  // Los de la compra (hist. §175): se elige uno, o se escribe uno nuevo.
+  document.getElementById("proveedoresSugeridos").innerHTML = proveedores
+    .map((p) => `<option value="${esc(p.nombre)}"></option>`)
+    .join("");
 }
 
 function filtrarProveedores() {
@@ -7688,8 +7697,14 @@ async function asistenteEjecutar(mensajeId, tipo, propuesta, turnoEl) {
     body: { mensaje_id: mensajeId, tipo, propuesta },
     error: "No se pudo registrar la operación."
   });
-  const etiqueta = { venta: "Venta", compra: "Compra", gasto: "Gasto", devolucion: "Devolución" }[tipo];
-  turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">${icono("circle-check")} ${etiqueta} #${id} registrada.</p>`;
+  // Una frase entera por tipo: así el traductor la encuentra completa.
+  const registrada = {
+    venta: `Venta #${id} registrada.`,
+    compra: `Compra #${id} registrada.`,
+    gasto: `Gasto #${id} registrado.`,
+    devolucion: `Devolución #${id} registrada.`
+  }[tipo];
+  turnoEl.innerHTML = `<p class="asistente-resuelto asistente-confirmado">${icono("circle-check")} ${registrada}</p>`;
   asistenteScrollAlFinal();
 
   // Toda la cascada real la hizo el backend; acá solo hace falta refrescar

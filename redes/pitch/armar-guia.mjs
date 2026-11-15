@@ -39,7 +39,14 @@ try {
   });
   const miniaturas = [];
   for (let i = 0; i < cantidad; i++) {
-    await diapos.evaluate((n) => document.querySelectorAll('.slide')[n].scrollIntoView({ behavior: 'instant' }), i);
+    // Las que van en pasos salen en el último, salvo la del número que cuenta
+    // (la 2), que queda en el primero.
+    await diapos.evaluate(async (n) => {
+      const slide = document.querySelectorAll('.slide')[n];
+      slide.scrollIntoView({ behavior: 'instant' });
+      await new Promise((listo) => requestAnimationFrame(() => requestAnimationFrame(listo)));
+      if (slide.dataset.pasos && !slide.querySelector('[data-cifras]')) slide.dataset.paso = slide.dataset.pasos;
+    }, i);
     const imagen = await diapos.screenshot({ type: 'jpeg', quality: 80 });
     miniaturas.push(`data:image/jpeg;base64,${imagen.toString('base64')}`);
   }

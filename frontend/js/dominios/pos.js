@@ -13,6 +13,7 @@ import { icono } from "../core/iconos.js";
 import { crearConsumos } from "../core/al-vender.js";
 import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
 import { mejorOferta, proximaPromocion } from "../core/ofertas.js";
+import { aplicarDescuento } from "../core/descuento.js";
 import { negocio } from "../core/negocio.js";
 import { cargarQr } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
@@ -47,6 +48,11 @@ let clientes = [];
 // Venta en curso: [{ clave, cantidad }]. Precio y stock salen del catálogo.
 let carrito = [];
 let ultimaAgregada = null;
+// El descuento a mano sobre toda la venta (hist. §175): { tipo, valor } o null.
+let descuento = null;
+let editandoDescuento = false;
+// El tipo elegido se recuerda aunque todavía no haya un número.
+let tipoDescuento = "porcentaje";
 
 const vista = document.querySelector('section.view[data-view="pos"]');
 const posApertura = document.getElementById("posApertura");
@@ -522,9 +528,17 @@ function cambioElCarrito() {
 // venta no la pierde. Se guardan claves y cantidades; precio y stock se
 // vuelven a tomar del catálogo, que pudo cambiar.
 const claveCarrito = () => `nexo.pos.carrito.${turno.id}`;
+const claveDescuento = () => `nexo.pos.descuento.${turno.id}`;
 
 function guardarCarrito() {
-  if (turno) guardar(sessionStorage, claveCarrito(), carrito.length ? JSON.stringify(carrito) : null);
+  // Sin productos no queda descuento: es de esta venta, no de la próxima.
+  if (carrito.length === 0) {
+    descuento = null;
+    editandoDescuento = false;
+  }
+  if (!turno) return;
+  guardar(sessionStorage, claveCarrito(), carrito.length ? JSON.stringify(carrito) : null);
+  guardar(sessionStorage, claveDescuento(), descuento ? JSON.stringify(descuento) : null);
 }
 
 function leerCarrito() {
@@ -537,6 +551,14 @@ function leerCarrito() {
   carrito = (Array.isArray(guardado) ? guardado : [])
     .filter((r) => porClave.has(r.clave) && hayStock(porClave.get(r.clave)) && r.cantidad > 0)
     .map((r) => ({ clave: r.clave, cantidad: Math.min(r.cantidad, tope(porClave.get(r.clave))) }));
+  try {
+    descuento = carrito.length ? JSON.parse(leerGuardado(sessionStorage, claveDescuento()) ?? "null") : null;
+  } catch {
+    descuento = null;
+  }
+  editandoDescuento = Boolean(descuento);
+  if (descuento) tipoDescuento = descuento.tipo;
+  document.getElementById("posDescuentoValor").value = descuento?.valor ?? "";
 }
 
 // El precio de un renglón con su cantidad: el de la oferta que gana hoy, o el
@@ -561,7 +583,18 @@ const itemsDelCarrito = () =>
     return { producto_id: item.producto_id, variante_id: item.variante_id, cantidad: r.cantidad, precio_unitario: precioDelRenglon(r).precio };
   });
 
-const totalCarrito = () => redondear(carrito.reduce((acc, r) => acc + r.cantidad * precioDelRenglon(r).precio, 0));
+const subtotalCarrito = () => redondear(carrito.reduce((acc, r) => acc + r.cantidad * precioDelRenglon(r).precio, 0));
+// El descuento repartido entre los renglones, con las reglas del servidor:
+// { monto } o { error } (más que el total, 0…), o null sin descuento.
+const descuentoDelCarrito = () =>
+  descuento && carrito.length
+    ? aplicarDescuento(carrito.map((r) => ({ cantidad: r.cantidad, precio: precioDelRenglon(r).precio })), descuento)
+    : null;
+const montoDescuento = () => descuentoDelCarrito()?.monto ?? 0;
+const totalCarrito = () => redondear(subtotalCarrito() - montoDescuento());
+// Lo que viaja con la venta: los precios sin el descuento y el descuento
+// aparte, que el servidor vuelve a repartir.
+const descuentoParaEnviar = () => (montoDescuento() > 0 ? { descuento } : {});
 // Lo que bajaron las ofertas en toda la venta.
 const ahorroCarrito = () =>
   redondear(carrito.reduce((acc, r) => acc + r.cantidad * (porClave.get(r.clave).precio - precioDelRenglon(r).precio), 0));
@@ -605,6 +638,7 @@ function renderTicket() {
   if (carrito.length === 0) consumosPos.reiniciar();
   else consumosPos.proponer(itemsDelCarrito());
 
+  renderDescuento();
   document.getElementById("posTotal").textContent = money(total);
   const ahorro = ahorroCarrito();
   const posAhorro = document.getElementById("posAhorro");
@@ -618,6 +652,64 @@ function renderTicket() {
   document.getElementById("btnPosCobrar").disabled = carrito.length === 0;
   document.getElementById("btnPosBarraCobrar").disabled = carrito.length === 0;
 }
+
+/* ---------- Descuento a mano (hist. §175) ---------- */
+
+const posDescuentoValor = document.getElementById("posDescuentoValor");
+
+function renderDescuento() {
+  const conDescuento = descuentoDelCarrito();
+  document.getElementById("posDescuento").hidden = carrito.length === 0;
+  document.getElementById("btnPosDescuento").hidden = editandoDescuento;
+  document.getElementById("posDescuentoEditor").hidden = !editandoDescuento;
+  for (const boton of document.querySelectorAll("#posDescuentoEditor [data-tipo]")) {
+    boton.setAttribute("aria-pressed", String(boton.dataset.tipo === tipoDescuento));
+  }
+  posDescuentoValor.placeholder = tipoDescuento === "porcentaje" ? "10" : "1000";
+  document.getElementById("posDescuentoMonto").textContent = conDescuento?.monto ? `− ${money(conDescuento.monto)}` : "";
+  const error = document.getElementById("posDescuentoError");
+  error.hidden = !conDescuento?.error;
+  error.textContent = conDescuento?.error ?? "";
+}
+
+function leerDescuento() {
+  const texto = posDescuentoValor.value.trim();
+  descuento = texto === "" ? null : { tipo: tipoDescuento, valor: Number(texto) };
+  guardarCarrito();
+  renderTicket();
+}
+
+document.getElementById("btnPosDescuento").addEventListener("click", () => {
+  editandoDescuento = true;
+  posDescuentoValor.value = "";
+  renderTicket();
+  posDescuentoValor.focus();
+});
+
+document.getElementById("posDescuentoEditor").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-tipo]");
+  if (!boton) return;
+  tipoDescuento = boton.dataset.tipo;
+  leerDescuento();
+  posDescuentoValor.focus();
+});
+
+posDescuentoValor.addEventListener("input", leerDescuento);
+// Enter cobra, como el resto del mostrador.
+posDescuentoValor.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  abrirCobro();
+});
+
+document.getElementById("btnPosDescuentoQuitar").addEventListener("click", () => {
+  descuento = null;
+  editandoDescuento = false;
+  posDescuentoValor.value = "";
+  guardarCarrito();
+  renderTicket();
+  enfocarBusqueda();
+});
 
 posRenglones.addEventListener("click", (e) => {
   const boton = e.target.closest("[data-accion]");
@@ -689,6 +781,12 @@ function abrirCobro() {
   if (error) {
     avisar(error, "atencion");
     posCliente.focus();
+    return;
+  }
+  const errorDescuento = descuentoDelCarrito()?.error;
+  if (errorDescuento) {
+    avisar(errorDescuento, "atencion");
+    posDescuentoValor.focus();
     return;
   }
   if (medios.length === 0) {
@@ -913,6 +1011,7 @@ async function registrarVenta({ cobros, vuelto, falta }) {
     turno_caja_id: turno.id,
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
     items: itemsDelCarrito(),
+    ...descuentoParaEnviar(),
     consumos: consumosPos.leer(),
     cobros
   };
@@ -931,7 +1030,7 @@ async function registrarVenta({ cobros, vuelto, falta }) {
       btnPosACuenta.disabled = false;
     });
 
-  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito() });
+  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito(), descontado: montoDescuento() });
   ventaHecha();
 }
 
@@ -947,7 +1046,7 @@ function ventaHecha() {
   refrescar([recargar("ventas", "stock", "productos", "clientes", "caja", "cuentasCorrientes", "panelResumen", "reporteStock")]);
 }
 
-function mostrarExito({ id, vuelto, falta, cliente, ahorro }) {
+function mostrarExito({ id, vuelto, falta, cliente, ahorro, descontado = 0 }) {
   document.getElementById("formPosCobro").hidden = true;
   document.getElementById("posExito").hidden = false;
   document.getElementById("posExitoTitulo").textContent = `Venta #${id} registrada`;
@@ -956,6 +1055,7 @@ function mostrarExito({ id, vuelto, falta, cliente, ahorro }) {
   const nota = document.getElementById("posExitoNota");
   const notas = [
     ahorro >= CENTAVO ? `Ahorró ${money(ahorro)} con las ofertas.` : "",
+    descontado >= CENTAVO ? `Le hiciste ${money(descontado)} de descuento.` : "",
     falta >= CENTAVO ? `Quedaron ${money(falta)} en la cuenta corriente de ${cliente.nombre}.` : ""
   ].filter(Boolean);
   nota.hidden = notas.length === 0;
@@ -998,6 +1098,7 @@ btnPosQr.addEventListener("click", async () => {
     turno_caja_id: turno.id,
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
     items: itemsDelCarrito(),
+    ...descuentoParaEnviar(),
     consumos: consumosPos.leer(),
     cobros: [],
     qr_mercadopago: true
@@ -1036,7 +1137,7 @@ btnPosQr.addEventListener("click", async () => {
     : "Escaneá con la app de Mercado Pago o la cámara";
   document.getElementById("formPosCobro").hidden = true;
   posQr.hidden = false;
-  esperandoQr = { id: venta.id, cliente: cobro.cliente, ahorro: ahorroCarrito(), vueltas: 0 };
+  esperandoQr = { id: venta.id, cliente: cobro.cliente, ahorro: ahorroCarrito(), descontado: montoDescuento(), vueltas: 0 };
   esperandoQr.sondeo = setInterval(() => revisarQr(), SEGUNDOS_SONDEO_QR * 1000);
 });
 
@@ -1053,7 +1154,7 @@ async function revisarQr({ preguntar = false } = {}) {
     .catch(() => null);
   if (!venta || esperandoQr !== actual || venta.cobrado < venta.neto - CENTAVO) return false;
   terminarQr();
-  mostrarExito({ id: actual.id, vuelto: 0, falta: 0, cliente: actual.cliente, ahorro: actual.ahorro });
+  mostrarExito({ id: actual.id, vuelto: 0, falta: 0, cliente: actual.cliente, ahorro: actual.ahorro, descontado: actual.descontado });
   document.getElementById("posExitoTitulo").textContent = `Venta #${actual.id} cobrada con Mercado Pago`;
   ventaHecha();
   return true;

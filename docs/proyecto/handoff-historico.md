@@ -13343,6 +13343,54 @@ nota de crédito, ARCA en homologación).
 Los servidores temporales de grabación (puertos 3111 y 3112, base en `%TEMP%`)
 se apagan con Stop-Process sobre el proceso del puerto.
 
+**Cierre de la sesión de la noche (14 de noviembre): los dos videos, armados.**
+- **Video 5 v2** (26 s): `negocio-desde-cero.mjs` ahora graba rápido (`RITMO =
+  0.4` sobre pausas y tipeo, 12 pasos de mouse: 35 s crudos) y
+  `NexoNegocioDesdeCero.tsx` quedó a pantalla completa, sin intro, sin outro y
+  sin `<Audio>`, con etiquetas de 2 o 3 palabras abajo a la izquierda (arriba
+  tapaban el título del alta). `CON_TEXTO = false` saca todo el texto: salen
+  los dos mp4 y el usuario elige. "Primeros pasos" en vez de "Tus números": el
+  Resumen de una cuenta nueva está en $0.
+- **Video en inglés** (`NexoIngles.tsx`, ~50 s): el grabador terminó sin
+  cambios (66 s crudos, selectores ya arreglados). Es un video aparte con la voz
+  del usuario: texto nuevo en frases cortas sin comas (en `nexo-ingles.md`),
+  apertura con el logo, subtítulos por frase, cierre con el QR "Probar Nexo"
+  (recorte `crop=656:656:632:73` de la imagen de `docs/pitch/QR/`, que trae
+  texto en castellano) y voz guía de edge-tts. Se sacó "invoices are issued
+  with ARCA": la pantalla de facturas local no muestra CAE.
+- Trampas nuevas: `~` dentro de una asignación `S=~/ruta` no expande con el
+  espacio de "HP ULTRA 5" (usar la ruta entre comillas); edge-tts falla de a
+  ratos sin audio (reintentar); ffmpeg de winget no soporta `-pattern_type glob`
+  (juntar cuadros con `hstack`/`vstack`).
+- **Corrección del usuario, más tarde esa noche:** el video en inglés **sí va en la
+  presentación**, así que tiene que ser corto, y la v2 le pareció lenta (logo
+  quieto al principio, pausas, "se queda duro"). **v3** (~32 s): sin apertura
+  con logo, `ingles.mjs` con `RITMO = 0.4` y marcas por pantalla del menú y por
+  el momento en que se envía la frase (`escrito`), tramos de ~3 s con cortes
+  secos (`CAMBIO = 8`) y la espera de la IA salteada; texto nuevo más corto.
+  También: "Sale #158 registrada." salía mitad en castellano (el traductor
+  parte la frase por el punto y `${etiqueta} #${id} registrada.` no era una
+  clave): `asistenteEjecutar` arma una frase entera por tipo ("Gasto" lleva
+  "registrado") y `en.js` tiene las cuatro.
+- **v4, ya con el diagnóstico hecho** (el usuario: "sigue habiendo pausas
+  innecesarias y descoordinación"): `ffmpeg freezedetect` sobre la v3 dio 20
+  tramos con la imagen quieta de 1 s o más (la grabación esperaba después de
+  cada clic y cada pantalla era un cuadro fijo) y los cortes no caían en la
+  palabra que se decía. Solución: `ingles.mjs` graba "momentos" con marcas
+  (`X` ... `X-fin`) y movimiento continuo (`scrollSuave`, barridos de mouse,
+  clics rápidos); `NexoIngles.tsx` lee los tiempos palabra por palabra de la
+  voz (`voz/nexo-ingles.json`, de `edge_tts` con `boundary="WordBoundary"`),
+  arranca cada momento en su palabra (`ancla`, 0,08 s antes), saca la duración
+  del video de la voz y empuja el zoom 5 % durante cada momento. Resultado: 21,5 s
+  y solo la tarjeta del QR queda quieta. Se agregó `grabar/tiempos-voz.mjs`
+  (Whisper de Groq, alinea con el guion; probado contra la voz guía: 0,06 s de
+  diferencia media) para usar la voz real del usuario. Se borró
+  `nexo-ingles-sin-voz.mp4` (sus cortes eran de la v3).
+- Trampa: en un selector `text=/...\d+/` pasado por un script generado se pierde
+  la barra invertida; usar `getByText(/Sale #\d+ recorded/)`.
+- Sigue: la voz del usuario de corrido (y sacar sus tiempos con `tiempos-voz.mjs`)
+  y las diapositivas de los videos 5 y en inglés.
+
 ## §170 — 14 de noviembre de 2026: filtros arreglados y propuesta de medios de cobro
 
 **Pedido:** una contadora (madre de un amigo del usuario) probó Nexo. Dos cosas:
@@ -13521,3 +13569,193 @@ tiene que ser texto), y el chequeo de `esc()` no deja pasar `esc(c.id)` en un `v
 **Sin mirar en el navegador:** el selector de cuenta del mostrador y el panel de
 tarifas. **A decidir:** fijar un máximo de cuotas en el link de pago
 (`payment_methods.installments` en la preferencia), y la comisión base por cobro.
+
+## §173 — 14 de noviembre de 2026: el bloque del problema de la presentación, rehecho
+
+**Pedido del usuario** (después de revisar la estructura: dato → desorden →
+pregunta → tiempo → plata → lo que hay → la solución): cambiar el bloque 1.
+- **La 3 (el desorden):** una persona animada al costado, grande, tapada de
+  papeles: la compu con #¡VALOR! que titila, el celular que vibra con "9+",
+  hojas que vuelan de la pila y las ideas que aparecen de a una ("¿Marta me
+  pagó?", "¿Quedan talles M?", "💡 ¿Y si vendo online?", "¡La factura!"). Las
+  piezas de antes (cuaderno, planilla, mensajes, ticket, calculadora,
+  papelito) quedaron arriba, a la izquierda y sobre el escritorio. SVG propio
+  en la fuente, animado con CSS; sin animación (la guía) queda quieta con las
+  cuatro ideas a la vista.
+- **La 4 (la pregunta):** dos toques. Primero solo la pregunta y una
+  personita que se rasca la cabeza ("¿Juan?", "¿Marta?", "¿O era Pedro?");
+  el toque suma "En un negocio, eso pasa todos los días" y alrededor se llena
+  de deudas. Salieron las tres preguntas chicas.
+- **La 5 (el tiempo), propuesta mía sobre la idea del usuario:** "Cada hora
+  copiando datos es una hora menos para el negocio". 25 bloques (las horas de
+  la semana) con el ícono de la tarea; el toque los pinta con lo que importa:
+  vender y atender 8 h, producir y reponer 6, redes y publicidad 5, descansar 6
+  (reparto de ejemplo). Salió el "×5".
+- **La 6 (la plata), propuesta mía:** "Se vende un montón, y la plata no
+  aparece". Una remera de $ 20.000 que costó $ 10.000: la barra entera en
+  verde ("lo que el dueño cree que ganó", $ 10.000); el toque la muerde de a un
+  costo (comisión de Mercado Pago − $ 1.500, envío gratis − $ 2.000, cuotas sin
+  interés − $ 1.800, reponerla cuesta más − $ 1.000) y queda $ 3.700. Ejemplo
+  con valores redondos, dicho como ejemplo en pantalla y en la guía.
+- **La 8, nueva ("Todo junto, en Nexo"):** reemplaza el salto directo de "lo
+  que hay" a "la idea". Arranca sola al llegar (≈ 5 s): 16 partes del negocio
+  desordenadas por la pantalla se acomodan en una grilla de 4 × 4, se
+  conectan, el logo baja y se posa arriba, y aparece "Todo el negocio, en un
+  solo sistema.". Hecha en la diapositiva (CSS) y no como video: se ve nítida
+  en cualquier pantalla y no hay que renderizar. El estado sin animación es el
+  final.
+- **Pasos sin número:** `irPaso` ya servía (pone `data-paso` y el CSS hace el
+  resto). La guía saca la miniatura de cada diapositiva con pasos en el último
+  paso, salvo la 2 (`redes/pitch/armar-guia.mjs`).
+- **Renumerado:** 32 diapositivas; de la 8 en adelante, +1 (la del QR es la
+  11: `#11`). La guía (`redes/pitch/guia.html`) se renumeró entera, con sus
+  referencias internas, y tiene la 3 a la 6 reescritas y la 8 nueva.
+  `npm run presentacion` y `npm run guia` corridos.
+- **Mirado en el navegador** (1600 × 900): cada diapositiva en sus dos pasos y
+  la 8 en el desorden y armada. **Sin mirar:** el celular.
+
+## §174 — 14 de noviembre de 2026: la presentación, segunda vuelta
+
+**Pedido del usuario** después de ver §173 ("están muy bien la mayoría de cosas"):
+- **3:** los objetos de ejemplo completos. La calculadora, el ticket y el
+  papelito pasaron al frente del escritorio, más chicos y sin taparse con la
+  compu ni el celular; salieron los papeles sueltos del dibujo que quedaban
+  debajo.
+- **5, rehecha "con la misma dinámica":** un reloj rojo grande que tiembla,
+  con agujas que vuelan y larga problemas ("La caja no cierra", "Stock en −2",
+  "#¡REF!", "Factura atrasada", "Otra noche sin dormir"), y abajo la personita
+  tecleando con números que suben. El toque lo vuelve verde y lento (otro par
+  de agujas, sin saltos), la personita se levanta a tomar un mate y aparecen
+  "Más ventas", "Clientes atendidos", "Tiempo para producir" y "Tarde libre".
+- **6:** un hombrecito abajo a la derecha festeja la barra (brazos arriba,
+  signos $); con el toque cambia de cara al ritmo de cada costo (serio,
+  preocupado con una gota, triste con una lágrima) y baja los brazos.
+  Animaciones de 2,6 s con `both`: sin animación (la guía) queda la cara final.
+- **8:** tres pasos (`data-pasos="2"`) con transiciones en vez de animaciones,
+  para que las flechas vayan y vuelvan; avanza sola (`data-auto="900,7000"`:
+  la segunda, unos 2 s después de armarse) hasta que se toca una flecha; al
+  volver a la diapositiva arranca de cero (clase `reinicio`, sin transición).
+  El último paso: `acomodarEnNexo` mide cada parte sin transformar y la lleva
+  con translate + scale a su lugar del menú (un `.app-lugar` con su `data-i`),
+  y al lado aparece la captura real del Resumen (`capturas/resumen.webp`, sin
+  su propio menú). Un `MutationObserver` lo repite si el paso cambia de afuera
+  (la guía) y al cambiar el tamaño de la ventana.
+- **26 y 27 juntas:** la frase de la propuesta de valor como título, arriba de
+  los planes. La 9 (crece con el negocio) quedó como estaba.
+- **30 (IA):** el logo de Claude Code (dibujado en SVG, la chispa naranja) y 6
+  skills (frontend-design, ui-ux-pro-max, dataviz, ui-demo, motion-architect,
+  remotion) más agentes y conexiones (code-reviewer, security-reviewer,
+  codebase-memory, Chrome DevTools): las que registra la bitácora. El usuario
+  dice que usaron muchas más: falta que diga cuáles.
+- **Cierre:** una 31 nueva, "Lo que vinimos a resolver": los tres problemas del
+  principio tachados, cada uno con lo que hace Nexo, y "Y ya funciona" (en
+  internet, 8 tipos de negocio, 382 pruebas, ARCA en prueba). La 32 suma
+  "¡Gracias! ¿Preguntas?".
+- Guía rearmada (32 bloques, referencias al día), `npm run presentacion` y
+  `npm run guia` corridos. Mirado en el navegador a 1600 × 900, también la 8 en
+  la presentación armada (con doble clic). **Sin mirar:** el celular.
+- Trampa: en el Bash de Windows, `python - <<'PY'` lee el script en la página
+  de códigos del sistema y rompe las tildes; usar `python -X utf8 -` o un
+  archivo.
+
+**Después (mismo día), la 3 con objetos de verdad:** el usuario no quería que
+no se taparan, sino que se vieran llenos. La compu ahora tiene una planilla de
+Excel real (el logo, "Caja noviembre.xlsx", la barra de fórmula, columnas A–D,
+días con entradas y salidas, un saldo negativo, #¡VALOR! y #¡REF! que titilan y
+pestañas abajo); el celular, WhatsApp con mensajes legibles; la calculadora,
+sus 16 teclas con números; y la planilla de arriba, el logo de Excel.
+
+**Después (15 de noviembre), la 8 otra vez:** el usuario vio que las partes
+"desaparecen" en vez de pasar al menú. Era `acomodarEnNexo`: medía apagando las
+transiciones un instante, y en ese instante las tarjetas perdían fondo y borde
+de golpe; además corría dos veces (desde `irPaso` y desde el observador) y la
+segunda cortaba el viaje. Ahora mide con offsetLeft/Top sin tocar las
+transiciones y corre una vez por paso (`data-acomodado`). Las tarjetas viajan
+con su fondo, con la letra del menú, y recién al llegar se vuelven ítem. El
+menú es el real (Maestros, Ventas, Compras, Stock, Producción, Finanzas,
+Administración, con Productos, Devoluciones, Papelera… que no vuelan);
+Mercado Pago cae en Configuración y Reportes en el Resumen (`.funde`). El
+Resumen es genérico, dibujado en la diapositiva ("Mi negocio", ventas,
+ganancia, gastos y resultado con su línea, barras de ventas y ganancia y la
+dona de cobros), sin la captura de Lola. Sin espera: el último paso llega a
+los 4,3 s (`data-auto="900,4300"`), apenas termina de conectarse.
+
+**La 8, el menú como el de la app:** al usuario le pareció comprimido ("la
+transición está perfecta"). Ahora usa las medidas de `frontend/css/styles.css`
+pasadas a em de 14 px (ítems de 34, grupos de 12 con 16 arriba, selector de 48
+con la inicial y las flechitas, el botón de plegar, el activo en azul) y el
+contenido va en la hoja con borde dentro del marco negro, como la app. Todo el
+menú se achica junto (`font-size: min(0.68vw, 1.2vh)`) para entrar sin apretarse:
+es el de un comercio general, sin Producción ni Papelera y Auditoría; la tarjeta
+de Producción cae en Configuración (`data-lugar="10 7"`), como Mercado Pago.
+
+**15 de noviembre, la guía al día y el video 5 en la presentación.** El usuario
+preguntó qué había quedado sin actualizar en la guía. Faltaba: el video de
+apertura de la 1 (decía "el logo queda de fondo"; ahora cuenta que arranca solo
+con música, qué hacer si Chrome no lo deja sonar y que `media/` viaja al lado
+del HTML), 382 pruebas en vez de 357 (también en la diapositiva 23), 469
+commits y unas 80.000 líneas, y la fecha del simulacro en la tapa (lunes 16).
+El video "un negocio desde cero" (versión con etiquetas) entró como la 11, antes
+del QR, a elección del usuario: corre solo, se agranda y vuelve a su recuadro.
+Son 33 y el QR es la 12 (`#12`, también en el LEEME). Al final de la 11, en la
+guía, la frase del usuario para pasar al QR ("no les vamos a hacer hacer todo
+ese proceso… armamos una demo con varios tipos de negocio"): la dice él, no va
+en pantalla. El video en inglés sigue esperando que el usuario lo retome.
+
+## §175. Lo que planteó una contadora: proveedor de una lista y descuento en el mostrador (15 de noviembre de 2026)
+
+**Pedido.** La madre de un amigo, contadora, probó la demo de indumentaria y
+planteó dos cosas: (1) al cargar una compra, el proveedor tendría que salir de
+una lista de los que ya existen, y si no está, escribirse; en la demo había dos
+proveedores con el mismo nombre. (2) Hacer un descuento en el punto de venta
+por % o por monto sin armar una oferta ("le vendo a mi hermano"). Mientras
+trabajaba, el usuario agregó: no le gustan las listas nativas del navegador
+(mandó la del cliente del mostrador): tienen que ser de la propia app.
+
+**Por qué había repetidos.** La compra (`crearCompra`, `PUT /api/compras/:id`)
+y `resolverProveedor` buscaban el nombre exacto: "textil norte " creaba otro
+proveedor. El código de la demo (`negocios-de-ejemplo.js`) crea cada uno una
+sola vez; el repetido salió de una compra cargada a mano. Ahora `idPorNombre`
+(server.js, junto a `resolverCliente`) busca primero exacto y después sin
+mayúsculas, tildes ni espacios de más (en JS: SQLite no saca tildes), y lo usan
+la compra, su edición, `resolverProveedor` y `resolverCliente`. El alta y la
+edición de un proveedor rechazan (409) un nombre que ya está. No hay índice
+único: las bases reales pueden tener repetidos y no se fusionan solos.
+
+**Listas (`frontend/js/core/combo.js`).** Un componente para toda la app: toma
+cada `<input list>` (también los que se agregan después, con un
+MutationObserver), le saca el `list` (así el navegador no muestra la suya) y
+abre una lista propia, fija a la ventana (no la recorta un modal), debajo o
+arriba del campo. Filtra sin tildes por palabras, muestra hasta 50, se abre al
+escribir, al tocar o con ↓ (no al recibir el foco solo), Enter elige sin mandar
+el formulario y Escape cierra sin cerrar el modal (escucha en captura). Elegir
+dispara `input` y `change`, así lo de siempre (el plazo habitual del proveedor,
+el precio del producto) sigue andando. `data-combo-nuevo` agrega la fila "+
+<lo escrito> · proveedor nuevo" (también en los campos de cliente que lo
+crean). Va en el PRECACHE de `sw.js`.
+
+**Descuento.** `frontend/js/core/descuento.js` (puro, lo importan pos.js y
+server.js): `aplicarDescuento(renglones, { tipo, valor })` reparte el monto
+según el valor de cada renglón (como el envío de una compra) y redondea al
+centavo; lo que sobra del redondeo lo absorbe un renglón de una unidad, o el
+de más valor (con cantidades decimales puede quedar a un centavo). Valida: %
+hasta 100, monto hasta el total, mayor a 0. El mostrador manda los precios sin
+el descuento y el descuento aparte; el servidor lo vuelve a repartir y
+`crearVenta` guarda el precio ya bajado y `venta_items.descuento` (por unidad;
+migración aditiva en `db/index.js`, DEFAULT 0). La oferta del renglón se sigue
+reconociendo con el precio de antes del descuento. La auditoría dice "con $X
+de descuento (10%)". Pantalla: "Hacer un descuento" en el ticket, %/$ y el
+número, el monto en verde y el total al día; se guarda con el carrito (F5) y
+se va con la venta. La ficha de la venta muestra "Descuento".
+
+**Verificado.** `backend/test/descuento-y-proveedores.test.js` (el reparto, la
+venta con y sin oferta, la auditoría y los proveedores por nombre); lint, i18n
+y la suite completa. En el navegador, con una base aparte: la lista del
+proveedor (filtrar, ↓ + Enter, el plazo de 30 días de Textil Norte), la del
+cliente del mostrador, y una venta con $5.000 de descuento cobrada de punta a
+punta (renglones 33.195,18 + 11.604,82 = 44.800) y vista en su ficha; en el
+celular entra sin scroll horizontal.
+
+**Queda.** Decidir si el empleado puede hacer descuentos o solo el admin, y si
+hace falta un tope. Precio editable por renglón en el mostrador.
+

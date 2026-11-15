@@ -246,7 +246,7 @@ const LETRAS = [
   <ellipse cx="611.5" cy="52.5" rx="48.5" ry="45.5" fill="none" stroke="currentColor" strokeWidth="14" />,
 ];
 
-const Logo: React.FC = () => {
+export const Logo: React.FC = () => {
   const frame = useCurrentFrame();
   const { isVertical } = useScale();
   const pIcono = progress(frame, 2, 18);

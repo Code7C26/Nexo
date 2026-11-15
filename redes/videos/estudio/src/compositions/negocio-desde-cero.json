@@ -1,0 +1,57 @@
+{
+  "archivo": "page@6b810a37b833982c63bcceaf89d9f928.webm",
+  "escenas": [
+    {
+      "nombre": "cuenta",
+      "seg": 1.25
+    },
+    {
+      "nombre": "codigo",
+      "seg": 4.96
+    },
+    {
+      "nombre": "nombre",
+      "seg": 6.83
+    },
+    {
+      "nombre": "tipo",
+      "seg": 8.72
+    },
+    {
+      "nombre": "secciones",
+      "seg": 11.75
+    },
+    {
+      "nombre": "comprobantes",
+      "seg": 14.13
+    },
+    {
+      "nombre": "funcionando",
+      "seg": 15.05
+    },
+    {
+      "nombre": "creada",
+      "seg": 16.73
+    },
+    {
+      "nombre": "ya-tenias",
+      "seg": 17.55
+    },
+    {
+      "nombre": "te-deben",
+      "seg": 27.8
+    },
+    {
+      "nombre": "plata",
+      "seg": 30.55
+    },
+    {
+      "nombre": "resumen",
+      "seg": 33.31
+    },
+    {
+      "nombre": "fin",
+      "seg": 35.12
+    }
+  ]
+}
