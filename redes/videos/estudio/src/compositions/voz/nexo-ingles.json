@@ -1,0 +1,265 @@
+{
+ "texto": "This is Nexo. A management system for small businesses. Stock. Sales. Cash. Invoices. All connected. Every sale updates the stock and shows what you really made. It adapts to any business. Just say what you sold. Nexo does the rest. Online sales come in by themselves. Try it free. Scan the code.",
+ "palabras": [
+  {
+   "t": "This",
+   "ini": 0.113,
+   "fin": 0.263
+  },
+  {
+   "t": "is",
+   "ini": 0.275,
+   "fin": 0.388
+  },
+  {
+   "t": "Nexo",
+   "ini": 0.4,
+   "fin": 0.863
+  },
+  {
+   "t": "A",
+   "ini": 1.262,
+   "fin": 1.3
+  },
+  {
+   "t": "management",
+   "ini": 1.312,
+   "fin": 1.762
+  },
+  {
+   "t": "system",
+   "ini": 1.775,
+   "fin": 2.138
+  },
+  {
+   "t": "for",
+   "ini": 2.15,
+   "fin": 2.288
+  },
+  {
+   "t": "small",
+   "ini": 2.3,
+   "fin": 2.562
+  },
+  {
+   "t": "businesses",
+   "ini": 2.575,
+   "fin": 3.25
+  },
+  {
+   "t": "Stock",
+   "ini": 3.663,
+   "fin": 4.037
+  },
+  {
+   "t": "Sales",
+   "ini": 4.45,
+   "fin": 4.925
+  },
+  {
+   "t": "Cash",
+   "ini": 5.338,
+   "fin": 5.737
+  },
+  {
+   "t": "Invoices",
+   "ini": 6.15,
+   "fin": 6.8
+  },
+  {
+   "t": "All",
+   "ini": 7.213,
+   "fin": 7.35
+  },
+  {
+   "t": "connected",
+   "ini": 7.362,
+   "fin": 7.825
+  },
+  {
+   "t": "Every",
+   "ini": 8.238,
+   "fin": 8.475
+  },
+  {
+   "t": "sale",
+   "ini": 8.488,
+   "fin": 8.812
+  },
+  {
+   "t": "updates",
+   "ini": 8.825,
+   "fin": 9.225
+  },
+  {
+   "t": "the",
+   "ini": 9.238,
+   "fin": 9.312
+  },
+  {
+   "t": "stock",
+   "ini": 9.325,
+   "fin": 9.75
+  },
+  {
+   "t": "and",
+   "ini": 9.988,
+   "fin": 10.088
+  },
+  {
+   "t": "shows",
+   "ini": 10.1,
+   "fin": 10.45
+  },
+  {
+   "t": "what",
+   "ini": 10.463,
+   "fin": 10.575
+  },
+  {
+   "t": "you",
+   "ini": 10.588,
+   "fin": 10.738
+  },
+  {
+   "t": "really",
+   "ini": 10.75,
+   "fin": 11.012
+  },
+  {
+   "t": "made",
+   "ini": 11.025,
+   "fin": 11.375
+  },
+  {
+   "t": "It",
+   "ini": 11.787,
+   "fin": 11.85
+  },
+  {
+   "t": "adapts",
+   "ini": 11.863,
+   "fin": 12.312
+  },
+  {
+   "t": "to",
+   "ini": 12.325,
+   "fin": 12.438
+  },
+  {
+   "t": "any",
+   "ini": 12.45,
+   "fin": 12.637
+  },
+  {
+   "t": "business",
+   "ini": 12.65,
+   "fin": 13.188
+  },
+  {
+   "t": "Just",
+   "ini": 13.6,
+   "fin": 13.738
+  },
+  {
+   "t": "say",
+   "ini": 13.75,
+   "fin": 13.9
+  },
+  {
+   "t": "what",
+   "ini": 13.912,
+   "fin": 14.037
+  },
+  {
+   "t": "you",
+   "ini": 14.05,
+   "fin": 14.137
+  },
+  {
+   "t": "sold",
+   "ini": 14.15,
+   "fin": 14.55
+  },
+  {
+   "t": "Nexo",
+   "ini": 14.963,
+   "fin": 15.25
+  },
+  {
+   "t": "does",
+   "ini": 15.262,
+   "fin": 15.463
+  },
+  {
+   "t": "the",
+   "ini": 15.475,
+   "fin": 15.55
+  },
+  {
+   "t": "rest",
+   "ini": 15.562,
+   "fin": 16.025
+  },
+  {
+   "t": "Online",
+   "ini": 16.438,
+   "fin": 16.8
+  },
+  {
+   "t": "sales",
+   "ini": 16.812,
+   "fin": 17.1
+  },
+  {
+   "t": "come",
+   "ini": 17.113,
+   "fin": 17.3
+  },
+  {
+   "t": "in",
+   "ini": 17.312,
+   "fin": 17.462
+  },
+  {
+   "t": "by",
+   "ini": 17.475,
+   "fin": 17.613
+  },
+  {
+   "t": "themselves",
+   "ini": 17.625,
+   "fin": 18.337
+  },
+  {
+   "t": "Try",
+   "ini": 18.75,
+   "fin": 18.9
+  },
+  {
+   "t": "it",
+   "ini": 18.913,
+   "fin": 18.988
+  },
+  {
+   "t": "free",
+   "ini": 19.0,
+   "fin": 19.3
+  },
+  {
+   "t": "Scan",
+   "ini": 19.725,
+   "fin": 19.925
+  },
+  {
+   "t": "the",
+   "ini": 19.938,
+   "fin": 20.012
+  },
+  {
+   "t": "code",
+   "ini": 20.025,
+   "fin": 20.375
+  }
+ ]
+}

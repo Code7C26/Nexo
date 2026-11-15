@@ -1,0 +1,93 @@
+{
+  "archivo": "page@ff03ebf5df97115cf4048e09b250a25b.webm",
+  "escenas": [
+    {
+      "nombre": "resumen",
+      "seg": 0.82
+    },
+    {
+      "nombre": "resumen-b",
+      "seg": 2.24
+    },
+    {
+      "nombre": "resumen-fin",
+      "seg": 4.99
+    },
+    {
+      "nombre": "stock",
+      "seg": 4.99
+    },
+    {
+      "nombre": "ventas",
+      "seg": 6.22
+    },
+    {
+      "nombre": "caja",
+      "seg": 7.41
+    },
+    {
+      "nombre": "facturas",
+      "seg": 8.53
+    },
+    {
+      "nombre": "conectado",
+      "seg": 9.54
+    },
+    {
+      "nombre": "conectado-fin",
+      "seg": 11
+    },
+    {
+      "nombre": "pos",
+      "seg": 11.67
+    },
+    {
+      "nombre": "pos-fin",
+      "seg": 13.8
+    },
+    {
+      "nombre": "ficha",
+      "seg": 14.67
+    },
+    {
+      "nombre": "ficha-fin",
+      "seg": 18.12
+    },
+    {
+      "nombre": "tipos",
+      "seg": 18.41
+    },
+    {
+      "nombre": "tipos-fin",
+      "seg": 20.46
+    },
+    {
+      "nombre": "asistente",
+      "seg": 21.03
+    },
+    {
+      "nombre": "escrito",
+      "seg": 22.6
+    },
+    {
+      "nombre": "propuesta",
+      "seg": 23.57
+    },
+    {
+      "nombre": "confirmado",
+      "seg": 24.9
+    },
+    {
+      "nombre": "online",
+      "seg": 25.5
+    },
+    {
+      "nombre": "online-fin",
+      "seg": 28.67
+    },
+    {
+      "nombre": "fin",
+      "seg": 28.67
+    }
+  ]
+}
