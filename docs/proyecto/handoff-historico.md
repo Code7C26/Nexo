@@ -13852,3 +13852,71 @@ corriente y presupuesto que pasan, deuda, contacto, "Consumidor final" protegido
 suite completa, lint e i18n. En el navegador: el aviso de "Camila Herrera" repetida,
 el modal "Unir clientes" (propone la que tiene teléfono) y queda una con sus 15
 compras; "Unir proveedores" sigue abriendo desde la selección.
+
+## §178 — 15 de noviembre de 2026: varias unidades de variantes distintas por WhatsApp
+
+**Pedido del usuario.** Con el número real de WhatsApp andando, "vendí dos buzos a
+Joaquín Tosi" preguntó qué variante y contestar "1 y 2" tomó solo la primera (2 × S):
+"capaz compro un buzo, un talle y otro buzo del otro. Habría que ver cómo se puede
+hacer en ese caso".
+
+**Hecho.** `responderVarianteWhatsApp` (server.js) ahora prueba primero
+`repartoDeVariantes(palabras, cantidad, opciones)`:
+- solo números y conectores ("y", "de", "del", "x", "el", "la"…), con dos números o
+  más; un número solo o palabras siguen el camino de antes ("3", "talle L", "44");
+- "1 y 2": una unidad por número (repetir vale: "1 y 1" son dos de la 1); tienen que
+  ser tantos números como unidades;
+- "2 del 1 y 1 del 3" (también "de la", "x"): cuántas de cada opción;
+- si no suma la cantidad del renglón, mezcla las dos formas o nombra una opción que no
+  está, contesta el problema y repite la pregunta, sin descartar la propuesta;
+- el renglón de `_datos` se parte en uno por variante con `variante_id`, y lo demás
+  (precio dicho, o el de lista de cada variante) sigue igual.
+
+La pregunta suma una línea cuando el renglón tiene más de una unidad: con 2, "mandá un
+número por cada uno: por ejemplo *1 y 2*"; con más, "mandá cuántos de cada uno: por
+ejemplo *2 del 1 y 1 del 2*". Los textos nuevos van en castellano (null en `en.js`,
+como todo lo de WhatsApp).
+
+**Verificado.** Test nuevo en `whatsapp.test.js` con el teléfono del empleado (el del
+admin llega al tope de 30 mensajes por hora): "1 y 2" con dos zapatillas (baja una de
+cada talle), "1 y 2" con tres (lo rechaza) y "2 del 1 y 1 del 3". Suite completa, lint
+e i18n.
+
+## §179 — 15 de noviembre de 2026: corregir una propuesta por WhatsApp
+
+**Pedido del usuario.** "si se interpreta mal algunas cosas en un audio, en vez de
+cancelarlo y tener que mandar otro de vuelta, se puede editar, por ejemplo, el nombre
+del cliente o el método de pago". En la web la propuesta ya es un formulario editable;
+faltaba WhatsApp.
+
+**Hecho.**
+- `interprete.js`: `corregir(tipo, datos, correccion, contexto)`. Al modelo le llega
+  la operación ya entendida en JSON y la corrección, con el mismo prompt de sistema y
+  las mismas herramientas (`mensajeCorreccion`): "cambiá solo lo que dice la
+  corrección y dejá todo lo demás igual". Los proveedores aceptan ahora el mensaje
+  del usuario armado afuera (`pedidoUsuario`). El stub toma la corrección como
+  "campo=valor; …" sobre los datos (`cobro_cuenta` cambia la cuenta del cobro).
+- `server.js`:
+  - `guardarPropuesta` (lo que hacía `proponerDesdeTexto` al guardar, compartido);
+  - `propuestaPendiente`: la última propuesta del teléfono sin confirmar y reciente
+    (`propuestaEsperandoVariante` pasa a usarla);
+  - el tercer botón `editar:<id>` ("✏️ Corregir", después de Confirmar y Cancelar
+    para no mover los otros dos), que marca la propuesta con `_corrigiendo` y la
+    vuelve la última del teléfono;
+  - en `atenderWhatsApp`, antes de la pregunta de variante: si la pendiente está
+    `_corrigiendo` o el mensaje empieza como corrección (`EMPIEZA_COMO_CORRECCION`:
+    "correg…", "cambi…", "en realidad", "me equivoqué", "no, era/es/fue/pagó…"),
+    `corregirWhatsApp`;
+  - `corregirWhatsApp`: le pasa a la IA los datos con el nombre de la variante
+    elegida por número (`datosParaCorregir`), conserva el `variante_id` de los
+    renglones que no cambiaron de producto ni de variante (`conservarVariantes`),
+    descarta la propuesta vieja y guarda la nueva con el texto "… (corrección: …)".
+    Un audio sigue el mismo camino que un texto.
+- Textos de WhatsApp en castellano (null en `en.js`).
+
+**Verificado.** Test nuevo en `whatsapp.test.js` (el botón y la corrección, la
+propuesta vieja ya no se confirma, y sin botón con la variante elegida por número
+conservada); el de la nota de voz espera tres botones. Con Groq real, desde la compu,
+tres correcciones sobre "dos buzos S a Joaquín Tosi en efectivo": "el cliente es
+Joaquín Torres", "no, me pagó por transferencia al banco" (cuenta Banco) y "eran 3"
+(cantidad 3); el resto quedó igual. Suite completa, lint e i18n.

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase, crearMediosDeCuenta } from './db/index.js';
-import { interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
+import { corregir, interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
 import { ayudaSeguraDelManual, respuestaDeAyuda as respuestaDeAyudaWhatsApp } from './ayuda-whatsapp.js';
 import {
   alicuotaNumerica,
@@ -15128,26 +15128,31 @@ function contextoParaInterprete(organizacionId, texto) {
 // La frase → la propuesta, guardada en asistente_mensajes para confirmarla.
 // La usan la web (abajo) y WhatsApp (hist. §134): las dos pasan por acá y por
 // la misma confirmación. Lanza InterpreteError si la IA no está o falla.
+// Resuelve lo que dijo la IA y lo guarda como propuesta sin confirmar. Lo que
+// dijo la IA queda aparte (`_datos`, nunca sale hacia la web): si falta una
+// variante y la persona la elige por WhatsApp, o corrige algo (hist. §179), la
+// propuesta se vuelve a resolver desde ahí.
+function guardarPropuesta(texto, tipo, datos, organizacionId) {
+  const propuesta = resolverPropuesta(tipo, datos, organizacionId);
+  const { lastInsertRowid } = db
+    .prepare(
+      `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
+       VALUES (?, ?, 'interpretado', ?, ?)`
+    )
+    .run(texto, JSON.stringify({ ...propuesta, _datos: datos }), tipo, organizacionId);
+  return { mensajeId: Number(lastInsertRowid), propuesta };
+}
+
 async function proponerDesdeTexto(texto, organizacionId) {
   const resultado = await interpretar(texto, contextoParaInterprete(organizacionId, texto));
   if (!resultado.tipo) {
     return { mensaje_id: null, tipo: null, mensaje: resultado.mensaje, propuesta: null, ejecutable: false, problemas: [] };
   }
 
-  const propuesta = resolverPropuesta(resultado.tipo, resultado.datos, organizacionId);
-
-  // Lo que dijo la IA queda aparte (`_datos`, nunca sale hacia la web): si falta
-  // una variante y la persona la elige por WhatsApp, la propuesta se vuelve a
-  // resolver desde ahí (completarVarianteWhatsApp).
-  const { lastInsertRowid: mensajeId } = db
-    .prepare(
-      `INSERT INTO asistente_mensajes (texto, propuesta_json, estado, operacion_tipo, organizacion_id)
-       VALUES (?, ?, 'interpretado', ?, ?)`
-    )
-    .run(texto, JSON.stringify({ ...propuesta, _datos: resultado.datos }), resultado.tipo, organizacionId);
+  const { mensajeId, propuesta } = guardarPropuesta(texto, resultado.tipo, resultado.datos, organizacionId);
 
   return {
-    mensaje_id: Number(mensajeId),
+    mensaje_id: mensajeId,
     tipo: resultado.tipo,
     mensaje: null,
     propuesta,
@@ -15772,7 +15777,7 @@ async function vincularWhatsApp(mensaje, filaId, responder) {
 // Un toque en Confirmar o Cancelar: solo sobre una propuesta que armó este
 // mismo teléfono, en este negocio, y que siga sin confirmar.
 async function responderBotonWhatsApp(mensaje, vinculo, usuario, responder) {
-  const partes = /^(si|no):(\d+)$/.exec(mensaje.boton);
+  const partes = /^(si|no|editar):(\d+)$/.exec(mensaje.boton);
   if (!partes) return;
   const propuesta = db
     .prepare(
@@ -15786,6 +15791,15 @@ async function responderBotonWhatsApp(mensaje, vinculo, usuario, responder) {
   if (partes[1] === 'no') {
     db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(propuesta.id);
     return responder('🚫 Cancelado: no registré nada.');
+  }
+  if (partes[1] === 'editar') {
+    // El próximo mensaje (texto o audio) es la corrección (hist. §179). El
+    // botón también vuelve a hacer de esta la última propuesta del teléfono.
+    const datos = JSON.parse(propuesta.propuesta_json);
+    db.prepare('UPDATE asistente_mensajes SET propuesta_json = ? WHERE id = ?').run(JSON.stringify({ ...datos, _corrigiendo: true }), propuesta.id);
+    const filaBoton = db.prepare('SELECT id FROM whatsapp_mensajes WHERE wa_id = ?').get(mensaje.id);
+    if (filaBoton) db.prepare('UPDATE whatsapp_mensajes SET asistente_mensaje_id = ? WHERE id = ?').run(propuesta.id, filaBoton.id);
+    return responder('✏️ ¿Qué cambio? Mandame un texto o un audio con lo que está mal, por ejemplo: *el cliente es Juana Pérez*, *pagó con transferencia* o *eran 3*.');
   }
   const { status, cuerpo } = ejecutarComo(usuario, {
     mensaje_id: propuesta.id,
@@ -15824,15 +15838,66 @@ function preguntaDeVariante(propuesta) {
       : variante.estado === 'no_encontrado'
         ? `No encontré "${variante.valor}".\n`
         : '';
-  return `🛍️ ${aclaracion}¿Qué variante de *${producto.nombre_resuelto}* es?\n\n${lineas.join('\n')}${mas}\n\nRespondé con el número, o escribí *cancelar*.`;
+  // Con más de una unidad, cada una puede ser de una variante distinta
+  // (hist. §178): un buzo S y otro M.
+  const cantidad = Number(item.cantidad);
+  const distintas =
+    cantidad === 2
+      ? '\n\nSi no son iguales, mandá un número por cada uno: por ejemplo *1 y 2*.'
+      : Number.isInteger(cantidad) && cantidad > 2
+        ? '\n\nSi no son iguales, mandá cuántos de cada uno: por ejemplo *2 del 1 y 1 del 2*.'
+        : '';
+  return `🛍️ ${aclaracion}¿Qué variante de *${producto.nombre_resuelto}* es?\n\n${lineas.join('\n')}${mas}\n\nRespondé con el número, o escribí *cancelar*.${distintas}`;
 }
 
-// La última propuesta de este teléfono, si espera una variante y es reciente.
-function propuestaEsperandoVariante(vinculo, organizacionId) {
+// Cómo se reparten las unidades de un renglón entre las opciones de la lista
+// (hist. §178): "1 y 2" (una de cada una, tantos números como unidades) o
+// "2 del 1 y 1 del 3" (cuántas de cada una). Devuelve [[opción, cantidad]],
+// { error } si no cierra con la cantidad, o null si la respuesta no es un
+// reparto (un número solo, o palabras: el camino de siempre).
+function repartoDeVariantes(palabras, cantidad, cuantasOpciones) {
+  const comoNumero = (p) => (/^\d+$/.test(p) ? Number(p) : NUMERO_EN_PALABRAS[p]);
+  const numeros = palabras.map(comoNumero);
+  const conectores = new Set(['y', 'e', 'de', 'del', 'x', 'el', 'la', 'los', 'las', 'otro', 'otra']);
+  if (numeros.filter(Number.isInteger).length < 2 || palabras.some((p, i) => !Number.isInteger(numeros[i]) && !conectores.has(p))) {
+    return null;
+  }
+  const pares = [];
+  const sueltos = [];
+  for (let i = 0; i < palabras.length; i++) {
+    if (!Number.isInteger(numeros[i])) continue;
+    // "2 del 1", "2 de la 1", "2 x 1": cuántas, y de cuál.
+    let j = i + 1;
+    if (['de', 'del', 'x'].includes(palabras[j])) {
+      j++;
+      while (['el', 'la', 'los', 'las'].includes(palabras[j])) j++;
+      if (Number.isInteger(numeros[j])) {
+        pares.push([numeros[j], numeros[i]]);
+        i = j;
+        continue;
+      }
+    }
+    sueltos.push(numeros[i]);
+  }
+  if (pares.length && sueltos.length) return { error: 'No entendí cuántos van de cada uno.' };
+  const unidades = pares.length ? pares : sueltos.map((opcion) => [opcion, 1]);
+  const fuera = unidades.find(([opcion]) => opcion < 1 || opcion > cuantasOpciones);
+  if (fuera) return { error: `La opción ${fuera[0]} no está en la lista.` };
+  const suma = unidades.reduce((acc, [, n]) => acc + n, 0);
+  if (suma !== cantidad) {
+    return { error: suma === 1 ? `Me dijiste 1 y son ${cantidad}.` : `Me dijiste ${suma} y son ${cantidad}.` };
+  }
+  const porOpcion = new Map();
+  for (const [opcion, n] of unidades) porOpcion.set(opcion, (porOpcion.get(opcion) ?? 0) + n);
+  return [...porOpcion];
+}
+
+// La última propuesta de este teléfono, si sigue sin confirmar y es reciente.
+function propuestaPendiente(vinculo, organizacionId) {
   const fila = db
     .prepare(
       `SELECT asistente_mensajes.id, asistente_mensajes.estado, asistente_mensajes.operacion_tipo, asistente_mensajes.propuesta_json,
-              whatsapp_mensajes.recibido_en > datetime('now', ?) AS reciente
+              asistente_mensajes.texto, whatsapp_mensajes.recibido_en > datetime('now', ?) AS reciente
          FROM whatsapp_mensajes JOIN asistente_mensajes ON asistente_mensajes.id = whatsapp_mensajes.asistente_mensaje_id
         WHERE whatsapp_mensajes.vinculo_id = ? AND asistente_mensajes.organizacion_id = ?
         ORDER BY whatsapp_mensajes.id DESC LIMIT 1`
@@ -15845,7 +15910,81 @@ function propuestaEsperandoVariante(vinculo, organizacionId) {
   } catch {
     return null;
   }
-  return propuesta._datos && renglonesSinVariante(propuesta).length ? { id: fila.id, tipo: fila.operacion_tipo, propuesta } : null;
+  return propuesta._datos ? { id: fila.id, tipo: fila.operacion_tipo, texto: fila.texto, propuesta } : null;
+}
+
+// La última propuesta, si espera una variante.
+function propuestaEsperandoVariante(vinculo, organizacionId) {
+  const pendiente = propuestaPendiente(vinculo, organizacionId);
+  return pendiente && renglonesSinVariante(pendiente.propuesta).length ? pendiente : null;
+}
+
+/* --- Corregir una propuesta (hist. §179) --- */
+//
+// Si la IA entendió mal algo (el cliente, cómo pagó, la cantidad), no hace
+// falta cancelar y mandar todo de nuevo: con el botón "Corregir", o con un
+// mensaje que empieza como corrección ("cambiá el cliente a Juana", "no, era
+// con transferencia"), lo que llega se aplica sobre la última propuesta. La IA
+// recibe la operación ya entendida y la corrección; la variante que se eligió
+// por número se conserva.
+const EMPIEZA_COMO_CORRECCION = /^(correg|correcci|cambi|en realidad|me equivoque|no[, ]+(era|es|fue|son|eran|pago|pagaron|me pago))/;
+
+function empiezaComoCorreccion(texto) {
+  return EMPIEZA_COMO_CORRECCION.test(tokensDe(texto).join(' '));
+}
+
+// Lo que se le pasa a la IA: los datos con el nombre de la variante elegida
+// por número (en `_datos` solo queda su id).
+function datosParaCorregir(datos, propuesta) {
+  return {
+    ...datos,
+    items: (datos.items ?? []).map((renglon, i) => {
+      const item = { ...renglon };
+      delete item.variante_id;
+      const elegida = propuesta.items?.[i]?.variante;
+      return elegida?.estado === 'resuelto' && elegida.nombre_resuelto ? { ...item, variante: elegida.nombre_resuelto } : item;
+    })
+  };
+}
+
+// Si la corrección no tocó un renglón, conserva la variante que se había
+// elegido por número: mismo producto y sin otra variante dicha.
+function conservarVariantes(anteriores, nuevos) {
+  const usados = new Set();
+  const clave = (texto) => tokensDe(texto).join(' ');
+  return nuevos.map((item) => {
+    const i = anteriores.findIndex(
+      (viejo, j) => !usados.has(j) && viejo.variante_id && clave(viejo.producto) === clave(item.producto)
+    );
+    if (i < 0 || (item.variante && clave(item.variante) !== clave(anteriores[i].variante ?? item.variante))) return item;
+    usados.add(i);
+    return { ...item, variante_id: anteriores[i].variante_id };
+  });
+}
+
+async function corregirWhatsApp(texto, pendiente, usuario, para, filaId, responder) {
+  const { _datos: datos, ...anterior } = pendiente.propuesta;
+  const resultado = await corregir(
+    pendiente.tipo,
+    datosParaCorregir(datos, anterior),
+    texto,
+    contextoParaInterprete(usuario.organizacion_id, `${pendiente.texto} ${texto}`)
+  );
+  if (!resultado.tipo) {
+    return responder(`🤔 No entendí la corrección. Decime qué cambio, por ejemplo: *el cliente es Juana Pérez* o *pagó con transferencia*.`);
+  }
+  const corregidos = { ...resultado.datos };
+  if (Array.isArray(corregidos.items)) corregidos.items = conservarVariantes(datos.items ?? [], corregidos.items);
+
+  db.prepare("UPDATE asistente_mensajes SET estado = 'descartado' WHERE id = ?").run(pendiente.id);
+  const { mensajeId, propuesta } = guardarPropuesta(
+    `${pendiente.texto} (corrección: ${texto.trim()})`,
+    resultado.tipo,
+    corregidos,
+    usuario.organizacion_id
+  );
+  db.prepare('UPDATE whatsapp_mensajes SET asistente_mensaje_id = ? WHERE id = ?').run(mensajeId, filaId);
+  return entregarPropuestaWhatsApp(para, resultado.tipo, mensajeId, propuesta, responder);
 }
 
 // Lo que se le manda a la persona cuando la propuesta está lista (o no).
@@ -15866,7 +16005,8 @@ async function entregarPropuestaWhatsApp(para, tipo, mensajeId, propuesta, respo
   }
   return whatsapp.mandarBotones(para, `${resumen}\n\n*¿Lo registro?*`, [
     { id: `si:${mensajeId}`, titulo: '✅ Confirmar' },
-    { id: `no:${mensajeId}`, titulo: '❌ Cancelar' }
+    { id: `no:${mensajeId}`, titulo: '❌ Cancelar' },
+    { id: `editar:${mensajeId}`, titulo: '✏️ Corregir' }
   ]);
 }
 
@@ -15884,10 +16024,25 @@ async function responderVarianteWhatsApp(texto, esperando, usuario, para, respon
   const { _datos: datos, ...propuestaVieja } = esperando.propuesta;
   const [{ item, indice }] = renglonesSinVariante(propuestaVieja);
   const opciones = item.variante.candidatos.slice(0, OPCIONES_DE_VARIANTE);
+  const cantidad = Number(item.cantidad);
+  const reparto = Number.isInteger(cantidad) ? repartoDeVariantes(palabras, cantidad, opciones.length) : null;
+  if (reparto?.error) {
+    await responder(`🤔 ${reparto.error}\n\n${preguntaDeVariante(propuestaVieja)}`);
+    return true;
+  }
   const numero = palabras.length <= 3 ? palabras.map((p) => (/^\d+$/.test(p) ? Number(p) : NUMERO_EN_PALABRAS[p])).find(Number.isInteger) : undefined;
 
   const nuevosDatos = structuredClone(datos);
-  if (numero >= 1 && numero <= opciones.length) {
+  if (reparto) {
+    // El renglón se parte en uno por variante, con lo demás igual (el precio
+    // dicho, o el de lista de cada variante si no se dijo).
+    const renglon = nuevosDatos.items[indice];
+    nuevosDatos.items.splice(
+      indice,
+      1,
+      ...reparto.map(([opcion, unidades]) => ({ ...renglon, cantidad: unidades, variante_id: opciones[opcion - 1].id }))
+    );
+  } else if (numero >= 1 && numero <= opciones.length) {
     nuevosDatos.items[indice].variante_id = opciones[numero - 1].id;
   } else if (palabras.length <= 4) {
     // "negro", "talle L", "la azul": se busca entre las variantes (y si hay más
@@ -15951,6 +16106,13 @@ async function atenderWhatsApp(mensaje) {
       await responder(`🎙️ Entendí: _"${texto.trim()}"_`);
     }
     if (!texto?.trim()) return responder(AYUDA_WHATSAPP);
+
+    // Después de "Corregir", o con un mensaje que empieza como corrección, se
+    // corrige la última propuesta (hist. §179).
+    const pendiente = propuestaPendiente(vinculo, usuario.organizacion_id);
+    if (pendiente && (pendiente.propuesta._corrigiendo || empiezaComoCorreccion(texto))) {
+      return corregirWhatsApp(texto, pendiente, usuario, mensaje.de, filaId, responder);
+    }
 
     // Si le preguntó qué variante, lo que llega es la respuesta (hist. §168).
     const esperando = propuestaEsperandoVariante(vinculo, usuario.organizacion_id);

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §177);
+    siguiente número (hoy el último es §179);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,24 @@
   reescribe nada.
 
 ## Estado actual (15 de noviembre de 2026)
+
+**15 de noviembre, hist. §179: corregir una propuesta por WhatsApp
+(commiteado en `solla`, sin publicar).** Tercer botón "✏️ Corregir"
+(Confirmar y Cancelar siguen primero): el próximo texto o audio es la
+corrección. También corrige sin el botón un mensaje que empieza como
+corrección ("cambiá…", "no, era…", "en realidad…"). `corregir()` en
+interprete.js le pasa a la IA la operación ya entendida (JSON) y la
+corrección; vuelve completa. La variante elegida por número se conserva. La
+propuesta vieja se descarta. Probado con Groq real: "el cliente es…", "me pagó
+por transferencia al banco", "eran 3".
+
+**15 de noviembre, hist. §178: varias unidades de variantes distintas por
+WhatsApp (commiteado en `solla`, sin publicar).** "Vendí dos buzos" sin talle
+preguntaba una sola variante. Ahora la respuesta reparte: "1 y 2" (una de cada
+una, tantos números como unidades) o "2 del 1 y 1 del 3" (cuántas de cada
+una); el renglón se parte en uno por variante (`repartoDeVariantes` en
+server.js). Si no suma la cantidad, lo dice y vuelve a preguntar. La pregunta
+lo explica cuando hay más de una unidad.
 
 **15 de noviembre, hist. §177: unir clientes repetidos (publicado con §176).**
 `POST /api/clientes/:id/unir` (solo admin), como el de proveedores: ventas,
@@ -2980,6 +2998,19 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     servidor solo cambian `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_NUMERO`
     (dígitos, 549…). Volver a vincular el teléfono y probar. Si Meta pide un
     medio de pago, el usuario decide.
+  - **Hecho (15 de noviembre): Nexo usa el número real** +54 9 3547 66-4779
+    (identificador `1426215617244574`, `WHATSAPP_NUMERO=5493547664779`, ya en
+    el servidor), y el usuario vinculó su celu. No entraba en la cuenta de
+    prueba ("Test Messaging Account", `873217219182553`, solo admite el número
+    de prueba): está en una cuenta real nueva, `3017074438658382`, que pidió
+    completar la información de contacto del portfolio. Se hizo:
+    `subscribed_apps` a esa cuenta, `register` (PIN de dos pasos: lo tiene el
+    usuario), la cuenta asignada al usuario del sistema del token, y el perfil
+    desde WhatsApp Manager. El código por SMS no llegaba: el formato es 9 +
+    área sin 0 + número sin 15, o pedirlo por llamada. El token del Explorador
+    tiene que tener acceso a la cuenta nueva (si no, error #200). **Falta:**
+    que Meta apruebe el nombre "Nexo"; probar una venta por texto y por audio;
+    que los demás vuelvan a vincular su celu (estaban con el de prueba).
 
 **Después de la presentación:**
 - **Ofertas en presupuestos** (charlado con el usuario el 4 de noviembre, "lo
