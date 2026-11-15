@@ -1323,7 +1323,8 @@ Ventas filtra por medio y por cuenta. Falta: recargo por cuotas al cliente (el
 venta, sin armar una oferta. Se reparte entre los renglones según su valor
 (`frontend/js/core/descuento.js`, el mismo para la pantalla y el servidor) y
 queda en el precio de cada uno; `venta_items.descuento` guarda cuánto se bajó
-por unidad, y la auditoría lo anota. Queda para después: precio editable por
+por unidad, y la auditoría anota quién lo hizo. Lo hace cualquier rol, sin tope
+(decisión del usuario). Queda para después: precio editable por
 renglón en el mostrador, alta rápida de cliente y venta sin conexión.
 
 ---

@@ -22,7 +22,7 @@
 ## Estado actual (15 de noviembre de 2026)
 
 **15 de noviembre, hist. §175: lo que planteó una contadora probando la demo
-(commiteado en `solla`, sin publicar).**
+(publicado).**
 - **Listas propias en vez de la del navegador** (`frontend/js/core/combo.js`,
   lo importa app.js): todo `<input list>` de la app usa una lista con la cara
   de Nexo; el `<datalist>` sigue siendo la fuente. Con
@@ -38,10 +38,9 @@
 - **Descuento a mano en el mostrador:** "Hacer un descuento" en el ticket, por
   % o $ sobre toda la venta. Lo reparte `frontend/js/core/descuento.js` (el
   mismo en pantalla y en `POST /api/pos/ventas`, que recibe `descuento: { tipo,
-  valor }`); columna nueva `venta_items.descuento` (aditiva, DEFAULT 0). Lo
-  pueden hacer los dos roles y queda en la auditoría. A decidir con el usuario:
-  si el empleado puede hacer descuentos o solo el admin, y si hace falta un
-  tope.
+  valor }`); columna nueva `venta_items.descuento` (aditiva, DEFAULT 0). **Lo
+  hace cualquiera, sin tope** (decidido por el usuario el 15 de noviembre), y
+  queda en la auditoría quién lo hizo.
 
 **14 de noviembre, hist. §173: el bloque del problema de la presentación,
 rehecho (commiteado en `solla`, sin publicar).** Pedido del usuario. La 3 con una persona
