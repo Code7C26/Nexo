@@ -13759,3 +13759,96 @@ celular entra sin scroll horizontal.
 **Queda.** Decidir si el empleado puede hacer descuentos o solo el admin, y si
 hace falta un tope. Precio editable por renglón en el mostrador.
 
+
+## §176 — 15 de noviembre de 2026: unir proveedores repetidos y "Registrar cobro" con los medios de cobro
+
+**Pedido del usuario (dos mensajes).** (1) "fijate que tengo dos proveedores iguales":
+en la demo de indumentaria seguían "Accesorios Mayorista" y "Accesorios mayorista"
+(§175 evita los nuevos, no arregla los que ya estaban). (2) De la contadora, sobre
+"Registrar cobro" en Ventas: el texto del link de Mercado Pago no se entendía, y donde
+dice "Cuenta de tesorería" irían los medios de pago ("transferencia, cheque, dólares?
+otro? QR? ¿por qué QR y link de pago no es lo mismo?").
+
+**Unir proveedores.**
+- `POST /api/proveedores/:id/unir { ids }` (solo admin, en `permisos.js` y con
+  `soloAdmin`): en una transacción pasa al de `:id` las compras (sus pagos y
+  devoluciones cuelgan de la compra), los gastos, `movimientos_cc_proveedores` y
+  `proveedor_articulos` (si los dos aprendieron la misma clave, vale la del que queda),
+  completa los campos de contacto vacíos con los de los otros (`CAMPOS_CONTACTO_PROVEEDOR`)
+  y borra los otros. Sin cambio de esquema: la auditoría es un `editar` del que queda,
+  con el contacto completado como valor anterior/nuevo y "unido con … Compras que
+  pasaron: N" (el CHECK de `auditoria.accion` no tiene "unir" y no valía un rebuild).
+- Pantalla: `mostrarProveedoresRepetidos` (app.js) agrupa por nombre sin mayúsculas,
+  tildes ni espacios y, para el admin, muestra un aviso (`.aviso-plan`) con "Unirlos"
+  para el primer grupo; al unirlo pasa al siguiente. "Unir" en la barra de selección
+  aparece con dos o más tildados (`montarBarraSeleccion` acepta `visible(cantidad)`).
+  El modal `#modalUnirProveedores` pregunta cuál queda en tarjetas con compras,
+  total y contacto; propone el que tiene contacto (el cargado a propósito), después
+  el de más compras y después el más viejo, y explica qué pasa.
+
+**Registrar cobro con medios.**
+- Servidor: `cuentaDelMedio(medio, elegida, org, caja)` y `medioDelCobro(cobro,
+  medios)` reemplazan la lógica que estaba adentro de `POST /api/pos/ventas`, y los
+  usa también `POST /api/ventas/:id/cobros`, que acepta `medio_cobro_id`, `cuotas` y
+  `cuenta_tesoreria_id`. El efectivo entra a la caja del turno o, fuera del
+  mostrador, a la que se elige (con una sola, esa); la transferencia a la que se elige
+  menos una caja; los demás a la suya o, sin cuenta (un "Otro"), a la elegida. Con
+  medio se registran sus costos (`registrarCostosDelMedio`). Sin medio sigue
+  aceptando la cuenta suelta. `GET /api/ventas/:id/cobros` suma `medio` y `cuotas`.
+- Pantalla: chips de los medios activos (`chips-elegir`), cuotas solo en un crédito
+  con planes, la cuenta solo cuando hay que elegirla ("¿En qué caja entra?", "¿En qué
+  cuenta cayó?") y, si no, "Entra a Banco." con los días de acreditación. El historial
+  del modal dice "Transferencia · Mercado Pago".
+- Mercado Pago: "¿Te paga con Mercado Pago? Creá un link de pago: se lo mandás por
+  WhatsApp o, si está con vos, le mostrás el QR… cuando paga, el cobro se registra solo
+  en esta venta". El QR que da este modal es el del mismo link.
+
+**No se hizo.** Cheques con fecha de cobro (hoy un medio "Otro" llamado Cheque, sin
+fecha: haría falta la acreditación diferida de §30 o una cartera de cheques) y cobrar
+en dólares (multimoneda, §39). Unir clientes repetidos (mismo problema, muchas más
+tablas).
+
+**Verificado.** Tests nuevos en `descuento-y-proveedores.test.js` (unir: compras,
+deuda, contacto, el otro borrado, la auditoría, otro negocio da 404) y en
+`medios-cobro.test.js` (cobrar después con efectivo, transferencia a la caja
+rechazada, crédito con plan y sus costos, medio ajeno). Suite completa 388/388, lint
+e i18n. En el navegador con una base aparte: el aviso y la unión de "Accesorios
+mayorista" (queda uno con la compra y el teléfono), "Unir" solo con dos tildados, y
+un cobro por Transferencia a Mercado Pago desde Ventas.
+
+## §177 — 15 de noviembre de 2026: unir clientes repetidos y la lista de variantes que no se leía
+
+**Pedido del usuario.** "no se ve un chori" (captura: la lista de variantes de una venta
+propuesta por el asistente, rosa con letras claras) y "hace los clientes repetidos y
+publicar TODO".
+
+**La lista de variantes.** El asistente marca con `.campo-falta` el select de la
+variante que no pudo resolver; la regla le ponía `background: var(--accent-warn-bg)`
+(translúcido) y el navegador pinta la lista abierta con el fondo del select. Ahora la
+marca es el borde más un anillo (`box-shadow`), y `select option` tiene siempre
+`--surface` y `--ink`, para que ningún select vuelva a teñir su lista.
+
+**Unir clientes.**
+- `POST /api/clientes/:id/unir { ids }` (solo admin): en una transacción pasa
+  `cliente_id` al que queda en `TABLAS_DEL_CLIENTE` (ventas, facturas, presupuestos,
+  movimientos_cc_clientes, trabajos, abonos, crm_oportunidades, crm_actividades,
+  socios), completa los campos vacíos de `CAMPOS_CONTACTO_CLIENTE` y borra los otros.
+  Cobros y devoluciones cuelgan de la venta. Las facturas conservan la foto del
+  cliente de cuando se emitieron. Dos socios no se unen (400: `socios.cliente_id` es
+  UNIQUE) y "Consumidor final" nunca es el que se borra (400: el mostrador lo busca por
+  nombre). Auditoría: `editar` del que queda, "Ventas que pasaron: N".
+- Pantalla: lo de proveedores (§176) pasó a ser uno solo para los dos: `UNIR` en
+  app.js con los textos de cada uno, `mostrarRepetidos(tipo)`, `abrirUnir(tipo, ids)`
+  y `#modalUnir` (antes `#modalUnirProveedores`). Aviso arriba de la lista de Clientes
+  del CRM (`#clientesRepetidos`) y "Unir" en su barra de selección. Repetidos = mismo
+  nombre sin mayúsculas, tildes ni espacios, salvo que tengan CUIT/DNI distintos (dos
+  personas con el mismo nombre). Propone "Consumidor final" si está en el grupo, y si
+  no el que tiene contacto, el de más compras y el más viejo.
+- No se agregó el 409 por nombre repetido al alta de clientes (sí está en proveedores):
+  dos clientes pueden llamarse igual.
+
+**Verificado.** Test nuevo en `descuento-y-proveedores.test.js` (venta a cuenta
+corriente y presupuesto que pasan, deuda, contacto, "Consumidor final" protegido);
+suite completa, lint e i18n. En el navegador: el aviso de "Camila Herrera" repetida,
+el modal "Unir clientes" (propone la que tiene teléfono) y queda una con sus 15
+compras; "Unir proveedores" sigue abriendo desde la selección.

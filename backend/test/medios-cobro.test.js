@@ -159,6 +159,43 @@ test('un crédito pide el plan, guarda las cuotas y la comisión y el costo sale
   assert.deepEqual((await admin.get('/api/ventas')).json.find((v) => v.id === venta.json.id).medios_cobro, [credito.id]);
 });
 
+// "Registrar cobro" en Ventas cobra con los mismos medios (hist. §176).
+test('cobrar una venta después usa el medio: su cuenta, la caja que se elige, las cuotas y sus costos', async () => {
+  const alta = await admin.post('/api/ventas', { cliente: 'Cliente Cuenta', items: [{ producto_id: producto, cantidad: 5, precio_unitario: 1000 }] });
+  assert.equal(alta.status, 201, alta.texto);
+  const ventaId = alta.json.id;
+  const cobrar = (body) => admin.post(`/api/ventas/${ventaId}/cobros`, body);
+
+  // El efectivo, con una sola caja, entra ahí sin elegirla.
+  const enEfectivo = await cobrar({ importe: 1000, medio_cobro_id: porNombre('Efectivo').id });
+  assert.equal(enEfectivo.status, 201, enEfectivo.texto);
+  // Una transferencia no puede caer en la caja.
+  const aCaja = await cobrar({ importe: 1000, medio_cobro_id: porNombre('Transferencia').id, cuenta_tesoreria_id: efectivo.id });
+  assert.equal(aCaja.status, 400);
+  // El crédito pide el plan y deja la comisión y el costo de las cuotas.
+  const credito = porNombre('Crédito');
+  assert.equal((await cobrar({ importe: 1000, medio_cobro_id: credito.id })).status, 400);
+  const enCuotas = await cobrar({ importe: 1000, medio_cobro_id: credito.id, cuotas: 3 });
+  assert.equal(enCuotas.status, 201, enCuotas.texto);
+  // Un medio de otro negocio no existe acá.
+  const ajeno = (await otro.get('/api/medios-cobro')).json[0];
+  assert.equal((await cobrar({ importe: 1000, medio_cobro_id: ajeno.id })).status, 400);
+
+  const cobros = (await admin.get(`/api/ventas/${ventaId}/cobros`)).json;
+  assert.deepEqual(
+    cobros.map((c) => [c.medio, c.cuenta, c.cuotas]),
+    [
+      ['Efectivo', efectivo.nombre, null],
+      ['Crédito', banco.nombre, 3]
+    ]
+  );
+  const ficha = (await admin.get(`/api/ventas/${ventaId}`)).json;
+  assert.deepEqual(
+    ficha.costos_de_vender.map((c) => [c.categoria, c.importe]),
+    [['Comisiones de venta', 20], ['Cuotas sin interés', 100]]
+  );
+});
+
 test('el empleado ve los medios sin comisiones ni costos y no los edita', async () => {
   const lista = await empleado.get('/api/medios-cobro?activos=1');
   assert.equal(lista.status, 200);

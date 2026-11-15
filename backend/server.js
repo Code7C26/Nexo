@@ -2942,6 +2942,80 @@ app.patch('/api/clientes/:id', (req, res) => {
   res.json({ id: clienteId });
 });
 
+// Unir clientes repetidos (hist. §177), como los proveedores (§176): lo de los
+// otros pasa al de :id (ventas, y con ellas cobros y devoluciones; facturas,
+// presupuestos, cuenta corriente, trabajos, abonos, su ficha de socio y el
+// CRM), el contacto que le falta se completa con el de ellos y los otros se
+// borran. Las facturas ya emitidas guardan su foto del cliente: no cambian.
+// Un cliente es socio una sola vez (socios.cliente_id es UNIQUE): si dos son
+// socios no se unen solos.
+const CAMPOS_CONTACTO_CLIENTE = ['email', 'telefono', 'direccion', 'documento', 'notas', 'lista_precio_id', 'condicion_pago', 'condicion_iva'];
+const TABLAS_DEL_CLIENTE = ['ventas', 'facturas', 'presupuestos', 'movimientos_cc_clientes', 'trabajos', 'abonos', 'crm_oportunidades', 'crm_actividades', 'socios'];
+
+app.post('/api/clientes/:id/unir', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const quedaId = Number(req.params.id);
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number))].filter((id) => id !== quedaId);
+  const queda = db.prepare('SELECT * FROM clientes WHERE id = ? AND organizacion_id = ?').get(quedaId, organizacionId);
+  if (!queda) {
+    return res.status(404).json({ error: 'Cliente no encontrado.' });
+  }
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'Elegí al menos otro cliente para unir.' });
+  }
+  const otros = ids.map((id) => db.prepare('SELECT * FROM clientes WHERE id = ? AND organizacion_id = ?').get(id, organizacionId));
+  if (otros.some((c) => !c)) {
+    return res.status(404).json({ error: 'Uno de los clientes ya no existe.' });
+  }
+  // El mostrador lo busca por nombre: si hay que unirlo, es el que queda.
+  if (otros.some((c) => c.nombre === CONSUMIDOR_FINAL)) {
+    return res.status(400).json({ error: `"${CONSUMIDOR_FINAL}" no se borra: elegilo como el que queda.` });
+  }
+  const socios = db
+    .prepare(`SELECT COUNT(*) AS n FROM socios WHERE cliente_id IN (${[quedaId, ...ids].map(() => '?').join(', ')})`)
+    .get(quedaId, ...ids).n;
+  if (socios > 1) {
+    return res.status(400).json({ error: 'Más de uno es socio: pasá los planes a uno y dale de baja al otro antes de unirlos.' });
+  }
+
+  const completado = { ...queda };
+  for (const otro of otros) {
+    for (const campo of CAMPOS_CONTACTO_CLIENTE) {
+      if (!completado[campo] && otro[campo]) completado[campo] = otro[campo];
+    }
+  }
+  const cambios = diffCampos(queda, completado, CAMPOS_CONTACTO_CLIENTE);
+
+  const movidas = withTransaction(() => {
+    let ventas = 0;
+    for (const otro of otros) {
+      for (const tabla of TABLAS_DEL_CLIENTE) {
+        const { changes } = db.prepare(`UPDATE ${tabla} SET cliente_id = ? WHERE cliente_id = ?`).run(quedaId, otro.id);
+        if (tabla === 'ventas') ventas += Number(changes);
+      }
+      db.prepare('DELETE FROM clientes WHERE id = ?').run(otro.id);
+    }
+    if (cambios) {
+      db.prepare(
+        `UPDATE clientes
+            SET email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, lista_precio_id = ?, condicion_pago = ?,
+                condicion_iva = ?
+          WHERE id = ?`
+      ).run(...CAMPOS_CONTACTO_CLIENTE.map((campo) => completado[campo]), quedaId);
+    }
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'cliente',
+      entidad_id: quedaId,
+      valor_anterior: cambios?.anterior ?? null,
+      valor_nuevo: cambios?.nuevo ?? null,
+      detalle: `Cliente "${queda.nombre}" unido con ${otros.map((c) => `"${c.nombre}" (#${c.id})`).join(', ')}. Ventas que pasaron: ${ventas}`
+    });
+    return ventas;
+  });
+  res.json({ id: quedaId, ventas: movidas });
+});
+
 // El correlativo es por (organización, punto de venta, tipo, letra): cada
 // combinación tiene su propia serie, como en la realidad — cada organización
 // es un negocio con su propio CUIT (CLAUDE.md §28/§33), así que no comparte
@@ -6004,6 +6078,73 @@ app.patch('/api/proveedores/:id', (req, res) => {
   res.json({ id: proveedorId });
 });
 
+// Unir proveedores repetidos (hist. §176): antes de §175 una compra con el
+// nombre tipeado distinto ("Accesorios mayorista") creaba otro proveedor. Lo
+// de los otros pasa al de :id (compras, y con ellas sus pagos y
+// devoluciones; gastos, cuenta corriente y lo que se aprendió de sus
+// facturas), el contacto que le falta se completa con el de ellos, y los
+// otros se borran: quedarían vacíos.
+const CAMPOS_CONTACTO_PROVEEDOR = ['email', 'telefono', 'direccion', 'documento', 'notas', 'condicion_pago', 'condicion_iva'];
+
+app.post('/api/proveedores/:id/unir', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const quedaId = Number(req.params.id);
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number))].filter((id) => id !== quedaId);
+  const queda = db.prepare('SELECT * FROM proveedores WHERE id = ? AND organizacion_id = ?').get(quedaId, organizacionId);
+  if (!queda) {
+    return res.status(404).json({ error: 'Proveedor no encontrado.' });
+  }
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'Elegí al menos otro proveedor para unir.' });
+  }
+  const otros = ids.map((id) => db.prepare('SELECT * FROM proveedores WHERE id = ? AND organizacion_id = ?').get(id, organizacionId));
+  if (otros.some((p) => !p)) {
+    return res.status(404).json({ error: 'Uno de los proveedores ya no existe.' });
+  }
+
+  const completado = { ...queda };
+  for (const otro of otros) {
+    for (const campo of CAMPOS_CONTACTO_PROVEEDOR) {
+      if (!completado[campo] && otro[campo]) completado[campo] = otro[campo];
+    }
+  }
+  const cambios = diffCampos(queda, completado, CAMPOS_CONTACTO_PROVEEDOR);
+
+  const movidas = withTransaction(() => {
+    let compras = 0;
+    for (const otro of otros) {
+      compras += Number(db.prepare('UPDATE compras SET proveedor_id = ? WHERE proveedor_id = ?').run(quedaId, otro.id).changes);
+      db.prepare('UPDATE gastos SET proveedor_id = ? WHERE proveedor_id = ?').run(quedaId, otro.id);
+      db.prepare('UPDATE movimientos_cc_proveedores SET proveedor_id = ? WHERE proveedor_id = ?').run(quedaId, otro.id);
+      // Si los dos aprendieron el mismo artículo, vale el del que queda.
+      db.prepare(
+        `DELETE FROM proveedor_articulos
+          WHERE proveedor_id = ?
+            AND clave IN (SELECT clave FROM proveedor_articulos WHERE proveedor_id = ?)`
+      ).run(otro.id, quedaId);
+      db.prepare('UPDATE proveedor_articulos SET proveedor_id = ? WHERE proveedor_id = ?').run(quedaId, otro.id);
+      db.prepare('DELETE FROM proveedores WHERE id = ?').run(otro.id);
+    }
+    if (cambios) {
+      db.prepare(
+        `UPDATE proveedores
+            SET email = ?, telefono = ?, direccion = ?, documento = ?, notas = ?, condicion_pago = ?, condicion_iva = ?
+          WHERE id = ?`
+      ).run(...CAMPOS_CONTACTO_PROVEEDOR.map((campo) => completado[campo]), quedaId);
+    }
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'proveedor',
+      entidad_id: quedaId,
+      valor_anterior: cambios?.anterior ?? null,
+      valor_nuevo: cambios?.nuevo ?? null,
+      detalle: `Proveedor "${queda.nombre}" unido con ${otros.map((p) => `"${p.nombre}" (#${p.id})`).join(', ')}. Compras que pasaron: ${compras}`
+    });
+    return compras;
+  });
+  res.json({ id: quedaId, compras: movidas });
+});
+
 /* ---------- Stock ---------- */
 
 // Punto único de inserción a movimientos_stock (CLAUDE.md §5/§19): antes
@@ -8005,10 +8146,11 @@ app.put('/api/ventas/:id', (req, res) => {
 app.get('/api/ventas/:id/cobros', (req, res) => {
   const cobros = db
     .prepare(
-      `SELECT cobros.id, cobros.fecha, cobros.importe, cobros.nota,
-              cuentas_tesoreria.nombre AS cuenta
+      `SELECT cobros.id, cobros.fecha, cobros.importe, cobros.nota, cobros.cuotas,
+              cuentas_tesoreria.nombre AS cuenta, medios_cobro.nombre AS medio
        FROM cobros
        JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
+       LEFT JOIN medios_cobro ON medios_cobro.id = cobros.medio_cobro_id
        JOIN ventas ON ventas.id = cobros.venta_id
        WHERE cobros.venta_id = ? AND ventas.organizacion_id = ?
        ORDER BY cobros.id`
@@ -8019,9 +8161,10 @@ app.get('/api/ventas/:id/cobros', (req, res) => {
 
 app.post('/api/ventas/:id/cobros', (req, res) => {
   const ventaId = Number(req.params.id);
-  const { importe, cuenta_tesoreria_id, nota } = req.body;
+  const { importe, cuenta_tesoreria_id, nota, medio_cobro_id } = req.body;
+  const organizacionId = req.usuario.organizacion_id;
 
-  const venta = ventaParaCobrar(ventaId, req.usuario.organizacion_id);
+  const venta = ventaParaCobrar(ventaId, organizacionId);
   if (!venta) {
     return res.status(404).json({ error: 'Venta no encontrada.' });
   }
@@ -8041,27 +8184,54 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
       error: `El importe supera el saldo pendiente de la venta (${saldoPendiente.toFixed(2)}).`
     });
   }
-  // registrarCobro no valida la cuenta (ver su comentario): se valida acá.
-  // Hasta la Etapa A de catálogos solo la frenaba la FK (una inexistente
-  // reventaba en el INSERT como 500); ahora además tiene que ser de la
-  // organización, o el ingreso subiría la caja de otra empresa.
-  const cuenta = db
-    .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
-    .get(Number(cuenta_tesoreria_id), req.usuario.organizacion_id);
-  if (!cuenta) {
-    return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
+  // Con un medio de cobro, como en el mostrador (hist. §176): el medio dice
+  // la cuenta, las cuotas y lo que cuesta cobrar con él. Sin medio, la cuenta
+  // suelta, como antes.
+  let medio = null;
+  let plan = null;
+  let cuentaId;
+  if (medio_cobro_id != null) {
+    const delCobro = medioDelCobro(req.body, mediosDeCobro(organizacionId, { soloActivos: true }));
+    if (delCobro.error) return res.status(400).json({ error: delCobro.error });
+    ({ medio, plan } = delCobro);
+    const destino = cuentaDelMedio(medio, cuenta_tesoreria_id, organizacionId);
+    if (destino.error) return res.status(400).json({ error: destino.error });
+    cuentaId = destino.cuentaId;
+  } else {
+    // registrarCobro no valida la cuenta (ver su comentario): se valida acá.
+    // Hasta la Etapa A de catálogos solo la frenaba la FK (una inexistente
+    // reventaba en el INSERT como 500); ahora además tiene que ser de la
+    // organización, o el ingreso subiría la caja de otra empresa.
+    const cuenta = db
+      .prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+      .get(Number(cuenta_tesoreria_id), organizacionId);
+    if (!cuenta) {
+      return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
+    }
+    cuentaId = Number(cuenta_tesoreria_id);
   }
 
   const cobroId = withTransaction(() => {
-    const id = registrarCobro(ventaId, venta.cliente_id, importe, cuenta_tesoreria_id, nota, req.usuario.organizacion_id);
+    const id = registrarCobro(
+      ventaId,
+      venta.cliente_id,
+      importe,
+      cuentaId,
+      nota,
+      organizacionId,
+      medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null
+    );
     auditar(req, {
       accion: 'crear',
       entidad: 'cobro',
       entidad_id: id,
       operacion_tipo: 'venta',
       operacion_id: ventaId,
-      detalle: `Cobro #${id} de $${importe} sobre la venta #${ventaId}`
+      detalle: medio
+        ? `Cobro #${id} de $${importe} con ${medio.nombre} sobre la venta #${ventaId}`
+        : `Cobro #${id} de $${importe} sobre la venta #${ventaId}`
     });
+    if (medio) registrarCostosDelMedio({ ventaId, medio, plan, importe, cuentaId, organizacionId });
     return id;
   });
 
@@ -11855,6 +12025,46 @@ function medioDeLaCuenta(cuentaId, organizacionId) {
     )
     .all(cuentaId, organizacionId);
   return medios.length === 1 ? medios[0].id : null;
+}
+
+// La cuenta donde entra lo cobrado con un medio, o { error }. `elegida` es la
+// que se eligió al cobrar y `caja` la del turno, en el mostrador.
+// - El efectivo entra a la caja: la del turno, o fuera del mostrador la que se
+//   elige (con una sola caja, esa) (hist. §176).
+// - Una transferencia cae en la cuenta que se elige, menos una caja (hist.
+//   §172); sin elegir, en la del medio.
+// - Los demás, en la del medio; sin cuenta propia, en la caja del turno o en
+//   la que se elige (un cheque, cargado como "Otro").
+function cuentaDelMedio(medio, elegida, organizacionId, caja = null) {
+  const cuentaDe = (id) =>
+    db.prepare('SELECT id, tipo FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?').get(Number(id), organizacionId);
+  if (medio.tipo === 'efectivo') {
+    if (caja) return { cuentaId: caja };
+    const cajas = db.prepare("SELECT id FROM cuentas_tesoreria WHERE organizacion_id = ? AND tipo = 'efectivo'").all(organizacionId);
+    const id = elegida != null ? Number(elegida) : cajas.length === 1 ? cajas[0].id : null;
+    return cajas.some((c) => c.id === id) ? { cuentaId: id } : { error: 'Elegí en qué caja entra el efectivo.' };
+  }
+  if (medio.tipo === 'transferencia' && elegida != null) {
+    const destino = cuentaDe(elegida);
+    if (!destino || destino.tipo === 'efectivo') return { error: 'La cuenta donde cae la transferencia no es válida.' };
+    return { cuentaId: destino.id };
+  }
+  if (medio.cuenta_tesoreria_id) return { cuentaId: medio.cuenta_tesoreria_id };
+  if (caja) return { cuentaId: caja };
+  if (elegida != null && cuentaDe(elegida)) return { cuentaId: Number(elegida) };
+  return { error: `Elegí a qué cuenta entra lo cobrado con ${medio.nombre}.` };
+}
+
+// El medio de un cobro con su plan de cuotas, o { error }. Un crédito con
+// planes cobra con uno de ellos; sin planes, en un pago.
+function medioDelCobro(cobro, medios) {
+  const medio = medios.find((m) => m.id === Number(cobro.medio_cobro_id));
+  if (!medio) return { error: 'Un medio de cobro no existe o está pausado.' };
+  const plan = medio.tipo === 'credito' && medio.planes.length ? medio.planes.find((p) => p.cuotas === Number(cobro.cuotas)) : null;
+  if (medio.tipo === 'credito' && medio.planes.length && !plan) {
+    return { error: `Elegí en cuántas cuotas se paga con ${medio.nombre}.` };
+  }
+  return { medio, plan };
 }
 
 function mediosDeCobro(organizacionId, { soloActivos = false } = {}) {
@@ -17644,27 +17854,11 @@ app.post('/api/pos/ventas', (req, res) => {
       return res.status(400).json({ error: 'Cada cobro tiene que tener un importe mayor a 0.' });
     }
     if (cobro.medio_cobro_id != null) {
-      const medio = medios.find((m) => m.id === Number(cobro.medio_cobro_id));
-      if (!medio) return res.status(400).json({ error: 'Un medio de cobro no existe o está pausado.' });
-      // Un crédito con planes cobra con uno de ellos; sin planes, en un pago.
-      const plan = medio.tipo === 'credito' && medio.planes.length ? medio.planes.find((p) => p.cuotas === Number(cobro.cuotas)) : null;
-      if (medio.tipo === 'credito' && medio.planes.length && !plan) {
-        return res.status(400).json({ error: `Elegí en cuántas cuotas se paga con ${medio.nombre}.` });
-      }
-      let cuentaId = medio.cuenta_tesoreria_id ?? turno.cuenta_tesoreria_id;
-      // Una transferencia cae en la cuenta que se elige al cobrar (el banco,
-      // Mercado Pago…), cualquiera menos la caja (hist. §172). Sin elegir, en
-      // la del medio.
-      if (medio.tipo === 'transferencia' && cobro.cuenta_tesoreria_id != null) {
-        const destino = db
-          .prepare('SELECT id, tipo FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
-          .get(Number(cobro.cuenta_tesoreria_id), organizacionId);
-        if (!destino || destino.tipo === 'efectivo') {
-          return res.status(400).json({ error: 'La cuenta donde cae la transferencia no es válida.' });
-        }
-        cuentaId = destino.id;
-      }
-      resueltos.push({ cobro, medio, plan, cuentaId });
+      const { medio, plan, error } = medioDelCobro(cobro, medios);
+      if (error) return res.status(400).json({ error });
+      const destino = cuentaDelMedio(medio, cobro.cuenta_tesoreria_id, organizacionId, turno.cuenta_tesoreria_id);
+      if (destino.error) return res.status(400).json({ error: destino.error });
+      resueltos.push({ cobro, medio, plan, cuentaId: destino.cuentaId });
       continue;
     }
     if (!buscarCuenta.get(Number(cobro.cuenta_tesoreria_id), organizacionId)) {

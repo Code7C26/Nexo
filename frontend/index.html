@@ -3170,6 +3170,13 @@
             <h2>Clientes</h2>
             <button class="btn btn-primary btn-nuevo" id="btnNuevoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo cliente</button>
           </div>
+          <!-- Los cargados dos veces, con el botón para unirlos (hist. §177).
+               Solo el admin: unir mueve la cuenta corriente. -->
+          <div class="aviso-plan" id="clientesRepetidos" role="status" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#copy"></use></svg>
+            <p id="clientesRepetidosTexto"></p>
+            <button type="button" class="btn btn-secundario" id="clientesRepetidosBoton">Unirlos</button>
+          </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="clientesSearch" />
           <div class="filtros" id="filtrosClientes"></div>
           <div class="tabla-scroll">
@@ -3303,6 +3310,13 @@
           <div class="panel-head">
             <h2>Proveedores</h2>
             <button class="btn btn-primary btn-nuevo" id="btnNuevoProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo proveedor</button>
+          </div>
+          <!-- Los cargados dos veces antes de §175, con el botón para unirlos
+               (hist. §176). Solo el admin: unir mueve la cuenta corriente. -->
+          <div class="aviso-plan" id="proveedoresRepetidos" role="status" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#copy"></use></svg>
+            <p id="proveedoresRepetidosTexto"></p>
+            <button type="button" class="btn btn-secundario" id="proveedoresRepetidosBoton">Unirlos</button>
           </div>
           <input type="search" class="search search-full" placeholder="Buscar por nombre, mail o teléfono" id="proveedoresSearch" />
           <div class="filtros" id="filtrosProveedores"></div>
@@ -6729,6 +6743,26 @@
     </div>
   </div>
 
+  <!-- Unir proveedores o clientes repetidos (hist. §176, §177): se elige cuál
+       queda; lo de los otros pasa a ese y los otros se borran. El título y los
+       textos los pone app.js (UNIR). -->
+  <div class="modal" id="modalUnir" role="dialog" aria-modal="true" aria-labelledby="modalUnirTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalUnirTitulo">Unir proveedores</h3>
+        <button class="modal-close" id="modalUnirClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formUnir" class="form">
+        <fieldset class="opciones">
+          <legend>¿Cuál queda?</legend>
+          <div class="opciones-tarjetas" id="unirOpciones"></div>
+        </fieldset>
+        <p class="opciones-nota" id="unirNota"></p>
+        <button type="submit" class="btn btn-primary btn-full">Unir</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal gasto (alta y edición) -->
   <div class="modal" id="modalGasto" role="dialog" aria-modal="true" aria-labelledby="modalGastoTitulo" hidden>
     <div class="modal-card">
@@ -7119,9 +7153,20 @@
         <label>Importe
           <input type="number" name="importe" required placeholder="0.00" step="0.01" min="0.01" />
         </label>
-        <label>Cuenta de tesorería
-          <select name="cuenta_tesoreria_id" required></select>
+        <!-- Los medios de cobro del negocio, como en el mostrador (hist. §176):
+             cada uno dice a qué cuenta entra. Las cuotas y la cuenta se
+             preguntan solo cuando hace falta (los arma app.js). -->
+        <fieldset class="opciones" id="cobroVentaMediosCampo">
+          <legend>Medio de cobro</legend>
+          <div class="chips-elegir" id="cobroVentaMedios"></div>
+        </fieldset>
+        <label id="cobroVentaCuotasCampo" hidden>Cuotas
+          <select name="cuotas"></select>
         </label>
+        <label id="cobroVentaCuentaCampo" hidden><span id="cobroVentaCuentaEtiqueta">¿A qué cuenta entra?</span>
+          <select name="cuenta_tesoreria_id"></select>
+        </label>
+        <p class="form-note" id="cobroVentaDestino" hidden></p>
         <label>Nota
           <input type="text" name="nota" placeholder="Observación (opcional)" />
         </label>
@@ -7129,10 +7174,10 @@
       </form>
       <!-- El link de Mercado Pago (hist. §130): solo con la cuenta conectada.
            Lo arma app.js. Va por el importe de arriba si se completó (una
-           seña), o por todo lo que falta. -->
+           seña), o por todo lo que falta. El mismo link da el QR. -->
       <div class="mp-link" id="cobroVentaMp" hidden>
-        <p class="mp-link-titulo">¿Te paga a distancia?</p>
-        <p class="form-note">Mandale un link de Mercado Pago. Cuando paga, el cobro entra solo en esta venta.</p>
+        <p class="mp-link-titulo">¿Te paga con Mercado Pago?</p>
+        <p class="form-note">Creá un link de pago: se lo mandás por WhatsApp o, si está con vos, le mostrás el QR para que lo escanee. No hace falta que anotes nada: cuando paga, el cobro se registra solo en esta venta.</p>
         <button type="button" class="btn btn-secundario btn-full" id="btnCobroMpLink"><svg class="ico ico-marca mp-emblema" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg> Crear link de Mercado Pago</button>
         <div class="mp-link-listo" id="cobroMpListo" hidden>
           <img class="mp-link-qr" id="cobroMpQr" alt="Código QR del link de pago" hidden />

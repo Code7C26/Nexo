@@ -159,3 +159,62 @@ test('un proveedor tipeado con otras mayúsculas, tildes o espacios es el mismo'
   assert.equal((await n.patch(`/api/proveedores/${otro}`, { nombre: 'Textil Alamos' })).status, 409);
   assert.equal((await n.patch(`/api/proveedores/${textil}`, { nombre: 'Textil Álamos SRL' })).status, 200);
 });
+
+test('unir proveedores: las compras y la deuda pasan al que queda, que completa su contacto (hist. §176)', async () => {
+  await n.post('/api/productos', { nombre: 'Gorra', precio_venta: 9000 });
+  const uno = (await n.post('/api/proveedores', { nombre: 'Accesorios Mayorista', telefono: '351 488-7012' })).json.id;
+  const dos = (await n.post('/api/proveedores', { nombre: 'Mayorista de accesorios', email: 'ventas@mayorista.test' })).json.id;
+  const compra = await n.post('/api/compras', { proveedor: 'Mayorista de accesorios', items: [{ producto: 'Gorra', cantidad: 2, precio_unitario: 500 }] });
+  assert.equal(compra.status, 201, compra.texto);
+  assert.ok((await n.post(`/api/compras/${compra.json.id}/confirmar`, {})).status < 300);
+
+  assert.equal((await n.post(`/api/proveedores/${uno}/unir`, { ids: [] })).status, 400);
+  // Otro negocio no puede unir los de este.
+  const otro = await registrarEmpresa(servidor, { empresa: 'Otro Negocio', usuario: 'otronegociounir' });
+  const ajeno = (await otro.post('/api/proveedores', { nombre: 'Ajeno' })).json.id;
+  assert.equal((await otro.post(`/api/proveedores/${ajeno}/unir`, { ids: [dos] })).status, 404);
+
+  const r = await n.post(`/api/proveedores/${uno}/unir`, { ids: [dos] });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.compras, 1);
+
+  const queda = (await n.get(`/api/proveedores/${uno}`)).json;
+  assert.equal(queda.cantidad_compras, 1);
+  assert.equal(queda.deuda, 1000);
+  assert.equal(queda.telefono, '351 488-7012');
+  assert.equal(queda.email, 'ventas@mayorista.test');
+  assert.equal((await n.get(`/api/compras/${compra.json.id}`)).json.proveedor_id, uno);
+  assert.equal((await n.get(`/api/proveedores/${dos}`)).status, 404);
+
+  const auditoria = (await n.get('/api/auditoria')).json;
+  const filas = Array.isArray(auditoria) ? auditoria : auditoria.filas ?? auditoria.items ?? [];
+  assert.ok(filas.some((f) => f.detalle === `Proveedor "Accesorios Mayorista" unido con "Mayorista de accesorios" (#${dos}). Compras que pasaron: 1`));
+});
+
+test('unir clientes: ventas, deuda y presupuestos pasan al que queda; "Consumidor final" no se borra (hist. §177)', async () => {
+  const producto = (await n.post('/api/productos', { nombre: 'Taza', precio_venta: 2000, tipo: 'servicio' })).json.id;
+  const uno = (await n.post('/api/clientes', { nombre: 'Juana Pérez', telefono: '11 5555-0000' })).json.id;
+  const dos = (await n.post('/api/clientes', { nombre: 'juana perez', email: 'juana@correo.test' })).json.id;
+  // A cuenta corriente: queda debiendo.
+  const venta = await n.post('/api/ventas', { cliente_id: dos, items: [{ producto_id: producto, cantidad: 2, precio_unitario: 2000 }] });
+  assert.equal(venta.status, 201, venta.texto);
+  const presupuesto = await n.post('/api/presupuestos', { cliente_id: dos, items: [{ producto_id: producto, cantidad: 1, precio_unitario: 2000 }] });
+  assert.equal(presupuesto.status, 201, presupuesto.texto);
+
+  // "Consumidor final" lo busca el mostrador por nombre: nunca es el que se borra.
+  const consumidor = (await n.get('/api/clientes')).json.find((c) => c.nombre === 'Consumidor final');
+  if (consumidor) assert.equal((await n.post(`/api/clientes/${uno}/unir`, { ids: [consumidor.id] })).status, 400);
+
+  const r = await n.post(`/api/clientes/${uno}/unir`, { ids: [dos] });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.ventas, 1);
+
+  const queda = (await n.get('/api/clientes')).json.find((c) => c.id === uno);
+  assert.equal(queda.cantidad_compras, 1);
+  assert.equal(queda.deuda, 4000);
+  assert.equal(queda.telefono, '11 5555-0000');
+  assert.equal(queda.email, 'juana@correo.test');
+  assert.equal((await n.get(`/api/ventas/${venta.json.id}`)).json.cliente_id, uno);
+  assert.equal((await n.get(`/api/presupuestos/${presupuesto.json.id}`)).json.cliente_id, uno);
+  assert.equal((await n.get('/api/clientes')).json.some((c) => c.id === dos), false);
+});

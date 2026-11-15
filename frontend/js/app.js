@@ -4923,7 +4923,12 @@ function renderHistorialPagos(contenedorId, lista) {
   contenedor.innerHTML =
     `<div class="historial-pagos">` +
     lista
-      .map((p) => `<div class="historial-pagos-item"><span>${esc(fechaAR(p.fecha))} · ${esc(p.cuenta)}</span><span class="mono">${money(p.importe)}</span></div>`)
+      // El cobro dice con qué se pagó y adónde entró (hist. §176); el pago a
+      // un proveedor, solo la cuenta.
+      .map((p) => {
+        const donde = p.medio && p.medio !== p.cuenta ? `${p.medio} · ${p.cuenta}` : p.cuenta;
+        return `<div class="historial-pagos-item"><span>${esc(fechaAR(p.fecha))} · ${esc(donde)}</span><span class="mono">${money(p.importe)}</span></div>`;
+      })
       .join("") +
     `</div>`;
 }
@@ -4936,13 +4941,99 @@ async function abrirModalCobrarVenta(id) {
   document.getElementById("cobroVentaCobrado").textContent = money(venta.cobrado);
   document.getElementById("cobroVentaSaldo").textContent = money(venta.neto - venta.cobrado);
 
-  poblarSelectCuentas(document.querySelector('#formCobrarVenta select[name="cuenta_tesoreria_id"]'));
+  mediosCobroVenta = await api("/api/medios-cobro?activos=1", { error: "No se pudieron cargar los medios de cobro." });
+  document.getElementById("cobroVentaMediosCampo").hidden = mediosCobroVenta.length === 0;
+  document.getElementById("cobroVentaMedios").innerHTML = mediosCobroVenta
+    .map(
+      (m, i) => `
+        <label class="chip-elegir">
+          <input type="radio" name="medio_cobro_id" value="${m.id}" ${i === 0 ? "checked" : ""} />
+          ${esc(m.nombre)}
+        </label>`
+    )
+    .join("");
+  pintarMedioCobro();
 
   const cobros = await api(`/api/ventas/${id}/cobros`);
   renderHistorialPagos("cobroVentaHistorial", cobros);
   prepararLinkMercadoPago(venta.neto - venta.cobrado);
 
   modalCobrarVenta.hidden = false;
+}
+
+/* --- El medio de cobro (hist. §176) --- */
+
+// Los mismos medios que el mostrador (hist. §171): cada uno dice a qué
+// cuenta entra la plata, así que la cuenta solo se pregunta cuando no está
+// dicha. Sin medios activos, la cuenta suelta como antes.
+let mediosCobroVenta = [];
+
+function medioCobroElegido() {
+  const id = Number(document.querySelector("#cobroVentaMedios input:checked")?.value);
+  return mediosCobroVenta.find((m) => m.id === id) ?? null;
+}
+
+// Las mismas reglas que cuentaDelMedio en el servidor: el efectivo entra a
+// una caja, la transferencia a cualquier cuenta menos una caja, y los demás a
+// la suya o, si no tienen, a la que se elija (un cheque, cargado como "Otro").
+function cuentasParaElMedio(medio) {
+  if (!medio) return cuentasTesoreria;
+  if (medio.tipo === "efectivo") return cuentasTesoreria.filter((c) => c.tipo === "efectivo");
+  if (medio.tipo === "transferencia") return cuentasTesoreria.filter((c) => c.tipo !== "efectivo");
+  return medio.cuenta_tesoreria_id ? [] : cuentasTesoreria;
+}
+
+function cuentaFijaDelMedio(medio) {
+  const posibles = cuentasParaElMedio(medio);
+  if (posibles.length === 1) return posibles[0];
+  if (posibles.length === 0) return cuentasTesoreria.find((c) => c.id === medio?.cuenta_tesoreria_id) ?? null;
+  return null;
+}
+
+function pintarMedioCobro() {
+  const form = document.getElementById("formCobrarVenta");
+  const medio = medioCobroElegido();
+
+  const planes = medio?.tipo === "credito" ? medio.planes : [];
+  document.getElementById("cobroVentaCuotasCampo").hidden = planes.length === 0;
+  form.cuotas.innerHTML = planes
+    .map((p) => `<option value="${esc(p.cuotas)}">${p.cuotas === 1 ? "1 pago" : `${numero(p.cuotas)} cuotas`}</option>`)
+    .join("");
+
+  const posibles = cuentasParaElMedio(medio);
+  const elegir = posibles.length > 1;
+  document.getElementById("cobroVentaCuentaCampo").hidden = !elegir;
+  form.cuenta_tesoreria_id.required = elegir;
+  form.cuenta_tesoreria_id.innerHTML = posibles.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
+  if (posibles.some((c) => c.id === medio?.cuenta_tesoreria_id)) form.cuenta_tesoreria_id.value = medio.cuenta_tesoreria_id;
+  document.getElementById("cobroVentaCuentaEtiqueta").textContent =
+    medio?.tipo === "efectivo" ? "¿En qué caja entra?" : medio?.tipo === "transferencia" ? "¿En qué cuenta cayó?" : "¿A qué cuenta entra?";
+
+  // Sin nada para elegir, dice adónde va la plata y cuándo se acredita.
+  const fija = elegir ? null : cuentaFijaDelMedio(medio);
+  const dias = medio?.dias_acreditacion ?? 0;
+  const partes = [
+    fija ? `Entra a ${fija.nombre}.` : "",
+    dias === 1 ? "Se acredita en 1 día." : dias > 1 ? `Se acredita en ${dias} días.` : ""
+  ].filter(Boolean);
+  const destino = document.getElementById("cobroVentaDestino");
+  destino.hidden = partes.length === 0;
+  destino.textContent = partes.join(" ");
+}
+
+document.getElementById("cobroVentaMedios").addEventListener("change", pintarMedioCobro);
+
+// Lo que se manda del medio y la cuenta; sin medios, la cuenta elegida.
+function medioParaEnviar(form) {
+  const medio = medioCobroElegido();
+  if (!medio) return { cuenta_tesoreria_id: Number(form.cuenta_tesoreria_id.value) };
+  const elegir = !document.getElementById("cobroVentaCuentaCampo").hidden;
+  const cuenta = elegir ? Number(form.cuenta_tesoreria_id.value) : cuentaFijaDelMedio(medio)?.id;
+  return {
+    medio_cobro_id: medio.id,
+    ...(document.getElementById("cobroVentaCuotasCampo").hidden ? {} : { cuotas: Number(form.cuotas.value) }),
+    ...(cuenta ? { cuenta_tesoreria_id: cuenta } : {})
+  };
 }
 
 /* --- El link de Mercado Pago (hist. §130) --- */
@@ -5041,7 +5132,7 @@ document.getElementById("formCobrarVenta").addEventListener("submit", async (e) 
     method: "POST",
     body: {
       importe: parseFloat(form.importe.value),
-      cuenta_tesoreria_id: Number(form.cuenta_tesoreria_id.value),
+      ...medioParaEnviar(form),
       nota: form.nota.value || null
     },
     error: "No se pudo registrar el cobro."
@@ -6571,6 +6662,7 @@ async function cargarClientes() {
   tablaCargando("clientesBody", selClientes.colspan(5));
   clientes = await api("/api/clientes");
   filtrarClientes();
+  mostrarRepetidos("cliente");
   poblarDatalistClientes();
 }
 
@@ -6601,6 +6693,11 @@ const COLUMNAS_CSV_CLIENTES = [
 ];
 
 montarBarraSeleccion(selClientes, [
+  {
+    etiqueta: "Unir",
+    visible: (cantidad) => cantidad >= 2 && esAdmin(),
+    onClick: (ids) => abrirUnir("cliente", ids)
+  },
   {
     etiqueta: "Exportar CSV",
     onClick: (ids) => {
@@ -6801,11 +6898,159 @@ async function cargarProveedores() {
   tablaCargando("proveedoresBody", selProveedores.colspan(6));
   fijarProveedores(await api("/api/proveedores"));
   filtrarProveedores();
+  mostrarRepetidos("proveedor");
   // Los de la compra (hist. §175): se elige uno, o se escribe uno nuevo.
   document.getElementById("proveedoresSugeridos").innerHTML = proveedores
     .map((p) => `<option value="${esc(p.nombre)}"></option>`)
     .join("");
 }
+
+/* ---------- Unir repetidos (hist. §176, §177) ---------- */
+
+// Los proveedores y los clientes que quedaron cargados dos veces (antes de
+// §175 una compra o una venta con el nombre tipeado distinto creaba otro). Un
+// mismo aviso arriba de cada lista y un mismo modal para elegir cuál queda.
+// Repetidos son los del mismo nombre sin contar mayúsculas, tildes ni
+// espacios, como los busca el servidor, salvo que tengan CUIT o DNI distintos:
+// entonces son dos de verdad (dos "Juan Pérez").
+const claveDeNombre = (texto) =>
+  String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const UNIR = {
+  proveedor: {
+    titulo: "Unir proveedores",
+    lista: () => proveedores,
+    aviso: "proveedores",
+    url: (id) => `/api/proveedores/${id}/unir`,
+    resumen: (p) => `${numero(p.cantidad_compras)} compra${p.cantidad_compras === 1 ? "" : "s"} por ${money(p.total_comprado)}`,
+    unaVez: (nombre, veces) => `"${nombre}" está cargado ${veces} veces. Unilo para ver todas sus compras juntas.`,
+    varios: (cuantos, nombre) =>
+      `Tenés ${cuantos} proveedores cargados más de una vez, como "${nombre}". Unilos para ver todas sus compras juntas.`,
+    explicarUno: (nombre) =>
+      `Las compras, los pagos, los gastos y la cuenta corriente del otro pasan a "${nombre}", y el otro se borra. Si a "${nombre}" le falta el teléfono, el mail o el CUIT, se completa con los del otro.`,
+    explicarVarios: (otros, nombre) =>
+      `Las compras, los pagos, los gastos y la cuenta corriente de los otros ${otros} pasan a "${nombre}", y los otros se borran. Si a "${nombre}" le falta el teléfono, el mail o el CUIT, se completa con los de ellos.`,
+    error: "No se pudieron unir los proveedores.",
+    listo: (nombre) => `Listo: "${nombre}" quedó uno solo, con todas sus compras.`,
+    despues: async () => {
+      selProveedores.limpiar();
+      await refrescar([cargarProveedores()]);
+    }
+  },
+  cliente: {
+    titulo: "Unir clientes",
+    lista: () => clientes,
+    aviso: "clientes",
+    url: (id) => `/api/clientes/${id}/unir`,
+    resumen: (c) => `${numero(c.cantidad_compras)} compra${c.cantidad_compras === 1 ? "" : "s"} por ${money(c.total_gastado)}`,
+    unaVez: (nombre, veces) => `"${nombre}" está cargado ${veces} veces. Unilo para ver todas sus ventas juntas.`,
+    varios: (cuantos, nombre) =>
+      `Tenés ${cuantos} clientes cargados más de una vez, como "${nombre}". Unilos para ver todas sus ventas juntas.`,
+    explicarUno: (nombre) =>
+      `Las ventas, los cobros, los presupuestos, la cuenta corriente y las consultas del otro pasan a "${nombre}", y el otro se borra. Si a "${nombre}" le falta el teléfono, el mail o el DNI, se completa con los del otro.`,
+    explicarVarios: (otros, nombre) =>
+      `Las ventas, los cobros, los presupuestos, la cuenta corriente y las consultas de los otros ${otros} pasan a "${nombre}", y los otros se borran. Si a "${nombre}" le falta el teléfono, el mail o el DNI, se completa con los de ellos.`,
+    error: "No se pudieron unir los clientes.",
+    listo: (nombre) => `Listo: "${nombre}" quedó uno solo, con todas sus ventas.`,
+    despues: async () => {
+      selClientes.limpiar();
+      await refrescar([cargarClientes(), cargarVentas(), recargar("cuentasCorrientes")]);
+    }
+  }
+};
+
+function mostrarRepetidos(tipo) {
+  const config = UNIR[tipo];
+  const grupos = new Map();
+  for (const x of config.lista()) {
+    const clave = claveDeNombre(x.nombre);
+    grupos.set(clave, [...(grupos.get(clave) ?? []), x]);
+  }
+  const documentos = (g) => new Set(g.map((x) => claveDeNombre(x.documento).replace(/\W/g, "")).filter(Boolean));
+  const repetidos = esAdmin() ? [...grupos.values()].filter((g) => g.length > 1 && documentos(g).size <= 1) : [];
+  const aviso = document.getElementById(`${config.aviso}Repetidos`);
+  aviso.hidden = repetidos.length === 0;
+  if (repetidos.length === 0) return;
+  // De a un grupo: al unirlo, el aviso pasa al siguiente.
+  const [grupo] = repetidos;
+  document.getElementById(`${config.aviso}RepetidosTexto`).textContent =
+    repetidos.length === 1 ? config.unaVez(grupo[0].nombre, grupo.length) : config.varios(repetidos.length, grupo[0].nombre);
+  document.getElementById(`${config.aviso}RepetidosBoton`).onclick = () => abrirUnir(tipo, grupo.map((x) => x.id));
+}
+
+const modalUnir = document.getElementById("modalUnir");
+let unir = { tipo: null, elegidos: [] };
+
+function abrirUnir(tipo, ids) {
+  const config = UNIR[tipo];
+  const elegidos = ids.map((id) => config.lista().find((x) => x.id === id)).filter(Boolean);
+  if (elegidos.length < 2) return;
+  unir = { tipo, elegidos };
+  const contactoDe = (x) => [x.telefono, x.email].filter(Boolean).join(" · ");
+  // Propone "Consumidor final" si está (el mostrador lo busca por nombre), y
+  // si no el que tiene contacto (el cargado a propósito, no el que nació de
+  // una operación tipeada), después el de más compras y después el más viejo.
+  const propuesto = [...elegidos].sort(
+    (a, b) =>
+      (b.nombre === "Consumidor final") - (a.nombre === "Consumidor final") ||
+      Boolean(contactoDe(b)) - Boolean(contactoDe(a)) ||
+      b.cantidad_compras - a.cantidad_compras ||
+      a.id - b.id
+  )[0];
+  document.getElementById("modalUnirTitulo").textContent = config.titulo;
+  document.getElementById("unirOpciones").innerHTML = elegidos
+    .map((x) => {
+      const detalle = [config.resumen(x), contactoDe(x) || "sin contacto"].join(" · ");
+      return `
+        <label class="opcion-tarjeta">
+          <input type="radio" name="queda" value="${x.id}" ${x.id === propuesto.id ? "checked" : ""} />
+          <span class="opcion-tarjeta-texto">
+            <span class="opcion-tarjeta-nombre">${esc(x.nombre)}</span>
+            <span class="opcion-tarjeta-desc">${esc(detalle)}</span>
+          </span>
+          <span class="opcion-tarjeta-check">${icono("check")}</span>
+        </label>`;
+    })
+    .join("");
+  explicarUnion();
+  modalUnir.hidden = false;
+}
+
+function explicarUnion() {
+  const config = UNIR[unir.tipo];
+  const queda = unir.elegidos.find((x) => x.id === Number(document.getElementById("formUnir").queda.value));
+  const otros = unir.elegidos.length - 1;
+  document.getElementById("unirNota").textContent =
+    otros === 1 ? config.explicarUno(queda.nombre) : config.explicarVarios(otros, queda.nombre);
+}
+
+document.getElementById("unirOpciones").addEventListener("change", explicarUnion);
+document.getElementById("modalUnirClose").addEventListener("click", () => {
+  modalUnir.hidden = true;
+});
+modalUnir.addEventListener("click", (e) => {
+  if (e.target === modalUnir) modalUnir.hidden = true;
+});
+
+document.getElementById("formUnir").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const config = UNIR[unir.tipo];
+  const quedaId = Number(e.target.queda.value);
+  const queda = unir.elegidos.find((x) => x.id === quedaId);
+  await api(config.url(quedaId), {
+    method: "POST",
+    body: { ids: unir.elegidos.filter((x) => x.id !== quedaId).map((x) => x.id) },
+    error: config.error
+  });
+  modalUnir.hidden = true;
+  await config.despues();
+  avisar(config.listo(queda.nombre), "ok");
+});
 
 function filtrarProveedores() {
   const q = document.getElementById("proveedoresSearch").value.trim().toLowerCase();
@@ -6834,6 +7079,11 @@ const COLUMNAS_CSV_PROVEEDORES = [
 ];
 
 montarBarraSeleccion(selProveedores, [
+  {
+    etiqueta: "Unir",
+    visible: (cantidad) => cantidad >= 2 && esAdmin(),
+    onClick: (ids) => abrirUnir("proveedor", ids)
+  },
   {
     etiqueta: "Exportar CSV",
     onClick: (ids) => {

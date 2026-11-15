@@ -204,6 +204,9 @@ export function montarBarraSeleccion(sel, acciones) {
     conteo.textContent = `${cantidad} ${cantidad === 1 ? "seleccionada" : "seleccionadas"}`;
     contenedorAcciones.innerHTML = "";
     for (const accion of acciones) {
+      // Una acción que solo tiene sentido con cierta cantidad o cierto rol
+      // ("Unir", con dos o más) no aparece hasta entonces.
+      if (accion.visible && !accion.visible(cantidad)) continue;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn-secundario";

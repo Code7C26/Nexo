@@ -1987,9 +1987,18 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 }
 
 /* Falta elegir algo en este renglón (la variante que el asistente no pudo resolver). */
+/* En el borde y no de fondo: el navegador pinta la lista abierta con el fondo
+   del select, y uno translúcido quedaba rosa con las letras claras encima. */
 .item-row select.campo-falta {
   border-color: var(--accent-warn);
-  background: var(--accent-warn-bg);
+  box-shadow: 0 0 0 3px var(--accent-warn-bg);
+}
+
+/* Las opciones de cualquier select, con colores fijos del tema: así ninguna
+   lista abierta hereda un fondo raro. */
+select option {
+  background-color: var(--surface);
+  color: var(--ink);
 }
 
 .item-row input {

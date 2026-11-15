@@ -585,6 +585,8 @@ Implementado hoy: ficha de cliente con condición de pago habitual y cuenta
 corriente con saldo reconstruido desde los movimientos (§12). La condición
 frente al IVA (vacía = consumidor final) decide, con la del negocio, la letra
 del comprobante (hist. §113). El proveedor tiene la suya (hist. §114).
+Clientes y proveedores repetidos se unen en uno (el admin elige cuál queda y
+todo lo del otro pasa a ese; hist. §176, §177).
 
 ---
 
@@ -1316,7 +1318,8 @@ Cada medio dice a qué cuenta entra la plata (el efectivo, siempre la caja del
 turno), su comisión, en cuántos días se acredita y, en el crédito, sus planes de
 cuotas con lo que le cuesta al negocio ofrecerlos. La comisión y ese costo se
 anotan solos como gastos de la venta. Cada cobro guarda su medio y sus cuotas, y
-Ventas filtra por medio y por cuenta. Falta: recargo por cuotas al cliente (el
+Ventas filtra por medio y por cuenta. "Registrar cobro" en Ventas cobra con los
+mismos medios (hist. §176). Falta: recargo por cuotas al cliente (el
 "precio tarjeta" hoy se hace con una lista de precios) y acreditación diferida
 (la plata entra a la cuenta en el momento).
 **Descuento a mano** (hist. §175): un porcentaje o un monto sobre toda la
