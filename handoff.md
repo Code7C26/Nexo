@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §171);
+    siguiente número (hoy el último es §174);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,10 +19,30 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (14 de noviembre de 2026)
+## Estado actual (15 de noviembre de 2026)
+
+**14 de noviembre, hist. §173: el bloque del problema de la presentación,
+rehecho (commiteado en `solla`, sin publicar).** Pedido del usuario. La 3 con una persona
+animada tapada de papeles; la 4 en dos toques (la pregunta sola, después "todos
+los días"); la 5 y la 6 nuevas, propuestas mías ("Cada hora copiando datos es una
+hora menos para el negocio" y "Se vende un montón, y la plata no aparece", con
+una remera de $ 20.000 que deja $ 3.700); y **una 8 nueva**, "Todo junto, en
+Nexo": las partes del negocio se juntan en un sistema y el logo se posa arriba.
+**Ahora son 32: la del QR es la 11 (`#11`).** Guía renumerada y armada.
+- **Segunda vuelta (hist. §174), con las correcciones del usuario:** la 3 con
+  los objetos completos; la 5 rehecha (reloj rojo que larga problemas y la
+  personita pasando números → reloj verde y lento, la personita con un mate);
+  la 6 con un hombrecito que festeja y se pone triste con cada costo; la 8 en
+  tres pasos con las flechas (y arranca de nuevo al volver), que termina con
+  las partes en el menú de Nexo (con las medidas del de la app) y un Resumen
+  genérico ("Mi negocio"); **26 = propuesta de valor y
+  planes juntas**; la 30 (IA) con Claude Code y 10 skills y agentes; **31 nueva,
+  "Lo que vinimos a resolver"**; la 32 con "¡Gracias! ¿Preguntas?". Siguen siendo 32.
+- **A confirmar con el usuario:** la lista de skills de la 30 sale de lo que
+  registra la bitácora; él dijo que usaron muchas más: sumar las que falten.
 
 **14 de noviembre, después de §171: Medios de cobro pasa a "Cobros" y las
-cuotas de Mercado Pago salen de Mercado Pago (sin commitear en `solla`).**
+cuotas de Mercado Pago salen de Mercado Pago (publicado: PR #85 y #86).**
 - **Pedido del usuario:** las cuotas de Mercado Pago no se cargan a mano, que
   salgan de la conexión; y "Medios de cobro" va en el grupo **Cobros** de
   Configuración, arriba de Mercado Pago.
@@ -83,8 +103,7 @@ cuotas de Mercado Pago salen de Mercado Pago (sin commitear en `solla`).**
   de Mercado Pago (se podría fijar `payment_methods.installments` en la
   preferencia del link, a decidir con el usuario).
 
-**14 de noviembre, hist. §170: primera lista de la contadora (sin commitear en
-`solla`).**
+**14 de noviembre, hist. §170: primera lista de la contadora (publicado).**
 - **Filtros arreglados** (`frontend/js/core/filtros.js`): al agregar un filtro
   que nace completo (Fecha arranca en "es hoy", sin valor), el chip aparecía
   pero la lista no se refiltraba hasta tocar otra cosa; `abrirSelectorCampo` no
@@ -95,7 +114,7 @@ cuotas de Mercado Pago salen de Mercado Pago (sin commitear en `solla`).**
 - **Ventas, filtro "Cobrado en"** (cuenta de tesorería): `GET /api/ventas` suma
   `cuentas_cobro` (lista de ids). Pasará a ser "medio de cobro" cuando exista
   el punto siguiente.
-- **Medios de cobro configurables, hecho (hist. §171, sin commitear).** El POS ya
+- **Medios de cobro configurables, hecho (hist. §171, publicado).** El POS ya
   no ofrece las cuentas sino los medios de Configuración → Medios de cobro
   (`medios_cobro` + `medio_cobro_planes`, `cobros.medio_cobro_id` y `cuotas`).
   Un negocio nuevo nace con Efectivo, Débito, Crédito (1, 3 y 6 cuotas),
@@ -107,28 +126,48 @@ cuotas de Mercado Pago salen de Mercado Pago (sin commitear en `solla`).**
   cuotas al cliente (el "precio tarjeta" es una lista de precios) y la plata
   entra a la cuenta en el momento (los días de acreditación solo se muestran).
   Probado: 379 tests, `verificar-migracion` 24/24 y navegador (escritorio y
-  celular). Tiene que publicarse junto con lo de §170, como pidió el usuario.
+  celular). Publicado junto con lo de §170, como pidió el usuario.
 - Quedó en la lista del usuario más por llegar: anotarla acá apenas la pase.
 
 **14 de noviembre, hist. §169: videos para el simulacro del lunes 16 y lo que
-sigue. Todo sin commitear en `solla`.** Relato completo, trampas de la grabación
+sigue. Commiteado en `solla`, sin publicar** (menos
+`docs/pitch/media/nexo-ingles-guia.mp4`, la guía con voz de prueba, que no se
+sube: 20 MB y temporal). Relato completo, trampas de la grabación
 y archivos en el histórico.
-- **Video 5 ("un negocio desde cero"): v1 hecha y a corregir.**
-  `docs/pitch/media/nexo-negocio-desde-cero.mp4` (62 s) graba la app real en un
-  Nexo local (alta, tipo, secciones, "Lo que ya tenías"). **El usuario pidió
-  cambios, para la próxima sesión:** va dentro de una diapositiva y corre de
-  fondo mientras el equipo habla, así que (1) **sin intro ni outro** (ni el
-  título ni el logo), directo al alta; (2) **lo más rápido posible** (~35 a
-  40 s); (3) **sin frases explicativas**, y menos que menos con comas en el
-  medio: etiquetas de 2 o 3 palabras o nada de texto (confirmarlo con él);
-  (4) **sin música**: la música movida es solo del video 6 (la apertura).
-  Además hay que ponerlo en una diapositiva (decide el usuario dónde).
-- **Video en inglés: sin terminar.** La voz la graba el usuario. El grabador
-  (`redes/videos/grabar/ingles.mjs`) llegó hasta la ficha de venta; falta un
-  selector y armar el video en Remotion. Aplican las mismas ideas (sin música,
-  sin comas, rápido): confirmar con el usuario si va en una diapositiva o
-  aparte. El asistente anda en inglés con la IA real. **Ojo: el `.env` local tiene un
-  espacio antes de `GROQ_API_KEY`: Groq lo rechaza (401).**
+- **Video 5 ("un negocio desde cero"): v2 hecha (26 s), falta elegir y ponerlo
+  en una diapositiva.** Con las correcciones del usuario: pantalla completa,
+  sin intro, sin outro y sin música; etiquetas de 2 o 3 palabras sin comas
+  (abajo a la izquierda). Dos mp4 en `docs/pitch/media/`:
+  `nexo-negocio-desde-cero.mp4` (con etiquetas) y `...-sin-texto.mp4`: **el
+  usuario elige cuál.** Falta ponerlo en una diapositiva (decide él dónde;
+  agregar una renumera la guía, el guion y los QR de `npm run presentacion` /
+  `npm run guia`).
+- **Video en inglés: v4 armada (~21 s con voz guía); falta la voz del
+  usuario.** Va en la presentación (corto). El usuario dijo que la v3 seguía con
+  pausas innecesarias y descoordinación; se rehízo **atada a la voz**: cada
+  corte cae en el segundo exacto de su palabra (tiempos por palabra en
+  `redes/videos/estudio/src/compositions/voz/nexo-ingles.json`), cada pantalla se
+  graba con movimiento continuo y no queda nada quieto salvo la tarjeta del QR.
+  `docs/pitch/media/nexo-ingles-guia.mp4` (voz de edge-tts, solo para ver el
+  ritmo). Texto y pasos en `redes/videos/estudio/storyboards/nexo-ingles.md`.
+  **Sigue:** el usuario graba la voz de corrido; con
+  `node videos/grabar/tiempos-voz.mjs <audio> <json>` (Whisper de Groq) se sacan
+  sus tiempos y se renderiza el final. Después, ponerlo en una diapositiva
+  (decide él dónde). Salió un arreglo de producto: el mensaje del asistente al
+  confirmar ("Venta #N registrada.") salía mitad en castellano en inglés; ahora
+  una frase entera por tipo (`asistenteEjecutar`, `en.js`; `idioma.test.js` en
+  verde). **Ojo: si el `.env` local vuelve a tener un espacio antes de
+  `GROQ_API_KEY`, Groq lo rechaza (401).**
+- **Video en inglés, PENDIENTE de rehacer el enfoque (pedido del usuario, 14 de
+  noviembre, al final de la noche).** La v4 le pareció mucho más dinámica, pero
+  **"tiembla la cámara cada vez que hay un cambio"** (probable causa: el paneo y
+  el zoom entre momentos, `focoEn` con transición de 7 cuadros y la deriva de
+  5 %, sobre capturas reales) y opina que en vez de capturas de la app habría
+  que **animarlo de otra forma: una animación armada por nosotros**, no la app
+  grabada. Referencia: el video en inglés del repositorio de sus amigos
+  (animación propia, no muestra la aplicación directamente). **Antes de
+  rehacerlo, mirar ese repositorio** (pedir el enlace) y plantear opciones. Lo
+  dejó para después: no tocar lo hecho hasta que lo retome.
 - **Mejoras de producto hechas** (tests en verde): los ejemplos ya no dejan una
   cuenta con saldo negativo (el banco de Lola quedaba en −$2,7 M; hay que
   rearmar el ejemplo en la cuenta del usuario y en el servidor para verlo) y
