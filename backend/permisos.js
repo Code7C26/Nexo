@@ -113,6 +113,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/proveedores/:id': 'ambos',
   'POST /api/proveedores': 'ambos',
   'PATCH /api/proveedores/:id': 'ambos',
+  // Mueve compras y cuenta corriente y borra al otro (hist. §176).
+  'POST /api/proveedores/:id/unir': 'admin',
   'GET /api/stock': 'ambos',
   'POST /api/stock/ajuste': 'admin',
   'GET /api/movimientos-stock': 'ambos',

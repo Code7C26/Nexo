@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §175);
+    siguiente número (hoy el último es §176);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,25 @@
   reescribe nada.
 
 ## Estado actual (15 de noviembre de 2026)
+
+**15 de noviembre, hist. §176: unir proveedores repetidos y "Registrar cobro"
+con los medios de cobro (commiteado en `solla`, sin publicar).**
+- **Unir proveedores:** `POST /api/proveedores/:id/unir` (solo admin) pasa al
+  de `:id` las compras (con sus pagos y devoluciones), los gastos, la cuenta
+  corriente y lo aprendido de sus facturas, completa el contacto que le falta
+  y borra los otros. En Proveedores: un aviso arriba cuando hay nombres
+  repetidos (sin mayúsculas, tildes ni espacios) con "Unirlos", y "Unir" en la
+  barra de selección con dos o más tildados. Así se arreglan los repetidos de
+  antes de §175, también los de bases reales.
+- **"Registrar cobro" en Ventas** cobra con los medios del negocio, como el
+  mostrador: la cuenta sale del medio, y solo se pregunta cuando no está dicha
+  (el efectivo con varias cajas, la transferencia, un medio sin cuenta). Las
+  cuotas del crédito y la comisión entran como gastos de la venta. Una sola
+  regla en el servidor para los dos: `cuentaDelMedio` y `medioDelCobro`. El
+  texto de Mercado Pago se reescribió (el link y el QR son lo mismo).
+- **Planteado por la contadora y sin hacer:** cheques como medio con fecha de
+  cobro (hoy se cargan como un medio "Otro" sin fecha; falta la acreditación
+  diferida de §30) y cobrar en dólares (multimoneda, fuera de alcance por §39).
 
 **15 de noviembre, hist. §175: lo que planteó una contadora probando la demo
 (publicado).**
@@ -43,7 +62,7 @@
   queda en la auditoría quién lo hizo.
 
 **14 de noviembre, hist. §173: el bloque del problema de la presentación,
-rehecho (commiteado en `solla`, sin publicar).** Pedido del usuario. La 3 con una persona
+rehecho (publicado).** Pedido del usuario. La 3 con una persona
 animada tapada de papeles; la 4 en dos toques (la pregunta sola, después "todos
 los días"); la 5 y la 6 nuevas, propuestas mías ("Cada hora copiando datos es una
 hora menos para el negocio" y "Se vende un montón, y la plata no aparece", con

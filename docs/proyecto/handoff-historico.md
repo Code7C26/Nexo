@@ -13759,3 +13759,59 @@ celular entra sin scroll horizontal.
 **Queda.** Decidir si el empleado puede hacer descuentos o solo el admin, y si
 hace falta un tope. Precio editable por renglón en el mostrador.
 
+
+## §176 — 15 de noviembre de 2026: unir proveedores repetidos y "Registrar cobro" con los medios de cobro
+
+**Pedido del usuario (dos mensajes).** (1) "fijate que tengo dos proveedores iguales":
+en la demo de indumentaria seguían "Accesorios Mayorista" y "Accesorios mayorista"
+(§175 evita los nuevos, no arregla los que ya estaban). (2) De la contadora, sobre
+"Registrar cobro" en Ventas: el texto del link de Mercado Pago no se entendía, y donde
+dice "Cuenta de tesorería" irían los medios de pago ("transferencia, cheque, dólares?
+otro? QR? ¿por qué QR y link de pago no es lo mismo?").
+
+**Unir proveedores.**
+- `POST /api/proveedores/:id/unir { ids }` (solo admin, en `permisos.js` y con
+  `soloAdmin`): en una transacción pasa al de `:id` las compras (sus pagos y
+  devoluciones cuelgan de la compra), los gastos, `movimientos_cc_proveedores` y
+  `proveedor_articulos` (si los dos aprendieron la misma clave, vale la del que queda),
+  completa los campos de contacto vacíos con los de los otros (`CAMPOS_CONTACTO_PROVEEDOR`)
+  y borra los otros. Sin cambio de esquema: la auditoría es un `editar` del que queda,
+  con el contacto completado como valor anterior/nuevo y "unido con … Compras que
+  pasaron: N" (el CHECK de `auditoria.accion` no tiene "unir" y no valía un rebuild).
+- Pantalla: `mostrarProveedoresRepetidos` (app.js) agrupa por nombre sin mayúsculas,
+  tildes ni espacios y, para el admin, muestra un aviso (`.aviso-plan`) con "Unirlos"
+  para el primer grupo; al unirlo pasa al siguiente. "Unir" en la barra de selección
+  aparece con dos o más tildados (`montarBarraSeleccion` acepta `visible(cantidad)`).
+  El modal `#modalUnirProveedores` pregunta cuál queda en tarjetas con compras,
+  total y contacto; propone el que tiene contacto (el cargado a propósito), después
+  el de más compras y después el más viejo, y explica qué pasa.
+
+**Registrar cobro con medios.**
+- Servidor: `cuentaDelMedio(medio, elegida, org, caja)` y `medioDelCobro(cobro,
+  medios)` reemplazan la lógica que estaba adentro de `POST /api/pos/ventas`, y los
+  usa también `POST /api/ventas/:id/cobros`, que acepta `medio_cobro_id`, `cuotas` y
+  `cuenta_tesoreria_id`. El efectivo entra a la caja del turno o, fuera del
+  mostrador, a la que se elige (con una sola, esa); la transferencia a la que se elige
+  menos una caja; los demás a la suya o, sin cuenta (un "Otro"), a la elegida. Con
+  medio se registran sus costos (`registrarCostosDelMedio`). Sin medio sigue
+  aceptando la cuenta suelta. `GET /api/ventas/:id/cobros` suma `medio` y `cuotas`.
+- Pantalla: chips de los medios activos (`chips-elegir`), cuotas solo en un crédito
+  con planes, la cuenta solo cuando hay que elegirla ("¿En qué caja entra?", "¿En qué
+  cuenta cayó?") y, si no, "Entra a Banco." con los días de acreditación. El historial
+  del modal dice "Transferencia · Mercado Pago".
+- Mercado Pago: "¿Te paga con Mercado Pago? Creá un link de pago: se lo mandás por
+  WhatsApp o, si está con vos, le mostrás el QR… cuando paga, el cobro se registra solo
+  en esta venta". El QR que da este modal es el del mismo link.
+
+**No se hizo.** Cheques con fecha de cobro (hoy un medio "Otro" llamado Cheque, sin
+fecha: haría falta la acreditación diferida de §30 o una cartera de cheques) y cobrar
+en dólares (multimoneda, §39). Unir clientes repetidos (mismo problema, muchas más
+tablas).
+
+**Verificado.** Tests nuevos en `descuento-y-proveedores.test.js` (unir: compras,
+deuda, contacto, el otro borrado, la auditoría, otro negocio da 404) y en
+`medios-cobro.test.js` (cobrar después con efectivo, transferencia a la caja
+rechazada, crédito con plan y sus costos, medio ajeno). Suite completa 388/388, lint
+e i18n. En el navegador con una base aparte: el aviso y la unión de "Accesorios
+mayorista" (queda uno con la compra y el teléfono), "Unir" solo con dos tildados, y
+un cobro por Transferencia a Mercado Pago desde Ventas.
