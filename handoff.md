@@ -2980,6 +2980,19 @@ los usa; conviene arrancarlos ya, porque algunos tardan días):
     servidor solo cambian `WHATSAPP_PHONE_NUMBER_ID` y `WHATSAPP_NUMERO`
     (dígitos, 549…). Volver a vincular el teléfono y probar. Si Meta pide un
     medio de pago, el usuario decide.
+  - **Hecho (15 de noviembre): Nexo usa el número real** +54 9 3547 66-4779
+    (identificador `1426215617244574`, `WHATSAPP_NUMERO=5493547664779`, ya en
+    el servidor), y el usuario vinculó su celu. No entraba en la cuenta de
+    prueba ("Test Messaging Account", `873217219182553`, solo admite el número
+    de prueba): está en una cuenta real nueva, `3017074438658382`, que pidió
+    completar la información de contacto del portfolio. Se hizo:
+    `subscribed_apps` a esa cuenta, `register` (PIN de dos pasos: lo tiene el
+    usuario), la cuenta asignada al usuario del sistema del token, y el perfil
+    desde WhatsApp Manager. El código por SMS no llegaba: el formato es 9 +
+    área sin 0 + número sin 15, o pedirlo por llamada. El token del Explorador
+    tiene que tener acceso a la cuenta nueva (si no, error #200). **Falta:**
+    que Meta apruebe el nombre "Nexo"; probar una venta por texto y por audio;
+    que los demás vuelvan a vincular su celu (estaban con el de prueba).
 
 **Después de la presentación:**
 - **Ofertas en presupuestos** (charlado con el usuario el 4 de noviembre, "lo
