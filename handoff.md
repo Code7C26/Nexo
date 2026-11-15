@@ -61,10 +61,14 @@ cuotas de Mercado Pago salen de Mercado Pago (sin commitear en `solla`).**
     cobro de un medio de tipo transferencia (valida que sea de la empresa y no
     efectivo; en otros medios se ignora). El QR sigue como botón aparte con
     Mercado Pago conectado; el link de pago, desde "Registrar cobro".
-  - **Migración, una vez** (`PRAGMA user_version = 1` en `db/index.js`): el
-    medio "Mercado Pago" billetera creado solo y sin tocar (sin comisión, días
-    ni planes) pasa a ser la Transferencia si el negocio no tenía, o se borra si
-    la tenía y no tiene cobros. Uno tocado queda como está.
+  - **Migración, una vez** (`PRAGMA user_version = 2` en `db/index.js`): el
+    medio "Mercado Pago" billetera (de la cuenta tipo Mercado Pago, se llame
+    como se llame la cuenta) pasa a ser la Transferencia si el negocio no tenía,
+    se borra si ya la tenía y el medio está intacto y sin cobros, y en cualquier
+    otro caso **se pausa** (cobró algo, o tiene comisión, días o planes: no se
+    pierde nada, se borra desde Configuración cuando se pueda). La versión 1
+    dejaba esos como estaban y el usuario los seguía viendo en el mostrador
+    (publicada el 14-11 en el PR #85, corregida después).
 - **Menú y textos:** Medios de cobro va primero en el grupo Cobros de
   Configuración; la billetera se ejemplifica con MODO y Cuenta DNI; el aviso de
   "Planes de cuotas" aclara lo de Mercado Pago. CLAUDE.md §30 actualizado.

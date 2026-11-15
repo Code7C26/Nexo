@@ -2448,31 +2448,41 @@ for (const { id } of db.prepare('SELECT id FROM organizaciones ORDER BY id').all
   sembrarCatalogosBase(id);
 }
 
-// El medio "Mercado Pago" que nacía de la cuenta de ese nombre (hist. §171) no
-// era una forma de cobrar sino adónde cae la plata. Una vez, a cada negocio:
-// si no tiene Transferencia, ese medio pasa a serlo; si ya la tiene, se borra,
-// salvo que ya haya cobrado algo o el negocio lo haya tocado (comisión, días o
-// planes), que entonces queda como está y se pausa o borra desde Configuración.
-if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+// El medio "Mercado Pago" que nacía de la cuenta de ese tipo (hist. §171) no
+// era una forma de cobrar sino adónde cae la plata. Una vez, a cada negocio, ese
+// medio deja de ofrecerse en el mostrador:
+// - si no tiene Transferencia (y el medio no tiene planes), pasa a serlo, con lo
+//   que tenía cargado;
+// - si ya la tiene y el medio está intacto y sin cobros, se borra;
+// - en cualquier otro caso (cobró algo, tiene comisión, días o planes) se
+//   pausa: no se pierde el historial ni lo que cargó, y se borra desde
+//   Configuración cuando se pueda.
+// La versión 1 de esta migración dejaba como estaba lo que no estaba intacto,
+// y el medio seguía apareciendo: por eso la marca es 2.
+if (db.prepare('PRAGMA user_version').get().user_version < 2) {
   db.exec('BEGIN');
   try {
     const sueltos = db
       .prepare(
-        `SELECT m.id, m.organizacion_id, m.nombre FROM medios_cobro m
+        `SELECT m.id, m.organizacion_id, m.comision_pct, m.dias_acreditacion,
+                (SELECT COUNT(*) FROM medio_cobro_planes p WHERE p.medio_cobro_id = m.id) AS planes,
+                (SELECT COUNT(*) FROM cobros WHERE medio_cobro_id = m.id) AS cobros
+           FROM medios_cobro m
            JOIN cuentas_tesoreria c ON c.id = m.cuenta_tesoreria_id
-          WHERE m.tipo = 'billetera' AND c.tipo = 'mercadopago' AND m.nombre = c.nombre
-            AND m.comision_pct = 0 AND m.dias_acreditacion = 0
-            AND NOT EXISTS (SELECT 1 FROM medio_cobro_planes p WHERE p.medio_cobro_id = m.id)`
+          WHERE m.tipo = 'billetera' AND c.tipo = 'mercadopago' AND (m.nombre = 'Mercado Pago' OR m.nombre = c.nombre)`
       )
       .all();
     for (const medio of sueltos) {
-      const tieneTransferencia = db
-        .prepare("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = 'transferencia'")
-        .get(medio.organizacion_id);
-      if (!tieneTransferencia) {
+      const hay = (consulta, ...params) => db.prepare(consulta).get(...params);
+      const tieneTransferencia = hay("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND tipo = 'transferencia'", medio.organizacion_id);
+      const nombreLibre = !hay("SELECT 1 FROM medios_cobro WHERE organizacion_id = ? AND nombre = 'Transferencia'", medio.organizacion_id);
+      const intacto = medio.comision_pct === 0 && medio.dias_acreditacion === 0 && medio.planes === 0;
+      if (!tieneTransferencia && medio.planes === 0 && nombreLibre) {
         db.prepare("UPDATE medios_cobro SET nombre = 'Transferencia', tipo = 'transferencia' WHERE id = ?").run(medio.id);
-      } else if (!db.prepare('SELECT 1 FROM cobros WHERE medio_cobro_id = ?').get(medio.id)) {
+      } else if (intacto && medio.cobros === 0) {
         db.prepare('DELETE FROM medios_cobro WHERE id = ?').run(medio.id);
+      } else {
+        db.prepare('UPDATE medios_cobro SET activo = 0 WHERE id = ?').run(medio.id);
       }
     }
     db.exec('COMMIT');
@@ -2480,7 +2490,7 @@ if (db.prepare('PRAGMA user_version').get().user_version < 1) {
     db.exec('ROLLBACK');
     throw err;
   }
-  db.exec('PRAGMA user_version = 1');
+  db.exec('PRAGMA user_version = 2');
 }
 
 // A cada cobro de antes se le deduce su medio (hist. §171): el efectivo, el de

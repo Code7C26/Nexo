@@ -505,7 +505,10 @@ test('el historial trae lo pagado de antes de conectar, sin mover el stock ni la
   assert.equal(pedido.estado, 'importado');
   const venta = (await admin.get(`/api/ventas/${pedido.venta_id}`)).json;
   assert.equal(venta.carga_inicial, true);
-  assert.equal(venta.fecha, haceDias(40).slice(0, 10), 'con la fecha en que se vendió');
+  // La fecha de la venta es la del día en la zona horaria de Nexo, no la de UTC:
+  // pasadas las 21:00 en Argentina difieren por un día.
+  const diaDeNexo = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(haceDias(40)));
+  assert.equal(venta.fecha, diaDeNexo, 'con la fecha en que se vendió');
   assert.equal(venta.canal, 'tiendanube');
   assert.equal(venta.total, 30000);
   const cobros = (await admin.get(`/api/ventas/${pedido.venta_id}/cobros`)).json;
