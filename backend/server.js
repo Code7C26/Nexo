@@ -15824,7 +15824,58 @@ function preguntaDeVariante(propuesta) {
       : variante.estado === 'no_encontrado'
         ? `No encontré "${variante.valor}".\n`
         : '';
-  return `🛍️ ${aclaracion}¿Qué variante de *${producto.nombre_resuelto}* es?\n\n${lineas.join('\n')}${mas}\n\nRespondé con el número, o escribí *cancelar*.`;
+  // Con más de una unidad, cada una puede ser de una variante distinta
+  // (hist. §178): un buzo S y otro M.
+  const cantidad = Number(item.cantidad);
+  const distintas =
+    cantidad === 2
+      ? '\n\nSi no son iguales, mandá un número por cada uno: por ejemplo *1 y 2*.'
+      : Number.isInteger(cantidad) && cantidad > 2
+        ? '\n\nSi no son iguales, mandá cuántos de cada uno: por ejemplo *2 del 1 y 1 del 2*.'
+        : '';
+  return `🛍️ ${aclaracion}¿Qué variante de *${producto.nombre_resuelto}* es?\n\n${lineas.join('\n')}${mas}\n\nRespondé con el número, o escribí *cancelar*.${distintas}`;
+}
+
+// Cómo se reparten las unidades de un renglón entre las opciones de la lista
+// (hist. §178): "1 y 2" (una de cada una, tantos números como unidades) o
+// "2 del 1 y 1 del 3" (cuántas de cada una). Devuelve [[opción, cantidad]],
+// { error } si no cierra con la cantidad, o null si la respuesta no es un
+// reparto (un número solo, o palabras: el camino de siempre).
+function repartoDeVariantes(palabras, cantidad, cuantasOpciones) {
+  const comoNumero = (p) => (/^\d+$/.test(p) ? Number(p) : NUMERO_EN_PALABRAS[p]);
+  const numeros = palabras.map(comoNumero);
+  const conectores = new Set(['y', 'e', 'de', 'del', 'x', 'el', 'la', 'los', 'las', 'otro', 'otra']);
+  if (numeros.filter(Number.isInteger).length < 2 || palabras.some((p, i) => !Number.isInteger(numeros[i]) && !conectores.has(p))) {
+    return null;
+  }
+  const pares = [];
+  const sueltos = [];
+  for (let i = 0; i < palabras.length; i++) {
+    if (!Number.isInteger(numeros[i])) continue;
+    // "2 del 1", "2 de la 1", "2 x 1": cuántas, y de cuál.
+    let j = i + 1;
+    if (['de', 'del', 'x'].includes(palabras[j])) {
+      j++;
+      while (['el', 'la', 'los', 'las'].includes(palabras[j])) j++;
+      if (Number.isInteger(numeros[j])) {
+        pares.push([numeros[j], numeros[i]]);
+        i = j;
+        continue;
+      }
+    }
+    sueltos.push(numeros[i]);
+  }
+  if (pares.length && sueltos.length) return { error: 'No entendí cuántos van de cada uno.' };
+  const unidades = pares.length ? pares : sueltos.map((opcion) => [opcion, 1]);
+  const fuera = unidades.find(([opcion]) => opcion < 1 || opcion > cuantasOpciones);
+  if (fuera) return { error: `La opción ${fuera[0]} no está en la lista.` };
+  const suma = unidades.reduce((acc, [, n]) => acc + n, 0);
+  if (suma !== cantidad) {
+    return { error: suma === 1 ? `Me dijiste 1 y son ${cantidad}.` : `Me dijiste ${suma} y son ${cantidad}.` };
+  }
+  const porOpcion = new Map();
+  for (const [opcion, n] of unidades) porOpcion.set(opcion, (porOpcion.get(opcion) ?? 0) + n);
+  return [...porOpcion];
 }
 
 // La última propuesta de este teléfono, si espera una variante y es reciente.
@@ -15884,10 +15935,25 @@ async function responderVarianteWhatsApp(texto, esperando, usuario, para, respon
   const { _datos: datos, ...propuestaVieja } = esperando.propuesta;
   const [{ item, indice }] = renglonesSinVariante(propuestaVieja);
   const opciones = item.variante.candidatos.slice(0, OPCIONES_DE_VARIANTE);
+  const cantidad = Number(item.cantidad);
+  const reparto = Number.isInteger(cantidad) ? repartoDeVariantes(palabras, cantidad, opciones.length) : null;
+  if (reparto?.error) {
+    await responder(`🤔 ${reparto.error}\n\n${preguntaDeVariante(propuestaVieja)}`);
+    return true;
+  }
   const numero = palabras.length <= 3 ? palabras.map((p) => (/^\d+$/.test(p) ? Number(p) : NUMERO_EN_PALABRAS[p])).find(Number.isInteger) : undefined;
 
   const nuevosDatos = structuredClone(datos);
-  if (numero >= 1 && numero <= opciones.length) {
+  if (reparto) {
+    // El renglón se parte en uno por variante, con lo demás igual (el precio
+    // dicho, o el de lista de cada variante si no se dijo).
+    const renglon = nuevosDatos.items[indice];
+    nuevosDatos.items.splice(
+      indice,
+      1,
+      ...reparto.map(([opcion, unidades]) => ({ ...renglon, cantidad: unidades, variante_id: opciones[opcion - 1].id }))
+    );
+  } else if (numero >= 1 && numero <= opciones.length) {
     nuevosDatos.items[indice].variante_id = opciones[numero - 1].id;
   } else if (palabras.length <= 4) {
     // "negro", "talle L", "la azul": se busca entre las variantes (y si hay más

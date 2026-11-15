@@ -13852,3 +13852,32 @@ corriente y presupuesto que pasan, deuda, contacto, "Consumidor final" protegido
 suite completa, lint e i18n. En el navegador: el aviso de "Camila Herrera" repetida,
 el modal "Unir clientes" (propone la que tiene teléfono) y queda una con sus 15
 compras; "Unir proveedores" sigue abriendo desde la selección.
+
+## §178 — 15 de noviembre de 2026: varias unidades de variantes distintas por WhatsApp
+
+**Pedido del usuario.** Con el número real de WhatsApp andando, "vendí dos buzos a
+Joaquín Tosi" preguntó qué variante y contestar "1 y 2" tomó solo la primera (2 × S):
+"capaz compro un buzo, un talle y otro buzo del otro. Habría que ver cómo se puede
+hacer en ese caso".
+
+**Hecho.** `responderVarianteWhatsApp` (server.js) ahora prueba primero
+`repartoDeVariantes(palabras, cantidad, opciones)`:
+- solo números y conectores ("y", "de", "del", "x", "el", "la"…), con dos números o
+  más; un número solo o palabras siguen el camino de antes ("3", "talle L", "44");
+- "1 y 2": una unidad por número (repetir vale: "1 y 1" son dos de la 1); tienen que
+  ser tantos números como unidades;
+- "2 del 1 y 1 del 3" (también "de la", "x"): cuántas de cada opción;
+- si no suma la cantidad del renglón, mezcla las dos formas o nombra una opción que no
+  está, contesta el problema y repite la pregunta, sin descartar la propuesta;
+- el renglón de `_datos` se parte en uno por variante con `variante_id`, y lo demás
+  (precio dicho, o el de lista de cada variante) sigue igual.
+
+La pregunta suma una línea cuando el renglón tiene más de una unidad: con 2, "mandá un
+número por cada uno: por ejemplo *1 y 2*"; con más, "mandá cuántos de cada uno: por
+ejemplo *2 del 1 y 1 del 2*". Los textos nuevos van en castellano (null en `en.js`,
+como todo lo de WhatsApp).
+
+**Verificado.** Test nuevo en `whatsapp.test.js` con el teléfono del empleado (el del
+admin llega al tope de 30 mensajes por hora): "1 y 2" con dos zapatillas (baja una de
+cada talle), "1 y 2" con tres (lo rechaza) y "2 del 1 y 1 del 3". Suite completa, lint
+e i18n.

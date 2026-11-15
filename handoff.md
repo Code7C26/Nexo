@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §177);
+    siguiente número (hoy el último es §178);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,14 @@
   reescribe nada.
 
 ## Estado actual (15 de noviembre de 2026)
+
+**15 de noviembre, hist. §178: varias unidades de variantes distintas por
+WhatsApp (commiteado en `solla`, sin publicar).** "Vendí dos buzos" sin talle
+preguntaba una sola variante. Ahora la respuesta reparte: "1 y 2" (una de cada
+una, tantos números como unidades) o "2 del 1 y 1 del 3" (cuántas de cada
+una); el renglón se parte en uno por variante (`repartoDeVariantes` en
+server.js). Si no suma la cantidad, lo dice y vuelve a preguntar. La pregunta
+lo explica cuando hay más de una unidad.
 
 **15 de noviembre, hist. §177: unir clientes repetidos (publicado con §176).**
 `POST /api/clientes/:id/unir` (solo admin), como el de proveedores: ventas,

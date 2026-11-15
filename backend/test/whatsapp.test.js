@@ -23,6 +23,8 @@ let servidorFalso;
 let admin;
 let empleado;
 let otro;
+// La de los talles: la usan dos tests.
+let zapatilla;
 // Lo que Nexo mandó a WhatsApp: { para, tipo, texto, botones }.
 const enviados = [];
 // Los audios que sirve el WhatsApp falso: su "contenido" es la frase (el
@@ -258,7 +260,7 @@ test('el empleado opera con su rol, y nadie confirma una propuesta ajena', async
 
 test('un producto con talles: si falta cuál, pregunta con la lista, y se contesta con el número', async () => {
   // Zapatillas con tres talles, con stock cargado por una compra del asistente.
-  const zapatilla = (await admin.post('/api/productos', { nombre: 'Zapatilla', precio_venta: 50000 })).json.id;
+  zapatilla = (await admin.post('/api/productos', { nombre: 'Zapatilla', precio_venta: 50000 })).json.id;
   const talle = (await admin.post(`/api/productos/${zapatilla}/atributos`, { nombre: 'Talle' })).json.id;
   for (const numero of ['38', '39', '40']) {
     const valor = (await admin.post(`/api/productos/${zapatilla}/atributos/${talle}/valores`, { valor: numero })).json.id;
@@ -304,6 +306,33 @@ test('un producto con talles: si falta cuál, pregunta con la lista, y se contes
   const [noExiste] = await conversar(TELEFONO_ADMIN, texto('44'));
   assert.match(noExiste.texto, /No encontré "44"/);
   await conversar(TELEFONO_ADMIN, texto('cancelar'));
+
+});
+
+// Con el teléfono del empleado: el del admin ya está cerca del tope por hora.
+test('varias unidades de talles distintos: "1 y 2" o "2 del 1 y 1 del 3" (hist. §178)', async () => {
+  // "1 y 2" es una de cada uno.
+  const [dos] = await conversar(TELEFONO_EMPLEADO, texto('venta: cliente=Lucía; item=Zapatilla,2,50000'));
+  assert.match(dos.texto, /mandá un número por cada uno: por ejemplo \*1 y 2\*/);
+  const [unaDeCada] = await conversar(TELEFONO_EMPLEADO, texto('1 y 2'));
+  assert.equal(unaDeCada.tipo, 'interactive');
+  assert.match(unaDeCada.texto, /1 × Zapatilla \(Talle: 38\)/);
+  assert.match(unaDeCada.texto, /1 × Zapatilla \(Talle: 39\)/);
+  await conversar(TELEFONO_EMPLEADO, boton(unaDeCada.botones[0].id));
+  const despues = (await admin.get(`/api/productos/${zapatilla}/variantes`)).json;
+  assert.equal(despues.find((v) => v.combinacion === 'Talle: 38').stock, 3);
+  assert.equal(despues.find((v) => v.combinacion === 'Talle: 39').stock, 3);
+
+  // Con tres: cuántos de cada uno; si no suma, lo dice y vuelve a preguntar.
+  const [tres] = await conversar(TELEFONO_EMPLEADO, texto('venta: cliente=Lucía; item=Zapatilla,3,50000'));
+  assert.match(tres.texto, /cuántos de cada uno: por ejemplo \*2 del 1 y 1 del 2\*/);
+  const [noSuma] = await conversar(TELEFONO_EMPLEADO, texto('1 y 2'));
+  assert.match(noSuma.texto, /Me dijiste 2 y son 3/);
+  assert.match(noSuma.texto, /¿Qué variante de \*Zapatilla\* es\?/);
+  const [repartida] = await conversar(TELEFONO_EMPLEADO, texto('2 del 1 y 1 del 3'));
+  assert.match(repartida.texto, /2 × Zapatilla \(Talle: 38\)/);
+  assert.match(repartida.texto, /1 × Zapatilla \(Talle: 40\)/);
+  await conversar(TELEFONO_EMPLEADO, boton(repartida.botones[1].id));
 });
 
 test('una duda de uso, o algo que no es una operación, se contesta con el manual', async () => {
