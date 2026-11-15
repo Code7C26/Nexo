@@ -13491,11 +13491,15 @@ marcada "sin confirmar" y cada negocio la corrige con lo que dice su cuenta.
   `cuenta_tesoreria_id` (de la empresa y que no sea efectivo); en otros medios se ignora.
 - `MEDIOS_DE_CUENTA`: la cuenta de Mercado Pago ya no crea un medio "Mercado Pago" sino
   la Transferencia si no hay; efectivo y transferencia son únicos por negocio.
-- **Migración, una vez** (`PRAGMA user_version = 1`, en `db/index.js`): el medio "Mercado
-  Pago" billetera creado solo y sin tocar pasa a ser la Transferencia si el negocio no
-  tenía, o se borra si la tenía y no tiene cobros. Uno con comisión, días, planes o
-  cobros queda como está. Los cobros automáticos de Mercado Pago no dependían de ese
-  medio (solo el mostrador guarda `medio_cobro_id`).
+- **Migración, una vez** (`PRAGMA user_version = 2`, en `db/index.js`): el medio "Mercado
+  Pago" billetera (de la cuenta tipo Mercado Pago, con cualquier nombre de cuenta) pasa
+  a ser la Transferencia si el negocio no tenía; se borra si ya la tenía y el medio
+  está intacto y sin cobros; y en cualquier otro caso se pausa, sin perder historial ni
+  lo cargado. La primera versión (marca 1) dejaba como estaba el que tenía cobros,
+  comisión, días o planes, o si la cuenta se llamaba distinto, y el usuario lo siguió
+  viendo en el mostrador después de publicar: se corrigió el mismo día. Los cobros
+  automáticos de Mercado Pago no dependían de ese medio (solo el mostrador guarda
+  `medio_cobro_id`).
 
 **Frontend.**
 - Menú: Medios de cobro pasa al grupo Cobros, primero.

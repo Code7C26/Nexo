@@ -454,7 +454,10 @@ test('el historial trae las ventas pagadas de antes de conectar, con su comisió
   const pedido = (await estadoDe(admin)).pedidos.find((p) => p.externo_id === '8001');
   const venta = (await admin.get(`/api/ventas/${pedido.venta_id}`)).json;
   assert.equal(venta.carga_inicial, true);
-  assert.equal(venta.fecha, hace(60).slice(0, 10));
+  // La fecha de la venta es la del día en la zona horaria de Nexo, no la de UTC:
+  // pasadas las 21:00 en Argentina difieren por un día.
+  const diaDeNexo = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(hace(60)));
+  assert.equal(venta.fecha, diaDeNexo);
   assert.equal(venta.canal, 'mercadolibre');
   assert.equal(venta.total, 36000);
   // La comisión cuenta para la ganancia, y no sale de la caja de hoy.
