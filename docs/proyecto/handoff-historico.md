@@ -13688,3 +13688,16 @@ contenido va en la hoja con borde dentro del marco negro, como la app. Todo el
 menú se achica junto (`font-size: min(0.68vw, 1.2vh)`) para entrar sin apretarse:
 es el de un comercio general, sin Producción ni Papelera y Auditoría; la tarjeta
 de Producción cae en Configuración (`data-lugar="10 7"`), como Mercado Pago.
+
+**15 de noviembre, la guía al día y el video 5 en la presentación.** El usuario
+preguntó qué había quedado sin actualizar en la guía. Faltaba: el video de
+apertura de la 1 (decía "el logo queda de fondo"; ahora cuenta que arranca solo
+con música, qué hacer si Chrome no lo deja sonar y que `media/` viaja al lado
+del HTML), 382 pruebas en vez de 357 (también en la diapositiva 23), 469
+commits y unas 80.000 líneas, y la fecha del simulacro en la tapa (lunes 16).
+El video "un negocio desde cero" (versión con etiquetas) entró como la 11, antes
+del QR, a elección del usuario: corre solo, se agranda y vuelve a su recuadro.
+Son 33 y el QR es la 12 (`#12`, también en el LEEME). Al final de la 11, en la
+guía, la frase del usuario para pasar al QR ("no les vamos a hacer hacer todo
+ese proceso… armamos una demo con varios tipos de negocio"): la dice él, no va
+en pantalla. El video en inglés sigue esperando que el usuario lo retome.

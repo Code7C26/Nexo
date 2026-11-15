@@ -670,6 +670,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .recorrido { counter-reset: paso; }
 .recorrido li { counter-increment: paso; display: flex; gap: 0.8em; align-items: baseline; padding: 0.45em 0; border-top: 1px solid var(--borde); font-size: var(--h3-size); font-family: var(--titulos); font-weight: 500; }
 .recorrido li::before { content: counter(paso); font-weight: 700; color: var(--acento); min-width: 1.2em; }
+.desde-cero .recorrido li { font-size: var(--body-size); padding: 0.32em 0; }
 .qr-caja { display: flex; flex-direction: column; align-items: center; gap: 0.7em; text-align: center; }
 .qr { background: #fff; border-radius: var(--radio); padding: clamp(6px, 0.8vw, 12px); width: min(28vw, 40vh, 320px); aspect-ratio: 1; }
 .qr img { width: 100%; height: 100%; }
@@ -1291,6 +1292,20 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
+<!-- 11. Un negocio desde cero: el video (26 s, sin voz, lo narran ellos) arranca
+     solo, se agranda a toda la pantalla y vuelve a su recuadro. Va antes del QR:
+     primero ven cómo se arranca, después lo prueban. -->
+<section class="slide" aria-label="Un negocio desde cero">
+  <div class="slide-content par desde-cero">
+    <div>
+      <p class="parte reveal">Empezar</p>
+      <h2 class="reveal" style="--d:1">Un negocio nuevo, listo en minutos</h2>
+      <ol class="recorrido reveal" style="--d:2"><li>Tu cuenta</li><li>Tu mail</li><li>Tu negocio</li><li>El tipo de negocio</li><li>Las secciones</li><li>Lo que ya tenías</li><li>Primeros pasos</li></ol>
+    </div>
+    <figure class="video-tarjeta reveal" style="--d:3"><video class="video-pitch" src="../media/nexo-negocio-desde-cero.mp4" poster="../media/nexo-negocio-desde-cero.jpg" preload="auto" playsinline muted></video></figure>
+  </div>
+</section>
+
 <!-- 10. Pruébenlo: el QR, para que el público explore mientras se cuentan las funciones -->
 <section class="slide" aria-label="Pruébenlo ahora">
   <div class="slide-content demo">
@@ -1558,7 +1573,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       <div class="tarjeta reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg><h3>Sin instalación</h3><p class="ocultable">Se entra desde el navegador, y en el celular se instala como una app.</p></div>
       <div class="tarjeta reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><h3>IA con confirmación</h3><p class="ocultable">Propone, y una persona confirma. Y no guarda lo que se le cuenta.</p></div>
       <div class="tarjeta reveal" style="--d:5"><svg class="ico"><use href="../../../frontend/img/iconos.svg#user-cog"/></svg><h3>Permisos de equipo</h3><p class="ocultable">El empleado vende, pero no ve los costos. Y queda anotado quién hizo qué.</p></div>
-      <div class="tarjeta reveal" style="--d:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg><h3>Pruebas automáticas</h3><p class="ocultable">357 pruebas automáticas corren antes de publicar cualquier cosa.</p></div>
+      <div class="tarjeta reveal" style="--d:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg><h3>Pruebas automáticas</h3><p class="ocultable">382 pruebas automáticas corren antes de publicar cualquier cosa.</p></div>
       <div class="tarjeta reveal" style="--d:7"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg><h3>Costo bajo</h3><p class="ocultable">Sin licencias ni servidores caros: por eso puede arrancar gratis.</p></div>
     </div>
   </div>

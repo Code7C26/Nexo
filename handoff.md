@@ -28,7 +28,8 @@ los días"); la 5 y la 6 nuevas, propuestas mías ("Cada hora copiando datos es 
 hora menos para el negocio" y "Se vende un montón, y la plata no aparece", con
 una remera de $ 20.000 que deja $ 3.700); y **una 8 nueva**, "Todo junto, en
 Nexo": las partes del negocio se juntan en un sistema y el logo se posa arriba.
-**Ahora son 32: la del QR es la 11 (`#11`).** Guía renumerada y armada.
+**Ahora son 33: la 11 es el video de un negocio desde cero y la del QR es la 12
+(`#12`).** Guía renumerada y armada.
 - **Segunda vuelta (hist. §174), con las correcciones del usuario:** la 3 con
   los objetos completos; la 5 rehecha (reloj rojo que larga problemas y la
   personita pasando números → reloj verde y lento, la personita con un mate);
@@ -37,7 +38,12 @@ Nexo": las partes del negocio se juntan en un sistema y el logo se posa arriba.
   las partes en el menú de Nexo (con las medidas del de la app) y un Resumen
   genérico ("Mi negocio"); **26 = propuesta de valor y
   planes juntas**; la 30 (IA) con Claude Code y 10 skills y agentes; **31 nueva,
-  "Lo que vinimos a resolver"**; la 32 con "¡Gracias! ¿Preguntas?". Siguen siendo 32.
+  "Lo que vinimos a resolver"**; la 32 con "¡Gracias! ¿Preguntas?".
+- **Tercera vuelta (15 de noviembre):** el video "un negocio desde cero" (con
+  etiquetas) entró como la 11, antes del QR (lo eligió el usuario); la guía
+  cubre el video de apertura de la 1, las 382 pruebas (también en la 23) y los
+  números del proyecto al día, y al final de la 11 la frase que dice el usuario
+  para pasar al QR (solo en la guía, no en pantalla).
 - **A confirmar con el usuario:** la lista de skills de la 30 sale de lo que
   registra la bitácora; él dijo que usaron muchas más: sumar las que falten.
 
@@ -134,8 +140,8 @@ sigue. Commiteado en `solla`, sin publicar** (menos
 `docs/pitch/media/nexo-ingles-guia.mp4`, la guía con voz de prueba, que no se
 sube: 20 MB y temporal). Relato completo, trampas de la grabación
 y archivos en el histórico.
-- **Video 5 ("un negocio desde cero"): v2 hecha (26 s), falta elegir y ponerlo
-  en una diapositiva.** Con las correcciones del usuario: pantalla completa,
+- **Video 5 ("un negocio desde cero"): v2 hecha (26 s), y en la presentación
+  desde el 15 de noviembre (la 11, con etiquetas).** Con las correcciones del usuario: pantalla completa,
   sin intro, sin outro y sin música; etiquetas de 2 o 3 palabras sin comas
   (abajo a la izquierda). Dos mp4 en `docs/pitch/media/`:
   `nexo-negocio-desde-cero.mp4` (con etiquetas) y `...-sin-texto.mp4`: **el
