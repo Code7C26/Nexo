@@ -4,6 +4,7 @@
     "dbaeumer.vscode-eslint",
     "editorconfig.editorconfig",
     "qwtel.sqlite-viewer",
-    "eamodio.gitlens"
+    "eamodio.gitlens",
+    "anthropic.claude-code"
   ]
 }
