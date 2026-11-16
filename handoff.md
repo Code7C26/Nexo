@@ -2024,6 +2024,14 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   fichas y proponen las cargas, siempre con confirmación humana (§21, §36).
 - Asistente especialista en contabilidad, armado con la mamá de Joaquín
   (contadora): una respuesta mal le cuesta plata al negocio.
+- **Inversiones y amortizaciones** (idea del usuario, 16 de noviembre): lo que
+  se compra para usar y no para vender (una heladera, la balanza, la compu)
+  hoy entra como gasto entero en un mes y le hunde el resultado. Como bien de
+  uso, se reparte en su vida útil (una heladera de $ 1.200.000 en 5 años son
+  $ 20.000 por mes), y el Resumen muestra cuánto rinde lo invertido. Es
+  gestión, no la contabilidad formal de §39. A definir al arrancar: si también
+  entra la plata invertida (plazo fijo, fondos) como una cuenta más de
+  tesorería que rinde.
 - Avisos al celular (Web Push, §31), recargo por cuotas y acreditación
   diferida (§30), puntos y premios, vender sin internet en el punto de venta.
 - **Hoy fuera de alcance en CLAUDE.md §39:** sueldos y RRHH, contabilidad con
