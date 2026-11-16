@@ -2006,7 +2006,13 @@ orden:
    una grilla a mano y el CSV solo exporta.
 4. **Logo y colores del negocio:** en la factura, el menú y la pantalla de
    entrada del gimnasio; la foto de perfil, en el mismo paso.
-5. Si da: **el resumen del día** por WhatsApp o mail.
+5. **Facturar desde el punto de venta y el ticket impreso** (propuesto el 16
+   de noviembre después de ver Praxia, a confirmar el lugar): al cobrar,
+   elegir factura A, B o sin factura (la letra la propone el cliente, como en
+   Ventas) e imprimir el ticket en el momento. Hoy el mostrador solo cobra y
+   se factura después desde Ventas. El dueño sigue facturando desde Ventas lo
+   que vende fuera del local.
+6. Si da: **el resumen del día** por WhatsApp o mail.
 Y en la presentación: completar la 33, recortar las capturas de la 14 a la 26
 para el tele y la captura del chat de WhatsApp de la 19.
 
@@ -2024,6 +2030,20 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   fichas y proponen las cargas, siempre con confirmación humana (§21, §36).
 - Asistente especialista en contabilidad, armado con la mamá de Joaquín
   (contadora): una respuesta mal le cuesta plata al negocio.
+- **Sucursales, cajas y permisos** (de Praxia, 16 de noviembre; la próxima
+  etapa grande, se planifica antes de tocar el esquema, §27). Hoy hay roles
+  admin/empleado por negocio, depósitos y cajas sueltos, y el empleado no está
+  atado a nada. Propuesta: la **sucursal** junta su depósito, sus cajas y su
+  punto de venta de ARCA; cada persona se asigna a una o más sucursales con un
+  **perfil** (dueño, encargado, cajero) y el dueño elige qué secciones ve cada
+  uno. **Una cuenta por persona, no por caja** (Praxia lo hace por caja): la
+  caja se elige al abrir el turno y así queda quién vendió, abrió y cerró. Con
+  esto, el **cierre del día y del mes** sumando todas las cajas y sucursales.
+  Los cambios del dueño ya llegan al instante a las cajas (es una sola web).
+- **Horarios y fichaje de empleados** (de Praxia): horario planificado,
+  entrada y salida reales, llegadas tarde y horas, cruzado con los turnos de
+  caja. **Choca con §39** ("gestión de empleados y sueldos"): son los
+  horarios, no los sueldos, pero se saca de §39 con el equipo al arrancar.
 - **Inversiones y amortizaciones** (idea del usuario, 16 de noviembre): lo que
   se compra para usar y no para vender (una heladera, la balanza, la compu)
   hoy entra como gasto entero en un mes y le hunde el resultado. Como bien de
