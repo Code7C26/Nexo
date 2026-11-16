@@ -1992,6 +1992,44 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
+**Plan hasta la presentación oficial (principios de diciembre), acordado con
+el usuario el 16 de noviembre.** Sale de su lista de mejoras después del
+simulacro; reemplaza al "Plan hasta el 20 de noviembre" de más abajo. En este
+orden:
+1. **El asistente responde preguntas sobre los números** ("¿cuánto vendí este
+   mes de remeras?", "¿quién me debe más?"). Es lo que le falta a §36; solo
+   lee, sin confirmación.
+2. **Mandar la factura por mail**, de a una o varias juntas (el mail ya anda:
+   códigos y recuperación de contraseña).
+3. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
+   desde Excel o CSV). Hoy la carga inicial (`dominios/carga-inicial.js`) es
+   una grilla a mano y el CSV solo exporta.
+4. **Logo y colores del negocio:** en la factura, el menú y la pantalla de
+   entrada del gimnasio; la foto de perfil, en el mismo paso.
+5. Si da: **el resumen del día** por WhatsApp o mail.
+Y en la presentación: completar la 33, recortar las capturas de la 14 a la 26
+para el tele y la captura del chat de WhatsApp de la 19.
+
+**Para más adelante (lista del usuario del 16 de noviembre, más lo que sumé
+yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
+- Horarios del gimnasio con actividades, profesores y cupos, sobre la misma
+  base que los turnos (barbería, consultorios). Con los turnos y la factura se
+  abren los profesionales independientes (médicos, abogados, contadores).
+- Más rubros, cada uno con su módulo (restaurante: mesas y comandas).
+- Shopify y otros canales, con el molde de Tienda Nube y Mercado Libre (§32).
+- Página propia del negocio: primero "tu tienda en un link" (la 32), después
+  una tienda completa como Tienda Nube.
+- CRM con WhatsApp, Instagram y Facebook en un solo lugar (depende de la app
+  de Meta); después el "ARM": agentes de IA que leen los mensajes, llenan las
+  fichas y proponen las cargas, siempre con confirmación humana (§21, §36).
+- Asistente especialista en contabilidad, armado con la mamá de Joaquín
+  (contadora): una respuesta mal le cuesta plata al negocio.
+- Avisos al celular (Web Push, §31), recargo por cuotas y acreditación
+  diferida (§30), puntos y premios, vender sin internet en el punto de venta.
+- **Hoy fuera de alcance en CLAUDE.md §39:** sueldos y RRHH, contabilidad con
+  balances y Meta Ads. Están en la lista del usuario para el futuro; al
+  arrancar alguno, se saca de §39 con el equipo (como pasó con producción).
+
 **Para la oficial, lo que falta de §183:** completar la 33 (nombre, rubro y
 ciudad de cada negocio, en `docs/pitch/fuentes/index.html`, y confirmar con
 cada uno que se lo nombra) y confirmar el agradecimiento a la mamá de Joaquín
