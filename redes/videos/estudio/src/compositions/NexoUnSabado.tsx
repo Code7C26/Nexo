@@ -2,8 +2,9 @@
 // storyboards/nexo-un-sabado.md. Una historia corta con tarjetas animadas (sin
 // la app grabada): el dueño (Santino) le dicta una venta al asistente, el día
 // pasa y las ventas entran solas, avisa el stock bajo, pide más y cierra la
-// caja. La voz del asistente es Tosi, y lo que dice aparece escrito en su
-// tarjeta, como contesta el asistente real. Todo atado a la voz
+// caja. El asistente es Nexo y su voz es la de Tosi, con un tratamiento que la
+// distingue de la del dueño (scripts/voz-dialogo.py); lo que dice aparece
+// escrito en su tarjeta, como contesta el asistente real, y en azul. Todo atado a la voz
 // (voz/nexo-un-sabado.json, scripts/voz-dialogo.py): cambiar las frases
 // grabadas reacomoda el video solo. Sin música; subtítulos en castellano.
 import React from "react";
@@ -107,6 +108,9 @@ const Pastilla: React.FC<{ color: string; fondo: string; punto?: boolean; childr
   );
 };
 
+/** El ícono de Nexo: marca todo lo que dice o hace el asistente. */
+const IconoNexo: React.FC<{ tam: number }> = ({ tam }) => <Img src={staticFile("brand/nexo-icono.png")} style={{ width: tam, height: "auto", flexShrink: 0 }} />;
+
 const Encontrado: React.FC = () => (
   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 12, padding: "3px 11px", borderRadius: 99, background: OK_SUAVE, color: C.ok, fontSize: 15 }}>
     <span style={{ width: 7, height: 7, borderRadius: 9, background: C.ok }} />
@@ -150,7 +154,7 @@ const Onda: React.FC<{ frases: Frase[]; ancho: number; alto: number }> = ({ fras
   );
 };
 
-/** La tarjeta del asistente: escucha al dueño y contesta por escrito. */
+/** La tarjeta de Nexo, el asistente: escucha al dueño y contesta por escrito. */
 const TarjetaAsistente: React.FC<{ x: number; y: number; ancho: number; usuario: Frase; respuesta: Frase }> = ({ x, y, ancho, usuario, respuesta }) => {
   const frame = useCurrentFrame();
   const estado =
@@ -173,8 +177,8 @@ const TarjetaAsistente: React.FC<{ x: number; y: number; ancho: number; usuario:
     <div style={{ ...tarjeta, left: x, top: y, width: ancho, padding: "26px 30px 30px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: brand.fontDisplay, fontWeight: 700, fontSize: 26 }}>
-          <Icon name="sparkles" size={26} color={C.accent} />
-          Assistant
+          <IconoNexo tam={30} />
+          Nexo
         </span>
         {estado}
       </div>
@@ -183,7 +187,7 @@ const TarjetaAsistente: React.FC<{ x: number; y: number; ancho: number; usuario:
       </div>
       <div style={{ marginTop: 20, minHeight: 64, fontSize: 25, lineHeight: 1.3, color: C.text }}>{loQueDice ? `“${loQueDice}”` : " "}</div>
       <div style={{ marginTop: 12, minHeight: 34, display: "flex", alignItems: "center", gap: 10, fontSize: 24, fontWeight: 600, color: C.accent, opacity: contesta ? 1 : 0 }}>
-        <Icon name="sparkles" size={20} color={C.accent} />
+        <IconoNexo tam={22} />
         {contesta}
       </div>
     </div>
@@ -367,7 +371,7 @@ const LaVenta: React.FC = () => {
 // ---------------------------------------------------------------- 2. El día pasa
 
 const PEDIDOS: { f: number; marca: React.ReactNode; canal: string; detalle: string; monto: string; hora: string }[] = [
-  { f: DIA, marca: <Icon name="sparkles" size={30} color={C.accent} />, canal: "Assistant", detalle: "Juan Pérez · 3 T-shirts", monto: "$ 38.700", hora: "10:02 AM" },
+  { f: DIA, marca: <IconoNexo tam={30} />, canal: "Nexo · by voice", detalle: "Juan Pérez · 3 T-shirts", monto: "$ 38.700", hora: "10:02 AM" },
   { f: LLEGADAS[0], marca: <Logo nombre="tiendanube-nube" alto={26} />, canal: "Tienda Nube", detalle: "Order #1043 · 2 T-shirts", monto: "$ 25.800", hora: "1:15 PM" },
   { f: LLEGADAS[1], marca: <Logo nombre="mercadolibre-emblema" alto={30} />, canal: "Mercado Libre", detalle: "3 T-shirts", monto: "$ 38.700", hora: "4:40 PM" },
   { f: LLEGADAS[2], marca: <Icon name="store" size={30} color={C.text} />, canal: "Point of sale", detalle: "2 T-shirts · socks", monto: "$ 32.700", hora: "6:30 PM" },
@@ -618,7 +622,7 @@ const ElLema: React.FC = () => {
 
 const FRASES = Object.values(F);
 
-/** El subtítulo en castellano de lo que se dice; el del asistente, en cursiva. */
+/** El subtítulo en castellano de lo que se dice: el dueño en blanco y Nexo en azul, con su ícono. */
 const Subtitulos: React.FC = () => {
   const frame = useCurrentFrame();
   const v = FRASES.find((f) => frame >= f.desde - 2 && frame < f.fin + 10);
@@ -636,12 +640,15 @@ const Subtitulos: React.FC = () => {
           background: "rgba(0,0,0,0.72)",
           fontFamily: brand.fontBody,
           fontWeight: 600,
-          fontStyle: v.quien === "tosi" ? "italic" : "normal",
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
           fontSize: 32,
-          color: C.text,
+          color: v.quien === "tosi" ? C.accent : C.text,
           opacity: p,
         }}
       >
+        {v.quien === "tosi" ? <IconoNexo tam={30} /> : null}
         {v.sub}
       </div>
     </AbsoluteFill>

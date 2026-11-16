@@ -14086,3 +14086,13 @@ Archivos (en el estudio vivo y copiados en `redes/videos/estudio/`):
 Salida: `docs/pitch/media/nexo-un-sabado-guia.mp4` (32 s, voz de guía; no se
 sube, como la guía anterior). Revisado por cuadros: dos arreglos (el título del
 cierre salía negro sobre negro; la primera tarjeta, sola, quedaba muy arriba).
+
+**Después, el mismo día: que se distingan las dos voces.** Pedido del usuario:
+la voz del dueño y la del asistente, que es la voz de Nexo, tienen que
+distinguirse bien. Tosi pasa a ser la voz de Nexo: `voz-dialogo.py` le suma un
+tratamiento de voz digital (`NEXO`: highpass 220, lowpass 6800, coro corto, eco
+de 28 ms, compresión), y los originales quedan en `crudas/` para no aplicarlo
+dos veces. La guía de Santino pasó a Christopher (más grave que Brian). En
+pantalla, la tarjeta se llama "Nexo" con su ícono, sus respuestas y su onda van
+en azul, y su subtítulo en azul con el ícono adelante (el del dueño, blanco). El
+video de guía quedó en 34,5 s.

@@ -5,12 +5,17 @@ animación propia, como el video en inglés de sus amigos (una historia chiquita
 con tarjetas, sin mostrar la app). Va en la presentación justo antes de la de
 los QR. Composición: `src/compositions/NexoUnSabado.tsx`.
 
-- Horizontal 1920 × 1080, ~32 s con la voz de guía. Sin música, con los
-  sonidos de cada toque. Subtítulos en castellano abajo (los del asistente,
-  en cursiva). Frases sin comas en el medio.
-- **Dos voces:** Santino es el dueño del local y **Tosi es el asistente**. Lo
-  que dice Tosi aparece escrito en la tarjeta del asistente mientras lo dice,
-  porque el asistente real contesta por escrito.
+- Horizontal 1920 × 1080, ~34 s con la voz de guía. Sin música, con los
+  sonidos de cada toque. Subtítulos en castellano abajo. Frases sin comas en
+  el medio.
+- **Dos voces que se distinguen bien** (pedido del usuario): Santino es el
+  dueño del local, con su voz natural, y **Tosi es la voz de Nexo** (el
+  asistente), con un tratamiento leve de voz digital (`NEXO` en
+  `scripts/voz-dialogo.py`: sin graves, coro corto, un eco apenas). Lo de Nexo
+  va en azul y con su ícono: la tarjeta se llama "Nexo", su onda y sus
+  respuestas son azules, y su subtítulo también. Lo que dice aparece escrito
+  en la tarjeta mientras lo dice, porque el asistente real contesta por
+  escrito.
 - Lo que se muestra existe en Nexo: venta y compra que propone el asistente y
   se confirman a mano, Tienda Nube, Mercado Libre, el punto de venta, el aviso
   de stock bajo y el arqueo de caja. Se dejó afuera WhatsApp (falta la app de
@@ -35,7 +40,9 @@ los QR. Composición: `src/compositions/NexoUnSabado.tsx`.
 ## Grabar las voces
 
 Cada frase, un audio aparte (o todo de corrido, con un segundo de silencio entre
-frases, y se corta acá). Tranquilo y claro, sin apurarse. Nombres de archivo:
+frases, y se corta acá). Tranquilo y claro, sin apurarse. Tosi graba con su voz
+normal: el tratamiento de Nexo se lo suma el script. Los audios van en
+`public/voz/nexo-un-sabado/crudas/` del estudio, con estos nombres:
 
 | Archivo | Quién | Frase |
 |---|---|---|
@@ -54,7 +61,7 @@ En el estudio vivo (`~/motion-architect/studio`), con ffmpeg en el PATH:
 
 ```
 python scripts/voz-dialogo.py voz/nexo-un-sabado.json             # voz de guía (edge-tts)
-python scripts/voz-dialogo.py voz/nexo-un-sabado.json --grabadas  # con las voces de verdad en public/voz/nexo-un-sabado/
+python scripts/voz-dialogo.py voz/nexo-un-sabado.json --grabadas  # con las voces de verdad en public/voz/nexo-un-sabado/crudas/
 npx remotion render src/index.ts NexoUnSabado-landscape out/nexo-un-sabado.mp4 --crf=18
 ```
 

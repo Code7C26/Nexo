@@ -1991,11 +1991,12 @@ sumarlo, la presentación pasa a 35 y la final a la 35: renumerar la guía
 (`armar-guia.mjs` frena si no coinciden), el LEEME y las referencias "la 34".
 Estado del video (hist. §182): **enfoque nuevo, "Un sábado en el local"**, una
 animación propia con tarjetas (como el de los amigos del usuario, sin la app
-grabada). Santino es el dueño y **Tosi la voz del asistente**. Armado con voz de
-guía (~32 s): `docs/pitch/media/nexo-un-sabado-guia.mp4` (no se sube). Guion,
+grabada). Santino es el dueño y **Tosi la voz de Nexo** (el asistente, con
+tratamiento de voz digital y todo lo suyo en azul). Armado con voz de
+guía (~34 s): `docs/pitch/media/nexo-un-sabado-guia.mp4` (no se sube). Guion,
 frases y cómo grabar: `redes/videos/estudio/storyboards/nexo-un-sabado.md`.
 Falta: (1) **las voces de Santino y Tosi**, una frase por archivo, en
-`public/voz/nexo-un-sabado/` del estudio y `voz-dialogo.py --grabadas`; (2)
+`public/voz/nexo-un-sabado/crudas/` del estudio y `voz-dialogo.py --grabadas`; (2)
 renderizar y ponerlo en una diapositiva como los otros videos (`.video-tarjeta`,
 agrandándose). La v4 (`nexo-ingles.md`, capturas) queda descartada.
 
