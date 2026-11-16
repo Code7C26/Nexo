@@ -809,6 +809,9 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .m-codigo .ico { color: var(--acento); }
 .m-codigo b { color: var(--texto); }
 .m-codigo .paso-cod { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.25em 0.75em; border: 1px solid var(--borde-fuerte); border-radius: 999px; background: var(--tarjeta); }
+/* Con qué está hecho cada cuadro: chiquito, al pie y apagado, para el que mira de cerca. */
+.mapa .m-lengs { margin-top: auto; padding-top: 0.4em; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: calc(var(--small-size) * 0.78); letter-spacing: 0.02em; line-height: 1.3; color: var(--texto-3); opacity: 0.8; }
+.m-codigo .m-lengs { margin: 0 0 0 auto; padding: 0; }
 
 /* ===== Cómo trabajamos: el proceso, de la decisión a publicar ===== */
 .proceso { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: clamp(0.4rem, 1vw, 0.9rem); }
@@ -1808,13 +1811,14 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
         <div class="m-aparatos"><svg class="ico"><use href="#iconos-phone"/></svg><svg class="ico"><use href="#p-monitor"/></svg><svg class="ico"><use href="#iconos-tablet"/></svg></div>
         <b>Celular, compu o tablet</b>
         <span>El dueño, el empleado o la puerta del gimnasio. Desde el navegador o instalado como app.</span>
+        <span class="m-lengs">HTML · CSS · JavaScript</span>
       </div>
       <div class="m-flecha reveal" style="--d:3"><i></i><span>Por internet, cifrado (HTTPS)</span></div>
       <div class="m-nodo m-servidor reveal" style="--d:4">
         <span class="m-etq">El servidor de Nexo · en la nube de Oracle</span>
         <div class="m-dentro">
-          <div class="m-caja"><svg class="ico"><use href="#p-server"/></svg><b>La aplicación</b><span>Recibe cada pedido y hace la operación entera, o no la hace.</span></div>
-          <div class="m-caja"><svg class="ico"><use href="#p-database"/></svg><b>La base de datos</b><span>Donde queda todo, con cada negocio separado de los demás.</span></div>
+          <div class="m-caja"><svg class="ico"><use href="#p-server"/></svg><b>La aplicación</b><span>Recibe cada pedido y hace la operación entera, o no la hace.</span><span class="m-lengs">JavaScript (Node.js)</span></div>
+          <div class="m-caja"><svg class="ico"><use href="#p-database"/></svg><b>La base de datos</b><span>Donde queda todo, con cada negocio separado de los demás.</span><span class="m-lengs">SQL</span></div>
         </div>
       </div>
       <div class="m-flecha reveal" style="--d:5"><i></i><span>Cada noche, cifrado</span></div>
@@ -1823,6 +1827,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
         <svg class="ico"><use href="#p-cloud"/></svg>
         <b>Una copia diaria</b>
         <span>En otro proveedor (Backblaze). Si algo se rompe, se restaura.</span>
+        <span class="m-lengs">JavaScript (Node.js)</span>
       </div>
       <div class="m-conexiones reveal" style="--d:7">
         <span class="m-etq">El servidor se conecta con</span>
@@ -1835,8 +1840,9 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
           <span class="logo-caja"><svg class="ico"><use href="#iconos-sparkles"/></svg>IA</span>
           <span class="logo-caja"><svg class="ico"><use href="#iconos-mail"/></svg>Mails</span>
         </div>
+        <span class="m-lengs">JSON · XML</span>
       </div>
-      <p class="m-codigo reveal" style="--d:8"><b>Cómo llega una mejora:</b><span class="paso-cod"><svg class="ico"><use href="#p-git"/></svg>El código, en GitHub</span>→<span class="paso-cod"><svg class="ico"><use href="#iconos-circle-check"/></svg>395 pruebas automáticas</span>→<span class="paso-cod"><svg class="ico"><use href="#p-rocket"/></svg>Se publica solo en el servidor</span></p>
+      <p class="m-codigo reveal" style="--d:8"><b>Cómo llega una mejora:</b><span class="paso-cod"><svg class="ico"><use href="#p-git"/></svg>El código, en GitHub</span>→<span class="paso-cod"><svg class="ico"><use href="#iconos-circle-check"/></svg>395 pruebas automáticas</span>→<span class="paso-cod"><svg class="ico"><use href="#p-rocket"/></svg>Se publica solo en el servidor</span><span class="m-lengs">YAML · Bash</span></p>
     </div>
   </div>
 </section>
