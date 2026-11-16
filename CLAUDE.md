@@ -1327,7 +1327,10 @@ venta, sin armar una oferta. Se reparte entre los renglones según su valor
 (`frontend/js/core/descuento.js`, el mismo para la pantalla y el servidor) y
 queda en el precio de cada uno; `venta_items.descuento` guarda cuánto se bajó
 por unidad, y la auditoría anota quién lo hizo. Lo hace cualquier rol, sin tope
-(decisión del usuario). Queda para después: precio editable por
+(decisión del usuario).
+**Factura y ticket al cobrar** (hist. §184): en el cobro se elige si la venta
+sale con factura (la letra sale sola, como en Ventas) y si se imprime el ticket
+de 80 mm, que lleva el CAE y el QR cuando hay factura. Queda para después: precio editable por
 renglón en el mostrador, alta rápida de cliente y venta sin conexión.
 
 ---

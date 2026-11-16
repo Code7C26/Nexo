@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §183);
+    siguiente número (hoy el último es §184);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,16 @@
   reescribe nada.
 
 ## Estado actual (16 de noviembre de 2026)
+
+**16 de noviembre, hist. §184: facturar desde el punto de venta y el ticket
+impreso (commiteado en `solla`, sin publicar).** Punto 1 del plan hasta la
+oficial. Al cobrar en el mostrador se elige "Sin factura" o "Factura A/B/C" (la
+letra sale sola) y si se imprime el ticket; queda recordado por dispositivo. La
+factura es la de siempre (`POST /api/ventas/:id/facturar`), pedida apenas se
+registra la venta, o cuando entra el pago del QR. El ticket es de 80 mm
+(`armarTicket` en `core/comprobante.js`), con CAE y QR si hay factura, y se
+reimprime desde la ficha de la venta. Sin cambios de esquema. 396 tests.
+**Falta probar** con una impresora térmica de verdad y el QR con factura.
 
 **16 de noviembre, hist. §183: la presentación después del simulacro (36
 diapositivas).** Lo que marcó la profe: la 31 dice cuánto hubiera llevado sin
@@ -1998,7 +2008,8 @@ simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el 20 de
 noviembre" de más abajo. El usuario pidió sí o sí para la oficial: sucursales,
 cierre de caja, facturar desde el punto de venta y el ticket impreso. El orden
 es mío (primero lo chico que se muestra, después la etapa grande):
-1. **Facturar desde el punto de venta y el ticket impreso:** al cobrar, elegir
+1. ~~**Facturar desde el punto de venta y el ticket impreso**~~ (hecho, hist.
+   §184; falta probarlo con una impresora térmica): al cobrar, elegir
    factura A, B o sin factura (la letra la propone el cliente, como en Ventas)
    e imprimir el ticket en el momento. Hoy el mostrador solo cobra y se
    factura después desde Ventas. El dueño sigue facturando desde Ventas lo que
