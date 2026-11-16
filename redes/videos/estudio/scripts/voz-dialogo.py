@@ -39,6 +39,14 @@ NEXO = (
     "aecho=0.85:0.6:28:0.18,"
     "acompressor=threshold=-20dB:ratio=3:attack=5:release=60,volume=1.6"
 )
+# Sobre una voz grabada con el celular, el de arriba le saca claridad: un coro
+# de una sola voz y un eco más corto la siguen distinguiendo y la ensucian menos.
+NEXO_GRABADA = (
+    "highpass=f=180,lowpass=f=7500,"
+    "chorus=0.7:0.9:25:0.2:0.25:2,"
+    "aecho=0.9:0.5:22:0.1,"
+    "acompressor=threshold=-20dB:ratio=3:attack=5:release=60"
+)
 # Las notas de voz del celular: primero sin el zumbido de abajo ni el ruido de
 # fondo (si no, el ruido no deja recortar las puntas), y después las pausas de
 # más de medio segundo, cortas. Las notas de WhatsApp terminan con el clic de
@@ -59,6 +67,14 @@ ECUALIZACION = {
     "santino": (
         "equalizer=f=330:t=q:w=1.1:g=-7,equalizer=f=1500:t=q:w=1.0:g=6,"
         "equalizer=f=6500:t=q:w=1.0:g=6,aexciter=amount=3:drive=6:freq=6000,"
+        "agate=threshold=0.02:ratio=2:attack=2:release=90:range=0.3"
+    ),
+    # El de Tosi, más encajonado (+5 dB en 200-500 Hz) y sin presencia (-14 dB en
+    # 4-8 kHz), ajustado contra la voz de guía de Nexo ya con su tratamiento.
+    "tosi": (
+        "equalizer=f=320:t=q:w=0.9:g=-10,equalizer=f=750:t=q:w=0.9:g=6,"
+        "equalizer=f=1400:t=q:w=1.0:g=3,equalizer=f=3000:t=q:w=0.8:g=-7,"
+        "equalizer=f=5500:t=q:w=0.9:g=10,"
         "agate=threshold=0.02:ratio=2:attack=2:release=90:range=0.3"
     ),
 }
@@ -117,7 +133,8 @@ def main():
             )
         ecualizacion = f"{ECUALIZACION[f['quien']]}," if f["quien"] in ECUALIZACION else ""
         limpia = f"{SIN_CLIC},{SIN_RUIDO},{recorte(-38)},{ecualizacion}{PAUSAS}" if grabada else recorte(-45)
-        filtro = limpia + ("," + NEXO if f["quien"] == "tosi" else "") + "," + VOLUMEN
+        nexo = NEXO_GRABADA if grabada else NEXO
+        filtro = limpia + ("," + nexo if f["quien"] == "tosi" else "") + "," + VOLUMEN
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(crudo), "-af", filtro, "-ar", "48000", str(archivo)], check=True)
         dur = float(
             subprocess.run(

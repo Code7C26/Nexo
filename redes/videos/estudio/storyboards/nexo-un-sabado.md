@@ -39,8 +39,8 @@ los QR. Composición: `src/compositions/NexoUnSabado.tsx`.
 
 ## Grabar las voces
 
-**Estado (16 de noviembre, de madrugada):** las tres de Santino, grabadas y
-puestas; las cinco de Tosi, de guía hasta que las grabe.
+**Estado (16 de noviembre):** las ocho frases, grabadas por Santino y Tosi y
+puestas (38 s).
 
 Cada frase, un audio aparte (o todo de corrido, con un segundo de silencio entre
 frases, y se corta acá). Tranquilo y claro, sin apurarse. Tosi graba con su voz

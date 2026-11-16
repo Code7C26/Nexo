@@ -23,7 +23,7 @@
 
 **16 de noviembre, hist. §182: el video en inglés, rehecho como animación
 propia ("Un sábado en el local"), y en la presentación (la 34; ahora son 35).**
-Las voces de Santino, puestas; faltan las de Tosi. Ver "Qué sigue".
+Terminado, con las voces de Santino y Tosi. Ver "Qué sigue".
 
 **16 de noviembre, hist. §181: la apertura sin frases con coma.** Solo
 cambiaron los títulos ("Mirá el mes de un vistazo.", "Las ofertas se aplican
@@ -1983,23 +1983,15 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
-**Próxima sesión, lo primero: las voces de Tosi en el video en inglés.** El
-video ("Un sábado en el local", hist. §182) **ya está en la presentación, en la
-34** (la de los QR pasó a ser la 35; guía, LEEME y presentación rearmados), con
-las tres frases de Santino grabadas y las cinco de Tosi todavía de guía. Tosi
-las graba a primera hora del 16 (las frases, en
-`redes/videos/estudio/storyboards/nexo-un-sabado.md`). Para sumarlas: ponerlas en
-`~/motion-architect/studio/public/voz/nexo-un-sabado/grabadas/` como
-`01-confirmar`, `02-aviso`, `04-listo`, `05-cierre` y `07-probar` (cualquier
-formato, también las notas de WhatsApp), correr `python scripts/voz-dialogo.py
-voz/nexo-un-sabado.json` y `npx remotion render src/index.ts
-NexoUnSabado-landscape out/nexo-un-sabado.mp4 --crf=18` (con el PATH de ffmpeg),
-copiar el mp4 a `docs/pitch/media/`, rehacer el póster (`ffmpeg -ss 10.7`, a
-`nexo-un-sabado.jpg`), `npm run presentacion` y, si cambió la duración, el "37
-segundos" de la ficha 34 de `redes/pitch/guia.html` y `npm run guia`. Las notas
-originales de Santino quedaron en `docs/pitch/media/WhatsApp Ptt …ogg` (sin
-subir). La voz de cada uno se corrige con `ECUALIZACION` en
-`voz-dialogo.py` (la de Santino, hecha): medir la de Tosi antes de ajustarla.
+**El video en inglés, terminado** (hist. §182): "Un sábado en el local", en la
+34 de la presentación (35 en total), con las ocho frases grabadas por Santino y
+Tosi (38 s). Si se regraba una frase: el audio en
+`~/motion-architect/studio/public/voz/nexo-un-sabado/grabadas/` con su nombre
+(`02-aviso.ogg`…), `python scripts/voz-dialogo.py voz/nexo-un-sabado.json`, el
+render, copiar el mp4 y el póster (`-ss 10.7`) a `docs/pitch/media/`, `npm run
+presentacion` y `npm run guia` (los pasos, en el storyboard). Para escuchar
+antes de la presentación: "Only two black T-shirts left" y "Scan the code" de
+Tosi están al límite de lo entendible (ver el histórico).
 
 **Después, para la oficial ("algunas cositas"):** la captura real del chat de
 WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33; la

@@ -14124,3 +14124,16 @@ sigue entendiendo todo. La de Tosi se mide y se ajusta cuando grabe. Antes y
 después para escuchar: `Desktop/Voces Nexo/Comparación voz Santino (antes y
 después).mp3`. El eco de la pieza no sale del todo con ecualización: lo que
 más rinde es grabar mejor (ver el handoff).
+
+**A la mañana: las voces de Tosi.** Cinco notas de WhatsApp (6:44 a 6:45). Su
+micrófono, medido: +5 dB en 200-500 Hz y -14 dB en 4-8 kHz; `ECUALIZACION`
+"tosi" ajustada contra la voz de guía de Nexo ya con su efecto (queda a 2-3 dB,
+salvo 2-4 kHz, que no baja de -10 y no se forzó). Sobre una voz grabada, el
+efecto `NEXO` le sacaba claridad: las grabadas llevan `NEXO_GRABADA` (coro de
+una voz y eco de 22 ms); la guía sigue con el de antes. Whisper como prueba de
+claridad: "Got it", "Order ready" y el cierre, perfectos; "Only two black
+T-shirts left" pasa a "lucky shields" con cualquier cambio mínimo (hasta con un
+highpass a 80 Hz, que no toca consonantes) y "Scan the code" ya era "It's candy
+cold" en el audio original: es la pronunciación al límite, no el procesamiento.
+Se dejó así y se le avisó al usuario para que las escuche; si no se entienden,
+Tosi las regraba más despacio. Video final: 38,3 s.
