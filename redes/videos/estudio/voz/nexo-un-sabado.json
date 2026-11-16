@@ -1,0 +1,10 @@
+[
+  { "escena": "venta", "quien": "santino", "texto": "Sold three black T-shirts to Juan. He paid with Mercado Pago.", "sub": "Vendí tres remeras negras a Juan. Me pagó con Mercado Pago." },
+  { "escena": "confirmar", "quien": "tosi", "texto": "Got it. Confirm the sale?", "sub": "Listo. ¿Confirmo la venta?" },
+  { "escena": "aviso", "quien": "tosi", "texto": "Only two black T-shirts left.", "sub": "Quedan solo dos remeras negras." },
+  { "escena": "pedido", "quien": "santino", "texto": "Order twenty more from the supplier.", "sub": "Pedile veinte más al proveedor." },
+  { "escena": "listo", "quien": "tosi", "texto": "Order ready.", "sub": "Pedido listo." },
+  { "escena": "cierre", "quien": "tosi", "texto": "Twenty-three sales today. The cash count is OK.", "sub": "Veintitrés ventas hoy. La caja cierra bien." },
+  { "escena": "lema", "quien": "santino", "texto": "Nexo. Your whole business in one place.", "sub": "Nexo. Todo tu negocio en un solo lugar." },
+  { "escena": "probar", "quien": "tosi", "texto": "Try it free. Scan the code.", "sub": "Probalo gratis. Escaneá el código." }
+]

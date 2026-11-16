@@ -228,7 +228,7 @@ const Grilla: React.FC<{ items: Item[]; dur: number; top: number; alto: number; 
 // ---------------------------------------------------------------- Logo
 
 // El "NΞXO" del logo (frontend/img/marca.svg), una letra por grupo.
-const LETRAS = [
+export const LETRAS = [
   <>
     <rect x="0" y="3" width="13" height="100" />
     <rect x="97" y="3" width="13" height="100" />

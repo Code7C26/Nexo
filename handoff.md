@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §181);
+    siguiente número (hoy el último es §182);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,10 @@
   reescribe nada.
 
 ## Estado actual (16 de noviembre de 2026)
+
+**16 de noviembre, hist. §182: el video en inglés, rehecho como animación
+propia ("Un sábado en el local").** Con voz de guía; faltan las voces de
+Santino y Tosi. Ver "Qué sigue".
 
 **16 de noviembre, hist. §181: la apertura sin frases con coma.** Solo
 cambiaron los títulos ("Mirá el mes de un vistazo.", "Las ofertas se aplican
@@ -1985,13 +1989,15 @@ la 34** (la de los QR): es un resumen de Nexo que termina en "Try it free. Scan
 the code.", así no corta ninguna explicación y lleva directo a los QR. Al
 sumarlo, la presentación pasa a 35 y la final a la 35: renumerar la guía
 (`armar-guia.mjs` frena si no coinciden), el LEEME y las referencias "la 34".
-Estado del video: v4 armada (~21 s, atada a una voz de prueba;
-`redes/videos/estudio/storyboards/nexo-ingles.md`). Falta: (1) **la voz del
-usuario**, grabada de corrido con el texto del storyboard; sus tiempos salen
-con `node videos/grabar/tiempos-voz.mjs <audio> <json>` (en `redes/`); (2)
-**el temblor de cámara** en cada cambio (el paneo y el zoom entre momentos, ver
-el bloque del 14 de noviembre más abajo); (3) renderizar y ponerlo en una
-diapositiva como los otros videos (`.video-tarjeta`, agrandándose).
+Estado del video (hist. §182): **enfoque nuevo, "Un sábado en el local"**, una
+animación propia con tarjetas (como el de los amigos del usuario, sin la app
+grabada). Santino es el dueño y **Tosi la voz del asistente**. Armado con voz de
+guía (~32 s): `docs/pitch/media/nexo-un-sabado-guia.mp4` (no se sube). Guion,
+frases y cómo grabar: `redes/videos/estudio/storyboards/nexo-un-sabado.md`.
+Falta: (1) **las voces de Santino y Tosi**, una frase por archivo, en
+`public/voz/nexo-un-sabado/` del estudio y `voz-dialogo.py --grabadas`; (2)
+renderizar y ponerlo en una diapositiva como los otros videos (`.video-tarjeta`,
+agrandándose). La v4 (`nexo-ingles.md`, capturas) queda descartada.
 
 **Después, para la oficial ("algunas cositas"):** la captura real del chat de
 WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33; la

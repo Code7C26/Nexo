@@ -14050,3 +14050,39 @@ el anterior, solo difieren los títulos; el logo final es idéntico. El póster
 `nexo-apertura.jpg` es el cuadro 150. El storyboard tiene las frases nuevas.
 El reel vertical (`redes/videos/nexo-apertura-reel.mp4`) no se rearmó: lleva
 la voz y sus subtítulos, que siguen con las frases habladas.
+
+## §182 — 16 de noviembre de 2026: el video en inglés, "Un sábado en el local"
+
+El usuario retomó el pendiente del 14 de noviembre (la v4 temblaba en cada
+cambio y prefería una animación propia). Referencia: `anuncio-en.mp4` de sus
+amigos, en Descargas (40 s, Studree/Mnemora): una historia chiquita con
+tarjetas (el mensaje del jefe, le habla al asistente, el reloj avanza durante
+la noche, tres propuestas a la mañana, lema, logo y QR) con subtítulos en
+castellano. No se copió el aspecto: Nexo va en negro y azul con las piezas de
+la apertura.
+
+Propuesta aprobada: **"Un sábado en el local"**. El dueño le dicta una venta
+al asistente, que la arma y se confirma; salen sus efectos (stock, Mercado
+Pago, factura, ganancia); pasa el día con ventas de Tienda Nube, Mercado
+Libre y el mostrador mientras baja el stock; aviso de stock bajo, se pide una
+compra y se confirma; el cierre con 23 ventas y el arqueo en OK; lema y "Try
+it free · Scan the code" (la diapositiva siguiente es la de los QR). Pedido
+del usuario: **participan los dos**, Santino como dueño y **Tosi como la voz
+del asistente**. Lo que dice Tosi aparece escrito en la tarjeta, porque el
+asistente real contesta por escrito. Afuera WhatsApp (falta la app de Meta) y
+las preguntas sobre los datos (no están hechas).
+
+Archivos (en el estudio vivo y copiados en `redes/videos/estudio/`):
+- `src/compositions/NexoUnSabado.tsx`: todos los tiempos salen de las frases
+  (`pon(...)`), así que con las voces grabadas se reacomoda solo.
+- `scripts/voz-dialogo.py` y `voz/nexo-un-sabado.json`: dos voces de guía
+  (edge-tts, Andrew y Brian) o, con `--grabadas`, los audios de ellos; anota
+  la duración y el volumen cuadro por cuadro (la onda de la tarjeta se mueve
+  con la voz; con un piso, porque entre palabras baja a cero).
+- `NexoApertura.tsx` exporta `LETRAS` (el NΞXO del logo) para el cierre.
+- `storyboards/nexo-un-sabado.md`: escenas, frases, archivos a grabar y cómo
+  rearmar.
+
+Salida: `docs/pitch/media/nexo-un-sabado-guia.mp4` (32 s, voz de guía; no se
+sube, como la guía anterior). Revisado por cuadros: dos arreglos (el título del
+cierre salía negro sobre negro; la primera tarjeta, sola, quedaba muy arriba).
