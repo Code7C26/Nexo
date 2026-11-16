@@ -2045,6 +2045,12 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   caja se elige al abrir el turno y así queda quién vendió, abrió y cerró. Con
   esto, el **cierre del día y del mes** sumando todas las cajas y sucursales.
   Los cambios del dueño ya llegan al instante a las cajas (es una sola web).
+  **Decidido por el usuario (16 de noviembre):** cada caja vende solo del
+  depósito de su sucursal (hoy el punto de venta vende siempre del
+  predeterminado), y lo que muestra como disponible es ese stock. Lo que no
+  hay en la sucursal **no se vende ahí**, aunque otra lo tenga: "te mandan a
+  comprarlo a la otra", como en cualquier cadena. El mostrador sí muestra en
+  qué sucursal hay, solo para avisarle al cliente.
 - **Vender sin conexión** (de Praxia; el usuario lo quiere, sin fecha): el
   punto de venta guarda lo último que cargó, vende sin internet y al volver
   manda las ventas al servidor, sin duplicarlas. Lo difícil: el stock que se
