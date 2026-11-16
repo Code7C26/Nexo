@@ -733,6 +733,23 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .camino b { display: block; font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.15; }
 .camino span:not(.hito) { color: var(--texto-2); font-size: var(--small-size); }
 
+/* El caso real, en el segundo paso: el camino se va y entran las fotos
+   alrededor del video, como sobre una mesa. */
+.lado-caso { display: grid; align-items: center; }
+.lado-caso > * { grid-area: 1 / 1; }
+.camino { transition: opacity 0.5s ease, translate 0.5s ease; }
+.slide[data-paso="1"] .camino { opacity: 0; translate: -24px 0; pointer-events: none; }
+.caso { position: relative; height: min(74vh, 720px); pointer-events: none; }
+.caso > * { position: absolute; margin: 0; opacity: 0; scale: 0.85; transition: opacity 0.5s ease, scale 0.6s cubic-bezier(0.3, 1.4, 0.5, 1); transition-delay: calc(0.15s + var(--i) * 0.15s); }
+.slide[data-paso="1"] .caso > * { opacity: 1; scale: 1; }
+.caso img { border: clamp(4px, 0.45vw, 7px) solid #f4f4f4; border-radius: 4px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75); }
+.caso-excel { width: 50%; left: -14%; top: 4%; rotate: -6deg; }
+.caso-notion { width: 36%; left: -6%; bottom: 7%; rotate: 5deg; }
+.caso-pizarron { width: 27%; right: -9%; top: 12%; rotate: 6deg; }
+.caso-video { z-index: 2; top: 0; left: 50%; height: 92%; aspect-ratio: 480 / 854; translate: -50% 0; border: clamp(5px, 0.5vw, 8px) solid #1c1c1c; border-radius: clamp(16px, 1.6vw, 26px); overflow: hidden; background: #000; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 60px -10px rgba(96, 165, 250, 0.35); }
+.caso-video video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.caso-nota { left: 0; right: 0; bottom: 0; text-align: center; color: var(--texto-3); font-size: var(--small-size); }
+
 /* ===== Rubros: qué prende cada uno ===== */
 .rubro .funcs { color: var(--texto-2); font-size: var(--small-size); line-height: 1.35; }
 .rubro .pronto-tag { margin-top: auto; font-size: var(--small-size); font-weight: 600; color: var(--acento); }
@@ -866,6 +883,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   .telefono .chat { min-height: 0; }
   .lio-persona { max-width: 90%; height: 52%; opacity: 0.9; }
   .lio-titulo { max-width: 100%; }
+  .caso { height: 42vh; }
   .gancho { grid-template-columns: 1fr; }
   .pensando { height: 34vh; }
   .reloj-escena { height: 40vh; }
@@ -1318,21 +1336,32 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 </section>
 
 <!-- 9. Cómo surgió: Santino cuenta que el problema lo vio en su emprendimiento
-     y en los de amigos, compañeros y familiares. El camino se dibuja de arriba
-     abajo y termina en Nexo. -->
-<section class="slide" aria-label="Cómo surgió la idea">
+     y en los de amigos, compañeros y familiares. Dos pasos (data-paso): 0, el
+     camino se dibuja de arriba abajo y termina en Nexo; 1, en su lugar aparece
+     su caso real (fotos y un video en loop, desenfocados a propósito: no se
+     tienen que leer los costos). Los originales, en caso-real/ (no se suben). -->
+<section class="slide" aria-label="Cómo surgió la idea" data-pasos="1">
   <div class="slide-content par parejo">
     <div>
       <p class="parte reveal">Cómo surgió</p>
       <h2 class="reveal" style="--d:1">Un problema que vimos de cerca una y otra vez</h2>
       <p class="bajada reveal" style="--d:2">En un emprendimiento propio y en los de amigos, compañeros y familiares pasaba lo mismo. Y no había nada pensado para el que recién arranca.</p>
     </div>
+    <div class="lado-caso">
     <ol class="camino">
       <li class="reveal" style="--d:3"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg></span><div><b>Emprendimientos que arrancan</b><span>El nuestro y los de gente cercana: muchas ganas y ningún sistema</span></div></li>
       <li class="reveal" style="--d:5"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#notebook-tabs"/></svg></span><div><b>Todo anotado a mano</b><span>Pedidos por WhatsApp, cuentas en el cuaderno, el pizarrón y una planilla</span></div></li>
       <li class="reveal" style="--d:7"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-alert"/></svg></span><div><b>Las mismas preguntas en todos</b><span>¿Cuánto me quedó? ¿Quién me debe? ¿Qué tengo que reponer?</span></div></li>
       <li class="reveal nexo-hito" style="--d:9"><span class="hito"><img src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""></span><div><b>Así nació Nexo</b><span>Pensado para el que recién arranca, y que crece con él</span></div></li>
     </ol>
+    <div class="caso" aria-label="Un caso real: las planillas, el pizarrón y el Notion de un emprendimiento, desenfocados">
+      <img class="caso-excel" style="--i:1" src="capturas/caso-excel.webp" alt="">
+      <img class="caso-notion" style="--i:2" src="capturas/caso-notion.webp" alt="">
+      <img class="caso-pizarron" style="--i:3" src="capturas/caso-pizarron.webp" alt="">
+      <figure class="caso-video" style="--i:0"><video src="../media/caso-planilla.mp4" poster="../media/caso-planilla.jpg" autoplay muted loop playsinline></video></figure>
+      <p class="caso-nota" style="--i:4">Un caso real de hace dos años</p>
+    </div>
+    </div>
   </div>
 </section>
 
