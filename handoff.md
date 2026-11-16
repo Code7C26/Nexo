@@ -22,33 +22,47 @@
 ## Estado actual (16 de noviembre de 2026)
 
 **16 de noviembre, hist. §180: la presentación después del ensayo (34
-diapositivas) y el envío de una venta (commiteado en `solla`, sin publicar).**
-- **Segunda vuelta:** la 3 sin las piezas de papel (la persona sola y el texto
-  al medio); la 9 es "Un problema que vimos de cerca una y otra vez" (el
-  emprendimiento de perfumes del usuario y los de gente cercana, sin nombrarlo);
-  mercado y punto de equilibrio en una sola (la 30); "Lo que viene" con ideas
-  más llamativas (Rappi y PedidosYa, tienda en un link, Andreani, WhatsApp con
-  el resumen del día, IA que arma el pedido, precios al día, turnos y mesas); el
-  final con un QR chico de Instagram, y el enlace a Instagram al pie de "Probá
-  Nexo sin registrarte" (app). Para la 9, el usuario puede mandar fotos viejas
-  de sus planillas, pizarrón y WhatsApp.
-- **Video en inglés (requisito de la profe):** propuesto justo antes de la
-  final, porque termina en "Scan the code"; falta que el usuario lo apruebe, y
-  terminar el video (su voz y el temblor de cámara de la v4).
-- La 1 espera siempre una tecla, e Inicio vuelve ahí. Nuevas: 9 cómo surgió, 15
-  Productos, 27 el mapa de Nexo, 28 seguridad, 31 cómo trabajamos con IA, 32 lo
-  que viene, 33 y 34 el cierre con los QR. El video del alta (12) arranca con
-  un clic. ARCA quedó en la 22, pegada a la factura. Guía renumerada, con el hilo
-  del problema y las frases para pasar de una a otra.
+diapositivas), el caso real y el envío de una venta (commiteado en `solla`, sin
+publicar).** Relato completo en el histórico. Cómo quedó, por diapositiva:
+- **1** espera siempre "Presionar cualquier tecla"; F pone pantalla completa sin
+  arrancar el video, Esc lo saltea e **Inicio** vuelve ahí sin recargar.
+- **3** sin las piezas de papel: la persona animada y el texto al medio.
+- **9 "Un problema que vimos de cerca una y otra vez":** el problema visto en el
+  emprendimiento del usuario (perfumes; no se nombra) y en los de gente
+  cercana. A la izquierda, el camino que termina en Nexo; a la derecha, todo a
+  la vista desde que llega, su caso real: un video en loop (`media/
+  caso-planilla.mp4`, los últimos 3 s del suyo) y fotos de su Excel, su Notion
+  y su pizarrón (`capturas/caso-*.webp`), sin bordes ni desenfoque, chicas a
+  propósito para que no se lean los costos. Los originales están en
+  `docs/pitch/fuentes/caso-real/`, que no se sube (su `.gitignore`).
+- **10** crece con el negocio; **11** cada tipo de negocio con lo que prende
+  (barbería y restaurante "Muy pronto": turnos, mesas y comandas); **12** el
+  video del alta arranca con un clic o con →.
+- **15 Productos** (catálogo y ofertas, puente al punto de venta); **17** la
+  ficha real de una venta de Lola ($ 79.800, quedó 28 % contra 57 %); **22**
+  ARCA pegada a la factura (21).
+- **27** el mapa de Nexo (quien lo usa → servidor → respaldo, las conexiones con
+  sus logos y cómo llega una mejora); **28** por qué los datos están seguros.
+- **30 "Cuántos clientes hay y cuántos necesitamos":** mercado y equilibrio en
+  una. El SAM es Alta Gracia (no Córdoba: así está en los documentos
+  entregados); Córdoba capital va como "Después", abajo del embudo. Conclusión:
+  los 83 del primer año son casi los 84 que pagan todo.
+- **31** cómo trabajamos con IA (cinco pasos); **32** lo que viene (más fuerte
+  por dentro y ocho ideas: Rappi y PedidosYa, tienda en un link, Andreani,
+  WhatsApp con el resumen del día, IA que arma el pedido, precios al día,
+  turnos, mesas); **33** "El sistema que nos hubiera gustado tener desde el
+  primer día"; **34** "Pruébenlo con su negocio", con los QR de probar y del
+  código grandes y uno chico de Instagram.
+- **La guía** (`redes/pitch/guia.html` → PDF) sigue ese orden: el hilo del
+  problema (2 a 9) con la frase para pasar de una a otra, y cada diapositiva
+  nueva explicada.
 - **Producto:** "Sumar el envío" en la ficha de una venta (`POST
-  /api/ventas/:id/envio`). Lola de ejemplo trae una venta con packaging, crédito
-  en cuotas y envío (la de la 17).
-- **Falta:** publicar y correr `npm run demo -- --email <mail de Santino>
-  --venta-con-costos` para tener esa venta en su Lola; la captura del chat real
-  de WhatsApp (la manda el usuario) para la 19; y para la oficial, testimonios en
-  la 33, las frases del video de apertura sin la coma ("el mes, de un vistazo") y
-  la calidad del video del alta.
-
+  /api/ventas/:id/envio`, admin); Lola de ejemplo trae la venta con packaging,
+  crédito en cuotas y envío; "Seguinos en Instagram" al pie de "Probá Nexo sin
+  registrarte". 395 tests.
+- **Falta publicar** (PR a `main`) para que el envío y el Instagram estén en el
+  sitio, y después correr `npm run demo -- --email <mail de Santino>
+  --venta-con-costos` para tener la venta de la 17 en su Lola.
 
 **15 de noviembre, hist. §179: corregir una propuesta por WhatsApp
 (commiteado en `solla`, sin publicar).** Tercer botón "✏️ Corregir"
@@ -1959,6 +1973,27 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    prueba no está probando nada.
 
 ## Qué sigue
+
+**Próxima sesión, lo primero: el video en inglés** (requisito de la profe:
+una parte en inglés en algún momento de la presentación). Va **justo antes de
+la 34** (la de los QR): es un resumen de Nexo que termina en "Try it free. Scan
+the code.", así no corta ninguna explicación y lleva directo a los QR. Al
+sumarlo, la presentación pasa a 35 y la final a la 35: renumerar la guía
+(`armar-guia.mjs` frena si no coinciden), el LEEME y las referencias "la 34".
+Estado del video: v4 armada (~21 s, atada a una voz de prueba;
+`redes/videos/estudio/storyboards/nexo-ingles.md`). Falta: (1) **la voz del
+usuario**, grabada de corrido con el texto del storyboard; sus tiempos salen
+con `node videos/grabar/tiempos-voz.mjs <audio> <json>` (en `redes/`); (2)
+**el temblor de cámara** en cada cambio (el paneo y el zoom entre momentos, ver
+el bloque del 14 de noviembre más abajo); (3) renderizar y ponerlo en una
+diapositiva como los otros videos (`.video-tarjeta`, agrandándose).
+
+**Después, para la oficial ("algunas cositas"):** la captura real del chat de
+WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33;
+las frases del video de apertura sin la coma ("el mes, de un vistazo"); la
+calidad del video del alta; si se quiere, recortar el nombre del
+emprendimiento del pizarrón de la 9.
+
 
 **Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
 vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).

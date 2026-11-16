@@ -14002,3 +14002,24 @@ pie de la pantalla de probar (`frontend/index.html`, `.probar-instagram`). La
 guía se actualizó (la 30 unida, con "¿Y cuando Nexo crezca?") y bajó a 34.
 Propuesto, sin hacer: el video en inglés justo antes de la final, y fotos reales
 del usuario para la 9.
+
+**Tercera vuelta del mismo día: el caso real y la 30.** El usuario puso en
+`docs/pitch/fuentes/caso-real/` (carpeta nueva con LEEME; su `.gitignore` deja
+afuera todo menos el LEEME) tres fotos (Excel, Notion, pizarrón) y un video
+vertical de 8,8 s. Pidió el Excel, el Notion, el pizarrón y, como lo principal,
+la última parte del video (la que mira a la derecha y después a la izquierda):
+`media/caso-planilla.mp4` arranca en el segundo 5,6 (3,2 s, sin sonido, 340 px
+de ancho, en loop). Idas y vueltas: primero se desenfocaron (no le gustó:
+"que no se vean borrosos"); después se dejaron nítidas pero chicas (340, 270 y
+480 px, a la medida en que se ven) para que no se lean los costos; el camino
+"así nació Nexo" tiene que quedar a la vista (pasó abajo del título); el
+pizarrón más grande y al lado del video; sin bordes blancos; y todo a la vista
+desde que llega la diapositiva, sin paso. En el pizarrón se lee el nombre del
+emprendimiento (VRADER): se dejó, con la opción de recortarlo.
+
+La 30: el usuario creía que el SAM era Córdoba. En los documentos entregados el
+SAM son los 2.770 comercios de Alta Gracia, y Córdoba capital es el paso
+siguiente; la diapositiva lo mezclaba en la nota. Ahora se lee en orden: TAM,
+SAM (donde arrancamos), SOM (el primer año), "Después: Córdoba capital", el
+equilibrio (5 y 84) y la conclusión (83 ≈ 84). Los 56 con un promedio de
+$ 29.900 pasaron a la guía, con la pregunta "¿El SAM no era Córdoba?".
