@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §179);
+    siguiente número (hoy el último es §182);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,59 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (15 de noviembre de 2026)
+## Estado actual (16 de noviembre de 2026)
+
+**16 de noviembre, hist. §182: el video en inglés, rehecho como animación
+propia ("Un sábado en el local"), y en la presentación (la 34; ahora son 35).**
+Terminado, con las voces de Santino y Tosi. Ver "Qué sigue".
+
+**16 de noviembre, hist. §181: la apertura sin frases con coma.** Solo
+cambiaron los títulos ("Mirá el mes de un vistazo.", "Las ofertas se aplican
+solas.", "Decís la venta y Nexo la arma."…); el resto del video es el mismo,
+cuadro por cuadro. `docs/pitch/media/nexo-apertura.mp4` y su `.jpg`, rearmados.
+
+**16 de noviembre, hist. §180: la presentación después del ensayo (34
+diapositivas), el caso real y el envío de una venta (commiteado en `solla`, sin
+publicar).** Relato completo en el histórico. Cómo quedó, por diapositiva:
+- **1** espera siempre "Presionar cualquier tecla"; F pone pantalla completa sin
+  arrancar el video, Esc lo saltea e **Inicio** vuelve ahí sin recargar.
+- **3** sin las piezas de papel: la persona animada y el texto al medio.
+- **9 "Un problema que vimos de cerca una y otra vez":** el problema visto en el
+  emprendimiento del usuario (perfumes; no se nombra) y en los de gente
+  cercana. A la izquierda, el camino que termina en Nexo; a la derecha, todo a
+  la vista desde que llega, su caso real: un video en loop (`media/
+  caso-planilla.mp4`, los últimos 3 s del suyo) y fotos de su Excel, su Notion
+  y su pizarrón (`capturas/caso-*.webp`), sin bordes ni desenfoque, chicas a
+  propósito para que no se lean los costos. Los originales están en
+  `docs/pitch/fuentes/caso-real/`, que no se sube (su `.gitignore`).
+- **10** crece con el negocio; **11** cada tipo de negocio con lo que prende
+  (barbería y restaurante "Muy pronto": turnos, mesas y comandas); **12** el
+  video del alta arranca con un clic o con →.
+- **15 Productos** (catálogo y ofertas, puente al punto de venta); **17** la
+  ficha real de una venta de Lola ($ 79.800, quedó 28 % contra 57 %); **22**
+  ARCA pegada a la factura (21).
+- **27** el mapa de Nexo (quien lo usa → servidor → respaldo, las conexiones con
+  sus logos y cómo llega una mejora); **28** por qué los datos están seguros.
+- **30 "Cuántos clientes hay y cuántos necesitamos":** mercado y equilibrio en
+  una. El SAM es Alta Gracia (no Córdoba: así está en los documentos
+  entregados); Córdoba capital va como "Después", abajo del embudo. Conclusión:
+  los 83 del primer año son casi los 84 que pagan todo.
+- **31** cómo trabajamos con IA (cinco pasos); **32** lo que viene (más fuerte
+  por dentro y ocho ideas: Rappi y PedidosYa, tienda en un link, Andreani,
+  WhatsApp con el resumen del día, IA que arma el pedido, precios al día,
+  turnos, mesas); **33** "El sistema que nos hubiera gustado tener desde el
+  primer día"; **34** "Pruébenlo con su negocio", con los QR de probar y del
+  código grandes y uno chico de Instagram.
+- **La guía** (`redes/pitch/guia.html` → PDF) sigue ese orden: el hilo del
+  problema (2 a 9) con la frase para pasar de una a otra, y cada diapositiva
+  nueva explicada.
+- **Producto:** "Sumar el envío" en la ficha de una venta (`POST
+  /api/ventas/:id/envio`, admin); Lola de ejemplo trae la venta con packaging,
+  crédito en cuotas y envío; "Seguinos en Instagram" al pie de "Probá Nexo sin
+  registrarte". 395 tests.
+- **Falta publicar** (PR a `main`) para que el envío y el Instagram estén en el
+  sitio, y después correr `npm run demo -- --email <mail de Santino>
+  --venta-con-costos` para tener la venta de la 17 en su Lola.
 
 **15 de noviembre, hist. §179: corregir una propuesta por WhatsApp
 (commiteado en `solla`, sin publicar).** Tercer botón "✏️ Corregir"
@@ -1930,6 +1982,22 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    prueba no está probando nada.
 
 ## Qué sigue
+
+**El video en inglés, terminado** (hist. §182): "Un sábado en el local", en la
+34 de la presentación (35 en total), con las ocho frases grabadas por Santino y
+Tosi (38 s). Si se regraba una frase: el audio en
+`~/motion-architect/studio/public/voz/nexo-un-sabado/grabadas/` con su nombre
+(`02-aviso.ogg`…), `python scripts/voz-dialogo.py voz/nexo-un-sabado.json`, el
+render, copiar el mp4 y el póster (`-ss 10.7`) a `docs/pitch/media/`, `npm run
+presentacion` y `npm run guia` (los pasos, en el storyboard). Para escuchar
+antes de la presentación: "Only two black T-shirts left" y "Scan the code" de
+Tosi están al límite de lo entendible (ver el histórico).
+
+**Después, para la oficial ("algunas cositas"):** la captura real del chat de
+WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33; la
+calidad del video del alta; si se quiere, recortar el nombre del
+emprendimiento del pizarrón de la 9.
+
 
 **Plan hasta el 20 de noviembre (1 de noviembre de 2026).** Es el orden
 vigente, y ya cuenta como planificación con el equipo (CLAUDE.md §27, §38).

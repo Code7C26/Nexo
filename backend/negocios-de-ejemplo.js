@@ -141,7 +141,7 @@ function azar(semilla) {
 
 // Lo que todos los negocios usan: catálogos, productos, compras, ventas y
 // gastos, sobre la sesión ya parada en el negocio.
-async function contexto(api, semilla) {
+async function contexto(api, semilla, { saldoInicial = true } = {}) {
   const r = azar(semilla);
   const cuentas = await api.get('/api/cuentas-tesoreria');
   const cuenta = (tipo) => cuentas.find((c) => c.tipo === tipo) ?? cuentas[0];
@@ -302,7 +302,7 @@ async function contexto(api, semilla) {
     }
   };
   // La plata que había al empezar, para que las cuentas no arranquen en cero.
-  for (const [cuentaInicial, importe] of [[caja, 80000], [banco, 900000]]) {
+  for (const [cuentaInicial, importe] of saldoInicial ? [[caja, 80000], [banco, 900000]] : []) {
     await api.post('/api/tesoreria/movimientos', {
       cuenta_tesoreria_id: cuentaInicial.id,
       tipo: 'ingreso',
@@ -363,6 +363,7 @@ async function armarLola(n) {
   await n.vender({ items: [[jean, 1, '40']], cliente: clientes[2], canal: 'whatsapp', cuenta: n.mp });
   await n.vender({ items: [[remera, 6, 'M'], [remera, 6, 'L'], [oversize, 4, 'L']], cliente: boutique, cobrar: false });
   await n.mostrador([[[jogger, 1], [gorra, 1]], [[medias, 2]], [[totebag, 1], [medias, 1]]]);
+  await ventaConCostos(n, { buzo, jean, cliente: clientes[1] });
 
   await n.api.post('/api/ofertas', {
     nombre: 'Semana de remeras: 15 % off',
@@ -397,6 +398,68 @@ async function armarLola(n) {
     ['Publicidad', 60000, 'Anuncios de Instagram', 15]
   ]);
   return `${ventas} ventas de las últimas 6 semanas, talles, 2 ofertas, un presupuesto mayorista y 3 consultas`;
+}
+
+// La venta para mostrar "Adónde fue la plata" (hist. §180): un buzo y un jean
+// por Instagram, con todo lo que cuesta venderlos. La bolsa y la tarjeta que
+// van en cada venta (el packaging), el crédito en 3 cuotas sin interés (su
+// comisión y lo que cuesta ofrecer las cuotas) y la moto que la lleva.
+export async function ventaConCostos(n, { buzo, jean, cliente }) {
+  const bolsa = await n.producto({ nombre: 'Bolsa con logo', sku: 'PAQ-BOL', precio_venta: 0, categoria: 'Packaging' });
+  const tarjeta = await n.producto({ nombre: 'Tarjeta de agradecimiento', sku: 'PAQ-TAR', precio_venta: 0, categoria: 'Packaging' });
+  await n.proveedor({ nombre: 'Imprenta Sierras', telefono: '3547 42-8810' });
+  await n.comprar({ proveedor: 'Imprenta Sierras', fecha: diasAtras(20), items: [[bolsa, 200, 420], [tarjeta, 300, 95]] });
+  for (const producto of [buzo, jean]) {
+    await n.api.put(`/api/productos/${producto.id}/componentes-venta`, {
+      componentes: [
+        { producto_id: bolsa.id, cantidad: 1, por_venta: true },
+        { producto_id: tarjeta.id, cantidad: 1, por_venta: true }
+      ]
+    });
+  }
+
+  const credito = (await n.api.get('/api/medios-cobro')).find((m) => m.tipo === 'credito');
+  await n.api.put(`/api/medios-cobro/${credito.id}`, {
+    nombre: credito.nombre,
+    tipo: credito.tipo,
+    cuenta_tesoreria_id: credito.cuenta_tesoreria_id,
+    comision_pct: 4.2,
+    dias_acreditacion: 10,
+    planes: [{ cuotas: 1, costo_pct: 0 }, { cuotas: 3, costo_pct: 10.5 }, { cuotas: 6, costo_pct: 18.7 }]
+  });
+
+  const venta = await n.api.post('/api/ventas', {
+    cliente_id: cliente.id,
+    canal: 'instagram',
+    items: [
+      { producto_id: buzo.id, variante_id: buzo.variantes.M, cantidad: 1, precio_unitario: buzo.precio_venta },
+      { producto_id: jean.id, variante_id: jean.variantes['40'], cantidad: 1, precio_unitario: jean.precio_venta }
+    ]
+  });
+  const { total } = await n.api.get(`/api/ventas/${venta.id}`);
+  await n.api.post(`/api/ventas/${venta.id}/cobros`, { importe: total, medio_cobro_id: credito.id, cuotas: 3 });
+  await n.api.post(`/api/ventas/${venta.id}/envio`, { importe: 6500, cuenta_tesoreria_id: n.caja.id, descripcion: 'Moto a Villa Carlos Paz' });
+  return venta;
+}
+
+// La misma venta en un Lola Indumentaria que ya existe (npm run demo --
+// --venta-con-costos), sobre la sesión ya parada en ese negocio: el buzo y el
+// jean se buscan por su SKU, y su talle por el de la variante.
+export async function sumarVentaConCostos(api) {
+  const n = await contexto(api, 1000, { saldoInicial: false });
+  const productos = await api.get('/api/productos');
+  const conTalles = async (sku) => {
+    const producto = productos.find((p) => p.sku === sku);
+    if (!producto) throw new Error(`No está el producto ${sku}: ¿es el negocio Lola Indumentaria?`);
+    const variantes = await api.get(`/api/productos/${producto.id}/variantes`);
+    return { ...producto, variantes: Object.fromEntries(variantes.map((v) => [v.sku.slice(sku.length + 1), v.id])) };
+  };
+  const clientes = await api.get('/api/clientes');
+  return ventaConCostos(n, {
+    buzo: await conTalles('BUZ-CAN'),
+    jean: await conTalles('JEA-MOM'),
+    cliente: clientes.find((c) => c.nombre === 'Valentina Ríos') ?? clientes[0]
+  });
 }
 
 /* ---------- Mafaldas de Sofi: emprendimiento con producción ---------- */

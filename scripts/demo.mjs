@@ -11,13 +11,16 @@
 //   --email <mail>     la cuenta. La contraseña se pide al correr, sin mostrarla
 //                      (o NEXO_DEMO_CLAVE).
 //   --solo <clave>     uno solo: lola, mafaldas, gimnasio, clima o carniceria.
+//   --venta-con-costos no arma negocios: suma a "Lola Indumentaria", que ya
+//                      existe, la venta con packaging, crédito en cuotas y
+//                      envío que muestra "Adónde fue la plata" (hist. §180).
 //
 // La cuenta tiene que estar en un negocio con el plan Pro: sumar negocios es
 // de Pro, y el nuevo nace con el plan del que se está usando. Un negocio que ya
 // existe con el mismo nombre se saltea, así que volver a correrlo no duplica.
 import { parseArgs } from 'node:util';
 
-import { NEGOCIOS, armarNegocio, clienteDeApi } from '../backend/negocios-de-ejemplo.js';
+import { NEGOCIOS, armarNegocio, clienteDeApi, sumarVentaConCostos } from '../backend/negocios-de-ejemplo.js';
 
 async function conectar(url, email, password) {
   const api = clienteDeApi(url);
@@ -59,14 +62,24 @@ async function principal() {
     options: {
       url: { type: 'string', default: 'https://nexosystem.duckdns.org' },
       email: { type: 'string' },
-      solo: { type: 'string' }
+      solo: { type: 'string' },
+      'venta-con-costos': { type: 'boolean' }
     }
   });
   if (!op.email) throw new Error('Indicá la cuenta con --email <mail>.');
   if (op.solo && !Object.hasOwn(NEGOCIOS, op.solo)) throw new Error(`--solo es uno de: ${Object.keys(NEGOCIOS).join(', ')}.`);
 
   const api = await conectar(op.url, op.email, await pedirClave(`Contraseña de ${op.email}: `));
-  const existentes = new Set((await api.get('/api/negocios')).map((negocio) => negocio.nombre));
+  const negocios = await api.get('/api/negocios');
+  if (op['venta-con-costos']) {
+    const lola = negocios.find((negocio) => negocio.nombre === NEGOCIOS.lola.nombre);
+    if (!lola) throw new Error(`La cuenta no tiene "${NEGOCIOS.lola.nombre}".`);
+    await api.post(`/api/negocios/${lola.id}/entrar`);
+    const venta = await sumarVentaConCostos(api);
+    console.log(`Listo: la venta #${venta.id} en ${lola.nombre}. Abrila en Ventas para ver adónde fue la plata.`);
+    return;
+  }
+  const existentes = new Set(negocios.map((negocio) => negocio.nombre));
   const claves = op.solo ? [op.solo] : Object.keys(NEGOCIOS);
   for (const [indice, clave] of claves.entries()) {
     const { nombre } = NEGOCIOS[clave];

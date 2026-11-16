@@ -8238,6 +8238,46 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
   res.status(201).json({ id: cobroId });
 });
 
+// El envío que paga el negocio (hist. §180): el de la venta que se manda por
+// moto o por correo, que hasta ahora solo entraba con un pedido de Tienda Nube.
+// Es un costo de vender de esa venta, como aquel: sale de la cuenta con que se
+// pagó, se ve en "Adónde fue la plata" y se anula con la venta.
+app.post('/api/ventas/:id/envio', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const venta = db.prepare('SELECT id, estado FROM ventas WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  if (venta.estado === 'anulada') return res.status(400).json({ error: 'La venta está anulada.' });
+  const { importe, cuenta_tesoreria_id, descripcion } = req.body;
+  if (!esNumeroValido(importe) || !(importe > 0)) {
+    return res.status(400).json({ error: 'El importe del envío tiene que ser un número mayor a 0.' });
+  }
+  const cuenta = db
+    .prepare('SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(cuenta_tesoreria_id), organizacionId);
+  if (!cuenta) return res.status(400).json({ error: 'La cuenta de tesorería no existe.' });
+
+  const gastoId = withTransaction(() => {
+    const id = registrarCostoDeVender({
+      ventaId: venta.id,
+      tipo: 'envio',
+      importe,
+      cuentaId: cuenta.id,
+      descripcion: (typeof descripcion === 'string' && descripcion.trim()) || `Envío de la venta #${venta.id}`,
+      organizacionId
+    });
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'gasto',
+      entidad_id: id,
+      operacion_tipo: 'venta',
+      operacion_id: venta.id,
+      detalle: `Envío de $${importe} sumado a la venta #${venta.id}`
+    });
+    return id;
+  });
+  res.status(201).json({ id: gastoId });
+});
+
 // La venta con lo que falta cobrar, o null si no es del negocio. La mercadería
 // devuelta ya no es plata que se le pueda reclamar al cliente: el saldo se
 // calcula sobre el neto, no sobre el total bruto de la venta. Lo usan el cobro

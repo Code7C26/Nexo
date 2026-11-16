@@ -13920,3 +13920,220 @@ conservada); el de la nota de voz espera tres botones. Con Groq real, desde la c
 tres correcciones sobre "dos buzos S a Joaquín Tosi en efectivo": "el cliente es
 Joaquín Torres", "no, me pagó por transferencia al banco" (cuenta Banco) y "eran 3"
 (cantidad 3); el resto quedó igual. Suite completa, lint e i18n.
+
+## §180 — 16 de noviembre de 2026: la presentación después del ensayo, y el envío de una venta
+
+**Pedido del usuario** (después de ensayar la presentación entera con Joaquín):
+volver a la pantalla de "Presionar cualquier tecla" sin recargar; ayuda para
+conectar de palabra las diapositivas del problema; una diapositiva de cómo surgió
+la idea (su emprendimiento) antes de "Nexo crece con el negocio"; los rubros
+enfocados en que Nexo adapta funciones a cada tipo, justificando los "Muy
+pronto"; el video del alta que no arranque solo; una diapositiva de Productos
+(stock y ofertas) antes del punto de venta; una venta real en Lola con varios
+costos para "Cuánto deja cada venta"; ARCA pegada a la de facturación; un mapa
+técnico completo (usuario, servidor, respaldo, integraciones con logos) y aparte
+las razones de seguridad; "Cómo trabajamos" junto con la IA; una de lo que viene;
+y un cierre más simple: sin la frase "la próxima vez que vendan…", sin
+"¡Gracias! ¿Preguntas?", con los dos QR en grande y una invitación (ayuda mutua).
+
+**La presentación (35 diapositivas, `docs/pitch/fuentes/index.html`).**
+- 1: la apertura espera siempre una tecla (antes solo si Chrome no dejaba sonar).
+  Mientras espera, F pone pantalla completa sin arrancar y Esc la saltea; Inicio
+  (o volver con ← a la 1) vuelve a esa pantalla.
+- Nuevas: 9 "Nexo empezó con un emprendimiento propio" (un camino que se dibuja:
+  arrancar a vender → anotar todo a mano → las mismas preguntas → así nació
+  Nexo; genérico, Santino pone el caso), 15 Productos (captura del catálogo y,
+  encima, la de Ofertas), 27 "El mapa de Nexo", 28 "Por qué los datos están
+  seguros", 32 "Cómo trabajamos con IA" (cinco pasos: decidimos → lo escribimos →
+  la IA programa → se prueba y se revisa → se publica solo, y las herramientas),
+  33 "Esto recién empieza", 34 "El sistema que nos hubiera gustado tener desde el
+  primer día" (vuelve a la 9; para la oficial, testimonios), 35 "Pruébenlo con su
+  negocio" con los dos QR grandes.
+- 11 rubros: cada tarjeta dice qué funciones prende; barbería y restaurante con
+  lo que les falta (turnos, mesas y comandas) y "Muy pronto".
+- 12 video del alta: `data-modo="clic"`, arranca con un clic en el recuadro o con
+  la primera →; la siguiente → pasa de diapositiva.
+- 17: la captura real de "Adónde fue la plata" de la venta nueva, en lugar del
+  ejemplo armado a mano.
+- Salieron "Por qué confiar", "Cómo está hecho" (viejas), "Gestión ágil" y "Cómo
+  usamos la IA" separadas, y "Lo que vinimos a resolver".
+- Títulos sin la coma del estilo "X, en Y" que no le gusta al usuario.
+- Capturas nuevas en `capturas/` (productos, ofertas, adonde-fue-la-plata), de
+  Lola de ejemplo en un servidor local.
+
+**La guía (`redes/pitch/guia.html`):** renumerada, con un recuadro "El hilo de
+la primera parte" (2 a 9: lo que no se anota, el tiempo y la plata) y al final de
+cada una de esas la frase para pasar a la siguiente; fichas nuevas para todas las
+diapositivas nuevas, con el mapa explicado parte por parte y las seis razones de
+seguridad por dentro. Las miniaturas en PDF salen con `navigator.webdriver`, que
+apaga los videos: para probarlos en Chrome DevTools hay que pisar esa propiedad.
+
+**El envío de una venta (producto).** Nexo anotaba la comisión, las cuotas y el
+packaging de una venta, pero el envío solo con un pedido de Tienda Nube.
+`POST /api/ventas/:id/envio` (admin; `permisos.js`) lo registra como costo de
+vender (`registrarCostoDeVender`, tipo envío), sale de la cuenta elegida, se ve en
+"Adónde fue la plata" y se anula con la venta. En la ficha, botón "Sumar el
+envío" con su modal. Test `envio-venta.test.js`.
+
+**La venta de ejemplo.** `ventaConCostos` en `negocios-de-ejemplo.js` (al final
+de Lola): bolsa y tarjeta como packaging de buzo y jean, Crédito con 4,2 % de
+comisión y planes de cuotas (3: 10,5 %), y la venta a Valentina Ríos por
+Instagram ($ 79.800), cobrada en 3 cuotas, con $ 6.500 de moto. Quedan $ 22.369
+(28 %) contra un promedio de 56,6 %: "Menos que lo normal". Para el Lola que ya
+existe en la cuenta de Santino: `npm run demo -- --email <mail> --venta-con-costos`
+(entra a ese negocio y la suma; pide publicar antes el endpoint del envío).
+
+Verificado: lint, 395 tests, i18n; la presentación en Chrome a 1600 × 900 (cada
+diapositiva nueva, el video de clic, la portada con Inicio, F y Esc) y la guía
+armada.
+
+**Segunda vuelta del mismo día (34 diapositivas).** Pedidos del usuario: la 3
+sin las imágenes (cuaderno, planilla, burbujas, papelito, ticket, calculadora;
+alcanza con la persona animada), con el texto al medio; la 9 no es "Nexo empezó
+con un emprendimiento propio" sino que el problema lo vio en su emprendimiento
+(de perfumes, no se nombra) y en los de amigos, compañeros y familiares;
+mercado y punto de equilibrio juntos ("Cuántos clientes hay y cuántos
+necesitamos", con los 84 del equilibrio resaltados junto al SOM de 83); ideas
+más llamativas en "Lo que viene" (grilla de ocho: Rappi y PedidosYa, la tienda
+en un link, Andreani y Correo Argentino, hablarle a Nexo por WhatsApp, una IA
+que arma el pedido, precios al día, turnos, mesas y comandas); y el Instagram
+sin otro Alt+Tab: un QR chico en la final y el enlace "Seguinos en Instagram" al
+pie de la pantalla de probar (`frontend/index.html`, `.probar-instagram`). La
+guía se actualizó (la 30 unida, con "¿Y cuando Nexo crezca?") y bajó a 34.
+Propuesto, sin hacer: el video en inglés justo antes de la final, y fotos reales
+del usuario para la 9.
+
+**Tercera vuelta del mismo día: el caso real y la 30.** El usuario puso en
+`docs/pitch/fuentes/caso-real/` (carpeta nueva con LEEME; su `.gitignore` deja
+afuera todo menos el LEEME) tres fotos (Excel, Notion, pizarrón) y un video
+vertical de 8,8 s. Pidió el Excel, el Notion, el pizarrón y, como lo principal,
+la última parte del video (la que mira a la derecha y después a la izquierda):
+`media/caso-planilla.mp4` arranca en el segundo 5,6 (3,2 s, sin sonido, 340 px
+de ancho, en loop). Idas y vueltas: primero se desenfocaron (no le gustó:
+"que no se vean borrosos"); después se dejaron nítidas pero chicas (340, 270 y
+480 px, a la medida en que se ven) para que no se lean los costos; el camino
+"así nació Nexo" tiene que quedar a la vista (pasó abajo del título); el
+pizarrón más grande y al lado del video; sin bordes blancos; y todo a la vista
+desde que llega la diapositiva, sin paso. En el pizarrón se lee el nombre del
+emprendimiento (VRADER): se dejó, con la opción de recortarlo.
+
+La 30: el usuario creía que el SAM era Córdoba. En los documentos entregados el
+SAM son los 2.770 comercios de Alta Gracia, y Córdoba capital es el paso
+siguiente; la diapositiva lo mezclaba en la nota. Ahora se lee en orden: TAM,
+SAM (donde arrancamos), SOM (el primer año), "Después: Córdoba capital", el
+equilibrio (5 y 84) y la conclusión (83 ≈ 84). Los 56 con un promedio de
+$ 29.900 pasaron a la guía, con la pregunta "¿El SAM no era Córdoba?".
+
+## §181 — 16 de noviembre de 2026: la apertura sin frases con coma
+
+Pedido del usuario: el video de la diapositiva 1 queda igual y solo cambian las
+frases partidas por una coma ("El mes, de un vistazo."), un estilo que no le
+gusta. Títulos nuevos en `redes/videos/estudio/src/compositions/NexoApertura.tsx`
+(y en el estudio vivo):
+- Todo el negocio en un solo lugar.
+- Mirá el mes de un vistazo.
+- Las ofertas se aplican solas.
+- Facturá con CAE de ARCA.
+- Cargá la compra desde la foto.
+- Tienda Nube y Mercado Libre conectados.
+- Los cobros de Mercado Pago entran solos.
+- Decís la venta y Nexo la arma.
+- Y todo lo demás está conectado.
+- En las tarjetas: "Cada movimiento anotado", "Cada cambio con usuario y
+  fecha" y "Por kilo y rápido". Las enumeraciones ("Apertura, cierre y
+  arqueo") quedan.
+
+Se renderizó con `logo: [1120, 110]` (1230 cuadros, igual que el mp4 que
+estaba): la nota de §169 que decía que el estudio, con 120, había renderizado
+el video 6 era errónea, y el estudio quedó en 110 como el repo. Comparado con
+el anterior, solo difieren los títulos; el logo final es idéntico. El póster
+`nexo-apertura.jpg` es el cuadro 150. El storyboard tiene las frases nuevas.
+El reel vertical (`redes/videos/nexo-apertura-reel.mp4`) no se rearmó: lleva
+la voz y sus subtítulos, que siguen con las frases habladas.
+
+## §182 — 16 de noviembre de 2026: el video en inglés, "Un sábado en el local"
+
+El usuario retomó el pendiente del 14 de noviembre (la v4 temblaba en cada
+cambio y prefería una animación propia). Referencia: `anuncio-en.mp4` de sus
+amigos, en Descargas (40 s, Studree/Mnemora): una historia chiquita con
+tarjetas (el mensaje del jefe, le habla al asistente, el reloj avanza durante
+la noche, tres propuestas a la mañana, lema, logo y QR) con subtítulos en
+castellano. No se copió el aspecto: Nexo va en negro y azul con las piezas de
+la apertura.
+
+Propuesta aprobada: **"Un sábado en el local"**. El dueño le dicta una venta
+al asistente, que la arma y se confirma; salen sus efectos (stock, Mercado
+Pago, factura, ganancia); pasa el día con ventas de Tienda Nube, Mercado
+Libre y el mostrador mientras baja el stock; aviso de stock bajo, se pide una
+compra y se confirma; el cierre con 23 ventas y el arqueo en OK; lema y "Try
+it free · Scan the code" (la diapositiva siguiente es la de los QR). Pedido
+del usuario: **participan los dos**, Santino como dueño y **Tosi como la voz
+del asistente**. Lo que dice Tosi aparece escrito en la tarjeta, porque el
+asistente real contesta por escrito. Afuera WhatsApp (falta la app de Meta) y
+las preguntas sobre los datos (no están hechas).
+
+Archivos (en el estudio vivo y copiados en `redes/videos/estudio/`):
+- `src/compositions/NexoUnSabado.tsx`: todos los tiempos salen de las frases
+  (`pon(...)`), así que con las voces grabadas se reacomoda solo.
+- `scripts/voz-dialogo.py` y `voz/nexo-un-sabado.json`: dos voces de guía
+  (edge-tts, Andrew y Brian) o, con `--grabadas`, los audios de ellos; anota
+  la duración y el volumen cuadro por cuadro (la onda de la tarjeta se mueve
+  con la voz; con un piso, porque entre palabras baja a cero).
+- `NexoApertura.tsx` exporta `LETRAS` (el NΞXO del logo) para el cierre.
+- `storyboards/nexo-un-sabado.md`: escenas, frases, archivos a grabar y cómo
+  rearmar.
+
+Salida: `docs/pitch/media/nexo-un-sabado-guia.mp4` (32 s, voz de guía; no se
+sube, como la guía anterior). Revisado por cuadros: dos arreglos (el título del
+cierre salía negro sobre negro; la primera tarjeta, sola, quedaba muy arriba).
+
+**Después, el mismo día: que se distingan las dos voces.** Pedido del usuario:
+la voz del dueño y la del asistente, que es la voz de Nexo, tienen que
+distinguirse bien. Tosi pasa a ser la voz de Nexo: `voz-dialogo.py` le suma un
+tratamiento de voz digital (`NEXO`: highpass 220, lowpass 6800, coro corto, eco
+de 28 ms, compresión), y los originales quedan en `crudas/` para no aplicarlo
+dos veces. La guía de Santino pasó a Christopher (más grave que Brian). En
+pantalla, la tarjeta se llama "Nexo" con su ícono, sus respuestas y su onda van
+en azul, y su subtítulo en azul con el ícono adelante (el del dueño, blanco). El
+video de guía quedó en 34,5 s.
+
+**De madrugada: las voces de Santino y el video en la presentación.** Santino
+grabó sus tres frases como notas de WhatsApp (en la primera dijo "I sold… He
+paid me with…": se cambió el texto de la tarjeta para que coincida, no el
+audio). `voz-dialogo.py` ahora mezcla: usa la grabada si está en `grabadas/`
+(cualquier formato) y si no, la de guía (en `guia/`); ya no lleva
+`--grabadas`. A las grabadas: sin las últimas 3 décimas (el clic de soltar el
+botón de WhatsApp, que no dejaba recortar el silencio final), highpass 80,
+`afftdn`, recorte de puntas a -38 dB con una décima de colchón, pausas de más
+de 0,45 s llevadas a 0,3 y compresión; a todas, `loudnorm` a -16 LUFS.
+Verificado con Whisper que no se cortó ninguna palabra. Video: 36,7 s.
+En la presentación: diapositiva 34 nueva ("In English · A Saturday at the
+store", con la tarjeta de video de clic, con sonido), la de los QR pasó a 35,
+ficha 34 en la guía (qué decir, "¿Nexo habla?", "¿Nexo está en inglés?") y
+"Para pasar a la 34" en la 33. Probado en Chrome: el clic lo agranda y suena
+(el navegador de prueba tiene `navigator.webdriver`, con el que la
+presentación no arranca videos a propósito; se forzó para probar).
+
+**La voz "de tupper".** El usuario notó su voz encajonada (micrófono del
+celular y WhatsApp). Medida contra una voz limpia: +3 dB en 200-500 Hz, -7 dB
+en 1-2 kHz, -10 dB en 4-8 kHz y nada arriba de 8 kHz. `voz-dialogo.py` suma
+`ECUALIZACION` por persona (por ahora solo Santino): -7 dB en 330 Hz, +6 en
+1,5 kHz y en 6,5 kHz, `aexciter` desde 6 kHz y un gate suave contra el eco de la
+pieza; queda a menos de 4 dB de la referencia en todas las bandas, y Whisper
+sigue entendiendo todo. La de Tosi se mide y se ajusta cuando grabe. Antes y
+después para escuchar: `Desktop/Voces Nexo/Comparación voz Santino (antes y
+después).mp3`. El eco de la pieza no sale del todo con ecualización: lo que
+más rinde es grabar mejor (ver el handoff).
+
+**A la mañana: las voces de Tosi.** Cinco notas de WhatsApp (6:44 a 6:45). Su
+micrófono, medido: +5 dB en 200-500 Hz y -14 dB en 4-8 kHz; `ECUALIZACION`
+"tosi" ajustada contra la voz de guía de Nexo ya con su efecto (queda a 2-3 dB,
+salvo 2-4 kHz, que no baja de -10 y no se forzó). Sobre una voz grabada, el
+efecto `NEXO` le sacaba claridad: las grabadas llevan `NEXO_GRABADA` (coro de
+una voz y eco de 22 ms); la guía sigue con el de antes. Whisper como prueba de
+claridad: "Got it", "Order ready" y el cierre, perfectos; "Only two black
+T-shirts left" pasa a "lucky shields" con cualquier cambio mínimo (hasta con un
+highpass a 80 Hz, que no toca consonantes) y "Scan the code" ya era "It's candy
+cold" en el audio original: es la pronunciación al límite, no el procesamiento.
+Se dejó así y se le avisó al usuario para que las escuche; si no se entienden,
+Tosi las regraba más despacio. Video final: 38,3 s.
