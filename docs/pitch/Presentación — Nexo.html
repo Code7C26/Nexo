@@ -861,6 +861,8 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .viabilidad .equilibrio { grid-template-columns: 1fr 1fr; }
 .viabilidad .equilibrio .valor { font-size: calc(var(--title-size) * 1.15); }
 .viabilidad .escalon-m:nth-child(3) .barra, .viabilidad .cruce { border-color: var(--acento); box-shadow: 0 0 40px -10px rgba(96, 165, 250, 0.5); }
+.viabilidad .escalon-m:nth-child(3) .barra { width: 64%; }
+.despues-nota { margin-top: var(--element-gap); padding-left: calc(4ch + 0.8em); color: var(--texto-2); font-size: var(--small-size); }
 .cruce-nota { margin-top: var(--element-gap); color: var(--acento); font-family: var(--titulos); font-weight: 700; font-size: var(--h3-size); line-height: 1.25; }
 
 /* ===== Celular y tablet vertical ===== */
@@ -1888,21 +1890,22 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       <div>
         <p class="subtitulo-ia reveal" style="--d:2">El mercado en negocios</p>
         <div class="embudo">
-          <div class="escalon-m reveal" style="--d:2"><span class="sigla">TAM</span><div class="barra"><b>476.750</b><span>empresas empleadoras privadas de Argentina</span></div></div>
-          <div class="escalon-m reveal" style="--d:3"><span class="sigla">SAM</span><div class="barra"><b>2.770</b><span>comercios de Alta Gracia, donde podemos ir a mostrarlo</span></div></div>
-          <div class="escalon-m reveal" style="--d:4"><span class="sigla">SOM</span><div class="barra"><b>83</b><span>clientes el primer año (3 %)</span></div></div>
+          <div class="escalon-m reveal" style="--d:2"><span class="sigla">TAM</span><div class="barra"><b>476.750</b><span>Todas las empresas con empleados de Argentina</span></div></div>
+          <div class="escalon-m reveal" style="--d:3"><span class="sigla">SAM</span><div class="barra"><b>2.770</b><span>Los comercios de Alta Gracia: donde arrancamos</span></div></div>
+          <div class="escalon-m reveal" style="--d:4"><span class="sigla">SOM</span><div class="barra"><b>83</b><span>Los que esperamos sumar el primer año: el 3 % de Alta Gracia</span></div></div>
         </div>
+        <p class="despues-nota reveal" style="--d:5">Después: Córdoba capital, a 36 km, con 22 veces más locales.</p>
       </div>
       <div>
-        <p class="subtitulo-ia reveal" style="--d:5">El punto de equilibrio</p>
+        <p class="subtitulo-ia reveal" style="--d:5">El punto de equilibrio: cuántos hacen falta</p>
         <div class="equilibrio">
           <div class="tarjeta reveal" style="--d:5"><p class="valor">5 <small>clientes</small></p><p>Pagan el servidor, el dominio y el contador.</p></div>
           <div class="tarjeta cruce reveal" style="--d:6"><p class="valor">84 <small>clientes</small></p><p>Pagan también los sueldos base de los dos.</p></div>
         </div>
-        <p class="cruce-nota reveal" style="--d:7">84 es casi el SOM: con el 3 % de Alta Gracia, el primer año se paga solo.</p>
+        <p class="cruce-nota reveal" style="--d:7">Los 83 del primer año son casi los 84 que pagan todo: con Alta Gracia sola, Nexo ya casi se sostiene.</p>
       </div>
     </div>
-    <p class="nota reveal" style="--d:8">Costos fijos: $ 1.515.040 por mes, el 95 % en sueldos. Cada cliente del plan Emprendedor deja $ 18.058; con un promedio de $ 29.900 por cliente, alcanzan 56. Córdoba capital, a 36 km, tiene 22 veces más locales.</p>
+    <p class="nota reveal" style="--d:8">Costos fijos: $ 1.515.040 por mes, el 95 % en sueldos. Calculado con todos los clientes en el plan Emprendedor.</p>
   </div>
 </section>
 
