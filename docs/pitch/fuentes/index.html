@@ -29,6 +29,10 @@
 /* clip y no hidden: hidden en el body lo vuelve lo que se desplaza, y el
    scroll-snap del html deja de encajar cada diapositiva. */
 html, body { overflow-x: clip; }
+/* En el tele: desde 1440 px de ancho el rem sigue a la pantalla, así todo
+   crece en proporción (como una diapositiva) en vez de quedar en un recuadro
+   de 1500 px con el texto chico. */
+@media (min-width: 1440px) { html { font-size: calc(100vw / 90); } }
 html { scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
 html::-webkit-scrollbar { display: none; }
 .slide {
@@ -51,7 +55,7 @@ html::-webkit-scrollbar { display: none; }
   padding: var(--slide-padding);
   padding-bottom: calc(var(--slide-padding) + 1.5rem);
   width: 100%;
-  max-width: 1500px;
+  max-width: 93.75rem;
   margin: 0 auto;
   position: relative;
   z-index: 1;
@@ -79,8 +83,8 @@ html::-webkit-scrollbar { display: none; }
   --title-size: clamp(1.6rem, 4.8vw, 4.2rem);
   --h2-size: clamp(1.3rem, 3.2vw, 2.8rem);
   --h3-size: clamp(1rem, 1.9vw, 1.6rem);
-  --body-size: clamp(0.85rem, 1.5vw, 1.3rem);
-  --small-size: clamp(0.7rem, 1.05vw, 0.95rem);
+  --body-size: clamp(0.85rem, 1.55vw, 1.38rem);
+  --small-size: clamp(0.72rem, 1.15vw, 1.06rem);
 
   --slide-padding: clamp(1rem, 4.5vw, 4.5rem);
   --content-gap: clamp(0.6rem, 2.2vw, 2.2rem);
@@ -490,8 +494,9 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 
 /* ===== 7 y 8. Competencia y crecer ===== */
 .precios { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.5rem, 1.4vw, 1.1rem); }
+.precios .precio-grande { font-size: calc(var(--title-size) * 0.88); }
 .precio-grande { font-family: var(--titulos); font-weight: 700; font-size: var(--title-size); letter-spacing: -0.02em; color: var(--texto); }
-.precio-grande small { font-size: 0.4em; color: var(--texto-3); font-weight: 500; letter-spacing: 0; }
+.precio-grande small { font-size: 0.4em; color: var(--texto-3); font-weight: 500; letter-spacing: 0; white-space: nowrap; display: inline-block; }
 .tarjeta.nexo { border-color: var(--acento); background: linear-gradient(180deg, var(--acento-suave), var(--tarjeta) 70%); }
 .escalera { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.5rem, 1.4vw, 1.1rem); align-items: end; height: clamp(260px, 52vh, 480px); }
 .escalon { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 0.5em; background: rgba(15, 15, 15, 0.78); backdrop-filter: blur(3px); }
@@ -554,7 +559,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .funciones li .ico { color: var(--acento); font-size: 1.15em; }
 
 /* El cobro con el QR de Mercado Pago */
-.qr-mp { display: flex; flex-direction: column; align-items: center; gap: 0.7em; padding: clamp(0.8rem, 1.6vw, 1.4rem); border-radius: var(--radio); background: #fff; width: min(100%, 15rem); margin: 0 auto 1em; }
+.qr-mp { display: flex; flex-direction: column; align-items: center; gap: 0.7em; padding: clamp(0.8rem, 1.6vw, 1.4rem); border-radius: var(--radio); background: #fff; width: min(100%, 15rem, 28vh); margin: 0 auto 1em; }
 .qr-mp svg { height: clamp(26px, 2.6vw, 38px); width: auto; color: #111; }
 .qr-mp img { width: 100%; aspect-ratio: 1; }
 .estado-pago { position: relative; display: grid; text-align: center; margin-bottom: 0.9em; font-weight: 600; }
@@ -705,6 +710,21 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .ia-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .ia-marca { flex: none; display: flex; align-items: center; gap: 0.6em; padding: 0.5em 1em 0.5em 0.6em; border: 1px solid rgba(217, 119, 87, 0.45); border-radius: 999px; background: rgba(217, 119, 87, 0.08); font-family: var(--titulos); font-weight: 700; font-size: var(--h3-size); }
 .claude-logo { width: 2em; height: 2em; }
+/* Cuánto hubiera llevado sin IA: las dos barras a escala (6 meses es el 11 %
+   de 4 años y 4 meses). */
+.ia-arriba { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.75fr); gap: clamp(1rem, 3vw, 3rem); align-items: end; }
+.ia-tiempo { display: flex; flex-direction: column; gap: 0.55em; }
+.ia-tiempo .subtitulo-ia { margin-bottom: 0.1em; }
+.t-fila { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); grid-template-areas: "que barra" "que cifra"; column-gap: 0.8em; align-items: center; }
+.t-fila span { grid-area: que; color: var(--texto-2); font-weight: 600; }
+.t-fila i { grid-area: barra; display: block; height: 0.7em; border-radius: 999px; width: 0; transition: width 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) 1s; }
+.t-fila b { grid-area: cifra; font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.2; }
+.t-fila.sin i { background: var(--mal); }
+.t-fila.sin b { color: var(--mal); }
+.t-fila.con i { background: var(--acento); }
+.t-fila.con b { color: var(--acento); }
+.slide.visible .t-fila.sin i { width: 100%; }
+.slide.visible .t-fila.con i { width: 11.5%; }
 .subtitulo-ia.otra { margin-top: var(--element-gap); }
 
 /* Para cerrar: cada problema del principio, con lo que hace Nexo */
@@ -838,6 +858,21 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .futuro .ideas .ico { grid-row: span 2; font-size: 1.5em; margin-top: 0.1em; }
 .futuro .ideas b { font-family: var(--titulos); font-size: 1.12em; }
 
+/* ===== Gracias: los negocios que lo usan y a quienes nos ayudaron ===== */
+.gracias { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(0.8rem, 2vw, 1.8rem); align-items: stretch; }
+.usan { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(0.5rem, 1.2vw, 1rem); }
+.negocio { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 0.9em; align-items: center; padding: clamp(0.8rem, 1.6vw, 1.4rem); background: var(--tarjeta); border: 1px solid var(--borde-fuerte); border-radius: var(--radio); }
+.negocio .inicial { grid-row: span 2; display: grid; place-items: center; width: clamp(2.4rem, 4vw, 3.6rem); aspect-ratio: 1; border-radius: 50%; background: var(--acento-suave); color: var(--acento); font-family: var(--titulos); font-weight: 700; font-size: var(--h3-size); }
+.negocio b { font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.15; }
+.negocio > span:last-child { color: var(--texto-2); font-size: var(--small-size); }
+.negocio.por-completar { border-style: dashed; }
+.agradecer { display: flex; flex-direction: column; justify-content: center; border-color: rgba(96, 165, 250, 0.45); background: linear-gradient(180deg, var(--acento-suave), var(--tarjeta) 70%); }
+.agradecer h3 { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.5em; }
+.agradecer h3 .ico { color: var(--acento); }
+.agradecer li { display: flex; align-items: flex-start; gap: 0.7em; padding: 0.7em 0; border-top: 1px solid var(--borde); color: var(--texto-2); }
+.agradecer li .ico { color: var(--acento); font-size: 1.2em; margin-top: 0.1em; }
+.agradecer li b { color: var(--texto); }
+
 /* ===== Para cerrar y el final con los QR ===== */
 .cerrar { align-items: center; text-align: center; gap: var(--content-gap); }
 .cerrar .simbolo-grande { width: clamp(70px, 10vw, 150px); filter: drop-shadow(0 0 50px rgba(96, 165, 250, 0.45)); }
@@ -849,13 +884,17 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .final h2 { font-size: var(--title-size); margin-top: calc(var(--content-gap) * 1.2); max-width: 14ch; }
 .final .bajada { font-size: var(--h3-size); max-width: 30ch; }
 .final-qrs { display: flex; gap: clamp(1rem, 2.4vw, 2.2rem); }
-.final-qrs .qr { width: min(26vw, 50vh, 400px); }
-.final-qrs b { font-family: var(--titulos); font-size: var(--h3-size); }
-.final-instagram { display: flex; align-items: center; gap: clamp(0.7rem, 1.4vw, 1.2rem); margin-top: calc(var(--content-gap) * 1.3); }
-.final-instagram .qr { width: clamp(90px, 9vw, 150px); padding: 6px; border-radius: 12px; }
+.final-qrs .qr { width: min(34vw, 60vh, 32rem); }
+.final-qrs b { font-family: var(--titulos); font-size: var(--h2-size); }
+.final-qrs .direccion { font-size: var(--body-size); }
+/* Instagram y el código, chicos y del mismo tamaño: el principal es la página. */
+.final-chicos { display: flex; flex-wrap: wrap; gap: clamp(1rem, 2.2vw, 2.2rem); margin-top: calc(var(--content-gap) * 1.3); }
+.final-instagram { display: flex; align-items: center; gap: clamp(0.6rem, 1.1vw, 1rem); }
+.final-instagram .emblema.codigo { fill: none; stroke: var(--texto); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.final-instagram .qr { width: min(8vw, 15vh); padding: 6px; border-radius: 12px; }
 .final-instagram p { display: grid; grid-template-columns: auto 1fr; column-gap: 0.5em; align-items: center; }
 .final-instagram .emblema { width: 1.4em; height: 1.4em; color: #e1306c; grid-row: span 2; }
-.final-instagram b { font-family: var(--titulos); font-size: var(--h3-size); }
+.final-instagram b { font-family: var(--titulos); font-size: var(--body-size); }
 .final-instagram span { color: var(--texto-2); font-size: var(--small-size); }
 
 /* Viabilidad: el embudo y el equilibrio, lado a lado; el SOM y los 84
@@ -906,6 +945,8 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   .futuro .ideas { grid-template-columns: 1fr; }
   .dos-capturas { padding-bottom: 0; }
   .final-qrs .qr { width: min(36vw, 22vh); }
+  .ia-arriba, .gracias, .usan { grid-template-columns: 1fr; }
+  .ia-tiempo .nota, .usan li:nth-child(n + 3) { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -940,6 +981,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   <symbol id="p-git" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/></symbol>
   <symbol id="p-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
   <symbol id="p-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.43a5 5 0 0 1 7 0M2 8.82a15 15 0 0 1 4.17-2.65M10.66 5c4.01-.36 8.14.9 11.34 3.76M16.85 11.25a10 10 0 0 1 2.22 1.68M5 13a10 10 0 0 1 5.24-2.76M2 2l20 20"/></symbol>
+  <symbol id="p-heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.59-3.68.56.56 0 0 0 .82 0A5.5 5.5 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.49 5.31a2 2 0 0 1-3 .02L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
   <symbol id="p-lightbulb" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4"/></symbol>
   <!--SIMBOLOS-->
 </svg>
@@ -1284,7 +1326,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
     <div class="precios">
       <div class="tarjeta reveal" style="--d:3"><h3>Dux Software</h3><p class="precio-grande">$ 43.560 <small>por mes</small></p><p class="nota">Plan base, con IVA</p></div>
       <div class="tarjeta reveal" style="--d:4"><h3>Contagram</h3><p class="precio-grande">$ 71.269 <small>por mes</small></p><p class="nota">Plan inicial, precio normal, con IVA</p></div>
-      <div class="tarjeta nexo reveal" style="--d:5"><h3>Nexo</h3><p class="precio-grande">$ 0 <small>para empezar</small></p><p class="nota">Y $ 19.900 por mes cuando el negocio crece</p></div>
+      <div class="tarjeta nexo reveal" style="--d:5"><h3>Nexo</h3><p class="precio-grande">$ 0 <small>para empezar</small></p><p class="nota">Y $ 19.900 por mes con equipo y factura electrónica</p></div>
     </div>
   </div>
 </section>
@@ -1354,7 +1396,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
         <li class="reveal" style="--d:3"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg></span><div><b>Emprendimientos que arrancan</b><span>El nuestro y los de gente cercana: muchas ganas y ningún sistema</span></div></li>
         <li class="reveal" style="--d:5"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#notebook-tabs"/></svg></span><div><b>Todo anotado a mano</b><span>Pedidos por WhatsApp, cuentas en el cuaderno, el pizarrón y una planilla</span></div></li>
         <li class="reveal" style="--d:7"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-alert"/></svg></span><div><b>Las mismas preguntas en todos</b><span>¿Cuánto me quedó? ¿Quién me debe? ¿Qué tengo que reponer?</span></div></li>
-        <li class="reveal nexo-hito" style="--d:9"><span class="hito"><img src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""></span><div><b>Así nació Nexo</b><span>Pensado para el que recién arranca, y que crece con él</span></div></li>
+        <li class="reveal nexo-hito" style="--d:9"><span class="hito"><img src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""></span><div><b>Así nació Nexo</b><span>Pensado para el que recién arranca</span></div></li>
       </ol>
     </div>
     <div class="caso" aria-label="Un caso real: las planillas, el pizarrón y el Notion de un emprendimiento">
@@ -1373,7 +1415,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
     <div>
       <p class="parte reveal">La idea</p>
       <h2 class="reveal" style="--d:1">Nexo crece con el negocio</h2>
-      <p class="bajada reveal" style="--d:2">Lo puede usar el que recién arranca, gratis. Y cuando el negocio crece, Nexo crece con él.</p>
+      <p class="bajada reveal" style="--d:2">Lo puede usar el que recién arranca, gratis. Y cuando el negocio necesita más, Nexo lo acompaña.</p>
     </div>
     <div class="escalera">
       <svg class="crecimiento" viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true">
@@ -1812,7 +1854,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
     <div>
       <p class="parte reveal">Propuesta de valor y modelo de negocio</p>
       <h2 class="propuesta reveal" style="--d:1">Nexo ordena el negocio desde el primer día, <span>y crece con él.</span></h2>
-      <p class="bajada reveal" style="--d:2">Una suscripción por mes: se empieza gratis y se paga cuando el negocio crece.</p>
+      <p class="bajada reveal" style="--d:2">Una suscripción por mes: se empieza gratis y se paga cuando hace falta más.</p>
     </div>
     <div class="planes">
       <div class="tarjeta plan reveal" style="--d:2"><h3>Gratis</h3><p class="precio-grande">$ 0</p><ul><li>Punto de venta, stock, caja y CRM</li><li>Hasta 100 productos y 300 ventas por mes</li><li>Un usuario</li></ul></div>
@@ -1859,6 +1901,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
      decisión a publicar, y las herramientas. -->
 <section class="slide" aria-label="Cómo trabajamos">
   <div class="slide-content apilado">
+    <div class="ia-arriba">
     <div>
       <p class="parte reveal">Gestión ágil</p>
       <div class="ia-cabecera reveal" style="--d:1">
@@ -1866,6 +1909,16 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
         <div class="ia-marca"><svg class="claude-logo" viewBox="0 0 100 100" aria-hidden="true"><path d="M58.9,51.3 L93.6,56.1 M57.1,55.5 L76.8,70.9 M53.4,58.3 L67.2,92.7 M48.7,58.9 L44.9,86.6 M44.5,57.1 L24.1,83.1 M41.7,53.4 L19.4,62.4 M41.1,48.7 L5.4,43.7 M42.9,44.5 L21.6,27.8 M46.6,41.7 L33.9,10.1 M51.3,41.1 L54.7,16.3 M55.5,42.9 L78.3,13.8 M58.3,46.6 L85.2,35.8" stroke="#d97757" stroke-width="8.5" stroke-linecap="round"/></svg><span>Claude Code</span></div>
       </div>
       <p class="bajada reveal" style="--d:2">Programamos con Claude Code, una IA que escribe código dentro del proyecto. Nosotros decidimos y controlamos cada paso.</p>
+    </div>
+    <!-- Sin IA: 95.923 líneas propias (sin las librerías) a 50 líneas
+         terminadas por día cada uno = 959 jornadas, unos 4 años y 4 meses de
+         días hábiles. Con IA: del 7 de mayo al 16 de noviembre de 2026. -->
+    <div class="ia-tiempo tarjeta reveal" style="--d:3">
+      <p class="subtitulo-ia">Escribir todo el código</p>
+      <div class="t-fila sin"><span>Sin IA</span><i></i><b>Más de 4 años</b></div>
+      <div class="t-fila con"><span>Con IA</span><i></i><b>6 meses</b></div>
+      <p class="nota">Casi 100.000 líneas de código, a 50 líneas terminadas por día cada uno</p>
+    </div>
     </div>
     <ol class="proceso">
       <li class="reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#users"/></svg><b>Decidimos</b><span>Qué hace Nexo, para quién y qué va primero.</span></li>
@@ -1926,8 +1979,35 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 33. Para cerrar: vuelve a cómo surgió (la 9). Para la oficial, acá van
-     testimonios de los negocios que lo estén usando. -->
+<!-- 33. Gracias: los negocios que ya usan Nexo y a quienes nos ayudaron. Las
+     tarjetas punteadas son para completar: el nombre, el rubro y la ciudad de
+     cada negocio, y la frase (o el logo) de cada uno si la hay. -->
+<section class="slide" aria-label="Gracias">
+  <div class="slide-content apilado">
+    <div>
+      <p class="parte reveal">Gracias</p>
+      <h2 class="reveal" style="--d:1">Los negocios que ya usan Nexo</h2>
+      <p class="bajada reveal" style="--d:2">Lo usan con su negocio real, y cada cosa que nos contaron lo hizo mejor.</p>
+    </div>
+    <div class="gracias">
+      <ul class="usan">
+        <li class="negocio por-completar reveal" style="--d:3"><span class="inicial">A</span><b>Nombre del negocio</b><span>Rubro · Ciudad</span></li>
+        <li class="negocio por-completar reveal" style="--d:4"><span class="inicial">B</span><b>Nombre del negocio</b><span>Rubro · Ciudad</span></li>
+        <li class="negocio por-completar reveal" style="--d:5"><span class="inicial">C</span><b>Nombre del negocio</b><span>Rubro · Ciudad</span></li>
+        <li class="negocio por-completar reveal" style="--d:6"><span class="inicial">D</span><b>Nombre del negocio</b><span>Rubro · Ciudad</span></li>
+      </ul>
+      <div class="tarjeta agradecer reveal" style="--d:7">
+        <h3><svg class="ico"><use href="#p-heart"/></svg>Gracias</h3>
+        <ul>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg><span><b>A cada uno de estos negocios</b>, por abrirnos la puerta y contarnos qué les faltaba</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg><span><b>A la mamá de Joaquín</b>, contadora, por ayudarnos con el IVA, las facturas y ARCA</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 34. Para cerrar: vuelve a cómo surgió (la 9). -->
 <section class="slide" aria-label="Para cerrar">
   <div class="slide-content apilado cerrar">
     <img class="simbolo-grande reveal" src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
@@ -1936,7 +2016,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 34. En inglés (la consigna pide una parte en inglés): un sábado en un local
+<!-- 35. En inglés (la consigna pide una parte en inglés): un sábado en un local
      con Nexo, contado por los dos. Santino es el dueño y Joaquín la voz de Nexo.
      Arranca con un clic o con la flecha, como el de la 12, y termina en "Scan
      the code": la que sigue son los QR. -->
@@ -1951,7 +2031,8 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 35. El final: la invitación a probarlo y los dos QR en grande. Queda puesta
+<!-- 36. El final: la invitación y el QR de la página en grande, con Instagram y
+     el código chicos. Queda puesta
      durante las preguntas. -->
 <section class="slide" aria-label="Pruébenlo">
   <div class="slide-content final">
@@ -1962,11 +2043,13 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
       </div>
       <h2 class="reveal" style="--d:1">Pruébenlo con su negocio</h2>
       <p class="bajada reveal" style="--d:2">Ustedes ordenan su negocio, y con lo que nos cuenten nosotros mejoramos Nexo. Nos ayudamos los dos.</p>
-      <div class="final-instagram reveal" style="--d:5"><div class="qr"><img src="qr/instagram-nexo.svg" alt="QR al Instagram de Nexo"></div><p><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../../frontend/img/instagram.svg#emblema"/></svg><b>@nexosystem.app</b><span>Seguinos en Instagram</span></p></div>
+      <div class="final-chicos">
+        <div class="final-instagram reveal" style="--d:4"><div class="qr"><img src="qr/instagram-nexo.svg" alt="QR al Instagram de Nexo"></div><p><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../../frontend/img/instagram.svg#emblema"/></svg><b>@nexosystem.app</b><span>Seguinos en Instagram</span></p></div>
+        <div class="final-instagram reveal" style="--d:5"><div class="qr"><img src="qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><p><svg class="emblema codigo" aria-hidden="true"><use href="#p-git"/></svg><b>El código</b><span>En GitHub, con el manual</span></p></div>
+      </div>
     </div>
     <div class="final-qrs">
-      <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="qr/probar-nexo.svg" alt="QR para probar Nexo"></div><b>Probar Nexo</b><p class="direccion">Sin registrarse, desde el celular</p></div>
-      <div class="qr-caja reveal" style="--d:4"><div class="qr"><img src="qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><b>El código</b><p class="direccion">En GitHub, con el README y el manual</p></div>
+      <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="qr/landing-nexo.svg" alt="QR a la página de Nexo"></div><b>Conocer Nexo</b><p class="direccion">nexosystem.duckdns.org</p></div>
     </div>
   </div>
 </section>

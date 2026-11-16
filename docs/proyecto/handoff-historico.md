@@ -14137,3 +14137,53 @@ highpass a 80 Hz, que no toca consonantes) y "Scan the code" ya era "It's candy
 cold" en el audio original: es la pronunciación al límite, no el procesamiento.
 Se dejó así y se le avisó al usuario para que las escuche; si no se entienden,
 Tosi las regraba más despacio. Video final: 38,3 s.
+
+## §183. La presentación después del simulacro (16 de noviembre de 2026)
+
+El simulacro salió bien. La profe marcó siete cosas; así quedaron (36
+diapositivas):
+
+- **"Crece con el negocio" se repetía.** Es de lo que se dice, así que la guía
+  lo deja para la 10 y la 29 ("se gastó" si se repite). En las diapositivas se
+  sacó de la 7 ("con equipo y factura electrónica"), de la 9 (el hito "Así nació
+  Nexo") y de las bajadas de la 10 y la 29.
+- **31, cuánto hubiera llevado sin IA.** Una tarjeta arriba a la derecha con dos
+  barras a escala: sin IA, más de 4 años; con IA, 6 meses (7 de mayo al 16 de
+  noviembre). La cuenta: 95.923 líneas propias no vacías (backend, frontend,
+  scripts y deploy, sin `frontend/js/vendor`) a 50 líneas terminadas por día
+  por persona (la cifra alta de la industria; la baja es 10) = 1.918 jornadas,
+  959 cada uno, unos 4,4 años de 220 días hábiles. Explicado en la guía
+  ("¿De dónde salen los 4 años?"). La guía decía 80.000 líneas: ahora casi
+  100.000 y casi 500 commits.
+- **33 nueva, "Los negocios que ya usan Nexo".** Cuatro tarjetas punteadas
+  para completar (nombre, rubro y ciudad) y "Gracias": a los negocios, y a la
+  mamá de Joaquín, contadora, "por ayudarnos con el IVA, las facturas y ARCA"
+  (supuesto mío: el usuario lo confirma o lo cambia). Las de después se corren
+  una: cierre 34, inglés 35, QR 36.
+- **36, el QR de la página como principal.** "Conocer Nexo"
+  (`qr/landing-nexo.svg`, nexosystem.duckdns.org) grande a la derecha;
+  Instagram y el código en GitHub, chicos, del mismo tamaño y lado a lado.
+  El de "Probar Nexo" sigue en la 13.
+- **Subtítulos del video en inglés.** En `NexoUnSabado.tsx` (motion-architect):
+  de 32 a 50 px, en negrita, fondo al 90 % y el ícono de Nexo a 44 px. No tapan
+  nada (revisado en un cuadro de cada frase). Rerenderizado; el mp4 y el póster
+  (`-ss 10.7`) copiados a `docs/pitch/media/`.
+- **Que se lea en el tele.** El texto chico tenía un techo de 15 px y el
+  contenido un ancho máximo de 1500 px: en 1920×1080 todo quedaba en un
+  recuadro, chico. Ahora, desde 1440 px de ancho, `html { font-size:
+  calc(100vw / 90) }` y el ancho máximo en rem (93,75rem): la diapositiva crece
+  en proporción a la pantalla, como un PowerPoint. El texto chico sube de
+  `1.05vw/0.95rem` a `1.15vw/1.06rem` y el normal de `1.5vw/1.3rem` a
+  `1.55vw/1.38rem`. Medido en 1920×1080, 1536×864 (125 %) y 1280×720 (150 %):
+  ninguna diapositiva se desborda. Se arreglaron las que se corrían: el precio
+  de Dux en la 7 (más chico en `.precios`, "por mes" sin partir), el QR de
+  Mercado Pago de la 24 (también según la altura) y los QR chicos de la 36.
+- **La demo en vivo.** Probada la app con una copia de la base, a 1280×720 con
+  escala 1,5 (una notebook 1920×1080 con el zoom del navegador al 150 %):
+  Resumen y Punto de venta se ven enteros y grandes. Para el tele: Ctrl + hasta
+  125–150 % antes de empezar la demo.
+
+Lo que no se tocó: las capturas de la app dentro de las diapositivas (14 a 26)
+se ven al 25–60 % de su tamaño; de lejos se lee el texto de al lado, no la
+captura. Si en el tele grande sigue sin alcanzar, el paso siguiente es
+recortarlas a la parte que importa.

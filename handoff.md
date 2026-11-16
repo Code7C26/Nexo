@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §182);
+    siguiente número (hoy el último es §183);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,15 @@
   reescribe nada.
 
 ## Estado actual (16 de noviembre de 2026)
+
+**16 de noviembre, hist. §183: la presentación después del simulacro (36
+diapositivas).** Lo que marcó la profe: la 31 dice cuánto hubiera llevado sin
+IA (más de 4 años contra 6 meses); la 33 nueva, los negocios que ya usan Nexo y
+los agradecimientos (las tarjetas, **para completar**); la 36 con el QR de la
+página como principal y GitHub e Instagram chicos; los subtítulos del video en
+inglés más grandes; y la presentación crece con la pantalla (en el tele ya no
+queda en un recuadro con el texto chico). "Crece con el negocio" queda para la
+10 y la 29. Para la demo en el tele: zoom del navegador al 125–150 %.
 
 **16 de noviembre, hist. §182: el video en inglés, rehecho como animación
 propia ("Un sábado en el local"), y en la presentación (la 34; ahora son 35).**
@@ -1982,6 +1991,13 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    prueba no está probando nada.
 
 ## Qué sigue
+
+**Para la oficial, lo que falta de §183:** completar la 33 (nombre, rubro y
+ciudad de cada negocio, en `docs/pitch/fuentes/index.html`, y confirmar con
+cada uno que se lo nombra) y confirmar el agradecimiento a la mamá de Joaquín
+("por ayudarnos con el IVA, las facturas y ARCA" es un supuesto). Después,
+`npm run presentacion` y `npm run guia` (en `redes/`). Probar en el tele
+grande, y si las capturas de la app (14 a 26) no se leen, recortarlas.
 
 **El video en inglés, terminado** (hist. §182): "Un sábado en el local", en la
 34 de la presentación (35 en total), con las ocho frases grabadas por Santino y
