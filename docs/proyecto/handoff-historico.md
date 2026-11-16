@@ -14096,3 +14096,20 @@ dos veces. La guía de Santino pasó a Christopher (más grave que Brian). En
 pantalla, la tarjeta se llama "Nexo" con su ícono, sus respuestas y su onda van
 en azul, y su subtítulo en azul con el ícono adelante (el del dueño, blanco). El
 video de guía quedó en 34,5 s.
+
+**De madrugada: las voces de Santino y el video en la presentación.** Santino
+grabó sus tres frases como notas de WhatsApp (en la primera dijo "I sold… He
+paid me with…": se cambió el texto de la tarjeta para que coincida, no el
+audio). `voz-dialogo.py` ahora mezcla: usa la grabada si está en `grabadas/`
+(cualquier formato) y si no, la de guía (en `guia/`); ya no lleva
+`--grabadas`. A las grabadas: sin las últimas 3 décimas (el clic de soltar el
+botón de WhatsApp, que no dejaba recortar el silencio final), highpass 80,
+`afftdn`, recorte de puntas a -38 dB con una décima de colchón, pausas de más
+de 0,45 s llevadas a 0,3 y compresión; a todas, `loudnorm` a -16 LUFS.
+Verificado con Whisper que no se cortó ninguna palabra. Video: 36,7 s.
+En la presentación: diapositiva 34 nueva ("In English · A Saturday at the
+store", con la tarjeta de video de clic, con sonido), la de los QR pasó a 35,
+ficha 34 en la guía (qué decir, "¿Nexo habla?", "¿Nexo está en inglés?") y
+"Para pasar a la 34" en la 33. Probado en Chrome: el clic lo agranda y suena
+(el navegador de prueba tiene `navigator.webdriver`, con el que la
+presentación no arranca videos a propósito; se forzó para probar).

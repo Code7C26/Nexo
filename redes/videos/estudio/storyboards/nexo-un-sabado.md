@@ -26,7 +26,7 @@ los QR. Composición: `src/compositions/NexoUnSabado.tsx`.
 
 | # | Se ve | Quién | Dice (inglés) | Subtítulo |
 |---|---|---|---|---|
-| 1 | Sábado 10:02 AM. La tarjeta del asistente escucha (onda y texto en vivo) | Santino | Sold three black T-shirts to Juan. He paid with Mercado Pago. | Vendí tres remeras negras a Juan. Me pagó con Mercado Pago. |
+| 1 | Sábado 10:02 AM. La tarjeta del asistente escucha (onda y texto en vivo) | Santino | I sold three black T-shirts to Juan. He paid me with Mercado Pago. | Vendí tres remeras negras a Juan. Me pagó con Mercado Pago. |
 | 2 | La tarjeta se corre y aparece la venta armada (cliente, renglón, Mercado Pago) | Tosi | Got it. Confirm the sale? | Listo. ¿Confirmo la venta? |
 | 3 | El mouse confirma ("Sale #158") y salen los efectos: Stock 12 → 9, Mercado Pago, Factura B, Ganancia | — | — | — |
 | 4 | Pasa el día: 1:15 PM Tienda Nube, 4:40 PM Mercado Libre, 6:30 PM el mostrador; el stock baja (9, 7, 4, 2) | — | — | — |
@@ -39,33 +39,37 @@ los QR. Composición: `src/compositions/NexoUnSabado.tsx`.
 
 ## Grabar las voces
 
+**Estado (16 de noviembre, de madrugada):** las tres de Santino, grabadas y
+puestas; las cinco de Tosi, de guía hasta que las grabe.
+
 Cada frase, un audio aparte (o todo de corrido, con un segundo de silencio entre
 frases, y se corta acá). Tranquilo y claro, sin apurarse. Tosi graba con su voz
 normal: el tratamiento de Nexo se lo suma el script. Los audios van en
-`public/voz/nexo-un-sabado/crudas/` del estudio, con estos nombres:
+`public/voz/nexo-un-sabado/grabadas/` del estudio, con estos nombres y en
+cualquier formato (las notas de voz de WhatsApp, `.ogg`, andan bien):
 
 | Archivo | Quién | Frase |
 |---|---|---|
-| `00-venta.mp3` | Santino | Sold three black T-shirts to Juan. He paid with Mercado Pago. |
-| `01-confirmar.mp3` | Tosi | Got it. Confirm the sale? |
-| `02-aviso.mp3` | Tosi | Only two black T-shirts left. |
-| `03-pedido.mp3` | Santino | Order twenty more from the supplier. |
-| `04-listo.mp3` | Tosi | Order ready. |
-| `05-cierre.mp3` | Tosi | Twenty-three sales today. The cash count is OK. |
-| `06-lema.mp3` | Santino | Nexo. Your whole business in one place. |
-| `07-probar.mp3` | Tosi | Try it free. Scan the code. |
+| `00-venta` | Santino | I sold three black T-shirts to Juan. He paid me with Mercado Pago. |
+| `01-confirmar` | Tosi | Got it. Confirm the sale? |
+| `02-aviso` | Tosi | Only two black T-shirts left. |
+| `03-pedido` | Santino | Order twenty more from the supplier. |
+| `04-listo` | Tosi | Order ready. |
+| `05-cierre` | Tosi | Twenty-three sales today. The cash count is OK. |
+| `06-lema` | Santino | Nexo. Your whole business in one place. |
+| `07-probar` | Tosi | Try it free. Scan the code. |
 
 ## Rearmar
 
 En el estudio vivo (`~/motion-architect/studio`), con ffmpeg en el PATH:
 
 ```
-python scripts/voz-dialogo.py voz/nexo-un-sabado.json             # voz de guía (edge-tts)
-python scripts/voz-dialogo.py voz/nexo-un-sabado.json --grabadas  # con las voces de verdad en public/voz/nexo-un-sabado/crudas/
+python scripts/voz-dialogo.py voz/nexo-un-sabado.json   # las grabadas que haya y, las que faltan, de guía
 npx remotion render src/index.ts NexoUnSabado-landscape out/nexo-un-sabado.mp4 --crf=18
 ```
 
-El script recorta el silencio de las puntas y anota lo que dura cada frase y
+A las grabadas les saca el clic final de WhatsApp, el ruido y los graves, y les
+acorta las pausas largas. El script recorta el silencio de las puntas y anota lo que dura cada frase y
 su volumen cuadro por cuadro; el video se reacomoda solo a las voces nuevas
 (los tiempos salen de `voz/nexo-un-sabado.json`). Necesita `LETRAS` exportado de
 `NexoApertura.tsx` y la composición registrada en `src/compositions/index.ts`.

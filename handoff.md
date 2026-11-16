@@ -22,8 +22,8 @@
 ## Estado actual (16 de noviembre de 2026)
 
 **16 de noviembre, hist. §182: el video en inglés, rehecho como animación
-propia ("Un sábado en el local").** Con voz de guía; faltan las voces de
-Santino y Tosi. Ver "Qué sigue".
+propia ("Un sábado en el local"), y en la presentación (la 34; ahora son 35).**
+Las voces de Santino, puestas; faltan las de Tosi. Ver "Qué sigue".
 
 **16 de noviembre, hist. §181: la apertura sin frases con coma.** Solo
 cambiaron los títulos ("Mirá el mes de un vistazo.", "Las ofertas se aplican
@@ -1983,22 +1983,22 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
-**Próxima sesión, lo primero: el video en inglés** (requisito de la profe:
-una parte en inglés en algún momento de la presentación). Va **justo antes de
-la 34** (la de los QR): es un resumen de Nexo que termina en "Try it free. Scan
-the code.", así no corta ninguna explicación y lleva directo a los QR. Al
-sumarlo, la presentación pasa a 35 y la final a la 35: renumerar la guía
-(`armar-guia.mjs` frena si no coinciden), el LEEME y las referencias "la 34".
-Estado del video (hist. §182): **enfoque nuevo, "Un sábado en el local"**, una
-animación propia con tarjetas (como el de los amigos del usuario, sin la app
-grabada). Santino es el dueño y **Tosi la voz de Nexo** (el asistente, con
-tratamiento de voz digital y todo lo suyo en azul). Armado con voz de
-guía (~34 s): `docs/pitch/media/nexo-un-sabado-guia.mp4` (no se sube). Guion,
-frases y cómo grabar: `redes/videos/estudio/storyboards/nexo-un-sabado.md`.
-Falta: (1) **las voces de Santino y Tosi**, una frase por archivo, en
-`public/voz/nexo-un-sabado/crudas/` del estudio y `voz-dialogo.py --grabadas`; (2)
-renderizar y ponerlo en una diapositiva como los otros videos (`.video-tarjeta`,
-agrandándose). La v4 (`nexo-ingles.md`, capturas) queda descartada.
+**Próxima sesión, lo primero: las voces de Tosi en el video en inglés.** El
+video ("Un sábado en el local", hist. §182) **ya está en la presentación, en la
+34** (la de los QR pasó a ser la 35; guía, LEEME y presentación rearmados), con
+las tres frases de Santino grabadas y las cinco de Tosi todavía de guía. Tosi
+las graba a primera hora del 16 (las frases, en
+`redes/videos/estudio/storyboards/nexo-un-sabado.md`). Para sumarlas: ponerlas en
+`~/motion-architect/studio/public/voz/nexo-un-sabado/grabadas/` como
+`01-confirmar`, `02-aviso`, `04-listo`, `05-cierre` y `07-probar` (cualquier
+formato, también las notas de WhatsApp), correr `python scripts/voz-dialogo.py
+voz/nexo-un-sabado.json` y `npx remotion render src/index.ts
+NexoUnSabado-landscape out/nexo-un-sabado.mp4 --crf=18` (con el PATH de ffmpeg),
+copiar el mp4 a `docs/pitch/media/`, rehacer el póster (`ffmpeg -ss 10.7`, a
+`nexo-un-sabado.jpg`), `npm run presentacion` y, si cambió la duración, el "37
+segundos" de la ficha 34 de `redes/pitch/guia.html` y `npm run guia`. Las notas
+originales de Santino quedaron en `docs/pitch/media/WhatsApp Ptt …ogg` (sin
+subir).
 
 **Después, para la oficial ("algunas cositas"):** la captura real del chat de
 WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33; la
