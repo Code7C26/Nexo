@@ -4831,5 +4831,15 @@ export default {
   "Uno de los clientes ya no existe.": "One of the customers no longer exists.",
   "\"{0}\" no se borra: elegilo como el que queda.": "\"{0}\" can't be deleted: pick it as the one that stays.",
   "Más de uno es socio: pasá los planes a uno y dale de baja al otro antes de unirlos.": "More than one is a member: move the plans to one and cancel the other before merging them.",
-  "Cliente \"{0}\" unido con {1}. Ventas que pasaron: {2}": "Customer \"{0}\" merged with {1}. Sales moved: {2}"
+  "Cliente \"{0}\" unido con {1}. Ventas que pasaron: {2}": "Customer \"{0}\" merged with {1}. Sales moved: {2}",
+  "Sumar el envío": "Add the shipping",
+  "Lo que pagaste para mandar esta venta (la moto, el correo). Se descuenta de lo que te quedó.": "What you paid to send this sale (the courier, the post). It comes out of what you kept.",
+  "¿De qué cuenta salió?": "Which account did it come from?",
+  "Por ejemplo: moto a Villa Carlos Paz (opcional)": "For example: courier to Villa Carlos Paz (optional)",
+  "No se pudo sumar el envío.": "Couldn't add the shipping.",
+  "Envío sumado a la venta.": "Shipping added to the sale.",
+  "La venta está anulada.": "The sale is voided.",
+  "El importe del envío tiene que ser un número mayor a 0.": "The shipping amount has to be a number greater than 0.",
+  "Envío de la venta #{0}": "Shipping for sale #{0}",
+  "Envío de ${0} sumado a la venta #{1}": "Shipping of ${0} added to sale #{1}"
 };

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §179);
+    siguiente número (hoy el último es §180);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,24 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (15 de noviembre de 2026)
+## Estado actual (16 de noviembre de 2026)
+
+**16 de noviembre, hist. §180: la presentación después del ensayo (35
+diapositivas) y el envío de una venta (commiteado en `solla`, sin publicar).**
+- La 1 espera siempre una tecla, e Inicio vuelve ahí. Nuevas: 9 cómo surgió, 15
+  Productos, 27 el mapa de Nexo, 28 seguridad, 32 cómo trabajamos con IA, 33 lo
+  que viene, 34 y 35 el cierre con los dos QR. El video del alta (12) arranca con
+  un clic. ARCA quedó en la 22, pegada a la factura. Guía renumerada, con el hilo
+  del problema y las frases para pasar de una a otra.
+- **Producto:** "Sumar el envío" en la ficha de una venta (`POST
+  /api/ventas/:id/envio`). Lola de ejemplo trae una venta con packaging, crédito
+  en cuotas y envío (la de la 17).
+- **Falta:** publicar y correr `npm run demo -- --email <mail de Santino>
+  --venta-con-costos` para tener esa venta en su Lola; la captura del chat real
+  de WhatsApp (la manda el usuario) para la 19; y para la oficial, testimonios en
+  la 34, las frases del video de apertura sin la coma ("el mes, de un vistazo") y
+  la calidad del video del alta.
+
 
 **15 de noviembre, hist. §179: corregir una propuesta por WhatsApp
 (commiteado en `solla`, sin publicar).** Tercer botón "✏️ Corregir"

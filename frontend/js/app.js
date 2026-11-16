@@ -4770,6 +4770,7 @@ async function abrirFichaVenta(id) {
   document.getElementById("btnCobrarVentaFicha").hidden = venta.estado === "anulada" || !(venta.neto - venta.cobrado > 0.005);
   document.getElementById("btnDevolverVenta").hidden =
     venta.estado === "anulada" || venta.items.every((i) => i.disponible_devolucion <= 0);
+  document.getElementById("btnEnvioVenta").hidden = venta.estado === "anulada";
 
   // El descuento a mano del mostrador (hist. §175) ya está restado del precio:
   // lo de la oferta es lo que bajó antes de él.
@@ -4865,6 +4866,39 @@ document.getElementById("btnEditarVenta").addEventListener("click", async () => 
 });
 document.getElementById("btnVolverVentas").addEventListener("click", () => mostrarVista("ventas"));
 document.getElementById("btnCobrarVentaFicha").addEventListener("click", () => abrirModalCobrarVenta(ventaFichaId));
+
+// El envío que pagó el negocio (hist. §180): entra como costo de la venta y la
+// ficha se vuelve a pintar con él en "Adónde fue la plata".
+const modalEnvioVenta = document.getElementById("modalEnvioVenta");
+document.getElementById("btnEnvioVenta").addEventListener("click", () => {
+  const form = document.getElementById("formEnvioVenta");
+  form.reset();
+  poblarSelectCuentas(form.cuenta_tesoreria_id, cuentasTesoreria.find((c) => c.tipo === "efectivo")?.id ?? null);
+  modalEnvioVenta.hidden = false;
+  form.importe.focus();
+});
+document.getElementById("modalEnvioVentaClose").addEventListener("click", () => {
+  modalEnvioVenta.hidden = true;
+});
+modalEnvioVenta.addEventListener("click", (e) => {
+  if (e.target === modalEnvioVenta) modalEnvioVenta.hidden = true;
+});
+document.getElementById("formEnvioVenta").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await api(`/api/ventas/${ventaFichaId}/envio`, {
+    method: "POST",
+    body: {
+      importe: Number(form.importe.value),
+      cuenta_tesoreria_id: Number(form.cuenta_tesoreria_id.value),
+      descripcion: form.descripcion.value
+    },
+    error: "No se pudo sumar el envío."
+  });
+  modalEnvioVenta.hidden = true;
+  await abrirFichaVenta(ventaFichaId);
+  avisar("Envío sumado a la venta.", "ok");
+});
 // Cobrada desde su ficha: la ficha muestra lo cobrado al toque.
 document.addEventListener("cobro-registrado", (e) => {
   const ficha = document.querySelector('[data-view="venta-detalle"]');

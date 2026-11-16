@@ -753,6 +753,113 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .cierre .lockup .simbolo { width: clamp(50px, 7vw, 110px); }
 .cierre .lockup .palabra { width: clamp(140px, 22vw, 320px); color: var(--texto); }
 
+/* ===== Cómo surgió: el camino de un emprendimiento a Nexo ===== */
+.camino { position: relative; display: flex; flex-direction: column; gap: clamp(0.8rem, 2.4vh, 1.6rem); }
+.camino::before { content: ""; position: absolute; left: calc(clamp(2.6rem, 4vw, 3.6rem) / 2 - 1px); top: 1.5rem; bottom: 1.5rem; width: 2px; background: linear-gradient(var(--borde-fuerte), var(--acento)); transform-origin: top; scale: 1 0; transition: scale 1.6s cubic-bezier(0.4, 0, 0.2, 1) 0.5s; }
+.slide.visible .camino::before { scale: 1 1; }
+.camino li { position: relative; display: grid; grid-template-columns: auto 1fr; gap: clamp(0.8rem, 1.6vw, 1.4rem); align-items: center; }
+.camino .hito { display: grid; place-items: center; width: clamp(2.6rem, 4vw, 3.6rem); aspect-ratio: 1; border-radius: 50%; background: var(--tarjeta-alta); border: 1px solid var(--borde-fuerte); color: var(--texto-2); font-size: clamp(1.1rem, 1.6vw, 1.5rem); }
+.camino li:nth-child(3) .hito { color: var(--mal); border-color: rgba(248, 113, 113, 0.5); }
+.camino .nexo-hito .hito { background: var(--fondo); border-color: var(--acento); box-shadow: 0 0 40px rgba(96, 165, 250, 0.4); }
+.camino .nexo-hito .hito img { width: 58%; }
+.camino b { display: block; font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.15; }
+.camino span:not(.hito) { color: var(--texto-2); font-size: var(--small-size); }
+
+/* ===== Rubros: qué prende cada uno ===== */
+.rubro .funcs { color: var(--texto-2); font-size: var(--small-size); line-height: 1.35; }
+.rubro .pronto-tag { margin-top: auto; font-size: var(--small-size); font-weight: 600; color: var(--acento); }
+.rubro.pronto { opacity: 0.6; border-style: dashed; }
+
+/* ===== El video que arranca con un clic ===== */
+.video-tarjeta.al-tocar { position: relative; aspect-ratio: 16 / 9; cursor: pointer; }
+.video-tarjeta.al-tocar video { height: 100%; object-fit: cover; }
+.video-play { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 0.7em; background: linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.55)); color: var(--texto); font-weight: 600; font-size: var(--small-size); transition: opacity 0.3s ease; }
+.video-play i { display: grid; place-items: center; width: clamp(3.2rem, 5.4vw, 5rem); aspect-ratio: 1; border-radius: 50%; background: var(--texto); color: #000; box-shadow: 0 0 0 0 rgba(245, 245, 245, 0.5); animation: latido 2.2s ease-out infinite; }
+.video-play i svg { width: 40%; height: 40%; margin-left: 8%; fill: currentColor; stroke: none; }
+@keyframes latido { 0% { box-shadow: 0 0 0 0 rgba(245, 245, 245, 0.45); } 70%, 100% { box-shadow: 0 0 0 22px rgba(245, 245, 245, 0); } }
+.video-tarjeta.al-tocar:hover .video-play i { scale: 1.06; }
+.arranques { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(0.5rem, 1.2vw, 1rem); margin-top: var(--content-gap); }
+.arranques .tarjeta > .ico { color: var(--acento); font-size: clamp(1.2rem, 1.8vw, 1.6rem); margin-bottom: 0.4em; }
+.arranques p { font-size: var(--small-size); }
+
+/* ===== Productos: el catálogo y, encima, las ofertas ===== */
+.dos-capturas { position: relative; padding-bottom: clamp(3rem, 14vh, 9rem); }
+.dos-capturas .compu img { max-height: min(54vh, 560px); }
+.dos-capturas .encima { position: absolute; right: -3%; bottom: 0; width: 66%; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--borde-fuerte); }
+.dos-capturas .encima img { max-height: min(40vh, 420px); object-fit: contain; }
+
+/* ===== Cuánto deja: la captura real de la ficha ===== */
+.captura-plata { border: 1px solid var(--borde-fuerte); border-radius: var(--radio); overflow: hidden; box-shadow: 0 30px 80px -30px rgba(96, 165, 250, 0.25); }
+.captura-plata img { width: 100%; height: auto; }
+
+/* ===== Cómo está hecho: el mapa =====
+   Arriba, de izquierda a derecha, el camino de un dato: quien usa Nexo, el
+   servidor (la aplicación y la base) y el respaldo de cada noche. Abajo, lo
+   que se conecta con el servidor y cómo llega el código. Las flechas llevan
+   rayitas que corren, para que se lea que algo viaja. */
+.mapa { display: grid; grid-template-columns: minmax(0, 1fr) clamp(4rem, 8vw, 7.5rem) minmax(0, 2.1fr) clamp(4rem, 8vw, 7.5rem) minmax(0, 1fr); align-items: stretch; row-gap: calc(var(--content-gap) * 1.2); }
+.m-nodo { display: flex; flex-direction: column; gap: 0.35em; padding: clamp(0.7rem, 1.4vw, 1.2rem); background: var(--tarjeta); border: 1px solid var(--borde-fuerte); border-radius: var(--radio); }
+.m-nodo > .ico, .m-aparatos .ico { color: var(--acento); font-size: clamp(1.3rem, 2vw, 1.8rem); }
+.m-nodo b { font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.15; }
+.m-nodo span { color: var(--texto-2); font-size: var(--small-size); line-height: 1.35; }
+.m-etq { font-size: var(--small-size); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texto-3) !important; }
+.m-aparatos { display: flex; gap: 0.4em; }
+.m-servidor { position: relative; border-color: var(--acento); background: linear-gradient(180deg, var(--acento-suave), var(--tarjeta) 75%); box-shadow: 0 30px 90px -40px rgba(96, 165, 250, 0.5); }
+.m-dentro { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(0.4rem, 1vw, 0.8rem); margin-top: 0.3em; flex: 1; }
+.m-caja { display: flex; flex-direction: column; gap: 0.3em; padding: clamp(0.6rem, 1.1vw, 1rem); background: var(--fondo); border: 1px solid var(--borde); border-radius: calc(var(--radio) * 0.7); }
+.m-caja .ico { color: var(--acento); font-size: clamp(1.2rem, 1.8vw, 1.6rem); }
+.m-caja b { font-family: var(--titulos); font-size: var(--body-size); }
+/* La línea que baja del servidor a las conexiones. */
+.m-servidor::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: calc(var(--content-gap) * 1.2); background: repeating-linear-gradient(var(--acento) 0 6px, transparent 6px 12px); animation: correr-v 0.8s linear infinite; }
+@keyframes correr-v { to { background-position: 0 12px; } }
+.m-flecha { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5em; padding: 0 0.4em; text-align: center; color: var(--texto-3); font-size: var(--small-size); line-height: 1.25; }
+.m-flecha i { display: block; width: 100%; height: 2px; position: relative; background: repeating-linear-gradient(90deg, var(--acento) 0 6px, transparent 6px 12px); animation: correr-h 0.8s linear infinite; }
+.m-flecha i::after { content: ""; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left: 8px solid var(--acento); border-right: 0; }
+@keyframes correr-h { to { background-position: 12px 0; } }
+.m-conexiones { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.6em; padding: clamp(0.7rem, 1.4vw, 1.2rem); border: 1px dashed var(--borde-fuerte); border-radius: var(--radio); }
+.m-logos { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: clamp(0.3rem, 0.8vw, 0.7rem); }
+.m-logos .logo-caja { height: clamp(40px, 4.4vw, 62px); font-size: clamp(0.75rem, 1.1vw, 1.05rem); padding: 0 0.6em; }
+.m-logos .logo-caja .ico { color: var(--acento); width: 1.2em; height: 1.2em; }
+.m-codigo { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em 0.9em; color: var(--texto-2); font-size: var(--small-size); }
+.m-codigo .ico { color: var(--acento); }
+.m-codigo b { color: var(--texto); }
+.m-codigo .paso-cod { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.25em 0.75em; border: 1px solid var(--borde-fuerte); border-radius: 999px; background: var(--tarjeta); }
+
+/* ===== Cómo trabajamos: el proceso, de la decisión a publicar ===== */
+.proceso { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: clamp(0.4rem, 1vw, 0.9rem); }
+.proceso li { position: relative; display: flex; flex-direction: column; gap: 0.35em; padding: clamp(0.7rem, 1.3vw, 1.1rem); background: var(--tarjeta); border: 1px solid var(--borde-fuerte); border-radius: var(--radio); }
+.proceso li:nth-child(3) { border-color: rgba(217, 119, 87, 0.6); background: linear-gradient(180deg, rgba(217, 119, 87, 0.1), var(--tarjeta) 70%); }
+.proceso li:nth-child(3) .ico { color: #d97757; }
+.proceso li:not(:last-child)::after { content: "→"; position: absolute; right: calc(clamp(0.4rem, 1vw, 0.9rem) * -0.5); top: 50%; translate: 50% -50%; z-index: 1; display: grid; place-items: center; width: 1.6em; aspect-ratio: 1; border-radius: 50%; background: var(--fondo); border: 1px solid var(--borde-fuerte); color: var(--acento); font-size: var(--small-size); }
+.proceso .ico { color: var(--acento); font-size: clamp(1.2rem, 1.8vw, 1.6rem); }
+.proceso b { font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.15; }
+.proceso span { color: var(--texto-2); font-size: var(--small-size); line-height: 1.35; }
+.herramientas { display: flex; flex-wrap: wrap; gap: 0.45em; }
+.herramientas .chip b { color: var(--texto); font-weight: 600; }
+
+/* ===== Lo que viene ===== */
+.futuro { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(0.6rem, 1.6vw, 1.4rem); }
+.futuro .tarjeta { display: flex; flex-direction: column; gap: 0.2em; }
+.futuro h3 { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.4em; }
+.futuro h3 .ico { color: var(--acento); }
+.futuro li { display: flex; align-items: center; gap: 0.7em; padding: 0.5em 0; border-top: 1px solid var(--borde); color: var(--texto-2); }
+.futuro li .ico { color: var(--acento); flex: none; font-size: 1.15em; }
+.futuro li b { color: var(--texto); font-weight: 600; }
+
+/* ===== Para cerrar y el final con los QR ===== */
+.cerrar { align-items: center; text-align: center; gap: var(--content-gap); }
+.cerrar .simbolo-grande { width: clamp(70px, 10vw, 150px); filter: drop-shadow(0 0 50px rgba(96, 165, 250, 0.45)); }
+.cerrar h2 { font-size: var(--title-size); max-width: 22ch; text-wrap: balance; }
+.cerrar .bajada { max-width: 40ch; margin: 0 auto; font-size: var(--h3-size); }
+.final { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(1.2rem, 4vw, 4rem); align-items: center; }
+.final .lockup .simbolo { width: clamp(46px, 5.6vw, 90px); }
+.final .lockup .palabra { width: clamp(130px, 18vw, 280px); color: var(--texto); }
+.final h2 { font-size: var(--title-size); margin-top: calc(var(--content-gap) * 1.2); max-width: 14ch; }
+.final .bajada { font-size: var(--h3-size); max-width: 30ch; }
+.final-qrs { display: flex; gap: clamp(1rem, 2.4vw, 2.2rem); }
+.final-qrs .qr { width: min(26vw, 50vh, 400px); }
+.final-qrs b { font-family: var(--titulos); font-size: var(--h3-size); }
+
 /* ===== Celular y tablet vertical ===== */
 @media (max-width: 820px) {
   .par, .par.parejo, .demo, .mercado, .dos-col, .equilibrio, .flujo, .pantallas, .ademas, .funciones.dos, .ia { grid-template-columns: 1fr; }
@@ -783,6 +890,12 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   .modulos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .modulo { font-size: var(--small-size); padding: 0.5em 0.7em; }
   .modulo:nth-child(n)::after, .modulo:nth-child(n)::before { display: none; }
+  .mapa, .proceso, .futuro, .final, .arranques, .m-dentro { grid-template-columns: 1fr; }
+  .m-flecha, .m-servidor::after, .proceso li::after, .m-codigo, .dos-capturas .encima { display: none; }
+  .m-logos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .proceso span, .futuro li:nth-child(n + 4) { display: none; }
+  .dos-capturas { padding-bottom: 0; }
+  .final-qrs .qr { width: min(36vw, 22vh); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -807,6 +920,17 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
     </g>
     <ellipse cx="611.5" cy="52.5" rx="48.5" ry="45.5" fill="none" stroke="currentColor" stroke-width="14" />
   </symbol>
+  <!-- Íconos que la app no usa (los de lucide), para el mapa y lo que viene -->
+  <symbol id="p-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></symbol>
+  <symbol id="p-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="p-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="p-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="p-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/></symbol>
+  <symbol id="p-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="p-git" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v12"/></symbol>
+  <symbol id="p-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+  <symbol id="p-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.43a5 5 0 0 1 7 0M2 8.82a15 15 0 0 1 4.17-2.65M10.66 5c4.01-.36 8.14.9 11.34 3.76M16.85 11.25a10 10 0 0 1 2.22 1.68M5 13a10 10 0 0 1 5.24-2.76M2 2l20 20"/></symbol>
+  <symbol id="p-lightbulb" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4"/></symbol>
   <!--SIMBOLOS-->
 </svg>
 
@@ -1237,12 +1361,31 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 8. Nexo crece con el negocio -->
+<!-- 9. Cómo surgió: lo cuenta Santino, con su emprendimiento. El camino se
+     dibuja de arriba abajo y termina en Nexo. -->
+<section class="slide" aria-label="Cómo surgió la idea">
+  <div class="slide-content par parejo">
+    <div>
+      <p class="parte reveal">Cómo surgió</p>
+      <h2 class="reveal" style="--d:1">Nexo empezó con un emprendimiento propio</h2>
+      <p class="bajada reveal" style="--d:2">Todo lo que les contamos lo vivimos de cerca. El sistema que nos hubiera servido desde el primer día no existía, así que lo hicimos.</p>
+    </div>
+    <ol class="camino">
+      <li class="reveal" style="--d:3"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg></span><div><b>Arrancar a vender</b><span>Un emprendimiento chico, con muchas ganas y sin sistema</span></div></li>
+      <li class="reveal" style="--d:5"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#notebook-tabs"/></svg></span><div><b>Anotar todo a mano</b><span>Pedidos por WhatsApp, cuentas en el cuaderno y en una planilla</span></div></li>
+      <li class="reveal" style="--d:7"><span class="hito"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-alert"/></svg></span><div><b>Las mismas preguntas de siempre</b><span>¿Cuánto me quedó? ¿Quién me debe? ¿Qué tengo que reponer?</span></div></li>
+      <li class="reveal nexo-hito" style="--d:9"><span class="hito"><img src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt=""></span><div><b>Así nació Nexo</b><span>Simple para el que recién arranca, y que crece con él</span></div></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 10. Nexo crece con el negocio -->
 <section class="slide" aria-label="Nexo crece con el negocio">
   <div class="slide-content apilado">
     <div>
       <p class="parte reveal">La idea</p>
       <h2 class="reveal" style="--d:1">Nexo crece con el negocio</h2>
+      <p class="bajada reveal" style="--d:2">Lo puede usar el que recién arranca, gratis. Y cuando el negocio crece, Nexo crece con él.</p>
     </div>
     <div class="escalera">
       <svg class="crecimiento" viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true">
@@ -1269,44 +1412,49 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 9. Rubros -->
+<!-- 11. Rubros -->
 <section class="slide" aria-label="Para cada rubro">
   <div class="slide-content apilado">
     <div>
       <p class="parte reveal">Para quién</p>
-      <h2 class="reveal" style="--d:1">Un solo sistema, para cada rubro</h2>
-      <p class="bajada reveal" style="--d:2">Cada negocio elige su rubro, y Nexo arranca con lo que le sirve.</p>
+      <h2 class="reveal" style="--d:1">Nexo se adapta a cada tipo de negocio</h2>
+      <p class="bajada reveal" style="--d:2">Cada negocio prende las funciones que necesita. Es el mismo sistema armado distinto.</p>
     </div>
     <div class="rubros">
-      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg></span><b>Emprendimiento</b><span>Lo que fabrica y cuánto le cuesta</span></div>
-      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg></span><b>Tienda online</b><span>Un stock para todos los canales</span></div>
-      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg></span><b>Comercio</b><span>Ropa, ferretería, librería</span></div>
-      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#beef"/></svg></span><b>Carnicería</b><span>Por kilo, con la balanza</span></div>
-      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#carrot"/></svg></span><b>Verdulería</b><span>Por kilo, rápido</span></div>
-      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#cup-soda"/></svg></span><b>Kiosco y almacén</b><span>Con el lector de códigos</span></div>
-      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#briefcase"/></svg></span><b>Servicios</b><span>Presupuestos, trabajos y abonos</span></div>
-      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#dumbbell"/></svg></span><b>Gimnasio</b><span>Socios, cuotas e ingreso</span></div>
-      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#scissors"/></svg></span><b>Barbería</b><span>Muy pronto</span></div>
-      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#utensils"/></svg></span><b>Restaurante</b><span>Muy pronto</span></div>
+      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg></span><b>Emprendimiento</b><span class="funcs">Recetas, costo de producir y packaging</span></div>
+      <div class="tarjeta rubro reveal" style="--d:3"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg></span><b>Tienda online</b><span class="funcs">Tienda Nube, Mercado Libre y un solo stock</span></div>
+      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg></span><b>Comercio</b><span class="funcs">Talles y colores, ofertas y lector de códigos</span></div>
+      <div class="tarjeta rubro reveal" style="--d:4"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#beef"/></svg></span><b>Carnicería</b><span class="funcs">Venta por kilo y la etiqueta de la balanza</span></div>
+      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#carrot"/></svg></span><b>Verdulería</b><span class="funcs">Venta por kilo y cobro rápido</span></div>
+      <div class="tarjeta rubro reveal" style="--d:5"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#cup-soda"/></svg></span><b>Kiosco y almacén</b><span class="funcs">Lector de códigos y caja diaria</span></div>
+      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#briefcase"/></svg></span><b>Servicios</b><span class="funcs">Presupuestos, trabajos y abonos</span></div>
+      <div class="tarjeta rubro reveal" style="--d:6"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#dumbbell"/></svg></span><b>Gimnasio</b><span class="funcs">Socios, cuotas e ingreso con DNI</span></div>
+      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#scissors"/></svg></span><b>Barbería</b><span class="funcs">Turnos y recordatorios</span><span class="pronto-tag">Muy pronto</span></div>
+      <div class="tarjeta rubro pronto reveal" style="--d:7"><span class="ico-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#utensils"/></svg></span><b>Restaurante</b><span class="funcs">Mesas y comandas</span><span class="pronto-tag">Muy pronto</span></div>
     </div>
   </div>
 </section>
 
-<!-- 11. Un negocio desde cero: el video (26 s, sin voz, lo narran ellos) arranca
-     solo, se agranda a toda la pantalla y vuelve a su recuadro. Va antes del QR:
-     primero ven cómo se arranca, después lo prueban. -->
+<!-- 12. Un negocio desde cero: el video (26 s, sin voz, lo narran ellos) no
+     arranca solo (data-modo="clic"): primero se ve la diapositiva, y el clic en
+     el video o la primera flecha lo agrandan a toda la pantalla; al terminar
+     vuelve a su recuadro. Va antes del QR: primero ven cómo se arranca, después
+     lo prueban. -->
 <section class="slide" aria-label="Un negocio desde cero">
-  <div class="slide-content par desde-cero">
+  <div class="slide-content par">
     <div>
       <p class="parte reveal">Empezar</p>
-      <h2 class="reveal" style="--d:1">Un negocio nuevo, listo en minutos</h2>
-      <ol class="recorrido reveal" style="--d:2"><li>Tu cuenta</li><li>Tu mail</li><li>Tu negocio</li><li>El tipo de negocio</li><li>Las secciones</li><li>Lo que ya tenías</li><li>Primeros pasos</li></ol>
+      <h2 class="reveal" style="--d:1">Para arrancar de cero o con el negocio que ya tenés</h2>
+      <div class="arranques">
+        <div class="tarjeta reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sprout"/></svg><h3>Desde cero</h3><p>La cuenta, el tipo de negocio y las funciones que necesita. En minutos.</p></div>
+        <div class="tarjeta reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#boxes"/></svg><h3>Con lo que ya tenés</h3><p>El stock, lo que te deben, lo que debés y la plata de cada cuenta.</p></div>
+      </div>
     </div>
-    <figure class="video-tarjeta reveal" style="--d:3"><video class="video-pitch" src="../media/nexo-negocio-desde-cero.mp4" poster="../media/nexo-negocio-desde-cero.jpg" preload="auto" playsinline muted></video></figure>
+    <figure class="video-tarjeta al-tocar reveal" style="--d:3" aria-label="Ver el video: un negocio nuevo en Nexo"><video class="video-pitch" data-modo="clic" src="../media/nexo-negocio-desde-cero.mp4" poster="../media/nexo-negocio-desde-cero.jpg" preload="auto" playsinline muted></video><span class="video-play" aria-hidden="true"><i><svg viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></svg></i>Ver cómo se hace</span></figure>
   </div>
 </section>
 
-<!-- 10. Pruébenlo: el QR, para que el público explore mientras se cuentan las funciones -->
+<!-- 13. Pruébenlo: el QR, para que el público explore mientras se cuentan las funciones -->
 <section class="slide" aria-label="Pruébenlo ahora">
   <div class="slide-content demo">
     <div class="apilado">
@@ -1329,12 +1477,12 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 11. Todo en un lugar -->
+<!-- 14. Todo en un lugar -->
 <section class="slide" aria-label="Todo el negocio en un lugar">
   <div class="slide-content par">
     <div>
       <p class="parte reveal">La solución</p>
-      <h2 class="reveal" style="--d:1">Todo el negocio, en un solo lugar</h2>
+      <h2 class="reveal" style="--d:1">Todo el negocio en un solo lugar</h2>
       <p class="bajada reveal" style="--d:2">Ventas, stock, caja, clientes y facturas, conectados.</p>
       <ul class="funciones reveal" style="--d:3">
         <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg>Ventas, ganancia, gastos y resultado del mes</li>
@@ -1351,7 +1499,33 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 12. Vender -->
+<!-- 15. Productos: el catálogo con su stock y, encima, las ofertas. Arma la
+     llegada al punto de venta, que las aplica solas. -->
+<section class="slide" aria-label="Productos y ofertas">
+  <div class="slide-content par">
+    <div>
+      <p class="parte reveal">Productos</p>
+      <h2 class="reveal" style="--d:1">Todos los productos con su stock al día</h2>
+      <p class="bajada reveal" style="--d:2">Cada compra que se carga suma el stock y actualiza el costo. Y las ofertas se arman a medida.</p>
+      <ul class="funciones dos reveal" style="--d:3">
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#package"/></svg>Talles, colores y códigos de barra</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#warehouse"/></svg>Stock por depósito, con cada movimiento</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#shopping-bag"/></svg>La compra recibida suma el stock</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#trending-up"/></svg>El costo promedio de cada uno</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#percent"/></svg>Ofertas en porcentaje, monto o precio fijo</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#tag"/></svg>Para un producto, una categoría o todo</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#calendar"/></svg>Entre fechas y ciertos días de la semana</li>
+        <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#boxes"/></svg>Promos por cantidad: llevando 2…</li>
+      </ul>
+    </div>
+    <div class="dos-capturas reveal" style="--d:2">
+      <figure class="compu"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/productos.webp" alt="Los productos de Lola Indumentaria con su costo, precio, margen y stock."></figure>
+      <figure class="compu encima"><div class="compu-barra"><span></span><span></span><span></span></div><img src="capturas/ofertas.webp" alt="Las ofertas de Lola: 15 % en remeras por una semana y las medias llevando 2."></figure>
+    </div>
+  </div>
+</section>
+
+<!-- 16. Vender -->
 <section class="slide" aria-label="Vender">
   <div class="slide-content par">
     <div>
@@ -1376,29 +1550,20 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 13. Adónde fue la plata -->
+<!-- 17. Adónde fue la plata -->
 <section class="slide" aria-label="Adónde fue la plata">
-  <div class="slide-content par parejo">
+  <div class="slide-content par">
     <div>
       <p class="parte reveal">En cada venta</p>
       <h2 class="reveal" style="--d:1">Cuánto deja cada venta</h2>
-      <p class="bajada reveal" style="--d:2">Cada costo por separado, con su porcentaje y contra el promedio del negocio. Lo que casi ningún comercio sabe en el momento.</p>
+      <p class="bajada reveal" style="--d:2">Un buzo y un jean por Instagram, en 3 cuotas y con envío. El cliente pagó $ 79.800 y quedaron $ 22.369: la mitad de lo normal en ese negocio.</p>
+      <p class="bajada reveal" style="--d:3">Cada costo por separado, con su porcentaje y contra el promedio. Lo que casi ningún comercio sabe en el momento.</p>
     </div>
-    <figure class="mock reveal" style="--d:2" aria-label="Ejemplo: venta de 45.000 pesos">
-      <p class="mock-titulo"><span>Venta #1284</span><strong>$ 45.000</strong></p>
-      <div class="desglose-barra" aria-hidden="true"><span class="d-mercaderia"></span><span class="d-comision"></span><span class="d-envio"></span><span class="d-packaging"></span><span class="d-quedo"></span></div>
-      <dl class="filas">
-        <div><dt><i class="punto d-mercaderia"></i>Mercadería</dt><dd>$ 20.250 <span>45 %</span></dd></div>
-        <div><dt><i class="punto d-comision"></i>Comisión de Mercado Pago</dt><dd>$ 2.880 <span>6,4 %</span></dd></div>
-        <div><dt><i class="punto d-envio"></i>Envío</dt><dd>$ 3.500 <span>7,8 %</span></dd></div>
-        <div><dt><i class="punto d-packaging"></i>Packaging</dt><dd>$ 450 <span>1 %</span></dd></div>
-        <div class="fila-quedo"><dt><i class="punto d-quedo"></i>Te quedó</dt><dd>$ 17.920 <span>39,8 %</span></dd></div>
-      </dl>
-    </figure>
+    <figure class="captura-plata reveal" style="--d:2"><img src="capturas/adonde-fue-la-plata.webp" alt="Adónde fue la plata de una venta de 79.800 pesos: mercadería, packaging, comisión, cuotas sin interés y envío. Te quedó 22.369 pesos, el 28 %, menos que lo normal."></figure>
   </div>
 </section>
 
-<!-- 14. Asistente -->
+<!-- 18. Asistente -->
 <section class="slide" aria-label="El asistente">
   <div class="slide-content par">
     <div>
@@ -1411,12 +1576,12 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 15. WhatsApp -->
+<!-- 19. WhatsApp -->
 <section class="slide" aria-label="WhatsApp">
   <div class="slide-content par parejo">
     <div>
       <p class="parte reveal">WhatsApp</p>
-      <h2 class="reveal" style="--d:1">Lo mismo, por WhatsApp <span class="etiqueta-prueba">En prueba</span></h2>
+      <h2 class="reveal" style="--d:1">Lo mismo por WhatsApp <span class="etiqueta-prueba">En prueba</span></h2>
       <p class="bajada reveal" style="--d:2">Se le manda a Nexo un mensaje o una nota de voz, contesta cómo lo entendió y se confirma con un botón.</p>
     </div>
     <div class="telefono reveal" style="--d:2" aria-label="Ejemplo de una venta cargada por WhatsApp">
@@ -1435,7 +1600,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 16. Compra desde la foto -->
+<!-- 20. Compra desde la foto -->
 <section class="slide" aria-label="La compra desde la foto de la factura">
   <div class="slide-content apilado">
     <div>
@@ -1450,7 +1615,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 17. Factura electrónica -->
+<!-- 21. Factura electrónica -->
 <section class="slide" aria-label="Factura electrónica">
   <div class="slide-content par parejo">
     <div>
@@ -1476,7 +1641,29 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 18. Venta online: los canales -->
+<!-- 22. ARCA: Nexo factura en nombre del negocio, con su certificado. Va
+     pegada a la de la factura: es cómo funciona por dentro. -->
+<section class="slide" aria-label="Facturar con ARCA">
+  <div class="slide-content apilado">
+    <div>
+      <p class="parte reveal">Factura electrónica</p>
+      <h2 class="reveal" style="--d:1">Nexo factura ante ARCA en nombre del negocio</h2>
+    </div>
+    <div class="arq">
+      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg><b>El negocio</b><span>Le da permiso a Nexo una sola vez, desde la página de ARCA. Nunca da su clave fiscal.</span></div>
+      <div class="flecha reveal" style="--d:3" aria-hidden="true">→</div>
+      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><b>Nexo</b><span>Hace de intermediario: se identifica ante ARCA con su certificado digital, que funciona como una firma, y manda cada factura.</span></div>
+      <div class="flecha reveal" style="--d:4" aria-hidden="true">→</div>
+      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg><b>ARCA</b><span>Revisa la factura y devuelve el CAE: el número que la autoriza.</span></div>
+    </div>
+    <div class="dos-col cae-comp">
+      <div class="tarjeta reveal" style="--d:5"><span class="estado bien">Hecho · Homologación</span><h3>La factura de prueba</h3><p>El ambiente de práctica de ARCA: funciona igual que el real y da un CAE, pero de prueba. Así probamos la factura A, la B y la nota de crédito.</p><p class="sello prueba">Comprobante de prueba – sin validez fiscal</p></div>
+      <div class="tarjeta reveal" style="--d:6"><span class="estado falta">Falta · Producción</span><h3>La factura real</h3><p>El mismo camino, con el CUIT de Nexo habilitado en ARCA. El CAE es válido y la factura se puede constatar en ARCA.</p><p class="sello real">Autorizada por ARCA · CAE válido</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 23. Venta online: los canales -->
 <section class="slide" aria-label="Venta online">
   <div class="slide-content par">
     <div>
@@ -1494,7 +1681,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 19. Mercado Pago: cobrar -->
+<!-- 24. Mercado Pago: cobrar -->
 <section class="slide" aria-label="Mercado Pago">
   <div class="slide-content par parejo">
     <div>
@@ -1522,7 +1709,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 20. Gimnasio: la puerta y la recepción -->
+<!-- 25. Gimnasio: la puerta y la recepción -->
 <section class="slide" aria-label="El ingreso del gimnasio">
   <div class="slide-content apilado">
     <div>
@@ -1536,7 +1723,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 21. Y además: producción y las funciones que no se lucen pero se usan -->
+<!-- 26. Y además: producción y las funciones que no se lucen pero se usan -->
 <section class="slide" aria-label="Y además">
   <div class="slide-content apilado">
     <div>
@@ -1561,64 +1748,74 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 22. Por qué confiar -->
-<section class="slide" aria-label="Por qué confiar">
-  <div class="slide-content apilado">
-    <div>
-      <p class="parte reveal">Confianza</p>
-      <h2 class="reveal" style="--d:1">Por qué confiar en Nexo</h2>
-    </div>
-    <div class="confianza">
-      <div class="tarjeta reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><h3>Datos seguros</h3><p class="ocultable">Cada negocio separado de los demás, y una copia cifrada todos los días.</p></div>
-      <div class="tarjeta reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg><h3>Sin instalación</h3><p class="ocultable">Se entra desde el navegador, y en el celular se instala como una app.</p></div>
-      <div class="tarjeta reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><h3>IA con confirmación</h3><p class="ocultable">Propone, y una persona confirma. Y no guarda lo que se le cuenta.</p></div>
-      <div class="tarjeta reveal" style="--d:5"><svg class="ico"><use href="../../../frontend/img/iconos.svg#user-cog"/></svg><h3>Permisos de equipo</h3><p class="ocultable">El empleado vende, pero no ve los costos. Y queda anotado quién hizo qué.</p></div>
-      <div class="tarjeta reveal" style="--d:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg><h3>Pruebas automáticas</h3><p class="ocultable">382 pruebas automáticas corren antes de publicar cualquier cosa.</p></div>
-      <div class="tarjeta reveal" style="--d:7"><svg class="ico"><use href="../../../frontend/img/iconos.svg#wallet"/></svg><h3>Costo bajo</h3><p class="ocultable">Sin licencias ni servidores caros: por eso puede arrancar gratis.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- 23. Cómo está hecho -->
+<!-- 27. Cómo está hecho: el mapa de Nexo. De izquierda a derecha, el camino de
+     un dato (quien lo usa → el servidor → el respaldo de cada noche); abajo, con
+     qué se conecta el servidor y cómo llega el código nuevo. -->
 <section class="slide" aria-label="Cómo está hecho">
   <div class="slide-content apilado">
     <div>
       <p class="parte reveal">Cómo está hecho</p>
-      <h2 class="reveal" style="--d:1">Simple por dentro: barato y confiable</h2>
+      <h2 class="reveal" style="--d:1">El mapa de Nexo</h2>
     </div>
-    <div class="arq">
-      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg><b>El celular o la compu</b><span>La página de Nexo, que se instala como app</span></div>
-      <div class="flecha reveal" style="--d:3" aria-hidden="true">→</div>
-      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#layers"/></svg><b>Nexo, en la nube</b><span>Hace cada operación completa o no la hace</span></div>
-      <div class="flecha reveal" style="--d:4" aria-hidden="true">→</div>
-      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#warehouse"/></svg><b>Los datos</b><span>Separados por negocio y respaldados</span></div>
+    <div class="mapa">
+      <div class="m-nodo reveal" style="--d:2">
+        <span class="m-etq">Quien lo usa</span>
+        <div class="m-aparatos"><svg class="ico"><use href="../../../frontend/img/iconos.svg#phone"/></svg><svg class="ico"><use href="#p-monitor"/></svg><svg class="ico"><use href="../../../frontend/img/iconos.svg#tablet"/></svg></div>
+        <b>Celular, compu o tablet</b>
+        <span>El dueño, el empleado o la puerta del gimnasio. Desde el navegador o instalado como app.</span>
+      </div>
+      <div class="m-flecha reveal" style="--d:3"><i></i><span>Por internet, cifrado (HTTPS)</span></div>
+      <div class="m-nodo m-servidor reveal" style="--d:4">
+        <span class="m-etq">El servidor de Nexo · en la nube de Oracle</span>
+        <div class="m-dentro">
+          <div class="m-caja"><svg class="ico"><use href="#p-server"/></svg><b>La aplicación</b><span>Recibe cada pedido y hace la operación entera, o no la hace.</span></div>
+          <div class="m-caja"><svg class="ico"><use href="#p-database"/></svg><b>La base de datos</b><span>Donde queda todo, con cada negocio separado de los demás.</span></div>
+        </div>
+      </div>
+      <div class="m-flecha reveal" style="--d:5"><i></i><span>Cada noche, cifrado</span></div>
+      <div class="m-nodo reveal" style="--d:6">
+        <span class="m-etq">El respaldo</span>
+        <svg class="ico"><use href="#p-cloud"/></svg>
+        <b>Una copia diaria</b>
+        <span>En otro proveedor (Backblaze). Si algo se rompe, se restaura.</span>
+      </div>
+      <div class="m-conexiones reveal" style="--d:7">
+        <span class="m-etq">El servidor se conecta con</span>
+        <div class="m-logos">
+          <span class="logo-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg>ARCA</span>
+          <span class="logo-caja"><svg viewBox="0 0 150 39" role="img" aria-label="Mercado Pago"><use href="../../../frontend/img/mercadopago.svg#logo"/></svg></span>
+          <span class="logo-caja"><svg viewBox="0 0 330 104" role="img" aria-label="Mercado Libre"><use href="../../../frontend/img/mercadolibre.svg#logo"/></svg></span>
+          <span class="logo-caja"><svg viewBox="0 0 160 40" role="img" aria-label="Tienda Nube"><use href="../../../frontend/img/tiendanube.svg#logo"/></svg></span>
+          <span class="logo-caja"><svg class="emblema" viewBox="0 0 24 24" aria-hidden="true"><use href="../../../frontend/img/whatsapp.svg#emblema"/></svg>WhatsApp</span>
+          <span class="logo-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg>IA</span>
+          <span class="logo-caja"><svg class="ico"><use href="../../../frontend/img/iconos.svg#mail"/></svg>Mails</span>
+        </div>
+      </div>
+      <p class="m-codigo reveal" style="--d:8"><b>Cómo llega una mejora:</b><span class="paso-cod"><svg class="ico"><use href="#p-git"/></svg>El código, en GitHub</span>→<span class="paso-cod"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg>395 pruebas automáticas</span>→<span class="paso-cod"><svg class="ico"><use href="#p-rocket"/></svg>Se publica solo en el servidor</span></p>
     </div>
-    <p class="debajo reveal" style="--d:5">Se conecta con ARCA, Mercado Pago, Mercado Libre, Tienda Nube, WhatsApp y la IA. Hecho en JavaScript (Node.js) y SQL, con solo dos librerías externas: más de 400 versiones desde mayo.</p>
   </div>
 </section>
 
-<!-- 24. ARCA: Nexo factura en nombre del negocio, con su certificado -->
-<section class="slide" aria-label="Facturar con ARCA">
+<!-- 28. Por qué es seguro: las razones puntuales, cada una con lo que hay detrás
+     (en la guía). -->
+<section class="slide" aria-label="Por qué es seguro">
   <div class="slide-content apilado">
     <div>
-      <p class="parte reveal">Factura electrónica</p>
-      <h2 class="reveal" style="--d:1">Nexo factura ante ARCA en nombre del negocio</h2>
+      <p class="parte reveal">Confianza</p>
+      <h2 class="reveal" style="--d:1">Por qué los datos están seguros</h2>
     </div>
-    <div class="arq">
-      <div class="caja reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg><b>El negocio</b><span>Le da permiso a Nexo una sola vez, desde la página de ARCA. Nunca da su clave fiscal.</span></div>
-      <div class="flecha reveal" style="--d:3" aria-hidden="true">→</div>
-      <div class="caja centro reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><b>Nexo</b><span>Hace de intermediario: se identifica ante ARCA con su certificado digital, que funciona como una firma, y manda cada factura.</span></div>
-      <div class="flecha reveal" style="--d:4" aria-hidden="true">→</div>
-      <div class="caja reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg><b>ARCA</b><span>Revisa la factura y devuelve el CAE: el número que la autoriza.</span></div>
-    </div>
-    <div class="dos-col cae-comp">
-      <div class="tarjeta reveal" style="--d:5"><span class="estado bien">Hecho · Homologación</span><h3>La factura de prueba</h3><p>El ambiente de práctica de ARCA: funciona igual que el real y da un CAE, pero de prueba. Así probamos la factura A, la B y la nota de crédito.</p><p class="sello prueba">Comprobante de prueba – sin validez fiscal</p></div>
-      <div class="tarjeta reveal" style="--d:6"><span class="estado falta">Falta · Producción</span><h3>La factura real</h3><p>El mismo camino, con el CUIT de Nexo habilitado en ARCA. El CAE es válido y la factura se puede constatar en ARCA.</p><p class="sello real">Autorizada por ARCA · CAE válido</p></div>
+    <div class="confianza">
+      <div class="tarjeta reveal" style="--d:2"><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><h3>Cada negocio ve solo lo suyo</h3><p class="ocultable">Muchos negocios comparten el servidor, pero ninguno puede ver los datos de otro.</p></div>
+      <div class="tarjeta reveal" style="--d:3"><svg class="ico"><use href="#p-key"/></svg><h3>Contraseñas que nadie lee</h3><p class="ocultable">Se guardan cifradas, ni nosotros las vemos. Y cada mail se confirma con un código.</p></div>
+      <div class="tarjeta reveal" style="--d:4"><svg class="ico"><use href="#p-shield"/></svg><h3>Todo viaja cifrado</h3><p class="ocultable">La conexión va siempre por HTTPS, como la de un banco.</p></div>
+      <div class="tarjeta reveal" style="--d:5"><svg class="ico"><use href="#p-cloud"/></svg><h3>Una copia cada noche</h3><p class="ocultable">Cifrada y en otro proveedor. Probamos restaurarla.</p></div>
+      <div class="tarjeta reveal" style="--d:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#user-cog"/></svg><h3>Permisos y registro</h3><p class="ocultable">El empleado nunca recibe los costos, y queda anotado quién hizo cada cosa.</p></div>
+      <div class="tarjeta reveal" style="--d:7"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg><h3>Nada sale sin probar</h3><p class="ocultable">395 pruebas automáticas corren en cada cambio. Si una falla, no se publica.</p></div>
     </div>
   </div>
 </section>
 
-<!-- 26. Propuesta de valor y modelo de negocio: la frase, arriba de los planes -->
+<!-- 29. Propuesta de valor y modelo de negocio: la frase, arriba de los planes -->
 <section class="slide" aria-label="Propuesta de valor y planes">
   <div class="slide-content apilado">
     <div>
@@ -1635,7 +1832,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 27. Mercado -->
+<!-- 30. Mercado -->
 <section class="slide" aria-label="Mercado">
   <div class="slide-content mercado">
     <div>
@@ -1651,7 +1848,7 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 28. Punto de equilibrio -->
+<!-- 31. Punto de equilibrio -->
 <section class="slide" aria-label="Punto de equilibrio">
   <div class="slide-content apilado">
     <div>
@@ -1666,100 +1863,115 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
   </div>
 </section>
 
-<!-- 29. Gestión ágil -->
-<section class="slide" aria-label="Gestión ágil">
-  <div class="slide-content apilado">
-    <div>
-      <p class="parte reveal">Gestión ágil</p>
-      <h2 class="reveal" style="--d:1">Cómo trabajamos</h2>
-    </div>
-    <ul class="lista-check">
-      <li class="reveal" style="--d:2"><div><b>Etapas chicas y que se pueden probar,</b> <span>con un plan escrito por etapas.</span></div></li>
-      <li class="reveal" style="--d:3"><div><b>Cada cambio se revisa y se prueba</b> <span>antes de llegar a la versión publicada.</span></div></li>
-      <li class="reveal" style="--d:4"><div><b>Una bitácora por etapa,</b> <span>para retomar sin perder el contexto.</span></div></li>
-      <li class="reveal" style="--d:5"><div><b>Prioridades según el uso real,</b> <span>como los negocios de ejemplo para probar sin registrarse.</span></div></li>
-    </ul>
-  </div>
-</section>
-
-<!-- 30. Cómo usamos la IA para construir Nexo: Claude Code y las skills -->
-<section class="slide" aria-label="Cómo usamos la IA">
+<!-- 32. Cómo trabajamos, con la IA adentro: el proceso de punta a punta, de la
+     decisión a publicar, y las herramientas. -->
+<section class="slide" aria-label="Cómo trabajamos">
   <div class="slide-content apilado">
     <div>
       <p class="parte reveal">Gestión ágil</p>
       <div class="ia-cabecera reveal" style="--d:1">
-        <h2>Cómo usamos la IA para construir Nexo</h2>
+        <h2>Cómo trabajamos con IA</h2>
         <div class="ia-marca"><svg class="claude-logo" viewBox="0 0 100 100" aria-hidden="true"><path d="M58.9,51.3 L93.6,56.1 M57.1,55.5 L76.8,70.9 M53.4,58.3 L67.2,92.7 M48.7,58.9 L44.9,86.6 M44.5,57.1 L24.1,83.1 M41.7,53.4 L19.4,62.4 M41.1,48.7 L5.4,43.7 M42.9,44.5 L21.6,27.8 M46.6,41.7 L33.9,10.1 M51.3,41.1 L54.7,16.3 M55.5,42.9 L78.3,13.8 M58.3,46.6 L85.2,35.8" stroke="#d97757" stroke-width="8.5" stroke-linecap="round"/></svg><span>Claude Code</span></div>
       </div>
-      <p class="bajada reveal" style="--d:2">Programamos con Claude Code, de Anthropic: una IA que programa dentro del proyecto.</p>
+      <p class="bajada reveal" style="--d:2">Programamos con Claude Code, una IA que escribe código dentro del proyecto. Nosotros decidimos y controlamos cada paso.</p>
     </div>
-    <div class="ia">
-      <ul class="lista-check reveal" style="--d:3">
-        <li><div><b>Las decisiones son nuestras:</b> <span>qué hace Nexo, para quién, cuánto cuesta y qué va primero.</span></div></li>
-        <li><div><b>Reglas escritas:</b> <span>un documento con las reglas del negocio que la IA tiene que respetar.</span></div></li>
-        <li><div><b>Una bitácora:</b> <span>cada sesión deja anotado qué se hizo y qué sigue.</span></div></li>
-        <li><div><b>Nada se publica sin pruebas:</b> <span>cada cambio pasa por las pruebas automáticas y por nuestra revisión.</span></div></li>
-      </ul>
-      <div class="reveal" style="--d:4">
-        <p class="subtitulo-ia">Las skills que usamos</p>
-        <ul class="chicas"><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#palette"/></svg><b>frontend-design</b><span>el diseño de las pantallas</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layout-dashboard"/></svg><b>ui-ux-pro-max</b><span>experiencia de uso y accesibilidad</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#chart-column"/></svg><b>dataviz</b><span>los gráficos del Resumen</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#camera"/></svg><b>ui-demo</b><span>grabar la app para los videos</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><b>motion-architect</b><span>los videos animados del pitch</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#file-text"/></svg><b>remotion</b><span>armar esos videos con código</span></li></ul>
-        <p class="subtitulo-ia otra">Agentes y conexiones</p>
-        <ul class="chicas"><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#search"/></svg><b>code-reviewer</b><span>revisa cada cambio</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#lock"/></svg><b>security-reviewer</b><span>busca agujeros de seguridad</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#layers"/></svg><b>codebase-memory</b><span>un mapa del código</span></li><li><svg class="ico"><use href="../../../frontend/img/iconos.svg#eye"/></svg><b>Chrome DevTools</b><span>probar en el navegador</span></li></ul>
+    <ol class="proceso">
+      <li class="reveal" style="--d:3"><svg class="ico"><use href="../../../frontend/img/iconos.svg#users"/></svg><b>Decidimos</b><span>Qué hace Nexo, para quién y qué va primero.</span></li>
+      <li class="reveal" style="--d:4"><svg class="ico"><use href="../../../frontend/img/iconos.svg#file-text"/></svg><b>Lo escribimos</b><span>Las reglas del negocio, un plan en etapas chicas y una bitácora.</span></li>
+      <li class="reveal" style="--d:5"><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><b>La IA programa</b><span>Con habilidades extra para el diseño, los gráficos y los videos.</span></li>
+      <li class="reveal" style="--d:6"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg><b>Se prueba y se revisa</b><span>395 pruebas, agentes que revisan el código y nosotros.</span></li>
+      <li class="reveal" style="--d:7"><svg class="ico"><use href="#p-rocket"/></svg><b>Se publica solo</b><span>En el servidor, en unos cinco minutos.</span></li>
+    </ol>
+    <div class="reveal" style="--d:8">
+      <p class="subtitulo-ia">Las herramientas que usamos</p>
+      <div class="herramientas">
+        <span class="chip"><b>frontend-design</b> el diseño</span>
+        <span class="chip"><b>ui-ux-pro-max</b> la experiencia de uso</span>
+        <span class="chip"><b>dataviz</b> los gráficos</span>
+        <span class="chip"><b>motion-architect</b> los videos</span>
+        <span class="chip"><b>code-reviewer</b> revisa cada cambio</span>
+        <span class="chip"><b>security-reviewer</b> busca agujeros</span>
+        <span class="chip"><b>codebase-memory</b> un mapa del código</span>
+        <span class="chip"><b>Chrome DevTools</b> prueba en el navegador</span>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 31. Para cerrar: vuelve a los tres problemas del principio, cada uno con lo
-     que hace Nexo, y lo que ya funciona. Después, la del final. -->
-<section class="slide" aria-label="Para cerrar">
+<!-- 33. Lo que viene: Nexo no termina acá. Más fuerte por dentro y muchas
+     más funciones. -->
+<section class="slide" aria-label="Lo que viene">
   <div class="slide-content apilado">
     <div>
-      <p class="parte reveal">Para cerrar</p>
-      <h2 class="reveal" style="--d:1">Lo que vinimos a resolver</h2>
+      <p class="parte reveal">Lo que viene</p>
+      <h2 class="reveal" style="--d:1">Esto recién empieza</h2>
+      <p class="bajada reveal" style="--d:2">Lo que ya funciona es la base. Lo que sigue es hacerlo más fuerte y sumarle muchas más funciones.</p>
     </div>
-    <div class="repaso">
-      <div class="tarjeta reveal" style="--d:2"><p class="antes-era"><svg class="ico"><use href="../../../frontend/img/iconos.svg#x"/></svg>25 horas por semana pasando datos</p><p class="ahora-es">Cada venta se carga una vez, y lo demás se actualiza solo.</p></div>
-      <div class="tarjeta reveal" style="--d:4"><p class="antes-era"><svg class="ico"><use href="../../../frontend/img/iconos.svg#x"/></svg>La plata que no aparece</p><p class="ahora-es">Cuánto deja cada venta, con cada costo a la vista.</p></div>
-      <div class="tarjeta reveal" style="--d:6"><p class="antes-era"><svg class="ico"><use href="../../../frontend/img/iconos.svg#x"/></svg>Sistemas caros y difíciles para empezar</p><p class="ahora-es">Gratis para arrancar, y crece con el negocio.</p></div>
-    </div>
-    <div class="ya-funciona reveal" style="--d:8">
-      <p class="subtitulo-ia">Y ya funciona</p>
-      <div class="chips">
-        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#globe"/></svg>En internet, para probar sin registrarse</span>
-        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#store"/></svg>8 tipos de negocio</span>
-        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#circle-check"/></svg>382 pruebas automáticas</span>
-        <span class="chip"><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg>Factura electrónica con ARCA, en prueba</span>
+    <div class="futuro">
+      <div class="tarjeta reveal" style="--d:3">
+        <h3><svg class="ico"><use href="#p-shield"/></svg>Más fuerte por dentro</h3>
+        <ul>
+          <li><svg class="ico"><use href="#p-database"/></svg><span><b>Una base de datos más grande</b>, para miles de negocios a la vez</span></li>
+          <li><svg class="ico"><use href="#p-server"/></svg><span><b>Servidores con más capacidad</b>, en más de un lugar</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#sparkles"/></svg><span><b>Una IA con más capacidad</b>, para que todos la usen sin esperar</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#receipt-text"/></svg><span><b>La factura electrónica real</b>, con el CUIT de Nexo</span></li>
+        </ul>
+      </div>
+      <div class="tarjeta reveal" style="--d:4">
+        <h3><svg class="ico"><use href="#p-lightbulb"/></svg>Muchas más funciones</h3>
+        <ul>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#calendar-clock"/></svg><span><b>Turnos</b> para barberías, peluquerías y consultorios</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#utensils"/></svg><span><b>Mesas y comandas</b> para restaurantes</span></li>
+          <li><svg class="ico"><use href="#p-wifi-off"/></svg><span><b>Vender sin internet</b> y que se sincronice después</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#message-circle"/></svg><span><b>Preguntarle a Nexo</b> "¿cuánto vendí este mes?"</span></li>
+          <li><svg class="ico"><use href="../../../frontend/img/iconos.svg#bell"/></svg><span><b>Avisos</b> de qué reponer y a quién cobrar</span></li>
+        </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 32. Cierre -->
-<section class="slide" aria-label="Cierre">
-  <div class="slide-content cierre">
+<!-- 34. Para cerrar: vuelve a cómo surgió (la 9). Para la oficial, acá van
+     testimonios de los negocios que lo estén usando. -->
+<section class="slide" aria-label="Para cerrar">
+  <div class="slide-content apilado cerrar">
+    <img class="simbolo-grande reveal" src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
+    <h2 class="reveal" style="--d:1">El sistema que nos hubiera gustado tener desde el primer día</h2>
+    <p class="bajada reveal" style="--d:3">Ya funciona, y cualquier negocio lo puede empezar a usar hoy.</p>
+  </div>
+</section>
+
+<!-- 35. El final: la invitación a probarlo y los dos QR en grande. Queda puesta
+     durante las preguntas. -->
+<section class="slide" aria-label="Pruébenlo">
+  <div class="slide-content final">
     <div>
       <div class="lockup reveal">
         <img class="simbolo" src="../../logos/01-icono/nexo-icono_blanco_fondo-transparente.png" alt="">
         <svg class="palabra" viewBox="0 0 668 106" role="img" aria-label="Nexo"><use href="#nexo"/></svg>
       </div>
-      <p class="frase reveal" style="--d:2">La próxima vez que vendan algo, van a saber cuánto ganaron.</p>
-      <p class="gracias reveal" style="--d:3">¡Gracias! ¿Preguntas?</p>
+      <h2 class="reveal" style="--d:1">Pruébenlo con su negocio</h2>
+      <p class="bajada reveal" style="--d:2">Ustedes ordenan su negocio, y con lo que nos cuenten nosotros mejoramos Nexo. Nos ayudamos los dos.</p>
     </div>
-    <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="qr/probar-nexo.svg" alt="QR para probar Nexo"></div><p>Para probarlo ahora, sin registrarse</p></div>
-    <div class="qr-caja reveal" style="--d:4"><div class="qr"><img src="qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><p>Código, README y manual</p></div>
+    <div class="final-qrs">
+      <div class="qr-caja reveal" style="--d:3"><div class="qr"><img src="qr/probar-nexo.svg" alt="QR para probar Nexo"></div><b>Probar Nexo</b><p class="direccion">Sin registrarse, desde el celular</p></div>
+      <div class="qr-caja reveal" style="--d:4"><div class="qr"><img src="qr/repositorio-nexo.svg" alt="QR al repositorio en GitHub"></div><b>El código</b><p class="direccion">En GitHub, con el README y el manual</p></div>
+    </div>
   </div>
 </section>
 
 </main>
 
 <script>
-/* Videos: al llegar a una diapositiva con video, arranca solo. El de la
-   apertura (data-modo="apertura") ocupa toda la pantalla y, al terminar, se
-   funde en la diapositiva, que recién ahí muestra su contenido; los demás
-   salen de su .video-tarjeta, se agrandan y vuelven a ella. Espacio pausa,
-   Esc o → lo cierran, ← lo corta y vuelve. Si el navegador no deja arrancar
-   con sonido (al abrir el archivo, antes de tocar nada), espera una tecla. */
+/* Videos. El de la apertura (data-modo="apertura") ocupa toda la pantalla y
+   espera una tecla ("Presionar cualquier tecla para empezar"), cada vez que se
+   llega a la portada: así se puede volver al principio sin recargar. Al
+   terminar se funde en la diapositiva, que recién ahí muestra su contenido.
+   Mientras espera, F pone pantalla completa sin arrancarlo y Esc lo saltea.
+   Los demás salen de su .video-tarjeta, se agrandan y vuelven a ella: los
+   comunes arrancan al llegar, y los de data-modo="clic" con un clic en el video
+   o con la primera flecha. Espacio pausa, Esc o → lo cierran, ← lo corta y
+   vuelve. Si el navegador no deja arrancar con sonido, espera una tecla. */
 class VideoDiapositiva {
   constructor() {
     this.activo = null;
@@ -1767,11 +1979,13 @@ class VideoDiapositiva {
   }
 
   /* Devuelve true si la diapositiva tiene video y lo arrancó; `alTerminar`
-     muestra la diapositiva (en la apertura, recién cuando el video termina). */
-  arrancar(slide, alTerminar) {
+     muestra la diapositiva (en la apertura, recién cuando el video termina).
+     Uno de clic solo arranca con `{ clic: true }`. */
+  arrancar(slide, alTerminar, { clic = false } = {}) {
     const video = slide.querySelector('video.video-pitch');
     // Playwright (la guía en PDF) saca las fotos sin videos.
     if (!video || navigator.webdriver) return false;
+    if (video.dataset.modo === 'clic' && !clic) return false;
     this.cortar();
     const apertura = video.dataset.modo === 'apertura';
     const origen = apertura ? null : video.closest('.video-tarjeta');
@@ -1790,13 +2004,15 @@ class VideoDiapositiva {
     video.ontimeupdate = () => { barra.style.width = `${(video.currentTime / video.duration) * 100}%`; };
     video.onended = () => this.cerrar();
     capa.onclick = () => { if (this.pendiente) this.seguir(); };
-    video.play().catch(() => {
+    const esperar = () => {
       this.pendiente = true;
       const aviso = document.createElement('p');
       aviso.className = 'video-aviso';
       aviso.textContent = 'Presionar cualquier tecla para empezar';
       capa.append(aviso);
-    });
+    };
+    if (apertura) esperar();
+    else video.play().catch(esperar);
     return true;
   }
 
@@ -1849,8 +2065,9 @@ class VideoDiapositiva {
   tecla(e) {
     if (!this.activo) return false;
     if (this.pendiente) {
-      this.seguir();
       if (e.key === 'f' || e.key === 'F') return false;
+      if (e.key === 'Escape') this.cerrar();
+      else this.seguir();
     } else if (e.key === ' ') {
       if (this.activo.video.paused) this.activo.video.play();
       else this.activo.video.pause();
@@ -1926,6 +2143,12 @@ class Presentacion {
       addEventListener('resize', () => acomodarEnNexo(slide, true));
     });
 
+    // Los videos de clic: el clic en su recuadro los arranca.
+    document.querySelectorAll('video[data-modo="clic"]').forEach((video) => {
+      const slide = video.closest('.slide');
+      video.closest('.video-tarjeta').addEventListener('click', () => this.verVideo(slide));
+    });
+
     document.addEventListener('keydown', (e) => this.tecla(e));
     // Escribir #8 en la dirección salta a la 8, también sin recargar.
     addEventListener('hashchange', () => this.desdeLaDireccion());
@@ -1947,7 +2170,10 @@ class Presentacion {
       void slide.offsetWidth;
       requestAnimationFrame(() => slide.classList.remove('reinicio'));
     }
-    if (llega) this.programar(slide);
+    if (llega) {
+      this.programar(slide);
+      delete slide.dataset.visto;
+    }
     this.marcar(i);
     if (!(llega && this.video.arrancar(slide, () => slide.classList.add('visible')))) slide.classList.add('visible');
   }
@@ -2014,6 +2240,14 @@ class Presentacion {
     requestAnimationFrame(cuadro);
   }
 
+  /* Un video de clic: arranca una vez por visita (la flecha siguiente, después,
+     ya pasa de diapositiva). */
+  verVideo(slide) {
+    if (this.slides[this.actual] !== slide || this.video.activo) return;
+    slide.dataset.visto = '1';
+    this.video.arrancar(slide, () => {}, { clic: true });
+  }
+
   tecla(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (this.video.tecla(e)) return;
@@ -2022,6 +2256,17 @@ class Presentacion {
     const slide = this.slides[this.actual];
     const paso = Number(slide.dataset.paso || 0);
     if (siguiente.includes(e.key) || anterior.includes(e.key)) this.programar(null);
+    if (siguiente.includes(e.key) && slide.querySelector('video[data-modo="clic"]') && !slide.dataset.visto) {
+      this.verVideo(slide);
+      e.preventDefault();
+      return;
+    }
+    // Inicio en la portada: vuelve a la pantalla de "Presionar cualquier tecla".
+    if (e.key === 'Home' && this.actual === 0) {
+      this.video.arrancar(slide, () => slide.classList.add('visible'));
+      e.preventDefault();
+      return;
+    }
     if (siguiente.includes(e.key) && paso < Number(slide.dataset.pasos || 0)) {
       this.irPaso(slide, paso + 1);
       e.preventDefault();

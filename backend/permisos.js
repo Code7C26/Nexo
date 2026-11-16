@@ -221,6 +221,7 @@ export const RUTAS_PERMISOS = {
   'POST /api/ventas/:id/cobros': 'ambos',
   'POST /api/ventas/:id/facturar': 'ambos',
   'POST /api/ventas/:id/anular': 'admin',
+  'POST /api/ventas/:id/envio': 'admin',
   'POST /api/ventas/:id/restaurar': 'admin',
   'GET /api/presupuestos': 'ambos',
   'GET /api/presupuestos/:id': 'ambos',

@@ -13920,3 +13920,69 @@ conservada); el de la nota de voz espera tres botones. Con Groq real, desde la c
 tres correcciones sobre "dos buzos S a Joaquín Tosi en efectivo": "el cliente es
 Joaquín Torres", "no, me pagó por transferencia al banco" (cuenta Banco) y "eran 3"
 (cantidad 3); el resto quedó igual. Suite completa, lint e i18n.
+
+## §180 — 16 de noviembre de 2026: la presentación después del ensayo, y el envío de una venta
+
+**Pedido del usuario** (después de ensayar la presentación entera con Joaquín):
+volver a la pantalla de "Presionar cualquier tecla" sin recargar; ayuda para
+conectar de palabra las diapositivas del problema; una diapositiva de cómo surgió
+la idea (su emprendimiento) antes de "Nexo crece con el negocio"; los rubros
+enfocados en que Nexo adapta funciones a cada tipo, justificando los "Muy
+pronto"; el video del alta que no arranque solo; una diapositiva de Productos
+(stock y ofertas) antes del punto de venta; una venta real en Lola con varios
+costos para "Cuánto deja cada venta"; ARCA pegada a la de facturación; un mapa
+técnico completo (usuario, servidor, respaldo, integraciones con logos) y aparte
+las razones de seguridad; "Cómo trabajamos" junto con la IA; una de lo que viene;
+y un cierre más simple: sin la frase "la próxima vez que vendan…", sin
+"¡Gracias! ¿Preguntas?", con los dos QR en grande y una invitación (ayuda mutua).
+
+**La presentación (35 diapositivas, `docs/pitch/fuentes/index.html`).**
+- 1: la apertura espera siempre una tecla (antes solo si Chrome no dejaba sonar).
+  Mientras espera, F pone pantalla completa sin arrancar y Esc la saltea; Inicio
+  (o volver con ← a la 1) vuelve a esa pantalla.
+- Nuevas: 9 "Nexo empezó con un emprendimiento propio" (un camino que se dibuja:
+  arrancar a vender → anotar todo a mano → las mismas preguntas → así nació
+  Nexo; genérico, Santino pone el caso), 15 Productos (captura del catálogo y,
+  encima, la de Ofertas), 27 "El mapa de Nexo", 28 "Por qué los datos están
+  seguros", 32 "Cómo trabajamos con IA" (cinco pasos: decidimos → lo escribimos →
+  la IA programa → se prueba y se revisa → se publica solo, y las herramientas),
+  33 "Esto recién empieza", 34 "El sistema que nos hubiera gustado tener desde el
+  primer día" (vuelve a la 9; para la oficial, testimonios), 35 "Pruébenlo con su
+  negocio" con los dos QR grandes.
+- 11 rubros: cada tarjeta dice qué funciones prende; barbería y restaurante con
+  lo que les falta (turnos, mesas y comandas) y "Muy pronto".
+- 12 video del alta: `data-modo="clic"`, arranca con un clic en el recuadro o con
+  la primera →; la siguiente → pasa de diapositiva.
+- 17: la captura real de "Adónde fue la plata" de la venta nueva, en lugar del
+  ejemplo armado a mano.
+- Salieron "Por qué confiar", "Cómo está hecho" (viejas), "Gestión ágil" y "Cómo
+  usamos la IA" separadas, y "Lo que vinimos a resolver".
+- Títulos sin la coma del estilo "X, en Y" que no le gusta al usuario.
+- Capturas nuevas en `capturas/` (productos, ofertas, adonde-fue-la-plata), de
+  Lola de ejemplo en un servidor local.
+
+**La guía (`redes/pitch/guia.html`):** renumerada, con un recuadro "El hilo de
+la primera parte" (2 a 9: lo que no se anota, el tiempo y la plata) y al final de
+cada una de esas la frase para pasar a la siguiente; fichas nuevas para todas las
+diapositivas nuevas, con el mapa explicado parte por parte y las seis razones de
+seguridad por dentro. Las miniaturas en PDF salen con `navigator.webdriver`, que
+apaga los videos: para probarlos en Chrome DevTools hay que pisar esa propiedad.
+
+**El envío de una venta (producto).** Nexo anotaba la comisión, las cuotas y el
+packaging de una venta, pero el envío solo con un pedido de Tienda Nube.
+`POST /api/ventas/:id/envio` (admin; `permisos.js`) lo registra como costo de
+vender (`registrarCostoDeVender`, tipo envío), sale de la cuenta elegida, se ve en
+"Adónde fue la plata" y se anula con la venta. En la ficha, botón "Sumar el
+envío" con su modal. Test `envio-venta.test.js`.
+
+**La venta de ejemplo.** `ventaConCostos` en `negocios-de-ejemplo.js` (al final
+de Lola): bolsa y tarjeta como packaging de buzo y jean, Crédito con 4,2 % de
+comisión y planes de cuotas (3: 10,5 %), y la venta a Valentina Ríos por
+Instagram ($ 79.800), cobrada en 3 cuotas, con $ 6.500 de moto. Quedan $ 22.369
+(28 %) contra un promedio de 56,6 %: "Menos que lo normal". Para el Lola que ya
+existe en la cuenta de Santino: `npm run demo -- --email <mail> --venta-con-costos`
+(entra a ese negocio y la suma; pide publicar antes el endpoint del envío).
+
+Verificado: lint, 395 tests, i18n; la presentación en Chrome a 1600 × 900 (cada
+diapositiva nueva, el video de clic, la portada con Inicio, F y Esc) y la guía
+armada.
