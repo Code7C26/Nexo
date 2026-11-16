@@ -1994,25 +1994,30 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 **Plan hasta la presentación oficial (principios de diciembre), acordado con
 el usuario el 16 de noviembre.** Sale de su lista de mejoras después del
-simulacro; reemplaza al "Plan hasta el 20 de noviembre" de más abajo. En este
-orden:
-1. **El asistente responde preguntas sobre los números** ("¿cuánto vendí este
+simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el 20 de
+noviembre" de más abajo. El usuario pidió sí o sí para la oficial: sucursales,
+cierre de caja, facturar desde el punto de venta y el ticket impreso. El orden
+es mío (primero lo chico que se muestra, después la etapa grande):
+1. **Facturar desde el punto de venta y el ticket impreso:** al cobrar, elegir
+   factura A, B o sin factura (la letra la propone el cliente, como en Ventas)
+   e imprimir el ticket en el momento. Hoy el mostrador solo cobra y se
+   factura después desde Ventas. El dueño sigue facturando desde Ventas lo que
+   vende fuera del local.
+2. **El asistente responde preguntas sobre los números** ("¿cuánto vendí este
    mes de remeras?", "¿quién me debe más?"). Es lo que le falta a §36; solo
    lee, sin confirmación.
-2. **Mandar la factura por mail**, de a una o varias juntas (el mail ya anda:
+3. **Mandar la factura por mail**, de a una o varias juntas (el mail ya anda:
    códigos y recuperación de contraseña).
-3. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
+4. **Sucursales, cajas y permisos, con el cierre del día y del mes** (detalle
+   en "Para más adelante", donde quedó la propuesta). Cambia el esquema: se
+   planifica y se explica la migración antes de tocarlo (§27, §34).
+5. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
    desde Excel o CSV). Hoy la carga inicial (`dominios/carga-inicial.js`) es
    una grilla a mano y el CSV solo exporta.
-4. **Logo y colores del negocio:** en la factura, el menú y la pantalla de
-   entrada del gimnasio; la foto de perfil, en el mismo paso.
-5. **Facturar desde el punto de venta y el ticket impreso** (propuesto el 16
-   de noviembre después de ver Praxia, a confirmar el lugar): al cobrar,
-   elegir factura A, B o sin factura (la letra la propone el cliente, como en
-   Ventas) e imprimir el ticket en el momento. Hoy el mostrador solo cobra y
-   se factura después desde Ventas. El dueño sigue facturando desde Ventas lo
-   que vende fuera del local.
-6. Si da: **el resumen del día** por WhatsApp o mail.
+6. **Logo y colores del negocio:** en la factura, el ticket, el menú y la
+   pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
+7. Si da: **el resumen del día** por WhatsApp o mail.
+Es mucho para dos o tres semanas: si no entra todo, se corta desde abajo.
 Y en la presentación: completar la 33, recortar las capturas de la 14 a la 26
 para el tele y la captura del chat de WhatsApp de la 19.
 
@@ -2040,6 +2045,13 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   caja se elige al abrir el turno y así queda quién vendió, abrió y cerró. Con
   esto, el **cierre del día y del mes** sumando todas las cajas y sucursales.
   Los cambios del dueño ya llegan al instante a las cajas (es una sola web).
+- **Vender sin conexión** (de Praxia; el usuario lo quiere, sin fecha): el
+  punto de venta guarda lo último que cargó, vende sin internet y al volver
+  manda las ventas al servidor, sin duplicarlas. Lo difícil: el stock que se
+  vendió en dos lados a la vez y la factura, que necesita a ARCA en línea (la
+  venta sin conexión sale sin factura o con CAEA, el CAE de contingencia).
+  **Choca con §39** ("operación offline y sincronización diferida"): se saca
+  de ahí con el equipo al arrancar. Hoy la PWA sin conexión solo lee (§31).
 - **Horarios y fichaje de empleados** (de Praxia): horario planificado,
   entrada y salida reales, llegadas tarde y horas, cruzado con los turnos de
   caja. **Choca con §39** ("gestión de empleados y sueldos"): son los
