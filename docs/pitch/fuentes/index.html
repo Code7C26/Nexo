@@ -733,20 +733,20 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 .camino b { display: block; font-family: var(--titulos); font-size: var(--h3-size); line-height: 1.15; }
 .camino span:not(.hito) { color: var(--texto-2); font-size: var(--small-size); }
 
-/* El caso real, en el segundo paso: el camino queda a la vista, abajo del
-   título, y a la derecha entran las fotos alrededor del video. */
+/* El caso real: el camino abajo del título y, a la derecha, las fotos
+   alrededor del video, que entran con la diapositiva. */
 .surgio .camino { margin-top: calc(var(--content-gap) * 1.2); gap: clamp(0.5rem, 1.6vh, 1rem); }
 .surgio .camino .hito { width: clamp(2.2rem, 3.2vw, 3rem); font-size: clamp(0.95rem, 1.3vw, 1.25rem); }
 .surgio .camino::before { left: calc(clamp(2.2rem, 3.2vw, 3rem) / 2 - 1px); }
 .surgio .camino b { font-size: var(--body-size); }
-.caso { position: relative; height: min(74vh, 720px); pointer-events: none; }
+.caso { position: relative; height: min(80vh, 780px); pointer-events: none; }
 .caso > * { position: absolute; margin: 0; opacity: 0; scale: 0.85; transition: opacity 0.5s ease, scale 0.6s cubic-bezier(0.3, 1.4, 0.5, 1); transition-delay: calc(0.15s + var(--i) * 0.15s); }
-.slide[data-paso="1"] .caso > * { opacity: 1; scale: 1; }
-.caso img { border: clamp(4px, 0.45vw, 7px) solid #f4f4f4; border-radius: 4px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75); }
-.caso-excel { width: 40%; left: -8%; top: 10%; rotate: -6deg; }
-.caso-notion { width: 27%; left: 2%; bottom: 12%; rotate: 5deg; }
-.caso-pizarron { width: 31%; right: 0; top: 14%; rotate: 5deg; }
-.caso-video { z-index: 2; top: 4%; left: 47%; height: 82%; aspect-ratio: 480 / 854; translate: -50% 0; border: clamp(5px, 0.5vw, 8px) solid #1c1c1c; border-radius: clamp(16px, 1.6vw, 26px); overflow: hidden; background: #000; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 60px -10px rgba(96, 165, 250, 0.35); }
+.slide.visible .caso > * { opacity: 1; scale: 1; }
+.caso img { border-radius: clamp(8px, 0.8vw, 12px); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.caso-excel { width: 46%; left: -10%; top: 8%; rotate: -6deg; }
+.caso-notion { width: 31%; left: -2%; bottom: 9%; rotate: 5deg; }
+.caso-pizarron { width: 34%; right: -4%; top: 12%; rotate: 5deg; }
+.caso-video { z-index: 2; top: 3%; left: 46%; height: 86%; aspect-ratio: 480 / 854; translate: -50% 0; border: clamp(5px, 0.5vw, 8px) solid #1c1c1c; border-radius: clamp(16px, 1.6vw, 26px); overflow: hidden; background: #000; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 60px -10px rgba(96, 165, 250, 0.35); }
 .caso-video video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .caso-nota { left: 0; right: 0; bottom: 0; text-align: center; color: var(--texto-3); font-size: var(--small-size); }
 
@@ -1336,11 +1336,10 @@ body.con-video .progreso, body.con-video .pie { opacity: 0; transition: opacity 
 </section>
 
 <!-- 9. Cómo surgió: Santino cuenta que el problema lo vio en su emprendimiento
-     y en los de amigos, compañeros y familiares. Dos pasos (data-paso): 0, el
-     camino se dibuja de arriba abajo, abajo del título, y termina en Nexo; 1, a
-     la derecha aparece su caso real (fotos y un video en loop, chicos a propósito: se ve el desorden
+     y en los de amigos, compañeros y familiares. Todo a la vista al llegar: el
+     camino, abajo del título, termina en Nexo, y a la derecha está su caso real (fotos y un video en loop, chicos a propósito: se ve el desorden
      sin que se lean los costos). Los originales, en caso-real/ (no se suben). -->
-<section class="slide" aria-label="Cómo surgió la idea" data-pasos="1">
+<section class="slide" aria-label="Cómo surgió la idea">
   <div class="slide-content par parejo surgio">
     <div>
       <p class="parte reveal">Cómo surgió</p>
