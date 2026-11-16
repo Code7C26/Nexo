@@ -1998,7 +1998,8 @@ copiar el mp4 a `docs/pitch/media/`, rehacer el póster (`ffmpeg -ss 10.7`, a
 `nexo-un-sabado.jpg`), `npm run presentacion` y, si cambió la duración, el "37
 segundos" de la ficha 34 de `redes/pitch/guia.html` y `npm run guia`. Las notas
 originales de Santino quedaron en `docs/pitch/media/WhatsApp Ptt …ogg` (sin
-subir).
+subir). La voz de cada uno se corrige con `ECUALIZACION` en
+`voz-dialogo.py` (la de Santino, hecha): medir la de Tosi antes de ajustarla.
 
 **Después, para la oficial ("algunas cositas"):** la captura real del chat de
 WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33; la

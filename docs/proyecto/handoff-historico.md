@@ -14113,3 +14113,14 @@ ficha 34 en la guía (qué decir, "¿Nexo habla?", "¿Nexo está en inglés?") y
 "Para pasar a la 34" en la 33. Probado en Chrome: el clic lo agranda y suena
 (el navegador de prueba tiene `navigator.webdriver`, con el que la
 presentación no arranca videos a propósito; se forzó para probar).
+
+**La voz "de tupper".** El usuario notó su voz encajonada (micrófono del
+celular y WhatsApp). Medida contra una voz limpia: +3 dB en 200-500 Hz, -7 dB
+en 1-2 kHz, -10 dB en 4-8 kHz y nada arriba de 8 kHz. `voz-dialogo.py` suma
+`ECUALIZACION` por persona (por ahora solo Santino): -7 dB en 330 Hz, +6 en
+1,5 kHz y en 6,5 kHz, `aexciter` desde 6 kHz y un gate suave contra el eco de la
+pieza; queda a menos de 4 dB de la referencia en todas las bandas, y Whisper
+sigue entendiendo todo. La de Tosi se mide y se ajusta cuando grabe. Antes y
+después para escuchar: `Desktop/Voces Nexo/Comparación voz Santino (antes y
+después).mp3`. El eco de la pieza no sale del todo con ecualización: lo que
+más rinde es grabar mejor (ver el handoff).

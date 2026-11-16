@@ -50,6 +50,18 @@ PAUSAS = (
     "acompressor=threshold=-22dB:ratio=2.5:attack=8:release=120"
 )
 VOLUMEN = "loudnorm=I=-16:TP=-1.5:LRA=7"
+# El micrófono de cada celular, corregido: medido contra una voz limpia, al de
+# Santino le sobraban 3 dB de graves medios (el sonido "de tupper", 200-500 Hz)
+# y le faltaban 7 dB de claridad (1-2 kHz) y 10 de presencia (4-8 kHz); arriba
+# de 8 kHz WhatsApp no deja nada, y el excitador lo rearma con armónicos de la
+# voz. El gate baja el eco de la pieza entre palabras.
+ECUALIZACION = {
+    "santino": (
+        "equalizer=f=330:t=q:w=1.1:g=-7,equalizer=f=1500:t=q:w=1.0:g=6,"
+        "equalizer=f=6500:t=q:w=1.0:g=6,aexciter=amount=3:drive=6:freq=6000,"
+        "agate=threshold=0.02:ratio=2:attack=2:release=90:range=0.3"
+    ),
+}
 
 
 def recorte(umbral: int) -> str:
@@ -103,7 +115,8 @@ def main():
                 ["edge-tts", "--voice", VOCES[f["quien"]], f"--rate={a.velocidad}", "--text", f.get("dicho", f["texto"]), "--write-media", str(crudo)],
                 check=True,
             )
-        limpia = f"{SIN_CLIC},{SIN_RUIDO},{recorte(-38)},{PAUSAS}" if grabada else recorte(-45)
+        ecualizacion = f"{ECUALIZACION[f['quien']]}," if f["quien"] in ECUALIZACION else ""
+        limpia = f"{SIN_CLIC},{SIN_RUIDO},{recorte(-38)},{ecualizacion}{PAUSAS}" if grabada else recorte(-45)
         filtro = limpia + ("," + NEXO if f["quien"] == "tosi" else "") + "," + VOLUMEN
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(crudo), "-af", filtro, "-ar", "48000", str(archivo)], check=True)
         dur = float(
