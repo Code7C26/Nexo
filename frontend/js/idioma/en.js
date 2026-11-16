@@ -4841,5 +4841,6 @@ export default {
   "La venta está anulada.": "The sale is voided.",
   "El importe del envío tiene que ser un número mayor a 0.": "The shipping amount has to be a number greater than 0.",
   "Envío de la venta #{0}": "Shipping for sale #{0}",
-  "Envío de ${0} sumado a la venta #{1}": "Shipping of ${0} added to sale #{1}"
+  "Envío de ${0} sumado a la venta #{1}": "Shipping of ${0} added to sale #{1}",
+  "Seguinos en Instagram: @nexosystem.app": "Follow us on Instagram: @nexosystem.app"
 };

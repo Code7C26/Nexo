@@ -13986,3 +13986,19 @@ existe en la cuenta de Santino: `npm run demo -- --email <mail> --venta-con-cost
 Verificado: lint, 395 tests, i18n; la presentación en Chrome a 1600 × 900 (cada
 diapositiva nueva, el video de clic, la portada con Inicio, F y Esc) y la guía
 armada.
+
+**Segunda vuelta del mismo día (34 diapositivas).** Pedidos del usuario: la 3
+sin las imágenes (cuaderno, planilla, burbujas, papelito, ticket, calculadora;
+alcanza con la persona animada), con el texto al medio; la 9 no es "Nexo empezó
+con un emprendimiento propio" sino que el problema lo vio en su emprendimiento
+(de perfumes, no se nombra) y en los de amigos, compañeros y familiares;
+mercado y punto de equilibrio juntos ("Cuántos clientes hay y cuántos
+necesitamos", con los 84 del equilibrio resaltados junto al SOM de 83); ideas
+más llamativas en "Lo que viene" (grilla de ocho: Rappi y PedidosYa, la tienda
+en un link, Andreani y Correo Argentino, hablarle a Nexo por WhatsApp, una IA
+que arma el pedido, precios al día, turnos, mesas y comandas); y el Instagram
+sin otro Alt+Tab: un QR chico en la final y el enlace "Seguinos en Instagram" al
+pie de la pantalla de probar (`frontend/index.html`, `.probar-instagram`). La
+guía se actualizó (la 30 unida, con "¿Y cuando Nexo crezca?") y bajó a 34.
+Propuesto, sin hacer: el video en inglés justo antes de la final, y fotos reales
+del usuario para la 9.

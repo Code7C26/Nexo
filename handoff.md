@@ -21,11 +21,23 @@
 
 ## Estado actual (16 de noviembre de 2026)
 
-**16 de noviembre, hist. §180: la presentación después del ensayo (35
+**16 de noviembre, hist. §180: la presentación después del ensayo (34
 diapositivas) y el envío de una venta (commiteado en `solla`, sin publicar).**
+- **Segunda vuelta:** la 3 sin las piezas de papel (la persona sola y el texto
+  al medio); la 9 es "Un problema que vimos de cerca una y otra vez" (el
+  emprendimiento de perfumes del usuario y los de gente cercana, sin nombrarlo);
+  mercado y punto de equilibrio en una sola (la 30); "Lo que viene" con ideas
+  más llamativas (Rappi y PedidosYa, tienda en un link, Andreani, WhatsApp con
+  el resumen del día, IA que arma el pedido, precios al día, turnos y mesas); el
+  final con un QR chico de Instagram, y el enlace a Instagram al pie de "Probá
+  Nexo sin registrarte" (app). Para la 9, el usuario puede mandar fotos viejas
+  de sus planillas, pizarrón y WhatsApp.
+- **Video en inglés (requisito de la profe):** propuesto justo antes de la
+  final, porque termina en "Scan the code"; falta que el usuario lo apruebe, y
+  terminar el video (su voz y el temblor de cámara de la v4).
 - La 1 espera siempre una tecla, e Inicio vuelve ahí. Nuevas: 9 cómo surgió, 15
-  Productos, 27 el mapa de Nexo, 28 seguridad, 32 cómo trabajamos con IA, 33 lo
-  que viene, 34 y 35 el cierre con los dos QR. El video del alta (12) arranca con
+  Productos, 27 el mapa de Nexo, 28 seguridad, 31 cómo trabajamos con IA, 32 lo
+  que viene, 33 y 34 el cierre con los QR. El video del alta (12) arranca con
   un clic. ARCA quedó en la 22, pegada a la factura. Guía renumerada, con el hilo
   del problema y las frases para pasar de una a otra.
 - **Producto:** "Sumar el envío" en la ficha de una venta (`POST
@@ -34,7 +46,7 @@ diapositivas) y el envío de una venta (commiteado en `solla`, sin publicar).**
 - **Falta:** publicar y correr `npm run demo -- --email <mail de Santino>
   --venta-con-costos` para tener esa venta en su Lola; la captura del chat real
   de WhatsApp (la manda el usuario) para la 19; y para la oficial, testimonios en
-  la 34, las frases del video de apertura sin la coma ("el mes, de un vistazo") y
+  la 33, las frases del video de apertura sin la coma ("el mes, de un vistazo") y
   la calidad del video del alta.
 
 
