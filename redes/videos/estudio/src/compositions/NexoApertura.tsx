@@ -131,14 +131,14 @@ const TituloCentro: React.FC<{ horizontal: string[]; vertical: string[]; resalta
 };
 
 const TITULOS: [Escena, string[], string[]][] = [
-  [E.resumen, ["El mes,", "de un vistazo."], ["vistazo"]],
-  [E.mostrador, ["Las ofertas,", "solas."], ["solas"]],
+  [E.resumen, ["Mirá el mes", "de un vistazo."], ["vistazo"]],
+  [E.mostrador, ["Las ofertas", "se aplican solas."], ["solas"]],
   [E.venta, ["Cuánto deja", "cada venta."], ["venta"]],
-  [E.factura, ["La factura,", "con CAE de ARCA."], ["ARCA"]],
-  [E.compra, ["La compra,", "desde la foto."], ["foto"]],
-  [E.online, ["Tienda Nube y", "Mercado Libre,", "conectados."], ["conectados"]],
-  [E.cobro, ["Cobros con", "Mercado Pago,", "solos."], ["solos"]],
-  [E.asistente, ["Se dice,", "y Nexo la arma."], ["arma"]],
+  [E.factura, ["Facturá con", "CAE de ARCA."], ["ARCA"]],
+  [E.compra, ["Cargá la compra", "desde la foto."], ["foto"]],
+  [E.online, ["Tienda Nube y", "Mercado Libre", "conectados."], ["conectados"]],
+  [E.cobro, ["Los cobros de", "Mercado Pago", "entran solos."], ["solos"]],
+  [E.asistente, ["Decís la venta", "y Nexo la arma."], ["arma"]],
 ];
 
 // ---------------------------------------------------------------- Funciones y rubros
@@ -146,7 +146,7 @@ const TITULOS: [Escena, string[], string[]][] = [
 type Item = { icono: string; titulo: string; texto: string };
 
 const FUNCIONES: Item[] = [
-  { icono: "boxes", titulo: "Stock por depósito", texto: "Cada movimiento, anotado" },
+  { icono: "boxes", titulo: "Stock por depósito", texto: "Cada movimiento anotado" },
   { icono: "wallet", titulo: "Caja y cuentas", texto: "Apertura, cierre y arqueo" },
   { icono: "notebook-tabs", titulo: "Cuentas corrientes", texto: "Quién debe y cuánto" },
   { icono: "file-text", titulo: "Presupuestos", texto: "Que pasan a venta" },
@@ -157,13 +157,13 @@ const FUNCIONES: Item[] = [
   { icono: "users", titulo: "Equipo y permisos", texto: "El empleado no ve los costos" },
   { icono: "building-2", titulo: "Varios negocios", texto: "En una misma cuenta" },
   { icono: "bell", titulo: "Avisos en el celular", texto: "Ventas, pagos y stock bajo" },
-  { icono: "history", titulo: "Auditoría", texto: "Cada cambio, con usuario y fecha" },
+  { icono: "history", titulo: "Auditoría", texto: "Cada cambio con usuario y fecha" },
 ];
 
 const RUBROS: Item[] = [
   { icono: "store", titulo: "Indumentaria", texto: "Talles y colores de cada producto" },
   { icono: "beef", titulo: "Carnicería", texto: "La etiqueta de la balanza" },
-  { icono: "carrot", titulo: "Verdulería", texto: "Por kilo, rápido" },
+  { icono: "carrot", titulo: "Verdulería", texto: "Por kilo y rápido" },
   { icono: "cup-soda", titulo: "Kiosco y almacén", texto: "El lector de códigos" },
   { icono: "sprout", titulo: "Emprendimiento", texto: "Recetas y costo de producir" },
   { icono: "globe", titulo: "Tienda online", texto: "Un stock para todos los canales" },
@@ -508,7 +508,7 @@ export const NexoApertura: React.FC = () => {
       <Fondo />
       <Titulo escena={E.gancho}>
         <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", paddingBottom: isVertical ? 120 : 0 }}>
-          <TituloFoco lineas={["Todo el negocio,", "en un solo lugar."]} resaltar={["lugar"]} desde={4} cada={4} saleEn={E.gancho[1] - 8} tam={isVertical ? 96 : 104} alinear="center" />
+          <TituloFoco lineas={["Todo el negocio", "en un solo lugar."]} resaltar={["lugar"]} desde={4} cada={4} saleEn={E.gancho[1] - 8} tam={isVertical ? 96 : 104} alinear="center" />
         </AbsoluteFill>
       </Titulo>
       <Ventana />
@@ -518,7 +518,7 @@ export const NexoApertura: React.FC = () => {
         </Titulo>
       ))}
       <Titulo escena={E.funciones}>
-        <TituloCentro horizontal={["Y todo lo demás, conectado."]} vertical={["Y todo lo demás,", "conectado."]} resaltar={["conectado"]} dur={E.funciones[1]} />
+        <TituloCentro horizontal={["Y todo lo demás está conectado."]} vertical={["Y todo lo demás", "está conectado."]} resaltar={["conectado"]} dur={E.funciones[1]} />
         <Grilla items={FUNCIONES} dur={E.funciones[1]} top={isVertical ? 520 : 330} alto={isVertical ? 128 : 118} cada={2} />
       </Titulo>
       <Titulo escena={E.rubros}>

@@ -24,16 +24,16 @@
 
 | # | Cuadros | Título | Qué pasa |
 |---|---|---|---|
-| 1 | 0–60 | Todo el negocio, en un solo **lugar**. | Solo el texto |
-| 2 | 60–250 | El mes, de un **vistazo**. | Resumen: el mouse toca "30 días", las cifras cuentan, el gráfico se dibuja con sus fechas y el mouse lo recorre (línea guía, puntos y cartel con fecha, ventas y ganancia). Baja a "Cuándo se vende" (mapa de calor) y "Lo más vendido"; "Dónde entró la plata" es una dona |
-| 3 | 250–340 | Las ofertas, **solas**. | Punto de venta: la remera entra con el 15 % y el total sube |
+| 1 | 0–60 | Todo el negocio en un solo **lugar**. | Solo el texto |
+| 2 | 60–250 | Mirá el mes de un **vistazo**. | Resumen: el mouse toca "30 días", las cifras cuentan, el gráfico se dibuja con sus fechas y el mouse lo recorre (línea guía, puntos y cartel con fecha, ventas y ganancia). Baja a "Cuándo se vende" (mapa de calor) y "Lo más vendido"; "Dónde entró la plata" es una dona |
+| 3 | 250–340 | Las ofertas se aplican **solas**. | Punto de venta: la remera entra con el 15 % y el total sube |
 | 4 | 340–420 | Cuánto deja cada **venta**. | La barra tramo por tramo hasta "Te quedó" |
-| 5 | 420–520 | La factura, con CAE de **ARCA**. | Factura B autorizada; el mouse toca PDF y sube la factura impresa con el formato de ARCA, CAE y QR |
-| 6 | 520–630 | La compra, desde la **foto**. | La foto de la factura del proveedor se escanea y los renglones aparecen encontrados, con el pack pasado a unidades y el IVA como crédito fiscal |
-| 7 | 630–720 | Tienda Nube y Mercado Libre, **conectados**. | Venta online: cifras, las dos tiendas conectadas, la dona por canal y dos pedidos que entran solos |
-| 8 | 720–810 | Cobros con Mercado Pago, **solos**. | El cobro del punto de venta: Mercado Pago, el QR, "Esperando el pago" y "Pago aprobado" |
-| 9 | 810–940 | Se dice, y Nexo la **arma**. | Asistente: se escribe, se envía, propone y se confirma |
-| 10 | 940–1030 | Y todo lo demás, **conectado**. | Doce funciones en grilla |
+| 5 | 420–520 | Facturá con CAE de **ARCA**. | Factura B autorizada; el mouse toca PDF y sube la factura impresa con el formato de ARCA, CAE y QR |
+| 6 | 520–630 | Cargá la compra desde la **foto**. | La foto de la factura del proveedor se escanea y los renglones aparecen encontrados, con el pack pasado a unidades y el IVA como crédito fiscal |
+| 7 | 630–720 | Tienda Nube y Mercado Libre **conectados**. | Venta online: cifras, las dos tiendas conectadas, la dona por canal y dos pedidos que entran solos |
+| 8 | 720–810 | Los cobros de Mercado Pago entran **solos**. | El cobro del punto de venta: Mercado Pago, el QR, "Esperando el pago" y "Pago aprobado" |
+| 9 | 810–940 | Decís la venta y Nexo la **arma**. | Asistente: se escribe, se envía, propone y se confirma |
+| 10 | 940–1030 | Y todo lo demás está **conectado**. | Doce funciones en grilla |
 | 11 | 1030–1120 | Y lo que cada **rubro** necesita. | Ocho rubros con lo suyo |
 | 12 | 1120–1230 | — | El logo, quieto al final |
 

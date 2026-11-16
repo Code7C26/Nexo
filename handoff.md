@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §180);
+    siguiente número (hoy el último es §181);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,11 @@
   reescribe nada.
 
 ## Estado actual (16 de noviembre de 2026)
+
+**16 de noviembre, hist. §181: la apertura sin frases con coma.** Solo
+cambiaron los títulos ("Mirá el mes de un vistazo.", "Las ofertas se aplican
+solas.", "Decís la venta y Nexo la arma."…); el resto del video es el mismo,
+cuadro por cuadro. `docs/pitch/media/nexo-apertura.mp4` y su `.jpg`, rearmados.
 
 **16 de noviembre, hist. §180: la presentación después del ensayo (34
 diapositivas), el caso real y el envío de una venta (commiteado en `solla`, sin
@@ -1989,8 +1994,7 @@ el bloque del 14 de noviembre más abajo); (3) renderizar y ponerlo en una
 diapositiva como los otros videos (`.video-tarjeta`, agrandándose).
 
 **Después, para la oficial ("algunas cositas"):** la captura real del chat de
-WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33;
-las frases del video de apertura sin la coma ("el mes, de un vistazo"); la
+WhatsApp para la 19 (la manda el usuario); testimonios de negocios en la 33; la
 calidad del video del alta; si se quiere, recortar el nombre del
 emprendimiento del pizarrón de la 9.
 

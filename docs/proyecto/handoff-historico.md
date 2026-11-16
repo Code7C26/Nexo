@@ -14023,3 +14023,30 @@ siguiente; la diapositiva lo mezclaba en la nota. Ahora se lee en orden: TAM,
 SAM (donde arrancamos), SOM (el primer año), "Después: Córdoba capital", el
 equilibrio (5 y 84) y la conclusión (83 ≈ 84). Los 56 con un promedio de
 $ 29.900 pasaron a la guía, con la pregunta "¿El SAM no era Córdoba?".
+
+## §181 — 16 de noviembre de 2026: la apertura sin frases con coma
+
+Pedido del usuario: el video de la diapositiva 1 queda igual y solo cambian las
+frases partidas por una coma ("El mes, de un vistazo."), un estilo que no le
+gusta. Títulos nuevos en `redes/videos/estudio/src/compositions/NexoApertura.tsx`
+(y en el estudio vivo):
+- Todo el negocio en un solo lugar.
+- Mirá el mes de un vistazo.
+- Las ofertas se aplican solas.
+- Facturá con CAE de ARCA.
+- Cargá la compra desde la foto.
+- Tienda Nube y Mercado Libre conectados.
+- Los cobros de Mercado Pago entran solos.
+- Decís la venta y Nexo la arma.
+- Y todo lo demás está conectado.
+- En las tarjetas: "Cada movimiento anotado", "Cada cambio con usuario y
+  fecha" y "Por kilo y rápido". Las enumeraciones ("Apertura, cierre y
+  arqueo") quedan.
+
+Se renderizó con `logo: [1120, 110]` (1230 cuadros, igual que el mp4 que
+estaba): la nota de §169 que decía que el estudio, con 120, había renderizado
+el video 6 era errónea, y el estudio quedó en 110 como el repo. Comparado con
+el anterior, solo difieren los títulos; el logo final es idéntico. El póster
+`nexo-apertura.jpg` es el cuadro 150. El storyboard tiene las frases nuevas.
+El reel vertical (`redes/videos/nexo-apertura-reel.mp4`) no se rearmó: lleva
+la voz y sus subtítulos, que siguen con las frases habladas.
