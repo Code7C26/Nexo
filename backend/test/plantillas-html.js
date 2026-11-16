@@ -146,6 +146,8 @@ const FUNCIONES_SEGURAS = new Set([
   'lineaSiHay', // core/comprobante.js
   'datoFactura', // core/comprobante.js: escapa la etiqueta y el valor
   'importeFactura', // core/comprobante.js: formatea un número
+  'filaTicket', // core/comprobante.js: escapa la etiqueta y el valor
+  'lineaTicket', // core/comprobante.js: escapa el texto
   'asistenteBadge', // app.js: solo lee ref.estado para elegir un texto fijo
   'ccTextoDias', // dominios/cuentas-corrientes.js: recibe un número
   'inputValor', // core/filtros.js: escapa el valor del input; en el select solo lo compara

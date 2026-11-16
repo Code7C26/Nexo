@@ -1970,6 +1970,7 @@
             <h2 id="fichaVentaTitulo">—</h2>
             <div class="panel-acciones">
               <button class="btn btn-secundario" id="btnCobrarVentaFicha"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg> Cobrar</button>
+              <button class="btn btn-secundario" id="btnTicketVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Ticket</button>
               <button class="btn btn-secundario" id="btnDevolverVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#undo-2"></use></svg> Devolver</button>
               <button class="btn btn-primary" id="btnEditarVenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar</button>
             </div>
@@ -7463,6 +7464,19 @@
           <div class="pos-cobro-resto"><dt id="posCobroRestoEtiqueta">Falta</dt><dd class="mono" id="posCobroResto">$0,00</dd></div>
         </dl>
         <p class="form-note" id="posCobroNota" aria-live="polite" hidden></p>
+        <!-- El comprobante se elige al cobrar: con factura (la letra sale de
+             la condición del negocio y la del cliente) o sin ella, y si el
+             ticket se imprime en el momento. Se recuerda por dispositivo. -->
+        <div class="pos-comprobante" id="posComprobante">
+          <div class="pos-comprobante-fila">
+            <div class="segmentos" role="group" aria-label="Comprobante" id="posComprobanteOpciones">
+              <button type="button" class="segmento" data-facturar="0" aria-pressed="true">Sin factura</button>
+              <button type="button" class="segmento" data-facturar="1" aria-pressed="false" id="posComprobanteFactura">Factura</button>
+            </div>
+            <label class="form-check"><input type="checkbox" id="posImprimirTicket" /> Imprimir el ticket</label>
+          </div>
+          <p class="form-note" id="posComprobanteNota" aria-live="polite" hidden></p>
+        </div>
         <button type="submit" class="btn btn-primary btn-full" id="formPosCobroSubmit">Confirmar venta</button>
         <!-- Fiar todo sin cobrar nada: la venta queda en la cuenta corriente
              del cliente. Sin cliente, avisa que hay que elegirlo. -->
@@ -7493,6 +7507,11 @@
           <strong class="mono" id="posExitoVuelto"></strong>
         </div>
         <p class="form-note" id="posExitoNota" hidden></p>
+        <p class="form-note" id="posExitoFactura" aria-live="polite" hidden></p>
+        <div class="pos-exito-acciones">
+          <button type="button" class="btn btn-secundario" id="btnPosTicket"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Imprimir ticket</button>
+          <button type="button" class="btn btn-secundario" id="btnPosFactura" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#printer"></use></svg> Imprimir factura</button>
+        </div>
         <button type="button" class="btn btn-primary btn-full" id="btnPosNuevaVenta">Nueva venta</button>
       </div>
     </div>

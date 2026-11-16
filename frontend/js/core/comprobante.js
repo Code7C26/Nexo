@@ -4,10 +4,11 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
-import { esc, fechaAR, money, numero } from "./formato.js";
+import { cantidad, esc, fechaAR, fechaHoraAR, money, numero } from "./formato.js";
 import { condicionFiscal, condicionIvaCliente } from "./fiscal.js";
 import { negocio } from "./negocio.js";
 import { avisar } from "./ui.js";
+import { api } from "./api.js";
 
 /* ---------- Comprobante imprimible ---------- */
 
@@ -76,12 +77,12 @@ cargarQr().catch(() => {});
 
 // Una imagen (GIF en data:) y no un SVG: html2canvas, el del PDF, la copia tal
 // cual.
-function imagenQr(url) {
+function imagenQr(url, clase = "hoja-qr") {
   if (!window.qrcode) return "";
   const qr = window.qrcode(0, "M");
   qr.addData(url);
   qr.make();
-  return `<img class="hoja-qr" src="${qr.createDataURL(4, 0)}" alt="Código QR del comprobante en ARCA" />`;
+  return `<img class="${clase}" src="${qr.createDataURL(4, 0)}" alt="Código QR del comprobante en ARCA" />`;
 }
 
 /* ---------- La factura, con el formato de las de ARCA (hist. §116) ---------- */
@@ -291,6 +292,177 @@ function pieFactura(f) {
   return `<p class="fac-prueba">Documento no válido como comprobante fiscal.</p>`;
 }
 
+/* ---------- El ticket del mostrador (papel de 80 mm) ---------- */
+
+// Lo que sale de la impresora térmica al cobrar: qué se llevó, cómo pagó y, si
+// la venta se facturó, los datos de la factura con su CAE y su QR. Como toda
+// hoja, sin costos ni márgenes. Un ticket sin factura autorizada por ARCA lo
+// dice: no es un comprobante fiscal.
+//
+// venta: GET /api/ventas/:id. cobros: GET /api/ventas/:id/cobros. factura: GET
+// /api/facturas/:id, o null. `vuelto` solo se sabe al cobrar en el mostrador.
+const ANCHO_TICKET_MM = 80;
+const MARGEN_TICKET_MM = 4;
+const CENTAVO = 0.005;
+
+const filaTicket = (etiqueta, valor, clase = "") =>
+  `<p class="tk-fila ${clase}"><span>${esc(etiqueta)}</span> <span>${esc(valor)}</span></p>`;
+const lineaTicket = (texto, clase = "") => (texto ? `<p class="${clase}">${esc(texto)}</p>` : "");
+
+export function armarTicket({ venta, cobros = [], factura = null, vuelto = 0 }) {
+  const emisor = factura?.emisor ?? negocio;
+  const autorizada = factura?.arca_estado === "autorizado";
+  const discrimina = factura?.letra === "A";
+
+  let titulo = `<p class="tk-titulo">TICKET</p><p>No válido como factura</p>`;
+  if (autorizada) {
+    titulo = `
+      <p class="tk-titulo">${esc(TIPO_TITULO[factura.tipo] ?? "FACTURA")} ${esc(factura.letra)}</p>
+      <p>COD. ${esc(conCeros(factura.codigo_comprobante, 3))} · N° ${esc(conCeros(factura.punto_venta, 5))}-${esc(conCeros(factura.numero, 8))}</p>`;
+  } else if (factura?.arca_estado) {
+    titulo = `<p class="tk-titulo">TICKET</p><p>Factura sin autorizar por ARCA: no es válida como factura</p>`;
+  } else if (factura) {
+    titulo = `<p class="tk-titulo">COMPROBANTE ${esc(factura.comprobante)}</p><p>No válido como factura</p>`;
+  }
+
+  // Para quién es: los datos de la factura, o el nombre de un cliente real.
+  const documento = String(factura?.cliente_documento ?? "").replace(/\D/g, "");
+  const receptor = factura
+    ? lineaTicket(`Cliente: ${factura.receptor_nombre ?? factura.cliente}`) +
+      lineaTicket(documento ? `${documento.length === 11 ? "CUIT" : "DNI"}: ${documento}` : "") +
+      lineaTicket(condicionIvaCliente(factura.cliente_condicion_iva)) +
+      lineaTicket(factura.cliente_direccion)
+    : lineaTicket(venta.cliente && venta.cliente !== "Consumidor final" ? `Cliente: ${venta.cliente}` : "");
+
+  const renglones = venta.items.map((i) => ({ ...i, importe: i.cantidad * i.precio_unitario, alicuota: i.alicuota_iva }));
+  const items = renglones
+    .map((r) => {
+      const notas = [r.oferta ? `Oferta: ${r.oferta}` : "", r.descuento > 0 ? `Descuento: −${money(r.descuento * r.cantidad)}` : ""]
+        .filter(Boolean)
+        .join(" · ");
+      const nombre = [r.producto, r.combinacion].filter(Boolean).join(" — ");
+      const cuanto = `${cantidad(r.cantidad, r.unidad)} x ${money(r.precio_unitario)}`;
+      return `
+        <div class="tk-item">
+          <p class="tk-item-nombre">${esc(nombre)}</p>
+          ${filaTicket(cuanto, money(r.importe))}
+          ${lineaTicket(notas, "tk-chico")}
+        </div>`;
+    })
+    .join("");
+
+  // La A discrimina el IVA de cada alícuota; la B de un inscripto informa el
+  // contenido (Ley 27.743), como la hoja de la factura.
+  let impuestos = "";
+  if (discrimina) {
+    const gravados = ivaPorAlicuota(renglones).filter((g) => Number.isFinite(g.tasa));
+    const iva = gravados.reduce((s, g) => s + g.iva, 0);
+    impuestos =
+      filaTicket("Neto gravado", money(venta.total - iva)) +
+      gravados.filter((g) => g.iva > 0).map((g) => filaTicket(`IVA ${String(g.tasa).replace(".", ",")} %`, money(g.iva))).join("");
+  } else if (factura?.letra === "B" && factura.iva > 0) {
+    impuestos = filaTicket("IVA contenido (Ley 27.743)", money(factura.iva), "tk-chico");
+  }
+
+  const cobrado = cobros.reduce((s, c) => s + c.importe, 0);
+  const saldo = venta.neto - venta.cobrado;
+  const pagos =
+    cobros.map((c) => filaTicket(`${c.medio ?? c.cuenta}${c.cuotas > 1 ? ` · ${c.cuotas} cuotas` : ""}`, money(c.importe))).join("") +
+    (vuelto >= CENTAVO ? filaTicket("Recibido", money(cobrado + vuelto)) + filaTicket("Vuelto", money(vuelto)) : "") +
+    (venta.estado !== "anulada" && saldo >= CENTAVO ? filaTicket("Queda en cuenta corriente", money(saldo)) : "");
+
+  const prueba = autorizada && factura.arca_ambiente !== "produccion";
+  const qr = autorizada && factura.arca_qr ? imagenQr(factura.arca_qr, "tk-qr") : "";
+  const pieArca = autorizada
+    ? `
+      <div class="tk-raya"></div>
+      <div class="tk-centro">
+        ${qr}
+        <p>CAE N° ${esc(factura.cae)}</p>
+        <p>Vto. de CAE: ${esc(fechaAR(factura.cae_vencimiento))}</p>
+        ${prueba ? `<p class="tk-chico">Comprobante de prueba – sin validez fiscal</p>` : ""}
+      </div>`
+    : "";
+
+  const cuit = emisor.documento ? `CUIT: ${emisor.documento}` : "";
+  const telefono = negocio.telefono ? `Tel: ${negocio.telefono}` : "";
+  const atendio = venta.vendedor ? `Atendió: ${venta.vendedor}` : "";
+  return `
+    <div translate="no" class="hoja hoja-ticket">
+      <div class="tk-centro">
+        <p class="tk-negocio">${esc(emisor.nombre || "—")}</p>
+        ${lineaTicket(emisor.razon_social && emisor.razon_social !== emisor.nombre ? emisor.razon_social : "")}
+        ${lineaTicket(cuit)}
+        ${lineaTicket(condicionFiscal(emisor.condicion_iva))}
+        ${lineaTicket(emisor.direccion)}
+        ${lineaTicket(telefono)}
+      </div>
+      <div class="tk-raya"></div>
+      <div class="tk-centro">${titulo}</div>
+      ${venta.estado === "anulada" ? `<p class="tk-centro tk-titulo">VENTA ANULADA</p>` : ""}
+      <div class="tk-raya"></div>
+      ${filaTicket(venta.creada && !venta.carga_inicial ? fechaHoraAR(venta.creada) : fechaAR(venta.fecha), `Venta #${venta.id}`)}
+      ${lineaTicket(atendio)}
+      ${receptor}
+      <div class="tk-raya"></div>
+      ${items}
+      <div class="tk-raya"></div>
+      ${impuestos}
+      ${filaTicket("TOTAL", money(venta.total), "tk-total")}
+      ${pagos ? `<div class="tk-raya"></div>${pagos}` : ""}
+      ${pieArca}
+      <div class="tk-raya"></div>
+      <div class="tk-centro">
+        ${lineaTicket(emisor.pie_comprobante)}
+        <p>¡Gracias por su compra!</p>
+        ${negocio.plan?.marca ? `<p class="tk-chico">Hecho con Nexo · gestión para tu negocio</p>` : ""}
+      </div>
+    </div>`;
+}
+
+// El papel del ticket mide lo que mide su contenido: la impresora térmica corta
+// ahí, y "Guardar como PDF" no deja una hoja A4 casi vacía. La medida se le
+// dice al navegador con un @page propio, que pisa al A4 de styles.css solo
+// mientras se imprime el ticket.
+let paginaTicket = null;
+function soltarTicket() {
+  paginaTicket?.remove();
+  paginaTicket = null;
+  hojaImpresionEl.innerHTML = "";
+}
+
+export function imprimirTicket(html) {
+  soltarTicket();
+  const caja = document.createElement("div");
+  caja.className = "hoja-render hoja-render-ticket";
+  caja.innerHTML = html;
+  document.body.appendChild(caja);
+  // 96 px por pulgada, más los márgenes y un milímetro de aire para que un
+  // redondeo no mande la última línea a otra página.
+  const altoMm = Math.ceil((caja.offsetHeight * 25.4) / 96) + MARGEN_TICKET_MM * 2 + 1;
+  caja.remove();
+
+  paginaTicket = document.createElement("style");
+  paginaTicket.textContent = `@media print { @page { size: ${ANCHO_TICKET_MM}mm ${altoMm}mm; margin: ${MARGEN_TICKET_MM}mm; } }`;
+  document.head.appendChild(paginaTicket);
+  hojaImpresionEl.innerHTML = html;
+  // En el celular print() vuelve antes de imprimir: se limpia al terminar.
+  window.addEventListener("afterprint", soltarTicket, { once: true });
+  window.print();
+}
+
+// El ticket de una venta ya guardada: lo usan el mostrador al cobrar y la ficha
+// de la venta para reimprimirlo.
+export async function imprimirTicketDeVenta(ventaId, { vuelto = 0 } = {}) {
+  const [venta, cobros] = await Promise.all([
+    api(`/api/ventas/${ventaId}`, { error: "No se pudo cargar la venta." }),
+    api(`/api/ventas/${ventaId}/cobros`, { error: "No se pudo cargar la venta." })
+  ]);
+  const factura = venta.factura_id ? await api(`/api/facturas/${venta.factura_id}`, { error: "No se pudo cargar la factura." }) : null;
+  if (factura?.arca_qr) await cargarQr().catch(() => {});
+  imprimirTicket(armarTicket({ venta, cobros, factura, vuelto }));
+}
+
 // El presupuesto (la factura tiene la suya, armarHojaFactura).
 export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra, iva }) {
   // En la A los renglones van sin IVA, para que sumen el neto gravado.
@@ -372,6 +544,8 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
 // Así "imprimir 5 facturas seleccionadas" desde el listado es un solo
 // diálogo con 5 páginas, no 5 diálogos separados.
 export function imprimirHojas(htmls) {
+  // Si quedó la medida de un ticket, esta hoja A4 saldría en papel de 80 mm.
+  soltarTicket();
   hojaImpresionEl.innerHTML = htmls.join("");
 
   // El PDF sale del mismo diálogo (destino "Guardar como PDF"), pero eso no es

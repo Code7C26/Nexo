@@ -4842,5 +4842,20 @@ export default {
   "El importe del envío tiene que ser un número mayor a 0.": "The shipping amount has to be a number greater than 0.",
   "Envío de la venta #{0}": "Shipping for sale #{0}",
   "Envío de ${0} sumado a la venta #{1}": "Shipping of ${0} added to sale #{1}",
-  "Seguinos en Instagram: @nexosystem.app": "Follow us on Instagram: @nexosystem.app"
+  "Seguinos en Instagram: @nexosystem.app": "Follow us on Instagram: @nexosystem.app",
+  "Sin factura": "No invoice",
+  "Imprimir el ticket": "Print the receipt",
+  "Imprimir ticket": "Print receipt",
+  "Imprimir factura": "Print invoice",
+  "Para la factura A falta el CUIT de {0}. Cargalo en su ficha, o cobrá sin factura.": "Invoice A needs {0}'s CUIT. Add it to their record, or charge without an invoice.",
+  "Al confirmar, Nexo le pide el CAE a ARCA.": "On confirming, Nexo requests the CAE from ARCA.",
+  "Sale como comprobante interno: no es una factura ante ARCA.": "It's issued as an internal receipt: it's not an invoice before ARCA.",
+  "Sin conexión con el servidor.": "No connection to the server.",
+  "La venta quedó registrada, pero la factura no salió: {0} Hacela desde Ventas.": "The sale was recorded, but the invoice wasn't issued: {0} Issue it from Sales.",
+  "Factura {0} autorizada por ARCA.": "Invoice {0} authorized by ARCA.",
+  "La factura quedó guardada, pero ARCA no respondió y todavía no tiene CAE. Pedilo de nuevo desde Facturas.": "The invoice was saved, but ARCA didn't respond and it has no CAE yet. Request it again from Invoices.",
+  "ARCA rechazó la factura: {0}. Corregí el dato y pedí el CAE de nuevo desde Facturas, o descartala.": "ARCA rejected the invoice: {0}. Fix the data and request the CAE again from Invoices, or discard it.",
+  "Comprobante {0} generado.": "Receipt {0} issued.",
+  "Venta registrada. Pidiendo el CAE a ARCA…": "Sale recorded. Requesting the CAE from ARCA…",
+  "Pago recibido. Haciendo la factura…": "Payment received. Issuing the invoice…"
 };

@@ -14187,3 +14187,49 @@ Lo que no se tocó: las capturas de la app dentro de las diapositivas (14 a 26)
 se ven al 25–60 % de su tamaño; de lejos se lee el texto de al lado, no la
 captura. Si en el tele grande sigue sin alcanzar, el paso siguiente es
 recortarlas a la parte que importa.
+
+## §184 — 16 de noviembre de 2026: facturar desde el punto de venta y el ticket impreso
+
+Punto 1 del plan hasta la oficial. Hasta ahora el mostrador solo cobraba, y la
+factura se hacía después desde Ventas.
+
+- **Al cobrar se elige el comprobante.** En el cobro del mostrador hay dos
+  botones, "Sin factura" y "Factura A/B/C", y la casilla "Imprimir el ticket".
+  La letra que se muestra sale de `letraPrevista` (la misma regla del servidor)
+  con la condición del negocio y la del cliente. Lo elegido se recuerda por
+  dispositivo y negocio (`nexo.pos.facturar.<id>`, `nexo.pos.ticket.<id>`).
+- **Sin circuito nuevo.** La pantalla registra la venta (`POST /api/pos/ventas`)
+  y enseguida pide la factura con la ruta de siempre (`POST
+  /api/ventas/:id/facturar`), con la condición de venta según el medio
+  (contado, débito, crédito, transferencia, cuenta corriente; con varios, el de
+  más plata). Con el QR de Mercado Pago, la factura se pide recién cuando entra
+  el pago. Se descartó hacerlo dentro de la ruta del mostrador: el QR igual
+  necesita los dos pasos, y así los tres caminos son uno.
+- **Lo que puede fallar.** Una factura A sin CUIT del cliente (con la factura
+  electrónica activa) se avisa antes de cobrar y no deja confirmar. Si la
+  factura falla después (ARCA no responde, la rechaza), la venta queda hecha y
+  la pantalla de éxito dice qué pasó y dónde seguir (Ventas o Facturas). Los
+  botones quedan apagados mientras se espera a ARCA: no hay venta doble. Con la
+  factura electrónica en pausa por el plan, los botones no aparecen.
+- **El ticket** (`armarTicket`, `imprimirTicket` e `imprimirTicketDeVenta` en
+  `core/comprobante.js`): papel de 80 mm, con el negocio, los renglones con
+  oferta y descuento, el total, cada cobro, lo recibido y el vuelto, y lo que
+  quedó en cuenta corriente. Con factura autorizada lleva letra, número, datos
+  del cliente, IVA (discriminado en la A, contenido en la B), CAE y QR; sin
+  ella dice "No válido como factura". El alto del papel se mide y se le pasa al
+  navegador con un `@page` propio que dura solo esa impresión (la limpieza va
+  en `afterprint`, y `imprimirHojas` lo saca por si quedó). Se reimprime desde
+  la ficha de la venta ("Ticket").
+- **Servidor:** `GET /api/ventas/:id` suma `factura_id`, `creada` y `vendedor`
+  (del alta en la auditoría, como el Resumen) y `unidad` en cada renglón. Sin
+  cambios de esquema.
+- **Probado:** 396 tests (uno nuevo en `medios-cobro.test.js`), lint e i18n en
+  verde. En el navegador, con ARCA simulado: factura A con CAE y QR en el
+  ticket, el aviso del CUIT faltante y la venta sin factura. `plantillas-html.js`
+  suma `filaTicket` y `lineaTicket` a las funciones que escapan.
+- **Sin probar:** una impresora térmica de verdad (el tamaño de página se
+  comprobó solo por la regla que se genera) y el camino del QR con factura.
+- **Queda:** `facturas.condicion` solo admite efectivo, transferencia o
+  Mercado Pago, así que una venta con tarjeta guarda "transferencia" ahí (lo
+  que se imprime, `condicion_venta`, sí dice tarjeta). El ancho es fijo en
+  80 mm: si aparece un negocio con papel de 58, se hace configurable.

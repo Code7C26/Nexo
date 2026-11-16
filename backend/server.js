@@ -7368,10 +7368,19 @@ app.get('/api/ventas/:id', (req, res) => {
               ventas.lista_precio_id, ventas.deposito_id, depositos.nombre AS deposito,
               ventas.condicion_pago, ventas.fecha_vencimiento, ventas.carga_inicial, ventas.saldo_inicial, ventas.canal,
               EXISTS (SELECT 1 FROM devoluciones
-                       WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion
+                       WHERE devoluciones.venta_id = ventas.id AND devoluciones.estado = 'activa') AS tiene_devolucion,
+              -- Para el ticket: su factura, y cuándo y quién la cargó, que salen
+              -- de su alta en la auditoría (como en el Resumen, hist. §136).
+              (SELECT facturas.id FROM facturas WHERE facturas.venta_id = ventas.id) AS factura_id,
+              alta.fecha AS creada, usuarios.nombre AS vendedor
          FROM ventas
          JOIN clientes ON clientes.id = ventas.cliente_id
          LEFT JOIN depositos ON depositos.id = ventas.deposito_id
+         LEFT JOIN auditoria AS alta ON alta.id = (
+                SELECT MIN(a.id) FROM auditoria AS a
+                 WHERE a.entidad = 'venta' AND a.accion = 'crear'
+                   AND a.entidad_id = ventas.id AND a.organizacion_id = ventas.organizacion_id)
+         LEFT JOIN usuarios ON usuarios.id = alta.usuario_id
         WHERE ventas.id = ? AND ventas.organizacion_id = ?`
     )
     .get(ventaId, req.usuario.organizacion_id);
@@ -7386,7 +7395,7 @@ app.get('/api/ventas/:id', (req, res) => {
     .prepare(
       `SELECT venta_items.id, venta_items.producto_id, venta_items.variante_id, productos.nombre AS producto,
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
-              venta_items.costo_mano_obra, productos.tipo,
+              venta_items.costo_mano_obra, productos.tipo, productos.unidad,
               venta_items.alicuota_iva, venta_items.iva,
               venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista, venta_items.descuento,
               COALESCE((
@@ -7413,7 +7422,7 @@ app.get('/api/ventas/:id', (req, res) => {
   const { cobrado } = db
     .prepare('SELECT COALESCE(SUM(importe), 0) AS cobrado FROM cobros WHERE venta_id = ?')
     .get(ventaId);
-  const facturada = Boolean(db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(ventaId));
+  const facturada = venta.factura_id != null;
   // Los costos de vender (hist. §129): la comisión del canal y el envío que
   // pagó el negocio, gastos de esta venta. Para el empleado se podan
   // (CLAVES_SENSIBLES), como el costo.

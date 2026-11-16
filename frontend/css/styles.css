@@ -3706,6 +3706,38 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 
 .pos-exito .btn-full { min-height: 52px; font-size: var(--txt-md); }
 
+.pos-exito-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+  align-self: stretch;
+}
+
+.pos-exito-acciones .btn { flex: 1 1 160px; min-height: 44px; }
+.pos-exito-acciones .btn[hidden] { display: none; }
+
+/* Con factura o sin ella, y si sale el ticket: se elige al cobrar. */
+.pos-comprobante {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.pos-comprobante[hidden] { display: none; }
+
+.pos-comprobante-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.pos-comprobante .segmentos { align-self: center; }
+.pos-comprobante .segmento { min-height: 38px; font-size: var(--txt-sm); }
+.pos-comprobante .form-note { margin: 0; }
+
 /* Modal de cierre: el resumen del turno y el arqueo en vivo. */
 .ficha-datos.pos-cierre-datos { grid-template-columns: 1fr 1fr; }
 
@@ -6301,6 +6333,45 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 .hoja-qr {
   width: 24mm;
   height: 24mm;
+  image-rendering: pixelated;
+}
+
+/* El ticket del mostrador (armarTicket en core/comprobante.js): papel de 80 mm
+   con 4 de margen, una sola columna. Todo en negro pleno, que es lo único que
+   imprime una térmica. El alto del papel lo pone imprimirTicket(). */
+.hoja-render.hoja-render-ticket { width: 72mm; }
+
+.hoja.hoja-ticket {
+  font-size: 8.5pt;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.hoja-ticket p { margin: 0 0 1pt; }
+.tk-centro { text-align: center; }
+.tk-negocio { font-size: 12pt; font-weight: 800; }
+.tk-titulo { font-size: 10.5pt; font-weight: 800; letter-spacing: 0.04em; }
+.tk-chico { font-size: 7.5pt; }
+.tk-raya { margin: 4pt 0; border-top: 1px dashed #000000; }
+
+.tk-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 6pt;
+}
+
+.tk-fila span:last-child { text-align: right; white-space: nowrap; }
+.tk-item { margin-bottom: 2pt; }
+.tk-item-nombre { font-weight: 600; }
+.tk-total { margin-top: 2pt !important; font-size: 12pt; font-weight: 800; }
+
+.tk-qr {
+  display: block;
+  width: 30mm;
+  height: 30mm;
+  margin: 0 auto 3pt;
   image-rendering: pixelated;
 }
 

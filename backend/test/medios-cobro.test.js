@@ -239,3 +239,38 @@ test('una caja no puede pasar a efectivo si un medio le entra la plata', async (
   assert.equal(res.status, 400);
   assert.match(res.json.error, /medio de cobro/);
 });
+
+// El ticket del mostrador y la factura al cobrar (plan de la oficial): la venta
+// dice quién la hizo, cuándo y cuál es su factura, y la factura que se pide al
+// cobrar guarda cómo se pagó.
+test('la venta del mostrador trae lo que imprime el ticket, y se factura con su condición de venta', async () => {
+  const venta = await empleado.post('/api/pos/ventas', {
+    turno_caja_id: turnoId,
+    items: [{ producto_id: producto, cantidad: 2, precio_unitario: 1000 }],
+    cobros: [{ medio_cobro_id: porNombre('Débito').id, importe: 2000 }],
+    consumos: []
+  });
+  assert.equal(venta.status, 201, venta.texto);
+
+  const antes = (await empleado.get(`/api/ventas/${venta.json.id}`)).json;
+  assert.equal(antes.factura_id, null);
+  assert.equal(antes.facturada, false);
+  assert.match(antes.creada, /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/);
+  assert.ok(antes.vendedor);
+  assert.equal(antes.items[0].unidad, 'unidad');
+
+  const factura = await empleado.post(`/api/ventas/${venta.json.id}/facturar`, {
+    condicion: 'transferencia',
+    condicion_venta: 'tarjeta_debito'
+  });
+  assert.equal(factura.status, 201, factura.texto);
+  const despues = (await empleado.get(`/api/ventas/${venta.json.id}`)).json;
+  assert.equal(despues.factura_id, factura.json.id);
+  assert.equal(despues.facturada, true);
+  assert.equal((await empleado.get(`/api/facturas/${factura.json.id}`)).json.condicion_venta, 'tarjeta_debito');
+  const cobros = (await empleado.get(`/api/ventas/${venta.json.id}/cobros`)).json;
+  assert.deepEqual(cobros.map((c) => [c.medio, c.importe]), [['Débito', 2000]]);
+
+  // La venta de otro negocio no se ve.
+  assert.equal((await otro.get(`/api/ventas/${venta.json.id}`)).status, 404);
+});

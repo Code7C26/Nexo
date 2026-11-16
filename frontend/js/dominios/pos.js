@@ -15,7 +15,8 @@ import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
 import { mejorOferta, proximaPromocion } from "../core/ofertas.js";
 import { aplicarDescuento } from "../core/descuento.js";
 import { negocio } from "../core/negocio.js";
-import { cargarQr } from "../core/comprobante.js";
+import { letraPrevista } from "../core/fiscal.js";
+import { armarHojaFactura, cargarQr, imprimirComprobante, imprimirTicketDeVenta } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
@@ -23,6 +24,10 @@ const MAX_RESULTADOS = 40;
 const CENTAVO = 0.005;
 // Por negocio (hist. §77): la caja elegida en uno no es una caja del otro.
 const CLAVE_CAJA = `nexo.pos.caja.${document.documentElement.dataset.organizacion}`;
+// Si este mostrador factura y si imprime el ticket: un local lo hace siempre
+// igual, así que queda como se dejó la última vez.
+const CLAVE_FACTURAR = `nexo.pos.facturar.${document.documentElement.dataset.organizacion}`;
+const CLAVE_TICKET = `nexo.pos.ticket.${document.documentElement.dataset.organizacion}`;
 const ICONO_TIPO_MEDIO = {
   efectivo: "banknote",
   debito: "credit-card",
@@ -796,7 +801,12 @@ function abrirCobro() {
   const total = totalCarrito();
   // Arranca en efectivo: es lo que más se usa, y un toque lo cambia.
   const inicial = medioEfectivo() ?? medios[0];
-  cobro = { total, cliente, filas: [{ medio_id: inicial.id, cuotas: cuotasIniciales(inicial), cuenta_id: cuentaInicial(inicial), importe: total }] };
+  cobro = {
+    total,
+    cliente,
+    facturar: sePuedeFacturar() && leerGuardado(localStorage, CLAVE_FACTURAR) === "1",
+    filas: [{ medio_id: inicial.id, cuotas: cuotasIniciales(inicial), cuenta_id: cuentaInicial(inicial), importe: total }]
+  };
 
   document.getElementById("formPosCobro").hidden = false;
   document.getElementById("posExito").hidden = true;
@@ -809,6 +819,7 @@ function abrirCobro() {
     )
     .join("");
   renderFilasCobro();
+  renderComprobante();
   actualizarCobro();
   btnPosQr.hidden = !negocio.mercado_pago?.conectado;
   posQr.hidden = true;
@@ -889,7 +900,112 @@ function actualizarCobro() {
   nota.hidden = !error && !aCuenta;
   nota.classList.toggle("pos-nota-error", !!error);
   nota.textContent = error ?? (aCuenta ? `Quedan ${money(falta)} en la cuenta corriente de ${cobro.cliente.nombre}.` : "");
-  document.getElementById("formPosCobroSubmit").disabled = !!error;
+  document.getElementById("formPosCobroSubmit").disabled = !!error || !!errorDeFactura();
+}
+
+/* ---------- El comprobante de la venta ---------- */
+
+// Al cobrar se elige si la venta sale con factura. Es la misma factura que se
+// hace desde Ventas (POST /api/ventas/:id/facturar), pedida apenas se registra
+// la venta: la letra la pone el servidor con la condición del negocio y la del
+// cliente, y acá se anticipa cuál va a ser.
+const posImprimirTicket = document.getElementById("posImprimirTicket");
+posImprimirTicket.checked = leerGuardado(localStorage, CLAVE_TICKET) === "1";
+posImprimirTicket.addEventListener("change", () => {
+  guardar(localStorage, CLAVE_TICKET, posImprimirTicket.checked ? "1" : null);
+});
+
+// Con la factura electrónica en pausa (el plan no la trae) no se emite nada.
+const sePuedeFacturar = () => !negocio.factura_electronica?.en_pausa;
+// null si el negocio no cargó su condición frente al IVA: sale una B.
+const letraDelCobro = () => letraPrevista(negocio.condicion_iva, cobro.cliente?.condicion_iva || "consumidor_final");
+
+// Lo que ARCA rechazaría seguro, dicho antes de cobrar: una factura A necesita
+// el CUIT del cliente (errorParaArca en server.js).
+function errorDeFactura() {
+  if (!cobro.facturar || !negocio.factura_electronica?.activa || letraDelCobro() !== "A") return null;
+  const cuit = String(cobro.cliente?.documento ?? "").replace(/\D/g, "");
+  return cuit.length === 11 ? null : `Para la factura A falta el CUIT de ${cobro.cliente.nombre}. Cargalo en su ficha, o cobrá sin factura.`;
+}
+
+function renderComprobante() {
+  const opciones = document.getElementById("posComprobanteOpciones");
+  opciones.hidden = !sePuedeFacturar();
+  const letra = letraDelCobro();
+  document.getElementById("posComprobanteFactura").textContent = letra ? `Factura ${letra}` : "Factura";
+  opciones.querySelectorAll(".segmento").forEach((boton) => {
+    boton.setAttribute("aria-pressed", String((boton.dataset.facturar === "1") === cobro.facturar));
+  });
+  const error = errorDeFactura();
+  let texto = error ?? "";
+  if (!error && cobro.facturar) {
+    texto = negocio.factura_electronica?.activa
+      ? "Al confirmar, Nexo le pide el CAE a ARCA."
+      : "Sale como comprobante interno: no es una factura ante ARCA.";
+  }
+  const nota = document.getElementById("posComprobanteNota");
+  nota.hidden = !texto;
+  nota.classList.toggle("pos-nota-error", !!error);
+  nota.textContent = texto;
+}
+
+document.getElementById("posComprobanteOpciones").addEventListener("click", (e) => {
+  const boton = e.target.closest(".segmento");
+  if (!boton) return;
+  cobro.facturar = boton.dataset.facturar === "1";
+  guardar(localStorage, CLAVE_FACTURAR, cobro.facturar ? "1" : null);
+  renderComprobante();
+  actualizarCobro();
+});
+
+// Lo que la factura dice de cómo se pagó. Con varios medios, manda el de más
+// plata; sin cobros, quedó todo en cuenta corriente.
+const CONDICION_VENTA_DEL_MEDIO = {
+  efectivo: "contado",
+  debito: "tarjeta_debito",
+  credito: "tarjeta_credito",
+  transferencia: "transferencia"
+};
+function condicionesDeFactura(cobros) {
+  const mayor = [...cobros].sort((a, b) => b.importe - a.importe)[0];
+  if (!mayor) return { condicion: "efectivo", condicion_venta: "cuenta_corriente" };
+  const tipo = medioPorId(mayor.medio_cobro_id)?.tipo;
+  return { condicion: tipo === "efectivo" ? "efectivo" : "transferencia", condicion_venta: CONDICION_VENTA_DEL_MEDIO[tipo] ?? "otra" };
+}
+const FACTURA_CON_QR = { condicion: "mercadopago", condicion_venta: "otra" };
+
+// La factura de una venta recién registrada: { emitida } o { error }. Sin
+// api(): si no sale, la venta ya está hecha y el motivo va a la pantalla de
+// éxito, donde dice cómo seguir, y no a un aviso suelto.
+async function facturarVenta(ventaId, condiciones) {
+  try {
+    const res = await fetch(`/api/ventas/${ventaId}/facturar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(condiciones)
+    });
+    const datos = await res.json().catch(() => ({}));
+    return res.ok ? { emitida: datos } : { error: datos.error || "No se pudo generar la factura." };
+  } catch {
+    return { error: "Sin conexión con el servidor." };
+  }
+}
+
+// Cómo le fue a la factura, para la pantalla de éxito.
+function textoDeFactura(factura) {
+  if (!factura) return { texto: "", mal: false };
+  if (factura.error) {
+    return { texto: `La venta quedó registrada, pero la factura no salió: ${factura.error} Hacela desde Ventas.`, mal: true };
+  }
+  const { arca_estado: estado, arca_error: motivo, comprobante } = factura.emitida;
+  if (estado === "autorizado") return { texto: `Factura ${comprobante} autorizada por ARCA.`, mal: false };
+  if (estado === "pendiente") {
+    return { texto: "La factura quedó guardada, pero ARCA no respondió y todavía no tiene CAE. Pedilo de nuevo desde Facturas.", mal: true };
+  }
+  if (estado === "rechazado") {
+    return { texto: `ARCA rechazó la factura: ${motivo}. Corregí el dato y pedí el CAE de nuevo desde Facturas, o descartala.`, mal: true };
+  }
+  return { texto: `Comprobante ${comprobante} generado.`, mal: false };
 }
 
 document.getElementById("posCobros").addEventListener("input", (e) => {
@@ -988,9 +1104,16 @@ const btnPosACuenta = document.getElementById("btnPosACuenta");
 document.getElementById("formPosCobro").addEventListener("submit", (e) => {
   e.preventDefault();
   const { vuelto, falta, error } = calcularCobro();
-  if (error) return;
+  if (error || errorDeFactura()) return;
   registrarVenta({ cobros: cobrosParaEnviar(vuelto), vuelto, falta });
 });
+
+// Los botones que no son el de confirmar avisan por qué no siguen.
+function facturaConError() {
+  const error = errorDeFactura();
+  if (error) avisar(error, "atencion");
+  return !!error;
+}
 
 // Fiar todo de un toque, sin borrar el importe: la venta va sin cobros y el
 // total queda en la cuenta corriente del cliente. A "Consumidor final" no se
@@ -1002,6 +1125,7 @@ btnPosACuenta.addEventListener("click", () => {
     posCliente.focus();
     return;
   }
+  if (facturaConError()) return;
   registrarVenta({ cobros: [], vuelto: 0, falta: cobro.total });
 });
 
@@ -1016,10 +1140,18 @@ async function registrarVenta({ cobros, vuelto, falta }) {
     cobros
   };
   // Los dos botones quedan apagados: un toque en cada uno no son dos ventas.
+  // Y siguen apagados mientras sale la factura, que con ARCA puede tardar.
   btnPosACuenta.disabled = true;
-  const venta = await enviando(submit, () =>
-    api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." })
-  )
+  const { venta, factura } = await enviando(submit, async () => {
+    const registrada = await api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." });
+    if (!cobro.facturar) return { venta: registrada, factura: null };
+    if (negocio.factura_electronica?.activa) {
+      const nota = document.getElementById("posComprobanteNota");
+      nota.hidden = false;
+      nota.textContent = "Venta registrada. Pidiendo el CAE a ARCA…";
+    }
+    return { venta: registrada, factura: await facturarVenta(registrada.id, condicionesDeFactura(cobros)) };
+  })
     .catch((err) => {
       // El stock o la caja pudieron cambiar desde otro puesto: se vuelve a
       // leer todo para que lo que se ve sea lo que hay.
@@ -1030,7 +1162,7 @@ async function registrarVenta({ cobros, vuelto, falta }) {
       btnPosACuenta.disabled = false;
     });
 
-  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito(), descontado: montoDescuento() });
+  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito(), descontado: montoDescuento(), factura });
   ventaHecha();
 }
 
@@ -1046,7 +1178,39 @@ function ventaHecha() {
   refrescar([recargar("ventas", "stock", "productos", "clientes", "caja", "cuentasCorrientes", "panelResumen", "reporteStock")]);
 }
 
-function mostrarExito({ id, vuelto, falta, cliente, ahorro, descontado = 0 }) {
+// La última venta hecha, para imprimir su ticket y su factura desde la pantalla
+// de éxito: { id, vuelto, facturaId }.
+let ultimaVenta = null;
+
+document.getElementById("btnPosTicket").addEventListener("click", (e) => {
+  enviando(e.currentTarget, () => imprimirTicketDeVenta(ultimaVenta.id, { vuelto: ultimaVenta.vuelto }));
+});
+
+// La hoja A4 de la factura, la misma que sale desde Facturas.
+document.getElementById("btnPosFactura").addEventListener("click", (e) => {
+  enviando(e.currentTarget, async () => {
+    const factura = await api(`/api/facturas/${ultimaVenta.facturaId}`, { error: "No se pudo cargar la factura." });
+    await cargarQr().catch(() => {});
+    imprimirComprobante(armarHojaFactura(factura));
+  });
+});
+
+function mostrarExito({ id, vuelto, falta, cliente, ahorro, descontado = 0, factura = null }) {
+  // Una factura que ARCA rechazó no existe: no hay hoja para imprimir.
+  const emitida = factura?.emitida && factura.emitida.arca_estado !== "rechazado" ? factura.emitida : null;
+  ultimaVenta = { id, vuelto, facturaId: emitida?.id ?? null };
+  const { texto: textoFactura, mal } = textoDeFactura(factura);
+  const notaFactura = document.getElementById("posExitoFactura");
+  notaFactura.hidden = !textoFactura;
+  notaFactura.classList.toggle("pos-nota-error", mal);
+  notaFactura.textContent = textoFactura;
+  document.getElementById("btnPosFactura").hidden = !emitida;
+  // El ticket sale solo si el mostrador lo tiene tildado, con la pantalla ya
+  // dibujada (el diálogo de impresión frena todo lo demás).
+  if (posImprimirTicket.checked) {
+    setTimeout(() => imprimirTicketDeVenta(id, { vuelto }).catch(() => {}), 0);
+  }
+
   document.getElementById("formPosCobro").hidden = true;
   document.getElementById("posExito").hidden = false;
   document.getElementById("posExitoTitulo").textContent = `Venta #${id} registrada`;
@@ -1093,7 +1257,13 @@ const SONDEOS_POR_PREGUNTA = 5;
 // { id, cliente, ahorro, vueltas, sondeo }
 let esperandoQr = null;
 
+// El texto va después del punto que late.
+function estadoQr(texto) {
+  document.getElementById("posQrEstado").lastChild.textContent = ` ${texto}`;
+}
+
 btnPosQr.addEventListener("click", async () => {
+  if (facturaConError()) return;
   const body = {
     turno_caja_id: turno.id,
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
@@ -1136,8 +1306,16 @@ btnPosQr.addEventListener("click", async () => {
     ? "Escaneá con la app de Mercado Pago o tu billetera"
     : "Escaneá con la app de Mercado Pago o la cámara";
   document.getElementById("formPosCobro").hidden = true;
+  estadoQr("Esperando el pago…");
   posQr.hidden = false;
-  esperandoQr = { id: venta.id, cliente: cobro.cliente, ahorro: ahorroCarrito(), descontado: montoDescuento(), vueltas: 0 };
+  esperandoQr = {
+    id: venta.id,
+    cliente: cobro.cliente,
+    ahorro: ahorroCarrito(),
+    descontado: montoDescuento(),
+    facturar: cobro.facturar,
+    vueltas: 0
+  };
   esperandoQr.sondeo = setInterval(() => revisarQr(), SEGUNDOS_SONDEO_QR * 1000);
 });
 
@@ -1145,6 +1323,8 @@ btnPosQr.addEventListener("click", async () => {
 async function revisarQr({ preguntar = false } = {}) {
   const actual = esperandoQr;
   if (!actual) return false;
+  // Ya pagó y se está haciendo la factura: no se pregunta de nuevo.
+  if (actual.cobrada) return true;
   actual.vueltas += 1;
   if (preguntar || actual.vueltas % SONDEOS_POR_PREGUNTA === 0) {
     await fetch(`/api/ventas/${actual.id}/revisar-pagos`, { method: "POST" }).catch(() => {});
@@ -1153,8 +1333,16 @@ async function revisarQr({ preguntar = false } = {}) {
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
   if (!venta || esperandoQr !== actual || venta.cobrado < venta.neto - CENTAVO) return false;
+  if (actual.cobrada) return true;
+  actual.cobrada = true;
+  // La factura se pide recién ahora: una venta que nadie pagó se anula.
+  let factura = null;
+  if (actual.facturar) {
+    estadoQr("Pago recibido. Haciendo la factura…");
+    factura = await facturarVenta(actual.id, FACTURA_CON_QR);
+  }
   terminarQr();
-  mostrarExito({ id: actual.id, vuelto: 0, falta: 0, cliente: actual.cliente, ahorro: actual.ahorro, descontado: actual.descontado });
+  mostrarExito({ id: actual.id, vuelto: 0, falta: 0, cliente: actual.cliente, ahorro: actual.ahorro, descontado: actual.descontado, factura });
   document.getElementById("posExitoTitulo").textContent = `Venta #${actual.id} cobrada con Mercado Pago`;
   ventaHecha();
   return true;

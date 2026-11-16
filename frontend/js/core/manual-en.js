@@ -137,9 +137,11 @@ export const SECCIONES_EN = {
         "At the start of the day, tap **Open register** and count the cash you start with.",
         "Search for each product by name or code, or scan it (your phone's camera works too).",
         "Tap **Charge** and choose how they pay: cash, transfer, card… They can pay with more than one. If it's cash, Nexo calculates the change.",
+        "Right there, choose **No invoice** or **Invoice**, and tick **Print the receipt** if you want it to come out on its own. It stays as you left it for the next sale.",
         "At the end of the day, tap **Close register** and count the cash: Nexo tells you if it matches what there should be."
       ] },
       "Without choosing a customer, the sale goes to End consumer. To leave something on account for someone, choose the customer: End consumer can't buy on credit.",
+      "The receipt is for 80 mm printers. Print it again from the sale's page, with **Ticket**.",
       { nota: "If you don't see Point of sale in the menu, turn it on in Settings › Features." }
     ]
   },
@@ -233,6 +235,7 @@ export const SECCIONES_EN = {
         "Tap **Generate invoice**. From its profile, **Print / PDF**."
       ] },
       "The letter (A, B or C) is set automatically, based on your VAT status and the customer's.",
+      "At the Point of sale you choose the invoice when charging, without coming here.",
       { nota: "Without electronic invoicing turned on, the receipt is internal: it comes out with an X and \"Not valid as an invoice\". To invoice with ARCA, see Electronic invoicing. Printed receipts are always in Spanish: they're Argentine tax documents." }
     ]
   },

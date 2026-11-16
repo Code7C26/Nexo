@@ -31,7 +31,7 @@ import {
 import { avisar, confirmar, conEsqueleto, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
-import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
+import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, imprimirTicketDeVenta, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { barrasHorizontales, lineaChica, montarArea, pasoRedondo, pathBarra } from "./core/graficos.js";
@@ -4765,6 +4765,8 @@ async function abrirFichaVenta(id) {
   // backend ya lo rechaza, esto es para no invitar a un click que va a
   // fallar.
   document.getElementById("btnEditarVenta").hidden = venta.facturada || venta.tiene_devolucion;
+  // Un saldo de antes de Nexo no tiene renglones: no hay ticket que imprimir.
+  document.getElementById("btnTicketVenta").hidden = venta.saldo_inicial != null;
   // En el celular la fila de la lista no muestra "Cobrar": se cobra desde acá
   // (y desde acá se manda el link de Mercado Pago, hist. §130).
   document.getElementById("btnCobrarVentaFicha").hidden = venta.estado === "anulada" || !(venta.neto - venta.cobrado > 0.005);
@@ -4866,6 +4868,8 @@ document.getElementById("btnEditarVenta").addEventListener("click", async () => 
 });
 document.getElementById("btnVolverVentas").addEventListener("click", () => mostrarVista("ventas"));
 document.getElementById("btnCobrarVentaFicha").addEventListener("click", () => abrirModalCobrarVenta(ventaFichaId));
+// El ticket de 80 mm, el mismo que sale del mostrador al cobrar.
+document.getElementById("btnTicketVenta").addEventListener("click", () => imprimirTicketDeVenta(ventaFichaId));
 
 // El envío que pagó el negocio (hist. §180): entra como costo de la venta y la
 // ficha se vuelve a pintar con él en "Adónde fue la plata".
