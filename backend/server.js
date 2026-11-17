@@ -17,7 +17,7 @@ import {
   normalizarLectura,
   totalDelRenglon
 } from './factura-proveedor.js';
-import { esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
+import { esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
 import {
@@ -147,10 +147,14 @@ app.use((req, res, next) => {
 // tal cual llegó: se guarda solo para esas rutas, antes de parsearlo.
 // La foto de la factura de un proveedor (hist. §151) es la única que viaja
 // grande: va con su propio límite en su ruta, y acá se saltea.
+// La factura que se manda por mail (hist. §186) trae su PDF, y también va con
+// el suyo.
 const RUTA_LEER_COMPROBANTE = '/api/compras/leer-comprobante';
+const RUTA_MAIL_FACTURA = /^\/api\/facturas\/\d+\/mail$/;
 app.use(
   express.json({
-    type: (req) => req.path !== RUTA_LEER_COMPROBANTE && Boolean(req.is('application/json')),
+    type: (req) =>
+      req.path !== RUTA_LEER_COMPROBANTE && !RUTA_MAIL_FACTURA.test(req.path) && Boolean(req.is('application/json')),
     verify: (req, res, buf) => {
       if (req.url.startsWith('/api/integraciones/')) req.cuerpoCrudo = Buffer.from(buf);
     }
@@ -3224,6 +3228,7 @@ const SELECT_FACTURA = `
          facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero, facturas.venta_id,
          facturas.devolucion_id,
          facturas.arca_estado, facturas.cae, facturas.cae_vencimiento, facturas.arca_ambiente, facturas.arca_error,
+         facturas.mail_enviado_a, facturas.mail_enviado_en,
          CASE
            WHEN facturas.venta_id IS NOT NULL THEN (
              SELECT CASE
@@ -3754,6 +3759,117 @@ app.post('/api/facturas/:id/autorizar', asincrono(async (req, res) => {
   const error = errorParaArca(factura.letra, factura.documento);
   if (error) return res.status(400).json({ error });
   res.json(resultadoEmision(await autorizarFactura(req, facturaId)));
+}));
+
+// Mandar la factura por mail (hist. §186), de a una desde la ficha o varias
+// desde el listado. El PDF lo arma el navegador, el mismo de "Descargar PDF"
+// (core/comprobante.js): armarlo acá pediría una librería de PDF o dibujar la
+// factura dos veces. El servidor comprueba que sea un PDF y lo manda con el
+// mail de Nexo, en nombre del negocio y con su mail para responder. El texto
+// es fijo: quien la manda solo elige a quién, así Nexo no sirve para mandar
+// cualquier cosa a cualquiera.
+const MAILS_FACTURA_MAX = 100; // por negocio y por hora
+const mailsFacturaPorNegocio = new Map();
+const PDF_FACTURA_MAX_BYTES = 4 * 1024 * 1024;
+const NOMBRE_TIPO_COMPROBANTE = { factura: 'Factura', nota_credito: 'Nota de crédito', nota_debito: 'Nota de débito' };
+
+app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(async (req, res) => {
+  const facturaId = Number(req.params.id);
+  const orgId = req.usuario.organizacion_id;
+  const factura = db
+    .prepare(
+      `SELECT facturas.id, facturas.tipo, facturas.letra, facturas.punto_venta, facturas.numero, facturas.arca_estado,
+              facturas.neto, facturas.cliente_id, clientes.nombre AS cliente, clientes.email AS cliente_email
+         FROM facturas JOIN clientes ON clientes.id = facturas.cliente_id
+        WHERE facturas.id = ? AND facturas.organizacion_id = ?`
+    )
+    .get(facturaId, orgId);
+  if (!factura) return res.status(404).json({ error: 'Factura no encontrada.' });
+  // Una electrónica sin CAE todavía no es una factura: no se manda.
+  if (factura.arca_estado && factura.arca_estado !== 'autorizado') {
+    return res.status(400).json({ error: 'Esta factura todavía no tiene el CAE de ARCA. Mandala cuando esté autorizada.' });
+  }
+  const para = typeof req.body?.para === 'string' ? req.body.para.trim() : '';
+  if (!esMailValido(para)) return res.status(400).json({ error: 'Revisá el mail: no parece válido.' });
+  const base64 = req.body?.pdf;
+  const pdf = typeof base64 === 'string' && /^[A-Za-z0-9+/]+={0,2}$/.test(base64) ? Buffer.from(base64, 'base64') : null;
+  if (!pdf || pdf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+    return res.status(400).json({ error: 'El PDF de la factura llegó dañado. Probá de nuevo.' });
+  }
+  if (pdf.length > PDF_FACTURA_MAX_BYTES) {
+    return res.status(413).json({ error: 'El PDF de la factura pesa demasiado para mandarlo por mail.' });
+  }
+  if (!mailConfigurado()) {
+    return res.status(503).json({ error: 'Este Nexo todavía no tiene configurado el envío de mails.' });
+  }
+
+  const ahora = Date.now();
+  const registro = mailsFacturaPorNegocio.get(orgId);
+  if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+    mailsFacturaPorNegocio.set(orgId, { cuenta: 1, desde: ahora });
+  } else if (++registro.cuenta > MAILS_FACTURA_MAX) {
+    return res.status(429).json({ error: `Mandaste ${MAILS_FACTURA_MAX} facturas en la última hora. Probá de nuevo en un rato.` });
+  }
+
+  const negocio = db.prepare('SELECT nombre, email FROM organizaciones WHERE id = ?').get(orgId);
+  const nombreNegocio = negocio.nombre.replace(/[\r\n]+/g, ' ').trim();
+  const nro = comprobante(factura);
+  const tipo = NOMBRE_TIPO_COMPROBANTE[factura.tipo] ?? 'Comprobante';
+  const responderA = esMailValido(negocio.email ?? '') ? negocio.email : null;
+  const saludo = factura.cliente === CONSUMIDOR_FINAL ? 'Hola' : `Hola, ${factura.cliente}`;
+  const { texto, html } = plantillaMail({
+    titulo: `${tipo} ${nro}`,
+    parrafos: [
+      `${saludo}. Te mandamos la ${tipo.toLowerCase()} ${nro} de ${nombreNegocio}, por ${pesosAviso(factura.neto)}.`,
+      responderA
+        ? `Va adjunta en PDF. Si tenés alguna consulta, respondé este mail y le llega a ${nombreNegocio}.`
+        : 'Va adjunta en PDF.'
+    ],
+    pie: `Te la mandó ${nombreNegocio} desde Nexo.`
+  });
+  try {
+    await mandarMail({
+      para,
+      asunto: `${tipo} ${nro} de ${nombreNegocio}`,
+      texto,
+      html,
+      nombre: nombreNegocio,
+      responderA,
+      adjuntos: [{ nombre: `${factura.tipo}-${nro}.pdf`, tipo: 'application/pdf', contenido: pdf }]
+    });
+  } catch (err) {
+    if (!(err instanceof MailError)) throw err;
+    console.error(`[mail] No se pudo mandar la factura ${facturaId}:`, err.message);
+    return res.status(502).json({ error: 'No pudimos mandar el mail. Probá de nuevo en unos minutos.' });
+  }
+
+  // El cliente sin mail queda con este, si quien la mandó lo pidió.
+  const guardarEnCliente =
+    req.body.guardar_en_cliente === true && !factura.cliente_email && factura.cliente !== CONSUMIDOR_FINAL;
+  const enviadoEn = withTransaction(() => {
+    db.prepare("UPDATE facturas SET mail_enviado_a = ?, mail_enviado_en = datetime('now') WHERE id = ?").run(para, facturaId);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'factura',
+      entidad_id: facturaId,
+      valor_nuevo: JSON.stringify({ mail_enviado_a: para }),
+      detalle: `${tipo} ${nro} mandada por mail a ${para}`
+    });
+    if (guardarEnCliente) {
+      db.prepare('UPDATE clientes SET email = ? WHERE id = ? AND organizacion_id = ?').run(para, factura.cliente_id, orgId);
+      const cambios = diffCampos({ email: null }, { email: para }, ['email']);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: factura.cliente_id,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Cliente "${factura.cliente}" editado: el mail, al mandarle la ${tipo.toLowerCase()} ${nro}`
+      });
+    }
+    return db.prepare('SELECT mail_enviado_en FROM facturas WHERE id = ?').get(facturaId).mail_enviado_en;
+  });
+  res.json({ mail_enviado_a: para, mail_enviado_en: enviadoEn, guardado_en_cliente: guardarEnCliente });
 }));
 
 // Descartar un comprobante que ARCA rechazó: nunca existió ante ARCA (no

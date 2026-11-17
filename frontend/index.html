@@ -3648,6 +3648,8 @@
                    él, quien busca un PDF no adivina que está detrás de
                    "Imprimir". -->
               <button type="button" class="btn btn-secundario" id="btnImprimirFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#printer"></use></svg> Imprimir / PDF</button>
+              <!-- Con el PDF adjunto (hist. §186). Una electrónica sin CAE no se manda. -->
+              <button type="button" class="btn btn-secundario" id="btnMailFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg> Mandar por mail</button>
               <!-- Factura electrónica (etapa E): un comprobante sin CAE. -->
               <button type="button" class="btn btn-primary" id="btnPedirCae" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg> Pedir el CAE a ARCA</button>
               <button type="button" class="btn btn-peligro" id="btnDescartarFactura" hidden>Descartar</button>
@@ -7144,6 +7146,26 @@
 
   <!-- Modal cobrar venta -->
   <!-- El envío que pagó el negocio (hist. §180): un costo de la venta. -->
+  <div class="modal" id="modalMailFactura" role="dialog" aria-modal="true" aria-labelledby="modalMailFacturaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalMailFacturaTitulo">Mandar por mail</h3>
+        <button class="modal-close" id="modalMailFacturaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <p class="form-note" id="modalMailFacturaNota"></p>
+      <form id="formMailFactura" class="form">
+        <label>Mail
+          <input type="email" name="para" required maxlength="254" autocomplete="off" placeholder="cliente@ejemplo.com" />
+        </label>
+        <label class="form-check" data-guardar-mail>
+          <input type="checkbox" name="guardar_en_cliente" checked />
+          <span data-guardar-mail-texto>Guardarlo en la ficha del cliente</span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Mandar</button>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="modalEnvioVenta" role="dialog" aria-modal="true" aria-labelledby="modalEnvioVentaTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

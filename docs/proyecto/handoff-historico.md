@@ -14276,3 +14276,44 @@ datos"). Solo lee, así que no pide confirmación.
   tema. Tampoco se miró la tarjeta en el navegador.
 - **Queda:** comparar contra el período anterior ("¿vendí más que el mes
   pasado?"), preguntas por varios temas a la vez, y ventas por canal o vendedor.
+
+## §186 — 17 de noviembre de 2026: mandar la factura por mail
+
+Punto 3 del plan hasta la oficial. De a una desde la ficha de la factura o
+varias desde el listado (seleccionar → "Mandar por mail").
+
+- **El PDF lo arma el navegador**, el mismo de "Descargar PDF": `pdfDeHoja`
+  (`core/comprobante.js`) se separó de la descarga y `pdfBase64DeHoja` lo
+  devuelve en base64. Armarlo en el servidor pedía una librería de PDF o
+  dibujar la factura dos veces. Una factura real pesa ~170 KB.
+- **`POST /api/facturas/:id/mail`** `{ para, pdf, guardar_en_cliente }`, para
+  los dos roles. Tiene su propio `express.json({ limit: '6mb' })`: el parser
+  general (100 KB) se saltea esa ruta, como la de leer la factura del
+  proveedor. Controla que la factura sea del negocio, que no sea una
+  electrónica sin CAE (pendiente o rechazada), que el mail sea válido y que el
+  archivo empiece con `%PDF-` (hasta 4 MB). Tope de 100 por negocio y por hora.
+  El texto del mail es fijo (quien la manda solo elige a quién), así Nexo no
+  sirve para mandar cualquier cosa.
+- **`mail.js`:** adjuntos (`multipart/mixed` con el cuerpo de siempre
+  adentro), el negocio en el From ("Baseline SA vía Nexo", sin comillas ni
+  saltos que metan encabezados) y su mail en el `Reply-To`: el cliente que
+  contesta le escribe al negocio. El stub guarda de cada adjunto el nombre, el
+  tipo, el tamaño y los primeros bytes.
+- **Esquema:** `facturas.mail_enviado_a` y `mail_enviado_en`, nulas y sin
+  backfill (migración aditiva; `verificar-migracion`: 24 de 24). Cada envío
+  queda además en la auditoría (`editar` de la factura; el CHECK de `accion` no
+  tiene "enviar" y sumarlo pedía rebuild de la tabla).
+- **Ficha:** botón "Mandar por mail" (oculto sin CAE), un modal chico con el
+  mail del cliente propuesto, y si no tiene, "Guardarlo en la ficha de …"
+  (no en "Consumidor final"); el dato "Mandada por mail: a …, el …".
+- **Lote:** cada una al mail de su cliente; las que no tienen o no tienen CAE
+  quedan afuera y se dice cuántas, y avisa las que ya se habían mandado. En
+  serie, y si una falla se corta ahí.
+- **Probado:** `factura-mail.test.js` (7: envío con adjunto, guardar en el
+  cliente sin pisar uno cargado, PDF falso y mail con salto de línea, PDF de
+  600 KB, otro negocio, el empleado, armado del mensaje). 413 tests, lint e
+  i18n en verde. En el navegador contra una base sembrada: la ficha y el lote
+  mandaron el PDF real (167 KB) y la consola sin errores.
+- **Sin probar:** contra Gmail de verdad (que llegue y no caiga en spam con el
+  From de Nexo y el nombre del negocio). Gmail gratis permite unos 500
+  destinatarios por día para toda la instalación.

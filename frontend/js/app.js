@@ -21,6 +21,7 @@ import {
   esFraccionable,
   esc,
   fechaAR,
+  fechaHoraAR,
   hoyISO,
   html,
   money,
@@ -31,7 +32,7 @@ import {
 import { avisar, confirmar, conEsqueleto, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
-import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, imprimirTicketDeVenta, nombreArchivoPdf } from "./core/comprobante.js";
+import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, imprimirTicketDeVenta, nombreArchivoPdf, pdfBase64DeHoja } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { barrasHorizontales, lineaChica, montarArea, pasoRedondo, pathBarra } from "./core/graficos.js";
@@ -1026,6 +1027,7 @@ const selFacturas = crearSeleccion("facturasBody");
 montarBarraSeleccion(selFacturas, [
   { etiqueta: "Imprimir", onClick: (ids) => imprimirFacturasSeleccionadas(ids) },
   { etiqueta: "Descargar PDF", onClick: (ids, btn) => descargarPDFFacturasSeleccionadas(ids, btn) },
+  { etiqueta: "Mandar por mail", onClick: (ids, btn) => mandarFacturasSeleccionadas(ids, btn) },
   { etiqueta: "Exportar CSV", onClick: (ids) => exportarFacturasSeleccionadas(ids) }
 ]);
 
@@ -1078,6 +1080,82 @@ async function descargarPDFFacturasSeleccionadas(ids, btn) {
     nombreArchivo: nombreArchivoPdf("factura", f.comprobante)
   }));
   await descargarPDFsEnLote(items, btn);
+}
+
+// Mandar por mail (hist. §186). El PDF es el mismo de "Descargar PDF": lo
+// arma el navegador y el servidor lo manda adjunto, en nombre del negocio.
+// Una electrónica sin CAE no se manda: todavía no es una factura.
+const sePuedeMandar = (f) => !f.arca_estado || f.arca_estado === "autorizado";
+
+async function mandarFacturaPorMail(f, para, guardarEnCliente = false) {
+  await cargarQr().catch(() => {});
+  const pdf = await pdfBase64DeHoja(hojaDeFactura(f));
+  return api(`/api/facturas/${f.id}/mail`, {
+    method: "POST",
+    body: { para, pdf, guardar_en_cliente: guardarEnCliente },
+    error: "No se pudo mandar el mail."
+  });
+}
+
+// De a varias, cada una al mail de su cliente. Las que no tienen a quién (el
+// cliente sin mail) o todavía no tienen CAE quedan afuera, y se dice cuántas.
+// En serie, como la descarga en lote; si una falla se corta ahí, para no
+// seguir chocando contra el mismo problema (el mail caído, el límite).
+async function mandarFacturasSeleccionadas(ids, btn) {
+  if (ids.length > LIMITE_LOTE) {
+    avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
+    return;
+  }
+  const idsSet = new Set(ids);
+  const elegidas = facturas.filter((f) => idsSet.has(f.id));
+  const conMail = elegidas.filter((f) => f.cliente_email && sePuedeMandar(f));
+  const afuera = elegidas.length - conMail.length;
+  if (!conMail.length) {
+    avisar("Ninguna de las elegidas tiene a quién mandarse: sus clientes no tienen mail cargado.", "atencion");
+    return;
+  }
+  const yaMandadas = conMail.filter((f) => f.mail_enviado_a).length;
+  const ok = await confirmar({
+    titulo: "Mandar por mail",
+    cuerpo: [
+      conMail.length === 1
+        ? "La factura va al mail de su cliente, con el PDF adjunto."
+        : `Van ${conMail.length} facturas, cada una al mail de su cliente y con el PDF adjunto.`,
+      afuera === 1 ? "Una queda afuera: su cliente no tiene mail o le falta el CAE." : "",
+      afuera > 1 ? `${afuera} quedan afuera: sus clientes no tienen mail o les falta el CAE.` : "",
+      yaMandadas === 1 ? "Una ya se había mandado y sale de nuevo." : "",
+      yaMandadas > 1 ? `${yaMandadas} ya se habían mandado y salen de nuevo.` : ""
+    ]
+      .filter(Boolean)
+      .join(" "),
+    aceptar: "Mandar"
+  });
+  if (!ok) return;
+
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  let mandadas = 0;
+  try {
+    const detalles = await traerConcurrencia(
+      conMail.map((f) => f.id),
+      (id) => api(`/api/facturas/${id}`)
+    );
+    for (const f of detalles) {
+      btn.textContent = `Mandando ${mandadas + 1}/${detalles.length}…`;
+      await mandarFacturaPorMail(f, f.cliente_email);
+      mandadas++;
+    }
+  } catch {
+    // api() ya avisó qué pasó; acá solo se corta.
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+  if (mandadas) {
+    if (mandadas < conMail.length) avisar(`Se mandaron ${mandadas} de ${conMail.length}. Las demás no salieron.`, "atencion");
+    else avisar(mandadas === 1 ? "Se mandó la factura por mail." : `Se mandaron ${mandadas} facturas por mail.`, "ok");
+    await refrescar([cargarFacturas()]);
+  }
 }
 
 function renderFacturas(lista) {
@@ -1252,9 +1330,13 @@ async function abrirFichaFactura(id) {
           ...(factura.cae ? [["CAE", `${factura.cae} · vence el ${fechaAR(factura.cae_vencimiento)}`]] : []),
           ...(factura.arca_estado !== "autorizado" && factura.arca_error ? [["Lo que dijo ARCA", factura.arca_error]] : [])
         ]
+      : []),
+    ...(factura.mail_enviado_a
+      ? [["Mandada por mail", `A ${factura.mail_enviado_a}, el ${fechaHoraAR(factura.mail_enviado_en)}`]]
       : [])
   ];
   document.getElementById("fichaFacturaDatos").innerHTML = camposFicha(campos);
+  document.getElementById("btnMailFactura").hidden = !sePuedeMandar(factura);
   document.getElementById("btnPedirCae").hidden = !["pendiente", "rechazado"].includes(factura.arca_estado);
   document.getElementById("btnDescartarFactura").hidden = factura.arca_estado !== "rechazado";
 
@@ -1300,6 +1382,58 @@ document.getElementById("btnImprimirFactura").addEventListener("click", async ()
   if (!f) return;
   await cargarQr().catch(() => {});
   imprimirComprobante(hojaDeFactura(f));
+});
+
+// Mandarla por mail: propone el del cliente, y si no tiene, el que se escriba
+// se puede guardar en su ficha ("Consumidor final" es de todos: no).
+const modalMailFactura = document.getElementById("modalMailFactura");
+const formMailFactura = document.getElementById("formMailFactura");
+document.getElementById("btnMailFactura").addEventListener("click", () => {
+  const f = facturaFichaDatos;
+  if (!f) return;
+  formMailFactura.reset();
+  formMailFactura.para.value = f.cliente_email ?? "";
+  const guardar = formMailFactura.querySelector("[data-guardar-mail]");
+  guardar.hidden = Boolean(f.cliente_email) || f.cliente === "Consumidor final";
+  guardar.querySelector("[data-guardar-mail-texto]").textContent = `Guardarlo en la ficha de ${f.cliente}`;
+  document.getElementById("modalMailFacturaNota").textContent = [
+    `Le llega con el PDF adjunto, a nombre de ${negocio.nombre}.`,
+    negocio.email ? `Si contesta, la respuesta te llega a ${negocio.email}.` : "Si cargás el mail del negocio en Configuración, las respuestas te llegan ahí.",
+    f.mail_enviado_a ? `Ya se mandó a ${f.mail_enviado_a} el ${fechaHoraAR(f.mail_enviado_en)}.` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  modalMailFactura.hidden = false;
+  formMailFactura.para.focus();
+});
+document.getElementById("modalMailFacturaClose").addEventListener("click", () => {
+  modalMailFactura.hidden = true;
+});
+modalMailFactura.addEventListener("click", (e) => {
+  if (e.target === modalMailFactura) modalMailFactura.hidden = true;
+});
+formMailFactura.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = facturaFichaDatos;
+  const boton = formMailFactura.querySelector('button[type="submit"]');
+  const guardar = formMailFactura.querySelector("[data-guardar-mail]");
+  boton.disabled = true;
+  boton.textContent = "Mandando…";
+  try {
+    const r = await mandarFacturaPorMail(f, formMailFactura.para.value.trim(), !guardar.hidden && formMailFactura.guardar_en_cliente.checked);
+    modalMailFactura.hidden = true;
+    avisar(
+      r.guardado_en_cliente
+        ? `La mandamos a ${r.mail_enviado_a}, y el mail quedó en la ficha de ${f.cliente}.`
+        : `La mandamos a ${r.mail_enviado_a}.`,
+      "ok"
+    );
+    await refrescar([cargarFacturas(), ...(r.guardado_en_cliente ? [cargarClientes()] : [])]);
+    await abrirFichaFactura(f.id);
+  } finally {
+    boton.disabled = false;
+    boton.textContent = "Mandar";
+  }
 });
 
 // Pedir el CAE de nuevo: ARCA no respondió, o lo rechazó y ya se corrigió el

@@ -113,7 +113,12 @@ CREATE TABLE IF NOT EXISTS facturas (
   -- cuando se facturan servicios.
   periodo_desde TEXT,
   periodo_hasta TEXT,
-  vencimiento_pago TEXT
+  vencimiento_pago TEXT,
+  -- A quién y cuándo se mandó por mail la última vez (hist. §186). Cada envío
+  -- queda además en la auditoría; esto es lo que muestra la ficha y el
+  -- listado sin recorrerla. NULL = nunca se mandó desde Nexo.
+  mail_enviado_a TEXT,
+  mail_enviado_en TEXT
 );
 
 -- El ticket de acceso de WSAA (arca.js): ARCA da uno por certificado cada 12

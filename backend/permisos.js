@@ -75,6 +75,8 @@ export const RUTAS_PERMISOS = {
   // parte de facturar, como emitir; activarla y verificarla es configuración
   // del negocio.
   'POST /api/facturas/:id/autorizar': 'ambos',
+  // Mandarla por mail (hist. §186): el empleado también factura.
+  'POST /api/facturas/:id/mail': 'ambos',
   'DELETE /api/facturas/:id': 'ambos',
   'GET /api/factura-electronica': 'admin',
   'PUT /api/factura-electronica': 'admin',
