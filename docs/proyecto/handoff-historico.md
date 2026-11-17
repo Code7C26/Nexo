@@ -14563,3 +14563,84 @@ algunas pantallas habían cambiado de lugar.
   sacaron. `ayuda.test.js` suma 9 preguntas de las secciones nuevas.
 - **Queda:** las secciones que no se tocaron (trabajos, abonos, socios) no
   cuentan el costo de cada servicio (hist. §143) ni el ingreso por pantalla.
+
+## §193 — 17 de noviembre de 2026: sucursales, cajas por sucursal y el cierre del día y del mes
+
+Punto 4 del plan hasta la oficial (la parte de sucursales y cierre; los
+permisos por sección quedan para la etapa siguiente). Decisiones tomadas por
+mí, dentro de lo que el usuario ya había decidido el 16 de noviembre ("cada
+caja vende solo del depósito de su sucursal; lo que no hay ahí no se vende
+ahí, y el mostrador avisa dónde hay").
+
+- **Esquema (aditivo, nada se rebuildea):** tabla `sucursales` (nombre,
+  dirección, `deposito_id` único: un depósito es de una sola sucursal),
+  `usuario_sucursales` (en qué sucursales trabaja cada persona) y
+  `cuentas_tesoreria.sucursal_id` (nula: las cajas de antes no son de
+  ninguna). Un negocio sin sucursales sigue exactamente igual (vende del
+  depósito predeterminado y la venta queda con `deposito_id` NULL).
+- **Mostrador:** `GET /api/pos/catalogo?caja=` da el stock del depósito de la
+  sucursal de la caja y `en_otras` (en qué otras sucursales hay);
+  `POST /api/pos/ventas` valida y descuenta de ese depósito. La caja y el
+  turno muestran "Caja Norte · Norte". "Sin stock · hay en Centro".
+- **Personas:** quien tiene sucursales asignadas solo abre las cajas de esas
+  (403 en `POST /api/turnos-caja`; `GET /api/tesoreria` marca `habilitada`).
+  Sin ninguna asignada, todas, como antes.
+- **Configuración → Sucursales** (`dominios/sucursales.js`): crear con un
+  depósito existente o uno nuevo con su nombre, marcar cajas (o crear "Caja
+  <nombre>") y personas. Una caja con el turno abierto no cambia de sucursal
+  ni se le cambia el depósito. Borrar la sucursal deja depósito y cajas como
+  estaban. Auditoría con entidad `organizacion` y `operacion_tipo`
+  "sucursal" (el CHECK de auditoría no se tocó).
+- **Cierre de caja** (`#/cierre`, `dominios/cierre.js`, admin): `GET
+  /api/cierre-caja?desde&hasta` suma todas las cajas por sucursal: vendido,
+  cobros por medio, lo que salió del cajón, diferencias (apertura + cierre),
+  turnos abiertos, y aparte lo vendido fuera de las cajas (Ventas, tiendas).
+  "Del mes" suma día por día. El día de un turno es el día local en que abrió
+  (función SQL `fecha_local`, `fechaLocalDe` en `fecha.js`). Se entra desde
+  Caja y desde "Últimos cierres" del mostrador.
+- Probado: `test/sucursales.test.js` (4) y en el navegador (compu y celular).
+- **Queda:** el punto de venta de ARCA por sucursal (hoy uno por negocio;
+  verificar cada uno en ARCA lo hace más largo), precio propio por sucursal,
+  y los permisos por sección.
+
+## §194 — 17 de noviembre de 2026: cobrar a cuenta, gastos de caja, ventas del turno y anular
+
+Punto 6 del plan (lo de Praxia en el mostrador), salvo el recargo por medio.
+
+- **Cobrar a cuenta** (`POST /api/pos/cobro-a-cuenta`): el cliente paga su
+  deuda sin llevarse nada; salda sus ventas de la más vieja a la más nueva
+  (por vencimiento), con los medios de siempre, sin pasarse de lo que debe.
+  Cada parte es un cobro común de esa venta. Sale el papel con lo que le
+  queda (`armarReciboPago` en `core/comprobante.js`).
+- **`cobros.turno_caja_id`** (aditiva, nula): el turno donde entró el cobro.
+  El resumen del turno y el cierre usan `COALESCE(cobros.turno_caja_id,
+  ventas.turno_caja_id)`: un cobro a cuenta de una deuda vieja queda en el
+  turno donde se cobró.
+- **Gasto de caja** (`POST /api/pos/gastos`): lo que sale del cajón, con la
+  caja del turno, en la categoría "Gastos de caja" (se crea sola: el empleado
+  no puede crear categorías).
+- **Ventas del turno** (`GET /api/turnos-caja/:id/detalle`): ventas (para
+  reimprimir el ticket o anular), cobros a cuenta y gastos del turno.
+- **Anular desde el mostrador** (`POST /api/pos/ventas/:id/anular`): con
+  motivo, y solo mientras el turno de la venta sigue abierto (lo cobrado
+  vuelve del cajón). Los cobros se borran con su movimiento de caja y de
+  cuenta corriente, y la auditoría guarda cada uno con el motivo y quién
+  autorizó. Un empleado necesita el mail y la contraseña de un administrador
+  ahí mismo (cuenta para el tope de intentos del login). Con factura, con
+  devolución o cobrada por Mercado Pago, no: se devuelve desde Ventas.
+  **Decidido por mí, para revisar:** borrar los cobros en vez de dejar
+  contra-asientos (la venta queda anulada y la auditoría tiene el detalle).
+- Probado: `test/pos-turno.test.js` y en el navegador (celular y compu).
+
+## §195 — 17 de noviembre de 2026: accesos rápidos del mostrador
+
+- `cuentas_tesoreria.accesos_rapidos` (aditiva, JSON de claves
+  "producto:variante") y `PUT /api/cajas/:id/accesos` (los dos roles: los arma
+  el cajero). Hasta 24, sin repetir, solo de productos del negocio.
+- En el mostrador: una fila de botones arriba del catálogo; "Armar accesos
+  rápidos" pasa la grilla a modo de marcar (cualquiera, con stock o sin) y
+  "Listo" la guarda en esa caja. Un acceso sin stock aparece apagado.
+- Manual de uso: secciones "Durante el turno" y "Sucursales y el cierre del
+  día", en castellano y en inglés.
+- 446 tests, lint e i18n en verde.
+

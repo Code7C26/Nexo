@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §192);
+    siguiente número (hoy el último es §195);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,24 @@
   reescribe nada.
 
 ## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §193–§195 (commiteado en `solla`, sin publicar):
+sucursales, el cierre del día y lo de Praxia en el mostrador.**
+- **Sucursales** (Configuración → Sucursales): cada local con su depósito,
+  sus cajas y su gente. La caja vende solo del depósito de su sucursal y el
+  mostrador avisa "hay en Centro"; quien tiene sucursales solo abre esas
+  cajas. Un negocio sin sucursales sigue igual.
+- **Cierre de caja** (`#/cierre`, desde Caja y el mostrador): del día o del
+  mes, todas las cajas por sucursal, cómo pagaron, gastos, diferencias y lo
+  vendido fuera de las cajas.
+- **Mostrador:** cobrar a cuenta (con el papel del saldo), gasto de caja,
+  ventas del turno (reimprimir y anular con motivo; el empleado necesita la
+  contraseña de un admin) y accesos rápidos por caja.
+- Esquema, todo aditivo: tablas `sucursales` y `usuario_sucursales`;
+  `cuentas_tesoreria.sucursal_id` y `accesos_rapidos`; `cobros.turno_caja_id`.
+- 446 tests, lint e i18n en verde; probado en el navegador. Manual al día.
+- **Para revisar (decidido por mí):** anular desde el mostrador borra los
+  cobros (con el detalle en la auditoría) y solo con el turno abierto.
 
 **17 de noviembre, hist. §192: el manual de uso, al día (publicado, PR
 #96).** 13 secciones nuevas (lo que ya tenías,
@@ -2097,7 +2115,9 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    lee, sin confirmación.
 3. ~~**Mandar la factura por mail**, de a una o varias juntas~~ (hecho, hist.
    §186 y §187: desde el Gmail del negocio; falta el trámite con Google).
-4. **Sucursales, cajas y permisos, con el cierre del día y del mes** (detalle
+4. ~~**Sucursales y el cierre del día y del mes**~~ (hecho, hist. §193).
+   **Falta de este punto: los permisos por sección**, el punto de venta de
+   ARCA por sucursal y el precio por sucursal. (Detalle
    en "Para más adelante", donde quedó la propuesta). Suma los **permisos por
    sección** de Praxia: para ver o para editar, y por sucursal (un contador,
    un socio, un encargado). Cambia el esquema: se planifica y se explica la
@@ -2107,7 +2127,9 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    tarde y horas, cruzado con los turnos de caja. El usuario lo sacó de §39
    (solo los horarios; los sueldos siguen afuera). Va después del 4: se apoya
    en las personas asignadas a cada sucursal.
-6. **Lo de Praxia que le falta al punto de venta**
+6. ~~**Lo de Praxia que le falta al punto de venta**~~ (hecho, hist. §194 y
+   §195, **salvo el recargo por medio de pago**, que cambia cómo se arma el
+   precio de la venta: se planifica aparte).
    (`docs/investigaciones/investigacion-praxia.md`, puntos 3 y 4): cobrar a
    cuenta (el cliente paga su deuda sin llevarse nada, y sale el papel con el
    saldo), gastos de caja (bolsas, flete, lo que sale del cajón), ventas del

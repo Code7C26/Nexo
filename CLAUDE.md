@@ -875,6 +875,12 @@ Depósito A
 
 La transferencia debe generar movimientos de stock trazables.
 
+Implementado hoy: **sucursales** (hist. §193). Cada sucursal junta un
+depósito (uno por sucursal), sus cajas (`cuentas_tesoreria.sucursal_id`) y la
+gente que trabaja ahí (`usuario_sucursales`). La caja vende solo del depósito
+de su sucursal; lo que no hay ahí no se vende ahí, y el mostrador avisa en qué
+otra hay. Sin sucursales, todo sigue con el depósito predeterminado.
+
 ---
 
 # 20. REPORTES
@@ -1339,6 +1345,13 @@ tocar la A pide y confirma ahí mismo al cliente con CUIT y condición frente al
 IVA, que se busca por CUIT y, si no está, se crea (hist. §188, §189). La letra
 igual sale de las dos condiciones: la B se apaga para un inscripto. Queda para
 después: precio editable por renglón en el mostrador y venta sin conexión.
+**El turno, desde el mostrador** (hist. §194, §195, de Praxia): cobrar a cuenta
+(salda las deudas del cliente de la más vieja a la más nueva; cada cobro guarda
+su turno en `cobros.turno_caja_id`), gasto de caja, ventas del turno para
+reimprimir o anular (con motivo, solo con el turno abierto, y un empleado con
+la contraseña de un administrador) y accesos rápidos por caja. **Cierre de
+caja** del día y del mes (`#/cierre`): todas las cajas de todas las sucursales.
+Falta el recargo por medio de pago.
 
 ---
 
