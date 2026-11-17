@@ -3747,19 +3747,28 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 
 .pos-comprobante[hidden] { display: none; }
 
-.pos-comprobante-fila {
+/* Sin factura | Factura A | Factura B, uno al lado del otro y a lo ancho (más
+   específico que .segmentos, que está más abajo). */
+.pos-comprobante .pos-comprobante-opciones {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2) var(--sp-3);
+  flex-wrap: nowrap;
+  align-self: stretch;
 }
 
-.pos-comprobante .segmentos { align-self: center; }
-.pos-comprobante .segmento { min-height: 38px; font-size: var(--txt-sm); }
+.pos-comprobante .segmento {
+  flex: 1 1 0;
+  min-height: 44px;
+  font-size: var(--txt-sm);
+  white-space: nowrap;
+}
+
+/* La que no corresponde al cliente elegido (una B a un inscripto): se ve
+   apagada, y tocarla dice por qué. */
+.pos-comprobante .segmento[aria-disabled="true"] { opacity: 0.45; }
+
 .pos-comprobante .form-note { margin: 0; }
 
-/* Alta rápida de un cliente con CUIT (hist. §188): debajo del total. */
+/* Alta rápida de un cliente con CUIT (hist. §188): debajo de las opciones. */
 .pos-cliente-cuit-abrir { align-self: center; }
 .pos-cliente-cuit-abrir[hidden] { display: none; }
 

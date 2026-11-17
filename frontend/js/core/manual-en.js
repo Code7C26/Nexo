@@ -138,11 +138,11 @@ export const SECCIONES_EN = {
         "At the start of the day, tap **Open register** and count the cash you start with.",
         "Search for each product by name or code, or scan it (your phone's camera works too).",
         "Tap **Charge** and choose how they pay: cash, transfer, card… They can pay with more than one. If it's cash, Nexo calculates the change.",
-        "Right there, choose **No invoice** or **Invoice**, and tick **Print the receipt** if you want it to come out on its own. It stays as you left it for the next sale.",
+        "Right there, choose **No invoice** or the invoice that applies (**Invoice A** or **Invoice B** if you're a registered VAT taxpayer, **Invoice C** if not), and tick **Print the receipt** if you want it to come out on its own. It stays as you left it for the next sale.",
         "At the end of the day, tap **Close register** and count the cash: Nexo tells you if it matches what there should be."
       ] },
       "Without choosing a customer, the sale goes to End consumer. To leave something on account for someone, choose the customer: End consumer can't buy on credit.",
-      "To invoice a company or a monotributo taxpayer, tap **Invoice a customer with a CUIT** while charging and enter their CUIT, their name and their VAT status. If they're already in your customers, Nexo finds them by the CUIT; if not, it creates them. The letter comes out on its own.",
+      "To issue invoice A to a company or a monotributo taxpayer, tap **Invoice A** and confirm their CUIT, their name and their VAT status. If they're already in your customers, Nexo finds them by the CUIT; if not, it creates them. If you issue invoice C, the **Invoice a customer with a CUIT** link does the same. The letter comes from your VAT status and the customer's: a registered taxpayer can't get a B.",
       "The receipt is for 80 mm printers. Print it again from the sale's page, with **Ticket**.",
       { nota: "If you don't see Point of sale in the menu, turn it on in Settings › Features." }
     ]

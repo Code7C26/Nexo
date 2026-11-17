@@ -181,11 +181,11 @@ const SECCIONES_ES = [
         "Al empezar el día, tocá **Abrir caja** y contá el efectivo con el que arrancás.",
         "Buscá cada producto por nombre o código, o pasalo por el lector (también sirve la cámara del celular).",
         "Tocá **Cobrar** y elegí cómo paga: efectivo, transferencia, tarjeta… Puede pagar con más de uno. Si es en efectivo, Nexo calcula el vuelto.",
-        "Ahí mismo elegí si va **Sin factura** o con **Factura**, y tildá **Imprimir el ticket** si querés que salga solo. Queda como lo dejaste para la próxima venta.",
+        "Ahí mismo elegí **Sin factura** o la factura que corresponde (**Factura A** o **Factura B** si sos responsable inscripto, **Factura C** si no), y tildá **Imprimir el ticket** si querés que salga solo. Queda como lo dejaste para la próxima venta.",
         "Al terminar el día, tocá **Cerrar caja** y contá el efectivo: Nexo te dice si coincide con lo que debería haber."
       ] },
       "Sin elegir cliente, la venta va a Consumidor final. Para dejarle algo a cuenta a alguien, elegí el cliente: a Consumidor final no se le fía.",
-      "Para facturarle a una empresa o a un monotributista, en el cobro tocá **Facturar a un cliente con CUIT** y cargá su CUIT, su nombre y su condición frente al IVA. Si ya está en tus clientes, Nexo lo encuentra por el CUIT; si no, lo crea. La letra sale sola.",
+      "Para hacerle la factura A a una empresa o a un monotributista, tocá **Factura A** y confirmá su CUIT, su nombre y su condición frente al IVA. Si ya está en tus clientes, Nexo lo encuentra por el CUIT; si no, lo crea. Si hacés la factura C, el enlace **Facturar a un cliente con CUIT** hace lo mismo. La letra sale de tu condición y la del cliente: a un responsable inscripto no se le hace la B.",
       "El ticket es para impresoras de 80 mm. Se vuelve a imprimir desde la ficha de la venta, con **Ticket**.",
       { nota: "Si no ves Punto de venta en el menú, prendelo en Configuración › Funciones." }
     ],

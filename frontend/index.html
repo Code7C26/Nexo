@@ -7535,31 +7535,6 @@
           <span id="posCobroCliente">Consumidor final</span>
           <strong class="mono" id="posCobroTotal">$0,00</strong>
         </div>
-        <!-- Alta rápida de un cliente con CUIT (hist. §188): para la factura A
-             sin ir a Clientes. Se busca por CUIT y, si no está, se crea; la
-             letra sigue saliendo de las dos condiciones frente al IVA. Es un
-             div y no un form: no se puede anidar en el del cobro. -->
-        <button type="button" class="btn-link pos-cliente-cuit-abrir" id="btnPosClienteCuit" hidden>
-          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg>
-          Facturar a un cliente con CUIT
-        </button>
-        <div class="pos-cliente-cuit" id="posClienteCuit" role="group" aria-labelledby="posClienteCuitTitulo" hidden>
-          <p class="pos-cliente-cuit-titulo" id="posClienteCuitTitulo">¿A quién se le factura?</p>
-          <label>CUIT
-            <input type="text" id="posClienteCuitNumero" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="20-12345678-9" />
-          </label>
-          <label>Nombre o razón social
-            <input type="text" id="posClienteCuitNombre" maxlength="160" autocomplete="off" placeholder="Como figura en su constancia de ARCA" />
-          </label>
-          <label>Condición frente al IVA
-            <select id="posClienteCuitCondicion"></select>
-          </label>
-          <p class="form-note" id="posClienteCuitNota" aria-live="polite" hidden></p>
-          <div class="pos-cliente-cuit-acciones">
-            <button type="button" class="btn btn-secundario" id="btnPosClienteCuitCancelar">Cancelar</button>
-            <button type="button" class="btn btn-primary" id="btnPosClienteCuitGuardar">Usar este cliente</button>
-          </div>
-        </div>
         <div class="pos-cobros" id="posCobros"></div>
         <div class="pos-medios" id="posMedios" role="group" aria-label="Sumar un medio de pago"></div>
         <dl class="pos-cobro-cuentas">
@@ -7567,18 +7542,40 @@
           <div class="pos-cobro-resto"><dt id="posCobroRestoEtiqueta">Falta</dt><dd class="mono" id="posCobroResto">$0,00</dd></div>
         </dl>
         <p class="form-note" id="posCobroNota" aria-live="polite" hidden></p>
-        <!-- El comprobante se elige al cobrar: con factura (la letra sale de
-             la condición del negocio y la del cliente) o sin ella, y si el
-             ticket se imprime en el momento. Se recuerda por dispositivo. -->
+        <!-- El comprobante se elige al cobrar: sin factura o con la factura
+             que corresponde (A y B si el negocio es inscripto, C si no), y si
+             el ticket se imprime en el momento. Se recuerda por dispositivo.
+             Las opciones las arma dominios/pos.js. -->
         <div class="pos-comprobante" id="posComprobante">
-          <div class="pos-comprobante-fila">
-            <div class="segmentos" role="group" aria-label="Comprobante" id="posComprobanteOpciones">
-              <button type="button" class="segmento" data-facturar="0" aria-pressed="true">Sin factura</button>
-              <button type="button" class="segmento" data-facturar="1" aria-pressed="false" id="posComprobanteFactura">Factura</button>
+          <div class="segmentos pos-comprobante-opciones" role="group" aria-label="Comprobante" id="posComprobanteOpciones"></div>
+          <!-- Alta rápida de un cliente con CUIT (hist. §188): se abre al
+               tocar "Factura A" (o desde el enlace, en un negocio que hace la
+               C). Se busca por CUIT y, si no está, se crea; la letra sigue
+               saliendo de las dos condiciones frente al IVA. Es un div y no un
+               form: no se puede anidar en el del cobro. -->
+          <button type="button" class="btn-link pos-cliente-cuit-abrir" id="btnPosClienteCuit" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg>
+            Facturar a un cliente con CUIT
+          </button>
+          <div class="pos-cliente-cuit" id="posClienteCuit" role="group" aria-labelledby="posClienteCuitTitulo" hidden>
+            <p class="pos-cliente-cuit-titulo" id="posClienteCuitTitulo">¿A quién se le factura?</p>
+            <label>CUIT
+              <input type="text" id="posClienteCuitNumero" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="20-12345678-9" />
+            </label>
+            <label>Nombre o razón social
+              <input type="text" id="posClienteCuitNombre" maxlength="160" autocomplete="off" placeholder="Como figura en su constancia de ARCA" />
+            </label>
+            <label>Condición frente al IVA
+              <select id="posClienteCuitCondicion"></select>
+            </label>
+            <p class="form-note" id="posClienteCuitNota" aria-live="polite" hidden></p>
+            <div class="pos-cliente-cuit-acciones">
+              <button type="button" class="btn btn-secundario" id="btnPosClienteCuitCancelar">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="btnPosClienteCuitGuardar">Confirmar cliente</button>
             </div>
-            <label class="form-check"><input type="checkbox" id="posImprimirTicket" /> Imprimir el ticket</label>
           </div>
           <p class="form-note" id="posComprobanteNota" aria-live="polite" hidden></p>
+          <label class="form-check"><input type="checkbox" id="posImprimirTicket" /> Imprimir el ticket</label>
         </div>
         <button type="submit" class="btn btn-primary btn-full" id="formPosCobroSubmit">Confirmar venta</button>
         <!-- Fiar todo sin cobrar nada: la venta queda en la cuenta corriente

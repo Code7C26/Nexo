@@ -14425,3 +14425,37 @@ anotado como pendiente.
   confirmar, la guarda y no se duplica.
 - **Queda:** el campo "Cliente" del mostrador sigue siendo un `datalist`
   nativo; pasarlo al combo de Nexo (`core/combo.js`) es aparte.
+
+## §189 — 17 de noviembre de 2026: Sin factura | Factura A | Factura B en el cobro
+
+Pedido del usuario sobre §188: las opciones de factura una al lado de la otra
+("Sin factura | Factura A | Factura B"), que tocar la A pida los datos del
+cliente y se confirmen, e "Imprimir el ticket" abajo.
+
+- **Las opciones las arma `renderComprobante()`** según el negocio: el
+  responsable inscripto ve `Sin factura | Factura A | Factura B`; el
+  monotributista o exento, `Sin factura | Factura C` (sin condición cargada,
+  `Factura` a secas). A lo ancho, de 44 px de alto.
+- **La letra sigue sin elegirse:** cada opción se marca según lo que va a
+  salir con la condición del cliente.
+  - Tocar **A** con un cliente inscripto o monotributista con CUIT la marca
+    directo. Si no, abre el formulario de §188 ("¿A quién le hacés la factura
+    A?"), con solo Responsable inscripto y Monotributo, que son las que dan A.
+  - Mientras está abierto (`cobro.pidiendoA`), la A se ve marcada y no se
+    puede confirmar la venta, dejarla en cuenta corriente ni cobrar con QR.
+    Cancelar vuelve a como estaba.
+  - Con un cliente al que le corresponde la A, la **B** se ve apagada
+    (`aria-disabled`) y tocarla explica por qué: ARCA no acepta una B a un
+    inscripto.
+- **El enlace "Facturar a un cliente con CUIT" queda solo para el negocio que
+  hace la C** (ahí no hay A que lo abra). El formulario se mudó adentro del
+  bloque del comprobante, debajo de las opciones, y "Imprimir el ticket" pasó
+  abajo de todo. El botón del formulario dice "Confirmar cliente".
+- El aviso de la A sin CUIT ahora dice que se carga tocando «Factura A».
+  Manual y traducciones al día.
+- **Probado en el navegador (celular):** la A con un CUIT de un inscripto que
+  ya estaba (lo usa sin preguntar, sale "Factura A 0003-00000001 autorizada");
+  la B apagada que avisa; un inscripto elegido por nombre sin CUIT (la A
+  marcada con el aviso, el formulario arranca con su nombre y le completa el
+  CUIT con confirmación); cancelar; y el negocio monotributista con
+  `Sin factura | Factura C` y el enlace. 427 tests, lint e i18n en verde.
