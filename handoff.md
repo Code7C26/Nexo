@@ -46,10 +46,12 @@ nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
 el negocio conecta su Gmail (solo el permiso de mandar, `gmail.send`) y las
 facturas salen desde ahí, a su nombre; sin conectar, siguen saliendo desde
 Nexo. Si Google le saca el permiso, no se pasa a Nexo solo: pide reconectar.
-Tabla nueva `cuentas_mail`. Todo el envío por mail es desde Emprendedor, como la factura electrónica (decisión del usuario). 424 tests. **Falta el trámite con Google**, paso a
-paso en `docs/proyecto/verificacion-google.md` (lo hace el usuario en la
-consola; los pasos 1 a 3 alcanzan para probarlo con el aviso de "app no
-verificada", hasta 100 cuentas).
+Tabla nueva `cuentas_mail`. Todo el envío por mail es desde Emprendedor, como la factura electrónica (decisión del usuario). 424 tests. **Trámite con Google**
+(`docs/proyecto/verificacion-google.md`): hechos la Gmail API, la vuelta, el
+permiso con su justificación, la marca (la de "Entrar con Google") y el dominio
+en Search Console (`frontend/googlef2d419cf3d874499.html`, PR #93; la app sigue
+"En producción"). **Falta** el video y enviarlo a verificar (van juntos).
+Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
 
 **17 de noviembre, hist. §186: mandar la factura por mail (publicado, PR
 #92).** Punto 3 del plan. Desde la ficha de la factura o
