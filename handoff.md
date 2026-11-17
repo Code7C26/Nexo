@@ -1504,6 +1504,15 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   encargado con PIN y cuenta, en una tienda online todos con cuenta).
 - Orden: primero cajas vinculadas, empleados con PIN, relevo y fichaje en la
   caja; después los permisos por sección.
+- **Para qué lo quiere el dueño (dicho por el usuario):** saber las horas de
+  cada empleado para administrar los pagos, que suelen ser fijos por turno:
+  hay que poder ver **si cumplió cada turno** (entró a horario, se quedó
+  completo, faltó). El informe de hist. §196 da horas, tardanzas y faltas por
+  día; falta mirarlo "por turno cumplido", pensado para pagar. Los sueldos y la
+  liquidación siguen fuera de §39: Nexo dice qué se cumplió, no cuánto pagar.
+- **Más adelante, no ahora (el usuario no sabe si sumarlo):** el empleado con
+  cuenta ve sus propias estadísticas (sus horas, sus turnos, lo que vendió),
+  para que esté "blanqueado" lo que sabe él y lo que sabe el dueño.
 
 **Multi-empresa y seguridad**
 - **Se entra con el mail, y es único en todo Nexo** (hist. §102, reemplaza al
@@ -2169,8 +2178,9 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    sección** de Praxia: para ver o para editar, y por sucursal (un contador,
    un socio, un encargado). Cambia el esquema: se planifica y se explica la
    migración antes de tocarlo (§27, §34).
-5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196; falta fichar
-   con ubicación o código del local). (De Praxia, pedido para la oficial el
+5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196). **Se rehace
+   sobre el modelo de cuenta por caja** (ver "Decisiones vigentes", Cajas y
+   empleados): es lo próximo, con el informe de turnos cumplidos para pagar. (De Praxia, pedido para la oficial el
    17 de noviembre): horario planificado, entrada y salida reales, llegadas
    tarde y horas, cruzado con los turnos de caja. El usuario lo sacó de §39
    (solo los horarios; los sueldos siguen afuera). Va después del 4: se apoya
