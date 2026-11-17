@@ -1743,7 +1743,11 @@ for (const columna of [
   'condicion_venta TEXT',
   'periodo_desde TEXT',
   'periodo_hasta TEXT',
-  'vencimiento_pago TEXT'
+  'vencimiento_pago TEXT',
+  // A quién y cuándo se mandó por mail (hist. §186). Sin backfill: las
+  // anteriores no se mandaron desde Nexo.
+  'mail_enviado_a TEXT',
+  'mail_enviado_en TEXT'
 ]) {
   if (!facturasColumnasArca.some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE facturas ADD COLUMN ${columna}`);

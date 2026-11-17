@@ -14276,3 +14276,101 @@ datos"). Solo lee, así que no pide confirmación.
   tema. Tampoco se miró la tarjeta en el navegador.
 - **Queda:** comparar contra el período anterior ("¿vendí más que el mes
   pasado?"), preguntas por varios temas a la vez, y ventas por canal o vendedor.
+
+## §186 — 17 de noviembre de 2026: mandar la factura por mail
+
+Punto 3 del plan hasta la oficial. De a una desde la ficha de la factura o
+varias desde el listado (seleccionar → "Mandar por mail").
+
+- **El PDF lo arma el navegador**, el mismo de "Descargar PDF": `pdfDeHoja`
+  (`core/comprobante.js`) se separó de la descarga y `pdfBase64DeHoja` lo
+  devuelve en base64. Armarlo en el servidor pedía una librería de PDF o
+  dibujar la factura dos veces. Una factura real pesa ~170 KB.
+- **`POST /api/facturas/:id/mail`** `{ para, pdf, guardar_en_cliente }`, para
+  los dos roles. Tiene su propio `express.json({ limit: '6mb' })`: el parser
+  general (100 KB) se saltea esa ruta, como la de leer la factura del
+  proveedor. Controla que la factura sea del negocio, que no sea una
+  electrónica sin CAE (pendiente o rechazada), que el mail sea válido y que el
+  archivo empiece con `%PDF-` (hasta 4 MB). Tope de 100 por negocio y por hora.
+  El texto del mail es fijo (quien la manda solo elige a quién), así Nexo no
+  sirve para mandar cualquier cosa.
+- **`mail.js`:** adjuntos (`multipart/mixed` con el cuerpo de siempre
+  adentro), el negocio en el From ("Baseline SA vía Nexo", sin comillas ni
+  saltos que metan encabezados) y su mail en el `Reply-To`: el cliente que
+  contesta le escribe al negocio. El stub guarda de cada adjunto el nombre, el
+  tipo, el tamaño y los primeros bytes.
+- **Esquema:** `facturas.mail_enviado_a` y `mail_enviado_en`, nulas y sin
+  backfill (migración aditiva; `verificar-migracion`: 24 de 24). Cada envío
+  queda además en la auditoría (`editar` de la factura; el CHECK de `accion` no
+  tiene "enviar" y sumarlo pedía rebuild de la tabla).
+- **Ficha:** botón "Mandar por mail" (oculto sin CAE), un modal chico con el
+  mail del cliente propuesto, y si no tiene, "Guardarlo en la ficha de …"
+  (no en "Consumidor final"); el dato "Mandada por mail: a …, el …".
+- **Lote:** cada una al mail de su cliente; las que no tienen o no tienen CAE
+  quedan afuera y se dice cuántas, y avisa las que ya se habían mandado. En
+  serie, y si una falla se corta ahí.
+- **Probado:** `factura-mail.test.js` (7: envío con adjunto, guardar en el
+  cliente sin pisar uno cargado, PDF falso y mail con salto de línea, PDF de
+  600 KB, otro negocio, el empleado, armado del mensaje). 413 tests, lint e
+  i18n en verde. En el navegador contra una base sembrada: la ficha y el lote
+  mandaron el PDF real (167 KB) y la consola sin errores.
+- **Sin probar:** contra Gmail de verdad (que llegue y no caiga en spam con el
+  From de Nexo y el nombre del negocio). Gmail gratis permite unos 500
+  destinatarios por día para toda la instalación.
+
+## §187 — 17 de noviembre de 2026: las facturas desde el Gmail del negocio
+
+Pedido del usuario después de §186: que cada negocio mande las facturas desde su
+mail y no desde el de Nexo ("un negocio serio manda las facturas por mail"),
+con un apartado "Gmail" con su logo en Configuración, y la opción de seguir
+mandando desde Nexo.
+
+- **`backend/gmail.js`** (nuevo, sin dependencias): OAuth con el mismo cliente
+  de "Entrar con Google", pidiendo solo `openid email` y `gmail.send` (no lee
+  ni borra nada), `access_type=offline` y `prompt=consent` para el refresh
+  token; `state` firmado con negocio, persona y vencimiento, y PKCE que sale
+  del state (como Mercado Pago). Si en la pantalla de Google se destilda el
+  permiso, no se conecta (`sin-permiso`). El refresh token se guarda cifrado
+  (AES-GCM, clave del secreto de Google); el token de acceso, en memoria una
+  hora. Manda por el endpoint de subida de Gmail
+  (`/upload/gmail/v1/users/me/messages/send?uploadType=media`, MIME tal cual,
+  hasta 35 MB). Desconectar revoca el permiso en Google.
+- **Esquema:** tabla nueva `cuentas_mail` (una por negocio: proveedor,
+  dirección, token cifrado, estado, motivo, quién y cuándo). No va en
+  `integraciones`: no es un canal y la misma cuenta puede servir a dos negocios
+  del mismo dueño. `proveedor` sin CHECK para sumar SMTP sin reconstruir.
+  Cubierta sola por la baja y la descarga (la columna `token` no se descarga).
+  `verificar-migracion`: 24 de 24.
+- **Reglas:** conectado → la factura sale desde el Gmail, con el nombre del
+  negocio (sin "vía Nexo") y su nombre arriba del mail, sin Reply-To. Sin
+  conectar → desde Nexo, como §186. Si Google deja de dar el permiso, la fila
+  queda 'desconectada' y **no sale desde Nexo solo**: 409 pidiendo reconectar,
+  hasta que el negocio reconecte o desconecte. Desconectar borra la fila.
+- **Rutas:** `GET /api/gmail`, `POST /api/gmail/conectar|prueba|desconectar`
+  (admin) y `GET /api/gmail/vuelta` (antes de autenticar, como la de Mercado
+  Pago). `/api/negocio` trae `gmail` para los dos roles (el modal de la
+  factura dice desde dónde sale). `mail.js`: `viaNexo` en `armarMensaje` y
+  `marca` en `plantillaMail`.
+- **Pantalla:** Configuración → Gmail (grupo del negocio, después de Factura
+  electrónica), con el logo (`img/gmail.svg`, el `viewBox` de afuera arranca en
+  0 o sale cortado), cómo funciona, conectar, mail de prueba y desconectar
+  (`dominios/gmail.js`). Probada en el navegador, en la compu y en el celular.
+- **Privacidad:** sección "Si conectás el Gmail de tu negocio" con la frase de
+  Uso Limitado que exige Google. No se subió `TERMINOS_VERSION`: es opcional y
+  se acepta en la pantalla de Google al conectarlo.
+- **Trámite:** `docs/proyecto/verificacion-google.md` (paso a paso, textos en
+  inglés y guion del video). `gmail.send` es sensible, no restringido: sin
+  auditoría paga. `duckdns.org` está en la lista de sufijos públicos, así que
+  `nexosystem.duckdns.org` se verifica como dominio propio en Search Console.
+- **Probado:** `gmail.test.js` (9, contra un Google y un Gmail falsos). 422
+  tests, lint e i18n en verde.
+- **Sin probar:** contra Google de verdad: faltan los pasos 1 a 3 del trámite
+  (habilitar la API, la vuelta y el permiso en la consola).
+- **Queda:** un servidor SMTP propio (dominio propio, Hostinger y similares) y
+  Outlook; ofrecer mandarla al facturar.
+- **Plan (decisión del usuario del 17 de noviembre):** mandar las facturas por
+  mail (desde Nexo o desde el Gmail) va en el mismo plan que la factura
+  electrónica: desde Emprendedor. `RUTAS_DESDE_EMPRENDEDOR` suma `/gmail` y
+  `/facturas/:id/mail` (desconectar se puede siempre); en Gratis el botón avisa
+  el plan en vez de abrir el envío, y un Gmail ya conectado queda en pausa sin
+  borrarse. `planes.js` lo lista en Emprendedor. 424 tests.

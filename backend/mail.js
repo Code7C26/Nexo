@@ -66,39 +66,77 @@ function encabezado(texto) {
 }
 
 // En base64 el cuerpo no tiene líneas largas ni empieza nunca con un punto.
-function base64EnLineas(texto) {
-  return Buffer.from(texto, 'utf8').toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? '';
+function base64EnLineas(contenido) {
+  return (Buffer.isBuffer(contenido) ? contenido : Buffer.from(contenido, 'utf8'))
+    .toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? '';
 }
 
-export function armarMensaje({ de, para, asunto, texto, html, fecha = new Date() }) {
+// "Lola vía Nexo" en el From de un mail que se manda en nombre de un negocio
+// desde la casilla de Nexo; "Lola" a secas desde la del negocio (su Gmail,
+// hist. §187). Sin comillas ni saltos: el nombre lo escribió el negocio.
+function remitente(nombre, de, viaNexo) {
+  const limpio = String(nombre ?? '').replace(/[\r\n"\\<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!limpio) return `Nexo <${de}>`;
+  const visible = viaNexo ? `${limpio} vía Nexo` : limpio;
+  return /^[\x20-\x7e]*$/.test(visible) ? `"${visible}" <${de}>` : `${encabezado(visible)} <${de}>`;
+}
+
+// El nombre de un adjunto: solo letras sin acento, números, punto, guion y
+// guion bajo (los que arma nombreArchivoPdf), para no tener que codificarlo.
+function nombreAdjunto(nombre) {
+  return String(nombre ?? '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'adjunto';
+}
+
+// `adjuntos`: [{ nombre, tipo, contenido }], con el contenido en un Buffer.
+// `nombre` es el del negocio en cuyo nombre sale el mail, y `responderA`, su
+// mail: el cliente que contesta le escribe al negocio, no a Nexo.
+export function armarMensaje({ de, nombre, viaNexo = true, responderA, para, asunto, texto, html, adjuntos = [], fecha = new Date() }) {
   const encabezados = [
-    `From: Nexo <${de}>`,
+    `From: ${remitente(nombre, de, viaNexo)}`,
     `To: <${para}>`,
+    ...(responderA && esMailValido(responderA) ? [`Reply-To: <${responderA}>`] : []),
     `Subject: ${encabezado(asunto)}`,
     `Date: ${fecha.toUTCString().replace('GMT', '+0000')}`,
     `Message-ID: <${randomBytes(16).toString('hex')}@${de.split('@')[1]}>`,
     'MIME-Version: 1.0'
   ];
-  if (!html) {
-    return [
-      ...encabezados,
-      'Content-Type: text/plain; charset=UTF-8',
-      'Content-Transfer-Encoding: base64',
-      '',
-      base64EnLineas(texto)
-    ].join('\r\n');
-  }
-  const limite = `nexo-${randomBytes(12).toString('hex')}`;
-  const parte = (tipo, contenido) =>
+  const parte = (limite, tipo, contenido) =>
     [`--${limite}`, `Content-Type: ${tipo}; charset=UTF-8`, 'Content-Transfer-Encoding: base64', '', base64EnLineas(contenido)].join(
       '\r\n'
     );
+
+  // El cuerpo: texto solo, o texto y HTML como alternativas del mismo mail.
+  let cuerpo;
+  if (!html) {
+    cuerpo = ['Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', base64EnLineas(texto)];
+  } else {
+    const limite = `nexo-${randomBytes(12).toString('hex')}`;
+    cuerpo = [
+      `Content-Type: multipart/alternative; boundary="${limite}"`,
+      '',
+      parte(limite, 'text/plain', texto),
+      parte(limite, 'text/html', html),
+      `--${limite}--`
+    ];
+  }
+  if (!adjuntos.length) return [...encabezados, ...cuerpo].join('\r\n');
+
+  // Con adjuntos, el cuerpo va primero y cada archivo después (multipart/mixed).
+  const limite = `nexo-${randomBytes(12).toString('hex')}`;
   return [
     ...encabezados,
-    `Content-Type: multipart/alternative; boundary="${limite}"`,
+    `Content-Type: multipart/mixed; boundary="${limite}"`,
     '',
-    parte('text/plain', texto),
-    parte('text/html', html),
+    `--${limite}`,
+    ...cuerpo,
+    ...adjuntos.flatMap(({ nombre: archivo, tipo, contenido }) => [
+      `--${limite}`,
+      `Content-Type: ${tipo}; name="${nombreAdjunto(archivo)}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${nombreAdjunto(archivo)}"`,
+      '',
+      base64EnLineas(contenido)
+    ]),
     `--${limite}--`
   ].join('\r\n');
 }
@@ -110,8 +148,9 @@ const escaparHtml = (texto) =>
 // mismos datos. Estilos en línea (los clientes de mail ignoran los <style>) y
 // sin imágenes, que muchos bloquean hasta que se las deja ver. `boton` es
 // { texto, url }; `codigo`, uno de los que se tipean en Nexo (hist. §108), que
-// va grande y separado para leerlo de un vistazo.
-export function plantillaMail({ titulo, parrafos, codigo, boton, pie }) {
+// va grande y separado para leerlo de un vistazo. `marca` va arriba y al
+// final: Nexo, o el negocio cuando sale desde su propio mail (hist. §187).
+export function plantillaMail({ titulo, parrafos, codigo, boton, pie, marca = 'Nexo' }) {
   const pieTexto = pie ?? 'Si no fuiste vos, podés ignorar este mail.';
   const texto = [
     titulo,
@@ -121,11 +160,11 @@ export function plantillaMail({ titulo, parrafos, codigo, boton, pie }) {
     ...(boton ? [`${boton.texto}: ${boton.url}`, ''] : []),
     pieTexto,
     '',
-    'Nexo'
+    marca
   ].join('\n');
   const html = `<!DOCTYPE html><html lang="es-AR"><body style="margin:0;padding:24px;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;color:#111">
 <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:12px;overflow:hidden">
-<div style="background:#000;color:#fff;padding:16px 24px;font-size:18px;font-weight:bold;letter-spacing:.5px">Nexo</div>
+<div style="background:#000;color:#fff;padding:16px 24px;font-size:18px;font-weight:bold;letter-spacing:.5px">${escaparHtml(marca)}</div>
 <div style="padding:24px">
 <h1 style="margin:0 0 16px;font-size:20px">${escaparHtml(titulo)}</h1>
 ${parrafos.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5">${escaparHtml(p)}</p>`).join('\n')}
@@ -236,18 +275,37 @@ export async function conversarSmtp(socket, { usuario, clave, de, para, mensaje 
   }
 }
 
-function guardarStub({ para, asunto, texto, html }) {
+function guardarStub({ para, asunto, texto, html, nombre, responderA, adjuntos }) {
   const carpeta = process.env.NEXO_MAIL_DIR || path.join(os.tmpdir(), 'nexo-mails');
   mkdirSync(carpeta, { recursive: true });
   const archivo = path.join(carpeta, `${Date.now()}-${randomBytes(4).toString('hex')}.json`);
   writeFileSync(
     archivo,
-    JSON.stringify({ para, asunto, texto, html: html ?? null, fecha: new Date().toISOString() }, null, 2)
+    JSON.stringify(
+      {
+        para,
+        asunto,
+        texto,
+        html: html ?? null,
+        nombre: nombre ?? null,
+        responderA: responderA ?? null,
+        // De cada adjunto, lo que sirve para revisarlo (no el archivo entero).
+        adjuntos: (adjuntos ?? []).map((a) => ({
+          nombre: nombreAdjunto(a.nombre),
+          tipo: a.tipo,
+          bytes: a.contenido.length,
+          comienzo: a.contenido.subarray(0, 8).toString('latin1')
+        })),
+        fecha: new Date().toISOString()
+      },
+      null,
+      2
+    )
   );
   return archivo;
 }
 
-export async function mandarMail({ para, asunto, texto, html }) {
+export async function mandarMail({ para, asunto, texto, html, nombre, responderA, adjuntos }) {
   if (!esMailValido(para)) throw new MailError('El mail del destinatario no es válido.');
   if (typeof asunto !== 'string' || /[\r\n]/.test(asunto)) throw new MailError('El asunto no es válido.');
   // .invalid no existe (RFC 2606): es el de las cuentas de los negocios de
@@ -255,7 +313,7 @@ export async function mandarMail({ para, asunto, texto, html }) {
   if (/\.invalid$/i.test(para)) return;
 
   if (process.env.NEXO_MAIL === 'stub') {
-    guardarStub({ para, asunto, texto, html });
+    guardarStub({ para, asunto, texto, html, nombre, responderA, adjuntos });
     return;
   }
   const config = configuracion();
@@ -263,7 +321,7 @@ export async function mandarMail({ para, asunto, texto, html }) {
     throw new MailError('El mail de Nexo no está configurado: faltan NEXO_SMTP_USUARIO y NEXO_SMTP_CLAVE en .env.');
   }
 
-  const mensaje = armarMensaje({ de: config.usuario, para, asunto, texto, html });
+  const mensaje = armarMensaje({ de: config.usuario, nombre, responderA, para, asunto, texto, html, adjuntos });
   const socket = tls.connect({ host: config.servidor, port: config.puerto, servername: config.servidor });
   await conversarSmtp(socket, { usuario: config.usuario, clave: config.clave, de: config.usuario, para, mensaje });
 }

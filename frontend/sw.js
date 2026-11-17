@@ -52,6 +52,7 @@ const PRECACHE = [
   "/img/mercadolibre.svg",
   "/img/mercadopago.svg",
   "/img/whatsapp.svg",
+  "/img/gmail.svg",
   "/img/instagram.svg",
   "/img/app/icono-192.png",
   "/img/app/apple-touch-icon.png",
@@ -127,6 +128,7 @@ const PRECACHE = [
   "/js/dominios/usuarios.js",
   "/js/dominios/venta-online.js",
   "/js/dominios/whatsapp.js",
+  "/js/dominios/gmail.js",
 ];
 
 // Satoshi no se versiona (su licencia no deja redistribuirla) y puede faltar:

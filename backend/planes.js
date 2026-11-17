@@ -10,7 +10,9 @@
 //   respuestas del manual, que no usan IA, son de todos;
 // - `integraciones` (Tienda Nube, Mercado Libre, Mercado Pago y la factura
 //   electrónica de ARCA), desde Emprendedor: decisión del usuario del 10 de
-//   noviembre. Los comprobantes internos son de todos. Un negocio que baja a
+//   noviembre. Mandar las facturas por mail y el Gmail del negocio van con la
+//   factura electrónica (17 de noviembre, hist. §187). Los comprobantes
+//   internos son de todos. Un negocio que baja a
 //   Gratis no pierde lo conectado: queda en pausa hasta que vuelva a un plan
 //   que lo incluya (planPermite en server.js).
 // Los topes son por
@@ -59,6 +61,7 @@ export const PLANES = {
       'Productos y ventas sin tope',
       'Hasta 3 usuarios, cada uno con su rol',
       'Factura electrónica con CAE de ARCA (por ahora emite facturas de prueba)',
+      'Las facturas por mail, desde tu Gmail',
       'Tienda Nube, Mercado Libre y Mercado Pago conectados',
       'Comprobantes sin la marca de Nexo'
     ],

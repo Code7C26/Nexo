@@ -113,7 +113,12 @@ CREATE TABLE IF NOT EXISTS facturas (
   -- cuando se facturan servicios.
   periodo_desde TEXT,
   periodo_hasta TEXT,
-  vencimiento_pago TEXT
+  vencimiento_pago TEXT,
+  -- A quién y cuándo se mandó por mail la última vez (hist. §186). Cada envío
+  -- queda además en la auditoría; esto es lo que muestra la ficha y el
+  -- listado sin recorrerla. NULL = nunca se mandó desde Nexo.
+  mail_enviado_a TEXT,
+  mail_enviado_en TEXT
 );
 
 -- El ticket de acceso de WSAA (arca.js): ARCA da uno por certificado cada 12
@@ -1949,6 +1954,29 @@ CREATE TABLE IF NOT EXISTS integracion_log (
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
 );
 CREATE INDEX IF NOT EXISTS idx_integracion_log ON integracion_log(integracion_id, id);
+
+-- La casilla de mail del negocio (hist. §187): con una conectada, las facturas
+-- salen desde ahí y no desde la de Nexo. Una por negocio. No va en
+-- `integraciones`: no es un canal de venta (no tiene lista, depósito ni
+-- pedidos), y la misma cuenta de Gmail puede servir a dos negocios del mismo
+-- dueño, que ahí no se permite.
+-- - proveedor: 'gmail' (con el permiso de Google). Sin CHECK a propósito: el
+--   próximo (un servidor SMTP propio) se suma sin reconstruir la tabla; lo
+--   valida server.js.
+-- - token: el refresh token, cifrado (gmail.js). NULL una vez desconectada.
+-- - estado 'desconectada': la desconectó el negocio, o Google dejó de dar el
+--   permiso (motivo dice cuál). Las facturas vuelven a salir desde Nexo.
+CREATE TABLE IF NOT EXISTS cuentas_mail (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL UNIQUE REFERENCES organizaciones(id),
+  proveedor TEXT NOT NULL,
+  direccion TEXT NOT NULL,
+  token TEXT,
+  estado TEXT NOT NULL DEFAULT 'conectada' CHECK (estado IN ('conectada', 'desconectada')),
+  motivo TEXT,
+  conectada_en TEXT NOT NULL DEFAULT (datetime('now')),
+  conectada_por INTEGER REFERENCES usuarios(id)
+);
 
 -- Cada pago de Mercado Pago que llegó a Nexo, una sola vez (hist. §130): los
 -- avisos se repiten y la pasada periódica vuelve a mirar los recientes. Hoy

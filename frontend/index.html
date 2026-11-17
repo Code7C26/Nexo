@@ -3648,6 +3648,8 @@
                    él, quien busca un PDF no adivina que está detrás de
                    "Imprimir". -->
               <button type="button" class="btn btn-secundario" id="btnImprimirFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#printer"></use></svg> Imprimir / PDF</button>
+              <!-- Con el PDF adjunto (hist. §186). Una electrónica sin CAE no se manda. -->
+              <button type="button" class="btn btn-secundario" id="btnMailFactura"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#mail"></use></svg> Mandar por mail</button>
               <!-- Factura electrónica (etapa E): un comprobante sin CAE. -->
               <button type="button" class="btn btn-primary" id="btnPedirCae" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg> Pedir el CAE a ARCA</button>
               <button type="button" class="btn btn-peligro" id="btnDescartarFactura" hidden>Descartar</button>
@@ -3944,6 +3946,13 @@
               <a class="config-item" href="#/configuracion/factura-electronica" data-seccion="factura-electronica">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-text"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Factura electrónica</span><span class="config-item-desc" id="configFacturaElectronicaResumen">Facturá con CAE de ARCA</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <!-- Las facturas salen desde el Gmail del negocio (hist. §187).
+                   Lleva su logo, como los canales. -->
+              <a class="config-item" href="#/configuracion/gmail" data-seccion="gmail">
+                <span class="config-item-icono"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 88 66"><use href="/img/gmail.svg#emblema"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Gmail</span><span class="config-item-desc" id="configGmailResumen">Mandá las facturas desde tu mail</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
               <a class="config-item" href="#/configuracion/baja" data-seccion="baja">
@@ -5302,6 +5311,54 @@
                  para los dos roles. El teléfono es de la persona y queda
                  vinculado al negocio activo. Solo si Nexo tiene WhatsApp
                  configurado; si no, el aviso de abajo. -->
+            <!-- Gmail del negocio (hist. §187): dominios/gmail.js. -->
+            <section class="config-pagina" data-seccion="gmail" aria-labelledby="configGmailTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configGmailTitulo" class="wa-titulo" tabindex="-1"><svg class="wa-logo" aria-hidden="true" viewBox="0 0 88 66"><use href="/img/gmail.svg#emblema"></use></svg> Gmail</h2>
+                <p>Conectá el Gmail de tu negocio y las facturas que mandes desde Nexo salen desde ahí: tus clientes las reciben de tu mail, te contestan a vos y te quedan en "Enviados".</p>
+              </header>
+
+              <div class="aviso-plan" id="gmailSinPlan" hidden>
+                <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gem"></use></svg>
+                <p>Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Si ya tenías tu Gmail conectado, queda en pausa hasta que pases de plan, y no se borra nada.</p>
+                <a class="btn btn-link" href="#/configuracion/plan">Ver los planes</a>
+              </div>
+
+              <p class="fe-estado-linea" id="gmailNoDisponible" hidden>
+                <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg>
+                Conectar Gmail todavía no está disponible en este Nexo.
+              </p>
+
+              <div class="form config-tarjeta" id="gmailTarjeta" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Tu Gmail</p>
+                  <div id="gmailEstado"></div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p id="gmailPie">Nexo solo pide permiso para mandar mails. No puede leer, borrar ni ver los que ya tenés.</p>
+                  <div class="config-tarjeta-botones">
+                    <button type="button" class="btn-link" id="gmailDesconectar" hidden>Desconectar</button>
+                    <button type="button" class="btn btn-secundario" id="gmailPrueba" hidden>Mandarme un mail de prueba</button>
+                    <button type="button" class="btn btn-primary" id="gmailConectar"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 88 66"><use href="/img/gmail.svg#emblema"></use></svg> Conectar Gmail</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form config-tarjeta" id="gmailComoFunciona" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Cómo funciona</p>
+                  <ul class="gmail-pasos">
+                    <li>Tocás "Conectar Gmail", elegís la cuenta del negocio y aceptás el permiso de mandar mails.</li>
+                    <li>Desde una factura, o varias del listado, tocás "Mandar por mail": sale desde tu Gmail con el PDF adjunto.</li>
+                    <li>Lo desconectás cuando quieras, desde acá o desde tu cuenta de Google.</li>
+                  </ul>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p id="gmailSinConectar"></p>
+                </div>
+              </div>
+            </section>
+
             <section class="config-pagina" data-seccion="whatsapp" aria-labelledby="configWhatsAppTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configWhatsAppTitulo" class="wa-titulo" tabindex="-1"><svg class="wa-logo" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg> WhatsApp</h2>
@@ -7144,6 +7201,26 @@
 
   <!-- Modal cobrar venta -->
   <!-- El envío que pagó el negocio (hist. §180): un costo de la venta. -->
+  <div class="modal" id="modalMailFactura" role="dialog" aria-modal="true" aria-labelledby="modalMailFacturaTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modalMailFacturaTitulo">Mandar por mail</h3>
+        <button class="modal-close" id="modalMailFacturaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <p class="form-note" id="modalMailFacturaNota"></p>
+      <form id="formMailFactura" class="form">
+        <label>Mail
+          <input type="email" name="para" required maxlength="254" autocomplete="off" placeholder="cliente@ejemplo.com" />
+        </label>
+        <label class="form-check" data-guardar-mail>
+          <input type="checkbox" name="guardar_en_cliente" checked />
+          <span data-guardar-mail-texto>Guardarlo en la ficha del cliente</span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-full">Mandar</button>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="modalEnvioVenta" role="dialog" aria-modal="true" aria-labelledby="modalEnvioVentaTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

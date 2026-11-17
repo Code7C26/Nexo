@@ -7758,6 +7758,19 @@ a.segmento {
   text-wrap: pretty;
 }
 
+/* Gmail (hist. §187): los tres pasos de "Cómo funciona", numerados. */
+.gmail-pasos {
+  margin: 0;
+  padding-left: 1.25em;
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 62ch;
+  font-size: var(--txt-sm);
+  line-height: 1.5;
+  color: var(--ink-muted);
+  list-style: decimal;
+}
+
 /* Factura electrónica (etapa E, dominios/factura-electronica.js): el estado
    arriba y los cuatro pasos, cada uno una tarjeta con su número, que pasa a
    tilde cuando está hecho. */

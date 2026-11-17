@@ -654,8 +654,17 @@ export function nombreArchivoPdf(prefijo, identificador) {
 // vez de achicar la imagen — una factura larga escalada a una sola página
 // quedaría ilegible.
 async function descargarPDFDeHoja(html, nombreArchivo) {
+  (await pdfDeHoja(html)).save(nombreArchivo);
+}
+
+// El mismo PDF, en base64, para mandarlo adjunto por mail (hist. §186).
+export async function pdfBase64DeHoja(html) {
+  return (await pdfDeHoja(html)).output("datauristring").split(",")[1];
+}
+
+async function pdfDeHoja(html) {
   await cargarLibsPdf();
-  await conHojaVisible(html, async (hoja) => {
+  return conHojaVisible(html, async (hoja) => {
     const canvas = await html2canvas(hoja, { scale: 2, backgroundColor: "#FFFFFF", useCORS: true });
     const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
@@ -681,7 +690,7 @@ async function descargarPDFDeHoja(html, nombreArchivo) {
       }
     }
 
-    pdf.save(nombreArchivo);
+    return pdf;
   });
 }
 
