@@ -14,6 +14,7 @@ export const GRUPOS_EN = {
   Empezar: "Getting started",
   "Productos y servicios": "Products and services",
   Vender: "Selling",
+  "Vender por internet": "Selling online",
   Facturar: "Invoicing",
   Clientes: "Customers",
   "Comprar y stock": "Purchasing and stock",
@@ -35,7 +36,7 @@ export const SECCIONES_EN = {
         "**The assistant** (the sparkle button) records sales, purchases and expenses when you tell it, and answers questions like this one.",
         "**Settings** has the business details, the features you use, your team and this help."
       ] },
-      "If you're just starting, on the Dashboard you'll see a getting-started guide: add a product, a customer and your first sale."
+      "If you're just starting, on the Dashboard you'll see a getting-started guide: add a product, a customer and your first sale. If your business was already running, first enter what you already had: today's stock, debts and money."
     ]
   },
   asistente: {
@@ -53,7 +54,8 @@ export const SECCIONES_EN = {
       ] },
       "You can also ask it how to do something in Nexo (\"how do I void a sale?\") and it answers with this manual.",
       "And about your business's numbers: \"how much did I sell this month?\", \"how much did I sell in t-shirts last week?\", \"who owes me?\", \"how many caps do I have left?\". It answers right away, with the same numbers as the Summary and without recording anything.",
-      { nota: "So it understands you better, name the products the way they're entered. If a product doesn't exist, the sale can't be confirmed until you fix it; in a purchase, the new product is created automatically." }
+      { nota: "So it understands you better, name the products the way they're entered. If a product doesn't exist, the sale can't be confirmed until you fix it; in a purchase, the new product is created automatically." },
+      { nota: "Recording sales, purchases and expenses with the assistant is part of the Pro plan." }
     ]
   },
   celular: {
@@ -84,7 +86,7 @@ export const SECCIONES_EN = {
         "If it's a service (a haircut, a class, an hour of work), choose the service type: it doesn't track stock.",
         "Tap **Save**."
       ] },
-      "To change a price, open the product from the list and edit it. The code or SKU is for finding it quickly and for the barcode scanner.",
+      "To change a price, open the product from the list and edit it. The code or SKU is for finding it quickly; the **Barcode** is the one the counter scanner reads, and the **Scale code (PLU)** is for what you weigh on a scale that prints labels.",
       { nota: "The cost updates on its own every time you record a purchase: Nexo averages what you had and what came in." }
     ]
   },
@@ -142,6 +144,12 @@ export const SECCIONES_EN = {
         "At the end of the day, tap **Close register** and count the cash: Nexo tells you if it matches what there should be."
       ] },
       "Without choosing a customer, the sale goes to End consumer. To leave something on account for someone, choose the customer: End consumer can't buy on credit.",
+      { lista: [
+        "**The payment methods** you see when charging (cash, debit, credit with its installments, transfer…) are set up by the admin in Settings › Payment methods.",
+        "**Discount**: a percentage or an amount off the whole sale, without creating a promotion. Current promotions apply on their own.",
+        "**Charge with a Mercado Pago QR**: with your Mercado Pago connected, the customer scans and the payment comes in when they pay.",
+        "**Scale**: if your scale prints labels, scan the label and the product comes in with its weight."
+      ] },
       "To issue invoice A to a company or a monotributo taxpayer, tap **Invoice A** and confirm their CUIT, their name and their VAT status. If they're already in your customers, Nexo finds them by the CUIT; if not, it creates them. If you issue invoice C, the **Invoice a customer with a CUIT** link does the same. The letter comes from your VAT status and the customer's: a registered taxpayer can't get a B.",
       "The receipt is for 80 mm printers. Print it again from the sale's page, with **Ticket**.",
       { nota: "If you don't see Point of sale in the menu, turn it on in Settings › Features." }
@@ -160,7 +168,8 @@ export const SECCIONES_EN = {
         "If they already paid you, enter the payment (how much and into which account). If not, it stays on account: they owe it.",
         "Tap **Record sale**."
       ] },
-      "When it's recorded, Nexo deducts the stock, keeps the cost at that moment to calculate the profit and, if something was left uncollected, adds it to what the customer owes you.",
+      "When it's recorded, Nexo deducts the stock, keeps the cost at that moment to calculate the profit and, if something was left uncollected, adds it to what the customer owes you. If you sell online, choose **Where they bought from** (the shop, Instagram, WhatsApp…).",
+      "On the sale's page you see **Where the money went**: the goods, each sale expense (the fee, the shipping, the installments), the VAT and what you kept. If you paid for shipping, add it with **Add the shipping**.",
       "You can also record it from the assistant: \"I sold 2 hoodies to Sole at 28 thousand each, she paid cash\"."
     ]
   },
@@ -176,7 +185,8 @@ export const SECCIONES_EN = {
         "Enter how much they paid you and which account the money went into (cash, bank, Mercado Pago).",
         "Tap **Record payment**."
       ] },
-      "The payment lowers what the customer owes and adds the money to that account in Cash."
+      "The payment lowers what the customer owes and adds the money to that account in Cash.",
+      "If they pay with Mercado Pago, in the same payment tap **Create Mercado Pago link** and send it by WhatsApp, or show them the QR. When they pay, the payment is recorded on its own."
     ]
   },
   "anular-venta": {
@@ -233,7 +243,7 @@ export const SECCIONES_EN = {
       "You can invoice a sale you already recorded, or make a standalone invoice.",
       { pasos: [
         "For a sale: open it and tap **Invoice**. For a standalone one: **Invoices › New invoice**.",
-        "Check the customer's details and the sale terms.",
+        "If you're a registered VAT taxpayer, choose **Invoice A** or **Invoice B**: the A asks for the customer's CUIT and the B doesn't. Check their details and the sale terms.",
         "Tap **Generate invoice**. From its profile, **Print / PDF**."
       ] },
       "The letter is set automatically, based on your VAT status and the customer's, so you never issue one ARCA doesn't accept:",
@@ -241,7 +251,7 @@ export const SECCIONES_EN = {
         "If you're a **registered VAT taxpayer** (responsable inscripto): A to another registered taxpayer or to a monotributo taxpayer, and B to an end consumer or an exempt one. A monotributo taxpayer doesn't get a B: since 2021 they get an A.",
         "If you're **monotributo or exempt**: always C."
       ] },
-      "For an A, the customer needs their CUIT on file. If they don't give it to you, it isn't an A: charge them as an end consumer.",
+      "For an A, the customer needs their CUIT on file. If they don't give it to you, it isn't an A: it's a B to an end consumer. A registered taxpayer buying for themselves also gets a B: choose **Invoice B** and it goes out without their details, without changing their record.",
       "The A shows the VAT separately; the B says how much VAT the price contains, as the fiscal transparency law requires. An A to a monotributo taxpayer carries a note saying that VAT only counts for the monotributo regime.",
       "The invoice keeps the customer's details as they were at that moment: if you change their record later, the invoice doesn't change.",
       "At the Point of sale you choose the invoice when charging, without coming here: tapping **Invoice A** lets you enter the customer with their CUIT right there.",
@@ -258,7 +268,7 @@ export const SECCIONES_EN = {
       { pasos: [
         "Go to **Settings › Electronic invoicing**.",
         "Follow the steps to give Nexo permission from ARCA. Nexo never asks for your tax password.",
-        "Enter your CUIT, your VAT status and the point of sale, and tap **Verify with ARCA**.",
+        "Enter your CUIT and your VAT status (**Enter the CUIT and the status**) and the point of sale, and tap **Verify with ARCA**.",
         "Done: when you make an invoice, Nexo requests the CAE from ARCA. If ARCA doesn't respond, it stays pending and is retried with **Request the CAE from ARCA**."
       ] },
       "ARCA gives each invoice its number, so none is skipped or repeated, even on a retry. Each one comes with the CAE, its expiry date and ARCA's QR code, which anyone can use to verify it.",
@@ -269,12 +279,12 @@ export const SECCIONES_EN = {
   },
   iva: {
     titulo: "VAT",
-    pantalla: "Settings › Business details",
+    pantalla: "Settings › Receipts and tax details",
     preguntas: ["how do i enter vat", "where do i see vat", "does the price include vat", "i am vat registered", "i am a monotributista", "vat book"],
     palabras: ["vat", "tax", "rate", "registered", "monotributo", "exempt", "consumer", "status", "book", "credit"],
     bloques: [
       { lista: [
-        "**Your status** (VAT registered, monotributo, exempt) goes in Settings › Business details.",
+        "**Your status** (VAT registered, monotributo, exempt) goes in Settings › Receipts and tax details.",
         "**Each customer's and supplier's**, on their profile. Empty means end consumer.",
         "**Each product's rate** (21 %, 10.5 %…) goes on the product. The price you enter is the final one, VAT included."
       ] },
@@ -352,7 +362,8 @@ export const SECCIONES_EN = {
         "Tap **Save draft** and continue as with any purchase."
       ] },
       "Packs come in as units: 2 packs of 12 sodas are 24 sodas, each with its cost. If a pack has a different amount, fix it in **Each one has**.",
-      { nota: "What you confirm is remembered for that supplier: their next invoice comes out on its own. If what was loaded doesn't match the invoice total, Nexo warns you." }
+      { nota: "What you confirm is remembered for that supplier: their next invoice comes out on its own. If what was loaded doesn't match the invoice total, Nexo warns you." },
+      { nota: "It's part of the Pro plan." }
     ]
   },
   "pagar-proveedor": {
@@ -454,14 +465,17 @@ export const SECCIONES_EN = {
     preguntas: ["how much did i sell this month", "how much did i make", "how do i see the profit", "what do i sell the most", "who are my best customers", "how do i see the statistics", "what is my margin"],
     palabras: ["dashboard", "statistics", "report", "reports", "profit", "made", "margin", "result", "sold", "month", "period", "trend", "best", "profitability", "numbers"],
     bloques: [
-      "On the **Dashboard** you choose the period (this month, the previous one, the year) and you see:",
+      "On the **Dashboard** you choose the period (today, 7 days, this month, the year or the dates you want) and you see:",
       { lista: [
-        "what you sold, what it cost you, the profit, the expenses and the result, compared with the previous period;",
+        "what you sold, what it cost you, the profit, the expenses and the result, compared with the previous period or the same one last year;",
+        "what to look at today: what you're owed, what you owe and what to restock;",
+        "when you sell, by day of the week and by hour;",
         "how the result is going month by month;",
         "what sells, by category, and the top customers;",
         "what's purchased and from whom;",
         "the VAT for the period."
       ] },
+      "With **Customize** you choose which pieces to see and in what order. It starts with the ones for your type of business.",
       "The profit of each sale uses the cost the product had when you sold it, even if it changes later."
     ]
   },
@@ -509,8 +523,8 @@ export const SECCIONES_EN = {
     preguntas: ["how do i change the business name", "where do i enter the cuit", "how do i change the details on the invoice"],
     palabras: ["business", "details", "name", "cuit", "address", "phone", "company", "receipts", "logo"],
     bloques: [
-      "In **Settings › Business details** go the name, the CUIT, your VAT status, the address and the phone. They appear on your quotes and invoices.",
-      "In **Settings › Receipts** go the company name, gross income (IIBB) and start of activities the invoice asks for, with a preview."
+      "In **Settings › Business details** go the name, the address, the phone and the email. They appear at the top of your receipts.",
+      "In **Settings › Receipts and tax details** go the company name, the CUIT, your VAT status (it defines which invoice you can issue), gross income (IIBB), the start of activities and a footer text, with a preview."
     ]
   },
   funciones: {
@@ -520,7 +534,7 @@ export const SECCIONES_EN = {
     palabras: ["features", "feature", "module", "activate", "turn on", "turn off", "section", "menu", "type", "appears"],
     bloques: [
       "Depending on the business type you chose, Nexo starts with some features turned on. You add the rest when you need them.",
-      "In **Settings › Features** you turn the point of sale, leads (CRM), quotes, jobs, subscriptions, purchases, stock and members on or off. Turning one off doesn't delete anything.",
+      "In **Settings › Features** you turn the point of sale, online sales, leads (CRM), quotes, jobs, subscriptions, purchases, stock, production and members on or off. Turning one off doesn't delete anything.",
       "From there you can also **Change the type** of business: it only changes the unit a new product starts with."
     ]
   },
@@ -598,5 +612,219 @@ export const SECCIONES_EN = {
     bloques: [
       "If something doesn't work or isn't clear, tell us from **Settings › Report a problem** (or the circle with \"!\" at the bottom of the menu). Before you send it, the page shows you everything that's sent."
     ]
+  },
+  "lo-que-tenias": {
+    titulo: "Entering what you already had",
+    pantalla: "Settings › What you already had",
+    preguntas: ["how do i enter the stock i already had", "how do i enter what customers owed me before", "how do i start if my business was already running", "how do i enter the money i have today", "how do i enter old debts with suppliers"],
+    palabras: ["initial", "before", "had", "start", "stock", "debt", "debts", "balance", "money", "cash", "migrate", "old"],
+    bloques: [
+      "If your business was already running, enter what you have today and Nexo starts with your real numbers. It's in **Settings › What you already had**, in parts you enter separately and in any order:",
+      { lista: [
+        "**Your stock today**: how many of each product you have and what each one cost you. With that cost Nexo calculates the profit of each sale.",
+        "**What you're owed**: what each customer still owed you. It goes to their account and is collected like any sale.",
+        "**What you owe**: what you owed your suppliers. It's paid like any purchase.",
+        "**Your money today**: how much there is in the till, the bank and Mercado Pago.",
+        "**Recent sales** (optional): this week's or this month's, so your reports don't start empty."
+      ] },
+      { nota: "None of this makes up purchases or sales: the stock doesn't create debts or touch the cash, and recent sales don't deduct stock or add to the cash, because what you entered is already today's." }
+    ]
+  },
+  notificaciones: {
+    titulo: "Notifications on your phone and computer",
+    pantalla: "Settings › Notifications",
+    preguntas: ["how do i turn on notifications", "can it tell me when stock runs out", "how do i find out about an online sale", "i don't get the alerts"],
+    palabras: ["notifications", "notification", "alerts", "alert", "push", "phone", "warn"],
+    bloques: [
+      "Nexo can alert you on your phone or computer even when it isn't open.",
+      { pasos: [
+        "From each device where you want the alerts, go to **Settings › Notifications**.",
+        "Tap **Turn on notifications** and accept the browser's permission.",
+        "With **Send a test one** you see how they arrive."
+      ] },
+      { lista: [
+        "When a product is running low or is out of stock.",
+        "When a sale comes in from Tienda Nube or Mercado Libre.",
+        "When you get paid with Mercado Pago.",
+        "At the gym, when a member is waiting at the entrance."
+      ] },
+      "Stock, online sales and payment alerts go to whoever runs the business. Logging out turns them off on that device."
+    ]
+  },
+  whatsapp: {
+    titulo: "Recording through WhatsApp",
+    pantalla: "Settings › WhatsApp",
+    preguntas: ["can i record a sale through whatsapp", "how do i link my whatsapp", "can i send nexo a voice note"],
+    palabras: ["whatsapp", "message", "audio", "voice", "link", "number", "phone"],
+    bloques: [
+      "You send Nexo what you sold, bought or spent, in writing or as a voice note, without opening the app. It replies with how it understood it, and nothing is recorded until you tap **Confirm**.",
+      { pasos: [
+        "Go to **Settings › WhatsApp** and tap **Link my WhatsApp**.",
+        "From your phone, send Nexo's number the message it shows you.",
+        "Done: tell it what happened as you would a person (\"I sold 2 hoodies to Sole at 28 thousand each, she paid cash\")."
+      ] },
+      "It's recorded in the business you linked the number to. A return is finished in Nexo: it sends you the link.",
+      { nota: "If you don't see WhatsApp in Settings, it isn't available in your Nexo yet." }
+    ]
+  },
+  ofertas: {
+    titulo: "Promotions and offers",
+    pantalla: "Promotions",
+    preguntas: ["how do i make an offer", "how do i put a product on sale", "how do i make a quantity discount", "how do i lower a price for a few days", "how do i make a tuesday promo"],
+    palabras: ["offer", "offers", "promotion", "promotions", "promo", "discount", "sale", "clearance", "quantity", "day", "week"],
+    bloques: [
+      "A promotion lowers the price for a while without touching your price lists. It starts and ends on its own, and the point of sale and sales apply it.",
+      { pasos: [
+        "In **Products**, tap **Promotions** and then **New promotion**.",
+        "Choose how much it drops: a percentage off, an amount off or a fixed price. With a minimum quantity it's a quantity promotion (\"2 kg or more at $ 9,000 a kilo\").",
+        "Choose what it applies to: products, categories or the whole catalog, and on which price list.",
+        "Choose from and until when and, if you want, which days of the week or the month.",
+        "Tap **Save promotion**."
+      ] },
+      "If two promotions cover the same thing, they don't add up: the cheaper one wins. In **Prices on a given day** you see how each price looks that day.",
+      "For a discount on a single sale, without creating a promotion, use **Discount** at the point of sale."
+    ]
+  },
+  produccion: {
+    titulo: "Production: recipes and what you make",
+    pantalla: "Production",
+    preguntas: ["how do i enter a recipe", "how do i record what i produced", "how much does it cost me to make a product", "how do i deduct the box or bag when selling", "how do i enter supplies"],
+    palabras: ["production", "produce", "recipe", "recipes", "make", "manufacture", "supply", "supplies", "materials", "yield", "packaging", "box", "bag"],
+    bloques: [
+      "If you make what you sell (food, candles, clothes), Production works out the cost of each thing from the materials it takes.",
+      { pasos: [
+        "In **Production › Recipes**, tap **New recipe**: choose what is made, how much it yields and what materials it takes. Materials are products like any other: you buy them with your usual purchases, and their cost comes from there.",
+        "When you make a batch, tap **Produce**: choose what you made and how much you meant to make. Nexo suggests the recipe's materials: correct what you really used.",
+        "Enter how much really came out and save it. The materials leave the stock, what you made comes in, and its cost comes from what you used."
+      ] },
+      "In **When selling** you enter what's used when selling without being sold: each item's box, or the bag once per sale. When selling, Nexo suggests it and you change it on the spot if that time was different: it leaves the stock and goes into the sale's cost.",
+      { nota: "If you don't see Production in the menu, turn it on in Settings › Features." }
+    ]
+  },
+  balanza: {
+    titulo: "Scale and barcode labels",
+    pantalla: "Settings › Scale",
+    preguntas: ["how do i use the scale", "does the point of sale read the scale label", "how do i sell by weight with a label", "what is the plu"],
+    palabras: ["scale", "label", "labels", "weight", "weigh", "plu", "code", "kilo", "deli", "meat", "produce"],
+    bloques: [
+      "If your scale prints labels with a barcode, the point of sale reads them: the product comes in with its weight, at today's price in Nexo (never the label's).",
+      { pasos: [
+        "Weigh any product on the scale and print the label.",
+        "In **Settings › Scale**, scan the label and copy what's printed on it: the product's code on the scale (PLU) and the weight or the amount. Nexo works out on its own how your scale builds the code.",
+        "Tap **Test the label** and then **Use this format**.",
+        "On each product you weigh, enter its **Scale code (PLU)**: the number it has on the scale."
+      ] }
+    ]
+  },
+  "medios-cobro": {
+    titulo: "Payment methods: cards, installments and fees",
+    pantalla: "Settings › Payment methods",
+    preguntas: ["how do i enter the card fee", "how do i offer installments", "how do i add modo or cuenta dni", "which account does debit go into", "how do i set up the card reader"],
+    palabras: ["method", "methods", "payment", "card", "debit", "credit", "installments", "fee", "reader", "modo", "wallet", "transfer"],
+    bloques: [
+      "Payment methods are the ways customers pay you at the counter: cash, debit, credit, transfer, MODO… Each one says which account the money goes into.",
+      { pasos: [
+        "Go to **Settings › Payment methods** and tap **Add a payment method**.",
+        "Enter the name, the type and which account it goes into. Cash always goes into the shift's till, so the cash count adds up.",
+        "Enter the fee and in how many days the money arrives. The fee is recorded automatically as an expense of each sale.",
+        "For credit, add the installment plans you offer and, if they're interest-free for the customer, what offering them costs you: that's also recorded as a sale expense.",
+        "Tap **Add method**."
+      ] },
+      "When charging by transfer, at the counter you choose which account it landed in (the bank, Mercado Pago…).",
+      { nota: "What you collect with your Mercado Pago connected doesn't need to be set up here: Nexo records the real cost of each payment." }
+    ]
+  },
+  "mercado-pago": {
+    titulo: "Charging with Mercado Pago",
+    pantalla: "Settings › Mercado Pago",
+    preguntas: ["how do i connect mercado pago", "how do i send a payment link", "how do i set up the counter qr", "should i offer installments with mercado pago"],
+    palabras: ["mercado", "pago", "mp", "link", "qr", "connect", "installments", "fee", "sign"],
+    bloques: [
+      "With your Mercado Pago account connected, you charge with a link or with the counter QR, and the payment comes into Nexo on its own, with the fee and the installment cost recorded as expenses of that sale.",
+      { pasos: [
+        "Go to **Settings › Mercado Pago** and tap **Connect my Mercado Pago**: it takes you to Mercado Pago to give Nexo permission, and you come back on your own. Nexo never asks for your password and can't take money from your account.",
+        "Choose which Cash account the payments go into.",
+        "For the counter, enter the shop's address and tap **Set up the checkout**. Then **Download the sign to print** gives you the QR to stick on the counter."
+      ] },
+      { lista: [
+        "**Payment link**: when charging a sale, **Create Mercado Pago link**. You send it by WhatsApp or show them the QR.",
+        "**Counter QR**: when charging, **Charge with a Mercado Pago QR**. The payment comes in when they pay."
+      ] },
+      "In **Is it worth offering installments?** you see what each plan costs you and how much to charge to keep the same.",
+      { nota: "It starts with the Entrepreneur plan." }
+    ]
+  },
+  "tiendas-online": {
+    titulo: "Connecting Tienda Nube and Mercado Libre",
+    pantalla: "Settings › Tienda Nube",
+    preguntas: ["how do i connect tienda nube", "how do i connect mercado libre", "how do i sync stock with my store", "how do i publish my products on tienda nube", "do mercado libre sales come in on their own"],
+    palabras: ["store", "tienda", "nube", "tiendanube", "mercado", "libre", "online", "internet", "publish", "listings", "sync", "ecommerce", "web"],
+    bloques: [
+      "If you sell online, connect your store: stock and price stay up to date on their own, and each store sale comes in as a Nexo sale.",
+      { pasos: [
+        "Go to **Settings › Tienda Nube** (or **Mercado Libre**) and tap **Connect my Tienda Nube** (or **Connect my Mercado Libre**). It takes you to the store to give Nexo permission, and you come back on your own.",
+        "Choose which price list the price comes from, which warehouse the stock comes from and which account the payments go into.",
+        "In Tienda Nube, choose which products to **Publish**: they're created with their name, variants, price and stock, and photos are added in Tienda Nube. If the store already had products, **Bring in what I already have in the store**.",
+        "In Mercado Libre, **Link** each listing to its Nexo product. If they have the same SKU, it's already chosen. Nexo doesn't create or delete listings."
+      ] },
+      "Nexo is in charge: if you change the stock or the price in the store, Nexo sets it back to what it is here. If you sell at a higher price on Mercado Libre because of the fee, create a price list for Mercado Libre.",
+      "A sale paid online comes in as collected; one they pay by transfer or in cash, as pending.",
+      { nota: "It starts with the Entrepreneur plan. If you don't see Sales channels in Settings, turn on Online sales in Features." }
+    ]
+  },
+  "venta-online": {
+    titulo: "What each channel leaves you (Online sales)",
+    pantalla: "Online sales",
+    preguntas: ["how much do i sell on mercado libre", "which channel leaves me the most", "how much does mercado libre charge me", "how do i note a sale came from instagram", "does my advertising pay off"],
+    palabras: ["channel", "channels", "online", "instagram", "store", "mercado", "libre", "fee", "advertising", "profit", "ticket"],
+    bloques: [
+      "Each sale keeps where it came in from: the shop, Tienda Nube, Mercado Libre, Instagram, WhatsApp… Those from connected stores are recorded on their own, and in a sale entered by hand you choose it in **Where they bought from**.",
+      "In **Online sales** you see, by period, how much you sold online and, for each channel, where the money went: the goods, what the channel charges for selling there (fee, shipping, installments) and what you kept. Also the best sellers in each channel and how the advertising you record in Expenses pays off."
+    ]
+  },
+  "factura-por-mail": {
+    titulo: "Sending the invoice by email",
+    pantalla: "Invoices",
+    preguntas: ["how do i send the invoice by email", "how do i send the invoice to the customer", "can i send several invoices at once", "how do i send invoices from my gmail"],
+    palabras: ["email", "mail", "send", "invoice", "invoices", "pdf", "gmail", "attachment"],
+    bloques: [
+      { pasos: [
+        "Open the invoice and tap **Send by email**, or tick several in **Invoices** and tap **Send by email**: each one goes to its customer's email.",
+        "Check the email and tap **Send**. It goes with the PDF attached, in your business's name. If the customer had no email, you can save it on their record."
+      ] },
+      "If you connect your business's Gmail in **Settings › Gmail**, invoices go out from your email: your customers reply to you and they stay in \"Sent\". Nexo only asks permission to send: it can't read or delete your emails. Without connecting it, they go out from Nexo in your name.",
+      { nota: "It starts with the Entrepreneur plan, like electronic invoicing. An electronic invoice without a CAE can't be sent yet." }
+    ]
+  },
+  "unir-repetidos": {
+    titulo: "Merging duplicate customers or suppliers",
+    pantalla: "Customers",
+    preguntas: ["i have a customer entered twice", "how do i merge two customers", "how do i merge duplicate suppliers", "i entered the same customer twice"],
+    palabras: ["merge", "join", "duplicate", "duplicates", "repeated", "twice", "same"],
+    bloques: [
+      { pasos: [
+        "In **Customers** (or **Suppliers**), tick the duplicates.",
+        "Tap **Merge** on the bar at the bottom.",
+        "Choose which one stays and tap **Merge**."
+      ] },
+      "Everything from the others moves to the one that stays: sales, payments, invoices, quotes and the account (for a supplier, its purchases and payments), and any missing contact details are filled in. The others are deleted. Invoices already issued don't change."
+    ]
+  },
+  plan: {
+    titulo: "Nexo's plans",
+    pantalla: "Settings › Nexo plan",
+    preguntas: ["how much does nexo cost", "what does the free plan include", "how do i switch plans", "which plan do i need for electronic invoicing"],
+    palabras: ["plan", "plans", "price", "free", "entrepreneur", "pro", "pay", "subscription", "limit", "cost"],
+    bloques: [
+      "Every plan has the features to run your business; what changes is how far you can go.",
+      { lista: [
+        "**Free**: up to 100 products and 300 sales a month, one user, and receipts with the Nexo brand.",
+        "**Entrepreneur**: no limits on products or sales, up to 3 users, electronic invoicing, invoices by email, Tienda Nube, Mercado Libre and Mercado Pago, and receipts without the Nexo brand.",
+        "**Pro**: all of that, plus the AI assistant, purchases from a photo of the invoice, unlimited users and several businesses with the same account."
+      ] },
+      "In **Settings › Nexo plan** you see the prices, what you're using, and you ask to switch: we write to you to activate it, and meanwhile you keep using Nexo as always.",
+      { nota: "If you move to a plan that doesn't include something you were using (electronic invoicing, a connected store), it's paused: nothing is deleted." }
+    ]
   }
+
 };

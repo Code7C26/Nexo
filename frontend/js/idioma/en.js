@@ -4853,7 +4853,7 @@ export default {
   "A {0} le corresponde la factura A: es {1}. Para una B, cobrale a otro cliente.": "{0} gets invoice A: they're {1}. For a B, charge another customer.",
   "¿A quién le hacés la factura A?": "Who is invoice A for?",
   "Al confirmar, Nexo le pide el CAE a ARCA.": "On confirming, Nexo requests the CAE from ARCA.",
-  "Sale como comprobante interno: no es una factura ante ARCA.": "It's issued as an internal receipt: it's not an invoice before ARCA.",
+  "La factura electrónica no está activada: sale un comprobante interno, que no vale como factura. Se activa en Configuración › Factura electrónica.": "Electronic invoicing isn't turned on: an internal receipt is issued, which isn't valid as an invoice. Turn it on in Settings › Electronic invoicing.",
   "Sin conexión con el servidor.": "No connection to the server.",
   "La venta quedó registrada, pero la factura no salió: {0} Hacela desde Ventas.": "The sale was recorded, but the invoice wasn't issued: {0} Issue it from Sales.",
   "Factura {0} autorizada por ARCA.": "Invoice {0} authorized by ARCA.",
@@ -4866,6 +4866,9 @@ export default {
   "¿A quién se le factura?": "Who is the invoice for?",
   "Como figura en su constancia de ARCA": "As it appears on their ARCA certificate",
   "Confirmar cliente": "Confirm customer",
+  "Tipo de factura": "Invoice type",
+  "Escribí el CUIT: sin él, no puede ser factura A.": "Enter the CUIT: without it, it can't be invoice A.",
+  "Escribí el CUIT del exento.": "Enter the exempt customer's CUIT.",
   // La leyenda de la RG 5003 va impresa en la factura, siempre en castellano.
   "El crédito fiscal discriminado en el presente comprobante, sólo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27.618": null,
   "Ya está en tus clientes: {0}.": "Already in your customers: {0}.",

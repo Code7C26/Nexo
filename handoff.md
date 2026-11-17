@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §190);
+    siguiente número (hoy el último es §192);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,27 @@
 
 ## Estado actual (17 de noviembre de 2026)
 
-**17 de noviembre, hist. §190: repaso de las reglas de ARCA (commiteado en
-`solla`, sin publicar).** Todas bien aplicadas (letra, CUIT de la A, notas
+**17 de noviembre, hist. §192: el manual de uso, al día (commiteado en
+`solla`, sin publicar).** 13 secciones nuevas (lo que ya tenías,
+notificaciones, WhatsApp, ofertas, producción, balanza, medios de cobro,
+Mercado Pago, Tienda Nube y Mercado Libre, venta online, factura por mail,
+unir repetidos y planes), en castellano y en inglés, con el grupo "Vender por
+internet"; corregido dónde van el CUIT y la condición. 54 secciones, 437
+tests. **Queda:** el costo de cada servicio en Trabajos y el ingreso por
+pantalla en Socios.
+
+**17 de noviembre, hist. §191: Factura A | Factura B también en Facturas
+(commiteado en `solla`, sin publicar).** Al facturar una venta y en la factura
+suelta, el inscripto elige A o B como en el mostrador: la A pide CUIT y nombre
+(condición inscripto o monotributo); la B no (consumidor final o exento, que
+pide CUIT). Pasar a B a un cliente inscripto le saca el CUIT a esa factura y
+no toca su ficha: el inscripto que compra como consumidor final. La letra
+sigue saliendo de la condición del receptor. Sin cambios de servidor. 428
+tests. También sin publicar: el aviso nuevo del comprobante interno en el
+cobro.
+
+**17 de noviembre, hist. §190: repaso de las reglas de ARCA (publicado, PR
+#95).** Todas bien aplicadas (letra, CUIT de la A, notas
 asociadas, importes, condición y documento del receptor, servicios, CAE, QR,
 IVA contenido de la B). Faltaba la leyenda de la RG 5003 en la A a un
 monotributista: ya sale en la hoja y en el ticket. 428 tests. **Quedan:** el
@@ -32,7 +51,7 @@ contador), el exento o monotributista sin CUIT con B (ver en homologación) y la
 
 **17 de noviembre, hist. §188 y §189: la factura A en el cobro del punto de
 venta, con el alta rápida del cliente con CUIT (§188 publicado en PR #93;
-§189 commiteado en `solla`, sin publicar).** El cobro muestra
+§189 en PR #95).** El cobro muestra
 `Sin factura | Factura A | Factura B` (en un negocio que hace la C,
 `Sin factura | Factura C`), con "Imprimir el ticket" abajo. Tocar la A con un
 cliente inscripto o monotributista con CUIT la marca; si no, abre CUIT, nombre

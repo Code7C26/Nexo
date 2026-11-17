@@ -14503,3 +14503,63 @@ monotributista, que faltaba.
   dice que la nota de crédito lleva la letra de la factura y va al mismo
   cliente. "Factura electrónica" suma el número que da ARCA, el CAE con el QR
   y qué hacer con un rechazo. En castellano y en inglés.
+
+## §191 — 17 de noviembre de 2026: Factura A | Factura B también en Facturas
+
+Pedido del usuario: elegir el tipo de factura también al facturar una venta y
+en la factura suelta, como en el mostrador, y que según el tipo pida los datos
+o no. Surgió de "un inscripto puede pedir que le hagan una de consumidor final
+sin poner sus datos": sí, y antes había que cambiarle la condición a mano.
+
+- **Pantalla (`app.js`, `index.html`, `styles.css`):** el negocio inscripto
+  ve `Factura A | Factura B` arriba de "Para quién es la factura", en los dos
+  formularios. Arranca en la que corresponde al cliente.
+  - **A:** la condición ofrece solo Responsable inscripto y Monotributo, el
+    campo dice "CUIT" y es obligatorio (con `errorCuit`, debajo del campo), y
+    el nombre también. Si el nombre era "Consumidor final", se vacía. Guardar
+    en la ficha queda tildado.
+  - **B:** la condición ofrece Consumidor final y Exento. Elegirla con un
+    cliente de A borra el CUIT de esta factura y destilda guardar en la ficha:
+    es el inscripto que compra como consumidor final, y su ficha no cambia.
+    Volver a la A recupera el CUIT. Un exento pide CUIT.
+  - El monotributista o exento no elige (sale C, con el aviso de siempre), y
+    el negocio sin condición sigue eligiendo la letra a mano.
+- **La letra sigue sin elegirse:** el servidor la saca de la condición del
+  receptor, y cada opción solo deja elegir condiciones que dan esa letra.
+  `fijarCondicionReceptor` pone las opciones de la letra antes de fijar el
+  valor (si no, un select filtrado perdía la condición del cliente).
+- **Manual:** cómo elegir A o B al facturar, y el inscripto que compra como
+  consumidor final. Sin cambios de servidor ni de esquema.
+- **Probado en el navegador (celular), con ARCA simulado:** facturar la venta
+  de un inscripto en A (sin CUIT avisa debajo del campo); pasarla a B: sale
+  "B 0003-00000001" autorizada a consumidor final, sin CUIT, y su ficha sigue
+  inscripta con su CUIT; la factura suelta arranca en B, un exento pide CUIT;
+  un negocio monotributista no ve A ni B y dice "Va a salir una factura C".
+  428 tests, lint e i18n en verde.
+
+## §192 — 17 de noviembre de 2026: el manual de uso, al día
+
+Pregunta del usuario: "el manual de uso está completo con todas las funciones
+actualizadas a día de hoy". No lo estaba: faltaban funciones enteras y
+algunas pantallas habían cambiado de lugar.
+
+- **Secciones nuevas (13), en castellano y en inglés:** Cargar lo que ya
+  tenías, Notificaciones, Cargar por WhatsApp, Ofertas y promociones,
+  Producción, Balanza, Medios de cobro, Cobrar con Mercado Pago, Conectar
+  Tienda Nube y Mercado Libre, Venta online, Mandar la factura por mail, Unir
+  repetidos y Los planes de Nexo. Grupo nuevo "Vender por internet". 54
+  secciones.
+- **Corregido:** el CUIT y la condición frente al IVA están en Comprobantes y
+  datos fiscales, no en Datos del negocio (secciones de los datos del negocio,
+  IVA y factura electrónica); Funciones suma venta online y producción.
+- **Ampliado:** el punto de venta (medios, descuento, QR de Mercado Pago,
+  balanza), registrar una venta (por dónde te compró, adónde fue la plata,
+  sumar el envío), cobrar (link de Mercado Pago), el código de barras y el PLU
+  del producto, el Resumen (personalizar, contra el año pasado, cuándo se
+  vende) y el plan que necesitan el asistente y la compra desde la foto.
+- Los nombres de botones salen de `index.html` y, en inglés, de
+  `idioma/en.js`. Dos palabras de las secciones nuevas robaban preguntas que
+  ya andaban ("aviso" a Avisar un problema, "caja" al punto de venta): se
+  sacaron. `ayuda.test.js` suma 9 preguntas de las secciones nuevas.
+- **Queda:** las secciones que no se tocaron (trabajos, abonos, socios) no
+  cuentan el costo de cada servicio (hist. §143) ni el ingreso por pantalla.

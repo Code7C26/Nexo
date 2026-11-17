@@ -30,6 +30,7 @@ const GRUPOS_ES = [
   "Empezar",
   "Productos y servicios",
   "Vender",
+  "Vender por internet",
   "Facturar",
   "Clientes",
   "Comprar y stock",
@@ -54,9 +55,9 @@ const SECCIONES_ES = [
         "**El asistente** (el botón con brillitos) carga ventas, compras y gastos contándoselos, y responde dudas como esta.",
         "**Configuración** tiene los datos del negocio, las funciones que usás, tu equipo y esta ayuda."
       ] },
-      "Si recién empezás, en Resumen vas a ver una guía de primeros pasos: cargar un producto, un cliente y tu primera venta."
+      "Si recién empezás, en Resumen vas a ver una guía de primeros pasos: cargar un producto, un cliente y tu primera venta. Si tu negocio ya venía funcionando, cargá primero lo que ya tenías: el stock, las deudas y la plata de hoy."
     ],
-    ver: ["asistente", "cargar-producto", "registrar-venta"]
+    ver: ["lo-que-tenias", "asistente", "cargar-producto", "registrar-venta"]
   },
   {
     id: "asistente",
@@ -75,9 +76,10 @@ const SECCIONES_ES = [
       ] },
       "También le podés preguntar cómo se hace algo en Nexo (\"¿cómo anulo una venta?\") y te responde con este manual.",
       "Y por los números de tu negocio: \"¿cuánto vendí este mes?\", \"¿cuánto vendí de remeras la semana pasada?\", \"¿quién me debe?\", \"¿cuántas gorras me quedan?\". Te contesta en el momento, con los mismos números del Resumen y sin cargar nada.",
-      { nota: "Para que te entienda mejor, nombrá los productos como están cargados. Si un producto no existe, la venta no se puede confirmar hasta corregirlo; en una compra, el producto nuevo se crea solo." }
+      { nota: "Para que te entienda mejor, nombrá los productos como están cargados. Si un producto no existe, la venta no se puede confirmar hasta corregirlo; en una compra, el producto nuevo se crea solo." },
+      { nota: "Cargar ventas, compras y gastos con el asistente es del plan Pro." }
     ],
-    ver: ["registrar-venta", "registrar-compra", "registrar-gasto"]
+    ver: ["registrar-venta", "registrar-compra", "registrar-gasto", "whatsapp"]
   },
   {
     id: "celular",
@@ -99,6 +101,70 @@ const SECCIONES_ES = [
 
   /* ---------- Productos y servicios ---------- */
   {
+    id: "lo-que-tenias",
+    grupo: "Empezar",
+    titulo: "Cargar lo que ya tenías",
+    pantalla: ["#/configuracion/lo-que-tenias", "Configuración › Lo que ya tenías"],
+    admin: true,
+    preguntas: ["cómo cargo el stock que ya tenía", "cómo cargo lo que me deben de antes", "cómo empiezo si mi negocio ya funcionaba", "cómo cargo la plata que tengo hoy", "cómo cargo deudas viejas con proveedores"],
+    palabras: ["inicial", "antes", "tenia", "empezar", "arrancar", "stock", "deuda", "deudas", "saldo", "plata", "caja", "migrar", "pasar", "viejo"],
+    bloques: [
+      "Si tu negocio ya venía funcionando, cargá lo que tenés hoy y Nexo arranca con tus números de verdad. Está en **Configuración › Lo que ya tenías**, en partes que cargás por separado y en el orden que quieras:",
+      { lista: [
+        "**Tu stock de hoy**: cuántos tenés de cada producto y cuánto te costó cada uno. Con ese costo Nexo calcula la ganancia de cada venta.",
+        "**Lo que te deben**: lo que cada cliente te quedó debiendo. Queda en su cuenta corriente y se cobra como cualquier venta.",
+        "**Lo que debés**: lo que les debías a tus proveedores. Se paga como cualquier compra.",
+        "**La plata de hoy**: cuánto hay en la caja, en el banco y en Mercado Pago.",
+        "**Ventas recientes** (opcional): las de esta semana o este mes, para que los reportes no arranquen vacíos."
+      ] },
+      { nota: "Nada de esto inventa compras ni ventas: el stock no genera deudas ni toca la caja, y las ventas recientes no descuentan stock ni suman a la caja, porque lo que cargaste ya es lo de hoy." }
+    ],
+    ver: ["stock", "cuentas-corrientes", "caja"]
+  },
+  {
+    id: "notificaciones",
+    grupo: "Empezar",
+    titulo: "Notificaciones en el celular y la compu",
+    pantalla: ["#/configuracion/notificaciones", "Configuración › Notificaciones"],
+    preguntas: ["cómo prendo las notificaciones", "me puede avisar cuando se acaba el stock", "cómo me entero de una venta online", "no me llegan las notificaciones"],
+    palabras: ["notificaciones", "notificacion", "alerta", "alertas", "push", "celular"],
+    bloques: [
+      "Nexo te puede avisar en el celular o en la compu aunque no lo tengas abierto.",
+      { pasos: [
+        "Desde cada aparato donde quieras los avisos, entrá a **Configuración › Notificaciones**.",
+        "Tocá **Prender las notificaciones** y aceptá el permiso del navegador.",
+        "Con **Mandar una de prueba** ves cómo llegan."
+      ] },
+      { lista: [
+        "Cuando a un producto le queda poco stock o se queda sin stock.",
+        "Cuando entra una venta de Tienda Nube o de Mercado Libre.",
+        "Cuando te pagan con Mercado Pago.",
+        "En el gimnasio, cuando un socio espera en la entrada."
+      ] },
+      "Los de stock, ventas online y pagos le llegan a quien administra el negocio. Cerrar sesión los apaga en ese aparato."
+    ],
+    ver: ["celular"]
+  },
+  {
+    id: "whatsapp",
+    grupo: "Empezar",
+    titulo: "Cargar por WhatsApp",
+    pantalla: ["#/configuracion/whatsapp", "Configuración › WhatsApp"],
+    preguntas: ["puedo cargar una venta por whatsapp", "cómo vinculo mi whatsapp", "le puedo mandar un audio a nexo"],
+    palabras: ["whatsapp", "wsp", "mensaje", "audio", "vincular", "numero", "telefono"],
+    bloques: [
+      "Le mandás a Nexo lo que vendiste, compraste o gastaste, escrito o en un audio, sin abrir la app. Te contesta cómo lo entendió, y no se registra nada hasta que tocás **Confirmar**.",
+      { pasos: [
+        "Entrá a **Configuración › WhatsApp** y tocá **Vincular mi WhatsApp**.",
+        "Desde tu celular, mandá al número de Nexo el mensaje que te muestra.",
+        "Listo: contale lo que pasó como a una persona (\"vendí 2 buzos a Sole a 28 mil cada uno, pagó en efectivo\")."
+      ] },
+      "Se carga en el negocio al que vinculaste el número. Una devolución se termina en Nexo: te manda el enlace.",
+      { nota: "Si no ves WhatsApp en Configuración, todavía no está disponible en tu Nexo." }
+    ],
+    ver: ["asistente"]
+  },
+  {
     id: "cargar-producto",
     grupo: "Productos y servicios",
     titulo: "Cargar un producto o un servicio",
@@ -113,7 +179,7 @@ const SECCIONES_ES = [
         "Si es un servicio (un corte, una clase, una hora de trabajo), elegí el tipo servicio: no lleva stock.",
         "Tocá **Guardar producto**."
       ] },
-      "Para cambiar un precio, abrí el producto desde la lista y editalo. El código o SKU sirve para buscarlo rápido y para el lector de código de barras.",
+      "Para cambiar un precio, abrí el producto desde la lista y editalo. El código o SKU sirve para buscarlo rápido; el **Código de barras** es el que lee el lector del mostrador, y el **Código de balanza (PLU)**, el de lo que pesás en una balanza con etiquetas.",
       { nota: "El costo se actualiza solo cada vez que cargás una compra: Nexo hace el promedio entre lo que tenías y lo que entró." }
     ],
     ver: ["variantes", "listas-precios", "categorias", "registrar-compra"]
@@ -168,12 +234,75 @@ const SECCIONES_ES = [
 
   /* ---------- Vender ---------- */
   {
+    id: "ofertas",
+    grupo: "Productos y servicios",
+    titulo: "Ofertas y promociones",
+    pantalla: ["#/ofertas", "Ofertas"],
+    admin: true,
+    preguntas: ["cómo hago una oferta", "cómo pongo un producto en promoción", "cómo hago un descuento por cantidad", "cómo bajo el precio por unos días", "cómo hago una promo de los martes"],
+    palabras: ["oferta", "ofertas", "promocion", "promo", "promos", "descuento", "rebaja", "liquidacion", "cantidad", "dia", "semana", "vigencia"],
+    bloques: [
+      "Una oferta baja el precio por un tiempo sin tocar tus listas de precios. Arranca y termina sola, y el punto de venta y las ventas la aplican.",
+      { pasos: [
+        "En **Productos**, tocá **Ofertas** y después **Nueva oferta**.",
+        "Elegí cuánto baja: un porcentaje menos, un monto menos o a un precio fijo. Con una cantidad mínima es una promoción por cantidad (\"2 kg o más a $ 9.000 el kilo\").",
+        "Elegí a qué: productos, categorías o todo el catálogo, y en qué lista de precios.",
+        "Elegí desde y hasta cuándo y, si querés, qué días de la semana o del mes.",
+        "Tocá **Guardar oferta**."
+      ] },
+      "Si dos ofertas tocan lo mismo, no se suman: gana la más barata. En **Los precios de un día** ves cómo queda cada precio ese día.",
+      "Para un descuento a una sola venta, sin armar una oferta, usá **Descuento** en el punto de venta."
+    ],
+    ver: ["listas-precios", "punto-de-venta"]
+  },
+  {
+    id: "produccion",
+    grupo: "Productos y servicios",
+    titulo: "Producción: recetas y lo que fabricás",
+    pantalla: ["#/produccion", "Producción"],
+    modulo: "produccion",
+    preguntas: ["cómo cargo una receta", "cómo registro lo que produje", "cuánto me cuesta hacer un producto", "cómo descuento el envase o el packaging al vender", "cómo cargo los insumos"],
+    palabras: ["produccion", "producir", "receta", "recetas", "fabricar", "elaborar", "hacer", "insumo", "insumos", "materiales", "rinde", "packaging", "envase", "envases"],
+    bloques: [
+      "Si hacés lo que vendés (comida, velas, ropa), Producción saca el costo de cada cosa desde los materiales que lleva.",
+      { pasos: [
+        "En **Producción › Recetas**, tocá **Nueva receta**: elegí qué se hace, cuánto rinde y qué materiales lleva. Los materiales son productos como cualquier otro: los comprás con las compras de siempre, y de ahí sale su costo.",
+        "Cuando hacés una tanda, tocá **Producir**: elegí qué hiciste y cuánto ibas a hacer. Nexo propone los materiales de la receta: corregí lo que usaste de verdad.",
+        "Poné cuánto salió de verdad y guardalo. Los materiales salen del stock, lo que hiciste entra, y su costo sale de lo que usaste."
+      ] },
+      "En **Al vender** cargás lo que se usa al vender sin venderse: la caja de cada uno, o la bolsa una sola vez por venta. Al vender, Nexo lo propone y se cambia en el momento si esa vez fue distinto: sale del stock y entra al costo de la venta.",
+      { nota: "Si no ves Producción en el menú, prendela en Configuración › Funciones." }
+    ],
+    ver: ["registrar-compra", "stock", "funciones"]
+  },
+  {
+    id: "balanza",
+    grupo: "Productos y servicios",
+    titulo: "Balanza y etiquetas con código",
+    pantalla: ["#/configuracion/balanza", "Configuración › Balanza"],
+    modulo: "pos",
+    admin: true,
+    preguntas: ["cómo uso la balanza", "el punto de venta lee la etiqueta de la balanza", "cómo vendo por peso con etiqueta", "qué es el plu"],
+    palabras: ["balanza", "etiqueta", "etiquetas", "peso", "pesar", "plu", "codigo", "kilo", "fiambre", "carne", "verdura"],
+    bloques: [
+      "Si tu balanza imprime etiquetas con código de barras, el punto de venta las lee: el producto entra con su peso, al precio de hoy en Nexo (nunca el de la etiqueta).",
+      { pasos: [
+        "Pesá cualquier producto en la balanza y sacá la etiqueta.",
+        "En **Configuración › Balanza**, pasá la etiqueta con el lector y copiá lo que tiene impreso: el código del producto en la balanza (PLU) y el peso o el importe. Nexo se da cuenta solo de cómo arma el código tu balanza.",
+        "Tocá **Probar la etiqueta** y después **Usar este formato**.",
+        "En cada producto que pesás, cargá su **Código de balanza (PLU)**: el número con el que lo tenés en la balanza."
+      ] }
+    ],
+    ver: ["punto-de-venta", "cargar-producto"]
+  },
+
+  {
     id: "punto-de-venta",
     grupo: "Vender",
     titulo: "Vender en el mostrador (Punto de venta)",
     pantalla: ["#/pos", "Punto de venta"],
     modulo: "pos",
-    preguntas: ["cómo vendo en el mostrador", "cómo abro la caja", "cómo cierro la caja", "cómo cobro con el lector", "cómo hago el arqueo", "cómo doy el vuelto", "cómo cobro con dos medios de pago", "cómo imprimo el ticket", "cómo facturo en el mostrador", "cómo hago una factura a en el mostrador"],
+    preguntas: ["cómo vendo en el mostrador", "cómo abro la caja", "cómo cierro la caja", "cómo cobro con el lector", "cómo hago el arqueo", "cómo doy el vuelto", "cómo cobro con dos medios de pago", "cómo imprimo el ticket", "cómo facturo en el mostrador", "cómo hago una factura a en el mostrador", "cómo hago un descuento en el mostrador", "cómo cobro con tarjeta en cuotas", "cómo cobro con qr"],
     palabras: ["mostrador", "punto", "pos", "caja", "turno", "abrir", "cerrar", "arqueo", "vuelto", "lector", "escanear", "codigo", "barras", "cobrar", "rapida", "ticket", "imprimir", "impresora"],
     bloques: [
       "Es la pantalla para vender rápido, parado frente al cliente.",
@@ -185,11 +314,17 @@ const SECCIONES_ES = [
         "Al terminar el día, tocá **Cerrar caja** y contá el efectivo: Nexo te dice si coincide con lo que debería haber."
       ] },
       "Sin elegir cliente, la venta va a Consumidor final. Para dejarle algo a cuenta a alguien, elegí el cliente: a Consumidor final no se le fía.",
+      { lista: [
+        "**Los medios** que aparecen al cobrar (efectivo, débito, crédito con sus cuotas, transferencia…) los arma quien administra en Configuración › Medios de cobro.",
+        "**Descuento**: un porcentaje o un monto sobre toda la venta, sin armar una oferta. Las ofertas vigentes se aplican solas.",
+        "**Cobrar con QR de Mercado Pago**: con tu Mercado Pago conectado, el cliente escanea y el cobro entra cuando paga.",
+        "**Balanza**: si tu balanza imprime etiquetas, pasala por el lector y el producto entra con su peso."
+      ] },
       "Para hacerle la factura A a una empresa o a un monotributista, tocá **Factura A** y confirmá su CUIT, su nombre y su condición frente al IVA. Si ya está en tus clientes, Nexo lo encuentra por el CUIT; si no, lo crea. Si hacés la factura C, el enlace **Facturar a un cliente con CUIT** hace lo mismo. La letra sale de tu condición y la del cliente: a un responsable inscripto no se le hace la B.",
       "El ticket es para impresoras de 80 mm. Se vuelve a imprimir desde la ficha de la venta, con **Ticket**.",
       { nota: "Si no ves Punto de venta en el menú, prendelo en Configuración › Funciones." }
     ],
-    ver: ["caja", "registrar-venta", "funciones"]
+    ver: ["caja", "medios-cobro", "ofertas", "balanza", "registrar-venta", "funciones"]
   },
   {
     id: "registrar-venta",
@@ -206,7 +341,8 @@ const SECCIONES_ES = [
         "Si ya te pagó, cargá el cobro (cuánto y a qué cuenta entró). Si no, queda a cuenta: lo debe.",
         "Tocá **Registrar venta**."
       ] },
-      "Al registrarla, Nexo descuenta el stock, guarda el costo de ese momento para calcular la ganancia y, si quedó algo sin cobrar, lo suma a lo que te debe el cliente.",
+      "Al registrarla, Nexo descuenta el stock, guarda el costo de ese momento para calcular la ganancia y, si quedó algo sin cobrar, lo suma a lo que te debe el cliente. Si vendés online, elegí **Por dónde te compró** (el local, Instagram, WhatsApp…).",
+      "En la ficha de la venta ves **Adónde fue la plata**: la mercadería, cada gasto de la venta (la comisión, el envío, las cuotas), el IVA y lo que te quedó. Si pagaste el envío, sumalo con **Sumar el envío**.",
       "También la podés cargar desde el asistente: \"vendí 2 buzos a Sole a 28 mil cada uno, pagó en efectivo\"."
     ],
     ver: ["cobrar", "anular-venta", "facturar", "punto-de-venta"]
@@ -225,9 +361,57 @@ const SECCIONES_ES = [
         "Poné cuánto te pagó y a qué cuenta entró la plata (efectivo, banco, Mercado Pago).",
         "Tocá **Registrar cobro**."
       ] },
-      "El cobro baja lo que debe el cliente y suma la plata a esa cuenta en Caja."
+      "El cobro baja lo que debe el cliente y suma la plata a esa cuenta en Caja.",
+      "Si te paga con Mercado Pago, en el mismo cobro tocá **Crear link de Mercado Pago** y mandáselo por WhatsApp, o mostrale el QR. Cuando paga, el cobro se registra solo."
     ],
-    ver: ["cuentas-corrientes", "caja"]
+    ver: ["cuentas-corrientes", "caja", "mercado-pago"]
+  },
+  {
+    id: "medios-cobro",
+    grupo: "Vender",
+    titulo: "Medios de cobro: tarjetas, cuotas y comisiones",
+    pantalla: ["#/configuracion/medios-cobro", "Configuración › Medios de cobro"],
+    modulo: "pos",
+    admin: true,
+    preguntas: ["cómo cargo la comisión de la tarjeta", "cómo ofrezco cuotas", "cómo agrego modo o cuenta dni", "a qué cuenta entra lo que cobro con débito", "cómo cargo el posnet"],
+    palabras: ["medio", "medios", "cobro", "tarjeta", "debito", "credito", "cuotas", "comision", "posnet", "modo", "billetera", "transferencia", "acredita"],
+    bloques: [
+      "Los medios de cobro son las formas en que te pagan en el mostrador: efectivo, débito, crédito, transferencia, MODO… Cada uno dice a qué cuenta entra la plata.",
+      { pasos: [
+        "Entrá a **Configuración › Medios de cobro** y tocá **Sumar un medio de cobro**.",
+        "Poné el nombre, el tipo y a qué cuenta entra. El efectivo entra siempre en la caja del turno, así el arqueo cierra.",
+        "Cargá la comisión y en cuántos días se acredita la plata. La comisión se anota sola como un gasto de cada venta.",
+        "En crédito, sumá los planes de cuotas que ofrecés y, si son sin interés para el cliente, cuánto te cuesta a vos ofrecerlos: también se anota como gasto de la venta.",
+        "Tocá **Agregar medio**."
+      ] },
+      "Al cobrar con transferencia, en el mostrador se elige en qué cuenta cayó (el banco, Mercado Pago…).",
+      { nota: "Lo que cobrás con tu Mercado Pago conectado no hace falta cargarlo acá: Nexo anota el costo real de cada pago." }
+    ],
+    ver: ["punto-de-venta", "mercado-pago", "caja"]
+  },
+  {
+    id: "mercado-pago",
+    grupo: "Vender",
+    titulo: "Cobrar con Mercado Pago",
+    pantalla: ["#/configuracion/mercado-pago", "Configuración › Mercado Pago"],
+    admin: true,
+    preguntas: ["cómo conecto mercado pago", "cómo mando un link de pago", "cómo armo el qr del mostrador", "me conviene dar cuotas con mercado pago"],
+    palabras: ["mercado", "pago", "mp", "link", "qr", "conectar", "cuotas", "comision", "cartel"],
+    bloques: [
+      "Con tu cuenta de Mercado Pago conectada, cobrás con un link o con el QR del mostrador, y el cobro entra solo en Nexo, con la comisión y el costo de las cuotas anotados como gastos de esa venta.",
+      { pasos: [
+        "Entrá a **Configuración › Mercado Pago** y tocá **Conectar mi Mercado Pago**: te lleva a Mercado Pago para darle permiso a Nexo, y volvés solo. Nexo nunca te pide la contraseña y no puede sacar plata de tu cuenta.",
+        "Elegí en qué cuenta de Caja entra lo cobrado.",
+        "Para el mostrador, cargá la dirección del local y tocá **Armar la caja**. Después, **Descargar el cartel para imprimir** te da el QR para pegar en el mostrador."
+      ] },
+      { lista: [
+        "**Link de pago**: al cobrar una venta, **Crear link de Mercado Pago**. Se lo mandás por WhatsApp o le mostrás el QR.",
+        "**QR en el mostrador**: al cobrar, **Cobrar con QR de Mercado Pago**. El cobro entra cuando paga."
+      ] },
+      "En **¿Te conviene ofrecer cuotas?** ves cuánto te cuesta cada plan y cuánto cobrar para que te quede lo mismo.",
+      { nota: "Es desde el plan Emprendedor." }
+    ],
+    ver: ["medios-cobro", "cobrar", "punto-de-venta"]
   },
   {
     id: "anular-venta",
@@ -286,6 +470,46 @@ const SECCIONES_ES = [
     ver: ["registrar-venta", "trabajos"]
   },
 
+  /* ---------- Vender por internet ---------- */
+  {
+    id: "tiendas-online",
+    grupo: "Vender por internet",
+    titulo: "Conectar Tienda Nube y Mercado Libre",
+    pantalla: ["#/configuracion/tienda-nube", "Configuración › Tienda Nube"],
+    modulo: "canales",
+    admin: true,
+    preguntas: ["cómo conecto tienda nube", "cómo conecto mercado libre", "cómo sincronizo el stock con mi tienda", "cómo publico mis productos en tienda nube", "entran solas las ventas de mercado libre"],
+    palabras: ["tienda", "nube", "tiendanube", "mercado", "libre", "ml", "online", "internet", "publicar", "publicaciones", "sincronizar", "ecommerce", "web"],
+    bloques: [
+      "Si vendés por internet, conectá tu tienda: el stock y el precio se mantienen al día solos, y cada venta de la tienda entra como una venta de Nexo.",
+      { pasos: [
+        "Entrá a **Configuración › Tienda Nube** (o **Mercado Libre**) y tocá **Conectar mi Tienda Nube** (o **Conectar mi Mercado Libre**). Te lleva a la tienda para darle permiso a Nexo, y volvés solo.",
+        "Elegí de qué lista de precios sale el precio, de qué depósito el stock y a qué cuenta entra lo cobrado.",
+        "En Tienda Nube, elegí qué productos **Publicar**: se crean con su nombre, sus variantes, su precio y su stock, y las fotos se cargan en Tienda Nube. Si la tienda ya tenía productos, **Traer lo que ya tengo en la tienda**.",
+        "En Mercado Libre, **Vincular** cada publicación con su producto de Nexo. Si tienen el mismo SKU, ya viene elegido. Nexo no crea ni borra publicaciones."
+      ] },
+      "Nexo manda: si cambiás el stock o el precio en la tienda, Nexo lo vuelve a poner como está acá. Si en Mercado Libre vendés más caro por la comisión, armá una lista de precios para Mercado Libre.",
+      "Una venta pagada online entra cobrada; una que te pagan por transferencia o en efectivo, por cobrar.",
+      { nota: "Es desde el plan Emprendedor. Si no ves Canales de venta en Configuración, prendé Venta online en Funciones." }
+    ],
+    ver: ["venta-online", "listas-precios", "funciones"]
+  },
+  {
+    id: "venta-online",
+    grupo: "Vender por internet",
+    titulo: "Cuánto te deja cada canal (Venta online)",
+    pantalla: ["#/venta-online", "Venta online"],
+    modulo: "canales",
+    admin: true,
+    preguntas: ["cuánto vendo por mercado libre", "qué canal me deja más", "cuánto me cobra mercado libre", "cómo anoto que una venta fue por instagram", "me rinde la publicidad"],
+    palabras: ["canal", "canales", "online", "instagram", "tienda", "mercado", "libre", "comision", "publicidad", "ganancia", "ticket"],
+    bloques: [
+      "Cada venta guarda por dónde entró: el local, Tienda Nube, Mercado Libre, Instagram, WhatsApp… Las de las tiendas conectadas se anotan solas, y en una venta cargada a mano lo elegís en **Por dónde te compró**.",
+      "En **Venta online** ves, por período, cuánto vendiste online y, por cada canal, adónde fue la plata: la mercadería, lo que cobra el canal por vender ahí (comisión, envío, cuotas) y lo que te quedó. También lo más vendido en cada canal y lo que rinde la publicidad que anotás en Gastos."
+    ],
+    ver: ["tiendas-online", "resumen", "registrar-gasto"]
+  },
+
   /* ---------- Facturar ---------- */
   {
     id: "facturar",
@@ -298,7 +522,7 @@ const SECCIONES_ES = [
       "Podés facturar una venta que ya cargaste, o hacer una factura suelta.",
       { pasos: [
         "Para una venta: abrila y tocá **Facturar**. Para una suelta: **Facturas › Nueva factura**.",
-        "Revisá los datos del cliente y la condición de venta.",
+        "Si sos responsable inscripto, elegí **Factura A** o **Factura B**: la A te pide el CUIT del cliente y la B no. Revisá sus datos y la condición de venta.",
         "Tocá **Generar factura**. Desde su ficha, **Imprimir / PDF**."
       ] },
       "La letra sale sola, según tu condición frente al IVA y la del cliente, así nunca sale una que ARCA no acepta:",
@@ -306,13 +530,30 @@ const SECCIONES_ES = [
         "Si sos **responsable inscripto**: A a otro inscripto o a un monotributista, y B a un consumidor final o a un exento. A un monotributista no se le hace B: desde 2021 le corresponde la A.",
         "Si sos **monotributista o exento**: siempre C."
       ] },
-      "Para una A, el cliente tiene que tener su CUIT cargado. Si no te lo da, no es A: cobrale como consumidor final.",
+      "Para una A, el cliente tiene que tener su CUIT cargado. Si no te lo da, no es A: es una B a consumidor final. Un inscripto que compra para él también va en B: elegí **Factura B** y sale sin sus datos, sin cambiar su ficha.",
       "La A muestra el IVA aparte; la B dice cuánto IVA contiene el precio, como pide la ley de transparencia fiscal. La A a un monotributista lleva una leyenda que aclara que ese IVA solo le sirve para el monotributo.",
       "La factura guarda los datos del cliente de ese momento: si después cambiás su ficha, la factura no cambia.",
       "En el Punto de venta la factura se elige al cobrar, sin pasar por acá: tocando **Factura A** cargás ahí mismo al cliente con su CUIT.",
       { nota: "Sin la factura electrónica activada, el comprobante es interno: sale con una X y \"No válido como factura\". Para facturar ante ARCA, mirá Factura electrónica." }
     ],
     ver: ["factura-electronica", "iva", "datos-del-negocio"]
+  },
+  {
+    id: "factura-por-mail",
+    grupo: "Facturar",
+    titulo: "Mandar la factura por mail",
+    pantalla: ["#/facturas", "Facturas"],
+    preguntas: ["cómo mando la factura por mail", "cómo le envío la factura al cliente", "puedo mandar varias facturas juntas", "cómo mando las facturas desde mi gmail"],
+    palabras: ["mail", "email", "correo", "mandar", "enviar", "factura", "facturas", "pdf", "gmail", "adjunto"],
+    bloques: [
+      { pasos: [
+        "Abrí la factura y tocá **Mandar por mail**, o tildá varias en **Facturas** y tocá **Mandar por mail**: cada una va al mail de su cliente.",
+        "Revisá el mail y tocá **Mandar**. Va con el PDF adjunto, a nombre de tu negocio. Si el cliente no tenía mail, lo podés guardar en su ficha."
+      ] },
+      "Si conectás el Gmail de tu negocio en **Configuración › Gmail**, las facturas salen desde tu mail: tus clientes te contestan a vos y te quedan en \"Enviados\". Nexo solo pide permiso para mandar: no puede leer ni borrar tus mails. Sin conectarlo, salen desde Nexo a tu nombre.",
+      { nota: "Es desde el plan Emprendedor, como la factura electrónica. Una factura electrónica sin CAE todavía no se puede mandar." }
+    ],
+    ver: ["facturar", "factura-electronica"]
   },
   {
     id: "factura-electronica",
@@ -327,7 +568,7 @@ const SECCIONES_ES = [
       { pasos: [
         "Entrá a **Configuración › Factura electrónica**.",
         "Seguí los pasos para darle permiso a Nexo desde ARCA. Nexo nunca te pide tu clave fiscal.",
-        "Cargá tu CUIT, tu condición frente al IVA y el punto de venta, y tocá **Verificar con ARCA**.",
+        "Cargá tu CUIT y tu condición frente al IVA (**Cargar el CUIT y la condición**) y el punto de venta, y tocá **Verificar con ARCA**.",
         "Listo: al hacer una factura, Nexo le pide el CAE a ARCA. Si ARCA no responde, queda pendiente y se reintenta con **Pedir el CAE a ARCA**."
       ] },
       "El número de cada factura lo da ARCA, así no se saltea ni se repite, aunque se reintente. Cada una sale con el CAE, su vencimiento y el código QR de ARCA, con el que cualquiera la puede verificar.",
@@ -341,12 +582,12 @@ const SECCIONES_ES = [
     id: "iva",
     grupo: "Facturar",
     titulo: "IVA",
-    pantalla: ["#/configuracion/negocio", "Configuración › Datos del negocio"],
+    pantalla: ["#/configuracion/comprobantes", "Configuración › Comprobantes y datos fiscales"],
     preguntas: ["cómo cargo el iva", "dónde veo el iva", "el precio incluye iva", "soy responsable inscripto", "soy monotributista", "libro iva"],
     palabras: ["iva", "impuesto", "alicuota", "inscripto", "monotributo", "monotributista", "exento", "consumidor", "final", "condicion", "libro", "debito", "credito", "fiscal"],
     bloques: [
       { lista: [
-        "**Tu condición** (responsable inscripto, monotributo, exento) va en Configuración › Datos del negocio.",
+        "**Tu condición** (responsable inscripto, monotributo, exento) va en Configuración › Comprobantes y datos fiscales.",
         "**La de cada cliente y proveedor**, en su ficha. Vacía es consumidor final.",
         "**La alícuota de cada producto** (21 %, 10,5 %…) va en el producto. El precio que cargás es el final, con IVA incluido."
       ] },
@@ -372,7 +613,25 @@ const SECCIONES_ES = [
       ] },
       "En la ficha de cada cliente ves todo lo que te compró, lo que te debe y sus movimientos."
     ],
-    ver: ["crm", "cuentas-corrientes"]
+    ver: ["crm", "cuentas-corrientes", "unir-repetidos"]
+  },
+  {
+    id: "unir-repetidos",
+    grupo: "Clientes",
+    titulo: "Unir clientes o proveedores repetidos",
+    pantalla: ["#/clientes", "Clientes"],
+    admin: true,
+    preguntas: ["tengo un cliente cargado dos veces", "cómo junto dos clientes", "cómo uno proveedores repetidos", "cargué dos veces el mismo cliente"],
+    palabras: ["unir", "juntar", "repetido", "repetidos", "duplicado", "duplicados", "dos", "veces", "fusionar", "mismo"],
+    bloques: [
+      { pasos: [
+        "En **Clientes** (o **Proveedores**), tildá los repetidos.",
+        "Tocá **Unir** en la barra de abajo.",
+        "Elegí cuál queda y tocá **Unir**."
+      ] },
+      "Todo lo de los otros pasa al que queda: las ventas, los cobros, las facturas, los presupuestos y la cuenta corriente (en un proveedor, sus compras y sus pagos), y se completa el contacto que le falte. Los otros se borran. Las facturas ya hechas no cambian."
+    ],
+    ver: ["clientes", "proveedores"]
   },
   {
     id: "crm",
@@ -448,7 +707,8 @@ const SECCIONES_ES = [
         "Tocá **Guardar borrador** y seguí como con cualquier compra."
       ] },
       "Los packs entran en unidades: 2 packs de 12 gaseosas son 24 gaseosas, cada una con su costo. Si un bulto trae otra cantidad, corregila en **Cada uno trae**.",
-      { nota: "Lo que confirmás queda recordado para ese proveedor: la próxima factura suya sale sola. Si lo cargado no da el total de la factura, Nexo te avisa." }
+      { nota: "Lo que confirmás queda recordado para ese proveedor: la próxima factura suya sale sola. Si lo cargado no da el total de la factura, Nexo te avisa." },
+      { nota: "Es del plan Pro." }
     ],
     ver: ["registrar-compra", "proveedores"]
   },
@@ -482,7 +742,7 @@ const SECCIONES_ES = [
       "En **Proveedores › Nuevo proveedor** cargás su nombre, CUIT, condición frente al IVA y contacto. En su ficha ves lo que le compraste y lo que le debés.",
       "Si le devolvés mercadería, se hace desde **Dev. a proveedor**: el stock baja y se descuenta de lo que le debés."
     ],
-    ver: ["registrar-compra", "pagar-proveedor"]
+    ver: ["registrar-compra", "pagar-proveedor", "unir-repetidos"]
   },
   {
     id: "stock",
@@ -583,17 +843,20 @@ const SECCIONES_ES = [
     preguntas: ["cuánto vendí este mes", "cuánto gané", "cómo veo la ganancia", "qué es lo que más vendo", "quiénes son mis mejores clientes", "cómo veo las estadísticas", "cuál es mi margen"],
     palabras: ["resumen", "estadisticas", "reporte", "reportes", "ganancia", "gane", "margen", "resultado", "vendi", "mes", "periodo", "evolucion", "mejores", "rentabilidad", "numeros"],
     bloques: [
-      "En **Resumen** elegís el período (este mes, el anterior, el año) y ves:",
+      "En **Resumen** elegís el período (hoy, 7 días, este mes, el año o las fechas que quieras) y ves:",
       { lista: [
-        "lo que vendiste, lo que te costó eso, la ganancia, los gastos y el resultado, comparado con el período anterior;",
+        "lo que vendiste, lo que te costó eso, la ganancia, los gastos y el resultado, comparado con el período anterior o con el mismo del año pasado;",
+        "lo que hay que mirar hoy: lo que te deben, lo que debés y lo que hay que reponer;",
+        "cuándo se vende, por día de la semana y por hora;",
         "cómo viene el resultado mes a mes;",
         "qué se vende, por categoría y los mejores clientes;",
         "qué se compra y a quién;",
         "el IVA del período."
       ] },
+      "Con **Personalizar** elegís qué piezas ver y en qué orden. Arranca con las de tu tipo de negocio.",
       "La ganancia de cada venta usa el costo que tenía el producto cuando lo vendiste, aunque después cambie."
     ],
-    ver: ["iva", "que-reponer"]
+    ver: ["iva", "que-reponer", "venta-online"]
   },
 
   /* ---------- Servicios y gimnasio ---------- */
@@ -658,8 +921,8 @@ const SECCIONES_ES = [
     preguntas: ["cómo cambio el nombre del negocio", "dónde pongo el cuit", "cómo cambio los datos que salen en la factura"],
     palabras: ["negocio", "datos", "nombre", "cuit", "direccion", "telefono", "razon", "social", "comprobantes", "logo"],
     bloques: [
-      "En **Configuración › Datos del negocio** van el nombre, el CUIT, tu condición frente al IVA, la dirección y el teléfono. Salen en tus presupuestos y facturas.",
-      "En **Configuración › Comprobantes** van la razón social, los ingresos brutos y el inicio de actividades que pide la factura, con una vista previa."
+      "En **Configuración › Datos del negocio** van el nombre, la dirección, el teléfono y el mail. Salen en el encabezado de tus comprobantes.",
+      "En **Configuración › Comprobantes y datos fiscales** van la razón social, el CUIT, tu condición frente al IVA (define qué factura podés hacer), los ingresos brutos, el inicio de actividades y un texto al pie, con una vista previa."
     ],
     ver: ["iva", "facturar"]
   },
@@ -673,7 +936,7 @@ const SECCIONES_ES = [
     palabras: ["funciones", "funcion", "modulo", "activar", "prender", "apagar", "seccion", "menu", "tipo", "rubro", "aparece"],
     bloques: [
       "Según el tipo de negocio que elegiste, Nexo arranca con algunas funciones prendidas. Las demás las sumás cuando las necesites.",
-      "En **Configuración › Funciones** prendés o apagás punto de venta, consultas (CRM), presupuestos, trabajos, abonos, compras, stock y socios. Apagar una no borra nada.",
+      "En **Configuración › Funciones** prendés o apagás punto de venta, venta online, consultas (CRM), presupuestos, trabajos, abonos, compras, stock, producción y socios. Apagar una no borra nada.",
       "Desde ahí también podés **Cambiar el tipo** de negocio: solo cambia con qué unidad nace un producto nuevo."
     ]
   },
@@ -710,6 +973,26 @@ const SECCIONES_ES = [
       "Con la misma cuenta podés manejar varios negocios, cada uno con sus datos separados.",
       "El selector de arriba del menú cambia de negocio, y ahí mismo está **Agregar negocio**."
     ]
+  },
+  {
+    id: "plan",
+    grupo: "Tu cuenta y tu equipo",
+    titulo: "Los planes de Nexo",
+    pantalla: ["#/configuracion/plan", "Configuración › Plan de Nexo"],
+    admin: true,
+    preguntas: ["cuánto cuesta nexo", "qué incluye el plan gratis", "cómo paso a otro plan", "qué plan necesito para la factura electrónica"],
+    palabras: ["plan", "planes", "precio", "gratis", "emprendedor", "pro", "pagar", "suscripcion", "limite", "tope", "cuesta"],
+    bloques: [
+      "Todos los planes tienen las funciones para manejar tu negocio; cambia hasta dónde llegás.",
+      { lista: [
+        "**Gratis**: hasta 100 productos y 300 ventas por mes, un usuario, y los comprobantes con la marca de Nexo.",
+        "**Emprendedor**: sin topes de productos ni de ventas, hasta 3 usuarios, la factura electrónica, las facturas por mail, Tienda Nube, Mercado Libre y Mercado Pago, y los comprobantes sin la marca de Nexo.",
+        "**Pro**: todo eso, más el asistente con IA, las compras desde la foto de la factura, usuarios sin tope y varios negocios con la misma cuenta."
+      ] },
+      "En **Configuración › Plan de Nexo** ves los precios, lo que usás y pedís pasar a otro: te escribimos para activarlo, y mientras tanto seguís usando Nexo como siempre.",
+      { nota: "Si pasás a un plan que no trae algo que usabas (la factura electrónica, una tienda conectada), queda en pausa: no se borra nada." }
+    ],
+    ver: ["funciones", "varios-negocios"]
   },
   {
     id: "papelera",

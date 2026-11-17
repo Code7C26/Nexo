@@ -6082,11 +6082,14 @@
              el resto queda en la foto de la factura. -->
         <fieldset class="factura-receptor">
           <legend>Para quién es la factura</legend>
+          <!-- El inscripto elige A o B, como en el mostrador (hist. §191): cada
+               una pide sus datos. Las arma app.js (pintarLetras). -->
+          <div class="segmentos factura-letras" role="group" aria-label="Tipo de factura" data-letras hidden></div>
           <label>Nombre o razón social
             <input type="text" name="cliente" required placeholder="Si ya es cliente, el mismo nombre de su ficha" autocomplete="off" />
           </label>
           <div class="form-fila">
-            <label>CUIT o DNI
+            <label><span data-documento-etiqueta>CUIT o DNI</span>
               <input type="text" name="receptor_documento" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="Opcional" />
             </label>
             <label>Condición frente al IVA
@@ -6611,11 +6614,14 @@
              período. Los arma app.js (prepararDatosFactura). -->
         <fieldset class="factura-receptor">
           <legend>Para quién es la factura</legend>
+          <!-- El inscripto elige A o B, como en el mostrador (hist. §191): cada
+               una pide sus datos. Las arma app.js (pintarLetras). -->
+          <div class="segmentos factura-letras" role="group" aria-label="Tipo de factura" data-letras hidden></div>
           <label>Nombre o razón social
             <input type="text" name="receptor_nombre" maxlength="160" autocomplete="off" />
           </label>
           <div class="form-fila">
-            <label>CUIT o DNI
+            <label><span data-documento-etiqueta>CUIT o DNI</span>
               <input type="text" name="receptor_documento" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="Opcional" />
             </label>
             <label>Condición frente al IVA

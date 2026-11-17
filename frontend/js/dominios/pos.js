@@ -971,7 +971,7 @@ function renderComprobante() {
   if (!error && cobro.facturar && !cobro.pidiendoA) {
     texto = negocio.factura_electronica?.activa
       ? "Al confirmar, Nexo le pide el CAE a ARCA."
-      : "Sale como comprobante interno: no es una factura ante ARCA.";
+      : "La factura electrónica no está activada: sale un comprobante interno, que no vale como factura. Se activa en Configuración › Factura electrónica.";
   }
   const nota = document.getElementById("posComprobanteNota");
   nota.hidden = !texto;
