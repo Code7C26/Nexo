@@ -1485,6 +1485,25 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 - Cambia lo de hist. §193–§196: el fichaje y "quiénes trabajan" pasan de las
   cuentas a los empleados, y anular en el mostrador pide el PIN de un
   encargado en vez de la contraseña del admin.
+- **Sumado el mismo día (idea de Gemini que trajo el usuario):** la caja queda
+  conectada pero bloqueada ("¿quién atiende?"); el empleado pone su PIN y vende
+  a su nombre, y un botón "bloquear" deja entrar a otro sin cerrar nada (relevo
+  del almuerzo). Cada venta, cobro y movimiento guarda sucursal, caja y
+  empleado. **Desbloquear no es fichar:** fichar entrada y salida es un botón
+  aparte, o el relevo ensucia los horarios.
+- **Biometría, después:** desde el navegador no se sabe de quién es la huella
+  (Windows Hello solo dice "alguien de esta compu"); un lector de fichaje
+  necesita un programa puente, y la cara o la huella son datos sensibles (Ley
+  25.326, consentimiento escrito). Para la presentación: PIN y, si da, foto al
+  fichar.
+- **Los dos modelos conviven, cada negocio usa el suyo:** local con mostrador
+  = cajas vinculadas y empleados con PIN; online o servicios = cuentas
+  personales con permisos por sección (punto 4); socios que son todos dueños =
+  varios administradores (ya existe). Propuesta: el **empleado** es la persona
+  del negocio y la **cuenta de Nexo es opcional** (el cajero sin cuenta, el
+  encargado con PIN y cuenta, en una tienda online todos con cuenta).
+- Orden: primero cajas vinculadas, empleados con PIN, relevo y fichaje en la
+  caja; después los permisos por sección.
 
 **Multi-empresa y seguridad**
 - **Se entra con el mail, y es único en todo Nexo** (hist. §102, reemplaza al
