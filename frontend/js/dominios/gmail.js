@@ -27,6 +27,7 @@ const RESULTADOS = {
   "sin-permiso": ["No se conectó: en Google quedó sin tildar el permiso de mandar mails. Volvé a conectar y dejalo tildado.", "atencion"],
   "sin-sesion": ["Para conectar tu Gmail, entrá a Nexo como administrador del negocio y tocá “Conectar Gmail”.", "atencion"],
   "no-disponible": ["Conectar Gmail todavía no está disponible en este Nexo.", "atencion"],
+  "sin-plan": ["No se conectó: mandar las facturas por mail es desde el plan Emprendedor.", "atencion"],
   error: ["No se pudo conectar tu Gmail. Volvé a intentarlo desde acá.", "error"]
 };
 
@@ -61,10 +62,15 @@ async function pintarGmail() {
   leerVuelta();
   const estado = await api("/api/gmail", { error: "No se pudo consultar Gmail." });
   pintarResumen(estado);
+  // Desde Emprendedor, como la factura electrónica. En Gratis se ve cómo
+  // funciona y el aviso del plan; lo conectado queda en pausa.
+  const sinPlan = !estado.plan_lo_incluye;
+  document.getElementById("gmailSinPlan").hidden = !sinPlan;
   document.getElementById("gmailNoDisponible").hidden = estado.disponible;
-  document.getElementById("gmailTarjeta").hidden = !estado.disponible;
+  document.getElementById("gmailTarjeta").hidden = !estado.disponible || (sinPlan && !estado.conectado);
   document.getElementById("gmailComoFunciona").hidden = !estado.disponible || estado.conectado;
   if (!estado.disponible) return;
+  btnConectar.hidden = sinPlan;
 
   if (estado.conectado) {
     const quien = estado.conectada_por ? ` ${esc(estado.conectada_por)}` : "";
@@ -82,11 +88,18 @@ async function pintarGmail() {
     estadoEl.innerHTML = `<p class="config-tarjeta-texto">Conectá la cuenta de Gmail del negocio. Te lleva a Google, elegís la cuenta y aceptás el permiso de mandar mails.</p>`;
     botonConectar("Conectar Gmail", true);
   }
-  btnPrueba.hidden = !estado.conectado;
+  if (estado.en_pausa) {
+    estadoEl.innerHTML = `
+      <p class="fe-estado-linea fe-estado-falta">${icono("circle-alert")}
+        <span>Tu Gmail <strong>${esc(estado.direccion)}</strong> está en pausa: tu plan no incluye mandar facturas por mail. Vuelve a andar cuando pases a Emprendedor.</span></p>`;
+  }
+  btnPrueba.hidden = !estado.conectado || sinPlan;
   btnDesconectar.hidden = !estado.conectado && !estado.desconectado_por_google;
-  document.getElementById("gmailSinConectar").textContent = estado.nexo_manda
-    ? `Mientras no lo conectes, las facturas salen desde la casilla de Nexo, con el nombre de ${negocio.nombre}.`
-    : "Mientras no lo conectes, las facturas no se pueden mandar por mail.";
+  document.getElementById("gmailSinConectar").textContent = sinPlan
+    ? "Con el plan Emprendedor, las facturas salen desde tu Gmail o, si no lo conectás, desde la casilla de Nexo con el nombre de tu negocio."
+    : estado.nexo_manda
+      ? `Mientras no lo conectes, las facturas salen desde la casilla de Nexo, con el nombre de ${negocio.nombre}.`
+      : "Mientras no lo conectes, las facturas no se pueden mandar por mail.";
 }
 registrar("pintar:gmail", pintarGmail);
 

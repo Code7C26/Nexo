@@ -112,6 +112,18 @@ test('otro negocio no puede mandar una factura ajena', async () => {
   assert.equal(servidor.leerMails('ajena@nexo.test').length, 0);
 });
 
+test('en Gratis no se mandan facturas por mail: es desde Emprendedor, como la factura electrónica', async () => {
+  const gratis = await registrarEmpresa(servidor, { empresa: 'Medialunas Mail', usuario: 'medialunasmail', plan: 'gratis' });
+  const prod = (await gratis.post('/api/productos', { nombre: 'Docena', precio_venta: 6000, tipo: 'servicio' })).json.id;
+  const cliente_id = (await gratis.post('/api/clientes', { nombre: 'Vecina', email: 'vecina@nexo.test' })).json.id;
+  const venta = await gratis.post('/api/ventas', { cliente_id, items: [{ producto_id: prod, cantidad: 1, precio_unitario: 6000 }] });
+  const facturaId = (await gratis.post(`/api/ventas/${venta.json.id}/facturar`, { condicion: 'efectivo' })).json.id;
+  const r = await gratis.post(`/api/facturas/${facturaId}/mail`, { para: 'vecina@nexo.test', pdf: PDF });
+  assert.equal(r.status, 403);
+  assert.equal(r.json.codigo, 'limite_plan');
+  assert.equal(servidor.leerMails('vecina@nexo.test').length, 0);
+});
+
 test('el empleado también la puede mandar', async () => {
   const empleado = await crearEmpleado(servidor, admin, { usuario: 'cajeramail' });
   const { facturaId } = await facturar({ nombre: 'Lucía' });

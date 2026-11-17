@@ -1088,6 +1088,18 @@ async function descargarPDFFacturasSeleccionadas(ids, btn) {
 // Una electrónica sin CAE no se manda: todavía no es una factura.
 const sePuedeMandar = (f) => !f.arca_estado || f.arca_estado === "autorizado";
 
+// Es desde Emprendedor, como la factura electrónica (hist. §187). En Gratis el
+// botón se ve igual y dice qué plan hace falta, en vez de abrir el envío.
+function mailDelPlan() {
+  if (negocio.plan?.integraciones) return true;
+  avisar(
+    "Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Mientras tanto, descargá el PDF.",
+    "atencion",
+    esAdmin() ? { texto: "Ver los planes", href: "#/configuracion/plan" } : null
+  );
+  return false;
+}
+
 async function mandarFacturaPorMail(f, para, guardarEnCliente = false) {
   await cargarQr().catch(() => {});
   const pdf = await pdfBase64DeHoja(hojaDeFactura(f));
@@ -1103,6 +1115,7 @@ async function mandarFacturaPorMail(f, para, guardarEnCliente = false) {
 // En serie, como la descarga en lote; si una falla se corta ahí, para no
 // seguir chocando contra el mismo problema (el mail caído, el límite).
 async function mandarFacturasSeleccionadas(ids, btn) {
+  if (!mailDelPlan()) return;
   if (ids.length > LIMITE_LOTE) {
     avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
     return;
@@ -1391,7 +1404,7 @@ const modalMailFactura = document.getElementById("modalMailFactura");
 const formMailFactura = document.getElementById("formMailFactura");
 document.getElementById("btnMailFactura").addEventListener("click", () => {
   const f = facturaFichaDatos;
-  if (!f) return;
+  if (!f || !mailDelPlan()) return;
   formMailFactura.reset();
   formMailFactura.para.value = f.cliente_email ?? "";
   const guardar = formMailFactura.querySelector("[data-guardar-mail]");

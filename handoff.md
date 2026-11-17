@@ -26,7 +26,7 @@
 el negocio conecta su Gmail (solo el permiso de mandar, `gmail.send`) y las
 facturas salen desde ahí, a su nombre; sin conectar, siguen saliendo desde
 Nexo. Si Google le saca el permiso, no se pasa a Nexo solo: pide reconectar.
-Tabla nueva `cuentas_mail`. 422 tests. **Falta el trámite con Google**, paso a
+Tabla nueva `cuentas_mail`. Todo el envío por mail es desde Emprendedor, como la factura electrónica (decisión del usuario). 424 tests. **Falta el trámite con Google**, paso a
 paso en `docs/proyecto/verificacion-google.md` (lo hace el usuario en la
 consola; los pasos 1 a 3 alcanzan para probarlo con el aviso de "app no
 verificada", hasta 100 cuentas).

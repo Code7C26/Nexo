@@ -14368,3 +14368,9 @@ mandando desde Nexo.
   (habilitar la API, la vuelta y el permiso en la consola).
 - **Queda:** un servidor SMTP propio (dominio propio, Hostinger y similares) y
   Outlook; ofrecer mandarla al facturar.
+- **Plan (decisión del usuario del 17 de noviembre):** mandar las facturas por
+  mail (desde Nexo o desde el Gmail) va en el mismo plan que la factura
+  electrónica: desde Emprendedor. `RUTAS_DESDE_EMPRENDEDOR` suma `/gmail` y
+  `/facturas/:id/mail` (desconectar se puede siempre); en Gratis el botón avisa
+  el plan en vez de abrir el envío, y un Gmail ya conectado queda en pausa sin
+  borrarse. `planes.js` lo lista en Emprendedor. 424 tests.

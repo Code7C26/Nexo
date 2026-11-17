@@ -5023,5 +5023,11 @@ export default {
   "Si no lo pediste vos, entrá a Nexo y desconectá Gmail desde Configuración.": "If you didn't ask for it, sign in to Nexo and disconnect Gmail from Settings.",
   "Prueba de Nexo: así les llegan tus facturas": "Nexo test: this is how your invoices arrive",
   "Gmail no mandó el mail de prueba. Probá de nuevo en unos minutos.": "Gmail didn't send the test email. Try again in a few minutes.",
-  "Gmail desconectado: las facturas vuelven a salir desde Nexo": "Gmail disconnected: invoices go out from Nexo again"
+  "Gmail desconectado: las facturas vuelven a salir desde Nexo": "Gmail disconnected: invoices go out from Nexo again",
+  "Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Si ya tenías tu Gmail conectado, queda en pausa hasta que pases de plan, y no se borra nada.": "Sending invoices by email starts with the Entrepreneur plan, like electronic invoicing. If your Gmail was already connected, it's paused until you change plans, and nothing is deleted.",
+  "Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Mientras tanto, descargá el PDF.": "Sending invoices by email starts with the Entrepreneur plan, like electronic invoicing. In the meantime, download the PDF.",
+  "No se conectó: mandar las facturas por mail es desde el plan Emprendedor.": "It wasn't connected: sending invoices by email starts with the Entrepreneur plan.",
+  "está en pausa: tu plan no incluye mandar facturas por mail. Vuelve a andar cuando pases a Emprendedor.": "is paused: your plan doesn't include sending invoices by email. It works again when you move to Entrepreneur.",
+  "Con el plan Emprendedor, las facturas salen desde tu Gmail o, si no lo conectás, desde la casilla de Nexo con el nombre de tu negocio.": "With the Entrepreneur plan, invoices go out from your Gmail or, if you don't connect it, from Nexo's mailbox with your business name.",
+  "Las facturas por mail, desde tu Gmail": "Invoices by email, from your Gmail"
 };

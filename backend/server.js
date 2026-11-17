@@ -2075,6 +2075,7 @@ app.get('/api/gmail/vuelta', asincrono(async (req, res) => {
     .prepare("SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1 AND rol = 'admin'")
     .get(sesion.id, estado.organizacionId);
   if (!esAdmin) return volver('sin-sesion');
+  if (!planPermite(estado.organizacionId, 'integraciones')) return volver('sin-plan');
   if (typeof req.query.code !== 'string' || !req.query.code) return volver('cancelado');
   let cuenta;
   try {
@@ -3828,7 +3829,8 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     return res.status(413).json({ error: 'El PDF de la factura pesa demasiado para mandarlo por mail.' });
   }
   // Desde el Gmail del negocio si lo conectó (hist. §187); si Google le sacó
-  // el permiso, no sale desde Nexo sin que el negocio lo decida.
+  // el permiso, no sale desde Nexo sin que el negocio lo decida. El plan ya lo
+  // controló rechazoPorPlan: esta ruta es desde Emprendedor.
   const cuentaMail = cuentaMailDe(orgId);
   if (cuentaMail?.estado === 'desconectada') return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
   if (!cuentaMail && !mailConfigurado()) {
@@ -4000,9 +4002,14 @@ async function mandarConGmail(cuenta, { para, asunto, texto, html, nombre, adjun
 // Para la página de Configuración → Gmail y para /api/negocio.
 function estadoGmail(organizacionId) {
   const cuenta = cuentaMailDe(organizacionId);
+  const planLoIncluye = planPermite(organizacionId, 'integraciones');
   return {
     disponible: gmail.gmailConfigurado(),
+    plan_lo_incluye: planLoIncluye,
     conectado: cuenta?.estado === 'conectada',
+    // Conectado en un plan que no lo trae: no se mandan facturas por mail
+    // hasta volver a Emprendedor, y no se borra nada.
+    en_pausa: cuenta?.estado === 'conectada' && !planLoIncluye,
     direccion: cuenta?.direccion ?? null,
     desconectado_por_google: cuenta?.estado === 'desconectada',
     motivo: cuenta?.motivo ?? null
@@ -17298,15 +17305,26 @@ function planPermite(organizacionId, funcion) {
 // frena todo lo que conecta, configura o sincroniza; ver la página y
 // desconectar o apagar se puede siempre. En Gratis, lo ya conectado queda en
 // pausa: los avisos y la pasada periódica no hacen nada (integracionEnPausa).
-const RUTAS_DESDE_EMPRENDEDOR = [/^\/integraciones\/(tiendanube|mercadolibre|mercadopago)(\/|$)/, /^\/factura-electronica(\/|$)/];
+// Mandar las facturas por mail y el Gmail del negocio (hist. §186, §187) van
+// con la factura electrónica (decisión del usuario del 17 de noviembre): el
+// Gmail ya conectado queda en pausa en Gratis.
+const RUTAS_DESDE_EMPRENDEDOR = [
+  /^\/integraciones\/(tiendanube|mercadolibre|mercadopago)(\/|$)/,
+  /^\/factura-electronica(\/|$)/,
+  /^\/gmail(\/|$)/,
+  /^\/facturas\/\d+\/mail$/
+];
 const SE_PUEDE_SIN_PLAN = /\/desconectar$/;
 const INTEGRACIONES_DESDE_EMPRENDEDOR =
   'Tienda Nube, Mercado Libre, Mercado Pago y la factura electrónica de ARCA son desde el plan Emprendedor.';
+const MAIL_DESDE_EMPRENDEDOR =
+  'Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Mientras tanto, descargá el PDF.';
 function rechazoPorPlan(req) {
   if (req.method === 'GET' || req.method === 'DELETE' || SE_PUEDE_SIN_PLAN.test(req.path)) return null;
   if (!RUTAS_DESDE_EMPRENDEDOR.some((ruta) => ruta.test(req.path))) return null;
   if (planPermite(req.usuario.organizacion_id, 'integraciones')) return null;
-  return { error: INTEGRACIONES_DESDE_EMPRENDEDOR, codigo: 'limite_plan' };
+  const esMail = req.path.startsWith('/gmail') || req.path.endsWith('/mail');
+  return { error: esMail ? MAIL_DESDE_EMPRENDEDOR : INTEGRACIONES_DESDE_EMPRENDEDOR, codigo: 'limite_plan' };
 }
 const integracionEnPausa = (integracion) => !planPermite(integracion.organizacion_id, 'integraciones');
 

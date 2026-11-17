@@ -6,6 +6,9 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { crearEmpleado, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
 
@@ -234,6 +237,41 @@ test('desconectar suelta el permiso en Google y las facturas vuelven a salir des
   assert.equal(m.json.desde, null);
   assert.equal(enviados.length, enviadosAntes);
   assert.equal(servidor.leerMails('dani@cliente.test').at(-1).nombre, 'Perfumería Lola');
+});
+
+// Pasa el negocio a otro plan con scripts/plan.mjs, como planes.test.js.
+function ponerPlan(negocioId, plan) {
+  const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const r = spawnSync(process.execPath, ['scripts/plan.mjs', '--negocio', String(negocioId), '--plan', plan], {
+    cwd: raiz,
+    env: { ...process.env, NEXO_DB_PATH: path.join(servidor.dir, 'nexo.db') },
+    encoding: 'utf8'
+  });
+  assert.equal(r.status, 0, r.stderr);
+}
+
+test('en Gratis queda en pausa: no conecta ni manda, pero se puede desconectar', async () => {
+  await conectar('lola@gmail.test');
+  const negocioId = (await admin.get('/api/negocio')).json.id;
+  ponerPlan(negocioId, 'gratis');
+  try {
+    const estado = (await admin.get('/api/gmail')).json;
+    assert.equal(estado.plan_lo_incluye, false);
+    assert.equal(estado.en_pausa, true);
+    const conectarSinPlan = await admin.post('/api/gmail/conectar');
+    assert.equal(conectarSinPlan.status, 403);
+    assert.equal(conectarSinPlan.json.codigo, 'limite_plan');
+    assert.equal((await admin.post('/api/gmail/prueba')).status, 403);
+    const facturaId = await factura({ nombre: 'Eli' });
+    const enviadosAntes = enviados.length;
+    const m = await admin.post(`/api/facturas/${facturaId}/mail`, { para: 'eli@cliente.test', pdf: PDF });
+    assert.equal(m.status, 403);
+    assert.match(m.json.error, /Emprendedor/);
+    assert.equal(enviados.length, enviadosAntes);
+    assert.equal(servidor.leerMails('eli@cliente.test').length, 0);
+  } finally {
+    ponerPlan(negocioId, 'pro');
+  }
 });
 
 test('el permiso no sale en la descarga de datos del negocio', async () => {
