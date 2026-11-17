@@ -259,6 +259,19 @@ test('el empleado opera con su rol, y nadie confirma una propuesta ajena', async
   assert.equal((await otro.get('/api/whatsapp')).json.vinculo, null);
 });
 
+test('una pregunta por los números: se contesta en el momento, sin botones y según el rol (hist. §185)', async () => {
+  // Desde el teléfono del empleado: el del admin está en su tope de mensajes
+  // por hora, que prueba "desvincular".
+  const [respuesta] = await conversar(TELEFONO_EMPLEADO, texto('consulta: tema=me_deben; periodo=este_mes; cliente=Juan Pérez'));
+  assert.equal(respuesta.tipo, 'text');
+  assert.match(respuesta.texto, /^📊 Juan Pérez te debe \$\s18\.000\./);
+  assert.match(respuesta.texto, /En Nexo: \*Cuentas corrientes\*/);
+
+  // Lo que sale de los reportes es de quien administra.
+  const [negado] = await conversar(TELEFONO_EMPLEADO, texto('consulta: tema=ventas; periodo=este_mes; cliente=Juan Pérez'));
+  assert.match(negado.texto, /Eso lo ve quien administra el negocio/);
+});
+
 test('un producto con talles: si falta cuál, pregunta con la lista, y se contesta con el número', async () => {
   // Zapatillas con tres talles, con stock cargado por una compra del asistente.
   zapatilla = (await admin.post('/api/productos', { nombre: 'Zapatilla', precio_venta: 50000 })).json.id;

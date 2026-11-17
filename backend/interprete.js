@@ -22,6 +22,7 @@
 // tiene que resolver y validar antes de poder ejecutarse.
 import { GoogleGenAI, FunctionCallingConfigMode, ThinkingLevel } from '@google/genai';
 import { fechaDeHoy } from './fecha.js';
+import { PERIODOS, TEMAS } from './consultas.js';
 
 export class InterpreteError extends Error {
   constructor(message, status = 503) {
@@ -248,6 +249,40 @@ const HERRAMIENTAS = [
       required: ['cliente', 'items'],
       additionalProperties: false
     }
+  },
+  {
+    // hist. §185: las preguntas sobre los números ("¿cuánto vendí este mes?").
+    // Acá solo se dice QUÉ se pregunta; la respuesta la arma consultas.js con
+    // los datos de server.js, y la IA nunca escribe una cifra. Solo `tema` es
+    // `required`, por lo mismo que arriba: el modelo omite lo que no se dijo.
+    name: 'consultar',
+    description:
+      'Contesta una PREGUNTA sobre los números del negocio: cuánto vendió, ganó, gastó o compró, qué es lo que más vende, quién le debe, a quién le debe, cuánto le queda de un producto o cuánta plata tiene. No registra nada. No sirve para preguntas sobre cómo se usa Nexo.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        tema: {
+          type: 'string',
+          enum: TEMAS,
+          description:
+            'ventas: cuánto se vendió (en total, de un producto o a un cliente). ganancia: cuánto se ganó, el resultado. gastos: cuánto se gastó. compras: cuánto se le compró a proveedores. mas_vendidos: qué productos se venden más. mejores_clientes: quiénes compran más. me_deben: qué clientes deben plata. debo: a qué proveedores se les debe. stock: cuánto queda de un producto. reponer: qué falta o hay que reponer. plata: cuánta plata hay en la caja y las cuentas.'
+        },
+        periodo: {
+          type: 'string',
+          enum: PERIODOS,
+          description:
+            'El período de la pregunta, solo si lo dice. "fechas" es para un rango que no está en la lista ("en octubre", "del 3 al 10"), y va con desde y hasta.'
+        },
+        desde: { type: 'string', description: 'YYYY-MM-DD, solo con periodo "fechas".' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD, solo con periodo "fechas".' },
+        producto: { type: 'string', description: 'El producto por el que pregunta, como lo dijo ("remeras"), si nombra uno.' },
+        categoria: { type: 'string', description: 'La categoría de gasto por la que pregunta ("luz", "alquiler"), si nombra una.' },
+        cliente: { type: 'string', description: 'El cliente por el que pregunta, si nombra uno.' },
+        proveedor: { type: 'string', description: 'El proveedor por el que pregunta, si nombra uno.' }
+      },
+      required: ['tema'],
+      additionalProperties: false
+    }
   }
 ];
 
@@ -255,7 +290,8 @@ const TIPO_POR_HERRAMIENTA = {
   registrar_venta: 'venta',
   registrar_compra: 'compra',
   registrar_gasto: 'gasto',
-  registrar_devolucion: 'devolucion'
+  registrar_devolucion: 'devolucion',
+  consultar: 'consulta'
 };
 
 // El contexto del negocio (cuentas, categorías, catálogo) es lo único
@@ -278,9 +314,10 @@ function construirSystemPrompt(contexto) {
 
   return `Sos el intérprete de operaciones por texto de Nexo, un sistema de gestión para pymes.
 
-Tu única función es traducir una frase en lenguaje natural a UNA llamada a una de las herramientas disponibles (registrar_venta, registrar_compra, registrar_gasto, registrar_devolucion). VOS NO EJECUTÁS NADA — solo proponés una operación, que un humano va a revisar y confirmar antes de que se aplique. Si el texto no describe con claridad una venta, una compra, un gasto o la devolución de un cliente (una pregunta, un saludo, un pedido ambiguo), NO llames a ninguna herramienta: respondé en texto plano, en una frase breve, explicando que no identificaste una operación.
+Tu única función es traducir una frase en lenguaje natural a UNA llamada a una de las herramientas disponibles (registrar_venta, registrar_compra, registrar_gasto, registrar_devolucion, consultar). VOS NO EJECUTÁS NADA — solo proponés una operación, que un humano va a revisar y confirmar antes de que se aplique, o decís qué se está preguntando, y Nexo busca la respuesta. Si el texto no describe con claridad una venta, una compra, un gasto o la devolución de un cliente, ni pregunta por los números del negocio (un saludo, una pregunta sobre cómo se usa Nexo, un pedido ambiguo), NO llames a ninguna herramienta: respondé en texto plano, en una frase breve, explicando que no identificaste una operación.
 
 Reglas:
+- Una PREGUNTA sobre los números del negocio va con consultar, nunca con registrar_*: "vendí 3 remeras" es una venta que pasó; "¿cuánto vendí?", "¿cuántas remeras me quedan?" o "¿quién me debe?" son consultas. En consultar no respondas vos ni inventes cifras: solo completá el tema, el período si lo dice, y el producto, cliente, proveedor o categoría si nombra uno.
 - Usá siempre NOMBRES, nunca inventes IDs — eso lo resuelve Nexo después.
 - Si el texto da un precio total para varias unidades, calculá el precio unitario dividiendo por la cantidad.
 - En una venta, si el texto no dice el precio, precio_unitario va en null y la venta se propone igual: Nexo usa el precio de lista del producto. Nunca dejes de proponer una venta porque falta el precio.
@@ -318,7 +355,7 @@ function propuestaDeLlamada(nombre, args, textoLibre) {
 }
 
 // El día del negocio (fecha.js): en UTC, después de las 21 h "hoy" era mañana.
-const mensajeUsuario = (texto) => `Hoy es ${fechaDeHoy()}. Interpretá esta operación: "${texto}"`;
+const mensajeUsuario = (texto) => `Hoy es ${fechaDeHoy()}. Interpretá esta frase: "${texto}"`;
 
 // Corregir una propuesta (hist. §179): la operación que ya se entendió, en
 // JSON, y lo que la persona dice que está mal. Vuelve por la misma herramienta,
@@ -682,8 +719,9 @@ export async function leerComprobante(imagenes) {
 // ni depender de tener una API key configurada. NO es un intento de NLU
 // real — usa una mini-sintaxis de prueba tipo "venta: campo=valor;
 // campo=valor". Se activa con NEXO_INTERPRETE=stub. Cualquier texto que no
-// empiece con "venta:", "compra:", "gasto:" o "devolucion:" se interpreta como "sin
-// operación", igual que haría el modelo real con un saludo.
+// empiece con "venta:", "compra:", "gasto:", "devolucion:" o "consulta:" se
+// interpreta como "sin operación", igual que haría el modelo real con un saludo.
+// Una pregunta va como "consulta: tema=ventas; periodo=este_mes; producto=remera".
 function parsearItems(partes) {
   const crudos = partes.item ? [partes.item] : partes.items ? partes.items.split('|') : [];
   return crudos.map((raw) => {
@@ -699,7 +737,7 @@ function parsearItems(partes) {
 }
 
 function interpretarStub(texto) {
-  const match = texto.trim().match(/^(venta|compra|gasto|devolucion):\s*(.*)$/is);
+  const match = texto.trim().match(/^(venta|compra|gasto|devolucion|consulta):\s*(.*)$/is);
   if (!match) {
     return { tipo: null, mensaje: 'No reconocí ninguna operación en ese texto.' };
   }
@@ -715,6 +753,7 @@ function interpretarStub(texto) {
       })
   );
 
+  if (tipo === 'consulta') return { tipo: 'consulta', datos: partes };
   if (tipo === 'venta') {
     const cobro = partes.cobro_cuenta
       ? { cuenta: partes.cobro_cuenta, importe: partes.cobro_importe ? Number(partes.cobro_importe) : null }
@@ -761,7 +800,8 @@ function interpretarStub(texto) {
 }
 
 // contexto: { cuentas: [{nombre,tipo}], categoriasGasto: [{nombre,tipo}], productos: [{nombre}] }
-// Devuelve { tipo: 'venta'|'compra'|'gasto', datos: {...} } o { tipo: null, mensaje }.
+// Devuelve { tipo: 'venta'|'compra'|'gasto'|'devolucion'|'consulta', datos: {...} }
+// o { tipo: null, mensaje }.
 export async function interpretar(texto, contexto) {
   if (!texto || !String(texto).trim()) {
     return { tipo: null, mensaje: 'El texto está vacío.' };

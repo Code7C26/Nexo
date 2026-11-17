@@ -136,6 +136,17 @@ const COMO_SE_HACE = /\b(como|donde) (hago|hacer|puedo|se|cargo|paso|veo|pongo|a
 const OPERACION =
   /\b(vendi|vendimos|le vendi|compre|compramos|le compre|pague|pagamos|cobre|cobramos|gaste|gastamos|me pago|me pagaron|entraron|llegaron|se llevo|se llevaron|cargue|devolv\w*|le quedo (chico|chica|grande|corto|corta))\b/;
 
+// Una pregunta por los números del propio negocio (hist. §185): "¿cuánto vendí
+// este mes?", "¿quién me debe?", "¿qué es lo más vendido?". La contesta el
+// asistente con los datos, no el manual. "¿Dónde veo cuánto vendí?" no entra:
+// eso es cómo se usa Nexo.
+const CONSULTA = [
+  /^(y )?(a )?(cuanto|cuanta|cuantos|cuantas|quien|quienes)\b.*\b(vendi|vendimos|vendio|vendieron|gane|ganamos|gaste|gastamos|compre|compramos|cobre|cobramos|facture|facturamos|debe|deben|debo|debemos|queda|quedan|tengo(?! que)|tenemos(?! que)|entro)\b/,
+  /^(y )?(que|cual|cuales)\b.*\b(mas (vendi|vendimos|vendid[oa]s?|se vend\w+|compra\w*|me compr\w+)|mejor(es)? clientes?|(tengo|tenemos|hay) que reponer|me falta\w* reponer|sin stock)\b/,
+  /^(mis |las |los |el |la )?(ventas|ganancias?|gastos|compras) (de |del |en )?(hoy|ayer|esta semana|este mes|este ano|la semana pasada|el mes pasado)\b/,
+  /^(lo|los|las) mas vendid[oa]s?\b/
+];
+
 // La charla (hist. §120): lo que no es una operación ni una duda de uso, pero
 // merece respuesta. Cuenta solo si después no queda nada con contenido: "hola,
 // vendí 3 remeras" es una venta, no un saludo.
@@ -185,6 +196,8 @@ function pantallaPedida(limpio) {
 
 // Qué hacer con una frase del asistente:
 // - "operacion": va a la IA, como siempre (venta, compra, gasto o devolución).
+// - "consulta": una pregunta por los números del negocio; también va a la IA,
+//   que dice qué se pregunta, y el servidor la contesta con los datos.
 // - "ayuda": se contesta con el manual; `resultados` puede venir vacío.
 // - "charla": un saludo, un gracias, un chau o "¿qué podés hacer?" (`charla`).
 // - "navegar": "llevame a ventas" (`pantalla`: { hash, nombre }).
@@ -206,6 +219,8 @@ export function clasificarFrase(texto) {
   if (primera && !raices(resto).length) return { tipo: "charla", charla: primera };
   const pantalla = pantallaPedida(limpio);
   if (pantalla) return { tipo: "navegar", pantalla };
+  // Sin el saludo de adelante: "hola, ¿cuánto vendí hoy?".
+  if (CONSULTA.some((patron) => patron.test(resto))) return { tipo: "consulta" };
   const esPregunta =
     PREGUNTA_DE_USO.test(limpio) || COMO_SE_HACE.test(limpio) || /\?\s*$/.test(String(texto).trim());
   if (esPregunta) return { tipo: "ayuda", resultados: buscarEnManual(texto) };

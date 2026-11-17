@@ -6,6 +6,7 @@ import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase, crearMediosDeCuenta } from './db/index.js';
 import { corregir, interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
 import { ayudaSeguraDelManual, respuestaDeAyuda as respuestaDeAyudaWhatsApp } from './ayuda-whatsapp.js';
+import { consultaParaWhatsApp, responderConsulta } from './consultas.js';
 import {
   alicuotaNumerica,
   buscarEnCatalogo,
@@ -13021,24 +13022,32 @@ function agruparPorEntidad(saldos, tablaEntidad, hoy, organizacionId) {
   return resultado.sort((a, b) => (b.dias_max ?? -1) - (a.dias_max ?? -1));
 }
 
-app.get('/api/cuentas-corrientes', (req, res) => {
+// El saldo de cada cliente y de cada proveedor con algo pendiente, a hoy. Lo
+// usan Cuentas corrientes y las preguntas del asistente (consultas.js).
+function saldosDeCuentasCorrientes(organizacionId) {
   const hoy = fechaDeHoy();
   // La cuota de un abono que empezó hoy ya se debe (hist. §79): se arma antes
   // de mirar los saldos, aunque nadie haya entrado a Abonos.
-  ponerAbonosAlDia(req.usuario.organizacion_id);
+  ponerAbonosAlDia(organizacionId);
 
-  const entidadesClientes = agruparPorEntidad(
-    saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', req.usuario.organizacion_id),
-    'clientes',
-    hoy,
-    req.usuario.organizacion_id
-  );
-  const entidadesProveedores = agruparPorEntidad(
-    saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras', req.usuario.organizacion_id),
-    'proveedores',
-    hoy,
-    req.usuario.organizacion_id
-  );
+  return {
+    clientes: agruparPorEntidad(
+      saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', organizacionId),
+      'clientes',
+      hoy,
+      organizacionId
+    ),
+    proveedores: agruparPorEntidad(
+      saldosPorOperacion('movimientos_cc_proveedores', 'proveedor_id', 'compra_id', 'compras', organizacionId),
+      'proveedores',
+      hoy,
+      organizacionId
+    )
+  };
+}
+
+app.get('/api/cuentas-corrientes', (req, res) => {
+  const { clientes: entidadesClientes, proveedores: entidadesProveedores } = saldosDeCuentasCorrientes(req.usuario.organizacion_id);
 
   // Los totales solo suman deuda real (saldo > 0); un saldo a favor va
   // aparte y no compensa la deuda de otra entidad.
@@ -13751,24 +13760,10 @@ function netearPorId(filasVentas, filasDevoluciones, resolverNombre) {
   return [...porId.values()];
 }
 
-app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
-  const desdeParam = validarFecha(req.query.desde);
-  const hastaParam = validarFecha(req.query.hasta);
-
-  // Mismo tratamiento de rango abierto que /api/resumen/evolucion: sin
-  // desde/hasta, se acota contra la primera/última operación registrada.
-  const organizacionId = req.usuario.organizacion_id;
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
-    organizacionId,
-    organizacionId,
-    organizacionId,
-    organizacionId,
-    organizacionId
-  );
-  const hoy = fechaDeHoy();
-  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
-  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
-  const acotado = Boolean(desdeParam && hastaParam);
+// Qué se vende y a quién en un rango (un extremo en null no acota de ese
+// lado). Lo usan GET /api/reportes/ventas y las preguntas del asistente
+// (consultas.js): los dos muestran los mismos números.
+function reporteVentas(desde, hasta, organizacionId) {
   const rango = [desde, desde, hasta, hasta, organizacionId];
 
   const resultado = calcularResultado(desde, hasta, organizacionId);
@@ -13867,8 +13862,7 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     })
     .sort((a, b) => b.ventas - a.ventas);
 
-  res.json({
-    rango: { desde, hasta, acotado },
+  return {
     totales: {
       ventas_netas: resultado.ventas,
       cantidad_ventas: cantidadVentas,
@@ -13881,7 +13875,29 @@ app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
     categorias,
     clientes,
     canales
-  });
+  };
+}
+
+app.get('/api/reportes/ventas', soloAdmin, (req, res) => {
+  const desdeParam = validarFecha(req.query.desde);
+  const hastaParam = validarFecha(req.query.hasta);
+
+  // Mismo tratamiento de rango abierto que /api/resumen/evolucion: sin
+  // desde/hasta, se acota contra la primera/última operación registrada.
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
+  const hoy = fechaDeHoy();
+  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
+  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
+  const acotado = Boolean(desdeParam && hastaParam);
+
+  res.json({ rango: { desde, hasta, acotado }, ...reporteVentas(desde, hasta, organizacionId) });
 });
 
 /* ---------- Reportes: compras (CLAUDE.md §20) ---------- */
@@ -14059,22 +14075,10 @@ function totalesDeCompras(desde, hasta, organizacionId) {
   };
 }
 
-app.get('/api/reportes/compras', soloAdmin, (req, res) => {
-  const desdeParam = validarFecha(req.query.desde);
-  const hastaParam = validarFecha(req.query.hasta);
-
-  const organizacionId = req.usuario.organizacion_id;
-  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
-    organizacionId,
-    organizacionId,
-    organizacionId,
-    organizacionId,
-    organizacionId
-  );
-  const hoy = fechaDeHoy();
-  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
-  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
-  const acotado = Boolean(desdeParam && hastaParam);
+// Qué se compra y a quién en un rango, con el mismo criterio que
+// reporteVentas: lo usan GET /api/reportes/compras y las preguntas del
+// asistente (consultas.js).
+function reporteCompras(desde, hasta, organizacionId) {
   const rango = [desde, desde, hasta, hasta, organizacionId];
 
   const comprasUnid = SQL_REPORTE_UNIDADES_COMPRAS.get(...rango);
@@ -14142,6 +14146,27 @@ app.get('/api/reportes/compras', soloAdmin, (req, res) => {
     ticket_promedio: cantidadCompras > 0 ? redondear2(comprasNetas / cantidadCompras) : 0,
     unidades: comprasUnid.unidades - devolucionesUnid.unidades
   };
+
+  return { totales, proveedores, productos, categorias };
+}
+
+app.get('/api/reportes/compras', soloAdmin, (req, res) => {
+  const desdeParam = validarFecha(req.query.desde);
+  const hastaParam = validarFecha(req.query.hasta);
+
+  const organizacionId = req.usuario.organizacion_id;
+  const { primera, ultima } = SQL_LIMITES_OPERACIONES.get(
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId,
+    organizacionId
+  );
+  const hoy = fechaDeHoy();
+  const desde = desdeParam ?? minISO(primera ?? hoy, hoy);
+  const hasta = hastaParam ?? maxISO(ultima ?? hoy, hoy);
+  const acotado = Boolean(desdeParam && hastaParam);
+  const { totales, proveedores, productos, categorias } = reporteCompras(desde, hasta, organizacionId);
 
   // Contra el período anterior o el año pasado, con el mismo criterio que
   // GET /api/resumen/evolucion: solo con el inicio fijado y si hubo algo antes.
@@ -15192,10 +15217,67 @@ function guardarPropuesta(texto, tipo, datos, organizacionId) {
   return { mensajeId: Number(lastInsertRowid), propuesta };
 }
 
-async function proponerDesdeTexto(texto, organizacionId) {
+// Las preguntas sobre los números (CLAUDE.md §36, hist. §185). De dónde saca
+// consultas.js cada respuesta: las mismas funciones que el Resumen, los
+// reportes, Cuentas corrientes, Stock y Caja, ya atadas al negocio (§28).
+const SQL_CONSULTA_GASTOS = db.prepare(
+  `SELECT categorias_gasto.nombre AS categoria, gastos.tipo AS tipo,
+          SUM(gastos.importe) AS importe, COUNT(*) AS cantidad
+     FROM gastos JOIN categorias_gasto ON categorias_gasto.id = gastos.categoria_id
+    WHERE gastos.estado = 'activo'
+      AND (? IS NULL OR gastos.fecha >= ?)
+      AND (? IS NULL OR gastos.fecha <= ?)
+      AND gastos.organizacion_id = ?
+    GROUP BY categorias_gasto.nombre, gastos.tipo`
+);
+
+function fuentesDeConsulta(organizacionId) {
+  return {
+    resultado: (desde, hasta) => calcularResultado(desde, hasta, organizacionId),
+    ventas: (desde, hasta) => reporteVentas(desde, hasta, organizacionId),
+    compras: (desde, hasta) => reporteCompras(desde, hasta, organizacionId),
+    gastos: (desde, hasta) => SQL_CONSULTA_GASTOS.all(desde, desde, hasta, hasta, organizacionId),
+    // Solo quien debe: un saldo a favor no es deuda.
+    deudas: () => {
+      const { clientes, proveedores } = saldosDeCuentasCorrientes(organizacionId);
+      return { clientes: clientes.filter((e) => e.saldo > 0), proveedores: proveedores.filter((e) => e.saldo > 0) };
+    },
+    stock: () =>
+      db
+        .prepare(
+          `${SELECT_PRODUCTO} WHERE productos.organizacion_id = ? AND productos.tipo = 'producto' AND productos.activo = 1 ORDER BY productos.nombre`
+        )
+        .all(organizacionId)
+        .map((p) => decorarProducto(p)),
+    cuentas: () =>
+      db
+        .prepare(
+          `SELECT cuentas_tesoreria.nombre,
+                  COALESCE((SELECT saldo FROM saldo_tesoreria
+                             WHERE saldo_tesoreria.cuenta_tesoreria_id = cuentas_tesoreria.id), 0) AS saldo
+             FROM cuentas_tesoreria
+            WHERE cuentas_tesoreria.organizacion_id = ?
+            ORDER BY cuentas_tesoreria.id`
+        )
+        .all(organizacionId)
+  };
+}
+
+// usuario: quien pregunta ({ organizacion_id, rol }). Una pregunta sobre los
+// números no deja propuesta: vuelve contestada, y lo que no ve su rol no se
+// contesta.
+async function proponerDesdeTexto(texto, usuario) {
+  const organizacionId = usuario.organizacion_id;
   const resultado = await interpretar(texto, contextoParaInterprete(organizacionId, texto));
-  if (!resultado.tipo) {
-    return { mensaje_id: null, tipo: null, mensaje: resultado.mensaje, propuesta: null, ejecutable: false, problemas: [] };
+  const consulta =
+    resultado.tipo === 'consulta'
+      ? responderConsulta(resultado.datos, { hoy: fechaDeHoy(), esAdmin: usuario.rol === 'admin', fuentes: fuentesDeConsulta(organizacionId) })
+      : null;
+  if (consulta) {
+    return { mensaje_id: null, tipo: 'consulta', mensaje: null, consulta, propuesta: null, ejecutable: false, problemas: [] };
+  }
+  if (!resultado.tipo || resultado.tipo === 'consulta') {
+    return { mensaje_id: null, tipo: null, mensaje: resultado.mensaje ?? null, propuesta: null, ejecutable: false, problemas: [] };
   }
 
   const { mensajeId, propuesta } = guardarPropuesta(texto, resultado.tipo, resultado.datos, organizacionId);
@@ -15223,7 +15305,7 @@ function soloConAsistente(req, res, next) {
 
 app.post('/api/asistente/interpretar', soloConAsistente, asincrono(async (req, res) => {
   try {
-    res.json(await proponerDesdeTexto(req.body.texto, req.usuario.organizacion_id));
+    res.json(await proponerDesdeTexto(req.body.texto, req.usuario));
   } catch (err) {
     if (err instanceof InterpreteError) {
       return res.status(err.status).json({ error: err.message });
@@ -15632,7 +15714,8 @@ const AYUDA_WHATSAPP =
   '👋 Contame lo que vendiste, compraste o gastaste, escrito o en un audio 🎙️\n\n' +
   'Por ejemplo:\n_"Vendí 3 remeras a Juan a 9000 cada una, me pagó por Mercado Pago"_\n' +
   '_"Vendí un buzo talle L a Camila"_\n_"Pagué 25 mil de luz en efectivo"_\n\n' +
-  'También podés preguntarme cómo se hace algo en Nexo: _"¿cómo anulo una venta?"_\n\n' +
+  'Preguntame por tus números: _"¿cuánto vendí este mes?"_, _"¿quién me debe?"_\n' +
+  'O cómo se hace algo en Nexo: _"¿cómo anulo una venta?"_\n\n' +
   'Antes de registrar nada te pido que lo confirmes ✅';
 const hashCodigoWhatsApp = (codigo) => createHash('sha256').update(`whatsapp:${codigo}`).digest('hex');
 const pesosWhatsApp = (n) =>
@@ -16019,7 +16102,7 @@ async function corregirWhatsApp(texto, pendiente, usuario, para, filaId, respond
     texto,
     contextoParaInterprete(usuario.organizacion_id, `${pendiente.texto} ${texto}`)
   );
-  if (!resultado.tipo) {
+  if (!resultado.tipo || resultado.tipo === 'consulta') {
     return responder(`🤔 No entendí la corrección. Decime qué cambio, por ejemplo: *el cliente es Juana Pérez* o *pagó con transferencia*.`);
   }
   const corregidos = { ...resultado.datos };
@@ -16172,7 +16255,8 @@ async function atenderWhatsApp(mensaje) {
     const delManual = respuestaDeAyudaWhatsApp(texto, AYUDA_WHATSAPP);
     if (delManual) return responder(delManual);
 
-    const resultado = await proponerDesdeTexto(texto, usuario.organizacion_id);
+    const resultado = await proponerDesdeTexto(texto, usuario);
+    if (resultado.tipo === 'consulta') return responder(consultaParaWhatsApp(resultado.consulta));
     if (!resultado.tipo) {
       // La IA no vio una operación: si el manual tiene algo seguro, va eso.
       return responder(ayudaSeguraDelManual(texto) ?? `${resultado.mensaje ? `${resultado.mensaje}\n\n` : ''}${AYUDA_WHATSAPP}`);

@@ -74,6 +74,7 @@ const SECCIONES_ES = [
         "Tocá **Confirmar y registrar**. Hasta ese momento no se carga nada."
       ] },
       "También le podés preguntar cómo se hace algo en Nexo (\"¿cómo anulo una venta?\") y te responde con este manual.",
+      "Y por los números de tu negocio: \"¿cuánto vendí este mes?\", \"¿cuánto vendí de remeras la semana pasada?\", \"¿quién me debe?\", \"¿cuántas gorras me quedan?\". Te contesta en el momento, con los mismos números del Resumen y sin cargar nada.",
       { nota: "Para que te entienda mejor, nombrá los productos como están cargados. Si un producto no existe, la venta no se puede confirmar hasta corregirlo; en una compra, el producto nuevo se crea solo." }
     ],
     ver: ["registrar-venta", "registrar-compra", "registrar-gasto"]

@@ -2824,6 +2824,27 @@ input.precio-sin-configurar::placeholder {
   color: var(--ink-muted);
 }
 .asistente-ayuda-origen .ico { width: 13px; height: 13px; }
+/* La respuesta a una pregunta por los números (hist. §185): el dato y, abajo,
+   sus renglones con el valor a la derecha. */
+.asistente-dato { font-size: var(--txt-md); font-weight: 600; color: var(--ink); }
+.asistente-datos { display: flex; flex-direction: column; }
+.asistente-datos > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.asistente-datos dt { min-width: 0; color: var(--ink-muted); overflow-wrap: anywhere; }
+.asistente-datos dd {
+  margin: 0;
+  max-width: 62%;
+  text-align: right;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
 /* "Esto es lo que puedo hacer" (hist. §120): qué, y un ejemplo que se toca. */
 .asistente-capacidades {
   display: flex;

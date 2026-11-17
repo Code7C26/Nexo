@@ -90,7 +90,8 @@ test('Groq: manda las herramientas con su esquema y lee la llamada como propuest
     'registrar_venta',
     'registrar_compra',
     'registrar_gasto',
-    'registrar_devolucion'
+    'registrar_devolucion',
+    'consultar'
   ]);
   assert.equal(cuerpo.tools[0].type, 'function');
   assert.ok(cuerpo.tools[0].function.parameters.required.includes('cliente'));

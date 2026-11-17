@@ -1610,7 +1610,13 @@ Implementado hoy (hist. §117, §118):
   que la IA entendió mal se corrige con "Corregir" sin empezar de nuevo, y
   varias unidades pueden ser de variantes distintas (hist. §178, §179). Hecho
   contra un WhatsApp falso: falta la app de Meta (trámite del usuario).
-- Falta: las consultas sobre los datos.
+- **Consultas sobre los datos (hist. §185):** "¿cuánto vendí este mes de
+  remeras?", "¿quién me debe?". La IA solo dice el tema, el período y de
+  quién o de qué se pregunta (`consultar`); la respuesta la arma
+  `backend/consultas.js` con los mismos números del Resumen, sin pedir
+  confirmación. El empleado solo recibe lo que ve en sus pantallas (deudas,
+  stock, caja).
+- Falta: comparar contra otros períodos y preguntas con varios temas.
 
 ---
 

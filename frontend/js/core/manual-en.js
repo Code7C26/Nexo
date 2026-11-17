@@ -52,6 +52,7 @@ export const SECCIONES_EN = {
         "Tap **Confirm and record**. Nothing is recorded until then."
       ] },
       "You can also ask it how to do something in Nexo (\"how do I void a sale?\") and it answers with this manual.",
+      "And about your business's numbers: \"how much did I sell this month?\", \"how much did I sell in t-shirts last week?\", \"who owes me?\", \"how many caps do I have left?\". It answers right away, with the same numbers as the Summary and without recording anything.",
       { nota: "So it understands you better, name the products the way they're entered. If a product doesn't exist, the sale can't be confirmed until you fix it; in a purchase, the new product is created automatically." }
     ]
   },

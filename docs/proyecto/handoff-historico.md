@@ -14233,3 +14233,46 @@ factura se hacía después desde Ventas.
   Mercado Pago, así que una venta con tarjeta guarda "transferencia" ahí (lo
   que se imprime, `condicion_venta`, sí dice tarjeta). El ancho es fijo en
   80 mm: si aparece un negocio con papel de 58, se hace configurable.
+
+## §185 — 17 de noviembre de 2026: el asistente responde preguntas sobre los números
+
+Punto 2 del plan hasta la oficial (§36: "consultas en lenguaje natural sobre los
+datos"). Solo lee, así que no pide confirmación.
+
+- **Flujo:** la frase pasa por `clasificarFrase` (`core/buscar-ayuda.js`), que
+  ahora distingue `consulta` (¿cuánto vendí…?, ¿quién me debe?, ¿qué tengo que
+  reponer?) de `ayuda` (¿cómo/dónde veo…?, que sigue yendo al manual). Una
+  consulta va a la IA con una herramienta nueva, `consultar`
+  (`interprete.js`): la IA solo dice el **tema** (ventas, ganancia, gastos,
+  compras, mas_vendidos, mejores_clientes, me_deben, debo, stock, reponer,
+  plata), el **período** y el producto, cliente, proveedor o categoría. **Nunca
+  escribe una cifra.**
+- **`backend/consultas.js`** (nuevo, sin acceso a la base, como `interprete.js`):
+  arma la respuesta `{ texto, filas, enlace }` con funciones que le pasa
+  `server.js` (`fuentesDeConsulta`). Esas funciones son las de siempre:
+  `calcularResultado`, y las que se sacaron de los handlers para compartirlas,
+  `reporteVentas`, `reporteCompras` y `saldosDeCuentasCorrientes`; así los
+  números son idénticos a los del Resumen y los reportes. Períodos: hoy, ayer,
+  esta semana, la semana pasada, este mes (el de partida, y la respuesta lo
+  dice), el mes pasado, este año, el año pasado, todo y un rango. Los nombres se
+  buscan por las primeras 4 letras de cada palabra ("remeras" → "Remera
+  negra"), y un producto que no existe dice "No encontré…" en vez de un 0.
+- **Rol:** el empleado solo recibe me_deben, debo, stock, reponer y plata (lo
+  que ve en sus pantallas); lo que sale de reportes (admin) responde "Eso lo ve
+  quien administra el negocio."
+- **Servidor:** `proponerDesdeTexto(texto, usuario)` (ahora recibe el usuario, no
+  solo la empresa) devuelve `{ tipo: 'consulta', consulta }` sin `mensaje_id`.
+  Lo usan la web (`/api/asistente/interpretar`) y WhatsApp
+  (`consultaParaWhatsApp`). Sin esquema nuevo ni migración. Sin el plan Pro la
+  web manda la pregunta al manual, como antes.
+- **Web:** `respuestaDeConsulta` (`dominios/ayuda.js`) con renglones y un "Ver en
+  Resumen/Caja/…" (estilos `.asistente-dato(s)`); ejemplo nuevo en los botones y
+  en "lo que puedo hacer"; manual y su versión en inglés al día.
+- **Probado:** `asistente-consultas.test.js` (8), uno nuevo en `ayuda.test.js` y
+  otro en `whatsapp.test.js`; 406 tests, lint e i18n en verde. El stub entiende
+  `consulta: tema=ventas; periodo=este_mes; producto=remera`.
+- **Sin probar:** la IA real: `npm run probar-ia` ya trae 5 frases de consulta,
+  falta correrlo con la clave de Groq (gasta cupo) y mirar cuántas acierta el
+  tema. Tampoco se miró la tarjeta en el navegador.
+- **Queda:** comparar contra el período anterior ("¿vendí más que el mes
+  pasado?"), preguntas por varios temas a la vez, y ventas por canal o vendedor.

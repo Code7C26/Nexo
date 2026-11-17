@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §184);
+    siguiente número (hoy el último es §185);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,15 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (16 de noviembre de 2026)
+## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §185: el asistente responde preguntas sobre los
+números (sin commitear todavía).** Punto 2 del plan. "¿Cuánto vendí este mes de
+remeras?", "¿quién me debe?", "¿qué tengo que reponer?": la IA solo dice qué se
+pregunta (herramienta `consultar`) y `backend/consultas.js` contesta con los
+mismos números del Resumen, sin confirmación y según el rol (el empleado no ve
+lo de reportes). Web y WhatsApp. 406 tests. **Falta** correr `npm run probar-ia`
+con la clave de Groq y mirar la tarjeta en el navegador.
 
 **16 de noviembre, hist. §184: facturar desde el punto de venta y el ticket
 impreso (commiteado en `solla`, sin publicar).** Punto 1 del plan hasta la
@@ -2014,7 +2022,7 @@ es mío (primero lo chico que se muestra, después la etapa grande):
    e imprimir el ticket en el momento. Hoy el mostrador solo cobra y se
    factura después desde Ventas. El dueño sigue facturando desde Ventas lo que
    vende fuera del local.
-2. **El asistente responde preguntas sobre los números** ("¿cuánto vendí este
+2. ~~**El asistente responde preguntas sobre los números**~~ (hecho, hist. §185; falta probarlo con la IA real) ("¿cuánto vendí este
    mes de remeras?", "¿quién me debe más?"). Es lo que le falta a §36; solo
    lee, sin confirmación.
 3. **Mandar la factura por mail**, de a una o varias juntas (el mail ya anda:

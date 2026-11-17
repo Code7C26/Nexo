@@ -46,7 +46,7 @@ const PREGUNTAS = [
   ['cómo ajusto el stock', 'stock'],
   ['qué es el CAE', 'factura-electronica'],
   ['cómo instalo la app en el celular', 'celular'],
-  ['cuánto gané este mes', 'resumen'],
+  ['dónde veo cuánto gané este mes', 'resumen'],
   ['se puede tener precio mayorista?', 'listas-precios'],
   ['cómo pongo talles', 'variantes'],
   ['¿dónde cargo la luz?', 'registrar-gasto'],
@@ -57,7 +57,7 @@ const PREGUNTAS = [
   ['tengo dos locales, cómo paso mercadería', 'depositos'],
   ['cómo hago un arqueo', 'punto-de-venta'],
   ['cómo le pago al proveedor', 'pagar-proveedor'],
-  ['qué productos tengo que reponer', 'que-reponer'],
+  ['cómo sé qué productos reponer', 'que-reponer'],
   ['cómo cargo un socio del gimnasio', 'socios'],
   ['cómo cobro una venta que me deben', 'cobrar'],
   ['algo no anda, cómo aviso?', 'avisar-problema']
@@ -86,6 +86,36 @@ test('las operaciones siguen yendo a la IA', () => {
     'Juan devolvió la gorra'
   ]) {
     assert.equal(clasificarFrase(frase).tipo, 'operacion', frase);
+  }
+});
+
+test('una pregunta por los números del negocio va a la IA; cómo se usa Nexo, al manual (hist. §185)', () => {
+  for (const frase of [
+    '¿Cuánto vendí este mes?',
+    'cuánto vendí de remeras la semana pasada',
+    'cuánto gané este mes',
+    '¿cuánto gasté en luz?',
+    '¿Quién me debe más?',
+    'a quién le debo',
+    'cuántas remeras negras me quedan',
+    'cuánta plata tengo',
+    'qué productos tengo que reponer',
+    '¿qué es lo que más vendí?',
+    'cuáles son mis mejores clientes',
+    'ventas de hoy',
+    'hola, ¿cuánto vendí hoy?'
+  ]) {
+    assert.equal(clasificarFrase(frase).tipo, 'consulta', frase);
+  }
+  for (const frase of [
+    'dónde veo cuánto me deben los clientes',
+    '¿cómo veo cuánto vendí?',
+    '¿cuánto cuesta el plan Pro?',
+    '¿cuántos negocios puedo tener?',
+    '¿quién puede anular una venta?',
+    '¿qué tengo que hacer para facturar?'
+  ]) {
+    assert.equal(clasificarFrase(frase).tipo, 'ayuda', frase);
   }
 });
 
