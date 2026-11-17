@@ -14137,3 +14137,142 @@ highpass a 80 Hz, que no toca consonantes) y "Scan the code" ya era "It's candy
 cold" en el audio original: es la pronunciación al límite, no el procesamiento.
 Se dejó así y se le avisó al usuario para que las escuche; si no se entienden,
 Tosi las regraba más despacio. Video final: 38,3 s.
+
+## §183. La presentación después del simulacro (16 de noviembre de 2026)
+
+El simulacro salió bien. La profe marcó siete cosas; así quedaron (36
+diapositivas):
+
+- **"Crece con el negocio" se repetía.** Es de lo que se dice, así que la guía
+  lo deja para la 10 y la 29 ("se gastó" si se repite). En las diapositivas se
+  sacó de la 7 ("con equipo y factura electrónica"), de la 9 (el hito "Así nació
+  Nexo") y de las bajadas de la 10 y la 29.
+- **31, cuánto hubiera llevado sin IA.** Una tarjeta arriba a la derecha con dos
+  barras a escala: sin IA, más de 4 años; con IA, 6 meses (7 de mayo al 16 de
+  noviembre). La cuenta: 95.923 líneas propias no vacías (backend, frontend,
+  scripts y deploy, sin `frontend/js/vendor`) a 50 líneas terminadas por día
+  por persona (la cifra alta de la industria; la baja es 10) = 1.918 jornadas,
+  959 cada uno, unos 4,4 años de 220 días hábiles. Explicado en la guía
+  ("¿De dónde salen los 4 años?"). La guía decía 80.000 líneas: ahora casi
+  100.000 y casi 500 commits.
+- **33 nueva, "Los negocios que ya usan Nexo".** Cuatro tarjetas punteadas
+  para completar (nombre, rubro y ciudad) y "Gracias": a los negocios, y a la
+  mamá de Joaquín, contadora, "por ayudarnos con el IVA, las facturas y ARCA"
+  (supuesto mío: el usuario lo confirma o lo cambia). Las de después se corren
+  una: cierre 34, inglés 35, QR 36.
+- **36, el QR de la página como principal.** "Conocer Nexo"
+  (`qr/landing-nexo.svg`, nexosystem.duckdns.org) grande a la derecha;
+  Instagram y el código en GitHub, chicos, del mismo tamaño y lado a lado.
+  El de "Probar Nexo" sigue en la 13.
+- **Subtítulos del video en inglés.** En `NexoUnSabado.tsx` (motion-architect):
+  de 32 a 50 px, en negrita, fondo al 90 % y el ícono de Nexo a 44 px. No tapan
+  nada (revisado en un cuadro de cada frase). Rerenderizado; el mp4 y el póster
+  (`-ss 10.7`) copiados a `docs/pitch/media/`.
+- **Que se lea en el tele.** El texto chico tenía un techo de 15 px y el
+  contenido un ancho máximo de 1500 px: en 1920×1080 todo quedaba en un
+  recuadro, chico. Ahora, desde 1440 px de ancho, `html { font-size:
+  calc(100vw / 90) }` y el ancho máximo en rem (93,75rem): la diapositiva crece
+  en proporción a la pantalla, como un PowerPoint. El texto chico sube de
+  `1.05vw/0.95rem` a `1.15vw/1.06rem` y el normal de `1.5vw/1.3rem` a
+  `1.55vw/1.38rem`. Medido en 1920×1080, 1536×864 (125 %) y 1280×720 (150 %):
+  ninguna diapositiva se desborda. Se arreglaron las que se corrían: el precio
+  de Dux en la 7 (más chico en `.precios`, "por mes" sin partir), el QR de
+  Mercado Pago de la 24 (también según la altura) y los QR chicos de la 36.
+- **La demo en vivo.** Probada la app con una copia de la base, a 1280×720 con
+  escala 1,5 (una notebook 1920×1080 con el zoom del navegador al 150 %):
+  Resumen y Punto de venta se ven enteros y grandes. Para el tele: Ctrl + hasta
+  125–150 % antes de empezar la demo.
+
+Lo que no se tocó: las capturas de la app dentro de las diapositivas (14 a 26)
+se ven al 25–60 % de su tamaño; de lejos se lee el texto de al lado, no la
+captura. Si en el tele grande sigue sin alcanzar, el paso siguiente es
+recortarlas a la parte que importa.
+
+## §184 — 16 de noviembre de 2026: facturar desde el punto de venta y el ticket impreso
+
+Punto 1 del plan hasta la oficial. Hasta ahora el mostrador solo cobraba, y la
+factura se hacía después desde Ventas.
+
+- **Al cobrar se elige el comprobante.** En el cobro del mostrador hay dos
+  botones, "Sin factura" y "Factura A/B/C", y la casilla "Imprimir el ticket".
+  La letra que se muestra sale de `letraPrevista` (la misma regla del servidor)
+  con la condición del negocio y la del cliente. Lo elegido se recuerda por
+  dispositivo y negocio (`nexo.pos.facturar.<id>`, `nexo.pos.ticket.<id>`).
+- **Sin circuito nuevo.** La pantalla registra la venta (`POST /api/pos/ventas`)
+  y enseguida pide la factura con la ruta de siempre (`POST
+  /api/ventas/:id/facturar`), con la condición de venta según el medio
+  (contado, débito, crédito, transferencia, cuenta corriente; con varios, el de
+  más plata). Con el QR de Mercado Pago, la factura se pide recién cuando entra
+  el pago. Se descartó hacerlo dentro de la ruta del mostrador: el QR igual
+  necesita los dos pasos, y así los tres caminos son uno.
+- **Lo que puede fallar.** Una factura A sin CUIT del cliente (con la factura
+  electrónica activa) se avisa antes de cobrar y no deja confirmar. Si la
+  factura falla después (ARCA no responde, la rechaza), la venta queda hecha y
+  la pantalla de éxito dice qué pasó y dónde seguir (Ventas o Facturas). Los
+  botones quedan apagados mientras se espera a ARCA: no hay venta doble. Con la
+  factura electrónica en pausa por el plan, los botones no aparecen.
+- **El ticket** (`armarTicket`, `imprimirTicket` e `imprimirTicketDeVenta` en
+  `core/comprobante.js`): papel de 80 mm, con el negocio, los renglones con
+  oferta y descuento, el total, cada cobro, lo recibido y el vuelto, y lo que
+  quedó en cuenta corriente. Con factura autorizada lleva letra, número, datos
+  del cliente, IVA (discriminado en la A, contenido en la B), CAE y QR; sin
+  ella dice "No válido como factura". El alto del papel se mide y se le pasa al
+  navegador con un `@page` propio que dura solo esa impresión (la limpieza va
+  en `afterprint`, y `imprimirHojas` lo saca por si quedó). Se reimprime desde
+  la ficha de la venta ("Ticket").
+- **Servidor:** `GET /api/ventas/:id` suma `factura_id`, `creada` y `vendedor`
+  (del alta en la auditoría, como el Resumen) y `unidad` en cada renglón. Sin
+  cambios de esquema.
+- **Probado:** 396 tests (uno nuevo en `medios-cobro.test.js`), lint e i18n en
+  verde. En el navegador, con ARCA simulado: factura A con CAE y QR en el
+  ticket, el aviso del CUIT faltante y la venta sin factura. `plantillas-html.js`
+  suma `filaTicket` y `lineaTicket` a las funciones que escapan.
+- **Sin probar:** una impresora térmica de verdad (el tamaño de página se
+  comprobó solo por la regla que se genera) y el camino del QR con factura.
+- **Queda:** `facturas.condicion` solo admite efectivo, transferencia o
+  Mercado Pago, así que una venta con tarjeta guarda "transferencia" ahí (lo
+  que se imprime, `condicion_venta`, sí dice tarjeta). El ancho es fijo en
+  80 mm: si aparece un negocio con papel de 58, se hace configurable.
+
+## §185 — 17 de noviembre de 2026: el asistente responde preguntas sobre los números
+
+Punto 2 del plan hasta la oficial (§36: "consultas en lenguaje natural sobre los
+datos"). Solo lee, así que no pide confirmación.
+
+- **Flujo:** la frase pasa por `clasificarFrase` (`core/buscar-ayuda.js`), que
+  ahora distingue `consulta` (¿cuánto vendí…?, ¿quién me debe?, ¿qué tengo que
+  reponer?) de `ayuda` (¿cómo/dónde veo…?, que sigue yendo al manual). Una
+  consulta va a la IA con una herramienta nueva, `consultar`
+  (`interprete.js`): la IA solo dice el **tema** (ventas, ganancia, gastos,
+  compras, mas_vendidos, mejores_clientes, me_deben, debo, stock, reponer,
+  plata), el **período** y el producto, cliente, proveedor o categoría. **Nunca
+  escribe una cifra.**
+- **`backend/consultas.js`** (nuevo, sin acceso a la base, como `interprete.js`):
+  arma la respuesta `{ texto, filas, enlace }` con funciones que le pasa
+  `server.js` (`fuentesDeConsulta`). Esas funciones son las de siempre:
+  `calcularResultado`, y las que se sacaron de los handlers para compartirlas,
+  `reporteVentas`, `reporteCompras` y `saldosDeCuentasCorrientes`; así los
+  números son idénticos a los del Resumen y los reportes. Períodos: hoy, ayer,
+  esta semana, la semana pasada, este mes (el de partida, y la respuesta lo
+  dice), el mes pasado, este año, el año pasado, todo y un rango. Los nombres se
+  buscan por las primeras 4 letras de cada palabra ("remeras" → "Remera
+  negra"), y un producto que no existe dice "No encontré…" en vez de un 0.
+- **Rol:** el empleado solo recibe me_deben, debo, stock, reponer y plata (lo
+  que ve en sus pantallas); lo que sale de reportes (admin) responde "Eso lo ve
+  quien administra el negocio."
+- **Servidor:** `proponerDesdeTexto(texto, usuario)` (ahora recibe el usuario, no
+  solo la empresa) devuelve `{ tipo: 'consulta', consulta }` sin `mensaje_id`.
+  Lo usan la web (`/api/asistente/interpretar`) y WhatsApp
+  (`consultaParaWhatsApp`). Sin esquema nuevo ni migración. Sin el plan Pro la
+  web manda la pregunta al manual, como antes.
+- **Web:** `respuestaDeConsulta` (`dominios/ayuda.js`) con renglones y un "Ver en
+  Resumen/Caja/…" (estilos `.asistente-dato(s)`); ejemplo nuevo en los botones y
+  en "lo que puedo hacer"; manual y su versión en inglés al día.
+- **Probado:** `asistente-consultas.test.js` (8), uno nuevo en `ayuda.test.js` y
+  otro en `whatsapp.test.js`; 406 tests, lint e i18n en verde. El stub entiende
+  `consulta: tema=ventas; periodo=este_mes; producto=remera`.
+- **Sin probar:** la IA real: `npm run probar-ia` ya trae 5 frases de consulta,
+  falta correrlo con la clave de Groq (gasta cupo) y mirar cuántas acierta el
+  tema. Tampoco se miró la tarjeta en el navegador.
+- **Queda:** comparar contra el período anterior ("¿vendí más que el mes
+  pasado?"), preguntas por varios temas a la vez, y ventas por canal o vendedor.

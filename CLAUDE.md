@@ -1327,7 +1327,10 @@ venta, sin armar una oferta. Se reparte entre los renglones según su valor
 (`frontend/js/core/descuento.js`, el mismo para la pantalla y el servidor) y
 queda en el precio de cada uno; `venta_items.descuento` guarda cuánto se bajó
 por unidad, y la auditoría anota quién lo hizo. Lo hace cualquier rol, sin tope
-(decisión del usuario). Queda para después: precio editable por
+(decisión del usuario).
+**Factura y ticket al cobrar** (hist. §184): en el cobro se elige si la venta
+sale con factura (la letra sale sola, como en Ventas) y si se imprime el ticket
+de 80 mm, que lleva el CAE y el QR cuando hay factura. Queda para después: precio editable por
 renglón en el mostrador, alta rápida de cliente y venta sin conexión.
 
 ---
@@ -1607,7 +1610,13 @@ Implementado hoy (hist. §117, §118):
   que la IA entendió mal se corrige con "Corregir" sin empezar de nuevo, y
   varias unidades pueden ser de variantes distintas (hist. §178, §179). Hecho
   contra un WhatsApp falso: falta la app de Meta (trámite del usuario).
-- Falta: las consultas sobre los datos.
+- **Consultas sobre los datos (hist. §185):** "¿cuánto vendí este mes de
+  remeras?", "¿quién me debe?". La IA solo dice el tema, el período y de
+  quién o de qué se pregunta (`consultar`); la respuesta la arma
+  `backend/consultas.js` con los mismos números del Resumen, sin pedir
+  confirmación. El empleado solo recibe lo que ve en sus pantallas (deudas,
+  stock, caja).
+- Falta: comparar contra otros períodos y preguntas con varios temas.
 
 ---
 

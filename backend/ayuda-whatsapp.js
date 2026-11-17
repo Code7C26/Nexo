@@ -61,12 +61,13 @@ export function respuestaDelManual(resultados, capacidades) {
   return `${seccionParaWhatsApp(mejor.seccion)}${tambien}`;
 }
 
-// La respuesta a una frase que no es una operación, o null si lo es (y va a la
-// IA). `capacidades` es lo que sabe hacer, para saludos y para lo que no tiene
-// respuesta: nadie queda sin saber qué probar.
+// La respuesta a una frase que no es una operación ni una pregunta por los
+// números del negocio, o null si lo es (y va a la IA). `capacidades` es lo que
+// sabe hacer, para saludos y para lo que no tiene respuesta: nadie queda sin
+// saber qué probar.
 export function respuestaDeAyuda(texto, capacidades) {
   const frase = clasificarFrase(texto);
-  if (frase.tipo === 'operacion') return null;
+  if (frase.tipo === 'operacion' || frase.tipo === 'consulta') return null;
   if (frase.tipo === 'charla') return (CHARLAS[frase.charla] ?? CHARLAS.capacidades)(capacidades);
   if (frase.tipo === 'navegar') {
     return `📍 Eso lo abrís desde la app: *${frase.pantalla.nombre}*, en el menú de Nexo.\n\n${capacidades}`;

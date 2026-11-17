@@ -68,7 +68,11 @@ const FRASES = [
   { frase: 'pagué publicidad en Instagram, 15 mil con MP', tipo: 'gasto', categoria: 'Publicidad', cuenta: 'Mercado Pago', importe: 15000 },
   { frase: 'pagué ingresos brutos, 1 palo y medio desde el Galicia', tipo: 'gasto', categoria: 'Impuestos', cuenta: 'Banco Galicia', importe: 1500000 },
   { frase: 'hola, ¿cómo andás?', tipo: null },
-  { frase: '¿cuánto vendí este mes?', tipo: null },
+  { frase: '¿cuánto vendí este mes?', tipo: 'consulta', tema: 'ventas' },
+  { frase: 'cuántas remeras blancas vendí la semana pasada', tipo: 'consulta', tema: 'ventas', producto: 'remera' },
+  { frase: '¿quién me debe plata?', tipo: 'consulta', tema: 'me_deben' },
+  { frase: 'qué tengo que reponer', tipo: 'consulta', tema: 'reponer' },
+  { frase: 'cuánto gasté en luz este año', tipo: 'consulta', tema: 'gastos', categoria: 'luz' },
   { frase: 'mañana le voy a vender 3 remeras a Juan', tipo: null },
   { frase: 'pasame la lista de precios', tipo: null }
 ];
@@ -86,6 +90,9 @@ function diferencias(esperado, { tipo, datos }) {
     if (!ok) mal.push(`${nombre}: ${JSON.stringify(obtenido)}`);
   };
 
+  if (esperado.tema) comparar('tema', datos.tema === esperado.tema, datos.tema);
+  if (esperado.producto && tipo === 'consulta') comparar('producto', contiene(datos.producto, esperado.producto), datos.producto);
+  if (esperado.categoria && tipo === 'consulta') comparar('categoría', contiene(datos.categoria, esperado.categoria), datos.categoria);
   if (esperado.cliente) comparar('cliente', contiene(datos.cliente, esperado.cliente), datos.cliente);
   if (esperado.proveedor) comparar('proveedor', contiene(datos.proveedor, esperado.proveedor), datos.proveedor);
   if (esperado.items) {

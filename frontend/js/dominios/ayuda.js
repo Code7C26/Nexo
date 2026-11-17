@@ -78,6 +78,7 @@ const EJEMPLOS = [
   ["Cargar una compra", "Compré 10 pantalones a Textil Norte a 9 mil cada uno"],
   ["Cargar un gasto", "Pagué 25 mil de luz en efectivo"],
   ["Registrar una devolución", "Juan me devolvió la remera, le quedó chica"],
+  ["Preguntar por tus números", "¿Cuánto vendí este mes?"],
   ["Preguntar cómo se hace algo", "¿Cómo anulo una venta?"],
   ["Ir a una pantalla", "Llevame a ventas"]
 ];
@@ -101,6 +102,25 @@ export function respuestaDeCharla(charla) {
 // "Llevame a ventas": el asistente lleva solo; el enlace queda por si vuelve.
 export function respuestaDeNavegar({ hash, nombre }) {
   return `<div class="asistente-ayuda"><p>Te llevo a <a href="${esc(hash)}">${esc(nombre)}</a>.</p></div>`;
+}
+
+/* ---------- Las preguntas por los números (hist. §185) ---------- */
+
+// Las pantallas de una función que el negocio puede tener apagada.
+const MODULO_DE_PANTALLA = { "#/stock": "stock", "#/compras": "compras" };
+
+// consulta: lo que arma backend/consultas.js ({ texto, filas, enlace }): el
+// dato, sus renglones y dónde verlo entero.
+export function respuestaDeConsulta({ texto, filas, enlace }) {
+  const detalle = filas.length
+    ? `<dl class="asistente-datos">${filas.map((f) => `<div><dt>${esc(f.nombre)}</dt><dd>${esc(f.valor)}</dd></div>`).join("")}</dl>`
+    : "";
+  const modulo = enlace && MODULO_DE_PANTALLA[enlace.hash];
+  const ir =
+    enlace && (!modulo || moduloActivo(modulo))
+      ? `<p class="asistente-ayuda-acciones"><a class="btn-link" href="${esc(enlace.hash)}">Ver en ${esc(enlace.nombre)}</a></p>`
+      : "";
+  return `<div class="asistente-ayuda"><p class="asistente-dato">${esc(texto)}</p>${detalle}${ir}</div>`;
 }
 
 /* ---------- La respuesta del asistente ---------- */

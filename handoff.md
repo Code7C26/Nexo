@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §182);
+    siguiente número (hoy el último es §185);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,34 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (16 de noviembre de 2026)
+## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §185: el asistente responde preguntas sobre los
+números (sin commitear todavía).** Punto 2 del plan. "¿Cuánto vendí este mes de
+remeras?", "¿quién me debe?", "¿qué tengo que reponer?": la IA solo dice qué se
+pregunta (herramienta `consultar`) y `backend/consultas.js` contesta con los
+mismos números del Resumen, sin confirmación y según el rol (el empleado no ve
+lo de reportes). Web y WhatsApp. 406 tests. **Falta** correr `npm run probar-ia`
+con la clave de Groq y mirar la tarjeta en el navegador.
+
+**16 de noviembre, hist. §184: facturar desde el punto de venta y el ticket
+impreso (commiteado en `solla`, sin publicar).** Punto 1 del plan hasta la
+oficial. Al cobrar en el mostrador se elige "Sin factura" o "Factura A/B/C" (la
+letra sale sola) y si se imprime el ticket; queda recordado por dispositivo. La
+factura es la de siempre (`POST /api/ventas/:id/facturar`), pedida apenas se
+registra la venta, o cuando entra el pago del QR. El ticket es de 80 mm
+(`armarTicket` en `core/comprobante.js`), con CAE y QR si hay factura, y se
+reimprime desde la ficha de la venta. Sin cambios de esquema. 396 tests.
+**Falta probar** con una impresora térmica de verdad y el QR con factura.
+
+**16 de noviembre, hist. §183: la presentación después del simulacro (36
+diapositivas).** Lo que marcó la profe: la 31 dice cuánto hubiera llevado sin
+IA (más de 4 años contra 6 meses); la 33 nueva, los negocios que ya usan Nexo y
+los agradecimientos (las tarjetas, **para completar**); la 36 con el QR de la
+página como principal y GitHub e Instagram chicos; los subtítulos del video en
+inglés más grandes; y la presentación crece con la pantalla (en el tele ya no
+queda en un recuadro con el texto chico). "Crece con el negocio" queda para la
+10 y la 29. Para la demo en el tele: zoom del navegador al 125–150 %.
 
 **16 de noviembre, hist. §182: el video en inglés, rehecho como animación
 propia ("Un sábado en el local"), y en la presentación (la 34; ahora son 35).**
@@ -1982,6 +2009,98 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
    prueba no está probando nada.
 
 ## Qué sigue
+
+**Plan hasta la presentación oficial (principios de diciembre), acordado con
+el usuario el 16 de noviembre.** Sale de su lista de mejoras después del
+simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el 20 de
+noviembre" de más abajo. El usuario pidió sí o sí para la oficial: sucursales,
+cierre de caja, facturar desde el punto de venta y el ticket impreso. El orden
+es mío (primero lo chico que se muestra, después la etapa grande):
+1. ~~**Facturar desde el punto de venta y el ticket impreso**~~ (hecho, hist.
+   §184; falta probarlo con una impresora térmica): al cobrar, elegir
+   factura A, B o sin factura (la letra la propone el cliente, como en Ventas)
+   e imprimir el ticket en el momento. Hoy el mostrador solo cobra y se
+   factura después desde Ventas. El dueño sigue facturando desde Ventas lo que
+   vende fuera del local.
+2. ~~**El asistente responde preguntas sobre los números**~~ (hecho, hist. §185; falta probarlo con la IA real) ("¿cuánto vendí este
+   mes de remeras?", "¿quién me debe más?"). Es lo que le falta a §36; solo
+   lee, sin confirmación.
+3. **Mandar la factura por mail**, de a una o varias juntas (el mail ya anda:
+   códigos y recuperación de contraseña).
+4. **Sucursales, cajas y permisos, con el cierre del día y del mes** (detalle
+   en "Para más adelante", donde quedó la propuesta). Cambia el esquema: se
+   planifica y se explica la migración antes de tocarlo (§27, §34).
+5. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
+   desde Excel o CSV). Hoy la carga inicial (`dominios/carga-inicial.js`) es
+   una grilla a mano y el CSV solo exporta.
+6. **Logo y colores del negocio:** en la factura, el ticket, el menú y la
+   pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
+7. Si da: **el resumen del día** por WhatsApp o mail.
+Es mucho para dos o tres semanas: si no entra todo, se corta desde abajo.
+Y en la presentación: completar la 33, recortar las capturas de la 14 a la 26
+para el tele y la captura del chat de WhatsApp de la 19.
+
+**Para más adelante (lista del usuario del 16 de noviembre, más lo que sumé
+yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
+- Horarios del gimnasio con actividades, profesores y cupos, sobre la misma
+  base que los turnos (barbería, consultorios). Con los turnos y la factura se
+  abren los profesionales independientes (médicos, abogados, contadores).
+- Más rubros, cada uno con su módulo (restaurante: mesas y comandas).
+- Shopify y otros canales, con el molde de Tienda Nube y Mercado Libre (§32).
+- Página propia del negocio: primero "tu tienda en un link" (la 32), después
+  una tienda completa como Tienda Nube.
+- CRM con WhatsApp, Instagram y Facebook en un solo lugar (depende de la app
+  de Meta); después el "ARM": agentes de IA que leen los mensajes, llenan las
+  fichas y proponen las cargas, siempre con confirmación humana (§21, §36).
+- Asistente especialista en contabilidad, armado con la mamá de Joaquín
+  (contadora): una respuesta mal le cuesta plata al negocio.
+- **Sucursales, cajas y permisos** (de Praxia, 16 de noviembre; la próxima
+  etapa grande, se planifica antes de tocar el esquema, §27). Hoy hay roles
+  admin/empleado por negocio, depósitos y cajas sueltos, y el empleado no está
+  atado a nada. Propuesta: la **sucursal** junta su depósito, sus cajas y su
+  punto de venta de ARCA; cada persona se asigna a una o más sucursales con un
+  **perfil** (dueño, encargado, cajero) y el dueño elige qué secciones ve cada
+  uno. **Una cuenta por persona, no por caja** (Praxia lo hace por caja): la
+  caja se elige al abrir el turno y así queda quién vendió, abrió y cerró. Con
+  esto, el **cierre del día y del mes** sumando todas las cajas y sucursales.
+  Los cambios del dueño ya llegan al instante a las cajas (es una sola web).
+  **Decidido por el usuario (16 de noviembre):** cada caja vende solo del
+  depósito de su sucursal (hoy el punto de venta vende siempre del
+  predeterminado), y lo que muestra como disponible es ese stock. Lo que no
+  hay en la sucursal **no se vende ahí**, aunque otra lo tenga: "te mandan a
+  comprarlo a la otra", como en cualquier cadena. El mostrador sí muestra en
+  qué sucursal hay, solo para avisarle al cliente.
+- **Vender sin conexión** (de Praxia; el usuario lo quiere, sin fecha): el
+  punto de venta guarda lo último que cargó, vende sin internet y al volver
+  manda las ventas al servidor, sin duplicarlas. Lo difícil: el stock que se
+  vendió en dos lados a la vez y la factura, que necesita a ARCA en línea (la
+  venta sin conexión sale sin factura o con CAEA, el CAE de contingencia).
+  **Choca con §39** ("operación offline y sincronización diferida"): se saca
+  de ahí con el equipo al arrancar. Hoy la PWA sin conexión solo lee (§31).
+- **Horarios y fichaje de empleados** (de Praxia): horario planificado,
+  entrada y salida reales, llegadas tarde y horas, cruzado con los turnos de
+  caja. **Choca con §39** ("gestión de empleados y sueldos"): son los
+  horarios, no los sueldos, pero se saca de §39 con el equipo al arrancar.
+- **Inversiones y amortizaciones** (idea del usuario, 16 de noviembre): lo que
+  se compra para usar y no para vender (una heladera, la balanza, la compu)
+  hoy entra como gasto entero en un mes y le hunde el resultado. Como bien de
+  uso, se reparte en su vida útil (una heladera de $ 1.200.000 en 5 años son
+  $ 20.000 por mes), y el Resumen muestra cuánto rinde lo invertido. Es
+  gestión, no la contabilidad formal de §39. A definir al arrancar: si también
+  entra la plata invertida (plazo fijo, fondos) como una cuenta más de
+  tesorería que rinde.
+- Avisos al celular (Web Push, §31), recargo por cuotas y acreditación
+  diferida (§30), puntos y premios, vender sin internet en el punto de venta.
+- **Hoy fuera de alcance en CLAUDE.md §39:** sueldos y RRHH, contabilidad con
+  balances y Meta Ads. Están en la lista del usuario para el futuro; al
+  arrancar alguno, se saca de §39 con el equipo (como pasó con producción).
+
+**Para la oficial, lo que falta de §183:** completar la 33 (nombre, rubro y
+ciudad de cada negocio, en `docs/pitch/fuentes/index.html`, y confirmar con
+cada uno que se lo nombra) y confirmar el agradecimiento a la mamá de Joaquín
+("por ayudarnos con el IVA, las facturas y ARCA" es un supuesto). Después,
+`npm run presentacion` y `npm run guia` (en `redes/`). Probar en el tele
+grande, y si las capturas de la app (14 a 26) no se leen, recortarlas.
 
 **El video en inglés, terminado** (hist. §182): "Un sábado en el local", en la
 34 de la presentación (35 en total), con las ocho frases grabadas por Santino y

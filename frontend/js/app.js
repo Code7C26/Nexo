@@ -31,7 +31,7 @@ import {
 import { avisar, confirmar, conEsqueleto, filaVacia, filaVaciaFiltrada, mostrarResultadoBulk, tablaCargando } from "./core/ui.js";
 import { api, refrescar } from "./core/api.js";
 import { CONFIRMAR_LOTE_DESDE, LIMITE_LOTE, crearSeleccion, montarBarraSeleccion, traerConcurrencia } from "./core/seleccion.js";
-import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, nombreArchivoPdf } from "./core/comprobante.js";
+import { armarHojaComprobante, armarHojaFactura, cargarQr, descargarPDFsEnLote, imprimirComprobante, imprimirHojas, imprimirTicketDeVenta, nombreArchivoPdf } from "./core/comprobante.js";
 import { descargarCSV } from "./core/csv.js";
 import { icono } from "./core/iconos.js";
 import { barrasHorizontales, lineaChica, montarArea, pasoRedondo, pathBarra } from "./core/graficos.js";
@@ -85,7 +85,7 @@ import "./dominios/balanza.js";
 import "./dominios/medios-cobro.js";
 import "./dominios/ofertas.js";
 import "./dominios/venta-online.js";
-import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeNavegar } from "./dominios/ayuda.js";
+import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeConsulta, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
 import "./core/combo.js";
@@ -4765,6 +4765,8 @@ async function abrirFichaVenta(id) {
   // backend ya lo rechaza, esto es para no invitar a un click que va a
   // fallar.
   document.getElementById("btnEditarVenta").hidden = venta.facturada || venta.tiene_devolucion;
+  // Un saldo de antes de Nexo no tiene renglones: no hay ticket que imprimir.
+  document.getElementById("btnTicketVenta").hidden = venta.saldo_inicial != null;
   // En el celular la fila de la lista no muestra "Cobrar": se cobra desde acá
   // (y desde acá se manda el link de Mercado Pago, hist. §130).
   document.getElementById("btnCobrarVentaFicha").hidden = venta.estado === "anulada" || !(venta.neto - venta.cobrado > 0.005);
@@ -4866,6 +4868,8 @@ document.getElementById("btnEditarVenta").addEventListener("click", async () => 
 });
 document.getElementById("btnVolverVentas").addEventListener("click", () => mostrarVista("ventas"));
 document.getElementById("btnCobrarVentaFicha").addEventListener("click", () => abrirModalCobrarVenta(ventaFichaId));
+// El ticket de 80 mm, el mismo que sale del mostrador al cobrar.
+document.getElementById("btnTicketVenta").addEventListener("click", () => imprimirTicketDeVenta(ventaFichaId));
 
 // El envío que pagó el negocio (hist. §180): entra como costo de la venta y la
 // ficha se vuelve a pintar con él en "Adónde fue la plata".
@@ -7753,8 +7757,11 @@ formAsistente.addEventListener("submit", async (e) => {
   // "¿Cómo hago…?" se contesta con el manual, en el navegador y sin la IA
   // (hist. §118); la IA queda para cargar operaciones.
   // La charla y el "llevame a…" tampoco (hist. §120).
-  const frase = clasificarFrase(texto);
-  if (frase.tipo !== "operacion") {
+  // Una pregunta por los números ("¿cuánto vendí este mes?") sí va a la IA,
+  // que dice qué se pregunta (hist. §185). Sin el plan, la contesta el manual.
+  let frase = clasificarFrase(texto);
+  if (frase.tipo === "consulta" && asistenteSinIA) frase = { tipo: "ayuda", resultados: buscarEnManual(texto) };
+  if (frase.tipo !== "operacion" && frase.tipo !== "consulta") {
     if (frase.tipo === "ayuda") turnoRespuesta.innerHTML = respuestaDeAyuda(frase.resultados);
     if (frase.tipo === "charla") turnoRespuesta.innerHTML = respuestaDeCharla(frase.charla);
     if (frase.tipo === "navegar") {
@@ -7799,6 +7806,8 @@ const DICTADO_MAX_MS = 60_000;
 // silencio.
 const DICTADO_MIN_MS = 800;
 let asistenteVozConsultada = false;
+// El plan del negocio no trae el asistente: las preguntas van al manual.
+let asistenteSinIA = false;
 let grabacion = null; // { recorder, inicio, corte, descartar }
 
 // La primera vez que se abre el panel (no al cargar la app: sin sesión, el
@@ -7808,7 +7817,8 @@ async function asistenteMostrarVoz() {
   if (asistenteVozConsultada) return;
   asistenteVozConsultada = true;
   const capacidades = await api("/api/asistente/capacidades").catch(() => null);
-  document.getElementById("asistenteSinPlan").hidden = capacidades?.ia !== false;
+  asistenteSinIA = capacidades?.ia === false;
+  document.getElementById("asistenteSinPlan").hidden = !asistenteSinIA;
   const voz = !!capacidades?.voz && !!window.MediaRecorder && !!navigator.mediaDevices?.getUserMedia;
   btnAsistenteVoz.hidden = !voz;
   document.getElementById("asistenteGuiaVoz").hidden = !voz;
@@ -7933,6 +7943,11 @@ btnAsistenteVoz.addEventListener("click", () => {
 });
 
 function asistenteRenderRespuesta(turnoEl, data, texto) {
+  // Una pregunta por los números: ya viene contestada, no hay nada que confirmar.
+  if (data.tipo === "consulta") {
+    turnoEl.innerHTML = respuestaDeConsulta(data.consulta);
+    return;
+  }
   if (!data.tipo) {
     // La IA no vio una operación: si el manual tiene algo seguro sobre lo que
     // se dijo, va eso (hist. §119), sin otra llamada.

@@ -74,6 +74,7 @@ const SECCIONES_ES = [
         "Tocá **Confirmar y registrar**. Hasta ese momento no se carga nada."
       ] },
       "También le podés preguntar cómo se hace algo en Nexo (\"¿cómo anulo una venta?\") y te responde con este manual.",
+      "Y por los números de tu negocio: \"¿cuánto vendí este mes?\", \"¿cuánto vendí de remeras la semana pasada?\", \"¿quién me debe?\", \"¿cuántas gorras me quedan?\". Te contesta en el momento, con los mismos números del Resumen y sin cargar nada.",
       { nota: "Para que te entienda mejor, nombrá los productos como están cargados. Si un producto no existe, la venta no se puede confirmar hasta corregirlo; en una compra, el producto nuevo se crea solo." }
     ],
     ver: ["registrar-venta", "registrar-compra", "registrar-gasto"]
@@ -172,17 +173,19 @@ const SECCIONES_ES = [
     titulo: "Vender en el mostrador (Punto de venta)",
     pantalla: ["#/pos", "Punto de venta"],
     modulo: "pos",
-    preguntas: ["cómo vendo en el mostrador", "cómo abro la caja", "cómo cierro la caja", "cómo cobro con el lector", "cómo hago el arqueo", "cómo doy el vuelto", "cómo cobro con dos medios de pago"],
-    palabras: ["mostrador", "punto", "pos", "caja", "turno", "abrir", "cerrar", "arqueo", "vuelto", "lector", "escanear", "codigo", "barras", "cobrar", "rapida"],
+    preguntas: ["cómo vendo en el mostrador", "cómo abro la caja", "cómo cierro la caja", "cómo cobro con el lector", "cómo hago el arqueo", "cómo doy el vuelto", "cómo cobro con dos medios de pago", "cómo imprimo el ticket", "cómo facturo en el mostrador"],
+    palabras: ["mostrador", "punto", "pos", "caja", "turno", "abrir", "cerrar", "arqueo", "vuelto", "lector", "escanear", "codigo", "barras", "cobrar", "rapida", "ticket", "imprimir", "impresora"],
     bloques: [
       "Es la pantalla para vender rápido, parado frente al cliente.",
       { pasos: [
         "Al empezar el día, tocá **Abrir caja** y contá el efectivo con el que arrancás.",
         "Buscá cada producto por nombre o código, o pasalo por el lector (también sirve la cámara del celular).",
         "Tocá **Cobrar** y elegí cómo paga: efectivo, transferencia, tarjeta… Puede pagar con más de uno. Si es en efectivo, Nexo calcula el vuelto.",
+        "Ahí mismo elegí si va **Sin factura** o con **Factura**, y tildá **Imprimir el ticket** si querés que salga solo. Queda como lo dejaste para la próxima venta.",
         "Al terminar el día, tocá **Cerrar caja** y contá el efectivo: Nexo te dice si coincide con lo que debería haber."
       ] },
       "Sin elegir cliente, la venta va a Consumidor final. Para dejarle algo a cuenta a alguien, elegí el cliente: a Consumidor final no se le fía.",
+      "El ticket es para impresoras de 80 mm. Se vuelve a imprimir desde la ficha de la venta, con **Ticket**.",
       { nota: "Si no ves Punto de venta en el menú, prendelo en Configuración › Funciones." }
     ],
     ver: ["caja", "registrar-venta", "funciones"]
@@ -298,6 +301,7 @@ const SECCIONES_ES = [
         "Tocá **Generar factura**. Desde su ficha, **Imprimir / PDF**."
       ] },
       "La letra (A, B o C) sale sola, según tu condición frente al IVA y la del cliente.",
+      "En el Punto de venta la factura se elige al cobrar, sin pasar por acá.",
       { nota: "Sin la factura electrónica activada, el comprobante es interno: sale con una X y \"No válido como factura\". Para facturar ante ARCA, mirá Factura electrónica." }
     ],
     ver: ["factura-electronica", "iva", "datos-del-negocio"]
