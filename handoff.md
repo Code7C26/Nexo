@@ -22,17 +22,7 @@
 ## Estado actual (17 de noviembre de 2026)
 
 **17 de noviembre, hist. §188: alta rápida de un cliente con CUIT en el cobro
-del punto de venta (commiteado en `solla`, sin publicar).** Para hacer una
-factura A sin ir a Clientes: en el cobro, "Facturar a un cliente con CUIT"
-(solo si se puede facturar y el cliente es consumidor final o le falta el CUIT
-o la condición) abre CUIT, nombre y condición. Lo busca por CUIT entre los
-clientes; si está sin condición (o con otra), se la guarda con una
-confirmación; si no está, lo crea. El botón pasa solo a "Factura A". La letra
-sigue saliendo de las dos condiciones. Sin cambios de esquema ni rutas
-nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
-
-**17 de noviembre, hist. §188: alta rápida de un cliente con CUIT en el cobro
-del punto de venta (commiteado en `solla`, sin publicar).** Para hacer una
+del punto de venta (publicado, PR #93).** Para hacer una
 factura A sin ir a Clientes: en el cobro, "Facturar a un cliente con CUIT"
 (solo si se puede facturar y el cliente es consumidor final o le falta el CUIT
 o la condición) abre CUIT, nombre y condición. Lo busca por CUIT entre los
