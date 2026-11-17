@@ -213,6 +213,9 @@ export const RUTAS_PERMISOS = {
   // son el trabajo diario de la caja. Anular una venta del turno también, pero
   // un empleado necesita la contraseña de un administrador (la pide la ruta).
   'POST /api/pos/cobro-a-cuenta': 'ambos',
+  // El QR que no se pagó y se cobra de otra forma, la misma venta (hist. §197).
+  'POST /api/pos/ventas/:id/soltar-qr': 'ambos',
+  'POST /api/pos/ventas/:id/cobrar': 'ambos',
   'POST /api/pos/gastos': 'ambos',
   'GET /api/turnos-caja/:id/detalle': 'ambos',
   'POST /api/pos/ventas/:id/anular': 'ambos',

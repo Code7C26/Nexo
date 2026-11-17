@@ -533,6 +533,28 @@ test('el QR del mostrador (hist. §145): sin cobros a consumidor final, el pago 
   assert.equal((await empleado.post(`/api/pos/ventas/${otraQr}/cancelar-qr`)).status, 200);
 });
 
+test('el QR que no se pagó se cobra de otra forma y sigue siendo la misma venta (hist. §197)', async () => {
+  const caja = (await admin.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'efectivo');
+  const turno = (await admin.get('/api/turnos-caja?estado=abierto')).json.find((t) => t.cuenta_tesoreria_id === caja.id).id;
+  const items = [{ producto_id: remera, cantidad: 1, precio_unitario: 30000 }];
+  const venta = (await empleado.post('/api/pos/ventas', { turno_caja_id: turno, items, cobros: [], qr_mercadopago: true })).json.id;
+
+  const soltada = await empleado.post(`/api/pos/ventas/${venta}/soltar-qr`);
+  assert.equal(soltada.status, 200, soltada.texto);
+  // A "Consumidor final" no se le deja saldo, ni se cobra de más.
+  assert.equal((await empleado.post(`/api/pos/ventas/${venta}/cobrar`, { cobros: [{ cuenta_tesoreria_id: caja.id, importe: 1000 }] })).status, 400);
+  assert.equal((await empleado.post(`/api/pos/ventas/${venta}/cobrar`, { cobros: [{ cuenta_tesoreria_id: caja.id, importe: 40000 }] })).status, 400);
+  const cobrada = await empleado.post(`/api/pos/ventas/${venta}/cobrar`, { cobros: [{ cuenta_tesoreria_id: caja.id, importe: 30000 }] });
+  assert.equal(cobrada.status, 201, cobrada.texto);
+  assert.equal((await admin.get(`/api/ventas/${venta}`)).json.estado, 'activa', 'no se anula');
+  assert.equal((await cobrosDe(venta)).length, 1);
+  // Ya cobrada: ni se vuelve a cobrar ni se cancela por el QR.
+  assert.equal((await empleado.post(`/api/pos/ventas/${venta}/cobrar`, { cobros: [{ cuenta_tesoreria_id: caja.id, importe: 1 }] })).status, 404);
+  assert.equal((await empleado.post(`/api/pos/ventas/${venta}/cancelar-qr`)).status, 404);
+  // Una venta que no esperaba un QR no se cobra por acá.
+  assert.equal((await empleado.post(`/api/pos/ventas/${await nuevaVenta(admin, 5000)}/cobrar`, { cobros: [] })).status, 404);
+});
+
 test('el QR de la caja (hist. §147): se arma una vez con su cartel, cobra con una orden y, si Mercado Pago no la deja, cae al link', async () => {
   const turno = (await admin.get('/api/turnos-caja?estado=abierto')).json[0]?.id;
   assert.ok(turno, 'hay un turno abierto del test anterior');

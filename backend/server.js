@@ -19310,6 +19310,81 @@ function turnoAbiertoDelMostrador(turnoId, organizacionId) {
   return turno?.estado === 'abierto' ? turno : null;
 }
 
+// El cliente no pagó el QR y paga de otra forma (hist. §197): la venta sigue
+// siendo la misma, no se anula. Se cancela la orden en Mercado Pago (así no se
+// puede pagar después) y la venta queda esperando el otro medio, que entra con
+// POST .../cobrar. Si el pago ya entró, no: 409, se cobró.
+const ventaQueEspera = (id, organizacionId) => {
+  const esperando = ventasEsperandoQr.get(id);
+  return esperando && esperando.organizacionId === organizacionId && Date.now() - esperando.creado <= VIDA_QR_MS ? esperando : null;
+};
+
+app.post('/api/pos/ventas/:id/soltar-qr', asincrono(async (req, res) => {
+  const ventaId = Number(req.params.id);
+  const organizacionId = req.usuario.organizacion_id;
+  const esperando = ventaQueEspera(ventaId, organizacionId);
+  if (!esperando) return res.status(404).json({ error: 'Esa venta ya no espera un QR.' });
+  if (db.prepare('SELECT 1 FROM cobros WHERE venta_id = ?').get(ventaId)) {
+    return res.status(409).json({ error: 'El pago del QR ya entró: la venta está cobrada.' });
+  }
+  if (esperando.orden_id) {
+    const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+    if (integracion) await apiDeMercadoPago(integracion).cancelarOrden(esperando.orden_id, randomBytes(16).toString('hex')).catch(() => {});
+    esperando.orden_id = null;
+  }
+  esperando.soltada = true;
+  res.json({ id: ventaId });
+}));
+
+// Cobrar con otro medio la venta que esperaba el QR (hist. §197): los mismos
+// cobros que una venta de mostrador, colgados del turno de la venta. Si suman
+// menos que el total, el resto queda en la cuenta corriente de un cliente de
+// verdad, como siempre.
+app.post('/api/pos/ventas/:id/cobrar', (req, res) => {
+  const ventaId = Number(req.params.id);
+  const organizacionId = req.usuario.organizacion_id;
+  if (!ventaQueEspera(ventaId, organizacionId)) return res.status(404).json({ error: 'Esa venta ya no espera un cobro.' });
+  const venta = db
+    .prepare('SELECT ventas.id, ventas.turno_caja_id, clientes.nombre AS cliente FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id WHERE ventas.id = ? AND ventas.organizacion_id = ?')
+    .get(ventaId, organizacionId);
+  const turno = venta?.turno_caja_id ? turnoAbiertoDelMostrador(venta.turno_caja_id, organizacionId) : null;
+  if (!turno) return res.status(400).json({ error: 'El turno de esa venta ya se cerró.' });
+  const { resueltos, error } = cobrosDelMostrador(req.body?.cobros ?? [], organizacionId, turno.cuenta_tesoreria_id);
+  if (error) return res.status(400).json({ error });
+  const { cliente_id: clienteId, saldo, estado } = ventaParaCobrar(ventaId, organizacionId);
+  if (estado !== 'activa') return res.status(400).json({ error: 'Esa venta está anulada.' });
+  const cobrado = redondear2(resueltos.reduce((acc, r) => acc + r.cobro.importe, 0));
+  if (cobrado > saldo + 0.005) return res.status(400).json({ error: 'Los cobros superan el total de la venta.' });
+  if (cobrado < saldo - 0.005 && venta.cliente === CONSUMIDOR_FINAL) {
+    return res.status(400).json({ error: 'Para dejar saldo en cuenta corriente, elegí un cliente.' });
+  }
+  withTransaction(() => {
+    for (const { cobro, medio, plan, cuentaId } of resueltos) {
+      const cobroId = registrarCobro(
+        ventaId,
+        clienteId,
+        cobro.importe,
+        cuentaId,
+        'Punto de venta',
+        organizacionId,
+        medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null,
+        turno.id
+      );
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'cobro',
+        entidad_id: cobroId,
+        operacion_tipo: 'venta',
+        operacion_id: ventaId,
+        detalle: `Cobro #${cobroId} de $${cobro.importe}${medio ? ` con ${medio.nombre}` : ''} sobre la venta #${ventaId}, que no se pagó con el QR`
+      });
+      if (medio) registrarCostosDelMedio({ ventaId, medio, plan, importe: cobro.importe, cuentaId, organizacionId });
+    }
+  });
+  ventasEsperandoQr.delete(ventaId);
+  res.status(201).json({ id: ventaId, total: redondear2(saldo), cobrado });
+});
+
 // Cobrar a cuenta desde el mostrador (hist. §194, de Praxia): el cliente paga
 // su deuda sin llevarse nada. Lo pagado salda sus ventas de la más vieja a la
 // más nueva (por vencimiento), con los medios de siempre menos la cuenta

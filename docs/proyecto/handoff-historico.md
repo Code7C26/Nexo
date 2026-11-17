@@ -14674,3 +14674,28 @@ CLAUDE.md §39, los sueldos siguen afuera).
   (hoy cualquiera ficha desde donde esté), el horario por sucursal, y avisar
   al admin cuando alguien no llegó.
 
+## §197 — 17 de noviembre de 2026: el QR que no se pagó ya no anula la venta
+
+Error que encontró el usuario: en el mostrador, después de mostrar el QR de
+Mercado Pago, "No pagó: cobrar de otra forma" anulaba la venta y, al cobrar,
+se armaba otra. En "Ventas del turno" quedaba una venta anulada por cada QR
+que no se pagó, y avisaba "Venta anulada".
+
+- **Ahora** "No pagó: cobrar de otra forma" llama a `POST
+  /api/pos/ventas/:id/soltar-qr`: cancela la orden en Mercado Pago (así no se
+  puede pagar después) y la venta queda esperando otro medio. El cobro va a
+  `POST /api/pos/ventas/:id/cobrar` sobre la **misma venta** (los mismos
+  medios, cuotas y costos que una venta de mostrador, colgado del turno), y
+  sigue con la factura y el ticket de siempre.
+- Si se cierra el cobro sin cobrarla, pide confirmar "Descartar la venta": ahí
+  sí se anula (con `cancelar-qr`), porque la venta no se hizo.
+- Si el pago del QR entró justo, `soltar-qr` contesta 409 y la pantalla la da
+  por cobrada, como antes.
+- Probado: un caso nuevo en `test/mercadopago.test.js` (no se anula, un solo
+  cobro, ni de más ni con saldo a "Consumidor final"). **No probado en el
+  navegador:** hace falta el Mercado Pago de verdad o levantar el falso del
+  test. 450 tests.
+- **Queda:** con el link de pago (no la orden de la caja), Mercado Pago no
+  deja cancelarlo: si el cliente lo paga después de haber pagado de otra
+  forma, ese pago entra como "para revisar", igual que antes.
+
