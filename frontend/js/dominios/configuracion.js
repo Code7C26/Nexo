@@ -454,6 +454,8 @@ const PAGINAS = {
   cuenta: { admin: false, alEntrar: () => invocar("pintar:cuenta") },
   // WhatsApp, el teléfono de cada persona: dominios/whatsapp.js (hist. §135).
   whatsapp: { admin: false, alEntrar: () => invocar("pintar:whatsapp") },
+  // Las facturas desde el Gmail del negocio: dominios/gmail.js (hist. §187).
+  gmail: { admin: true, alEntrar: () => invocar("pintar:gmail") },
   // Avisar un problema: dominios/problema.js (handoff.md, "Orden", punto 2).
   problema: { admin: false, alEntrar: () => invocar("pintar:problema") },
   // Notificaciones de cada aparato: dominios/notificaciones.js (hist. §146).

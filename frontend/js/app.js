@@ -67,6 +67,7 @@ import "./dominios/tienda-nube.js";
 import "./dominios/mercado-libre.js";
 import "./dominios/mercado-pago.js";
 import "./dominios/whatsapp.js";
+import "./dominios/gmail.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
@@ -1396,9 +1397,15 @@ document.getElementById("btnMailFactura").addEventListener("click", () => {
   const guardar = formMailFactura.querySelector("[data-guardar-mail]");
   guardar.hidden = Boolean(f.cliente_email) || f.cliente === "Consumidor final";
   guardar.querySelector("[data-guardar-mail-texto]").textContent = `Guardarlo en la ficha de ${f.cliente}`;
+  // Desde el Gmail del negocio si lo conectó (hist. §187), o desde Nexo.
+  const gmail = negocio.gmail ?? {};
   document.getElementById("modalMailFacturaNota").textContent = [
-    `Le llega con el PDF adjunto, a nombre de ${negocio.nombre}.`,
-    negocio.email ? `Si contesta, la respuesta te llega a ${negocio.email}.` : "Si cargás el mail del negocio en Configuración, las respuestas te llegan ahí.",
+    gmail.conectado
+      ? `Sale desde tu Gmail (${gmail.direccion}) con el PDF adjunto, y la respuesta te llega ahí.`
+      : gmail.desconectado_por_google
+        ? "Tu Gmail se desconectó: conectalo de nuevo en Configuración → Gmail para mandarla."
+        : `Sale desde la casilla de Nexo, a nombre de ${negocio.nombre}, con el PDF adjunto. Para que salga desde tu mail, conectá tu Gmail en Configuración.`,
+    !gmail.conectado && !gmail.desconectado_por_google && negocio.email ? `Si contesta, la respuesta te llega a ${negocio.email}.` : "",
     f.mail_enviado_a ? `Ya se mandó a ${f.mail_enviado_a} el ${fechaHoraAR(f.mail_enviado_en)}.` : ""
   ]
     .filter(Boolean)

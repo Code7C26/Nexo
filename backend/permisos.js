@@ -77,6 +77,14 @@ export const RUTAS_PERMISOS = {
   'POST /api/facturas/:id/autorizar': 'ambos',
   // Mandarla por mail (hist. §186): el empleado también factura.
   'POST /api/facturas/:id/mail': 'ambos',
+  // El Gmail del negocio (hist. §187): conectarlo, probarlo y desconectarlo es
+  // del admin; la vuelta de Google se valida sola (state firmado y la sesión
+  // de quien lo pidió, todavía admin).
+  'GET /api/gmail': 'admin',
+  'POST /api/gmail/conectar': 'admin',
+  'POST /api/gmail/prueba': 'admin',
+  'POST /api/gmail/desconectar': 'admin',
+  'GET /api/gmail/vuelta': 'publico',
   'DELETE /api/facturas/:id': 'ambos',
   'GET /api/factura-electronica': 'admin',
   'PUT /api/factura-electronica': 'admin',

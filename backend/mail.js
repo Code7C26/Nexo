@@ -71,12 +71,13 @@ function base64EnLineas(contenido) {
     .toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? '';
 }
 
-// "Lola vía Nexo" en el From de un mail que se manda en nombre de un negocio.
-// Sin comillas ni saltos: el nombre lo escribió el negocio.
-function remitente(nombre, de) {
+// "Lola vía Nexo" en el From de un mail que se manda en nombre de un negocio
+// desde la casilla de Nexo; "Lola" a secas desde la del negocio (su Gmail,
+// hist. §187). Sin comillas ni saltos: el nombre lo escribió el negocio.
+function remitente(nombre, de, viaNexo) {
   const limpio = String(nombre ?? '').replace(/[\r\n"\\<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
   if (!limpio) return `Nexo <${de}>`;
-  const visible = `${limpio} vía Nexo`;
+  const visible = viaNexo ? `${limpio} vía Nexo` : limpio;
   return /^[\x20-\x7e]*$/.test(visible) ? `"${visible}" <${de}>` : `${encabezado(visible)} <${de}>`;
 }
 
@@ -89,9 +90,9 @@ function nombreAdjunto(nombre) {
 // `adjuntos`: [{ nombre, tipo, contenido }], con el contenido en un Buffer.
 // `nombre` es el del negocio en cuyo nombre sale el mail, y `responderA`, su
 // mail: el cliente que contesta le escribe al negocio, no a Nexo.
-export function armarMensaje({ de, nombre, responderA, para, asunto, texto, html, adjuntos = [], fecha = new Date() }) {
+export function armarMensaje({ de, nombre, viaNexo = true, responderA, para, asunto, texto, html, adjuntos = [], fecha = new Date() }) {
   const encabezados = [
-    `From: ${remitente(nombre, de)}`,
+    `From: ${remitente(nombre, de, viaNexo)}`,
     `To: <${para}>`,
     ...(responderA && esMailValido(responderA) ? [`Reply-To: <${responderA}>`] : []),
     `Subject: ${encabezado(asunto)}`,
@@ -147,8 +148,9 @@ const escaparHtml = (texto) =>
 // mismos datos. Estilos en línea (los clientes de mail ignoran los <style>) y
 // sin imágenes, que muchos bloquean hasta que se las deja ver. `boton` es
 // { texto, url }; `codigo`, uno de los que se tipean en Nexo (hist. §108), que
-// va grande y separado para leerlo de un vistazo.
-export function plantillaMail({ titulo, parrafos, codigo, boton, pie }) {
+// va grande y separado para leerlo de un vistazo. `marca` va arriba y al
+// final: Nexo, o el negocio cuando sale desde su propio mail (hist. §187).
+export function plantillaMail({ titulo, parrafos, codigo, boton, pie, marca = 'Nexo' }) {
   const pieTexto = pie ?? 'Si no fuiste vos, podés ignorar este mail.';
   const texto = [
     titulo,
@@ -158,11 +160,11 @@ export function plantillaMail({ titulo, parrafos, codigo, boton, pie }) {
     ...(boton ? [`${boton.texto}: ${boton.url}`, ''] : []),
     pieTexto,
     '',
-    'Nexo'
+    marca
   ].join('\n');
   const html = `<!DOCTYPE html><html lang="es-AR"><body style="margin:0;padding:24px;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;color:#111">
 <div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:12px;overflow:hidden">
-<div style="background:#000;color:#fff;padding:16px 24px;font-size:18px;font-weight:bold;letter-spacing:.5px">Nexo</div>
+<div style="background:#000;color:#fff;padding:16px 24px;font-size:18px;font-weight:bold;letter-spacing:.5px">${escaparHtml(marca)}</div>
 <div style="padding:24px">
 <h1 style="margin:0 0 16px;font-size:20px">${escaparHtml(titulo)}</h1>
 ${parrafos.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5">${escaparHtml(p)}</p>`).join('\n')}

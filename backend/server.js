@@ -17,7 +17,7 @@ import {
   normalizarLectura,
   totalDelRenglon
 } from './factura-proveedor.js';
-import { esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
+import { armarMensaje, esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, inicioDeHoyUTC } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
 import {
@@ -79,6 +79,7 @@ import {
 } from './tiendanube.js';
 import * as mercadoLibre from './mercadolibre.js';
 import * as mercadoPago from './mercadopago.js';
+import * as gmail from './gmail.js';
 import * as whatsapp from './whatsapp.js';
 // Las reglas de las ofertas (hist. §133) son las mismas que usa la pantalla:
 // se importa el módulo del frontend, que es puro, en vez de copiarlo.
@@ -2060,6 +2061,33 @@ app.get('/api/integraciones/mercadopago/callback', asincrono(async (req, res) =>
   volver('conectada');
 }));
 
+// La vuelta del permiso de Gmail (hist. §187), como la de Mercado Pago: la
+// misma persona que lo pidió, y todavía admin del negocio. El resto está con
+// el envío de facturas ("Gmail del negocio").
+app.get('/api/gmail/vuelta', asincrono(async (req, res) => {
+  const volver = (resultado) => res.redirect(`/app?gmail=${resultado}#/configuracion/gmail`);
+  if (!gmail.gmailConfigurado()) return volver('no-disponible');
+  if (req.query.error) return volver('cancelado');
+  const sesion = sesionValida(leerCookie(req, COOKIE_SESION));
+  const estado = gmail.leerEstado(req.query.state);
+  if (!estado || sesion?.id !== estado.usuarioId) return volver(sesion ? 'error' : 'sin-sesion');
+  const esAdmin = db
+    .prepare("SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1 AND rol = 'admin'")
+    .get(sesion.id, estado.organizacionId);
+  if (!esAdmin) return volver('sin-sesion');
+  if (typeof req.query.code !== 'string' || !req.query.code) return volver('cancelado');
+  let cuenta;
+  try {
+    cuenta = await gmail.canjearCodigo(req.query.code, req.query.state, vueltaDeGmail(req));
+  } catch (err) {
+    if (err.message === 'sin-permiso') return volver('sin-permiso');
+    console.error('[gmail] no se pudo conectar:', err.message);
+    return volver('error');
+  }
+  conectarGmail({ organizacionId: estado.organizacionId, usuarioId: sesion.id, cuenta });
+  volver('conectado');
+}));
+
 // Los avisos de Mercado Pago llegan en dos formatos (webhook: ?type=payment&
 // data.id=…; IPN: ?topic=payment&id=…). Se contesta enseguida, y el pago se
 // pide a la API con el token del negocio: el aviso no dice nada que se use.
@@ -3799,7 +3827,11 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
   if (pdf.length > PDF_FACTURA_MAX_BYTES) {
     return res.status(413).json({ error: 'El PDF de la factura pesa demasiado para mandarlo por mail.' });
   }
-  if (!mailConfigurado()) {
+  // Desde el Gmail del negocio si lo conectó (hist. §187); si Google le sacó
+  // el permiso, no sale desde Nexo sin que el negocio lo decida.
+  const cuentaMail = cuentaMailDe(orgId);
+  if (cuentaMail?.estado === 'desconectada') return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
+  if (!cuentaMail && !mailConfigurado()) {
     return res.status(503).json({ error: 'Este Nexo todavía no tiene configurado el envío de mails.' });
   }
 
@@ -3815,29 +3847,40 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
   const nombreNegocio = negocio.nombre.replace(/[\r\n]+/g, ' ').trim();
   const nro = comprobante(factura);
   const tipo = NOMBRE_TIPO_COMPROBANTE[factura.tipo] ?? 'Comprobante';
-  const responderA = esMailValido(negocio.email ?? '') ? negocio.email : null;
+  // Desde el Gmail del negocio, la respuesta ya le llega a él; desde Nexo, va
+  // al mail del negocio de Configuración.
+  const responderA = !cuentaMail && esMailValido(negocio.email ?? '') ? negocio.email : null;
   const saludo = factura.cliente === CONSUMIDOR_FINAL ? 'Hola' : `Hola, ${factura.cliente}`;
   const { texto, html } = plantillaMail({
     titulo: `${tipo} ${nro}`,
     parrafos: [
       `${saludo}. Te mandamos la ${tipo.toLowerCase()} ${nro} de ${nombreNegocio}, por ${pesosAviso(factura.neto)}.`,
-      responderA
-        ? `Va adjunta en PDF. Si tenés alguna consulta, respondé este mail y le llega a ${nombreNegocio}.`
-        : 'Va adjunta en PDF.'
+      cuentaMail
+        ? 'Va adjunta en PDF. Si tenés alguna consulta, respondé este mail.'
+        : responderA
+          ? `Va adjunta en PDF. Si tenés alguna consulta, respondé este mail y le llega a ${nombreNegocio}.`
+          : 'Va adjunta en PDF.'
     ],
-    pie: `Te la mandó ${nombreNegocio} desde Nexo.`
+    pie: cuentaMail ? `${tipo} emitida por ${nombreNegocio}.` : `Te la mandó ${nombreNegocio} desde Nexo.`,
+    marca: cuentaMail ? nombreNegocio : 'Nexo'
   });
+  const envio = {
+    para,
+    asunto: `${tipo} ${nro} de ${nombreNegocio}`,
+    texto,
+    html,
+    nombre: nombreNegocio,
+    adjuntos: [{ nombre: `${factura.tipo}-${nro}.pdf`, tipo: 'application/pdf', contenido: pdf }]
+  };
   try {
-    await mandarMail({
-      para,
-      asunto: `${tipo} ${nro} de ${nombreNegocio}`,
-      texto,
-      html,
-      nombre: nombreNegocio,
-      responderA,
-      adjuntos: [{ nombre: `${factura.tipo}-${nro}.pdf`, tipo: 'application/pdf', contenido: pdf }]
-    });
+    if (cuentaMail) await mandarConGmail(cuentaMail, envio);
+    else await mandarMail({ ...envio, responderA });
   } catch (err) {
+    if (err instanceof gmail.GmailError) {
+      console.error(`[gmail] No se pudo mandar la factura ${facturaId}:`, err.message);
+      if (err.revocado) return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
+      return res.status(502).json({ error: 'Gmail no mandó el mail. Probá de nuevo en unos minutos.' });
+    }
     if (!(err instanceof MailError)) throw err;
     console.error(`[mail] No se pudo mandar la factura ${facturaId}:`, err.message);
     return res.status(502).json({ error: 'No pudimos mandar el mail. Probá de nuevo en unos minutos.' });
@@ -3853,7 +3896,9 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
       entidad: 'factura',
       entidad_id: facturaId,
       valor_nuevo: JSON.stringify({ mail_enviado_a: para }),
-      detalle: `${tipo} ${nro} mandada por mail a ${para}`
+      detalle: cuentaMail
+        ? `${tipo} ${nro} mandada por mail a ${para}, desde ${cuentaMail.direccion}`
+        : `${tipo} ${nro} mandada por mail a ${para}`
     });
     if (guardarEnCliente) {
       db.prepare('UPDATE clientes SET email = ? WHERE id = ? AND organizacion_id = ?').run(para, factura.cliente_id, orgId);
@@ -3869,7 +3914,171 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     }
     return db.prepare('SELECT mail_enviado_en FROM facturas WHERE id = ?').get(facturaId).mail_enviado_en;
   });
-  res.json({ mail_enviado_a: para, mail_enviado_en: enviadoEn, guardado_en_cliente: guardarEnCliente });
+  res.json({
+    mail_enviado_a: para,
+    mail_enviado_en: enviadoEn,
+    guardado_en_cliente: guardarEnCliente,
+    desde: cuentaMail?.direccion ?? null
+  });
+}));
+
+/* ---------- Gmail del negocio (hist. §187) ---------- */
+
+// Con su Gmail conectado, las facturas salen desde la casilla del negocio y
+// no desde la de Nexo (gmail.js: solo el permiso de mandar, nunca de leer).
+// Sin conectar, salen desde Nexo, a nombre del negocio. La vuelta de Google
+// está más arriba, antes de autenticar, con la de Mercado Pago.
+// - Desconectar (el negocio) borra la fila: vuelve a salir desde Nexo.
+// - Si Google deja de dar el permiso, la fila queda 'desconectada' y no sale
+//   nada hasta que el negocio reconecte o desconecte: no se pasa a Nexo solo.
+const GMAIL_DESCONECTADO =
+  'Google dejó de darle permiso a Nexo para mandar desde tu Gmail, y la factura no salió. Conectalo de nuevo en Configuración → Gmail.';
+
+function vueltaDeGmail(req) {
+  return `${urlPublica(req)}/api/gmail/vuelta`;
+}
+
+const cuentaMailDe = (organizacionId) =>
+  db.prepare('SELECT * FROM cuentas_mail WHERE organizacion_id = ?').get(organizacionId) ?? null;
+
+function conectarGmail({ organizacionId, usuarioId, cuenta }) {
+  withTransaction(() => {
+    db.prepare(
+      `INSERT INTO cuentas_mail (organizacion_id, proveedor, direccion, token, estado, motivo, conectada_en, conectada_por)
+       VALUES (?, 'gmail', ?, ?, 'conectada', NULL, datetime('now'), ?)
+       ON CONFLICT (organizacion_id) DO UPDATE SET
+         proveedor = excluded.proveedor, direccion = excluded.direccion, token = excluded.token, estado = 'conectada',
+         motivo = NULL, conectada_en = excluded.conectada_en, conectada_por = excluded.conectada_por`
+    ).run(organizacionId, cuenta.direccion, gmail.cifrarPermiso(cuenta.refresh), usuarioId);
+    registrarAuditoria({
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      usuario_id: usuarioId,
+      organizacion_id: organizacionId,
+      operacion_tipo: 'gmail',
+      valor_nuevo: cuenta.direccion,
+      detalle: `Gmail conectado: las facturas salen desde ${cuenta.direccion}`
+    });
+  });
+}
+
+// Google ya no da el permiso: queda marcada, sin el token, y se dice por qué.
+function gmailRevocado(cuenta, motivo) {
+  withTransaction(() => {
+    db.prepare("UPDATE cuentas_mail SET estado = 'desconectada', token = NULL, motivo = ? WHERE id = ?").run(motivo, cuenta.id);
+    registrarAuditoria({
+      actor: 'sistema',
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: cuenta.organizacion_id,
+      organizacion_id: cuenta.organizacion_id,
+      operacion_tipo: 'gmail',
+      valor_anterior: cuenta.direccion,
+      detalle: `Gmail desconectado: ${motivo}`
+    });
+  });
+}
+
+// Manda un mail armado con mail.js desde la cuenta conectada. El From lleva el
+// nombre del negocio, sin "vía Nexo".
+async function mandarConGmail(cuenta, { para, asunto, texto, html, nombre, adjuntos }) {
+  const refresh = gmail.descifrarPermiso(cuenta.token);
+  if (!refresh) {
+    gmailRevocado(cuenta, 'Nexo no pudo leer el permiso guardado.');
+    throw new gmail.GmailError('El permiso guardado no se pudo leer.', { revocado: true });
+  }
+  const mensaje = armarMensaje({ de: cuenta.direccion, nombre, viaNexo: false, para, asunto, texto, html, adjuntos });
+  try {
+    await gmail.mandarMensaje(refresh, mensaje);
+  } catch (err) {
+    if (err instanceof gmail.GmailError && err.revocado) gmailRevocado(cuenta, err.message);
+    throw err;
+  }
+}
+
+// Para la página de Configuración → Gmail y para /api/negocio.
+function estadoGmail(organizacionId) {
+  const cuenta = cuentaMailDe(organizacionId);
+  return {
+    disponible: gmail.gmailConfigurado(),
+    conectado: cuenta?.estado === 'conectada',
+    direccion: cuenta?.direccion ?? null,
+    desconectado_por_google: cuenta?.estado === 'desconectada',
+    motivo: cuenta?.motivo ?? null
+  };
+}
+
+app.get('/api/gmail', soloAdmin, (req, res) => {
+  const cuenta = cuentaMailDe(req.usuario.organizacion_id);
+  const quien = cuenta?.conectada_por
+    ? db.prepare('SELECT nombre, email FROM usuarios WHERE id = ?').get(cuenta.conectada_por)
+    : null;
+  res.json({
+    ...estadoGmail(req.usuario.organizacion_id),
+    conectada_en: cuenta?.conectada_en ?? null,
+    conectada_por: quien ? quien.nombre || quien.email : null,
+    // Lo que pasa sin Gmail: si este Nexo puede mandar desde su casilla.
+    nexo_manda: mailConfigurado()
+  });
+});
+
+app.post('/api/gmail/conectar', soloAdmin, (req, res) => {
+  if (!gmail.gmailConfigurado()) return res.status(503).json({ error: 'Conectar Gmail todavía no está disponible en este Nexo.' });
+  const estado = gmail.firmarEstado({ usuarioId: req.usuario.id, organizacionId: req.usuario.organizacion_id });
+  res.json({ url: gmail.urlDeAutorizacion(estado, vueltaDeGmail(req), { mail: req.usuario.email }) });
+});
+
+// Un mail de prueba a la misma casilla: así se ve cómo les llega a los clientes.
+app.post('/api/gmail/prueba', soloAdmin, asincrono(async (req, res) => {
+  const cuenta = cuentaMailDe(req.usuario.organizacion_id);
+  if (cuenta?.estado !== 'conectada') return res.status(409).json({ error: 'Conectá tu Gmail primero.' });
+  const nombre = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(req.usuario.organizacion_id).nombre;
+  const { texto, html } = plantillaMail({
+    titulo: 'Así les llegan las facturas a tus clientes',
+    parrafos: [
+      `Este es un mail de prueba de Nexo. Las facturas que mandes desde Nexo van a salir desde ${cuenta.direccion}, con el nombre ${nombre} y el PDF adjunto.`,
+      'Lo vas a encontrar también en "Enviados" de tu Gmail.'
+    ],
+    pie: 'Si no lo pediste vos, entrá a Nexo y desconectá Gmail desde Configuración.',
+    marca: nombre
+  });
+  try {
+    await mandarConGmail(cuenta, { para: cuenta.direccion, asunto: 'Prueba de Nexo: así les llegan tus facturas', texto, html, nombre });
+  } catch (err) {
+    if (!(err instanceof gmail.GmailError)) throw err;
+    console.error('[gmail] prueba:', err.message);
+    if (err.revocado) {
+      return res.status(409).json({
+        error: 'Google dejó de darle permiso a Nexo para mandar desde tu Gmail. Conectalo de nuevo.',
+        codigo: 'gmail_desconectado'
+      });
+    }
+    return res.status(502).json({ error: 'Gmail no mandó el mail de prueba. Probá de nuevo en unos minutos.' });
+  }
+  res.json({ ok: true, direccion: cuenta.direccion });
+}));
+
+// Le avisa a Google que suelte el permiso y borra la cuenta: las facturas
+// vuelven a salir desde Nexo.
+app.post('/api/gmail/desconectar', soloAdmin, asincrono(async (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const cuenta = cuentaMailDe(org);
+  if (!cuenta) return res.json({ ok: true });
+  const refresh = gmail.descifrarPermiso(cuenta.token);
+  if (refresh) await gmail.revocar(refresh);
+  withTransaction(() => {
+    db.prepare('DELETE FROM cuentas_mail WHERE id = ?').run(cuenta.id);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: org,
+      operacion_tipo: 'gmail',
+      valor_anterior: cuenta.direccion,
+      detalle: `Gmail desconectado: las facturas vuelven a salir desde Nexo`
+    });
+  });
+  res.json({ ok: true });
 }));
 
 // Descartar un comprobante que ARCA rechazó: nunca existió ante ARCA (no
@@ -17355,7 +17564,9 @@ app.get('/api/negocio', (req, res) => {
     plan: planDelNegocio(req.usuario.organizacion_id),
     planes: catalogoPlanes(),
     // Para ofrecer el link de pago al cobrar (hist. §130), en los dos roles.
-    mercado_pago: { conectado: mercadoPagoConectado(req.usuario.organizacion_id) }
+    mercado_pago: { conectado: mercadoPagoConectado(req.usuario.organizacion_id) },
+    // Desde qué casilla salen las facturas (hist. §187), en los dos roles.
+    gmail: estadoGmail(req.usuario.organizacion_id)
   });
 });
 

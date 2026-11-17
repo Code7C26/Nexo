@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §186);
+    siguiente número (hoy el último es §187);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,16 @@
   reescribe nada.
 
 ## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §187: las facturas desde el Gmail del negocio
+(commiteado en `solla`, sin publicar).** Configuración → Gmail, con su logo:
+el negocio conecta su Gmail (solo el permiso de mandar, `gmail.send`) y las
+facturas salen desde ahí, a su nombre; sin conectar, siguen saliendo desde
+Nexo. Si Google le saca el permiso, no se pasa a Nexo solo: pide reconectar.
+Tabla nueva `cuentas_mail`. 422 tests. **Falta el trámite con Google**, paso a
+paso en `docs/proyecto/verificacion-google.md` (lo hace el usuario en la
+consola; los pasos 1 a 3 alcanzan para probarlo con el aviso de "app no
+verificada", hasta 100 cuentas).
 
 **17 de noviembre, hist. §186: mandar la factura por mail (commiteado en
 `solla`, sin publicar).** Punto 3 del plan. Desde la ficha de la factura o
@@ -2035,7 +2045,7 @@ es mío (primero lo chico que se muestra, después la etapa grande):
    mes de remeras?", "¿quién me debe más?"). Es lo que le falta a §36; solo
    lee, sin confirmación.
 3. ~~**Mandar la factura por mail**, de a una o varias juntas~~ (hecho, hist.
-   §186; falta probarlo contra Gmail de verdad).
+   §186 y §187: desde el Gmail del negocio; falta el trámite con Google).
 4. **Sucursales, cajas y permisos, con el cierre del día y del mes** (detalle
    en "Para más adelante", donde quedó la propuesta). Cambia el esquema: se
    planifica y se explica la migración antes de tocarlo (§27, §34).
