@@ -2214,9 +2214,21 @@ para el tele y la captura del chat de WhatsApp de la 19.
 
 **Para más adelante (lista del usuario del 16 de noviembre, más lo que sumé
 yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
-- Horarios del gimnasio con actividades, profesores y cupos, sobre la misma
-  base que los turnos (barbería, consultorios). Con los turnos y la factura se
-  abren los profesionales independientes (médicos, abogados, contadores).
+- **Grilla de clases del gimnasio** (idea del usuario, 17 de noviembre):
+  - una grilla semanal con todas las actividades, que pueden ser al mismo
+    tiempo (no una después de la otra);
+  - cada actividad es de horario libre (musculación: abierta todo el día) o de
+    horario fijo (funcional, crossfit: martes y jueves a las 19);
+  - a cada horario se le asignan uno o varios profes;
+  - la entrada del socio a una clase puede quedar anotada (cupos, quién vino),
+    pero no es como la caja: se diseña aparte, sobre el ingreso de socios que
+    ya existe (hist. §74, §144);
+  - extra: publicar o mandar la grilla (una página pública del gimnasio, una
+    imagen para Instagram o el estado de WhatsApp, o el link por mensaje).
+  Comparte base con los turnos de barbería y consultorios y con los horarios
+  de los empleados (hist. §196: los profes son personas del negocio). Con los
+  turnos y la factura se abren los profesionales independientes (médicos,
+  abogados, contadores).
 - Más rubros, cada uno con su módulo (restaurante: mesas y comandas).
 - Shopify y otros canales, con el molde de Tienda Nube y Mercado Libre (§32).
 - Página propia del negocio: primero "tu tienda en un link" (la 32), después
