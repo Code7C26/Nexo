@@ -204,7 +204,7 @@ export const SECCIONES_EN = {
         "Choose which products and how many they return.",
         "Tap **Record return**."
       ] },
-      "The products go back to stock and it's deducted from the sale. If the sale was invoiced, from the return you tap **Issue credit note**.",
+      "The products go back to stock and it's deducted from the sale. If the sale was invoiced, from the return you tap **Issue credit note**: it has the same letter as the invoice and goes to the same customer, because it corrects it.",
       "All returns are kept in **Returns**.",
       "You can also tell the assistant: \"Juan returned the t-shirt, it was too small\". It finds the sale and shows you what's being returned before recording it."
     ]
@@ -227,7 +227,7 @@ export const SECCIONES_EN = {
   facturar: {
     titulo: "Making an invoice",
     pantalla: "Invoices",
-    preguntas: ["how do i make an invoice", "how do i invoice a sale", "how do i print an invoice", "how do i get the invoice pdf", "which invoice letter do i use", "a or b invoice"],
+    preguntas: ["how do i make an invoice", "how do i invoice a sale", "how do i print an invoice", "how do i get the invoice pdf", "which invoice letter do i use", "a or b invoice", "what do i need to issue an invoice a", "can i give a monotributo taxpayer invoice b", "why do i get invoice b"],
     palabras: ["invoice", "invoices", "receipt", "print", "pdf", "ticket", "letter"],
     bloques: [
       "You can invoice a sale you already recorded, or make a standalone invoice.",
@@ -236,8 +236,15 @@ export const SECCIONES_EN = {
         "Check the customer's details and the sale terms.",
         "Tap **Generate invoice**. From its profile, **Print / PDF**."
       ] },
-      "The letter (A, B or C) is set automatically, based on your VAT status and the customer's.",
-      "At the Point of sale you choose the invoice when charging, without coming here.",
+      "The letter is set automatically, based on your VAT status and the customer's, so you never issue one ARCA doesn't accept:",
+      { lista: [
+        "If you're a **registered VAT taxpayer** (responsable inscripto): A to another registered taxpayer or to a monotributo taxpayer, and B to an end consumer or an exempt one. A monotributo taxpayer doesn't get a B: since 2021 they get an A.",
+        "If you're **monotributo or exempt**: always C."
+      ] },
+      "For an A, the customer needs their CUIT on file. If they don't give it to you, it isn't an A: charge them as an end consumer.",
+      "The A shows the VAT separately; the B says how much VAT the price contains, as the fiscal transparency law requires. An A to a monotributo taxpayer carries a note saying that VAT only counts for the monotributo regime.",
+      "The invoice keeps the customer's details as they were at that moment: if you change their record later, the invoice doesn't change.",
+      "At the Point of sale you choose the invoice when charging, without coming here: tapping **Invoice A** lets you enter the customer with their CUIT right there.",
       { nota: "Without electronic invoicing turned on, the receipt is internal: it comes out with an X and \"Not valid as an invoice\". To invoice with ARCA, see Electronic invoicing. Printed receipts are always in Spanish: they're Argentine tax documents." }
     ]
   },
@@ -254,6 +261,8 @@ export const SECCIONES_EN = {
         "Enter your CUIT, your VAT status and the point of sale, and tap **Verify with ARCA**.",
         "Done: when you make an invoice, Nexo requests the CAE from ARCA. If ARCA doesn't respond, it stays pending and is retried with **Request the CAE from ARCA**."
       ] },
+      "ARCA gives each invoice its number, so none is skipped or repeated, even on a retry. Each one comes with the CAE, its expiry date and ARCA's QR code, which anyone can use to verify it.",
+      "If ARCA rejects an invoice, Nexo shows you why: fix the detail (for example, the customer's CUIT) and request the CAE again, or discard it. A rejected invoice doesn't use up a number.",
       { nota: "Today it works in ARCA's test environment: receipts say \"Comprobante de prueba – sin validez fiscal\" (test receipt, no tax validity)." },
       { nota: "It starts with the Entrepreneur plan. If your business moves to Free, it's paused: turn it off to keep issuing internal receipts, or go back to a paid plan." }
     ]

@@ -14495,3 +14495,11 @@ monotributista, que faltaba.
     documento 99 y su condición: puede que ARCA lo rechace, y se ve al probar
     contra homologación;
   - la "A con leyenda" o la M de un inscripto nuevo (RG 1575): no está.
+- **Manual (pedido del usuario: "¿todo esto se explica en el manual?"):** no
+  lo explicaba. "Hacer una factura" suma qué letra va a quién (y que al
+  monotributista le corresponde la A), que la A necesita el CUIT, qué muestra
+  cada una (IVA aparte, IVA contenido, la leyenda) y que la factura guarda los
+  datos del cliente de ese momento, con tres preguntas nuevas. "Devolución"
+  dice que la nota de crédito lleva la letra de la factura y va al mismo
+  cliente. "Factura electrónica" suma el número que da ARCA, el CAE con el QR
+  y qué hacer con un rechazo. En castellano y en inglés.
