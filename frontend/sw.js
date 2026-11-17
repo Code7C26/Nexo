@@ -109,6 +109,8 @@ const PRECACHE = [
   "/js/dominios/baja.js",
   "/js/dominios/balanza.js",
   "/js/dominios/medios-cobro.js",
+  "/js/dominios/sucursales.js",
+  "/js/dominios/cierre.js",
   "/js/dominios/ofertas.js",
   "/js/dominios/factura-compra.js",
   "/js/dominios/factura-electronica.js",

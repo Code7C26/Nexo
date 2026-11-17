@@ -1356,6 +1356,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Últimos cierres</h2>
+              <a class="btn btn-secundario btn-chico col-admin" href="#/cierre">Cierre del día</a>
             </div>
             <div class="tabla-scroll">
             <table class="ledger-table">
@@ -3410,6 +3411,81 @@
       </section>
 
       <!-- Vista: Caja / Tesorería -->
+      <!-- El cierre del día y del mes (hist. §193): dominios/cierre.js. Todas las
+           cajas de todas las sucursales juntas, y lo de cada una. -->
+      <section class="view" data-view="cierre" hidden>
+        <div class="resumen-barra">
+          <div class="segmentos" role="group" aria-label="Qué cierre" id="cierreModo">
+            <button type="button" class="segmento" data-modo="dia" aria-pressed="true">Del día</button>
+            <button type="button" class="segmento" data-modo="mes" aria-pressed="false">Del mes</button>
+          </div>
+          <div class="resumen-acciones">
+            <label class="cierre-fecha"><span class="visualmente-oculto">Día</span><input type="date" id="cierreDia" /></label>
+            <label class="cierre-fecha" hidden><span class="visualmente-oculto">Mes</span><input type="month" id="cierreMes" /></label>
+          </div>
+        </div>
+        <p class="nota-plana resumen-rango" id="cierreRango"></p>
+        <div class="aviso-plan" id="cierreAbiertas" role="status" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg><p></p></div>
+
+        <div class="kpis" role="group" aria-label="El cierre">
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg></span>Vendido en las cajas</h3>
+            <p class="kpi-cifra mono" id="cierreVendido">$0</p>
+            <p class="kpi-nota" id="cierreVendidoNota"></p>
+          </article>
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#globe"></use></svg></span>Fuera de las cajas</h3>
+            <p class="kpi-cifra mono" id="cierreSinCaja">$0</p>
+            <p class="kpi-nota" id="cierreSinCajaNota"></p>
+          </article>
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#banknote"></use></svg></span>Diferencias de caja</h3>
+            <p class="kpi-cifra mono" id="cierreDiferencias">$0</p>
+            <p class="kpi-nota" id="cierreDiferenciasNota"></p>
+          </article>
+          <article class="kpi">
+            <h3 class="kpi-titulo"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#arrow-down-right"></use></svg></span>Salió de las cajas</h3>
+            <p class="kpi-cifra mono" id="cierreEgresos">$0</p>
+            <p class="kpi-nota" id="cierreEgresosNota"></p>
+          </article>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Cómo te pagaron</h2></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Medio</th>
+                <th scope="col" class="align-right">Cobros</th>
+                <th scope="col" class="align-right">Importe</th>
+              </tr>
+            </thead>
+            <tbody id="cierreMediosBody"></tbody>
+          </table>
+          </div>
+        </section>
+
+        <div id="cierreSucursales"></div>
+
+        <section class="panel" id="cierreDiasPanel" hidden>
+          <div class="panel-head"><h2>Día por día</h2></div>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Día</th>
+                <th scope="col" class="align-right">En las cajas</th>
+                <th scope="col" class="align-right">Fuera de las cajas</th>
+                <th scope="col" class="align-right">Diferencias</th>
+              </tr>
+            </thead>
+            <tbody id="cierreDiasBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
       <section class="view" data-view="caja" hidden>
         <section class="ledger-strip" aria-label="Resumen de caja">
           <div class="ledger-item">
@@ -3432,6 +3508,7 @@
           <div class="panel-head">
             <h2>Cuentas</h2>
             <div class="panel-acciones">
+              <a class="btn btn-secundario" href="#/cierre"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Cierre del día</a>
               <button class="btn btn-secundario" id="btnNuevaCuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Cuenta</button>
               <button class="btn btn-secundario" id="btnTransferencia"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#arrow-right-left"></use></svg> Transferencia</button>
               <button class="btn btn-primary btn-nuevo" id="btnMovimientoTesoreria"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Movimiento</button>
@@ -4013,6 +4090,11 @@
               <a class="config-item" href="#/configuracion/listas-precios" data-seccion="listas-precios">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Listas de precios</span><span class="config-item-desc">Minorista, mayorista y otras</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <a class="config-item" href="#/configuracion/sucursales" data-seccion="sucursales">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Sucursales</span><span class="config-item-desc">Cada local con su depósito, sus cajas y su gente</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
               <a class="config-item" href="#/configuracion/depositos" data-seccion="depositos" data-modulo="stock">
@@ -4956,6 +5038,63 @@
                 <div class="config-tarjeta-pie">
                   <button type="button" class="btn btn-secundario" id="btnMedioCobroCancelar" hidden>Cancelar</button>
                   <button type="submit" class="btn btn-primary" id="formMedioCobroSubmit">Agregar medio</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Sucursales (hist. §193): dominios/sucursales.js. Cada local junta su
+                 depósito, sus cajas y las personas que trabajan ahí. -->
+            <section class="config-pagina col-admin" data-seccion="sucursales" aria-labelledby="configSucursalesTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configSucursalesTitulo" tabindex="-1">Sucursales</h2>
+                <p>Si tenés más de un local, cada uno con su depósito, sus cajas y la gente que trabaja ahí. Cada caja vende solo lo que hay en el depósito de su sucursal, y al final del día ves el cierre de todas juntas.</p>
+              </header>
+              <section class="panel">
+                <div class="tabla-scroll">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Sucursal</th>
+                      <th scope="col">Depósito</th>
+                      <th scope="col">Cajas</th>
+                      <th scope="col">Quiénes trabajan</th>
+                      <th scope="col"><span class="visualmente-oculto">Acciones</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="sucursalesBody"></tbody>
+                </table>
+                </div>
+              </section>
+              <form id="formSucursal" class="form config-tarjeta" novalidate>
+                <input type="hidden" name="id" />
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo" id="sucursalFormTitulo">Sumar una sucursal</p>
+                  <div class="form-fila">
+                    <label>Nombre
+                      <input type="text" name="nombre" required maxlength="60" autocomplete="off" placeholder="Centro, Shopping, Local 2…" />
+                    </label>
+                    <label>Dirección
+                      <input type="text" name="direccion" maxlength="120" autocomplete="off" placeholder="Opcional" />
+                    </label>
+                  </div>
+                  <label>Depósito
+                    <select name="deposito_id"></select>
+                  </label>
+                  <p class="campo-ayuda">De acá sale lo que vende cada caja de la sucursal. Si elegís uno nuevo, se crea con el nombre de la sucursal.</p>
+                  <fieldset class="sucursal-checks">
+                    <legend>Cajas</legend>
+                    <div id="sucursalCajas"></div>
+                    <label class="form-check"><input type="checkbox" name="caja_nueva" /> <span id="sucursalCajaNuevaTexto">Crear una caja nueva para esta sucursal</span></label>
+                  </fieldset>
+                  <fieldset class="sucursal-checks">
+                    <legend>Quiénes trabajan acá</legend>
+                    <div id="sucursalPersonas"></div>
+                    <p class="campo-ayuda">Solo abren las cajas de las sucursales donde trabajan. Quien no está en ninguna puede abrir cualquier caja.</p>
+                  </fieldset>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnSucursalCancelar" hidden>Cancelar</button>
+                  <button type="submit" class="btn btn-primary" id="formSucursalSubmit">Agregar sucursal</button>
                 </div>
               </form>
             </section>

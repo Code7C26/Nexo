@@ -78,6 +78,8 @@ const VISTAS_CONSTRUIDAS = {
   "reportes-stock": { titulo: "Reportes de stock", dominio: "Stock" },
   produccion: { titulo: "Producción", dominio: "Producción" },
   caja: { titulo: "Caja", dominio: "Finanzas" },
+  // El cierre del día y del mes (hist. §193): se entra desde Caja y el mostrador.
+  cierre: { titulo: "Cierre de caja", dominio: "Finanzas", nav: "caja" },
   "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
   papelera: { titulo: "Papelera", dominio: "Papelera" },
@@ -129,7 +131,8 @@ const VISTAS_SOLO_ADMIN = new Set([
   "devolucion-proveedor-detalle",
   "planes-socio",
   "ofertas",
-  "venta-online"
+  "venta-online",
+  "cierre"
 ]);
 
 // Lo que lleva algo al venderse se carga en Producción, pero los materiales

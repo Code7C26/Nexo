@@ -2291,7 +2291,9 @@ for (const [tabla, columna] of [
   ['integraciones', 'qr_caja TEXT'],
   // El descuento a mano del mostrador (hist. §175), por unidad y ya restado
   // del precio: lo vendido antes queda con 0.
-  ['venta_items', 'descuento REAL NOT NULL DEFAULT 0']
+  ['venta_items', 'descuento REAL NOT NULL DEFAULT 0'],
+  // La sucursal de cada caja (hist. §193): las de antes, de ninguna.
+  ['cuentas_tesoreria', 'sucursal_id INTEGER REFERENCES sucursales(id)']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

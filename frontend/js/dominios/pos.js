@@ -95,7 +95,12 @@ const porUnidad = (item) => (pideCantidad(item) ? `/ ${item.unidad}` : "c/u");
 const sinStock = (item) =>
   item.stock > 0
     ? `No hay más stock de "${item.nombre}" (disponible: ${cantidad(item.stock, item.unidad)}).`
-    : `No hay stock de "${item.nombre}".`;
+    : `No hay stock de "${item.nombre}"${dondeHay(item)}.`;
+// En qué otras sucursales hay, para mandar al cliente (hist. §193).
+const dondeHay = (item) =>
+  item.en_otras?.length
+    ? `: hay en ${item.en_otras.map((o) => `${o.sucursal} (${cantidad(o.cantidad, item.unidad)})`).join(", ")}`
+    : "";
 const claveDe = (item) => `${item.producto_id}:${item.variante_id ?? ""}`;
 const normalizar = (s) =>
   String(s ?? "")
@@ -156,18 +161,17 @@ function enfocarBusqueda() {
 /* ---------- Carga y estados de la pantalla ---------- */
 
 async function cargarTodo() {
-  const [abiertos, tesoreria, items, listaClientes] = await Promise.all([
+  const [abiertos, tesoreria, listaClientes] = await Promise.all([
     api("/api/turnos-caja?estado=abierto", { error: "No se pudo consultar la caja." }),
     api("/api/tesoreria", { error: "No se pudieron cargar las cuentas de tesorería." }),
-    api("/api/pos/catalogo", { error: "No se pudo cargar el catálogo." }),
     api("/api/clientes", { error: "No se pudieron cargar los clientes." }),
     consumosPos.cargar(),
     api("/api/ofertas", { error: "No se pudieron cargar las ofertas." }).then((lista) => (ofertas = lista)),
     api("/api/medios-cobro?activos=1", { error: "No se pudieron cargar los medios de cobro." }).then((lista) => (medios = lista))
   ]);
   cuentas = tesoreria.cuentas;
-  cajas = cuentas.filter((c) => c.tipo === "efectivo");
-  fijarCatalogo(items);
+  // Solo las cajas de las sucursales donde trabaja esta persona (hist. §193).
+  cajas = cuentas.filter((c) => c.tipo === "efectivo" && c.habilitada !== false);
   fijarClientes(listaClientes);
 
   // La caja se recuerda por dispositivo: la PC del mostrador opera siempre la
@@ -178,6 +182,10 @@ async function cargarTodo() {
     ? recordada
     : (abiertos.find((t) => ids.includes(t.cuenta_tesoreria_id))?.cuenta_tesoreria_id ?? ids[0] ?? null);
   turno = abiertos.find((t) => t.cuenta_tesoreria_id === cajaId) ?? null;
+  // El stock es el del depósito de la sucursal de la caja.
+  fijarCatalogo(
+    cajaId ? await api(`/api/pos/catalogo?caja=${cajaId}`, { error: "No se pudo cargar el catálogo." }) : []
+  );
   if (turno) leerCarrito();
   else carrito = [];
   render();
@@ -212,7 +220,7 @@ function render() {
   const elegir = document.getElementById("posElegirCaja");
   elegir.hidden = cajas.length < 2;
   document.getElementById("posCaja").innerHTML = cajas
-    .map((c) => `<option value="${c.id}" ${c.id === cajaId ? "selected" : ""}>${esc(c.nombre)}</option>`)
+    .map((c) => `<option value="${c.id}" ${c.id === cajaId ? "selected" : ""}>${esc(c.nombre)}${c.sucursal ? ` · ${esc(c.sucursal)}` : ""}</option>`)
     .join("");
 
   posApertura.hidden = !cajaId || !!turno;
@@ -315,7 +323,7 @@ async function cargarCierres() {
 /* ---------- Mostrador ---------- */
 
 function renderTurno() {
-  document.getElementById("posTurnoCaja").textContent = turno.cuenta;
+  document.getElementById("posTurnoCaja").textContent = turno.sucursal ? `${turno.cuenta} · ${turno.sucursal}` : turno.cuenta;
   document.getElementById("posTurnoMeta").textContent =
     `Desde ${fechaHoraAR(turno.abierto_en)} · ${turno.abierto_por_nombre}`;
   document.getElementById("posTurnoVentas").textContent = numero(turno.ventas.cantidad);
@@ -359,8 +367,16 @@ function renderCatalogo() {
     .slice(0, MAX_RESULTADOS)
     .map((i) => {
       const enCarrito = cantidadEnCarrito(i.clave);
+      // Lo que no hay acá no se vende acá, pero se avisa dónde hay (hist. §193).
+      const enOtra = i.en_otras?.[0];
       const stock =
-        i.stock === null ? "Servicio" : i.stock > 0 ? `${cantidad(redondearCantidad(i.stock - enCarrito), i.unidad)} disp.` : "Sin stock";
+        i.stock === null
+          ? "Servicio"
+          : i.stock > 0
+            ? `${cantidad(redondearCantidad(i.stock - enCarrito), i.unidad)} disp.`
+            : enOtra
+              ? `Sin stock · hay en ${enOtra.sucursal}${i.en_otras.length > 1 ? ` y ${i.en_otras.length - 1} más` : ""}`
+              : "Sin stock";
       return `
         <button type="button" class="pos-item" data-clave="${esc(i.clave)}" ${hayStock(i) ? "" : "disabled"}>
           <span class="pos-item-nombre">${esc(i.nombre)}</span>

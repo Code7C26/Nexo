@@ -106,6 +106,12 @@ export const RUTAS_PERMISOS = {
   'GET /api/depositos': 'ambos',
   'POST /api/depositos': 'admin',
   'PATCH /api/depositos/:id': 'admin',
+  // Sucursales (hist. §193): verlas es de los dos (el punto de venta dice de
+  // qué sucursal es cada caja); armarlas es configuración del negocio.
+  'GET /api/sucursales': 'ambos',
+  'POST /api/sucursales': 'admin',
+  'PATCH /api/sucursales/:id': 'admin',
+  'DELETE /api/sucursales/:id': 'admin',
   'GET /api/productos': 'ambos',
   'POST /api/productos': 'admin',
   'PATCH /api/productos/:id': 'admin',
@@ -191,6 +197,9 @@ export const RUTAS_PERMISOS = {
   'GET /api/turnos-caja/:id': 'ambos',
   'POST /api/turnos-caja': 'ambos',
   'POST /api/turnos-caja/:id/cerrar': 'ambos',
+  // El cierre del día y del mes de todas las cajas (hist. §193): es la plata
+  // de todo el negocio, como Caja.
+  'GET /api/cierre-caja': 'admin',
   'GET /api/pos/catalogo': 'ambos',
   'POST /api/pos/ventas': 'ambos',
   'GET /api/planes-socio': 'ambos',

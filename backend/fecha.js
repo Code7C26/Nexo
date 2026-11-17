@@ -21,6 +21,12 @@ try {
 // AAAA-MM-DD del día de hoy en la zona del negocio.
 export const fechaDeHoy = () => new Date().toLocaleDateString('sv-SE', { timeZone: ZONA_HORARIA });
 
+// El día (AAAA-MM-DD) en la zona del negocio de un instante guardado en UTC
+// ("AAAA-MM-DD HH:MM:SS", como datetime('now')): el turno abierto a las 22 h
+// es de ese día, no del siguiente (hist. §193).
+export const fechaLocalDe = (utc) =>
+  utc ? new Date(`${String(utc).replace(' ', 'T')}Z`).toLocaleDateString('sv-SE', { timeZone: ZONA_HORARIA }) : null;
+
 // El instante UTC ("AAAA-MM-DD HH:MM:SS", como datetime('now')) en que empezó
 // hoy en la zona del negocio: para comparar contra las columnas que guardan la
 // hora en UTC (ingresos, auditoría).
