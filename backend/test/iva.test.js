@@ -77,6 +77,26 @@ test('el IVA sale de adentro del precio final, y la letra de las dos condiciones
   assert.equal(letraQueCorresponde(null, 'responsable_inscripto'), null, 'sin condición del negocio, a mano');
 });
 
+// La pantalla anticipa la letra (el punto de venta apaga la B a un inscripto
+// con esto): tiene que dar lo mismo que el servidor en todos los casos.
+test('la letra que anticipa la pantalla es la que pone el servidor, y la A a un monotributista lleva la leyenda de la RG 5003', async () => {
+  const { leyendaFiscal, letraPrevista, LEYENDA_A_MONOTRIBUTO } = await import('../../frontend/js/core/fiscal.js');
+  const negocios = ['responsable_inscripto', 'monotributo', 'exento', null];
+  const receptores = ['responsable_inscripto', 'monotributo', 'exento', 'consumidor_final'];
+  for (const negocio of negocios) {
+    for (const receptor of receptores) {
+      const delServidor = letraQueCorresponde(negocio, receptor === 'consumidor_final' ? null : receptor);
+      assert.equal(letraPrevista(negocio, receptor), delServidor, `${negocio} → ${receptor}`);
+    }
+  }
+
+  assert.match(LEYENDA_A_MONOTRIBUTO, /sólo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27\.618$/);
+  assert.equal(leyendaFiscal('A', 'monotributo'), LEYENDA_A_MONOTRIBUTO);
+  assert.equal(leyendaFiscal('A', 'responsable_inscripto'), '');
+  assert.equal(leyendaFiscal('B', 'monotributo'), '', 'un exento o monotributista no emite A');
+  assert.equal(leyendaFiscal('C', 'monotributo'), '');
+});
+
 // Un negocio nuevo con su condición, tres servicios (sin stock) de distinta
 // alícuota y un cliente de cada condición.
 async function negocioConCatalogo(empresa, condicion_iva) {

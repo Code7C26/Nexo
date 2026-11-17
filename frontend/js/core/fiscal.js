@@ -93,6 +93,14 @@ export function letraPrevista(condicionNegocio, condicionReceptor) {
   return condicionReceptor === "responsable_inscripto" || condicionReceptor === "monotributo" ? "A" : "B";
 }
 
+// La leyenda que ARCA pide impresa según la letra y el receptor (RG 5003): la
+// A a un monotributista avisa que ese IVA solo lo computa en el régimen de la
+// Ley 27.618. "" si no lleva ninguna.
+export const LEYENDA_A_MONOTRIBUTO =
+  "El crédito fiscal discriminado en el presente comprobante, sólo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27.618";
+export const leyendaFiscal = (letra, condicionReceptor) =>
+  letra === "A" && condicionReceptor === "monotributo" ? LEYENDA_A_MONOTRIBUTO : "";
+
 export function opcionesSelect(select, opciones) {
   select.innerHTML = Object.entries(opciones)
     .map(([valor, etiqueta]) => `<option value="${valor}">${etiqueta}</option>`)

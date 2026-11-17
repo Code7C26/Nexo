@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §188);
+    siguiente número (hoy el último es §190);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,15 +21,26 @@
 
 ## Estado actual (17 de noviembre de 2026)
 
-**17 de noviembre, hist. §188: alta rápida de un cliente con CUIT en el cobro
-del punto de venta (publicado, PR #93).** Para hacer una
-factura A sin ir a Clientes: en el cobro, "Facturar a un cliente con CUIT"
-(solo si se puede facturar y el cliente es consumidor final o le falta el CUIT
-o la condición) abre CUIT, nombre y condición. Lo busca por CUIT entre los
-clientes; si está sin condición (o con otra), se la guarda con una
-confirmación; si no está, lo crea. El botón pasa solo a "Factura A". La letra
-sigue saliendo de las dos condiciones. Sin cambios de esquema ni rutas
-nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
+**17 de noviembre, hist. §190: repaso de las reglas de ARCA (commiteado en
+`solla`, sin publicar).** Todas bien aplicadas (letra, CUIT de la A, notas
+asociadas, importes, condición y documento del receptor, servicios, CAE, QR,
+IVA contenido de la B). Faltaba la leyenda de la RG 5003 en la A a un
+monotributista: ya sale en la hoja y en el ticket. 428 tests. **Quedan:** el
+tope para identificar al consumidor final (confirmar el monto con un
+contador), el exento o monotributista sin CUIT con B (ver en homologación) y la
+"A con leyenda" o M de un inscripto nuevo (RG 1575).
+
+**17 de noviembre, hist. §188 y §189: la factura A en el cobro del punto de
+venta, con el alta rápida del cliente con CUIT (§188 publicado en PR #93;
+§189 commiteado en `solla`, sin publicar).** El cobro muestra
+`Sin factura | Factura A | Factura B` (en un negocio que hace la C,
+`Sin factura | Factura C`), con "Imprimir el ticket" abajo. Tocar la A con un
+cliente inscripto o monotributista con CUIT la marca; si no, abre CUIT, nombre
+y condición (solo las que dan A) para confirmar. Lo busca por CUIT; si está sin
+condición (o con otra), se la guarda con una confirmación; si no está, lo crea.
+Mientras no se confirma, no se puede cobrar. La B se apaga para un inscripto.
+La letra sigue saliendo de las dos condiciones. Sin cambios de esquema ni
+rutas nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
 
 **17 de noviembre, hist. §187: las facturas desde el Gmail del negocio
 (publicado, PR #92).** Configuración → Gmail, con su logo:

@@ -934,25 +934,41 @@ const sePuedeFacturar = () => !negocio.factura_electronica?.en_pausa;
 // null si el negocio no cargó su condición frente al IVA: sale una B.
 const letraDelCobro = () => letraPrevista(negocio.condicion_iva, cobro.cliente?.condicion_iva || "consumidor_final");
 
-// Lo que ARCA rechazaría seguro, dicho antes de cobrar: una factura A necesita
-// el CUIT del cliente (errorParaArca en server.js).
+// Un inscripto hace la A o la B según el cliente; los demás, siempre la misma
+// (la C, o una sin letra si el negocio no cargó su condición).
+const haceAyB = () => negocio.condicion_iva === "responsable_inscripto";
+
+// Lo que frena la venta, dicho antes de cobrar: la A pedida con los datos del
+// cliente sin confirmar, y lo que ARCA rechazaría seguro (una factura A sin el
+// CUIT del cliente; errorParaArca en server.js).
 function errorDeFactura() {
+  if (cobro.pidiendoA) return "Confirmá los datos del cliente para la factura A, o elegí otra opción.";
   if (!cobro.facturar || !negocio.factura_electronica?.activa || letraDelCobro() !== "A") return null;
   const cuit = String(cobro.cliente?.documento ?? "").replace(/\D/g, "");
-  return cuit.length === 11 ? null : `Para la factura A falta el CUIT de ${cobro.cliente.nombre}. Cargalo en su ficha, o cobrá sin factura.`;
+  return cuit.length === 11 ? null : `Para la factura A falta el CUIT de ${cobro.cliente.nombre}: tocá «Factura A» y cargalo, o cobrá sin factura.`;
 }
 
+// Las opciones se marcan según lo que va a salir: la letra no se elige, sale
+// de la condición del negocio y la del cliente. Tocar la A es decir a quién.
 function renderComprobante() {
   const opciones = document.getElementById("posComprobanteOpciones");
   opciones.hidden = !sePuedeFacturar();
   const letra = letraDelCobro();
-  document.getElementById("posComprobanteFactura").textContent = letra ? `Factura ${letra}` : "Factura";
-  opciones.querySelectorAll(".segmento").forEach((boton) => {
-    boton.setAttribute("aria-pressed", String((boton.dataset.facturar === "1") === cobro.facturar));
-  });
-  const error = errorDeFactura();
+  const letras = haceAyB() ? ["A", "B"] : [letra ?? ""];
+  const marcada = cobro.pidiendoA ? "A" : cobro.facturar ? (letra ?? "") : "no";
+  const boton = (valor, texto, extra = "") =>
+    `<button type="button" class="segmento" data-letra="${valor}" aria-pressed="${marcada === valor}"${extra}>${esc(texto)}</button>`;
+  opciones.innerHTML = [
+    boton("no", "Sin factura"),
+    ...letras.map((l) =>
+      boton(l, l ? `Factura ${l}` : "Factura", l === "B" && letra === "A" ? ` aria-disabled="true"` : "")
+    )
+  ].join("");
+
+  // Con los datos del cliente abiertos, lo que falta lo dice el formulario.
+  const error = cobro.pidiendoA ? null : errorDeFactura();
   let texto = error ?? "";
-  if (!error && cobro.facturar) {
+  if (!error && cobro.facturar && !cobro.pidiendoA) {
     texto = negocio.factura_electronica?.activa
       ? "Al confirmar, Nexo le pide el CAE a ARCA."
       : "Sale como comprobante interno: no es una factura ante ARCA.";
@@ -966,8 +982,19 @@ function renderComprobante() {
 document.getElementById("posComprobanteOpciones").addEventListener("click", (e) => {
   const boton = e.target.closest(".segmento");
   if (!boton) return;
-  cobro.facturar = boton.dataset.facturar === "1";
+  const pedida = boton.dataset.letra;
+  if (pedida === "A" && !(letraDelCobro() === "A" && tieneCuit(cobro.cliente))) {
+    abrirClienteCuit({ paraA: true });
+    return;
+  }
+  if (pedida === "B" && letraDelCobro() === "A") {
+    const { nombre, condicion_iva } = cobro.cliente;
+    avisar(`A ${nombre} le corresponde la factura A: es ${condicionFiscal(condicion_iva)}. Para una B, cobrale a otro cliente.`, "atencion");
+    return;
+  }
+  cobro.facturar = pedida !== "no";
   guardar(localStorage, CLAVE_FACTURAR, cobro.facturar ? "1" : null);
+  cerrarClienteCuit();
   renderComprobante();
   actualizarCobro();
 });
@@ -975,8 +1002,9 @@ document.getElementById("posComprobanteOpciones").addEventListener("click", (e) 
 /* ---------- Alta rápida de un cliente con CUIT (hist. §188) ---------- */
 
 // Una factura A necesita un cliente con CUIT y condición frente al IVA. Se
-// carga acá, sin ir a Clientes: se busca por CUIT entre los del negocio y, si
-// no está, se crea. No se elige la letra: sigue saliendo de la condición del
+// carga acá, sin ir a Clientes: tocando "Factura A" (o, en un negocio que hace
+// la C, desde el enlace), se busca por CUIT entre los del negocio y, si no
+// está, se crea. No se elige la letra: sigue saliendo de la condición del
 // negocio y la del cliente.
 const btnPosClienteCuit = document.getElementById("btnPosClienteCuit");
 const posClienteCuit = document.getElementById("posClienteCuit");
@@ -984,7 +1012,12 @@ const posClienteCuitNumero = document.getElementById("posClienteCuitNumero");
 const posClienteCuitNombre = document.getElementById("posClienteCuitNombre");
 const posClienteCuitCondicion = document.getElementById("posClienteCuitCondicion");
 const posClienteCuitNota = document.getElementById("posClienteCuitNota");
-opcionesSelect(posClienteCuitCondicion, CONDICIONES_FISCALES);
+// Para la A, solo las condiciones que la dan.
+const CONDICIONES_DE_LA_A = {
+  responsable_inscripto: CONDICIONES_FISCALES.responsable_inscripto,
+  monotributo: CONDICIONES_FISCALES.monotributo
+};
+const hayCondicion = (valor) => [...posClienteCuitCondicion.options].some((o) => o.value === valor);
 
 const digitosDe = (texto) => String(texto ?? "").replace(/\D/g, "");
 const tieneCuit = (cliente) => digitosDe(cliente?.documento).length === 11;
@@ -1004,15 +1037,18 @@ const fichaDelCliente = (c, cambios) => ({
   ...cambios
 });
 
-// Solo cuando hace falta: se puede facturar y el cliente es consumidor final
-// o le falta el CUIT o la condición.
+// El enlace es para el negocio que hace la C (en el inscripto, la A ya abre
+// esto), y solo si el cliente es consumidor final o le falta el CUIT o la
+// condición.
 function renderClienteCuit() {
   const completo = tieneCuit(cobro.cliente) && esCondicionFiscal(cobro.cliente?.condicion_iva);
-  btnPosClienteCuit.hidden = !posClienteCuit.hidden || !sePuedeFacturar() || completo;
+  btnPosClienteCuit.hidden = haceAyB() || !posClienteCuit.hidden || !sePuedeFacturar() || completo;
 }
 
+// Cerrarlo sin confirmar deja el comprobante como estaba antes de tocar la A.
 function cerrarClienteCuit() {
   posClienteCuit.hidden = true;
+  cobro.pidiendoA = false;
   limpiarErrores(posClienteCuit);
   renderClienteCuit();
 }
@@ -1023,20 +1059,30 @@ function notaClienteCuit(texto) {
 }
 
 // Arranca con lo que ya se sabe del cliente del cobro, si hay uno.
-btnPosClienteCuit.addEventListener("click", () => {
+function abrirClienteCuit({ paraA = false } = {}) {
+  cobro.pidiendoA = paraA;
+  opcionesSelect(posClienteCuitCondicion, paraA ? CONDICIONES_DE_LA_A : CONDICIONES_FISCALES);
   const actual = cobro.cliente;
   posClienteCuitNumero.value = tieneCuit(actual) ? formatearCuit(actual.documento) : "";
   posClienteCuitNombre.value = actual?.nombre ?? "";
-  posClienteCuitCondicion.value = esCondicionFiscal(actual?.condicion_iva) ? actual.condicion_iva : "responsable_inscripto";
+  posClienteCuitCondicion.value = hayCondicion(actual?.condicion_iva) ? actual.condicion_iva : "responsable_inscripto";
+  document.getElementById("posClienteCuitTitulo").textContent = paraA ? "¿A quién le hacés la factura A?" : "¿A quién se le factura?";
+  limpiarErrores(posClienteCuit);
   notaClienteCuit("");
   posClienteCuit.hidden = false;
   renderClienteCuit();
-  posClienteCuitNumero.focus();
-});
+  renderComprobante();
+  actualizarCobro();
+  (posClienteCuitNumero.value ? posClienteCuitNombre : posClienteCuitNumero).focus();
+}
+
+btnPosClienteCuit.addEventListener("click", () => abrirClienteCuit());
 
 document.getElementById("btnPosClienteCuitCancelar").addEventListener("click", () => {
   cerrarClienteCuit();
-  btnPosClienteCuit.focus();
+  renderComprobante();
+  actualizarCobro();
+  (haceAyB() ? document.querySelector('#posComprobanteOpciones [data-letra="A"]') : btnPosClienteCuit).focus();
 });
 
 // Con el CUIT completo, si ya es un cliente se avisa y se trae lo suyo.
@@ -1046,7 +1092,7 @@ posClienteCuitNumero.addEventListener("input", () => {
   notaClienteCuit(existente ? `Ya está en tus clientes: ${existente.nombre}.` : "");
   if (!existente) return;
   posClienteCuitNombre.value = existente.nombre;
-  if (esCondicionFiscal(existente.condicion_iva)) posClienteCuitCondicion.value = existente.condicion_iva;
+  if (hayCondicion(existente.condicion_iva)) posClienteCuitCondicion.value = existente.condicion_iva;
 });
 
 posClienteCuitNumero.addEventListener("blur", () => {
@@ -1138,6 +1184,7 @@ async function guardarClienteCuit() {
   posCliente.value = cliente.nombre;
   document.getElementById("posCobroCliente").textContent = cliente.nombre;
   cobro.facturar = true;
+  guardar(localStorage, CLAVE_FACTURAR, "1");
   cerrarClienteCuit();
   renderComprobante();
   actualizarCobro();

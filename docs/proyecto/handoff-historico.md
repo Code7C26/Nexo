@@ -14425,3 +14425,81 @@ anotado como pendiente.
   confirmar, la guarda y no se duplica.
 - **Queda:** el campo "Cliente" del mostrador sigue siendo un `datalist`
   nativo; pasarlo al combo de Nexo (`core/combo.js`) es aparte.
+
+## §189 — 17 de noviembre de 2026: Sin factura | Factura A | Factura B en el cobro
+
+Pedido del usuario sobre §188: las opciones de factura una al lado de la otra
+("Sin factura | Factura A | Factura B"), que tocar la A pida los datos del
+cliente y se confirmen, e "Imprimir el ticket" abajo.
+
+- **Las opciones las arma `renderComprobante()`** según el negocio: el
+  responsable inscripto ve `Sin factura | Factura A | Factura B`; el
+  monotributista o exento, `Sin factura | Factura C` (sin condición cargada,
+  `Factura` a secas). A lo ancho, de 44 px de alto.
+- **La letra sigue sin elegirse:** cada opción se marca según lo que va a
+  salir con la condición del cliente.
+  - Tocar **A** con un cliente inscripto o monotributista con CUIT la marca
+    directo. Si no, abre el formulario de §188 ("¿A quién le hacés la factura
+    A?"), con solo Responsable inscripto y Monotributo, que son las que dan A.
+  - Mientras está abierto (`cobro.pidiendoA`), la A se ve marcada y no se
+    puede confirmar la venta, dejarla en cuenta corriente ni cobrar con QR.
+    Cancelar vuelve a como estaba.
+  - Con un cliente al que le corresponde la A, la **B** se ve apagada
+    (`aria-disabled`) y tocarla explica por qué: ARCA no acepta una B a un
+    inscripto.
+- **El enlace "Facturar a un cliente con CUIT" queda solo para el negocio que
+  hace la C** (ahí no hay A que lo abra). El formulario se mudó adentro del
+  bloque del comprobante, debajo de las opciones, y "Imprimir el ticket" pasó
+  abajo de todo. El botón del formulario dice "Confirmar cliente".
+- El aviso de la A sin CUIT ahora dice que se carga tocando «Factura A».
+  Manual y traducciones al día.
+- **Probado en el navegador (celular):** la A con un CUIT de un inscripto que
+  ya estaba (lo usa sin preguntar, sale "Factura A 0003-00000001 autorizada");
+  la B apagada que avisa; un inscripto elegido por nombre sin CUIT (la A
+  marcada con el aviso, el formulario arranca con su nombre y le completa el
+  CUIT con confirmación); cancelar; y el negocio monotributista con
+  `Sin factura | Factura C` y el enlace. 427 tests, lint e i18n en verde.
+
+## §190 — 17 de noviembre de 2026: repaso de las reglas de ARCA y la leyenda de la RG 5003
+
+Pedido del usuario: verificar que las reglas de ARCA estén bien aplicadas,
+explicarle cómo y por qué en cada caso, y sumar la leyenda de la A a un
+monotributista, que faltaba.
+
+- **Repaso (sin cambios, todo bien):** la letra (`letraQueCorresponde` en
+  `iva.js`: el inscripto, A a inscripto y monotributista por la RG 5003 y B a
+  los demás; monotributo y exento, C); la A exige CUIT válido
+  (`errorParaArca`); la nota de crédito lleva la letra de la factura que
+  corrige y va asociada a ella (RG 4540) o al período; los importes de A y B
+  por alícuota y la C sin IVA (`importesDelComprobante`); la condición del
+  receptor (RG 5616) y su documento (80 CUIT, 96 DNI, 99 sin identificar);
+  concepto, período y vencimiento de los servicios; la fecha del día; el
+  número que da ARCA, sin duplicar en los reintentos; el CAE, el QR
+  (RG 4892) y "Comprobante de prueba" fuera de producción; la A discrimina el
+  IVA y la B de un inscripto informa el IVA contenido (Ley 27.743).
+- **Faltaba y se hizo:** la leyenda de la RG 5003 en la A a un monotributista
+  ("El crédito fiscal discriminado en el presente comprobante, sólo podrá ser
+  computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para
+  Pequeños Contribuyentes de la Ley Nº 27.618"). La regla vive en
+  `core/fiscal.js` (`leyendaFiscal`), con la condición de la foto de la
+  factura, y la imprimen la hoja A4 y el ticket. Vale para las notas A.
+- **Test:** `iva.test.js` cruza la letra que anticipa la pantalla
+  (`letraPrevista`) con la del servidor en las 16 combinaciones, y la leyenda.
+  428 tests. En el navegador: una A a un monotributista sale con la leyenda en
+  la hoja y en el ticket.
+- **Quedan, sin hacer:**
+  - la B a un consumidor final sin identificar por encima del tope de ARCA:
+    Nexo no lo frena antes y ARCA la rechaza; el monto vigente se confirma
+    con un contador antes de ponerlo en el código;
+  - un cliente exento o monotributista sin CUIT con factura B va con
+    documento 99 y su condición: puede que ARCA lo rechace, y se ve al probar
+    contra homologación;
+  - la "A con leyenda" o la M de un inscripto nuevo (RG 1575): no está.
+- **Manual (pedido del usuario: "¿todo esto se explica en el manual?"):** no
+  lo explicaba. "Hacer una factura" suma qué letra va a quién (y que al
+  monotributista le corresponde la A), que la A necesita el CUIT, qué muestra
+  cada una (IVA aparte, IVA contenido, la leyenda) y que la factura guarda los
+  datos del cliente de ese momento, con tres preguntas nuevas. "Devolución"
+  dice que la nota de crédito lleva la letra de la factura y va al mismo
+  cliente. "Factura electrónica" suma el número que da ARCA, el CAE con el QR
+  y qué hacer con un rechazo. En castellano y en inglés.

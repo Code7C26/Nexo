@@ -1333,9 +1333,11 @@ por unidad, y la auditoría anota quién lo hizo. Lo hace cualquier rol, sin top
 (decisión del usuario).
 **Factura y ticket al cobrar** (hist. §184): en el cobro se elige si la venta
 sale con factura (la letra sale sola, como en Ventas) y si se imprime el ticket
-de 80 mm, que lleva el CAE y el QR cuando hay factura. Para una factura A, el
-cobro carga ahí mismo al cliente con CUIT y condición frente al IVA: lo busca
-por CUIT y, si no está, lo crea (hist. §188); la letra no se elige. Queda para
+de 80 mm, que lleva el CAE y el QR cuando hay factura. Las opciones son
+`Sin factura | Factura A | Factura B` para un inscripto (`| Factura C` si no):
+tocar la A pide y confirma ahí mismo al cliente con CUIT y condición frente al
+IVA, que se busca por CUIT y, si no está, se crea (hist. §188, §189). La letra
+igual sale de las dos condiciones: la B se apaga para un inscripto. Queda para
 después: precio editable por renglón en el mostrador y venta sin conexión.
 
 ---
@@ -1492,7 +1494,9 @@ Implementado hoy (Etapa E, hist. §115), contra el ambiente de homologación:
   duplica. Un rechazo no consume número y se puede descartar.
 - Lo impreso lleva el CAE, su vencimiento y el QR (RG 4892). En
   homologación, todos los negocios emiten con el CUIT del certificado de
-  prueba, con la leyenda "Comprobante de prueba – sin validez fiscal".
+  prueba, con la leyenda "Comprobante de prueba – sin validez fiscal". La A
+  a un monotributista lleva la leyenda de la RG 5003 (`leyendaFiscal` en
+  `core/fiscal.js`; hist. §190, con el repaso de todas las reglas).
 - Falta: producción (CUIT de Nexo, a decidir con un contador) y que un
   negocio suba su propio certificado.
 

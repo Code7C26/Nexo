@@ -5,7 +5,7 @@
  */
 
 import { cantidad, esc, fechaAR, fechaHoraAR, money, numero } from "./formato.js";
-import { condicionFiscal, condicionIvaCliente } from "./fiscal.js";
+import { condicionFiscal, condicionIvaCliente, leyendaFiscal } from "./fiscal.js";
 import { negocio } from "./negocio.js";
 import { avisar } from "./ui.js";
 import { api } from "./api.js";
@@ -220,6 +220,10 @@ export function armarHojaFactura(f) {
          </section>`
       : "";
 
+  // La A a un monotributista lleva la leyenda de la RG 5003. La condición es la
+  // de la foto de la factura, la de cuando se hizo.
+  const leyenda = leyendaFiscal(f.letra, f.cliente_condicion_iva);
+
   const observaciones = (f.arca_observaciones ?? []).length
     ? `<div class="fac-observaciones">${f.arca_observaciones.map((o) => `<p>${esc(o.mensaje)}</p>`).join("")}</div>`
     : "";
@@ -261,6 +265,7 @@ export function armarHojaFactura(f) {
       </table>
       <section class="fac-totales">${totalesFactura(f, renglones)}</section>
       ${transparencia}
+      ${leyenda ? `<p class="fac-leyenda">${esc(leyenda)}</p>` : ""}
       ${emisor.pie_comprobante ? `<p class="fac-leyenda">${esc(emisor.pie_comprobante)}</p>` : ""}
       ${observaciones}
       <footer class="fac-pie">${pieFactura(f)}</footer>
@@ -363,6 +368,8 @@ export function armarTicket({ venta, cobros = [], factura = null, vuelto = 0 }) 
   } else if (factura?.letra === "B" && factura.iva > 0) {
     impuestos = filaTicket("IVA contenido (Ley 27.743)", money(factura.iva), "tk-chico");
   }
+  // La A a un monotributista: la leyenda de la RG 5003, como en la hoja.
+  if (autorizada) impuestos += lineaTicket(leyendaFiscal(factura.letra, factura.cliente_condicion_iva), "tk-chico");
 
   const cobrado = cobros.reduce((s, c) => s + c.importe, 0);
   const saldo = venta.neto - venta.cobrado;

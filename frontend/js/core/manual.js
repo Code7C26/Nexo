@@ -181,11 +181,11 @@ const SECCIONES_ES = [
         "Al empezar el día, tocá **Abrir caja** y contá el efectivo con el que arrancás.",
         "Buscá cada producto por nombre o código, o pasalo por el lector (también sirve la cámara del celular).",
         "Tocá **Cobrar** y elegí cómo paga: efectivo, transferencia, tarjeta… Puede pagar con más de uno. Si es en efectivo, Nexo calcula el vuelto.",
-        "Ahí mismo elegí si va **Sin factura** o con **Factura**, y tildá **Imprimir el ticket** si querés que salga solo. Queda como lo dejaste para la próxima venta.",
+        "Ahí mismo elegí **Sin factura** o la factura que corresponde (**Factura A** o **Factura B** si sos responsable inscripto, **Factura C** si no), y tildá **Imprimir el ticket** si querés que salga solo. Queda como lo dejaste para la próxima venta.",
         "Al terminar el día, tocá **Cerrar caja** y contá el efectivo: Nexo te dice si coincide con lo que debería haber."
       ] },
       "Sin elegir cliente, la venta va a Consumidor final. Para dejarle algo a cuenta a alguien, elegí el cliente: a Consumidor final no se le fía.",
-      "Para facturarle a una empresa o a un monotributista, en el cobro tocá **Facturar a un cliente con CUIT** y cargá su CUIT, su nombre y su condición frente al IVA. Si ya está en tus clientes, Nexo lo encuentra por el CUIT; si no, lo crea. La letra sale sola.",
+      "Para hacerle la factura A a una empresa o a un monotributista, tocá **Factura A** y confirmá su CUIT, su nombre y su condición frente al IVA. Si ya está en tus clientes, Nexo lo encuentra por el CUIT; si no, lo crea. Si hacés la factura C, el enlace **Facturar a un cliente con CUIT** hace lo mismo. La letra sale de tu condición y la del cliente: a un responsable inscripto no se le hace la B.",
       "El ticket es para impresoras de 80 mm. Se vuelve a imprimir desde la ficha de la venta, con **Ticket**.",
       { nota: "Si no ves Punto de venta en el menú, prendelo en Configuración › Funciones." }
     ],
@@ -260,7 +260,7 @@ const SECCIONES_ES = [
         "Elegí qué productos y cuántos te devuelve.",
         "Tocá **Registrar devolución**."
       ] },
-      "Los productos vuelven al stock y se descuenta de la venta. Si la venta estaba facturada, desde la devolución tocás **Emitir nota de crédito**.",
+      "Los productos vuelven al stock y se descuenta de la venta. Si la venta estaba facturada, desde la devolución tocás **Emitir nota de crédito**: sale con la misma letra que la factura y va a nombre del mismo cliente, porque la corrige.",
       "Todas las devoluciones quedan en **Devoluciones**.",
       "También se la podés contar al asistente: \"Juan me devolvió la remera, le quedó chica\". Busca la venta y te muestra qué se devuelve antes de cargarlo."
     ],
@@ -292,7 +292,7 @@ const SECCIONES_ES = [
     grupo: "Facturar",
     titulo: "Hacer una factura",
     pantalla: ["#/facturas", "Facturas"],
-    preguntas: ["cómo hago una factura", "cómo facturo una venta", "cómo imprimo una factura", "cómo saco el pdf de la factura", "qué letra de factura me corresponde", "factura a o b"],
+    preguntas: ["cómo hago una factura", "cómo facturo una venta", "cómo imprimo una factura", "cómo saco el pdf de la factura", "qué letra de factura me corresponde", "factura a o b", "qué necesito para hacer una factura a", "le puedo hacer factura b a un monotributista", "por qué me sale factura b"],
     palabras: ["factura", "facturar", "facturas", "comprobante", "imprimir", "pdf", "ticket", "letra", "a", "b", "c"],
     bloques: [
       "Podés facturar una venta que ya cargaste, o hacer una factura suelta.",
@@ -301,8 +301,15 @@ const SECCIONES_ES = [
         "Revisá los datos del cliente y la condición de venta.",
         "Tocá **Generar factura**. Desde su ficha, **Imprimir / PDF**."
       ] },
-      "La letra (A, B o C) sale sola, según tu condición frente al IVA y la del cliente.",
-      "En el Punto de venta la factura se elige al cobrar, sin pasar por acá.",
+      "La letra sale sola, según tu condición frente al IVA y la del cliente, así nunca sale una que ARCA no acepta:",
+      { lista: [
+        "Si sos **responsable inscripto**: A a otro inscripto o a un monotributista, y B a un consumidor final o a un exento. A un monotributista no se le hace B: desde 2021 le corresponde la A.",
+        "Si sos **monotributista o exento**: siempre C."
+      ] },
+      "Para una A, el cliente tiene que tener su CUIT cargado. Si no te lo da, no es A: cobrale como consumidor final.",
+      "La A muestra el IVA aparte; la B dice cuánto IVA contiene el precio, como pide la ley de transparencia fiscal. La A a un monotributista lleva una leyenda que aclara que ese IVA solo le sirve para el monotributo.",
+      "La factura guarda los datos del cliente de ese momento: si después cambiás su ficha, la factura no cambia.",
+      "En el Punto de venta la factura se elige al cobrar, sin pasar por acá: tocando **Factura A** cargás ahí mismo al cliente con su CUIT.",
       { nota: "Sin la factura electrónica activada, el comprobante es interno: sale con una X y \"No válido como factura\". Para facturar ante ARCA, mirá Factura electrónica." }
     ],
     ver: ["factura-electronica", "iva", "datos-del-negocio"]
@@ -323,6 +330,8 @@ const SECCIONES_ES = [
         "Cargá tu CUIT, tu condición frente al IVA y el punto de venta, y tocá **Verificar con ARCA**.",
         "Listo: al hacer una factura, Nexo le pide el CAE a ARCA. Si ARCA no responde, queda pendiente y se reintenta con **Pedir el CAE a ARCA**."
       ] },
+      "El número de cada factura lo da ARCA, así no se saltea ni se repite, aunque se reintente. Cada una sale con el CAE, su vencimiento y el código QR de ARCA, con el que cualquiera la puede verificar.",
+      "Si ARCA rechaza una factura, Nexo te muestra el motivo: corregí el dato (por ejemplo, el CUIT del cliente) y pedí el CAE de nuevo, o descartala. Una factura rechazada no gasta número.",
       { nota: "Hoy funciona en el ambiente de prueba de ARCA: los comprobantes dicen \"Comprobante de prueba – sin validez fiscal\"." },
       { nota: "Es desde el plan Emprendedor. Si tu negocio pasa a Gratis, queda en pausa: apagala para seguir con comprobantes internos, o volvé a un plan pago." }
     ],
