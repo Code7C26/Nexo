@@ -21,8 +21,8 @@
 
 ## Estado actual (17 de noviembre de 2026)
 
-**17 de noviembre, hist. §190: repaso de las reglas de ARCA (commiteado en
-`solla`, sin publicar).** Todas bien aplicadas (letra, CUIT de la A, notas
+**17 de noviembre, hist. §190: repaso de las reglas de ARCA (publicado, PR
+#95).** Todas bien aplicadas (letra, CUIT de la A, notas
 asociadas, importes, condición y documento del receptor, servicios, CAE, QR,
 IVA contenido de la B). Faltaba la leyenda de la RG 5003 en la A a un
 monotributista: ya sale en la hoja y en el ticket. 428 tests. **Quedan:** el
@@ -32,7 +32,7 @@ contador), el exento o monotributista sin CUIT con B (ver en homologación) y la
 
 **17 de noviembre, hist. §188 y §189: la factura A en el cobro del punto de
 venta, con el alta rápida del cliente con CUIT (§188 publicado en PR #93;
-§189 commiteado en `solla`, sin publicar).** El cobro muestra
+§189 en PR #95).** El cobro muestra
 `Sin factura | Factura A | Factura B` (en un negocio que hace la C,
 `Sin factura | Factura C`), con "Imprimir el ticket" abajo. Tocar la A con un
 cliente inscripto o monotributista con CUIT la marca; si no, abre CUIT, nombre
