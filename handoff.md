@@ -22,7 +22,7 @@
 ## Estado actual (17 de noviembre de 2026)
 
 **17 de noviembre, hist. §187: las facturas desde el Gmail del negocio
-(commiteado en `solla`, sin publicar).** Configuración → Gmail, con su logo:
+(publicado, PR #92).** Configuración → Gmail, con su logo:
 el negocio conecta su Gmail (solo el permiso de mandar, `gmail.send`) y las
 facturas salen desde ahí, a su nombre; sin conectar, siguen saliendo desde
 Nexo. Si Google le saca el permiso, no se pasa a Nexo solo: pide reconectar.
@@ -31,8 +31,8 @@ paso en `docs/proyecto/verificacion-google.md` (lo hace el usuario en la
 consola; los pasos 1 a 3 alcanzan para probarlo con el aviso de "app no
 verificada", hasta 100 cuentas).
 
-**17 de noviembre, hist. §186: mandar la factura por mail (commiteado en
-`solla`, sin publicar).** Punto 3 del plan. Desde la ficha de la factura o
+**17 de noviembre, hist. §186: mandar la factura por mail (publicado, PR
+#92).** Punto 3 del plan. Desde la ficha de la factura o
 varias juntas desde el listado, cada una al mail de su cliente. El PDF es el de
 "Descargar PDF", lo arma el navegador y el servidor lo manda adjunto con el
 SMTP propio, a nombre del negocio y con su mail para responder. Una
