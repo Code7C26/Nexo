@@ -1693,7 +1693,30 @@ con el equipo:
   de verdad, costo desde los insumos y packaging que se descuenta al vender.
   Ver `handoff.md`. Lo industrial (planificación, mermas por lote) sigue
   afuera.
-- Gestión de empleados y sueldos.
+- Sueldos y liquidación (RRHH). ~~Gestión de empleados~~: **los horarios y
+  el fichaje de empleados salen de esta lista** (decisión del usuario del 17
+  de noviembre de 2026, de lo que tiene Praxia) y entran antes de la
+  presentación. Ver `handoff.md`.
 - Contabilidad de partida doble / libro mayor contable formal (Nexo lleva
   tesorería y cuentas corrientes, no reemplaza a un sistema contable).
 - Facturación internacional / multi-moneda.
+
+---
+
+# 40. ESCALAR Y VENDER (DESPUÉS DE LA PRESENTACIÓN)
+
+Decidido por el usuario el 17 de noviembre de 2026: hay dos etapas separadas.
+
+- **Hasta la presentación oficial** se trabaja solo el plan de `handoff.md`
+  ("Qué sigue"): funciones, la presentación y su contenido.
+- **Escalar y vender** (reforzar servidor, base de datos, seguridad e
+  integraciones; contador, monotributo, abogado, marca; cobrar los planes y
+  revisar su estructura) se analiza y se decide con el equipo **después de
+  presentar**. Vive en `docs/proyecto/plan-para-vender.md`. Nada de ahí se
+  arranca sin esa decisión: lo que aparezca mientras tanto se anota en ese
+  documento y no se ejecuta.
+
+Si se decide escalar, cambian reglas de este archivo que el documento lista
+en su punto 11 (el costo como única restricción del preámbulo, SQLite en §34,
+la app nativa en §31 y §39, las dependencias del stack): se actualizan al
+decidirlo, no antes.

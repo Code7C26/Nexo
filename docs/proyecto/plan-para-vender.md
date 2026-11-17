@@ -1,170 +1,309 @@
-# Nexo en serio: qué falta para operar con clientes reales
+# Escalar y vender Nexo
 
-Escrito el 12 de noviembre de 2026, después de preparar el servidor para mucha
-gente a la vez (hist. §161). Es la lista para cuando se decida vender en serio:
-qué hay hoy, qué falta, quién lo hace y cuánto cuesta. Cada punto tiene su
-casilla para ir tachando.
+**Estado: en pausa hasta la presentación oficial (principios de diciembre de
+2026).** Decidido por el usuario el 17 de noviembre: hasta presentar se
+trabaja solo el plan de la presentación (`handoff.md`, "Qué sigue"). Después
+se analiza este documento con el equipo y se decide si se escala. **Nada de
+acá se arranca sin esa decisión**; lo que aparezca mientras tanto (un riesgo,
+una idea, un precio) se anota acá y no se ejecuta.
 
-**La idea en una línea:** como sistema, Nexo ya está para usarse de verdad. Lo
-que falta es casi todo infraestructura, cuentas, trámites y cobro, no
-funciones.
+Escrito el 12 de noviembre y rehecho el 17 de noviembre con el análisis de esa
+sesión (hist. §190–§192). Lo marcado **preliminar** son números y opciones
+para confirmar al planificarlo, no decisiones.
+
+**La idea en una línea:** como sistema, Nexo ya está para usarse de verdad.
+Escalar es reforzarlo todo (servidor, datos, seguridad, integraciones),
+ponerlo en regla (contador, monotributo, abogado, marca) y cobrar los planes.
+Es un cambio grande, más de infraestructura y de trámites que de funciones.
 
 Quién hace cada cosa: **(U)** el usuario, porque es un trámite o una cuenta a
 su nombre; **(C)** código, que se hace en una sesión de trabajo; **(U+C)** las
 dos cosas.
 
+**Criterio de gastos para esta etapa** (usuario, 17 de noviembre): se paga lo
+que dé seguridad y confiabilidad ("si hay que pagar un hosting, lo pagamos; no
+vamos a buscar opciones gratis a toda costa"; "mientras más seguridad les
+demos a los clientes, más clientes vamos a tener"). Hasta la presentación, la
+infraestructura sigue como está.
+
 ---
 
-## Lo que ya está
+## 0. Las decisiones que ordenan todo lo demás
+
+- [ ] **(U) Escalar sí o no**, después de la presentación.
+- [ ] **(U) De quién es el CUIT de Nexo:** el monotributo de Santino (ya
+  decidido como titular de los términos) o una sociedad. Con un contador. Si
+  el titular es menor de edad, planteárselo primero.
+- [ ] **(U) Dónde corre Nexo y con qué base de datos** (punto 2).
+- [ ] **(U) Los planes y sus precios** (punto 7).
+
+## 1. Lo que ya está
 
 - Todas las funciones de §1 a §36 de CLAUDE.md, publicadas en
   https://nexosystem.duckdns.org.
-- **Servidor** con HTTPS (Caddy). Se actualiza solo desde `main` con el CI en
-  verde y vuelve a la versión anterior si el arranque falla (`docs/proyecto/publicar.md`).
-- **Respaldos:** uno en cada arranque y otro diario a las 3:30. El diario sube
-  cifrado a Backblaze B2, y restaurarlo ya se probó.
+- **Servidor** (Oracle, capa gratis) con HTTPS (Caddy). Se actualiza solo
+  desde `main` con el CI en verde y vuelve a la versión anterior si el
+  arranque falla (`docs/proyecto/publicar.md`).
+- **Respaldos:** uno en cada arranque y otro diario a las 3:30, que sube
+  cifrado a Backblaze B2; restaurarlo ya se probó.
 - **Rendimiento** (hist. §161): SQLite en WAL, un índice en cada relación y
-  topes por IP pensados para un wifi compartido. Con 20 personas a la vez
-  responde en ~20 ms (medido en la compu contra una base de prueba).
+  topes por IP. Con 20 personas a la vez responde en ~20 ms.
 - **Seguridad:** contraseñas con scrypt, sesiones revocables, cada negocio
-  aislado, el empleado no ve los costos, auditoría de todo y código por mail
-  para crear la cuenta.
-- **Mail:** sale desde `nexosystem.app@gmail.com`.
-- **Planes** Gratis, Emprendedor y Pro, con sus topes. Pasar a uno pago hoy es
-  manual (ver el punto 5).
+  aislado, el empleado no ve los costos, auditoría de todo, tokens de las
+  integraciones cifrados, CSP y código por mail para crear la cuenta.
+- **Factura electrónica** probada en homologación (A, B y nota de crédito, con
+  las reglas de ARCA repasadas en hist. §190).
+- **Planes** Gratis, Emprendedor y Pro, con sus topes; pasar a uno pago hoy
+  es manual.
 
----
+## 2. Servidor, base de datos e IA
 
-## 1. Servidor
+**El riesgo más grande hoy:** el respaldo es diario. Si el disco se rompe a
+las 19 h, se pierden las ventas del día de todos los negocios.
 
-Hoy: Oracle Cloud, capa gratis, **VM.Standard.E2.1.Micro** en San Pablo (AMD,
-1/8 de núcleo con ráfagas, 1 GB de memoria y 2 GB de swap). En cálculo puro es
-1,8 veces más lenta que la compu de desarrollo, y bajo carga sostenida Oracle
-la frena mucho más.
+- [ ] **(C) Litestream** (gratis): copia cada cambio de la base a Backblaze en
+  segundos. Cierra ese riesgo sin esperar lo demás. Es lo primero de esta
+  etapa (o antes, si el equipo lo decide).
+- [ ] **(U+C) Servidor pago.** La capa gratis de Oracle no tiene garantía y
+  puede recuperar la máquina. **Preliminar:** AWS en São Paulo (~30 ms desde
+  Argentina), un EC2 de 2 núcleos y 2 GB, **~USD 15–20/mes**. DigitalOcean es
+  más simple y parecido de precio, pero no tiene región en Sudamérica
+  (~140 ms). Seguir en Oracle pagando también es posible.
+- [ ] **(U+C) Un servidor de prueba (staging)**, **~USD 5–10/mes**: hoy lo
+  que entra a `main` va directo a producción, con la base real.
+- [ ] **(U+C) Postgres administrado.** SQLite alcanza para el tamaño de hoy;
+  lo que gana Postgres administrado: volver a cualquier minuto de los últimos
+  7 días, los datos aparte de la app, dos servidores de app a la vez (sin
+  cortes al actualizar) y **el aislamiento entre negocios garantizado por la
+  base** (Row-Level Security por `organizacion_id`), que es un argumento de
+  seguridad para los clientes.
+  - **El costo real es el trabajo:** `server.js` tiene ~1.278 consultas
+    escritas para SQLite (síncronas); Postgres es asíncrono, así que hay que
+    reescribir el acceso a datos y volver a probarlo. Varias semanas de
+    sesiones; se planifica como etapa (§27, §34).
+  - **Preliminar, RDS (AWS São Paulo):** la base más chica, con recuperación
+    al minuto de 7 días incluida, **~USD 25–30/mes**; duplicada en dos zonas,
+    el doble (para cuando haya unos 50 clientes).
+  - **Preliminar, Supabase:** Postgres de verdad, en São Paulo, y lo conocen
+    por Vrader. El plan Pro (~USD 25) trae respaldos diarios; la recuperación
+    al minuto es un agregado de **~USD 100/mes**, así que con ella sale
+    **~USD 125+**. Trae login, archivos y una API automática que Nexo no usa
+    (la API hay que apagarla). No corre el servidor de Nexo: igual hace falta
+    uno aparte.
+  - Recomendación preliminar: RDS, por precio. Supabase si pesa mucho su
+    panel, y siempre con la recuperación al minuto.
+- [ ] **(C) Paginar las listas largas** (§35): ventas, compras, movimientos de
+  stock y auditoría.
+- [ ] **(U) Practicar el plan de emergencia** una vez por mes: restaurar el
+  respaldo en una máquina de prueba y anotar cuánto tardó.
+- [ ] **(U+C) IA paga.** Groq gratis da ~100 frases por día para *todo*
+  Nexo: con 10 clientes Pro no alcanza. Pagando por uso, una frase cuesta
+  fracciones de centavo de dólar (mil frases, ~USD 1; el audio, centavos por
+  hora): **por cliente son centavos por mes**. Se gana: sin tope diario, un
+  modelo más grande para lo difícil (leer facturas de proveedores) y Gemini
+  pago de respaldo, que no usa los datos (el gratis puede: sacarlo). Un
+  **cupo por plan**, porque la IA es lo único que crece con el uso.
 
-- [ ] **(U) Pasar la cuenta de Oracle a Pay As You Go.** Es lo más urgente:
-  Oracle recupera las máquinas gratis que pasan una semana casi sin uso, y con
-  clientes reales eso sería un corte total. Pide una tarjeta, pero lo que está
-  dentro de la capa gratis sigue sin costo. Conviene poner una alerta de gasto
-  en $0 para enterarse si algo empieza a cobrar.
-- [ ] **(U+C) Mudarse a la Ampere A1** (también capa gratis: hasta 4 núcleos
-  ARM y 24 GB en total). Es otra liga: varias veces más procesador y sin
-  frenos por ráfagas. Cómo:
-  1. Crear la instancia (Ubuntu 24.04, forma VM.Standard.A1.Flex, por ejemplo
-     2 núcleos y 12 GB). Si dice "out of capacity" en San Pablo, se reintenta
-     otro día u otro horario.
-  2. Seguir "Instalar desde cero" de `docs/proyecto/publicar.md`: el instalador usa los
-     repositorios de NodeSource y de Caddy, que tienen versión ARM (a
-     confirmar al hacerlo). Nexo no tiene dependencias nativas, así que corre
-     igual en ARM.
-  3. Llevar la base con `VACUUM INTO` (nunca copiando el `.db` en uso),
-     `/etc/nexo/nexo.env` y las claves de Backblaze.
-  4. Apuntar DuckDNS (o el dominio propio) a la IP nueva, probar, y recién
-     después apagar la vieja.
-- [ ] **(U) Un aviso si el sitio se cae.** Hoy nadie se entera. UptimeRobot o
-  Better Stack (gratis) consultan `https://.../api/auth/estado` cada minuto y
-  avisan por mail o Telegram.
-- [ ] **(C) Los errores, a la vista.** Hoy solo quedan en el registro del
-  servidor (`journalctl -u nexo`). Un resumen diario por mail de los errores
-  del día, sin servicios pagos.
-- [ ] **(U) Practicar el plan de emergencia una vez:** restaurar el respaldo de
-  Backblaze en una VM de prueba siguiendo `docs/proyecto/publicar.md`, y anotar cuánto
-  tardó.
+## 3. Seguridad
 
-## 2. Base de datos
+- [ ] **(C) Verificación en dos pasos** (2FA) para los administradores, con
+  una app de códigos (`node:crypto`, sin dependencias).
+- [ ] **(C) Topes generales** de tamaño y de cantidad de pedidos por persona
+  (§35), no solo en el login.
+- [ ] **(U+C) El servidor endurecido:** ssh solo con llave, firewall,
+  actualizaciones automáticas de seguridad, fail2ban y HSTS en Caddy.
+- [ ] **(C) `npm audit` en el CI** y los avisos de dependencias de GitHub.
+- [ ] **(U+C) El certificado de ARCA de Nexo**, lo más delicado: solo en el
+  servidor, con permisos cerrados y un plan si se filtra.
+- [ ] **(C) Una revisión de seguridad completa** antes de vender, con una
+  prueba de que un negocio no puede ver datos de otro.
+- [ ] **(U) Hacer privado el repo de GitHub.** Hoy es público (organización
+  Code7C26); el 17 de noviembre se revisó el historial y no hay claves
+  subidas. **Antes de cambiarlo**, darle al servidor una llave de solo lectura
+  (deploy key), o las actualizaciones dejan de llegar. A los profesores, como
+  colaboradores de solo lectura. Las Actions privadas tienen 2.000 minutos por
+  mes, que alcanzan para el CI.
+- [ ] **(U) Cloudflare** en su plan gratis delante del sitio (contra ataques
+  que lo tiran); el pago (~USD 20), más adelante.
+- Una prueba de seguridad externa paga, cuando entren clientes grandes.
 
-- **SQLite alcanza** para cientos de negocios chicos, que escriben poco cada
-  uno. El paso a Postgres (CLAUDE.md §34) es para cuando haya mucha escritura a
-  la vez o más de un servidor. No hace falta ahora, y el código ya está
-  preparado (todo el SQL vive en `backend/db/` y en `server.js`).
-- [ ] **(C) Paginar las listas largas** (§35). `GET /api/ventas` trae todas las
-  ventas del negocio: con seis semanas son 68 KB, pero con años de ventas sería
-  lento desde el celular. Empezar por ventas, compras, movimientos de stock y
-  auditoría.
-- [ ] **(U) Repetir la prueba de restaurar** el respaldo cada tanto (por
-  ejemplo, una vez por mes).
+## 4. Integraciones y ARCA en producción
 
-## 3. Dominio y mail
+Que no fallen nunca es imposible (dependen de otros); que **se recuperen
+solas y avisen**, sí.
 
-- [ ] **(U) Dominio propio**, por ejemplo un `.com.ar` en NIC Argentina, que
-  se registra con clave fiscal y tiene un costo anual bajo. `duckdns.org` es
-  gratis pero no se ve serio, y si DuckDNS se cae, Nexo también. Después hay
-  que actualizar `NEXO_URL_PUBLICA`, el Caddyfile y las direcciones cargadas en
-  Mercado Pago, Mercado Libre, Tienda Nube, Meta y Google.
-- [ ] **(U+C) Un servicio de mail para aplicaciones** con el dominio propio
-  (Brevo o Resend tienen plan gratis), con SPF y DKIM configurados. Gmail
-  tiene un tope diario, los mails pueden caer en spam, y Google puede bloquear
-  una cuenta que manda mails automáticos. Del lado del código casi no cambia
-  nada: `backend/mail.js` ya manda por SMTP.
-- [ ] **(C) Sacar el `noindex`** del Caddyfile cuando arranque la publicidad,
-  para que Google encuentre la landing.
+- [ ] **(U) ARCA en producción:** el CUIT de Nexo, clave fiscal nivel 3 y un
+  certificado de producción (lo arma Claude; se sube en "Administración de
+  Certificados Digitales" y se asocia a Facturación Electrónica en el
+  "Administrador de Relaciones"). Después `NEXO_ARCA_CERT`, `NEXO_ARCA_KEY`,
+  `NEXO_ARCA_CUIT` y `NEXO_ARCA_AMBIENTE=produccion`. Primera prueba: una
+  factura real chica y su nota de crédito. Cada negocio: punto de venta "RECE
+  para aplicativo y web services" y la delegación a Nexo.
+- [ ] **(C) CAEA**, la contingencia de ARCA para facturar cuando su servicio
+  está caído. Hoy la factura queda pendiente y se reintenta.
+- [ ] **(C) Lo que quedó del repaso de ARCA** (hist. §190): el tope para
+  identificar al consumidor final (el monto, con el contador), el exento o
+  monotributista sin CUIT con B (probarlo en homologación) y la "A con
+  leyenda" o M de un inscripto nuevo (RG 1575).
+- [ ] **(C) Revisión automática cada pocos minutos** de pedidos y pagos de
+  Mercado Libre, Tienda Nube y Mercado Pago, por si un aviso no llegó (hoy es
+  el botón "Buscar ahora").
+- [ ] **(C) Reintentos guardados**, que sobrevivan a un reinicio.
+- [ ] **(C) Avisos:** al dueño, cuando una cuenta se desconecta o vence su
+  permiso; al equipo, si los errores suben de golpe. Y un estado por
+  integración (última sincronización, último error, pendientes).
+- [ ] **(U) Pruebas con plata real** pendientes: el QR del mostrador, un pago
+  en cuotas, uno con retenciones; Mercado Libre con una cuenta de vendedor
+  real; publicar la app de Tienda Nube en su tienda de apps.
+- [ ] **(C) Retenciones de Mercado Pago** (§16, §33), recargo por cuotas y
+  acreditación diferida.
+- Más integraciones, según lo que pidan los clientes: Shopify o WooCommerce
+  (con el molde de Tienda Nube), conciliación bancaria importando el extracto
+  y el reporte de liquidaciones de los posnet (Payway, Getnet casi no tienen
+  API abierta).
 
-## 4. Servicios externos
+## 5. WhatsApp y el asistente
 
-| Servicio | Hoy | Qué falta | Quién |
-|---|---|---|---|
-| **IA** (asistente, voz, facturas de proveedor) | Groq gratis: ~100 frases por día para todo Nexo. Gemini gratis de respaldo, que puede usar los datos | Plan pago por uso de Groq. Gemini en un plan que no use los datos, o sacarlo. Conviene mirar el consumo por negocio antes de abrir Pro a muchos | U |
-| **WhatsApp** | App de Meta publicada, con el número de prueba (llega a 5 teléfonos) | El número real (el chip, pasos en el handoff, "Trámites del usuario" → Meta) y la verificación del negocio ante Meta, que pide los datos del titular. Meta cobra los mensajes que inicia Nexo; las respuestas dentro de las 24 h son gratis | U |
-| **ARCA** | Factura electrónica probada en homologación (A, B y nota de crédito) | El CUIT de Nexo (el monotributo de Santino o una sociedad), clave fiscal nivel 3 y un certificado de producción; después `NEXO_ARCA_AMBIENTE=produccion`. Cada cliente le delega la factura a Nexo desde ARCA. Se define con un contador (§33) | U+C |
-| **Mercado Pago** | El link de pago, probado con plata real (3 de noviembre) | Probar el QR del mostrador con plata real, y un pago con cuotas y otro con retenciones | U |
-| **Mercado Libre** | La conexión está hecha | Probarla con una cuenta real de vendedor | U |
-| **Tienda Nube** | La app se instala con un enlace ("Para tus clientes") | Publicarla en la tienda de apps de Tienda Nube (pasa por su revisión), para que cualquier tienda la encuentre | U |
-| **Entrar con Google** | Funciona | Revisar la pantalla de permisos (logo, nombre, enlaces a términos y privacidad) cuando estén los datos del titular | U |
+- [ ] **(U) El número real** (el chip) y la verificación del negocio ante
+  Meta, con los datos del titular. Hasta verificarlo, unas 250 conversaciones
+  iniciadas por día; verificado, sube por escalones.
+- Meta cobra los mensajes que inicia Nexo (recordatorios, el resumen del día),
+  con plantillas aprobadas; responder dentro de las 24 h es gratis.
+- [ ] **(C) Cupo de mensajes por plan.**
+- [ ] **(C) El asistente:** comparar períodos, varias preguntas en una y más
+  operaciones (cobrar una deuda, pagarle a un proveedor, ajustar stock, armar
+  un presupuesto).
 
-## 5. Cobrarles a los clientes
+## 6. Apps en las tiendas
 
-Es lo que más falta para vender.
+**Cambia una decisión de CLAUDE.md** (§31 y §39: app nativa, fuera de
+alcance). No se reescribe nada: se empaqueta la misma PWA, como §31 deja
+abierto.
 
-- [ ] **(C) Cobro automático de los planes con Mercado Pago** (suscripciones
-  mensuales). Hoy el negocio pide el plan desde Configuración → Plan, la
-  consulta cae en el CRM, y alguien corre `npm run plan` en el servidor (hist.
-  §98). Falta:
-  - el débito mensual;
-  - los 14 días de prueba que pasan solos a cobro;
-  - qué pasa si no paga: avisos, unos días de gracia y vuelta a Gratis. Lo
-    conectado queda en pausa y no se borra nada, como ya hace hist. §153;
-  - la página de "Tu plan", con las facturas de la suscripción.
-- [ ] **(U) Facturarle la suscripción a cada cliente:** Nexo tiene que estar
-  inscripto (el mismo monotributo o sociedad del punto de ARCA). Con eso, la
-  factura de la suscripción la puede emitir el propio Nexo.
+- [ ] **(U+C) Android:** TWA con PWABuilder o Bubblewrap, **USD 25** una vez.
+- [ ] **(U+C) Compu:** ya se instala desde Chrome o Edge; para la Microsoft
+  Store, PWABuilder (la cuenta individual sería gratis, a confirmar).
+- [ ] **(U+C) iOS:** **USD 99 por año** y una Mac (o compilar en la nube).
+  Apple rechaza "una web en una caja": hay que sumarle algo nativo
+  (notificaciones, cámara, abrir sin conexión). Después de los primeros
+  clientes que paguen.
 
-## 6. Legal
+## 7. Los planes y cómo se cobran
 
-Investigado en `docs/investigaciones/investigacion-login-legal.md`.
+- [ ] **(C) Cobro automático de los planes con Mercado Pago** (suscripción
+  mensual). Es lo que más falta para vender. Hoy el negocio pide el plan desde
+  Configuración → Plan, la consulta cae en el CRM y alguien corre `npm run
+  plan` en el servidor (hist. §98). Falta: el débito mensual, los 14 días de
+  prueba que pasan solos a cobro, qué pasa si no paga (avisos, días de gracia
+  y vuelta a Gratis, con lo conectado en pausa, como hist. §153) y la página
+  de "Tu plan" con las facturas de la suscripción.
+- [ ] **(U) Facturarle la suscripción a cada cliente,** con el mismo CUIT del
+  punto 4. Como monotributistas, la factura es C: a un cliente inscripto no le
+  sirve como crédito fiscal, y la competencia factura A más IVA. Tenerlo en
+  cuenta al comparar precios.
+- [ ] **(U) Revisar la estructura de los planes** (usuario, 17 de noviembre):
+  Praxia suma precio por cada sucursal y cada caja. Ideas para decidir:
+  - agregados que se pagan aparte: sucursal o caja extra, usuarios extra, un
+    paquete de IA o de WhatsApp, así el precio acompaña lo que cuesta cada
+    cliente;
+  - ajuste de precios cada tres meses, avisado, por la inflación (un plan
+    anual en pesos es riesgoso);
+  - Gratis con topes como puerta de entrada, y Pro como el plan de la IA.
 
-- [ ] **(U) Cargar los datos del titular** en `/etc/nexo/nexo.env`:
-  `NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL` y `NEXO_TITULAR_DOMICILIO`. Ya se
-  decidió que el titular es Santino. Sin esos datos, `/terminos` y
-  `/privacidad` dicen "a completar", y el servidor lo avisa en cada arranque.
-  Al cambiarlos, todas las cuentas aceptan de nuevo una vez.
-- [ ] **(U) Revisar los términos y la privacidad**, que son borradores. Lo
-  ideal es con un abogado.
-- [ ] **(U) Inscribir la base de datos en la AAIP** (Ley 25.326 de datos
-  personales). Se hace con clave fiscal y es gratis.
-- [ ] **(U) Monotributo o sociedad, con un contador:** destraba ARCA en
-  producción y la facturación de las suscripciones. Es el gasto fijo que hay
-  que decidir (está en el Análisis Financiero entregado, en `docs/`).
+## 8. Legal y administrativo
 
-## 7. Soporte y operación
+- [ ] **(U) Contador y monotributo** (o sociedad): destraba ARCA en
+  producción y facturar las suscripciones. **Los topes del monotributo**
+  (anuales, vigentes desde agosto de 2026, según ARCA): A $ 12.009.410, B
+  $ 17.595.183, C $ 24.670.494, D $ 30.628.651, E $ 36.028.231, F
+  $ 45.151.659, G $ 53.995.799, H $ 81.924.660, I $ 91.699.762, J
+  $ 105.012.519 y K $ 126.610.839. La A alcanza para unos 50 clientes de
+  Emprendedor; la K, para unos 500. La cuota mensual de cada categoría la da
+  el contador.
+- [ ] **(U) Los datos del titular** en `/etc/nexo/nexo.env`
+  (`NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL`, `NEXO_TITULAR_DOMICILIO`). Sin
+  ellos, `/terminos` y `/privacidad` dicen "a completar". Al cambiarlos, todas
+  las cuentas aceptan de nuevo una vez.
+- [ ] **(U) Un abogado** para los términos y la privacidad (hoy borradores),
+  que digan que cada negocio responde por sus datos fiscales.
+- [ ] **(U) Inscribir la base de datos en la AAIP** (Ley 25.326), gratis, con
+  clave fiscal.
+- [ ] **(U) La marca en el INPI** (clases 9 y 42). "Nexo" es un nombre muy
+  usado: **revisar pronto** si otra empresa de software la tiene, antes de
+  carteles y tiendas de apps.
+- [ ] **(U) El software en la DNDA** (derecho de autor, por TAD).
 
-- [ ] **(U) Un canal de soporte con horario,** el WhatsApp o el mail de Nexo.
-  "Avisar un problema" ya existe en la app.
-- [ ] **(U+C) Qué hacer si algo se rompe:** quién mira el aviso de caída, cómo
-  se vuelve a una versión anterior (`docs/proyecto/publicar.md`) y cómo se les avisa a
-  los clientes.
-- [ ] **(C) La reserva de negocios de ejemplo** en producción es de 4 por
-  tipo. Para un evento se sube con `NEXO_EJEMPLOS_RESERVA` (el comando está en
-  hist. §161).
+## 9. Dominio, mail y operación
 
----
+- [ ] **(U) Dominio propio** (`.com.ar` en NIC Argentina). Después,
+  `NEXO_URL_PUBLICA`, el Caddyfile y las direcciones en Mercado Pago, Mercado
+  Libre, Tienda Nube, Meta y Google.
+- [ ] **(U+C) Mail para aplicaciones** con el dominio (Postmark o Resend,
+  ~USD 15/mes, o el plan gratis de Brevo), con SPF y DKIM: que las facturas
+  lleguen y no caigan en spam. `backend/mail.js` ya manda por SMTP.
+- [ ] **(U) Aviso si el sitio se cae** (UptimeRobot o Better Stack).
+- [ ] **(C) Los errores, a la vista:** un resumen diario por mail, y que los
+  errores del navegador de los clientes también lleguen al servidor (o
+  Sentry, ~USD 26/mes).
+- [ ] **(C) Pruebas de punta a punta** de lo crítico (cobrar, facturar,
+  cerrar la caja) en el servidor de prueba antes de cada publicación, y un
+  chequeo nocturno de que los saldos den lo mismo que sus movimientos.
+- [ ] **(C) Una prueba de carga** antes de abrir la publicidad, y sacar el
+  `noindex` del Caddyfile.
+- [ ] **(U) Soporte:** un canal con horario (WhatsApp o mail) y videos cortos
+  de un minuto por tarea. "Avisar un problema" ya existe.
+- [ ] **(U) Acompañar a los primeros 3 a 5 clientes** de cerca: lo que pidan
+  ordena el resto de la lista.
+- [ ] **(C) Medir:** cuántos registrados llegan a la primera venta, cuántos
+  siguen al mes, cuántos pasan a un plan pago (en Plataforma).
 
-## En qué orden
+## 10. Costos y cuántos clientes hacen falta
 
-1. **Ya, sin gastar nada:** Pay As You Go, la mudanza a la Ampere A1, el aviso
-   de caídas, los datos del titular y la AAIP.
-2. **Antes del primer cliente que pague:** monotributo y contador. Eso destraba
-   ARCA en producción y facturar las suscripciones. Después, el cobro
-   automático con Mercado Pago, el dominio propio con el mail profesional, y
-   la IA paga.
-3. **Con clientes de verdad:** WhatsApp con el número real y verificado, la app
-   de Tienda Nube publicada, y paginar las listas. Postgres, más adelante.
+**Preliminar, por mes, solo infraestructura:**
+
+| Qué | Aprox./mes |
+|---|---|
+| Servidor (AWS São Paulo) | USD 15–20 |
+| Servidor de prueba | USD 5–10 |
+| Postgres administrado (RDS) | USD 25–30 |
+| Mail para aplicaciones | USD 0–15 |
+| IA paga | USD 5–20 |
+| Errores (Sentry) | USD 0–26 |
+| Litestream + Backblaze | centavos |
+| **Total** | **USD 70–120** |
+
+Más: contador (~$ 45.000/mes según el Informe Económico), la cuota del
+monotributo, el dominio (anual), el abogado (una vez), el INPI, Google Play
+(USD 25, una vez) y Apple (USD 99/año, más adelante).
+
+- [ ] **(U+C) Rehacer el Análisis Financiero** (`docs/classroom/Análisis
+  Financiero y Punto de Equilibrio — Nexo.pdf`) con estos costos. Base de
+  octubre: margen de ~$ 18.000 por cliente de Emprendedor ($ 19.900 menos la
+  comisión de Mercado Pago, 7,25 %); 5 clientes cubren servidor, dominio y
+  contador; 84 clientes pagan además el sueldo base de los dos (o 56 si el
+  promedio llega a $ 29.900 con parte en Pro).
+
+## 11. Las reglas de CLAUDE.md que cambiarían
+
+Anotadas sin tocarlas hasta que se decida escalar:
+
+- **El preámbulo:** "la única restricción real es de costo (evitar
+  dependencias pagas o infraestructura cara)".
+- **§34:** se sigue con SQLite hasta que haga falta Postgres.
+- **§31 y §39:** la app nativa en las tiendas, fuera de alcance.
+- **Stack técnico:** "dependencias de producción reales: `express` y
+  `@google/genai`" (Postgres suma `pg`).
+
+## 12. En qué orden
+
+1. **Al decidir escalar, sin depender de nada más:** Litestream, el repo
+   privado (con la deploy key primero), el aviso de caídas, lo básico de
+   seguridad (2FA, el servidor endurecido, `npm audit`), la AAIP y revisar la
+   marca en el INPI.
+2. **Para poder vender:** contador y monotributo, ARCA en producción, el cobro
+   automático de los planes, el servidor pago con su servidor de prueba, el
+   dominio con su mail y el abogado.
+3. **Con los primeros clientes:** integraciones que se recuperan solas, el
+   CAEA, la IA paga con cupos, WhatsApp con el número real, Android y la
+   Microsoft Store, y la migración a Postgres.
+4. **Después:** iOS, más integraciones y los planes con agregados.

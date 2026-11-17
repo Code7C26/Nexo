@@ -2070,12 +2070,21 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
 ## Qué sigue
 
+**Hasta la presentación se trabaja solo este plan** (decisión del usuario, 17
+de noviembre). **Escalar y vender** (servidor, base de datos, seguridad,
+contador, abogado, planes y cobro) está en `docs/proyecto/plan-para-vender.md`,
+en pausa hasta después de presentar: lo que aparezca de eso se anota ahí y no
+se ejecuta. Ver CLAUDE.md §40.
+
 **Plan hasta la presentación oficial (principios de diciembre), acordado con
-el usuario el 16 de noviembre.** Sale de su lista de mejoras después del
-simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el 20 de
-noviembre" de más abajo. El usuario pidió sí o sí para la oficial: sucursales,
-cierre de caja, facturar desde el punto de venta y el ticket impreso. El orden
-es mío (primero lo chico que se muestra, después la etapa grande):
+el usuario el 16 de noviembre y ampliado el 17.** Sale de su lista de mejoras
+después del simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el
+20 de noviembre" de más abajo. El usuario pidió sí o sí para la oficial:
+sucursales, cierre de caja, facturar desde el punto de venta y el ticket
+impreso. El 17 sumó **lo de Praxia que falta** ("son cosas básicas; si lo
+tienen ellos, ¿por qué no tenerlo nosotros?") y **los horarios de los
+empleados**; después de presentar se puede mejorar mucho más. El orden es mío
+(primero lo chico que se muestra, después la etapa grande):
 1. ~~**Facturar desde el punto de venta y el ticket impreso**~~ (hecho, hist.
    §184, y §188 con el alta rápida del cliente con CUIT para la A; falta
    probarlo con una impresora térmica): al cobrar, elegir
@@ -2089,15 +2098,37 @@ es mío (primero lo chico que se muestra, después la etapa grande):
 3. ~~**Mandar la factura por mail**, de a una o varias juntas~~ (hecho, hist.
    §186 y §187: desde el Gmail del negocio; falta el trámite con Google).
 4. **Sucursales, cajas y permisos, con el cierre del día y del mes** (detalle
-   en "Para más adelante", donde quedó la propuesta). Cambia el esquema: se
-   planifica y se explica la migración antes de tocarlo (§27, §34).
-5. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
+   en "Para más adelante", donde quedó la propuesta). Suma los **permisos por
+   sección** de Praxia: para ver o para editar, y por sucursal (un contador,
+   un socio, un encargado). Cambia el esquema: se planifica y se explica la
+   migración antes de tocarlo (§27, §34).
+5. **Horarios y fichaje de empleados** (de Praxia, pedido para la oficial el
+   17 de noviembre): horario planificado, entrada y salida reales, llegadas
+   tarde y horas, cruzado con los turnos de caja. El usuario lo sacó de §39
+   (solo los horarios; los sueldos siguen afuera). Va después del 4: se apoya
+   en las personas asignadas a cada sucursal.
+6. **Lo de Praxia que le falta al punto de venta**
+   (`docs/investigaciones/investigacion-praxia.md`, puntos 3 y 4): cobrar a
+   cuenta (el cliente paga su deuda sin llevarse nada, y sale el papel con el
+   saldo), gastos de caja (bolsas, flete, lo que sale del cajón), ventas del
+   día (reimprimir, y anular con motivo y la autorización del dueño), accesos
+   rápidos (una botonera con los productos de siempre) y el recargo por medio
+   de pago (crédito +10 %, sobre los medios de cobro de hist. §171).
+7. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
    desde Excel o CSV). Hoy la carga inicial (`dominios/carga-inicial.js`) es
    una grilla a mano y el CSV solo exporta.
-6. **Logo y colores del negocio:** en la factura, el ticket, el menú y la
+8. **Logo y colores del negocio:** en la factura, el ticket, el menú y la
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
-7. Si da: **el resumen del día** por WhatsApp o mail.
+9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de
+   WhatsApp armados por situación y "quiénes deben", con el recordatorio
+   listo; "Para revisar" en el Resumen (ventas sin CAE, faltantes de caja, "el
+   costo subió y los precios no"); gastos fijos que se repiten.
+10. Si da: **el resumen del día** por WhatsApp o mail, y **vender sin
+    conexión** (de Praxia; detalle en "Para más adelante": choca con §39 y
+    sin internet no hay CAE).
 Es mucho para dos o tres semanas: si no entra todo, se corta desde abajo.
+Después de presentar, revisar los planes con lo nuevo: Praxia suma precio por
+cada sucursal y cada caja (`plan-para-vender.md`, punto 7).
 Y en la presentación: completar la 33, recortar las capturas de la 14 a la 26
 para el tele y la captura del chat de WhatsApp de la 19.
 
@@ -2115,8 +2146,9 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   fichas y proponen las cargas, siempre con confirmación humana (§21, §36).
 - Asistente especialista en contabilidad, armado con la mamá de Joaquín
   (contadora): una respuesta mal le cuesta plata al negocio.
-- **Sucursales, cajas y permisos** (de Praxia, 16 de noviembre; la próxima
-  etapa grande, se planifica antes de tocar el esquema, §27). Hoy hay roles
+- **Detalle del punto 4: sucursales, cajas y permisos** (de Praxia, 16 de
+  noviembre; la etapa grande del plan, se planifica antes de tocar el esquema,
+  §27). Hoy hay roles
   admin/empleado por negocio, depósitos y cajas sueltos, y el empleado no está
   atado a nada. Propuesta: la **sucursal** junta su depósito, sus cajas y su
   punto de venta de ARCA; cada persona se asigna a una o más sucursales con un
@@ -2138,10 +2170,6 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   venta sin conexión sale sin factura o con CAEA, el CAE de contingencia).
   **Choca con §39** ("operación offline y sincronización diferida"): se saca
   de ahí con el equipo al arrancar. Hoy la PWA sin conexión solo lee (§31).
-- **Horarios y fichaje de empleados** (de Praxia): horario planificado,
-  entrada y salida reales, llegadas tarde y horas, cruzado con los turnos de
-  caja. **Choca con §39** ("gestión de empleados y sueldos"): son los
-  horarios, no los sueldos, pero se saca de §39 con el equipo al arrancar.
 - **Inversiones y amortizaciones** (idea del usuario, 16 de noviembre): lo que
   se compra para usar y no para vender (una heladera, la balanza, la compu)
   hoy entra como gasto entero en un mes y le hunde el resultado. Como bien de
@@ -2150,8 +2178,7 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   gestión, no la contabilidad formal de §39. A definir al arrancar: si también
   entra la plata invertida (plazo fijo, fondos) como una cuenta más de
   tesorería que rinde.
-- Avisos al celular (Web Push, §31), recargo por cuotas y acreditación
-  diferida (§30), puntos y premios, vender sin internet en el punto de venta.
+- Acreditación diferida de los cobros (§30).
 - **Hoy fuera de alcance en CLAUDE.md §39:** sueldos y RRHH, contabilidad con
   balances y Meta Ads. Están en la lista del usuario para el futuro; al
   arrancar alguno, se saca de §39 con el equipo (como pasó con producción).
