@@ -424,6 +424,8 @@ const PAGINAS = {
   balanza: { admin: true, modulo: "pos", alEntrar: () => invocar("pintar:balanza") },
   // Cómo pagan los clientes y a qué cuenta entra: dominios/medios-cobro.js (hist. §171).
   "medios-cobro": { admin: true, modulo: "pos", alEntrar: () => invocar("pintar:mediosCobro") },
+  // Cada local con su depósito, sus cajas y su gente: dominios/sucursales.js (hist. §193).
+  sucursales: { admin: true, alEntrar: () => invocar("pintar:sucursales") },
   comprobantes: { admin: true, form: formComprobantes, alEntrar: pintarComprobantes },
   // Factura electrónica con ARCA: dominios/factura-electronica.js (etapa E).
   "factura-electronica": { admin: true, alEntrar: () => invocar("pintar:factura-electronica") },

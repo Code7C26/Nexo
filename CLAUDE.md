@@ -875,6 +875,12 @@ Depósito A
 
 La transferencia debe generar movimientos de stock trazables.
 
+Implementado hoy: **sucursales** (hist. §193). Cada sucursal junta un
+depósito (uno por sucursal), sus cajas (`cuentas_tesoreria.sucursal_id`) y la
+gente que trabaja ahí (`usuario_sucursales`). La caja vende solo del depósito
+de su sucursal; lo que no hay ahí no se vende ahí, y el mostrador avisa en qué
+otra hay. Sin sucursales, todo sigue con el depósito predeterminado.
+
 ---
 
 # 20. REPORTES
@@ -1339,6 +1345,13 @@ tocar la A pide y confirma ahí mismo al cliente con CUIT y condición frente al
 IVA, que se busca por CUIT y, si no está, se crea (hist. §188, §189). La letra
 igual sale de las dos condiciones: la B se apaga para un inscripto. Queda para
 después: precio editable por renglón en el mostrador y venta sin conexión.
+**El turno, desde el mostrador** (hist. §194, §195, de Praxia): cobrar a cuenta
+(salda las deudas del cliente de la más vieja a la más nueva; cada cobro guarda
+su turno en `cobros.turno_caja_id`), gasto de caja, ventas del turno para
+reimprimir o anular (con motivo, solo con el turno abierto, y un empleado con
+la contraseña de un administrador) y accesos rápidos por caja. **Cierre de
+caja** del día y del mes (`#/cierre`): todas las cajas de todas las sucursales.
+Falta el recargo por medio de pago.
 
 ---
 
@@ -1693,7 +1706,30 @@ con el equipo:
   de verdad, costo desde los insumos y packaging que se descuenta al vender.
   Ver `handoff.md`. Lo industrial (planificación, mermas por lote) sigue
   afuera.
-- Gestión de empleados y sueldos.
+- Sueldos y liquidación (RRHH). ~~Gestión de empleados~~: **los horarios y
+  el fichaje de empleados salen de esta lista** (decisión del usuario del 17
+  de noviembre de 2026, de lo que tiene Praxia) y entran antes de la
+  presentación. Ver `handoff.md`.
 - Contabilidad de partida doble / libro mayor contable formal (Nexo lleva
   tesorería y cuentas corrientes, no reemplaza a un sistema contable).
 - Facturación internacional / multi-moneda.
+
+---
+
+# 40. ESCALAR Y VENDER (DESPUÉS DE LA PRESENTACIÓN)
+
+Decidido por el usuario el 17 de noviembre de 2026: hay dos etapas separadas.
+
+- **Hasta la presentación oficial** se trabaja solo el plan de `handoff.md`
+  ("Qué sigue"): funciones, la presentación y su contenido.
+- **Escalar y vender** (reforzar servidor, base de datos, seguridad e
+  integraciones; contador, monotributo, abogado, marca; cobrar los planes y
+  revisar su estructura) se analiza y se decide con el equipo **después de
+  presentar**. Vive en `docs/proyecto/plan-para-vender.md`. Nada de ahí se
+  arranca sin esa decisión: lo que aparezca mientras tanto se anota en ese
+  documento y no se ejecuta.
+
+Si se decide escalar, cambian reglas de este archivo que el documento lista
+en su punto 11 (el costo como única restricción del preámbulo, SQLite en §34,
+la app nativa en §31 y §39, las dependencias del stack): se actualizan al
+decidirlo, no antes.

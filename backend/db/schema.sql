@@ -190,6 +190,21 @@ CREATE TABLE IF NOT EXISTS depositos (
   UNIQUE (organizacion_id, nombre)
 );
 
+-- Sucursales (hist. §193): cada local del negocio, con su depósito y sus
+-- cajas. La caja (cuentas_tesoreria.sucursal_id) dice de qué sucursal es, y
+-- el punto de venta vende del depósito de la sucursal de la caja del turno:
+-- lo que no hay ahí no se vende ahí, aunque otra sucursal lo tenga. Un negocio
+-- sin sucursales sigue como siempre (el depósito predeterminado). Un depósito
+-- es de una sola sucursal; borrar la sucursal no toca su depósito ni sus cajas.
+CREATE TABLE IF NOT EXISTS sucursales (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  direccion TEXT,
+  deposito_id INTEGER NOT NULL UNIQUE REFERENCES depositos(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  UNIQUE (organizacion_id, nombre)
+);
+
 -- precio_costo no se edita a mano en ningún lado: lo escribe la compra al
 -- proveedor (costo promedio ponderado, ver POST /api/compras). Es un valor
 -- derivado de las operaciones, no un dato que alguien carga.
@@ -921,6 +936,12 @@ CREATE TABLE IF NOT EXISTS cuentas_tesoreria (
   tipo TEXT NOT NULL CHECK (tipo IN ('efectivo', 'banco', 'mercadopago', 'otro')),
   saldo_inicial REAL NOT NULL DEFAULT 0,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- De qué sucursal es la caja (hist. §193). Solo las de efectivo; NULL = de
+  -- ninguna, como antes de las sucursales.
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  -- Los accesos rápidos del mostrador de esta caja (hist. §195): JSON con las
+  -- claves "producto:variante" en orden. Los arma el cajero; NULL = ninguno.
+  accesos_rapidos TEXT,
   UNIQUE (organizacion_id, nombre)
 );
 
@@ -973,7 +994,10 @@ CREATE TABLE IF NOT EXISTS cobros (
   cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
   nota TEXT,
   medio_cobro_id INTEGER REFERENCES medios_cobro(id),
-  cuotas INTEGER
+  cuotas INTEGER,
+  -- El turno del mostrador en que entró (hist. §194): el de la venta, o el de
+  -- un cobro a cuenta de una deuda vieja. NULL en lo cobrado fuera de la caja.
+  turno_caja_id INTEGER REFERENCES turnos_caja(id)
 );
 
 CREATE TABLE IF NOT EXISTS pagos (
@@ -1483,6 +1507,15 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
   PRIMARY KEY (usuario_id, organizacion_id)
 );
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
+
+-- En qué sucursales trabaja cada persona (hist. §193). Sin ninguna, en todas,
+-- como antes. Con alguna, solo abre las cajas de esas sucursales.
+CREATE TABLE IF NOT EXISTS usuario_sucursales (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  sucursal_id INTEGER NOT NULL REFERENCES sucursales(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  PRIMARY KEY (usuario_id, sucursal_id)
+);
 
 -- Invitaciones a trabajar en un negocio (hist. §104,
 -- docs/investigaciones/investigacion-login-legal.md §5): el admin ya no crea empleados con

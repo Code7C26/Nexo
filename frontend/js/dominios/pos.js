@@ -6,7 +6,7 @@
  * venta común con sus cobros, colgada del turno abierto de la caja.
  */
 
-import { camposFicha, cantidad, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
+import { camposFicha, cantidad, esAdmin, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
 import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -25,7 +25,7 @@ import {
   opcionesSelect
 } from "../core/fiscal.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
-import { armarHojaFactura, cargarQr, imprimirComprobante, imprimirTicketDeVenta } from "../core/comprobante.js";
+import { armarHojaFactura, armarReciboPago, cargarQr, imprimirComprobante, imprimirTicket, imprimirTicketDeVenta } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
@@ -53,6 +53,9 @@ let cajas = []; // las de tipo efectivo: un turno es de una de ellas
 let medios = [];
 let cajaId = null;
 let turno = null; // resumen del turno abierto de la caja elegida
+// Los accesos rápidos de la caja (hist. §195): claves del catálogo, en orden.
+let accesos = [];
+let armando = false;
 let catalogo = [];
 let porClave = new Map();
 // Las ofertas del negocio (hist. §133): el precio de cada renglón es el de la
@@ -95,7 +98,12 @@ const porUnidad = (item) => (pideCantidad(item) ? `/ ${item.unidad}` : "c/u");
 const sinStock = (item) =>
   item.stock > 0
     ? `No hay más stock de "${item.nombre}" (disponible: ${cantidad(item.stock, item.unidad)}).`
-    : `No hay stock de "${item.nombre}".`;
+    : `No hay stock de "${item.nombre}"${dondeHay(item)}.`;
+// En qué otras sucursales hay, para mandar al cliente (hist. §193).
+const dondeHay = (item) =>
+  item.en_otras?.length
+    ? `: hay en ${item.en_otras.map((o) => `${o.sucursal} (${cantidad(o.cantidad, item.unidad)})`).join(", ")}`
+    : "";
 const claveDe = (item) => `${item.producto_id}:${item.variante_id ?? ""}`;
 const normalizar = (s) =>
   String(s ?? "")
@@ -156,18 +164,17 @@ function enfocarBusqueda() {
 /* ---------- Carga y estados de la pantalla ---------- */
 
 async function cargarTodo() {
-  const [abiertos, tesoreria, items, listaClientes] = await Promise.all([
+  const [abiertos, tesoreria, listaClientes] = await Promise.all([
     api("/api/turnos-caja?estado=abierto", { error: "No se pudo consultar la caja." }),
     api("/api/tesoreria", { error: "No se pudieron cargar las cuentas de tesorería." }),
-    api("/api/pos/catalogo", { error: "No se pudo cargar el catálogo." }),
     api("/api/clientes", { error: "No se pudieron cargar los clientes." }),
     consumosPos.cargar(),
     api("/api/ofertas", { error: "No se pudieron cargar las ofertas." }).then((lista) => (ofertas = lista)),
     api("/api/medios-cobro?activos=1", { error: "No se pudieron cargar los medios de cobro." }).then((lista) => (medios = lista))
   ]);
   cuentas = tesoreria.cuentas;
-  cajas = cuentas.filter((c) => c.tipo === "efectivo");
-  fijarCatalogo(items);
+  // Solo las cajas de las sucursales donde trabaja esta persona (hist. §193).
+  cajas = cuentas.filter((c) => c.tipo === "efectivo" && c.habilitada !== false);
   fijarClientes(listaClientes);
 
   // La caja se recuerda por dispositivo: la PC del mostrador opera siempre la
@@ -178,6 +185,16 @@ async function cargarTodo() {
     ? recordada
     : (abiertos.find((t) => ids.includes(t.cuenta_tesoreria_id))?.cuenta_tesoreria_id ?? ids[0] ?? null);
   turno = abiertos.find((t) => t.cuenta_tesoreria_id === cajaId) ?? null;
+  try {
+    accesos = JSON.parse(cuentas.find((c) => c.id === cajaId)?.accesos_rapidos ?? "[]");
+  } catch {
+    accesos = [];
+  }
+  armando = false;
+  // El stock es el del depósito de la sucursal de la caja.
+  fijarCatalogo(
+    cajaId ? await api(`/api/pos/catalogo?caja=${cajaId}`, { error: "No se pudo cargar el catálogo." }) : []
+  );
   if (turno) leerCarrito();
   else carrito = [];
   render();
@@ -212,7 +229,7 @@ function render() {
   const elegir = document.getElementById("posElegirCaja");
   elegir.hidden = cajas.length < 2;
   document.getElementById("posCaja").innerHTML = cajas
-    .map((c) => `<option value="${c.id}" ${c.id === cajaId ? "selected" : ""}>${esc(c.nombre)}</option>`)
+    .map((c) => `<option value="${c.id}" ${c.id === cajaId ? "selected" : ""}>${esc(c.nombre)}${c.sucursal ? ` · ${esc(c.sucursal)}` : ""}</option>`)
     .join("");
 
   posApertura.hidden = !cajaId || !!turno;
@@ -315,7 +332,7 @@ async function cargarCierres() {
 /* ---------- Mostrador ---------- */
 
 function renderTurno() {
-  document.getElementById("posTurnoCaja").textContent = turno.cuenta;
+  document.getElementById("posTurnoCaja").textContent = turno.sucursal ? `${turno.cuenta} · ${turno.sucursal}` : turno.cuenta;
   document.getElementById("posTurnoMeta").textContent =
     `Desde ${fechaHoraAR(turno.abierto_en)} · ${turno.abierto_por_nombre}`;
   document.getElementById("posTurnoVentas").textContent = numero(turno.ventas.cantidad);
@@ -339,6 +356,7 @@ function filtrar(consulta) {
 const cantidadEnCarrito = (clave) => carrito.find((r) => r.clave === clave)?.cantidad ?? 0;
 
 function renderCatalogo() {
+  renderAccesos();
   const consulta = posBuscar.value.trim();
   // Lo que se puede vender primero; el orden alfabético del backend se
   // mantiene dentro de cada grupo (sort es estable).
@@ -359,10 +377,20 @@ function renderCatalogo() {
     .slice(0, MAX_RESULTADOS)
     .map((i) => {
       const enCarrito = cantidadEnCarrito(i.clave);
+      // Lo que no hay acá no se vende acá, pero se avisa dónde hay (hist. §193).
+      const enOtra = i.en_otras?.[0];
       const stock =
-        i.stock === null ? "Servicio" : i.stock > 0 ? `${cantidad(redondearCantidad(i.stock - enCarrito), i.unidad)} disp.` : "Sin stock";
+        i.stock === null
+          ? "Servicio"
+          : i.stock > 0
+            ? `${cantidad(redondearCantidad(i.stock - enCarrito), i.unidad)} disp.`
+            : enOtra
+              ? `Sin stock · hay en ${enOtra.sucursal}${i.en_otras.length > 1 ? ` y ${i.en_otras.length - 1} más` : ""}`
+              : "Sin stock";
+      // Armando los accesos rápidos se puede marcar cualquiera, con stock o sin.
+      const clases = armando && accesos.includes(i.clave) ? "pos-item es-acceso" : "pos-item";
       return `
-        <button type="button" class="pos-item" data-clave="${esc(i.clave)}" ${hayStock(i) ? "" : "disabled"}>
+        <button type="button" class="${clases}" data-clave="${esc(i.clave)}" ${hayStock(i) || armando ? "" : "disabled"}>
           <span class="pos-item-nombre">${esc(i.nombre)}</span>
           <span class="pos-item-meta">${esc([i.sku, i.categoria].filter(Boolean).join(" · "))}</span>
           <span class="pos-item-pie">
@@ -379,7 +407,61 @@ function renderCatalogo() {
 // de la búsqueda, y atar uno por botón en cada dibujo no suma nada.
 posItems.addEventListener("click", (e) => {
   const boton = e.target.closest(".pos-item");
-  if (boton && !boton.disabled) agregar(boton.dataset.clave);
+  if (!boton || boton.disabled) return;
+  if (armando) alternarAcceso(boton.dataset.clave);
+  else agregar(boton.dataset.clave);
+});
+
+/* ---------- Accesos rápidos (hist. §195) ---------- */
+
+// La botonera de los productos de siempre de esta caja, arriba del catálogo.
+// La arma el cajero: "Armar" pasa la grilla a modo de marcar, y "Listo" la
+// guarda en la caja. Un acceso a un producto que ya no está, no se muestra.
+const posAccesos = document.getElementById("posAccesos");
+
+function renderAccesos() {
+  const items = accesos.map((clave) => porClave.get(clave)).filter(Boolean);
+  const botones = items.map(
+    (i) => `
+      <button type="button" class="pos-acceso" data-acceso="${esc(i.clave)}" ${hayStock(i) ? "" : "disabled"}>
+        <span>${esc(i.nombre)}</span><small class="mono">${money(i.precio)}</small>
+      </button>`
+  );
+  const armar = armando
+    ? ""
+    : `<button type="button" class="pos-acceso pos-acceso-armar" data-armar>${items.length ? "Cambiar los accesos" : "Armar accesos rápidos"}</button>`;
+  posAccesos.innerHTML = botones.join("") + armar;
+  document.getElementById("posArmando").hidden = !armando;
+}
+
+function alternarAcceso(clave) {
+  accesos = accesos.includes(clave) ? accesos.filter((c) => c !== clave) : [...accesos, clave];
+  renderAccesos();
+  renderCatalogo();
+}
+
+posAccesos.addEventListener("click", (e) => {
+  const acceso = e.target.closest("[data-acceso]");
+  if (acceso && !acceso.disabled && !armando) agregar(acceso.dataset.acceso);
+  if (e.target.closest("[data-armar]")) {
+    armando = true;
+    posBuscar.value = "";
+    renderAccesos();
+    renderCatalogo();
+  }
+});
+
+document.getElementById("btnPosArmadoListo").addEventListener("click", async (e) => {
+  const { claves } = await enviando(e.currentTarget, () =>
+    api(`/api/cajas/${cajaId}/accesos`, { method: "PUT", body: { claves: accesos }, error: "No se pudieron guardar los accesos rápidos." })
+  );
+  accesos = claves;
+  const caja = cuentas.find((c) => c.id === cajaId);
+  if (caja) caja.accesos_rapidos = JSON.stringify(claves);
+  armando = false;
+  renderAccesos();
+  renderCatalogo();
+  avisar(claves.length ? "Accesos rápidos guardados en esta caja." : "Sin accesos rápidos en esta caja.", "ok");
 });
 
 posBuscar.addEventListener("input", renderCatalogo);
@@ -1846,6 +1928,214 @@ document.addEventListener("keydown", (e) => {
   // búsqueda en vez de perderse. El espacio queda para los botones.
   const enCampo = e.target.closest?.("input, select, textarea");
   if (!enCampo && e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey) posBuscar.focus();
+});
+
+/* ---------- Lo de Praxia: el turno, cobrar a cuenta y gastos (hist. §194) ---------- */
+
+const modalPosTurno = document.getElementById("modalPosTurno");
+const modalPosACuenta = document.getElementById("modalPosACuenta");
+const modalPosGasto = document.getElementById("modalPosGasto");
+const formAnular = document.getElementById("formPosAnular");
+const formACuenta = document.getElementById("formPosACuenta");
+const formGasto = document.getElementById("formPosGasto");
+let detalleTurno = null;
+let anulando = null;
+
+// Las tres ventanas se cierran igual que las otras del mostrador.
+for (const [modal, boton] of [
+  [modalPosTurno, "modalPosTurnoClose"],
+  [modalPosACuenta, "modalPosACuentaClose"],
+  [modalPosGasto, "modalPosGastoClose"]
+]) {
+  document.getElementById(boton).addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+}
+
+// Después de cobrar, gastar o anular: las cifras del turno al día.
+async function refrescarTurno() {
+  turno = await api(`/api/turnos-caja/${turno.id}`, { error: "No se pudo leer el turno." });
+  renderTurno();
+  refrescar([recargar("caja")]);
+}
+
+const horaDe = (utc) => (utc ? fechaHoraAR(utc).split(" ")[1] : "");
+
+function notaDeVenta(v) {
+  if (v.estado === "anulada") return "Anulada";
+  if (v.facturada) return "Con factura";
+  return v.cobrado < v.total - CENTAVO ? `Debe ${money(v.total - v.cobrado)}` : "";
+}
+
+async function pintarDetalleTurno() {
+  detalleTurno = await api(`/api/turnos-caja/${turno.id}/detalle`, { error: "No se pudo cargar el turno." });
+  const { ventas, a_cuenta: aCuenta, gastos, total_gastos: totalGastos } = detalleTurno;
+  const filaVenta = (v) => {
+    const anulada = v.estado === "anulada";
+    const quien = v.cliente === CONSUMIDOR_FINAL ? "" : ` · ${esc(v.cliente)}`;
+    return `
+      <li class="${anulada ? "fila-anulada" : ""}">
+        <span class="pos-turno-quien">Venta #${v.id}${quien}<small>${esc([horaDe(v.creada), notaDeVenta(v)].filter(Boolean).join(" · "))}</small></span>
+        <strong class="mono">${money(v.total)}</strong>
+        <button type="button" class="btn btn-secundario btn-chico" data-reimprimir="${v.id}">Reimprimir</button>
+        ${anulada || v.facturada ? "" : `<button type="button" class="btn btn-secundario btn-chico" data-anular="${v.id}">Anular</button>`}
+      </li>`;
+  };
+  const filaACuenta = (c) =>
+    `<li><span class="pos-turno-quien">${esc(c.cliente)}<small>${esc(c.medio)}</small></span><strong class="mono">${money(c.importe)}</strong></li>`;
+  const filaGasto = (g) =>
+    `<li><span class="pos-turno-quien">${esc(g.descripcion ?? g.categoria)}<small>${esc(g.categoria)}</small></span><strong class="mono">${money(g.importe)}</strong></li>`;
+  document.getElementById("posTurnoDetalle").innerHTML = `
+    ${ventas.length ? `<ul class="pos-turno-lista">${ventas.map(filaVenta).join("")}</ul>` : `<p class="form-note">Todavía no hay ventas en este turno.</p>`}
+    ${aCuenta.length ? `<p class="pos-cierre-subtitulo">Cobros a cuenta</p><ul class="pos-turno-lista">${aCuenta.map(filaACuenta).join("")}</ul>` : ""}
+    ${gastos.length ? `<p class="pos-cierre-subtitulo">Gastos de la caja: ${money(totalGastos)}</p><ul class="pos-turno-lista">${gastos.map(filaGasto).join("")}</ul>` : ""}`;
+}
+
+document.getElementById("btnPosTurnoDetalle").addEventListener("click", async () => {
+  formAnular.hidden = true;
+  await pintarDetalleTurno();
+  modalPosTurno.hidden = false;
+});
+
+document.getElementById("posTurnoDetalle").addEventListener("click", (e) => {
+  const reimprimir = e.target.closest("[data-reimprimir]");
+  const anular = e.target.closest("[data-anular]");
+  if (reimprimir) enviando(reimprimir, () => imprimirTicketDeVenta(Number(reimprimir.dataset.reimprimir)));
+  if (anular) {
+    anulando = detalleTurno.ventas.find((v) => v.id === Number(anular.dataset.anular));
+    formAnular.reset();
+    document.getElementById("posAnularTitulo").textContent = `Anular la venta #${anulando.id} (${money(anulando.total)})`;
+    document.getElementById("posAnularNota").textContent =
+      anulando.cobrado > CENTAVO
+        ? `Vuelve el stock y sale de la caja lo cobrado: ${money(anulando.cobrado)}. Devolvéselo al cliente.`
+        : "Vuelve el stock y la venta queda en la papelera.";
+    document.getElementById("posAnularAutoriza").hidden = esAdmin();
+    formAnular.hidden = false;
+    formAnular.motivo.focus();
+  }
+});
+
+document.getElementById("btnPosAnularCancelar").addEventListener("click", () => {
+  formAnular.hidden = true;
+});
+
+formAnular.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = { motivo: formAnular.motivo.value.trim() };
+  if (!body.motivo) {
+    avisar("Escribí por qué se anula.", "atencion");
+    return;
+  }
+  if (!esAdmin()) {
+    body.autoriza_email = formAnular.autoriza_email.value.trim();
+    body.autoriza_password = formAnular.autoriza_password.value;
+  }
+  const r = await enviando(document.getElementById("formPosAnularSubmit"), () =>
+    api(`/api/pos/ventas/${anulando.id}/anular`, { method: "POST", body, error: "No se pudo anular la venta." })
+  );
+  formAnular.hidden = true;
+  avisar(r.devuelto > CENTAVO ? `Venta #${anulando.id} anulada: devolvé ${money(r.devuelto)}.` : `Venta #${anulando.id} anulada.`, "ok");
+  await Promise.all([pintarDetalleTurno(), refrescarTurno()]);
+  // Volvió el stock: el catálogo, de nuevo.
+  fijarCatalogo(await api(`/api/pos/catalogo?caja=${cajaId}`, { error: "No se pudo cargar el catálogo." }));
+  renderCatalogo();
+});
+
+/* --- Cobrar a cuenta --- */
+
+const clienteACuenta = () => clientes.find((c) => c.nombre === formACuenta.cliente.value.trim());
+
+function pintarDeudaACuenta() {
+  const cliente = clienteACuenta();
+  let texto = "";
+  if (cliente) texto = cliente.deuda > CENTAVO ? `Debe ${money(cliente.deuda)}.` : `${cliente.nombre} no debe nada.`;
+  document.getElementById("posACuentaDeuda").textContent = texto;
+  if (cliente?.deuda > CENTAVO && !formACuenta.importe.value) formACuenta.importe.value = String(redondear(cliente.deuda));
+}
+
+document.getElementById("btnPosACuenta").addEventListener("click", async () => {
+  // La deuda de cada uno, al día: pudo haber cobros desde otra pantalla.
+  fijarClientes(await api("/api/clientes", { error: "No se pudieron cargar los clientes." }));
+  document.getElementById("posClientesDeuda").innerHTML = clientes
+    .filter((c) => c.deuda > CENTAVO)
+    .map((c) => `<option value="${esc(c.nombre)}">${esc(money(c.deuda))}</option>`)
+    .join("");
+  formACuenta.reset();
+  formACuenta.imprimir.checked = true;
+  formACuenta.medio.innerHTML = medios.map((m) => `<option value="${m.id}">${esc(m.nombre)}</option>`).join("");
+  pintarDeudaACuenta();
+  modalPosACuenta.hidden = false;
+  formACuenta.cliente.focus();
+});
+
+formACuenta.cliente.addEventListener("input", pintarDeudaACuenta);
+formACuenta.cliente.addEventListener("change", pintarDeudaACuenta);
+
+formACuenta.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cliente = clienteACuenta();
+  const importe = Number(formACuenta.importe.value);
+  if (!cliente) {
+    avisar("Elegí el cliente de la lista.", "atencion");
+    return;
+  }
+  if (!(importe > 0)) {
+    avisar("Cargá cuánto paga.", "atencion");
+    return;
+  }
+  const medio = medios.find((m) => m.id === Number(formACuenta.medio.value));
+  const cobro = medio ? { medio_cobro_id: medio.id, importe } : { cuenta_tesoreria_id: turno.cuenta_tesoreria_id, importe };
+  const r = await enviando(document.getElementById("formPosACuentaSubmit"), () =>
+    api("/api/pos/cobro-a-cuenta", {
+      method: "POST",
+      body: { turno_caja_id: turno.id, cliente_id: cliente.id, cobros: [cobro] },
+      error: "No se pudo cobrar."
+    })
+  );
+  modalPosACuenta.hidden = true;
+  avisar(
+    r.saldo > CENTAVO ? `${r.cliente} pagó ${money(r.pagado)}: le quedan ${money(r.saldo)}.` : `${r.cliente} pagó ${money(r.pagado)}: quedó al día.`,
+    "ok"
+  );
+  if (formACuenta.imprimir.checked) {
+    imprimirTicket(armarReciboPago({ cliente: r.cliente, pagado: r.pagado, saldo: r.saldo, medio: medio?.nombre }));
+  }
+  await refrescarTurno();
+});
+
+/* --- Gasto de caja --- */
+
+document.getElementById("btnPosGasto").addEventListener("click", async () => {
+  formGasto.reset();
+  const detalle = await api(`/api/turnos-caja/${turno.id}/detalle`, { error: "No se pudo cargar el turno." });
+  const n = detalle.gastos.length;
+  document.getElementById("posGastoTotal").textContent = n
+    ? `En este turno ya salieron ${money(detalle.total_gastos)} en ${numero(n)} ${n === 1 ? "gasto" : "gastos"}.`
+    : "";
+  modalPosGasto.hidden = false;
+  formGasto.descripcion.focus();
+});
+
+formGasto.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const descripcion = formGasto.descripcion.value.trim();
+  const importe = Number(formGasto.importe.value);
+  if (!descripcion || !(importe > 0)) {
+    avisar("Cargá en qué se gastó y cuánto.", "atencion");
+    return;
+  }
+  await enviando(document.getElementById("formPosGastoSubmit"), () =>
+    api("/api/pos/gastos", {
+      method: "POST",
+      body: { turno_caja_id: turno.id, descripcion, importe },
+      error: "No se pudo anotar el gasto."
+    })
+  );
+  modalPosGasto.hidden = true;
+  avisar(`Gasto anotado: ${money(importe)} salieron de la caja.`, "ok");
+  refrescar([recargar("gastos")]);
+  await refrescarTurno();
 });
 
 // Se carga al entrar en la vista (ver mostrarVista en core/router.js).

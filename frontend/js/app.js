@@ -87,6 +87,8 @@ import "./dominios/plataforma.js";
 import "./dominios/problema.js";
 import "./dominios/balanza.js";
 import "./dominios/medios-cobro.js";
+import "./dominios/sucursales.js";
+import "./dominios/cierre.js";
 import "./dominios/ofertas.js";
 import "./dominios/venta-online.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeConsulta, respuestaDeNavegar } from "./dominios/ayuda.js";

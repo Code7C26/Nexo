@@ -390,6 +390,47 @@ const SECCIONES_ES = [
     ver: ["punto-de-venta", "mercado-pago", "caja"]
   },
   {
+    id: "turno-mostrador",
+    grupo: "Vender",
+    titulo: "Durante el turno: cobrar a cuenta, gastos de caja y anular",
+    pantalla: ["#/pos", "Punto de venta"],
+    modulo: "pos",
+    preguntas: ["cómo cobro una deuda en el mostrador", "un cliente viene a pagar lo que debe", "cómo anoto que saqué plata de la caja", "cómo anulo una venta del mostrador", "cómo reimprimo un ticket", "cómo armo los accesos rápidos"],
+    palabras: ["cuenta", "deuda", "fiado", "gasto", "caja", "bolsas", "anular", "reimprimir", "ticket", "accesos", "rapidos", "botonera", "turno"],
+    bloques: [
+      "Con la caja abierta, arriba del mostrador tenés todo lo que pasa en el turno, sin salir de la pantalla.",
+      { pasos: [
+        "**Cobrar a cuenta**: el cliente paga su deuda sin llevarse nada. Elegilo, poné cuánto paga y cómo: se salda primero lo más viejo, y sale un papel con lo que le queda.",
+        "**Gasto de caja**: lo que sale del cajón (bolsas, flete, un arreglo). Se descuenta de lo que tiene que haber en la caja y queda en Gastos.",
+        "**Ventas del turno**: cada venta del turno, para reimprimir el ticket o anularla con el motivo. Lo cobrado vuelve del cajón y el stock vuelve al depósito.",
+        "**Accesos rápidos**: tocá **Armar accesos rápidos**, marcá los productos de siempre y tocá **Listo**. Quedan guardados en esa caja."
+      ] },
+      { nota: "Un empleado anula solo con el mail y la contraseña de un administrador, ahí mismo. Una venta de un turno ya cerrado, o con factura, se devuelve desde Ventas." }
+    ],
+    ver: ["punto-de-venta", "sucursales", "caja"]
+  },
+  {
+    id: "sucursales",
+    grupo: "Vender",
+    titulo: "Sucursales y el cierre del día",
+    pantalla: ["#/configuracion/sucursales", "Configuración › Sucursales"],
+    admin: true,
+    preguntas: ["cómo agrego otro local", "tengo dos sucursales", "cómo veo el cierre de caja del día", "cuánto vendieron todas las cajas", "cómo hago que una caja venda de su depósito", "cómo veo el cierre del mes"],
+    palabras: ["sucursal", "sucursales", "local", "locales", "cierre", "dia", "mes", "cajas", "deposito", "arqueo", "diferencias"],
+    bloques: [
+      "Si tenés más de un local, cada sucursal junta su depósito, sus cajas y la gente que trabaja ahí.",
+      { pasos: [
+        "Entrá a **Configuración › Sucursales** y tocá **Sumar una sucursal**.",
+        "Poné el nombre y elegí su depósito: uno que ya tenés o uno nuevo con el nombre de la sucursal.",
+        "Marcá sus cajas (o creá una nueva) y quiénes trabajan ahí. Quien tiene sucursales solo abre esas cajas.",
+        "Tocá **Agregar sucursal**."
+      ] },
+      "Cada caja vende solo lo que hay en el depósito de su sucursal. Si un producto no está, el mostrador avisa en qué otra sucursal hay, para mandar al cliente.",
+      "El **Cierre de caja** (desde **Caja** o el punto de venta) suma todas las cajas de todas las sucursales: lo vendido, cómo te pagaron, lo que salió del cajón, las diferencias y lo vendido fuera de las cajas. **Del mes** lo muestra además día por día."
+    ],
+    ver: ["punto-de-venta", "turno-mostrador", "caja"]
+  },
+  {
     id: "mercado-pago",
     grupo: "Vender",
     titulo: "Cobrar con Mercado Pago",
