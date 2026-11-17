@@ -10648,3 +10648,35 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 }
 .pos-armando p { flex: 1; margin: 0; font-size: var(--txt-sm); }
 .pos-item.es-acceso { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Horarios y fichaje (hist. §196). */
+[data-view="horarios"] > .panel + .panel { margin-top: var(--sp-4); }
+.fichar-estado { margin: 0 0 var(--sp-1); font-size: var(--txt-lg); font-weight: 600; }
+.fichar .btn { margin: var(--sp-3) 0; }
+.fichar-hoy, .horarios-personas { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.fichar-hoy li { color: var(--ink-muted); font-size: var(--txt-sm); }
+.horarios-personas li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.horarios-personas .horario-quien { flex: 1 1 14rem; min-width: 0; }
+.horarios-personas small { display: block; color: var(--ink-muted); }
+.horario-dias { display: grid; gap: var(--sp-2); }
+.horario-dia { display: grid; grid-template-columns: 6.5rem repeat(4, minmax(0, 1fr)); gap: var(--sp-2); align-items: center; }
+.horario-dia input { min-width: 0; }
+.informe-persona { border-top: 1px solid var(--line); padding: var(--sp-3) 0; }
+.informe-persona summary { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); cursor: pointer; }
+.informe-persona summary strong { flex: 1 1 10rem; }
+.informe-dia { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); padding: var(--sp-2) 0 0 var(--sp-3); font-size: var(--txt-sm); }
+.informe-dia .ledger-warn { font-weight: 600; }
+.informe-corregir { display: inline-flex; gap: var(--sp-2); align-items: center; }
+.informe-corregir input { width: 6.5rem; }
+@media (max-width: 860px) {
+  .horario-dia { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .horario-dia > span { grid-column: 1 / -1; font-weight: 600; }
+}

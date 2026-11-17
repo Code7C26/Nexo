@@ -14644,3 +14644,33 @@ Punto 6 del plan (lo de Praxia en el mostrador), salvo el recargo por medio.
   día", en castellano y en inglés.
 - 446 tests, lint e i18n en verde.
 
+## §196 — 17 de noviembre de 2026: horarios y fichaje de empleados
+
+Punto 5 del plan (pedido por el usuario para la oficial; los horarios salen de
+CLAUDE.md §39, los sueldos siguen afuera).
+
+- **Esquema (aditivo):** `horarios` (por persona y negocio, día de la semana
+  0 = lunes, desde y hasta en la hora del negocio, varias franjas por día, sin
+  cruzar la medianoche) y `fichajes` (entrada y salida en UTC, una sola
+  abierta por persona y negocio con un índice único parcial, `corregido_por`).
+- **Rutas:** `GET /api/fichajes/mio`, `POST /api/fichajes` (entrada) y
+  `POST /api/fichajes/salida` para los dos roles; `PATCH /api/fichajes/:id`
+  (corregir la hora, en el mismo día de la entrada), `GET /api/horarios`,
+  `PUT /api/horarios/:usuarioId` (reemplaza el horario entero; franjas que se
+  pisan, no) y `GET /api/fichajes/informe?desde&hasta` (hasta 62 días), del
+  admin. Auditoría con entidad `usuario` y `operacion_tipo` fichaje u horario.
+- **Informe:** por persona y día, lo planificado contra lo fichado. Llegada
+  tarde: cada franja contra el primer fichaje que cae en ella, con 5 minutos de
+  tolerancia (con horario cortado, entrar 15:38 para la de las 16 no es tarde
+  para la de las 9). Falta: tenía horario, el día ya empezó y no fichó. Suma los
+  turnos de caja que abrió. `fecha.js` suma `horaLocalDe` y `utcDeLocal`.
+- **Pantalla Horarios** (`#/horarios`, `dominios/horarios.js`, en
+  Administración): "Tu turno de hoy" con el botón de fichar para todos; para el
+  admin, "Quién vino y cuánto trabajó" (hoy, semana, mes, con Corregir) y "Los
+  horarios de cada uno" (dos franjas por día). Manual: sección "Horarios y
+  fichaje".
+- Probado: `test/fichajes.test.js` y en el navegador. 449 tests.
+- **Queda:** fichar desde el celular con la ubicación o un código en el local
+  (hoy cualquiera ficha desde donde esté), el horario por sucursal, y avisar
+  al admin cuando alguien no llegó.
+

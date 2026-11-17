@@ -186,6 +186,9 @@
              y Configuración se le ocultan una por una en styles.css. -->
         <div class="nav-seccion">
           <p class="nav-grupo">Administración</p>
+          <a href="#" class="nav-item" data-view="horarios">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Horarios
+          </a>
           <a href="#" class="nav-item" data-view="papelera">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trash-2"></use></svg> Papelera
           </a>
@@ -3495,6 +3498,47 @@
             <tbody id="cierreDiasBody"></tbody>
           </table>
           </div>
+        </section>
+      </section>
+
+      <!-- Horarios y fichaje (hist. §196): dominios/horarios.js. Fichar es de
+           todos; el informe y los horarios, del admin. -->
+      <section class="view" data-view="horarios" hidden>
+        <section class="panel fichar" aria-labelledby="ficharTitulo">
+          <div class="panel-head"><h2 id="ficharTitulo">Tu turno de hoy</h2></div>
+          <p class="fichar-estado" id="ficharEstado"></p>
+          <p class="nota-plana" id="ficharHorario"></p>
+          <button type="button" class="btn btn-primary" id="btnFichar"></button>
+          <ul class="fichar-hoy" id="ficharHoy"></ul>
+        </section>
+
+        <section class="panel col-admin" aria-labelledby="informeHorariosTitulo">
+          <div class="panel-head">
+            <h2 id="informeHorariosTitulo">Quién vino y cuánto trabajó</h2>
+            <div class="segmentos" role="group" aria-label="Período" id="horariosPeriodo">
+              <button type="button" class="segmento" data-periodo="hoy" aria-pressed="true">Hoy</button>
+              <button type="button" class="segmento" data-periodo="semana" aria-pressed="false">Esta semana</button>
+              <button type="button" class="segmento" data-periodo="mes" aria-pressed="false">Este mes</button>
+            </div>
+          </div>
+          <p class="nota-plana" id="informeHorariosNota"></p>
+          <div id="informeHorarios"></div>
+        </section>
+
+        <section class="panel col-admin" aria-labelledby="horariosTitulo">
+          <div class="panel-head"><h2 id="horariosTitulo">Los horarios de cada uno</h2></div>
+          <p class="nota-plana">El horario de cada persona por día de la semana. Con horario cortado, cargá las dos franjas. Llegar hasta 5 minutos después no cuenta como tarde.</p>
+          <ul class="horarios-personas" id="horariosPersonas"></ul>
+          <form id="formHorario" class="form config-tarjeta" novalidate hidden>
+            <div class="config-tarjeta-cuerpo">
+              <p class="config-tarjeta-titulo" id="horarioFormTitulo"></p>
+              <div class="horario-dias" id="horarioDias"></div>
+            </div>
+            <div class="config-tarjeta-pie">
+              <button type="button" class="btn btn-secundario" id="btnHorarioCancelar">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="formHorarioSubmit">Guardar horario</button>
+            </div>
+          </form>
         </section>
       </section>
 

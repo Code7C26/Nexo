@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §195);
+    siguiente número (hoy el último es §196);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,13 @@
 
 ## Estado actual (17 de noviembre de 2026)
 
-**17 de noviembre, hist. §193–§195 (commiteado en `solla`, sin publicar):
+**17 de noviembre, hist. §196: horarios y fichaje (punto 5).** Pantalla
+Horarios: cada uno ficha entrada y salida; el admin carga el horario por día
+(con horario cortado), ve horas, llegadas tarde (5 min de tolerancia), faltas
+y turnos de caja de hoy, la semana o el mes, y corrige un fichaje olvidado.
+Tablas nuevas `horarios` y `fichajes`. 449 tests.
+
+**17 de noviembre, hist. §193–§195 (publicado, PR #97):
 sucursales, el cierre del día y lo de Praxia en el mostrador.**
 - **Sucursales** (Configuración → Sucursales): cada local con su depósito,
   sus cajas y su gente. La caja vende solo del depósito de su sucursal y el
@@ -2122,7 +2128,8 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    sección** de Praxia: para ver o para editar, y por sucursal (un contador,
    un socio, un encargado). Cambia el esquema: se planifica y se explica la
    migración antes de tocarlo (§27, §34).
-5. **Horarios y fichaje de empleados** (de Praxia, pedido para la oficial el
+5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196; falta fichar
+   con ubicación o código del local). (De Praxia, pedido para la oficial el
    17 de noviembre): horario planificado, entrada y salida reales, llegadas
    tarde y horas, cruzado con los turnos de caja. El usuario lo sacó de §39
    (solo los horarios; los sueldos siguen afuera). Va después del 4: se apoya

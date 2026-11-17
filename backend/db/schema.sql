@@ -1508,6 +1508,35 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
 );
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
 
+-- Horarios y fichaje (hist. §196, de Praxia): el horario planificado de cada
+-- persona en el negocio, por día de la semana (0 = lunes), en la hora del
+-- negocio ("09:00"); un día puede tener varias franjas (de corrido o cortado).
+-- No cruza la medianoche: hasta > desde.
+CREATE TABLE IF NOT EXISTS horarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
+  desde TEXT NOT NULL,
+  hasta TEXT NOT NULL,
+  CHECK (hasta > desde)
+);
+
+-- La entrada y la salida reales, en UTC (datetime(now)), como la auditoría.
+-- Una sola abierta (sin salida) por persona y negocio. corregido_por: el
+-- admin que la cambió a mano (se olvidó de fichar), con el detalle en la
+-- auditoría.
+CREATE TABLE IF NOT EXISTS fichajes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  entrada TEXT NOT NULL,
+  salida TEXT,
+  corregido_por INTEGER REFERENCES usuarios(id),
+  CHECK (salida IS NULL OR salida > entrada)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fichajes_abierto ON fichajes(usuario_id, organizacion_id) WHERE salida IS NULL;
+
 -- En qué sucursales trabaja cada persona (hist. §193). Sin ninguna, en todas,
 -- como antes. Con alguna, solo abre las cajas de esas sucursales.
 CREATE TABLE IF NOT EXISTS usuario_sucursales (

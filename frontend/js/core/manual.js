@@ -431,6 +431,24 @@ const SECCIONES_ES = [
     ver: ["punto-de-venta", "turno-mostrador", "caja"]
   },
   {
+    id: "horarios",
+    grupo: "Tu cuenta y tu equipo",
+    titulo: "Horarios y fichaje",
+    pantalla: ["#/horarios", "Horarios"],
+    preguntas: ["cómo ficho la entrada", "cómo marco la salida", "cómo cargo el horario de un empleado", "quién llegó tarde", "cuántas horas trabajó", "se olvidó de fichar la salida"],
+    palabras: ["horario", "horarios", "fichar", "fichaje", "entrada", "salida", "tarde", "horas", "falta", "faltas", "empleado", "turno"],
+    bloques: [
+      "Cada persona ficha su entrada y su salida desde **Horarios**, con el botón de arriba. Ahí ve también su horario de hoy.",
+      { pasos: [
+        "El administrador carga el horario de cada uno en **Los horarios de cada uno** › **Cargar horario**: por día, la hora de entrada y la de salida (con horario cortado, las dos franjas).",
+        "En **Quién vino y cuánto trabajó** ve, de hoy, la semana o el mes, las horas de cada uno, las llegadas tarde, las faltas y los turnos de caja que abrió.",
+        "Si alguien se olvidó de fichar, tocá **Corregir** en ese día y cargá la hora: queda marcado como corregido y en la auditoría."
+      ] },
+      { nota: "Llegar hasta 5 minutos después no cuenta como tarde. Los sueldos no se liquidan en Nexo." }
+    ],
+    ver: ["equipo", "turno-mostrador"]
+  },
+  {
     id: "mercado-pago",
     grupo: "Vender",
     titulo: "Cobrar con Mercado Pago",

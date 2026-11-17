@@ -41,3 +41,26 @@ export function inicioDeHoyUTC() {
   const inicio = new Date(Date.UTC(y, m - 1, d) - minutosDesfase * 60000);
   return inicio.toISOString().slice(0, 19).replace('T', ' ');
 }
+
+// La hora (HH:MM) en la zona del negocio de un instante guardado en UTC.
+export const horaLocalDe = (utc) =>
+  new Date(`${String(utc).replace(' ', 'T')}Z`).toLocaleTimeString('es-AR', {
+    timeZone: ZONA_HORARIA,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+
+// El instante UTC ("AAAA-MM-DD HH:MM:SS") de una fecha y hora del negocio:
+// para guardar la salida que un admin corrige a mano (hist. §196).
+export function utcDeLocal(fecha, hora) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const [hh, mm] = hora.split(':').map(Number);
+  const supuesto = Date.UTC(y, m - 1, d, hh, mm);
+  const desfase = new Intl.DateTimeFormat('en-US', { timeZone: ZONA_HORARIA, timeZoneName: 'longOffset' })
+    .formatToParts(new Date(supuesto))
+    .find((p) => p.type === 'timeZoneName').value;
+  const [, signo = '+', horas = '0', minutos = '0'] = /GMT([+-])?(\d{2})?:?(\d{2})?/.exec(desfase);
+  const minutosDesfase = (signo === '-' ? -1 : 1) * (Number(horas) * 60 + Number(minutos));
+  return new Date(supuesto - minutosDesfase * 60000).toISOString().slice(0, 19).replace('T', ' ');
+}
